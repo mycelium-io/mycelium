@@ -1,2 +1,2 @@
-# miselium
-Miselium is minimalistic React component library
+# mycelium
+Mycelium is minimalistic React component library

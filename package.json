@@ -1,0 +1,13 @@
+{
+  "name": "mycelium",
+  "version": "1.0.0",
+  "description": "Mycelium is a lightweight react component library.",
+  "main": "index.js",
+  "repository": "https://github.com/mycelium-ui/mycelium.git",
+  "author": "Olivier Colonna",
+  "license": "MIT",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ]
+}
