@@ -1,7 +1,7 @@
 {
-  "name": "@miselium/accordion",
+  "name": "@mycelium/accordion",
   "version": "1.0.0",
-  "description": "A lightweight accordion component for React & Miselium.",
+  "description": "A lightweight accordion component for React & Mycelium.",
   "main": "index.js",
   "author": "Olivier Colonna",
   "license": "MIT"
