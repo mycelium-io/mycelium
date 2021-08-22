@@ -1,4 +1,5 @@
 import React from 'react'
+import { __DEV__ } from '@mycelium/utils'
 import { container } from './styles'
 import { ContainerProps } from './types'
 
@@ -23,4 +24,6 @@ export const Container: React.FC<ContainerProps> = ({
   </Tag>
 )
 
-Container.displayName = 'Container'
+if (__DEV__) {
+  Container.displayName = 'Container'
+}

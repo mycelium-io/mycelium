@@ -1038,6 +1038,11 @@
   resolved "https://lucid-tech-589251789600.d.codeartifact.us-east-1.amazonaws.com:443/npm/lucid-tech/@types/minimist/-/minimist-1.2.2.tgz#ee771e2ba4b3dc5b372935d549fd9617bf345b8c"
   integrity sha512-jhuKLIRrhvCPLqwPcx6INqmKeiA5EWrsCOPhrlFSrbrmU4ZMPjj5Ul/oLCMDO98XRUIwVm78xICz4EPCektzeQ==
 
+"@types/node@^16.7.1":
+  version "16.7.1"
+  resolved "https://lucid-tech-589251789600.d.codeartifact.us-east-1.amazonaws.com:443/npm/lucid-tech/@types/node/-/node-16.7.1.tgz#c6b9198178da504dfca1fd0be9b2e1002f1586f0"
+  integrity sha512-ncRdc45SoYJ2H4eWU9ReDfp3vtFqDYhjOsKlFFUDEn8V1Bgr2RjYal8YT5byfadWIRluhPFU6JiDOl0H6Sl87A==
+
 "@types/normalize-package-data@^2.4.0":
   version "2.4.1"
   resolved "https://lucid-tech-589251789600.d.codeartifact.us-east-1.amazonaws.com:443/npm/lucid-tech/@types/normalize-package-data/-/normalize-package-data-2.4.1.tgz#d3357479a0fdfdd5907fe67e17e0a85c906e1301"
