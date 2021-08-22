@@ -1,0 +1,10 @@
+{
+  "name": "@mycelium/utils",
+  "version": "1.0.0",
+  "description": "Utils provides a bunch of utility functions",
+  "main": "index.js",
+  "repository": "https://github.com/mycelium-ui/mycelium/utils",
+  "author": "Olivier Colonna",
+  "license": "MIT",
+  "private": true
+}
