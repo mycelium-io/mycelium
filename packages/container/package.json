@@ -1,5 +1,5 @@
 {
-  "name": "@myceliym/container",
+  "name": "@mycelium/container",
   "version": "1.0.0",
   "description": "A lightweight container component for React & Mycelium.",
   "main": "index.js",
