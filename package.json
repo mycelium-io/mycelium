@@ -20,9 +20,23 @@
     "typescript": "^4.3.5"
   },
   "devDependencies": {
+    "@babel/core": "^7.15.0",
+    "@babel/preset-env": "^7.16.5",
+    "@babel/preset-react": "^7.16.5",
+    "@babel/preset-typescript": "^7.16.5",
+    "@emotion/babel-preset-css-prop": "^11.2.0",
+    "@storybook/addon-actions": "^6.4.9",
+    "@storybook/addon-essentials": "^6.4.9",
+    "@storybook/addon-links": "^6.4.9",
+    "@storybook/react": "^6.4.9",
     "@types/node": "^16.7.1",
     "@types/react": "^17.0.19",
+    "babel-loader": "^8.2.2",
+    "babel-preset-react-app": "^10.0.1",
     "lerna": "^4.0.0"
   },
-  "scripts": {}
+  "scripts": {
+    "storybook": "start-storybook -p 6006",
+    "build-storybook": "build-storybook"
+  }
 }
