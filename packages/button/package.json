@@ -1,0 +1,14 @@
+{
+  "name": "@myceliym/button",
+  "version": "1.0.0",
+  "description": "A lightweight button",
+  "main": "index.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mycelium-ui/mycelium.git",
+    "directory": "packages/button"
+  },
+  "author": "Olivier Colonna",
+  "license": "MIT",
+  "dependencies": {}
+}

@@ -1,0 +1,8 @@
+{
+  "name": "@mycelium/icons",
+  "version": "1.0.0",
+  "description": "Mycelium UI icons",
+  "main": "index.js",
+  "author": "Olivier Colonna <oliviercolonna@gmail.com>",
+  "license": "MIT"
+}
