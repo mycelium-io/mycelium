@@ -2,7 +2,7 @@
   "name": "@myceliym/container",
   "version": "1.0.0",
   "description": "A lightweight container component for React & Mycelium.",
-  "main": "index.js",
+  "main": "index.ts",
   "repository": "https://github.com/mycelium-ui/mycelium",
   "author": "Olivier Colonna",
   "license": "MIT",

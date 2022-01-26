@@ -1,6 +1,7 @@
 import { css } from '@emotion/react'
 
 const centerStyle = css({
+  position: 'absolute',
   left: '50%',
   top: '50%',
   width: 'fit-content',

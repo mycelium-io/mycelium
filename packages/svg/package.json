@@ -1,0 +1,13 @@
+{
+  "name": "@mycelium/svg",
+  "version": "1.0.0",
+  "description": "Mycelium UI svg",
+  "main": "index.js",
+  "author": "Olivier Colonna",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mycelium-io/mycelium.git",
+    "directory": "packages/svg"
+  }
+}
