@@ -1,0 +1,10 @@
+{
+  "name": "@mycelium/types",
+  "version": "1.0.0",
+  "description": "Types provides a bunch of types",
+  "main": "index.js",
+  "repository": "https://github.com/mycelium-ui/mycelium/types",
+  "author": "Olivier Colonna",
+  "license": "MIT",
+  "private": true
+}
