@@ -1,32 +1,10 @@
 import React from 'react'
+import { __DEV__ } from '@mycelium/utils'
 import * as Icons from '@mycelium/icons'
-import { COLOR, ICON_SIZE, BUTTON_THEME } from '../../types'
+import { getIconColor, getIconSize } from './lib'
+import { BUTTON_THEME } from '../../types'
 import { Props, AnchorProps, ButtonProps, EnumSide } from './types'
-import styles from './styles'
-
-const { WHITE, INKDARK } = COLOR
-
-const getThemeColor = (theme?: BUTTON_THEME, light?: boolean): COLOR => {
-  if (light) {
-    switch (theme) {
-      case BUTTON_THEME.SECONDARY:
-        return WHITE
-      case BUTTON_THEME.PRIMARY:
-        return INKDARK
-    }
-  }
-
-  return theme === BUTTON_THEME.PRIMARY ? WHITE : INKDARK
-}
-
-const getIconColor = (
-  theme?: BUTTON_THEME,
-  light?: boolean,
-  iconColor?: COLOR,
-): COLOR => iconColor || getThemeColor(theme, light)
-
-const getIconSize = (small: boolean = false, iconSize?: ICON_SIZE): ICON_SIZE =>
-  iconSize || (small ? ICON_SIZE.SMALL : ICON_SIZE.DEFAULT)
+import { button } from './styles'
 
 export const Button: React.FC<Props> = (props) => {
   const {
@@ -52,7 +30,7 @@ export const Button: React.FC<Props> = (props) => {
   const useIconSize = getIconSize(small, iconSize)
   const Icon = icon && Icons[upperFirst(icon)]
   const { Spinner } = Icons
-  const buttonClassName = cx(styles.button, className, {
+  const buttonClassName = cx(button, className, {
     [styles.buttonBasic]: theme === BUTTON_THEME.BASIC,
     [styles.buttonLink]: theme === BUTTON_THEME.LINK,
     [styles.buttonPrimary]: theme === BUTTON_THEME.PRIMARY,
@@ -122,4 +100,8 @@ export const Button: React.FC<Props> = (props) => {
       </>
     </button>
   )
+}
+
+if (__DEV__) {
+  Button.displayName = 'Button'
 }
