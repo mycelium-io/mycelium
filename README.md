@@ -1,7 +1,7 @@
 # Mycelium
 
 <div align="center">
-  <img src="docs/logo.png" alt="Mycelium" width="180" />
+  <img src="docs/banner.png" alt="Mycelium" width="800" />
 </div>
 
 <div align="center" style="margin-top:12px;margin-bottom:8px">
@@ -17,22 +17,18 @@
 </div>
 
 <div align="center">
-  <em>The underground network for multi-agent systems — shared rooms, persistent memory, and a living knowledge graph.</em>
+  <em>A coordination layer for multi-agent systems — shared rooms, persistent memory, and a knowledge graph, built on the Outshift by Cisco Cognitive Fabric.</em>
 </div>
 
 ---
 
-Real mycelium connects forests. This one connects agents.
-
-Beneath every tree in an old-growth forest runs an invisible web of fungal threads — passing nutrients, signals, and chemical memory between organisms that would otherwise act alone. Mycelium does the same for AI agents: a silent coordination layer that lets them share context, observe each other's turns, and build a collective memory that outlasts any single conversation.
-
 ## What is Mycelium?
 
-Mycelium implements the **Internet of Cognition (IoC)** architecture as a minimal, self-hostable platform:
+Mycelium implements the **Internet of Cognition (IoC)** architecture as a minimal, self-hostable platform built on top of **Cognitive Fabric Nodes (CFN)** from Outshift by Cisco:
 
-- **Hyphal Network** — A shared room and message bus that agents plug into. Every turn propagates through the network and is observable via SSE.
-- **Registry** — Workspaces → MAS (Multi-Agent Systems) → Agents, stored in Postgres. No registration ceremony, just REST calls.
-- **Shared Memory** — Concepts and relationships extracted from agent turns are stored in a knowledge graph (AgensGraph) and queryable by any agent in the MAS. The network remembers.
+- **Cognitive Fabric** — A shared room and message bus that agents plug into. Every turn is observable via SSE. Backed by the IoC CFN service.
+- **Registry** — Workspaces → MAS (Multi-Agent Systems) → Agents, managed through the CFN Management Plane. No registration ceremony, just REST calls.
+- **Shared Memory** — Concepts and relationships extracted from agent turns are stored in a knowledge graph (AgensGraph) and queryable by any agent in the MAS.
 - **OpenClaw Plugin** — Drop-in extension for Claude Code agents. Joins a room, broadcasts turns, and automatically ingests conversation content into the knowledge graph.
 
 ## Quick Start
@@ -95,7 +91,20 @@ The extension automatically joins the room on session start, broadcasts each tur
 | Knowledge graph | AgensGraph (openCypher) |
 | Real-time | Server-Sent Events, Postgres LISTEN/NOTIFY |
 | AI | Anthropic Claude (two-stage concept/relation extraction) |
+| CFN layer | Outshift by Cisco IoC CFN (mgmt plane, cfn-svc, knowledge-memory-svc) |
 | CLI / Plugin | Python (mycelium-cli), OpenClaw extension |
+
+### CFN Services
+
+Mycelium integrates with the following Cognitive Fabric Node services:
+
+| Service | Port | Description |
+|---------|------|-------------|
+| `ioc-cfn-mgmt-backend-svc` | 9000 | Management plane — workspaces, MAS, agents, API keys |
+| `ioc-cfn-mgmt-ui-svc` | 9001 | Management UI |
+| `ioc-cfn-svc` | 9002 | CFN core — shared memory, MCP server mode |
+| `ioc-knowledge-memory-svc` | 9003 | Knowledge management APIs |
+| `ioc-cfn-cognitive-agents` | 9004 | Ingestion + evidence gathering agents |
 
 ## Project Structure
 
@@ -104,7 +113,7 @@ fastapi-backend/    FastAPI app, Alembic migrations, tests
 nextjs-frontend/    Next.js workspace browser UI
 mycelium-cli/       OpenClaw plugin + hooks
 services/           docker-compose.yml + .env.example
-cfn/                upstream CFN submodules (reference)
+cfn/                Outshift IoC CFN submodules
 ```
 
 ## Development
