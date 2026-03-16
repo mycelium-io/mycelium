@@ -1,0 +1,15 @@
+{
+  "name": "mycelium-backend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev":      "uv run fastapi dev app/main.py",
+    "build":    "uv sync --frozen",
+    "test":     "uv run pytest tests/ -v",
+    "lint":     "uv run ruff check app/routes/cfn_proxy.py app/routes/knowledge.py app/knowledge/prompts.py app/knowledge/ingestion.py app/schemas.py tests/",
+    "lint:fix": "uv run ruff check . --fix",
+    "migrate":  "uv run alembic upgrade head",
+    "openapi":  "uv run python -c \"from app.main import app; import json; print(json.dumps(app.openapi(), indent=2))\" > ../docs/openapi.json",
+    "clean":    "rm -rf __pycache__ .pytest_cache logs"
+  }
+}
