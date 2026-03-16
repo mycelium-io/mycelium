@@ -1,0 +1,230 @@
+services:
+
+  # ── Mycelium Core (always started) ───────────────────────────────────────────
+
+  mycelium-db:
+    image: postgres:17-alpine
+    container_name: mycelium-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${MYCELIUM_DB_PASSWORD:-password}
+      POSTGRES_DB: mycelium
+    ports:
+      - "5432:5432"
+    volumes:
+      - mycelium-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d mycelium"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mycelium-backend:
+    build:
+      context: ../fastapi-backend
+      dockerfile: Dockerfile
+    image: mycelium-backend:latest
+    container_name: mycelium-backend
+    restart: unless-stopped
+    depends_on:
+      mycelium-db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium
+      CFN_MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
+      ANTHROPIC_BASE_URL: ${MYCELIUM_ANTHROPIC_BASE_URL:-}
+      ANTHROPIC_AUTH_TOKEN: ${MYCELIUM_ANTHROPIC_AUTH_TOKEN:-}
+      ANTHROPIC_API_KEY: ${MYCELIUM_ANTHROPIC_API_KEY:-}
+      COORDINATION_LLM_MODEL: ${COORDINATION_LLM_MODEL:-claude-sonnet-4-6}
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
+  # ── CFN Stack (profile: cfn) ──────────────────────────────────────────────────
+
+  ioc-cfn-db:
+    image: postgres:17-alpine
+    container_name: ioc-cfn-db
+    restart: unless-stopped
+    profiles: [cfn]
+    environment:
+      POSTGRES_DB: ${CFN_DB:-cfn_mgmt}
+      POSTGRES_USER: ${CFN_DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${CFN_DB_PASSWORD:-password}
+    ports:
+      - "5433:5432"
+    volumes:
+      - ioc-cfn-db-data:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${CFN_DB_USER:-postgres} -d ${CFN_DB:-cfn_mgmt}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  ioc-graph-db:
+    image: skaiworldwide/agensgraph:v2.16.0-alpine3.22
+    platform: linux/amd64
+    container_name: ioc-graph-db
+    restart: unless-stopped
+    profiles: [cfn]
+    environment:
+      POSTGRES_DB: ${AGENSGRAPH_DB:-ioc-graph-db}
+      POSTGRES_USER: ${AGENSGRAPH_USER:-postgres}
+      POSTGRES_PASSWORD: ${AGENSGRAPH_PASSWORD:-agensgraph}
+    ports:
+      - "5456:5432"
+    volumes:
+      - ioc-graph-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AGENSGRAPH_USER:-postgres} -d ${AGENSGRAPH_DB:-ioc-graph-db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  ioc-graph-db-viewer:
+    image: skaiworldwide/agviewer:latest
+    container_name: ioc-graph-db-viewer
+    restart: unless-stopped
+    profiles: [cfn]
+    environment:
+      DB_HOST: ioc-graph-db
+      DB_PORT: 5432
+      DB_USER: ${AGENSGRAPH_USER:-postgres}
+      DB_PASSWORD: ${AGENSGRAPH_PASSWORD:-agensgraph}
+      DB_NAME: ${AGENSGRAPH_DB:-ioc-graph-db}
+    ports:
+      - "5457:3000"
+    depends_on:
+      - ioc-graph-db
+
+  ioc-cfn-mgmt-plane-svc:
+    build:
+      context: ../cfn/ioc-cfn-mgmt-backend-svc
+      dockerfile: Dockerfile
+    image: ioc-cfn-mgmt-plane-svc:local
+    container_name: ioc-cfn-mgmt-plane-svc
+    restart: unless-stopped
+    profiles: [cfn]
+    depends_on:
+      ioc-cfn-db:
+        condition: service_healthy
+    ports:
+      - "9000:9000"
+    environment:
+      SERVICE_NAME: ioc-cfn-mgmt-plane-svc
+      APPLICATION_VERSION: latest
+      LOG_LEVEL: INFO
+      ADMIN_USER_PASSWORD: ${ADMIN_USER_PASSWORD:-admin}
+      POSTGRES_HOST: ioc-cfn-db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${CFN_DB:-cfn_mgmt}
+      POSTGRES_USER: ${CFN_DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${CFN_DB_PASSWORD:-password}
+      PORT: 9000
+      CFN_DEV_MODE: ${CFN_DEV_MODE:-false}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  ioc-cfn-mgmt-plane-ui:
+    build:
+      context: ../cfn/ioc-cfn-mgmt-ui-svc
+      dockerfile: ci/docker/Dockerfile.next
+      args:
+        CFN_UI_API_BASE_URL: http://ioc-cfn-mgmt-plane-svc:9000
+    image: ioc-cfn-mgmt-plane-ui:local
+    container_name: ioc-cfn-mgmt-plane-ui
+    restart: unless-stopped
+    profiles: [cfn]
+    depends_on:
+      ioc-cfn-mgmt-plane-svc:
+        condition: service_healthy
+    ports:
+      - "9001:9001"
+    environment:
+      NODE_ENV: production
+      PORT: 9001
+      CFN_UI_API_BASE_URL: http://ioc-cfn-mgmt-plane-svc:9000
+      NEXT_PUBLIC_CFN_UI_API_BASE_URL: http://localhost:9000
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:9001}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-mycelium-dev-secret-change-in-production}
+
+  ioc-cfn-svc:
+    build:
+      context: ../cfn/ioc-cfn-svc
+      dockerfile: Dockerfile
+    image: ioc-cfn-svc:local
+    container_name: ioc-cfn-svc
+    restart: unless-stopped
+    profiles: [cfn]
+    depends_on:
+      ioc-cfn-db:
+        condition: service_healthy
+      ioc-cfn-mgmt-plane-svc:
+        condition: service_healthy
+    ports:
+      - "9002:9002"
+    environment:
+      PORT: "9002"
+      APP_NAME: ioc-cfn-svc
+      MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
+      CFN_NAME: ${CFN_NAME:-default-cfn}
+      HEARTBEAT_INTERVAL_SECONDS: ${HEARTBEAT_INTERVAL_SECONDS:-10}
+      MCP_ENABLED: ${MCP_ENABLED:-false}
+      MCP_PORT: ${MCP_PORT:-9002}
+      DB_HOST: ioc-cfn-db
+      DB_PORT: 5432
+      DB_NAME: cfn_cp
+      DB_USER: ${CFN_DB_USER:-postgres}
+      DB_PASSWORD: ${CFN_DB_PASSWORD:-password}
+      DB_SSL_MODE: disable
+
+  ioc-knowledge-memory-svc:
+    build:
+      context: ../cfn/ioc-knowledge-memory-svc
+      dockerfile: Dockerfile
+    image: ioc-knowledge-memory-svc:local
+    platform: linux/amd64
+    container_name: ioc-knowledge-memory-svc
+    restart: unless-stopped
+    profiles: [cfn]
+    depends_on:
+      ioc-graph-db:
+        condition: service_healthy
+      ioc-cfn-mgmt-plane-svc:
+        condition: service_healthy
+    ports:
+      - "9003:9003"
+    environment:
+      SERVICE_NAME: ioc-knowledge-memory-svc
+      APPLICATION_VERSION: latest
+      LOG_LEVEL: INFO
+      PORT: 9003
+      AGENSGRAPH_HOST: ioc-graph-db
+      AGENSGRAPH_DB: ${AGENSGRAPH_DB:-ioc-graph-db}
+      AGENSGRAPH_USER: ${AGENSGRAPH_USER:-postgres}
+      AGENSGRAPH_PASSWORD: ${AGENSGRAPH_PASSWORD:-agensgraph}
+      AGENSGRAPH_PORT: 5432
+      MEMORY_PROVIDER_REGISTRATION_URL: http://ioc-cfn-mgmt-plane-svc:9000
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9003/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+volumes:
+  mycelium-db-data:
+  ioc-cfn-db-data:
+  ioc-graph-db-data:

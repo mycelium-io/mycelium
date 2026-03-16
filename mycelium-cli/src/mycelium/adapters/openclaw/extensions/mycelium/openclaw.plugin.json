@@ -1,0 +1,12 @@
+{
+  "id": "mycelium",
+  "name": "Mycelium Adapter",
+  "description": "Bridges OpenClaw agents to the Mycelium coordination backend. Covers session lifecycle, pre-turn context injection, and output forwarding.",
+  "version": "0.1.0",
+  "skills": ["./skills"],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}
