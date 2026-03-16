@@ -4,17 +4,13 @@
   <img src="docs/banner.png" alt="Mycelium" width="800" />
 </div>
 
-<div align="center" style="margin-top:12px;margin-bottom:8px">
-    <a href="https://github.com/mycelium-io/mycelium/actions">
-        <img src="https://github.com/mycelium-io/mycelium/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI Status">
-    </a>
-    &nbsp;
-    <img src="https://img.shields.io/badge/%3C%2F%3E-TypeScript-%230074c1.svg">
-    &nbsp;
-    <img src="https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white">
-    &nbsp;
-    <img src="https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white">
-</div>
+<p align="center">
+  <a href="https://github.com/mycelium-io/mycelium/actions/workflows/ci.yml?branch=main"><img src="https://img.shields.io/github/actions/workflow/status/mycelium-io/mycelium/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
+  <a href="https://github.com/mycelium-io/mycelium/releases"><img src="https://img.shields.io/github/v/release/mycelium-io/mycelium?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
+  <img src="https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white&style=for-the-badge">
+  <img src="https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white&style=for-the-badge">
+</p>
 
 <div align="center">
   <em>A coordination layer for multi-agent systems — shared rooms, persistent memory, and a knowledge graph, built on the Outshift by Cisco Cognitive Fabric.</em>
