@@ -23,9 +23,18 @@ import typer
 from mycelium.config import MyceliumConfig
 from mycelium.error_handler import print_error
 from mycelium.exceptions import ConfigNotFoundError, MyceliumError
-from mycelium.http_client import MyceliumHTTPClient
+from mycelium.http_client import MyceliumHTTPClient  # kept for SSE streaming only
 
-app = typer.Typer(help="Room management commands", invoke_without_command=True)
+
+def _typed_client(config: MyceliumConfig):
+    """Get a typed OpenAPI client."""
+    from mycelium_backend_client import Client
+    return Client(base_url=config.server.api_url, raise_on_unexpected_status=True)
+
+app = typer.Typer(
+    help="Shared namespaces for agent coordination. Rooms can be sync (real-time negotiation), async (persistent memory), or hybrid.",
+    invoke_without_command=True,
+)
 
 
 @app.callback(invoke_without_command=True)
@@ -49,9 +58,11 @@ def room_main(ctx: typer.Context) -> None:
                 typer.echo("Set a room with: mycelium room set <name>")
             raise typer.Exit(1)
 
-        with MyceliumHTTPClient(config=config) as client:
-            response = client.get("/rooms", params={"name": active_room, "limit": 1})
-            rooms_data = response.json()
+        from mycelium_backend_client.api.rooms import list_rooms_rooms_get as list_api
+
+        with _typed_client(config) as client:
+            result = list_api.sync(client=client, name=active_room, limit=1)
+            rooms_data = [r.to_dict() for r in result] if result else []
 
         if not rooms_data:
             typer.secho(f"Active room '{active_room}' not found on server.", fg=typer.colors.RED)
@@ -91,9 +102,11 @@ def list_rooms(
         if name:
             params["name"] = name
 
-        with MyceliumHTTPClient(config=config) as client:
-            response = client.get("/rooms", params=params)
-            rooms_data = response.json()
+        from mycelium_backend_client.api.rooms import list_rooms_rooms_get as list_api
+
+        with _typed_client(config) as client:
+            result = list_api.sync(client=client, name=name, limit=limit)
+            rooms_data = [r.to_dict() for r in result] if result else []
 
         if json_output:
             typer.echo(json_module.dumps(rooms_data, indent=2, default=str))
@@ -129,6 +142,9 @@ def create(
     ctx: typer.Context,
     name: str | None = typer.Argument(None, help="Room name"),
     public: bool = typer.Option(True, "--public/--private"),
+    mode: str = typer.Option("sync", "--mode", "-m", help="Room mode: sync, async, or hybrid"),
+    trigger: str | None = typer.Option(None, "--trigger", help="Trigger config (e.g. 'threshold:5' or 'explicit')"),
+    persistent: bool = typer.Option(False, "--persistent", help="Room persists after coordination completes"),
 ) -> None:
     """Create a new room."""
     try:
@@ -144,21 +160,79 @@ def create(
         if name is None:
             name = typer.prompt("Room name")
 
-        with MyceliumHTTPClient(config=config) as client:
-            response = client.post(
-                "/rooms",
-                json={"name": name, "is_public": public},
+        # Parse trigger config
+        trigger_config = None
+        if trigger:
+            if ":" in trigger:
+                ttype, tval = trigger.split(":", 1)
+                trigger_config = {"type": ttype, "min_contributions": int(tval)}
+            else:
+                trigger_config = {"type": trigger}
+
+        # Auto-set persistent for async/hybrid rooms
+        if mode in ("async", "hybrid"):
+            persistent = True
+
+        from mycelium_backend_client.api.rooms import create_room_rooms_post as create_api
+        from mycelium_backend_client.models import RoomCreate
+
+        with _typed_client(config) as client:
+            body = RoomCreate(
+                name=name,
+                is_public=public,
+                mode=mode,
+                trigger_config=trigger_config,
+                is_persistent=persistent,
             )
-            room_data = response.json()
+            result = create_api.sync(client=client, body=body)
+            room_data = result.to_dict() if result and hasattr(result, "to_dict") else {}
 
         if json_output:
             typer.echo(json_module.dumps(room_data, indent=2, default=str))
         else:
-            typer.secho(f"Created room: {room_data['name']}", fg=typer.colors.GREEN)
+            typer.secho(f"Created room: {room_data['name']} (mode={room_data.get('mode', 'sync')})", fg=typer.colors.GREEN)
             typer.echo(f"  ID:      {room_data.get('id')}")
             typer.echo(f"  Created: {str(room_data.get('created_at', ''))[:10]}")
             typer.echo("")
             typer.echo(f"  Run 'mycelium room set {name}' to make it your active room")
+
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+
+
+@app.command()
+def synthesize(
+    ctx: typer.Context,
+    room_name: str | None = typer.Argument(None, help="Room to synthesize (default: active room)"),
+    room: str | None = typer.Option(None, "--room", "-r", help="Room name (alternative to positional arg)"),
+) -> None:
+    """Trigger CognitiveEngine synthesis for an async/hybrid room."""
+    try:
+        from rich.console import Console
+        from rich.status import Status
+
+        console = Console()
+        json_output = ctx.obj.get("json", False) if ctx.obj else False
+        config = MyceliumConfig.load()
+        name = room_name or room or _resolve_room(config)
+
+        from mycelium_backend_client.api.rooms import synthesize_room_rooms_room_name_synthesize_post as synth_api
+
+        with console.status(f"[bold cyan]Synthesizing {name}...[/]", spinner="dots"):
+            with _typed_client(config) as client:
+                result = synth_api.sync_detailed(room_name=name, client=client)
+                data = result.parsed.to_dict() if result.parsed and hasattr(result.parsed, "to_dict") else json_module.loads(result.content)
+
+        if json_output:
+            typer.echo(json_module.dumps(data, indent=2, default=str))
+        else:
+            status = data.get("status", "unknown")
+            if status == "complete":
+                console.print(f"[bold green]Synthesis complete:[/] {data.get('key', '')}")
+                console.print(f"  Memories synthesized: {data.get('memory_count', '?')}")
+            else:
+                console.print(f"  {data.get('message', 'No new memories to synthesize')}")
 
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
@@ -177,9 +251,11 @@ def set(
 
         config = MyceliumConfig.load()
 
-        with MyceliumHTTPClient(config=config, timeout=10.0, max_retries=1) as client:
-            response = client.get("/rooms", params={"name": room_name, "limit": 1})
-            rooms_data = response.json()
+        from mycelium_backend_client.api.rooms import list_rooms_rooms_get as list_api
+
+        with _typed_client(config) as client:
+            result = list_api.sync(client=client, name=room_name, limit=1)
+            rooms_data = [r.to_dict() for r in result] if result else []
 
             if not rooms_data:
                 raise MyceliumError(
@@ -222,8 +298,10 @@ def delete(
                 typer.echo("Cancelled.")
                 raise typer.Exit(0)
 
-        with MyceliumHTTPClient(config=config) as client:
-            client.delete(f"/rooms/{room_name}")
+        from mycelium_backend_client.api.rooms import delete_room_rooms_room_name_delete as delete_api
+
+        with _typed_client(config) as client:
+            delete_api.sync_detailed(room_name=room_name, client=client)
 
         typer.secho(f"Room '{room_name}' deleted.", fg=typer.colors.GREEN)
 
@@ -431,12 +509,13 @@ def join(
         elif file:
             intent = file.read_text().strip()
 
-        with MyceliumHTTPClient(config=config) as client:
-            response = client.post(
-                f"/rooms/{room_name}/sessions",
-                json={"agent_handle": handle, "intent": intent},
-            )
-            data = response.json()
+        from mycelium_backend_client.api.sessions import join_room_rooms_room_name_sessions_post as join_api
+        from mycelium_backend_client.models import SessionCreate
+
+        with _typed_client(config) as client:
+            body = SessionCreate(agent_handle=handle, intent=intent)
+            result = join_api.sync(room_name=room_name, client=client, body=body)
+            data = result.to_dict() if result and hasattr(result, "to_dict") else {}
 
         if json_output:
             typer.echo(json_module.dumps(data, indent=2, default=str))
@@ -451,144 +530,131 @@ def join(
 
 
 def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
-    """Core SSE watch loop — pretty-renders all message types."""
+    """Core SSE watch loop — pretty-renders coordination and memory events."""
     import time
 
     import httpx
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.text import Text
 
-    C = {
-        "cyan":   "\x1b[36m",
-        "green":  "\x1b[32m",
-        "yellow": "\x1b[33m",
-        "blue":   "\x1b[34m",
-        "magenta":"\x1b[35m",
-        "dim":    "\x1b[2m",
-        "bold":   "\x1b[1m",
-        "reset":  "\x1b[0m",
-    }
+    console = Console()
 
     def ts() -> str:
-        return C["dim"] + time.strftime("%H:%M:%S") + C["reset"]
-
-    def rule() -> str:
-        return C["dim"] + "  " + "─" * 54 + C["reset"]
+        return f"[dim]{time.strftime('%H:%M:%S')}[/]"
 
     def render(msg: dict) -> str | None:
-        mtype = msg.get("message_type", "")
-        sender = msg.get("sender_handle", "?")
+        mtype = msg.get("message_type", "") or msg.get("type", "")
+        sender = msg.get("sender_handle", msg.get("updated_by", "?"))
 
         try:
-            data = json_module.loads(msg.get("content", "{}"))
+            data = json_module.loads(msg.get("content", "{}")) if isinstance(msg.get("content"), str) else msg
         except (json_module.JSONDecodeError, TypeError):
-            data = {}
+            data = msg
 
         if mtype == "coordination_join":
             intent = data.get("intent")
             handle = data.get("handle", sender)
-            suffix = f"  {C['dim']}— {intent}{C['reset']}" if intent else ""
-            return f"  {ts()}  {C['cyan']}{handle}{C['reset']} joined{suffix}"
+            suffix = f" — [dim]{intent}[/]" if intent else ""
+            return f"  {ts()}  [cyan]{handle}[/] joined{suffix}"
 
         if mtype == "coordination_start":
             n = data.get("agent_count", "?")
-            return (
-                f"\n{rule()}\n"
-                f"  {ts()}  {C['bold']}{C['cyan']}⟫ Session started{C['reset']} — "
-                f"{n} agents joined. Beginning coordination…\n"
-            )
+            return f"\n  {ts()}  [bold cyan]session started[/] — {n} agents joined\n"
 
         if mtype == "coordination_tick":
             round_num = data.get("round", "?")
             kind = data.get("kind")
-
             if kind == "negotiate":
                 action = data.get("action", "propose")
-                participant_id = data.get("participant_id", "?")
-
+                participant = data.get("participant_id", "?")
                 if action == "propose":
-                    history = data.get("history", [])
-                    issues: list[str] = []
-                    if history:
-                        issues = list(history[-1].get("offer", {}).keys())
-                    if not issues:
-                        issues = list(_ISSUE_OPTIONS.keys())
-                    lines = [
-                        f"\n  {ts()}  {C['bold']}{C['cyan']}⟫ CognitiveEngine "
-                        f"[round {round_num}] → {participant_id} — propose{C['reset']}"
-                    ]
-                    for issue in issues:
-                        opts = _ISSUE_OPTIONS.get(issue, ["?"])
-                        lines.append(
-                            f"              {C['dim']}{issue}:{C['reset']} {' | '.join(opts)}"
-                        )
-                elif action == "respond":
-                    current_offer = data.get("current_offer") or {}
+                    issues = list(_ISSUE_OPTIONS.keys())
+                    opts = "  ".join(f"[dim]{k}:[/] {' | '.join(v)}" for k, v in _ISSUE_OPTIONS.items() if k in issues)
+                    return f"\n  {ts()}  [bold cyan]round {round_num}[/] → [cyan]{participant}[/] propose\n              {opts}"
+                if action == "respond":
+                    offer = data.get("current_offer") or {}
                     proposer = data.get("proposer_id", "?")
-                    lines = [
-                        f"\n  {ts()}  {C['bold']}{C['cyan']}⟫ CognitiveEngine "
-                        f"[round {round_num}] → {participant_id} — respond "
-                        f"(offer from {proposer}){C['reset']}"
-                    ]
-                    for k, v in current_offer.items():
-                        lines.append(f"              {C['dim']}{k}:{C['reset']} {v}")
-                else:
-                    lines = [
-                        f"\n  {ts()}  {C['bold']}{C['cyan']}⟫ CognitiveEngine "
-                        f"[round {round_num}] → {participant_id} — {action}{C['reset']}"
-                    ]
-            else:
-                questions = data.get("ambiguities", [])
-                lines = [
-                    f"\n  {ts()}  {C['bold']}{C['cyan']}⟫ CognitiveEngine "
-                    f"[tick {round_num}]{C['reset']}"
-                ]
-                for i, q in enumerate(questions, 1):
-                    lines.append(f"              {C['dim']}{i}.{C['reset']} {q}")
-            return "\n".join(lines)
+                    items = "  ".join(f"[dim]{k}:[/] {v}" for k, v in offer.items())
+                    return f"\n  {ts()}  [bold cyan]round {round_num}[/] → [cyan]{participant}[/] respond to {proposer}\n              {items}"
+                return f"\n  {ts()}  [bold cyan]round {round_num}[/] → [cyan]{participant}[/] {action}"
+            return f"\n  {ts()}  [bold cyan]tick {round_num}[/]"
 
         if mtype == "coordination_consensus":
             plan = data.get("plan", "")
             assignments = data.get("assignments", {})
-            lines = [
-                f"\n{rule()}",
-                f"  {ts()}  {C['bold']}{C['green']}⟫ CognitiveEngine [consensus]{C['reset']}",
-            ]
+            lines = [f"\n  {ts()}  [bold green]consensus[/]"]
             if plan:
-                lines.append(f"              {C['dim']}Plan:{C['reset']} {plan}")
-            if assignments:
-                lines.append(f"              {C['dim']}Assignments:{C['reset']}")
-                for handle, task in assignments.items():
-                    lines.append(f"                {C['cyan']}{handle}{C['reset']}: {task}")
-            lines.append(f"\n{rule()}")
+                lines.append(f"              [dim]plan:[/] {plan}")
+            for handle, task in assignments.items():
+                lines.append(f"              [cyan]{handle}[/]: {task}")
             return "\n".join(lines)
+
+        if mtype == "memory_changed":
+            key = data.get("key", "?")
+            version = data.get("version", "?")
+            by = data.get("updated_by", "?")
+            return f"  {ts()}  [yellow]memory[/] [dim]{key}[/] v{version} by {by}"
+
+        if mtype == "synthesis_complete":
+            skey = data.get("synthesis_key", "?")
+            return f"  {ts()}  [bold green]synthesis[/] → {skey}"
 
         if mtype == "delegate":
             recipient = msg.get("recipient_handle", "?")
             content = msg.get("content", "")
-            return (
-                f"  {ts()}  {C['magenta']}{sender}{C['reset']} "
-                f"{C['dim']}→{C['reset']} {C['cyan']}{recipient}{C['reset']}: {content}"
-            )
+            return f"  {ts()}  [magenta]{sender}[/] [dim]→[/] [cyan]{recipient}[/]: {content}"
 
         if mtype in ("direct", "broadcast", "announce"):
             content = msg.get("content", "")
-            color = C["yellow"] if mtype == "broadcast" else C["blue"]
-            return f"  {ts()}  {color}{sender}{C['reset']}: {content}"
+            color = "yellow" if mtype == "broadcast" else "blue"
+            return f"  {ts()}  [{color}]{sender}[/]: {content}"
 
         return None
 
+    # Fetch room metadata for the header
+    room_meta = ""
+    try:
+        resp = httpx.get(f"{config.server.api_url}/rooms/{room_name}", timeout=5)
+        if resp.status_code == 200:
+            room = resp.json()
+            mode = room.get("mode", "sync")
+            state = room.get("coordination_state", "idle")
+            persistent = room.get("is_persistent", False)
+            trigger = room.get("trigger_config")
+            trigger_str = ""
+            if trigger:
+                trigger_str = f"  trigger={trigger.get('type', '?')}"
+                if trigger.get("min_contributions"):
+                    trigger_str += f":{trigger['min_contributions']}"
+            room_meta = f"[dim]mode=[/]{mode}  [dim]state=[/]{state}{'  [dim]persistent[/]' if persistent else ''}{trigger_str}"
+    except Exception:
+        pass
+
+    # Header
+    header = Table.grid(padding=(0, 2))
+    header.add_row(
+        Text(room_name, style="bold cyan"),
+        Text("Ctrl+C to stop", style="dim"),
+    )
+    console.print()
+    console.print(Panel(
+        f"[bold]{room_name}[/]\n{room_meta}" if room_meta else f"[bold]{room_name}[/]",
+        title="[dim]watching[/]",
+        border_style="dim",
+        width=60,
+        padding=(0, 2),
+    ))
+
     url = f"{config.server.api_url}/rooms/{room_name}/messages/stream"
-
-    typer.echo(f"\n  {C['bold']}Watching{C['reset']} {C['cyan']}{room_name}{C['reset']}  "
-               f"{C['dim']}(Ctrl+C to stop){C['reset']}\n")
-    typer.echo(rule())
-
     start = time.time()
 
     with httpx.Client(timeout=None) as http:
         with http.stream("GET", url) as response:
             for line in response.iter_lines():
                 if timeout > 0 and (time.time() - start) >= timeout:
-                    typer.echo(f"\n  {C['dim']}[Timeout after {timeout}s]{C['reset']}")
+                    console.print(f"\n  [dim]Timeout after {timeout}s[/]")
                     return
                 line = line.strip()
                 if not line or line.startswith(":"):
@@ -601,7 +667,103 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
                         continue
                     rendered = render(msg)
                     if rendered:
-                        typer.echo(rendered)
+                        console.print(rendered, highlight=False)
+
+
+@app.command(name="await")
+def await_tick(
+    ctx: typer.Context,
+    handle: str = typer.Option(..., "--handle", "-H", help="Your agent handle (listens for ticks addressed to you)"),
+    channel: str | None = typer.Option(None, "--channel", "-c", help="Room (overrides active room)"),
+    timeout: int = typer.Option(120, "--timeout", "-t", help="Timeout in seconds (default 120)"),
+) -> None:
+    """
+    Block until CognitiveEngine addresses you, then print the tick and exit.
+
+    Designed for Claude Code agents: call this in a loop to participate in
+    sync negotiation without a persistent SSE plugin.
+
+    Flow:
+        1. mycelium room join --handle my-agent -m "my position"
+        2. mycelium room await --handle my-agent        # blocks
+           → prints tick JSON when CE addresses you
+        3. mycelium message propose budget=high          # respond
+        4. mycelium room await --handle my-agent        # wait for next tick
+    """
+    import time
+    import httpx
+
+    try:
+        config = MyceliumConfig.load()
+        room_name = _resolve_room(config, channel)
+
+        # Listen on the agent's personal SSE stream, not the room stream
+        url = f"{config.server.api_url}/agents/{handle}/stream"
+        start = time.time()
+
+        with httpx.Client(timeout=None) as http:
+            with http.stream("GET", url) as response:
+                for line in response.iter_lines():
+                    if timeout > 0 and (time.time() - start) >= timeout:
+                        typer.echo(json_module.dumps({"type": "timeout", "seconds": timeout}))
+                        raise typer.Exit(1)
+
+                    line = line.strip()
+                    if not line or line.startswith(":"):
+                        continue
+                    if not line.startswith("data:"):
+                        continue
+
+                    payload = line[5:].strip()
+                    try:
+                        msg = json_module.loads(payload)
+                    except json_module.JSONDecodeError:
+                        continue
+
+                    mtype = msg.get("message_type", "")
+
+                    # coordination_tick addressed to us → print and exit
+                    if mtype == "coordination_tick":
+                        try:
+                            data = json_module.loads(msg.get("content", "{}"))
+                        except json_module.JSONDecodeError:
+                            data = {}
+                        participant = data.get("participant_id")
+                        if participant == handle or participant is None:
+                            typer.echo(json_module.dumps({
+                                "type": "tick",
+                                "room": msg.get("room_name", room_name),
+                                "round": data.get("round"),
+                                "action": data.get("action"),
+                                "current_offer": data.get("current_offer"),
+                                "proposer_id": data.get("proposer_id"),
+                                "history": data.get("history"),
+                            }))
+                            return
+
+                    # coordination_consensus → print and exit
+                    if mtype == "coordination_consensus":
+                        try:
+                            data = json_module.loads(msg.get("content", "{}"))
+                        except json_module.JSONDecodeError:
+                            data = {}
+                        typer.echo(json_module.dumps({
+                            "type": "consensus",
+                            "room": msg.get("room_name", room_name),
+                            "plan": data.get("plan"),
+                            "assignments": data.get("assignments"),
+                            "broken": data.get("broken", False),
+                        }))
+                        return
+
+    except KeyboardInterrupt:
+        typer.echo(json_module.dumps({"type": "interrupted"}))
+        raise typer.Exit(1)
+    except typer.Exit:
+        raise
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
 
 
 @app.command()
@@ -652,16 +814,13 @@ def respond(
 
         config = MyceliumConfig.load()
 
-        with MyceliumHTTPClient(config=config) as client:
-            resp = client.post(
-                f"/rooms/{session_id}/messages",
-                json={
-                    "sender_handle": agent,
-                    "message_type": "direct",
-                    "content": response_text,
-                },
-            )
-            data = resp.json()
+        from mycelium_backend_client.api.messages import send_message_rooms_room_name_messages_post as send_api
+        from mycelium_backend_client.models import MessageCreate
+
+        with _typed_client(config) as client:
+            body = MessageCreate(sender_handle=agent, message_type="direct", content=response_text)
+            result = send_api.sync(room_name=session_id, client=client, body=body)
+            data = result.to_dict() if result and hasattr(result, "to_dict") else {}
 
         if json_output:
             typer.echo(json_module.dumps(data, indent=2, default=str))
@@ -696,17 +855,13 @@ def delegate(
         config = MyceliumConfig.load()
         sender = config.get_current_identity()
 
-        with MyceliumHTTPClient(config=config) as client:
-            resp = client.post(
-                f"/rooms/{session_id}/messages",
-                json={
-                    "sender_handle": sender,
-                    "message_type": "delegate",
-                    "content": task,
-                    "recipient_handle": to,
-                },
-            )
-            data = resp.json()
+        from mycelium_backend_client.api.messages import send_message_rooms_room_name_messages_post as send_api
+        from mycelium_backend_client.models import MessageCreate
+
+        with _typed_client(config) as client:
+            body = MessageCreate(sender_handle=sender, message_type="delegate", content=task, recipient_handle=to)
+            result = send_api.sync(room_name=session_id, client=client, body=body)
+            data = result.to_dict() if result and hasattr(result, "to_dict") else {}
 
         if json_output:
             typer.echo(json_module.dumps(data, indent=2, default=str))

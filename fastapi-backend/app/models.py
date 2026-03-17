@@ -1,15 +1,31 @@
 """
-Mycelium data models — 7 core tables.
+Mycelium data models.
 
-Workspace, MAS, Agent, Room, Message, Session, AuditEvent.
-No auth users, no presence.
+Workspace, MAS, Agent, Room, Message, Session, AuditEvent, Memory, MemorySubscription.
 """
 
 from datetime import datetime
 from uuid import UUID as UUID_Type
 from uuid import uuid4
 
-from sqlalchemy import JSON, VARCHAR, Boolean, DateTime, ForeignKey, Integer, String, Text, func
+try:
+    from pgvector.sqlalchemy import Vector
+except ImportError:
+    # Fallback for environments without pgvector (e.g., SQLite tests)
+    from sqlalchemy import LargeBinary as Vector  # type: ignore[assignment]
+
+from sqlalchemy import (
+    JSON,
+    VARCHAR,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy import Uuid as GenericUuid
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -73,13 +89,30 @@ class Room(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    # Coordination state machine
+    # Coordination state machine: idle | waiting | negotiating | complete | synthesizing
     coordination_state: Mapped[str] = mapped_column(
         VARCHAR(20), nullable=False, server_default="idle"
     )
     join_deadline: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Room mode: sync (real-time negotiation), async (persistent namespace), hybrid (both)
+    mode: Mapped[str] = mapped_column(
+        VARCHAR(10), nullable=False, server_default="sync"
+    )
+    # Trigger config for async CognitiveEngine activation
+    # e.g. {"type": "threshold", "min_contributions": 5}
+    # or   {"type": "schedule", "cron": "0 */6 * * *"}
+    # or   {"type": "explicit"}
+    trigger_config: Mapped[dict | None] = mapped_column(JSONB().with_variant(JSON(), "sqlite"), nullable=True)
+    # Last time CognitiveEngine ran async synthesis
+    last_synthesis_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Whether room persists after coordination completes
+    is_persistent: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)
+    # Namespace identifier (defaults to room name)
+    namespace: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class Message(Base):
@@ -143,3 +176,55 @@ class AuditEvent(Base):
     created_on: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_modified_by: Mapped[UUID_Type] = mapped_column(GenericUuid(as_uuid=True), nullable=False)
     last_modified_on: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+# ── Persistent Memory ─────────────────────────────────────────────────────────
+
+class Memory(Base):
+    """Persistent namespaced memory with optional vector embeddings for semantic search."""
+    __tablename__ = "memories"
+
+    id: Mapped[UUID_Type] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid4
+    )
+    room_name: Mapped[str] = mapped_column(
+        String, ForeignKey("rooms.name", ondelete="CASCADE"), nullable=False, index=True
+    )
+    key: Mapped[str] = mapped_column(String(512), nullable=False, index=True)
+    value: Mapped[dict] = mapped_column(JSONB().with_variant(JSON(), "sqlite"), nullable=False)
+    content_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    embedding = mapped_column(Vector(384), nullable=True)
+    created_by: Mapped[str] = mapped_column(String, nullable=False)
+    updated_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    version: Mapped[int] = mapped_column(Integer, server_default="1", nullable=False)
+    tags: Mapped[dict | None] = mapped_column(JSONB().with_variant(JSON(), "sqlite"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        UniqueConstraint("room_name", "key", name="uq_memory_room_key"),
+    )
+
+
+class MemorySubscription(Base):
+    """Change notification subscription for memory keys."""
+    __tablename__ = "memory_subscriptions"
+
+    id: Mapped[UUID_Type] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid4
+    )
+    room_name: Mapped[str] = mapped_column(
+        String, ForeignKey("rooms.name", ondelete="CASCADE"), nullable=False, index=True
+    )
+    subscriber: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    key_pattern: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

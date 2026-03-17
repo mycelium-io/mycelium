@@ -5,6 +5,8 @@ Commands:
 - propose: Submit an offer for the current negotiate/propose tick
 - respond: Accept, reject, or end the current negotiate/respond tick
 - query:   Post a raw response (advanced / non-negotiate scenarios)
+
+Uses the generated OpenAPI client for type-safe API access.
 """
 
 import json as json_module
@@ -13,43 +15,40 @@ import typer
 
 from mycelium.config import MyceliumConfig
 from mycelium.error_handler import print_error
-from mycelium.http_client import MyceliumHTTPClient
 
-app = typer.Typer(help="Coordination message commands", invoke_without_command=True)
-
-
-@app.callback(invoke_without_command=True)
-def message_main(ctx: typer.Context) -> None:
-    """Coordination message commands."""
-    if ctx.invoked_subcommand is None:
-        typer.echo(ctx.get_help())
+app = typer.Typer(
+    help="Respond to CognitiveEngine during sync negotiation. Propose offers, accept/reject, or send raw JSON.",
+    no_args_is_help=True,
+)
 
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
 
 def _post(ctx: typer.Context, channel: str | None, handle: str | None, content: str) -> None:
+    from mycelium_backend_client import Client
+    from mycelium_backend_client.api.messages import send_message_rooms_room_name_messages_post as send_api
+    from mycelium_backend_client.models import MessageCreate
+
     from mycelium.commands.room import _resolve_room
 
     json_output = ctx.obj.get("json", False) if ctx.obj else False
-    verbose = ctx.obj.get("verbose", False) if ctx.obj else False
 
     config = MyceliumConfig.load()
     room_name = _resolve_room(config, channel)
     handle = handle or config.get_current_identity()
 
-    with MyceliumHTTPClient(config=config) as client:
-        response = client.post(
-            f"/rooms/{room_name}/messages",
-            json={
-                "sender_handle": handle,
-                "message_type": "direct",
-                "content": content,
-            },
+    client = Client(base_url=config.server.api_url, raise_on_unexpected_status=True)
+    with client:
+        body = MessageCreate(
+            sender_handle=handle,
+            message_type="direct",
+            content=content,
         )
-        msg_data = response.json()
+        result = send_api.sync(room_name=room_name, client=client, body=body)
 
-    if json_output:
-        typer.echo(json_module.dumps(msg_data, indent=2, default=str))
+    if json_output and result:
+        msg_dict = result.to_dict() if hasattr(result, "to_dict") else str(result)
+        typer.echo(json_module.dumps(msg_dict, indent=2, default=str))
         return
 
     typer.echo(f"  ↑  {handle}: {content[:80]}")

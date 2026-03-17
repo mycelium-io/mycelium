@@ -23,7 +23,10 @@ import typer
 from mycelium.config import MyceliumConfig
 from mycelium.error_handler import print_error
 
-app = typer.Typer(help="Manage agent framework adapters")
+app = typer.Typer(
+    help="Connect agent frameworks (OpenClaw, Claude Code) to Mycelium. Install hooks, skills, and plugins.",
+    no_args_is_help=True,
+)
 
 ADAPTER_TYPES = {
     "openclaw": "plugin-based — installs mycelium via `openclaw plugins install`",
@@ -64,6 +67,8 @@ def add(
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be installed without doing it"),
     step: Optional[str] = typer.Option(None, "--step", help=f"Run a follow-up setup step: {', '.join(_OPENCLAW_STEPS)}"),
     reinstall: bool = typer.Option(False, "--reinstall", help="Reinstall assets even if adapter is already registered"),
+    scaffold_only: Optional[Path] = typer.Option(None, "--scaffold-only", help="Copy adapter assets to a directory without running install commands (for Docker/experiment setups)"),
+    force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing assets when using --scaffold-only"),
 ) -> None:
     """
     Register and install an agent framework adapter, then optionally wire it into your environment.
@@ -82,6 +87,31 @@ def add(
             known = ", ".join(ADAPTER_TYPES.keys())
             typer.secho(f"Unknown adapter type '{adapter_type}'. Known types: {known}", fg=typer.colors.RED)
             raise typer.Exit(1)
+
+        # ── Scaffold-only: copy assets to a directory without install commands ─
+        if scaffold_only is not None:
+            target = scaffold_only.resolve()
+            installed: list[str] = []
+            skipped_: list[str] = []
+            for src_subpath, dst_subpath in _OPENCLAW_SCAFFOLD_ASSETS:
+                src = _resolve_asset(src_subpath)
+                dst = target / dst_subpath
+                if dst.exists() and not force:
+                    skipped_.append(dst_subpath)
+                    continue
+                dst.mkdir(parents=True, exist_ok=True)
+                for item in src.iterdir():
+                    dest_file = dst / item.name
+                    if item.is_file():
+                        dest_file.write_bytes(item.read_bytes())
+                    elif item.is_dir():
+                        shutil.copytree(str(item), str(dest_file), dirs_exist_ok=True)
+                installed.append(dst_subpath)
+            for path in installed:
+                typer.secho(f"  ✓ {path}", fg=typer.colors.GREEN)
+            for path in skipped_:
+                typer.secho(f"  - {path} (exists, use --force to overwrite)", dim=True)
+            return
 
         config = MyceliumConfig.load()
 
@@ -157,64 +187,6 @@ def add(
         print_error(e, verbose=verbose)
         raise typer.Exit(1) from None
 
-
-@app.command("scaffold")
-def scaffold(
-    ctx: typer.Context,
-    target_dir: Path = typer.Argument(..., help="Target .openclaw directory to scaffold adapter assets into"),
-    force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing assets"),
-) -> None:
-    """
-    Install openclaw adapter assets (hook, plugin, skill) directly into a target directory.
-
-    Use this to set up isolated agent workspaces — e.g. for Docker-based experiment agents —
-    without running the openclaw CLI. The files come from the installed mycelium-cli package,
-    so they stay in sync with the package version automatically.
-
-    Example (experiment scaffold_agent):
-        mycelium adapter scaffold experiments/my-exp/agents/agent-a
-    """
-    try:
-        target_dir = target_dir.resolve()
-        installed: list[str] = []
-        skipped: list[str] = []
-
-        for src_subpath, dst_subpath in _OPENCLAW_SCAFFOLD_ASSETS:
-            src = _resolve_asset(src_subpath)
-            dst = target_dir / dst_subpath
-
-            if dst.exists() and not force:
-                skipped.append(dst_subpath)
-                continue
-
-            dst.mkdir(parents=True, exist_ok=True)
-            # Copy all files from src directory to dst
-            for item in src.iterdir():
-                dest_file = dst / item.name
-                if item.is_file():
-                    dest_file.write_bytes(item.read_bytes())
-                elif item.is_dir():
-                    shutil.copytree(str(item), str(dest_file), dirs_exist_ok=True)
-            installed.append(dst_subpath)
-
-        json_output = ctx.obj.get("json", False) if ctx.obj else False
-        if json_output:
-            import json as _json
-            typer.echo(_json.dumps({"installed": installed, "skipped": skipped}, indent=2))
-        else:
-            for path in installed:
-                typer.secho(f"  ✓ {path}", fg=typer.colors.GREEN)
-            for path in skipped:
-                typer.secho(f"  - {path} (exists, use --force to overwrite)", dim=True)
-            if not installed and not skipped:
-                typer.echo("  Nothing to install.")
-
-    except typer.Exit:
-        raise
-    except Exception as e:
-        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
-        print_error(e, verbose=verbose)
-        raise typer.Exit(1) from None
 
 
 @app.command("remove")

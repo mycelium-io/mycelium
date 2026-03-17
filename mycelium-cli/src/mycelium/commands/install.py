@@ -93,32 +93,81 @@ def _ask(prompt: str, default: str = "") -> str:
 
 
 def _prompt_llm() -> dict[str, str]:
-    print()
-    print("  \x1b[1;36m? LLM configuration (for CognitiveEngine)\x1b[0m")
-    print()
-    print("    \x1b[36m▸\x1b[0m \x1b[1m1)\x1b[0m Bedrock proxy  — uses Claude Code local proxy at :8099  \x1b[2m(default)\x1b[0m")
-    print("      \x1b[1m2)\x1b[0m Anthropic API key")
-    print("      \x1b[1m3)\x1b[0m Skip — stub mode (no real LLM)")
-    print()
-    choice = _ask("  \x1b[2mChoice [1]:\x1b[0m ", default="1")
+    from beaupy import select
 
-    if choice == "2":
-        key = _ask("  \x1b[2mAnthropic API key (sk-ant-...):\x1b[0m ")
-        print("  \x1b[32m✓\x1b[0m Anthropic API key configured")
-        return {"MYCELIUM_ANTHROPIC_API_KEY": key, "COORDINATION_LLM_MODEL": "claude-sonnet-4-6"}
-    elif choice == "3":
-        print("  \x1b[33m~\x1b[0m Skipped — coordination will use stub responses")
-        return {}
-    else:
-        import os
-        base_url = os.getenv("ANTHROPIC_BASE_URL", "http://host.docker.internal:8099/")
-        auth_token = os.getenv("ANTHROPIC_AUTH_TOKEN", "")
-        print(f"  \x1b[32m✓\x1b[0m Bedrock proxy at {base_url}")
-        return {
-            "MYCELIUM_ANTHROPIC_BASE_URL": base_url,
-            "MYCELIUM_ANTHROPIC_AUTH_TOKEN": auth_token,
-            "COORDINATION_LLM_MODEL": "bedrock/global.anthropic.claude-sonnet-4-6",
-        }
+    print()
+    print("  \x1b[1;36m? LLM for CognitiveEngine\x1b[0m")
+    print()
+
+    providers = [
+        "Anthropic  — claude-sonnet-4-6, claude-opus-4-6",
+        "OpenAI     — gpt-4o, gpt-4.1",
+        "OpenRouter  — multi-provider gateway",
+        "Ollama     — local models (llama3.3, mistral, etc.)",
+        "Custom     — any OpenAI-compatible endpoint",
+        "Skip       — no LLM (stub mode)",
+    ]
+
+    choice = select(providers, cursor="  ▸ ", cursor_style="cyan")
+    if choice is None:
+        raise KeyboardInterrupt
+
+    if choice.startswith("Anthropic"):
+        models = [
+            "anthropic/claude-sonnet-4-6",
+            "anthropic/claude-opus-4-6",
+            "anthropic/claude-haiku-4-5",
+        ]
+        model = select(models, cursor="  ▸ ", cursor_style="cyan")
+        key = _ask("  \x1b[2mAPI key (sk-ant-...):\x1b[0m ")
+        print(f"  \x1b[32m✓\x1b[0m {model}")
+        return {"LLM_MODEL": model, "LLM_API_KEY": key}
+
+    if choice.startswith("OpenAI"):
+        models = [
+            "openai/gpt-4o",
+            "openai/gpt-4.1",
+            "openai/gpt-4o-mini",
+            "openai/o3",
+        ]
+        model = select(models, cursor="  ▸ ", cursor_style="cyan")
+        key = _ask("  \x1b[2mAPI key (sk-...):\x1b[0m ")
+        print(f"  \x1b[32m✓\x1b[0m {model}")
+        return {"LLM_MODEL": model, "LLM_API_KEY": key}
+
+    if choice.startswith("OpenRouter"):
+        model = _ask("  \x1b[2mModel (e.g. anthropic/claude-sonnet-4-6):\x1b[0m ", default="anthropic/claude-sonnet-4-6")
+        model = f"openrouter/{model}"
+        key = _ask("  \x1b[2mOpenRouter API key:\x1b[0m ")
+        print(f"  \x1b[32m✓\x1b[0m {model}")
+        return {"LLM_MODEL": model, "LLM_API_KEY": key}
+
+    if choice.startswith("Ollama"):
+        models = [
+            "ollama/llama3.3",
+            "ollama/mistral",
+            "ollama/qwen2.5",
+            "ollama/deepseek-r1",
+        ]
+        model = select(models, cursor="  ▸ ", cursor_style="cyan")
+        print(f"  \x1b[32m✓\x1b[0m {model} at localhost:11434")
+        return {"LLM_MODEL": model, "LLM_BASE_URL": "http://host.docker.internal:11434"}
+
+    if choice.startswith("Custom"):
+        model = _ask("  \x1b[2mModel (litellm format, e.g. openai/my-model):\x1b[0m ")
+        base_url = _ask("  \x1b[2mBase URL:\x1b[0m ")
+        key = _ask("  \x1b[2mAPI key (or empty):\x1b[0m ")
+        print(f"  \x1b[32m✓\x1b[0m {model} at {base_url}")
+        result = {"LLM_MODEL": model}
+        if base_url:
+            result["LLM_BASE_URL"] = base_url
+        if key:
+            result["LLM_API_KEY"] = key
+        return result
+
+    # Skip
+    print("  \x1b[33m~\x1b[0m Skipped — synthesis will use stub responses")
+    return {}
 
 
 # ── Env file ─────────────────────────────────────────────────────────────────
@@ -430,16 +479,26 @@ def install(
         # ── Phase 2: Interactive prompts ──────────────────────────────────
         llm_config = _prompt_llm()
 
-        # Port check
-        ports_to_check = [5432, 5456, 8000]
+        # Port check — allow user to pick alternatives
+        default_ports = {"db": 5432, "backend": 8000}
+        ports_to_check = list(default_ports.values())
         busy_ports = _check_ports(ports_to_check)
+        custom_ports = dict(default_ports)
+
         if busy_ports:
             typer.secho(f"\n  ⚠  Ports already in use: {busy_ports}", fg=typer.colors.YELLOW)
-            typer.echo("  Stop conflicting services before installing.")
-            if not yes:
-                ans = _ask("  Continue anyway? [y/N]: ", default="n")
-                if ans.lower() not in ("y", "yes"):
-                    raise KeyboardInterrupt
+            print()
+            for label, default in default_ports.items():
+                if default in busy_ports:
+                    new_port = _ask(f"  \x1b[2m{label} port (default {default} is busy):\x1b[0m ")
+                    if new_port.isdigit():
+                        custom_ports[label] = int(new_port)
+                    else:
+                        typer.echo(f"    Using default {default} anyway")
+
+            # Update llm_config with custom ports for env file
+            llm_config["MYCELIUM_DB_PORT"] = str(custom_ports["db"])
+            llm_config["MYCELIUM_BACKEND_PORT"] = str(custom_ports["backend"])
 
         # ── Phase 3: Write env, bring up services ─────────────────────────
         print()
@@ -466,7 +525,7 @@ def install(
 
         # ── Phase 4: Health checks ─────────────────────────────────────────
         # Allow extra time on first run when the backend image is being built.
-        api_url = "http://localhost:8000"
+        api_url = f"http://localhost:{custom_ports['backend']}"
         health_timeout = 300 if needs_build else 120
         print()
         _wait_for_health([f"{api_url}/health"], timeout=health_timeout)
@@ -492,7 +551,8 @@ def install(
         typer.secho("  Mycelium is ready.", fg=typer.colors.GREEN, bold=True)
         print()
         typer.echo("  Services:")
-        typer.echo("    mycelium-backend  → http://localhost:8000")
+        typer.echo(f"    mycelium-backend  → {api_url}")
+        typer.echo(f"    mycelium-db       → localhost:{custom_ports['db']}")
         typer.echo("    graph-db-viewer   → http://localhost:5457  (dev profile only)")
         print()
         typer.echo("  Next steps:")

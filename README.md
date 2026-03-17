@@ -9,134 +9,125 @@
   <a href="https://github.com/mycelium-io/mycelium/releases"><img src="https://img.shields.io/github/v/release/mycelium-io/mycelium?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
   <img src="https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white&style=for-the-badge">
-  <img src="https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white&style=for-the-badge">
 </p>
 
 <div align="center">
-  <em>A coordination layer for multi-agent systems — shared rooms, persistent memory, and a knowledge graph, built on the Outshift by Cisco Cognitive Fabric.</em>
+  <em>A coordination layer for multi-agent systems — shared rooms, persistent memory, and semantic negotiation, built on the Internet of Cognition.</em>
 </div>
 
 ---
 
-## What is Mycelium?
+## The Problem
 
-Mycelium implements the **Internet of Cognition (IoC)** architecture as a minimal, self-hostable platform built on top of **Cognitive Fabric Nodes (CFN)** from Outshift by Cisco:
+AI agents are powerful individually, but they can't think together. When multiple agents work on the same problem, there's no shared memory, no way to negotiate trade-offs, and no context that persists across sessions. Every conversation starts from zero.
 
-- **Cognitive Fabric** — A shared room and message bus that agents plug into. Every turn is observable via SSE. Backed by the IoC CFN service.
-- **Registry** — Workspaces → MAS (Multi-Agent Systems) → Agents, managed through the CFN Management Plane. No registration ceremony, just REST calls.
-- **Shared Memory** — Concepts and relationships extracted from agent turns are stored in a knowledge graph (AgensGraph) and queryable by any agent in the MAS.
-- **OpenClaw Plugin** — Drop-in extension for Claude Code agents. Joins a room, broadcasts turns, and automatically ingests conversation content into the knowledge graph.
+## What Mycelium Does
+
+Mycelium gives agents **rooms** to coordinate in, **persistent memory** that compounds across sessions, and a **CognitiveEngine** that mediates negotiation so agents never have to talk directly to each other.
+
+```bash
+# Agent 1 shares context in a persistent room
+mycelium memory set "position/julia" "I think we should use REST, not GraphQL" --handle julia-agent
+
+# Agent 2 (hours later, different session) reads and adds their perspective
+mycelium memory search "API design decisions"
+mycelium memory set "position/selina" "Agree on REST, but we need pagination standards" --handle selina-agent
+
+# CognitiveEngine synthesizes when enough context accumulates
+mycelium room synthesize
+```
+
+When agents need to agree on something in real time, they join a sync room and CognitiveEngine runs structured negotiation:
+
+```bash
+mycelium room join --handle julia-agent -m "budget=high, scope=full"
+# CognitiveEngine drives propose/respond rounds until consensus
+```
+
+## How It Works
+
+Three pillars from the [Internet of Cognition](https://outshift.cisco.com) architecture:
+
+**1. Coordination Protocol** (Shared Intent) — Rooms with a state machine (`idle → waiting → negotiating → complete`). CognitiveEngine orchestrates multi-issue negotiation via NegMAS. Agents respond to structured proposals; they never address each other directly.
+
+**2. Persistent Memory** (Shared Context) — Namespaced key-value store with semantic vector search. Memories persist across sessions, accumulate across agents, and are searchable by meaning, not just keywords. Backed by AgensGraph + pgvector.
+
+**3. Knowledge Graph** (Collective Innovation) — Two-stage LLM extraction turns agent conversations into structured concepts and relationships in an openCypher graph. CognitiveEngine queries this to inform future negotiations.
+
+## Room Modes
+
+| Mode | When to use | How it works |
+|------|------------|--------------|
+| **sync** | Agents are online together, need to agree now | 60s join window → NegMAS negotiation → consensus |
+| **async** | Agents contribute across sessions | Persistent namespace, CognitiveEngine synthesizes on trigger |
+| **hybrid** | Accumulate context, then negotiate | Write memories, then escalate to sync when ready |
 
 ## Quick Start
 
 ```bash
-cp services/.env.example services/.env
-# fill in: MYCELIUM_DB_PASSWORD, AGENSGRAPH_PASSWORD, MYCELIUM_ANTHROPIC_API_KEY
+# Install
+pip install mycelium-cli
+mycelium install
 
-cd services
-docker compose up -d
+# Create a room and start sharing context
+mycelium room create my-project --mode async
+mycelium room set my-project
+mycelium memory set "context/goal" "Build a REST API for the new service"
+mycelium memory set "decision/db" "PostgreSQL with pgvector for embeddings"
+
+# Search what's been shared
+mycelium memory search "database decisions"
+
+# See everything in the room
+mycelium memory ls
 ```
-
-API: `http://localhost:8000` — Interactive docs: `http://localhost:8000/docs` — [OpenAPI spec](docs/openapi.json)
-
-## REST API
-
-### Registry
-| Method | Path | Description |
-|--------|------|-------------|
-| POST / GET / DELETE | `/api/workspaces` | Manage workspaces |
-| POST / GET / DELETE | `/api/workspaces/{id}/mas` | Manage MAS within a workspace |
-| POST / GET / PATCH / DELETE | `/api/workspaces/{id}/mas/{masId}/agents` | Manage agents within a MAS |
-
-### Room coordination
-| Method | Path | Description |
-|--------|------|-------------|
-| CRUD | `/rooms`, `/rooms/{name}/messages` | Rooms and messages |
-| GET | `/rooms/{name}/messages/stream` | SSE stream |
-| CRUD | `/rooms/{name}/sessions` | Agent presence |
-
-### Shared memory
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/workspaces/{id}/multi-agentic-systems/{masId}/shared-memories` | Store concepts/relations |
-| POST | `/api/workspaces/{id}/multi-agentic-systems/{masId}/shared-memories/query` | Query graph |
-| POST | `/api/workspaces/{id}/multi-agentic-systems/{masId}/agents/{agentId}/memory-operations` | Proxy to agent memory provider |
-| POST | `/api/knowledge/ingest` | Two-stage LLM extraction from openclaw turns → knowledge graph |
-
-## OpenClaw Integration
-
-Configure the Mycelium extension for Claude Code agents:
-
-```bash
-MYCELIUM_API_URL=http://localhost:8000
-MYCELIUM_ROOM=my-room
-MYCELIUM_WORKSPACE_ID=<workspace-uuid>
-MYCELIUM_MAS_ID=<mas-uuid>
-MYCELIUM_AGENT_ID=<agent-uuid>   # optional
-```
-
-The extension automatically joins the room on session start, broadcasts each turn, and fire-and-forgets conversation content to the knowledge ingestion pipeline.
 
 ## Architecture
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | Next.js 15, TypeScript, Tailwind, Shadcn/ui |
-| Backend | FastAPI, SQLAlchemy, Alembic, Pydantic |
-| Relational DB | PostgreSQL 17 |
-| Knowledge graph | AgensGraph (openCypher) |
-| Real-time | Server-Sent Events, Postgres LISTEN/NOTIFY |
-| AI | Anthropic Claude (two-stage concept/relation extraction) |
-| CFN layer | Outshift by Cisco IoC CFN (mgmt plane, cfn-svc, knowledge-memory-svc) |
-| CLI / Plugin | Python (mycelium-cli), OpenClaw extension |
+Everything runs on a single **AgensGraph** instance (PostgreSQL 16 fork):
+- SQL tables for rooms, sessions, messages, memories
+- openCypher for the knowledge graph
+- pgvector for semantic memory search
+- LISTEN/NOTIFY for real-time SSE streaming
 
-### CFN Services
-
-Mycelium integrates with the following Cognitive Fabric Node services:
-
-| Service | Port | Description |
-|---------|------|-------------|
-| `ioc-cfn-mgmt-backend-svc` | 9000 | Management plane — workspaces, MAS, agents, API keys |
-| `ioc-cfn-mgmt-ui-svc` | 9001 | Management UI |
-| `ioc-cfn-svc` | 9002 | CFN core — shared memory, MCP server mode |
-| `ioc-knowledge-memory-svc` | 9003 | Knowledge management APIs |
-| `ioc-cfn-cognitive-agents` | 9004 | Ingestion + evidence gathering agents |
-
-## Project Structure
+No external message broker, no separate vector DB, no Redis. One database.
 
 ```
-fastapi-backend/    FastAPI app, Alembic migrations, tests
-nextjs-frontend/    Next.js workspace browser UI
-mycelium-cli/       OpenClaw plugin + hooks
-services/           docker-compose.yml + .env.example
-cfn/                Outshift IoC CFN submodules
+mycelium-cli/         CLI + adapters (OpenClaw, Claude Code)
+fastapi-backend/      FastAPI coordination engine
+mycelium-client/      Generated typed OpenAPI client
+```
+
+## Adapters
+
+Mycelium integrates with AI coding agents via adapters:
+
+**Claude Code** — Lifecycle hooks capture tool use and context automatically. The mycelium skill provides memory and coordination commands.
+
+```bash
+mycelium adapter add claude-code
+```
+
+**OpenClaw** — Plugin + hooks for the OpenClaw agent runtime. Same coordination protocol, same memory API.
+
+```bash
+mycelium adapter add openclaw
 ```
 
 ## Development
 
-### Backend
-
 ```bash
 cd fastapi-backend
 uv sync --group dev
-uv run fastapi dev app/main.py   # http://localhost:8000
-uv run pytest tests/
+uv run pytest tests/                    # unit tests (SQLite)
+DATABASE_URL=... uv run pytest tests/   # integration tests (AgensGraph)
 ```
 
-### From root (recommended)
+Interactive API docs at `http://localhost:8000/docs` when the backend is running.
 
-```bash
-pnpm install
-pnpm run dev:frontend   # http://localhost:9001
-pnpm run lint
-pnpm run test
-```
+## Built On
 
-### Frontend (standalone)
-
-```bash
-cd nextjs-frontend
-pnpm install
-pnpm run dev         # http://localhost:9001
-pnpm run lint:check
-```
+- [Internet of Cognition](https://outshift.cisco.com) — Outshift by Cisco
+- [NegMAS](https://negmas.readthedocs.io/) — Multi-issue negotiation
+- [AgensGraph](https://github.com/skaiworldwide-oss/agensgraph) — Multi-model graph database
+- [FastAPI](https://fastapi.tiangolo.com/) + [pgvector](https://github.com/pgvector/pgvector) + [fastembed](https://github.com/qdrant/fastembed)

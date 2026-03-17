@@ -1,9 +1,15 @@
 services:
 
   # ── Mycelium Core (always started) ───────────────────────────────────────────
+  #
+  # Single AgensGraph instance: relational tables (SQL) + knowledge graph
+  # (openCypher) + vector search (pgvector) — all in one database.
 
   mycelium-db:
-    image: postgres:17-alpine
+    build:
+      context: ../fastapi-backend
+      dockerfile: docker/Dockerfile.agensgraph
+    platform: linux/amd64
     container_name: mycelium-db
     restart: unless-stopped
     environment:
@@ -11,7 +17,7 @@ services:
       POSTGRES_PASSWORD: ${MYCELIUM_DB_PASSWORD:-password}
       POSTGRES_DB: mycelium
     ports:
-      - "5432:5432"
+      - "${MYCELIUM_DB_PORT:-5432}:5432"
     volumes:
       - mycelium-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -32,19 +38,37 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium
+      GRAPH_DB_URL: postgresql://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium
       CFN_MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
-      ANTHROPIC_BASE_URL: ${MYCELIUM_ANTHROPIC_BASE_URL:-}
-      ANTHROPIC_AUTH_TOKEN: ${MYCELIUM_ANTHROPIC_AUTH_TOKEN:-}
-      ANTHROPIC_API_KEY: ${MYCELIUM_ANTHROPIC_API_KEY:-}
-      COORDINATION_LLM_MODEL: ${COORDINATION_LLM_MODEL:-claude-sonnet-4-6}
+      LLM_MODEL: ${LLM_MODEL:-anthropic/claude-sonnet-4-6}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
     ports:
-      - "8000:8000"
+      - "${MYCELIUM_BACKEND_PORT:-8000}:8000"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 6
       start_period: 15s
+
+  # ── Graph Viewer (optional, for development) ─────────────────────────────────
+
+  mycelium-graph-viewer:
+    image: skaiworldwide/agviewer:latest
+    container_name: mycelium-graph-viewer
+    restart: unless-stopped
+    profiles: [dev]
+    environment:
+      DB_HOST: mycelium-db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: ${MYCELIUM_DB_PASSWORD:-password}
+      DB_NAME: mycelium
+    ports:
+      - "5457:3000"
+    depends_on:
+      - mycelium-db
 
   # ── CFN Stack (profile: cfn) ──────────────────────────────────────────────────
 
@@ -67,43 +91,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-
-  ioc-graph-db:
-    image: skaiworldwide/agensgraph:v2.16.0-alpine3.22
-    platform: linux/amd64
-    container_name: ioc-graph-db
-    restart: unless-stopped
-    profiles: [cfn]
-    environment:
-      POSTGRES_DB: ${AGENSGRAPH_DB:-ioc-graph-db}
-      POSTGRES_USER: ${AGENSGRAPH_USER:-postgres}
-      POSTGRES_PASSWORD: ${AGENSGRAPH_PASSWORD:-agensgraph}
-    ports:
-      - "5456:5432"
-    volumes:
-      - ioc-graph-db-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${AGENSGRAPH_USER:-postgres} -d ${AGENSGRAPH_DB:-ioc-graph-db}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
-  ioc-graph-db-viewer:
-    image: skaiworldwide/agviewer:latest
-    container_name: ioc-graph-db-viewer
-    restart: unless-stopped
-    profiles: [cfn]
-    environment:
-      DB_HOST: ioc-graph-db
-      DB_PORT: 5432
-      DB_USER: ${AGENSGRAPH_USER:-postgres}
-      DB_PASSWORD: ${AGENSGRAPH_PASSWORD:-agensgraph}
-      DB_NAME: ${AGENSGRAPH_DB:-ioc-graph-db}
-    ports:
-      - "5457:3000"
-    depends_on:
-      - ioc-graph-db
 
   ioc-cfn-mgmt-plane-svc:
     build:
@@ -200,7 +187,7 @@ services:
     restart: unless-stopped
     profiles: [cfn]
     depends_on:
-      ioc-graph-db:
+      mycelium-db:
         condition: service_healthy
       ioc-cfn-mgmt-plane-svc:
         condition: service_healthy
@@ -211,10 +198,10 @@ services:
       APPLICATION_VERSION: latest
       LOG_LEVEL: INFO
       PORT: 9003
-      AGENSGRAPH_HOST: ioc-graph-db
-      AGENSGRAPH_DB: ${AGENSGRAPH_DB:-ioc-graph-db}
-      AGENSGRAPH_USER: ${AGENSGRAPH_USER:-postgres}
-      AGENSGRAPH_PASSWORD: ${AGENSGRAPH_PASSWORD:-agensgraph}
+      AGENSGRAPH_HOST: mycelium-db
+      AGENSGRAPH_DB: mycelium
+      AGENSGRAPH_USER: postgres
+      AGENSGRAPH_PASSWORD: ${MYCELIUM_DB_PASSWORD:-password}
       AGENSGRAPH_PORT: 5432
       MEMORY_PROVIDER_REGISTRATION_URL: http://ioc-cfn-mgmt-plane-svc:9000
     healthcheck:
@@ -227,4 +214,3 @@ services:
 volumes:
   mycelium-db-data:
   ioc-cfn-db-data:
-  ioc-graph-db-data:

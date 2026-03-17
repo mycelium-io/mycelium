@@ -112,8 +112,8 @@ async def knowledge_ingest(
 ) -> KnowledgeIngestResponse:
     """Ingest openclaw turns: two-stage LLM extraction → AgensGraph storage."""
     ingestion_svc = IngestionService(
-        api_key=settings.ANTHROPIC_API_KEY,
-        model=settings.COORDINATION_LLM_MODEL,
+        api_key=settings.LLM_API_KEY,
+        model=settings.LLM_MODEL,
     )
 
     result = await ingestion_svc.ingest(

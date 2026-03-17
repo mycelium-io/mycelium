@@ -1,14 +1,25 @@
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Config file search order: local .env first, then global ~/.mycelium/.env
+_env_files = [".env"]
+_global_env = Path.home() / ".mycelium" / ".env"
+if _global_env.exists():
+    _env_files.append(str(_global_env))
 
 
 class Settings(BaseSettings):
     # OpenAPI docs
     OPENAPI_URL: str = "/openapi.json"
 
-    # Database — set via DATABASE_URL env var or .env file
+    # Database — single AgensGraph instance for SQL + graph + vector
     DATABASE_URL: str = "postgresql+asyncpg://postgres@localhost:5432/mycelium"
     EXPIRE_ON_COMMIT: bool = False
+
+    # Graph DB — sync connection for openCypher queries (same DB, sync driver)
+    GRAPH_DB_URL: str = "postgresql://postgres@localhost:5432/mycelium"
 
     # Frontend
     FRONTEND_URL: str = "http://localhost:3000"
@@ -16,22 +27,27 @@ class Settings(BaseSettings):
     # Backend API (self-reference for inter-service calls)
     API_BASE_URL: str = "http://localhost:8000"
 
-    # AgensGraph (knowledge graph DB) — set via GRAPH_DB_URL env var or .env file
-    GRAPH_DB_URL: str = "postgresql://postgres@localhost:5456/ioc-graph-db"
-
     # CORS — default for local dev; override in production via .env
     CORS_ORIGINS: set[str] = {"http://localhost:3000"}
 
+    # LLM — uses litellm format: "provider/model" (e.g. anthropic/claude-sonnet-4-6, openai/gpt-4o, ollama/llama3)
+    LLM_MODEL: str = "anthropic/claude-sonnet-4-6"
+    LLM_API_KEY: str | None = None
+    LLM_BASE_URL: str | None = None  # optional, for custom endpoints (ollama, vllm, etc.)
+
     # Coordination
-    COORDINATION_LLM_MODEL: str = "claude-sonnet-4-6"
-    ANTHROPIC_API_KEY: str | None = None
-    ANTHROPIC_BASE_URL: str | None = None   # e.g. http://host.docker.internal:8099/
-    ANTHROPIC_AUTH_TOKEN: str | None = None  # token for proxy (overrides ANTHROPIC_API_KEY)
     COORDINATION_JOIN_WINDOW_SECONDS: int = 60
     COORDINATION_TICK_TIMEOUT_SECONDS: int = 60
 
+    # Embedding (for persistent memory semantic search)
+    EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"
+    EMBEDDING_DIMENSIONS: int = 384
+
+    # Room defaults
+    DEFAULT_ROOM_MODE: str = "async"
+
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+        env_file=tuple(_env_files), env_file_encoding="utf-8", extra="ignore"
     )
 
 

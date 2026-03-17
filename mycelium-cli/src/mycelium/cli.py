@@ -1,5 +1,5 @@
 """
-Mycelium CLI — IoC/CFN coordination layer.
+Mycelium CLI — Multi-agent coordination + persistent memory.
 """
 
 import typer
@@ -7,24 +7,23 @@ import typer
 from mycelium import __version__
 from mycelium.commands import (
     adapter,
-    announce,
     config,
-    daemon,
     docs,
     install,
     instance,
+    memory,
     message,
     room,
-    send,
 )
 
 app = typer.Typer(
     name="mycelium",
-    help="Mycelium CLI — IoC/CFN coordination layer",
+    help="[bold]Mycelium[/bold] — Multi-agent coordination + persistent memory",
     add_completion=True,
     no_args_is_help=True,
     pretty_exceptions_show_locals=False,
-    rich_markup_mode=None,
+    rich_markup_mode="rich",
+    context_settings={"help_option_names": ["-h", "--help"]},
 )
 
 
@@ -49,7 +48,7 @@ def main(
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress non-essential output"),
     json_output: bool = typer.Option(False, "--json", help="Output in JSON format"),
 ) -> None:
-    """Mycelium CLI — IoC/CFN coordination layer."""
+    """[bold]Mycelium[/bold] — Multi-agent coordination + persistent memory."""
     ctx.ensure_object(dict)
     ctx.obj["verbose"] = verbose
     ctx.obj["quiet"] = quiet
@@ -64,16 +63,16 @@ app.command(name="down")(instance.stop)
 app.command(name="status")(instance.status)
 app.command(name="logs")(instance.logs)
 
-# Top-level coordination commands
-app.command(name="send")(send.send)
-app.command(name="announce")(announce.announce)
+# Top-level shortcuts
 app.command(name="watch")(room.watch)
+app.command(name="synthesize")(room.synthesize)
+app.command(name="catchup")(memory.memory_catchup)
 
 # Command groups
 app.add_typer(room.app, name="room")
 app.add_typer(message.app, name="message")
+app.add_typer(memory.app, name="memory")
 app.add_typer(config.app, name="config")
-app.add_typer(daemon.app, name="daemon")
 app.add_typer(adapter.app, name="adapter")
 app.add_typer(docs.app, name="docs")
 

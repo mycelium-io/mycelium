@@ -26,6 +26,7 @@ from app.routes.cfn_proxy import router as cfn_proxy_router
 from app.routes.knowledge import internal_router as knowledge_internal_router
 from app.routes.knowledge import router as knowledge_router
 from app.routes.mas import router as mas_router
+from app.routes.memory import router as memory_router
 from app.routes.messages import router as messages_router
 from app.routes.rooms import router as rooms_router
 from app.routes.sessions import router as sessions_router
@@ -53,6 +54,15 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Mycelium backend starting up")
+    from app.database import create_db_and_tables
+    await create_db_and_tables()
+    logger.info("Database tables ensured")
+    # Preload embedding model so first request isn't slow
+    try:
+        from app.services.embedding import _get_model
+        _get_model()
+    except Exception:
+        logger.warning("Embedding model preload failed — will load on first use")
     yield
     logger.info("Mycelium backend shutting down")
 
@@ -83,6 +93,7 @@ app.include_router(rooms_router)
 app.include_router(messages_router)
 app.include_router(sessions_router)
 app.include_router(stream_router)
+app.include_router(memory_router)
 
 # CFN routes
 app.include_router(audit_router)
