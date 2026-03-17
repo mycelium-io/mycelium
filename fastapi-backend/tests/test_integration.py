@@ -180,8 +180,8 @@ async def test_upsert_preserves_embedding(integration_client: AsyncClient):
 
 @pytest.mark.asyncio
 @pytest.mark.skipif(
-    not os.environ.get("LLM_API_KEY"),
-    reason="Synthesis test requires LLM_API_KEY (costs tokens)",
+    not os.environ.get("MYCELIUM_LLM_TESTS"),
+    reason="Set MYCELIUM_LLM_TESTS=1 to enable (costs tokens)",
 )
 async def test_async_room_full_flow(integration_client: AsyncClient):
     """End-to-end: create async room, write memories, trigger synthesis."""
