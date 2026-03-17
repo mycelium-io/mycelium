@@ -5,7 +5,7 @@
 LOGO="$(dirname "$0")/../docs/logo.png"
 OUT="$(dirname "$0")/../docs/banner.png"
 INTER="$HOME/Library/Fonts/InterVariable.ttf"
-DIDOT="/System/Library/Fonts/Supplemental/Didot.ttc"
+CORMORANT="$HOME/Library/Fonts/CormorantGaramond-VariableFont_wght.ttf"
 
 magick -size 1200x300 radial-gradient:'#0a4a5c'-'#0d0d20' \
   -stroke '#1e2d5e' -strokewidth 1 -fill none \
@@ -47,7 +47,7 @@ magick -size 1200x300 radial-gradient:'#0a4a5c'-'#0d0d20' \
      \( +clone -background black -shadow 60x12+0+6 \) \
      +swap -background none -layers merge \) \
   -gravity North -geometry +0+15 -composite \
-  -font "$DIDOT" \
+  -font "$CORMORANT" \
   -pointsize 80 \
   -fill '#ffffff' \
   -gravity North \

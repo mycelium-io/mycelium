@@ -11,7 +11,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LOGO="$SCRIPT_DIR/../docs/logo.png"
 INTER="$HOME/Library/Fonts/InterVariable.ttf"
-DIDOT="/System/Library/Fonts/Supplemental/Didot.ttc"
+CORMORANT="$HOME/Library/Fonts/CormorantGaramond-VariableFont_wght.ttf"
 
 gen() {
   local OUT="$1"
@@ -51,7 +51,7 @@ gen() {
        \( +clone -background black -shadow 80x16+0+8 \) \
        +swap -background none -layers merge \) \
     -gravity Center -geometry +0-90 -composite \
-    -font "$DIDOT" \
+    -font "$CORMORANT" \
     -pointsize 96 \
     -fill '#ffffff' \
     -gravity Center \
