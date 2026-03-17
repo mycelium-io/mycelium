@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"
     EMBEDDING_DIMENSIONS: int = 384
 
+    # IoC CFN management plane (optional — registration skipped if unset)
+    CFN_MGMT_URL: str | None = None
+
     # Room defaults
     DEFAULT_ROOM_MODE: str = "async"
 

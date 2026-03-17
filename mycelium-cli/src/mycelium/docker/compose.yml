@@ -36,10 +36,15 @@ services:
     depends_on:
       mycelium-db:
         condition: service_healthy
+      # When cfn profile is active, wait for mgmt plane before registering
+      ioc-cfn-mgmt-plane-svc:
+        condition: service_healthy
+        required: false
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium
       GRAPH_DB_URL: postgresql://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium
-      CFN_MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
+      CFN_MGMT_URL: ${CFN_MGMT_URL:-}
+      API_BASE_URL: http://mycelium-backend:8000
       LLM_MODEL: ${LLM_MODEL:-anthropic/claude-sonnet-4-6}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
@@ -85,6 +90,7 @@ services:
       - "5433:5432"
     volumes:
       - ioc-cfn-db-data:/var/lib/postgresql/data
+      # Creates cfn_cp database on first start (required by ioc-cfn-svc)
       - ./initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${CFN_DB_USER:-postgres} -d ${CFN_DB:-cfn_mgmt}"]
@@ -176,40 +182,6 @@ services:
       DB_USER: ${CFN_DB_USER:-postgres}
       DB_PASSWORD: ${CFN_DB_PASSWORD:-password}
       DB_SSL_MODE: disable
-
-  ioc-knowledge-memory-svc:
-    build:
-      context: ../cfn/ioc-knowledge-memory-svc
-      dockerfile: Dockerfile
-    image: ioc-knowledge-memory-svc:local
-    platform: linux/amd64
-    container_name: ioc-knowledge-memory-svc
-    restart: unless-stopped
-    profiles: [cfn]
-    depends_on:
-      mycelium-db:
-        condition: service_healthy
-      ioc-cfn-mgmt-plane-svc:
-        condition: service_healthy
-    ports:
-      - "9003:9003"
-    environment:
-      SERVICE_NAME: ioc-knowledge-memory-svc
-      APPLICATION_VERSION: latest
-      LOG_LEVEL: INFO
-      PORT: 9003
-      AGENSGRAPH_HOST: mycelium-db
-      AGENSGRAPH_DB: mycelium
-      AGENSGRAPH_USER: postgres
-      AGENSGRAPH_PASSWORD: ${MYCELIUM_DB_PASSWORD:-password}
-      AGENSGRAPH_PORT: 5432
-      MEMORY_PROVIDER_REGISTRATION_URL: http://ioc-cfn-mgmt-plane-svc:9000
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9003/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-      start_period: 30s
 
 volumes:
   mycelium-db-data:

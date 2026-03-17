@@ -51,6 +51,46 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _register_memory_provider() -> None:
+    """Register Mycelium as a memory provider with ioc-cfn-mgmt-plane-svc.
+
+    Non-fatal — if CFN_MGMT_URL is unset or the call fails, startup continues.
+    Mirrors the registration contract used by ioc-knowledge-memory-svc.
+    """
+    import requests
+
+    url = settings.CFN_MGMT_URL
+    if not url:
+        return
+
+    api_url = settings.API_BASE_URL
+    payload = {
+        "memory_provider_name": "mycelium",
+        "description": (
+            "Mycelium persistent memory — namespaced KVP, semantic vector search, "
+            f"and knowledge graph. API: {api_url}/docs"
+        ),
+        "config": {
+            "url": api_url,
+            "shared": "True",
+        },
+    }
+    try:
+        resp = requests.post(
+            f"{url.rstrip('/')}/api/memory-providers",
+            json=payload,
+            timeout=10,
+        )
+        if resp.status_code == 201:
+            logger.info("Registered as memory provider with CFN mgmt plane")
+        elif resp.status_code == 409:
+            logger.info("Already registered as memory provider with CFN mgmt plane")
+        else:
+            logger.warning("CFN memory provider registration returned %s: %s", resp.status_code, resp.text)
+    except Exception as exc:
+        logger.warning("CFN memory provider registration failed (non-fatal): %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Mycelium backend starting up")
@@ -63,6 +103,8 @@ async def lifespan(app: FastAPI):
         _get_model()
     except Exception:
         logger.warning("Embedding model preload failed — will load on first use")
+    # Register with IoC CFN mgmt plane if configured
+    _register_memory_provider()
     yield
     logger.info("Mycelium backend shutting down")
 
