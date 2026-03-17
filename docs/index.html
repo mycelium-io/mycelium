@@ -336,7 +336,7 @@
   /* ── CARDS ── */
   .card-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
     gap: 16px;
     margin: 24px 0;
   }
@@ -449,7 +449,18 @@
   /* ── RESPONSIVE ── */
   @media (max-width: 860px) {
     .sidebar { display: none; }
-    .main { margin-left: 0; padding: 32px 24px 60px; }
+    .main { margin-left: 0; padding: 32px 24px 60px; max-width: 100%; }
+  }
+  @media (max-width: 600px) {
+    body { overflow-x: hidden; }
+    .topnav { padding: 0 16px; gap: 12px; }
+    .topnav-sep, .topnav-page, .copy-page-btn { display: none; }
+    .topnav-right { gap: 12px; }
+    .main { padding: 24px 16px 60px; }
+    h1 { font-size: 28px; }
+    h2 { font-size: 20px; }
+    pre { font-size: 12px; }
+    .cmd-ref-header code { font-size: 12px; word-break: break-all; }
   }
 </style>
 </head>
@@ -999,12 +1010,10 @@ mycelium install</code></pre>
     <hr class="divider">
 
     <!-- FOOTER -->
-    <div style="font-size:12px; color: var(--muted); font-family: 'SF Mono', monospace; padding-top: 8px;">
+    <div style="font-size:12px; color: var(--muted); font-family: 'SF Mono', monospace; padding-top: 8px; display:flex; flex-wrap:wrap; gap: 4px 12px;">
       <a href="https://github.com/mycelium-io/mycelium" style="color: var(--muted);">mycelium-io/mycelium</a>
-      &nbsp;·&nbsp;
-      MIT License
-      &nbsp;·&nbsp;
-      Built on the <a href="https://outshift.cisco.com" style="color: var(--muted);">Internet of Cognition</a>
+      <span>MIT License</span>
+      <span>Built on the <a href="https://outshift.cisco.com" style="color: var(--muted);">Internet of Cognition</a></span>
     </div>
 
   </main>
