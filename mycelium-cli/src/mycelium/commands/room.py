@@ -670,6 +670,102 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
                         console.print(rendered, highlight=False)
 
 
+@app.command(name="await")
+def await_tick(
+    ctx: typer.Context,
+    handle: str = typer.Option(..., "--handle", "-H", help="Your agent handle (listens for ticks addressed to you)"),
+    channel: str | None = typer.Option(None, "--channel", "-c", help="Room (overrides active room)"),
+    timeout: int = typer.Option(120, "--timeout", "-t", help="Timeout in seconds (default 120)"),
+) -> None:
+    """
+    Block until CognitiveEngine addresses you, then print the tick and exit.
+
+    Designed for Claude Code agents: call this in a loop to participate in
+    sync negotiation without a persistent SSE plugin.
+
+    Flow:
+        1. mycelium room join --handle my-agent -m "my position"
+        2. mycelium room await --handle my-agent        # blocks
+           → prints tick JSON when CE addresses you
+        3. mycelium message propose budget=high          # respond
+        4. mycelium room await --handle my-agent        # wait for next tick
+    """
+    import time
+    import httpx
+
+    try:
+        config = MyceliumConfig.load()
+        room_name = _resolve_room(config, channel)
+
+        # Listen on the agent's personal SSE stream, not the room stream
+        url = f"{config.server.api_url}/agents/{handle}/stream"
+        start = time.time()
+
+        with httpx.Client(timeout=None) as http:
+            with http.stream("GET", url) as response:
+                for line in response.iter_lines():
+                    if timeout > 0 and (time.time() - start) >= timeout:
+                        typer.echo(json_module.dumps({"type": "timeout", "seconds": timeout}))
+                        raise typer.Exit(1)
+
+                    line = line.strip()
+                    if not line or line.startswith(":"):
+                        continue
+                    if not line.startswith("data:"):
+                        continue
+
+                    payload = line[5:].strip()
+                    try:
+                        msg = json_module.loads(payload)
+                    except json_module.JSONDecodeError:
+                        continue
+
+                    mtype = msg.get("message_type", "")
+
+                    # coordination_tick addressed to us → print and exit
+                    if mtype == "coordination_tick":
+                        try:
+                            data = json_module.loads(msg.get("content", "{}"))
+                        except json_module.JSONDecodeError:
+                            data = {}
+                        participant = data.get("participant_id")
+                        if participant == handle or participant is None:
+                            typer.echo(json_module.dumps({
+                                "type": "tick",
+                                "room": msg.get("room_name", room_name),
+                                "round": data.get("round"),
+                                "action": data.get("action"),
+                                "current_offer": data.get("current_offer"),
+                                "proposer_id": data.get("proposer_id"),
+                                "history": data.get("history"),
+                            }))
+                            return
+
+                    # coordination_consensus → print and exit
+                    if mtype == "coordination_consensus":
+                        try:
+                            data = json_module.loads(msg.get("content", "{}"))
+                        except json_module.JSONDecodeError:
+                            data = {}
+                        typer.echo(json_module.dumps({
+                            "type": "consensus",
+                            "room": msg.get("room_name", room_name),
+                            "plan": data.get("plan"),
+                            "assignments": data.get("assignments"),
+                            "broken": data.get("broken", False),
+                        }))
+                        return
+
+    except KeyboardInterrupt:
+        typer.echo(json_module.dumps({"type": "interrupted"}))
+        raise typer.Exit(1)
+    except typer.Exit:
+        raise
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+
+
 @app.command()
 def watch(
     ctx: typer.Context,

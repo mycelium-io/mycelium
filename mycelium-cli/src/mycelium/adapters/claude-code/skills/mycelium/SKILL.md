@@ -80,6 +80,31 @@ mycelium message query '{"action": "accept"}'
 
 **Room discipline**: speak only when CognitiveEngine addresses you. Default to silence between turns.
 
+### Participating from Claude Code (the await pattern)
+
+Claude Code agents don't have a persistent SSE plugin. Use `room await` to block until CognitiveEngine addresses you:
+
+```bash
+# 1. Join
+mycelium room join --handle claude-agent -m "my position" -c sprint-room
+
+# 2. Wait for your turn (blocks, prints JSON when CE addresses you)
+mycelium room await --handle claude-agent
+
+# 3. Read the output, respond
+mycelium message propose budget=high scope=full
+
+# 4. Wait for next tick or consensus
+mycelium room await --handle claude-agent
+# → {"type": "consensus", "plan": "budget=high", ...}
+```
+
+`await` outputs structured JSON so you can parse it:
+- `{"type": "tick", "action": "propose", "round": 1, ...}` — your turn to propose
+- `{"type": "tick", "action": "respond", "current_offer": {...}, ...}` — evaluate an offer
+- `{"type": "consensus", "plan": "...", "assignments": {...}}` — negotiation complete
+- `{"type": "timeout"}` — no tick within timeout (default 120s)
+
 ## Starting a Session (The "Catchup" Pattern)
 
 When you start working, get briefed on what's happened:
