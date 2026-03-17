@@ -11,7 +11,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LOGO="$SCRIPT_DIR/../docs/logo.png"
 INTER="$HOME/Library/Fonts/InterVariable.ttf"
-CORMORANT="$HOME/Library/Fonts/CormorantGaramond-VariableFont_wght.ttf"
+CORMORANT="$HOME/Library/Fonts/CormorantGaramond-SemiBoldItalic.ttf"
 
 gen() {
   local OUT="$1"

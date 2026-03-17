@@ -5,7 +5,7 @@
 LOGO="$(dirname "$0")/../docs/logo.png"
 OUT="$(dirname "$0")/../docs/banner.png"
 INTER="$HOME/Library/Fonts/InterVariable.ttf"
-CORMORANT="$HOME/Library/Fonts/CormorantGaramond-VariableFont_wght.ttf"
+CORMORANT="$HOME/Library/Fonts/CormorantGaramond-SemiBoldItalic.ttf"
 
 magick -size 1200x300 radial-gradient:'#0a4a5c'-'#0d0d20' \
   -stroke '#1e2d5e' -strokewidth 1 -fill none \
