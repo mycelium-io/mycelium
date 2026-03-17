@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+
+    services:
+      agensgraph:
+        image: skaiworldwide/agensgraph:v2.16.0-alpine3.22
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: mycelium
+        options: >-
+          --health-cmd "pg_isready -U postgres -d mycelium"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        working-directory: fastapi-backend
+        run: uv sync --group dev
+
+      - name: Install pgvector in AgensGraph
+        run: |
+          docker exec ${{ job.services.agensgraph.id }} sh -c "
+            apk add --no-cache build-base git &&
+            git clone --branch v0.8.0 https://github.com/pgvector/pgvector.git /tmp/pgvector &&
+            cd /tmp/pgvector && make OPTFLAGS='' && make install &&
+            rm -rf /tmp/pgvector && apk del build-base git
+          "
+          docker exec ${{ job.services.agensgraph.id }} psql -U postgres -d mycelium -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+      - name: Lint
+        working-directory: fastapi-backend
+        run: uv run ruff check .
+
+      - name: Format check
+        working-directory: fastapi-backend
+        run: uv run ruff format --check .
+
+      - name: Unit tests (SQLite)
+        working-directory: fastapi-backend
+        run: uv run pytest tests/ -x -q --ignore=tests/test_integration.py
+
+      - name: Integration tests (AgensGraph + pgvector)
+        working-directory: fastapi-backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:password@localhost:5432/mycelium
+          GRAPH_DB_URL: postgresql://postgres:password@localhost:5432/mycelium
+        run: uv run pytest tests/test_integration.py -x -q
+
+  lint-cli:
+    name: CLI lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        working-directory: mycelium-cli
+        run: pip install -e . -e ../mycelium-client
+
+      - name: Lint
+        working-directory: mycelium-cli
+        run: |
+          pip install ruff
+          ruff check src/
