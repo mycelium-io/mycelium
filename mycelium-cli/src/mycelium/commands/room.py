@@ -524,144 +524,131 @@ def join(
 
 
 def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
-    """Core SSE watch loop — pretty-renders all message types."""
+    """Core SSE watch loop — pretty-renders coordination and memory events."""
     import time
 
     import httpx
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.text import Text
 
-    C = {
-        "cyan":   "\x1b[36m",
-        "green":  "\x1b[32m",
-        "yellow": "\x1b[33m",
-        "blue":   "\x1b[34m",
-        "magenta":"\x1b[35m",
-        "dim":    "\x1b[2m",
-        "bold":   "\x1b[1m",
-        "reset":  "\x1b[0m",
-    }
+    console = Console()
 
     def ts() -> str:
-        return C["dim"] + time.strftime("%H:%M:%S") + C["reset"]
-
-    def rule() -> str:
-        return C["dim"] + "  " + "─" * 54 + C["reset"]
+        return f"[dim]{time.strftime('%H:%M:%S')}[/]"
 
     def render(msg: dict) -> str | None:
-        mtype = msg.get("message_type", "")
-        sender = msg.get("sender_handle", "?")
+        mtype = msg.get("message_type", "") or msg.get("type", "")
+        sender = msg.get("sender_handle", msg.get("updated_by", "?"))
 
         try:
-            data = json_module.loads(msg.get("content", "{}"))
+            data = json_module.loads(msg.get("content", "{}")) if isinstance(msg.get("content"), str) else msg
         except (json_module.JSONDecodeError, TypeError):
-            data = {}
+            data = msg
 
         if mtype == "coordination_join":
             intent = data.get("intent")
             handle = data.get("handle", sender)
-            suffix = f"  {C['dim']}— {intent}{C['reset']}" if intent else ""
-            return f"  {ts()}  {C['cyan']}{handle}{C['reset']} joined{suffix}"
+            suffix = f" — [dim]{intent}[/]" if intent else ""
+            return f"  {ts()}  [cyan]{handle}[/] joined{suffix}"
 
         if mtype == "coordination_start":
             n = data.get("agent_count", "?")
-            return (
-                f"\n{rule()}\n"
-                f"  {ts()}  {C['bold']}{C['cyan']}⟫ Session started{C['reset']} — "
-                f"{n} agents joined. Beginning coordination…\n"
-            )
+            return f"\n  {ts()}  [bold cyan]session started[/] — {n} agents joined\n"
 
         if mtype == "coordination_tick":
             round_num = data.get("round", "?")
             kind = data.get("kind")
-
             if kind == "negotiate":
                 action = data.get("action", "propose")
-                participant_id = data.get("participant_id", "?")
-
+                participant = data.get("participant_id", "?")
                 if action == "propose":
-                    history = data.get("history", [])
-                    issues: list[str] = []
-                    if history:
-                        issues = list(history[-1].get("offer", {}).keys())
-                    if not issues:
-                        issues = list(_ISSUE_OPTIONS.keys())
-                    lines = [
-                        f"\n  {ts()}  {C['bold']}{C['cyan']}⟫ CognitiveEngine "
-                        f"[round {round_num}] → {participant_id} — propose{C['reset']}"
-                    ]
-                    for issue in issues:
-                        opts = _ISSUE_OPTIONS.get(issue, ["?"])
-                        lines.append(
-                            f"              {C['dim']}{issue}:{C['reset']} {' | '.join(opts)}"
-                        )
-                elif action == "respond":
-                    current_offer = data.get("current_offer") or {}
+                    issues = list(_ISSUE_OPTIONS.keys())
+                    opts = "  ".join(f"[dim]{k}:[/] {' | '.join(v)}" for k, v in _ISSUE_OPTIONS.items() if k in issues)
+                    return f"\n  {ts()}  [bold cyan]round {round_num}[/] → [cyan]{participant}[/] propose\n              {opts}"
+                if action == "respond":
+                    offer = data.get("current_offer") or {}
                     proposer = data.get("proposer_id", "?")
-                    lines = [
-                        f"\n  {ts()}  {C['bold']}{C['cyan']}⟫ CognitiveEngine "
-                        f"[round {round_num}] → {participant_id} — respond "
-                        f"(offer from {proposer}){C['reset']}"
-                    ]
-                    for k, v in current_offer.items():
-                        lines.append(f"              {C['dim']}{k}:{C['reset']} {v}")
-                else:
-                    lines = [
-                        f"\n  {ts()}  {C['bold']}{C['cyan']}⟫ CognitiveEngine "
-                        f"[round {round_num}] → {participant_id} — {action}{C['reset']}"
-                    ]
-            else:
-                questions = data.get("ambiguities", [])
-                lines = [
-                    f"\n  {ts()}  {C['bold']}{C['cyan']}⟫ CognitiveEngine "
-                    f"[tick {round_num}]{C['reset']}"
-                ]
-                for i, q in enumerate(questions, 1):
-                    lines.append(f"              {C['dim']}{i}.{C['reset']} {q}")
-            return "\n".join(lines)
+                    items = "  ".join(f"[dim]{k}:[/] {v}" for k, v in offer.items())
+                    return f"\n  {ts()}  [bold cyan]round {round_num}[/] → [cyan]{participant}[/] respond to {proposer}\n              {items}"
+                return f"\n  {ts()}  [bold cyan]round {round_num}[/] → [cyan]{participant}[/] {action}"
+            return f"\n  {ts()}  [bold cyan]tick {round_num}[/]"
 
         if mtype == "coordination_consensus":
             plan = data.get("plan", "")
             assignments = data.get("assignments", {})
-            lines = [
-                f"\n{rule()}",
-                f"  {ts()}  {C['bold']}{C['green']}⟫ CognitiveEngine [consensus]{C['reset']}",
-            ]
+            lines = [f"\n  {ts()}  [bold green]consensus[/]"]
             if plan:
-                lines.append(f"              {C['dim']}Plan:{C['reset']} {plan}")
-            if assignments:
-                lines.append(f"              {C['dim']}Assignments:{C['reset']}")
-                for handle, task in assignments.items():
-                    lines.append(f"                {C['cyan']}{handle}{C['reset']}: {task}")
-            lines.append(f"\n{rule()}")
+                lines.append(f"              [dim]plan:[/] {plan}")
+            for handle, task in assignments.items():
+                lines.append(f"              [cyan]{handle}[/]: {task}")
             return "\n".join(lines)
+
+        if mtype == "memory_changed":
+            key = data.get("key", "?")
+            version = data.get("version", "?")
+            by = data.get("updated_by", "?")
+            return f"  {ts()}  [yellow]memory[/] [dim]{key}[/] v{version} by {by}"
+
+        if mtype == "synthesis_complete":
+            skey = data.get("synthesis_key", "?")
+            return f"  {ts()}  [bold green]synthesis[/] → {skey}"
 
         if mtype == "delegate":
             recipient = msg.get("recipient_handle", "?")
             content = msg.get("content", "")
-            return (
-                f"  {ts()}  {C['magenta']}{sender}{C['reset']} "
-                f"{C['dim']}→{C['reset']} {C['cyan']}{recipient}{C['reset']}: {content}"
-            )
+            return f"  {ts()}  [magenta]{sender}[/] [dim]→[/] [cyan]{recipient}[/]: {content}"
 
         if mtype in ("direct", "broadcast", "announce"):
             content = msg.get("content", "")
-            color = C["yellow"] if mtype == "broadcast" else C["blue"]
-            return f"  {ts()}  {color}{sender}{C['reset']}: {content}"
+            color = "yellow" if mtype == "broadcast" else "blue"
+            return f"  {ts()}  [{color}]{sender}[/]: {content}"
 
         return None
 
+    # Fetch room metadata for the header
+    room_meta = ""
+    try:
+        resp = httpx.get(f"{config.server.api_url}/rooms/{room_name}", timeout=5)
+        if resp.status_code == 200:
+            room = resp.json()
+            mode = room.get("mode", "sync")
+            state = room.get("coordination_state", "idle")
+            persistent = room.get("is_persistent", False)
+            trigger = room.get("trigger_config")
+            trigger_str = ""
+            if trigger:
+                trigger_str = f"  trigger={trigger.get('type', '?')}"
+                if trigger.get("min_contributions"):
+                    trigger_str += f":{trigger['min_contributions']}"
+            room_meta = f"[dim]mode=[/]{mode}  [dim]state=[/]{state}{'  [dim]persistent[/]' if persistent else ''}{trigger_str}"
+    except Exception:
+        pass
+
+    # Header
+    header = Table.grid(padding=(0, 2))
+    header.add_row(
+        Text(room_name, style="bold cyan"),
+        Text("Ctrl+C to stop", style="dim"),
+    )
+    console.print()
+    console.print(Panel(
+        f"[bold]{room_name}[/]\n{room_meta}" if room_meta else f"[bold]{room_name}[/]",
+        title="[dim]watching[/]",
+        border_style="dim",
+        width=60,
+        padding=(0, 2),
+    ))
+
     url = f"{config.server.api_url}/rooms/{room_name}/messages/stream"
-
-    typer.echo(f"\n  {C['bold']}Watching{C['reset']} {C['cyan']}{room_name}{C['reset']}  "
-               f"{C['dim']}(Ctrl+C to stop){C['reset']}\n")
-    typer.echo(rule())
-
     start = time.time()
 
     with httpx.Client(timeout=None) as http:
         with http.stream("GET", url) as response:
             for line in response.iter_lines():
                 if timeout > 0 and (time.time() - start) >= timeout:
-                    typer.echo(f"\n  {C['dim']}[Timeout after {timeout}s]{C['reset']}")
+                    console.print(f"\n  [dim]Timeout after {timeout}s[/]")
                     return
                 line = line.strip()
                 if not line or line.startswith(":"):
@@ -674,7 +661,7 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
                         continue
                     rendered = render(msg)
                     if rendered:
-                        typer.echo(rendered)
+                        console.print(rendered, highlight=False)
 
 
 @app.command()
