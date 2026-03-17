@@ -34,7 +34,7 @@ async def _upsert_room(room_name: str, session: AsyncSession) -> Room:
     result = await session.execute(select(Room).where(Room.name == room_name))
     room = result.scalar_one_or_none()
     if not room:
-        room = Room(name=room_name, is_public=True)
+        room = Room(name=room_name, is_public=True, mode=settings.DEFAULT_ROOM_MODE, namespace=room_name)
         session.add(room)
         try:
             await session.commit()
@@ -73,8 +73,8 @@ async def join_room(
         _notify_join(room_name, payload.agent_handle, payload.intent)
     )
 
-    # Start join timer when first agent arrives — use conditional UPDATE to avoid duplicates
-    if room.coordination_state == "idle":
+    # Start join timer only for sync/hybrid rooms
+    if room.mode in ("sync", "hybrid") and room.coordination_state == "idle":
         deadline = datetime.now(UTC) + timedelta(
             seconds=settings.COORDINATION_JOIN_WINDOW_SECONDS
         )

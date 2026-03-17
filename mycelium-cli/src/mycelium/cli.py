@@ -13,6 +13,7 @@ from mycelium.commands import (
     docs,
     install,
     instance,
+    memory,
     message,
     room,
     send,
@@ -75,6 +76,7 @@ app.add_typer(message.app, name="message")
 app.add_typer(config.app, name="config")
 app.add_typer(daemon.app, name="daemon")
 app.add_typer(adapter.app, name="adapter")
+app.add_typer(memory.app, name="memory")
 app.add_typer(docs.app, name="docs")
 
 

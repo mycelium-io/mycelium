@@ -29,6 +29,10 @@ async def create_room(
         name=room.name,
         description=room.description,
         is_public=room.is_public,
+        mode=room.mode,
+        trigger_config=room.trigger_config,
+        is_persistent=room.is_persistent,
+        namespace=room.name,
     )
     session.add(db_room)
     await session.commit()
@@ -65,6 +69,28 @@ async def get_room(
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
     return room
+
+
+@router.post("/{room_name}/synthesize", status_code=200)
+async def synthesize_room(
+    room_name: str,
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Trigger CognitiveEngine async synthesis for a room."""
+    result = await session.execute(select(Room).where(Room.name == room_name))
+    room = result.scalar_one_or_none()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    if room.mode not in ("async", "hybrid"):
+        raise HTTPException(status_code=400, detail="Synthesis only available for async/hybrid rooms")
+    if room.coordination_state == "synthesizing":
+        raise HTTPException(status_code=409, detail="Synthesis already in progress")
+
+    from app.services.async_coordination import run_synthesis
+    result = await run_synthesis(room_name)
+    if result is None:
+        return {"status": "no_memories", "message": "No new memories to synthesize"}
+    return {"status": "complete", **result}
 
 
 @router.delete("/{room_name}", status_code=204)

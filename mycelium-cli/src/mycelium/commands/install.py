@@ -430,16 +430,26 @@ def install(
         # ── Phase 2: Interactive prompts ──────────────────────────────────
         llm_config = _prompt_llm()
 
-        # Port check
-        ports_to_check = [5432, 5456, 8000]
+        # Port check — allow user to pick alternatives
+        default_ports = {"db": 5432, "backend": 8000}
+        ports_to_check = list(default_ports.values())
         busy_ports = _check_ports(ports_to_check)
+        custom_ports = dict(default_ports)
+
         if busy_ports:
             typer.secho(f"\n  ⚠  Ports already in use: {busy_ports}", fg=typer.colors.YELLOW)
-            typer.echo("  Stop conflicting services before installing.")
-            if not yes:
-                ans = _ask("  Continue anyway? [y/N]: ", default="n")
-                if ans.lower() not in ("y", "yes"):
-                    raise KeyboardInterrupt
+            print()
+            for label, default in default_ports.items():
+                if default in busy_ports:
+                    new_port = _ask(f"  \x1b[2m{label} port (default {default} is busy):\x1b[0m ")
+                    if new_port.isdigit():
+                        custom_ports[label] = int(new_port)
+                    else:
+                        typer.echo(f"    Using default {default} anyway")
+
+            # Update llm_config with custom ports for env file
+            llm_config["MYCELIUM_DB_PORT"] = str(custom_ports["db"])
+            llm_config["MYCELIUM_BACKEND_PORT"] = str(custom_ports["backend"])
 
         # ── Phase 3: Write env, bring up services ─────────────────────────
         print()
@@ -466,7 +476,7 @@ def install(
 
         # ── Phase 4: Health checks ─────────────────────────────────────────
         # Allow extra time on first run when the backend image is being built.
-        api_url = "http://localhost:8000"
+        api_url = f"http://localhost:{custom_ports['backend']}"
         health_timeout = 300 if needs_build else 120
         print()
         _wait_for_health([f"{api_url}/health"], timeout=health_timeout)
@@ -492,7 +502,8 @@ def install(
         typer.secho("  Mycelium is ready.", fg=typer.colors.GREEN, bold=True)
         print()
         typer.echo("  Services:")
-        typer.echo("    mycelium-backend  → http://localhost:8000")
+        typer.echo(f"    mycelium-backend  → {api_url}")
+        typer.echo(f"    mycelium-db       → localhost:{custom_ports['db']}")
         typer.echo("    graph-db-viewer   → http://localhost:5457  (dev profile only)")
         print()
         typer.echo("  Next steps:")

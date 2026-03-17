@@ -129,6 +129,9 @@ def create(
     ctx: typer.Context,
     name: str | None = typer.Argument(None, help="Room name"),
     public: bool = typer.Option(True, "--public/--private"),
+    mode: str = typer.Option("sync", "--mode", "-m", help="Room mode: sync, async, or hybrid"),
+    trigger: str | None = typer.Option(None, "--trigger", help="Trigger config (e.g. 'threshold:5' or 'explicit')"),
+    persistent: bool = typer.Option(False, "--persistent", help="Room persists after coordination completes"),
 ) -> None:
     """Create a new room."""
     try:
@@ -144,21 +147,70 @@ def create(
         if name is None:
             name = typer.prompt("Room name")
 
+        # Parse trigger config
+        trigger_config = None
+        if trigger:
+            if ":" in trigger:
+                ttype, tval = trigger.split(":", 1)
+                trigger_config = {"type": ttype, "min_contributions": int(tval)}
+            else:
+                trigger_config = {"type": trigger}
+
+        # Auto-set persistent for async/hybrid rooms
+        if mode in ("async", "hybrid"):
+            persistent = True
+
         with MyceliumHTTPClient(config=config) as client:
             response = client.post(
                 "/rooms",
-                json={"name": name, "is_public": public},
+                json={
+                    "name": name,
+                    "is_public": public,
+                    "mode": mode,
+                    "trigger_config": trigger_config,
+                    "is_persistent": persistent,
+                },
             )
             room_data = response.json()
 
         if json_output:
             typer.echo(json_module.dumps(room_data, indent=2, default=str))
         else:
-            typer.secho(f"Created room: {room_data['name']}", fg=typer.colors.GREEN)
+            typer.secho(f"Created room: {room_data['name']} (mode={room_data.get('mode', 'sync')})", fg=typer.colors.GREEN)
             typer.echo(f"  ID:      {room_data.get('id')}")
             typer.echo(f"  Created: {str(room_data.get('created_at', ''))[:10]}")
             typer.echo("")
             typer.echo(f"  Run 'mycelium room set {name}' to make it your active room")
+
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+
+
+@app.command()
+def synthesize(
+    ctx: typer.Context,
+    room_name: str | None = typer.Argument(None, help="Room to synthesize (default: active room)"),
+) -> None:
+    """Trigger CognitiveEngine synthesis for an async/hybrid room."""
+    try:
+        json_output = ctx.obj.get("json", False) if ctx.obj else False
+        config = MyceliumConfig.load()
+        name = room_name or _resolve_room(config)
+
+        with MyceliumHTTPClient(config=config) as client:
+            resp = client.post(f"/rooms/{name}/synthesize")
+            data = resp.json()
+
+        if json_output:
+            typer.echo(json_module.dumps(data, indent=2, default=str))
+        else:
+            status = data.get("status", "unknown")
+            if status == "complete":
+                typer.secho(f"Synthesis complete: {data.get('key', '')}", fg=typer.colors.GREEN)
+                typer.echo(f"  Memories synthesized: {data.get('memory_count', '?')}")
+            else:
+                typer.echo(f"  {data.get('message', 'No new memories to synthesize')}")
 
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False

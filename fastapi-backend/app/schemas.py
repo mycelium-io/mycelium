@@ -69,6 +69,9 @@ class RoomCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     description: str | None = Field(None, max_length=500)
     is_public: bool = True
+    mode: str = Field("sync", pattern="^(sync|async|hybrid)$")
+    trigger_config: dict | None = None
+    is_persistent: bool = False
 
 
 class RoomRead(BaseModel):
@@ -78,6 +81,11 @@ class RoomRead(BaseModel):
     is_public: bool
     created_at: datetime
     coordination_state: str = "idle"
+    join_deadline: datetime | None = None
+    mode: str = "sync"
+    trigger_config: dict | None = None
+    last_synthesis_at: datetime | None = None
+    is_persistent: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -187,5 +195,68 @@ class AuditEventRead(BaseModel):
     created_on: datetime
     last_modified_by: UUID
     last_modified_on: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── Memory ───────────────────────────────────────────────────────────────────
+
+class MemoryCreate(BaseModel):
+    key: str = Field(..., min_length=1, max_length=512)
+    value: dict | str = Field(..., description="Memory content (dict or string)")
+    tags: list[str] | None = None
+    content_text: str | None = Field(None, description="Text for embedding; auto-generated from value if omitted")
+    embed: bool = Field(True, description="Generate vector embedding for semantic search")
+    created_by: str = Field(..., description="Agent handle creating this memory")
+
+
+class MemoryBatchCreate(BaseModel):
+    items: list[MemoryCreate] = Field(..., min_length=1, max_length=100)
+
+
+class MemoryRead(BaseModel):
+    id: UUID
+    room_name: str
+    key: str
+    value: dict | str
+    content_text: str | None = None
+    created_by: str
+    updated_by: str | None = None
+    version: int
+    tags: list[str] | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class MemorySearchRequest(BaseModel):
+    query: str = Field(..., min_length=1)
+    limit: int = Field(10, ge=1, le=100)
+    tags_filter: list[str] | None = None
+    min_similarity: float = Field(0.0, ge=0.0, le=1.0)
+
+
+class MemorySearchResult(BaseModel):
+    memory: MemoryRead
+    similarity: float
+
+
+class MemorySearchResponse(BaseModel):
+    results: list[MemorySearchResult]
+    total: int
+
+
+class SubscriptionCreate(BaseModel):
+    key_pattern: str = Field(..., min_length=1, description="Glob pattern for keys to watch")
+    subscriber: str = Field(..., description="Agent handle subscribing")
+
+
+class SubscriptionRead(BaseModel):
+    id: UUID
+    room_name: str
+    subscriber: str
+    key_pattern: str
+    created_at: datetime
 
     model_config = {"from_attributes": True}
