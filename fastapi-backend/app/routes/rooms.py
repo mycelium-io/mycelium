@@ -93,6 +93,77 @@ async def synthesize_room(
     return {"status": "complete", **result}
 
 
+@router.get("/{room_name}/catchup", status_code=200)
+async def catchup_room(
+    room_name: str,
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Get a briefing for an agent joining a room: latest synthesis + recent activity."""
+    from app.models import Memory
+
+    result = await session.execute(select(Room).where(Room.name == room_name))
+    room = result.scalar_one_or_none()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    # Get latest synthesis
+    synth_result = await session.execute(
+        select(Memory)
+        .where(Memory.room_name == room_name, Memory.key.startswith("_synthesis/"))
+        .order_by(Memory.created_at.desc())
+        .limit(1)
+    )
+    latest_synthesis = synth_result.scalar_one_or_none()
+
+    # Get memories since last synthesis (or all if no synthesis exists)
+    recent_query = (
+        select(Memory)
+        .where(Memory.room_name == room_name)
+        .where(Memory.key.not_like("_synthesis/%"))
+    )
+    if latest_synthesis:
+        recent_query = recent_query.where(Memory.created_at > latest_synthesis.created_at)
+    recent_query = recent_query.order_by(Memory.created_at.desc()).limit(50)
+
+    recent_result = await session.execute(recent_query)
+    recent_memories = list(recent_result.scalars().all())
+
+    # Count total memories
+    from sqlalchemy import func
+    count_result = await session.execute(
+        select(func.count()).select_from(Memory).where(Memory.room_name == room_name)
+    )
+    total = count_result.scalar() or 0
+
+    # Count contributors
+    contributors_result = await session.execute(
+        select(Memory.created_by).where(Memory.room_name == room_name).distinct()
+    )
+    contributors = [r[0] for r in contributors_result.fetchall()]
+
+    return {
+        "room": room_name,
+        "mode": room.mode,
+        "total_memories": total,
+        "contributors": contributors,
+        "latest_synthesis": {
+            "key": latest_synthesis.key,
+            "content": latest_synthesis.content_text or latest_synthesis.value,
+            "created_at": latest_synthesis.created_at.isoformat(),
+        } if latest_synthesis else None,
+        "recent_activity": [
+            {
+                "key": m.key,
+                "created_by": m.created_by,
+                "content_text": (m.content_text or "")[:200],
+                "created_at": m.created_at.isoformat(),
+            }
+            for m in recent_memories
+        ],
+        "memories_since_synthesis": len(recent_memories),
+    }
+
+
 @router.delete("/{room_name}", status_code=204)
 async def delete_room(
     room_name: str,

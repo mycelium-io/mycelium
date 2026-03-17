@@ -174,7 +174,7 @@ async def _llm_synthesize(room_name: str, context: str, memory_count: int) -> st
 
         response = client.messages.create(
             model=settings.SYNTHESIS_LLM_MODEL,
-            max_tokens=2048,
+            max_tokens=4096,
             messages=[
                 {
                     "role": "user",
@@ -182,12 +182,24 @@ async def _llm_synthesize(room_name: str, context: str, memory_count: int) -> st
                         f"You are CognitiveEngine synthesizing {memory_count} contributions "
                         f"from agents in room '{room_name}'.\n\n"
                         f"Memories:\n{context}\n\n"
-                        "Produce a concise synthesis that:\n"
-                        "1. Identifies key themes and patterns across contributions\n"
-                        "2. Notes any conflicts or tensions between agent positions\n"
-                        "3. Highlights actionable insights or decisions that emerged\n"
-                        "4. Suggests what coordination might be needed next\n\n"
-                        "Be direct and concise. Focus on what matters for moving forward."
+                        "Produce a synthesis that a new agent arriving for the first time "
+                        "could read and immediately be productive. Structure it as:\n\n"
+                        "## Current State\n"
+                        "What has been established. Key decisions made, results achieved, "
+                        "consensus reached.\n\n"
+                        "## What Worked\n"
+                        "Successful approaches, validated findings, proven configurations. "
+                        "Include specific values/parameters when available.\n\n"
+                        "## What Failed\n"
+                        "Approaches that were tried and didn't work. Include why, so no one "
+                        "repeats them.\n\n"
+                        "## Open Questions\n"
+                        "Unresolved tensions, untested hypotheses, gaps in coverage. "
+                        "These are the highest-value next steps.\n\n"
+                        "## Recommended Next Actions\n"
+                        "Concrete things an agent should try next, prioritized by expected impact.\n\n"
+                        "Be specific and actionable. Reference agent handles and memory keys "
+                        "when citing findings."
                     ),
                 }
             ],

@@ -210,3 +210,55 @@ def memory_subscribe(
         if result:
             sub_id = str(result.id)[:8] if result.id else "?"
             console.print(f"[green]Subscribed:[/green] {pattern} (id: {sub_id}...)")
+
+
+@app.command(name="catchup")
+def memory_catchup(
+    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+) -> None:
+    """Get briefed on a room's current state — latest synthesis + recent activity."""
+    import httpx
+
+    room_name = _get_active_room(room)
+    cfg = MyceliumConfig.load()
+
+    with httpx.Client(base_url=cfg.server.api_url, timeout=30) as client:
+        resp = client.get(f"/rooms/{room_name}/catchup")
+        resp.raise_for_status()
+        data = resp.json()
+
+    console.print(f"\n[bold]{data['room']}[/bold]  [dim]{data['mode']} room  {data['total_memories']} memories  {len(data['contributors'])} contributors[/dim]\n")
+
+    # Contributors
+    if data["contributors"]:
+        console.print(f"[dim]Contributors:[/dim] {', '.join(data['contributors'])}\n")
+
+    # Latest synthesis
+    synth = data.get("latest_synthesis")
+    if synth:
+        console.print("[bold green]Latest Synthesis[/bold green]")
+        console.print(f"[dim]{synth['key']}  {synth['created_at'][:16]}[/dim]\n")
+        content = synth["content"]
+        if isinstance(content, dict):
+            content = content.get("synthesis", json.dumps(content, default=str))
+        console.print(content)
+        console.print()
+    else:
+        console.print("[dim]No synthesis yet. Run 'mycelium room synthesize' to generate one.[/dim]\n")
+
+    # Recent activity since synthesis
+    recent = data.get("recent_activity", [])
+    if recent:
+        n = data.get("memories_since_synthesis", len(recent))
+        console.print(f"[bold yellow]Recent Activity[/bold yellow] ({n} memories since last synthesis)\n")
+        for mem in recent[:10]:
+            console.print(
+                f"  [cyan]{mem['key']}[/cyan]  [dim]{mem['created_by']}  {mem['created_at'][:16]}[/dim]"
+            )
+            if mem.get("content_text"):
+                console.print(f"    {mem['content_text'][:150]}")
+        if len(recent) > 10:
+            console.print(f"\n  [dim]... and {len(recent) - 10} more[/dim]")
+    else:
+        console.print("[dim]No new activity since last synthesis.[/dim]")
+    console.print()

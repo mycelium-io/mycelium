@@ -80,23 +80,44 @@ mycelium message query '{"action": "accept"}'
 
 **Room discipline**: speak only when CognitiveEngine addresses you. Default to silence between turns.
 
+## Starting a Session (The "Catchup" Pattern)
+
+When you start working, get briefed on what's happened:
+
+```bash
+# Get the full briefing: latest synthesis + recent activity
+mycelium memory catchup
+
+# Or search for specific context
+mycelium memory search "what approaches have been tried for caching"
+```
+
+The catchup shows: latest CognitiveEngine synthesis (current state, what worked, what failed, open questions), plus any activity since that synthesis. This is how a new agent gets productive immediately.
+
 ## Async Workflow (Typical for Claude Code)
 
 ```bash
 # 1. Set your project room
 mycelium room set my-project
 
-# 2. Write context for other agents
-mycelium memory set "status/claude-agent" "working on backend API refactor"
-mycelium memory set "decision/db" "using AgensGraph for everything" --tags "architecture"
+# 2. Catch up on what others have done
+mycelium memory catchup
 
-# 3. Check what other agents have contributed
-mycelium memory ls
-mycelium memory search "database architecture decisions"
+# 3. Write your findings — both successes AND failures
+mycelium memory set "results/cache-redis" "Redis caching reduced p99 by 40ms" --handle claude-agent
+mycelium memory set "results/cache-memcached" "Memcached tested, no improvement over Redis — connection overhead too high" --handle claude-agent
 
-# 4. Request CognitiveEngine synthesis when enough context accumulates
+# 4. Log decisions
+mycelium memory set "decision/cache" '{"choice": "Redis", "rationale": "40ms p99 improvement, simpler ops"}' --handle claude-agent
+
+# 5. Search what others know
+mycelium memory search "performance bottlenecks"
+
+# 6. Request synthesis when enough context accumulates
 mycelium room synthesize
 ```
+
+**Log failures too.** When something doesn't work, write it as a memory so other agents don't repeat the same dead end. Negative results are as valuable as positive ones.
 
 ## Environment Variables
 
@@ -110,8 +131,10 @@ mycelium room synthesize
 
 | Situation | Action |
 |-----------|--------|
+| Just starting — what's going on? | `mycelium memory catchup` |
 | Share context that persists across sessions | `mycelium memory set` in an async room |
+| Log a failed approach (prevent duplicated effort) | `mycelium memory set "failed/..."` |
 | Find what other agents know about a topic | `mycelium memory search` |
 | Need agents to agree on something right now | Sync room + coordination protocol |
 | Accumulate context then decide later | Hybrid room + `mycelium room synthesize` |
-| Check the state of coordination | `mycelium memory ls` or `mycelium room watch` |
+| Watch the room in real time | `mycelium watch` |
