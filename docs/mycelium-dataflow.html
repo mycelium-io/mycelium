@@ -66,7 +66,7 @@
     font-size: 18px;
     color: var(--muted);
     margin-bottom: 40px;
-    max-width: 500px;
+    max-width: 540px;
     line-height: 1.65;
   }
   .hero-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 64px; }
@@ -230,142 +230,81 @@
   .d-arrow { color: var(--accent); font-size: 18px; flex-shrink: 0; }
   .d-arrow-v { color: var(--accent); font-size: 18px; text-align: center; line-height: 1; margin: 4px 0; }
 
-  /* ── SCENE 1: OVERVIEW ── */
-  #sc1 { flex-direction: column; gap: 16px; }
-  .sc1-row { display: flex; gap: 12px; width: 100%; justify-content: center; }
-  .sc1-box {
+  /* ── SCENE 1: ISOLATION ── */
+  #sc1 { flex-direction: column; gap: 16px; align-items: center; }
+  .iso-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; width: 100%; }
+  .iso-agent {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 14px;
+    text-align: center;
+    position: relative;
+  }
+  .iso-agent .icon { font-size: 28px; margin-bottom: 10px; opacity: 0.7; }
+  .iso-agent .name { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+  .iso-agent .cap { font-size: 10px; color: var(--muted); line-height: 1.4; }
+  .iso-gap {
+    width: 100%;
+    padding: 12px 0;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 700;
+    font-family: 'SF Mono', monospace;
+    letter-spacing: 0.12em;
+    color: rgba(248,113,113,0.6);
+    border-top: 1px dashed rgba(248,113,113,0.2);
+    border-bottom: 1px dashed rgba(248,113,113,0.2);
+  }
+
+  /* ── SCENE 2: THREE PILLARS ── */
+  #sc2 { flex-direction: column; gap: 10px; padding: 28px; }
+  .pillar-row { display: flex; gap: 10px; width: 100%; }
+  .pillar-card {
     flex: 1;
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: 10px;
-    padding: 16px 14px;
+    padding: 14px 12px;
     text-align: center;
     transition: border-color 0.3s;
   }
-  .sc1-box .icon { font-size: 22px; margin-bottom: 8px; }
-  .sc1-box .name { font-size: 12px; font-weight: 700; margin-bottom: 3px; }
-  .sc1-box .sub  { font-size: 10px; color: var(--muted); line-height: 1.4; }
-  .sc1-box.o { border-color: rgba(56,189,248,0.35); }
-  .sc1-box.b { border-color: rgba(129,140,248,0.35); }
-  .sc1-box.g { border-color: rgba(52,211,153,0.3); }
-  .sc1-box.p { border-color: rgba(192,132,252,0.3); }
-  .sc1-conn {
+  .pillar-card .p-label { font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; font-family: 'SF Mono', monospace; margin-bottom: 6px; }
+  .pillar-card .p-ioc { font-size: 11px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+  .pillar-card .p-myc { font-size: 10px; color: var(--muted); line-height: 1.4; }
+  .pillar-card.po { border-color: rgba(56,189,248,0.35); }
+  .pillar-card.pb { border-color: rgba(129,140,248,0.35); }
+  .pillar-card.pp { border-color: rgba(192,132,252,0.35); }
+
+  /* ── SCENE 3: INFRASTRUCTURE ── */
+  #sc3 { flex-direction: column; gap: 14px; }
+  .sc3-row { display: flex; gap: 12px; width: 100%; justify-content: center; }
+  .sc3-box {
+    flex: 1;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 12px;
+    text-align: center;
+    transition: border-color 0.3s;
+  }
+  .sc3-box .icon { font-size: 22px; margin-bottom: 8px; }
+  .sc3-box .name { font-size: 12px; font-weight: 700; margin-bottom: 3px; }
+  .sc3-box .sub  { font-size: 10px; color: var(--muted); line-height: 1.4; }
+  .sc3-box.o { border-color: rgba(56,189,248,0.35); }
+  .sc3-box.b { border-color: rgba(129,140,248,0.35); }
+  .sc3-box.g { border-color: rgba(52,211,153,0.3); }
+  .sc3-box.p { border-color: rgba(192,132,252,0.3); }
+  .sc3-conn {
     width: 100%;
     height: 2px;
     background: linear-gradient(to right, rgba(56,189,248,0.4), rgba(129,140,248,0.4), rgba(192,132,252,0.4));
     border-radius: 2px;
-    margin: 4px 0;
+    margin: 2px 0;
   }
 
-  /* ── SCENE 2: ADAPTER INSTALL ── */
-  #sc2 { flex-direction: column; gap: 10px; align-items: flex-start; padding: 40px; }
-  .install-step {
-    display: flex;
-    align-items: flex-start;
-    gap: 14px;
-    padding: 12px 16px;
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    width: 100%;
-    transition: border-color 0.4s, background 0.4s;
-  }
-  .install-step.lit { border-color: rgba(56,189,248,0.4); background: rgba(56,189,248,0.04); }
-  .install-num {
-    width: 24px; height: 24px; border-radius: 50%;
-    background: rgba(56,189,248,0.15); color: var(--accent);
-    font-size: 10px; font-weight: 800; display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0; font-family: 'SF Mono', monospace;
-  }
-  .install-text .t { font-size: 12px; font-weight: 700; margin-bottom: 2px; }
-  .install-text .s { font-size: 10.5px; color: var(--muted); font-family: 'SF Mono', monospace; }
-
-  /* ── SCENE 3: SSE SUBSCRIPTION ── */
-  #sc3 { flex-direction: column; gap: 0; padding: 32px; }
-  .sse-wrap { width: 100%; }
-  .sse-agent {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 14px 16px;
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    margin-bottom: 20px;
-  }
-  .sse-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px rgba(52,211,153,0.5); animation: pulse 2s ease-in-out infinite; flex-shrink: 0; }
-  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
-  .sse-label { font-size: 12px; font-weight: 700; }
-  .sse-sub   { font-size: 10.5px; color: var(--muted); font-family: 'SF Mono', monospace; margin-top: 1px; }
-  .sse-pipe {
-    width: 2px; height: 40px;
-    background: linear-gradient(to bottom, var(--blue), transparent);
-    margin: 0 auto 0 22px;
-  }
-  .sse-event {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 14px;
-    background: rgba(129,140,248,0.06);
-    border: 1px solid rgba(129,140,248,0.2);
-    border-radius: 6px;
-    margin-bottom: 6px;
-    font-family: 'SF Mono', monospace;
-    font-size: 11px;
-  }
-  .sse-event .ev-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-  .sse-event .ev-type { color: var(--blue); font-weight: 700; margin-right: 6px; }
-  .sse-event .ev-desc { color: var(--muted); }
-  .sse-server {
-    margin-top: 20px;
-    padding: 12px 16px;
-    background: rgba(56,189,248,0.06);
-    border: 1px solid rgba(56,189,248,0.2);
-    border-radius: 8px;
-    font-family: 'SF Mono', monospace;
-    font-size: 11px;
-    color: var(--muted);
-  }
-  .sse-server .ep { color: var(--accent); }
-
-  /* ── SCENE 4: ROOM JOIN ── */
-  #sc4 { flex-direction: column; align-items: center; gap: 8px; padding: 32px; }
-  .room-box {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 16px 24px;
-    text-align: center;
-    width: 100%;
-  }
-  .room-box .r-title { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; font-family: 'SF Mono', monospace; margin-bottom: 4px; }
-  .room-box .r-name  { font-size: 16px; font-weight: 800; color: var(--text); font-family: 'SF Mono', monospace; }
-  .state-row { display: flex; gap: 8px; width: 100%; justify-content: center; }
-  .state-pill {
-    flex: 1; text-align: center; padding: 10px 8px;
-    background: var(--card); border: 1px solid var(--border);
-    border-radius: 6px; font-size: 11px; font-weight: 700;
-    color: var(--muted); transition: all 0.4s;
-    font-family: 'SF Mono', monospace;
-  }
-  .state-pill .sp-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); display: inline-block; margin-right: 5px; transition: background 0.4s; }
-  .state-pill.active-state { border-color: rgba(56,189,248,0.4); color: var(--accent); background: rgba(56,189,248,0.06); }
-  .state-pill.active-state .sp-dot { background: var(--accent); box-shadow: 0 0 6px rgba(56,189,248,0.5); }
-  .agents-row { display: flex; gap: 10px; width: 100%; }
-  .agent-card {
-    flex: 1; padding: 12px 10px; background: var(--card);
-    border: 1px solid var(--border); border-radius: 8px; text-align: center;
-  }
-  .agent-card .a-handle { font-size: 11px; font-weight: 700; font-family: 'SF Mono', monospace; margin-bottom: 4px; }
-  .agent-card .a-intent { font-size: 10px; color: var(--muted); line-height: 1.4; }
-  .timer-bar-wrap { width: 100%; }
-  .timer-label { font-size: 10px; color: var(--muted); font-family: 'SF Mono', monospace; margin-bottom: 6px; display: flex; justify-content: space-between; }
-  .timer-bar { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
-  .timer-fill { height: 100%; background: var(--yellow); border-radius: 2px; width: 45%; transition: width 0.3s; }
-
-  /* ── SCENE 5: NEGOTIATION PIPELINE ── */
-  #sc5 { flex-direction: column; gap: 10px; padding: 32px; }
+  /* ── SCENE 4: PIPELINE ── */
+  #sc4 { flex-direction: column; gap: 10px; padding: 32px; }
   .pipe-header { font-size: 10px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); font-family: 'SF Mono', monospace; margin-bottom: 4px; }
   .pipe-comp {
     display: flex;
@@ -393,8 +332,8 @@
   .pipe-out  { font-size: 10px; color: var(--muted); font-family: 'SF Mono', monospace; margin-top: 6px; }
   .pipe-arrow { text-align: center; color: var(--accent); font-size: 16px; margin: 2px 0; }
 
-  /* ── SCENE 6: TICK LOOP ── */
-  #sc6 { flex-direction: column; gap: 12px; padding: 28px; }
+  /* ── SCENE 5: TICK LOOP ── */
+  #sc5 { flex-direction: column; gap: 12px; padding: 28px; }
   .tick-header { display: flex; justify-content: space-between; align-items: center; }
   .tick-col-label { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; font-family: 'SF Mono', monospace; padding: 4px 10px; border-radius: 20px; }
   .tcl-ce { color: var(--accent); background: rgba(56,189,248,0.1); border: 1px solid rgba(56,189,248,0.2); }
@@ -419,58 +358,46 @@
   .mid-arrow { font-size: 14px; }
   .mid-line  { flex: 1; width: 2px; background: linear-gradient(to bottom, var(--accent), var(--blue)); min-height: 30px; }
 
-  /* ── SCENE 7: KNOWLEDGE EXTRACT ── */
-  #sc7 { flex-direction: column; gap: 8px; padding: 32px; }
-  .ke-step {
+  /* ── SCENE 6: MEMORY TERMINAL ── */
+  #sc6 { flex-direction: column; gap: 8px; padding: 28px; }
+  .term-block {
+    width: 100%;
+    background: rgba(0,0,0,0.45);
+    border: 1px solid rgba(56,189,248,0.2);
+    border-radius: 8px;
+    padding: 16px 18px;
+    font-family: 'SF Mono', monospace;
+    font-size: 11px;
+    line-height: 1.7;
+    color: var(--muted);
+    overflow-x: auto;
+  }
+  .term-block .prompt { color: var(--green); }
+  .term-block .cmd { color: var(--text); }
+  .term-block .flag { color: var(--blue); }
+  .term-block .output { color: var(--muted); }
+  .term-block .val { color: var(--accent); }
+  .term-block .key { color: var(--purple); }
+  .term-block .tdim { color: var(--dim); }
+
+  /* ── SCENE 7: CATCHUP ── */
+  #sc7 { flex-direction: column; gap: 8px; padding: 28px; }
+
+  /* ── SCENE 8: CFN ── */
+  #sc8 { flex-direction: column; gap: 12px; padding: 28px; }
+  .cfn-svc {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 12px;
     padding: 12px 14px;
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: 8px;
-    transition: border-color 0.4s, background 0.4s;
+    transition: border-color 0.4s;
   }
-  .ke-step.lit { border-color: rgba(192,132,252,0.4); background: rgba(192,132,252,0.04); }
-  .ke-num { width: 28px; height: 28px; border-radius: 50%; background: rgba(192,132,252,0.12); color: var(--purple); font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-family: 'SF Mono', monospace; }
-  .ke-text .kt { font-size: 12px; font-weight: 700; }
-  .ke-text .ks { font-size: 10.5px; color: var(--muted); font-family: 'SF Mono', monospace; margin-top: 2px; }
-  .ke-arrow { text-align: center; color: var(--purple); font-size: 14px; margin: 2px 0; }
-  .ke-graph {
-    padding: 14px;
-    background: rgba(192,132,252,0.05);
-    border: 1px solid rgba(192,132,252,0.2);
-    border-radius: 8px;
-    text-align: center;
-  }
-  .ke-graph svg { overflow: visible; }
-
-  /* ── SCENE 8: MEMORY LOOP ── */
-  #sc8 { flex-direction: column; gap: 12px; padding: 32px; }
-  .mem-diagram { width: 100%; position: relative; }
-  .mem-box {
-    padding: 14px 16px;
-    border-radius: 8px;
-    font-size: 12px;
-    font-weight: 700;
-    text-align: center;
-    border: 1px solid var(--border);
-  }
-  .mem-row { display: flex; gap: 10px; align-items: stretch; }
-  .mem-arrow-down { text-align: center; color: var(--accent); font-size: 16px; margin: 4px 0; }
-  .mem-arrow-up   { text-align: center; color: var(--green);  font-size: 16px; margin: 4px 0; }
-  .feedback-badge {
-    align-self: center;
-    padding: 6px 12px;
-    background: rgba(52,211,153,0.08);
-    border: 1px solid rgba(52,211,153,0.25);
-    border-radius: 20px;
-    font-size: 10px;
-    font-weight: 700;
-    color: var(--green);
-    font-family: 'SF Mono', monospace;
-    white-space: nowrap;
-  }
+  .cfn-svc .svc-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .cfn-svc .svc-name { font-size: 12px; font-weight: 700; }
+  .cfn-svc .svc-port { font-size: 10.5px; color: var(--muted); font-family: 'SF Mono', monospace; margin-top: 1px; }
 
   /* ── SCENE 9: FINAL ── */
   #sc9 { flex-direction: column; gap: 14px; padding: 32px; }
@@ -545,7 +472,6 @@
     }
     .hero-chips { margin-bottom: 32px; }
 
-    /* Stack scrolly vertically — panel sticks to top, narrative below */
     .scrolly { flex-direction: column; }
     .panel-wrap {
       width: 100%;
@@ -569,14 +495,12 @@
     }
     .sec-body { max-width: 100%; }
 
-    /* Scene 6: tighten tick grid on small screens */
     .tick-cols { grid-template-columns: 1fr 28px 1fr; }
     .tick-card { padding: 8px 8px; }
     .tc-body { font-size: 10px !important; }
 
-    /* Scene 4: state pills wrap */
-    .state-row { flex-wrap: wrap; }
-    .state-pill { flex: none; width: calc(50% - 4px); }
+    .pillar-row { flex-direction: column; }
+    .iso-grid { grid-template-columns: 1fr; }
 
     .footer {
       padding: 40px 24px;
@@ -587,9 +511,7 @@
   }
 
   @media (max-width: 480px) {
-    .sc1-row { flex-direction: column; }
-    .sc1-row > div[style*="align-items:center"] { display: none; }
-    .agents-row { flex-direction: column; }
+    .sc3-row { flex-direction: column; }
     .final-row { flex-wrap: wrap; gap: 6px; }
     .final-box { flex: none; width: calc(50% - 16px); }
     .final-arrow { display: none; }
@@ -603,19 +525,20 @@
   <div style="display:flex; align-items:center; gap:56px;">
     <img src="logo.png" alt="Mycelium" style="width:320px; height:320px; object-fit:contain; flex-shrink:0; filter:none;">
     <div style="display:flex; flex-direction:column;">
-      <div class="hero-eyebrow">Mycelium · Internet of Cognition</div>
+      <div class="hero-eyebrow">Mycelium &middot; Internet of Cognition</div>
       <h1 class="hero-title">Adaptive Agent<br><span>Coordination</span></h1>
-      <p class="hero-sub">How openclaw agents join a backchannel room, negotiate semantically via NegMAS, and feed every conversation into a persistent knowledge graph.</p>
+      <p class="hero-sub">Semantic negotiation, persistent memory, and a knowledge fabric that compounds. The IoC three-pillar architecture, implemented and running on OpenClaw.</p>
       <div class="hero-chips">
-        <span class="chip chip-o">openclaw adapter</span>
-        <span class="chip chip-b">SSE push</span>
+        <span class="chip chip-o">OpenClaw agents</span>
+        <span class="chip chip-b">persistent memory</span>
         <span class="chip chip-g">NegMAS SAO</span>
         <span class="chip chip-p">AgensGraph</span>
-        <span class="chip chip-y">knowledge fabric</span>
+        <span class="chip chip-y">semantic search</span>
+        <span class="chip chip-o">litellm</span>
       </div>
       <div class="scroll-hint" style="margin-top:32px;">
         <span style="letter-spacing:0.12em; font-size:11px;">scroll to explore</span>
-        <span style="font-size:18px; color: var(--accent);">↓</span>
+        <span style="font-size:18px; color: var(--accent);">&#8595;</span>
       </div>
     </div>
   </div>
@@ -627,106 +550,110 @@
   <!-- LEFT: NARRATIVE -->
   <div class="narrative">
 
-    <!-- S1: System overview -->
+    <!-- S1: The Problem -->
     <div class="section" data-scene="1">
-      <div class="sec-label">Architecture</div>
-      <h2 class="sec-title">Three layers, one coherent system</h2>
-      <p class="sec-body">Mycelium is built around three concerns: the <strong>openclaw agent runtime</strong> where AI agents live, the <strong>FastAPI backend</strong> that coordinates everything, and two <strong>persistence layers</strong> — Postgres for relational state and AgensGraph for the knowledge graph.</p>
-      <p class="sec-body" style="margin-top:12px;">Agents communicate through <strong>rooms</strong>. CognitiveEngine orchestrates negotiation. The knowledge fabric grows with every conversation.</p>
+      <div class="sec-label" style="color:rgba(248,113,113,0.8);">The Problem</div>
+      <h2 class="sec-title">Semantic Isolation</h2>
+      <p class="sec-body">Agents today can perceive, reason, and act &mdash; but they can't <strong>think together</strong>. No shared intent, no shared context, no ratchet effect. This is the gap the IoC paper identified.</p>
+      <p class="sec-body" style="margin-top:12px;">Each agent runs in its own silo. When a swarm of agents works on the same problem, every new agent starts from zero. Past decisions are lost. Context evaporates between sessions.</p>
+      <div class="sec-detail" style="border-color:rgba(248,113,113,0.5);">
+        <span style="color:rgba(248,113,113,0.8);">Result:</span> <span>Linear scaling at best. No collective intelligence.</span>
+      </div>
     </div>
 
-    <!-- S2: Adapter add -->
+    <!-- S2: IoC Architecture -->
     <div class="section" data-scene="2">
-      <div class="sec-label">Step 1 — Setup</div>
-      <h2 class="sec-title"><code style="font-size:inherit;">mycelium adapter add openclaw</code></h2>
-      <p class="sec-body">One command installs the full Mycelium bundle into openclaw. It runs <code>openclaw plugins install</code> and <code>openclaw hooks install</code> twice, then copies the agent skill to the workspace.</p>
-      <div class="sec-detail">
-        <span class="hi">Plugin:</span>   <span>mycelium (index.ts) — lifecycle hooks + SSE</span>
-        <span style="margin-top:4px;" class="hi">Hook 1:</span>  <span>mycelium-bootstrap — env injection per session</span>
-        <span style="margin-top:4px;" class="hi">Hook 2:</span>  <span>mycelium-knowledge-extract — conversation → graph</span>
-        <span style="margin-top:4px;" class="hi">Skill:</span>   <span>mycelium — agent instructions + CLI reference</span>
-        <span style="margin-top:8px;" class="hi">Config: </span><span>~/.mycelium/config.json + ENV vars</span>
-      </div>
-    </div>
-
-    <!-- S3: Session start + SSE -->
-    <div class="section" data-scene="3">
-      <div class="sec-label blue">Step 2 — Startup</div>
-      <h2 class="sec-title">Each agent gets a live wire</h2>
-      <p class="sec-body">When an agent starts, the plugin fires <code>session_start</code>. It immediately opens a <strong>persistent SSE connection</strong> to <code>/agents/{handle}/stream</code> on the backend.</p>
-      <p class="sec-body" style="margin-top:12px;">This stream carries <strong>coordination ticks</strong> and <strong>consensus messages</strong> addressed to that specific agent. The plugin auto-reconnects on error with a 5-second backoff.</p>
+      <div class="sec-label blue">IoC Architecture</div>
+      <h2 class="sec-title">Three Pillars, One System</h2>
+      <p class="sec-body">Mycelium implements all three IoC pillars. <strong>Cognition State Protocols</strong> for shared intent via CognitiveEngine + NegMAS. <strong>Cognition Fabric</strong> for persistent memory and knowledge graph via CFN. <strong>Cognition Engines</strong> for synthesis and guardrails.</p>
+      <p class="sec-body" style="margin-top:12px;">Each pillar maps directly to Mycelium components and connects to the Outshift CFN services &mdash; <code>ioc-cfn-mgmt-plane</code>, <code>ioc-knowledge-memory-svc</code>.</p>
       <div class="sec-detail blue">
-        <span class="hi-b">GET /agents/{handle}/stream</span>
-        <span style="margin-top:6px;">Postgres NOTIFY → asyncpg LISTEN → SSE queue</span>
-        <span style="margin-top:4px;">15s keepalive pings when idle</span>
+        <span class="hi-b">Pillar 1:</span> <span>SemanticNegotiationPipeline + NegMAS SAO</span>
+        <span style="margin-top:4px;" class="hi-b">Pillar 2:</span> <span>Persistent memory + AgensGraph knowledge graph</span>
+        <span style="margin-top:4px;" class="hi-b">Pillar 3:</span> <span>CognitiveEngine synthesis + catchup protocol</span>
       </div>
     </div>
 
-    <!-- S4: Room join -->
-    <div class="section" data-scene="4">
-      <div class="sec-label green">Step 3 — Room Join</div>
-      <h2 class="sec-title">Agents declare their position</h2>
-      <p class="sec-body">An agent runs <code>mycelium room join monopoly-test-119 --handle julia-agent --message "I have Park Place"</code>. This POSTs to <code>/rooms/{room}/sessions</code> with the agent's handle and <strong>intent</strong>.</p>
-      <p class="sec-body" style="margin-top:12px;">The first agent to join wins a race condition and <strong>starts a 60-second join window</strong>. Other agents pile in. When the timer fires, coordination begins with whoever joined.</p>
-      <div class="sec-detail green">
-        <span class="hi-g">State machine:</span>
-        <span style="margin-top:4px;">idle → waiting (60s timer) → negotiating → complete</span>
-        <span style="margin-top:6px;">NOTIFY room:{name} on every join event</span>
-      </div>
-    </div>
-
-    <!-- S5: Negotiation pipeline -->
-    <div class="section" data-scene="5">
-      <div class="sec-label">Step 4 — CognitiveEngine</div>
-      <h2 class="sec-title">SemanticNegotiationPipeline</h2>
-      <p class="sec-body">When the join timer fires, <strong>CognitiveEngine</strong> runs the pipeline. Three components chain together: <strong>IntentDiscovery</strong> reads what agents want, <strong>OptionsGeneration</strong> creates the solution space, and <strong>NegotiationModel</strong> runs the actual protocol.</p>
+    <!-- S3: Infrastructure -->
+    <div class="section" data-scene="3">
+      <div class="sec-label">Infrastructure</div>
+      <h2 class="sec-title">Single Database, Full Stack</h2>
+      <p class="sec-body">Everything runs on one <strong>AgensGraph</strong> instance &mdash; SQL tables, openCypher graph, pgvector embeddings. The backend is <strong>FastAPI</strong> with Postgres <code>LISTEN/NOTIFY</code> for real-time SSE.</p>
+      <p class="sec-body" style="margin-top:12px;">CFN services plug in via the <code>cfn</code> profile. OpenClaw agents connect through the adapter, receiving coordination events over persistent SSE streams.</p>
       <div class="sec-detail">
-        <span class="hi">IntentDiscovery</span><span style="margin-top:2px;">  → ["budget","timeline","scope","quality"]</span>
-        <span style="margin-top:6px;" class="hi">OptionsGeneration</span><span style="margin-top:2px;">→ {"budget": ["minimal"…"uncapped"], …}</span>
-        <span style="margin-top:6px;" class="hi">NegotiationModel</span><span style="margin-top:2px;"> → NegMAS SAO with RoomNegotiators</span>
+        <span class="hi">Database:</span> <span>AgensGraph (Postgres + openCypher + pgvector)</span>
+        <span style="margin-top:4px;" class="hi">Backend:</span> <span>FastAPI :8000 + asyncpg LISTEN/NOTIFY</span>
+        <span style="margin-top:4px;" class="hi">Agents:</span> <span>OpenClaw runtime with mycelium adapter</span>
+        <span style="margin-top:4px;" class="hi">LLM:</span> <span>litellm (100+ provider support)</span>
       </div>
     </div>
 
-    <!-- S6: Tick loop -->
-    <div class="section" data-scene="6">
-      <div class="sec-label yellow">Step 5 — Negotiation Loop</div>
-      <h2 class="sec-title">Propose → Respond → Consensus</h2>
-      <p class="sec-body">NegMAS drives the loop. It calls <code>propose()</code> or <code>respond()</code> on each <strong>RoomNegotiator</strong>. The negotiator posts a <code>coordination_tick</code> message to the room, NOTIFYs the agent's SSE channel, then <strong>blocks on an asyncio.Future</strong> waiting for the reply.</p>
-      <p class="sec-body" style="margin-top:12px;">The plugin receives the tick via SSE, wakes the agent with <code>openclaw gateway call agent</code>, and injects the tick as context. The agent runs <code>mycelium message propose budget=high scope=extended</code>. The reply resolves the Future. NegMAS advances.</p>
+    <!-- S4: Semantic Negotiation -->
+    <div class="section" data-scene="4">
+      <div class="sec-label">Pillar 1 &mdash; Cognition State Protocols</div>
+      <h2 class="sec-title">Semantic Negotiation Protocol</h2>
+      <p class="sec-body">When agents need to agree, <strong>CognitiveEngine</strong> runs the SemanticNegotiationPipeline. Three components: <strong>IntentDiscovery</strong> reads what agents want, <strong>OptionsGeneration</strong> creates the solution space, <strong>NegotiationModel</strong> runs NegMAS SAO (Stacked Alternating Offers).</p>
+      <p class="sec-body" style="margin-top:12px;">Agents propose, respond, and reach consensus &mdash; all mediated, never direct. The engine has access to agent identities, intents, shared memories, and the knowledge graph.</p>
+      <div class="sec-detail">
+        <span class="hi">IntentDiscovery</span><span style="margin-top:2px;">  &#8594; ["budget","timeline","scope","quality"]</span>
+        <span style="margin-top:6px;" class="hi">OptionsGeneration</span><span style="margin-top:2px;">&#8594; {"budget": ["minimal"..."uncapped"], ...}</span>
+        <span style="margin-top:6px;" class="hi">NegotiationModel</span><span style="margin-top:2px;"> &#8594; NegMAS SAO with RoomNegotiators</span>
+      </div>
+    </div>
+
+    <!-- S5: Live Negotiation -->
+    <div class="section" data-scene="5">
+      <div class="sec-label yellow">Pillar 1 &mdash; Live Flow</div>
+      <h2 class="sec-title">Propose &#8594; Respond &#8594; Consensus</h2>
+      <p class="sec-body">The protocol is <strong>push-based and event-driven</strong>. Agents join a room with their position. CognitiveEngine starts a 60s join window. When it fires, NegMAS drives propose/respond rounds.</p>
+      <p class="sec-body" style="margin-top:12px;">Each tick is pushed via SSE to the specific agent. The agent responds via the CLI. NegMAS unblocks and advances. No polling &mdash; Postgres <code>NOTIFY</code> pushes through SSE to the plugin which wakes the agent.</p>
       <div class="sec-detail yellow">
-        <span class="hi-y">monopoly-test-119: round 1, step 1 of 100</span>
-        <span style="margin-top:4px;">julia proposes: budget=high, timeline=standard</span>
-        <span style="margin-top:2px;">selina evaluates → accepts → [consensus]</span>
+        <span class="hi-y">$ mycelium room join design-review --handle julia-agent</span>
+        <span style="margin-top:4px;" class="hi-y">$ mycelium message propose budget=high scope=extended</span>
+        <span style="margin-top:6px;">CognitiveEngine evaluates &#8594; consensus or next round</span>
       </div>
     </div>
 
-    <!-- S7: Knowledge extraction -->
+    <!-- S6: Persistent Memory -->
+    <div class="section" data-scene="6">
+      <div class="sec-label green">Pillar 2 &mdash; Cognition Fabric</div>
+      <h2 class="sec-title">Persistent Memory</h2>
+      <p class="sec-body">Agents write memories scoped to rooms. Memories persist across sessions, carry <strong>vector embeddings</strong> for semantic search, and accumulate across agents. This is the <strong>ratchet effect</strong> &mdash; intelligence that doesn't reset.</p>
+      <p class="sec-body" style="margin-top:12px;">Memories are key-value entries with namespace paths like <code>agent/branch/topic</code>. They version automatically and support semantic similarity search via pgvector.</p>
+    </div>
+
+    <!-- S7: Catchup & Synthesis -->
     <div class="section" data-scene="7">
-      <div class="sec-label purple">Step 6 — Memory</div>
-      <h2 class="sec-title">Conversations become knowledge</h2>
-      <p class="sec-body">The <code>mycelium-knowledge-extract</code> hook fires on <code>agent:bootstrap</code> and <code>command:new</code>. It reads the agent's session JSONL from disk, extracts every turn — including thinking chains, tool calls with full inputs, results, and token costs.</p>
-      <p class="sec-body" style="margin-top:12px;">It POSTs the structured payload to <code>/api/knowledge/ingest</code>. The backend runs a <strong>two-stage LLM pipeline</strong>: first extract concepts (nodes), then extract relationships (edges). Both land in AgensGraph.</p>
+      <div class="sec-label purple">Pillar 3 &mdash; Cognition Engines</div>
+      <h2 class="sec-title">The Helios Pattern</h2>
+      <p class="sec-body">When a new agent arrives, it doesn't start from zero. <code>mycelium catchup</code> shows the latest CognitiveEngine synthesis plus recent activity. The synthesis is structured: <strong>Current State, What Worked, What Failed, Open Questions, Recommended Next Actions</strong>.</p>
+      <p class="sec-body" style="margin-top:12px;">This is how distributed agent swarms with shared memory ran 1000+ experiments &mdash; each new agent absorbed everything the swarm learned. Intelligence compounds instead of resetting.</p>
       <div class="sec-detail purple">
-        <span class="hi-p">Stage 1: extract_concepts tool → nodes</span>
-        <span style="margin-top:4px; hi-p" class="hi-p">Stage 2: extract_relationships tool → edges</span>
-        <span style="margin-top:6px;">Stored in ioc-graph-db :5456 (AgensGraph)</span>
+        <span class="hi-p">Synthesis triggers:</span> <span>periodic, on-demand, or per-milestone</span>
+        <span style="margin-top:4px;" class="hi-p">Catchup:</span> <span>latest synthesis + recent activity stream</span>
+        <span style="margin-top:4px;" class="hi-p">Result:</span> <span>20+ agents, zero context loss</span>
       </div>
     </div>
 
-    <!-- S8: Memory-guided negotiation -->
+    <!-- S8: CFN Integration -->
     <div class="section" data-scene="8">
-      <div class="sec-label green">Step 7 — Informed Coordination</div>
-      <h2 class="sec-title">The graph guides future negotiations</h2>
-      <p class="sec-body">Before each negotiation, CognitiveEngine queries two sources. <strong>Shared memories</strong> (<code>/api/workspaces/{id}/mas/{masId}/shared-memories/query</code>) return past agreements. The <strong>knowledge graph</strong> (<code>/api/knowledge/graphs/query</code>) returns agent-specific context — what julia-agent owns, her past positions, what she agreed to last time.</p>
-      <p class="sec-body" style="margin-top:12px;">This primes IntentDiscovery and OptionsGeneration with real context instead of stubs, leading to <strong>faster convergence</strong> and more relevant issue spaces.</p>
+      <div class="sec-label">CFN Integration</div>
+      <h2 class="sec-title">Cognitive Fabric Nodes</h2>
+      <p class="sec-body">Mycelium plugs into the <strong>Outshift CFN stack</strong>. Agent registration flows through <code>ioc-cfn-mgmt-plane</code>. Memory operations route through <code>ioc-knowledge-memory-svc</code> to AgensGraph.</p>
+      <p class="sec-body" style="margin-top:12px;">The knowledge graph stores concepts and relationships extracted from agent conversations. CognitiveEngine queries this to inform future negotiations &mdash; creating a self-improving coordination loop.</p>
+      <div class="sec-detail">
+        <span class="hi">Management:</span> <span>ioc-cfn-mgmt-plane-svc :9000</span>
+        <span style="margin-top:4px;" class="hi">CFN core:</span> <span>ioc-cfn-svc :9002</span>
+        <span style="margin-top:4px;" class="hi">Memory:</span> <span>ioc-knowledge-memory-svc :9003</span>
+      </div>
     </div>
 
-    <!-- S9: End-to-end -->
+    <!-- S9: End-to-End -->
     <div class="section" data-scene="9">
-      <div class="sec-label">Full Pipeline</div>
-      <h2 class="sec-title">End to end</h2>
-      <p class="sec-body">From a single <code>mycelium adapter add openclaw</code> to agents reaching consensus — the whole flow is <strong>event-driven</strong>. No polling. Postgres NOTIFY pushes through SSE to the plugin which wakes the agent. NegMAS blocks on asyncio Futures bridged to room messages.</p>
-      <p class="sec-body" style="margin-top:12px;">Every conversation feeds back into the knowledge fabric. CognitiveEngine gets smarter with every negotiation. The roadmap replaces the 5s poller with direct webhook push and adds coordination metrics collected per-round.</p>
+      <div class="sec-label green">Full Pipeline</div>
+      <h2 class="sec-title">From Isolation to Collective Intelligence</h2>
+      <p class="sec-body">One install command. Agents join rooms. CognitiveEngine mediates. Memories compound. Knowledge grows. The protocol is open. The fabric is persistent. The engines get smarter.</p>
+      <p class="sec-body" style="margin-top:12px;">This is the <strong>Internet of Cognition</strong> &mdash; running today.</p>
     </div>
 
   </div>
@@ -735,181 +662,129 @@
   <div class="panel-wrap">
     <div class="panel">
 
-      <!-- SCENE 1: overview -->
+      <!-- SCENE 1: Semantic Isolation -->
       <div class="scene active" id="sc1">
-        <div style="width:100%; display:flex; flex-direction:column; gap:14px;">
-          <div class="sc1-row">
-            <div class="sc1-box o">
-              <div class="icon">🦞</div>
-              <div class="name">openclaw</div>
-              <div class="sub">agent runtime<br>plugin host</div>
+        <div style="width:100%; display:flex; flex-direction:column; gap:16px;">
+          <div class="iso-grid">
+            <div class="iso-agent">
+              <div class="icon" style="font-size:32px; color:var(--accent); opacity:0.5;">&#9679;</div>
+              <div class="name">Agent A</div>
+              <div class="cap">perceive<br>reason<br>act</div>
             </div>
-            <div style="display:flex; align-items:center; padding:0 6px; color:var(--dim); font-size:18px;">⇄</div>
-            <div class="sc1-box b">
-              <div class="icon">⚡</div>
-              <div class="name">mycelium-backend</div>
-              <div class="sub">FastAPI :8000<br>rooms · coordination</div>
+            <div class="iso-agent">
+              <div class="icon" style="font-size:32px; color:var(--blue); opacity:0.5;">&#9679;</div>
+              <div class="name">Agent B</div>
+              <div class="cap">perceive<br>reason<br>act</div>
             </div>
-          </div>
-          <div class="sc1-conn"></div>
-          <div class="sc1-row">
-            <div class="sc1-box g">
-              <div class="icon">🗄️</div>
-              <div class="name">mycelium-db</div>
-              <div class="sub">Postgres :5432<br>rooms · sessions · msgs</div>
-            </div>
-            <div style="width:20px;"></div>
-            <div class="sc1-box p">
-              <div class="icon">🕸️</div>
-              <div class="name">ioc-graph-db</div>
-              <div class="sub">AgensGraph :5456<br>knowledge graph</div>
+            <div class="iso-agent">
+              <div class="icon" style="font-size:32px; color:var(--purple); opacity:0.5;">&#9679;</div>
+              <div class="name">Agent C</div>
+              <div class="cap">perceive<br>reason<br>act</div>
             </div>
           </div>
-          <div style="text-align:center; padding: 10px 16px; background:rgba(56,189,248,0.05); border:1px solid rgba(56,189,248,0.15); border-radius:8px;">
-            <div style="font-size:10px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--muted); margin-bottom:4px;">also wired in</div>
-            <div style="font-size:12px; color:var(--text);">Anthropic API — two-stage knowledge ingestion LLM</div>
+          <div class="iso-gap">NO SHARED INTENT &middot; NO SHARED CONTEXT &middot; NO RATCHET</div>
+          <div style="text-align:center; padding:12px 16px; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:8px;">
+            <div style="font-size:11px; color:var(--muted); line-height:1.6;">Each agent starts from zero. Past decisions are lost.<br>Context evaporates between sessions.</div>
           </div>
         </div>
       </div>
 
-      <!-- SCENE 2: adapter install -->
+      <!-- SCENE 2: Three Pillars -->
       <div class="scene" id="sc2">
-        <div style="width:100%; display:flex; flex-direction:column; gap:8px;">
-          <div style="font-size:10px; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--muted); margin-bottom:4px;">Installation sequence</div>
-          <div class="install-step lit">
-            <div class="install-num">1</div>
-            <div class="install-text">
-              <div class="t">openclaw plugins install mycelium</div>
-              <div class="s">registers index.ts lifecycle plugin</div>
-            </div>
-          </div>
-          <div class="install-step lit" style="transition-delay:0.1s;">
-            <div class="install-num">2</div>
-            <div class="install-text">
-              <div class="t">openclaw hooks install mycelium-bootstrap</div>
-              <div class="s">fires on agent:bootstrap → inject env vars</div>
-            </div>
-          </div>
-          <div class="install-step lit" style="transition-delay:0.2s;">
-            <div class="install-num">3</div>
-            <div class="install-text">
-              <div class="t">openclaw hooks install mycelium-knowledge-extract</div>
-              <div class="s">fires on agent:bootstrap + command:new</div>
-            </div>
-          </div>
-          <div class="install-step lit" style="transition-delay:0.3s;">
-            <div class="install-num">4</div>
-            <div class="install-text">
-              <div class="t">copy skill → ~/.openclaw/workspace/skills/mycelium/</div>
-              <div class="s">agent receives mycelium CLI instructions</div>
-            </div>
-          </div>
-          <div class="install-step lit" style="transition-delay:0.4s;">
-            <div class="install-num">5</div>
-            <div class="install-text">
-              <div class="t">write ~/.mycelium/config.json</div>
-              <div class="s">MYCELIUM_API_URL · MYCELIUM_GATEWAY_URL</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- SCENE 3: SSE -->
-      <div class="scene" id="sc3">
-        <div class="sse-wrap" style="display:flex;flex-direction:column;gap:0;">
-          <div style="font-size:10px;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;font-family:'SF Mono',monospace;color:var(--muted);margin-bottom:12px;">on session_start</div>
-          <div class="sse-agent">
-            <div class="sse-dot"></div>
-            <div>
-              <div class="sse-label">julia-agent connected</div>
-              <div class="sse-sub">subscribeHandle("julia-agent")</div>
-            </div>
-          </div>
-          <div class="sse-pipe"></div>
-          <div class="sse-server">
-            <div class="ep">GET /agents/julia-agent/stream</div>
-            <div style="margin-top:4px;">Content-Type: text/event-stream</div>
-            <div style="margin-top:4px; color:var(--dim);">asyncpg LISTEN agent:julia-agent</div>
-          </div>
-          <div style="margin-top:14px; font-size:10px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--muted); margin-bottom:8px;">events received over this stream</div>
-          <div class="sse-event">
-            <div class="ev-dot" style="background:var(--yellow);"></div>
-            <span class="ev-type">coordination_tick</span>
-            <span class="ev-desc">action: propose | respond</span>
-          </div>
-          <div class="sse-event">
-            <div class="ev-dot" style="background:var(--green);"></div>
-            <span class="ev-type">coordination_consensus</span>
-            <span class="ev-desc">final assignments</span>
-          </div>
-          <div style="margin-top:10px; font-size:10.5px; color:var(--muted); font-family:'SF Mono',monospace;">auto-reconnect · 5s backoff · 15s keepalive</div>
-        </div>
-      </div>
-
-      <!-- SCENE 4: room join -->
-      <div class="scene" id="sc4">
         <div style="width:100%; display:flex; flex-direction:column; gap:10px;">
-          <div class="room-box" style="background:rgba(56,189,248,0.04); border-color:rgba(56,189,248,0.25);">
-            <div class="r-title">coordination room</div>
-            <div class="r-name">monopoly-test-119</div>
+          <div style="font-size:10px; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--muted); margin-bottom:4px;">IoC Paper &#8594; Mycelium Implementation</div>
+          <div class="pillar-row">
+            <div class="pillar-card po">
+              <div class="p-label" style="color:var(--accent);">Pillar 1</div>
+              <div class="p-ioc">Cognition State Protocols</div>
+              <div class="p-myc" style="margin-top:8px; border-top:1px solid var(--border); padding-top:8px;">CognitiveEngine<br>NegMAS SAO<br>SemanticNegotiation<br>Pipeline</div>
+            </div>
+            <div class="pillar-card pb">
+              <div class="p-label" style="color:var(--blue);">Pillar 2</div>
+              <div class="p-ioc">Cognition Fabric</div>
+              <div class="p-myc" style="margin-top:8px; border-top:1px solid var(--border); padding-top:8px;">Persistent Memory<br>AgensGraph + pgvector<br>Knowledge Graph</div>
+            </div>
+            <div class="pillar-card pp">
+              <div class="p-label" style="color:var(--purple);">Pillar 3</div>
+              <div class="p-ioc">Cognition Engines</div>
+              <div class="p-myc" style="margin-top:8px; border-top:1px solid var(--border); padding-top:8px;">Synthesis<br>Catchup Protocol<br>Guardrails</div>
+            </div>
           </div>
-          <div class="agents-row">
-            <div class="agent-card" style="border-color:rgba(129,140,248,0.35);">
-              <div class="a-handle" style="color:var(--blue);">julia-agent</div>
-              <div class="a-intent">"I have Park Place, ready to deal"</div>
+          <div style="display:flex; gap:8px; width:100%;">
+            <div style="flex:1; text-align:center; padding:8px; background:rgba(52,211,153,0.05); border:1px solid rgba(52,211,153,0.2); border-radius:8px; font-size:10px; color:var(--green); font-family:'SF Mono',monospace;">
+              ioc-cfn-mgmt-plane
             </div>
-            <div class="agent-card" style="border-color:rgba(192,132,252,0.35);">
-              <div class="a-handle" style="color:var(--purple);">selina-agent</div>
-              <div class="a-intent">"Standing by for CognitiveEngine"</div>
+            <div style="flex:1; text-align:center; padding:8px; background:rgba(52,211,153,0.05); border:1px solid rgba(52,211,153,0.2); border-radius:8px; font-size:10px; color:var(--green); font-family:'SF Mono',monospace;">
+              ioc-knowledge-memory-svc
             </div>
-          </div>
-          <div class="timer-bar-wrap" style="background:var(--card); border:1px solid var(--border); border-radius:8px; padding:12px 14px;">
-            <div class="timer-label">
-              <span>join window</span>
-              <span style="color:var(--yellow);">60s</span>
-            </div>
-            <div class="timer-bar">
-              <div class="timer-fill" style="animation: grow 3s ease-in-out infinite alternate;"></div>
-            </div>
-            <style>@keyframes grow { from { width:5%; } to { width:95%; } }</style>
-          </div>
-          <div class="state-row">
-            <div class="state-pill"><span class="sp-dot"></span>idle</div>
-            <div class="state-pill active-state"><span class="sp-dot"></span>waiting</div>
-            <div class="state-pill"><span class="sp-dot"></span>negotiating</div>
-            <div class="state-pill"><span class="sp-dot"></span>complete</div>
           </div>
         </div>
       </div>
 
-      <!-- SCENE 5: pipeline -->
-      <div class="scene" id="sc5">
+      <!-- SCENE 3: Infrastructure -->
+      <div class="scene" id="sc3">
+        <div style="width:100%; display:flex; flex-direction:column; gap:14px;">
+          <div class="sc3-row">
+            <div class="sc3-box o">
+              <div class="name">OpenClaw Agents</div>
+              <div class="sub">5-6 agents<br>mycelium adapter</div>
+            </div>
+            <div style="display:flex; align-items:center; padding:0 6px; color:var(--dim); font-size:18px;">&#8644;</div>
+            <div class="sc3-box b">
+              <div class="name">mycelium-backend</div>
+              <div class="sub">FastAPI :8000<br>rooms &middot; SSE &middot; coordination</div>
+            </div>
+          </div>
+          <div class="sc3-conn"></div>
+          <div class="sc3-row">
+            <div class="sc3-box g" style="flex:2;">
+              <div class="name">mycelium-db (AgensGraph)</div>
+              <div class="sub">SQL + openCypher + pgvector &middot; single instance &middot; :5432</div>
+            </div>
+          </div>
+          <div class="sc3-conn"></div>
+          <div class="sc3-row">
+            <div class="sc3-box p" style="font-size:10px;">
+              <div class="name" style="font-size:11px;">CFN Services</div>
+              <div class="sub">mgmt-plane :9000 &middot; cfn :9002 &middot; memory :9003</div>
+            </div>
+            <div style="display:flex; align-items:center; padding:0 6px; color:var(--dim); font-size:18px;">&#8644;</div>
+            <div class="sc3-box g" style="font-size:10px;">
+              <div class="name" style="font-size:11px;">litellm</div>
+              <div class="sub">100+ LLM providers<br>synthesis &middot; extraction</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SCENE 4: Negotiation Pipeline -->
+      <div class="scene" id="sc4">
         <div style="width:100%; display:flex; flex-direction:column; gap:8px;">
-          <div class="pipe-header">SemanticNegotiationPipeline — 3 components</div>
+          <div class="pipe-header">SemanticNegotiationPipeline &mdash; 3 components</div>
           <div class="pipe-comp lit-b">
             <div class="pipe-badge" style="background:rgba(129,140,248,0.1);color:var(--blue);">C1</div>
             <div class="pipe-body">
               <div class="pipe-name">IntentDiscovery</div>
               <div class="pipe-desc">Reads agent intents from joined sessions</div>
-              <div class="pipe-out">→ ["budget", "timeline", "scope", "quality"]</div>
+              <div class="pipe-out">&#8594; ["budget", "timeline", "scope", "quality"]</div>
             </div>
           </div>
-          <div class="pipe-arrow">↓</div>
+          <div class="pipe-arrow">&#8595;</div>
           <div class="pipe-comp lit-p">
             <div class="pipe-badge" style="background:rgba(192,132,252,0.1);color:var(--purple);">C2</div>
             <div class="pipe-body">
               <div class="pipe-name">OptionsGeneration</div>
               <div class="pipe-desc">Generates value space per issue</div>
-              <div class="pipe-out">→ {"budget": ["minimal" … "uncapped"], …}</div>
+              <div class="pipe-out">&#8594; {"budget": ["minimal" ... "uncapped"], ...}</div>
             </div>
           </div>
-          <div class="pipe-arrow">↓</div>
+          <div class="pipe-arrow">&#8595;</div>
           <div class="pipe-comp lit-o">
             <div class="pipe-badge" style="background:rgba(56,189,248,0.1);color:var(--accent);">C3</div>
             <div class="pipe-body">
               <div class="pipe-name">NegotiationModel (NegMAS SAO)</div>
               <div class="pipe-desc">Stacked Alternating Offers via RoomNegotiators</div>
-              <div class="pipe-out">→ NegotiationResult {agreement, steps, timedout}</div>
+              <div class="pipe-out">&#8594; NegotiationResult {agreement, steps, timedout}</div>
             </div>
           </div>
           <div style="padding:10px 14px; background:rgba(251,191,36,0.05); border:1px solid rgba(251,191,36,0.2); border-radius:8px; font-size:10.5px; color:var(--muted); font-family:'SF Mono',monospace;">
@@ -918,55 +793,55 @@
         </div>
       </div>
 
-      <!-- SCENE 6: tick loop -->
-      <div class="scene" id="sc6">
+      <!-- SCENE 5: Tick Loop -->
+      <div class="scene" id="sc5">
         <div style="width:100%; display:flex; flex-direction:column; gap:10px;">
           <div class="tick-header">
             <span class="tick-col-label tcl-ce">CognitiveEngine</span>
             <span style="font-size:10px; color:var(--dim); font-family:'SF Mono',monospace;">room channel</span>
-            <span class="tick-col-label tcl-ag">julia-agent</span>
+            <span class="tick-col-label tcl-ag">agent (CLI)</span>
           </div>
           <div class="tick-cols">
             <div class="tick-side">
               <div class="tick-card ce-lit">
-                <div class="tc-step">1. timer fires</div>
+                <div class="tc-step">1. join window fires</div>
                 <div class="tc-body">_run_tick(room, 0)</div>
                 <div class="tc-sub">fetch sessions + intents</div>
               </div>
               <div class="tick-card ce-lit">
-                <div class="tc-step">3. NegMAS → RoomNegotiator</div>
+                <div class="tc-step">3. NegMAS drives</div>
                 <div class="tc-body">propose() called</div>
-                <div class="tc-sub">POST coordination_tick<br>NOTIFY agent:julia-agent</div>
+                <div class="tc-sub">POST coordination_tick<br>NOTIFY agent:handle</div>
               </div>
               <div class="tick-card ce-lit">
                 <div class="tc-step">5. Future resolved</div>
                 <div class="tc-body">on_agent_response()</div>
-                <div class="tc-sub">NegMAS unblocks → advance</div>
+                <div class="tc-sub">NegMAS unblocks &#8594; advance</div>
               </div>
               <div class="tick-card ok-lit">
                 <div class="tc-step">7. consensus</div>
-                <div class="tc-body" style="color:var(--green);">budget=high ✓</div>
-                <div class="tc-sub">NOTIFY all agents → complete</div>
+                <div class="tc-body" style="color:var(--green);">agreement reached</div>
+                <div class="tc-sub">NOTIFY all &#8594; complete</div>
               </div>
             </div>
             <div class="tick-mid">
-              <div class="mid-arrow" style="color:var(--accent);">→</div>
+              <div class="mid-arrow" style="color:var(--accent);">&#8594;</div>
               <div class="mid-line"></div>
-              <div class="mid-arrow" style="color:var(--blue);">←</div>
+              <div class="mid-arrow" style="color:var(--blue);">&#8592;</div>
               <div class="mid-line" style="background:linear-gradient(to bottom,var(--blue),var(--green));"></div>
-              <div class="mid-arrow" style="color:var(--green);">→</div>
+              <div class="mid-arrow" style="color:var(--green);">&#8594;</div>
             </div>
             <div class="tick-side">
               <div class="tick-card" style="border-color:var(--border); min-height:24px;"></div>
               <div class="tick-card ag-lit">
-                <div class="tc-step">2+4. SSE → wake → decide</div>
-                <div class="tc-body">plugin injects tick</div>
-                <div class="tc-sub">mycelium message propose<br>budget=high scope=extended</div>
+                <div class="tc-step">2+4. SSE &#8594; agent wakes</div>
+                <div class="tc-body">mycelium message propose</div>
+                <div class="tc-sub">budget=high scope=extended</div>
               </div>
               <div class="tick-card ag-lit">
-                <div class="tc-step">6. selina responds</div>
+                <div class="tc-step">6. other agent responds</div>
                 <div class="tc-body">respond accept</div>
-                <div class="tc-sub">evaluates offer → aligned</div>
+                <div class="tc-sub">evaluates &#8594; aligned</div>
               </div>
               <div class="tick-card ok-lit">
                 <div class="tc-step">8. received</div>
@@ -978,115 +853,124 @@
         </div>
       </div>
 
-      <!-- SCENE 7: knowledge extract -->
-      <div class="scene" id="sc7">
-        <div style="width:100%; display:flex; flex-direction:column; gap:7px;">
-          <div style="font-size:10px; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--muted); margin-bottom:4px;">mycelium-knowledge-extract hook</div>
-          <div class="ke-step lit">
-            <div class="ke-num">①</div>
-            <div class="ke-text">
-              <div class="kt">Trigger: agent:bootstrap + command:new</div>
-              <div class="ks">handler.js fires on every session start</div>
-            </div>
-          </div>
-          <div class="ke-arrow">↓</div>
-          <div class="ke-step lit">
-            <div class="ke-num">②</div>
-            <div class="ke-text">
-              <div class="kt">Read session JSONL</div>
-              <div class="ks">~/.openclaw/agents/{id}/sessions/*.jsonl<br>turns: user, thinking, tools, results, cost</div>
-            </div>
-          </div>
-          <div class="ke-arrow">↓</div>
-          <div class="ke-step lit">
-            <div class="ke-num">③</div>
-            <div class="ke-text">
-              <div class="kt">POST /api/knowledge/ingest</div>
-              <div class="ks">schema: openclaw-conversation-v1</div>
-            </div>
-          </div>
-          <div class="ke-arrow">↓</div>
-          <div class="ke-graph">
-            <svg width="100%" height="130" viewBox="0 0 340 130">
-              <rect x="0" y="0" width="340" height="130" fill="transparent"/>
-              <!-- LLM stage 1 -->
-              <rect x="10" y="8" width="140" height="34" rx="6" fill="rgba(251,191,36,0.08)" stroke="rgba(251,191,36,0.3)" stroke-width="1"/>
-              <text x="80" y="20" text-anchor="middle" fill="#fbbf24" font-size="9" font-weight="700" letter-spacing="1">STAGE 1</text>
-              <text x="80" y="34" text-anchor="middle" fill="#d4d4d4" font-size="10">extract_concepts → nodes</text>
-              <!-- arrow -->
-              <text x="168" y="30" text-anchor="middle" fill="#f97316" font-size="14">→</text>
-              <!-- LLM stage 2 -->
-              <rect x="190" y="8" width="140" height="34" rx="6" fill="rgba(192,132,252,0.08)" stroke="rgba(192,132,252,0.3)" stroke-width="1"/>
-              <text x="260" y="20" text-anchor="middle" fill="#a78bfa" font-size="9" font-weight="700" letter-spacing="1">STAGE 2</text>
-              <text x="260" y="34" text-anchor="middle" fill="#d4d4d4" font-size="10">extract_relationships → edges</text>
-              <!-- down arrow -->
-              <text x="170" y="60" text-anchor="middle" fill="#f97316" font-size="14">↓</text>
-              <!-- graph nodes -->
-              <circle cx="90" cy="100" r="22" fill="rgba(56,189,248,0.12)" stroke="rgba(56,189,248,0.4)" stroke-width="1.2"/>
-              <text x="90" y="97" text-anchor="middle" fill="#f97316" font-size="9" font-weight="700">julia</text>
-              <text x="90" y="108" text-anchor="middle" fill="#f97316" font-size="8">-agent</text>
-              <circle cx="170" cy="88" r="18" fill="rgba(129,140,248,0.1)" stroke="rgba(129,140,248,0.35)" stroke-width="1.2"/>
-              <text x="170" y="92" text-anchor="middle" fill="#60a5fa" font-size="9">Park Place</text>
-              <circle cx="250" cy="100" r="18" fill="rgba(192,132,252,0.1)" stroke="rgba(192,132,252,0.35)" stroke-width="1.2"/>
-              <text x="250" y="97" text-anchor="middle" fill="#a78bfa" font-size="9">negotiation</text>
-              <text x="250" y="108" text-anchor="middle" fill="#a78bfa" font-size="8">-session</text>
-              <line x1="108" y1="96" x2="152" y2="90" stroke="#333" stroke-width="1.2"/>
-              <text x="128" y="87" text-anchor="middle" fill="#555" font-size="8">owns</text>
-              <line x1="187" y1="93" x2="232" y2="99" stroke="#333" stroke-width="1.2"/>
-              <text x="212" y="91" text-anchor="middle" fill="#555" font-size="8">joined</text>
-            </svg>
-          </div>
-        </div>
-      </div>
-
-      <!-- SCENE 8: memory loop -->
-      <div class="scene" id="sc8">
+      <!-- SCENE 6: Persistent Memory (terminal mockup) -->
+      <div class="scene" id="sc6">
         <div style="width:100%; display:flex; flex-direction:column; gap:10px;">
-          <div style="font-size:10px; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--muted); margin-bottom:4px;">Memory-guided negotiation</div>
-          <div class="mem-box" style="background:rgba(56,189,248,0.06); border-color:rgba(56,189,248,0.3); color:var(--accent);">
-            CognitiveEngine
+          <div style="font-size:10px; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--muted); margin-bottom:4px;">Persistent Memory &mdash; CLI</div>
+          <div class="term-block">
+            <span class="prompt">$</span> <span class="cmd">mycelium memory set</span> <span class="val">"position/julia"</span> <span class="val">"REST is better than GraphQL"</span> <span class="flag">--handle julia-agent</span><br>
+            <span class="output">Memory set: design-review/<span class="key">position/julia</span> (v1)</span>
           </div>
-          <div style="display:flex; gap:10px; align-items:flex-start;">
-            <div style="flex:1; display:flex; flex-direction:column; gap:6px; align-items:center;">
-              <div style="font-size:9px; color:var(--muted); font-family:'SF Mono',monospace; text-align:center; letter-spacing:0.08em; text-transform:uppercase;">queries</div>
-              <div class="mem-box" style="background:rgba(129,140,248,0.06); border-color:rgba(129,140,248,0.25); font-size:11px; color:var(--blue); width:100%;">
-                shared-memories<br><span style="font-size:10px; color:var(--muted); font-weight:400;">past agreements</span>
-              </div>
-              <div class="mem-box" style="background:rgba(192,132,252,0.06); border-color:rgba(192,132,252,0.25); font-size:11px; color:var(--purple); width:100%;">
-                knowledge graph<br><span style="font-size:10px; color:var(--muted); font-weight:400;">agent context + edges</span>
-              </div>
-            </div>
-            <div style="display:flex; align-items:center; color:var(--green); font-size:16px; padding-top:30px;">→</div>
-            <div style="flex:1; display:flex; flex-direction:column; gap:6px; align-items:center;">
-              <div style="font-size:9px; color:var(--muted); font-family:'SF Mono',monospace; text-align:center; letter-spacing:0.08em; text-transform:uppercase;">seeds</div>
-              <div class="mem-box" style="background:rgba(129,140,248,0.06); border-color:rgba(129,140,248,0.2); font-size:11px; color:var(--blue); width:100%;">IntentDiscovery<br><span style="font-size:10px; color:var(--muted); font-weight:400;">context-aware issues</span></div>
-              <div class="mem-box" style="background:rgba(192,132,252,0.06); border-color:rgba(192,132,252,0.2); font-size:11px; color:var(--purple); width:100%;">OptionsGeneration<br><span style="font-size:10px; color:var(--muted); font-weight:400;">domain-tuned options</span></div>
-            </div>
+          <div class="term-block">
+            <span class="prompt">$</span> <span class="cmd">mycelium memory search</span> <span class="val">"API design decisions"</span><br>
+            <span class="key">position/julia</span> <span class="tdim">(similarity: 0.72, v1)</span><br>
+            <span class="output">&nbsp; REST is better than GraphQL</span>
           </div>
-          <div style="padding:10px 14px; background:rgba(52,211,153,0.05); border:1px solid rgba(52,211,153,0.2); border-radius:8px; font-size:11px; color:var(--green); text-align:center;">
-            ↑ knowledge graph grows with every negotiation ↑
+          <div class="term-block">
+            <span class="prompt">$</span> <span class="cmd">mycelium memory ls</span> <span class="val">position/</span><br>
+            <span class="output">design-review <span class="tdim">(3 memories)</span></span><br>
+            <span class="key">position/julia</span> &nbsp;&nbsp;&nbsp;&nbsp;<span class="tdim">v1</span>&nbsp; <span class="output">julia-agent</span> &nbsp;&nbsp;<span class="tdim">2026-03-17</span><br>
+            <span class="key">position/selina</span> &nbsp;&nbsp;&nbsp;<span class="tdim">v1</span>&nbsp; <span class="output">selina-agent</span> &nbsp;<span class="tdim">2026-03-17</span><br>
+            <span class="key">position/kappa</span> &nbsp;&nbsp;&nbsp;&nbsp;<span class="tdim">v1</span>&nbsp; <span class="output">kappa-agent</span> &nbsp;&nbsp;<span class="tdim">2026-03-17</span>
           </div>
-          <div style="font-size:10.5px; color:var(--muted); text-align:center; font-family:'SF Mono',monospace;">Faster convergence · informed starting positions · self-improving</div>
+          <div style="padding:8px 12px; background:rgba(52,211,153,0.05); border:1px solid rgba(52,211,153,0.2); border-radius:8px; font-size:10px; color:var(--green); text-align:center; font-family:'SF Mono',monospace;">
+            vector embeddings &middot; namespace scoping &middot; cross-session persistence
+          </div>
         </div>
       </div>
 
-      <!-- SCENE 9: full pipeline -->
+      <!-- SCENE 7: Catchup & Synthesis (terminal mockup) -->
+      <div class="scene" id="sc7">
+        <div style="width:100%; display:flex; flex-direction:column; gap:10px;">
+          <div style="font-size:10px; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--muted); margin-bottom:4px;">The Helios Pattern &mdash; Catchup</div>
+          <div class="term-block" style="line-height:1.8;">
+            <span class="prompt">$</span> <span class="cmd">mycelium catchup</span><br>
+            <span class="val">design-review</span> &nbsp;<span class="tdim">async room</span> &nbsp;<span class="output">47 memories</span> &nbsp;<span class="tdim">6 contributors</span><br>
+            <br>
+            <span style="color:var(--accent); font-weight:700;">Latest Synthesis</span><br>
+            <span style="color:var(--text); font-weight:600;">## Current State</span><br>
+            <span class="output">AgensGraph consolidation decided. REST chosen over GraphQL.</span><br>
+            <span style="color:var(--text); font-weight:600;">## What Worked</span><br>
+            <span class="output">pgvector for semantic search &mdash; 40ms p99 improvement.</span><br>
+            <span style="color:var(--text); font-weight:600;">## What Failed</span><br>
+            <span class="output">SQLite can't handle pgvector/JSONB for local testing.</span><br>
+            <span style="color:var(--text); font-weight:600;">## Open Questions</span><br>
+            <span class="output">Pagination standards not yet decided.</span>
+          </div>
+          <div style="padding:8px 12px; background:rgba(192,132,252,0.05); border:1px solid rgba(192,132,252,0.2); border-radius:8px; font-size:10px; color:var(--purple); text-align:center; font-family:'SF Mono',monospace;">
+            new agent arrives &#8594; absorbs swarm knowledge &#8594; zero context loss
+          </div>
+        </div>
+      </div>
+
+      <!-- SCENE 8: CFN Integration -->
+      <div class="scene" id="sc8">
+        <div style="width:100%; display:flex; flex-direction:column; gap:8px;">
+          <div style="font-size:10px; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--muted); margin-bottom:4px;">Outshift CFN Stack</div>
+          <div class="cfn-svc" style="border-color:rgba(56,189,248,0.35);">
+            <div class="svc-dot" style="background:var(--accent); box-shadow:0 0 8px rgba(56,189,248,0.5); animation: pulse 2s ease-in-out infinite;"></div>
+            <div>
+              <div class="svc-name" style="color:var(--accent);">ioc-cfn-mgmt-plane-svc</div>
+              <div class="svc-port">:9000 &middot; agent registration &middot; lifecycle</div>
+            </div>
+          </div>
+          <div class="cfn-svc" style="border-color:rgba(129,140,248,0.35);">
+            <div class="svc-dot" style="background:var(--blue); box-shadow:0 0 8px rgba(129,140,248,0.5); animation: pulse 2s ease-in-out infinite 0.3s;"></div>
+            <div>
+              <div class="svc-name" style="color:var(--blue);">ioc-cfn-svc</div>
+              <div class="svc-port">:9002 &middot; cognitive fabric node core</div>
+            </div>
+          </div>
+          <div class="cfn-svc" style="border-color:rgba(52,211,153,0.35);">
+            <div class="svc-dot" style="background:var(--green); box-shadow:0 0 8px rgba(52,211,153,0.5); animation: pulse 2s ease-in-out infinite 0.6s;"></div>
+            <div>
+              <div class="svc-name" style="color:var(--green);">ioc-knowledge-memory-svc</div>
+              <div class="svc-port">:9003 &middot; memory operations &middot; knowledge graph</div>
+            </div>
+          </div>
+          <div style="display:flex; gap:8px; margin-top:4px;">
+            <div style="flex:1; text-align:center; font-size:14px; color:var(--dim);">&#8595;</div>
+            <div style="flex:1; text-align:center; font-size:14px; color:var(--dim);">&#8595;</div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <div class="cfn-svc" style="flex:1; border-color:rgba(192,132,252,0.35);">
+              <div class="svc-dot" style="background:var(--purple); box-shadow:0 0 8px rgba(192,132,252,0.5);"></div>
+              <div>
+                <div class="svc-name" style="color:var(--purple); font-size:11px;">mycelium-db</div>
+                <div class="svc-port">AgensGraph</div>
+              </div>
+            </div>
+            <div class="cfn-svc" style="flex:1; border-color:rgba(103,232,249,0.35);">
+              <div class="svc-dot" style="background:var(--yellow); box-shadow:0 0 8px rgba(103,232,249,0.5);"></div>
+              <div>
+                <div class="svc-name" style="color:var(--yellow); font-size:11px;">mycelium-backend</div>
+                <div class="svc-port">FastAPI :8000</div>
+              </div>
+            </div>
+          </div>
+          <div style="padding:8px 12px; background:rgba(56,189,248,0.05); border:1px solid rgba(56,189,248,0.15); border-radius:8px; font-size:10px; color:var(--muted); text-align:center; font-family:'SF Mono',monospace;">
+            knowledge graph grows &#8594; CognitiveEngine queries &#8594; better negotiations
+          </div>
+        </div>
+      </div>
+
+      <!-- SCENE 9: End-to-End -->
       <div class="scene" id="sc9">
         <div style="width:100%; display:flex; flex-direction:column; gap:12px;">
-          <div style="font-size:10px; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--muted); margin-bottom:2px;">end-to-end</div>
+          <div style="font-size:10px; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--muted); margin-bottom:2px;">end-to-end pipeline</div>
           <div class="final-row">
             <div class="final-box fo">
               <div class="fb-label" style="color:var(--accent);">setup</div>
               <div class="fb-name">adapter add</div>
-              <div class="fb-sub">plugin + 2 hooks + skill</div>
+              <div class="fb-sub">one command install</div>
             </div>
-            <div class="final-arrow">→</div>
+            <div class="final-arrow">&#8594;</div>
             <div class="final-box fb">
-              <div class="fb-label" style="color:var(--blue);">startup</div>
-              <div class="fb-name">SSE open</div>
-              <div class="fb-sub">per-agent stream</div>
+              <div class="fb-label" style="color:var(--blue);">connect</div>
+              <div class="fb-name">SSE stream</div>
+              <div class="fb-sub">per-agent push</div>
             </div>
-            <div class="final-arrow">→</div>
+            <div class="final-arrow">&#8594;</div>
             <div class="final-box fg">
               <div class="fb-label" style="color:var(--green);">join</div>
               <div class="fb-name">room + intent</div>
@@ -1095,17 +979,17 @@
           </div>
           <div class="final-row">
             <div class="final-box fp">
-              <div class="fb-label" style="color:var(--purple);">memory</div>
-              <div class="fb-name">ingest</div>
-              <div class="fb-sub">turns → graph nodes</div>
+              <div class="fb-label" style="color:var(--purple);">grow</div>
+              <div class="fb-name">knowledge graph</div>
+              <div class="fb-sub">concepts + edges</div>
             </div>
-            <div class="final-arrow">←</div>
+            <div class="final-arrow">&#8592;</div>
             <div class="final-box fg">
-              <div class="fb-label" style="color:var(--green);">consensus</div>
-              <div class="fb-name">[complete]</div>
-              <div class="fb-sub">assignments broadcast</div>
+              <div class="fb-label" style="color:var(--green);">remember</div>
+              <div class="fb-name">memory persist</div>
+              <div class="fb-sub">namespace + vectors</div>
             </div>
-            <div class="final-arrow">←</div>
+            <div class="final-arrow">&#8592;</div>
             <div class="final-box fy">
               <div class="fb-label" style="color:var(--yellow);">negotiate</div>
               <div class="fb-name">NegMAS SAO</div>
@@ -1115,31 +999,33 @@
           <div class="final-summary">
             <div class="fs-item">
               <div class="fs-k">transport</div>
-              <div class="fs-v">Postgres NOTIFY → SSE → plugin wake</div>
+              <div class="fs-v">NOTIFY &#8594; SSE &#8594; agent wake</div>
             </div>
             <div class="fs-item">
               <div class="fs-k">async bridge</div>
-              <div class="fs-v">NegMAS Future ↔ room message</div>
+              <div class="fs-v">NegMAS Future &#8596; room message</div>
             </div>
             <div class="fs-item">
               <div class="fs-k">knowledge</div>
-              <div class="fs-v">two-stage LLM → AgensGraph</div>
+              <div class="fs-v">two-stage LLM &#8594; AgensGraph</div>
             </div>
             <div class="fs-item">
-              <div class="fs-k">next: metrics</div>
-              <div class="fs-v">poller → webhook push, coord stats</div>
+              <div class="fs-k">memory</div>
+              <div class="fs-v">persistent namespace + vector search</div>
             </div>
           </div>
         </div>
       </div>
+
+      <style>@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }</style>
 
     </div><!-- end panel -->
   </div><!-- end panel-wrap -->
 </div><!-- end scrolly -->
 
 <div class="footer">
-  <span>Mycelium · Internet of Cognition</span>
-  <span>IOC = Internet of Cognition</span>
+  <span>Mycelium &middot; Internet of Cognition</span>
+  <span>Outshift by Cisco</span>
 </div>
 
 <div id="pg-bar"></div>
@@ -1154,7 +1040,7 @@
     if (target) target.classList.add('active');
   }
 
-  // IntersectionObserver — activate scene when section is ≥50% visible
+  // IntersectionObserver — activate scene when section is >=50% visible
   const obs = new IntersectionObserver((entries) => {
     entries.forEach(e => {
       if (e.isIntersecting) {
