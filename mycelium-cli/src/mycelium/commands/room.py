@@ -15,7 +15,6 @@ Commands:
 
 import json as json_module
 import os
-import sys
 from pathlib import Path
 
 import typer
@@ -23,7 +22,6 @@ import typer
 from mycelium.config import MyceliumConfig
 from mycelium.error_handler import print_error
 from mycelium.exceptions import ConfigNotFoundError, MyceliumError
-from mycelium.http_client import MyceliumHTTPClient  # kept for SSE streaming only
 
 
 def _typed_client(config: MyceliumConfig):
@@ -210,17 +208,17 @@ def synthesize(
     """Trigger CognitiveEngine synthesis for an async/hybrid room."""
     try:
         from rich.console import Console
-        from rich.status import Status
 
         console = Console()
         json_output = ctx.obj.get("json", False) if ctx.obj else False
         config = MyceliumConfig.load()
         name = room_name or room or _resolve_room(config)
 
-        from mycelium_backend_client.api.rooms import synthesize_room_rooms_room_name_synthesize_post as synth_api
+        from mycelium_backend_client.api.rooms import (
+            synthesize_room_rooms_room_name_synthesize_post as synth_api,
+        )
 
-        with console.status(f"[bold cyan]Synthesizing {name}...[/]", spinner="dots"):
-            with _typed_client(config) as client:
+        with console.status(f"[bold cyan]Synthesizing {name}...[/]", spinner="dots"), _typed_client(config) as client:
                 result = synth_api.sync_detailed(room_name=name, client=client)
                 data = result.parsed.to_dict() if result.parsed and hasattr(result.parsed, "to_dict") else json_module.loads(result.content)
 
@@ -298,7 +296,9 @@ def delete(
                 typer.echo("Cancelled.")
                 raise typer.Exit(0)
 
-        from mycelium_backend_client.api.rooms import delete_room_rooms_room_name_delete as delete_api
+        from mycelium_backend_client.api.rooms import (
+            delete_room_rooms_room_name_delete as delete_api,
+        )
 
         with _typed_client(config) as client:
             delete_api.sync_detailed(room_name=room_name, client=client)
@@ -509,7 +509,9 @@ def join(
         elif file:
             intent = file.read_text().strip()
 
-        from mycelium_backend_client.api.sessions import join_room_rooms_room_name_sessions_post as join_api
+        from mycelium_backend_client.api.sessions import (
+            join_room_rooms_room_name_sessions_post as join_api,
+        )
         from mycelium_backend_client.models import SessionCreate
 
         with _typed_client(config) as client:
@@ -522,7 +524,7 @@ def join(
             return
 
         typer.echo(f"  Joined {room_name} as {handle}.")
-        typer.echo(f"  CognitiveEngine will address you here when it is your turn.")
+        typer.echo("  CognitiveEngine will address you here when it is your turn.")
 
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
@@ -650,8 +652,7 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
     url = f"{config.server.api_url}/rooms/{room_name}/messages/stream"
     start = time.time()
 
-    with httpx.Client(timeout=None) as http:
-        with http.stream("GET", url) as response:
+    with httpx.Client(timeout=None) as http, http.stream("GET", url) as response:
             for line in response.iter_lines():
                 if timeout > 0 and (time.time() - start) >= timeout:
                     console.print(f"\n  [dim]Timeout after {timeout}s[/]")
@@ -691,6 +692,7 @@ def await_tick(
         4. mycelium room await --handle my-agent        # wait for next tick
     """
     import time
+
     import httpx
 
     try:
@@ -701,8 +703,7 @@ def await_tick(
         url = f"{config.server.api_url}/agents/{handle}/stream"
         start = time.time()
 
-        with httpx.Client(timeout=None) as http:
-            with http.stream("GET", url) as response:
+        with httpx.Client(timeout=None) as http, http.stream("GET", url) as response:
                 for line in response.iter_lines():
                     if timeout > 0 and (time.time() - start) >= timeout:
                         typer.echo(json_module.dumps({"type": "timeout", "seconds": timeout}))
@@ -814,7 +815,9 @@ def respond(
 
         config = MyceliumConfig.load()
 
-        from mycelium_backend_client.api.messages import send_message_rooms_room_name_messages_post as send_api
+        from mycelium_backend_client.api.messages import (
+            send_message_rooms_room_name_messages_post as send_api,
+        )
         from mycelium_backend_client.models import MessageCreate
 
         with _typed_client(config) as client:
@@ -855,7 +858,9 @@ def delegate(
         config = MyceliumConfig.load()
         sender = config.get_current_identity()
 
-        from mycelium_backend_client.api.messages import send_message_rooms_room_name_messages_post as send_api
+        from mycelium_backend_client.api.messages import (
+            send_message_rooms_room_name_messages_post as send_api,
+        )
         from mycelium_backend_client.models import MessageCreate
 
         with _typed_client(config) as client:

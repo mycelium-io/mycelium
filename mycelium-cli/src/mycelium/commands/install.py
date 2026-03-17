@@ -212,7 +212,7 @@ def _write_env_file(env_path: Path, llm_config: dict[str, str]) -> None:
             lines.append(line)
 
     # Append any new keys from llm_config not already in defaults
-    existing_keys = {l.split("=")[0].strip() for l in lines if "=" in l}
+    existing_keys = {ln.split("=")[0].strip() for ln in lines if "=" in ln}
     for key, value in llm_config.items():
         if key not in existing_keys:
             lines.append(f"{key}={value}")
@@ -311,7 +311,7 @@ def _wait_for_health(urls: list[str], timeout: int = 120) -> bool:
     deadline = time.time() + timeout
     pending = list(urls)
 
-    sys.stdout.write(f"  Waiting for services to become healthy")
+    sys.stdout.write("  Waiting for services to become healthy")
     sys.stdout.flush()
 
     while pending and time.time() < deadline:
