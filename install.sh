@@ -138,22 +138,12 @@ fi
 echo ""
 echo -e "${BOLD}${GREEN}✨ Installation complete!${NC}"
 echo ""
-
-# Show PATH instructions if mycelium isn't immediately available
-if ! command -v mycelium &>/dev/null; then
-  echo -e "${YELLOW}Add mycelium to your PATH:${NC}"
-  echo ""
-  echo -e "  ${BOLD}export PATH=\"$UV_BIN_DIR:\$PATH\"${NC}"
-  echo ""
-  echo -e "  To make it permanent, add to your shell config:"
-  if [ -f "$HOME/.zshrc" ]; then
-    echo -e "  ${DIM}zsh:${NC}  echo 'export PATH=\"$UV_BIN_DIR:\$PATH\"' >> ~/.zshrc && source ~/.zshrc"
-  fi
-  echo -e "  ${DIM}bash:${NC} echo 'export PATH=\"$UV_BIN_DIR:\$PATH\"' >> ~/.bashrc && source ~/.bashrc"
-  echo ""
-  echo -e "  Then run:"
-fi
-
+echo -e "${YELLOW}Activate for this session:${NC}"
+echo -e "  ${BOLD}export PATH=\"$UV_BIN_DIR:\$PATH\"${NC}"
+echo ""
+echo -e "  (Already added to ~/.bashrc / ~/.zshrc for future sessions)"
+echo ""
+echo -e "Then run:"
 echo -e "  ${BOLD}mycelium --help${NC}               — show all commands"
 echo -e "  ${BOLD}mycelium install${NC}              — spin up the full stack (Docker)"
 echo -e "  ${BOLD}mycelium adapter add openclaw${NC} — wire OpenClaw agents"
