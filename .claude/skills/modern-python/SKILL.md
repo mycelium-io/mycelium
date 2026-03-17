@@ -82,6 +82,22 @@ uv run pytest tests/ -v
 
 Tests use SQLite in-memory (see `tests/conftest.py`) — no Postgres needed for unit tests.
 
+## Installing the CLI Globally
+
+The CLI has a dependency on the generated OpenAPI client (`mycelium-client/`). When installing globally via `uv tool`:
+
+```bash
+cd mycelium-cli
+uv tool install -e . --with mycelium-backend-client@../mycelium-client --force
+```
+
+The `--with` flag adds the sibling package. Use `--force` to reinstall after code changes.
+
+For local dev (just running from the repo):
+```bash
+pip install -e ../mycelium-client -e .
+```
+
 ## Key Patterns
 
 - **Python 3.12+** — we use modern syntax (X | Y unions, match/case if needed)
