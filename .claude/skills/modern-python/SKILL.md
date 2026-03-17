@@ -48,7 +48,7 @@ This project has two Python packages:
 
 | Package | Path | Entry |
 |---------|------|-------|
-| **fastapi-backend** | `fastapi-backend/` | `app/main.py` |
+| **mycelium-backend** | `mycelium-backend/` | `app/main.py` |
 | **mycelium-cli** | `mycelium-cli/` | `mycelium.cli:app` |
 
 Each has its own `pyproject.toml`. Run `uv sync` from within each directory.
@@ -71,7 +71,7 @@ Ruff config is in each `pyproject.toml` under `[tool.ruff]`. We use `select = ["
 
 ```bash
 # Run tests
-cd fastapi-backend && uv run pytest tests/ -x -q
+cd mycelium-backend && uv run pytest tests/ -x -q
 
 # Run specific test
 uv run pytest tests/test_memory.py -x -q

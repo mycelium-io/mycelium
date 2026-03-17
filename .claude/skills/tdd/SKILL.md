@@ -15,7 +15,7 @@ Guide the user through a red-green-refactor TDD cycle.
 
 3. **Run test (red)** — Run the test to confirm it fails:
    ```bash
-   cd fastapi-backend && python -m pytest tests/<test_file>.py -x -q
+   cd mycelium-backend && python -m pytest tests/<test_file>.py -x -q
    ```
    Show the failure output. This is the "red" phase.
 
@@ -27,7 +27,7 @@ Guide the user through a red-green-refactor TDD cycle.
 
 7. **Full suite** — Run the full test suite to ensure nothing else broke:
    ```bash
-   cd fastapi-backend && python -m pytest tests/ -x -q
+   cd mycelium-backend && python -m pytest tests/ -x -q
    ```
 
 8. **Repeat** — Ask if the user wants to add another test case or move on.

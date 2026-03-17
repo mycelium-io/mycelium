@@ -202,7 +202,7 @@ def _get_compose_path() -> Path:
 
     For editable installs (dev), walk up from the package source to find the
     repo's services/docker-compose.yml — this keeps build context relative
-    paths (../cfn/..., ../fastapi-backend) correct.
+    paths (../cfn/..., ../mycelium-backend) correct.
 
     For non-editable installs, extract the bundled compose to ~/.mycelium/docker/.
     Build contexts won't work in that case, but pull-only services will.

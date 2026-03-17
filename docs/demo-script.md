@@ -4,7 +4,7 @@
 
 ```bash
 # Backend running on :8888 (or wherever)
-cd fastapi-backend && uv run uvicorn app.main:app --host 0.0.0.0 --port 8888
+cd mycelium-backend && uv run uvicorn app.main:app --host 0.0.0.0 --port 8888
 
 # Frontend running on :3000
 cd mycelium-frontend && pnpm dev

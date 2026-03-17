@@ -94,7 +94,7 @@ No external message broker, no separate vector DB, no Redis. One database.
 
 ```
 mycelium-cli/         CLI + adapters (OpenClaw, Claude Code)
-fastapi-backend/      FastAPI coordination engine
+mycelium-backend/      FastAPI coordination engine
 mycelium-client/      Generated typed OpenAPI client
 ```
 
@@ -117,7 +117,7 @@ mycelium adapter add openclaw
 ## Development
 
 ```bash
-cd fastapi-backend
+cd mycelium-backend
 uv sync --group dev
 uv run pytest tests/                    # unit tests (SQLite)
 DATABASE_URL=... uv run pytest tests/   # integration tests (AgensGraph)

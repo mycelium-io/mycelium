@@ -36,7 +36,7 @@ jobs:
         run: uv python install 3.12
 
       - name: Install dependencies
-        working-directory: fastapi-backend
+        working-directory: mycelium-backend
         run: uv sync --group dev
 
       - name: Install pgvector in AgensGraph
@@ -50,19 +50,19 @@ jobs:
           docker exec ${{ job.services.agensgraph.id }} psql -U postgres -d mycelium -c "CREATE EXTENSION IF NOT EXISTS vector;"
 
       - name: Lint
-        working-directory: fastapi-backend
+        working-directory: mycelium-backend
         run: uv run ruff check .
 
       - name: Format check
-        working-directory: fastapi-backend
+        working-directory: mycelium-backend
         run: uv run ruff format --check .
 
       - name: Unit tests (SQLite)
-        working-directory: fastapi-backend
+        working-directory: mycelium-backend
         run: uv run pytest tests/ -x -q --ignore=tests/test_integration.py
 
       - name: Integration tests (AgensGraph + pgvector)
-        working-directory: fastapi-backend
+        working-directory: mycelium-backend
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:password@localhost:5432/mycelium
           GRAPH_DB_URL: postgresql://postgres:password@localhost:5432/mycelium

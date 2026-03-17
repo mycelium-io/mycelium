@@ -7,7 +7,7 @@ services:
 
   mycelium-db:
     build:
-      context: ../fastapi-backend
+      context: ../mycelium-backend
       dockerfile: docker/Dockerfile.agensgraph
     platform: linux/amd64
     container_name: mycelium-db
@@ -28,7 +28,7 @@ services:
 
   mycelium-backend:
     build:
-      context: ../fastapi-backend
+      context: ../mycelium-backend
       dockerfile: Dockerfile
     image: mycelium-backend:latest
     container_name: mycelium-backend

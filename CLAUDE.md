@@ -7,7 +7,7 @@ Mycelium — multi-agent coordination + persistent memory, built on the Internet
 ## Structure
 
 ```
-fastapi-backend/    FastAPI coordination engine (Python 3.12, asyncpg, SQLAlchemy)
+mycelium-backend/    FastAPI coordination engine (Python 3.12, asyncpg, SQLAlchemy)
 mycelium-cli/       CLI tool (typer, Rich, typed OpenAPI client)
 mycelium-client/    Generated OpenAPI client (openapi-python-client)
 mycelium-frontend/  Next.js room viewer (TypeScript, Tailwind)
@@ -18,7 +18,7 @@ docs/               Presentation deck, demo script
 
 ```bash
 # Backend
-cd fastapi-backend && uv sync --group dev
+cd mycelium-backend && uv sync --group dev
 uv run pytest tests/ -x -q                    # unit tests (SQLite)
 DATABASE_URL=... uv run pytest tests/ -x -q    # integration tests (AgensGraph)
 uv run ruff check . && uv run ruff format .
