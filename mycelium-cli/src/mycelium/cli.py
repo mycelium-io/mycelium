@@ -7,16 +7,13 @@ import typer
 from mycelium import __version__
 from mycelium.commands import (
     adapter,
-    announce,
     config,
-    daemon,
     docs,
     install,
     instance,
     memory,
     message,
     room,
-    send,
 )
 
 app = typer.Typer(
@@ -65,18 +62,15 @@ app.command(name="down")(instance.stop)
 app.command(name="status")(instance.status)
 app.command(name="logs")(instance.logs)
 
-# Top-level coordination commands
-app.command(name="send")(send.send)
-app.command(name="announce")(announce.announce)
+# Top-level shortcuts
 app.command(name="watch")(room.watch)
 
 # Command groups
 app.add_typer(room.app, name="room")
 app.add_typer(message.app, name="message")
-app.add_typer(config.app, name="config")
-app.add_typer(daemon.app, name="daemon")
-app.add_typer(adapter.app, name="adapter")
 app.add_typer(memory.app, name="memory")
+app.add_typer(config.app, name="config")
+app.add_typer(adapter.app, name="adapter")
 app.add_typer(docs.app, name="docs")
 
 
