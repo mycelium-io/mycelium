@@ -205,28 +205,34 @@ def create(
 def synthesize(
     ctx: typer.Context,
     room_name: str | None = typer.Argument(None, help="Room to synthesize (default: active room)"),
+    room: str | None = typer.Option(None, "--room", "-r", help="Room name (alternative to positional arg)"),
 ) -> None:
     """Trigger CognitiveEngine synthesis for an async/hybrid room."""
     try:
+        from rich.console import Console
+        from rich.status import Status
+
+        console = Console()
         json_output = ctx.obj.get("json", False) if ctx.obj else False
         config = MyceliumConfig.load()
-        name = room_name or _resolve_room(config)
+        name = room_name or room or _resolve_room(config)
 
         from mycelium_backend_client.api.rooms import synthesize_room_rooms_room_name_synthesize_post as synth_api
 
-        with _typed_client(config) as client:
-            result = synth_api.sync_detailed(room_name=name, client=client)
-            data = result.parsed.to_dict() if result.parsed and hasattr(result.parsed, "to_dict") else json_module.loads(result.content)
+        with console.status(f"[bold cyan]Synthesizing {name}...[/]", spinner="dots"):
+            with _typed_client(config) as client:
+                result = synth_api.sync_detailed(room_name=name, client=client)
+                data = result.parsed.to_dict() if result.parsed and hasattr(result.parsed, "to_dict") else json_module.loads(result.content)
 
         if json_output:
             typer.echo(json_module.dumps(data, indent=2, default=str))
         else:
             status = data.get("status", "unknown")
             if status == "complete":
-                typer.secho(f"Synthesis complete: {data.get('key', '')}", fg=typer.colors.GREEN)
-                typer.echo(f"  Memories synthesized: {data.get('memory_count', '?')}")
+                console.print(f"[bold green]Synthesis complete:[/] {data.get('key', '')}")
+                console.print(f"  Memories synthesized: {data.get('memory_count', '?')}")
             else:
-                typer.echo(f"  {data.get('message', 'No new memories to synthesize')}")
+                console.print(f"  {data.get('message', 'No new memories to synthesize')}")
 
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
