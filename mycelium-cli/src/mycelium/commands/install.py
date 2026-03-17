@@ -389,6 +389,15 @@ def install(
         compose_ok, compose_ver = _check_compose()
         disk_ok, disk_info = _check_disk()
 
+        # Fail fast — no point running the animation if Docker isn't available
+        if not docker_ok:
+            typer.secho(f"\n  ✗ Docker: {docker_ver}", fg=typer.colors.RED)
+            typer.echo("  Install Docker Desktop: https://docs.docker.com/get-docker/")
+            raise typer.Exit(1) from None
+        if not compose_ok:
+            typer.secho(f"\n  ✗ Docker Compose: {compose_ver}", fg=typer.colors.RED)
+            raise typer.Exit(1) from None
+
         ok   = "\x1b[32m✓\x1b[0m"
         err  = "\x1b[31m✗\x1b[0m"
         spin = "\x1b[2m⟳\x1b[0m"
@@ -428,30 +437,35 @@ def install(
 
         def _do_pulls() -> None:
             nonlocal log_window
-            for i, (image, label) in enumerate(_PUBLIC_IMAGES):
-                image_lines[i] = f"    {spin} {label}  \x1b[2mpulling…\x1b[0m"
-                log_window = []
-                cmd = ["docker", "pull"]
-                if _pull_platform:
-                    cmd += ["--platform", _pull_platform]
-                cmd.append(image)
-                proc = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                    text=True,
-                )
-                assert proc.stdout
-                for raw in proc.stdout:
-                    text = raw.strip()
-                    if text:
-                        log_window = (log_window + [f"      \x1b[2m> {text}\x1b[0m"])[-LOG_WINDOW:]
-                proc.wait()
-                if proc.returncode == 0:
-                    image_lines[i] = f"    {ok} {label}"
-                else:
-                    image_lines[i] = f"    {err} {label}  \x1b[2m(will retry during compose up)\x1b[0m"
-                log_window = []
-            done.set()
+            try:
+                for i, (image, label) in enumerate(_PUBLIC_IMAGES):
+                    image_lines[i] = f"    {spin} {label}  \x1b[2mpulling…\x1b[0m"
+                    log_window = []
+                    cmd = ["docker", "pull"]
+                    if _pull_platform:
+                        cmd += ["--platform", _pull_platform]
+                    cmd.append(image)
+                    try:
+                        proc = subprocess.Popen(
+                            cmd,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            text=True,
+                        )
+                        assert proc.stdout
+                        for raw in proc.stdout:
+                            text = raw.strip()
+                            if text:
+                                log_window = (log_window + [f"      \x1b[2m> {text}\x1b[0m"])[-LOG_WINDOW:]
+                        proc.wait()
+                        if proc.returncode == 0:
+                            image_lines[i] = f"    {ok} {label}"
+                        else:
+                            image_lines[i] = f"    {err} {label}  \x1b[2m(will retry during compose up)\x1b[0m"
+                    except Exception:
+                        image_lines[i] = f"    {err} {label}  \x1b[2m(skipped — docker not available)\x1b[0m"
+                    log_window = []
+            finally:
+                done.set()
 
         pull_thread = threading.Thread(target=_do_pulls, daemon=True)
         pull_thread.start()
