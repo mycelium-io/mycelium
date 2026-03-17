@@ -1,0 +1,54 @@
+name: Release CLI
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # needed to create GitHub Releases and upload assets
+
+jobs:
+  build-and-release:
+    name: Build wheel and publish release
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Build wheel
+        working-directory: mycelium-cli
+        run: uv build --wheel
+
+      - name: Get version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: mycelium ${{ github.ref_name }}
+          body: |
+            ## Install
+
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/mycelium-io/mycelium/main/install.sh | bash
+            ```
+
+            Or install a specific version:
+            ```bash
+            uv tool install mycelium-cli==${{ steps.version.outputs.version }}
+            ```
+
+            ## What's changed
+
+            See [commits since last release](https://github.com/mycelium-io/mycelium/commits/${{ github.ref_name }}).
+          files: mycelium-cli/dist/*.whl
+          fail_on_unmatched_files: true
