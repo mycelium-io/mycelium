@@ -72,23 +72,17 @@ fi
 # ── Fetch latest release version ─────────────────────────────────────────────
 step "Fetching latest release..."
 
-LATEST=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'])" 2>/dev/null || true)
+# Follow GitHub's /releases/latest redirect to get the version — no API token needed
+LATEST=$(curl -fsSL -o /dev/null -w "%{url_effective}" \
+  "https://github.com/${REPO}/releases/latest" 2>/dev/null \
+  | grep -oE 'tag/[^/]+' | cut -d/ -f2 || true)
 
 if [ -z "$LATEST" ]; then
-  # Fallback: check PyPI if GitHub API fails (e.g. rate limit / no releases yet)
-  LATEST=$(curl -fsSL "https://pypi.org/pypi/mycelium-cli/json" \
-    | python3 -c "import sys,json; print(json.load(sys.stdin)['info']['version'])" 2>/dev/null || true)
-  INSTALL_FROM="pypi"
-else
-  # Strip leading 'v' for pip version
-  WHEEL_VERSION="${LATEST#v}"
-  INSTALL_FROM="github"
+  die "Could not determine latest version. Check https://github.com/${REPO}/releases"
 fi
 
-if [ -z "$LATEST" ]; then
-  die "Could not determine latest version. Check your internet connection."
-fi
+WHEEL_VERSION="${LATEST#v}"
+INSTALL_FROM="github"
 
 ok "Latest version: $LATEST"
 
