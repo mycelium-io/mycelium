@@ -160,22 +160,12 @@ async def run_synthesis(room_name: str) -> dict | None:
 async def _llm_synthesize(room_name: str, context: str, memory_count: int) -> str:
     """Call LLM to synthesize accumulated memories into insights."""
     try:
-        import anthropic
+        import litellm
 
-        client_kwargs = {}
-        if settings.ANTHROPIC_BASE_URL:
-            client_kwargs["base_url"] = settings.ANTHROPIC_BASE_URL
-        if settings.ANTHROPIC_AUTH_TOKEN:
-            client_kwargs["api_key"] = settings.ANTHROPIC_AUTH_TOKEN
-        elif settings.ANTHROPIC_API_KEY:
-            client_kwargs["api_key"] = settings.ANTHROPIC_API_KEY
-
-        client = anthropic.Anthropic(**client_kwargs)
-
-        response = client.messages.create(
-            model=settings.SYNTHESIS_LLM_MODEL,
-            max_tokens=4096,
-            messages=[
+        kwargs: dict = {
+            "model": settings.LLM_MODEL,
+            "max_tokens": 4096,
+            "messages": [
                 {
                     "role": "user",
                     "content": (
@@ -203,8 +193,14 @@ async def _llm_synthesize(room_name: str, context: str, memory_count: int) -> st
                     ),
                 }
             ],
-        )
-        return response.content[0].text
+        }
+        if settings.LLM_API_KEY:
+            kwargs["api_key"] = settings.LLM_API_KEY
+        if settings.LLM_BASE_URL:
+            kwargs["api_base"] = settings.LLM_BASE_URL
+
+        response = litellm.completion(**kwargs)
+        return response.choices[0].message.content
 
     except Exception as e:
         logger.warning("LLM synthesis failed, using fallback: %s", e)

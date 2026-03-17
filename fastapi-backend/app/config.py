@@ -1,5 +1,13 @@
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Config file search order: local .env first, then global ~/.mycelium/.env
+_env_files = [".env"]
+_global_env = Path.home() / ".mycelium" / ".env"
+if _global_env.exists():
+    _env_files.append(str(_global_env))
 
 
 class Settings(BaseSettings):
@@ -22,11 +30,12 @@ class Settings(BaseSettings):
     # CORS — default for local dev; override in production via .env
     CORS_ORIGINS: set[str] = {"http://localhost:3000"}
 
+    # LLM — uses litellm format: "provider/model" (e.g. anthropic/claude-sonnet-4-6, openai/gpt-4o, ollama/llama3)
+    LLM_MODEL: str = "anthropic/claude-sonnet-4-6"
+    LLM_API_KEY: str | None = None
+    LLM_BASE_URL: str | None = None  # optional, for custom endpoints (ollama, vllm, etc.)
+
     # Coordination
-    COORDINATION_LLM_MODEL: str = "claude-sonnet-4-6"
-    ANTHROPIC_API_KEY: str | None = None
-    ANTHROPIC_BASE_URL: str | None = None   # e.g. http://host.docker.internal:8099/
-    ANTHROPIC_AUTH_TOKEN: str | None = None  # token for proxy (overrides ANTHROPIC_API_KEY)
     COORDINATION_JOIN_WINDOW_SECONDS: int = 60
     COORDINATION_TICK_TIMEOUT_SECONDS: int = 60
 
@@ -37,11 +46,8 @@ class Settings(BaseSettings):
     # Room defaults
     DEFAULT_ROOM_MODE: str = "async"
 
-    # Async CognitiveEngine synthesis
-    SYNTHESIS_LLM_MODEL: str = "claude-sonnet-4-6"
-
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+        env_file=tuple(_env_files), env_file_encoding="utf-8", extra="ignore"
     )
 
 

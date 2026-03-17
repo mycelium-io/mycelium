@@ -96,29 +96,30 @@ def _prompt_llm() -> dict[str, str]:
     print()
     print("  \x1b[1;36m? LLM configuration (for CognitiveEngine)\x1b[0m")
     print()
-    print("    \x1b[36m▸\x1b[0m \x1b[1m1)\x1b[0m Bedrock proxy  — uses Claude Code local proxy at :8099  \x1b[2m(default)\x1b[0m")
-    print("      \x1b[1m2)\x1b[0m Anthropic API key")
+    print("    Uses litellm format: provider/model")
+    print("    Examples: anthropic/claude-sonnet-4-6, openai/gpt-4o, ollama/llama3.3")
+    print("    Full list: https://docs.litellm.ai/docs/providers")
+    print()
+    print("    \x1b[36m▸\x1b[0m \x1b[1m1)\x1b[0m Enter model + API key")
+    print("      \x1b[1m2)\x1b[0m Local (Ollama at localhost:11434)")
     print("      \x1b[1m3)\x1b[0m Skip — stub mode (no real LLM)")
     print()
     choice = _ask("  \x1b[2mChoice [1]:\x1b[0m ", default="1")
 
-    if choice == "2":
-        key = _ask("  \x1b[2mAnthropic API key (sk-ant-...):\x1b[0m ")
-        print("  \x1b[32m✓\x1b[0m Anthropic API key configured")
-        return {"MYCELIUM_ANTHROPIC_API_KEY": key, "COORDINATION_LLM_MODEL": "claude-sonnet-4-6"}
+    if choice == "1":
+        model = _ask("  \x1b[2mModel [anthropic/claude-sonnet-4-6]:\x1b[0m ", default="anthropic/claude-sonnet-4-6")
+        key = _ask("  \x1b[2mAPI key:\x1b[0m ")
+        print(f"  \x1b[32m✓\x1b[0m Configured: {model}")
+        return {"LLM_MODEL": model, "LLM_API_KEY": key}
+    elif choice == "2":
+        model = _ask("  \x1b[2mModel [ollama/llama3.3]:\x1b[0m ", default="ollama/llama3.3")
+        print(f"  \x1b[32m✓\x1b[0m Local: {model} at http://localhost:11434")
+        return {"LLM_MODEL": model, "LLM_BASE_URL": "http://host.docker.internal:11434"}
     elif choice == "3":
-        print("  \x1b[33m~\x1b[0m Skipped — coordination will use stub responses")
+        print("  \x1b[33m~\x1b[0m Skipped — synthesis will use stub responses")
         return {}
     else:
-        import os
-        base_url = os.getenv("ANTHROPIC_BASE_URL", "http://host.docker.internal:8099/")
-        auth_token = os.getenv("ANTHROPIC_AUTH_TOKEN", "")
-        print(f"  \x1b[32m✓\x1b[0m Bedrock proxy at {base_url}")
-        return {
-            "MYCELIUM_ANTHROPIC_BASE_URL": base_url,
-            "MYCELIUM_ANTHROPIC_AUTH_TOKEN": auth_token,
-            "COORDINATION_LLM_MODEL": "bedrock/global.anthropic.claude-sonnet-4-6",
-        }
+        return _prompt_llm()
 
 
 # ── Env file ─────────────────────────────────────────────────────────────────

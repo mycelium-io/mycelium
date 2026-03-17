@@ -40,10 +40,9 @@ services:
       DATABASE_URL: postgresql+asyncpg://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium
       GRAPH_DB_URL: postgresql://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium
       CFN_MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
-      ANTHROPIC_BASE_URL: ${MYCELIUM_ANTHROPIC_BASE_URL:-}
-      ANTHROPIC_AUTH_TOKEN: ${MYCELIUM_ANTHROPIC_AUTH_TOKEN:-}
-      ANTHROPIC_API_KEY: ${MYCELIUM_ANTHROPIC_API_KEY:-}
-      COORDINATION_LLM_MODEL: ${COORDINATION_LLM_MODEL:-claude-sonnet-4-6}
+      LLM_MODEL: ${LLM_MODEL:-anthropic/claude-sonnet-4-6}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
     ports:
       - "${MYCELIUM_BACKEND_PORT:-8000}:8000"
     healthcheck:
