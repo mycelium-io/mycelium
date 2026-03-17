@@ -73,9 +73,9 @@ def memory_set(
     with _get_client() as client:
         result = create_api.sync(room_name=room_name, client=client, body=batch)
         if result and isinstance(result, list) and len(result) > 0:
-            console.print(f"[green]Memory set:[/green] {key} (v{result[0].version})")
+            console.print(f"[green]Memory set:[/green] {room_name}/{key} (v{result[0].version})")
         else:
-            console.print(f"[green]Memory set:[/green] {key}")
+            console.print(f"[green]Memory set:[/green] {room_name}/{key}")
 
 
 @app.command(name="get")
