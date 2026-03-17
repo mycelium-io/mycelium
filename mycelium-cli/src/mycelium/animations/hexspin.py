@@ -11,7 +11,7 @@ import random
 import sys
 import threading
 import time
-from typing import Callable
+from collections.abc import Callable
 
 import numpy as np
 import pyfiglet
@@ -520,7 +520,7 @@ def _render_frame(
     if has_ansi:
         lines[-1] += "\x1b[0m"
 
-    banner = _render_banner("Mycelium", screen_w, is_unicode=color_banner, theme=theme)
+    banner = _render_banner("mycelium", screen_w, is_unicode=color_banner, theme=theme)
     banner_h = len(banner) + 1
     if screen_h > banner_h + 5:
         for i in range(banner_h):

@@ -168,7 +168,10 @@
     margin-left: var(--sidebar-width);
     flex: 1;
     padding: 56px 64px 80px 72px;
-    max-width: calc(var(--sidebar-width) + 860px);
+    min-width: 0;
+  }
+  .main-inner {
+    max-width: 860px;
   }
 
   /* ── SECTIONS ── */
@@ -287,20 +290,30 @@
   /* ── CALLOUTS ── */
   .callout {
     border-radius: 10px;
-    padding: 16px 20px;
     margin: 20px 0;
-    border-left: 3px solid;
     font-size: 14px;
     line-height: 1.6;
+    overflow: hidden;
+    display: flex;
   }
-  .callout-info {
+  .callout-bar {
+    width: 4px;
+    flex-shrink: 0;
+    border-radius: 10px 0 0 10px;
+  }
+  .callout-body {
+    padding: 14px 18px;
+    border-radius: 0 10px 10px 0;
+    flex: 1;
+  }
+  .callout-info .callout-bar { background: var(--accent); }
+  .callout-info .callout-body {
     background: rgba(56,189,248,0.06);
-    border-color: var(--accent);
     color: var(--accent2);
   }
-  .callout-note {
+  .callout-note .callout-bar { background: var(--purple); }
+  .callout-note .callout-body {
     background: rgba(192,132,252,0.06);
-    border-color: var(--purple);
     color: #d8b4fe;
   }
   .callout strong { color: inherit; }
@@ -349,8 +362,13 @@
   }
   .card:hover { border-color: var(--border2); }
   .card-icon {
-    font-size: 20px;
     margin-bottom: 10px;
+    color: var(--accent);
+  }
+  .card-icon svg {
+    width: 20px;
+    height: 20px;
+    stroke: currentColor;
   }
   .card-title {
     font-size: 14px;
@@ -449,7 +467,7 @@
   /* ── RESPONSIVE ── */
   @media (max-width: 860px) {
     .sidebar { display: none; }
-    .main { margin-left: 0; padding: 32px 24px 60px; max-width: 100%; }
+    .main { margin-left: 0; padding: 32px 24px 60px; }
   }
   @media (max-width: 600px) {
     body { overflow-x: hidden; }
@@ -516,6 +534,7 @@
 
   <!-- MAIN -->
   <main class="main">
+  <div class="main-inner">
 
     <!-- OVERVIEW -->
     <section class="doc-section" id="overview">
@@ -528,22 +547,22 @@
 
       <div class="card-grid">
         <div class="card">
-          <div class="card-icon">🏠</div>
+          <div class="card-icon"><i data-lucide="door-open"></i></div>
           <div class="card-title">Rooms</div>
           <div class="card-desc">Namespaced coordination spaces. Agents join rooms to share context or negotiate in real time.</div>
         </div>
         <div class="card">
-          <div class="card-icon">🧠</div>
+          <div class="card-icon"><i data-lucide="database"></i></div>
           <div class="card-title">Persistent Memory</div>
           <div class="card-desc">Namespaced key-value store with semantic vector search. Intelligence compounds across sessions.</div>
         </div>
         <div class="card">
-          <div class="card-icon">⚖️</div>
+          <div class="card-icon"><i data-lucide="cpu"></i></div>
           <div class="card-title">CognitiveEngine</div>
           <div class="card-desc">Mediates all agent interaction. Drives structured negotiation — agents never talk directly.</div>
         </div>
         <div class="card">
-          <div class="card-icon">🕸️</div>
+          <div class="card-icon"><i data-lucide="network"></i></div>
           <div class="card-title">Knowledge Graph</div>
           <div class="card-desc">LLM extraction turns conversations into concepts and relationships in an openCypher graph.</div>
         </div>
@@ -583,9 +602,10 @@
       <pre><code>curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash</code></pre>
 
       <div class="callout callout-info">
-        The installer sets up the CLI, prompts for your LLM provider, then brings up
+        <div class="callout-bar"></div>
+        <div class="callout-body">The installer sets up the CLI, prompts for your LLM provider, then brings up
         the full stack (backend + AgensGraph) via <code>docker compose</code>.
-        Run <code>mycelium --help</code> after install to verify.
+        Run <code>mycelium --help</code> after install to verify.</div>
       </div>
 
       <p>
@@ -729,8 +749,9 @@ mycelium install</code></pre>
 <span class="cmd">mycelium memory ls</span> failed/</code></pre>
 
       <div class="callout callout-note">
-        <strong>Upserts require --update.</strong> Calling <code>memory set</code> on an existing key
-        fails unless you pass <code>--update</code>. This prevents silent overwrites of shared context.
+        <div class="callout-bar"></div>
+        <div class="callout-body"><strong>Upserts require --update.</strong> Calling <code>memory set</code> on an existing key
+        fails unless you pass <code>--update</code>. This prevents silent overwrites of shared context.</div>
       </div>
 
       <h3>Semantic Search</h3>
@@ -822,8 +843,9 @@ mycelium install</code></pre>
       </p>
 
       <div class="callout callout-info">
-        The knowledge graph lives in <strong>AgensGraph</strong> alongside the SQL tables —
-        no separate graph database required.
+        <div class="callout-bar"></div>
+        <div class="callout-body">The knowledge graph lives in <strong>AgensGraph</strong> alongside the SQL tables —
+        no separate graph database required.</div>
       </div>
     </section>
 
@@ -1016,10 +1038,14 @@ mycelium install</code></pre>
       <span>Built on the <a href="https://outshift.cisco.com" style="color: var(--muted);">Internet of Cognition</a></span>
     </div>
 
+  </div>
   </main>
 </div>
 
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <script>
+  lucide.createIcons();
+
   function copyPage() {
     const text = document.querySelector('.main').innerText;
     navigator.clipboard.writeText(text).then(() => {
