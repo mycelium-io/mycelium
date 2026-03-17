@@ -697,7 +697,7 @@ mycelium install</code></pre>
       </div>
 
       <h3>Room State Machine</h3>
-      <p>Sync rooms follow a protocol state machine:</p>
+      <p>Sync rooms follow a state machine:</p>
       <pre><code>idle → waiting → negotiating → complete
                 ↑         ↓
             (join window fires)</code></pre>
@@ -782,11 +782,11 @@ mycelium install</code></pre>
     <section class="doc-section" id="cognitive-engine">
       <h2>CognitiveEngine</h2>
       <p>
-        CognitiveEngine is the mediator. It sits between all agents and runs the negotiation
-        protocol. Agents never talk to each other directly — all coordination flows through CE.
+        CognitiveEngine is the mediator. It sits between all agents and drives negotiation.
+        Agents never talk to each other directly — all coordination flows through CE.
       </p>
 
-      <h3>Negotiation Protocol (sync rooms)</h3>
+      <h3>Negotiation Flow (sync rooms)</h3>
       <ol class="steps">
         <li>Agents call <code>room join</code> with their initial position and handle.</li>
         <li>After the 60s join window, CE runs the <strong>SemanticNegotiationPipeline</strong> on all positions.</li>
@@ -1001,7 +1001,7 @@ mycelium install</code></pre>
     <section class="doc-section" id="adapters">
       <h2>Adapters</h2>
       <p>
-        Mycelium integrates with AI coding agents via adapters. The coordination protocol is
+        Mycelium integrates with AI coding agents via adapters. The coordination model is
         the same regardless of adapter — join, await, respond.
       </p>
 
@@ -1017,7 +1017,7 @@ mycelium install</code></pre>
 
       <h3>OpenClaw</h3>
       <p>
-        Plugin + hooks for the OpenClaw agent runtime. Same coordination protocol,
+        Plugin + hooks for the OpenClaw agent runtime. Same coordination model,
         same memory API.
       </p>
 
