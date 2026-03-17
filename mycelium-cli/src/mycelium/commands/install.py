@@ -170,6 +170,32 @@ def _prompt_llm() -> dict[str, str]:
     return {}
 
 
+def _prompt_ioc() -> bool:
+    from beaupy import select
+
+    print()
+    print("  \x1b[1;36m? IoC integration (Cisco Internet of Cognition)\x1b[0m")
+    print("  \x1b[2mAdds the CFN management plane — workspace registry, MAS registry,\x1b[0m")
+    print("  \x1b[2mmemory provider registry. Mycelium registers itself on startup.\x1b[0m")
+    print()
+
+    options = [
+        "Yes  — install with IoC CFN management plane",
+        "No   — Mycelium only (default)",
+    ]
+
+    choice = select(options, cursor="  ▸ ", cursor_style="cyan")
+    if choice is None:
+        raise KeyboardInterrupt
+
+    enabled = choice.startswith("Yes")
+    if enabled:
+        print("  \x1b[32m✓\x1b[0m IoC CFN stack enabled")
+    else:
+        print("  \x1b[2m~\x1b[0m IoC skipped")
+    return enabled
+
+
 # ── Env file ─────────────────────────────────────────────────────────────────
 
 def _write_env_file(env_path: Path, llm_config: dict[str, str]) -> None:
@@ -245,16 +271,26 @@ def _image_exists(image: str) -> bool:
     return r.returncode == 0
 
 
-def _compose_up(compose_path: Path, env_path: Path) -> tuple[bool, bool]:
+def _compose_up(compose_path: Path, env_path: Path, profiles: list[str] | None = None) -> tuple[bool, bool]:
     """Bring the stack up.  Returns (success, needs_build)."""
-    needs_build = not _image_exists("mycelium-backend:latest")
+    # Build context exists when running from a repo checkout. Packaged installs
+    # extract compose to ~/.mycelium/docker/ where ../fastapi-backend is absent —
+    # those installs pull pre-built GHCR images instead.
+    build_context = compose_path.parent.parent / "fastapi-backend"
+    can_build = build_context.exists()
+    needs_build = can_build and not _image_exists("ghcr.io/mycelium-io/mycelium-backend:latest")
 
     args = [
         "docker", "compose",
         "-f", str(compose_path),
         "--env-file", str(env_path),
-        "up", "--pull", "missing", "--build", "-d",
     ]
+    for profile in (profiles or []):
+        args += ["--profile", profile]
+    up_flags = ["up", "--pull", "missing", "-d"]
+    if can_build:
+        up_flags.append("--build")
+    args += up_flags
 
     print()
     typer.secho("  Running: " + " ".join(args[2:]), dim=True)
@@ -493,6 +529,12 @@ def install(
         # ── Phase 2: Interactive prompts ──────────────────────────────────
         llm_config = _prompt_llm()
 
+        ioc_enabled = _prompt_ioc()
+        compose_profiles: list[str] = []
+        if ioc_enabled:
+            llm_config["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
+            compose_profiles.append("cfn")
+
         # Port check — allow user to pick alternatives
         default_ports = {"db": 5432, "backend": 8000}
         ports_to_check = list(default_ports.values())
@@ -532,7 +574,7 @@ def install(
         compose_path = _get_compose_path()
         typer.echo(f"  ✓ Compose file → {compose_path}")
 
-        ok, needs_build = _compose_up(compose_path, env_path)
+        ok, needs_build = _compose_up(compose_path, env_path, profiles=compose_profiles)
         if not ok:
             typer.secho("\n  ✗ docker compose up failed", fg=typer.colors.RED)
             raise typer.Exit(1) from None

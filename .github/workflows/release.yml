@@ -7,9 +7,53 @@ on:
 
 permissions:
   contents: write   # needed to create GitHub Releases and upload assets
+  packages: write   # needed to push to GHCR
 
 jobs:
+  publish-images:
+    name: Build and push Docker images to GHCR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Get version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push mycelium-db
+        uses: docker/build-push-action@v6
+        with:
+          context: fastapi-backend
+          file: fastapi-backend/docker/Dockerfile.agensgraph
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/mycelium-db:latest
+            ghcr.io/${{ github.repository_owner }}/mycelium-db:${{ steps.version.outputs.version }}
+
+      - name: Build and push mycelium-backend
+        uses: docker/build-push-action@v6
+        with:
+          context: fastapi-backend
+          file: fastapi-backend/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/mycelium-backend:latest
+            ghcr.io/${{ github.repository_owner }}/mycelium-backend:${{ steps.version.outputs.version }}
+
   build-and-release:
+    needs: publish-images
     name: Build wheel and publish release
     runs-on: ubuntu-latest
 

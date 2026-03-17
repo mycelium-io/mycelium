@@ -9,6 +9,7 @@ services:
     build:
       context: ../fastapi-backend
       dockerfile: docker/Dockerfile.agensgraph
+    image: ghcr.io/mycelium-io/mycelium-db:latest
     platform: linux/amd64
     container_name: mycelium-db
     restart: unless-stopped
@@ -30,7 +31,7 @@ services:
     build:
       context: ../fastapi-backend
       dockerfile: Dockerfile
-    image: mycelium-backend:latest
+    image: ghcr.io/mycelium-io/mycelium-backend:latest
     container_name: mycelium-backend
     restart: unless-stopped
     depends_on:
@@ -90,8 +91,6 @@ services:
       - "5433:5432"
     volumes:
       - ioc-cfn-db-data:/var/lib/postgresql/data
-      # Creates cfn_cp database on first start (required by ioc-cfn-svc)
-      - ./initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${CFN_DB_USER:-postgres} -d ${CFN_DB:-cfn_mgmt}"]
       interval: 5s
@@ -99,10 +98,7 @@ services:
       retries: 10
 
   ioc-cfn-mgmt-plane-svc:
-    build:
-      context: ../cfn/ioc-cfn-mgmt-backend-svc
-      dockerfile: Dockerfile
-    image: ioc-cfn-mgmt-plane-svc:local
+    image: ghcr.io/cisco-eti/ioc-cfn-mgmt-plane-svc:latest
     container_name: ioc-cfn-mgmt-plane-svc
     restart: unless-stopped
     profiles: [cfn]
@@ -130,58 +126,6 @@ services:
       retries: 6
       start_period: 30s
 
-  ioc-cfn-mgmt-plane-ui:
-    build:
-      context: ../cfn/ioc-cfn-mgmt-ui-svc
-      dockerfile: ci/docker/Dockerfile.next
-      args:
-        CFN_UI_API_BASE_URL: http://ioc-cfn-mgmt-plane-svc:9000
-    image: ioc-cfn-mgmt-plane-ui:local
-    container_name: ioc-cfn-mgmt-plane-ui
-    restart: unless-stopped
-    profiles: [cfn]
-    depends_on:
-      ioc-cfn-mgmt-plane-svc:
-        condition: service_healthy
-    ports:
-      - "9001:9001"
-    environment:
-      NODE_ENV: production
-      PORT: 9001
-      CFN_UI_API_BASE_URL: http://ioc-cfn-mgmt-plane-svc:9000
-      NEXT_PUBLIC_CFN_UI_API_BASE_URL: http://localhost:9000
-      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:9001}
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-mycelium-dev-secret-change-in-production}
-
-  ioc-cfn-svc:
-    build:
-      context: ../cfn/ioc-cfn-svc
-      dockerfile: Dockerfile
-    image: ioc-cfn-svc:local
-    container_name: ioc-cfn-svc
-    restart: unless-stopped
-    profiles: [cfn]
-    depends_on:
-      ioc-cfn-db:
-        condition: service_healthy
-      ioc-cfn-mgmt-plane-svc:
-        condition: service_healthy
-    ports:
-      - "9002:9002"
-    environment:
-      PORT: "9002"
-      APP_NAME: ioc-cfn-svc
-      MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
-      CFN_NAME: ${CFN_NAME:-default-cfn}
-      HEARTBEAT_INTERVAL_SECONDS: ${HEARTBEAT_INTERVAL_SECONDS:-10}
-      MCP_ENABLED: ${MCP_ENABLED:-false}
-      MCP_PORT: ${MCP_PORT:-9002}
-      DB_HOST: ioc-cfn-db
-      DB_PORT: 5432
-      DB_NAME: cfn_cp
-      DB_USER: ${CFN_DB_USER:-postgres}
-      DB_PASSWORD: ${CFN_DB_PASSWORD:-password}
-      DB_SSL_MODE: disable
 
 volumes:
   mycelium-db-data:
