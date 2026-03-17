@@ -1,7 +1,7 @@
 # mycelium
 
 <div align="center">
-  <img src="docs/banner.png" alt="Mycelium" width="800" />
+  <img src="docs/banner.png?v=2" alt="mycelium" width="800" />
 </div>
 
 <p align="center">
