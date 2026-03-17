@@ -16,14 +16,7 @@ import typer
 from mycelium.config import MyceliumConfig
 from mycelium.error_handler import print_error
 
-app = typer.Typer(help="Coordination message commands", invoke_without_command=True)
-
-
-@app.callback(invoke_without_command=True)
-def message_main(ctx: typer.Context) -> None:
-    """Coordination message commands."""
-    if ctx.invoked_subcommand is None:
-        typer.echo(ctx.get_help())
+app = typer.Typer(help="Coordination message commands", no_args_is_help=True)
 
 
 # ── Shared helpers ────────────────────────────────────────────────────────────

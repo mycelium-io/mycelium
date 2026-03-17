@@ -11,7 +11,7 @@ from rich.console import Console
 
 from mycelium.config import MyceliumConfig
 
-app = typer.Typer(help="Persistent memory operations")
+app = typer.Typer(help="Persistent memory operations", no_args_is_help=True)
 console = Console()
 
 

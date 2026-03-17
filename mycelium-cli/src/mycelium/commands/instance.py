@@ -20,7 +20,7 @@ from mycelium.error_handler import print_error
 from mycelium.exceptions import ConfigNotFoundError
 from mycelium.http_client import MyceliumHTTPClient  # kept for health check
 
-app = typer.Typer(help="Instance management commands")
+app = typer.Typer(help="Instance management commands", no_args_is_help=True)
 
 
 def _get_compose_path() -> Path:
