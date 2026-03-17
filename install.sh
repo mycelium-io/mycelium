@@ -90,13 +90,15 @@ ok "Latest version: $LATEST"
 step "Installing mycelium CLI..."
 
 if [ "$INSTALL_FROM" = "github" ]; then
-  WHEEL_URL="https://github.com/${REPO}/releases/download/${LATEST}/mycelium_cli-${WHEEL_VERSION}-py3-none-any.whl"
-  WHEEL_TMP=$(mktemp /tmp/mycelium-XXXXXX.whl)
+  WHEEL_FILENAME="mycelium_cli-${WHEEL_VERSION}-py3-none-any.whl"
+  WHEEL_URL="https://github.com/${REPO}/releases/download/${LATEST}/${WHEEL_FILENAME}"
+  WHEEL_TMP="/tmp/${WHEEL_FILENAME}"
 
   if curl -fsSL "$WHEEL_URL" -o "$WHEEL_TMP" 2>/dev/null; then
     uv tool install "$WHEEL_TMP" --force 2>&1 | sed 's/^/  /'
     rm -f "$WHEEL_TMP"
   else
+    warn "Could not download wheel, falling back to PyPI"
     INSTALL_FROM="pypi"
   fi
 fi
