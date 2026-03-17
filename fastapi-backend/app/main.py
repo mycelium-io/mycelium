@@ -57,6 +57,12 @@ async def lifespan(app: FastAPI):
     from app.database import create_db_and_tables
     await create_db_and_tables()
     logger.info("Database tables ensured")
+    # Preload embedding model so first request isn't slow
+    try:
+        from app.services.embedding import _get_model
+        _get_model()
+    except Exception:
+        logger.warning("Embedding model preload failed — will load on first use")
     yield
     logger.info("Mycelium backend shutting down")
 
