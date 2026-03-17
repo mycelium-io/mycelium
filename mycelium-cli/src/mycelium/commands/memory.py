@@ -1,25 +1,26 @@
 """
 Memory commands — persistent namespaced memory operations.
 
-mycelium memory set <key> <value>   — write a memory
-mycelium memory get <key>           — read a memory
-mycelium memory ls                  — list memories
-mycelium memory search <query>      — semantic search
-mycelium memory rm <key>            — delete a memory
-mycelium memory subscribe <pattern> — watch for changes
+Uses the generated OpenAPI client for type-safe API access.
 """
 
 import json
 
 import typer
 from rich.console import Console
-from rich.table import Table
 
 from mycelium.config import MyceliumConfig
-from mycelium.http_client import get_client
 
 app = typer.Typer(help="Persistent memory operations")
 console = Console()
+
+
+def _get_client():
+    """Get a configured OpenAPI client."""
+    from mycelium_backend_client import Client
+
+    cfg = MyceliumConfig.load()
+    return Client(base_url=cfg.server.api_url, raise_on_unexpected_status=True)
 
 
 def _get_active_room(room: str | None) -> str:
@@ -44,6 +45,9 @@ def memory_set(
     tags: str | None = typer.Option(None, "--tags", "-t", help="Comma-separated tags"),
 ) -> None:
     """Write a memory to a room's persistent namespace."""
+    from mycelium_backend_client.api.memory import create_memories_rooms_room_name_memory_post as create_api
+    from mycelium_backend_client.models import MemoryBatchCreate, MemoryCreate
+
     room_name = _get_active_room(room)
 
     # Try to parse value as JSON
@@ -54,23 +58,21 @@ def memory_set(
 
     tag_list = [t.strip() for t in tags.split(",")] if tags else None
 
-    with get_client() as client:
-        resp = client.post(
-            f"/rooms/{room_name}/memory",
-            json={
-                "items": [
-                    {
-                        "key": key,
-                        "value": parsed_value,
-                        "created_by": handle,
-                        "embed": not no_embed,
-                        "tags": tag_list,
-                    }
-                ]
-            },
-        )
-        data = resp.json()
-        console.print(f"[green]Memory set:[/green] {key} (v{data[0]['version']})")
+    item = MemoryCreate(
+        key=key,
+        value=parsed_value,
+        created_by=handle,
+        embed=not no_embed,
+        tags=tag_list,
+    )
+    batch = MemoryBatchCreate(items=[item])
+
+    with _get_client() as client:
+        result = create_api.sync(room_name=room_name, client=client, body=batch)
+        if result and isinstance(result, list) and len(result) > 0:
+            console.print(f"[green]Memory set:[/green] {key} (v{result[0].version})")
+        else:
+            console.print(f"[green]Memory set:[/green] {key}")
 
 
 @app.command(name="get")
@@ -79,20 +81,23 @@ def memory_get(
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
 ) -> None:
     """Read a memory by key."""
+    from mycelium_backend_client.api.memory import get_memory_rooms_room_name_memory_key_get as get_api
+
     room_name = _get_active_room(room)
 
-    with get_client() as client:
-        try:
-            resp = client.get(f"/rooms/{room_name}/memory/{key}")
-            data = resp.json()
-            console.print(f"[cyan]{data['key']}[/cyan] (v{data['version']}, by {data['created_by']})")
-            if isinstance(data["value"], dict):
-                console.print(json.dumps(data["value"], indent=2))
-            else:
-                console.print(str(data["value"]))
-        except Exception as e:
-            console.print(f"[red]Not found:[/red] {key} ({e})")
-            raise typer.Exit(1) from e
+    with _get_client() as client:
+        result = get_api.sync(room_name=room_name, key=key, client=client)
+        if result is None:
+            console.print(f"[red]Not found:[/red] {key}")
+            raise typer.Exit(1)
+        console.print(f"[cyan]{result.key}[/cyan]  [dim]v{result.version}  {result.created_by}[/dim]")
+        value = result.value
+        if hasattr(value, "to_dict"):
+            value = value.to_dict()
+        if isinstance(value, dict):
+            console.print(json.dumps(value, indent=2, default=str))
+        else:
+            console.print(str(value))
 
 
 @app.command(name="ls")
@@ -102,40 +107,32 @@ def memory_ls(
     limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
 ) -> None:
     """List memories in a room."""
+    from mycelium_backend_client.api.memory import list_memories_rooms_room_name_memory_get as list_api
+
     room_name = _get_active_room(room)
 
-    with get_client() as client:
-        params = {"limit": limit}
-        if prefix:
-            params["prefix"] = prefix
-        resp = client.get(f"/rooms/{room_name}/memory", params=params)
-        memories = resp.json()
-
-        if not memories:
+    with _get_client() as client:
+        result = list_api.sync(room_name=room_name, client=client, prefix=prefix, limit=limit)
+        if not result:
             console.print("[dim]No memories found[/dim]")
             return
 
-        console.print(f"[bold]{room_name}[/bold] ({len(memories)} memories)\n")
+        console.print(f"[bold]{room_name}[/bold] ({len(result)} memories)\n")
 
-        for mem in memories:
-            # Header line: key + version + author
-            ts = mem["updated_at"][:16].replace("T", " ")
+        for mem in result:
+            ts = str(mem.updated_at)[:16].replace("T", " ") if mem.updated_at else ""
             console.print(
-                f"[cyan]{mem['key']}[/cyan]  "
-                f"[dim]v{mem['version']}  {mem['created_by']}  {ts}[/dim]"
+                f"[cyan]{mem.key}[/cyan]  "
+                f"[dim]v{mem.version}  {mem.created_by}  {ts}[/dim]"
             )
-            # Value preview
-            value = mem.get("value")
+            value = mem.value
+            if hasattr(value, "to_dict"):
+                value = value.to_dict()
             if isinstance(value, dict):
-                # Show dict keys or short JSON
                 flat = json.dumps(value, default=str)
-                if len(flat) <= 120:
-                    console.print(f"  {flat}")
-                else:
-                    console.print(f"  {flat[:120]}...")
+                console.print(f"  {flat[:120]}{'...' if len(flat) > 120 else ''}")
             elif isinstance(value, str):
-                preview = value[:120]
-                console.print(f"  {preview}")
+                console.print(f"  {value[:120]}")
             console.print()
 
 
@@ -146,30 +143,28 @@ def memory_search(
     limit: int = typer.Option(5, "--limit", "-n", help="Max results"),
 ) -> None:
     """Semantic search over memories."""
+    from mycelium_backend_client.api.memory import search_memories_rooms_room_name_memory_search_post as search_api
+    from mycelium_backend_client.models import MemorySearchRequest
+
     room_name = _get_active_room(room)
 
-    with get_client() as client:
-        resp = client.post(
-            f"/rooms/{room_name}/memory/search",
-            json={"query": query, "limit": limit},
-        )
-        data = resp.json()
-        results = data.get("results", [])
+    with _get_client() as client:
+        body = MemorySearchRequest(query=query, limit=limit)
+        result = search_api.sync(room_name=room_name, client=client, body=body)
 
-        if not results:
+        if not result or not result.results:
             console.print("[dim]No matching memories found[/dim]")
             return
 
-        for r in results:
-            mem = r["memory"]
-            sim = r["similarity"]
+        for r in result.results:
+            mem = r.memory
+            sim = r.similarity
             console.print(
-                f"[cyan]{mem['key']}[/cyan] "
-                f"[dim](similarity: {sim:.3f}, v{mem['version']})[/dim]"
+                f"[cyan]{mem.key}[/cyan] "
+                f"[dim](similarity: {sim:.3f}, v{mem.version})[/dim]"
             )
-            if mem.get("content_text"):
-                preview = mem["content_text"][:200]
-                console.print(f"  {preview}")
+            if mem.content_text:
+                console.print(f"  {mem.content_text[:200]}")
             console.print()
 
 
@@ -180,6 +175,8 @@ def memory_rm(
     force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
 ) -> None:
     """Delete a memory."""
+    from mycelium_backend_client.api.memory import delete_memory_rooms_room_name_memory_key_delete as delete_api
+
     room_name = _get_active_room(room)
 
     if not force:
@@ -187,8 +184,8 @@ def memory_rm(
         if not confirm:
             raise typer.Exit(0)
 
-    with get_client() as client:
-        client.delete(f"/rooms/{room_name}/memory/{key}")
+    with _get_client() as client:
+        delete_api.sync_detailed(room_name=room_name, key=key, client=client)
         console.print(f"[green]Deleted:[/green] {key}")
 
 
@@ -199,12 +196,14 @@ def memory_subscribe(
     handle: str = typer.Option("cli-user", "--handle", "-h", help="Subscriber agent handle"),
 ) -> None:
     """Subscribe to memory change notifications."""
+    from mycelium_backend_client.api.memory import subscribe_rooms_room_name_memory_subscribe_post as sub_api
+    from mycelium_backend_client.models import SubscriptionCreate
+
     room_name = _get_active_room(room)
 
-    with get_client() as client:
-        resp = client.post(
-            f"/rooms/{room_name}/memory/subscribe",
-            json={"key_pattern": pattern, "subscriber": handle},
-        )
-        data = resp.json()
-        console.print(f"[green]Subscribed:[/green] {pattern} (id: {data['id'][:8]}...)")
+    with _get_client() as client:
+        body = SubscriptionCreate(key_pattern=pattern, subscriber=handle)
+        result = sub_api.sync(room_name=room_name, client=client, body=body)
+        if result:
+            sub_id = str(result.id)[:8] if result.id else "?"
+            console.print(f"[green]Subscribed:[/green] {pattern} (id: {sub_id}...)")
