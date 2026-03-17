@@ -32,6 +32,7 @@ services:
       context: ../fastapi-backend
       dockerfile: Dockerfile
     image: ghcr.io/mycelium-io/mycelium-backend:latest
+    platform: linux/amd64
     container_name: mycelium-backend
     restart: unless-stopped
     depends_on:
@@ -91,6 +92,7 @@ services:
       - "5433:5432"
     volumes:
       - ioc-cfn-db-data:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${CFN_DB_USER:-postgres} -d ${CFN_DB:-cfn_mgmt}"]
       interval: 5s

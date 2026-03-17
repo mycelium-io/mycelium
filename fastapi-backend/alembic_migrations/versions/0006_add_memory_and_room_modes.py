@@ -39,7 +39,6 @@ def upgrade() -> None:
         sa.Column("key", sa.String(512), nullable=False, index=True),
         sa.Column("value", JSONB, nullable=False),
         sa.Column("content_text", sa.Text(), nullable=True),
-        sa.Column("embedding", sa.Column("embedding", sa.types.UserDefinedType()), nullable=True),
         sa.Column("created_by", sa.String(), nullable=False),
         sa.Column("updated_by", sa.String(), nullable=True),
         sa.Column("version", sa.Integer(), server_default="1", nullable=False),

@@ -271,6 +271,24 @@ def _image_exists(image: str) -> bool:
     return r.returncode == 0
 
 
+_KNOWN_CONTAINERS = [
+    "mycelium-db", "mycelium-backend",
+    "ioc-cfn-db", "ioc-cfn-mgmt-plane-svc",
+]
+
+
+def _remove_orphan_containers() -> None:
+    """Remove stopped containers with known Mycelium names that aren't tracked
+    by the current compose project (leftovers from earlier installs)."""
+    for name in _KNOWN_CONTAINERS:
+        r = subprocess.run(
+            ["docker", "inspect", "--format", "{{.State.Status}}", name],
+            capture_output=True, text=True,
+        )
+        if r.returncode == 0 and r.stdout.strip() in ("exited", "created", "dead"):
+            subprocess.run(["docker", "rm", "-f", name], capture_output=True)
+
+
 def _compose_up(compose_path: Path, env_path: Path, profiles: list[str] | None = None) -> tuple[bool, bool]:
     """Bring the stack up.  Returns (success, needs_build)."""
     # Build context exists when running from a repo checkout. Packaged installs
@@ -280,16 +298,21 @@ def _compose_up(compose_path: Path, env_path: Path, profiles: list[str] | None =
     can_build = build_context.exists()
     needs_build = can_build and not _image_exists("ghcr.io/mycelium-io/mycelium-backend:latest")
 
+    _remove_orphan_containers()
+
     args = [
         "docker", "compose",
+        "-p", "mycelium",
         "-f", str(compose_path),
         "--env-file", str(env_path),
     ]
     for profile in (profiles or []):
         args += ["--profile", profile]
-    up_flags = ["up", "--pull", "missing", "-d"]
+    up_flags = ["up", "--pull", "missing", "--force-recreate", "-d"]
     if can_build:
         up_flags.append("--build")
+    else:
+        up_flags.append("--no-build")
     args += up_flags
 
     print()
@@ -399,6 +422,11 @@ def install(
     blocks: bool = typer.Option(False, "--blocks", help="Use unicode block rendering"),
     theme: str = typer.Option("cyan", "--color", help="Color theme (cyan|amber|magenta|green|white)"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmations"),
+    non_interactive: bool = typer.Option(False, "--non-interactive", "-n", help="Skip prompts and animation (use --llm-model etc.)"),
+    llm_model: str = typer.Option("", "--llm-model", help="LLM model in litellm format (non-interactive)"),
+    llm_base_url: str = typer.Option("", "--llm-base-url", help="LLM base URL (non-interactive)"),
+    llm_api_key: str = typer.Option("", "--llm-api-key", help="LLM API key (non-interactive)"),
+    ioc: bool = typer.Option(False, "--ioc", help="Enable IoC CFN stack (non-interactive)"),
 ) -> None:
     """
     Install an Mycelium instance.
@@ -408,6 +436,64 @@ def install(
     """
     try:
         import sys
+
+        if non_interactive:
+            # ── Non-interactive path ───────────────────────────────────────
+            docker_ok, docker_ver = _check_docker()
+            compose_ok, compose_ver = _check_compose()
+            if not docker_ok:
+                typer.secho(f"\n  ✗ Docker: {docker_ver}", fg=typer.colors.RED)
+                raise typer.Exit(1) from None
+            if not compose_ok:
+                typer.secho(f"\n  ✗ Docker Compose: {compose_ver}", fg=typer.colors.RED)
+                raise typer.Exit(1) from None
+
+            llm_config: dict[str, str] = {}
+            if llm_model:
+                llm_config["LLM_MODEL"] = llm_model
+            if llm_base_url:
+                llm_config["LLM_BASE_URL"] = llm_base_url
+            if llm_api_key:
+                llm_config["LLM_API_KEY"] = llm_api_key
+
+            compose_profiles: list[str] = []
+            if ioc:
+                llm_config["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
+                compose_profiles.append("cfn")
+
+            custom_ports = {"db": 5432, "backend": 8000}
+
+            typer.secho("  ── Starting services ──────────────────────────────────", bold=True)
+            env_dir = Path.home() / ".mycelium"
+            env_dir.mkdir(parents=True, exist_ok=True)
+            env_path = env_dir / ".env"
+            _write_env_file(env_path, llm_config)
+            typer.echo(f"  ✓ Wrote {env_path}")
+
+            compose_path = _get_compose_path()
+            typer.echo(f"  ✓ Compose file → {compose_path}")
+
+            ok, needs_build = _compose_up(compose_path, env_path, profiles=compose_profiles)
+            if not ok:
+                typer.secho("\n  ✗ docker compose up failed", fg=typer.colors.RED)
+                raise typer.Exit(1) from None
+
+            api_url = f"http://localhost:{custom_ports['backend']}"
+            health_timeout = 300 if needs_build else 120
+            _wait_for_health([f"{api_url}/health"], timeout=health_timeout)
+
+            try:
+                workspace_id, mas_id = _provision_backend(api_url)
+                typer.echo(f"  ✓ Workspace  {workspace_id}")
+                typer.echo(f"  ✓ MAS        {mas_id}")
+            except Exception as exc:
+                typer.secho(f"  ⚠  Could not provision backend: {exc}", fg=typer.colors.YELLOW)
+                workspace_id, mas_id = "", ""
+
+            _write_mycelium_config(api_url, workspace_id, mas_id)
+            typer.secho("  ✓ Done.", fg=typer.colors.GREEN, bold=True)
+            return
+
         if not sys.stdin.isatty():
             typer.secho(
                 "\n  ✗ mycelium install requires an interactive terminal.\n"
