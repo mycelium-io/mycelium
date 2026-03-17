@@ -18,11 +18,12 @@ from mycelium.commands import (
 
 app = typer.Typer(
     name="mycelium",
-    help="Mycelium CLI — Multi-agent coordination + persistent memory",
+    help="[bold]Mycelium[/bold] — Multi-agent coordination + persistent memory",
     add_completion=True,
     no_args_is_help=True,
     pretty_exceptions_show_locals=False,
-    rich_markup_mode=None,
+    rich_markup_mode="rich",
+    context_settings={"help_option_names": ["-h", "--help"]},
 )
 
 
@@ -47,7 +48,7 @@ def main(
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress non-essential output"),
     json_output: bool = typer.Option(False, "--json", help="Output in JSON format"),
 ) -> None:
-    """Mycelium CLI — Multi-agent coordination + persistent memory."""
+    """[bold]Mycelium[/bold] — Multi-agent coordination + persistent memory."""
     ctx.ensure_object(dict)
     ctx.obj["verbose"] = verbose
     ctx.obj["quiet"] = quiet
