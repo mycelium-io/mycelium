@@ -4,10 +4,10 @@
 
 LOGO="$(dirname "$0")/../docs/logo.png"
 OUT="$(dirname "$0")/../docs/banner.png"
-INTER="$HOME/Library/Fonts/InterVariable-Italic.ttf"
+INTER="$HOME/Library/Fonts/InterVariable.ttf"
 DIDOT="/System/Library/Fonts/Supplemental/Didot.ttc"
 
-magick -size 1200x300 xc:'#1a1a2e' \
+magick -size 1200x300 radial-gradient:'#0a4a5c'-'#0d0d20' \
   -stroke '#1e2d5e' -strokewidth 1 -fill none \
   -draw 'line 80,60 180,200' \
   -draw 'line 180,200 320,40' \
@@ -51,7 +51,7 @@ magick -size 1200x300 xc:'#1a1a2e' \
   -pointsize 80 \
   -fill '#ffffff' \
   -gravity North \
-  -annotate +0+152 'Mycelium' \
+  -annotate +0+152 'mycelium' \
   -font "$INTER" \
   -pointsize 24 \
   -fill '#6b7db3' \
