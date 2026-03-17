@@ -4,6 +4,7 @@ services:
   #
   # Single AgensGraph instance: relational tables (SQL) + knowledge graph
   # (openCypher) + vector search (pgvector) — all in one database.
+  # When the cfn profile is active, also hosts cfn_mgmt and cfn_cp databases.
 
   mycelium-db:
     build:
@@ -21,6 +22,7 @@ services:
       - "${MYCELIUM_DB_PORT:-5432}:5432"
     volumes:
       - mycelium-db-data:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d mycelium"]
       interval: 5s
@@ -79,33 +81,13 @@ services:
 
   # ── CFN Stack (profile: cfn) ──────────────────────────────────────────────────
 
-  ioc-cfn-db:
-    image: postgres:17-alpine
-    container_name: ioc-cfn-db
-    restart: unless-stopped
-    profiles: [cfn]
-    environment:
-      POSTGRES_DB: ${CFN_DB:-cfn_mgmt}
-      POSTGRES_USER: ${CFN_DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${CFN_DB_PASSWORD:-password}
-    ports:
-      - "5433:5432"
-    volumes:
-      - ioc-cfn-db-data:/var/lib/postgresql/data
-      - ./initdb:/docker-entrypoint-initdb.d:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${CFN_DB_USER:-postgres} -d ${CFN_DB:-cfn_mgmt}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
   ioc-cfn-mgmt-plane-svc:
     image: ghcr.io/cisco-eti/ioc-cfn-mgmt-plane-svc:latest
     container_name: ioc-cfn-mgmt-plane-svc
     restart: unless-stopped
     profiles: [cfn]
     depends_on:
-      ioc-cfn-db:
+      mycelium-db:
         condition: service_healthy
     ports:
       - "9000:9000"
@@ -114,11 +96,11 @@ services:
       APPLICATION_VERSION: latest
       LOG_LEVEL: INFO
       ADMIN_USER_PASSWORD: ${ADMIN_USER_PASSWORD:-admin}
-      POSTGRES_HOST: ioc-cfn-db
+      POSTGRES_HOST: mycelium-db
       POSTGRES_PORT: 5432
       POSTGRES_DB: ${CFN_DB:-cfn_mgmt}
       POSTGRES_USER: ${CFN_DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${CFN_DB_PASSWORD:-password}
+      POSTGRES_PASSWORD: ${MYCELIUM_DB_PASSWORD:-password}
       PORT: 9000
       CFN_DEV_MODE: ${CFN_DEV_MODE:-false}
     healthcheck:
@@ -131,4 +113,3 @@ services:
 
 volumes:
   mycelium-db-data:
-  ioc-cfn-db-data:
