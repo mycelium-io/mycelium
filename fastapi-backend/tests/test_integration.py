@@ -179,6 +179,10 @@ async def test_upsert_preserves_embedding(integration_client: AsyncClient):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(
+    not os.environ.get("LLM_API_KEY"),
+    reason="Synthesis test requires LLM_API_KEY (costs tokens)",
+)
 async def test_async_room_full_flow(integration_client: AsyncClient):
     """End-to-end: create async room, write memories, trigger synthesis."""
     client = integration_client
@@ -212,9 +216,9 @@ async def test_async_room_full_flow(integration_client: AsyncClient):
     resp = await client.get("/rooms/e2e-flow")
     assert resp.status_code == 200
 
-    # Explicit synthesis should work
+    # Explicit synthesis — may return 200 (ran) or 409 (auto-trigger already running)
     resp = await client.post("/rooms/e2e-flow/synthesize")
-    assert resp.status_code == 200
+    assert resp.status_code in (200, 409)
 
 
 @pytest.mark.asyncio

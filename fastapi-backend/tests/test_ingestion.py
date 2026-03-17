@@ -114,8 +114,8 @@ INGEST_BASE = {
 async def test_ingest_no_api_key_returns_zero_counts(client: AsyncClient):
     """When ANTHROPIC_API_KEY is unset the endpoint succeeds with 0 counts."""
     with patch("app.routes.knowledge.settings") as mock_settings:
-        mock_settings.ANTHROPIC_API_KEY = None
-        mock_settings.COORDINATION_LLM_MODEL = "claude-sonnet-4-6"
+        mock_settings.LLM_API_KEY = None
+        mock_settings.LLM_MODEL = "anthropic/claude-sonnet-4-6"
         resp = await client.post("/api/knowledge/ingest", json=INGEST_BASE)
 
     assert resp.status_code == 200
@@ -129,8 +129,8 @@ async def test_ingest_empty_records_returns_zero_counts(client: AsyncClient):
     """Empty records list → 0 counts without calling LLM."""
     payload = {**INGEST_BASE, "records": []}
     with patch("app.routes.knowledge.settings") as mock_settings:
-        mock_settings.ANTHROPIC_API_KEY = None
-        mock_settings.COORDINATION_LLM_MODEL = "claude-sonnet-4-6"
+        mock_settings.LLM_API_KEY = None
+        mock_settings.LLM_MODEL = "anthropic/claude-sonnet-4-6"
         resp = await client.post("/api/knowledge/ingest", json=payload)
 
     assert resp.status_code == 200
