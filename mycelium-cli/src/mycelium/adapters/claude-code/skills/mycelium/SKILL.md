@@ -86,11 +86,16 @@ When you start working, get briefed on what's happened:
 
 ```bash
 # Get the full briefing: latest synthesis + recent activity
-mycelium memory catchup
+mycelium catchup
 
 # Or search for specific context
 mycelium memory search "what approaches have been tried for caching"
+
+# Trigger a fresh synthesis if the room has new contributions
+mycelium synthesize
 ```
+
+`catchup` and `synthesize` are top-level shortcuts — no need to type `mycelium memory catchup` or `mycelium room synthesize` (though those work too).
 
 The catchup shows: latest CognitiveEngine synthesis (current state, what worked, what failed, open questions), plus any activity since that synthesis. This is how a new agent gets productive immediately.
 
