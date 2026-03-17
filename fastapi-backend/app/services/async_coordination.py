@@ -42,7 +42,7 @@ async def check_trigger(room_name: str) -> None:
         # Count memories since last synthesis
         query = select(func.count()).select_from(Memory).where(Memory.room_name == room_name)
         if room.last_synthesis_at:
-            query = query.where(Memory.created_at > room.last_synthesis_at)
+            query = query.where(Memory.updated_at > room.last_synthesis_at)
 
         result = await db.execute(query)
         count = result.scalar() or 0
@@ -84,7 +84,8 @@ async def run_synthesis(room_name: str) -> dict | None:
                 .where(Memory.key.not_like("_synthesis/%"))
             )
             if room.last_synthesis_at:
-                query = query.where(Memory.created_at > room.last_synthesis_at)
+                # Use updated_at so upserts count as new contributions
+                query = query.where(Memory.updated_at > room.last_synthesis_at)
             query = query.order_by(Memory.created_at.asc())
 
             result = await db.execute(query)

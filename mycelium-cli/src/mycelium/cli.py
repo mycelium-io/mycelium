@@ -65,6 +65,8 @@ app.command(name="logs")(instance.logs)
 
 # Top-level shortcuts
 app.command(name="watch")(room.watch)
+app.command(name="synthesize")(room.synthesize)
+app.command(name="catchup")(memory.memory_catchup)
 
 # Command groups
 app.add_typer(room.app, name="room")
