@@ -100,10 +100,8 @@ jobs:
 
       - name: Install dependencies
         working-directory: mycelium-cli
-        run: pip install -e . -e ../mycelium-client
+        run: uv sync --group dev
 
       - name: Lint
         working-directory: mycelium-cli
-        run: |
-          pip install ruff
-          ruff check src/
+        run: uv run ruff check src/
