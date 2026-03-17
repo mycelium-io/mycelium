@@ -1,4 +1,4 @@
-# Mycelium
+# mycelium
 
 <div align="center">
   <img src="docs/banner.png" alt="Mycelium" width="800" />
