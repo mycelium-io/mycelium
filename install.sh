@@ -135,15 +135,22 @@ else
 fi
 
 # ── Done ──────────────────────────────────────────────────────────────────────
+
+# Detect rc file based on current shell
+case "$(basename "${SHELL:-bash}")" in
+  zsh)  RC_FILE="~/.zshrc" ;;
+  fish) RC_FILE="~/.config/fish/config.fish" ;;
+  *)    RC_FILE="~/.bashrc" ;;
+esac
+
 echo ""
 echo -e "${BOLD}${GREEN}✨ Installation complete!${NC}"
 echo ""
-echo -e "${YELLOW}Activate for this session:${NC}"
-echo -e "  ${BOLD}export PATH=\"$UV_BIN_DIR:\$PATH\"${NC}"
+echo -e "Run this to activate ${DIM}(and make it permanent):${NC}"
 echo ""
-echo -e "  (Already added to ~/.bashrc / ~/.zshrc for future sessions)"
+echo -e "  ${BOLD}echo 'export PATH=\"$UV_BIN_DIR:\$PATH\"' >> $RC_FILE && source $RC_FILE${NC}"
 echo ""
-echo -e "Then run:"
+echo -e "Then:"
 echo -e "  ${BOLD}mycelium --help${NC}               — show all commands"
 echo -e "  ${BOLD}mycelium install${NC}              — spin up the full stack (Docker)"
 echo -e "  ${BOLD}mycelium adapter add openclaw${NC} — wire OpenClaw agents"
