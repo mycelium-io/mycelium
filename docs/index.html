@@ -565,16 +565,27 @@
       <pre><code>curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash</code></pre>
 
       <div class="callout callout-info">
-        The installer sets up the CLI via <code>uv tool install</code> and writes
-        <code>~/.mycelium/config.toml</code> pointing at a local backend.
+        The installer sets up the CLI, prompts for your LLM provider, then brings up
+        the full stack (backend + AgensGraph) via <code>docker compose</code>.
         Run <code>mycelium --help</code> after install to verify.
       </div>
 
-      <p>Requires a running backend (AgensGraph + FastAPI):</p>
-      <pre><code><span class="comment"># Backend</span>
-cd fastapi-backend
-uv sync --group dev
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8888</code></pre>
+      <p>
+        The install command is interactive — it checks Docker, pulls base images, asks for
+        your LLM config, then calls <code>docker compose up</code> and provisions a default
+        workspace automatically. No manual backend setup required.
+      </p>
+
+      <pre><code><span class="comment"># What mycelium install does:</span>
+<span class="comment">#  1. Check Docker + disk space</span>
+<span class="comment">#  2. Pull base images (postgres, AgensGraph) in the background</span>
+<span class="comment">#  3. Prompt for LLM provider (Anthropic, OpenAI, Ollama, OpenRouter, ...)</span>
+<span class="comment">#  4. docker compose up --build -d</span>
+<span class="comment">#  5. Health-poll until services are ready</span>
+<span class="comment">#  6. Provision default workspace + MAS</span>
+<span class="comment">#  7. Write ~/.mycelium/config.toml</span>
+
+mycelium install</code></pre>
 
       <h2 id="first-room">First Room</h2>
 
