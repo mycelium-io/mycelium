@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bus import agent_channel, notify
+from app.bus import agent_channel, notify, room_channel
 from app.config import settings
 from app.database import get_async_session
 from app.models import Memory, MemorySubscription, Room
@@ -50,6 +50,38 @@ async def _get_room(room_name: str, db: AsyncSession) -> Room:
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
     return room
+
+
+async def _notify_room_memory_change(
+    room_name: str, key: str, updated_by: str, version: int,
+) -> None:
+    """Broadcast memory change to the room's SSE stream so watchers see it."""
+    try:
+        parsed = urlparse(settings.DATABASE_URL)
+        conn: asyncpg.Connection = await asyncpg.connect(
+            host=parsed.hostname,
+            port=parsed.port or 5432,
+            user=parsed.username,
+            password=parsed.password,
+            database=parsed.path.lstrip("/"),
+        )
+        try:
+            await notify(
+                conn,
+                room_channel(room_name),
+                {
+                    "type": "memory_changed",
+                    "room_name": room_name,
+                    "key": key,
+                    "version": version,
+                    "updated_by": updated_by,
+                    "created_at": datetime.now(UTC).isoformat(),
+                },
+            )
+        finally:
+            await conn.close()
+    except Exception as e:
+        logger.warning("Room NOTIFY for memory change failed: %s", e)
 
 
 async def _notify_subscribers(
@@ -140,6 +172,9 @@ async def create_memories(
             results.append(existing)
 
             asyncio.ensure_future(
+                _notify_room_memory_change(room_name, item.key, item.created_by, existing.version)
+            )
+            asyncio.ensure_future(
                 _notify_subscribers(room_name, item.key, item.created_by, existing.version)
             )
         else:
@@ -158,6 +193,9 @@ async def create_memories(
             await db.refresh(mem)
             results.append(mem)
 
+            asyncio.ensure_future(
+                _notify_room_memory_change(room_name, item.key, item.created_by, 1)
+            )
             asyncio.ensure_future(
                 _notify_subscribers(room_name, item.key, item.created_by, 1)
             )
