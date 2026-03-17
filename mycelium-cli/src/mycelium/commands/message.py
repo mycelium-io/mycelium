@@ -16,7 +16,10 @@ import typer
 from mycelium.config import MyceliumConfig
 from mycelium.error_handler import print_error
 
-app = typer.Typer(help="Coordination message commands", no_args_is_help=True)
+app = typer.Typer(
+    help="Respond to CognitiveEngine during sync negotiation. Propose offers, accept/reject, or send raw JSON.",
+    no_args_is_help=True,
+)
 
 
 # ── Shared helpers ────────────────────────────────────────────────────────────

@@ -10,7 +10,10 @@ from pathlib import Path
 
 import typer
 
-app = typer.Typer(help="Built-in documentation", invoke_without_command=True)
+app = typer.Typer(
+    help="Browse and search built-in documentation for Mycelium concepts, protocols, and API reference.",
+    invoke_without_command=True,
+)
 
 
 def _get_docs_root() -> Path:

@@ -7,7 +7,10 @@ import typer
 from mycelium.config import MyceliumConfig
 from mycelium.error_handler import print_error
 
-app = typer.Typer(help="Configuration management", no_args_is_help=True)
+app = typer.Typer(
+    help="View and update Mycelium settings. Global config lives at ~/.mycelium/config.toml.",
+    no_args_is_help=True,
+)
 
 ENVIRONMENTS = {
     "local": {

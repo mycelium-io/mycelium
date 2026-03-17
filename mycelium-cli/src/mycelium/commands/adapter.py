@@ -23,7 +23,10 @@ import typer
 from mycelium.config import MyceliumConfig
 from mycelium.error_handler import print_error
 
-app = typer.Typer(help="Manage agent framework adapters", no_args_is_help=True)
+app = typer.Typer(
+    help="Connect agent frameworks (OpenClaw, Claude Code) to Mycelium. Install hooks, skills, and plugins.",
+    no_args_is_help=True,
+)
 
 ADAPTER_TYPES = {
     "openclaw": "plugin-based — installs mycelium via `openclaw plugins install`",

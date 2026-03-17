@@ -11,7 +11,10 @@ from rich.console import Console
 
 from mycelium.config import MyceliumConfig
 
-app = typer.Typer(help="Persistent memory operations", no_args_is_help=True)
+app = typer.Typer(
+    help="Read and write persistent memories scoped to rooms. Memories persist across sessions and support semantic vector search.",
+    no_args_is_help=True,
+)
 console = Console()
 
 

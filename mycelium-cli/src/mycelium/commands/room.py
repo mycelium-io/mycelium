@@ -31,7 +31,10 @@ def _typed_client(config: MyceliumConfig):
     from mycelium_backend_client import Client
     return Client(base_url=config.server.api_url, raise_on_unexpected_status=True)
 
-app = typer.Typer(help="Room management commands", invoke_without_command=True)
+app = typer.Typer(
+    help="Shared namespaces for agent coordination. Rooms can be sync (real-time negotiation), async (persistent memory), or hybrid.",
+    invoke_without_command=True,
+)
 
 
 @app.callback(invoke_without_command=True)

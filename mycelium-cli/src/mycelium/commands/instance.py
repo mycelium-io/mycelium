@@ -20,7 +20,10 @@ from mycelium.error_handler import print_error
 from mycelium.exceptions import ConfigNotFoundError
 from mycelium.http_client import MyceliumHTTPClient  # kept for health check
 
-app = typer.Typer(help="Instance management commands", no_args_is_help=True)
+app = typer.Typer(
+    help="Docker lifecycle for the Mycelium stack (database, backend, graph viewer).",
+    no_args_is_help=True,
+)
 
 
 def _get_compose_path() -> Path:
