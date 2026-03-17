@@ -93,33 +93,81 @@ def _ask(prompt: str, default: str = "") -> str:
 
 
 def _prompt_llm() -> dict[str, str]:
-    print()
-    print("  \x1b[1;36m? LLM configuration (for CognitiveEngine)\x1b[0m")
-    print()
-    print("    Uses litellm format: provider/model")
-    print("    Examples: anthropic/claude-sonnet-4-6, openai/gpt-4o, ollama/llama3.3")
-    print("    Full list: https://docs.litellm.ai/docs/providers")
-    print()
-    print("    \x1b[36m▸\x1b[0m \x1b[1m1)\x1b[0m Enter model + API key")
-    print("      \x1b[1m2)\x1b[0m Local (Ollama at localhost:11434)")
-    print("      \x1b[1m3)\x1b[0m Skip — stub mode (no real LLM)")
-    print()
-    choice = _ask("  \x1b[2mChoice [1]:\x1b[0m ", default="1")
+    from beaupy import select
 
-    if choice == "1":
-        model = _ask("  \x1b[2mModel [anthropic/claude-sonnet-4-6]:\x1b[0m ", default="anthropic/claude-sonnet-4-6")
-        key = _ask("  \x1b[2mAPI key:\x1b[0m ")
-        print(f"  \x1b[32m✓\x1b[0m Configured: {model}")
+    print()
+    print("  \x1b[1;36m? LLM for CognitiveEngine\x1b[0m")
+    print()
+
+    providers = [
+        "Anthropic  — claude-sonnet-4-6, claude-opus-4-6",
+        "OpenAI     — gpt-4o, gpt-4.1",
+        "OpenRouter  — multi-provider gateway",
+        "Ollama     — local models (llama3.3, mistral, etc.)",
+        "Custom     — any OpenAI-compatible endpoint",
+        "Skip       — no LLM (stub mode)",
+    ]
+
+    choice = select(providers, cursor="  ▸ ", cursor_style="cyan")
+    if choice is None:
+        raise KeyboardInterrupt
+
+    if choice.startswith("Anthropic"):
+        models = [
+            "anthropic/claude-sonnet-4-6",
+            "anthropic/claude-opus-4-6",
+            "anthropic/claude-haiku-4-5",
+        ]
+        model = select(models, cursor="  ▸ ", cursor_style="cyan")
+        key = _ask("  \x1b[2mAPI key (sk-ant-...):\x1b[0m ")
+        print(f"  \x1b[32m✓\x1b[0m {model}")
         return {"LLM_MODEL": model, "LLM_API_KEY": key}
-    elif choice == "2":
-        model = _ask("  \x1b[2mModel [ollama/llama3.3]:\x1b[0m ", default="ollama/llama3.3")
-        print(f"  \x1b[32m✓\x1b[0m Local: {model} at http://localhost:11434")
+
+    if choice.startswith("OpenAI"):
+        models = [
+            "openai/gpt-4o",
+            "openai/gpt-4.1",
+            "openai/gpt-4o-mini",
+            "openai/o3",
+        ]
+        model = select(models, cursor="  ▸ ", cursor_style="cyan")
+        key = _ask("  \x1b[2mAPI key (sk-...):\x1b[0m ")
+        print(f"  \x1b[32m✓\x1b[0m {model}")
+        return {"LLM_MODEL": model, "LLM_API_KEY": key}
+
+    if choice.startswith("OpenRouter"):
+        model = _ask("  \x1b[2mModel (e.g. anthropic/claude-sonnet-4-6):\x1b[0m ", default="anthropic/claude-sonnet-4-6")
+        model = f"openrouter/{model}"
+        key = _ask("  \x1b[2mOpenRouter API key:\x1b[0m ")
+        print(f"  \x1b[32m✓\x1b[0m {model}")
+        return {"LLM_MODEL": model, "LLM_API_KEY": key}
+
+    if choice.startswith("Ollama"):
+        models = [
+            "ollama/llama3.3",
+            "ollama/mistral",
+            "ollama/qwen2.5",
+            "ollama/deepseek-r1",
+        ]
+        model = select(models, cursor="  ▸ ", cursor_style="cyan")
+        print(f"  \x1b[32m✓\x1b[0m {model} at localhost:11434")
         return {"LLM_MODEL": model, "LLM_BASE_URL": "http://host.docker.internal:11434"}
-    elif choice == "3":
-        print("  \x1b[33m~\x1b[0m Skipped — synthesis will use stub responses")
-        return {}
-    else:
-        return _prompt_llm()
+
+    if choice.startswith("Custom"):
+        model = _ask("  \x1b[2mModel (litellm format, e.g. openai/my-model):\x1b[0m ")
+        base_url = _ask("  \x1b[2mBase URL:\x1b[0m ")
+        key = _ask("  \x1b[2mAPI key (or empty):\x1b[0m ")
+        print(f"  \x1b[32m✓\x1b[0m {model} at {base_url}")
+        result = {"LLM_MODEL": model}
+        if base_url:
+            result["LLM_BASE_URL"] = base_url
+        if key:
+            result["LLM_API_KEY"] = key
+        return result
+
+    # Skip
+    print("  \x1b[33m~\x1b[0m Skipped — synthesis will use stub responses")
+    return {}
 
 
 # ── Env file ─────────────────────────────────────────────────────────────────
