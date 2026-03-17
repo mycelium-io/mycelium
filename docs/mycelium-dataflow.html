@@ -523,6 +523,77 @@
     justify-content: space-between;
   }
   .footer span { color: var(--dim); }
+
+  /* ── MOBILE ── */
+  @media (max-width: 768px) {
+    .hero {
+      padding: 48px 24px 40px;
+      min-height: auto;
+    }
+    .hero > div {
+      flex-direction: column !important;
+      align-items: flex-start !important;
+      gap: 20px !important;
+    }
+    .hero > div > img {
+      width: 100px !important;
+      height: 100px !important;
+    }
+    .hero-sub {
+      font-size: 15px;
+      max-width: 100%;
+    }
+    .hero-chips { margin-bottom: 32px; }
+
+    /* Stack scrolly vertically — panel sticks to top, narrative below */
+    .scrolly { flex-direction: column; }
+    .panel-wrap {
+      width: 100%;
+      height: 50vh;
+      min-height: 280px;
+      position: sticky;
+      top: 0;
+      padding: 12px 16px;
+      order: 1;
+      z-index: 10;
+      background: var(--bg);
+    }
+    .narrative {
+      width: 100%;
+      padding: 0 24px 80px;
+      order: 2;
+    }
+    .section {
+      min-height: auto;
+      padding: 40px 0;
+    }
+    .sec-body { max-width: 100%; }
+
+    /* Scene 6: tighten tick grid on small screens */
+    .tick-cols { grid-template-columns: 1fr 28px 1fr; }
+    .tick-card { padding: 8px 8px; }
+    .tc-body { font-size: 10px !important; }
+
+    /* Scene 4: state pills wrap */
+    .state-row { flex-wrap: wrap; }
+    .state-pill { flex: none; width: calc(50% - 4px); }
+
+    .footer {
+      padding: 40px 24px;
+      flex-direction: column;
+      gap: 8px;
+      text-align: center;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .sc1-row { flex-direction: column; }
+    .sc1-row > div[style*="align-items:center"] { display: none; }
+    .agents-row { flex-direction: column; }
+    .final-row { flex-wrap: wrap; gap: 6px; }
+    .final-box { flex: none; width: calc(50% - 16px); }
+    .final-arrow { display: none; }
+  }
 </style>
 </head>
 <body>
@@ -655,7 +726,7 @@
       <div class="sec-label">Full Pipeline</div>
       <h2 class="sec-title">End to end</h2>
       <p class="sec-body">From a single <code>mycelium adapter add openclaw</code> to agents reaching consensus — the whole flow is <strong>event-driven</strong>. No polling. Postgres NOTIFY pushes through SSE to the plugin which wakes the agent. NegMAS blocks on asyncio Futures bridged to room messages.</p>
-      <p class="sec-body" style="margin-top:12px;">Every conversation feeds back into the knowledge fabric. CognitiveEngine gets smarter with every negotiation. The system is designed for <strong>branch feat/plug-poll-coord-metrics</strong> — where the 5s poller is replaced with direct webhook push and coordination metrics are collected per-round.</p>
+      <p class="sec-body" style="margin-top:12px;">Every conversation feeds back into the knowledge fabric. CognitiveEngine gets smarter with every negotiation. The roadmap replaces the 5s poller with direct webhook push and adds coordination metrics collected per-round.</p>
     </div>
 
   </div>
@@ -1067,7 +1138,7 @@
 </div><!-- end scrolly -->
 
 <div class="footer">
-  <span>Mycelium · feat/plug-poll-coord-metrics</span>
+  <span>Mycelium · Internet of Cognition</span>
   <span>IOC = Internet of Cognition</span>
 </div>
 
