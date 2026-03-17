@@ -88,6 +88,19 @@
     transition: color 0.2s;
   }
   .topnav-right a:hover { color: var(--accent); }
+  .copy-page-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    font-size: 12px;
+    font-family: 'SF Mono', monospace;
+    padding: 5px 12px;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  .copy-page-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .copy-page-btn.copied { border-color: var(--green); color: var(--green); }
 
   /* ── LAYOUT ── */
   .layout {
@@ -444,6 +457,7 @@
   <span class="topnav-sep">/</span>
   <span class="topnav-page">docs</span>
   <div class="topnav-right">
+    <button class="copy-page-btn" onclick="copyPage()">copy page</button>
     <a href="https://github.com/mycelium-io/mycelium">GitHub</a>
     <a href="https://github.com/mycelium-io/mycelium/releases">Releases</a>
   </div>
@@ -979,6 +993,16 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 8888</code></pre>
 </div>
 
 <script>
+  function copyPage() {
+    const text = document.querySelector('.main').innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.querySelector('.copy-page-btn');
+      btn.textContent = 'copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'copy page'; btn.classList.remove('copied'); }, 2000);
+    });
+  }
+
   // Active nav link tracking
   const sections = document.querySelectorAll('.doc-section[id], section[id]');
   const navLinks = document.querySelectorAll('.nav-link[href^="#"]');
