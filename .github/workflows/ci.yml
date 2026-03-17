@@ -68,6 +68,24 @@ jobs:
           GRAPH_DB_URL: postgresql://postgres:password@localhost:5432/mycelium
         run: uv run pytest tests/test_integration.py -x -q
 
+  sync-install-script:
+    name: Sync install.sh to docs/
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Copy install.sh to docs/
+        run: cp install.sh docs/install.sh
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/install.sh
+          git diff --cached --quiet || git commit -m "chore: sync install.sh to docs/ [skip ci]"
+          git push
+
   lint-cli:
     name: CLI lint
     runs-on: ubuntu-latest
