@@ -46,12 +46,35 @@ def memory_set(
     handle: str = typer.Option("cli-user", "--handle", "-h", help="Agent handle"),
     no_embed: bool = typer.Option(False, "--no-embed", help="Skip vector embedding"),
     tags: str | None = typer.Option(None, "--tags", "-t", help="Comma-separated tags"),
+    update: bool = typer.Option(False, "--update", "-u", help="Allow overwriting an existing memory"),
 ) -> None:
-    """Write a memory to a room's persistent namespace."""
-    from mycelium_backend_client.api.memory import create_memories_rooms_room_name_memory_post as create_api
+    """Write a memory to a room's persistent namespace.
+
+    Fails if the key already exists unless --update is passed.
+    """
+    from mycelium_backend_client.api.memory import (
+        create_memories_rooms_room_name_memory_post as create_api,
+        get_memory_rooms_room_name_memory_key_get as get_api,
+    )
     from mycelium_backend_client.models import MemoryBatchCreate, MemoryCreate
 
     room_name = _get_active_room(room)
+
+    # Check for existing key unless --update is set
+    if not update:
+        try:
+            from mycelium_backend_client.errors import UnexpectedStatus
+            with _get_client() as client:
+                existing = get_api.sync(room_name=room_name, key=key, client=client)
+                if existing is not None:
+                    console.print(
+                        f"[red]Error:[/red] {room_name}/{key} already exists (v{existing.version}). "
+                        f"Use [bold]--update[/bold] to overwrite."
+                    )
+                    raise typer.Exit(1)
+        except UnexpectedStatus as e:
+            if e.status_code != 404:
+                raise
 
     # Try to parse value as JSON
     try:
