@@ -128,11 +128,14 @@ def memory_get(
 
 @app.command(name="ls")
 def memory_ls(
+    namespace: str | None = typer.Argument(None, help="Key prefix to filter by (e.g. 'position/' or 'decisions/')"),
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
-    prefix: str | None = typer.Option(None, "--prefix", "-p", help="Key prefix filter"),
+    prefix: str | None = typer.Option(None, "--prefix", "-p", help="Key prefix filter (same as positional arg)"),
     limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
 ) -> None:
-    """List memories in a room."""
+    """List memories in a room, optionally filtered by namespace prefix."""
+    # Positional arg takes priority over --prefix flag
+    prefix = namespace or prefix
     from mycelium_backend_client.api.memory import list_memories_rooms_room_name_memory_get as list_api
 
     room_name = _get_active_room(room)
