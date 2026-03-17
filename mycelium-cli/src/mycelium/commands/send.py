@@ -11,7 +11,6 @@ import typer
 from mycelium.config import MyceliumConfig
 from mycelium.error_handler import print_error
 from mycelium.exceptions import ConfigNotFoundError, MyceliumError
-from mycelium.http_client import MyceliumHTTPClient
 from mycelium.identity import get_current_handle
 
 
@@ -34,6 +33,10 @@ def send(
         mycelium send @all "Deploy complete"
     """
     try:
+        from mycelium_backend_client import Client
+        from mycelium_backend_client.api.messages import send_message_rooms_room_name_messages_post as send_api
+        from mycelium_backend_client.models import MessageCreate
+
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
         json_output = ctx.obj.get("json", False) if ctx.obj else False
 
@@ -61,22 +64,19 @@ def send(
             message_type = "direct"
             recipient_handle = recipient
 
-        with MyceliumHTTPClient(config=config) as client:
-            request_data: dict = {
-                "sender_handle": handle,
-                "message_type": message_type,
-                "content": message,
-            }
-            if recipient_handle:
-                request_data["recipient_handle"] = recipient_handle
-            response = client.post(
-                f"/rooms/{room_name}/messages",
-                json=request_data,
+        client = Client(base_url=config.server.api_url, raise_on_unexpected_status=True)
+        with client:
+            body = MessageCreate(
+                sender_handle=handle,
+                message_type=message_type,
+                content=message,
+                recipient_handle=recipient_handle,
             )
-            msg_data = response.json()
+            result = send_api.sync(room_name=room_name, client=client, body=body)
 
-        if json_output:
-            typer.echo(json_module.dumps(msg_data, indent=2, default=str))
+        if json_output and result:
+            msg_dict = result.to_dict() if hasattr(result, "to_dict") else str(result)
+            typer.echo(json_module.dumps(msg_dict, indent=2, default=str))
         else:
             if message_type == "broadcast":
                 typer.secho("Broadcasted:", fg=typer.colors.GREEN)

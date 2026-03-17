@@ -18,7 +18,7 @@ import typer
 from mycelium.config import MyceliumConfig, ServerConfig
 from mycelium.error_handler import print_error
 from mycelium.exceptions import ConfigNotFoundError
-from mycelium.http_client import MyceliumHTTPClient
+from mycelium.http_client import MyceliumHTTPClient  # kept for health check
 
 app = typer.Typer(help="Instance management commands")
 

@@ -23,7 +23,13 @@ import typer
 from mycelium.config import MyceliumConfig
 from mycelium.error_handler import print_error
 from mycelium.exceptions import ConfigNotFoundError, MyceliumError
-from mycelium.http_client import MyceliumHTTPClient
+from mycelium.http_client import MyceliumHTTPClient  # kept for SSE streaming only
+
+
+def _typed_client(config: MyceliumConfig):
+    """Get a typed OpenAPI client."""
+    from mycelium_backend_client import Client
+    return Client(base_url=config.server.api_url, raise_on_unexpected_status=True)
 
 app = typer.Typer(help="Room management commands", invoke_without_command=True)
 
@@ -49,9 +55,11 @@ def room_main(ctx: typer.Context) -> None:
                 typer.echo("Set a room with: mycelium room set <name>")
             raise typer.Exit(1)
 
-        with MyceliumHTTPClient(config=config) as client:
-            response = client.get("/rooms", params={"name": active_room, "limit": 1})
-            rooms_data = response.json()
+        from mycelium_backend_client.api.rooms import list_rooms_rooms_get as list_api
+
+        with _typed_client(config) as client:
+            result = list_api.sync(client=client, name=active_room, limit=1)
+            rooms_data = [r.to_dict() for r in result] if result else []
 
         if not rooms_data:
             typer.secho(f"Active room '{active_room}' not found on server.", fg=typer.colors.RED)
@@ -91,9 +99,11 @@ def list_rooms(
         if name:
             params["name"] = name
 
-        with MyceliumHTTPClient(config=config) as client:
-            response = client.get("/rooms", params=params)
-            rooms_data = response.json()
+        from mycelium_backend_client.api.rooms import list_rooms_rooms_get as list_api
+
+        with _typed_client(config) as client:
+            result = list_api.sync(client=client, name=name, limit=limit)
+            rooms_data = [r.to_dict() for r in result] if result else []
 
         if json_output:
             typer.echo(json_module.dumps(rooms_data, indent=2, default=str))
@@ -160,18 +170,19 @@ def create(
         if mode in ("async", "hybrid"):
             persistent = True
 
-        with MyceliumHTTPClient(config=config) as client:
-            response = client.post(
-                "/rooms",
-                json={
-                    "name": name,
-                    "is_public": public,
-                    "mode": mode,
-                    "trigger_config": trigger_config,
-                    "is_persistent": persistent,
-                },
+        from mycelium_backend_client.api.rooms import create_room_rooms_post as create_api
+        from mycelium_backend_client.models import RoomCreate
+
+        with _typed_client(config) as client:
+            body = RoomCreate(
+                name=name,
+                is_public=public,
+                mode=mode,
+                trigger_config=trigger_config,
+                is_persistent=persistent,
             )
-            room_data = response.json()
+            result = create_api.sync(client=client, body=body)
+            room_data = result.to_dict() if result and hasattr(result, "to_dict") else {}
 
         if json_output:
             typer.echo(json_module.dumps(room_data, indent=2, default=str))
@@ -198,9 +209,11 @@ def synthesize(
         config = MyceliumConfig.load()
         name = room_name or _resolve_room(config)
 
-        with MyceliumHTTPClient(config=config) as client:
-            resp = client.post(f"/rooms/{name}/synthesize")
-            data = resp.json()
+        from mycelium_backend_client.api.rooms import synthesize_room_rooms_room_name_synthesize_post as synth_api
+
+        with _typed_client(config) as client:
+            result = synth_api.sync_detailed(room_name=name, client=client)
+            data = result.parsed.to_dict() if result.parsed and hasattr(result.parsed, "to_dict") else json_module.loads(result.content)
 
         if json_output:
             typer.echo(json_module.dumps(data, indent=2, default=str))
@@ -229,9 +242,11 @@ def set(
 
         config = MyceliumConfig.load()
 
-        with MyceliumHTTPClient(config=config, timeout=10.0, max_retries=1) as client:
-            response = client.get("/rooms", params={"name": room_name, "limit": 1})
-            rooms_data = response.json()
+        from mycelium_backend_client.api.rooms import list_rooms_rooms_get as list_api
+
+        with _typed_client(config) as client:
+            result = list_api.sync(client=client, name=room_name, limit=1)
+            rooms_data = [r.to_dict() for r in result] if result else []
 
             if not rooms_data:
                 raise MyceliumError(
@@ -274,8 +289,10 @@ def delete(
                 typer.echo("Cancelled.")
                 raise typer.Exit(0)
 
-        with MyceliumHTTPClient(config=config) as client:
-            client.delete(f"/rooms/{room_name}")
+        from mycelium_backend_client.api.rooms import delete_room_rooms_room_name_delete as delete_api
+
+        with _typed_client(config) as client:
+            delete_api.sync_detailed(room_name=room_name, client=client)
 
         typer.secho(f"Room '{room_name}' deleted.", fg=typer.colors.GREEN)
 
@@ -483,12 +500,13 @@ def join(
         elif file:
             intent = file.read_text().strip()
 
-        with MyceliumHTTPClient(config=config) as client:
-            response = client.post(
-                f"/rooms/{room_name}/sessions",
-                json={"agent_handle": handle, "intent": intent},
-            )
-            data = response.json()
+        from mycelium_backend_client.api.sessions import join_room_rooms_room_name_sessions_post as join_api
+        from mycelium_backend_client.models import SessionCreate
+
+        with _typed_client(config) as client:
+            body = SessionCreate(agent_handle=handle, intent=intent)
+            result = join_api.sync(room_name=room_name, client=client, body=body)
+            data = result.to_dict() if result and hasattr(result, "to_dict") else {}
 
         if json_output:
             typer.echo(json_module.dumps(data, indent=2, default=str))
@@ -704,16 +722,13 @@ def respond(
 
         config = MyceliumConfig.load()
 
-        with MyceliumHTTPClient(config=config) as client:
-            resp = client.post(
-                f"/rooms/{session_id}/messages",
-                json={
-                    "sender_handle": agent,
-                    "message_type": "direct",
-                    "content": response_text,
-                },
-            )
-            data = resp.json()
+        from mycelium_backend_client.api.messages import send_message_rooms_room_name_messages_post as send_api
+        from mycelium_backend_client.models import MessageCreate
+
+        with _typed_client(config) as client:
+            body = MessageCreate(sender_handle=agent, message_type="direct", content=response_text)
+            result = send_api.sync(room_name=session_id, client=client, body=body)
+            data = result.to_dict() if result and hasattr(result, "to_dict") else {}
 
         if json_output:
             typer.echo(json_module.dumps(data, indent=2, default=str))
@@ -748,17 +763,13 @@ def delegate(
         config = MyceliumConfig.load()
         sender = config.get_current_identity()
 
-        with MyceliumHTTPClient(config=config) as client:
-            resp = client.post(
-                f"/rooms/{session_id}/messages",
-                json={
-                    "sender_handle": sender,
-                    "message_type": "delegate",
-                    "content": task,
-                    "recipient_handle": to,
-                },
-            )
-            data = resp.json()
+        from mycelium_backend_client.api.messages import send_message_rooms_room_name_messages_post as send_api
+        from mycelium_backend_client.models import MessageCreate
+
+        with _typed_client(config) as client:
+            body = MessageCreate(sender_handle=sender, message_type="delegate", content=task, recipient_handle=to)
+            result = send_api.sync(room_name=session_id, client=client, body=body)
+            data = result.to_dict() if result and hasattr(result, "to_dict") else {}
 
         if json_output:
             typer.echo(json_module.dumps(data, indent=2, default=str))
