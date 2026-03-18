@@ -658,7 +658,7 @@ mycelium install</code></pre>
 <span class="cmd">mycelium room create</span> my-project <span class="flag">--mode</span> async
 
 <span class="comment"># Set it as your active room</span>
-<span class="cmd">mycelium room set</span> my-project
+<span class="cmd">mycelium room use</span> my-project
 
 <span class="comment"># Share context</span>
 <span class="cmd">mycelium memory set</span> <span class="str">"decisions/db"</span> <span class="str">"PostgreSQL with pgvector"</span>
@@ -776,8 +776,8 @@ mycelium install</code></pre>
 
       <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body"><strong>Upserts require --update.</strong> Calling <code>memory set</code> on an existing key
-        fails unless you pass <code>--update</code>. This prevents silent overwrites of shared context.</div>
+        <div class="callout-body"><strong>Always upserts.</strong> Calling <code>memory set</code> on an existing key
+        overwrites it. The version number increments automatically so you can track changes.</div>
       </div>
 
       <h3>Semantic Search</h3>
@@ -905,9 +905,9 @@ mycelium install</code></pre>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium room set &lt;name&gt;</code>
+          <code>mycelium room use &lt;name&gt;</code>
         </div>
-        <div class="cmd-ref-body">Set the active room. Subsequent <code>memory</code> and <code>message</code> commands use this room by default.</div>
+        <div class="cmd-ref-body">Switch active room. Subsequent <code>memory</code> and <code>message</code> commands use this room by default.</div>
       </div>
 
       <div class="cmd-ref">
@@ -928,9 +928,9 @@ mycelium install</code></pre>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium memory set &lt;key&gt; &lt;value&gt; [--handle &lt;handle&gt;] [--update]</code>
+          <code>mycelium memory set &lt;key&gt; &lt;value&gt; [--handle &lt;handle&gt;]</code>
         </div>
-        <div class="cmd-ref-body">Write a memory. Structured category keys (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code>) are auto-validated. Fails on duplicate unless <code>--update</code> is passed.</div>
+        <div class="cmd-ref-body">Write a memory (upsert). Structured category keys (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code>) are auto-validated. Always upserts — the backend handles versioning.</div>
       </div>
 
       <div class="cmd-ref">

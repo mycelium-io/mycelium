@@ -49,8 +49,8 @@ def _get_active_room(room: str | None) -> str:
 
 
 @doc_ref(
-    usage="mycelium memory set <key> <value> [--handle <handle>] [--update]",
-    desc="Write a memory. Structured category keys (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code>) are auto-validated. Fails on duplicate unless <code>--update</code> is passed.",
+    usage="mycelium memory set <key> <value> [--handle <handle>]",
+    desc="Write a memory (upsert). Structured category keys (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code>) are auto-validated. Always upserts — the backend handles versioning.",
     group="memory",
 )
 @app.command(name="set")
@@ -60,19 +60,16 @@ def memory_set(
     room: str | None = typer.Option(
         None, "--room", "-r", help="Room name (defaults to active room)"
     ),
-    handle: str = typer.Option("cli-user", "--handle", "-h", help="Agent handle"),
+    handle: str = typer.Option("cli-user", "--handle", "-H", help="Agent handle"),
     no_embed: bool = typer.Option(False, "--no-embed", help="Skip vector embedding"),
     tags: str | None = typer.Option(None, "--tags", "-t", help="Comma-separated tags"),
-    update: bool = typer.Option(
-        False, "--update", "-u", help="Allow overwriting an existing memory"
-    ),
 ) -> None:
-    """Write a memory to a room's persistent namespace.
+    """Write a memory to a room's persistent namespace (upsert).
 
     Keys with a known category prefix (work/, decisions/, context/, status/) are
     validated for slug format. Other keys pass through freely.
 
-    Fails if the key already exists unless --update is passed.
+    Always upserts — the backend handles versioning.
 
     Examples:
         mycelium memory set status/deploy ACTIVE
@@ -82,9 +79,6 @@ def memory_set(
     """
     from mycelium_backend_client.api.memory import (
         create_memories_rooms_room_name_memory_post as create_api,
-    )
-    from mycelium_backend_client.api.memory import (
-        get_memory_rooms_room_name_memory_key_get as get_api,
     )
     from mycelium_backend_client.models import MemoryBatchCreate, MemoryCreate
 
@@ -108,23 +102,6 @@ def memory_set(
                 else:
                     console.print(f"[red]Error:[/red] {exc}")
                 raise typer.Exit(1) from exc
-
-    # Check for existing key unless --update is set
-    if not update:
-        try:
-            from mycelium_backend_client.errors import UnexpectedStatus
-
-            with _get_client() as client:
-                existing = get_api.sync(room_name=room_name, key=key, client=client)
-                if existing is not None:
-                    console.print(
-                        f"[red]Error:[/red] {room_name}/{key} already exists (v{existing.version}). "
-                        f"Use [bold]--update[/bold] to overwrite."
-                    )
-                    raise typer.Exit(1)
-        except UnexpectedStatus as e:
-            if e.status_code != 404:
-                raise
 
     tag_list = [t.strip() for t in tags.split(",")] if tags else None
 
@@ -312,7 +289,7 @@ def memory_rm(
 def memory_subscribe(
     pattern: str = typer.Argument(..., help="Key glob pattern (e.g. 'project/*')"),
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
-    handle: str = typer.Option("cli-user", "--handle", "-h", help="Subscriber agent handle"),
+    handle: str = typer.Option("cli-user", "--handle", "-H", help="Subscriber agent handle"),
 ) -> None:
     """Subscribe to memory change notifications."""
     from mycelium_backend_client.api.memory import (

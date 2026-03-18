@@ -49,7 +49,7 @@ Embeddings: fastembed (BAAI/bge-small-en-v1.5, local, 384 dimensions).
 - **Rooms are namespaces** — memories are scoped to rooms. A room IS its namespace.
 - **Three room modes** — sync (NegMAS negotiation), async (persistent memory), hybrid (both).
 - **The CLI skill is a protocol** — join → wait → respond → consensus. This is the value add, don't change it to an augmentation layer.
-- **Upserts require --update** — `memory set` fails on duplicate keys unless `--update` is passed.
+- **memory set always upserts** — `memory set` overwrites existing keys automatically (version increments).
 - **No Ensue references in code** — we took inspiration from their API design but the implementation is independent.
 
 ## Conventions

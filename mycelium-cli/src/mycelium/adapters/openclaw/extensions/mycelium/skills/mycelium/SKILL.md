@@ -79,7 +79,7 @@ mycelium room watch <room-name>
 
 ### Post a direct message
 ```
-mycelium room respond <room-name> --agent <your-handle> --response "<text>"
+mycelium room post <room-name> --agent <your-handle> --response "<text>"
 ```
 
 ### Delegate a subtask

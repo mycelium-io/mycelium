@@ -30,7 +30,7 @@ category prefix, it checks the slug format and auto-timestamps the content.
 
 ```bash
 mycelium room create project-x --mode async --persistent
-mycelium room set project-x
+mycelium room use project-x
 ```
 
 ### 2. Write structured memories as you work
@@ -93,8 +93,8 @@ Latest Synthesis
 ### 5. Update status as things change
 
 ```bash
-# --update/-u flag allows overwriting
-mycelium memory set status/deploy "ACTIVE — deployed to vps.example.com" -u
+# memory set always upserts — just set the new value
+mycelium memory set status/deploy "ACTIVE — deployed to vps.example.com"
 ```
 
 ## Type Safety
