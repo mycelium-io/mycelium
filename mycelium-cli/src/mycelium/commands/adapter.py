@@ -11,6 +11,7 @@ Planned:
 
 import importlib.resources
 import json as json_module
+import os
 import shutil
 import subprocess
 import tempfile
@@ -46,8 +47,11 @@ def adapter_main(ctx: typer.Context) -> None:
 
 _OPENCLAW_STEPS = {
     "local-gateway": "write Mycelium env vars into the local openclaw systemd service",
+    "otel": "configure OpenClaw diagnostics-otel plugin to export to the OTLP receiver",
     "docker-env": "show env vars for Docker-based experiment agents",
 }
+
+_GATEWAY_RESTART_STEPS = {"local-gateway", "otel"}
 
 # Assets that go into each agent's ~/.openclaw/ directory
 _OPENCLAW_SCAFFOLD_ASSETS = [
@@ -66,7 +70,7 @@ def add(
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Show what would be installed without doing it"
     ),
-    step: str | None = typer.Option(
+    step: list[str] | None = typer.Option(
         None, "--step", help=f"Run a follow-up setup step: {', '.join(_OPENCLAW_STEPS)}"
     ),
     reinstall: bool = typer.Option(
@@ -87,7 +91,7 @@ def add(
     Examples:
         mycelium adapter add openclaw
         mycelium adapter add openclaw --reinstall
-        mycelium adapter add openclaw --step=local-gateway
+        mycelium adapter add openclaw --step=local-gateway --step=otel
         mycelium adapter add openclaw --step=docker-env
     """
     try:
@@ -129,22 +133,37 @@ def add(
         config = MyceliumConfig.load()
 
         # ── Follow-up steps run independently of the base install ────────────
-        if step is not None:
+        if step is not None and len(step) > 0:
             if adapter_type != "openclaw":
                 typer.secho(
                     "--step is only supported for the 'openclaw' adapter.", fg=typer.colors.RED
                 )
                 raise typer.Exit(1)
-            if step not in _OPENCLAW_STEPS:
-                known_steps = ", ".join(_OPENCLAW_STEPS)
-                typer.secho(
-                    f"Unknown step '{step}'. Known steps: {known_steps}", fg=typer.colors.RED
-                )
-                raise typer.Exit(1)
-            if step == "local-gateway":
-                _step_local_gateway(config)
-            elif step == "docker-env":
-                _step_docker_env(config)
+
+            for s in step:
+                if s not in _OPENCLAW_STEPS:
+                    known_steps = ", ".join(_OPENCLAW_STEPS)
+                    typer.secho(
+                        f"Unknown step '{s}'. Known steps: {known_steps}", fg=typer.colors.RED
+                    )
+                    raise typer.Exit(1)
+
+            completed: set[str] = set()
+
+            for s in step:
+                if s == "local-gateway":
+                    _step_local_gateway(config)
+                    completed.add(s)
+                elif s == "otel":
+                    if _configure_otel():
+                        completed.add(s)
+                elif s == "docker-env":
+                    _step_docker_env(config)
+                    completed.add(s)
+
+            if completed & _GATEWAY_RESTART_STEPS:
+                _restart_gateway_if_active()
+
             return
 
         # ── Base install ──────────────────────────────────────────────────────
@@ -467,7 +486,7 @@ def _allow_plugin_remove(plugin_id: str) -> None:
 
 
 def _step_local_gateway(config: "MyceliumConfig") -> None:
-    """Write Mycelium env vars into the local openclaw systemd user service and restart it."""
+    """Write Mycelium env vars into the local openclaw systemd user service."""
     service_path = Path.home() / ".config" / "systemd" / "user" / "openclaw-gateway.service"
 
     if not service_path.exists():
@@ -497,7 +516,6 @@ def _step_local_gateway(config: "MyceliumConfig") -> None:
                 continue
         new_lines.append(line)
 
-    # Insert any vars not already present, after the last Environment= line
     for key, val in env_vars.items():
         if key not in injected:
             for i in range(len(new_lines) - 1, -1, -1):
@@ -509,29 +527,104 @@ def _step_local_gateway(config: "MyceliumConfig") -> None:
 
     subprocess.run(["systemctl", "--user", "daemon-reload"], check=True, capture_output=True)
 
-    is_active = (
-        subprocess.run(
-            ["systemctl", "--user", "is-active", "openclaw-gateway.service"],
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-        == "active"
-    )
-
-    if is_active:
-        subprocess.run(
-            ["systemctl", "--user", "restart", "openclaw-gateway.service"],
-            check=True,
-            capture_output=True,
-        )
-
     typer.secho("  ✓ openclaw-gateway.service updated", fg=typer.colors.GREEN)
     for key, val in env_vars.items():
         typer.echo(f"    {key} = {val}")
-    if is_active:
-        typer.secho("  ↺  gateway restarted", fg=typer.colors.CYAN)
-    else:
+
+
+def _configure_otel(port: int | None = None) -> bool:
+    """Configure OpenClaw's diagnostics-otel plugin in openclaw.json."""
+    config_path = Path.home() / ".openclaw" / "openclaw.json"
+    if not config_path.exists():
+        typer.secho("  ✗ ~/.openclaw/openclaw.json not found.", fg=typer.colors.RED)
+        typer.echo("    Run 'openclaw gateway start' first to create the config file.")
+        return False
+
+    try:
+        cfg = json_module.loads(config_path.read_text())
+    except (json_module.JSONDecodeError, OSError) as exc:
+        typer.secho(f"  ✗ Could not read openclaw.json: {exc}", fg=typer.colors.RED)
+        return False
+
+    try:
+        default_port = 4318
+        env_port = os.environ.get("MYCELIUM_METRICS_PORT")
+        if env_port:
+            try:
+                default_port = int(env_port)
+            except ValueError:
+                pass
+        resolved_port = port if port is not None else default_port
+        endpoint = f"http://localhost:{resolved_port}"
+
+        diagnostics = cfg.setdefault("diagnostics", {})
+        diagnostics["enabled"] = True
+        otel = diagnostics.setdefault("otel", {})
+        otel["enabled"] = True
+        otel.setdefault("serviceName", "openclaw-gateway")
+        otel.update({
+            "endpoint": endpoint,
+            "protocol": "http/protobuf",
+            "traces": True,
+            "metrics": True,
+            "logs": True,
+            "flushIntervalMs": 5000,
+        })
+
+        plugins = cfg.setdefault("plugins", {})
+        allow_list = plugins.setdefault("allow", [])
+        if "diagnostics-otel" not in allow_list:
+            allow_list.append("diagnostics-otel")
+
+        entries = plugins.get("entries")
+        if not isinstance(entries, list):
+            if isinstance(entries, dict):
+                entries = [
+                    {"name": k, **(v if isinstance(v, dict) else {"enabled": v})}
+                    for k, v in entries.items()
+                ]
+            else:
+                entries = []
+            plugins["entries"] = entries
+        has_otel_entry = any(
+            e.get("name") == "diagnostics-otel" or e.get("id") == "diagnostics-otel"
+            for e in entries
+            if isinstance(e, dict)
+        )
+        if not has_otel_entry:
+            entries.append({"name": "diagnostics-otel", "enabled": True})
+
+        config_path.write_text(json_module.dumps(cfg, indent=2) + "\n")
+    except OSError as exc:
+        typer.secho(f"  ✗ Could not write openclaw.json: {exc}", fg=typer.colors.RED)
+        return False
+
+    typer.secho("  ✓ diagnostics-otel enabled in openclaw.json", fg=typer.colors.GREEN)
+    typer.echo(f"    endpoint: {endpoint}")
+    return True
+
+
+def _restart_gateway_if_active() -> bool:
+    """Restart openclaw-gateway.service if it is currently active."""
+    try:
+        is_active = (
+            subprocess.run(
+                ["systemctl", "--user", "is-active", "openclaw-gateway.service"],
+                capture_output=True, text=True,
+            ).stdout.strip()
+            == "active"
+        )
+        if is_active:
+            subprocess.run(
+                ["systemctl", "--user", "restart", "openclaw-gateway.service"],
+                check=True, capture_output=True,
+            )
+            typer.secho("  ↺ gateway restarted", fg=typer.colors.CYAN)
+            return True
         typer.echo("  (gateway not running — changes will apply on next start)")
+    except (FileNotFoundError, subprocess.SubprocessError):
+        typer.echo("  (systemctl not available — restart the gateway manually)")
+    return False
 
 
 def _step_docker_env(config: "MyceliumConfig") -> None:
