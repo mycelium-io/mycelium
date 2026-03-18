@@ -26,6 +26,8 @@ Run all quality checks on the mycelium codebase. Report issues without auto-fixi
    cd fastapi-backend && python -m pytest tests/ -x -q
    ```
 
-4. **Report** — Summarize all issues found. Do NOT auto-fix anything. Just report what needs attention.
+4. **CLI docs check** — If any CLI command files were changed (`mycelium-cli/src/mycelium/commands/`), remind the user to run `/generate-cli-docs` to regenerate the HTML CLI reference. Check if any new commands are missing `@doc_ref` decorators.
+
+5. **Report** — Summarize all issues found. Do NOT auto-fix anything. Just report what needs attention.
 
 If everything passes, say so clearly.
