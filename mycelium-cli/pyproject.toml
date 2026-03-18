@@ -112,3 +112,4 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 "tests/**/*.py" = ["ARG001", "ARG002"]
+"src/mycelium_backend_client/**/*.py" = ["UP", "E", "W", "F", "B", "C4", "I", "ARG", "SIM"]
