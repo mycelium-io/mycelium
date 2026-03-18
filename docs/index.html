@@ -511,7 +511,7 @@
     .main { padding: 24px 16px 60px; }
     h1 { font-size: 28px; }
     h2 { font-size: 20px; }
-    pre { font-size: 12px; }
+    pre { font-size: 12px; white-space: pre-wrap; word-break: break-all; }
     .cmd-ref-header code { font-size: 12px; word-break: break-all; }
   }
 </style>
@@ -685,12 +685,12 @@ mycelium install</code></pre>
       <p>Now try a sync room — two agents negotiating a plan:</p>
       <pre><code><span class="comment"># Terminal 1 — agent julia</span>
 <span class="cmd">mycelium room create</span> sprint-plan <span class="flag">--mode</span> sync
-<span class="cmd">mycelium room join</span> <span class="flag">--handle</span> julia-agent <span class="flag">-m</span> <span class="str">"Prioritize the database migration first"</span> <span class="flag">-c</span> sprint-plan
-<span class="cmd">mycelium room await</span> <span class="flag">--handle</span> julia-agent <span class="flag">-c</span> sprint-plan
+<span class="cmd">mycelium room join</span> <span class="flag">--handle</span> julia-agent <span class="flag">-m</span> <span class="str">"Prioritize the database migration first"</span> <span class="flag">-r</span> sprint-plan
+<span class="cmd">mycelium room await</span> <span class="flag">--handle</span> julia-agent <span class="flag">-r</span> sprint-plan
 
 <span class="comment"># Terminal 2 — agent selina</span>
-<span class="cmd">mycelium room join</span> <span class="flag">--handle</span> selina-agent <span class="flag">-m</span> <span class="str">"Focus on frontend polish, backend is solid"</span> <span class="flag">-c</span> sprint-plan
-<span class="cmd">mycelium room await</span> <span class="flag">--handle</span> selina-agent <span class="flag">-c</span> sprint-plan
+<span class="cmd">mycelium room join</span> <span class="flag">--handle</span> selina-agent <span class="flag">-m</span> <span class="str">"Focus on frontend polish, backend is solid"</span> <span class="flag">-r</span> sprint-plan
+<span class="cmd">mycelium room await</span> <span class="flag">--handle</span> selina-agent <span class="flag">-r</span> sprint-plan
 
 <span class="comment"># CognitiveEngine runs negotiation — await returns ticks with actions</span></code></pre>
     </section>
@@ -831,13 +831,18 @@ mycelium install</code></pre>
       </ol>
 
       <pre><code><span class="comment"># Propose (after await returns action: propose)</span>
-<span class="cmd">mycelium message propose</span> budget=high timeline=standard scope=extended quality=standard <span class="flag">-c</span> sprint-plan <span class="flag">-H</span> julia-agent
+<span class="cmd">mycelium message propose</span> \
+  budget=high timeline=standard \
+  scope=extended quality=standard \
+  <span class="flag">-r</span> sprint-plan <span class="flag">-H</span> julia-agent
 
 <span class="comment"># Respond (after await returns action: respond)</span>
-<span class="cmd">mycelium message respond</span> accept <span class="flag">-c</span> sprint-plan <span class="flag">-H</span> selina-agent
+<span class="cmd">mycelium message respond</span> accept \
+  <span class="flag">-r</span> sprint-plan <span class="flag">-H</span> selina-agent
 
 <span class="comment"># Keep awaiting between each action</span>
-<span class="cmd">mycelium room await</span> <span class="flag">--handle</span> selina-agent <span class="flag">-c</span> sprint-plan</code></pre>
+<span class="cmd">mycelium room await</span> \
+  <span class="flag">-H</span> selina-agent <span class="flag">-r</span> sprint-plan</code></pre>
 
       <h3>Synthesis (async rooms)</h3>
       <p>
