@@ -162,82 +162,33 @@ in some contexts. Standardize on `--handle/-H` everywhere, or use a
 different flag name entirely (`--as`, `--agent`, `--identity`). `--as`
 is nice and short: `mycelium memory set status/x "done" --as julia-agent`.
 
-## The Procedural Memory Gap
+## How This Connects to the Memory Direction
 
-The knowledge graph layer already has `memory_type: Literal["Semantic", "Procedural", "Episodic"]`
-(in `fastapi-backend/app/knowledge/schemas.py:52`). But **nothing in the CLI surfaces this**.
+(See `scratchpad/memory-service-direction.md` for full context.)
 
-The memory-service-direction doc established key-prefix conventions (`work/`, `decisions/`,
-`context/`, `status/`) as a practical substitute — and those are good. But they map to
-**what** was remembered, not **how it should be used**. The cognitive science taxonomy
-in the knowledge graph maps to **how**:
+The CLI pattern issues above are **friction that prevents agents from using
+memory well**. The memory system is the part of Mycelium that solves real
+pain today — Marc's agent forgot about the cron job. The structured key
+conventions (`work/`, `status/`, `decisions/`, `context/`) and the commands
+that were built on top of them (`memory status`, `memory work`, etc.) are
+the right direction.
 
-| Graph Type   | Key Prefix Convention | What It Means                              |
-|-------------|----------------------|--------------------------------------------|
-| Procedural  | `work/*`             | How to do things — steps, scripts, configs |
-| Episodic    | `status/*`, `decisions/*` | What happened — events, choices, outcomes |
-| Semantic    | `context/*`          | What is true — facts, preferences, constraints |
+But agents won't use memory correctly if the CLI fights them:
 
-The gap: **the CLI has no way to query by memory type, and the key-prefix shortcuts
-(`memory status`, `memory work`, `memory decisions`, `memory context`) are hardcoded
-ls filters, not first-class memory type operations**.
+- `--update` guard on `memory set` means agents avoid overwriting, so they
+  write fewer memories or error out silently
+- `--handle` inconsistency means agent attribution is wrong on memories
+- No `message ls` means agents can't review what happened in a room to
+  decide what's worth persisting
+- `room set` confusion means agents might not even be pointed at the right
+  room when they write
 
-### What this means for the CLI
+These are the input end of the pipeline. Fix the ergonomics → agents write
+more memories → catchup/synthesis gets better → continuity improves.
 
-The four shortcut commands (`memory status/work/decisions/context`) are doing the
-right thing ergonomically — agents don't want to think about cognitive science
-categories, they want to ask "what's been built?" But the implementation is a
-string prefix filter, not a typed query. This matters when:
-
-1. **Search crosses categories** — `memory search "how do I deploy"` returns
-   memories by vector similarity, ignoring whether they're procedural or episodic.
-   An agent looking for a procedure gets noise from status updates.
-
-2. **Synthesis doesn't know types** — The catchup synthesis groups by prefix,
-   but it could produce much better briefings if it knew a `work/*` memory is
-   procedural (actionable steps) vs a `decisions/*` memory is episodic (context
-   for understanding).
-
-3. **Knowledge graph is disconnected** — Memories written via `memory set` go
-   into the SQL table. Knowledge graph entries (concepts + relations with
-   memory_type) are written via a completely separate API. There's no bridge.
-
-### Suggested additions
-
-These are NOT breaking changes. They layer on top of what exists:
-
-1. **`memory set --type procedural`** — Optional flag that tags the memory with
-   a cognitive type. Defaults to inferring from prefix (`work/` → procedural,
-   `status/` → episodic, etc.). Stored as metadata on the memory row.
-
-2. **`memory search --type procedural`** — Filter search results by type. Agent
-   asks "how do I deploy" with `--type procedural` and gets only actionable
-   procedures, not status updates about past deploys.
-
-3. **`memory recall`** — A higher-level search that combines vector similarity
-   with type awareness. "What do I need to know to continue this task?" pulls
-   procedural memories (how-to), recent episodic memories (what happened), and
-   relevant semantic memories (background facts). This is the catchup-but-smarter
-   command.
-
-4. **Bridge to knowledge graph** — When `memory set` writes a procedural memory,
-   optionally extract concepts and relations and store them in the graph too.
-   This is the long game: the KV store is the fast path, the graph is the
-   deep structure.
-
-### How the CLI audit connects
-
-The pattern issues in the first half of this doc are **friction that prevents
-agents from building good memories in the first place**. If `memory set`
-requires `--update` for overwrites, agents write fewer memories. If `--handle`
-is inconsistent, the agent attribution on memories is wrong. If there's no
-`message ls`, agents can't review what happened to decide what's worth
-remembering.
-
-Fix the ergonomic issues → agents write more memories → more memories to
-type-tag → procedural memory becomes useful → recall/catchup gets smarter.
-
-It's a pipeline. The CLI audit is about unblocking the input end.
+The procedural memory question isn't about cognitive science taxonomy. It's
+about whether an agent can come back tomorrow and pick up where it left off.
+That's a CLI ergonomics problem as much as it is a storage problem.
 
 ## Priority Ranking
 
