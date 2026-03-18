@@ -475,17 +475,7 @@
     .hero-chips { margin-bottom: 32px; }
 
     .scrolly { flex-direction: column; }
-    .panel-wrap {
-      width: 100%;
-      height: 50vh;
-      min-height: 280px;
-      position: sticky;
-      top: 0;
-      padding: 12px 16px;
-      order: 1;
-      z-index: 10;
-      background: var(--bg);
-    }
+    .panel-wrap { display: none; }
     .narrative {
       width: 100%;
       padding: 0 24px 80px;
@@ -531,7 +521,8 @@
       <h1 class="hero-title">Adaptive Agent<br><span>Coordination</span></h1>
       <p class="hero-sub">Semantic negotiation, persistent memory, and a knowledge fabric that compounds. The IoC three-pillar architecture, implemented and running on OpenClaw.</p>
       <div class="hero-chips">
-        <span class="chip chip-o">OpenClaw agents</span>
+        <span class="chip chip-o">Claude Code</span>
+        <span class="chip chip-o">OpenClaw</span>
         <span class="chip chip-b">persistent memory</span>
         <span class="chip chip-g">NegMAS SAO</span>
         <span class="chip chip-p">AgensGraph</span>
@@ -568,7 +559,7 @@
       <div class="sec-label blue">IoC Architecture</div>
       <h2 class="sec-title">Three Pillars, One System</h2>
       <p class="sec-body">Mycelium implements all three IoC pillars. <strong>Cognition State Protocols</strong> for shared intent via CognitiveEngine + NegMAS. <strong>Cognition Fabric</strong> for persistent memory and knowledge graph via CFN. <strong>Cognition Engines</strong> for synthesis and guardrails.</p>
-      <p class="sec-body" style="margin-top:12px;">Each pillar maps directly to Mycelium components and connects to the Outshift CFN services &mdash; <code>ioc-cfn-mgmt-plane</code>, <code>ioc-knowledge-memory-svc</code>.</p>
+      <p class="sec-body" style="margin-top:12px;">Each pillar maps directly to Mycelium components and connects to the Outshift CFN services &mdash; <code>ioc-cfn-mgmt-plane</code> for agent registration and <code>ioc-cfn-svc</code> for fabric orchestration. Mycelium itself serves as the knowledge-memory backend.</p>
       <div class="sec-detail blue">
         <span class="hi-b">Pillar 1:</span> <span>SemanticNegotiationPipeline + NegMAS SAO</span>
         <span style="margin-top:4px;" class="hi-b">Pillar 2:</span> <span>Persistent memory + AgensGraph knowledge graph</span>
@@ -581,11 +572,11 @@
       <div class="sec-label">Infrastructure</div>
       <h2 class="sec-title">Single Database, Full Stack</h2>
       <p class="sec-body">Everything runs on one <strong>AgensGraph</strong> instance &mdash; SQL tables, openCypher graph, pgvector embeddings. The backend is <strong>FastAPI</strong> with Postgres <code>LISTEN/NOTIFY</code> for real-time SSE.</p>
-      <p class="sec-body" style="margin-top:12px;">CFN services plug in via the <code>cfn</code> profile. OpenClaw agents connect through the adapter, receiving coordination events over persistent SSE streams.</p>
+      <p class="sec-body" style="margin-top:12px;">CFN services plug in via the <code>cfn</code> Docker Compose profile. Agents connect through adapters &mdash; Claude Code via hooks + skill, OpenClaw via plugin &mdash; receiving coordination events over persistent SSE streams.</p>
       <div class="sec-detail">
         <span class="hi">Database:</span> <span>AgensGraph (Postgres + openCypher + pgvector)</span>
         <span style="margin-top:4px;" class="hi">Backend:</span> <span>FastAPI :8000 + asyncpg LISTEN/NOTIFY</span>
-        <span style="margin-top:4px;" class="hi">Agents:</span> <span>OpenClaw runtime with mycelium adapter</span>
+        <span style="margin-top:4px;" class="hi">Agents:</span> <span>Claude Code (hooks + skill) &middot; OpenClaw (plugin + adapter)</span>
         <span style="margin-top:4px;" class="hi">LLM:</span> <span>litellm (100+ provider support)</span>
       </div>
     </div>
@@ -595,7 +586,7 @@
       <div class="sec-label">Pillar 1 &mdash; Cognition State Protocols</div>
       <h2 class="sec-title">Semantic Negotiation Protocol</h2>
       <p class="sec-body">When agents need to agree, <strong>CognitiveEngine</strong> runs the SemanticNegotiationPipeline. Three components: <strong>IntentDiscovery</strong> reads what agents want, <strong>OptionsGeneration</strong> creates the solution space, <strong>NegotiationModel</strong> runs NegMAS SAO (Stacked Alternating Offers).</p>
-      <p class="sec-body" style="margin-top:12px;">Agents propose, respond, and reach consensus &mdash; all mediated, never direct. The engine has access to agent identities, intents, shared memories, and the knowledge graph.</p>
+      <p class="sec-body" style="margin-top:12px;">The protocol complexity is tucked behind the CLI &mdash; <code>message propose</code> and <code>message respond</code> validate against SSTP wire-format models so agents never write raw JSON. Agents propose, respond, and reach consensus, all mediated, never direct.</p>
       <div class="sec-detail">
         <span class="hi">IntentDiscovery</span><span style="margin-top:2px;">  &#8594; ["budget","timeline","scope","quality"]</span>
         <span style="margin-top:6px;" class="hi">OptionsGeneration</span><span style="margin-top:2px;">&#8594; {"budget": ["minimal"..."uncapped"], ...}</span>
@@ -608,10 +599,11 @@
       <div class="sec-label yellow">Pillar 1 &mdash; Live Flow</div>
       <h2 class="sec-title">Propose &#8594; Respond &#8594; Consensus</h2>
       <p class="sec-body">The protocol is <strong>push-based and event-driven</strong>. Agents join a room with their position. CognitiveEngine starts a 60s join window. When it fires, NegMAS drives propose/respond rounds.</p>
-      <p class="sec-body" style="margin-top:12px;">Each tick is pushed via SSE to the specific agent. The agent responds via the CLI. NegMAS unblocks and advances. No polling &mdash; Postgres <code>NOTIFY</code> pushes through SSE to the plugin which wakes the agent.</p>
+      <p class="sec-body" style="margin-top:12px;">Each tick is pushed via SSE to the specific agent. The agent responds via the CLI. NegMAS unblocks and advances. No polling &mdash; Postgres <code>NOTIFY</code> on the <code>agent:{handle}</code> channel pushes through SSE to <code>room await</code>, which wakes the agent.</p>
       <div class="sec-detail yellow">
-        <span class="hi-y">$ mycelium room join design-review --handle julia-agent</span>
-        <span style="margin-top:4px;" class="hi-y">$ mycelium message propose budget=high scope=extended</span>
+        <span class="hi-y">$ mycelium room join -r design-review -H julia-agent -m "prioritize db migration"</span>
+        <span style="margin-top:4px;" class="hi-y">$ mycelium room await -r design-review -H julia-agent</span>
+        <span style="margin-top:4px;" class="hi-y">$ mycelium message propose budget=high scope=extended -r design-review -H julia-agent</span>
         <span style="margin-top:6px;">CognitiveEngine evaluates &#8594; consensus or next round</span>
       </div>
     </div>
@@ -629,11 +621,11 @@
       <div class="sec-label purple">Pillar 3 &mdash; Cognition Engines</div>
       <h2 class="sec-title">Catchup</h2>
       <p class="sec-body">When a new agent arrives, it doesn't start from zero. <code>mycelium catchup</code> shows the latest CognitiveEngine synthesis plus recent activity. The synthesis is structured: <strong>Current State, What Worked, What Failed, Open Questions, Recommended Next Actions</strong>.</p>
-      <p class="sec-body" style="margin-top:12px;">This is how distributed agent swarms with shared memory ran 1000+ experiments &mdash; each new agent absorbed everything the swarm learned. Intelligence compounds instead of resetting.</p>
+      <p class="sec-body" style="margin-top:12px;">This pattern was proven by <strong>autoresearch@home</strong> &mdash; Ensue's distributed fork of Karpathy's autoresearch, where participants across the globe coordinated AI agents to optimize a training script. Agents claimed experiments, published results to shared memory, and each new agent absorbed everything the swarm learned. 700+ experiments ran overnight. Intelligence compounds instead of resetting.</p>
       <div class="sec-detail purple">
-        <span class="hi-p">Synthesis triggers:</span> <span>periodic, on-demand, or per-milestone</span>
+        <span class="hi-p">Synthesis triggers:</span> <span>threshold, on-demand, or per-milestone</span>
         <span style="margin-top:4px;" class="hi-p">Catchup:</span> <span>latest synthesis + recent activity stream</span>
-        <span style="margin-top:4px;" class="hi-p">Result:</span> <span>20+ agents, zero context loss</span>
+        <span style="margin-top:4px;" class="hi-p">Precedent:</span> <span>autoresearch@home &mdash; claim/run/publish via shared memory, zero duplication</span>
       </div>
     </div>
 
@@ -641,12 +633,12 @@
     <div class="section" data-scene="8">
       <div class="sec-label">CFN Integration</div>
       <h2 class="sec-title">Cognitive Fabric Nodes</h2>
-      <p class="sec-body">Mycelium plugs into the <strong>Outshift CFN stack</strong>. Agent registration flows through <code>ioc-cfn-mgmt-plane</code>. Memory operations route through <code>ioc-knowledge-memory-svc</code> to AgensGraph.</p>
-      <p class="sec-body" style="margin-top:12px;">The knowledge graph stores concepts and relationships extracted from agent conversations. CognitiveEngine queries this to inform future negotiations &mdash; creating a self-improving coordination loop.</p>
+      <p class="sec-body">Mycelium plugs into the <strong>Outshift CFN stack</strong>. Agent registration flows through <code>ioc-cfn-mgmt-plane</code>. <code>ioc-cfn-svc</code> routes knowledge extraction and evidence reasoning back to <strong>mycelium-backend</strong> &mdash; Mycelium serves as both the cognition engine and the knowledge-memory backend.</p>
+      <p class="sec-body" style="margin-top:12px;">On startup, Mycelium registers as a memory provider with the mgmt plane. <code>ioc-cfn-svc</code> then calls mycelium's <code>/api/knowledge-mgmt/extraction</code> and <code>/api/knowledge-mgmt/reasoning/evidence</code> endpoints for LLM extraction and graph queries.</p>
       <div class="sec-detail">
-        <span class="hi">Management:</span> <span>ioc-cfn-mgmt-plane-svc :9000</span>
-        <span style="margin-top:4px;" class="hi">CFN core:</span> <span>ioc-cfn-svc :9002</span>
-        <span style="margin-top:4px;" class="hi">Memory:</span> <span>ioc-knowledge-memory-svc :9003</span>
+        <span class="hi">Management:</span> <span>ioc-cfn-mgmt-plane-svc :9000 &mdash; agent registration, lifecycle</span>
+        <span style="margin-top:4px;" class="hi">CFN core:</span> <span>ioc-cfn-svc :9002 &mdash; routes to mycelium-backend for knowledge + memory</span>
+        <span style="margin-top:4px;" class="hi">Mycelium:</span> <span>implements KNOWLEDGE_MEMORY_SVC + COGNITION_ENGINE_SVC contracts</span>
       </div>
     </div>
 
@@ -714,10 +706,10 @@
           </div>
           <div style="display:flex; gap:8px; width:100%;">
             <div style="flex:1; text-align:center; padding:8px; background:rgba(52,211,153,0.05); border:1px solid rgba(52,211,153,0.2); border-radius:8px; font-size:10px; color:var(--green); font-family:'SF Mono',monospace;">
-              ioc-cfn-mgmt-plane
+              ioc-cfn-mgmt-plane :9000
             </div>
             <div style="flex:1; text-align:center; padding:8px; background:rgba(52,211,153,0.05); border:1px solid rgba(52,211,153,0.2); border-radius:8px; font-size:10px; color:var(--green); font-family:'SF Mono',monospace;">
-              ioc-knowledge-memory-svc
+              ioc-cfn-svc :9002
             </div>
           </div>
         </div>
@@ -728,8 +720,8 @@
         <div style="width:100%; display:flex; flex-direction:column; gap:14px;">
           <div class="sc3-row">
             <div class="sc3-box o">
-              <div class="name">OpenClaw Agents</div>
-              <div class="sub">5-6 agents<br>mycelium adapter</div>
+              <div class="name">Agent Adapters</div>
+              <div class="sub">Claude Code &middot; OpenClaw<br>hooks + skill &middot; plugin</div>
             </div>
             <div style="display:flex; align-items:center; padding:0 6px; color:var(--dim); font-size:18px;">&#8644;</div>
             <div class="sc3-box b">
@@ -920,38 +912,32 @@
             <div class="svc-dot" style="background:var(--blue); box-shadow:0 0 8px rgba(129,140,248,0.5); animation: pulse 2s ease-in-out infinite 0.3s;"></div>
             <div>
               <div class="svc-name" style="color:var(--blue);">ioc-cfn-svc</div>
-              <div class="svc-port">:9002 &middot; cognitive fabric node core</div>
+              <div class="svc-port">:9002 &middot; fabric orchestration</div>
             </div>
           </div>
-          <div class="cfn-svc" style="border-color:rgba(52,211,153,0.35);">
-            <div class="svc-dot" style="background:var(--green); box-shadow:0 0 8px rgba(52,211,153,0.5); animation: pulse 2s ease-in-out infinite 0.6s;"></div>
+          <div style="display:flex; gap:8px; margin-top:4px;">
+            <div style="flex:1; text-align:center; font-size:10px; color:var(--dim); font-family:'SF Mono',monospace;">KNOWLEDGE_MEMORY_SVC_URL &#8595;</div>
+            <div style="flex:1; text-align:center; font-size:10px; color:var(--dim); font-family:'SF Mono',monospace;">COGNITION_ENGINE_SVC_URL &#8595;</div>
+          </div>
+          <div class="cfn-svc" style="border-color:rgba(103,232,249,0.35);">
+            <div class="svc-dot" style="background:var(--yellow); box-shadow:0 0 8px rgba(103,232,249,0.5); animation: pulse 2s ease-in-out infinite 0.6s;"></div>
             <div>
-              <div class="svc-name" style="color:var(--green);">ioc-knowledge-memory-svc</div>
-              <div class="svc-port">:9003 &middot; memory operations &middot; knowledge graph</div>
+              <div class="svc-name" style="color:var(--yellow);">mycelium-backend</div>
+              <div class="svc-port">:8000 &middot; serves as knowledge-memory + cognition engine</div>
             </div>
           </div>
           <div style="display:flex; gap:8px; margin-top:4px;">
             <div style="flex:1; text-align:center; font-size:14px; color:var(--dim);">&#8595;</div>
-            <div style="flex:1; text-align:center; font-size:14px; color:var(--dim);">&#8595;</div>
           </div>
-          <div style="display:flex; gap:8px;">
-            <div class="cfn-svc" style="flex:1; border-color:rgba(192,132,252,0.35);">
-              <div class="svc-dot" style="background:var(--purple); box-shadow:0 0 8px rgba(192,132,252,0.5);"></div>
-              <div>
-                <div class="svc-name" style="color:var(--purple); font-size:11px;">mycelium-db</div>
-                <div class="svc-port">AgensGraph</div>
-              </div>
-            </div>
-            <div class="cfn-svc" style="flex:1; border-color:rgba(103,232,249,0.35);">
-              <div class="svc-dot" style="background:var(--yellow); box-shadow:0 0 8px rgba(103,232,249,0.5);"></div>
-              <div>
-                <div class="svc-name" style="color:var(--yellow); font-size:11px;">mycelium-backend</div>
-                <div class="svc-port">FastAPI :8000</div>
-              </div>
+          <div class="cfn-svc" style="border-color:rgba(192,132,252,0.35);">
+            <div class="svc-dot" style="background:var(--purple); box-shadow:0 0 8px rgba(192,132,252,0.5);"></div>
+            <div>
+              <div class="svc-name" style="color:var(--purple); font-size:11px;">mycelium-db (AgensGraph)</div>
+              <div class="svc-port">:5432 &middot; SQL + openCypher + pgvector &middot; hosts cfn_mgmt + cfn_cp</div>
             </div>
           </div>
           <div style="padding:8px 12px; background:rgba(56,189,248,0.05); border:1px solid rgba(56,189,248,0.15); border-radius:8px; font-size:10px; color:var(--muted); text-align:center; font-family:'SF Mono',monospace;">
-            knowledge graph grows &#8594; CognitiveEngine queries &#8594; better negotiations
+            cfn-svc &#8594; mycelium extraction + evidence &#8594; AgensGraph &#8594; better negotiations
           </div>
         </div>
       </div>
@@ -963,8 +949,8 @@
           <div class="final-row">
             <div class="final-box fo">
               <div class="fb-label" style="color:var(--accent);">setup</div>
-              <div class="fb-name">adapter add</div>
-              <div class="fb-sub">one command install</div>
+              <div class="fb-name">mycelium install</div>
+              <div class="fb-sub">curl | bash + docker</div>
             </div>
             <div class="final-arrow">&#8594;</div>
             <div class="final-box fb">

@@ -3,19 +3,14 @@
 ## Prerequisites
 
 ```bash
-# Backend running on :8888 (or wherever)
-cd fastapi-backend && uv run uvicorn app.main:app --host 0.0.0.0 --port 8888
+# Install the CLI
+curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 
-# Frontend running on :3000
-cd mycelium-frontend && pnpm dev
+# Spin up the full stack (backend + AgensGraph + frontend)
+mycelium install
 
-# CLI installed
-cd mycelium-cli && uv tool install -e . --with mycelium-backend-client@../mycelium-client --force
-
-# Config pointing at backend
-cat ~/.mycelium/config.toml
-# [server]
-# api_url = "http://localhost:8888"
+# Verify
+mycelium --help
 ```
 
 ---
@@ -100,15 +95,15 @@ Also show `http://localhost:3000/room/design-review` in the browser for the UI v
 
 ```bash
 mycelium room create friday-demo --mode sync
-mycelium room join --handle julia-agent -m "Prioritize CFN integration — need mgmt plane wired up before Friday demo" -c friday-demo
-mycelium room await --handle julia-agent -c friday-demo
+mycelium room join --handle julia-agent -m "Prioritize CFN integration — need mgmt plane wired up before Friday demo" -r friday-demo
+mycelium room await --handle julia-agent -r friday-demo
 ```
 
 **Terminal 2 (or Claude Code instance 2) — selina-agent:**
 
 ```bash
-mycelium room join --handle selina-agent -m "Focus on demo UX — frontend polish, watch output, catchup display. Backend is solid enough." -c friday-demo
-mycelium room await --handle selina-agent -c friday-demo
+mycelium room join --handle selina-agent -m "Focus on demo UX — frontend polish, watch output, catchup display. Backend is solid enough." -r friday-demo
+mycelium room await --handle selina-agent -r friday-demo
 ```
 
 **Terminal 3 (audience view):**
@@ -124,11 +119,11 @@ Or open `http://localhost:3000/room/friday-demo` in the browser.
 2. Timer fires → CognitiveEngine runs SemanticNegotiationPipeline
 3. `await` returns a tick with `action: propose` → agent proposes:
    ```bash
-   mycelium message propose budget=high timeline=standard scope=extended quality=standard -c friday-demo -H julia-agent
+   mycelium message propose budget=high timeline=standard scope=extended quality=standard -r friday-demo -H julia-agent
    ```
 4. Other agent gets a tick with `action: respond` → accepts or rejects:
    ```bash
-   mycelium message respond accept -c friday-demo -H selina-agent
+   mycelium message respond accept -r friday-demo -H selina-agent
    ```
 5. `await` returns `type: consensus` with the final plan
 
@@ -139,16 +134,16 @@ Give this to the second Claude Code instance:
 > You are participating in a Mycelium coordination room called `friday-demo`. You are `selina-agent`. Your position is: "We should focus on demo UX and frontend polish before Friday — the backend is solid enough."
 >
 > ```bash
-> mycelium room join --handle selina-agent -m "Focus on demo UX — frontend polish, watch output, catchup display." -c friday-demo
-> mycelium room await --handle selina-agent -c friday-demo
+> mycelium room join --handle selina-agent -m "Focus on demo UX — frontend polish, watch output, catchup display." -r friday-demo
+> mycelium room await --handle selina-agent -r friday-demo
 > ```
 >
 > When you get a tick, respond based on the action:
-> - `action=propose` → `mycelium message propose budget=medium timeline=express scope=standard quality=premium -c friday-demo -H selina-agent`
-> - `action=respond` → evaluate the offer, then `mycelium message respond accept -c friday-demo -H selina-agent`
+> - `action=propose` → `mycelium message propose budget=medium timeline=express scope=standard quality=premium -r friday-demo -H selina-agent`
+> - `action=respond` → evaluate the offer, then `mycelium message respond accept -r friday-demo -H selina-agent`
 > - `type=consensus` → done, read your assignment
 >
-> Keep calling `mycelium room await --handle selina-agent -c friday-demo` between each response until you get consensus.
+> Keep calling `mycelium room await --handle selina-agent -r friday-demo` between each response until you get consensus.
 
 ---
 
@@ -167,7 +162,7 @@ Give this to the second Claude Code instance:
 
 4. **Negative results matter**: Show `mycelium memory ls failed/`. Agents log what didn't work so others don't repeat dead ends.
 
-5. **CFN integration**: Agent registration → CFN mgmt plane. Memory operations → knowledge-memory-svc. The protocol layer sits on top of CFN infrastructure.
+5. **CFN integration**: Agent registration → CFN mgmt plane. ioc-cfn-svc routes extraction + evidence back to mycelium-backend. Mycelium serves as both the knowledge-memory and cognition engine backends.
 
 ### Key URLs during demo
 

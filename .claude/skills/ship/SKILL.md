@@ -25,8 +25,6 @@ Run quality checks, commit, and optionally push.
    - `test:` for test changes
    - `chore:` for maintenance
 
-   Show the proposed commit message and ask for confirmation before committing.
-
-5. **Push + PR** — Ask the user if they want to push. Only push if they confirm. Never force push. After pushing, open a PR against main with `gh pr create`.
+5. **Push + PR** — Push and open a PR against main with `gh pr create`. Never force push.
 
 6. **Watch checks** — Run `gh pr checks --watch --fail-fast` and report pass or fail when complete.
