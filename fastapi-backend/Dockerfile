@@ -30,6 +30,11 @@ RUN uv pip install --system --no-cache \
 
 COPY . .
 
+# Pre-download embedding model weights so the container starts without any
+# network dependency. This is a stable layer — only rebuilt when the base
+# image or deps change.
+RUN python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
+
 RUN chmod +x start.sh
 
 EXPOSE 8000
