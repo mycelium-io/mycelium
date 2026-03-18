@@ -55,6 +55,37 @@ fi
 
 ok "Prerequisites OK (Python $PYTHON_VERSION)"
 
+# ── Check Docker ──────────────────────────────────────────────────────────────
+step "Checking Docker..."
+
+OS=$(uname -s)
+if ! command -v docker &>/dev/null; then
+  if [ "$OS" = "Darwin" ]; then
+    die "Docker is required. Install Docker Desktop from https://www.docker.com/products/docker-desktop"
+  else
+    warn "Docker not found — installing..."
+    curl -fsSL https://get.docker.com | sh >/dev/null 2>&1
+    if ! command -v docker &>/dev/null; then
+      die "Docker install failed. Install manually: https://docs.docker.com/engine/install/"
+    fi
+    ok "Docker installed"
+  fi
+elif ! docker info >/dev/null 2>&1; then
+  if [ "$OS" = "Darwin" ]; then
+    die "Docker Desktop is installed but not running. Start Docker Desktop and try again."
+  else
+    warn "Docker daemon not running — attempting to start..."
+    sudo systemctl start docker >/dev/null 2>&1 || true
+    if ! docker info >/dev/null 2>&1; then
+      die "Docker daemon could not be started. Run: sudo systemctl start docker"
+    fi
+    ok "Docker daemon started"
+  fi
+else
+  DOCKER_VERSION=$(docker version --format '{{.Server.Version}}' 2>/dev/null || echo "unknown")
+  ok "Docker found ($DOCKER_VERSION)"
+fi
+
 # ── Install uv if not present ─────────────────────────────────────────────────
 if ! command -v uv &>/dev/null; then
   step "Installing uv (Python package manager)..."
