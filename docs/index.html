@@ -45,26 +45,13 @@
     min-height: 100vh;
   }
 
-  /* ── ANIMATED GRADIENT BG ── */
-  body::before {
-    content: '';
+  /* ── MYCELIUM CANVAS BG ── */
+  #mycelium-bg {
     position: fixed;
-    inset: -20%;
+    inset: 0;
     z-index: -1;
-    background:
-      radial-gradient(ellipse 60% 50% at 75% 15%, rgba(192,132,252,0.25) 0%, transparent 60%),
-      radial-gradient(ellipse 50% 60% at 10% 80%, rgba(56,189,248,0.25) 0%, transparent 55%),
-      radial-gradient(ellipse 70% 50% at 50% 50%, rgba(10,74,92,0.50) 0%, transparent 65%),
-      radial-gradient(ellipse 40% 40% at 85% 70%, rgba(56,189,248,0.15) 0%, transparent 50%),
-      radial-gradient(ellipse 45% 35% at 25% 30%, rgba(129,140,248,0.15) 0%, transparent 50%);
-    animation: drift 25s ease-in-out infinite alternate;
-  }
-  @keyframes drift {
-    0%   { transform: translate(0, 0) scale(1); }
-    25%  { transform: translate(-3%, 2%) scale(1.05); }
-    50%  { transform: translate(2%, -2%) scale(0.97); }
-    75%  { transform: translate(-1.5%, -1%) scale(1.03); }
-    100% { transform: translate(2%, 3%) scale(1.01); }
+    width: 100%;
+    height: 100%;
   }
 
   /* ── TOP NAV ── */
@@ -153,9 +140,7 @@
     overflow-y: auto;
     padding: 28px 0 40px;
     border-right: 1px solid var(--border);
-    background: rgba(8, 14, 24, 0.55);
-    backdrop-filter: blur(32px);
-    -webkit-backdrop-filter: blur(32px);
+    background: rgba(8, 14, 24, 0.35);
   }
   .sidebar::-webkit-scrollbar { width: 4px; }
   .sidebar::-webkit-scrollbar-track { background: transparent; }
@@ -198,13 +183,17 @@
     flex: 1;
     padding: 56px 64px 80px 72px;
     min-width: 0;
-    background: rgba(5, 9, 15, 0.45);
-    backdrop-filter: blur(32px);
-    -webkit-backdrop-filter: blur(32px);
+    background: rgba(5, 9, 15, 0.25);
   }
   .main-inner {
     max-width: 70ch;
     margin: 0 auto;
+    background: rgba(5, 9, 15, 0.6);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 48px 48px 56px;
   }
 
   /* ── SECTIONS ── */
@@ -516,6 +505,7 @@
 </style>
 </head>
 <body>
+<canvas id="mycelium-bg"></canvas>
 
 <!-- TOP NAV -->
 <nav class="topnav">
@@ -1110,6 +1100,239 @@ mycelium install</code></pre>
   }, { rootMargin: '-20% 0px -70% 0px' });
 
   sections.forEach(s => observer.observe(s));
+</script>
+
+<script>
+(function() {
+  const canvas = document.getElementById('mycelium-bg');
+  const ctx = canvas.getContext('2d');
+
+  // Sim grid covers max reasonable viewport (3840x2160 / 5 = 768x432)
+  const CELL = 8;
+  const cols = 480, rows = 270;
+  var trail = new Float32Array(cols * rows);
+  var colorIdx = new Uint8Array(cols * rows);
+
+  const BG = { r: 5, g: 9, b: 15 };
+  const COLORS = [
+    { r: 56, g: 189, b: 248 },   // cyan
+    { r: 129, g: 140, b: 248 },   // indigo
+    { r: 192, g: 132, b: 252 },   // purple
+  ];
+
+  canvas.style.width = '100%';
+  canvas.style.height = '100%';
+  canvas.style.imageRendering = 'pixelated';
+
+  var viewCols, viewRows;
+  function resize() {
+    viewCols = Math.min(Math.ceil(window.innerWidth / CELL), cols);
+    viewRows = Math.min(Math.ceil(window.innerHeight / CELL), rows);
+    canvas.width = viewCols;
+    canvas.height = viewRows;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // Physarum-inspired agents — slime crawlers
+  const agents = [];
+  const MAX_AGENTS = 5000;
+
+  function Agent(x, y, angle, ci) {
+    this.x = x;
+    this.y = y;
+    this.angle = angle;
+    this.ci = ci; // color index
+    this.life = 200 + Math.random() * 400;
+    this.age = 0;
+    this.speed = 0.08 + Math.random() * 0.12;
+  }
+
+  function spawnAgent() {
+    var x, y;
+    if (Math.random() < 0.3) {
+      var side = Math.floor(Math.random() * 4);
+      if (side === 0) { x = Math.random() * cols; y = 0; }
+      else if (side === 1) { x = Math.random() * cols; y = rows - 1; }
+      else if (side === 2) { x = 0; y = Math.random() * rows; }
+      else { x = cols - 1; y = Math.random() * rows; }
+    } else {
+      x = Math.random() * cols;
+      y = Math.random() * rows;
+    }
+    var angle = Math.random() * Math.PI * 2;
+    var ci = Math.floor(Math.random() * COLORS.length);
+    agents.push(new Agent(x, y, angle, ci));
+  }
+
+  // Seed agents in clusters — groups of 30-50 near random centers
+  // so they immediately sense each other and form tendrils
+  var numClusters = 120;
+  for (var c = 0; c < numClusters; c++) {
+    var cx = Math.random() * cols;
+    var cy = Math.random() * rows;
+    var ci = Math.floor(Math.random() * COLORS.length);
+    var clusterSize = 30 + Math.floor(Math.random() * 20);
+    for (var j = 0; j < clusterSize; j++) {
+      var ax = cx + (Math.random() - 0.5) * 30;
+      var ay = cy + (Math.random() - 0.5) * 30;
+      if (ax < 0) ax += cols; if (ax >= cols) ax -= cols;
+      if (ay < 0) ay += rows; if (ay >= rows) ay -= rows;
+      var angle = Math.random() * Math.PI * 2;
+      agents.push(new Agent(ax, ay, angle, ci));
+    }
+  }
+
+  // Sense trail ahead — agents strongly attracted to nearby trails
+  var SENSOR_DIST = 16;
+  var SENSOR_ANGLE = 1.2; // radians (~70 degrees)
+
+  function sense(agent, angleOffset) {
+    var sx = Math.floor(agent.x + Math.cos(agent.angle + angleOffset) * SENSOR_DIST);
+    var sy = Math.floor(agent.y + Math.sin(agent.angle + angleOffset) * SENSOR_DIST);
+    if (sx < 0 || sx >= cols || sy < 0 || sy >= rows) return 0;
+    return trail[sy * cols + sx];
+  }
+
+  // 20fps cap — slower feels more organic
+  var lastFrame = 0;
+  var frameInterval = 1000 / 20;
+  var frameCount = 0;
+
+  function animate(timestamp) {
+    requestAnimationFrame(animate);
+    if (timestamp - lastFrame < frameInterval) return;
+    lastFrame = timestamp;
+    frameCount++;
+
+    // Decay trail — everything fades slowly
+    for (var i = 0; i < trail.length; i++) {
+      trail[i] *= 0.997;
+      if (trail[i] < 0.005) trail[i] = 0;
+    }
+
+    // Spawn new agents periodically
+    if (frameCount % 6 === 0 && agents.length < MAX_AGENTS) {
+      var count = 1 + Math.floor(Math.random() * 2);
+      for (var s = 0; s < count; s++) spawnAgent();
+    }
+
+    // Update agents
+    for (var i = agents.length - 1; i >= 0; i--) {
+      var a = agents[i];
+      a.age++;
+      if (a.age > a.life) { agents.splice(i, 1); continue; }
+
+      // Sense left, center, right
+      var sL = sense(a, -SENSOR_ANGLE);
+      var sC = sense(a, 0);
+      var sR = sense(a, SENSOR_ANGLE);
+
+      // Steer — strongly attracted to other trails, merge into tendrils
+      var turnSpeed = 0.08 + Math.random() * 0.06;
+      if (sC >= sL && sC >= sR) {
+        a.angle += (Math.random() - 0.5) * 0.3;
+      } else if (sL > sR) {
+        a.angle -= turnSpeed;
+      } else if (sR > sL) {
+        a.angle += turnSpeed;
+      } else {
+        a.angle += (Math.random() < 0.5 ? -1 : 1) * turnSpeed;
+      }
+
+      // Slow organic drift
+      a.angle += Math.sin(frameCount * 0.002 + a.x * 0.03 + a.y * 0.04) * 0.02;
+
+      // Move
+      a.x += Math.cos(a.angle) * a.speed;
+      a.y += Math.sin(a.angle) * a.speed;
+
+      // Wrap around edges
+      if (a.x < 0) a.x += cols;
+      if (a.x >= cols) a.x -= cols;
+      if (a.y < 0) a.y += rows;
+      if (a.y >= rows) a.y -= rows;
+
+      // Deposit trail — thick stroke along movement, not just a single pixel
+      var gx = Math.floor(a.x);
+      var gy = Math.floor(a.y);
+      for (var dy = -1; dy <= 1; dy++) {
+        for (var dx = -1; dx <= 1; dx++) {
+          var px = gx + dx, py = gy + dy;
+          if (px >= 0 && px < cols && py >= 0 && py < rows) {
+            var pidx = py * cols + px;
+            var strength = (dx === 0 && dy === 0) ? 0.06 : 0.02;
+            trail[pidx] = Math.min(1.0, trail[pidx] + strength);
+            colorIdx[pidx] = a.ci;
+          }
+        }
+      }
+    }
+
+    // Life-like rules on trail cells — tendrils grow, branch, and die organically
+    // Run every 3rd frame to keep it subtle and performant
+    if (frameCount % 3 === 0) {
+      // Only process viewport area
+      var lw = Math.min(viewCols, cols);
+      var lh = Math.min(viewRows, rows);
+      for (var y = 1; y < lh - 1; y++) {
+        for (var x = 1; x < lw - 1; x++) {
+          var idx = y * cols + x;
+          var val = trail[idx];
+          // Count alive neighbors (trail > 0.05)
+          var neighbors = 0;
+          for (var dy = -1; dy <= 1; dy++) {
+            for (var dx = -1; dx <= 1; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              if (trail[(y + dy) * cols + (x + dx)] > 0.05) neighbors++;
+            }
+          }
+          if (val < 0.05) {
+            // Dead cell — birth if exactly 2-3 neighbors (like life, but rarer)
+            if (neighbors === 3 && Math.random() < 0.04) {
+              // Inherit color from a neighbor
+              for (var dy2 = -1; dy2 <= 1; dy2++) {
+                for (var dx2 = -1; dx2 <= 1; dx2++) {
+                  var ni = (y + dy2) * cols + (x + dx2);
+                  if (trail[ni] > 0.05) { colorIdx[idx] = colorIdx[ni]; dy2 = 2; break; }
+                }
+              }
+              trail[idx] = 0.25 + Math.random() * 0.1; // slight flash on birth
+            }
+          } else {
+            // Alive cell — overcrowding kills (>5 neighbors), isolation kills (<1)
+            if (neighbors > 5) {
+              trail[idx] *= 0.9;
+            } else if (neighbors < 1) {
+              trail[idx] *= 0.95;
+            }
+          }
+        }
+      }
+    }
+
+    // Render only the viewport portion of the sim
+    ctx.fillStyle = 'rgb(' + BG.r + ',' + BG.g + ',' + BG.b + ')';
+    ctx.fillRect(0, 0, viewCols, viewRows);
+
+    var renderW = Math.min(viewCols, cols);
+    var renderH = Math.min(viewRows, rows);
+    for (var y = 0; y < renderH; y++) {
+      for (var x = 0; x < renderW; x++) {
+        var val = trail[y * cols + x];
+        if (val < 0.01) continue;
+        var c = COLORS[colorIdx[y * cols + x]];
+        var alpha = val * 0.1;
+        ctx.fillStyle = 'rgba(' + c.r + ',' + c.g + ',' + c.b + ',' + alpha + ')';
+        ctx.fillRect(x, y, 1, 1);
+      }
+    }
+  }
+
+  // No pre-warm — start clean, agents emerge from black
+
+  requestAnimationFrame(animate);
+})();
 </script>
 
 </body>
