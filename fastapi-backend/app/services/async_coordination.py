@@ -154,6 +154,7 @@ STRUCTURED_CATEGORIES = {
     "decisions": "Decisions Made",
     "context": "Background & Preferences",
     "status": "Current Status",
+    "procedures": "Reusable Procedures",
 }
 
 

@@ -14,10 +14,11 @@ new session starts from scratch.
 Instead of writing memories with arbitrary keys, use structured prefixes:
 
 ```
-work/       — What was built or changed
-decisions/  — Why choices were made
-context/    — User preferences and background
-status/     — Current state of ongoing work
+work/        — What was built or changed
+decisions/   — Why choices were made
+context/     — User preferences and background
+status/      — Current state of ongoing work
+procedures/  — Reusable how-to steps (do this again later)
 ```
 
 `memory set` validates these automatically — when the key starts with a known
@@ -50,14 +51,19 @@ mycelium memory set context/constraints "Must run on single $20/mo VPS"
 # Track current state
 mycelium memory set status/api "PASSING — all 12 endpoints tested"
 mycelium memory set status/deploy "BLOCKED — waiting on DNS propagation"
+
+# Save reusable procedures
+mycelium memory set procedures/deploy-vps "1. ssh vps  2. cd /app && git pull  3. systemctl restart app  4. curl healthcheck"
+mycelium memory set procedures/db-migrate "1. uv run alembic upgrade head  2. Verify with psql -c 'SELECT version()'"
 ```
 
 ### 3. Check status at a glance
 
 ```bash
-mycelium memory status    # Table of all status/* memories
-mycelium memory work      # What's been built
-mycelium memory decisions # Why things are the way they are
+mycelium memory status     # Table of all status/* memories
+mycelium memory work       # What's been built
+mycelium memory decisions  # Why things are the way they are
+mycelium memory procedures # How to do things again
 ```
 
 ### 4. Catch up after a break
@@ -116,5 +122,6 @@ memories by category prefix. This produces structured output:
 - **Current Status** — from `status/*` memories
 - **Key Decisions** — from `decisions/*` memories
 - **Context** — from `context/*` memories
+- **Reusable Procedures** — from `procedures/*` memories
 
 Memories without a known category prefix are grouped under "Other".

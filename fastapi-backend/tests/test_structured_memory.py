@@ -30,6 +30,7 @@ def test_structured_categories_defined():
     assert "decisions" in STRUCTURED_CATEGORIES
     assert "context" in STRUCTURED_CATEGORIES
     assert "status" in STRUCTURED_CATEGORIES
+    assert "procedures" in STRUCTURED_CATEGORIES
 
 
 def test_build_structured_context_groups_by_category():

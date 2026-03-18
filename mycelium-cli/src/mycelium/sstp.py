@@ -24,6 +24,7 @@ Memory protocol shapes (agent → memory API, structured key conventions):
     key = "decisions/db-choice"   → why a choice was made
     key = "context/user-goal"     → background / preferences
     key = "status/deploy"         → current state of something
+    key = "procedures/url-monitor" → reusable how-to steps
 
     The MemoryLogEntry model validates the category/slug convention.
 """
@@ -96,6 +97,7 @@ class MemoryCategory(StrEnum):
     DECISIONS = "decisions"
     CONTEXT = "context"
     STATUS = "status"
+    PROCEDURES = "procedures"
 
 
 MEMORY_CATEGORIES: frozenset[str] = frozenset(c.value for c in MemoryCategory)
@@ -113,7 +115,7 @@ class MemoryLogEntry(BaseModel):
         MemoryLogEntry(category="decisions", slug="db-choice", content="Chose AgensGraph ...")
     """
 
-    category: Literal["work", "decisions", "context", "status"]
+    category: Literal["work", "decisions", "context", "status", "procedures"]
     slug: str = Field(..., min_length=1, pattern=r"^[a-z0-9][a-z0-9._-]*$")
     content: str = Field(..., min_length=1)
     tags: list[str] | None = None

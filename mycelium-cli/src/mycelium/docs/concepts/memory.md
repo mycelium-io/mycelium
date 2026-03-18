@@ -20,14 +20,15 @@ When a room is deleted, its memories are cascade-deleted.
 
 ## Structured Categories
 
-Mycelium defines four recommended key prefixes for agent notebooks:
+Mycelium defines five recommended key prefixes for agent notebooks:
 
-| Category     | Prefix       | Purpose                           |
-|-------------|-------------|-----------------------------------|
-| **work**     | `work/`      | What the agent built or changed   |
-| **decisions**| `decisions/` | Why choices were made             |
-| **context**  | `context/`   | User preferences and background   |
-| **status**   | `status/`    | Current state of ongoing work     |
+| Category       | Prefix         | Purpose                           |
+|---------------|---------------|-----------------------------------|
+| **work**       | `work/`        | What the agent built or changed   |
+| **decisions**  | `decisions/`   | Why choices were made             |
+| **context**    | `context/`     | User preferences and background   |
+| **status**     | `status/`      | Current state of ongoing work     |
+| **procedures** | `procedures/`  | Reusable how-to steps             |
 
 When `memory set` sees a key with one of these prefixes, it validates the
 slug format automatically (lowercase alphanumeric, hyphens, dots, underscores)
@@ -41,6 +42,7 @@ mycelium memory set work/cron-setup "Created crontab: */5 * * * * curl ..."
 mycelium memory set status/cron "ACTIVE — last run succeeded"
 mycelium memory set decisions/polling-interval "5min: site rate-limits at 1req/min"
 mycelium memory set context/user-goal "Monitor ticket availability for NYC pop-up"
+mycelium memory set procedures/url-monitor "1. crontab -e  2. Add */5 * * * * curl -s URL | grep PATTERN  3. Verify with crontab -l"
 mycelium memory set custom/anything "Freeform — no category validation"
 ```
 
@@ -85,7 +87,8 @@ mycelium memory rm        # Delete a memory
 mycelium memory status    # View status/* memories as table
 mycelium memory work      # View work/* memories as table
 mycelium memory decisions # View decisions/* memories as table
-mycelium memory context   # View context/* memories as table
-mycelium memory subscribe # Watch for key pattern changes
+mycelium memory context    # View context/* memories as table
+mycelium memory procedures # View procedures/* memories as table
+mycelium memory subscribe  # Watch for key pattern changes
 mycelium memory catchup   # Room briefing (synthesis + recent activity)
 ```

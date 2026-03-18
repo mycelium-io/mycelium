@@ -54,6 +54,10 @@ context/           User preferences and background
 status/            Current state of ongoing work
   status/cron         "ACTIVE — last fired 2026-03-17T22:00Z, next at 22:05Z"
   status/result       "FAILED — 403 error, likely IP blocked"
+
+procedures/        Reusable how-to steps (do this again later)
+  procedures/url-monitor   "1. crontab -e  2. Add */5 * * * * curl -s URL | grep PATTERN  3. crontab -l to verify"
+  procedures/rotate-ip     "1. Stop cron  2. Update proxy in .env  3. Test curl  4. Restart cron"
 ```
 
 No schema changes needed. This is just a convention on top of the existing

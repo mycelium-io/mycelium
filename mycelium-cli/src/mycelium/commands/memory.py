@@ -444,3 +444,12 @@ def memory_context(
 ) -> None:
     """Show background and preferences — filters to context/* memories."""
     _list_by_category("context", room, limit)
+
+
+@app.command(name="procedures")
+def memory_procedures(
+    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
+) -> None:
+    """Show reusable how-to procedures — filters to procedures/* memories."""
+    _list_by_category("procedures", room, limit)
