@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
 /**
@@ -91,8 +92,8 @@ const AGENT_ID = process.env.MYCELIUM_AGENT_ID ?? "";
 
 // Custom memory file — read fresh on every before_agent_start invocation
 const MEMORY_FILE = join(
-  process.env.HOME ?? process.env.USERPROFILE ?? "/home/ubuntu",
-  ".openclaw/workspace/memory/custom-context.md"
+  homedir(),
+  ".openclaw/workspace/memory/mycelium-context.md"
 );
 
 // ── Per-session tracking ───────────────────────────────────────────────────
