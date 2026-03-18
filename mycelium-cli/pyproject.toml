@@ -72,10 +72,11 @@ where = ["src"]
 mycelium = [
     "py.typed",
     "docs/**/*.md",
-    "adapters/openclaw/extensions/mycelium-cfn/*",
-    "adapters/openclaw/hooks/mycelium-inject/*",
-    "adapters/openclaw/skills/mycelium/*",
+    "adapters/openclaw/extensions/mycelium/**/*",
+    "adapters/openclaw/hooks/mycelium-bootstrap/**/*",
+    "adapters/openclaw/hooks/mycelium-knowledge-extract/**/*",
     "docker/*",
+    "docker/initdb/*",
     "docker/env.defaults",
 ]
 
