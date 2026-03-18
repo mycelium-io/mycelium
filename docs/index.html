@@ -541,6 +541,7 @@
       <a href="#cognitive-engine" class="nav-link">CognitiveEngine</a>
       <a href="#knowledge-graph" class="nav-link">Knowledge Graph</a>
     </div>
+    <!-- codegen:cli-sidebar -->
     <div class="nav-section">
       <div class="nav-section-label">CLI Reference</div>
       <a href="#cli-room" class="nav-link sub">room</a>
@@ -548,6 +549,7 @@
       <a href="#cli-message" class="nav-link sub">message</a>
       <a href="#cli-other" class="nav-link sub">synthesize / catchup / watch</a>
     </div>
+<!-- /codegen:cli-sidebar -->
     <div class="nav-section">
       <div class="nav-section-label">Architecture</div>
       <a href="#stack" class="nav-link">Stack</a>
@@ -882,9 +884,17 @@ mycelium install</code></pre>
 
     <!-- CLI REFERENCE -->
     <section class="doc-section" id="cli-reference">
+      <!-- codegen:cli-reference -->
       <h2>CLI Reference</h2>
 
       <h3 id="cli-room">room</h3>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium room ls</code>
+        </div>
+        <div class="cmd-ref-body">List all rooms with mode, state, and member count.</div>
+      </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
@@ -897,28 +907,21 @@ mycelium install</code></pre>
         <div class="cmd-ref-header">
           <code>mycelium room set &lt;name&gt;</code>
         </div>
-        <div class="cmd-ref-body">Set the active room for the current session. Subsequent <code>memory</code> and <code>message</code> commands use this room by default.</div>
+        <div class="cmd-ref-body">Set the active room. Subsequent <code>memory</code> and <code>message</code> commands use this room by default.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium room join --handle &lt;handle&gt; -m &lt;position&gt; [-c &lt;room&gt;]</code>
+          <code>mycelium room join --handle &lt;handle&gt; -m &lt;position&gt; [-r &lt;room&gt;]</code>
         </div>
         <div class="cmd-ref-body">Join a sync room with an initial position. Starts the 60s join window if you're the first.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium room await --handle &lt;handle&gt; [-c &lt;room&gt;]</code>
+          <code>mycelium room await --handle &lt;handle&gt; [-r &lt;room&gt;]</code>
         </div>
-        <div class="cmd-ref-body">Block and wait for a negotiation tick. Returns when CE has an action for your agent. Call this repeatedly between propose/respond actions until you receive <code>type: consensus</code>.</div>
-      </div>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code>mycelium room ls</code>
-        </div>
-        <div class="cmd-ref-body">List all rooms.</div>
+        <div class="cmd-ref-body">Block and wait for a negotiation tick. Returns when CE has an action for your agent.</div>
       </div>
 
       <h3 id="cli-memory">memory</h3>
@@ -927,7 +930,7 @@ mycelium install</code></pre>
         <div class="cmd-ref-header">
           <code>mycelium memory set &lt;key&gt; &lt;value&gt; [--handle &lt;handle&gt;] [--update]</code>
         </div>
-        <div class="cmd-ref-body">Write a memory. Fails on duplicate key unless <code>--update</code> is passed.</div>
+        <div class="cmd-ref-body">Write a memory. Structured category keys (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code>) are auto-validated. Fails on duplicate unless <code>--update</code> is passed.</div>
       </div>
 
       <div class="cmd-ref">
@@ -955,26 +958,19 @@ mycelium install</code></pre>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium message propose budget=&lt;v&gt; timeline=&lt;v&gt; scope=&lt;v&gt; quality=&lt;v&gt; -c &lt;room&gt; -H &lt;handle&gt;</code>
+          <code>mycelium message propose budget=&lt;v&gt; timeline=&lt;v&gt; scope=&lt;v&gt; quality=&lt;v&gt; -r &lt;room&gt; -H &lt;handle&gt;</code>
         </div>
         <div class="cmd-ref-body">Make a negotiation proposal with issue values. Only valid after <code>room await</code> returns <code>action: propose</code>.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium message respond &lt;accept|reject&gt; -c &lt;room&gt; -H &lt;handle&gt;</code>
+          <code>mycelium message respond &lt;accept|reject&gt; -r &lt;room&gt; -H &lt;handle&gt;</code>
         </div>
         <div class="cmd-ref-body">Accept or reject the current proposal. Only valid after <code>room await</code> returns <code>action: respond</code>.</div>
       </div>
 
       <h3 id="cli-other">synthesize / catchup / watch</h3>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code>mycelium synthesize</code>
-        </div>
-        <div class="cmd-ref-body">Trigger CE to synthesize all memories in the active room into a structured summary.</div>
-      </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
@@ -985,10 +981,18 @@ mycelium install</code></pre>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
+          <code>mycelium synthesize</code>
+        </div>
+        <div class="cmd-ref-body">Trigger CE to synthesize all memories in the active room into a structured summary.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
           <code>mycelium watch [room]</code>
         </div>
         <div class="cmd-ref-body">Stream live room activity via SSE. Messages appear in real time as other agents write.</div>
       </div>
+<!-- /codegen:cli-reference -->
     </section>
 
     <hr class="divider">

@@ -20,6 +20,7 @@ from pathlib import Path
 import typer
 
 from mycelium.config import MyceliumConfig
+from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
 from mycelium.exceptions import ConfigNotFoundError, MyceliumError
 
@@ -81,6 +82,11 @@ def room_main(ctx: typer.Context) -> None:
         print_error(e, verbose=verbose)
 
 
+@doc_ref(
+    usage="mycelium room ls",
+    desc="List all rooms with mode, state, and member count.",
+    group="room",
+)
 @app.command("ls")
 def list_rooms(
     ctx: typer.Context,
@@ -137,6 +143,11 @@ def list_rooms(
         print_error(e, verbose=verbose)
 
 
+@doc_ref(
+    usage="mycelium room create <name> --mode <async|sync|hybrid> [--trigger threshold:N]",
+    desc="Create a new coordination room. Mode is required.",
+    group="room",
+)
 @app.command()
 def create(
     ctx: typer.Context,
@@ -208,6 +219,11 @@ def create(
         print_error(e, verbose=verbose)
 
 
+@doc_ref(
+    usage="mycelium synthesize",
+    desc="Trigger CE to synthesize all memories in the active room into a structured summary.",
+    group="other",
+)
 @app.command()
 def synthesize(
     ctx: typer.Context,
@@ -255,6 +271,11 @@ def synthesize(
         print_error(e, verbose=verbose)
 
 
+@doc_ref(
+    usage="mycelium room set <name>",
+    desc="Set the active room. Subsequent <code>memory</code> and <code>message</code> commands use this room by default.",
+    group="room",
+)
 @app.command()
 def set(
     ctx: typer.Context,
@@ -486,6 +507,11 @@ def _render_coordination_event(msg: dict, current_identity: str) -> tuple[str | 
     return None, False
 
 
+@doc_ref(
+    usage="mycelium room join --handle <handle> -m <position> [-r <room>]",
+    desc="Join a sync room with an initial position. Starts the 60s join window if you're the first.",
+    group="room",
+)
 @app.command()
 def join(
     ctx: typer.Context,
@@ -703,6 +729,11 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
                     console.print(rendered, highlight=False)
 
 
+@doc_ref(
+    usage="mycelium room await --handle <handle> [-r <room>]",
+    desc="Block and wait for a negotiation tick. Returns when CE has an action for your agent.",
+    group="room",
+)
 @app.command(name="await")
 def await_tick(
     ctx: typer.Context,
@@ -813,6 +844,11 @@ def await_tick(
         print_error(e, verbose=verbose)
 
 
+@doc_ref(
+    usage="mycelium watch [room]",
+    desc="Stream live room activity via SSE. Messages appear in real time as other agents write.",
+    group="other",
+)
 @app.command()
 def watch(
     ctx: typer.Context,

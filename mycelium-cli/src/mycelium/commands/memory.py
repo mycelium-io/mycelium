@@ -16,6 +16,7 @@ from rich.console import Console
 from rich.table import Table
 
 from mycelium.config import MyceliumConfig
+from mycelium.doc_ref import doc_ref
 from mycelium.sstp import MEMORY_CATEGORIES, MemoryLogEntry
 
 app = typer.Typer(
@@ -47,6 +48,11 @@ def _get_active_room(room: str | None) -> str:
     raise typer.Exit(1)
 
 
+@doc_ref(
+    usage="mycelium memory set <key> <value> [--handle <handle>] [--update]",
+    desc="Write a memory. Structured category keys (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code>) are auto-validated. Fails on duplicate unless <code>--update</code> is passed.",
+    group="memory",
+)
 @app.command(name="set")
 def memory_set(
     key: str = typer.Argument(..., help="Memory key (e.g. 'status/deploy', 'project/config')"),
@@ -158,6 +164,11 @@ def memory_set(
             console.print(f"[green]Memory set:[/green] {room_name}/{key}")
 
 
+@doc_ref(
+    usage="mycelium memory get <key>",
+    desc="Read a memory by exact key.",
+    group="memory",
+)
 @app.command(name="get")
 def memory_get(
     key: str = typer.Argument(..., help="Memory key"),
@@ -187,6 +198,11 @@ def memory_get(
             console.print(str(value))
 
 
+@doc_ref(
+    usage="mycelium memory ls [prefix/]",
+    desc="List memories. Optional prefix filters by namespace.",
+    group="memory",
+)
 @app.command(name="ls")
 def memory_ls(
     namespace: str | None = typer.Argument(
@@ -231,6 +247,11 @@ def memory_ls(
             console.print()
 
 
+@doc_ref(
+    usage="mycelium memory search <query>",
+    desc="Semantic search — finds memories by meaning using cosine similarity on local embeddings.",
+    group="memory",
+)
 @app.command(name="search")
 def memory_search(
     query: str = typer.Argument(..., help="Natural language search query"),
@@ -309,6 +330,11 @@ def memory_subscribe(
             console.print(f"[green]Subscribed:[/green] {pattern} (id: {sub_id}...)")
 
 
+@doc_ref(
+    usage="mycelium catchup",
+    desc="Get a full briefing on everything in the room — ideal for a new agent joining an active project.",
+    group="other",
+)
 @app.command(name="catchup")
 def memory_catchup(
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
