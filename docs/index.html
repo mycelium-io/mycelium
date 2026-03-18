@@ -1143,8 +1143,7 @@ mycelium install</code></pre>
     this.y = y;
     this.angle = angle;
     this.ci = ci; // color index
-    this.life = 200 + Math.random() * 400;
-    this.age = 0;
+    this.age = 0; // agents live forever
     this.speed = 0.08 + Math.random() * 0.12;
   }
 
@@ -1211,17 +1210,9 @@ mycelium install</code></pre>
       if (trail[i] < 0.005) trail[i] = 0;
     }
 
-    // Spawn new agents periodically
-    if (frameCount % 6 === 0 && agents.length < MAX_AGENTS) {
-      var count = 1 + Math.floor(Math.random() * 2);
-      for (var s = 0; s < count; s++) spawnAgent();
-    }
-
-    // Update agents
-    for (var i = agents.length - 1; i >= 0; i--) {
+    // Update agents (static set, no death/spawn)
+    for (var i = 0; i < agents.length; i++) {
       var a = agents[i];
-      a.age++;
-      if (a.age > a.life) { agents.splice(i, 1); continue; }
 
       // Sense left, center, right
       var sL = sense(a, -SENSOR_ANGLE);
