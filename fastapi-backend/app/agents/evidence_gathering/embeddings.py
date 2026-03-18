@@ -27,7 +27,9 @@ class EmbeddingManager:
         if self.model_type == "huggingface":
             from sentence_transformers import SentenceTransformer
 
-            self.model_name = self.config.get("embedding_model_name", "sentence-transformers/all-MiniLM-L6-v2")
+            self.model_name = self.config.get(
+                "embedding_model_name", "sentence-transformers/all-MiniLM-L6-v2"
+            )
             self.model = SentenceTransformer(self.model_name)
         elif self.model_type == "openai":
             self.model_name = self.config.get("embedding_model_name", "")
