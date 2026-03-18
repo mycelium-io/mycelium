@@ -75,7 +75,7 @@ mycelium memory search "what failed"
 # Synthesize
 mycelium synthesize
 
-# Catchup (the "Helios pattern" — new agent arrives, gets briefed)
+# Catchup — new agent arrives, gets briefed
 mycelium catchup
 ```
 
