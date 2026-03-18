@@ -44,10 +44,20 @@ def _get_model() -> SentenceTransformer:
     return _model
 
 
+def _stub_vector(seed: str) -> list[float]:
+    """Deterministic non-zero unit-ish vector for CI stubs."""
+    import hashlib
+
+    h = int(hashlib.md5(seed.encode()).hexdigest(), 16)
+    dim = settings.EMBEDDING_DIMENSIONS
+    v = [float((h >> i) & 0xFF) / 255.0 + 0.01 for i in range(dim)]
+    return v
+
+
 def embed_text(text: str) -> list[float]:
     """Generate embedding for a single text string."""
     if _STUB:
-        return [0.0] * settings.EMBEDDING_DIMENSIONS
+        return _stub_vector(text)
     return _get_model().encode(text).tolist()
 
 
@@ -56,5 +66,5 @@ def embed_batch(texts: list[str]) -> list[list[float]]:
     if not texts:
         return []
     if _STUB:
-        return [[0.0] * settings.EMBEDDING_DIMENSIONS for _ in texts]
+        return [_stub_vector(t) for t in texts]
     return [e.tolist() for e in _get_model().encode(texts)]
