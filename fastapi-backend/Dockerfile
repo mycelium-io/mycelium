@@ -11,8 +11,12 @@ RUN pip install uv
 # Copy project metadata first for layer caching
 COPY pyproject.toml uv.lock ./
 # Install all runtime deps from pyproject.toml (excluding agensgraph which needs --no-build-isolation)
-RUN uv pip install --system --no-cache \
-        $(python3 -c "import tomllib; deps=tomllib.load(open('pyproject.toml','rb'))['project']['dependencies']; print(' '.join(repr(d) for d in deps if 'agensgraph' not in d))") && \
+RUN python3 -c "
+import tomllib
+deps = tomllib.load(open('pyproject.toml', 'rb'))['project']['dependencies']
+print('\n'.join(d for d in deps if 'agensgraph' not in d))
+" > /tmp/requirements.txt && \
+    uv pip install --system --no-cache -r /tmp/requirements.txt && \
     uv pip install --system --no-cache "setuptools" && \
     uv pip install --system --no-cache --no-build-isolation "agensgraph-python==1.0.2"
 
