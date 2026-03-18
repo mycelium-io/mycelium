@@ -29,16 +29,19 @@ Mycelium defines four recommended key prefixes for agent notebooks:
 | **context**  | `context/`   | User preferences and background   |
 | **status**   | `status/`    | Current state of ongoing work     |
 
-These categories are enforced by the `memory log` command and used by
-synthesis to produce structured briefings.
+When `memory set` sees a key with one of these prefixes, it validates the
+slug format automatically (lowercase alphanumeric, hyphens, dots, underscores)
+and auto-timestamps the content. Keys without a category prefix pass through
+freely.
 
 ### Examples
 
 ```bash
-mycelium memory log work/cron-setup "Created crontab: */5 * * * * curl ..."
-mycelium memory log status/cron "ACTIVE — last run succeeded"
-mycelium memory log decisions/polling-interval "5min: site rate-limits at 1req/min"
-mycelium memory log context/user-goal "Monitor ticket availability for NYC pop-up"
+mycelium memory set work/cron-setup "Created crontab: */5 * * * * curl ..."
+mycelium memory set status/cron "ACTIVE — last run succeeded"
+mycelium memory set decisions/polling-interval "5min: site rate-limits at 1req/min"
+mycelium memory set context/user-goal "Monitor ticket availability for NYC pop-up"
+mycelium memory set custom/anything "Freeform — no category validation"
 ```
 
 ## Semantic Search
@@ -74,14 +77,15 @@ mycelium catchup            # Read the latest synthesis + recent activity
 ## Related Commands
 
 ```
-mycelium memory set       # Write a raw memory (any key)
+mycelium memory set       # Write a memory (validates category keys automatically)
 mycelium memory get       # Read a memory by key
-mycelium memory log       # Write a structured memory (category/slug)
-mycelium memory ls        # List memories
+mycelium memory ls        # List memories (supports prefix filter)
 mycelium memory search    # Semantic search
-mycelium memory status    # View status/* memories
-mycelium memory work      # View work/* memories
-mycelium memory decisions # View decisions/* memories
-mycelium memory context   # View context/* memories
-mycelium memory catchup   # Room briefing
+mycelium memory rm        # Delete a memory
+mycelium memory status    # View status/* memories as table
+mycelium memory work      # View work/* memories as table
+mycelium memory decisions # View decisions/* memories as table
+mycelium memory context   # View context/* memories as table
+mycelium memory subscribe # Watch for key pattern changes
+mycelium memory catchup   # Room briefing (synthesis + recent activity)
 ```

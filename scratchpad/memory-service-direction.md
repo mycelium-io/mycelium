@@ -72,15 +72,16 @@ synthesis prompt can produce much better briefings:
 That's the briefing an agent needs to pick up where it left off. The user says
 "fix that cron thing" and the agent actually knows what they mean.
 
-### New CLI Commands (Proposed)
+### CLI Commands (Implemented)
 
 ```bash
-# Quick-write structured memories from agent sessions
-mycelium memory log work/cron-setup "Created crontab: */5 * * * * curl ..."
-mycelium memory log status/cron "ACTIVE"
+# memory set validates category keys automatically — no separate command needed
+mycelium memory set work/cron-setup "Created crontab: */5 * * * * curl ..."
+mycelium memory set status/cron "ACTIVE"
+mycelium memory set custom/anything "Freeform — no category validation"
 
 # What happened since I was last here?
-mycelium memory catchup              # already exists, make it better
+mycelium memory catchup              # synthesis + recent activity
 
 # What's the current state of everything?
 mycelium memory status               # filters to status/* keys, shows table
@@ -122,17 +123,14 @@ Next time an agent asks "what did we agree on?", it's right there.
 
 Roughly in priority order:
 
-1. **Memory conventions doc** — Define the `work/`, `decisions/`, `context/`,
-   `status/` prefixes as recommended patterns. No code changes, just guidance.
+1. ~~**Memory conventions doc**~~ Done — CLI bundled docs + demo script updated.
 
-2. **Better catchup synthesis** — Update the synthesis prompt to be
-   structure-aware. Small change to `async_coordination.py`.
+2. ~~**Better catchup synthesis**~~ Done — synthesis groups by category prefix.
 
-3. **`mycelium memory status`** — Convenience command that filters to `status/*`
-   and renders a table. Thin wrapper around existing `memory ls --prefix status/`.
+3. ~~**`mycelium memory status`**~~ Done — plus `work`, `decisions`, `context`.
 
-4. **`mycelium memory log`** — Alias for `memory set` with auto-timestamped
-   content. Makes it feel more natural for agents writing work notes.
+4. ~~**Separate `log` command**~~ Killed — validation folded into `set`. One verb.
+   Agents already know `set`/`get` from every KV store they've ever seen.
 
 5. **Session-scoped auto-persist** — When a CLI session ends (`mycelium room leave`),
    optionally prompt for a summary memory. "What did you accomplish this session?"

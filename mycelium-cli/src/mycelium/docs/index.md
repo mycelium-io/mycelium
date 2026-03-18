@@ -14,7 +14,7 @@ mycelium init              # Set up local config
 mycelium up                # Start the backend
 mycelium room create lab   # Create a room
 mycelium room set lab      # Make it your active room
-mycelium memory log work/setup "Initialized the project"
+mycelium memory set work/setup "Initialized the project"
 mycelium memory status     # See what's active
 mycelium catchup           # Get briefed on a room
 ```

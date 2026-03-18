@@ -20,7 +20,8 @@ context/    — User preferences and background
 status/     — Current state of ongoing work
 ```
 
-The `memory log` command validates these categories and auto-timestamps content.
+`memory set` validates these automatically — when the key starts with a known
+category prefix, it checks the slug format and auto-timestamps the content.
 
 ## Workflow
 
@@ -31,24 +32,24 @@ mycelium room create project-x --mode async --persistent
 mycelium room set project-x
 ```
 
-### 2. Log structured memories as you work
+### 2. Write structured memories as you work
 
 ```bash
 # Record what you built
-mycelium memory log work/api-server "Set up FastAPI with auth endpoints"
-mycelium memory log work/database "Created PostgreSQL schema, 3 tables"
+mycelium memory set work/api-server "Set up FastAPI with auth endpoints"
+mycelium memory set work/database "Created PostgreSQL schema, 3 tables"
 
 # Record why you made choices
-mycelium memory log decisions/framework "FastAPI over Flask: async + type hints"
-mycelium memory log decisions/auth "JWT tokens, 1hr expiry, refresh via cookie"
+mycelium memory set decisions/framework "FastAPI over Flask: async + type hints"
+mycelium memory set decisions/auth "JWT tokens, 1hr expiry, refresh via cookie"
 
 # Record user context
-mycelium memory log context/goal "Build MVP for investor demo by Friday"
-mycelium memory log context/constraints "Must run on single $20/mo VPS"
+mycelium memory set context/goal "Build MVP for investor demo by Friday"
+mycelium memory set context/constraints "Must run on single $20/mo VPS"
 
 # Track current state
-mycelium memory log status/api "PASSING — all 12 endpoints tested"
-mycelium memory log status/deploy "BLOCKED — waiting on DNS propagation"
+mycelium memory set status/api "PASSING — all 12 endpoints tested"
+mycelium memory set status/deploy "BLOCKED — waiting on DNS propagation"
 ```
 
 ### 3. Check status at a glance
@@ -87,20 +88,24 @@ Latest Synthesis
 
 ```bash
 # --update/-u flag allows overwriting
-mycelium memory log status/deploy "ACTIVE — deployed to vps.example.com" -u
+mycelium memory set status/deploy "ACTIVE — deployed to vps.example.com" -u
 ```
 
 ## Type Safety
 
-The `memory log` command validates keys against the `MemoryLogEntry` type
+`memory set` validates category keys against the `MemoryLogEntry` type
 (defined in `mycelium.sstp`). This is the same pattern used for negotiation
 payloads (`ProposeReply`, `RespondReply`) — Pydantic validation before the
-API call, so malformed keys fail fast on the client side.
+API call, so malformed slugs fail fast on the client side.
 
 Valid slugs: lowercase alphanumeric, hyphens, dots, underscores.
 - `work/api-server` — valid
 - `status/v2.deploy` — valid
 - `decisions/Why We Chose X` — invalid (uppercase, spaces)
+
+Keys without a known category prefix skip validation entirely:
+- `custom/anything` — passes through, no slug check
+- `research/pgvector-perf` — passes through
 
 ## Synthesis Awareness
 
@@ -113,14 +118,3 @@ memories by category prefix. This produces structured output:
 - **Context** — from `context/*` memories
 
 Memories without a known category prefix are grouped under "Other".
-
-## Combining with Raw Memory
-
-The `memory log` command is for structured, convention-following writes. The
-existing `memory set` command still works for arbitrary keys:
-
-```bash
-mycelium memory set "custom/anything" "freeform value"
-```
-
-Both coexist — `memory log` is the typed path, `memory set` is the raw path.

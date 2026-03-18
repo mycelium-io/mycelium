@@ -27,16 +27,16 @@ mycelium room set design-review
 ### Agent 1: Julia shares architecture decisions
 
 ```bash
-# Structured memory log — typed validation, auto-timestamps
-mycelium memory log decisions/database "Consolidated to single AgensGraph instance — SQL + graph + vector in one DB" -h julia-agent
-mycelium memory log decisions/llm-provider "litellm — 100+ providers, one interface" -h julia-agent
-mycelium memory log decisions/api-style "REST for now, generated OpenAPI client for type safety" -h julia-agent
+# Category keys (work/, decisions/, context/, status/) get auto-validated
+mycelium memory set decisions/database "Consolidated to single AgensGraph instance — SQL + graph + vector in one DB" -h julia-agent
+mycelium memory set decisions/llm-provider "litellm — 100+ providers, one interface" -h julia-agent
+mycelium memory set decisions/api-style "REST for now, generated OpenAPI client for type safety" -h julia-agent
 ```
 
 ### Agent 2: Selina shares research
 
 ```bash
-# research/ isn't a structured category — use memory set for freeform keys
+# research/ isn't a structured category — passes through without slug validation
 mycelium memory set "research/pgvector-perf" "pgvector cosine search on 384-dim embeddings: <5ms for 10k memories" --handle selina-agent
 mycelium memory set "research/fastembed" "BAAI/bge-small-en-v1.5 runs locally, 384 dimensions, no API key needed" --handle selina-agent
 ```
@@ -44,15 +44,15 @@ mycelium memory set "research/fastembed" "BAAI/bge-small-en-v1.5 runs locally, 3
 ### Agent 3: Kappa reports what didn't work
 
 ```bash
-mycelium memory log decisions/no-sqlite-tests "SQLite can't handle pgvector or JSONB — need real Postgres for integration tests" -h kappa-agent
-mycelium memory log decisions/no-qdrant "Considered Qdrant but AgensGraph+pgvector eliminates the need" -h kappa-agent
+mycelium memory set decisions/no-sqlite-tests "SQLite can't handle pgvector or JSONB — need real Postgres for integration tests" -h kappa-agent
+mycelium memory set decisions/no-qdrant "Considered Qdrant but AgensGraph+pgvector eliminates the need" -h kappa-agent
 ```
 
 ### Agent 4: Prometheus shares status
 
 ```bash
-mycelium memory log status/cfn-integration "Working on CFN integration — mapping mycelium agents to CFN objects" -h prometheus-agent
-mycelium memory log context/blocker "Need ioc-cfn-mgmt-plane-svc running to test agent registration flow" -h prometheus-agent
+mycelium memory set status/cfn-integration "Working on CFN integration — mapping mycelium agents to CFN objects" -h prometheus-agent
+mycelium memory set context/blocker "Need ioc-cfn-mgmt-plane-svc running to test agent registration flow" -h prometheus-agent
 ```
 
 ### Browse & Search
