@@ -483,12 +483,12 @@ def _render_frame(
     y_offset: float = 0.0,
 ) -> str:
     buf_size = screen_w * screen_h
-    z_buf = np.zeros(buf_size)
+    _z_buf = np.zeros(buf_size)
     shade_buf = np.zeros(buf_size, dtype=int)
     source_buf = np.zeros(buf_size, dtype=int)  # 0=outer, 1=inner
 
-    ca, sa = math.cos(angle_x), math.sin(angle_x)
-    cb, sb = math.cos(angle_y), math.sin(angle_y)
+    _ca, _sa = math.cos(angle_x), math.sin(angle_x)
+    _cb, _sb = math.cos(angle_y), math.sin(angle_y)
 
     # if body_geom is not None and body_opacity > 0:
     #     bpx, bpy, bpz, bnx, bny, bnz = body_geom
