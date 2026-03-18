@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from typing import ClassVar
 
 _LLM_CALL_COUNT = 0
 
@@ -112,7 +113,7 @@ class EvidenceRanker(_LLMBaseClient):
         if not self._azure_client:
             return {i: 1.0 - 0.5 * (i / (n - 1)) for i in range(n)} if n > 1 else {0: 1.0}
         system = (
-            "You are ranking knowledge paths by relevance to a question (0.0–1.0 scale).\n"
+            "You are ranking knowledge paths by relevance to a question (0.0-1.0 scale).\n"
             "Respond with STRICT JSON ONLY:\n"
             '  {"scores": [{"index": i, "score": number}]}\n'
             "- Do not include trailing commas, comments, or extra fields."
@@ -152,7 +153,7 @@ class EntityExtractor(_LLMBaseClient):
         '  {"entities": [{"name": "<entity-1>"}, ...]}\n'
         "- Do not include trailing commas, comments, or extra fields."
     )
-    STOPWORDS = {
+    STOPWORDS: ClassVar[set[str]] = {
         "what",
         "does",
         "do",

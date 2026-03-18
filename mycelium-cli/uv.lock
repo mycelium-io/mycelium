@@ -368,6 +368,17 @@ dev = [
     { name = "types-toml" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-mock" },
+    { name = "ruff" },
+    { name = "types-toml" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "attrs", specifier = ">=22.2.0" },
@@ -391,6 +402,17 @@ requires-dist = [
     { name = "types-toml", marker = "extra == 'dev'", specifier = ">=0.10.8" },
 ]
 provides-extras = ["dev"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy", specifier = ">=1.8.0" },
+    { name = "pytest", specifier = ">=8.0.0" },
+    { name = "pytest-asyncio", specifier = ">=0.23.0" },
+    { name = "pytest-cov", specifier = ">=4.1.0" },
+    { name = "pytest-mock", specifier = ">=3.12.0" },
+    { name = "ruff", specifier = ">=0.3.0" },
+    { name = "types-toml", specifier = ">=0.10.8" },
+]
 
 [[package]]
 name = "mypy"

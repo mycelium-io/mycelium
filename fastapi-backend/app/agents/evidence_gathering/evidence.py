@@ -87,7 +87,7 @@ async def process_evidence(
     prior_paths: list[str] = []
 
     for item in items:
-        sent = str(item.get("sentence") or "").strip()
+        _sent = str(item.get("sentence") or "").strip()
         ents = item.get("entities") or []
         extra_context = "\n".join(prior_paths[-8:]) if prior_paths else ""
 

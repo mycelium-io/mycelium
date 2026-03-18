@@ -299,7 +299,7 @@ async def test_async_room_full_flow(integration_client: AsyncClient):
 
     # Check that synthesis was produced
     resp = await client.get("/rooms/e2e-flow/memory", params={"prefix": "_synthesis/"})
-    data = resp.json()
+    _data = resp.json()
     # Synthesis may or may not have fired (depends on timing), so just check the room is still healthy
     resp = await client.get("/rooms/e2e-flow")
     assert resp.status_code == 200

@@ -204,7 +204,7 @@ class IngestionService:
         records: list[dict],
         workspace_id: str,
         mas_id: str,
-        agent_id: str | None = None,  # noqa: ARG002 — reserved for future per-agent graphs
+        agent_id: str | None = None,
         knowledge_service: object = None,
     ) -> dict:
         """Run the full ingestion pipeline.

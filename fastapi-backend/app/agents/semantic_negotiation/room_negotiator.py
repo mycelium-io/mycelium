@@ -88,13 +88,13 @@ class RoomNegotiator(SAONegotiator):
             falling back to the safe default.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         name: str,
         participant_id: str,
         room_name: str,
         loop: asyncio.AbstractEventLoop,
-        post_message_coro: Any,  # noqa: ANN401
+        post_message_coro: Any,
         reply_timeout: float = 60.0,
     ) -> None:
         super().__init__(name=name)
@@ -124,7 +124,7 @@ class RoomNegotiator(SAONegotiator):
             return
         try:
             data = json.loads(content)
-        except Exception:  # noqa: BLE001
+        except Exception:
             data = {}
         # Schedule the resolution on the event loop (call-safe from any thread)
         self._loop.call_soon_threadsafe(self._pending.set_result, data)
@@ -133,7 +133,7 @@ class RoomNegotiator(SAONegotiator):
     # NegMAS hooks
     # ------------------------------------------------------------------
 
-    def propose(self, state: SAOState, dest: str | None = None) -> Outcome:  # noqa: ARG002
+    def propose(self, state: SAOState, dest: str | None = None) -> Outcome:
         """Ask the agent (via room message) to propose an offer for this round."""
         issues = self._issue_names()
         payload: dict[str, Any] = {
@@ -167,7 +167,7 @@ class RoomNegotiator(SAONegotiator):
 
         try:
             return self._dict_to_outcome(offer_dict, issues)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning(
                 "[%s] %s — propose outcome conversion failed: %s",
                 self._room_name,
@@ -301,14 +301,14 @@ class RoomNegotiator(SAONegotiator):
                 }
             )
             return msg.model_dump()
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.debug("_wrap_sstp: falling back to bare payload", exc_info=True)
             return payload
 
     def _issue_names(self) -> list[str]:
         try:
             return [issue.name for issue in self.nmi.outcome_space.issues]
-        except Exception:  # noqa: BLE001
+        except Exception:
             return []
 
     def _issue_options(self) -> dict[str, list[str]]:
@@ -317,13 +317,13 @@ class RoomNegotiator(SAONegotiator):
                 issue.name: [str(v) for v in issue.values]
                 for issue in self.nmi.outcome_space.issues
             }
-        except Exception:  # noqa: BLE001
+        except Exception:
             return {}
 
     def _n_steps(self) -> int | None:
         try:
             return self.nmi.n_steps
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
 
     def _tuple_to_dict(
@@ -346,7 +346,7 @@ class RoomNegotiator(SAONegotiator):
                     proposer = getattr(entry, "current_proposer", "unknown")
                     offer = entry.offer
                 else:
-                    proposer, offer = (entry[0], entry[1]) if len(entry) >= 2 else ("unknown", None)  # noqa: PLR2004
+                    proposer, offer = (entry[0], entry[1]) if len(entry) >= 2 else ("unknown", None)
                 rounds.append(
                     {
                         "round": idx + 1,
@@ -354,7 +354,7 @@ class RoomNegotiator(SAONegotiator):
                         "offer": self._tuple_to_dict(offer, issues) or {},
                     }
                 )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.debug("[%s] history serialisation warning: %s", self._room_name, exc)
         return rounds
 

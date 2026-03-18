@@ -220,10 +220,7 @@ def _expand_paths_one_hop(
             visited_ids = {seg["value"].get("id") for seg in path if seg.get("kind") == "concept"}
             if nid in visited_ids:
                 continue
-            extended = list(path) + [
-                {"kind": "relation", "value": rel},
-                {"kind": "concept", "value": nei},
-            ]
+            extended = [*path, {"kind": "relation", "value": rel}, {"kind": "concept", "value": nei}]
             next_paths.append(extended)
     return next_paths
 
@@ -310,7 +307,7 @@ class SingleEntityEvidenceEngine:
 
         for hop in range(1, self.config.max_depth + 1):
 
-            async def select_lane(idx: int, lane: LaneState) -> tuple:
+            async def select_lane(idx: int, lane: LaneState, hop: int = hop) -> tuple:
                 anchor_id = lane.anchor_id
                 graph = lane.graph
                 candidates_structured = (
@@ -381,7 +378,7 @@ class SingleEntityEvidenceEngine:
                             pass
                     break
 
-            async def rank_and_expand_lane(idx: int, lane: LaneState) -> None:
+            async def rank_and_expand_lane(idx: int, lane: LaneState, hop: int = hop) -> None:
                 anchor_id = lane.anchor_id
                 graph = lane.graph
                 candidates_structured = lane.last_candidates_structured

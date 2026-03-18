@@ -40,7 +40,7 @@ class Edge:
         for key, value in properties.items():
             if isinstance(value, list):
                 properties[key] = json.dumps(value)
-        props = ", ".join([f"{k}: %s" for k in properties.keys()])
+        props = ", ".join([f"{k}: %s" for k in properties])
         if self.direction == "->":
             rel_pattern = f"(a)-[r:{self.relation} {{ {props} }}]->(b)"
         elif self.direction == "<-":
@@ -48,7 +48,7 @@ class Edge:
         else:
             rel_pattern = f"(a)-[r:{self.relation} {{ {props} }}]-(b)"
         query = f"MATCH (a {{id: %s}}), (b {{id: %s}}) CREATE {rel_pattern} RETURN r"
-        params = (source_id, target_id) + tuple(properties.values())
+        params = (source_id, target_id, *properties.values())
         return query, params
 
     def to_cypher_delete(self) -> tuple[str, tuple]:

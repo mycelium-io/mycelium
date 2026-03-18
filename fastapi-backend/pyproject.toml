@@ -47,8 +47,26 @@ target-version = "py312"
 line-length = 100
 
 [tool.ruff.lint]
-select = ["ALL"]
-ignore = ["D", "COM812", "ISC001", "E501"]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "RUF",  # ruff-specific
+]
+ignore = [
+    "E501",   # line too long — handled by formatter
+    "B008",   # function call in default arg — FastAPI pattern
+    "B904",   # raise from — style choice
+    "SIM102", # nested if — readability preference
+    "SIM105", # contextlib.suppress — style choice
+    "SIM108", # ternary operator — readability preference
+    "SIM115", # context manager for open — style choice
+    "RUF006", # asyncio.ensure_future return — fire-and-forget pattern
+]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = [

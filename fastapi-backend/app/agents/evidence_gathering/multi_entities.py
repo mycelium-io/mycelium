@@ -266,7 +266,7 @@ class MultiEntityEvidenceEngine:
 
         evidence_paths: list[dict[str, Any]] = []
         if r and r.get("selected_indices"):
-            paths_list = r.get("paths") or []
+            _paths_list = r.get("paths") or []
             cands = r.get("candidates_symbolic") or []
             for idx, i in enumerate(r["selected_indices"]):
                 sym = cands[i] if 0 <= i < len(cands) else ""

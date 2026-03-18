@@ -88,8 +88,7 @@ def delete_graph(graph_name: str) -> bool:
 
 def get_node(graph: str, node: Node) -> dict | None:
     try:
-        with get_engine().connect() as conn:
-            with conn.begin():
+        with get_engine().connect() as conn, conn.begin():
                 conn.exec_driver_sql(f'SET graph_path = "{graph}"')
                 query, params = node.to_cypher_exists()
                 result = conn.exec_driver_sql(query, params).fetchone()
@@ -114,8 +113,7 @@ def save(
         return True, f"Graph: {graph} created"
 
     try:
-        with get_engine().connect() as conn:
-            with conn.begin():
+        with get_engine().connect() as conn, conn.begin():
                 conn.exec_driver_sql(f'SET graph_path = "{graph}"')
 
                 existing_nodes: list[str] = []
@@ -167,8 +165,7 @@ def delete(graph: str, nodes: list[Node]) -> tuple[bool, str]:
     if not nodes:
         return True, "No nodes provided"
     try:
-        with get_engine().connect() as conn:
-            with conn.begin():
+        with get_engine().connect() as conn, conn.begin():
                 conn.exec_driver_sql(f'SET graph_path = "{graph}"')
                 for node in nodes:
                     q, p = node.to_cypher_delete()
