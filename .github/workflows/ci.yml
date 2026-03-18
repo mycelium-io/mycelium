@@ -59,6 +59,8 @@ jobs:
 
       - name: Unit tests (SQLite)
         working-directory: fastapi-backend
+        env:
+          MYCELIUM_STUB_EMBEDDINGS: "1"
         run: uv run pytest tests/ -x -q --ignore=tests/test_integration.py
 
       - name: Integration tests (AgensGraph + pgvector)
@@ -66,6 +68,7 @@ jobs:
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:password@localhost:5432/mycelium
           GRAPH_DB_URL: postgresql://postgres:password@localhost:5432/mycelium
+          MYCELIUM_STUB_EMBEDDINGS: "1"
         run: uv run pytest tests/test_integration.py -x -q
 
   sync-install-script:

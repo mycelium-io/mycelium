@@ -16,6 +16,9 @@ logger = logging.getLogger(__name__)
 
 _model: SentenceTransformer | None = None
 
+# Set MYCELIUM_STUB_EMBEDDINGS=1 to skip model loading (CI, offline environments).
+_STUB = os.getenv("MYCELIUM_STUB_EMBEDDINGS", "").strip() not in ("", "0", "false")
+
 
 def _load_model() -> SentenceTransformer:
     """Load the model, preferring the local HF cache snapshot to avoid network calls."""
@@ -43,6 +46,8 @@ def _get_model() -> SentenceTransformer:
 
 def embed_text(text: str) -> list[float]:
     """Generate embedding for a single text string."""
+    if _STUB:
+        return [0.0] * settings.EMBEDDING_DIMENSIONS
     return _get_model().encode(text).tolist()
 
 
@@ -50,4 +55,6 @@ def embed_batch(texts: list[str]) -> list[list[float]]:
     """Generate embeddings for multiple texts."""
     if not texts:
         return []
+    if _STUB:
+        return [[0.0] * settings.EMBEDDING_DIMENSIONS for _ in texts]
     return [e.tolist() for e in _get_model().encode(texts)]
