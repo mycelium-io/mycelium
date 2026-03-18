@@ -1,8 +1,6 @@
 """
-Spinning 3D hexagonal prism rendered as ASCII shader art.
-
-Adapted from hexaart/hexspin.py for use as an embedded animation
-in the HiveMind CLI. Call run_animation() to play for a fixed duration.
+Twinkling spore starfield animation for the Mycelium CLI.
+Call run_animation_with_output() or run_animation_live() to play.
 """
 
 import math
