@@ -31,13 +31,12 @@ app = typer.Typer(
 
 
 def _post(ctx: typer.Context, room: str | None, handle: str | None, content: str) -> None:
+    from mycelium.commands.room import _resolve_room
     from mycelium_backend_client import Client
     from mycelium_backend_client.api.messages import (
         send_message_rooms_room_name_messages_post as send_api,
     )
     from mycelium_backend_client.models import MessageCreate
-
-    from mycelium.commands.room import _resolve_room
 
     json_output = ctx.obj.get("json", False) if ctx.obj else False
 
