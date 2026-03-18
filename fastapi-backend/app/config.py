@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     CFN_MGMT_URL: str | None = None
 
     # Room defaults
-    DEFAULT_ROOM_MODE: str = "async"
+    DEFAULT_ROOM_MODE: str = "sync"
 
     model_config = SettingsConfigDict(
         env_file=tuple(_env_files), env_file_encoding="utf-8", extra="ignore"
