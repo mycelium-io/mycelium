@@ -9,22 +9,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip install uv
 
 # Copy project metadata first for layer caching
-COPY pyproject.toml ./
-# Install runtime deps from pyproject.toml — agensgraph-python needs --no-build-isolation
-# so install everything else first, then agensgraph-python separately.
+COPY pyproject.toml uv.lock ./
+# Install all runtime deps from pyproject.toml (excluding agensgraph which needs --no-build-isolation)
 RUN uv pip install --system --no-cache \
-    "fastapi[standard]>=0.115.0,<0.116" \
-    "asyncpg>=0.29.0,<0.32" \
-    "pydantic-settings>=2.5.2,<3" \
-    "httpx>=0.28.1" \
-    "python-multipart>=0.0.9" \
-    "anthropic>=0.40.0" \
-    "greenlet>=3.0" \
-    "psycopg2-binary>=2.9.0" \
-    "negmas>=0.10.0" \
-    "sentence-transformers==2.7.0" \
-    "transformers<4.40" \
-    "alembic>=1.14.0,<2" && \
+        $(python3 -c "import tomllib; deps=tomllib.load(open('pyproject.toml','rb'))['project']['dependencies']; print(' '.join(repr(d) for d in deps if 'agensgraph' not in d))") && \
     uv pip install --system --no-cache "setuptools" && \
     uv pip install --system --no-cache --no-build-isolation "agensgraph-python==1.0.2"
 
