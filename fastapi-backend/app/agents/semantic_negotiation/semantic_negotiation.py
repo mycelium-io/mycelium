@@ -68,9 +68,9 @@ class SemanticNegotiationPipeline:
         reply_timeout: Per-round reply timeout for RoomNegotiator.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
-        context: Any = None,  # noqa: ANN401
+        context: Any = None,
         agents: list[Any] | None = None,
         memories: dict[str, Any] | None = None,
         participants: list[NegotiationParticipant] | None = None,

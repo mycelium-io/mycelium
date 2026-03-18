@@ -40,14 +40,14 @@ async def listen(
     The callback receives (conn, pid, channel, payload_str).
     """
     await conn.add_listener(channel, callback)
-    await conn.execute(f"LISTEN {asyncpg.utils._quote_ident(channel)}")  # noqa: SLF001
+    await conn.execute(f"LISTEN {asyncpg.utils._quote_ident(channel)}")
     logger.debug(f"Listening on channel: {channel}")
 
 
 async def unlisten(conn: asyncpg.Connection, channel: str) -> None:
     """Unregister listener and stop listening on a channel."""
     try:
-        await conn.execute(f"UNLISTEN {asyncpg.utils._quote_ident(channel)}")  # noqa: SLF001
+        await conn.execute(f"UNLISTEN {asyncpg.utils._quote_ident(channel)}")
         await conn.remove_listener(channel, None)  # type: ignore[arg-type]
     except Exception as e:
         logger.debug(f"unlisten error on {channel}: {e}")

@@ -38,7 +38,7 @@ class Node:
         for key, value in properties.items():
             if isinstance(value, list):
                 properties[key] = json.dumps(value)
-        props = ", ".join([f"{k}: %s" for k in properties.keys()])
+        props = ", ".join([f"{k}: %s" for k in properties])
         query = f"CREATE (n:{labels} {{ {props} }}) RETURN n"
         return query, tuple(properties.values())
 

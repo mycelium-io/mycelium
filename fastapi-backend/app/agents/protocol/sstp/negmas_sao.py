@@ -47,7 +47,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, field_seriali
 
 # ---------------------------------------------------------------------------
 # Outcome type alias
-# NegMAS: negmas.outcomes.Outcome = tuple | dict | Mapping | None  # noqa: ERA001
+# NegMAS: negmas.outcomes.Outcome = tuple | dict | Mapping | None
 # ---------------------------------------------------------------------------
 Outcome = dict[str, Any] | tuple | None
 
@@ -249,7 +249,7 @@ class SAOResponse(BaseModel):
 
     @field_validator("response", mode="before")
     @classmethod
-    def _coerce_response(cls, v: Any) -> ResponseType:  # noqa: ANN401
+    def _coerce_response(cls, v: Any) -> ResponseType:
         """Accept both the integer value (e.g. 0) and the enum name (e.g. 'ACCEPT_OFFER')."""
         if isinstance(v, ResponseType):
             return v

@@ -88,12 +88,11 @@ def delete_graph(graph_name: str) -> bool:
 
 def get_node(graph: str, node: Node) -> dict | None:
     try:
-        with get_engine().connect() as conn:
-            with conn.begin():
-                conn.exec_driver_sql(f'SET graph_path = "{graph}"')
-                query, params = node.to_cypher_exists()
-                result = conn.exec_driver_sql(query, params).fetchone()
-                return result[0] if result and result[0] else None
+        with get_engine().connect() as conn, conn.begin():
+            conn.exec_driver_sql(f'SET graph_path = "{graph}"')
+            query, params = node.to_cypher_exists()
+            result = conn.exec_driver_sql(query, params).fetchone()
+            return result[0] if result and result[0] else None
     except SQLAlchemyError as exc:
         raise RuntimeError(f"Failed to get node '{node.id}': {exc}") from exc
 
@@ -114,44 +113,43 @@ def save(
         return True, f"Graph: {graph} created"
 
     try:
-        with get_engine().connect() as conn:
-            with conn.begin():
-                conn.exec_driver_sql(f'SET graph_path = "{graph}"')
+        with get_engine().connect() as conn, conn.begin():
+            conn.exec_driver_sql(f'SET graph_path = "{graph}"')
 
-                existing_nodes: list[str] = []
-                existing_edges: list[str] = []
+            existing_nodes: list[str] = []
+            existing_edges: list[str] = []
+            for node in nodes:
+                q, p = node.to_cypher_exists()
+                r = conn.exec_driver_sql(q, p).fetchone()
+                if r and r[0]:
+                    existing_nodes.append(node.id)
+            for edge in edges:
+                q, p = edge.to_cypher_exists()
+                r = conn.exec_driver_sql(q, p).fetchone()
+                if r and r[0]:
+                    existing_edges.append(edge.id)
+
+            if not force_replace and (existing_nodes or existing_edges):
+                parts = []
+                if existing_nodes:
+                    parts.append(f"Nodes already exist: {', '.join(existing_nodes)}")
+                if existing_edges:
+                    parts.append(f"Edges already exist: {', '.join(existing_edges)}")
+                parts.append("Use force_replace=True to recreate.")
+                raise ValueError(". ".join(parts))
+
+            if force_replace:
                 for node in nodes:
-                    q, p = node.to_cypher_exists()
-                    r = conn.exec_driver_sql(q, p).fetchone()
-                    if r and r[0]:
-                        existing_nodes.append(node.id)
-                for edge in edges:
-                    q, p = edge.to_cypher_exists()
-                    r = conn.exec_driver_sql(q, p).fetchone()
-                    if r and r[0]:
-                        existing_edges.append(edge.id)
+                    if node.id in existing_nodes:
+                        q, p = node.to_cypher_delete()
+                        conn.exec_driver_sql(q, p)
 
-                if not force_replace and (existing_nodes or existing_edges):
-                    parts = []
-                    if existing_nodes:
-                        parts.append(f"Nodes already exist: {', '.join(existing_nodes)}")
-                    if existing_edges:
-                        parts.append(f"Edges already exist: {', '.join(existing_edges)}")
-                    parts.append("Use force_replace=True to recreate.")
-                    raise ValueError(". ".join(parts))
-
-                if force_replace:
-                    for node in nodes:
-                        if node.id in existing_nodes:
-                            q, p = node.to_cypher_delete()
-                            conn.exec_driver_sql(q, p)
-
-                for node in nodes:
-                    q, p = node.to_cypher_create()
-                    conn.exec_driver_sql(q, p)
-                for edge in edges:
-                    q, p = edge.to_cypher_create()
-                    conn.exec_driver_sql(q, p)
+            for node in nodes:
+                q, p = node.to_cypher_create()
+                conn.exec_driver_sql(q, p)
+            for edge in edges:
+                q, p = edge.to_cypher_create()
+                conn.exec_driver_sql(q, p)
 
         return True, f"Saved {len(nodes)} nodes and {len(edges)} edges to graph '{graph}'"
 
@@ -167,12 +165,11 @@ def delete(graph: str, nodes: list[Node]) -> tuple[bool, str]:
     if not nodes:
         return True, "No nodes provided"
     try:
-        with get_engine().connect() as conn:
-            with conn.begin():
-                conn.exec_driver_sql(f'SET graph_path = "{graph}"')
-                for node in nodes:
-                    q, p = node.to_cypher_delete()
-                    conn.exec_driver_sql(q, p)
+        with get_engine().connect() as conn, conn.begin():
+            conn.exec_driver_sql(f'SET graph_path = "{graph}"')
+            for node in nodes:
+                q, p = node.to_cypher_delete()
+                conn.exec_driver_sql(q, p)
         return True, f"Deleted {len(nodes)} nodes from graph '{graph}'"
     except SQLAlchemyError as exc:
         return False, f"Database error: {exc}"

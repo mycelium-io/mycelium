@@ -66,7 +66,7 @@ _TOOL = {
 }
 
 
-def _mock_memory_lookup(sentence: str, context: str | None = None) -> dict[str, Any]:  # noqa: ARG001
+def _mock_memory_lookup(sentence: str, context: str | None = None) -> dict[str, Any]:
     """Stub for MAS memory lookup. Replace with real Mycelium memory query."""
     return {
         "preferences": "No preferences recorded.",
@@ -77,9 +77,9 @@ def _mock_memory_lookup(sentence: str, context: str | None = None) -> dict[str, 
 
 def _mock_agent_interpretation_query(
     negotiable_entities: list[str],
-    sentence: str,  # noqa: ARG001
-    context: str | None = None,  # noqa: ARG001
-    sender_id: str | None = None,  # noqa: ARG001
+    sentence: str,
+    context: str | None = None,
+    sender_id: str | None = None,
 ) -> dict[str, list[str]]:
     """Stub for querying sending agents for their interpretations. Replace with real agent calls."""
     return {term: [f"interpretation of '{term}' (mock)"] for term in negotiable_entities}

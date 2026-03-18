@@ -137,13 +137,14 @@ async def test_semantic_search(integration_client: AsyncClient):
     results = data["results"]
     assert len(results) > 0
 
-    # Database topic should rank higher than cooking
-    keys = [r["memory"]["key"] for r in results]
-    assert keys[0] in ("topic/databases", "topic/graphs"), f"Expected DB/graph first, got {keys[0]}"
-
-    # Cooking should be last (least similar)
-    if len(results) == 3:
-        assert keys[-1] == "topic/cooking"
+    # Ordering assertions require real embeddings; skip when stub is active.
+    if not os.getenv("MYCELIUM_STUB_EMBEDDINGS"):
+        keys = [r["memory"]["key"] for r in results]
+        assert keys[0] in ("topic/databases", "topic/graphs"), (
+            f"Expected DB/graph first, got {keys[0]}"
+        )
+        if len(results) == 3:
+            assert keys[-1] == "topic/cooking"
 
     # All similarities should be between 0 and 1
     for r in results:
@@ -299,7 +300,7 @@ async def test_async_room_full_flow(integration_client: AsyncClient):
 
     # Check that synthesis was produced
     resp = await client.get("/rooms/e2e-flow/memory", params={"prefix": "_synthesis/"})
-    data = resp.json()
+    _data = resp.json()
     # Synthesis may or may not have fired (depends on timing), so just check the room is still healthy
     resp = await client.get("/rooms/e2e-flow")
     assert resp.status_code == 200

@@ -220,7 +220,8 @@ def _expand_paths_one_hop(
             visited_ids = {seg["value"].get("id") for seg in path if seg.get("kind") == "concept"}
             if nid in visited_ids:
                 continue
-            extended = list(path) + [
+            extended = [
+                *path,
                 {"kind": "relation", "value": rel},
                 {"kind": "concept", "value": nei},
             ]
@@ -310,7 +311,7 @@ class SingleEntityEvidenceEngine:
 
         for hop in range(1, self.config.max_depth + 1):
 
-            async def select_lane(idx: int, lane: LaneState) -> tuple:
+            async def select_lane(idx: int, lane: LaneState, hop: int = hop) -> tuple:
                 anchor_id = lane.anchor_id
                 graph = lane.graph
                 candidates_structured = (
@@ -381,7 +382,7 @@ class SingleEntityEvidenceEngine:
                             pass
                     break
 
-            async def rank_and_expand_lane(idx: int, lane: LaneState) -> None:
+            async def rank_and_expand_lane(idx: int, lane: LaneState, hop: int = hop) -> None:
                 anchor_id = lane.anchor_id
                 graph = lane.graph
                 candidates_structured = lane.last_candidates_structured
@@ -471,9 +472,7 @@ class SingleEntityEvidenceEngine:
             if winning_lane_index is not None:
                 await rank_and_expand_lane(winning_lane_index, lanes[winning_lane_index])
                 break
-            await asyncio.gather(
-                *(rank_and_expand_lane(i, lane) for i, lane in enumerate(lanes))
-            )
+            await asyncio.gather(*(rank_and_expand_lane(i, lane) for i, lane in enumerate(lanes)))
 
         if winning_lane_index is not None:
             wl = lanes[winning_lane_index]

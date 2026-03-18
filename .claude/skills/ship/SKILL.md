@@ -9,6 +9,8 @@ Run quality checks, commit, and optionally push.
 
 ## Steps
 
+0. **Branch check** — Run `git branch --show-current`. If on `main` or `master`, create a feature branch (`git checkout -b <descriptive-name>`) before proceeding.
+
 1. **Precommit** — Run the /precommit checks (lint, format, tests). If any fail, stop and report.
 
 2. **Review changes** — Run `git diff --stat` and `git status` to show what will be committed.
@@ -25,4 +27,6 @@ Run quality checks, commit, and optionally push.
 
    Show the proposed commit message and ask for confirmation before committing.
 
-5. **Push** — Ask the user if they want to push. Only push if they confirm. Never force push.
+5. **Push + PR** — Ask the user if they want to push. Only push if they confirm. Never force push. After pushing, open a PR against main with `gh pr create`.
+
+6. **Watch checks** — Run `gh pr checks --watch --fail-fast` and report pass or fail when complete.

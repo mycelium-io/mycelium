@@ -142,7 +142,7 @@ class CounterOfferResult:
     error_detail: dict[str, Any] | None = None
 
 
-def counter_offer(  # noqa: PLR0911, PLR0913
+def counter_offer(
     *,
     action: str,
     round_num: int,
@@ -268,7 +268,7 @@ class NegotiationModel:
     # Public API
     # ------------------------------------------------------------------
 
-    def run(  # noqa: PLR0913
+    def run(
         self,
         issues: list[str],
         options_per_issue: dict[str, list[str]],
@@ -314,7 +314,7 @@ class NegotiationModel:
                 _ACTIVE_SESSIONS.pop(effective_room, None)
             logger.debug("[%s] session released", effective_room)
 
-    def counter_offer(  # noqa: PLR0913
+    def counter_offer(
         self,
         *,
         action: str,
@@ -342,7 +342,7 @@ class NegotiationModel:
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _run_negotiation(  # noqa: PLR0913
+    def _run_negotiation(
         self,
         issues: list[str],
         options_per_issue: dict[str, list[str]],
@@ -388,7 +388,7 @@ class NegotiationModel:
         options_per_issue: dict[str, list[str]],
         participants: list[NegotiationParticipant],
     ) -> None:
-        if len(participants) < 2:  # noqa: PLR2004
+        if len(participants) < 2:
             msg = "At least two participants are required for a negotiation"
             raise ValueError(msg)
         for issue_id in issues:
@@ -432,7 +432,7 @@ class NegotiationModel:
 
     def _build_result(
         self,
-        state: Any,  # noqa: ANN401
+        state: Any,
         issues: list[str],
         mechanism: SAOMechanism,
     ) -> NegotiationResult:

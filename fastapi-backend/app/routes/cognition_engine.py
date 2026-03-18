@@ -191,7 +191,7 @@ def _query_graph_for_evidence(graph_name: str) -> tuple[list[dict], list[dict]]:
                 ed["source_id"] = str(row[0])
                 ed["target_id"] = str(row[2])
                 edges.append(ed)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("evidence: graph query failed for %s: %s", graph_name, exc, exc_info=True)
     return nodes, edges
 
@@ -216,7 +216,7 @@ async def knowledge_extraction(body: ExtractionRequest) -> ExtractionResponse:
             if isinstance(r, dict)
         ]
 
-    compact_payload = svc._build_compact_payload(raw_data)  # noqa: SLF001
+    compact_payload = svc._build_compact_payload(raw_data)
 
     if not compact_payload:
         return ExtractionResponse(
@@ -226,11 +226,11 @@ async def knowledge_extraction(body: ExtractionRequest) -> ExtractionResponse:
         )
 
     raw_concepts: list[dict] = await asyncio.to_thread(
-        svc._llm_extract_concepts,  # noqa: SLF001
+        svc._llm_extract_concepts,
         compact_payload,
     )
     raw_rels: list[dict] = await asyncio.to_thread(
-        svc._llm_extract_relationships,  # noqa: SLF001
+        svc._llm_extract_relationships,
         raw_concepts,
         compact_payload,
     )
@@ -238,7 +238,7 @@ async def knowledge_extraction(body: ExtractionRequest) -> ExtractionResponse:
     # Mirror the ID/mapping block from ingestion.py
     concepts_out = [
         {
-            "id": svc._generate_id(c.get("name", "")),  # noqa: SLF001
+            "id": svc._generate_id(c.get("name", "")),
             "name": c.get("name", ""),
             "description": c.get("description", ""),
             "attributes": {"concept_type": c.get("type", "unknown")},
@@ -252,13 +252,13 @@ async def knowledge_extraction(body: ExtractionRequest) -> ExtractionResponse:
         src = r.get("source", "")
         tgt = r.get("target", "")
         rel_label = r.get("relationship", "INTERACTS_WITH")
-        src_id = svc._generate_id(src)  # noqa: SLF001
-        tgt_id = svc._generate_id(tgt)  # noqa: SLF001
+        src_id = svc._generate_id(src)
+        tgt_id = svc._generate_id(tgt)
         if src_id not in concept_ids or tgt_id not in concept_ids:
             continue
         relations_out.append(
             {
-                "id": svc._generate_id(f"{src_id}_{tgt_id}_{rel_label}"),  # noqa: SLF001
+                "id": svc._generate_id(f"{src_id}_{tgt_id}_{rel_label}"),
                 "node_ids": [src_id, tgt_id],
                 "relation": rel_label,
                 "attributes": {
@@ -278,7 +278,7 @@ async def knowledge_extraction(body: ExtractionRequest) -> ExtractionResponse:
             force_replace=True,
         )
         await asyncio.to_thread(kg_service.create_graph_store, store_req)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("extraction: graph store failed: %s", exc, exc_info=True)
 
     cfn_concepts = [
