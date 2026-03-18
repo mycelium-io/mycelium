@@ -47,32 +47,32 @@ ASCII_RAMP = list(_ASCII_CHARS)
 # Themes: tuple of 2+ RGB stops, interpolated across the luminance range.
 COLOR_THEMES: dict[str, tuple[tuple[int, int, int], ...]] = {
     "cyan": (
-        (2, 10, 20),       # deep ocean
-        (5, 30, 60),       # midnight teal
-        (10, 60, 100),     # dark sea
-        (15, 95, 130),     # teal shadow
-        (25, 140, 160),    # ocean teal
-        (50, 190, 190),    # bright teal
-        (70, 220, 210),    # aqua
-        (100, 245, 230),   # electric cyan
-        (170, 255, 245),   # pale mint
-        (240, 255, 255),   # ice white
+        (2, 10, 20),  # deep ocean
+        (5, 30, 60),  # midnight teal
+        (10, 60, 100),  # dark sea
+        (15, 95, 130),  # teal shadow
+        (25, 140, 160),  # ocean teal
+        (50, 190, 190),  # bright teal
+        (70, 220, 210),  # aqua
+        (100, 245, 230),  # electric cyan
+        (170, 255, 245),  # pale mint
+        (240, 255, 255),  # ice white
     ),
     "amber": ((50, 25, 0), (255, 200, 50)),
     "magenta": ((40, 5, 50), (255, 80, 220)),
     "green": ((5, 35, 10), (50, 255, 120)),
     "white": ((30, 30, 30), (255, 255, 255)),
     "purple": (
-        (3, 1, 10),        # void
-        (25, 5, 60),       # midnight purple
-        (60, 15, 130),     # deep violet
-        (100, 30, 190),    # royal purple
-        (120, 50, 230),    # vivid purple
-        (90, 90, 250),     # purple-blue bridge
-        (60, 140, 255),    # electric blue
-        (140, 200, 255),   # sky blue
-        (210, 230, 255),   # pale ice
-        (255, 255, 255),   # pure white
+        (3, 1, 10),  # void
+        (25, 5, 60),  # midnight purple
+        (60, 15, 130),  # deep violet
+        (100, 30, 190),  # royal purple
+        (120, 50, 230),  # vivid purple
+        (90, 90, 250),  # purple-blue bridge
+        (60, 140, 255),  # electric blue
+        (140, 200, 255),  # sky blue
+        (210, 230, 255),  # pale ice
+        (255, 255, 255),  # pure white
     ),
 }
 
@@ -146,60 +146,87 @@ def _build_colored_ascii_ramp(n: int = NUM_SHADES, theme: str = "cyan") -> list[
     return ramp
 
 
-# ── BRAILLE RAIN ───────────────────────────────────────────────
+# ── STARFIELD ──────────────────────────────────────────────────
 
-_RAIN_DROPS = [
-    "\u2802",  # ⠂  single dot
-    "\u2803",  # ⠃  2-dot streak
-    "\u2807",  # ⠇  3-dot streak
-    "\u2847",  # ⡇  4-dot streak
-]
+# Characters ordered dim → bright
+_STAR_CHARS = ["·", "·", "•", "+", "*", "✦"]
 
 
 class _RainState:
-    """Persistent state for braille raindrop effect."""
+    """Persistent state for twinkling starfield effect."""
 
-    def __init__(self, width: int, height: int, density: float = 0.006):
+    def __init__(self, width: int, height: int, density: float = 0.18):
         self.width = width
         self.height = height
         self.density = density
-        self.drops: list[list[float]] = []
+        self._stars: list[list[float]] = []
+        self._seed(width, height)
 
-    def resize(self, width: int, height: int) -> None:
-        self.width = width
-        self.height = height
-
-    def update(self) -> None:
-        self.drops = [
-            [x, y + spd, spd, brt]
-            for x, y, spd, brt in self.drops
-            if y + spd < self.height
-        ]
-        num_new = max(1, int(self.width * self.density))
-        for _ in range(num_new):
-            self.drops.append([
-                random.randint(0, self.width - 1),
-                -random.uniform(0, 2),
-                random.uniform(0.15, 0.45),
-                random.uniform(0.1, 0.4),
+    def _seed(self, width: int, height: int) -> None:
+        count = max(1, int(width * height * self.density))
+        self._stars = []
+        _PHI = 0.6180339887  # golden ratio — keeps the two oscillators from ever locking
+        for _ in range(count):
+            # Three personality types: slow/steady, medium, fast/flashy
+            kind = random.random()
+            if kind < 0.5:
+                spd = random.uniform(0.02, 0.06)   # slow, barely noticeable
+                peak = random.uniform(0.3, 0.6)
+            elif kind < 0.85:
+                spd = random.uniform(0.07, 0.14)   # medium
+                peak = random.uniform(0.5, 0.85)
+            else:
+                spd = random.uniform(0.15, 0.28)   # fast flasher
+                peak = random.uniform(0.7, 1.0)
+            self._stars.append([
+                random.randint(0, max(width - 1, 0)),   # x
+                random.randint(0, max(height - 1, 0)),  # y
+                random.uniform(0, 2 * math.pi),          # phase A
+                random.uniform(0, 2 * math.pi),          # phase B (beats against A)
+                spd,                                     # speed
+                spd * _PHI,                              # speed B (incommensurate)
+                peak,                                    # peak brightness
+                random.uniform(0.0, 0.08),               # noise amplitude
             ])
 
+    def resize(self, width: int, height: int) -> None:
+        if width != self.width or height != self.height:
+            self.width = width
+            self.height = height
+            self._seed(width, height)
+
+    def update(self) -> None:
+        for star in self._stars:
+            star[2] += star[4]   # advance phase A
+            star[3] += star[5]   # advance phase B
+
     def overlay(
-        self, screen_w: int, screen_h: int, theme: str,
+        self,
+        screen_w: int,
+        screen_h: int,
+        theme: str,
     ) -> tuple[list[bool], list[str]]:
-        """Build flat mask + char arrays for rain compositing."""
+        """Build flat mask + char arrays for starfield compositing."""
         size = screen_w * screen_h
         mask = [False] * size
         chars = [""] * size
-        for x, y, spd, brt in self.drops:
-            r_idx, c_idx = int(y), int(x)
-            if 0 <= r_idx < screen_h and 0 <= c_idx < screen_w:
-                idx = r_idx * screen_w + c_idx
-                if not mask[idx]:
-                    r, g, b = _sample_theme(theme, brt)
-                    si = min(int(spd / 0.3), len(_RAIN_DROPS) - 1)
-                    mask[idx] = True
-                    chars[idx] = f"\x1b[38;2;{r};{g};{b}m{_RAIN_DROPS[si]}"
+        for x, y, phA, phB, _sA, _sB, peak, noise_amp in self._stars:
+            xi, yi = int(x), int(y)
+            if 0 <= yi < screen_h and 0 <= xi < screen_w:
+                # Beating envelope: product of two sines with incommensurate freqs
+                a = (math.sin(phA) + 1.0) * 0.5
+                b = (math.sin(phB) + 1.0) * 0.5
+                raw = a * b  # range 0..1, envelope varies aperiodically
+                jitter = random.uniform(-noise_amp, noise_amp)
+                brightness = max(0.0, raw * peak + jitter)
+                if brightness > 0.07:
+                    idx = yi * screen_w + xi
+                    if not mask[idx]:
+                        t = 0.25 + brightness * 0.5
+                        r, g, b = _sample_theme(theme, t)
+                        ci = min(int(brightness * len(_STAR_CHARS)), len(_STAR_CHARS) - 1)
+                        mask[idx] = True
+                        chars[idx] = f"\x1b[38;2;{r};{g};{b}m{_STAR_CHARS[ci]}"
         return mask, chars
 
 
@@ -207,7 +234,10 @@ class _RainState:
 
 
 def _render_banner(
-    text: str, screen_w: int, is_unicode: bool = True, theme: str = "cyan",
+    text: str,
+    screen_w: int,
+    is_unicode: bool = True,
+    theme: str = "cyan",
 ) -> list[str]:
     raw = pyfiglet.figlet_format(text, font="slant")
     raw_lines = raw.rstrip("\n").split("\n")
@@ -460,39 +490,40 @@ def _render_frame(
     ca, sa = math.cos(angle_x), math.sin(angle_x)
     cb, sb = math.cos(angle_y), math.sin(angle_y)
 
-    if body_geom is not None and body_opacity > 0:
-        bpx, bpy, bpz, bnx, bny, bnz = body_geom
-        rx, ry, rz = _rotate_points(bpx, bpy, bpz, ca, sa, cb, sb)
-        rnx, rny, rnz = _rotate_points(bnx, bny, bnz, ca, sa, cb, sb)
-        _project_and_shade(
-            rx, ry, rz, rnx, rny, rnz, screen_w, screen_h, kx, ky, z_buf, shade_buf,
-            bpx, bpy, bpz, y_offset=y_offset,
-        )
-        if body_opacity < 1.0:
-            body_mask = shade_buf > 0
-            scaled = (shade_buf[body_mask] * body_opacity).astype(int)
-            shade_buf[body_mask] = scaled
+    # if body_geom is not None and body_opacity > 0:
+    #     bpx, bpy, bpz, bnx, bny, bnz = body_geom
+    #     rx, ry, rz = _rotate_points(bpx, bpy, bpz, ca, sa, cb, sb)
+    #     rnx, rny, rnz = _rotate_points(bnx, bny, bnz, ca, sa, cb, sb)
+    #     _project_and_shade(
+    #         rx, ry, rz, rnx, rny, rnz,
+    #         screen_w, screen_h, kx, ky, z_buf, shade_buf, bpx, bpy, bpz,
+    #         y_offset=y_offset,
+    #     )
+    #     if body_opacity < 1.0:
+    #         body_mask = shade_buf > 0
+    #         scaled = (shade_buf[body_mask] * body_opacity).astype(int)
+    #         shade_buf[body_mask] = scaled
 
-    px, py, pz, nx_o, ny_o, nz_o = tube_geom
-    rx, ry, rz = _rotate_points(px, py, pz, ca, sa, cb, sb)
-    rnx, rny, rnz = _rotate_points(nx_o, ny_o, nz_o, ca, sa, cb, sb)
-    _project_and_shade(
-        rx, ry, rz, rnx, rny, rnz, screen_w, screen_h, kx, ky, z_buf, shade_buf,
-        px, py, pz, y_offset=y_offset,
-    )
+    # px, py, pz, nx_o, ny_o, nz_o = tube_geom
+    # rx, ry, rz = _rotate_points(px, py, pz, ca, sa, cb, sb)
+    # rnx, rny, rnz = _rotate_points(nx_o, ny_o, nz_o, ca, sa, cb, sb)
+    # _project_and_shade(
+    #     rx, ry, rz, rnx, rny, rnz,
+    #     screen_w, screen_h, kx, ky, z_buf, shade_buf, px, py, pz,
+    #     y_offset=y_offset,
+    # )
 
-    if inner_tube_geom is not None:
-        # Snapshot z_buf before inner hex so we can detect which pixels it won
-        z_before = z_buf.copy()
-        ipx, ipy, ipz, inx, iny, inz = inner_tube_geom
-        irx, iry, irz = _rotate_points(ipx, ipy, ipz, ca, sa, cb, sb)
-        irnx, irny, irnz = _rotate_points(inx, iny, inz, ca, sa, cb, sb)
-        _project_and_shade(
-            irx, iry, irz, irnx, irny, irnz, screen_w, screen_h, kx, ky,
-            z_buf, shade_buf, ipx, ipy, ipz, y_offset=y_offset,
-        )
-        # Mark pixels where inner hex is in front
-        source_buf[z_buf > z_before] = 1
+    # if inner_tube_geom is not None:
+    #     z_before = z_buf.copy()
+    #     ipx, ipy, ipz, inx, iny, inz = inner_tube_geom
+    #     irx, iry, irz = _rotate_points(ipx, ipy, ipz, ca, sa, cb, sb)
+    #     irnx, irny, irnz = _rotate_points(inx, iny, inz, ca, sa, cb, sb)
+    #     _project_and_shade(
+    #         irx, iry, irz, irnx, irny, irnz,
+    #         screen_w, screen_h, kx, ky, z_buf, shade_buf, ipx, ipy, ipz,
+    #         y_offset=y_offset,
+    #     )
+    #     source_buf[z_buf > z_before] = 1
 
     ramps = [shade_ramp, inner_shade_ramp or shade_ramp]
 
@@ -511,8 +542,7 @@ def _render_frame(
                     cells.append(" ")
         else:
             cells = [
-                ramps[source_buf[start + col]][shade_buf[start + col]]
-                for col in range(screen_w)
+                ramps[source_buf[start + col]][shade_buf[start + col]] for col in range(screen_w)
             ]
         lines.append("".join(cells))
 
@@ -521,14 +551,11 @@ def _render_frame(
         lines[-1] += "\x1b[0m"
 
     banner = _render_banner("mycelium", screen_w, is_unicode=color_banner, theme=theme)
-    banner_h = len(banner) + 1
-    if screen_h > banner_h + 5:
-        for i in range(banner_h):
-            row = screen_h - banner_h + i
-            if i == 0:
-                lines[row] = ""
-            else:
-                lines[row] = banner[i - 1]
+    banner_h = len(banner)
+    if screen_h > banner_h + 2:
+        start_row = (screen_h - banner_h) // 2
+        for i, bline in enumerate(banner):
+            lines[start_row + i] = bline
 
     return "\n".join(lines)
 
@@ -643,8 +670,7 @@ def run_animation_with_output(
 
             # Advance the output timeline
             while (
-                timeline_idx < len(output_timeline)
-                and output_timeline[timeline_idx][0] <= elapsed
+                timeline_idx < len(output_timeline) and output_timeline[timeline_idx][0] <= elapsed
             ):
                 current_output = output_timeline[timeline_idx][1]
                 timeline_idx += 1
@@ -657,14 +683,26 @@ def run_animation_with_output(
                 rain_state.resize(screen_w, screen_h)
                 rain_state.update()
                 rain_mask_buf, rain_char_buf = rain_state.overlay(
-                    screen_w, screen_h, theme,
+                    screen_w,
+                    screen_h,
+                    theme,
                 )
 
             frame = _render_frame(
-                angle_x, angle_y, screen_w, screen_h, kx, ky,
-                tube_geom, shade_ramp, theme=theme, body_geom=body_geom,
-                body_opacity=fill, color_banner=True,
-                rain_mask=rain_mask_buf, rain_chars=rain_char_buf,
+                angle_x,
+                angle_y,
+                screen_w,
+                screen_h,
+                kx,
+                ky,
+                tube_geom,
+                shade_ramp,
+                theme=theme,
+                body_geom=body_geom,
+                body_opacity=fill,
+                color_banner=True,
+                rain_mask=rain_mask_buf,
+                rain_chars=rain_char_buf,
                 inner_tube_geom=inner_tube_geom,
                 inner_shade_ramp=inner_shade_ramp,
                 y_offset=y_offset,
@@ -703,11 +741,20 @@ def run_animation_with_output(
             sys.stdout.write(f"\x1b[{lines_to_top}A")
             # Render one frame at the "face toward viewer" orientation — no rain.
             face_frame = _render_frame(
-                0.55, 0.0, screen_w, height, kx, ky,
-                tube_geom, shade_ramp, theme=theme,
-                body_geom=body_geom, body_opacity=fill,
+                0.55,
+                0.0,
+                screen_w,
+                height,
+                kx,
+                ky,
+                tube_geom,
+                shade_ramp,
+                theme=theme,
+                body_geom=body_geom,
+                body_opacity=fill,
                 color_banner=True,
-                rain_mask=None, rain_chars=None,
+                rain_mask=None,
+                rain_chars=None,
                 inner_tube_geom=inner_tube_geom,
                 inner_shade_ramp=inner_shade_ramp,
             )
@@ -795,11 +842,20 @@ def run_animation_live(
                 rain_mask_buf, rain_char_buf = rain_state.overlay(screen_w, height, theme)
 
             frame = _render_frame(
-                angle_x, angle_y, screen_w, height, kx, ky,
-                tube_geom, shade_ramp, theme=theme,
-                body_geom=body_geom, body_opacity=fill,
+                angle_x,
+                angle_y,
+                screen_w,
+                height,
+                kx,
+                ky,
+                tube_geom,
+                shade_ramp,
+                theme=theme,
+                body_geom=body_geom,
+                body_opacity=fill,
                 color_banner=True,
-                rain_mask=rain_mask_buf, rain_chars=rain_char_buf,
+                rain_mask=rain_mask_buf,
+                rain_chars=rain_char_buf,
                 inner_tube_geom=inner_tube_geom,
                 inner_shade_ramp=inner_shade_ramp,
             )
@@ -826,11 +882,20 @@ def run_animation_live(
             lines_to_top = height + len(current_output)
             sys.stdout.write(f"\x1b[{lines_to_top}A")
             face_frame = _render_frame(
-                0.55, 0.0, screen_w, height, kx, ky,
-                tube_geom, shade_ramp, theme=theme,
-                body_geom=body_geom, body_opacity=fill,
+                0.55,
+                0.0,
+                screen_w,
+                height,
+                kx,
+                ky,
+                tube_geom,
+                shade_ramp,
+                theme=theme,
+                body_geom=body_geom,
+                body_opacity=fill,
                 color_banner=True,
-                rain_mask=None, rain_chars=None,
+                rain_mask=None,
+                rain_chars=None,
                 inner_tube_geom=inner_tube_geom,
                 inner_shade_ramp=inner_shade_ramp,
             )
@@ -878,7 +943,7 @@ class BackgroundAnimation:
         # prompt() acquires it to pause animation while showing the input line.
         self._lock = threading.Lock()
         self._output: list[str] = []
-        self._prev_total: int = height   # total lines written last frame
+        self._prev_total: int = height  # total lines written last frame
         self._thread: threading.Thread | None = None
         self._interrupted = False
 
@@ -977,19 +1042,30 @@ class BackgroundAnimation:
             if rain_state is not None:
                 rain_state.resize(screen_w, self._height)
                 rain_state.update()
-                rain_mask_buf, rain_char_buf = rain_state.overlay(screen_w, self._height, self._theme)
+                rain_mask_buf, rain_char_buf = rain_state.overlay(
+                    screen_w, self._height, self._theme
+                )
 
             frame = _render_frame(
-                angle_x, angle_y, screen_w, self._height, kx, ky,
-                tube_geom, shade_ramp, theme=self._theme,
-                body_geom=body_geom, body_opacity=self._fill,
+                angle_x,
+                angle_y,
+                screen_w,
+                self._height,
+                kx,
+                ky,
+                tube_geom,
+                shade_ramp,
+                theme=self._theme,
+                body_geom=body_geom,
+                body_opacity=self._fill,
                 color_banner=True,
-                rain_mask=rain_mask_buf, rain_chars=rain_char_buf,
+                rain_mask=rain_mask_buf,
+                rain_chars=rain_char_buf,
                 inner_tube_geom=inner_tube_geom,
                 inner_shade_ramp=inner_shade_ramp,
             )
 
-            output = list(self._output)   # snapshot
+            output = list(self._output)  # snapshot
             total = self._height + len(output)
 
             with self._lock:
