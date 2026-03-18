@@ -1,7 +1,11 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 /**
  * mycelium — OpenClaw Plugin
  *
  * Bridges OpenClaw agents to the Mycelium coordination backend.
+ * Uses prependSystemContext (cached) for static instructions and prependContext (per-turn) for dynamic coordination state.
  *
  * Hook surface:
  *   gateway_start      — verify backend connectivity on startup
@@ -84,6 +88,12 @@ const API_URL = (process.env.MYCELIUM_API_URL ?? "").replace(/\/$/, "");
 const WORKSPACE_ID = process.env.MYCELIUM_WORKSPACE_ID ?? "";
 const MAS_ID = process.env.MYCELIUM_MAS_ID ?? "";
 const AGENT_ID = process.env.MYCELIUM_AGENT_ID ?? "";
+
+// Custom memory file — read fresh on every before_agent_start invocation
+const MEMORY_FILE = join(
+  process.env.HOME ?? process.env.USERPROFILE ?? "/home/ubuntu",
+  ".openclaw/workspace/memory/custom-context.md"
+);
 
 // ── Per-session tracking ───────────────────────────────────────────────────
 // room is populated dynamically from the first SSE tick event
@@ -372,7 +382,7 @@ export default function register(api: {
 
   // ── before_agent_start ─────────────────────────────────────────────────────
 
-  api.on("before_agent_start", async (_event: any, ctx: any): Promise<{ prependSystemContext?: string } | undefined> => {
+  api.on("before_agent_start", async (_event: any, ctx: any): Promise<{ prependSystemContext?: string; prependContext?: string } | undefined> => {
     const agentId: string | undefined = ctx?.agentId;
     const sessionKey: string | undefined = ctx?.sessionKey;
     const handle = resolveHandle(agentId);
@@ -393,10 +403,14 @@ export default function register(api: {
 
     subscribeHandle(handle);
 
-    const parts: string[] = [
+    // STATIC — cached in system prompt, cheap after turn 1
+    const systemParts: string[] = [
       MYCELIUM_INSTRUCTIONS,
       `Your Mycelium handle for this session is: \`${handle}\`\nUse this exact value for \`--handle\` when joining a room.`,
     ];
+
+    // DYNAMIC — fresh each turn, injected into user prompt
+    const contextParts: string[] = [];
 
     const room = existing?.room;
     if (room) {
@@ -411,11 +425,27 @@ export default function register(api: {
         const label = coord.message_type === "coordination_consensus"
           ? "[Mycelium — consensus]"
           : "[Mycelium — coordination tick]";
-        parts.push(`${label}\nChannel: ${room}\n\n${coord.content}`);
+        contextParts.push(`${label}\nChannel: ${room}\n\n${coord.content}`);
       }
     }
 
-    return { prependSystemContext: parts.join("\n\n") };
+    // Read custom memory file (fresh each turn)
+    try {
+      const memory = readFileSync(MEMORY_FILE, "utf-8").trim();
+      if (memory) {
+        contextParts.push(`# Injected Memory (per-turn)\n\n${memory}`);
+        log.info(`[mycelium] Injected ${memory.length} bytes from ${MEMORY_FILE}`);
+      }
+    } catch {
+      // Memory file doesn't exist yet — skip
+    }
+
+    log.info(`[mycelium] prependSystemContext: ${systemParts.join("\n\n").length} chars (cached), prependContext: ${contextParts.length ? contextParts.join("\n\n").length : 0} chars (dynamic)`);
+
+    return {
+      prependSystemContext: systemParts.join("\n\n"),
+      prependContext: contextParts.length ? contextParts.join("\n\n") : undefined,
+    };
   });
 
   // ── message_sent ───────────────────────────────────────────────────────────
