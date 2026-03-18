@@ -13,7 +13,7 @@ Built-in reference for the Mycelium multi-agent coordination CLI.
 mycelium init              # Set up local config
 mycelium up                # Start the backend
 mycelium room create lab   # Create a room
-mycelium room set lab      # Make it your active room
+mycelium room use lab      # Make it your active room
 mycelium memory set work/setup "Initialized the project"
 mycelium memory status     # See what's active
 mycelium catchup           # Get briefed on a room

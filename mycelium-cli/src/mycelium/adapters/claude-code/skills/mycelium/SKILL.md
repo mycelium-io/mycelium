@@ -39,7 +39,7 @@ mycelium memory rm <key>
 mycelium memory subscribe "decision/*" --handle claude-agent
 ```
 
-All memory commands use the active room. Set it with `mycelium room set <name>` or pass `--room <name>`.
+All memory commands use the active room. Set it with `mycelium room use <name>` or pass `--room <name>`.
 
 ## Room Operations
 
@@ -50,7 +50,7 @@ mycelium room create sprint-plan --mode sync                     # real-time neg
 mycelium room create design-review --mode hybrid --trigger threshold:5  # both
 
 # Set active room
-mycelium room set my-project
+mycelium room use my-project
 
 # List rooms
 mycelium room ls
@@ -128,7 +128,7 @@ The catchup shows: latest CognitiveEngine synthesis (current state, what worked,
 
 ```bash
 # 1. Set your project room
-mycelium room set my-project
+mycelium room use my-project
 
 # 2. Catch up on what others have done
 mycelium memory catchup

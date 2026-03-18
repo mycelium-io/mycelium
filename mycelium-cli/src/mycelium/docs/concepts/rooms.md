@@ -24,7 +24,7 @@ mycelium room create sprint --mode hybrid --persistent # hybrid
 Set an active room to avoid passing `--room` on every command:
 
 ```bash
-mycelium room set lab
+mycelium room use lab
 mycelium memory status    # uses 'lab' automatically
 ```
 

@@ -21,16 +21,16 @@ mycelium --help
 
 ```bash
 mycelium room create design-review --mode async --trigger threshold:5
-mycelium room set design-review
+mycelium room use design-review
 ```
 
 ### Agent 1: Julia shares architecture decisions
 
 ```bash
 # Category keys (work/, decisions/, context/, status/) get auto-validated
-mycelium memory set decisions/database "Consolidated to single AgensGraph instance — SQL + graph + vector in one DB" -h julia-agent
-mycelium memory set decisions/llm-provider "litellm — 100+ providers, one interface" -h julia-agent
-mycelium memory set decisions/api-style "REST for now, generated OpenAPI client for type safety" -h julia-agent
+mycelium memory set decisions/database "Consolidated to single AgensGraph instance — SQL + graph + vector in one DB" -H julia-agent
+mycelium memory set decisions/llm-provider "litellm — 100+ providers, one interface" -H julia-agent
+mycelium memory set decisions/api-style "REST for now, generated OpenAPI client for type safety" -H julia-agent
 ```
 
 ### Agent 2: Selina shares research
@@ -44,15 +44,15 @@ mycelium memory set "research/fastembed" "BAAI/bge-small-en-v1.5 runs locally, 3
 ### Agent 3: Kappa reports what didn't work
 
 ```bash
-mycelium memory set decisions/no-sqlite-tests "SQLite can't handle pgvector or JSONB — need real Postgres for integration tests" -h kappa-agent
-mycelium memory set decisions/no-qdrant "Considered Qdrant but AgensGraph+pgvector eliminates the need" -h kappa-agent
+mycelium memory set decisions/no-sqlite-tests "SQLite can't handle pgvector or JSONB — need real Postgres for integration tests" -H kappa-agent
+mycelium memory set decisions/no-qdrant "Considered Qdrant but AgensGraph+pgvector eliminates the need" -H kappa-agent
 ```
 
 ### Agent 4: Prometheus shares status
 
 ```bash
-mycelium memory set status/cfn-integration "Working on CFN integration — mapping mycelium agents to CFN objects" -h prometheus-agent
-mycelium memory set context/blocker "Need ioc-cfn-mgmt-plane-svc running to test agent registration flow" -h prometheus-agent
+mycelium memory set status/cfn-integration "Working on CFN integration — mapping mycelium agents to CFN objects" -H prometheus-agent
+mycelium memory set context/blocker "Need ioc-cfn-mgmt-plane-svc running to test agent registration flow" -H prometheus-agent
 ```
 
 ### Browse & Search

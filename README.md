@@ -71,7 +71,7 @@ mycelium install
 
 # Create a room and start sharing context
 mycelium room create my-project --mode async
-mycelium room set my-project
+mycelium room use my-project
 mycelium memory set "context/goal" "Build a REST API for the new service"
 mycelium memory set "decision/db" "PostgreSQL with pgvector for embeddings"
 
