@@ -463,16 +463,15 @@
   }
   .steps li {
     counter-increment: step;
-    display: flex;
-    gap: 16px;
+    position: relative;
+    padding-left: 44px;
     margin-bottom: 20px;
-    align-items: flex-start;
-    min-width: 0;
-    overflow-wrap: anywhere;
   }
   .steps li::before {
     content: counter(step);
-    flex-shrink: 0;
+    position: absolute;
+    left: 0;
+    top: 0;
     width: 28px;
     height: 28px;
     border-radius: 50%;
@@ -485,7 +484,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-top: 1px;
   }
 
   /* ── RESPONSIVE ── */
@@ -501,7 +499,8 @@
     .main { padding: 24px 16px 60px; }
     h1 { font-size: 1.75rem; }
     h2 { font-size: 1.25rem; }
-    pre { font-size: 0.75rem; white-space: pre-wrap; word-break: break-all; }
+    .main-inner { padding: 24px 16px 32px; }
+    pre { font-size: 0.75rem; overflow-x: auto; }
     .cmd-ref-header code { font-size: 0.75rem; word-break: break-all; }
   }
 </style>
@@ -519,7 +518,7 @@
   <span class="topnav-page">docs</span>
   <div class="topnav-right">
     <button class="copy-page-btn" onclick="copyPage()">copy page</button>
-    <a href="https://github.com/mycelium-io/mycelium">GitHub</a>
+    <a href="https://github.com/mycelium-io/mycelium" aria-label="GitHub"><svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
     <a href="https://github.com/mycelium-io/mycelium/releases">Releases</a>
   </div>
 </nav>
