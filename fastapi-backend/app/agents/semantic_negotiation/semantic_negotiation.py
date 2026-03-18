@@ -11,10 +11,10 @@ Wires together the three components in order:
 3. :class:`~.negotiation_model.NegotiationModel`
    Runs a NegMAS SAO negotiation via RoomNegotiator (room-message handshake).
 """
+
 from __future__ import annotations
 
-import asyncio
-from typing import Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any
 
 from .intent_discovery import IntentDiscovery
 from .negotiation_model import (
@@ -25,14 +25,18 @@ from .negotiation_model import (
 )
 from .options_generation import OptionsGeneration
 
+if TYPE_CHECKING:
+    import asyncio
+    from collections.abc import Callable
+
 __all__ = [
-    "SemanticNegotiationPipeline",
-    "NegotiationModel",
-    "NegotiationParticipant",
-    "NegotiationOutcome",
-    "NegotiationResult",
     "IntentDiscovery",
+    "NegotiationModel",
+    "NegotiationOutcome",
+    "NegotiationParticipant",
+    "NegotiationResult",
     "OptionsGeneration",
+    "SemanticNegotiationPipeline",
 ]
 
 
@@ -64,16 +68,16 @@ class SemanticNegotiationPipeline:
         reply_timeout: Per-round reply timeout for RoomNegotiator.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
-        context: Any = None,
-        agents: Optional[List[Any]] = None,
-        memories: Optional[Dict[str, Any]] = None,
-        participants: Optional[List[NegotiationParticipant]] = None,
+        context: Any = None,  # noqa: ANN401
+        agents: list[Any] | None = None,
+        memories: dict[str, Any] | None = None,
+        participants: list[NegotiationParticipant] | None = None,
         n_steps: int = 100,
         room_name: str = "unknown",
-        loop: Optional[asyncio.AbstractEventLoop] = None,
-        post_message_coro: Optional[Callable] = None,
+        loop: asyncio.AbstractEventLoop | None = None,
+        post_message_coro: Callable | None = None,
         reply_timeout: float = 60.0,
     ) -> None:
         self.context = context
@@ -86,12 +90,8 @@ class SemanticNegotiationPipeline:
         self.post_message_coro = post_message_coro
         self.reply_timeout = reply_timeout
 
-        self._intent_discovery = IntentDiscovery(context=self.context)
-        self._options_generation = OptionsGeneration(
-            context=self.context,
-            agents=self.agents,
-            memories=self.memories,
-        )
+        self._intent_discovery = IntentDiscovery()
+        self._options_generation = OptionsGeneration()
         self._negotiation_model = NegotiationModel(n_steps=self.n_steps, strategy=None)
 
         # Populated by NegotiationModel.run() *before* mechanism.run() blocks,
@@ -100,10 +100,10 @@ class SemanticNegotiationPipeline:
 
     def run(
         self,
-        content_text: Optional[str] = None,
-        issues: Optional[List[str]] = None,
-        options_per_issue: Optional[Dict[str, List[str]]] = None,
-        participants: Optional[List[NegotiationParticipant]] = None,
+        content_text: str | None = None,
+        issues: list[str] | None = None,
+        options_per_issue: dict[str, list[str]] | None = None,
+        participants: list[NegotiationParticipant] | None = None,
     ) -> NegotiationResult:
         """Execute the full pipeline end-to-end.
 
@@ -123,12 +123,19 @@ class SemanticNegotiationPipeline:
         resolved_participants = participants if participants is not None else self.participants
 
         if issues is None:
-            issues = self._intent_discovery.discover(content_text=content_text)
+            issues = self._intent_discovery.discover(
+                sentence=content_text or "",
+                context=str(self.context) if self.context else None,
+            )
 
         if options_per_issue is None:
-            options_per_issue = self._options_generation.generate(issues)
+            options_per_issue = self._options_generation.generate_options(
+                negotiable_entities=issues,
+                sentence=content_text or "",
+                context=str(self.context) if self.context else None,
+            )
 
-        result = self._negotiation_model.run(
+        return self._negotiation_model.run(
             issues=issues,
             options_per_issue=options_per_issue,
             participants=resolved_participants,
@@ -138,5 +145,3 @@ class SemanticNegotiationPipeline:
             reply_timeout=self.reply_timeout,
             registry=self.negotiator_registry,
         )
-
-        return result

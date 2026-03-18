@@ -1,4 +1,3 @@
-
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -40,7 +39,7 @@ class Settings(BaseSettings):
     COORDINATION_TICK_TIMEOUT_SECONDS: int = 60
 
     # Embedding (for persistent memory semantic search)
-    EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"
+    EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
     EMBEDDING_DIMENSIONS: int = 384
 
     # IoC CFN management plane (optional — registration skipped if unset)

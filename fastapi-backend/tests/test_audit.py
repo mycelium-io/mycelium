@@ -43,7 +43,9 @@ async def test_list_audit_events_empty(client: AsyncClient):
 
 async def test_list_audit_events(client: AsyncClient):
     await client.post("/api/internal/audit-events", json=VALID_PAYLOAD)
-    await client.post("/api/internal/audit-events", json={**VALID_PAYLOAD, "resource_type": "WORKFLOW"})
+    await client.post(
+        "/api/internal/audit-events", json={**VALID_PAYLOAD, "resource_type": "WORKFLOW"}
+    )
 
     resp = await client.get("/api/internal/audit-events")
     assert resp.status_code == 200
@@ -52,7 +54,9 @@ async def test_list_audit_events(client: AsyncClient):
 
 async def test_list_audit_events_filter_resource_type(client: AsyncClient):
     await client.post("/api/internal/audit-events", json=VALID_PAYLOAD)
-    await client.post("/api/internal/audit-events", json={**VALID_PAYLOAD, "resource_type": "WORKFLOW"})
+    await client.post(
+        "/api/internal/audit-events", json={**VALID_PAYLOAD, "resource_type": "WORKFLOW"}
+    )
 
     resp = await client.get("/api/internal/audit-events", params={"resource_type": "MAS"})
     assert resp.status_code == 200
@@ -63,7 +67,9 @@ async def test_list_audit_events_filter_resource_type(client: AsyncClient):
 
 async def test_list_audit_events_filter_audit_type(client: AsyncClient):
     await client.post("/api/internal/audit-events", json=VALID_PAYLOAD)
-    await client.post("/api/internal/audit-events", json={**VALID_PAYLOAD, "audit_type": "RESOURCE_DELETED"})
+    await client.post(
+        "/api/internal/audit-events", json={**VALID_PAYLOAD, "audit_type": "RESOURCE_DELETED"}
+    )
 
     resp = await client.get("/api/internal/audit-events", params={"audit_type": "RESOURCE_DELETED"})
     assert resp.status_code == 200

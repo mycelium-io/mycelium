@@ -45,6 +45,7 @@ class Relation(BaseModel):
 
 # ── Store ──────────────────────────────────────────────────────────────────────
 
+
 class KnowledgeGraphStoreRequest(BaseModel):
     request_id: str = Field(default_factory=lambda: str(uuid4()))
     records: dict[Literal["concepts", "relations"], Any] | None = None
@@ -93,6 +94,7 @@ class KnowledgeGraphStoreResponse(BaseModel):
 
 
 # ── Delete ─────────────────────────────────────────────────────────────────────
+
 
 class KnowledgeGraphDeleteRequest(BaseModel):
     request_id: str = Field(default_factory=lambda: str(uuid4()))
@@ -154,7 +156,7 @@ class KnowledgeGraphQueryRequest(BaseModel):
         concepts = (self.records or {}).get("concepts", [])
         if not isinstance(concepts, list):
             raise ValueError("concepts must be a list")
-        qt = (self.query_criteria.query_type if self.query_criteria else QUERY_TYPE_NEIGHBOUR)
+        qt = self.query_criteria.query_type if self.query_criteria else QUERY_TYPE_NEIGHBOUR
         if qt == QUERY_TYPE_PATH and len(concepts) != 2:
             raise ValueError("Path queries require exactly 2 concepts")
         if qt in (QUERY_TYPE_NEIGHBOUR, QUERY_TYPE_CONCEPT) and len(concepts) != 1:

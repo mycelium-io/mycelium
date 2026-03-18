@@ -27,7 +27,9 @@ from mycelium.exceptions import ConfigNotFoundError, MyceliumError
 def _typed_client(config: MyceliumConfig):
     """Get a typed OpenAPI client."""
     from mycelium_backend_client import Client
+
     return Client(base_url=config.server.api_url, raise_on_unexpected_status=True)
+
 
 app = typer.Typer(
     help="Shared namespaces for agent coordination. Rooms can be sync (real-time negotiation), async (persistent memory), or hybrid.",
@@ -141,8 +143,12 @@ def create(
     name: str | None = typer.Argument(None, help="Room name"),
     public: bool = typer.Option(True, "--public/--private"),
     mode: str = typer.Option("sync", "--mode", "-m", help="Room mode: sync, async, or hybrid"),
-    trigger: str | None = typer.Option(None, "--trigger", help="Trigger config (e.g. 'threshold:5' or 'explicit')"),
-    persistent: bool = typer.Option(False, "--persistent", help="Room persists after coordination completes"),
+    trigger: str | None = typer.Option(
+        None, "--trigger", help="Trigger config (e.g. 'threshold:5' or 'explicit')"
+    ),
+    persistent: bool = typer.Option(
+        False, "--persistent", help="Room persists after coordination completes"
+    ),
 ) -> None:
     """Create a new room."""
     try:
@@ -188,7 +194,10 @@ def create(
         if json_output:
             typer.echo(json_module.dumps(room_data, indent=2, default=str))
         else:
-            typer.secho(f"Created room: {room_data['name']} (mode={room_data.get('mode', 'sync')})", fg=typer.colors.GREEN)
+            typer.secho(
+                f"Created room: {room_data['name']} (mode={room_data.get('mode', 'sync')})",
+                fg=typer.colors.GREEN,
+            )
             typer.echo(f"  ID:      {room_data.get('id')}")
             typer.echo(f"  Created: {str(room_data.get('created_at', ''))[:10]}")
             typer.echo("")
@@ -203,7 +212,9 @@ def create(
 def synthesize(
     ctx: typer.Context,
     room_name: str | None = typer.Argument(None, help="Room to synthesize (default: active room)"),
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name (alternative to positional arg)"),
+    room: str | None = typer.Option(
+        None, "--room", "-r", help="Room name (alternative to positional arg)"
+    ),
 ) -> None:
     """Trigger CognitiveEngine synthesis for an async/hybrid room."""
     try:
@@ -218,9 +229,16 @@ def synthesize(
             synthesize_room_rooms_room_name_synthesize_post as synth_api,
         )
 
-        with console.status(f"[bold cyan]Synthesizing {name}...[/]", spinner="dots"), _typed_client(config) as client:
-                result = synth_api.sync_detailed(room_name=name, client=client)
-                data = result.parsed.to_dict() if result.parsed and hasattr(result.parsed, "to_dict") else json_module.loads(result.content)
+        with (
+            console.status(f"[bold cyan]Synthesizing {name}...[/]", spinner="dots"),
+            _typed_client(config) as client,
+        ):
+            result = synth_api.sync_detailed(room_name=name, client=client)
+            data = (
+                result.parsed.to_dict()
+                if result.parsed and hasattr(result.parsed, "to_dict")
+                else json_module.loads(result.content)
+            )
 
         if json_output:
             typer.echo(json_module.dumps(data, indent=2, default=str))
@@ -315,22 +333,22 @@ def _resolve_room(config: MyceliumConfig, channel: str | None = None) -> str:
     Resolve the coordination room name.
 
     Priority:
-      1. --channel flag (explicit override, used as-is)
-      2. MYCELIUM_CHANNEL_ID env var (used as-is)
+      1. --room flag (explicit override, used as-is)
+      2. MYCELIUM_ROOM_ID env var (used as-is)
       3. config.rooms.active (set via 'mycelium room set')
       4. Error
     """
     if channel:
         return channel
-    channel_id = os.getenv("MYCELIUM_CHANNEL_ID")
-    if channel_id:
-        return channel_id
+    room_id = os.getenv("MYCELIUM_ROOM_ID") or os.getenv("MYCELIUM_CHANNEL_ID")
+    if room_id:
+        return room_id
     if config.rooms.active:
         return config.rooms.active
     raise MyceliumError(
-        "No channel context found",
+        "No room context found",
         suggestion=(
-            "Pass --channel <room>, set MYCELIUM_CHANNEL_ID in your environment, "
+            "Pass --room <room>, set MYCELIUM_ROOM_ID in your environment, "
             "or run: mycelium room set <name>"
         ),
     )
@@ -338,10 +356,10 @@ def _resolve_room(config: MyceliumConfig, channel: str | None = None) -> str:
 
 # Known stub options for NegMAS SAO issues (mirrors options_generation.py)
 _ISSUE_OPTIONS: dict[str, list[str]] = {
-    "budget":   ["minimal", "low", "medium", "high", "uncapped"],
+    "budget": ["minimal", "low", "medium", "high", "uncapped"],
     "timeline": ["express", "short", "standard", "extended", "long"],
-    "scope":    ["core", "standard", "extended", "full"],
-    "quality":  ["basic", "standard", "premium"],
+    "scope": ["core", "standard", "extended", "full"],
+    "quality": ["basic", "standard", "premium"],
 }
 
 
@@ -379,6 +397,9 @@ def _render_coordination_event(msg: dict, current_identity: str) -> tuple[str | 
             data = json_module.loads(msg.get("content", "{}"))
         except json_module.JSONDecodeError:
             data = {}
+        # SSTP envelope: action fields live under data["payload"]
+        if "payload" in data and isinstance(data["payload"], dict):
+            data = data["payload"]
         round_num = data.get("round", "?")
         kind = data.get("kind")
 
@@ -402,15 +423,16 @@ def _render_coordination_event(msg: dict, current_identity: str) -> tuple[str | 
                     opts = _ISSUE_OPTIONS.get(issue, ["?"])
                     lines.append(f"        {issue}: {' | '.join(opts)}")
                 example = {
-                    issue: (_ISSUE_OPTIONS.get(issue, ["option"])[2]
-                            if len(_ISSUE_OPTIONS.get(issue, [])) > 2 else "option")
+                    issue: (
+                        _ISSUE_OPTIONS.get(issue, ["option"])[2]
+                        if len(_ISSUE_OPTIONS.get(issue, [])) > 2
+                        else "option"
+                    )
                     for issue in issues
                 }
                 lines.append("")
-                lines.append(
-                    f"        Reply: mycelium message query "
-                    f"'{{\"offer\": {json_module.dumps(example)}}}'"
-                )
+                kv = " ".join(f"{k}={v}" for k, v in example.items())
+                lines.append(f"        Reply: mycelium message propose {kv}")
                 return "\n".join(lines), True
 
             if action == "respond":
@@ -422,10 +444,7 @@ def _render_coordination_event(msg: dict, current_identity: str) -> tuple[str | 
                 for k, v in current_offer.items():
                     lines.append(f"        {k}: {v}")
                 lines.append("")
-                lines.append(
-                    "        Accept/reject/end: "
-                    "mycelium message query '{\"action\": \"accept\"}'"
-                )
+                lines.append("        Accept/reject/end: mycelium message respond accept")
                 return "\n".join(lines), True
 
             return f"  ⟫  CognitiveEngine [round {round_num}] — {action} ({participant_id})", True
@@ -473,26 +492,24 @@ def join(
     message: str | None = typer.Option(
         None, "--message", "-m", help="Your requirements/intent for this coordination session"
     ),
-    file: Path | None = typer.Option(
-        None, "--file", "-f", help="Read requirements from a file"
-    ),
-    channel: str | None = typer.Option(
-        None, "--channel", "-c", help="Channel/room to join (overrides MYCELIUM_CHANNEL_ID)"
+    file: Path | None = typer.Option(None, "--file", "-f", help="Read requirements from a file"),
+    room: str | None = typer.Option(
+        None, "--room", "-r", help="Room to join (overrides MYCELIUM_ROOM_ID)"
     ),
     handle: str = typer.Option(
         ..., "--handle", "-H", help="Agent handle (your identity in this coordination session)"
     ),
 ) -> None:
     """
-    Join the coordination backchannel for the current channel.
+    Join the coordination backchannel for the current room.
 
-    Room is resolved from --channel, MYCELIUM_CHANNEL_ID env var, or 'mycelium room set'.
-    Returns immediately after joining — CognitiveEngine will address you in this channel
+    Room is resolved from --room, MYCELIUM_ROOM_ID env var, or 'mycelium room set'.
+    Returns immediately after joining — CognitiveEngine will address you in this room
     when the session starts and when it is your turn to respond.
 
     Examples:
         mycelium room join --handle julia-agent -m "My human wants to visit Hawaii"
-        mycelium room join --handle local-agent -m "..." --channel my-experiment
+        mycelium room join --handle local-agent -m "..." --room my-experiment
         mycelium room join --handle local-agent -f requirements.txt
     """
     try:
@@ -500,7 +517,7 @@ def join(
         json_output = ctx.obj.get("json", False) if ctx.obj else False
 
         config = MyceliumConfig.load()
-        room_name = _resolve_room(config, channel)
+        room_name = _resolve_room(config, room)
 
         # Resolve intent from -m or -f
         intent: str | None = None
@@ -551,7 +568,11 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
         sender = msg.get("sender_handle", msg.get("updated_by", "?"))
 
         try:
-            data = json_module.loads(msg.get("content", "{}")) if isinstance(msg.get("content"), str) else msg
+            data = (
+                json_module.loads(msg.get("content", "{}"))
+                if isinstance(msg.get("content"), str)
+                else msg
+            )
         except (json_module.JSONDecodeError, TypeError):
             data = msg
 
@@ -566,6 +587,9 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
             return f"\n  {ts()}  [bold cyan]session started[/] — {n} agents joined\n"
 
         if mtype == "coordination_tick":
+            # SSTP envelope: action fields live under data["payload"]
+            if "payload" in data and isinstance(data["payload"], dict):
+                data = data["payload"]
             round_num = data.get("round", "?")
             kind = data.get("kind")
             if kind == "negotiate":
@@ -573,14 +597,20 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
                 participant = data.get("participant_id", "?")
                 if action == "propose":
                     issues = list(_ISSUE_OPTIONS.keys())
-                    opts = "  ".join(f"[dim]{k}:[/] {' | '.join(v)}" for k, v in _ISSUE_OPTIONS.items() if k in issues)
+                    opts = "  ".join(
+                        f"[dim]{k}:[/] {' | '.join(v)}"
+                        for k, v in _ISSUE_OPTIONS.items()
+                        if k in issues
+                    )
                     return f"\n  {ts()}  [bold cyan]round {round_num}[/] → [cyan]{participant}[/] propose\n              {opts}"
                 if action == "respond":
                     offer = data.get("current_offer") or {}
                     proposer = data.get("proposer_id", "?")
                     items = "  ".join(f"[dim]{k}:[/] {v}" for k, v in offer.items())
                     return f"\n  {ts()}  [bold cyan]round {round_num}[/] → [cyan]{participant}[/] respond to {proposer}\n              {items}"
-                return f"\n  {ts()}  [bold cyan]round {round_num}[/] → [cyan]{participant}[/] {action}"
+                return (
+                    f"\n  {ts()}  [bold cyan]round {round_num}[/] → [cyan]{participant}[/] {action}"
+                )
             return f"\n  {ts()}  [bold cyan]tick {round_num}[/]"
 
         if mtype == "coordination_consensus":
@@ -641,41 +671,45 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
         Text("Ctrl+C to stop", style="dim"),
     )
     console.print()
-    console.print(Panel(
-        f"[bold]{room_name}[/]\n{room_meta}" if room_meta else f"[bold]{room_name}[/]",
-        title="[dim]watching[/]",
-        border_style="dim",
-        width=60,
-        padding=(0, 2),
-    ))
+    console.print(
+        Panel(
+            f"[bold]{room_name}[/]\n{room_meta}" if room_meta else f"[bold]{room_name}[/]",
+            title="[dim]watching[/]",
+            border_style="dim",
+            width=60,
+            padding=(0, 2),
+        )
+    )
 
     url = f"{config.server.api_url}/rooms/{room_name}/messages/stream"
     start = time.time()
 
     with httpx.Client(timeout=None) as http, http.stream("GET", url) as response:
-            for line in response.iter_lines():
-                if timeout > 0 and (time.time() - start) >= timeout:
-                    console.print(f"\n  [dim]Timeout after {timeout}s[/]")
-                    return
-                line = line.strip()
-                if not line or line.startswith(":"):
+        for line in response.iter_lines():
+            if timeout > 0 and (time.time() - start) >= timeout:
+                console.print(f"\n  [dim]Timeout after {timeout}s[/]")
+                return
+            line = line.strip()
+            if not line or line.startswith(":"):
+                continue
+            if line.startswith("data:"):
+                payload = line[5:].strip()
+                try:
+                    msg = json_module.loads(payload)
+                except json_module.JSONDecodeError:
                     continue
-                if line.startswith("data:"):
-                    payload = line[5:].strip()
-                    try:
-                        msg = json_module.loads(payload)
-                    except json_module.JSONDecodeError:
-                        continue
-                    rendered = render(msg)
-                    if rendered:
-                        console.print(rendered, highlight=False)
+                rendered = render(msg)
+                if rendered:
+                    console.print(rendered, highlight=False)
 
 
 @app.command(name="await")
 def await_tick(
     ctx: typer.Context,
-    handle: str = typer.Option(..., "--handle", "-H", help="Your agent handle (listens for ticks addressed to you)"),
-    channel: str | None = typer.Option(None, "--channel", "-c", help="Room (overrides active room)"),
+    handle: str = typer.Option(
+        ..., "--handle", "-H", help="Your agent handle (listens for ticks addressed to you)"
+    ),
+    room: str | None = typer.Option(None, "--room", "-r", help="Room (overrides active room)"),
     timeout: int = typer.Option(120, "--timeout", "-t", help="Timeout in seconds (default 120)"),
 ) -> None:
     """
@@ -697,65 +731,77 @@ def await_tick(
 
     try:
         config = MyceliumConfig.load()
-        room_name = _resolve_room(config, channel)
+        room_name = _resolve_room(config, room)
 
         # Listen on the agent's personal SSE stream, not the room stream
         url = f"{config.server.api_url}/agents/{handle}/stream"
         start = time.time()
 
         with httpx.Client(timeout=None) as http, http.stream("GET", url) as response:
-                for line in response.iter_lines():
-                    if timeout > 0 and (time.time() - start) >= timeout:
-                        typer.echo(json_module.dumps({"type": "timeout", "seconds": timeout}))
-                        raise typer.Exit(1)
+            for line in response.iter_lines():
+                if timeout > 0 and (time.time() - start) >= timeout:
+                    typer.echo(json_module.dumps({"type": "timeout", "seconds": timeout}))
+                    raise typer.Exit(1)
 
-                    line = line.strip()
-                    if not line or line.startswith(":"):
-                        continue
-                    if not line.startswith("data:"):
-                        continue
+                line = line.strip()
+                if not line or line.startswith(":"):
+                    continue
+                if not line.startswith("data:"):
+                    continue
 
-                    payload = line[5:].strip()
+                payload = line[5:].strip()
+                try:
+                    msg = json_module.loads(payload)
+                except json_module.JSONDecodeError:
+                    continue
+
+                mtype = msg.get("message_type", "")
+
+                # coordination_tick addressed to us → print and exit
+                if mtype == "coordination_tick":
                     try:
-                        msg = json_module.loads(payload)
+                        data = json_module.loads(msg.get("content", "{}"))
                     except json_module.JSONDecodeError:
-                        continue
-
-                    mtype = msg.get("message_type", "")
-
-                    # coordination_tick addressed to us → print and exit
-                    if mtype == "coordination_tick":
-                        try:
-                            data = json_module.loads(msg.get("content", "{}"))
-                        except json_module.JSONDecodeError:
-                            data = {}
-                        participant = data.get("participant_id")
-                        if participant == handle or participant is None:
-                            typer.echo(json_module.dumps({
-                                "type": "tick",
-                                "room": msg.get("room_name", room_name),
-                                "round": data.get("round"),
-                                "action": data.get("action"),
-                                "current_offer": data.get("current_offer"),
-                                "proposer_id": data.get("proposer_id"),
-                                "history": data.get("history"),
-                            }))
-                            return
-
-                    # coordination_consensus → print and exit
-                    if mtype == "coordination_consensus":
-                        try:
-                            data = json_module.loads(msg.get("content", "{}"))
-                        except json_module.JSONDecodeError:
-                            data = {}
-                        typer.echo(json_module.dumps({
-                            "type": "consensus",
-                            "room": msg.get("room_name", room_name),
-                            "plan": data.get("plan"),
-                            "assignments": data.get("assignments"),
-                            "broken": data.get("broken", False),
-                        }))
+                        data = {}
+                    # SSTP envelope: action fields live under data["payload"]
+                    if "payload" in data and isinstance(data["payload"], dict):
+                        data = data["payload"]
+                    participant = data.get("participant_id")
+                    if participant == handle or participant is None:
+                        typer.echo(
+                            json_module.dumps(
+                                {
+                                    "type": "tick",
+                                    "room": msg.get("room_name", room_name),
+                                    "round": data.get("round"),
+                                    "action": data.get("action"),
+                                    "issue_options": data.get("issue_options", {}),
+                                    "current_offer": data.get("current_offer"),
+                                    "proposer_id": data.get("proposer_id"),
+                                    "history": data.get("history"),
+                                }
+                            )
+                        )
                         return
+
+                # coordination_consensus → print and exit
+                if mtype == "coordination_consensus":
+                    try:
+                        data = json_module.loads(msg.get("content", "{}"))
+                    except json_module.JSONDecodeError:
+                        data = {}
+                    typer.echo(
+                        json_module.dumps(
+                            {
+                                "type": "consensus",
+                                "room": msg.get("room_name", room_name),
+                                "plan": data.get("plan"),
+                                "assignments": data.get("assignments"),
+                                "broken": data.get("broken", False),
+                            }
+                        )
+                    )
+                    return
 
     except KeyboardInterrupt:
         typer.echo(json_module.dumps({"type": "interrupted"}))
@@ -864,7 +910,9 @@ def delegate(
         from mycelium_backend_client.models import MessageCreate
 
         with _typed_client(config) as client:
-            body = MessageCreate(sender_handle=sender, message_type="delegate", content=task, recipient_handle=to)
+            body = MessageCreate(
+                sender_handle=sender, message_type="delegate", content=task, recipient_handle=to
+            )
             result = send_api.sync(room_name=session_id, client=client, body=body)
             data = result.to_dict() if result and hasattr(result, "to_dict") else {}
 

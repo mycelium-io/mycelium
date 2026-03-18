@@ -50,7 +50,6 @@ GENERAL_CONCEPTS_PROMPT = (
 )
 
 
-
 GENERAL_RELATIONSHIPS_PROMPT = (
     "You are an expert in multi-agent systems, conversational AI, dialogue analysis, "
     "and knowledge-graph construction.\n\n"

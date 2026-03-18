@@ -2,11 +2,12 @@
 
 Rewired: imports use local package paths.
 """
+
 from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -16,13 +17,16 @@ from .schemas import KnowledgeRecord, ReasonerCognitionRequest
 from .utiles import mmr_select_indices
 
 
-def _name_for(meta: Dict[str, Any]) -> str:
+def _name_for(meta: dict[str, Any]) -> str:
     n = (meta or {}).get("name")
     return (n.strip() if isinstance(n, str) else "") or (meta or {}).get("id") or "unknown"
 
 
-def _rel_label(rel: Dict[str, Any]) -> str:
-    return str((rel or {}).get("relationship") or (rel or {}).get("relation") or "").strip() or "related_to"
+def _rel_label(rel: dict[str, Any]) -> str:
+    return (
+        str((rel or {}).get("relationship") or (rel or {}).get("relation") or "").strip()
+        or "related_to"
+    )
 
 
 class MultiEntityConfig:
@@ -56,7 +60,7 @@ class MultiEntityEvidenceEngine:
         data_layer: Any,
         judge: EvidenceJudge,
         ranker: EvidenceRanker,
-        config: Optional[MultiEntityConfig] = None,
+        config: MultiEntityConfig | None = None,
         concept_repo: Any = None,
     ) -> None:
         self.embedding_manager = embedding_manager
@@ -66,7 +70,7 @@ class MultiEntityEvidenceEngine:
         self.config = config or MultiEntityConfig()
         self.concept_repo = concept_repo
 
-    def _entity_to_query_vec(self, entity: Dict[str, Any]) -> List[float]:
+    def _entity_to_query_vec(self, entity: dict[str, Any]) -> list[float]:
         text = f"{entity.get('description') or ''}{entity.get('name') or ''}"
         chunks = self.embedding_manager.preprocess_text(text)
         vectors = self.embedding_manager.generate_embeddings(chunks)
@@ -74,7 +78,7 @@ class MultiEntityEvidenceEngine:
             return np.mean(np.array(vectors, dtype=np.float32), axis=0).tolist()
         return np.array(vectors, dtype=np.float32).tolist()
 
-    async def _top_k_candidates(self, entity: Dict[str, Any], k: int) -> List[Dict[str, Any]]:
+    async def _top_k_candidates(self, entity: dict[str, Any], k: int) -> list[dict[str, Any]]:
         query_vec = self._entity_to_query_vec(entity)
         entity_name = (entity.get("name") or "").strip() or None
         enriched = await (
@@ -82,7 +86,7 @@ class MultiEntityEvidenceEngine:
             if self.concept_repo
             else asyncio.to_thread(self.data_layer.search_similar_with_neighbors, query_vec, k)
         )
-        out: List[Dict[str, Any]] = []
+        out: list[dict[str, Any]] = []
         for it in enriched or []:
             if (it or {}).get("concept", {}).get("id"):
                 out.append(it)
@@ -90,9 +94,9 @@ class MultiEntityEvidenceEngine:
                 break
         return out
 
-    def _build_pairs(self, src: List[Dict[str, Any]], tgt: List[Dict[str, Any]]) -> List[Pair]:
-        pairs: List[Pair] = []
-        seen: Set[Tuple[str, str]] = set()
+    def _build_pairs(self, src: list[dict[str, Any]], tgt: list[dict[str, Any]]) -> list[Pair]:
+        pairs: list[Pair] = []
+        seen: set[tuple[str, str]] = set()
         for s in src[: self.config.top_k_candidates]:
             sc = (s or {}).get("concept") or {}
             s_id, s_name = sc.get("id"), _name_for(sc)
@@ -104,7 +108,9 @@ class MultiEntityEvidenceEngine:
                 if not t_id or (s_id, t_id) in seen:
                     continue
                 seen.add((s_id, t_id))
-                pairs.append(Pair(source_id=s_id, target_id=t_id, source_name=s_name, target_name=t_name))
+                pairs.append(
+                    Pair(source_id=s_id, target_id=t_id, source_name=s_name, target_name=t_name)
+                )
         for t in tgt[: self.config.top_k_candidates]:
             tc = (t or {}).get("concept") or {}
             t_id, t_name = tc.get("id"), _name_for(tc)
@@ -116,17 +122,26 @@ class MultiEntityEvidenceEngine:
                 if not s_id or (t_id, s_id) in seen:
                     continue
                 seen.add((t_id, s_id))
-                pairs.append(Pair(source_id=t_id, target_id=s_id, source_name=t_name, target_name=s_name))
+                pairs.append(
+                    Pair(source_id=t_id, target_id=s_id, source_name=t_name, target_name=s_name)
+                )
         return pairs
 
-    async def gather(self, request: ReasonerCognitionRequest, entities: Dict[str, Any], extra_context: Optional[str] = None) -> KnowledgeRecord:
+    async def gather(
+        self,
+        request: ReasonerCognitionRequest,
+        entities: dict[str, Any],
+        extra_context: str | None = None,
+    ) -> KnowledgeRecord:
         e1 = {"name": entities.get("source") or ""}
         e2 = {"name": entities.get("target") or ""}
         llm_calls_before = get_llm_call_count()
         k = self.config.top_k_candidates
-        src_top, tgt_top = await asyncio.gather(self._top_k_candidates(e1, k), self._top_k_candidates(e2, k))
+        src_top, tgt_top = await asyncio.gather(
+            self._top_k_candidates(e1, k), self._top_k_candidates(e2, k)
+        )
 
-        trace: Dict[str, Any] = {
+        trace: dict[str, Any] = {
             "extracted_entities": [e1.get("name"), e2.get("name")],
             "iterations": [],
             "sufficient": False,
@@ -137,14 +152,21 @@ class MultiEntityEvidenceEngine:
         trace["lanes_count"] = len(pairs)
         sem = asyncio.Semaphore(self.config.concurrency_limit)
 
-        async def process_pair(pair: Pair) -> Dict[str, Any]:
+        async def process_pair(pair: Pair) -> dict[str, Any]:
             async with sem:
                 # Fetch paths from data layer
-                paths: List[Dict[str, Any]] = []
+                paths: list[dict[str, Any]] = []
                 try:
-                    payload = {"source_id": pair.source_id, "target_id": pair.target_id, "max_depth": self.config.max_depth, "limit": self.config.pre_rank_limit}
+                    payload = {
+                        "source_id": pair.source_id,
+                        "target_id": pair.target_id,
+                        "max_depth": self.config.max_depth,
+                        "limit": self.config.pre_rank_limit,
+                    }
                     url = self.data_layer.graph_base_url + "/paths"
-                    resp = await asyncio.to_thread(self.data_layer.post_to_data_logic_svc, url, payload)
+                    resp = await asyncio.to_thread(
+                        self.data_layer.post_to_data_logic_svc, url, payload
+                    )
                     if resp is not None and getattr(resp, "status_code", None) == 200:
                         j = resp.json()
                         paths = (j.get("paths") if j else []) or []
@@ -152,13 +174,13 @@ class MultiEntityEvidenceEngine:
                     paths = []
 
                 # Build name mapping
-                concept_ids_local: Set[str] = set()
+                concept_ids_local: set[str] = set()
                 for p in paths or []:
                     for ed in (p or {}).get("edges") or []:
                         for fid in [(ed or {}).get("from_id"), (ed or {}).get("to_id")]:
                             if fid:
                                 concept_ids_local.add(fid)
-                id_to_name_local: Dict[str, str] = {}
+                id_to_name_local: dict[str, str] = {}
                 try:
                     metas = await self.data_layer.get_concepts_by_ids(list(concept_ids_local))
                     for c in metas or []:
@@ -178,27 +200,63 @@ class MultiEntityEvidenceEngine:
                 ]
                 candidates_symbolic = [s for s in candidates_symbolic if s]
                 if not candidates_symbolic:
-                    return {"pair": pair, "paths": [], "selected_indices": [], "scores": {}, "candidates_symbolic": [], "sufficient": False, "reason": "no_candidate_paths"}
+                    return {
+                        "pair": pair,
+                        "paths": [],
+                        "selected_indices": [],
+                        "scores": {},
+                        "candidates_symbolic": [],
+                        "sufficient": False,
+                        "reason": "no_candidate_paths",
+                    }
 
                 question_text = request.payload.intent or ""
                 if extra_context:
                     question_text = f"{question_text}\n\nPrior evidence:\n{extra_context}"
-                scores = await self.ranker.async_rank_paths(question=question_text, candidate_paths_repr=candidates_symbolic)
+                scores = await self.ranker.async_rank_paths(
+                    question=question_text, candidate_paths_repr=candidates_symbolic
+                )
                 try:
-                    chosen_idx = mmr_select_indices(scores=scores, candidate_texts=candidates_symbolic, query_text=request.payload.intent or "", embedding_manager=self.embedding_manager, k=self.config.mmr_top_k, alpha=0.7, lam=0.7)
+                    chosen_idx = mmr_select_indices(
+                        scores=scores,
+                        candidate_texts=candidates_symbolic,
+                        query_text=request.payload.intent or "",
+                        embedding_manager=self.embedding_manager,
+                        k=self.config.mmr_top_k,
+                        alpha=0.7,
+                        lam=0.7,
+                    )
                 except Exception:
                     ordered = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
                     chosen_idx = [int(i) for i, _ in ordered[: self.config.mmr_top_k]]
-                chosen_symbolic = [candidates_symbolic[i] for i in chosen_idx if 0 <= i < len(candidates_symbolic)]
-                _, sufficient, reason = await self.judge.async_select_paths_and_check_sufficiency(question=question_text, candidate_paths=chosen_symbolic, select_k=len(chosen_symbolic) or 1)
-                return {"pair": pair, "paths": paths, "selected_indices": chosen_idx, "scores": scores, "candidates_symbolic": candidates_symbolic, "sufficient": bool(sufficient), "reason": reason}
+                chosen_symbolic = [
+                    candidates_symbolic[i] for i in chosen_idx if 0 <= i < len(candidates_symbolic)
+                ]
+                _, sufficient, reason = await self.judge.async_select_paths_and_check_sufficiency(
+                    question=question_text,
+                    candidate_paths=chosen_symbolic,
+                    select_k=len(chosen_symbolic) or 1,
+                )
+                return {
+                    "pair": pair,
+                    "paths": paths,
+                    "selected_indices": chosen_idx,
+                    "scores": scores,
+                    "candidates_symbolic": candidates_symbolic,
+                    "sufficient": bool(sufficient),
+                    "reason": reason,
+                }
 
         results = await asyncio.gather(*(process_pair(p) for p in pairs))
 
         winning = next((r for r in results if r.get("sufficient")), None)
         if winning:
             trace["sufficient"] = True
-            trace["winning"] = {"source": winning["pair"].source_name, "target": winning["pair"].target_name, "reason_for_sufficiency": winning.get("reason")}
+            trace["winning"] = {
+                "source": winning["pair"].source_name,
+                "target": winning["pair"].target_name,
+                "reason_for_sufficiency": winning.get("reason"),
+            }
 
         # Build evidence output
         if winning:
@@ -206,13 +264,13 @@ class MultiEntityEvidenceEngine:
         else:
             r = max(results, key=lambda x: len(x.get("selected_indices") or []), default=None)
 
-        evidence_paths: List[Dict[str, Any]] = []
+        evidence_paths: list[dict[str, Any]] = []
         if r and r.get("selected_indices"):
             paths_list = r.get("paths") or []
             cands = r.get("candidates_symbolic") or []
             for idx, i in enumerate(r["selected_indices"]):
                 sym = cands[i] if 0 <= i < len(cands) else ""
-                evidence_paths.append({"path_id": f"p{idx+1}", "symbolic": sym})
+                evidence_paths.append({"path_id": f"p{idx + 1}", "symbolic": sym})
 
         content = {
             "evidence": {

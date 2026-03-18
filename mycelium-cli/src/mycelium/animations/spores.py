@@ -168,24 +168,26 @@ class _RainState:
             # Three personality types: slow/steady, medium, fast/flashy
             kind = random.random()
             if kind < 0.5:
-                spd = random.uniform(0.02, 0.06)   # slow, barely noticeable
+                spd = random.uniform(0.02, 0.06)  # slow, barely noticeable
                 peak = random.uniform(0.3, 0.6)
             elif kind < 0.85:
-                spd = random.uniform(0.07, 0.14)   # medium
+                spd = random.uniform(0.07, 0.14)  # medium
                 peak = random.uniform(0.5, 0.85)
             else:
-                spd = random.uniform(0.15, 0.28)   # fast flasher
+                spd = random.uniform(0.15, 0.28)  # fast flasher
                 peak = random.uniform(0.7, 1.0)
-            self._stars.append([
-                random.randint(0, max(width - 1, 0)),   # x
-                random.randint(0, max(height - 1, 0)),  # y
-                random.uniform(0, 2 * math.pi),          # phase A
-                random.uniform(0, 2 * math.pi),          # phase B (beats against A)
-                spd,                                     # speed
-                spd * _PHI,                              # speed B (incommensurate)
-                peak,                                    # peak brightness
-                random.uniform(0.0, 0.08),               # noise amplitude
-            ])
+            self._stars.append(
+                [
+                    random.randint(0, max(width - 1, 0)),  # x
+                    random.randint(0, max(height - 1, 0)),  # y
+                    random.uniform(0, 2 * math.pi),  # phase A
+                    random.uniform(0, 2 * math.pi),  # phase B (beats against A)
+                    spd,  # speed
+                    spd * _PHI,  # speed B (incommensurate)
+                    peak,  # peak brightness
+                    random.uniform(0.0, 0.08),  # noise amplitude
+                ]
+            )
 
     def resize(self, width: int, height: int) -> None:
         if width != self.width or height != self.height:
@@ -195,8 +197,8 @@ class _RainState:
 
     def update(self) -> None:
         for star in self._stars:
-            star[2] += star[4]   # advance phase A
-            star[3] += star[5]   # advance phase B
+            star[2] += star[4]  # advance phase A
+            star[3] += star[5]  # advance phase B
 
     def overlay(
         self,

@@ -82,11 +82,14 @@ async def synthesize_room(
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
     if room.mode not in ("async", "hybrid"):
-        raise HTTPException(status_code=400, detail="Synthesis only available for async/hybrid rooms")
+        raise HTTPException(
+            status_code=400, detail="Synthesis only available for async/hybrid rooms"
+        )
     if room.coordination_state == "synthesizing":
         raise HTTPException(status_code=409, detail="Synthesis already in progress")
 
     from app.services.async_coordination import run_synthesis
+
     result = await run_synthesis(room_name)
     if result is None:
         return {"status": "no_memories", "message": "No new memories to synthesize"}
@@ -130,6 +133,7 @@ async def catchup_room(
 
     # Count total memories
     from sqlalchemy import func
+
     count_result = await session.execute(
         select(func.count()).select_from(Memory).where(Memory.room_name == room_name)
     )
@@ -150,7 +154,9 @@ async def catchup_room(
             "key": latest_synthesis.key,
             "content": latest_synthesis.content_text or latest_synthesis.value,
             "created_at": latest_synthesis.created_at.isoformat(),
-        } if latest_synthesis else None,
+        }
+        if latest_synthesis
+        else None,
         "recent_activity": [
             {
                 "key": m.key,

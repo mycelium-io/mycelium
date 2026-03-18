@@ -15,9 +15,11 @@ dependencies = [
     "agensgraph-python==1.0.2",
     "psycopg2-binary>=2.9.0",
     "negmas>=0.10.0",
-    "fastembed>=0.4.0",
     "pgvector>=0.3.0",
     "alembic>=1.14.0,<2",
+    "sentence-transformers<3",
+    "pip-system-certs>=5.3",
+    "transformers<4.40",
 ]
 
 [dependency-groups]

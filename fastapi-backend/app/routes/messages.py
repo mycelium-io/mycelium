@@ -93,6 +93,7 @@ async def send_message(
     # Hook coordination service if this room is in negotiating state
     if room.coordination_state == "negotiating":
         from app.services import coordination
+
         asyncio.ensure_future(
             coordination.on_agent_response(room_name, msg.sender_handle, msg.content)
         )

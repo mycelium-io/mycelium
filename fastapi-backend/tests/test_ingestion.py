@@ -45,6 +45,7 @@ async def test_audit_invalid_type_still_rejected(client: AsyncClient):
 # These are synchronous unit tests; the module-level asyncio mark is suppressed
 # per-test via pytest.mark.asyncio(mode="auto") not applying to sync functions.
 
+
 def _svc() -> IngestionService:
     return IngestionService(api_key=None, model="claude-sonnet-4-6")
 
@@ -80,7 +81,13 @@ def test_compact_payload_tool_calls_stripped():
         {
             "response": "done",
             "toolCalls": [
-                {"id": "tc1", "name": "search", "input": {"q": "x"}, "result": "y", "extra": "drop_me"}
+                {
+                    "id": "tc1",
+                    "name": "search",
+                    "input": {"q": "x"},
+                    "result": "y",
+                    "extra": "drop_me",
+                }
             ],
         }
     ]

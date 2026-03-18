@@ -9,7 +9,25 @@ from uuid import UUID as UUID_Type
 from uuid import uuid4
 
 try:
-    from pgvector.sqlalchemy import Vector
+    from pgvector.sqlalchemy import Vector as _PgVector
+    from sqlalchemy import cast, null
+    from sqlalchemy.sql.expression import BindParameter
+
+    class Vector(_PgVector):  # type: ignore[misc]
+        """VECTOR that emits an explicit CAST for NULL params.
+
+        asyncpg cannot infer the type for None on a UserDefinedType and
+        falls back to BYTEA.  Wrapping NULL with CAST(NULL AS vector) tells
+        asyncpg the exact Postgres type so the INSERT succeeds.
+        """
+
+        def bind_expression(self, bindvalue: BindParameter):
+            # Only wrap when the value is None (NULL); let non-null values pass
+            # through the normal bind_processor (returns text '[x,y,...]').
+            if bindvalue.value is None and not bindvalue.required:
+                return cast(null(), _PgVector(self.dim))
+            return bindvalue
+
 except ImportError:
     # Fallback for environments without pgvector (e.g., SQLite tests)
     from sqlalchemy import LargeBinary as Vector  # type: ignore[assignment]
@@ -37,10 +55,13 @@ class Base(DeclarativeBase):
 
 # ── Registry ──────────────────────────────────────────────────────────────────
 
+
 class Workspace(Base):
     __tablename__ = "workspaces"
 
-    id: Mapped[UUID_Type] = mapped_column(GenericUuid(as_uuid=True), primary_key=True, default=uuid4)
+    id: Mapped[UUID_Type] = mapped_column(
+        GenericUuid(as_uuid=True), primary_key=True, default=uuid4
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -49,14 +70,22 @@ class Workspace(Base):
 
 class MAS(Base):
     """Multi-Agentic System — a named group of agents within a workspace."""
+
     __tablename__ = "mas"
 
-    id: Mapped[UUID_Type] = mapped_column(GenericUuid(as_uuid=True), primary_key=True, default=uuid4)
+    id: Mapped[UUID_Type] = mapped_column(
+        GenericUuid(as_uuid=True), primary_key=True, default=uuid4
+    )
     workspace_id: Mapped[UUID_Type] = mapped_column(
-        GenericUuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True
+        GenericUuid(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    config: Mapped[dict | None] = mapped_column(JSONB().with_variant(JSON(), "sqlite"), nullable=True)
+    config: Mapped[dict | None] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -65,19 +94,27 @@ class MAS(Base):
 class Agent(Base):
     __tablename__ = "agents"
 
-    id: Mapped[UUID_Type] = mapped_column(GenericUuid(as_uuid=True), primary_key=True, default=uuid4)
+    id: Mapped[UUID_Type] = mapped_column(
+        GenericUuid(as_uuid=True), primary_key=True, default=uuid4
+    )
     mas_id: Mapped[UUID_Type] = mapped_column(
-        GenericUuid(as_uuid=True), ForeignKey("mas.id", ondelete="CASCADE"), nullable=False, index=True
+        GenericUuid(as_uuid=True),
+        ForeignKey("mas.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     memory_provider_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    memory_config: Mapped[dict | None] = mapped_column(JSONB().with_variant(JSON(), "sqlite"), nullable=True)
+    memory_config: Mapped[dict | None] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
 
 # ── Rooms ──────────────────────────────────────────────────────────────────────
+
 
 class Room(Base):
     __tablename__ = "rooms"
@@ -93,18 +130,16 @@ class Room(Base):
     coordination_state: Mapped[str] = mapped_column(
         VARCHAR(20), nullable=False, server_default="idle"
     )
-    join_deadline: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    join_deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Room mode: sync (real-time negotiation), async (persistent namespace), hybrid (both)
-    mode: Mapped[str] = mapped_column(
-        VARCHAR(10), nullable=False, server_default="sync"
-    )
+    mode: Mapped[str] = mapped_column(VARCHAR(10), nullable=False, server_default="sync")
     # Trigger config for async CognitiveEngine activation
     # e.g. {"type": "threshold", "min_contributions": 5}
     # or   {"type": "schedule", "cron": "0 */6 * * *"}
     # or   {"type": "explicit"}
-    trigger_config: Mapped[dict | None] = mapped_column(JSONB().with_variant(JSON(), "sqlite"), nullable=True)
+    trigger_config: Mapped[dict | None] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"), nullable=True
+    )
     # Last time CognitiveEngine ran async synthesis
     last_synthesis_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -117,11 +152,10 @@ class Room(Base):
 
 class Message(Base):
     """Agent-to-agent messages within a room."""
+
     __tablename__ = "messages"
 
-    id: Mapped[UUID_Type] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid4
-    )
+    id: Mapped[UUID_Type] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     room_name: Mapped[str] = mapped_column(
         String, ForeignKey("rooms.name", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -141,11 +175,10 @@ class Message(Base):
 
 class Session(Base):
     """Agent presence in a room — tracks who has joined."""
+
     __tablename__ = "sessions"
 
-    id: Mapped[UUID_Type] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid4
-    )
+    id: Mapped[UUID_Type] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     room_name: Mapped[str] = mapped_column(
         String, ForeignKey("rooms.name", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -153,24 +186,27 @@ class Session(Base):
     joined_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    last_seen: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     intent: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class AuditEvent(Base):
     """Immutable audit trail for CFN resource operations."""
+
     __tablename__ = "audit_events"
 
     # Use generic Uuid (not pg-specific) so SQLite works in tests
-    id: Mapped[UUID_Type] = mapped_column(GenericUuid(as_uuid=True), primary_key=True, default=uuid4)
+    id: Mapped[UUID_Type] = mapped_column(
+        GenericUuid(as_uuid=True), primary_key=True, default=uuid4
+    )
     operation_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     resource_type: Mapped[str] = mapped_column(String(64), nullable=False)
     resource_identifier: Mapped[str] = mapped_column(String(128), nullable=False)
     audit_type: Mapped[str] = mapped_column(String(64), nullable=False)
     audit_resource_identifier: Mapped[str] = mapped_column(String(128), nullable=False)
-    audit_information: Mapped[dict | None] = mapped_column(JSONB().with_variant(JSON(), "sqlite"), nullable=True)
+    audit_information: Mapped[dict | None] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"), nullable=True
+    )
     audit_extra_information: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[UUID_Type] = mapped_column(GenericUuid(as_uuid=True), nullable=False)
     created_on: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -180,13 +216,13 @@ class AuditEvent(Base):
 
 # ── Persistent Memory ─────────────────────────────────────────────────────────
 
+
 class Memory(Base):
     """Persistent namespaced memory with optional vector embeddings for semantic search."""
+
     __tablename__ = "memories"
 
-    id: Mapped[UUID_Type] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid4
-    )
+    id: Mapped[UUID_Type] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     room_name: Mapped[str] = mapped_column(
         String, ForeignKey("rooms.name", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -204,22 +240,17 @@ class Memory(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    expires_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    __table_args__ = (
-        UniqueConstraint("room_name", "key", name="uq_memory_room_key"),
-    )
+    __table_args__ = (UniqueConstraint("room_name", "key", name="uq_memory_room_key"),)
 
 
 class MemorySubscription(Base):
     """Change notification subscription for memory keys."""
+
     __tablename__ = "memory_subscriptions"
 
-    id: Mapped[UUID_Type] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid4
-    )
+    id: Mapped[UUID_Type] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     room_name: Mapped[str] = mapped_column(
         String, ForeignKey("rooms.name", ondelete="CASCADE"), nullable=False, index=True
     )

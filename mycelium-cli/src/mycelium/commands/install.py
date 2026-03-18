@@ -27,9 +27,9 @@ LOG_WINDOW = 4
 # Public images that are always pulled regardless of profile.
 # Pulling these during the animation means compose-up is faster.
 _PUBLIC_IMAGES = [
-    ("postgres:17-alpine",                        "postgres"),
+    ("postgres:17-alpine", "postgres"),
     ("skaiworldwide/agensgraph:v2.16.0-alpine3.22", "graph DB (AgensGraph)"),
-    ("skaiworldwide/agviewer:latest",             "graph DB viewer"),
+    ("skaiworldwide/agviewer:latest", "graph DB viewer"),
 ]
 
 
@@ -37,7 +37,9 @@ def _check_docker() -> tuple[bool, str]:
     try:
         r = subprocess.run(
             ["docker", "version", "--format", "{{.Server.Version}}"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if r.returncode == 0:
             return True, r.stdout.strip()
@@ -52,7 +54,9 @@ def _check_compose() -> tuple[bool, str]:
     try:
         r = subprocess.run(
             ["docker", "compose", "version", "--short"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if r.returncode == 0:
             return True, r.stdout.strip()
@@ -79,6 +83,7 @@ def _check_disk(min_mb: int = 500) -> tuple[bool, str]:
 
 
 # ── Interactive prompts ──────────────────────────────────────────────────────
+
 
 def _ask(prompt: str, default: str = "") -> str:
     """Read a line; raise KeyboardInterrupt on Ctrl+C/Ctrl+D/q/Q/Escape."""
@@ -136,7 +141,10 @@ def _prompt_llm() -> dict[str, str]:
         return {"LLM_MODEL": model, "LLM_API_KEY": key}
 
     if choice.startswith("OpenRouter"):
-        model = _ask("  \x1b[2mModel (e.g. anthropic/claude-sonnet-4-6):\x1b[0m ", default="anthropic/claude-sonnet-4-6")
+        model = _ask(
+            "  \x1b[2mModel (e.g. anthropic/claude-sonnet-4-6):\x1b[0m ",
+            default="anthropic/claude-sonnet-4-6",
+        )
         model = f"openrouter/{model}"
         key = _ask("  \x1b[2mOpenRouter API key:\x1b[0m ")
         print(f"  \x1b[32m✓\x1b[0m {model}")
@@ -198,8 +206,10 @@ def _prompt_ioc() -> bool:
 
 # ── Env file ─────────────────────────────────────────────────────────────────
 
+
 def _write_env_file(env_path: Path, llm_config: dict[str, str]) -> None:
     import importlib.resources
+
     defaults_ref = importlib.resources.files("mycelium.docker") / "env.defaults"
     defaults_text = defaults_ref.read_text(encoding="utf-8")
 
@@ -221,6 +231,7 @@ def _write_env_file(env_path: Path, llm_config: dict[str, str]) -> None:
 
 
 # ── Docker compose ────────────────────────────────────────────────────────────
+
 
 def _get_compose_path() -> Path:
     """
@@ -272,8 +283,10 @@ def _image_exists(image: str) -> bool:
 
 
 _KNOWN_CONTAINERS = [
-    "mycelium-db", "mycelium-backend",
-    "ioc-cfn-db", "ioc-cfn-mgmt-plane-svc",
+    "mycelium-db",
+    "mycelium-backend",
+    "ioc-cfn-db",
+    "ioc-cfn-mgmt-plane-svc",
 ]
 
 
@@ -283,13 +296,16 @@ def _remove_orphan_containers() -> None:
     for name in _KNOWN_CONTAINERS:
         r = subprocess.run(
             ["docker", "inspect", "--format", "{{.State.Status}}", name],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         if r.returncode == 0 and r.stdout.strip() in ("exited", "created", "dead"):
             subprocess.run(["docker", "rm", "-f", name], capture_output=True)
 
 
-def _compose_up(compose_path: Path, env_path: Path, profiles: list[str] | None = None) -> tuple[bool, bool]:
+def _compose_up(
+    compose_path: Path, env_path: Path, profiles: list[str] | None = None
+) -> tuple[bool, bool]:
     """Bring the stack up.  Returns (success, needs_build)."""
     # Build context exists when running from a repo checkout. Packaged installs
     # extract compose to ~/.mycelium/docker/ where ../fastapi-backend is absent —
@@ -301,12 +317,16 @@ def _compose_up(compose_path: Path, env_path: Path, profiles: list[str] | None =
     _remove_orphan_containers()
 
     args = [
-        "docker", "compose",
-        "-p", "mycelium",
-        "-f", str(compose_path),
-        "--env-file", str(env_path),
+        "docker",
+        "compose",
+        "-p",
+        "mycelium",
+        "-f",
+        str(compose_path),
+        "--env-file",
+        str(env_path),
     ]
-    for profile in (profiles or []):
+    for profile in profiles or []:
         args += ["--profile", profile]
     up_flags = ["up", "--pull", "missing", "--force-recreate", "-d"]
     if can_build:
@@ -361,6 +381,7 @@ def _wait_for_health(urls: list[str], timeout: int = 120) -> bool:
 
 # ── Backend provisioning ──────────────────────────────────────────────────────
 
+
 def _provision_backend(api_url: str, workspace_name: str = "default") -> tuple[str, str]:
     """
     Create a default workspace and MAS in the backend.
@@ -393,6 +414,7 @@ def _provision_backend(api_url: str, workspace_name: str = "default") -> tuple[s
 
 # ── Config write ─────────────────────────────────────────────────────────────
 
+
 def _write_mycelium_config(api_url: str, workspace_id: str, mas_id: str) -> None:
     from mycelium.config import MyceliumConfig, ServerConfig
 
@@ -416,14 +438,21 @@ def _write_mycelium_config(api_url: str, workspace_id: str, mas_id: str) -> None
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
+
 def install(
     ctx: typer.Context,
     ascii_: bool = typer.Option(False, "--ascii", help="Use ASCII rendering"),
     blocks: bool = typer.Option(False, "--blocks", help="Use unicode block rendering"),
-    theme: str = typer.Option("cyan", "--color", help="Color theme (cyan|amber|magenta|green|white)"),
+    theme: str = typer.Option(
+        "cyan", "--color", help="Color theme (cyan|amber|magenta|green|white)"
+    ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmations"),
-    non_interactive: bool = typer.Option(False, "--non-interactive", "-n", help="Skip prompts and animation (use --llm-model etc.)"),
-    llm_model: str = typer.Option("", "--llm-model", help="LLM model in litellm format (non-interactive)"),
+    non_interactive: bool = typer.Option(
+        False, "--non-interactive", "-n", help="Skip prompts and animation (use --llm-model etc.)"
+    ),
+    llm_model: str = typer.Option(
+        "", "--llm-model", help="LLM model in litellm format (non-interactive)"
+    ),
     llm_base_url: str = typer.Option("", "--llm-base-url", help="LLM base URL (non-interactive)"),
     llm_api_key: str = typer.Option("", "--llm-api-key", help="LLM API key (non-interactive)"),
     ioc: bool = typer.Option(False, "--ioc", help="Enable IoC CFN stack (non-interactive)"),
@@ -520,17 +549,17 @@ def install(
             typer.secho(f"\n  ✗ Docker Compose: {compose_ver}", fg=typer.colors.RED)
             raise typer.Exit(1) from None
 
-        ok   = "\x1b[32m✓\x1b[0m"
-        err  = "\x1b[31m✗\x1b[0m"
+        ok = "\x1b[32m✓\x1b[0m"
+        err = "\x1b[31m✗\x1b[0m"
         spin = "\x1b[2m⟳\x1b[0m"
 
         header_lines = [
             "",
             "  \x1b[1mInstalling Mycelium...\x1b[0m",
             "",
-            f"    {ok if docker_ok  else err} docker {docker_ver}",
+            f"    {ok if docker_ok else err} docker {docker_ver}",
             f"    {ok if compose_ok else err} docker compose {compose_ver}",
-            f"    {ok if disk_ok    else err} disk {disk_info}",
+            f"    {ok if disk_ok else err} disk {disk_info}",
             "",
             "  \x1b[1mPulling base images\x1b[0m",
             "",
@@ -546,6 +575,7 @@ def install(
         # images match the platform compose will use.
         import importlib.resources as _ir
         import os as _os
+
         _pull_platform = _os.getenv("DOCKER_DEFAULT_PLATFORM", "")
         if not _pull_platform:
             try:
@@ -570,21 +600,28 @@ def install(
                     try:
                         proc = subprocess.Popen(
                             cmd,
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT,
                             text=True,
                         )
                         assert proc.stdout
                         for raw in proc.stdout:
                             text = raw.strip()
                             if text:
-                                log_window = (log_window + [f"      \x1b[2m> {text}\x1b[0m"])[-LOG_WINDOW:]
+                                log_window = (log_window + [f"      \x1b[2m> {text}\x1b[0m"])[
+                                    -LOG_WINDOW:
+                                ]
                         proc.wait()
                         if proc.returncode == 0:
                             image_lines[i] = f"    {ok} {label}"
                         else:
-                            image_lines[i] = f"    {err} {label}  \x1b[2m(will retry during compose up)\x1b[0m"
+                            image_lines[i] = (
+                                f"    {err} {label}  \x1b[2m(will retry during compose up)\x1b[0m"
+                            )
                     except Exception:
-                        image_lines[i] = f"    {err} {label}  \x1b[2m(skipped — docker not available)\x1b[0m"
+                        image_lines[i] = (
+                            f"    {err} {label}  \x1b[2m(skipped — docker not available)\x1b[0m"
+                        )
                     log_window = []
             finally:
                 done.set()
@@ -598,8 +635,13 @@ def install(
         run_animation_live(
             get_lines=_get_lines,
             done=done,
-            height=18, theme=theme, fill=0.15, mode=mode,
-            rain=True, wipe=True, linger=0.4,
+            height=18,
+            theme=theme,
+            fill=0.15,
+            mode=mode,
+            rain=True,
+            wipe=True,
+            linger=0.4,
         )
         pull_thread.join()
 

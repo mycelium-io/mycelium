@@ -8,16 +8,16 @@ Revises: 0005
 Create Date: 2026-03-16 00:00:00.000000
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 revision: str = "0006"
-down_revision: Union[str, None] = "0005"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0005"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -27,15 +27,25 @@ def upgrade() -> None:
     # Add room mode columns
     op.add_column("rooms", sa.Column("mode", sa.VARCHAR(10), server_default="sync", nullable=False))
     op.add_column("rooms", sa.Column("trigger_config", JSONB, nullable=True))
-    op.add_column("rooms", sa.Column("last_synthesis_at", sa.DateTime(timezone=True), nullable=True))
-    op.add_column("rooms", sa.Column("is_persistent", sa.Boolean(), server_default="false", nullable=False))
+    op.add_column(
+        "rooms", sa.Column("last_synthesis_at", sa.DateTime(timezone=True), nullable=True)
+    )
+    op.add_column(
+        "rooms", sa.Column("is_persistent", sa.Boolean(), server_default="false", nullable=False)
+    )
     op.add_column("rooms", sa.Column("namespace", sa.String(), nullable=True))
 
     # Create memories table
     op.create_table(
         "memories",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column("room_name", sa.String(), sa.ForeignKey("rooms.name", ondelete="CASCADE"), nullable=False, index=True),
+        sa.Column(
+            "room_name",
+            sa.String(),
+            sa.ForeignKey("rooms.name", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
+        ),
         sa.Column("key", sa.String(512), nullable=False, index=True),
         sa.Column("value", JSONB, nullable=False),
         sa.Column("content_text", sa.Text(), nullable=True),
@@ -43,8 +53,12 @@ def upgrade() -> None:
         sa.Column("updated_by", sa.String(), nullable=True),
         sa.Column("version", sa.Integer(), server_default="1", nullable=False),
         sa.Column("tags", JSONB, nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
         sa.UniqueConstraint("room_name", "key", name="uq_memory_room_key"),
     )
@@ -62,10 +76,18 @@ def upgrade() -> None:
     op.create_table(
         "memory_subscriptions",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column("room_name", sa.String(), sa.ForeignKey("rooms.name", ondelete="CASCADE"), nullable=False, index=True),
+        sa.Column(
+            "room_name",
+            sa.String(),
+            sa.ForeignKey("rooms.name", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
+        ),
         sa.Column("subscriber", sa.String(), nullable=False, index=True),
         sa.Column("key_pattern", sa.String(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
     )
 
 

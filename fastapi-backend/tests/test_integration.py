@@ -32,7 +32,7 @@ pytestmark = pytest.mark.skipif(
 @pytest_asyncio.fixture()
 async def integration_client():
     """Client wired to real database — creates and drops tables per test."""
-    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     from app.database import get_async_session
     from app.main import app
@@ -71,14 +71,19 @@ async def test_memory_create_with_embedding(integration_client: AsyncClient):
     assert resp.status_code == 201
 
     # Create memory with embedding (embed=True is default)
-    resp = await client.post("/rooms/e2e-embed/memory", json={
-        "items": [{
-            "key": "test/concept",
-            "value": "AgensGraph is a multi-model graph database built on PostgreSQL",
-            "created_by": "test-agent",
-            "embed": True,
-        }]
-    })
+    resp = await client.post(
+        "/rooms/e2e-embed/memory",
+        json={
+            "items": [
+                {
+                    "key": "test/concept",
+                    "value": "AgensGraph is a multi-model graph database built on PostgreSQL",
+                    "created_by": "test-agent",
+                    "embed": True,
+                }
+            ]
+        },
+    )
     assert resp.status_code == 201
     data = resp.json()
     assert len(data) == 1
@@ -93,19 +98,40 @@ async def test_semantic_search(integration_client: AsyncClient):
     await client.post("/rooms", json={"name": "e2e-search", "mode": "async"})
 
     # Write several memories with different topics
-    await client.post("/rooms/e2e-search/memory", json={
-        "items": [
-            {"key": "topic/databases", "value": "PostgreSQL is a relational database with ACID transactions", "created_by": "agent-a", "embed": True},
-            {"key": "topic/cooking", "value": "The best pasta requires fresh ingredients and al dente timing", "created_by": "agent-b", "embed": True},
-            {"key": "topic/graphs", "value": "Knowledge graphs store entities and relationships using nodes and edges", "created_by": "agent-a", "embed": True},
-        ]
-    })
+    await client.post(
+        "/rooms/e2e-search/memory",
+        json={
+            "items": [
+                {
+                    "key": "topic/databases",
+                    "value": "PostgreSQL is a relational database with ACID transactions",
+                    "created_by": "agent-a",
+                    "embed": True,
+                },
+                {
+                    "key": "topic/cooking",
+                    "value": "The best pasta requires fresh ingredients and al dente timing",
+                    "created_by": "agent-b",
+                    "embed": True,
+                },
+                {
+                    "key": "topic/graphs",
+                    "value": "Knowledge graphs store entities and relationships using nodes and edges",
+                    "created_by": "agent-a",
+                    "embed": True,
+                },
+            ]
+        },
+    )
 
     # Search for database-related content
-    resp = await client.post("/rooms/e2e-search/memory/search", json={
-        "query": "database storage and queries",
-        "limit": 3,
-    })
+    resp = await client.post(
+        "/rooms/e2e-search/memory/search",
+        json={
+            "query": "database storage and queries",
+            "limit": 3,
+        },
+    )
     assert resp.status_code == 200
     data = resp.json()
     results = data["results"]
@@ -131,18 +157,34 @@ async def test_semantic_search_with_min_similarity(integration_client: AsyncClie
 
     await client.post("/rooms", json={"name": "e2e-minsim", "mode": "async"})
 
-    await client.post("/rooms/e2e-minsim/memory", json={
-        "items": [
-            {"key": "relevant", "value": "Vector databases enable semantic search using embeddings", "created_by": "a", "embed": True},
-            {"key": "irrelevant", "value": "The weather in Paris is lovely in spring", "created_by": "a", "embed": True},
-        ]
-    })
+    await client.post(
+        "/rooms/e2e-minsim/memory",
+        json={
+            "items": [
+                {
+                    "key": "relevant",
+                    "value": "Vector databases enable semantic search using embeddings",
+                    "created_by": "a",
+                    "embed": True,
+                },
+                {
+                    "key": "irrelevant",
+                    "value": "The weather in Paris is lovely in spring",
+                    "created_by": "a",
+                    "embed": True,
+                },
+            ]
+        },
+    )
 
-    resp = await client.post("/rooms/e2e-minsim/memory/search", json={
-        "query": "semantic search with vectors",
-        "limit": 10,
-        "min_similarity": 0.7,
-    })
+    resp = await client.post(
+        "/rooms/e2e-minsim/memory/search",
+        json={
+            "query": "semantic search with vectors",
+            "limit": 10,
+            "min_similarity": 0.7,
+        },
+    )
     assert resp.status_code == 200
     results = resp.json()["results"]
     # Should filter out the weather memory
@@ -158,20 +200,43 @@ async def test_upsert_preserves_embedding(integration_client: AsyncClient):
     await client.post("/rooms", json={"name": "e2e-upsert", "mode": "async"})
 
     # Create
-    await client.post("/rooms/e2e-upsert/memory", json={
-        "items": [{"key": "evolving", "value": "Python is a programming language", "created_by": "a", "embed": True}]
-    })
+    await client.post(
+        "/rooms/e2e-upsert/memory",
+        json={
+            "items": [
+                {
+                    "key": "evolving",
+                    "value": "Python is a programming language",
+                    "created_by": "a",
+                    "embed": True,
+                }
+            ]
+        },
+    )
 
     # Update with different content
-    await client.post("/rooms/e2e-upsert/memory", json={
-        "items": [{"key": "evolving", "value": "Rust is a systems programming language focused on safety", "created_by": "a", "embed": True}]
-    })
+    await client.post(
+        "/rooms/e2e-upsert/memory",
+        json={
+            "items": [
+                {
+                    "key": "evolving",
+                    "value": "Rust is a systems programming language focused on safety",
+                    "created_by": "a",
+                    "embed": True,
+                }
+            ]
+        },
+    )
 
     # Search should find the updated content
-    resp = await client.post("/rooms/e2e-upsert/memory/search", json={
-        "query": "systems programming and memory safety",
-        "limit": 1,
-    })
+    resp = await client.post(
+        "/rooms/e2e-upsert/memory/search",
+        json={
+            "query": "systems programming and memory safety",
+            "limit": 1,
+        },
+    )
     results = resp.json()["results"]
     assert len(results) == 1
     assert results[0]["memory"]["key"] == "evolving"
@@ -188,23 +253,46 @@ async def test_async_room_full_flow(integration_client: AsyncClient):
     client = integration_client
 
     # Create room with low threshold for testing
-    resp = await client.post("/rooms", json={
-        "name": "e2e-flow",
-        "mode": "async",
-        "trigger_config": {"type": "threshold", "min_contributions": 2},
-        "is_persistent": True,
-    })
+    resp = await client.post(
+        "/rooms",
+        json={
+            "name": "e2e-flow",
+            "mode": "async",
+            "trigger_config": {"type": "threshold", "min_contributions": 2},
+            "is_persistent": True,
+        },
+    )
     assert resp.status_code == 201
 
     # Agent 1 writes
-    await client.post("/rooms/e2e-flow/memory", json={
-        "items": [{"key": "agent-a/position", "value": "We should use GraphQL", "created_by": "agent-a", "embed": False}]
-    })
+    await client.post(
+        "/rooms/e2e-flow/memory",
+        json={
+            "items": [
+                {
+                    "key": "agent-a/position",
+                    "value": "We should use GraphQL",
+                    "created_by": "agent-a",
+                    "embed": False,
+                }
+            ]
+        },
+    )
 
     # Agent 2 writes — this should hit threshold (2)
-    await client.post("/rooms/e2e-flow/memory", json={
-        "items": [{"key": "agent-b/position", "value": "REST is simpler for our use case", "created_by": "agent-b", "embed": False}]
-    })
+    await client.post(
+        "/rooms/e2e-flow/memory",
+        json={
+            "items": [
+                {
+                    "key": "agent-b/position",
+                    "value": "REST is simpler for our use case",
+                    "created_by": "agent-b",
+                    "embed": False,
+                }
+            ]
+        },
+    )
 
     # Give async trigger a moment to fire
     await asyncio.sleep(1)
@@ -231,10 +319,13 @@ async def test_sync_room_still_works(integration_client: AsyncClient):
     assert resp.status_code == 201
 
     # Join should set state to waiting
-    resp = await client.post("/rooms/e2e-sync/sessions", json={
-        "agent_handle": "agent-a",
-        "intent": "testing sync flow",
-    })
+    resp = await client.post(
+        "/rooms/e2e-sync/sessions",
+        json={
+            "agent_handle": "agent-a",
+            "intent": "testing sync flow",
+        },
+    )
     assert resp.status_code == 201
 
     # Room should be in waiting state
@@ -251,10 +342,13 @@ async def test_async_room_join_no_timer(integration_client: AsyncClient):
 
     await client.post("/rooms", json={"name": "e2e-async-join", "mode": "async"})
 
-    resp = await client.post("/rooms/e2e-async-join/sessions", json={
-        "agent_handle": "agent-a",
-        "intent": "just sharing context",
-    })
+    resp = await client.post(
+        "/rooms/e2e-async-join/sessions",
+        json={
+            "agent_handle": "agent-a",
+            "intent": "just sharing context",
+        },
+    )
     assert resp.status_code == 201
 
     # Room should still be idle
@@ -264,6 +358,7 @@ async def test_async_room_join_no_timer(integration_client: AsyncClient):
 
 # ── Sync CognitiveEngine flow ────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_sync_join_starts_timer(integration_client: AsyncClient):
     """Joining a sync room transitions it to 'waiting' state."""
@@ -272,10 +367,13 @@ async def test_sync_join_starts_timer(integration_client: AsyncClient):
     await client.post("/rooms", json={"name": "e2e-timer", "mode": "sync"})
 
     # First agent joins — should start the timer
-    resp = await client.post("/rooms/e2e-timer/sessions", json={
-        "agent_handle": "alpha",
-        "intent": "I want budget=high",
-    })
+    resp = await client.post(
+        "/rooms/e2e-timer/sessions",
+        json={
+            "agent_handle": "alpha",
+            "intent": "I want budget=high",
+        },
+    )
     assert resp.status_code == 201
 
     resp = await client.get("/rooms/e2e-timer")
@@ -292,16 +390,22 @@ async def test_sync_multiple_agents_join(integration_client: AsyncClient):
     await client.post("/rooms", json={"name": "e2e-multi", "mode": "sync"})
 
     # Two agents join
-    resp1 = await client.post("/rooms/e2e-multi/sessions", json={
-        "agent_handle": "alpha",
-        "intent": "budget=high, timeline=short",
-    })
+    resp1 = await client.post(
+        "/rooms/e2e-multi/sessions",
+        json={
+            "agent_handle": "alpha",
+            "intent": "budget=high, timeline=short",
+        },
+    )
     assert resp1.status_code == 201
 
-    resp2 = await client.post("/rooms/e2e-multi/sessions", json={
-        "agent_handle": "beta",
-        "intent": "budget=low, quality=premium",
-    })
+    resp2 = await client.post(
+        "/rooms/e2e-multi/sessions",
+        json={
+            "agent_handle": "beta",
+            "intent": "budget=low, quality=premium",
+        },
+    )
     assert resp2.status_code == 201
 
     # Both sessions should exist
@@ -325,17 +429,24 @@ async def test_sync_negotiation_produces_messages(integration_client: AsyncClien
     await client.post("/rooms", json={"name": "e2e-negot", "mode": "sync"})
 
     # Two agents join
-    await client.post("/rooms/e2e-negot/sessions", json={
-        "agent_handle": "agent-x",
-        "intent": "I want scope=full and quality=premium",
-    })
-    await client.post("/rooms/e2e-negot/sessions", json={
-        "agent_handle": "agent-y",
-        "intent": "I want budget=minimal and timeline=express",
-    })
+    await client.post(
+        "/rooms/e2e-negot/sessions",
+        json={
+            "agent_handle": "agent-x",
+            "intent": "I want scope=full and quality=premium",
+        },
+    )
+    await client.post(
+        "/rooms/e2e-negot/sessions",
+        json={
+            "agent_handle": "agent-y",
+            "intent": "I want budget=minimal and timeline=express",
+        },
+    )
 
     # Manually trigger tick-0 (bypassing the 60s timer for testing)
     from app.services.coordination import _run_tick
+
     await _run_tick("e2e-negot", tick=0)
 
     # Give the pipeline thread a moment to start
@@ -366,23 +477,39 @@ async def test_hybrid_room_supports_both_modes(integration_client: AsyncClient):
     """Hybrid room: can write memories AND trigger sync coordination."""
     client = integration_client
 
-    await client.post("/rooms", json={
-        "name": "e2e-hybrid",
-        "mode": "hybrid",
-        "is_persistent": True,
-    })
+    await client.post(
+        "/rooms",
+        json={
+            "name": "e2e-hybrid",
+            "mode": "hybrid",
+            "is_persistent": True,
+        },
+    )
 
     # Write memories (async behavior)
-    resp = await client.post("/rooms/e2e-hybrid/memory", json={
-        "items": [{"key": "context/background", "value": "We need to decide on API design", "created_by": "agent-a", "embed": False}]
-    })
+    resp = await client.post(
+        "/rooms/e2e-hybrid/memory",
+        json={
+            "items": [
+                {
+                    "key": "context/background",
+                    "value": "We need to decide on API design",
+                    "created_by": "agent-a",
+                    "embed": False,
+                }
+            ]
+        },
+    )
     assert resp.status_code == 201
 
     # Join for sync coordination
-    resp = await client.post("/rooms/e2e-hybrid/sessions", json={
-        "agent_handle": "agent-a",
-        "intent": "Ready to negotiate API design",
-    })
+    resp = await client.post(
+        "/rooms/e2e-hybrid/sessions",
+        json={
+            "agent_handle": "agent-a",
+            "intent": "Ready to negotiate API design",
+        },
+    )
     assert resp.status_code == 201
 
     # Room should transition to waiting (hybrid allows sync)
@@ -403,15 +530,20 @@ async def test_messages_route_during_negotiation(integration_client: AsyncClient
 
     await client.post("/rooms", json={"name": "e2e-msg-route", "mode": "sync"})
 
-    await client.post("/rooms/e2e-msg-route/sessions", json={
-        "agent_handle": "agent-a",
-        "intent": "testing message routing",
-    })
+    await client.post(
+        "/rooms/e2e-msg-route/sessions",
+        json={
+            "agent_handle": "agent-a",
+            "intent": "testing message routing",
+        },
+    )
 
     # Manually set room to negotiating state to test routing
     from sqlalchemy import update as sa_update
+
     from app.database import async_session_maker
     from app.models import Room
+
     async with async_session_maker() as db:
         await db.execute(
             sa_update(Room)
@@ -421,11 +553,14 @@ async def test_messages_route_during_negotiation(integration_client: AsyncClient
         await db.commit()
 
     # Post a message — should succeed even during negotiation
-    resp = await client.post("/rooms/e2e-msg-route/messages", json={
-        "sender_handle": "agent-a",
-        "message_type": "direct",
-        "content": '{"offer": {"budget": "high"}}',
-    })
+    resp = await client.post(
+        "/rooms/e2e-msg-route/messages",
+        json={
+            "sender_handle": "agent-a",
+            "message_type": "direct",
+            "content": '{"offer": {"budget": "high"}}',
+        },
+    )
     assert resp.status_code == 201
 
     # Message should be recorded

@@ -3,7 +3,8 @@
 Routes decisions through room messages rather than HTTP callbacks.
 Instead of POSTing to an agent's callback URL, this negotiator:
 
-1. Serialises the current SAO round payload into a ``coordination_tick`` room message.
+1. Serialises the current SAO round into an SSTPNegotiateMessage and posts it
+   as a ``coordination_tick`` room message.
 2. Blocks the NegMAS thread (via asyncio.Future + run_coroutine_threadsafe) waiting
    for the agent to reply in the room.
 3. ``on_agent_reply()`` is called by the coordination layer when the agent's response
@@ -11,21 +12,31 @@ Instead of POSTing to an agent's callback URL, this negotiator:
 
 Wire format
 -----------
-**Server → Agent** (posted as a coordination_tick message):
+**Server → Agent** (coordination_tick content is a serialised SSTPNegotiateMessage):
+
+The ``payload`` field within the SSTP envelope carries the negotiation action:
 
     {
-      "kind": "negotiate",
-      "action": "propose" | "respond",
-      "session_id": "<room_name>",
-      "participant_id": "<agent_handle>",
-      "round": 4,
-      "current_offer": {"budget": "medium", ...} | null,   # respond only
-      "proposer_id": "<handle>",                           # respond only
-      "history": [{"round": 1, "proposer_id": "...", "offer": {...}}, ...],
-      "n_steps": 100
+      "kind": "negotiate",              # SSTP kind
+      ...                               # SSTP envelope fields
+      "semantic_context": {
+        "session_id": "<room_name>",
+        "issues": ["budget", ...],
+        "options_per_issue": {...},
+        "sao_state": {...} | null,
+      },
+      "payload": {
+        "action": "propose" | "respond",
+        "participant_id": "<agent_handle>",
+        "round": 4,
+        "current_offer": {"budget": "medium", ...} | null,  # respond only
+        "proposer_id": "<handle>",                          # respond only
+        "history": [...],
+        "n_steps": 100
+      }
     }
 
-**Agent → Server** (plain JSON content of a room message):
+**Agent → Server** (plain JSON content of a room message — unchanged):
 
     // reply to propose
     { "offer": { "budget": "low", "timeline": "short" } }
@@ -36,17 +47,23 @@ Wire format
 On timeout or missing keys, propose returns None (NegMAS skips the turn) and
 respond returns ResponseType.REJECT_OFFER.
 """
+
 from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import hashlib
 import json
 import logging
-from typing import Any
+import uuid
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 from negmas.gb.common import ResponseType
 from negmas.sao import SAONegotiator
-from negmas.sao.common import SAOState
+
+if TYPE_CHECKING:
+    from negmas.sao.common import SAOState
 
 logger = logging.getLogger(__name__)
 
@@ -71,13 +88,13 @@ class RoomNegotiator(SAONegotiator):
             falling back to the safe default.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         name: str,
         participant_id: str,
         room_name: str,
         loop: asyncio.AbstractEventLoop,
-        post_message_coro: Any,
+        post_message_coro: Any,  # noqa: ANN401
         reply_timeout: float = 60.0,
     ) -> None:
         super().__init__(name=name)
@@ -107,7 +124,7 @@ class RoomNegotiator(SAONegotiator):
             return
         try:
             data = json.loads(content)
-        except Exception:
+        except Exception:  # noqa: BLE001
             data = {}
         # Schedule the resolution on the event loop (call-safe from any thread)
         self._loop.call_soon_threadsafe(self._pending.set_result, data)
@@ -116,7 +133,7 @@ class RoomNegotiator(SAONegotiator):
     # NegMAS hooks
     # ------------------------------------------------------------------
 
-    def propose(self, state: SAOState, dest: str | None = None) -> Outcome:
+    def propose(self, state: SAOState, dest: str | None = None) -> Outcome:  # noqa: ARG002
         """Ask the agent (via room message) to propose an offer for this round."""
         issues = self._issue_names()
         payload: dict[str, Any] = {
@@ -133,7 +150,8 @@ class RoomNegotiator(SAONegotiator):
         if reply is None:
             logger.warning(
                 "[%s] %s — propose timed out, returning None",
-                self._room_name, self.name,
+                self._room_name,
+                self.name,
             )
             return None
 
@@ -141,16 +159,20 @@ class RoomNegotiator(SAONegotiator):
         if not isinstance(offer_dict, dict):
             logger.warning(
                 "[%s] %s — propose reply missing 'offer': %s",
-                self._room_name, self.name, reply,
+                self._room_name,
+                self.name,
+                reply,
             )
             return None
 
         try:
             return self._dict_to_outcome(offer_dict, issues)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "[%s] %s — propose outcome conversion failed: %s",
-                self._room_name, self.name, exc,
+                self._room_name,
+                self.name,
+                exc,
             )
             return None
 
@@ -178,7 +200,8 @@ class RoomNegotiator(SAONegotiator):
         if reply is None:
             logger.warning(
                 "[%s] %s — respond timed out, defaulting to reject",
-                self._room_name, self.name,
+                self._room_name,
+                self.name,
             )
             return ResponseType.REJECT_OFFER
 
@@ -205,13 +228,15 @@ class RoomNegotiator(SAONegotiator):
         except concurrent.futures.TimeoutError:
             logger.warning(
                 "[%s] %s — no reply within %.0fs",
-                self._room_name, self.name, self._reply_timeout,
+                self._room_name,
+                self.name,
+                self._reply_timeout,
             )
             # Cancel the pending asyncio future so it doesn't linger
             self._loop.call_soon_threadsafe(self._cancel_pending)
             return None
-        except Exception as exc:
-            logger.error("[%s] %s — reply wait error: %s", self._room_name, self.name, exc)
+        except Exception:
+            logger.exception("[%s] %s — reply wait error", self._room_name, self.name)
             self._loop.call_soon_threadsafe(self._cancel_pending)
             return None
 
@@ -224,9 +249,10 @@ class RoomNegotiator(SAONegotiator):
         """Post the coordination_tick message and await the agent's reply Future.
 
         Runs on the event loop (called via run_coroutine_threadsafe).
+        Wraps the payload in an SSTPNegotiateMessage envelope.
         """
         self._pending = self._loop.create_future()
-        content = json.dumps(payload)
+        content = json.dumps(self._wrap_sstp(payload))
         await self._post_message_coro(
             self._room_name,
             "coordination_tick",
@@ -235,10 +261,54 @@ class RoomNegotiator(SAONegotiator):
         # Await with the same timeout so the coroutine completes or raises
         return await asyncio.wait_for(self._pending, timeout=self._reply_timeout)
 
+    def _wrap_sstp(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Wrap the negotiation payload in an SSTPNegotiateMessage envelope.
+
+        Falls back to the bare payload dict if SSTP import fails, so the
+        existing wire format is preserved as a safe default.
+        """
+        try:
+            from app.agents.protocol.sstp import SSTPNegotiateMessage
+
+            now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+            payload_hash = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+            msg = SSTPNegotiateMessage.model_validate(
+                {
+                    "kind": "negotiate",
+                    "protocol": "SSTP",
+                    "version": "0",
+                    "message_id": str(uuid.uuid4()),
+                    "dt_created": now,
+                    "origin": {
+                        "actor_id": "mycelium-backend",
+                        "tenant_id": payload.get("session_id", self._room_name),
+                    },
+                    "semantic_context": {
+                        "schema_id": "urn:ioc:schema:negotiate:negmas-sao:v1",
+                        "schema_version": "1.0",
+                        "session_id": self._room_name,
+                        "issues": list(self._issue_names()),
+                        "options_per_issue": self._issue_options(),
+                    },
+                    "payload_hash": payload_hash,
+                    "policy_labels": {
+                        "sensitivity": "internal",
+                        "propagation": "restricted",
+                        "retention_policy": "default",
+                    },
+                    "provenance": {"sources": [], "transforms": []},
+                    "payload": payload,
+                }
+            )
+            return msg.model_dump()
+        except Exception:  # noqa: BLE001
+            logger.debug("_wrap_sstp: falling back to bare payload", exc_info=True)
+            return payload
+
     def _issue_names(self) -> list[str]:
         try:
             return [issue.name for issue in self.nmi.outcome_space.issues]
-        except Exception:
+        except Exception:  # noqa: BLE001
             return []
 
     def _issue_options(self) -> dict[str, list[str]]:
@@ -247,16 +317,18 @@ class RoomNegotiator(SAONegotiator):
                 issue.name: [str(v) for v in issue.values]
                 for issue in self.nmi.outcome_space.issues
             }
-        except Exception:
+        except Exception:  # noqa: BLE001
             return {}
 
     def _n_steps(self) -> int | None:
         try:
             return self.nmi.n_steps
-        except Exception:
+        except Exception:  # noqa: BLE001
             return None
 
-    def _tuple_to_dict(self, outcome: tuple | dict | None, issues: list[str]) -> dict[str, str] | None:
+    def _tuple_to_dict(
+        self, outcome: tuple | dict | None, issues: list[str]
+    ) -> dict[str, str] | None:
         if outcome is None:
             return None
         if isinstance(outcome, dict):
@@ -274,13 +346,15 @@ class RoomNegotiator(SAONegotiator):
                     proposer = getattr(entry, "current_proposer", "unknown")
                     offer = entry.offer
                 else:
-                    proposer, offer = (entry[0], entry[1]) if len(entry) >= 2 else ("unknown", None)
-                rounds.append({
-                    "round": idx + 1,
-                    "proposer_id": str(proposer),
-                    "offer": self._tuple_to_dict(offer, issues) or {},
-                })
-        except Exception as exc:
+                    proposer, offer = (entry[0], entry[1]) if len(entry) >= 2 else ("unknown", None)  # noqa: PLR2004
+                rounds.append(
+                    {
+                        "round": idx + 1,
+                        "proposer_id": str(proposer),
+                        "offer": self._tuple_to_dict(offer, issues) or {},
+                    }
+                )
+        except Exception as exc:  # noqa: BLE001
             logger.debug("[%s] history serialisation warning: %s", self._room_name, exc)
         return rounds
 
@@ -288,6 +362,7 @@ class RoomNegotiator(SAONegotiator):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _parse_response_type(action: str) -> ResponseType:
     """Map an agent's string action to a NegMAS ResponseType."""
@@ -297,5 +372,3 @@ def _parse_response_type(action: str) -> ResponseType:
     if action == "end":
         return ResponseType.END_NEGOTIATION
     return ResponseType.REJECT_OFFER
-
-

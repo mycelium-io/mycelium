@@ -2,11 +2,12 @@
 
 Rewired: all imports use local package paths (no ..api.schemas, no ..config).
 """
+
 from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -51,8 +52,8 @@ class ConceptRepository:
         self.use_cache_for_similar = use_cache_for_similar
 
     async def similar_with_neighbors_async(
-        self, query_vec: List[float], k: int, entity_text: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
+        self, query_vec: list[float], k: int, entity_text: str | None = None
+    ) -> list[dict[str, Any]]:
         use_in_memory_cache = self.cache_layer is not None
         use_http_cache = self.cache_client and self.use_cache_for_similar
         use_cache_first = use_in_memory_cache or use_http_cache
@@ -65,15 +66,21 @@ class ConceptRepository:
 
         if self.cache_layer is not None:
             if entity_text and str(entity_text).strip():
-                cache_results = await asyncio.to_thread(self.cache_layer.search_similar, text=str(entity_text).strip(), k=k)
+                cache_results = await asyncio.to_thread(
+                    self.cache_layer.search_similar, text=str(entity_text).strip(), k=k
+                )
             else:
                 vec = np.array(query_vec, dtype=np.float32)
                 if vec.ndim == 1:
                     vec = vec.reshape(1, -1)
-                cache_results = await asyncio.to_thread(self.cache_layer.search_similar, vector=vec, k=k)
+                cache_results = await asyncio.to_thread(
+                    self.cache_layer.search_similar, vector=vec, k=k
+                )
         elif self.cache_client:
             if entity_text and str(entity_text).strip():
-                cache_results = await asyncio.to_thread(self.cache_client.search_by_text, str(entity_text).strip(), k)
+                cache_results = await asyncio.to_thread(
+                    self.cache_client.search_by_text, str(entity_text).strip(), k
+                )
             else:
                 cache_results = await asyncio.to_thread(self.cache_client.search, query_vec, k)
         else:
@@ -82,15 +89,15 @@ class ConceptRepository:
         if not cache_results:
             return []
 
-        concept_names: List[str] = []
-        score_by_name: Dict[str, float] = {}
-        cache_id_by_name: Dict[str, int] = {}
-        description_by_name: Dict[str, str] = {}
+        concept_names: list[str] = []
+        score_by_name: dict[str, float] = {}
+        cache_id_by_name: dict[str, int] = {}
+        description_by_name: dict[str, str] = {}
         for r in cache_results:
             raw = str((r or {}).get("text") or "").strip()
             if not raw:
                 continue
-            name, desc = (raw.split(" | ", 1) if " | " in raw else (raw, ""))
+            name, desc = raw.split(" | ", 1) if " | " in raw else (raw, "")
             name, desc = name.strip(), desc.strip()
             if not name or name in score_by_name:
                 continue
@@ -102,7 +109,7 @@ class ConceptRepository:
         if not concept_names:
             return []
 
-        out: List[Dict[str, Any]] = []
+        out: list[dict[str, Any]] = []
         for name in concept_names[:k]:
             neighbors_result = await self.repo.neighbors_by_name(name)
             records = (neighbors_result or {}).get("records") or []
@@ -111,29 +118,50 @@ class ConceptRepository:
             rec = records[0]
             concept = rec.get("node") or {}
             relations = [
-                {"id": rel.get("id"), "node_ids": list(rel.get("node_ids", [])), "relationship": rel.get("relationship"), "attributes": rel.get("attributes")}
-                for rel in rec.get("relationships") or [] if rel.get("relationship")
+                {
+                    "id": rel.get("id"),
+                    "node_ids": list(rel.get("node_ids", [])),
+                    "relationship": rel.get("relationship"),
+                    "attributes": rel.get("attributes"),
+                }
+                for rel in rec.get("relationships") or []
+                if rel.get("relationship")
             ]
             neighbor_concepts = [n for n in rec.get("neighbors") or [] if n and n.get("id")]
             cid = cache_id_by_name.get(name, -1)
             concept_id = str(cid) if cid >= 0 else concept.get("id", "")
-            out.append({
-                "distance": score_by_name.get(name, 0.0),
-                "concept": {"id": concept_id, "name": name, "description": description_by_name.get(name) or concept.get("description", ""), "type": concept.get("type", "concept")},
-                "relations": relations,
-                "neighbor_concepts": neighbor_concepts,
-            })
+            out.append(
+                {
+                    "distance": score_by_name.get(name, 0.0),
+                    "concept": {
+                        "id": concept_id,
+                        "name": name,
+                        "description": description_by_name.get(name)
+                        or concept.get("description", ""),
+                        "type": concept.get("type", "concept"),
+                    },
+                    "relations": relations,
+                    "neighbor_concepts": neighbor_concepts,
+                }
+            )
         return out
 
-    async def relations_for_async(self, concept_id: str) -> List[Dict[str, Any]]:
+    async def relations_for_async(self, concept_id: str) -> list[dict[str, Any]]:
         result = await self.repo.neighbors(concept_id)
-        rels: List[Dict[str, Any]] = []
+        rels: list[dict[str, Any]] = []
         for rec in (result or {}).get("records", []) or []:
             for rel in rec.get("relationships", []) or []:
-                rels.append({"id": rel.get("id"), "node_ids": list(rel.get("node_ids", [])), "relationship": rel.get("relationship") or rel.get("relation"), "attributes": rel.get("attributes")})
+                rels.append(
+                    {
+                        "id": rel.get("id"),
+                        "node_ids": list(rel.get("node_ids", [])),
+                        "relationship": rel.get("relationship") or rel.get("relation"),
+                        "attributes": rel.get("attributes"),
+                    }
+                )
         return rels
 
-    async def concepts_by_ids_async(self, concept_ids: List[str]) -> List[Any]:
+    async def concepts_by_ids_async(self, concept_ids: list[str]) -> list[Any]:
         return await self.repo.get_concepts_by_ids(concept_ids)
 
 
@@ -142,18 +170,18 @@ class LaneState:
     anchor_id: str
     anchor_name: str
     graph: GraphSession
-    selected_structured: List[List[Dict[str, Any]]] = field(default_factory=list)
-    selected_nl: List[str] = field(default_factory=list)
-    frontier_paths: List[List[Dict[str, Any]]] = field(default_factory=list)
-    seen_path_keys: Set[Tuple[Any, ...]] = field(default_factory=set)
-    last_candidates_structured: Optional[List[List[Dict[str, Any]]]] = None
-    last_candidates_symbolic: Optional[List[str]] = None
-    last_reason: Optional[str] = None
+    selected_structured: list[list[dict[str, Any]]] = field(default_factory=list)
+    selected_nl: list[str] = field(default_factory=list)
+    frontier_paths: list[list[dict[str, Any]]] = field(default_factory=list)
+    seen_path_keys: set[tuple[Any, ...]] = field(default_factory=set)
+    last_candidates_structured: list[list[dict[str, Any]]] | None = None
+    last_candidates_symbolic: list[str] | None = None
+    last_reason: str | None = None
     sufficient: bool = False
 
 
-def path_key(path: List[Dict[str, Any]]) -> Tuple:
-    out: List[Any] = []
+def path_key(path: list[dict[str, Any]]) -> tuple:
+    out: list[Any] = []
     for seg in path:
         if seg.get("kind") == "concept":
             out.append(("concept", (seg.get("value") or {}).get("id")))
@@ -162,17 +190,23 @@ def path_key(path: List[Dict[str, Any]]) -> Tuple:
     return tuple(out)
 
 
-def last_edge(path: List[Dict[str, Any]], name_fn: Any, rel_fn: Any) -> Optional[Dict[str, str]]:
+def last_edge(path: list[dict[str, Any]], name_fn: Any, rel_fn: Any) -> dict[str, str] | None:
     for i in range(len(path) - 2, -1, -1):
         if path[i].get("kind") == "relation" and i - 1 >= 0 and i + 1 < len(path):
             prev_c = path[i - 1].get("value") or {}
             next_c = path[i + 1].get("value") or {}
-            return {"from": name_fn(prev_c), "relation": rel_fn(path[i].get("value") or {}), "to": name_fn(next_c)}
+            return {
+                "from": name_fn(prev_c),
+                "relation": rel_fn(path[i].get("value") or {}),
+                "to": name_fn(next_c),
+            }
     return None
 
 
-def _expand_paths_one_hop(paths: List[List[Dict[str, Any]]], graph: GraphSession) -> List[List[Dict[str, Any]]]:
-    next_paths: List[List[Dict[str, Any]]] = []
+def _expand_paths_one_hop(
+    paths: list[list[dict[str, Any]]], graph: GraphSession
+) -> list[list[dict[str, Any]]]:
+    next_paths: list[list[dict[str, Any]]] = []
     for path in paths or []:
         if not path or path[-1].get("kind") != "concept":
             continue
@@ -186,7 +220,10 @@ def _expand_paths_one_hop(paths: List[List[Dict[str, Any]]], graph: GraphSession
             visited_ids = {seg["value"].get("id") for seg in path if seg.get("kind") == "concept"}
             if nid in visited_ids:
                 continue
-            extended = list(path) + [{"kind": "relation", "value": rel}, {"kind": "concept", "value": nei}]
+            extended = list(path) + [
+                {"kind": "relation", "value": rel},
+                {"kind": "concept", "value": nei},
+            ]
             next_paths.append(extended)
     return next_paths
 
@@ -199,7 +236,7 @@ class SingleEntityEvidenceEngine:
         path_formatter: PathFormatter,
         judge: EvidenceJudge,
         ranker: EvidenceRanker,
-        config: Optional[SingleEntityConfig] = None,
+        config: SingleEntityConfig | None = None,
     ) -> None:
         self.embedding_manager = embedding_manager
         self.repo = repo
@@ -208,7 +245,7 @@ class SingleEntityEvidenceEngine:
         self.ranker = ranker
         self.config = config or SingleEntityConfig()
 
-    def _entity_to_query_vec(self, entity: Dict[str, Any]) -> List[float]:
+    def _entity_to_query_vec(self, entity: dict[str, Any]) -> list[float]:
         text = f"{entity.get('description') or ''}{entity.get('name') or ''}"
         chunks = self.embedding_manager.preprocess_text(text)
         vectors = self.embedding_manager.generate_embeddings(chunks)
@@ -217,20 +254,30 @@ class SingleEntityEvidenceEngine:
             return np.mean(arr, axis=0).tolist()
         return arr.flatten().tolist()
 
-    async def gather(self, request: ReasonerCognitionRequest, entity: Dict[str, Any], extra_context: Optional[str] = None) -> KnowledgeRecord:
+    async def gather(
+        self,
+        request: ReasonerCognitionRequest,
+        entity: dict[str, Any],
+        extra_context: str | None = None,
+    ) -> KnowledgeRecord:
         llm_calls_before = get_llm_call_count()
         query_vec = self._entity_to_query_vec(entity)
         entity_name = (entity.get("name") or "").strip()
-        enriched = await self.repo.similar_with_neighbors_async(query_vec, k=self.config.top_k_similar, entity_text=entity_name or None)
+        enriched = await self.repo.similar_with_neighbors_async(
+            query_vec, k=self.config.top_k_similar, entity_text=entity_name or None
+        )
 
-        def _name_for(meta: Dict[str, Any]) -> str:
+        def _name_for(meta: dict[str, Any]) -> str:
             n = (meta or {}).get("name")
             return (n.strip() if isinstance(n, str) else "") or (meta or {}).get("id") or "unknown"
 
-        def _rel_label(rel: Dict[str, Any]) -> str:
-            return str((rel or {}).get("relationship") or (rel or {}).get("relation") or "").strip() or "related_to"
+        def _rel_label(rel: dict[str, Any]) -> str:
+            return (
+                str((rel or {}).get("relationship") or (rel or {}).get("relation") or "").strip()
+                or "related_to"
+            )
 
-        trace: Dict[str, Any] = {
+        trace: dict[str, Any] = {
             "extracted_entity": _name_for(entity),
             "tope_similar_concepts": [],
             "iterations": [],
@@ -240,7 +287,7 @@ class SingleEntityEvidenceEngine:
             "pass_on_context": extra_context or "",
         }
 
-        lanes: List[LaneState] = []
+        lanes: list[LaneState] = []
         for item in enriched or []:
             concept = (item or {}).get("concept") or {}
             anchor_id = concept.get("id")
@@ -251,35 +298,65 @@ class SingleEntityEvidenceEngine:
             lanes.append(LaneState(anchor_id=anchor_id, anchor_name=_name_for(concept), graph=g))
 
         if not lanes:
-            content = {"evidence": {"entity": entity, "status": "insufficient", "paths": []}, "trace": trace}
+            content = {
+                "evidence": {"entity": entity, "status": "insufficient", "paths": []},
+                "trace": trace,
+            }
             trace["llm_calls"] = 0
             return KnowledgeRecord(type="json", content=content)
 
         trace["lanes_count"] = len(lanes)
-        winning_lane_index: Optional[int] = None
+        winning_lane_index: int | None = None
 
         for hop in range(1, self.config.max_depth + 1):
-            async def select_lane(idx: int, lane: LaneState) -> Tuple:
+
+            async def select_lane(idx: int, lane: LaneState) -> tuple:
                 anchor_id = lane.anchor_id
                 graph = lane.graph
                 candidates_structured = (
                     graph.build_paths_from(anchor_id, hop=1)
                     if hop == 1
-                    else (_expand_paths_one_hop(lane.frontier_paths, graph) if lane.frontier_paths else [])
+                    else (
+                        _expand_paths_one_hop(lane.frontier_paths, graph)
+                        if lane.frontier_paths
+                        else []
+                    )
                 )
                 candidates_symbolic = self.path_formatter.to_symbolic_paths(candidates_structured)
                 question_text = request.payload.intent or ""
                 if extra_context:
                     question_text = f"{question_text}\n\nPrior evidence:\n{extra_context}"
-                chosen_idx, sufficient, reason = await self.judge.async_select_paths_and_check_sufficiency(
-                    question=question_text, candidate_paths=candidates_symbolic, select_k=self.config.select_k_per_hop,
+                (
+                    chosen_idx,
+                    sufficient,
+                    reason,
+                ) = await self.judge.async_select_paths_and_check_sufficiency(
+                    question=question_text,
+                    candidate_paths=candidates_symbolic,
+                    select_k=self.config.select_k_per_hop,
                 )
-                return idx, candidates_structured, candidates_symbolic, chosen_idx, sufficient, reason
+                return (
+                    idx,
+                    candidates_structured,
+                    candidates_symbolic,
+                    chosen_idx,
+                    sufficient,
+                    reason,
+                )
 
-            selection_tasks = [asyncio.create_task(select_lane(i, lane)) for i, lane in enumerate(lanes)]
+            selection_tasks = [
+                asyncio.create_task(select_lane(i, lane)) for i, lane in enumerate(lanes)
+            ]
             for fut in asyncio.as_completed(selection_tasks):
                 try:
-                    lane_idx, candidates_structured, candidates_symbolic, chosen_idx, sufficient, reason = await fut
+                    (
+                        lane_idx,
+                        candidates_structured,
+                        candidates_symbolic,
+                        chosen_idx,
+                        sufficient,
+                        reason,
+                    ) = await fut
                 except asyncio.CancelledError:
                     continue
                 lane = lanes[lane_idx]
@@ -290,7 +367,10 @@ class SingleEntityEvidenceEngine:
                     lane.sufficient = True
                     winning_lane_index = lane_idx
                     trace["sufficient"] = True
-                    trace["winning"] = {"anchor_concept": lane.anchor_name, "reason_for_sufficiency": reason}
+                    trace["winning"] = {
+                        "anchor_concept": lane.anchor_name,
+                        "reason_for_sufficiency": reason,
+                    }
                     for t in selection_tasks:
                         if not t.done():
                             t.cancel()
@@ -310,20 +390,38 @@ class SingleEntityEvidenceEngine:
                     candidates_structured = (
                         graph.build_paths_from(anchor_id, hop=1)
                         if hop == 1
-                        else (_expand_paths_one_hop(lane.frontier_paths, graph) if lane.frontier_paths else [])
+                        else (
+                            _expand_paths_one_hop(lane.frontier_paths, graph)
+                            if lane.frontier_paths
+                            else []
+                        )
                     )
-                    candidates_symbolic = self.path_formatter.to_symbolic_paths(candidates_structured)
+                    candidates_symbolic = self.path_formatter.to_symbolic_paths(
+                        candidates_structured
+                    )
                 if not candidates_structured:
                     return
                 question_text = request.payload.intent or ""
                 if extra_context:
                     question_text = f"{question_text}\n\nPrior evidence:\n{extra_context}"
-                scores = await self.ranker.async_rank_paths(question=question_text, candidate_paths_repr=candidates_symbolic)
+                scores = await self.ranker.async_rank_paths(
+                    question=question_text, candidate_paths_repr=candidates_symbolic
+                )
                 try:
-                    chosen_idx = mmr_select_indices(scores=scores, candidate_texts=candidates_symbolic, query_text=request.payload.intent or "", embedding_manager=self.embedding_manager, k=self.config.select_k_per_hop, alpha=0.7, lam=0.7)
+                    chosen_idx = mmr_select_indices(
+                        scores=scores,
+                        candidate_texts=candidates_symbolic,
+                        query_text=request.payload.intent or "",
+                        embedding_manager=self.embedding_manager,
+                        k=self.config.select_k_per_hop,
+                        alpha=0.7,
+                        lam=0.7,
+                    )
                 except Exception:
-                    chosen_idx = select_by_relative_top(scores, relative_gap=0.25, max_k=self.config.select_k_per_hop)
-                outer_node_ids: Set[str] = set()
+                    chosen_idx = select_by_relative_top(
+                        scores, relative_gap=0.25, max_k=self.config.select_k_per_hop
+                    )
+                outer_node_ids: set[str] = set()
                 for i in chosen_idx:
                     if 0 <= i < len(candidates_structured):
                         path = candidates_structured[i]
@@ -331,18 +429,27 @@ class SingleEntityEvidenceEngine:
                         if k_key not in lane.seen_path_keys:
                             lane.seen_path_keys.add(k_key)
                             lane.selected_structured.append(path)
-                            nl_text = self.path_formatter.to_natural_language([path])[0] if path else ""
+                            nl_text = (
+                                self.path_formatter.to_natural_language([path])[0] if path else ""
+                            )
                             lane.selected_nl.append(nl_text)
                         if path and path[-1].get("kind") == "concept":
                             oid = (path[-1].get("value") or {}).get("id")
                             if oid:
                                 outer_node_ids.add(oid)
-                lane.frontier_paths = [candidates_structured[i] for i in chosen_idx if 0 <= i < len(candidates_structured)]
+                lane.frontier_paths = [
+                    candidates_structured[i]
+                    for i in chosen_idx
+                    if 0 <= i < len(candidates_structured)
+                ]
                 if not outer_node_ids:
                     return
-                rel_results = await asyncio.gather(*(self.repo.relations_for_async(oid) for oid in outer_node_ids), return_exceptions=True)
-                all_relations: List[Dict[str, Any]] = []
-                needed_concept_ids: Set[str] = set()
+                rel_results = await asyncio.gather(
+                    *(self.repo.relations_for_async(oid) for oid in outer_node_ids),
+                    return_exceptions=True,
+                )
+                all_relations: list[dict[str, Any]] = []
+                needed_concept_ids: set[str] = set()
                 for rels in rel_results:
                     if isinstance(rels, Exception):
                         continue
@@ -351,10 +458,12 @@ class SingleEntityEvidenceEngine:
                         for nid in rel.get("node_ids", []) or []:
                             if nid and nid not in graph.nodes:
                                 needed_concept_ids.add(nid)
-                neighbor_metas: List[Dict[str, Any]] = []
+                neighbor_metas: list[dict[str, Any]] = []
                 if needed_concept_ids:
                     try:
-                        neighbor_metas = await self.repo.concepts_by_ids_async(list(needed_concept_ids))
+                        neighbor_metas = await self.repo.concepts_by_ids_async(
+                            list(needed_concept_ids)
+                        )
                     except Exception:
                         neighbor_metas = []
                 graph.add_relations_and_nodes(all_relations, neighbor_metas)
@@ -362,8 +471,9 @@ class SingleEntityEvidenceEngine:
             if winning_lane_index is not None:
                 await rank_and_expand_lane(winning_lane_index, lanes[winning_lane_index])
                 break
-            else:
-                await asyncio.gather(*(rank_and_expand_lane(i, lane) for i, lane in enumerate(lanes)))
+            await asyncio.gather(
+                *(rank_and_expand_lane(i, lane) for i, lane in enumerate(lanes))
+            )
 
         if winning_lane_index is not None:
             wl = lanes[winning_lane_index]
@@ -373,13 +483,13 @@ class SingleEntityEvidenceEngine:
             selected_structured = []
             sufficient = False
 
-        evidence_paths: List[Dict[str, Any]] = []
+        evidence_paths: list[dict[str, Any]] = []
         for idx, path in enumerate(selected_structured or []):
             try:
                 symbolic = self.path_formatter.to_symbolic_paths([path])[0]
             except Exception:
                 symbolic = ""
-            evidence_paths.append({"path_id": f"p{idx+1}", "symbolic": symbolic})
+            evidence_paths.append({"path_id": f"p{idx + 1}", "symbolic": symbolic})
 
         content = {
             "evidence": {

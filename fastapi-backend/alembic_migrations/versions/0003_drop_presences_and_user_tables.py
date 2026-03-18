@@ -5,16 +5,16 @@ Revises: 0002
 Create Date: 2026-03-05 00:00:00.000000
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.postgresql import UUID
 
 revision: str = "0003"
-down_revision: Union[str, None] = "0002"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0002"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -55,7 +55,12 @@ def downgrade() -> None:
         "presences",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
         sa.Column("agent_handle", sa.String(), nullable=False),
-        sa.Column("room_name", sa.String(), sa.ForeignKey("rooms.name", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "room_name",
+            sa.String(),
+            sa.ForeignKey("rooms.name", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("status", sa.String(), nullable=False),
         sa.Column("last_seen", sa.DateTime(timezone=True), nullable=True),
     )

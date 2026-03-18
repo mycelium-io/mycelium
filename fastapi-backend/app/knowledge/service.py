@@ -24,7 +24,9 @@ def create_graph_store(data: KnowledgeGraphStoreRequest) -> KnowledgeGraphStoreR
     try:
         graph = adapter.get_graph_name(data.model_dump())
         nodes, edges = adapter.convert_to_models(data.model_dump())
-        ok, msg = graph_db.save(graph=graph, nodes=nodes, edges=edges, force_replace=data.force_replace)
+        ok, msg = graph_db.save(
+            graph=graph, nodes=nodes, edges=edges, force_replace=data.force_replace
+        )
         status = ResponseStatus.SUCCESS if ok else ResponseStatus.FAILURE
         return KnowledgeGraphStoreResponse(request_id=request_id, status=status, message=msg)
     except Exception as exc:
@@ -70,7 +72,9 @@ def query_graph_store(data: KnowledgeGraphQueryRequest) -> KnowledgeGraphQueryRe
 
         if not graph_db.get_graph(ag):
             return KnowledgeGraphQueryResponse(
-                request_id=request_id, status=ResponseStatus.NOT_FOUND, message=f"Graph {ag} does not exist"
+                request_id=request_id,
+                status=ResponseStatus.NOT_FOUND,
+                message=f"Graph {ag} does not exist",
             )
 
         not_found = [n.id for n in nodes if not graph_db.get_node(ag, n)]
@@ -86,7 +90,9 @@ def query_graph_store(data: KnowledgeGraphQueryRequest) -> KnowledgeGraphQueryRe
         use_dir = data.query_criteria.use_direction if data.query_criteria else True
 
         if qt == QUERY_TYPE_PATH:
-            ok, results, msg = graph_db.query_type_path(ag, nodes, depth=depth, use_direction=use_dir)
+            ok, results, msg = graph_db.query_type_path(
+                ag, nodes, depth=depth, use_direction=use_dir
+            )
         elif qt == QUERY_TYPE_CONCEPT:
             ok, results, msg = graph_db.query_type_concept(ag, nodes)
         else:  # neighbour or default
@@ -100,7 +106,9 @@ def query_graph_store(data: KnowledgeGraphQueryRequest) -> KnowledgeGraphQueryRe
                 message=msg,
                 records=records or None,
             )
-        return KnowledgeGraphQueryResponse(request_id=request_id, status=ResponseStatus.FAILURE, message=msg)
+        return KnowledgeGraphQueryResponse(
+            request_id=request_id, status=ResponseStatus.FAILURE, message=msg
+        )
 
     except Exception as exc:
         return KnowledgeGraphQueryResponse(

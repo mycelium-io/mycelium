@@ -18,9 +18,8 @@ async_db_connection_url = (
 # Disable connection pooling for serverless-friendly operation
 engine = create_async_engine(async_db_connection_url, poolclass=NullPool)
 
-async_session_maker = async_sessionmaker(
-    engine, expire_on_commit=settings.EXPIRE_ON_COMMIT
-)
+
+async_session_maker = async_sessionmaker(engine, expire_on_commit=settings.EXPIRE_ON_COMMIT)
 
 
 async def create_db_and_tables():

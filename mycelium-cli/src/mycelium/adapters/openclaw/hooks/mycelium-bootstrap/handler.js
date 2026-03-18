@@ -3,7 +3,7 @@
  *
  * Mycelium hook for OpenClaw.
  * Extracts the channel/conversation ID from event context and injects it as
- * MYCELIUM_CHANNEL_ID so all agents in the same Matrix channel share a coordination room.
+ * MYCELIUM_ROOM_ID so all agents in the same Matrix channel share a coordination room.
  * Also forwards MYCELIUM_API_URL from gateway env into the agent session env.
  *
  * Instructions are injected via the mycelium-cfn plugin (prependSystemContext),
@@ -28,7 +28,7 @@ export default async function HookHandler(event) {
 
   if (channelId) {
     ctx.env = ctx.env ?? {};
-    ctx.env.MYCELIUM_CHANNEL_ID = channelId;
+    ctx.env.MYCELIUM_ROOM_ID = channelId;
   }
 
   if (process.env.MYCELIUM_API_URL) {

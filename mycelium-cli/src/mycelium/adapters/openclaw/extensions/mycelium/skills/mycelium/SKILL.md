@@ -94,6 +94,6 @@ mycelium announce --room <room-name> --status "done: <brief summary>"
 
 ## Notes
 
-- `--channel` is required when `MYCELIUM_CHANNEL_ID` is not set in your environment.
-  If `MYCELIUM_CHANNEL_ID` is set (e.g. via Docker Compose), omit `--channel` entirely.
+- `--room` is required when `MYCELIUM_ROOM_ID` is not set in your environment.
+  If `MYCELIUM_ROOM_ID` is set (e.g. via Docker Compose), omit `--room` entirely.
 - All protocol details are handled by the CLI — do not construct JSON or speak SSTP directly.

@@ -32,6 +32,7 @@ def ensure_room_set(
 
     if target_room != active_room:
         import typer
+
         if active_room:
             typer.secho(f"Switching room: {active_room} → {target_room}", dim=True)
         else:

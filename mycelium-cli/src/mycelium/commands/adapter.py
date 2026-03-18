@@ -14,9 +14,8 @@ import json as json_module
 import shutil
 import subprocess
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 import typer
 
@@ -47,16 +46,16 @@ def adapter_main(ctx: typer.Context) -> None:
 
 _OPENCLAW_STEPS = {
     "local-gateway": "write Mycelium env vars into the local openclaw systemd service",
-    "docker-env":    "show env vars for Docker-based experiment agents",
+    "docker-env": "show env vars for Docker-based experiment agents",
 }
 
 # Assets that go into each agent's ~/.openclaw/ directory
 _OPENCLAW_SCAFFOLD_ASSETS = [
     # (source subpath in mycelium package, dest subpath in target .openclaw dir)
-    (f"extensions/{_OPENCLAW_PLUGIN_NAME}",        f"extensions/{_OPENCLAW_PLUGIN_NAME}"),
-    (f"hooks/{_OPENCLAW_HOOK_NAME}",               f"hooks/{_OPENCLAW_HOOK_NAME}"),
-    (f"hooks/{_OPENCLAW_EXTRACTOR_HOOK_NAME}",     f"hooks/{_OPENCLAW_EXTRACTOR_HOOK_NAME}"),
-    (f"skills/{_OPENCLAW_SKILL_NAME}",             f"workspace/skills/{_OPENCLAW_SKILL_NAME}"),
+    (f"extensions/{_OPENCLAW_PLUGIN_NAME}", f"extensions/{_OPENCLAW_PLUGIN_NAME}"),
+    (f"hooks/{_OPENCLAW_HOOK_NAME}", f"hooks/{_OPENCLAW_HOOK_NAME}"),
+    (f"hooks/{_OPENCLAW_EXTRACTOR_HOOK_NAME}", f"hooks/{_OPENCLAW_EXTRACTOR_HOOK_NAME}"),
+    (f"skills/{_OPENCLAW_SKILL_NAME}", f"workspace/skills/{_OPENCLAW_SKILL_NAME}"),
 ]
 
 
@@ -64,11 +63,23 @@ _OPENCLAW_SCAFFOLD_ASSETS = [
 def add(
     ctx: typer.Context,
     adapter_type: str = typer.Argument(..., help="Adapter type: openclaw, cursor, claude-code"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be installed without doing it"),
-    step: Optional[str] = typer.Option(None, "--step", help=f"Run a follow-up setup step: {', '.join(_OPENCLAW_STEPS)}"),
-    reinstall: bool = typer.Option(False, "--reinstall", help="Reinstall assets even if adapter is already registered"),
-    scaffold_only: Optional[Path] = typer.Option(None, "--scaffold-only", help="Copy adapter assets to a directory without running install commands (for Docker/experiment setups)"),
-    force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing assets when using --scaffold-only"),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Show what would be installed without doing it"
+    ),
+    step: str | None = typer.Option(
+        None, "--step", help=f"Run a follow-up setup step: {', '.join(_OPENCLAW_STEPS)}"
+    ),
+    reinstall: bool = typer.Option(
+        False, "--reinstall", help="Reinstall assets even if adapter is already registered"
+    ),
+    scaffold_only: Path | None = typer.Option(
+        None,
+        "--scaffold-only",
+        help="Copy adapter assets to a directory without running install commands (for Docker/experiment setups)",
+    ),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Overwrite existing assets when using --scaffold-only"
+    ),
 ) -> None:
     """
     Register and install an agent framework adapter, then optionally wire it into your environment.
@@ -85,7 +96,9 @@ def add(
 
         if adapter_type not in ADAPTER_TYPES:
             known = ", ".join(ADAPTER_TYPES.keys())
-            typer.secho(f"Unknown adapter type '{adapter_type}'. Known types: {known}", fg=typer.colors.RED)
+            typer.secho(
+                f"Unknown adapter type '{adapter_type}'. Known types: {known}", fg=typer.colors.RED
+            )
             raise typer.Exit(1)
 
         # ── Scaffold-only: copy assets to a directory without install commands ─
@@ -118,11 +131,15 @@ def add(
         # ── Follow-up steps run independently of the base install ────────────
         if step is not None:
             if adapter_type != "openclaw":
-                typer.secho(f"--step is only supported for the 'openclaw' adapter.", fg=typer.colors.RED)
+                typer.secho(
+                    "--step is only supported for the 'openclaw' adapter.", fg=typer.colors.RED
+                )
                 raise typer.Exit(1)
             if step not in _OPENCLAW_STEPS:
                 known_steps = ", ".join(_OPENCLAW_STEPS)
-                typer.secho(f"Unknown step '{step}'. Known steps: {known_steps}", fg=typer.colors.RED)
+                typer.secho(
+                    f"Unknown step '{step}'. Known steps: {known_steps}", fg=typer.colors.RED
+                )
                 raise typer.Exit(1)
             if step == "local-gateway":
                 _step_local_gateway(config)
@@ -150,13 +167,16 @@ def add(
         if adapter_type == "openclaw":
             _install_openclaw(verbose=verbose)
         else:
-            typer.secho(f"Adapter '{adapter_type}' is planned but not yet implemented.", fg=typer.colors.YELLOW)
+            typer.secho(
+                f"Adapter '{adapter_type}' is planned but not yet implemented.",
+                fg=typer.colors.YELLOW,
+            )
             raise typer.Exit(1)
 
         if not reinstall:
             adapter_record: dict = {
                 "type": adapter_type,
-                "installed_at": datetime.now(timezone.utc).isoformat(),
+                "installed_at": datetime.now(UTC).isoformat(),
                 "api_url": config.server.api_url,
             }
             config.adapters[adapter_type] = adapter_record
@@ -175,10 +195,14 @@ def add(
             typer.secho("  Next steps:", bold=True)
             typer.echo("")
             typer.echo("  Wire the adapter into your local openclaw gateway:")
-            typer.secho(f"    $ mycelium adapter add openclaw --step=local-gateway", fg=typer.colors.CYAN)
+            typer.secho(
+                "    $ mycelium adapter add openclaw --step=local-gateway", fg=typer.colors.CYAN
+            )
             typer.echo("")
             typer.echo("  Set up env vars for Docker-based experiment agents:")
-            typer.secho(f"    $ mycelium adapter add openclaw --step=docker-env", fg=typer.colors.CYAN)
+            typer.secho(
+                "    $ mycelium adapter add openclaw --step=docker-env", fg=typer.colors.CYAN
+            )
 
     except typer.Exit:
         raise
@@ -186,7 +210,6 @@ def add(
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)
         raise typer.Exit(1) from None
-
 
 
 @app.command("remove")
@@ -256,7 +279,7 @@ def list_adapters(ctx: typer.Context) -> None:
 @app.command("status")
 def status(
     ctx: typer.Context,
-    adapter_type: Optional[str] = typer.Argument(None, help="Adapter type to check (all if omitted)"),
+    adapter_type: str | None = typer.Argument(None, help="Adapter type to check (all if omitted)"),
 ) -> None:
     """Check adapter health."""
     try:
@@ -267,11 +290,7 @@ def status(
             typer.secho(f"Adapter '{adapter_type}' is not registered.", fg=typer.colors.YELLOW)
             raise typer.Exit(1)
 
-        targets = (
-            {adapter_type: config.adapters[adapter_type]}
-            if adapter_type
-            else config.adapters
-        )
+        targets = {adapter_type: config.adapters[adapter_type]} if adapter_type else config.adapters
 
         if not targets:
             typer.echo("No adapters registered.")
@@ -299,6 +318,7 @@ def status(
 
 
 # ── Adapter-specific install / uninstall ──────────────────────────────────────
+
 
 def _resolve_asset(subpath: str) -> Path:
     """
@@ -333,13 +353,14 @@ def _install_openclaw(verbose: bool = False) -> None:
     Install the bundled openclaw plugin and hook.
 
     - Plugin (mycelium): handles session lifecycle + message forwarding
-    - Hook (mycelium-inject): injects MYCELIUM_API_URL + MYCELIUM_CHANNEL_ID + coordination
+    - Hook (mycelium-inject): injects MYCELIUM_API_URL + MYCELIUM_ROOM_ID + coordination
       instructions into every agent bootstrap
 
     Note: the mycelium skill (SKILL.md) is a Claude Code project skill, not an openclaw
     skill. openclaw does not support installing custom skills — copy SKILL.md to your
     project's .claude/skills/mycelium/ directory to make it available to agents.
     """
+
     def _run(cmd: list[str], allow_already_exists: bool = False) -> None:
         if verbose:
             typer.echo(f"  running: {' '.join(cmd)}")
@@ -397,6 +418,7 @@ def _allow_plugin(plugin_id: str) -> None:
         return
     try:
         import json as _json
+
         cfg = _json.loads(config_path.read_text())
         plugins_section = cfg.setdefault("plugins", {})
         allow_list: list = plugins_section.setdefault("allow", [])
@@ -434,6 +456,7 @@ def _allow_plugin_remove(plugin_id: str) -> None:
         return
     try:
         import json as _json
+
         cfg = _json.loads(config_path.read_text())
         allow_list: list = cfg.get("plugins", {}).get("allow", [])
         if plugin_id in allow_list:
@@ -467,7 +490,7 @@ def _step_local_gateway(config: "MyceliumConfig") -> None:
     for line in lines:
         stripped = line.strip()
         if stripped.startswith("Environment="):
-            key = stripped[len("Environment="):].split("=")[0]
+            key = stripped[len("Environment=") :].split("=")[0]
             if key in env_vars:
                 new_lines.append(f"Environment={key}={env_vars[key]}")
                 injected.add(key)
@@ -486,13 +509,21 @@ def _step_local_gateway(config: "MyceliumConfig") -> None:
 
     subprocess.run(["systemctl", "--user", "daemon-reload"], check=True, capture_output=True)
 
-    is_active = subprocess.run(
-        ["systemctl", "--user", "is-active", "openclaw-gateway.service"],
-        capture_output=True, text=True,
-    ).stdout.strip() == "active"
+    is_active = (
+        subprocess.run(
+            ["systemctl", "--user", "is-active", "openclaw-gateway.service"],
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        == "active"
+    )
 
     if is_active:
-        subprocess.run(["systemctl", "--user", "restart", "openclaw-gateway.service"], check=True, capture_output=True)
+        subprocess.run(
+            ["systemctl", "--user", "restart", "openclaw-gateway.service"],
+            check=True,
+            capture_output=True,
+        )
 
     typer.secho("  ✓ openclaw-gateway.service updated", fg=typer.colors.GREEN)
     for key, val in env_vars.items():
@@ -510,19 +541,19 @@ def _step_docker_env(config: "MyceliumConfig") -> None:
     typer.echo("  Add to your docker-compose environment block or experiment .env:")
     typer.echo("")
     typer.secho("  # .env", dim=True)
-    typer.echo(f"  MYCELIUM_API_URL=http://host.docker.internal:8000")
+    typer.echo("  MYCELIUM_API_URL=http://host.docker.internal:8000")
     if config.server.workspace_id:
         typer.echo(f"  MYCELIUM_WORKSPACE_ID={config.server.workspace_id}")
     if config.server.mas_id:
         typer.echo(f"  MYCELIUM_MAS_ID={config.server.mas_id}")
-    typer.echo(f"  MYCELIUM_CHANNEL_ID=<experiment-name>   # unique per run")
-    typer.echo(f"  MYCELIUM_AGENT_HANDLE=<agent-name>      # unique per agent")
+    typer.echo("  MYCELIUM_ROOM_ID=<experiment-name>      # unique per run")
+    typer.echo("  MYCELIUM_AGENT_HANDLE=<agent-name>      # unique per agent")
     typer.echo("")
     typer.secho("  Notes:", bold=True)
     typer.echo("  • Use host.docker.internal (not localhost) to reach the Mycelium")
     typer.echo("    backend from inside a container. Add to docker-compose:")
-    typer.secho("      extra_hosts: [\"host.docker.internal:host-gateway\"]", dim=True)
-    typer.echo("  • MYCELIUM_CHANNEL_ID is the only var that changes per experiment.")
+    typer.secho('      extra_hosts: ["host.docker.internal:host-gateway"]', dim=True)
+    typer.echo("  • MYCELIUM_ROOM_ID is the only var that changes per experiment.")
     typer.echo("    All agents sharing the same value coordinate in the same room.")
     typer.echo("  • If you use generate-compose.ts, these are injected automatically.")
 

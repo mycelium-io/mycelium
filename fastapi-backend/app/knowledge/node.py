@@ -63,14 +63,18 @@ class Node:
             query = "MATCH p = (start {id: %s})-[*]-(finish {id: %s}) RETURN p"
         return query, (self.id, node_dst.id)
 
-    def to_cypher_path_query_with_direction(self, node_dst: "Node", depth: int | None = None) -> tuple[str, tuple]:
+    def to_cypher_path_query_with_direction(
+        self, node_dst: "Node", depth: int | None = None
+    ) -> tuple[str, tuple]:
         if depth is not None:
             query = f"MATCH p = (start {{id: %s}})-[*1..{depth}]->(finish {{id: %s}}) RETURN p"
         else:
             query = "MATCH p = (start {id: %s})-[*]->(finish {id: %s}) RETURN p"
         return query, (self.id, node_dst.id)
 
-    def to_executable_cypher_with_params(self, query: str, params: tuple, param_names: list | None = None) -> str:
+    def to_executable_cypher_with_params(
+        self, query: str, params: tuple, param_names: list | None = None
+    ) -> str:
         if not params:
             return query + (";" if not query.strip().endswith(";") else "")
         if param_names is None:

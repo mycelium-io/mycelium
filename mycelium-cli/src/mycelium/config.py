@@ -218,9 +218,7 @@ class MyceliumConfig(BaseModel):
             global_dict = {
                 k: v for k, v in config_dict.items() if k in ("identity", "server", "adapters")
             }
-            project_dict = {
-                k: v for k, v in config_dict.items() if k in ("identity", "rooms")
-            }
+            project_dict = {k: v for k, v in config_dict.items() if k in ("identity", "rooms")}
             with open(self._project_config_path, "w") as f:
                 toml.dump(project_dict, f)
         else:
@@ -281,6 +279,7 @@ class MyceliumConfig(BaseModel):
     def get_current_identity(self) -> str:
         """Get the current identity handle for attribution."""
         import os
+
         from mycelium.identity import get_current_handle
 
         # Env var set by Mycelium plugin (or Docker Compose) takes highest priority

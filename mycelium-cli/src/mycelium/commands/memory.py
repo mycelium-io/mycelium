@@ -34,7 +34,9 @@ def _get_active_room(room: str | None) -> str:
     active = getattr(cfg.rooms, "active", None) if hasattr(cfg, "rooms") else None
     if active:
         return active
-    typer.echo("No room specified and no active room set. Use --room or 'mycelium config set rooms.active <name>'")
+    typer.echo(
+        "No room specified and no active room set. Use --room or 'mycelium config set rooms.active <name>'"
+    )
     raise typer.Exit(1)
 
 
@@ -42,11 +44,15 @@ def _get_active_room(room: str | None) -> str:
 def memory_set(
     key: str = typer.Argument(..., help="Memory key (e.g. 'project/status')"),
     value: str = typer.Argument(..., help="Memory value (string or JSON)"),
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name (defaults to active room)"),
+    room: str | None = typer.Option(
+        None, "--room", "-r", help="Room name (defaults to active room)"
+    ),
     handle: str = typer.Option("cli-user", "--handle", "-h", help="Agent handle"),
     no_embed: bool = typer.Option(False, "--no-embed", help="Skip vector embedding"),
     tags: str | None = typer.Option(None, "--tags", "-t", help="Comma-separated tags"),
-    update: bool = typer.Option(False, "--update", "-u", help="Allow overwriting an existing memory"),
+    update: bool = typer.Option(
+        False, "--update", "-u", help="Allow overwriting an existing memory"
+    ),
 ) -> None:
     """Write a memory to a room's persistent namespace.
 
@@ -54,6 +60,8 @@ def memory_set(
     """
     from mycelium_backend_client.api.memory import (
         create_memories_rooms_room_name_memory_post as create_api,
+    )
+    from mycelium_backend_client.api.memory import (
         get_memory_rooms_room_name_memory_key_get as get_api,
     )
     from mycelium_backend_client.models import MemoryBatchCreate, MemoryCreate
@@ -64,6 +72,7 @@ def memory_set(
     if not update:
         try:
             from mycelium_backend_client.errors import UnexpectedStatus
+
             with _get_client() as client:
                 existing = get_api.sync(room_name=room_name, key=key, client=client)
                 if existing is not None:
@@ -107,7 +116,9 @@ def memory_get(
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
 ) -> None:
     """Read a memory by key."""
-    from mycelium_backend_client.api.memory import get_memory_rooms_room_name_memory_key_get as get_api
+    from mycelium_backend_client.api.memory import (
+        get_memory_rooms_room_name_memory_key_get as get_api,
+    )
 
     room_name = _get_active_room(room)
 
@@ -116,7 +127,9 @@ def memory_get(
         if result is None:
             console.print(f"[red]Not found:[/red] {key}")
             raise typer.Exit(1)
-        console.print(f"[cyan]{result.key}[/cyan]  [dim]v{result.version}  {result.created_by}[/dim]")
+        console.print(
+            f"[cyan]{result.key}[/cyan]  [dim]v{result.version}  {result.created_by}[/dim]"
+        )
         value = result.value
         if hasattr(value, "to_dict"):
             value = value.to_dict()
@@ -128,15 +141,21 @@ def memory_get(
 
 @app.command(name="ls")
 def memory_ls(
-    namespace: str | None = typer.Argument(None, help="Key prefix to filter by (e.g. 'position/' or 'decisions/')"),
+    namespace: str | None = typer.Argument(
+        None, help="Key prefix to filter by (e.g. 'position/' or 'decisions/')"
+    ),
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
-    prefix: str | None = typer.Option(None, "--prefix", "-p", help="Key prefix filter (same as positional arg)"),
+    prefix: str | None = typer.Option(
+        None, "--prefix", "-p", help="Key prefix filter (same as positional arg)"
+    ),
     limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
 ) -> None:
     """List memories in a room, optionally filtered by namespace prefix."""
     # Positional arg takes priority over --prefix flag
     prefix = namespace or prefix
-    from mycelium_backend_client.api.memory import list_memories_rooms_room_name_memory_get as list_api
+    from mycelium_backend_client.api.memory import (
+        list_memories_rooms_room_name_memory_get as list_api,
+    )
 
     room_name = _get_active_room(room)
 
@@ -151,8 +170,7 @@ def memory_ls(
         for mem in result:
             ts = str(mem.updated_at)[:16].replace("T", " ") if mem.updated_at else ""
             console.print(
-                f"[cyan]{mem.key}[/cyan]  "
-                f"[dim]v{mem.version}  {mem.created_by}  {ts}[/dim]"
+                f"[cyan]{mem.key}[/cyan]  [dim]v{mem.version}  {mem.created_by}  {ts}[/dim]"
             )
             value = mem.value
             if hasattr(value, "to_dict"):
@@ -172,7 +190,9 @@ def memory_search(
     limit: int = typer.Option(5, "--limit", "-n", help="Max results"),
 ) -> None:
     """Semantic search over memories."""
-    from mycelium_backend_client.api.memory import search_memories_rooms_room_name_memory_search_post as search_api
+    from mycelium_backend_client.api.memory import (
+        search_memories_rooms_room_name_memory_search_post as search_api,
+    )
     from mycelium_backend_client.models import MemorySearchRequest
 
     room_name = _get_active_room(room)
@@ -189,8 +209,7 @@ def memory_search(
             mem = r.memory
             sim = r.similarity
             console.print(
-                f"[cyan]{mem.key}[/cyan] "
-                f"[dim](similarity: {sim:.3f}, v{mem.version})[/dim]"
+                f"[cyan]{mem.key}[/cyan] [dim](similarity: {sim:.3f}, v{mem.version})[/dim]"
             )
             if mem.content_text:
                 console.print(f"  {mem.content_text[:200]}")
@@ -204,7 +223,9 @@ def memory_rm(
     force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
 ) -> None:
     """Delete a memory."""
-    from mycelium_backend_client.api.memory import delete_memory_rooms_room_name_memory_key_delete as delete_api
+    from mycelium_backend_client.api.memory import (
+        delete_memory_rooms_room_name_memory_key_delete as delete_api,
+    )
 
     room_name = _get_active_room(room)
 
@@ -225,7 +246,9 @@ def memory_subscribe(
     handle: str = typer.Option("cli-user", "--handle", "-h", help="Subscriber agent handle"),
 ) -> None:
     """Subscribe to memory change notifications."""
-    from mycelium_backend_client.api.memory import subscribe_rooms_room_name_memory_subscribe_post as sub_api
+    from mycelium_backend_client.api.memory import (
+        subscribe_rooms_room_name_memory_subscribe_post as sub_api,
+    )
     from mycelium_backend_client.models import SubscriptionCreate
 
     room_name = _get_active_room(room)
@@ -253,7 +276,9 @@ def memory_catchup(
         resp.raise_for_status()
         data = resp.json()
 
-    console.print(f"\n[bold]{data['room']}[/bold]  [dim]{data['mode']} room  {data['total_memories']} memories  {len(data['contributors'])} contributors[/dim]\n")
+    console.print(
+        f"\n[bold]{data['room']}[/bold]  [dim]{data['mode']} room  {data['total_memories']} memories  {len(data['contributors'])} contributors[/dim]\n"
+    )
 
     # Contributors
     if data["contributors"]:
@@ -270,13 +295,17 @@ def memory_catchup(
         console.print(content)
         console.print()
     else:
-        console.print("[dim]No synthesis yet. Run 'mycelium room synthesize' to generate one.[/dim]\n")
+        console.print(
+            "[dim]No synthesis yet. Run 'mycelium room synthesize' to generate one.[/dim]\n"
+        )
 
     # Recent activity since synthesis
     recent = data.get("recent_activity", [])
     if recent:
         n = data.get("memories_since_synthesis", len(recent))
-        console.print(f"[bold yellow]Recent Activity[/bold yellow] ({n} memories since last synthesis)\n")
+        console.print(
+            f"[bold yellow]Recent Activity[/bold yellow] ({n} memories since last synthesis)\n"
+        )
         for mem in recent[:10]:
             console.print(
                 f"  [cyan]{mem['key']}[/cyan]  [dim]{mem['created_by']}  {mem['created_at'][:16]}[/dim]"

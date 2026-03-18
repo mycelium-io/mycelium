@@ -13,9 +13,15 @@ No auth, no heartbeat, no Neo4j, no Yjs, no scheduler.
 """
 
 import logging
+import os
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
+
+# Must be set before sentence-transformers / huggingface_hub are imported.
+# Prevents network calls when the model is already cached locally.
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,6 +29,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routes.agents import router as agents_router
 from app.routes.audit import router as audit_router
 from app.routes.cfn_proxy import router as cfn_proxy_router
+from app.routes.cognition_engine import router as cognition_engine_router
 from app.routes.knowledge import internal_router as knowledge_internal_router
 from app.routes.knowledge import router as knowledge_router
 from app.routes.mas import router as mas_router
@@ -86,7 +93,9 @@ def _register_memory_provider() -> None:
         elif resp.status_code == 409:
             logger.info("Already registered as memory provider with CFN mgmt plane")
         else:
-            logger.warning("CFN memory provider registration returned %s: %s", resp.status_code, resp.text)
+            logger.warning(
+                "CFN memory provider registration returned %s: %s", resp.status_code, resp.text
+            )
     except Exception as exc:
         logger.warning("CFN memory provider registration failed (non-fatal): %s", exc)
 
@@ -95,14 +104,9 @@ def _register_memory_provider() -> None:
 async def lifespan(app: FastAPI):
     logger.info("Mycelium backend starting up")
     from app.database import create_db_and_tables
+
     await create_db_and_tables()
     logger.info("Database tables ensured")
-    # Preload embedding model so first request isn't slow
-    try:
-        from app.services.embedding import _get_model
-        _get_model()
-    except Exception:
-        logger.warning("Embedding model preload failed — will load on first use")
     # Register with IoC CFN mgmt plane if configured
     _register_memory_provider()
     yield
@@ -140,6 +144,7 @@ app.include_router(memory_router)
 # CFN routes
 app.include_router(audit_router)
 app.include_router(cfn_proxy_router)
+app.include_router(cognition_engine_router)
 
 # Knowledge graph
 app.include_router(knowledge_router)

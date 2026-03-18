@@ -24,7 +24,7 @@ export default function Dashboard() {
       <div className="flex items-center gap-4 mb-12">
         <Image src="/logo.png" alt="Mycelium" width={48} height={48} className="opacity-90" />
         <div>
-          <h1 className="text-2xl font-bold">Mycelium</h1>
+          <h1 className="text-2xl font-bold">mycelium</h1>
           <p className="text-sm text-muted">Multi-agent coordination + persistent memory</p>
         </div>
         <button

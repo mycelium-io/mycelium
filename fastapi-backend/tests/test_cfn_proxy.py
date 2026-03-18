@@ -12,6 +12,7 @@ pytestmark = pytest.mark.asyncio
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
+
 async def _create_workspace_mas_agent(
     db: AsyncSession,
     mem_url: str = "http://mem-provider",
@@ -36,6 +37,7 @@ async def _create_workspace_mas_agent(
 # ── shared-memories upsert ────────────────────────────────────────────────────
 # shared-memories now calls the local knowledge graph service (no upstream HTTP)
 
+
 async def test_upsert_shared_memories_success(client: AsyncClient):
     """Empty concepts/relations store succeeds — graph is created, nothing written."""
     resp = await client.post(
@@ -59,6 +61,7 @@ async def test_upsert_shared_memories_validation_error(client: AsyncClient):
 
 
 # ── shared-memories query ─────────────────────────────────────────────────────
+
 
 async def test_fetch_shared_memories_invalid_query_type(client: AsyncClient):
     """Invalid query_type → 400 from Pydantic validation."""
@@ -85,7 +88,10 @@ async def test_fetch_shared_memories_routes_to_local_service(client: AsyncClient
 
 # ── memory-operations proxy ───────────────────────────────────────────────────
 
-async def test_memory_operations_forwards_request(client: AsyncClient, db_session: AsyncSession, respx_mock):
+
+async def test_memory_operations_forwards_request(
+    client: AsyncClient, db_session: AsyncSession, respx_mock
+):
     workspace, mas, agent = await _create_workspace_mas_agent(db_session)
     respx_mock.post("http://mem-provider/v1/memories").mock(
         return_value=httpx.Response(200, json={"id": "mem-123"})
@@ -126,7 +132,9 @@ async def test_memory_operations_agent_not_found(client: AsyncClient):
     assert resp.status_code == 404
 
 
-async def test_memory_operations_get_request(client: AsyncClient, db_session: AsyncSession, respx_mock):
+async def test_memory_operations_get_request(
+    client: AsyncClient, db_session: AsyncSession, respx_mock
+):
     workspace, mas, agent = await _create_workspace_mas_agent(db_session)
     respx_mock.get("http://mem-provider/v1/memories").mock(
         return_value=httpx.Response(200, json={"memories": []})

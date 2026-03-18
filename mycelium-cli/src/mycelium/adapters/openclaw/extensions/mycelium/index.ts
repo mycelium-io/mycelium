@@ -11,7 +11,7 @@
  *   before_agent_start — inject coordination instructions + latest tick context
  *   message_sent       — forward agent output to coordination room
  *
- * Room discovery (no MYCELIUM_CHANNEL_ID required):
+ * Room discovery (no MYCELIUM_ROOM_ID required):
  *   Each session subscribes to GET /agents/{handle}/stream on session_start.
  *   The backend delivers coordination_tick / coordination_consensus events
  *   for whatever room the agent has joined. The room name is extracted from

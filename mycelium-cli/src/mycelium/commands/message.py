@@ -7,14 +7,18 @@ Commands:
 - query:   Post a raw response (advanced / non-negotiate scenarios)
 
 Uses the generated OpenAPI client for type-safe API access.
+Outgoing payloads are validated against SSTP wire-format models (mycelium.sstp)
+before posting, so the CLI is statically forced to adhere to the protocol.
 """
 
 import json as json_module
 
 import typer
+from pydantic import ValidationError
 
 from mycelium.config import MyceliumConfig
 from mycelium.error_handler import print_error
+from mycelium.sstp import ProposeReply, RespondReply
 
 app = typer.Typer(
     help="Respond to CognitiveEngine during sync negotiation. Propose offers, accept/reject, or send raw JSON.",
@@ -24,9 +28,12 @@ app = typer.Typer(
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
 
-def _post(ctx: typer.Context, channel: str | None, handle: str | None, content: str) -> None:
+
+def _post(ctx: typer.Context, room: str | None, handle: str | None, content: str) -> None:
     from mycelium_backend_client import Client
-    from mycelium_backend_client.api.messages import send_message_rooms_room_name_messages_post as send_api
+    from mycelium_backend_client.api.messages import (
+        send_message_rooms_room_name_messages_post as send_api,
+    )
     from mycelium_backend_client.models import MessageCreate
 
     from mycelium.commands.room import _resolve_room
@@ -34,7 +41,7 @@ def _post(ctx: typer.Context, channel: str | None, handle: str | None, content: 
     json_output = ctx.obj.get("json", False) if ctx.obj else False
 
     config = MyceliumConfig.load()
-    room_name = _resolve_room(config, channel)
+    room_name = _resolve_room(config, room)
     handle = handle or config.get_current_identity()
 
     client = Client(base_url=config.server.api_url, raise_on_unexpected_status=True)
@@ -57,6 +64,7 @@ def _post(ctx: typer.Context, channel: str | None, handle: str | None, content: 
 
 # ── propose ───────────────────────────────────────────────────────────────────
 
+
 @app.command("propose")
 def propose(
     ctx: typer.Context,
@@ -64,8 +72,8 @@ def propose(
         ...,
         help="Issue assignments as KEY=VALUE pairs, e.g. budget=medium timeline=standard",
     ),
-    channel: str | None = typer.Option(
-        None, "--channel", "-c", help="Channel/room to respond in (overrides MYCELIUM_CHANNEL_ID)"
+    room: str | None = typer.Option(
+        None, "--room", "-r", help="Room to respond in (overrides MYCELIUM_ROOM_ID)"
     ),
     handle: str | None = typer.Option(
         None, "--handle", "-H", help="Your agent handle (overrides identity config)"
@@ -79,7 +87,7 @@ def propose(
 
     Examples:
         mycelium message propose budget=medium timeline=standard scope=standard quality=standard
-        mycelium message propose budget=high scope=full --channel my-room --handle julia-agent
+        mycelium message propose budget=high scope=full --room my-room --handle julia-agent
     """
     try:
         offer: dict[str, str] = {}
@@ -94,8 +102,14 @@ def propose(
             typer.echo("  Error: at least one KEY=VALUE assignment is required.", err=True)
             raise typer.Exit(1)
 
-        content = json_module.dumps({"offer": offer})
-        _post(ctx, channel, handle, content)
+        try:
+            reply = ProposeReply(offer=offer)
+        except ValidationError as exc:
+            typer.echo(f"  Error: invalid propose payload — {exc}", err=True)
+            raise typer.Exit(1) from exc
+
+        content = json_module.dumps(reply.model_dump())
+        _post(ctx, room, handle, content)
 
     except (typer.Exit, typer.Abort):
         raise
@@ -106,6 +120,7 @@ def propose(
 
 # ── respond ───────────────────────────────────────────────────────────────────
 
+# Kept in sync with RespondReply.action Literal for the help text / error message.
 VALID_ACTIONS = {"accept", "reject", "end"}
 
 
@@ -116,8 +131,8 @@ def respond(
         ...,
         help="Your response: accept | reject | end",
     ),
-    channel: str | None = typer.Option(
-        None, "--channel", "-c", help="Channel/room to respond in (overrides MYCELIUM_CHANNEL_ID)"
+    room: str | None = typer.Option(
+        None, "--room", "-r", help="Room to respond in (overrides MYCELIUM_ROOM_ID)"
     ),
     handle: str | None = typer.Option(
         None, "--handle", "-H", help="Your agent handle (overrides identity config)"
@@ -128,20 +143,23 @@ def respond(
 
     Examples:
         mycelium message respond accept
-        mycelium message respond reject --channel my-room
+        mycelium message respond reject --room my-room
         mycelium message respond end    --handle julia-agent
     """
     try:
         action = action.strip().lower()
-        if action not in VALID_ACTIONS:
+
+        try:
+            reply = RespondReply(action=action)  # type: ignore[arg-type]
+        except ValidationError:
             typer.echo(
                 f"  Error: action must be one of {', '.join(sorted(VALID_ACTIONS))}, got '{action}'",
                 err=True,
             )
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
-        content = json_module.dumps({"action": action})
-        _post(ctx, channel, handle, content)
+        content = json_module.dumps(reply.model_dump())
+        _post(ctx, room, handle, content)
 
     except (typer.Exit, typer.Abort):
         raise
@@ -152,12 +170,13 @@ def respond(
 
 # ── query (raw / advanced) ────────────────────────────────────────────────────
 
+
 @app.command("query")
 def query(
     ctx: typer.Context,
     text: str = typer.Argument(..., help="Raw JSON payload to post as your coordination response"),
-    channel: str | None = typer.Option(
-        None, "--channel", "-c", help="Channel/room to respond in (overrides MYCELIUM_CHANNEL_ID)"
+    room: str | None = typer.Option(
+        None, "--room", "-r", help="Room to respond in (overrides MYCELIUM_ROOM_ID)"
     ),
     handle: str | None = typer.Option(
         None, "--handle", "-H", help="Your agent handle (overrides identity config)"
@@ -168,10 +187,10 @@ def query(
 
     Examples:
         mycelium message query '{"offer": {"budget": "high", "scope": "extended"}}'
-        mycelium message query '{"action": "accept"}' --channel my-experiment
+        mycelium message query '{"action": "accept"}' --room my-experiment
     """
     try:
-        _post(ctx, channel, handle, text)
+        _post(ctx, room, handle, text)
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)

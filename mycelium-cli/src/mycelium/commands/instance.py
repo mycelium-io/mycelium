@@ -136,8 +136,6 @@ def init(
         print_error(e, verbose=verbose)
 
 
-
-
 def start(
     ctx: typer.Context,
     build: bool = typer.Option(False, "--build", help="Rebuild images before starting"),
@@ -186,7 +184,9 @@ def start(
 
 def stop(
     ctx: typer.Context,
-    volumes: bool = typer.Option(False, "--volumes", "-v", help="Also remove volumes (destructive)"),
+    volumes: bool = typer.Option(
+        False, "--volumes", "-v", help="Also remove volumes (destructive)"
+    ),
 ) -> None:
     """
     Stop Mycelium services.
@@ -232,8 +232,6 @@ def status(ctx: typer.Context) -> None:
     Checks if Mycelium backend is running and accessible.
     """
     try:
-        import httpx
-
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
         json_output = ctx.obj.get("json", False) if ctx.obj else False
 
@@ -262,6 +260,7 @@ def status(ctx: typer.Context) -> None:
 
         if json_output:
             import json
+
             output = {
                 "services": {
                     "backend": {
@@ -305,7 +304,9 @@ def status(ctx: typer.Context) -> None:
 
 def logs(
     ctx: typer.Context,
-    service: str | None = typer.Argument(None, help="Service name (e.g. mycelium-backend, ioc-cfn-mgmt-plane-svc)"),
+    service: str | None = typer.Argument(
+        None, help="Service name (e.g. mycelium-backend, ioc-cfn-mgmt-plane-svc)"
+    ),
     follow: bool = typer.Option(False, "--follow", "-f", help="Follow log output"),
     tail: int | None = typer.Option(None, "--tail", help="Number of lines to show from the end"),
 ) -> None:

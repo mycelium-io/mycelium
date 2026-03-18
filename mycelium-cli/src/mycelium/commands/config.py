@@ -27,15 +27,20 @@ def show(ctx: typer.Context) -> None:
         config = MyceliumConfig.load()
 
         if json_output:
-            typer.echo(json_module.dumps({
-                "server": {
-                    "api_url": config.server.api_url,
-                    "workspace_id": config.server.workspace_id,
-                    "mas_id": config.server.mas_id,
-                },
-                "identity": {"name": config.identity.name},
-                "room": {"active": config.rooms.active},
-            }, indent=2))
+            typer.echo(
+                json_module.dumps(
+                    {
+                        "server": {
+                            "api_url": config.server.api_url,
+                            "workspace_id": config.server.workspace_id,
+                            "mas_id": config.server.mas_id,
+                        },
+                        "identity": {"name": config.identity.name},
+                        "room": {"active": config.rooms.active},
+                    },
+                    indent=2,
+                )
+            )
         else:
             typer.secho("Current configuration:", bold=True)
             typer.echo(f"  API URL:      {config.server.api_url}")

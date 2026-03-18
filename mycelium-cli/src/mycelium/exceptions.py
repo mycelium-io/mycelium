@@ -12,6 +12,7 @@ class MyceliumError(Exception):
 
 class ConfigError(MyceliumError):
     """Configuration-related errors."""
+
     pass
 
 
@@ -68,4 +69,5 @@ class APIConnectionError(APIError):
 
 class NetworkError(MyceliumError):
     """Network-related errors."""
+
     pass

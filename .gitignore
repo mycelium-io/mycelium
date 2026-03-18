@@ -14,3 +14,10 @@ logs/
 .ruff_cache/
 *.db
 .DS_Store
+.mycelium/
+
+# Frontend
+node_modules/
+.next/
+next-env.d.ts
+pnpm-lock.yaml

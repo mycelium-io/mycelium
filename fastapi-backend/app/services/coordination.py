@@ -62,9 +62,7 @@ async def _run_tick(room_name: str, tick: int) -> None:
     Subsequent ticks are driven by on_agent_response → RoomNegotiator.on_agent_reply."""
     async with async_session_maker() as db:
         result = await db.execute(
-            select(Session)
-            .where(Session.room_name == room_name)
-            .order_by(Session.joined_at)
+            select(Session).where(Session.room_name == room_name).order_by(Session.joined_at)
         )
         sessions = list(result.scalars().all())
 
@@ -76,9 +74,7 @@ async def _run_tick(room_name: str, tick: int) -> None:
         intents = [s.intent or "" for s in sessions]
 
         await db.execute(
-            update(Room)
-            .where(Room.name == room_name)
-            .values(coordination_state="negotiating")
+            update(Room).where(Room.name == room_name).values(coordination_state="negotiating")
         )
         await db.commit()
 
@@ -100,11 +96,10 @@ async def _run_tick(room_name: str, tick: int) -> None:
         content=json.dumps({"round": 0, "agent_count": len(sessions)}),
     )
 
-    participants = [
-        NegotiationParticipant(id=handle, name=handle)
-        for handle in session_handles
-    ]
-    joined_intents = "\n".join(f"- {handle}: {intent}" for handle, intent in zip(session_handles, intents))
+    participants = [NegotiationParticipant(id=handle, name=handle) for handle in session_handles]
+    joined_intents = "\n".join(
+        f"- {handle}: {intent}" for handle, intent in zip(session_handles, intents, strict=False)
+    )
 
     loop = asyncio.get_event_loop()
     pipeline = SemanticNegotiationPipeline(
@@ -131,19 +126,19 @@ async def _run_tick(room_name: str, tick: int) -> None:
             await _post_message(
                 room_name,
                 message_type="coordination_consensus",
-                content=json.dumps({
-                    "round": result.steps,
-                    "plan": plan,
-                    "assignments": assignments,
-                    "timedout": result.timedout,
-                    "broken": result.broken,
-                }),
+                content=json.dumps(
+                    {
+                        "round": result.steps,
+                        "plan": plan,
+                        "assignments": assignments,
+                        "timedout": result.timedout,
+                        "broken": result.broken,
+                    }
+                ),
             )
             async with async_session_maker() as db:
                 await db.execute(
-                    update(Room)
-                    .where(Room.name == room_name)
-                    .values(coordination_state="complete")
+                    update(Room).where(Room.name == room_name).values(coordination_state="complete")
                 )
                 await db.commit()
         except Exception as exc:
@@ -261,5 +256,3 @@ async def _post_message(room_name: str, message_type: str, content: str) -> None
             await conn.close()
     except Exception as e:
         logger.warning("NOTIFY failed for room %s: %s", room_name, e)
-
-

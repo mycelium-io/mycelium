@@ -8,6 +8,7 @@ pytestmark = pytest.mark.asyncio
 
 # ── Workspaces ────────────────────────────────────────────────────────────────
 
+
 async def test_create_workspace(client: AsyncClient):
     resp = await client.post("/api/workspaces", json={"name": "my-workspace"})
     assert resp.status_code == 201
@@ -54,6 +55,7 @@ async def test_delete_workspace(client: AsyncClient):
 
 # ── MAS ───────────────────────────────────────────────────────────────────────
 
+
 async def test_create_mas(client: AsyncClient):
     ws = (await client.post("/api/workspaces", json={"name": "ws1"})).json()
     resp = await client.post(f"/api/workspaces/{ws['id']}/mas", json={"name": "my-mas"})
@@ -88,6 +90,7 @@ async def test_delete_mas(client: AsyncClient):
 
 
 # ── Agents ────────────────────────────────────────────────────────────────────
+
 
 async def test_create_agent(client: AsyncClient):
     ws = (await client.post("/api/workspaces", json={"name": "ws1"})).json()

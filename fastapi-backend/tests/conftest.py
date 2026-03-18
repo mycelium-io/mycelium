@@ -34,6 +34,7 @@ async def db_session():
 @pytest_asyncio.fixture()
 async def client(db_session: AsyncSession):
     """AsyncClient wired to the FastAPI app, DB overridden to in-memory SQLite."""
+
     async def _override_db():
         yield db_session
 

@@ -53,7 +53,10 @@ async def _get_room(room_name: str, db: AsyncSession) -> Room:
 
 
 async def _notify_room_memory_change(
-    room_name: str, key: str, updated_by: str, version: int,
+    room_name: str,
+    key: str,
+    updated_by: str,
+    version: int,
 ) -> None:
     """Broadcast memory change to the room's SSE stream so watchers see it."""
     try:
@@ -85,7 +88,10 @@ async def _notify_room_memory_change(
 
 
 async def _notify_subscribers(
-    room_name: str, key: str, updated_by: str, version: int,
+    room_name: str,
+    key: str,
+    updated_by: str,
+    version: int,
 ) -> None:
     """Check subscriptions and notify matching subscribers via NOTIFY."""
     try:
@@ -148,7 +154,7 @@ async def create_memories(
         # Generate embedding
         embedding = None
         if item.embed:
-            embedding = embed_text(content_text)
+            embedding = await asyncio.to_thread(embed_text, content_text)
 
         # Check for existing memory (upsert)
         existing_result = await db.execute(
@@ -196,9 +202,7 @@ async def create_memories(
             asyncio.ensure_future(
                 _notify_room_memory_change(room_name, item.key, item.created_by, 1)
             )
-            asyncio.ensure_future(
-                _notify_subscribers(room_name, item.key, item.created_by, 1)
-            )
+            asyncio.ensure_future(_notify_subscribers(room_name, item.key, item.created_by, 1))
 
     await db.commit()
 
@@ -212,6 +216,7 @@ async def _check_async_trigger(room_name: str, new_count: int) -> None:
     """Check if an async room's trigger condition is met after memory writes."""
     try:
         from app.services.async_coordination import check_trigger
+
         await check_trigger(room_name)
     except Exception as e:
         logger.debug("Async trigger check skipped: %s", e)
@@ -240,6 +245,7 @@ async def list_memories(
 
 # ── Search & Subscriptions (must be BEFORE {key:path} catch-all) ──────────
 
+
 @router.post("/search", response_model=MemorySearchResponse)
 async def search_memories(
     room_name: str,
@@ -249,7 +255,7 @@ async def search_memories(
     """Semantic vector search over memories in a room."""
     await _get_room(room_name, db)
 
-    query_embedding = embed_text(payload.query)
+    query_embedding = await asyncio.to_thread(embed_text, payload.query)
 
     # Use pgvector cosine distance operator
     # Note: CAST() instead of :: to avoid SQLAlchemy param binding conflict
@@ -351,6 +357,7 @@ async def list_subscriptions(
 
 
 # ── Key-path routes (catch-all, must be LAST) ─────────────────────────────
+
 
 @router.get("/{key:path}", response_model=MemoryRead)
 async def get_memory(

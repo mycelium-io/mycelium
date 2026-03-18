@@ -78,8 +78,7 @@ class IngestionService:
             raw_calls = turn.get("toolCalls")
             if raw_calls:
                 entry["toolCalls"] = [
-                    {k: tc[k] for k in _TOOL_CALL_KEYS if k in tc}
-                    for tc in raw_calls
+                    {k: tc[k] for k in _TOOL_CALL_KEYS if k in tc} for tc in raw_calls
                 ]
             return entry
 

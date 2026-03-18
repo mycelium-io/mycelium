@@ -25,6 +25,7 @@ def get_engine():
     global _engine
     if _engine is None:
         from app.config import settings
+
         _engine = create_engine(
             settings.GRAPH_DB_URL,
             poolclass=QueuePool,
@@ -38,6 +39,7 @@ def get_engine():
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
+
 
 def _create_graph(conn, graph_name: str) -> bool:
     result = conn.execute(
@@ -96,7 +98,9 @@ def get_node(graph: str, node: Node) -> dict | None:
         raise RuntimeError(f"Failed to get node '{node.id}': {exc}") from exc
 
 
-def save(graph: str, nodes: list[Node], edges: list[Edge], force_replace: bool = False) -> tuple[bool, str]:
+def save(
+    graph: str, nodes: list[Node], edges: list[Edge], force_replace: bool = False
+) -> tuple[bool, str]:
     if not graph:
         return False, "Graph name cannot be empty"
 
@@ -209,7 +213,11 @@ def query_type_neighbor(graph: str, nodes: list[Node]) -> tuple[bool, list, str]
                 return True, [], f"No neighbors for {node.id}"
             relationships = [dict(r) for r in result[1]] if result[1] else []
             neighbors = [dict(n) for n in result[2]] if result[2] else []
-            return True, [{"edges": relationships, "nodes": neighbors}], f"Queried neighbours for {node.id}"
+            return (
+                True,
+                [{"edges": relationships, "nodes": neighbors}],
+                f"Queried neighbours for {node.id}",
+            )
     except Exception as exc:
         return False, [], f"Query failed: {exc}"
 

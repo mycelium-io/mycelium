@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 # ── Workspace ─────────────────────────────────────────────────────────────────
 
+
 class WorkspaceCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
 
@@ -22,6 +23,7 @@ class WorkspaceRead(BaseModel):
 
 
 # ── MAS ───────────────────────────────────────────────────────────────────────
+
 
 class MASCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
@@ -39,6 +41,7 @@ class MASRead(BaseModel):
 
 
 # ── Agent ─────────────────────────────────────────────────────────────────────
+
 
 class AgentCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
@@ -64,6 +67,7 @@ class AgentRead(BaseModel):
 
 
 # ── Room ──────────────────────────────────────────────────────────────────────
+
 
 class RoomCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
@@ -91,6 +95,7 @@ class RoomRead(BaseModel):
 
 
 # ── Message ───────────────────────────────────────────────────────────────────
+
 
 class MessageType:
     ANNOUNCE = "announce"
@@ -136,6 +141,7 @@ class MessageListResponse(BaseModel):
 
 # ── Session ───────────────────────────────────────────────────────────────────
 
+
 class SessionCreate(BaseModel):
     agent_handle: str = Field(..., description="Agent handle joining the room")
     intent: str | None = Field(None, description="Agent's requirements/intent for coordination")
@@ -159,14 +165,24 @@ class SessionListResponse(BaseModel):
 # ── AuditEvent ────────────────────────────────────────────────────────────────
 
 VALID_RESOURCE_TYPES = {
-    "COGNITIVE_ENGINE", "POLICY_ENFORCER", "MEMORY_PROVIDER",
-    "MAS", "MAS-AGENT", "WORKFLOW", "TASK",
+    "COGNITIVE_ENGINE",
+    "POLICY_ENFORCER",
+    "MEMORY_PROVIDER",
+    "MAS",
+    "MAS-AGENT",
+    "WORKFLOW",
+    "TASK",
 }
 
 VALID_AUDIT_TYPES = {
-    "RESOURCE_CREATED", "RESOURCE_UPDATED", "RESOURCE_DELETED",
-    "RESOURCE_PURGED", "RESOURCE_PRUNED",
-    "KNOWLEDGE_INGESTION", "KNOWLEDGE_QUERY", "MEMORY_OPERATION",
+    "RESOURCE_CREATED",
+    "RESOURCE_UPDATED",
+    "RESOURCE_DELETED",
+    "RESOURCE_PURGED",
+    "RESOURCE_PRUNED",
+    "KNOWLEDGE_INGESTION",
+    "KNOWLEDGE_QUERY",
+    "MEMORY_OPERATION",
 }
 
 
@@ -201,11 +217,14 @@ class AuditEventRead(BaseModel):
 
 # ── Memory ───────────────────────────────────────────────────────────────────
 
+
 class MemoryCreate(BaseModel):
     key: str = Field(..., min_length=1, max_length=512)
     value: dict | str = Field(..., description="Memory content (dict or string)")
     tags: list[str] | None = None
-    content_text: str | None = Field(None, description="Text for embedding; auto-generated from value if omitted")
+    content_text: str | None = Field(
+        None, description="Text for embedding; auto-generated from value if omitted"
+    )
     embed: bool = Field(True, description="Generate vector embedding for semantic search")
     created_by: str = Field(..., description="Agent handle creating this memory")
 

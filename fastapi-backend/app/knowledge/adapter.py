@@ -71,7 +71,9 @@ def convert_to_models(data: dict[str, Any]) -> tuple[list[Node], list[Edge]]:
             props["memory_type"] = memory_type
         if rel.get("relation"):
             props["relation"] = rel["relation"]
-        edges.append(Edge(id=rel["id"], node_ids=rel["node_ids"], relation=rel["relation"], properties=props))
+        edges.append(
+            Edge(id=rel["id"], node_ids=rel["node_ids"], relation=rel["relation"], properties=props)
+        )
 
     return nodes, edges
 
@@ -110,7 +112,7 @@ def _parse_json_field(value: Any, default: Any = None) -> Any:
 
 
 def convert_models_to_query_response_records(
-    db_results: list[dict[str, Any]]
+    db_results: list[dict[str, Any]],
 ) -> list[KnowledgeGraphQueryResponseRecord]:
     records = []
     for result in db_results:
@@ -131,16 +133,27 @@ def convert_models_to_query_response_records(
                     name=edge_props.get("embedding_model", ""),
                 )
             attrs = {
-                k: v for k, v in edge_props.items()
-                if k not in ("id", "node_ids", "relation", "embedding_vector", "embedding_model", "embeddings")
+                k: v
+                for k, v in edge_props.items()
+                if k
+                not in (
+                    "id",
+                    "node_ids",
+                    "relation",
+                    "embedding_vector",
+                    "embedding_model",
+                    "embeddings",
+                )
             }
-            relations.append(Relation(
-                id=edge_props.get("id", ""),
-                relation=relation,
-                node_ids=node_ids,
-                attributes=attrs,
-                embeddings=embeddings,
-            ))
+            relations.append(
+                Relation(
+                    id=edge_props.get("id", ""),
+                    relation=relation,
+                    node_ids=node_ids,
+                    attributes=attrs,
+                    embeddings=embeddings,
+                )
+            )
 
         concepts: list[Concept] = []
         for node in result.get("nodes") or []:
@@ -152,17 +165,31 @@ def convert_models_to_query_response_records(
                     name=node_props.get("embedding_model", ""),
                 )
             attrs = {
-                k: v for k, v in node_props.items()
-                if k not in ("id", "name", "description", "embedding_vector", "embedding_model", "embeddings", "tags")
+                k: v
+                for k, v in node_props.items()
+                if k
+                not in (
+                    "id",
+                    "name",
+                    "description",
+                    "embedding_vector",
+                    "embedding_model",
+                    "embeddings",
+                    "tags",
+                )
             }
-            concepts.append(Concept(
-                id=node_props.get("id"),
-                name=node_props.get("name", ""),
-                description=node_props.get("description"),
-                attributes=attrs,
-                embeddings=embeddings,
-                tags=_parse_json_field(node_props.get("tags", [])),
-            ))
+            concepts.append(
+                Concept(
+                    id=node_props.get("id"),
+                    name=node_props.get("name", ""),
+                    description=node_props.get("description"),
+                    attributes=attrs,
+                    embeddings=embeddings,
+                    tags=_parse_json_field(node_props.get("tags", [])),
+                )
+            )
 
-        records.append(KnowledgeGraphQueryResponseRecord(relationships=relations, concepts=concepts))
+        records.append(
+            KnowledgeGraphQueryResponseRecord(relationships=relations, concepts=concepts)
+        )
     return records

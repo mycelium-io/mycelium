@@ -42,8 +42,11 @@ router = APIRouter(
 )
 
 
-async def _emit_audit(db: AsyncSession, audit_type: str, resource_type: str, resource_identifier: str) -> None:
+async def _emit_audit(
+    db: AsyncSession, audit_type: str, resource_type: str, resource_identifier: str
+) -> None:
     from datetime import datetime
+
     nil_uuid = uuid_mod.UUID(int=0)
     now = datetime.now(UTC)
     event = AuditEvent(
@@ -80,7 +83,9 @@ async def _resolve_memory_provider_url(
         raise HTTPException(status_code=404, detail=f"agent {agent_id!s} not found")
 
     if not agent.memory_provider_url:
-        raise HTTPException(status_code=404, detail=f"agent {agent_id!s} has no memory_provider_url configured")
+        raise HTTPException(
+            status_code=404, detail=f"agent {agent_id!s} has no memory_provider_url configured"
+        )
 
     return agent.memory_provider_url.rstrip("/")
 

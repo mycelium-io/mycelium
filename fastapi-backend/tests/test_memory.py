@@ -6,18 +6,20 @@ Vector search tests are skipped; CRUD and subscription logic is tested.
 """
 
 import pytest
-import pytest_asyncio
 from httpx import AsyncClient
 
 
 @pytest.mark.asyncio
 async def test_create_room_with_mode(client: AsyncClient):
     """Test creating a room with async mode."""
-    resp = await client.post("/rooms", json={
-        "name": "test-async-room",
-        "mode": "async",
-        "is_persistent": True,
-    })
+    resp = await client.post(
+        "/rooms",
+        json={
+            "name": "test-async-room",
+            "mode": "async",
+            "is_persistent": True,
+        },
+    )
     assert resp.status_code == 201
     data = resp.json()
     assert data["name"] == "test-async-room"
@@ -42,14 +44,19 @@ async def test_create_and_get_memory(client: AsyncClient):
     await client.post("/rooms", json={"name": "mem-test", "mode": "async"})
 
     # Create memory (skip embedding since SQLite doesn't support vector)
-    resp = await client.post("/rooms/mem-test/memory", json={
-        "items": [{
-            "key": "project/status",
-            "value": {"status": "in-progress", "sprint": 5},
-            "created_by": "test-agent",
-            "embed": False,
-        }]
-    })
+    resp = await client.post(
+        "/rooms/mem-test/memory",
+        json={
+            "items": [
+                {
+                    "key": "project/status",
+                    "value": {"status": "in-progress", "sprint": 5},
+                    "created_by": "test-agent",
+                    "embed": False,
+                }
+            ]
+        },
+    )
     assert resp.status_code == 201
     data = resp.json()
     assert len(data) == 1
@@ -70,16 +77,26 @@ async def test_memory_upsert(client: AsyncClient):
     await client.post("/rooms", json={"name": "upsert-test", "mode": "async"})
 
     # First write
-    resp = await client.post("/rooms/upsert-test/memory", json={
-        "items": [{"key": "config/db", "value": "postgres", "created_by": "agent-a", "embed": False}]
-    })
+    resp = await client.post(
+        "/rooms/upsert-test/memory",
+        json={
+            "items": [
+                {"key": "config/db", "value": "postgres", "created_by": "agent-a", "embed": False}
+            ]
+        },
+    )
     assert resp.status_code == 201
     assert resp.json()[0]["version"] == 1
 
     # Second write (upsert)
-    resp = await client.post("/rooms/upsert-test/memory", json={
-        "items": [{"key": "config/db", "value": "agensgraph", "created_by": "agent-b", "embed": False}]
-    })
+    resp = await client.post(
+        "/rooms/upsert-test/memory",
+        json={
+            "items": [
+                {"key": "config/db", "value": "agensgraph", "created_by": "agent-b", "embed": False}
+            ]
+        },
+    )
     assert resp.status_code == 201
     data = resp.json()
     assert data[0]["version"] == 2
@@ -91,13 +108,31 @@ async def test_memory_batch_create(client: AsyncClient):
     """Test batch creating multiple memories."""
     await client.post("/rooms", json={"name": "batch-test", "mode": "async"})
 
-    resp = await client.post("/rooms/batch-test/memory", json={
-        "items": [
-            {"key": "decisions/arch", "value": "monolith", "created_by": "agent-a", "embed": False},
-            {"key": "decisions/db", "value": "agensgraph", "created_by": "agent-a", "embed": False},
-            {"key": "decisions/lang", "value": "python", "created_by": "agent-b", "embed": False},
-        ]
-    })
+    resp = await client.post(
+        "/rooms/batch-test/memory",
+        json={
+            "items": [
+                {
+                    "key": "decisions/arch",
+                    "value": "monolith",
+                    "created_by": "agent-a",
+                    "embed": False,
+                },
+                {
+                    "key": "decisions/db",
+                    "value": "agensgraph",
+                    "created_by": "agent-a",
+                    "embed": False,
+                },
+                {
+                    "key": "decisions/lang",
+                    "value": "python",
+                    "created_by": "agent-b",
+                    "embed": False,
+                },
+            ]
+        },
+    )
     assert resp.status_code == 201
     assert len(resp.json()) == 3
 
@@ -107,13 +142,16 @@ async def test_memory_list_with_prefix(client: AsyncClient):
     """Test listing memories with prefix filter."""
     await client.post("/rooms", json={"name": "list-test", "mode": "async"})
 
-    await client.post("/rooms/list-test/memory", json={
-        "items": [
-            {"key": "project/a", "value": "1", "created_by": "a", "embed": False},
-            {"key": "project/b", "value": "2", "created_by": "a", "embed": False},
-            {"key": "config/x", "value": "3", "created_by": "a", "embed": False},
-        ]
-    })
+    await client.post(
+        "/rooms/list-test/memory",
+        json={
+            "items": [
+                {"key": "project/a", "value": "1", "created_by": "a", "embed": False},
+                {"key": "project/b", "value": "2", "created_by": "a", "embed": False},
+                {"key": "config/x", "value": "3", "created_by": "a", "embed": False},
+            ]
+        },
+    )
 
     # List all
     resp = await client.get("/rooms/list-test/memory")
@@ -131,9 +169,12 @@ async def test_memory_delete(client: AsyncClient):
     """Test deleting a memory."""
     await client.post("/rooms", json={"name": "del-test", "mode": "async"})
 
-    await client.post("/rooms/del-test/memory", json={
-        "items": [{"key": "temp/data", "value": "delete-me", "created_by": "a", "embed": False}]
-    })
+    await client.post(
+        "/rooms/del-test/memory",
+        json={
+            "items": [{"key": "temp/data", "value": "delete-me", "created_by": "a", "embed": False}]
+        },
+    )
 
     resp = await client.delete("/rooms/del-test/memory/temp/data")
     assert resp.status_code == 204
@@ -164,10 +205,13 @@ async def test_subscription_crud(client: AsyncClient):
     await client.post("/rooms", json={"name": "sub-test", "mode": "async"})
 
     # Create subscription
-    resp = await client.post("/rooms/sub-test/memory/subscribe", json={
-        "key_pattern": "project/*",
-        "subscriber": "agent-a",
-    })
+    resp = await client.post(
+        "/rooms/sub-test/memory/subscribe",
+        json={
+            "key_pattern": "project/*",
+            "subscriber": "agent-a",
+        },
+    )
     assert resp.status_code == 201
     sub = resp.json()
     assert sub["key_pattern"] == "project/*"
@@ -193,10 +237,13 @@ async def test_async_room_join_no_timer(client: AsyncClient):
     """Test that joining an async room doesn't start the coordination timer."""
     await client.post("/rooms", json={"name": "async-join-test", "mode": "async"})
 
-    resp = await client.post("/rooms/async-join-test/sessions", json={
-        "agent_handle": "agent-a",
-        "intent": "sharing context",
-    })
+    resp = await client.post(
+        "/rooms/async-join-test/sessions",
+        json={
+            "agent_handle": "agent-a",
+            "intent": "sharing context",
+        },
+    )
     assert resp.status_code == 201
 
     # Room should still be idle (no timer started)
@@ -216,12 +263,15 @@ async def test_synthesize_sync_room_rejected(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_hybrid_room_creation(client: AsyncClient):
     """Test creating a hybrid room with trigger config."""
-    resp = await client.post("/rooms", json={
-        "name": "hybrid-test",
-        "mode": "hybrid",
-        "trigger_config": {"type": "threshold", "min_contributions": 3},
-        "is_persistent": True,
-    })
+    resp = await client.post(
+        "/rooms",
+        json={
+            "name": "hybrid-test",
+            "mode": "hybrid",
+            "trigger_config": {"type": "threshold", "min_contributions": 3},
+            "is_persistent": True,
+        },
+    )
     assert resp.status_code == 201
     data = resp.json()
     assert data["mode"] == "hybrid"

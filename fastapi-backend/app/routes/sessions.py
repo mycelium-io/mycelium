@@ -34,7 +34,9 @@ async def _upsert_room(room_name: str, session: AsyncSession) -> Room:
     result = await session.execute(select(Room).where(Room.name == room_name))
     room = result.scalar_one_or_none()
     if not room:
-        room = Room(name=room_name, is_public=True, mode=settings.DEFAULT_ROOM_MODE, namespace=room_name)
+        room = Room(
+            name=room_name, is_public=True, mode=settings.DEFAULT_ROOM_MODE, namespace=room_name
+        )
         session.add(room)
         try:
             await session.commit()
@@ -69,15 +71,11 @@ async def join_room(
     await db.refresh(sess)
 
     # Post coordination_join notification (fire-and-forget via NOTIFY)
-    asyncio.ensure_future(
-        _notify_join(room_name, payload.agent_handle, payload.intent)
-    )
+    asyncio.ensure_future(_notify_join(room_name, payload.agent_handle, payload.intent))
 
     # Start join timer only for sync/hybrid rooms
     if room.mode in ("sync", "hybrid") and room.coordination_state == "idle":
-        deadline = datetime.now(UTC) + timedelta(
-            seconds=settings.COORDINATION_JOIN_WINDOW_SECONDS
-        )
+        deadline = datetime.now(UTC) + timedelta(seconds=settings.COORDINATION_JOIN_WINDOW_SECONDS)
         result = await db.execute(
             update(Room)
             .where(Room.name == room_name, Room.coordination_state == "idle")
@@ -90,6 +88,7 @@ async def join_room(
         if claimed is not None:
             # We won the race — schedule the timer
             from app.services import coordination
+
             asyncio.ensure_future(coordination.start_join_timer(room_name, deadline))
             logger.info(
                 "Coordination join timer started for room %s (deadline=%s)", room_name, deadline
@@ -138,9 +137,7 @@ async def list_sessions(
         raise HTTPException(status_code=404, detail="Room not found")
 
     result = await db.execute(
-        select(Session)
-        .where(Session.room_name == room_name)
-        .order_by(Session.joined_at.desc())
+        select(Session).where(Session.room_name == room_name).order_by(Session.joined_at.desc())
     )
     sessions = list(result.scalars().all())
 

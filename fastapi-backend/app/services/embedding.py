@@ -1,42 +1,48 @@
 """
-Local embedding service using fastembed.
+Local embedding service using sentence-transformers.
 
 Provides semantic vector embeddings for persistent memory search.
-Uses BAAI/bge-small-en-v1.5 by default (384 dimensions, runs locally).
+Uses all-MiniLM-L6-v2 (384 dimensions, runs locally from HF cache).
 """
 
 import logging
+import os
 
-from fastembed import TextEmbedding
+from sentence_transformers import SentenceTransformer
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-_model: TextEmbedding | None = None
+
+def _load_model() -> SentenceTransformer:
+    """Load the model, preferring the local HF cache snapshot to avoid network calls."""
+    hf_cache = os.path.expanduser("~/.cache/huggingface/hub")
+    model_slug = settings.EMBEDDING_MODEL.replace("/", "--")
+    snapshots_dir = os.path.join(hf_cache, f"models--{model_slug}", "snapshots")
+    model_path = settings.EMBEDDING_MODEL
+    if os.path.isdir(snapshots_dir):
+        snapshots = [s for s in os.listdir(snapshots_dir) if not s.startswith(".")]
+        if snapshots:
+            model_path = os.path.join(snapshots_dir, snapshots[0])
+
+    logger.info("Loading embedding model from: %s", model_path)
+    model = SentenceTransformer(model_path)
+    logger.info("Embedding model loaded (dimensions=%d)", settings.EMBEDDING_DIMENSIONS)
+    return model
 
 
-def _get_model() -> TextEmbedding:
-    """Lazy-load the embedding model (downloads on first use)."""
-    global _model
-    if _model is None:
-        logger.info("Loading embedding model: %s", settings.EMBEDDING_MODEL)
-        _model = TextEmbedding(model_name=settings.EMBEDDING_MODEL)
-        logger.info("Embedding model loaded (dimensions=%d)", settings.EMBEDDING_DIMENSIONS)
-    return _model
+# Eager load at import time — avoids lazy-init race conditions in threaded workers.
+_model: SentenceTransformer = _load_model()
 
 
 def embed_text(text: str) -> list[float]:
     """Generate embedding for a single text string."""
-    model = _get_model()
-    embeddings = list(model.embed([text]))
-    return embeddings[0].tolist()
+    return _model.encode(text).tolist()
 
 
 def embed_batch(texts: list[str]) -> list[list[float]]:
     """Generate embeddings for multiple texts."""
     if not texts:
         return []
-    model = _get_model()
-    embeddings = list(model.embed(texts))
-    return [e.tolist() for e in embeddings]
+    return [e.tolist() for e in _model.encode(texts)]

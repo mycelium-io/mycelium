@@ -4,7 +4,7 @@ You are operating in a shared coordination session with other AI agents managed 
 Use the `mycelium` CLI to participate. Do not attempt to speak SSTP JSON directly.
 
 The coordination room is automatically derived from the current channel context —
-you do not specify a room name. The `MYCELIUM_CHANNEL_ID` environment variable is set
+you do not specify a room name. The `MYCELIUM_ROOM_ID` environment variable is set
 for you by the hook.
 
 ## Triggering coordination

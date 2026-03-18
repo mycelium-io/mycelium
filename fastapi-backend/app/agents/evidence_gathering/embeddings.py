@@ -3,6 +3,7 @@
 Rewired: config path resolves relative to this file.
 Dependencies: fastembed (huggingface/ONNX default), openai (optional).
 """
+
 from __future__ import annotations
 
 import os
@@ -25,6 +26,7 @@ class EmbeddingManager:
 
         if self.model_type == "huggingface":
             from fastembed import TextEmbedding  # type: ignore[import-untyped]
+
             self.model_name = self.config.get("embedding_model_name", "BAAI/bge-small-en-v1.5")
             self.model = TextEmbedding(model_name=self.model_name)
         elif self.model_type == "openai":
@@ -32,11 +34,13 @@ class EmbeddingManager:
             self.openai_key = self.config.get("openai_api_key", "")
             if not self.openai_key:
                 from fastembed import TextEmbedding  # type: ignore[import-untyped]
+
                 self.model_type = "huggingface"
                 self.model_name = "BAAI/bge-small-en-v1.5"
                 self.model = TextEmbedding(model_name=self.model_name)
         else:
             from fastembed import TextEmbedding  # type: ignore[import-untyped]
+
             self.model_type = "huggingface"
             self.model_name = "BAAI/bge-small-en-v1.5"
             self.model = TextEmbedding(model_name=self.model_name)
@@ -55,6 +59,7 @@ class EmbeddingManager:
             return np.array(list(self.model.embed(text_chunks)))
         if self.model_type == "openai":
             from openai import OpenAI  # type: ignore[import-untyped]
+
             embeddings = []
             client = OpenAI(self.openai_key)
             for text in text_chunks:

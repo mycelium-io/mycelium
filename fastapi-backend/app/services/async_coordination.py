@@ -15,12 +15,11 @@ from urllib.parse import urlparse
 
 import asyncpg
 from sqlalchemy import func, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bus import agent_channel, notify
 from app.config import settings
 from app.database import async_session_maker
-from app.models import Memory, Room, Session
+from app.models import Memory, Room
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +49,9 @@ async def check_trigger(room_name: str) -> None:
         if count >= min_contributions:
             logger.info(
                 "Async trigger met for room %s: %d memories >= threshold %d",
-                room_name, count, min_contributions,
+                room_name,
+                count,
+                min_contributions,
             )
             await run_synthesis(room_name)
 
@@ -65,9 +66,7 @@ async def run_synthesis(room_name: str) -> dict | None:
     async with async_session_maker() as db:
         # Set room state to synthesizing
         await db.execute(
-            update(Room)
-            .where(Room.name == room_name)
-            .values(coordination_state="synthesizing")
+            update(Room).where(Room.name == room_name).values(coordination_state="synthesizing")
         )
         await db.commit()
 
@@ -94,9 +93,7 @@ async def run_synthesis(room_name: str) -> dict | None:
             if not memories:
                 logger.info("No new memories to synthesize for room %s", room_name)
                 await db.execute(
-                    update(Room)
-                    .where(Room.name == room_name)
-                    .values(coordination_state="idle")
+                    update(Room).where(Room.name == room_name).values(coordination_state="idle")
                 )
                 await db.commit()
                 return None
@@ -143,16 +140,16 @@ async def run_synthesis(room_name: str) -> dict | None:
 
             logger.info(
                 "Synthesis complete for room %s: %d memories → %s",
-                room_name, len(memories), synthesis_key,
+                room_name,
+                len(memories),
+                synthesis_key,
             )
             return {"key": synthesis_key, "memory_count": len(memories)}
 
         except Exception as e:
             logger.exception("Synthesis failed for room %s: %s", room_name, e)
             await db.execute(
-                update(Room)
-                .where(Room.name == room_name)
-                .values(coordination_state="idle")
+                update(Room).where(Room.name == room_name).values(coordination_state="idle")
             )
             await db.commit()
             return None

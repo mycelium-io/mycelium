@@ -40,6 +40,7 @@ internal_router = APIRouter(tags=["knowledge-internal"])
 
 # ── Ingest schemas ─────────────────────────────────────────────────────────────
 
+
 class KnowledgeIngestRequest(BaseModel):
     workspace_id: str
     mas_id: str
@@ -104,6 +105,7 @@ def internal_delete_graph(data: KnowledgeGraphDeleteRequest) -> JSONResponse:
 
 
 # ── Ingest ─────────────────────────────────────────────────────────────────────
+
 
 @router.post("/api/knowledge/ingest", status_code=200)
 async def knowledge_ingest(
