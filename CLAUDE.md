@@ -41,7 +41,7 @@ Real-time: Postgres LISTEN/NOTIFY → asyncpg → SSE streams.
 
 LLM: litellm (provider/model format, e.g. `anthropic/claude-sonnet-4-6`).
 
-Embeddings: fastembed (BAAI/bge-small-en-v1.5, local, 384 dimensions).
+Embeddings: sentence-transformers (all-MiniLM-L6-v2, local, 384 dimensions).
 
 ## Key design decisions
 

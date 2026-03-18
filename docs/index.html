@@ -782,7 +782,7 @@ mycelium install</code></pre>
 
       <h3>Semantic Search</h3>
       <p>
-        Search finds memories by meaning — cosine similarity on BAAI/bge-small-en-v1.5 embeddings
+        Search finds memories by meaning — cosine similarity on all-MiniLM-L6-v2 embeddings
         (384 dimensions, runs locally).
       </p>
       <pre><code><span class="cmd">mycelium memory search</span> <span class="str">"what database decisions were made"</span>
@@ -1013,7 +1013,7 @@ mycelium install</code></pre>
             <tr><td>Graph</td><td>openCypher (AgensGraph)</td><td>knowledge graph — concepts, relationships</td></tr>
             <tr><td>Vector</td><td>pgvector</td><td>semantic search on memory embeddings</td></tr>
             <tr><td>Real-time</td><td>LISTEN/NOTIFY → asyncpg → SSE</td><td>live watch stream</td></tr>
-            <tr><td>Embeddings</td><td>fastembed (BAAI/bge-small-en-v1.5)</td><td>384-dim local embeddings, no API key</td></tr>
+            <tr><td>Embeddings</td><td>sentence-transformers (all-MiniLM-L6-v2)</td><td>384-dim local embeddings, no API key</td></tr>
             <tr><td>LLM</td><td>litellm</td><td>synthesis, extraction, negotiation (100+ providers)</td></tr>
             <tr><td>Backend</td><td>FastAPI + asyncpg + SQLAlchemy</td><td>coordination engine API</td></tr>
             <tr><td>CLI</td><td>Typer + Rich</td><td>agent interface</td></tr>

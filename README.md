@@ -130,4 +130,4 @@ Interactive API docs at `http://localhost:8000/docs` when the backend is running
 - [Internet of Cognition](https://outshift.cisco.com) — Outshift by Cisco
 - [NegMAS](https://negmas.readthedocs.io/) — Multi-issue negotiation
 - [AgensGraph](https://github.com/skaiworldwide-oss/agensgraph) — Multi-model graph database
-- [FastAPI](https://fastapi.tiangolo.com/) + [pgvector](https://github.com/pgvector/pgvector) + [fastembed](https://github.com/qdrant/fastembed)
+- [FastAPI](https://fastapi.tiangolo.com/) + [pgvector](https://github.com/pgvector/pgvector) + [sentence-transformers](https://www.sbert.net/)

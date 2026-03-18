@@ -345,6 +345,20 @@ def _compose_up(
     return result.returncode == 0, needs_build
 
 
+def _ensure_cfn_databases(db_container: str = "mycelium-db") -> None:
+    """Create cfn_mgmt and cfn_cp databases if they don't exist.
+
+    initdb scripts only run on first postgres init, so on upgrades with an
+    existing volume the CFN databases won't be present. This is idempotent.
+    """
+    for db in ("cfn_mgmt", "cfn_cp"):
+        sql = f"SELECT 'CREATE DATABASE {db}' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '{db}')\\gexec"
+        subprocess.run(
+            ["docker", "exec", db_container, "psql", "-U", "postgres", "-c", sql],
+            capture_output=True,
+        )
+
+
 def _wait_for_health(urls: list[str], timeout: int = 120) -> bool:
     try:
         import httpx
@@ -525,6 +539,10 @@ def install(
             if not ok:
                 typer.secho("\n  ✗ docker compose up failed", fg=typer.colors.RED)
                 raise typer.Exit(1) from None
+
+            if ioc:
+                _ensure_cfn_databases()
+                typer.echo("  ✓ CFN databases provisioned")
 
             api_url = f"http://localhost:{custom_ports['backend']}"
             health_timeout = 300 if needs_build else 120
@@ -726,6 +744,10 @@ def install(
         if not ok:
             typer.secho("\n  ✗ docker compose up failed", fg=typer.colors.RED)
             raise typer.Exit(1) from None
+
+        if ioc_enabled:
+            _ensure_cfn_databases()
+            typer.echo("  ✓ CFN databases provisioned")
 
         # ── Phase 4: Health checks ─────────────────────────────────────────
         # Allow extra time on first run when the backend image is being built.

@@ -22,7 +22,8 @@ RUN uv pip install --system --no-cache \
     "greenlet>=3.0" \
     "psycopg2-binary>=2.9.0" \
     "negmas>=0.10.0" \
-    "fastembed>=0.4.0" \
+    "sentence-transformers==2.7.0" \
+    "transformers<4.40" \
     "alembic>=1.14.0,<2" && \
     uv pip install --system --no-cache "setuptools" && \
     uv pip install --system --no-cache --no-build-isolation "agensgraph-python==1.0.2"

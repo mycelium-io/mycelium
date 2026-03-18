@@ -38,7 +38,7 @@ mycelium memory set decisions/api-style "REST for now, generated OpenAPI client 
 ```bash
 # research/ isn't a structured category — passes through without slug validation
 mycelium memory set "research/pgvector-perf" "pgvector cosine search on 384-dim embeddings: <5ms for 10k memories" --handle selina-agent
-mycelium memory set "research/fastembed" "BAAI/bge-small-en-v1.5 runs locally, 384 dimensions, no API key needed" --handle selina-agent
+mycelium memory set "research/embeddings" "sentence-transformers/all-MiniLM-L6-v2 runs locally, 384 dimensions, no API key needed" --handle selina-agent
 ```
 
 ### Agent 3: Kappa reports what didn't work
