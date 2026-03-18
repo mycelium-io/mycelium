@@ -220,7 +220,11 @@ def _expand_paths_one_hop(
             visited_ids = {seg["value"].get("id") for seg in path if seg.get("kind") == "concept"}
             if nid in visited_ids:
                 continue
-            extended = [*path, {"kind": "relation", "value": rel}, {"kind": "concept", "value": nei}]
+            extended = [
+                *path,
+                {"kind": "relation", "value": rel},
+                {"kind": "concept", "value": nei},
+            ]
             next_paths.append(extended)
     return next_paths
 
@@ -468,9 +472,7 @@ class SingleEntityEvidenceEngine:
             if winning_lane_index is not None:
                 await rank_and_expand_lane(winning_lane_index, lanes[winning_lane_index])
                 break
-            await asyncio.gather(
-                *(rank_and_expand_lane(i, lane) for i, lane in enumerate(lanes))
-            )
+            await asyncio.gather(*(rank_and_expand_lane(i, lane) for i, lane in enumerate(lanes)))
 
         if winning_lane_index is not None:
             wl = lanes[winning_lane_index]
