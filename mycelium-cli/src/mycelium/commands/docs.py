@@ -179,6 +179,10 @@ def docs_main(
         _do_search(docs_root, topic)
         return
 
+    if section == "generate":
+        _do_generate(topic)
+        return
+
     if not section:
         doc_path = docs_root / "index.md"
         if doc_path.exists():
@@ -239,6 +243,17 @@ def _print_section_list(docs_root: Path, section: str) -> None:
         typer.echo(f"  {cmd:<40} {title}")
 
 
+def _do_generate(output: str | None = None) -> None:
+    from mycelium.generate_cli_docs import generate_all
+
+    out_dir = Path(output) if output else None
+    written = generate_all(output_dir=out_dir)
+
+    typer.secho(f"Generated {len(written)} documentation files:", bold=True)
+    for p in written:
+        typer.echo(f"  {p}")
+
+
 def _do_search(docs_root: Path, query: str) -> None:
     results = _search_docs(docs_root, query)
     if not results:
@@ -270,3 +285,17 @@ def search(query: str = typer.Argument(..., help="Search query")) -> None:
     """Search documentation for a term."""
     docs_root = _get_docs_root()
     _do_search(docs_root, query)
+
+
+@app.command()
+def generate(
+    output: str | None = typer.Option(
+        None, "--output", "-o", help="Output directory (default: bundled docs)"
+    ),
+) -> None:
+    """Auto-generate CLI reference docs from command definitions.
+
+    Introspects the Typer command tree and writes markdown files
+    into the bundled docs/commands/ directory (or a custom path).
+    """
+    _do_generate(output)
