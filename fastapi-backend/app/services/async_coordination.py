@@ -149,6 +149,8 @@ async def run_synthesis(room_name: str) -> dict | None:
             return None
 
 
+# Canonical definition: mycelium-cli/src/mycelium/sstp.py STRUCTURED_CATEGORY_LABELS
+# Keep in sync — these are the same categories used by CLI validation.
 STRUCTURED_CATEGORIES = {
     "work": "Work Done",
     "decisions": "Decisions Made",
@@ -227,6 +229,10 @@ async def _llm_synthesize(room_name: str, context: str, memory_count: int) -> st
                         "Reference status/* memories.\n\n"
                         "## Key Decisions\n"
                         "Choices that were made and why. Reference decisions/* memories.\n\n"
+                        "## What Failed\n"
+                        "Approaches that were tried and didn't work, and why. Include enough "
+                        "detail so no one repeats them. Look for decisions/* memories that "
+                        "describe rejected alternatives.\n\n"
                         "## Context\n"
                         "User goals, preferences, constraints. Reference context/* memories.\n\n"
                         "## Open Questions\n"

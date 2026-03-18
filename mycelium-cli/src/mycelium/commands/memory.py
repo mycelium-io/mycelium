@@ -85,14 +85,13 @@ def memory_set(
     room_name = _get_active_room(room)
 
     # Validate structured keys when category prefix is recognized
-    structured = False
+    entry: MemoryLogEntry | None = None
     if "/" in key:
         category = key.split("/", 1)[0]
         if category in MEMORY_CATEGORIES:
             slug = key.split("/", 1)[1]
             try:
                 entry = MemoryLogEntry(category=category, slug=slug, content=value)  # type: ignore[arg-type]
-                structured = True
             except ValidationError as exc:
                 errors = exc.errors()
                 if any(e["loc"] == ("slug",) for e in errors):
@@ -123,7 +122,7 @@ def memory_set(
 
     tag_list = [t.strip() for t in tags.split(",")] if tags else None
 
-    if structured:
+    if entry is not None:
         # Structured category key — auto-timestamp and structured value
         timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         item = MemoryCreate(

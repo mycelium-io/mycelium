@@ -34,7 +34,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ProposeReply(BaseModel):
@@ -102,12 +102,24 @@ class MemoryCategory(StrEnum):
 
 MEMORY_CATEGORIES: frozenset[str] = frozenset(c.value for c in MemoryCategory)
 
+# Labels used by both CLI (category commands) and backend (synthesis grouping).
+# Single source of truth — backend imports this dict.
+STRUCTURED_CATEGORY_LABELS: dict[str, str] = {
+    "work": "Work Done",
+    "decisions": "Decisions Made",
+    "context": "Background & Preferences",
+    "status": "Current Status",
+}
+
 
 class MemoryLogEntry(BaseModel):
     """Typed payload for structured memory writes.
 
     Like ProposeReply validates negotiation offers, this validates that a memory
     write follows the category/slug convention before hitting the API.
+
+    Slugs are auto-lowercased so agents can write naturally (e.g. "API-latency"
+    becomes "api-latency").
 
     Examples:
         MemoryLogEntry(category="work", slug="cron-setup", content="Created crontab ...")
@@ -119,6 +131,13 @@ class MemoryLogEntry(BaseModel):
     slug: str = Field(..., min_length=1, pattern=r"^[a-z0-9][a-z0-9._-]*$")
     content: str = Field(..., min_length=1)
     tags: list[str] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def lowercase_slug(cls, data: dict) -> dict:
+        if isinstance(data, dict) and "slug" in data:
+            data["slug"] = data["slug"].lower()
+        return data
 
     @property
     def key(self) -> str:
