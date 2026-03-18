@@ -412,7 +412,7 @@ def _install_openclaw_skill() -> None:
 
 
 def _allow_plugin(plugin_id: str) -> None:
-    """Add plugin_id to plugins.allow in openclaw.json to suppress allow-list warnings."""
+    """Register plugin_id in openclaw.json: allow list, load path, and entries."""
     config_path = Path.home() / ".openclaw" / "openclaw.json"
     if not config_path.exists():
         return
@@ -421,12 +421,27 @@ def _allow_plugin(plugin_id: str) -> None:
 
         cfg = _json.loads(config_path.read_text())
         plugins_section = cfg.setdefault("plugins", {})
+
+        # Allow list (suppresses security warning)
         allow_list: list = plugins_section.setdefault("allow", [])
         if plugin_id not in allow_list:
             allow_list.append(plugin_id)
-            config_path.write_text(_json.dumps(cfg, indent=2))
+
+        # Load path — tells openclaw where to find the extension
+        ext_path = str(Path.home() / ".openclaw" / "extensions" / plugin_id)
+        load_section = plugins_section.setdefault("load", {})
+        paths: list = load_section.setdefault("paths", [])
+        if ext_path not in paths:
+            paths.append(ext_path)
+
+        # Entries — enables the plugin
+        entries: dict = plugins_section.setdefault("entries", {})
+        if plugin_id not in entries:
+            entries[plugin_id] = {"enabled": True}
+
+        config_path.write_text(_json.dumps(cfg, indent=2))
     except Exception:
-        pass  # Non-fatal; warning will still appear but install succeeds
+        pass  # Non-fatal; install succeeds even if openclaw.json can't be updated
 
 
 def _uninstall_openclaw(adapter_record: dict) -> None:
@@ -450,7 +465,7 @@ def _uninstall_openclaw(adapter_record: dict) -> None:
 
 
 def _allow_plugin_remove(plugin_id: str) -> None:
-    """Remove plugin_id from plugins.allow in openclaw.json."""
+    """Remove plugin_id from plugins.allow, load.paths, and entries in openclaw.json."""
     config_path = Path.home() / ".openclaw" / "openclaw.json"
     if not config_path.exists():
         return
@@ -458,10 +473,21 @@ def _allow_plugin_remove(plugin_id: str) -> None:
         import json as _json
 
         cfg = _json.loads(config_path.read_text())
-        allow_list: list = cfg.get("plugins", {}).get("allow", [])
+        plugins_section = cfg.get("plugins", {})
+
+        allow_list: list = plugins_section.get("allow", [])
         if plugin_id in allow_list:
             allow_list.remove(plugin_id)
-            config_path.write_text(_json.dumps(cfg, indent=2))
+
+        ext_path = str(Path.home() / ".openclaw" / "extensions" / plugin_id)
+        paths: list = plugins_section.get("load", {}).get("paths", [])
+        if ext_path in paths:
+            paths.remove(ext_path)
+
+        entries: dict = plugins_section.get("entries", {})
+        entries.pop(plugin_id, None)
+
+        config_path.write_text(_json.dumps(cfg, indent=2))
     except Exception:
         pass
 
