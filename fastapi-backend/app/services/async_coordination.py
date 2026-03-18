@@ -98,14 +98,8 @@ async def run_synthesis(room_name: str) -> dict | None:
                 await db.commit()
                 return None
 
-            # Build context for LLM synthesis
-            memory_texts = []
-            for mem in memories:
-                memory_texts.append(
-                    f"[{mem.created_by} @ {mem.created_at.isoformat()}] "
-                    f"key={mem.key}: {mem.content_text or json.dumps(mem.value, default=str)}"
-                )
-            context = "\n".join(memory_texts)
+            # Build context for LLM synthesis, grouped by category prefix
+            context = _build_structured_context(memories)
 
             # Call LLM for synthesis
             synthesis_text = await _llm_synthesize(room_name, context, len(memories))
@@ -155,6 +149,57 @@ async def run_synthesis(room_name: str) -> dict | None:
             return None
 
 
+STRUCTURED_CATEGORIES = {
+    "work": "Work Done",
+    "decisions": "Decisions Made",
+    "context": "Background & Preferences",
+    "status": "Current Status",
+}
+
+
+def _build_structured_context(memories: list) -> str:
+    """Group memories by category prefix for structure-aware synthesis.
+
+    Memories with known category prefixes (work/, decisions/, context/, status/)
+    are grouped under headings. Uncategorized memories go in a general section.
+    """
+    categorized: dict[str, list[str]] = {cat: [] for cat in STRUCTURED_CATEGORIES}
+    uncategorized: list[str] = []
+
+    for mem in memories:
+        text = (
+            f"[{mem.created_by} @ {mem.created_at.isoformat()}] "
+            f"key={mem.key}: {mem.content_text or json.dumps(mem.value, default=str)}"
+        )
+        category = mem.key.split("/", 1)[0] if "/" in mem.key else None
+        if category in categorized:
+            categorized[category].append(text)
+        else:
+            uncategorized.append(text)
+
+    sections = []
+    for cat, label in STRUCTURED_CATEGORIES.items():
+        if categorized[cat]:
+            sections.append(f"### {label}")
+            sections.extend(categorized[cat])
+            sections.append("")
+
+    if uncategorized:
+        sections.append("### Other Contributions")
+        sections.extend(uncategorized)
+        sections.append("")
+
+    return (
+        "\n".join(sections)
+        if sections
+        else "\n".join(
+            f"[{m.created_by} @ {m.created_at.isoformat()}] "
+            f"key={m.key}: {m.content_text or json.dumps(m.value, default=str)}"
+            for m in memories
+        )
+    )
+
+
 async def _llm_synthesize(room_name: str, context: str, memory_count: int) -> str:
     """Call LLM to synthesize accumulated memories into insights."""
     try:
@@ -169,25 +214,26 @@ async def _llm_synthesize(room_name: str, context: str, memory_count: int) -> st
                     "content": (
                         f"You are CognitiveEngine synthesizing {memory_count} contributions "
                         f"from agents in room '{room_name}'.\n\n"
-                        f"Memories:\n{context}\n\n"
+                        "Memories are grouped by category when agents used structured keys "
+                        "(work/, decisions/, context/, status/):\n\n"
+                        f"{context}\n\n"
                         "Produce a synthesis that a new agent arriving for the first time "
                         "could read and immediately be productive. Structure it as:\n\n"
-                        "## Current State\n"
-                        "What has been established. Key decisions made, results achieved, "
-                        "consensus reached.\n\n"
-                        "## What Worked\n"
-                        "Successful approaches, validated findings, proven configurations. "
-                        "Include specific values/parameters when available.\n\n"
-                        "## What Failed\n"
-                        "Approaches that were tried and didn't work. Include why, so no one "
-                        "repeats them.\n\n"
+                        "## What's Built\n"
+                        "What agents have created or configured. Reference work/* memories.\n\n"
+                        "## Current Status\n"
+                        "What's active, what's failing, what needs attention. "
+                        "Reference status/* memories.\n\n"
+                        "## Key Decisions\n"
+                        "Choices that were made and why. Reference decisions/* memories.\n\n"
+                        "## Context\n"
+                        "User goals, preferences, constraints. Reference context/* memories.\n\n"
                         "## Open Questions\n"
-                        "Unresolved tensions, untested hypotheses, gaps in coverage. "
-                        "These are the highest-value next steps.\n\n"
+                        "Unresolved tensions, untested hypotheses, gaps in coverage.\n\n"
                         "## Recommended Next Actions\n"
                         "Concrete things an agent should try next, prioritized by expected impact.\n\n"
                         "Be specific and actionable. Reference agent handles and memory keys "
-                        "when citing findings."
+                        "when citing findings. If a section has no relevant memories, omit it."
                     ),
                 }
             ],
