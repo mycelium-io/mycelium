@@ -46,6 +46,29 @@ def _resolve_port(cli_port: int | None) -> int:
     return _DEFAULT_PORT
 
 
+@app.command("install")
+def install_metrics() -> None:
+    """Install optional metrics dependencies (opentelemetry-proto, protobuf)."""
+    try:
+        from opentelemetry.proto.collector.metrics.v1 import metrics_service_pb2  # noqa: F401
+
+        typer.secho("✓ Metrics dependencies already installed.", fg=typer.colors.GREEN)
+        return
+    except ImportError:
+        pass
+
+    typer.echo("Installing metrics dependencies...")
+    result = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "opentelemetry-proto", "protobuf>=4.21.0"],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        typer.secho(f"✗ Install failed:\n{result.stderr}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    typer.secho("✓ Metrics dependencies installed.", fg=typer.colors.GREEN)
+
+
 @app.command("collect")
 def collect(
     port: int | None = typer.Option(None, "--port", "-p", help=f"OTLP receiver port (default: {_DEFAULT_PORT})"),

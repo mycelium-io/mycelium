@@ -187,7 +187,7 @@ echo -e "  ${BOLD}mycelium install${NC}              — spin up the full stack 
 echo -e "  ${BOLD}mycelium adapter add openclaw${NC} — wire OpenClaw agents"
 echo ""
 echo -e "${DIM}Optional — enable OpenClaw metrics (token usage, costs, durations):${NC}"
-echo -e "  ${BOLD}uv tool install mycelium-cli[metrics] --force${NC}"
+echo -e "  ${BOLD}mycelium metrics install${NC}"
 echo -e "  ${BOLD}mycelium adapter add openclaw --step=otel${NC}"
 echo -e "  ${BOLD}mycelium metrics collect --bg && mycelium metrics show${NC}"
 echo ""

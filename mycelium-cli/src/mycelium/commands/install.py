@@ -742,6 +742,7 @@ def install(
         typer.echo("  Next steps:")
         typer.echo("    mycelium adapter add openclaw   # wire openclaw agents")
         typer.echo("    mycelium room create <name>     # create your first room")
+        typer.echo("    mycelium metrics install         # enable agent metrics (optional)")
         print()
 
     except KeyboardInterrupt:
