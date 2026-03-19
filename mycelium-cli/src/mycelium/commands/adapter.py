@@ -430,6 +430,25 @@ def _install_openclaw_skill() -> None:
         (dest_dir / f.name).write_bytes(f.read_bytes())
 
 
+def _normalize_plugin_entries(plugins_section: dict) -> list:
+    """Ensure plugins.entries is a list of dicts, converting from dict if needed.
+
+    Mutates *plugins_section* in place and returns the list.
+    """
+    entries = plugins_section.get("entries")
+    if isinstance(entries, list):
+        return entries
+    if isinstance(entries, dict):
+        entries = [
+            {"name": k, **(v if isinstance(v, dict) else {"enabled": v})}
+            for k, v in entries.items()
+        ]
+    else:
+        entries = []
+    plugins_section["entries"] = entries
+    return entries
+
+
 def _allow_plugin(plugin_id: str) -> None:
     """Register plugin_id in openclaw.json: allow list, load path, and entries."""
     config_path = Path.home() / ".openclaw" / "openclaw.json"
@@ -441,22 +460,23 @@ def _allow_plugin(plugin_id: str) -> None:
         cfg = _json.loads(config_path.read_text())
         plugins_section = cfg.setdefault("plugins", {})
 
-        # Allow list (suppresses security warning)
         allow_list: list = plugins_section.setdefault("allow", [])
         if plugin_id not in allow_list:
             allow_list.append(plugin_id)
 
-        # Load path — tells openclaw where to find the extension
         ext_path = str(Path.home() / ".openclaw" / "extensions" / plugin_id)
         load_section = plugins_section.setdefault("load", {})
         paths: list = load_section.setdefault("paths", [])
         if ext_path not in paths:
             paths.append(ext_path)
 
-        # Entries — enables the plugin
-        entries: dict = plugins_section.setdefault("entries", {})
-        if plugin_id not in entries:
-            entries[plugin_id] = {"enabled": True}
+        entries = _normalize_plugin_entries(plugins_section)
+        has_entry = any(
+            isinstance(e, dict) and (e.get("name") == plugin_id or e.get("id") == plugin_id)
+            for e in entries
+        )
+        if not has_entry:
+            entries.append({"name": plugin_id, "enabled": True})
 
         config_path.write_text(_json.dumps(cfg, indent=2))
     except Exception:
@@ -503,8 +523,11 @@ def _allow_plugin_remove(plugin_id: str) -> None:
         if ext_path in paths:
             paths.remove(ext_path)
 
-        entries: dict = plugins_section.get("entries", {})
-        entries.pop(plugin_id, None)
+        entries = _normalize_plugin_entries(plugins_section)
+        plugins_section["entries"] = [
+            e for e in entries
+            if not (isinstance(e, dict) and (e.get("name") == plugin_id or e.get("id") == plugin_id))
+        ]
 
         config_path.write_text(_json.dumps(cfg, indent=2))
     except Exception:
@@ -602,16 +625,7 @@ def _configure_otel(port: int | None = None) -> bool:
         if "diagnostics-otel" not in allow_list:
             allow_list.append("diagnostics-otel")
 
-        entries = plugins.get("entries")
-        if not isinstance(entries, list):
-            if isinstance(entries, dict):
-                entries = [
-                    {"name": k, **(v if isinstance(v, dict) else {"enabled": v})}
-                    for k, v in entries.items()
-                ]
-            else:
-                entries = []
-            plugins["entries"] = entries
+        entries = _normalize_plugin_entries(plugins)
         has_otel_entry = any(
             e.get("name") == "diagnostics-otel" or e.get("id") == "diagnostics-otel"
             for e in entries
