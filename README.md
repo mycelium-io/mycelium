@@ -157,9 +157,14 @@ mycelium metrics show --json        # raw JSON output
 | &nbsp;&nbsp;cache write | Tokens written to prompt cache | OTLP counter |
 | Cost (openclaw) | Estimated cost as reported by OpenClaw | OTLP counter (unverified) |
 | Messages | Total messages processed by the gateway | OTLP counter |
-| Avg run | Mean agent run duration | OTLP histogram |
-| Queue depth | Average and max pending messages in queue | OTLP histogram |
-| Turns | LLM round-trips per session (how many API calls a task took) | OTLP trace spans |
+| Run duration | Agent run duration: avg/min/max in seconds | OTLP histogram |
+| Msg duration | Message processing duration: avg/min/max in seconds | OTLP histogram |
+| Queue depth | Pending messages in queue: avg/min/max | OTLP histogram |
+| Queue wait | Time messages wait in queue: avg/min/max in seconds | OTLP histogram |
+| Total turns | Total LLM round-trips across all sessions | OTLP trace spans |
+| Turns | LLM round-trips per agent (how many API calls tasks took) | OTLP trace spans |
+| Avg Run | Per-agent mean run duration in seconds | OTLP histogram |
+| Queue | Per-agent queue depth: avg/max | OTLP histogram |
 | Workspace | Total file size in the agent's workspace directory | Filesystem |
 | Gateway | Current gateway status | `openclaw status` |
 

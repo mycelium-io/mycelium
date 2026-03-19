@@ -37,6 +37,7 @@ class MetricsStore:
             "message_duration_ms": _zero_histogram(),
             "queue_depth": _zero_histogram(),
             "queue_wait_ms": _zero_histogram(),
+            "by_agent": {},
         }
         self._sessions: dict[str, dict] = {}
 
@@ -129,20 +130,29 @@ class MetricsStore:
 
         elif metric.HasField("histogram"):
             for dp in metric.histogram.data_points:
+                attrs = _attrs_dict(dp.attributes)
                 h_count = dp.count
                 h_sum = dp.sum
                 h_min = dp.min if dp.HasField("min") else None
                 h_max = dp.max if dp.HasField("max") else None
                 update = {"count": h_count, "sum": h_sum, "min": h_min, "max": h_max}
 
+                key = None
                 if name == "openclaw.run.duration_ms":
-                    self._histograms["run_duration_ms"] = update
+                    key = "run_duration_ms"
                 elif name == "openclaw.message.duration_ms":
-                    self._histograms["message_duration_ms"] = update
+                    key = "message_duration_ms"
                 elif name == "openclaw.queue.depth":
-                    self._histograms["queue_depth"] = update
+                    key = "queue_depth"
                 elif name == "openclaw.queue.wait_ms":
-                    self._histograms["queue_wait_ms"] = update
+                    key = "queue_wait_ms"
+
+                if key:
+                    self._histograms[key] = update
+                    agent = attrs.get("openclaw.channel", "")
+                    if agent:
+                        agent_h = self._histograms["by_agent"].setdefault(agent, {})
+                        agent_h[key] = update
 
     def _process_span(self, span) -> None:
         if span.name != "openclaw.model.usage":

@@ -303,6 +303,30 @@ def _fmt_cost(n: float | None) -> str:
     return f"${n:,.4f}"
 
 
+def _fmt_histogram_s(h: dict) -> str:
+    """Format a millisecond histogram as seconds: avg / min / max (n samples)."""
+    avg = h["sum"] / h["count"] / 1000
+    parts = [f"avg {avg:.1f}s"]
+    if h.get("min") is not None:
+        parts.append(f"min {h['min'] / 1000:.1f}s")
+    if h.get("max") is not None:
+        parts.append(f"max {h['max'] / 1000:.1f}s")
+    parts.append(f"n={h['count']}")
+    return " / ".join(parts)
+
+
+def _fmt_histogram_raw(h: dict) -> str:
+    """Format a unitless histogram: avg / min / max (n samples)."""
+    avg = h["sum"] / h["count"]
+    parts = [f"avg {avg:.1f}"]
+    if h.get("min") is not None:
+        parts.append(f"min {h['min']:.0f}")
+    if h.get("max") is not None:
+        parts.append(f"max {h['max']:.0f}")
+    parts.append(f"n={h['count']}")
+    return " / ".join(parts)
+
+
 def _fmt_size(nbytes: int) -> str:
     if nbytes < 1024:
         return f"{nbytes} B"
@@ -316,7 +340,7 @@ def _render_summary_table(
     oc: dict | None,
     oc_cost: dict | None,
 ) -> None:
-    table = Table(title="Overall", title_style="bold cyan", show_header=False, border_style="dim")
+    table = Table(title="Overall", title_style="bold cyan", title_justify="left", show_header=False, border_style="dim")
     table.add_column("Metric", style="bold")
     table.add_column("Value", justify="right")
 
@@ -341,18 +365,32 @@ def _render_summary_table(
     run_dur = histograms.get("run_duration_ms", {})
     if run_dur.get("count", 0) > 0:
         avg_ms = run_dur["sum"] / run_dur["count"]
-        table.add_row("Avg run", f"{avg_ms / 1000:.1f}s")
+        table.add_row("Run duration", _fmt_histogram_s(run_dur))
     else:
-        table.add_row("Avg run", "—")
+        table.add_row("Run duration", "—")
+
+    msg_dur = histograms.get("message_duration_ms", {})
+    if msg_dur.get("count", 0) > 0:
+        table.add_row("Msg duration", _fmt_histogram_s(msg_dur))
+    else:
+        table.add_row("Msg duration", "—")
 
     qdepth = histograms.get("queue_depth", {})
     if qdepth.get("count", 0) > 0:
-        table.add_row("Queue depth", f"{qdepth['sum'] / qdepth['count']:.0f} (max {qdepth.get('max', '?')})")
+        table.add_row("Queue depth", _fmt_histogram_raw(qdepth))
     else:
         table.add_row("Queue depth", "—")
 
+    qwait = histograms.get("queue_wait_ms", {})
+    if qwait.get("count", 0) > 0:
+        table.add_row("Queue wait", _fmt_histogram_s(qwait))
+    else:
+        table.add_row("Queue wait", "—")
+
     otel_sessions = (otel or {}).get("sessions", [])
     table.add_row("Sessions (OTEL)", _fmt_num(len(otel_sessions)))
+    total_turns = sum(s.get("turns", 1) for s in otel_sessions)
+    table.add_row("Total turns", _fmt_num(total_turns) if otel_sessions else "—")
 
     gw_status = "—"
     if oc:
@@ -368,17 +406,21 @@ def _render_summary_table(
 
 
 def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
-    table = Table(title="Agents", title_style="bold cyan", border_style="dim")
+    table = Table(title="Agents", title_style="bold cyan", title_justify="left", border_style="dim")
     table.add_column("Agent", style="bold")
     table.add_column("Input", justify="right")
     table.add_column("Output", justify="right")
     table.add_column("Total", justify="right")
     table.add_column("Cost (oc)", justify="right", style="dim")
     table.add_column("Sessions", justify="right")
+    table.add_column("Turns", justify="right")
+    table.add_column("Avg Run", justify="right")
+    table.add_column("Queue", justify="right")
     table.add_column("Workspace", justify="right")
 
     by_agent_tokens = (otel or {}).get("counters", {}).get("tokens", {}).get("by_agent", {})
     by_agent_cost = (otel or {}).get("counters", {}).get("cost_usd", {}).get("by_agent", {})
+    by_agent_hist = (otel or {}).get("histograms", {}).get("by_agent", {})
     otel_sessions = (otel or {}).get("sessions", [])
 
     agent_names: set[str] = set(by_agent_tokens.keys())
@@ -390,7 +432,15 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
             continue
         tok = by_agent_tokens.get(name, {})
         cost = by_agent_cost.get(name) if name in by_agent_cost else None
-        sess_count = sum(1 for s in otel_sessions if s.get("agent") == name)
+        agent_sessions = [s for s in otel_sessions if s.get("agent") == name]
+        sess_count = len(agent_sessions)
+        total_turns = sum(s.get("turns", 1) for s in agent_sessions)
+
+        ah = by_agent_hist.get(name, {})
+        run_h = ah.get("run_duration_ms", {})
+        avg_run = f"{run_h['sum'] / run_h['count'] / 1000:.1f}s" if run_h.get("count") else "—"
+        q_h = ah.get("queue_depth", {})
+        queue = f"{q_h['sum'] / q_h['count']:.0f}/{q_h.get('max', '?')}" if q_h.get("count") else "—"
 
         ws_size = "—"
         for a in agents_meta:
@@ -407,18 +457,21 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
             _fmt_num(tok.get("total", 0)),
             _fmt_cost(cost),
             str(sess_count),
+            str(total_turns) if total_turns else "—",
+            avg_run,
+            queue,
             ws_size,
         )
 
     if not agent_names:
-        table.add_row("(none)", "—", "—", "—", "—", "—", "—")
+        table.add_row("(none)", *["—"] * 9)
 
     console.print(table)
     console.print()
 
 
 def _render_session_table(sessions: list[dict]) -> None:
-    table = Table(title="Recent Sessions", title_style="bold cyan", border_style="dim")
+    table = Table(title="Recent Sessions", title_style="bold cyan", title_justify="left", border_style="dim")
     table.add_column("ID", style="dim")
     table.add_column("Agent", style="bold")
     table.add_column("Model")
@@ -462,6 +515,7 @@ def _render_workspace_tables(agents_meta: list[dict]) -> None:
         table = Table(
             title=f"Workspace Files ({name}: {wdir})",
             title_style="bold cyan",
+            title_justify="left",
             border_style="dim",
         )
         table.add_column("File", style="bold")
@@ -499,9 +553,13 @@ def _render_field_legend() -> None:
     console.print("[dim]    cache write  — tokens written to prompt cache[/dim]")
     console.print("[dim]  Cost (openclaw)— estimated cost reported by OpenClaw (unverified)[/dim]")
     console.print("[dim]  Messages      — total messages processed by the gateway (OTLP)[/dim]")
-    console.print("[dim]  Avg run       — mean agent run duration in seconds (OTLP histogram)[/dim]")
-    console.print("[dim]  Queue depth   — average/max pending messages in queue (OTLP)[/dim]")
+    console.print("[dim]  Run duration  — agent run duration: avg/min/max in seconds (OTLP histogram)[/dim]")
+    console.print("[dim]  Msg duration  — message processing duration: avg/min/max (OTLP histogram)[/dim]")
+    console.print("[dim]  Queue depth   — pending messages in queue: avg/min/max (OTLP histogram)[/dim]")
+    console.print("[dim]  Queue wait    — time messages wait in queue: avg/min/max (OTLP histogram)[/dim]")
     console.print("[dim]  Turns         — LLM round-trips per session (span count from OTLP traces)[/dim]")
+    console.print("[dim]  Avg Run       — per-agent mean run duration in seconds (OTLP histogram)[/dim]")
+    console.print("[dim]  Queue         — per-agent queue depth: avg/max (OTLP histogram)[/dim]")
     console.print("[dim]  Workspace     — total file size in the agent's ~/.openclaw workspace dir[/dim]")
     console.print("[dim]  Cost (oc)     — per-agent cost estimate reported by OpenClaw[/dim]")
     console.print()
