@@ -573,14 +573,15 @@
     <!-- S3: Infrastructure -->
     <div class="section" data-scene="3">
       <div class="sec-label">Infrastructure</div>
-      <h2 class="sec-title">Single Database, Full Stack</h2>
+      <h2 class="sec-title">Infrastructure Overview</h2>
       <p class="sec-body">Everything runs on one <strong>AgensGraph</strong> instance &mdash; SQL tables, openCypher graph, pgvector embeddings. The backend is <strong>FastAPI</strong> with Postgres <code>LISTEN/NOTIFY</code> for real-time SSE.</p>
       <p class="sec-body" style="margin-top:12px;">CFN services plug in via the <code>cfn</code> Docker Compose profile. Agents connect through adapters &mdash; Claude Code via hooks + skill, OpenClaw via plugin &mdash; receiving coordination events over persistent SSE streams.</p>
       <div class="sec-detail">
-        <span class="hi">Database:</span> <span>AgensGraph (Postgres + openCypher + pgvector)</span>
-        <span style="margin-top:4px;" class="hi">Backend:</span> <span>FastAPI :8000 + asyncpg LISTEN/NOTIFY</span>
-        <span style="margin-top:4px;" class="hi">Agents:</span> <span>Claude Code (hooks + skill) &middot; OpenClaw (plugin + adapter)</span>
-        <span style="margin-top:4px;" class="hi">LLM:</span> <span>litellm (100+ provider support)</span>
+        <span class="hi">mycelium-cli:</span> <span>agent adapters — Claude Code (hooks + skill) &middot; OpenClaw (plugin)</span>
+        <span style="margin-top:4px;" class="hi">mycelium-backend:</span> <span>FastAPI :8000 &middot; asyncpg LISTEN/NOTIFY &middot; CognitiveEngine</span>
+        <span style="margin-top:4px;" class="hi">mycelium-db:</span> <span>AgensGraph :5432 &middot; SQL + openCypher + pgvector</span>
+        <span style="margin-top:4px;" class="hi">CFN:</span> <span>mgmt-plane :9000 &middot; cfn-svc :9002</span>
+        <span style="margin-top:4px;" class="hi">OTEL:</span> <span>collector :4318 &middot; traces + metrics</span>
       </div>
     </div>
 
@@ -707,50 +708,63 @@
               <div class="p-myc" style="margin-top:8px; border-top:1px solid var(--border); padding-top:8px;">Synthesis<br>Catchup Protocol<br>Guardrails</div>
             </div>
           </div>
-          <div style="display:flex; gap:8px; width:100%;">
-            <div style="flex:1; text-align:center; padding:8px; background:rgba(52,211,153,0.05); border:1px solid rgba(52,211,153,0.2); border-radius:8px; font-size:10px; color:var(--green); font-family:'SF Mono',monospace;">
-              ioc-cfn-mgmt-plane :9000
-            </div>
-            <div style="flex:1; text-align:center; padding:8px; background:rgba(52,211,153,0.05); border:1px solid rgba(52,211,153,0.2); border-radius:8px; font-size:10px; color:var(--green); font-family:'SF Mono',monospace;">
-              ioc-cfn-svc :9002
-            </div>
-          </div>
         </div>
       </div>
 
       <!-- SCENE 3: Infrastructure -->
       <div class="scene" id="sc3">
-        <div style="width:100%; display:flex; flex-direction:column; gap:14px;">
-          <div class="sc3-row">
-            <div class="sc3-box o">
-              <div class="name">Agent Adapters</div>
-              <div class="sub">Claude Code &middot; OpenClaw<br>hooks + skill &middot; plugin</div>
+        <div style="width:100%; display:flex; flex-direction:column; gap:8px;">
+
+          <!-- layer label -->
+          <div style="font-size:9px; font-weight:700; letter-spacing:0.18em; text-transform:uppercase; color:var(--muted); font-family:'SF Mono',monospace; padding-left:2px;">clients</div>
+
+          <!-- mycelium-cli -->
+          <div style="padding:12px 16px; background:rgba(56,189,248,0.05); border:1px solid rgba(56,189,248,0.25); border-radius:10px; display:flex; align-items:center; justify-content:space-between;">
+            <div>
+              <div style="font-size:12px; font-weight:700; color:var(--accent);">mycelium-cli</div>
+              <div style="font-size:10px; color:var(--muted); margin-top:3px;">agent adapters &middot; Claude Code (hooks + skill) &middot; OpenClaw (plugin)</div>
             </div>
-            <div style="display:flex; align-items:center; padding:0 6px; color:var(--dim); font-size:18px;">&#8644;</div>
-            <div class="sc3-box b">
-              <div class="name">mycelium-backend</div>
-              <div class="sub">FastAPI :8000<br>rooms &middot; SSE &middot; coordination</div>
+            <div style="font-size:10px; color:var(--muted); font-family:'SF Mono',monospace; white-space:nowrap; padding-left:12px; opacity:0.6;">install / CLI</div>
+          </div>
+
+          <!-- connector -->
+          <div style="display:flex; justify-content:center;"><div style="width:2px; height:12px; background:linear-gradient(to bottom,rgba(56,189,248,0.4),rgba(129,140,248,0.4));"></div></div>
+
+          <div style="font-size:9px; font-weight:700; letter-spacing:0.18em; text-transform:uppercase; color:var(--muted); font-family:'SF Mono',monospace; padding-left:2px;">core</div>
+
+          <!-- mycelium-backend -->
+          <div style="padding:12px 16px; background:rgba(129,140,248,0.05); border:1px solid rgba(129,140,248,0.3); border-radius:10px; display:flex; align-items:center; justify-content:space-between;">
+            <div>
+              <div style="font-size:12px; font-weight:700; color:var(--blue);">mycelium-backend</div>
+              <div style="font-size:10px; color:var(--muted); margin-top:3px;">FastAPI &middot; CognitiveEngine &middot; rooms &middot; SSE &middot; LISTEN/NOTIFY</div>
+            </div>
+            <div style="font-size:10px; color:var(--blue); font-family:'SF Mono',monospace; white-space:nowrap; padding-left:12px; opacity:0.7;">:8000</div>
+          </div>
+
+          <!-- connector -->
+          <div style="display:flex; justify-content:center;"><div style="width:2px; height:12px; background:linear-gradient(to bottom,rgba(129,140,248,0.4),rgba(52,211,153,0.4));"></div></div>
+
+          <div style="font-size:9px; font-weight:700; letter-spacing:0.18em; text-transform:uppercase; color:var(--muted); font-family:'SF Mono',monospace; padding-left:2px;">data &amp; integrations</div>
+
+          <!-- bottom row: db, cfn, otel -->
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
+            <div style="padding:12px 12px; background:rgba(52,211,153,0.05); border:1px solid rgba(52,211,153,0.25); border-radius:10px;">
+              <div style="font-size:11px; font-weight:700; color:var(--green);">mycelium-db</div>
+              <div style="font-size:10px; color:var(--muted); margin-top:4px; line-height:1.5;">AgensGraph<br>SQL · Cypher · pgvector</div>
+              <div style="font-size:10px; color:var(--green); font-family:'SF Mono',monospace; margin-top:6px; opacity:0.7;">:5432</div>
+            </div>
+            <div style="padding:12px 12px; background:rgba(192,132,252,0.05); border:1px solid rgba(192,132,252,0.25); border-radius:10px;">
+              <div style="font-size:11px; font-weight:700; color:var(--purple);">CFN Services</div>
+              <div style="font-size:10px; color:var(--muted); margin-top:4px; line-height:1.5;">mgmt-plane<br>cfn-svc</div>
+              <div style="font-size:10px; color:var(--purple); font-family:'SF Mono',monospace; margin-top:6px; opacity:0.7;">:9000 · :9002</div>
+            </div>
+            <div style="padding:12px 12px; background:rgba(251,191,36,0.04); border:1px solid rgba(251,191,36,0.22); border-radius:10px;">
+              <div style="font-size:11px; font-weight:700; color:var(--yellow);">OTEL Collector</div>
+              <div style="font-size:10px; color:var(--muted); margin-top:4px; line-height:1.5;">traces<br>metrics</div>
+              <div style="font-size:10px; color:var(--yellow); font-family:'SF Mono',monospace; margin-top:6px; opacity:0.7;">:4318</div>
             </div>
           </div>
-          <div class="sc3-conn"></div>
-          <div class="sc3-row">
-            <div class="sc3-box g" style="flex:2;">
-              <div class="name">mycelium-db (AgensGraph)</div>
-              <div class="sub">SQL + openCypher + pgvector &middot; single instance &middot; :5432</div>
-            </div>
-          </div>
-          <div class="sc3-conn"></div>
-          <div class="sc3-row">
-            <div class="sc3-box p" style="font-size:10px;">
-              <div class="name" style="font-size:11px;">CFN Services</div>
-              <div class="sub">mgmt-plane :9000 &middot; cfn :9002 &middot; memory :9003</div>
-            </div>
-            <div style="display:flex; align-items:center; padding:0 6px; color:var(--dim); font-size:18px;">&#8644;</div>
-            <div class="sc3-box g" style="font-size:10px;">
-              <div class="name" style="font-size:11px;">litellm</div>
-              <div class="sub">100+ LLM providers<br>synthesis &middot; extraction</div>
-            </div>
-          </div>
+
         </div>
       </div>
 

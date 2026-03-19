@@ -399,7 +399,9 @@ def _install_openclaw(verbose: bool = False) -> None:
 
 def _install_openclaw_skill() -> None:
     """Copy the mycelium SKILL.md to ~/.openclaw/workspace/skills/mycelium/."""
-    skill_src_dir = _resolve_asset(f"extensions/{_OPENCLAW_PLUGIN_NAME}/skills/{_OPENCLAW_SKILL_NAME}")
+    skill_src_dir = _resolve_asset(
+        f"extensions/{_OPENCLAW_PLUGIN_NAME}/skills/{_OPENCLAW_SKILL_NAME}"
+    )
     dest_dir = Path.home() / ".openclaw" / "workspace" / "skills" / _OPENCLAW_SKILL_NAME
     dest_dir.mkdir(parents=True, exist_ok=True)
     for f in skill_src_dir.iterdir():
