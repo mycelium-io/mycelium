@@ -140,7 +140,7 @@
     overflow-y: auto;
     padding: 28px 0 40px;
     border-right: 1px solid var(--border);
-    background: rgba(8, 14, 24, 0.35);
+    background: rgba(5, 9, 15, 0.85);
   }
   .sidebar::-webkit-scrollbar { width: 4px; }
   .sidebar::-webkit-scrollbar-track { background: transparent; }
@@ -463,14 +463,15 @@
   }
   .steps li {
     counter-increment: step;
-    display: flex;
-    gap: 16px;
+    position: relative;
+    padding-left: 44px;
     margin-bottom: 20px;
-    align-items: flex-start;
   }
   .steps li::before {
     content: counter(step);
-    flex-shrink: 0;
+    position: absolute;
+    left: 0;
+    top: 0;
     width: 28px;
     height: 28px;
     border-radius: 50%;
@@ -483,7 +484,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-top: 1px;
   }
 
   /* ── RESPONSIVE ── */
@@ -499,7 +499,8 @@
     .main { padding: 24px 16px 60px; }
     h1 { font-size: 1.75rem; }
     h2 { font-size: 1.25rem; }
-    pre { font-size: 0.75rem; white-space: pre-wrap; word-break: break-all; }
+    .main-inner { padding: 24px 16px 32px; }
+    pre { font-size: 0.75rem; overflow-x: auto; }
     .cmd-ref-header code { font-size: 0.75rem; word-break: break-all; }
   }
 </style>
@@ -516,8 +517,8 @@
   <span class="topnav-sep">/</span>
   <span class="topnav-page">docs</span>
   <div class="topnav-right">
-    <button class="copy-page-btn" onclick="copyPage()">copy page</button>
-    <a href="https://github.com/mycelium-io/mycelium">GitHub</a>
+    <button class="copy-page-btn" onclick="copyPage()">copy this page</button>
+    <a href="https://github.com/mycelium-io/mycelium" aria-label="GitHub"><svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
     <a href="https://github.com/mycelium-io/mycelium/releases">Releases</a>
   </div>
 </nav>
@@ -540,6 +541,7 @@
       <a href="#cognitive-engine" class="nav-link">CognitiveEngine</a>
       <a href="#knowledge-graph" class="nav-link">Knowledge Graph</a>
     </div>
+    <!-- codegen:cli-sidebar -->
     <div class="nav-section">
       <div class="nav-section-label">CLI Reference</div>
       <a href="#cli-room" class="nav-link sub">room</a>
@@ -547,6 +549,7 @@
       <a href="#cli-message" class="nav-link sub">message</a>
       <a href="#cli-other" class="nav-link sub">synthesize / catchup / watch</a>
     </div>
+<!-- /codegen:cli-sidebar -->
     <div class="nav-section">
       <div class="nav-section-label">Architecture</div>
       <a href="#stack" class="nav-link">Stack</a>
@@ -655,7 +658,7 @@ mycelium install</code></pre>
 <span class="cmd">mycelium room create</span> my-project <span class="flag">--mode</span> async
 
 <span class="comment"># Set it as your active room</span>
-<span class="cmd">mycelium room set</span> my-project
+<span class="cmd">mycelium room use</span> my-project
 
 <span class="comment"># Share context</span>
 <span class="cmd">mycelium memory set</span> <span class="str">"decisions/db"</span> <span class="str">"PostgreSQL with pgvector"</span>
@@ -773,13 +776,13 @@ mycelium install</code></pre>
 
       <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body"><strong>Upserts require --update.</strong> Calling <code>memory set</code> on an existing key
-        fails unless you pass <code>--update</code>. This prevents silent overwrites of shared context.</div>
+        <div class="callout-body"><strong>Always upserts.</strong> Calling <code>memory set</code> on an existing key
+        overwrites it. The version number increments automatically so you can track changes.</div>
       </div>
 
       <h3>Semantic Search</h3>
       <p>
-        Search finds memories by meaning — cosine similarity on BAAI/bge-small-en-v1.5 embeddings
+        Search finds memories by meaning — cosine similarity on all-MiniLM-L6-v2 embeddings
         (384 dimensions, runs locally).
       </p>
       <pre><code><span class="cmd">mycelium memory search</span> <span class="str">"what database decisions were made"</span>
@@ -881,9 +884,17 @@ mycelium install</code></pre>
 
     <!-- CLI REFERENCE -->
     <section class="doc-section" id="cli-reference">
+      <!-- codegen:cli-reference -->
       <h2>CLI Reference</h2>
 
       <h3 id="cli-room">room</h3>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium room ls</code>
+        </div>
+        <div class="cmd-ref-body">List all rooms with mode, state, and member count.</div>
+      </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
@@ -894,39 +905,32 @@ mycelium install</code></pre>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium room set &lt;name&gt;</code>
+          <code>mycelium room use &lt;name&gt;</code>
         </div>
-        <div class="cmd-ref-body">Set the active room for the current session. Subsequent <code>memory</code> and <code>message</code> commands use this room by default.</div>
+        <div class="cmd-ref-body">Switch active room. Subsequent <code>memory</code> and <code>message</code> commands use this room by default.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium room join --handle &lt;handle&gt; -m &lt;position&gt; [-c &lt;room&gt;]</code>
+          <code>mycelium room join --handle &lt;handle&gt; -m &lt;position&gt; [-r &lt;room&gt;]</code>
         </div>
         <div class="cmd-ref-body">Join a sync room with an initial position. Starts the 60s join window if you're the first.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium room await --handle &lt;handle&gt; [-c &lt;room&gt;]</code>
+          <code>mycelium room await --handle &lt;handle&gt; [-r &lt;room&gt;]</code>
         </div>
-        <div class="cmd-ref-body">Block and wait for a negotiation tick. Returns when CE has an action for your agent. Call this repeatedly between propose/respond actions until you receive <code>type: consensus</code>.</div>
-      </div>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code>mycelium room ls</code>
-        </div>
-        <div class="cmd-ref-body">List all rooms.</div>
+        <div class="cmd-ref-body">Block and wait for a negotiation tick. Returns when CE has an action for your agent.</div>
       </div>
 
       <h3 id="cli-memory">memory</h3>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium memory set &lt;key&gt; &lt;value&gt; [--handle &lt;handle&gt;] [--update]</code>
+          <code>mycelium memory set &lt;key&gt; &lt;value&gt; [--handle &lt;handle&gt;]</code>
         </div>
-        <div class="cmd-ref-body">Write a memory. Fails on duplicate key unless <code>--update</code> is passed.</div>
+        <div class="cmd-ref-body">Write a memory (upsert). Structured category keys (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code>) are auto-validated. Always upserts — the backend handles versioning.</div>
       </div>
 
       <div class="cmd-ref">
@@ -954,26 +958,19 @@ mycelium install</code></pre>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium message propose budget=&lt;v&gt; timeline=&lt;v&gt; scope=&lt;v&gt; quality=&lt;v&gt; -c &lt;room&gt; -H &lt;handle&gt;</code>
+          <code>mycelium message propose budget=&lt;v&gt; timeline=&lt;v&gt; scope=&lt;v&gt; quality=&lt;v&gt; -r &lt;room&gt; -H &lt;handle&gt;</code>
         </div>
         <div class="cmd-ref-body">Make a negotiation proposal with issue values. Only valid after <code>room await</code> returns <code>action: propose</code>.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium message respond &lt;accept|reject&gt; -c &lt;room&gt; -H &lt;handle&gt;</code>
+          <code>mycelium message respond &lt;accept|reject&gt; -r &lt;room&gt; -H &lt;handle&gt;</code>
         </div>
         <div class="cmd-ref-body">Accept or reject the current proposal. Only valid after <code>room await</code> returns <code>action: respond</code>.</div>
       </div>
 
       <h3 id="cli-other">synthesize / catchup / watch</h3>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code>mycelium synthesize</code>
-        </div>
-        <div class="cmd-ref-body">Trigger CE to synthesize all memories in the active room into a structured summary.</div>
-      </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
@@ -984,10 +981,18 @@ mycelium install</code></pre>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
+          <code>mycelium synthesize</code>
+        </div>
+        <div class="cmd-ref-body">Trigger CE to synthesize all memories in the active room into a structured summary.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
           <code>mycelium watch [room]</code>
         </div>
         <div class="cmd-ref-body">Stream live room activity via SSE. Messages appear in real time as other agents write.</div>
       </div>
+<!-- /codegen:cli-reference -->
     </section>
 
     <hr class="divider">
@@ -1008,7 +1013,7 @@ mycelium install</code></pre>
             <tr><td>Graph</td><td>openCypher (AgensGraph)</td><td>knowledge graph — concepts, relationships</td></tr>
             <tr><td>Vector</td><td>pgvector</td><td>semantic search on memory embeddings</td></tr>
             <tr><td>Real-time</td><td>LISTEN/NOTIFY → asyncpg → SSE</td><td>live watch stream</td></tr>
-            <tr><td>Embeddings</td><td>fastembed (BAAI/bge-small-en-v1.5)</td><td>384-dim local embeddings, no API key</td></tr>
+            <tr><td>Embeddings</td><td>sentence-transformers (all-MiniLM-L6-v2)</td><td>384-dim local embeddings, no API key</td></tr>
             <tr><td>LLM</td><td>litellm</td><td>synthesis, extraction, negotiation (100+ providers)</td></tr>
             <tr><td>Backend</td><td>FastAPI + asyncpg + SQLAlchemy</td><td>coordination engine API</td></tr>
             <tr><td>CLI</td><td>Typer + Rich</td><td>agent interface</td></tr>
@@ -1080,7 +1085,7 @@ mycelium install</code></pre>
       const btn = document.querySelector('.copy-page-btn');
       btn.textContent = 'copied!';
       btn.classList.add('copied');
-      setTimeout(() => { btn.textContent = 'copy page'; btn.classList.remove('copied'); }, 2000);
+      setTimeout(() => { btn.textContent = 'copy this page'; btn.classList.remove('copied'); }, 2000);
     });
   }
 
@@ -1107,10 +1112,12 @@ mycelium install</code></pre>
   const canvas = document.getElementById('mycelium-bg');
   const ctx = canvas.getContext('2d');
 
-  // Sim grid covers max reasonable viewport (3840x2160 / 5 = 768x432)
+  // ── Pixelated grid ──
   const CELL = 8;
   const cols = 480, rows = 270;
-  var trail = new Float32Array(cols * rows);
+  // Two layers: structure (permanent network) and flow (nutrient transport)
+  var structure = new Float32Array(cols * rows);  // permanent hypha map
+  var trail = new Float32Array(cols * rows);       // animated nutrient flow
   var colorIdx = new Uint8Array(cols * rows);
 
   const BG = { r: 5, g: 9, b: 15 };
@@ -1134,193 +1141,288 @@ mycelium install</code></pre>
   window.addEventListener('resize', resize);
   resize();
 
-  // Physarum-inspired agents — slime crawlers
-  const agents = [];
-  const MAX_AGENTS = 5000;
+  // ══════════════════════════════════════════════════════════════════
+  // LAYER 1: Tip-growth (Meškauskas et al.) — builds the network
+  // ══════════════════════════════════════════════════════════════════
 
-  function Agent(x, y, angle, ci) {
-    this.x = x;
-    this.y = y;
-    this.angle = angle;
-    this.ci = ci; // color index
-    this.age = 0; // agents live forever
-    this.speed = 0.08 + Math.random() * 0.12;
-  }
+  const TIP_SPEED = 0.25;
+  const BRANCH_PROB = 0.015;
+  const BRANCH_ANGLE_MIN = 0.4;
+  const BRANCH_ANGLE_MAX = 1.1;
+  const WANDER = 0.1;
+  const MAX_TIPS = 1200;
 
-  function spawnAgent() {
-    var x, y;
-    if (Math.random() < 0.3) {
-      var side = Math.floor(Math.random() * 4);
-      if (side === 0) { x = Math.random() * cols; y = 0; }
-      else if (side === 1) { x = Math.random() * cols; y = rows - 1; }
-      else if (side === 2) { x = 0; y = Math.random() * rows; }
-      else { x = cols - 1; y = Math.random() * rows; }
-    } else {
-      x = Math.random() * cols;
-      y = Math.random() * rows;
-    }
-    var angle = Math.random() * Math.PI * 2;
-    var ci = Math.floor(Math.random() * COLORS.length);
-    agents.push(new Agent(x, y, angle, ci));
-  }
+  var tips = [];
 
-  // Seed agents in clusters — groups of 30-50 near random centers
-  // so they immediately sense each other and form tendrils
-  var numClusters = 120;
-  for (var c = 0; c < numClusters; c++) {
-    var cx = Math.random() * cols;
-    var cy = Math.random() * rows;
-    var ci = Math.floor(Math.random() * COLORS.length);
-    var clusterSize = 30 + Math.floor(Math.random() * 20);
-    for (var j = 0; j < clusterSize; j++) {
-      var ax = cx + (Math.random() - 0.5) * 30;
-      var ay = cy + (Math.random() - 0.5) * 30;
-      if (ax < 0) ax += cols; if (ax >= cols) ax -= cols;
-      if (ay < 0) ay += rows; if (ay >= rows) ay -= rows;
-      var angle = Math.random() * Math.PI * 2;
-      agents.push(new Agent(ax, ay, angle, ci));
+  function depositStructure(x, y, ci, gen) {
+    var gx = Math.floor(x), gy = Math.floor(y);
+    var strength = 0.5 / (1 + gen * 0.25);
+    var radius = gen < 2 ? 1 : 0;
+    for (var dy = -radius; dy <= radius; dy++) {
+      for (var dx = -radius; dx <= radius; dx++) {
+        var px = gx + dx, py = gy + dy;
+        if (px >= 0 && px < cols && py >= 0 && py < rows) {
+          var idx = py * cols + px;
+          var str = (dx === 0 && dy === 0) ? strength : strength * 0.4;
+          structure[idx] = Math.min(1.0, structure[idx] + str);
+          colorIdx[idx] = ci;
+        }
+      }
     }
   }
 
-  // Sense trail ahead — agents strongly attracted to nearby trails
-  var SENSOR_DIST = 16;
-  var SENSOR_ANGLE = 1.2; // radians (~70 degrees)
+  function isOccupied(x, y) {
+    var gx = Math.floor(x), gy = Math.floor(y);
+    if (gx < 0 || gx >= cols || gy < 0 || gy >= rows) return true;
+    return structure[gy * cols + gx] > 0.2;
+  }
 
-  function sense(agent, angleOffset) {
-    var sx = Math.floor(agent.x + Math.cos(agent.angle + angleOffset) * SENSOR_DIST);
-    var sy = Math.floor(agent.y + Math.sin(agent.angle + angleOffset) * SENSOR_DIST);
+  function seedColony(cx, cy, ci, n) {
+    for (var i = 0; i < n; i++) {
+      var angle = (Math.PI * 2 * i) / n + (Math.random() - 0.5) * 0.5;
+      tips.push({
+        x: cx + Math.cos(angle) * 2,
+        y: cy + Math.sin(angle) * 2,
+        angle: angle, ci: ci, age: 0, gen: 0,
+        maxAge: 1500 + Math.floor(Math.random() * 3000),
+        speed: TIP_SPEED * (0.7 + Math.random() * 0.6),
+      });
+    }
+    depositStructure(cx, cy, ci, 0);
+  }
+
+  function growStep() {
+    var newTips = [];
+    for (var i = tips.length - 1; i >= 0; i--) {
+      var t = tips[i];
+      t.age++;
+
+      t.angle += (Math.random() - 0.5) * WANDER * 2;
+
+      var nx = t.x + Math.cos(t.angle) * t.speed;
+      var ny = t.y + Math.sin(t.angle) * t.speed;
+
+      if (nx < 0 || nx >= cols || ny < 0 || ny >= rows || t.age > t.maxAge) {
+        tips.splice(i, 1);
+        continue;
+      }
+
+      if (t.age > 50 && isOccupied(nx, ny)) {
+        depositStructure(nx, ny, t.ci, t.gen);
+        tips.splice(i, 1);
+        continue;
+      }
+
+      depositStructure(t.x, t.y, t.ci, t.gen);
+      t.x = nx; t.y = ny;
+
+      // Sporulation
+      if (t.age > 300 && t.age % 150 === 0 && Math.random() < 0.12) {
+        seedColony(t.x, t.y, t.ci, 2);
+      }
+
+      // Branching
+      if (tips.length + newTips.length < MAX_TIPS && Math.random() < BRANCH_PROB && t.age > 10) {
+        var bAngle = BRANCH_ANGLE_MIN + Math.random() * (BRANCH_ANGLE_MAX - BRANCH_ANGLE_MIN);
+        var sign = Math.random() < 0.5 ? -1 : 1;
+        newTips.push({
+          x: t.x, y: t.y,
+          angle: t.angle + sign * bAngle,
+          ci: t.ci, age: 0, gen: t.gen + 1,
+          maxAge: 600 + Math.floor(Math.random() * 1500),
+          speed: t.speed * (0.75 + Math.random() * 0.25),
+        });
+      }
+    }
+    for (var j = 0; j < newTips.length; j++) {
+      if (tips.length < MAX_TIPS) tips.push(newTips[j]);
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // LAYER 2: Nutrient agents (Physarum-style) — flow through network
+  // ══════════════════════════════════════════════════════════════════
+  // These agents are constrained to the established network.
+  // They follow trails and re-deposit, creating organic pulsing.
+
+  var agents = [];
+  const MAX_AGENTS = 600;
+  const SENSOR_DIST = 6;
+  const SENSOR_ANGLE = 0.6;
+
+  function spawnAgentOnNetwork() {
+    // Find a random occupied cell to spawn on
+    for (var attempt = 0; attempt < 20; attempt++) {
+      var x = Math.random() * viewCols;
+      var y = Math.random() * viewRows;
+      var gx = Math.floor(x), gy = Math.floor(y);
+      if (gx >= 0 && gx < cols && gy >= 0 && gy < rows && structure[gy * cols + gx] > 0.1) {
+        agents.push({
+          x: x, y: y,
+          angle: Math.random() * Math.PI * 2,
+          ci: colorIdx[gy * cols + gx],
+          speed: 0.08 + Math.random() * 0.1,
+        });
+        return;
+      }
+    }
+  }
+
+  function senseTrail(ax, ay, angle, offset) {
+    var sx = Math.floor(ax + Math.cos(angle + offset) * SENSOR_DIST);
+    var sy = Math.floor(ay + Math.sin(angle + offset) * SENSOR_DIST);
     if (sx < 0 || sx >= cols || sy < 0 || sy >= rows) return 0;
-    return trail[sy * cols + sx];
+    // Sense both structure and flow trail — prefer flowing along the network
+    return structure[sy * cols + sx] * 0.5 + trail[sy * cols + sx];
   }
 
-  // 20fps cap — slower feels more organic
+  // ══════════════════════════════════════════════════════════════════
+  // PRE-WARM: Build the network before first render
+  // ══════════════════════════════════════════════════════════════════
+
+  // Seed initial colonies
+  var numColonies = 15 + Math.floor(Math.random() * 8);
+  for (var c = 0; c < numColonies; c++) {
+    seedColony(
+      15 + Math.random() * (viewCols - 30),
+      15 + Math.random() * (viewRows - 30),
+      Math.floor(Math.random() * COLORS.length),
+      2 + Math.floor(Math.random() * 3)
+    );
+  }
+
+  // Grow the network silently
+  for (var warm = 0; warm < 4000; warm++) {
+    growStep();
+  }
+
+  // Seed nutrient agents onto the established network
+  for (var a = 0; a < MAX_AGENTS; a++) {
+    spawnAgentOnNetwork();
+  }
+
+  // Pre-warm the flow layer too
+  for (var warm = 0; warm < 200; warm++) {
+    for (var i = 0; i < trail.length; i++) {
+      trail[i] *= 0.995;
+    }
+    for (var i = 0; i < agents.length; i++) {
+      var a = agents[i];
+      var sL = senseTrail(a.x, a.y, a.angle, -SENSOR_ANGLE);
+      var sC = senseTrail(a.x, a.y, a.angle, 0);
+      var sR = senseTrail(a.x, a.y, a.angle, SENSOR_ANGLE);
+      var turn = 0.08 + Math.random() * 0.06;
+      if (sC >= sL && sC >= sR) a.angle += (Math.random() - 0.5) * 0.3;
+      else if (sL > sR) a.angle -= turn;
+      else a.angle += turn;
+      a.x += Math.cos(a.angle) * a.speed;
+      a.y += Math.sin(a.angle) * a.speed;
+      if (a.x < 0) a.x += cols; if (a.x >= cols) a.x -= cols;
+      if (a.y < 0) a.y += rows; if (a.y >= rows) a.y -= rows;
+      var gx = Math.floor(a.x), gy = Math.floor(a.y);
+      if (gx >= 0 && gx < cols && gy >= 0 && gy < rows) {
+        trail[gy * cols + gx] = Math.min(1.0, trail[gy * cols + gx] + 0.04);
+      }
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // ANIMATION LOOP
+  // ══════════════════════════════════════════════════════════════════
+
   var lastFrame = 0;
   var frameInterval = 1000 / 20;
-  var frameCount = 0;
 
   function animate(timestamp) {
     requestAnimationFrame(animate);
     if (timestamp - lastFrame < frameInterval) return;
     lastFrame = timestamp;
-    frameCount++;
 
-    // Decay trail — everything fades slowly
+    // Continue growing tips (slow ongoing growth)
+    growStep();
+
+    // Respawn colonies if tips exhausted
+    if (tips.length < 5) {
+      var cx = 10 + Math.random() * (viewCols - 20);
+      var cy = 10 + Math.random() * (viewRows - 20);
+      seedColony(cx, cy, Math.floor(Math.random() * COLORS.length), 2 + Math.floor(Math.random() * 2));
+    }
+
+    // Decay flow trail — faster than structure, creates the pulsing effect
     for (var i = 0; i < trail.length; i++) {
-      trail[i] *= 0.997;
+      trail[i] *= 0.99;
       if (trail[i] < 0.005) trail[i] = 0;
     }
 
-    // Update agents (static set, no death/spawn)
+    // Update nutrient agents — Physarum sensing on the combined field
     for (var i = 0; i < agents.length; i++) {
       var a = agents[i];
 
-      // Sense left, center, right
-      var sL = sense(a, -SENSOR_ANGLE);
-      var sC = sense(a, 0);
-      var sR = sense(a, SENSOR_ANGLE);
+      var sL = senseTrail(a.x, a.y, a.angle, -SENSOR_ANGLE);
+      var sC = senseTrail(a.x, a.y, a.angle, 0);
+      var sR = senseTrail(a.x, a.y, a.angle, SENSOR_ANGLE);
 
-      // Steer — strongly attracted to other trails, merge into tendrils
-      var turnSpeed = 0.08 + Math.random() * 0.06;
+      var turn = 0.08 + Math.random() * 0.06;
       if (sC >= sL && sC >= sR) {
         a.angle += (Math.random() - 0.5) * 0.3;
       } else if (sL > sR) {
-        a.angle -= turnSpeed;
-      } else if (sR > sL) {
-        a.angle += turnSpeed;
+        a.angle -= turn;
       } else {
-        a.angle += (Math.random() < 0.5 ? -1 : 1) * turnSpeed;
+        a.angle += turn;
       }
 
-      // Slow organic drift
-      a.angle += Math.sin(frameCount * 0.002 + a.x * 0.03 + a.y * 0.04) * 0.02;
-
-      // Move
       a.x += Math.cos(a.angle) * a.speed;
       a.y += Math.sin(a.angle) * a.speed;
 
-      // Wrap around edges
-      if (a.x < 0) a.x += cols;
-      if (a.x >= cols) a.x -= cols;
-      if (a.y < 0) a.y += rows;
-      if (a.y >= rows) a.y -= rows;
+      // Wrap edges
+      if (a.x < 0) a.x += cols; if (a.x >= cols) a.x -= cols;
+      if (a.y < 0) a.y += rows; if (a.y >= rows) a.y -= rows;
 
-      // Deposit trail — thick stroke along movement, not just a single pixel
-      var gx = Math.floor(a.x);
-      var gy = Math.floor(a.y);
-      for (var dy = -1; dy <= 1; dy++) {
-        for (var dx = -1; dx <= 1; dx++) {
-          var px = gx + dx, py = gy + dy;
-          if (px >= 0 && px < cols && py >= 0 && py < rows) {
-            var pidx = py * cols + px;
-            var strength = (dx === 0 && dy === 0) ? 0.06 : 0.02;
-            trail[pidx] = Math.min(1.0, trail[pidx] + strength);
-            colorIdx[pidx] = a.ci;
+      // If agent drifted off the network, teleport back onto it
+      var gx = Math.floor(a.x), gy = Math.floor(a.y);
+      if (gx >= 0 && gx < cols && gy >= 0 && gy < rows && structure[gy * cols + gx] < 0.05) {
+        // Off-network — find a random network cell to respawn on
+        for (var att = 0; att < 30; att++) {
+          var rx = Math.floor(Math.random() * viewCols);
+          var ry = Math.floor(Math.random() * viewRows);
+          if (structure[ry * cols + rx] > 0.1) {
+            a.x = rx; a.y = ry;
+            a.angle = Math.random() * Math.PI * 2;
+            a.ci = colorIdx[ry * cols + rx];
+            gx = rx; gy = ry;
+            break;
           }
         }
       }
-    }
 
-    // Life-like rules on trail cells — tendrils grow, branch, and die organically
-    // Run every 3rd frame to keep it subtle and performant
-    if (frameCount % 3 === 0) {
-      // Only process viewport area
-      var lw = Math.min(viewCols, cols);
-      var lh = Math.min(viewRows, rows);
-      for (var y = 1; y < lh - 1; y++) {
-        for (var x = 1; x < lw - 1; x++) {
-          var idx = y * cols + x;
-          var val = trail[idx];
-          // Count alive neighbors (trail > 0.05)
-          var neighbors = 0;
-          for (var dy = -1; dy <= 1; dy++) {
-            for (var dx = -1; dx <= 1; dx++) {
-              if (dx === 0 && dy === 0) continue;
-              if (trail[(y + dy) * cols + (x + dx)] > 0.05) neighbors++;
-            }
-          }
-          if (val < 0.05) {
-            // Dead cell — birth if exactly 2-3 neighbors (like life, but rarer)
-            if (neighbors === 3 && Math.random() < 0.04) {
-              // Inherit color from a neighbor
-              for (var dy2 = -1; dy2 <= 1; dy2++) {
-                for (var dx2 = -1; dx2 <= 1; dx2++) {
-                  var ni = (y + dy2) * cols + (x + dx2);
-                  if (trail[ni] > 0.05) { colorIdx[idx] = colorIdx[ni]; dy2 = 2; break; }
-                }
-              }
-              trail[idx] = 0.25 + Math.random() * 0.1; // slight flash on birth
-            }
-          } else {
-            // Alive cell — overcrowding kills (>5 neighbors), isolation kills (<1)
-            if (neighbors > 5) {
-              trail[idx] *= 0.9;
-            } else if (neighbors < 1) {
-              trail[idx] *= 0.95;
-            }
-          }
-        }
+      // Deposit flow trail
+      if (gx >= 0 && gx < cols && gy >= 0 && gy < rows) {
+        var idx = gy * cols + gx;
+        trail[idx] = Math.min(1.0, trail[idx] + 0.04);
+        colorIdx[idx] = a.ci;
       }
     }
 
-    // Render only the viewport portion of the sim
+    // ── Render ──
     ctx.fillStyle = 'rgb(' + BG.r + ',' + BG.g + ',' + BG.b + ')';
     ctx.fillRect(0, 0, viewCols, viewRows);
 
-    var renderW = Math.min(viewCols, cols);
-    var renderH = Math.min(viewRows, rows);
-    for (var y = 0; y < renderH; y++) {
-      for (var x = 0; x < renderW; x++) {
-        var val = trail[y * cols + x];
-        if (val < 0.01) continue;
-        var c = COLORS[colorIdx[y * cols + x]];
-        var alpha = val * 0.1;
+    var rw = Math.min(viewCols, cols);
+    var rh = Math.min(viewRows, rows);
+    for (var y = 0; y < rh; y++) {
+      for (var x = 0; x < rw; x++) {
+        var idx = y * cols + x;
+        var sVal = structure[idx];
+        var tVal = trail[idx];
+        if (sVal < 0.01 && tVal < 0.01) continue;
+        var c = COLORS[colorIdx[idx]];
+        // Structure is dim/permanent, flow is brighter/animated
+        var alpha = sVal * 0.02 + tVal * 0.2;
         ctx.fillStyle = 'rgba(' + c.r + ',' + c.g + ',' + c.b + ',' + alpha + ')';
         ctx.fillRect(x, y, 1, 1);
       }
     }
   }
-
-  // No pre-warm — start clean, agents emerge from black
 
   requestAnimationFrame(animate);
 })();

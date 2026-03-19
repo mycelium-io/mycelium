@@ -19,7 +19,7 @@ def ensure_room_set(
         if room_override.strip() == "":
             raise MyceliumError(
                 "Empty room name not allowed",
-                suggestion="Run 'mycelium room set <room-name>' to set your active room",
+                suggestion="Run 'mycelium room use <room-name>' to set your active room",
             )
         target_room = room_override
     elif active_room:
@@ -27,7 +27,7 @@ def ensure_room_set(
     else:
         raise MyceliumError(
             "No room set",
-            suggestion="Run 'mycelium room set <room-name>' first",
+            suggestion="Run 'mycelium room use <room-name>' first",
         )
 
     if target_room != active_room:

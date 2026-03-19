@@ -21,36 +21,38 @@ mycelium --help
 
 ```bash
 mycelium room create design-review --mode async --trigger threshold:5
-mycelium room set design-review
+mycelium room use design-review
 ```
 
 ### Agent 1: Julia shares architecture decisions
 
 ```bash
-mycelium memory set "decisions/database" "Consolidated to single AgensGraph instance — SQL + graph + vector in one DB" --handle julia-agent
-mycelium memory set "decisions/llm-provider" '{"choice": "litellm", "rationale": "100+ providers, one interface"}' --handle julia-agent
-mycelium memory set "decisions/api-style" "REST for now, generated OpenAPI client for type safety" --handle julia-agent
+# Category keys (work/, decisions/, context/, status/) get auto-validated
+mycelium memory set decisions/database "Consolidated to single AgensGraph instance — SQL + graph + vector in one DB" -H julia-agent
+mycelium memory set decisions/llm-provider "litellm — 100+ providers, one interface" -H julia-agent
+mycelium memory set decisions/api-style "REST for now, generated OpenAPI client for type safety" -H julia-agent
 ```
 
 ### Agent 2: Selina shares research
 
 ```bash
+# research/ isn't a structured category — passes through without slug validation
 mycelium memory set "research/pgvector-perf" "pgvector cosine search on 384-dim embeddings: <5ms for 10k memories" --handle selina-agent
-mycelium memory set "research/fastembed" "BAAI/bge-small-en-v1.5 runs locally, 384 dimensions, no API key needed" --handle selina-agent
+mycelium memory set "research/embeddings" "sentence-transformers/all-MiniLM-L6-v2 runs locally, 384 dimensions, no API key needed" --handle selina-agent
 ```
 
-### Agent 3: Kappa reports failures
+### Agent 3: Kappa reports what didn't work
 
 ```bash
-mycelium memory set "failed/sqlite-testing" "SQLite can't handle pgvector or JSONB — need real Postgres for integration tests" --handle kappa-agent
-mycelium memory set "failed/separate-vector-db" "Considered Qdrant but AgensGraph+pgvector eliminates the need" --handle kappa-agent
+mycelium memory set decisions/no-sqlite-tests "SQLite can't handle pgvector or JSONB — need real Postgres for integration tests" -H kappa-agent
+mycelium memory set decisions/no-qdrant "Considered Qdrant but AgensGraph+pgvector eliminates the need" -H kappa-agent
 ```
 
 ### Agent 4: Prometheus shares status
 
 ```bash
-mycelium memory set "status/prometheus" "Working on CFN integration — mapping mycelium agents to CFN objects" --handle prometheus-agent
-mycelium memory set "status/prometheus/blockers" "Need ioc-cfn-mgmt-plane-svc running to test agent registration flow" --handle prometheus-agent
+mycelium memory set status/cfn-integration "Working on CFN integration — mapping mycelium agents to CFN objects" -H prometheus-agent
+mycelium memory set context/blocker "Need ioc-cfn-mgmt-plane-svc running to test agent registration flow" -H prometheus-agent
 ```
 
 ### Browse & Search
@@ -59,15 +61,20 @@ mycelium memory set "status/prometheus/blockers" "Need ioc-cfn-mgmt-plane-svc ru
 # List all memories
 mycelium memory ls
 
-# Browse by namespace
-mycelium memory ls decisions/
-mycelium memory ls failed/
+# Browse by structured category (table view)
+mycelium memory decisions     # Why choices were made
+mycelium memory status        # Current state of things
+mycelium memory work          # What's been built
+mycelium memory context       # Background & constraints
+
+# Or use prefix filter for any namespace
+mycelium memory ls research/
 
 # Semantic search
 mycelium memory search "what database decisions were made"
 mycelium memory search "what failed"
 
-# Synthesize
+# Synthesize — now structure-aware, groups by category
 mycelium synthesize
 
 # Catchup — new agent arrives, gets briefed
@@ -158,9 +165,9 @@ Give this to the second Claude Code instance:
    - Cognition Fabric → Persistent memory + knowledge graph (AgensGraph + pgvector)
    - Cognition Engines → CognitiveEngine synthesis + guardrails
 
-3. **The ratchet effect**: Show `mycelium catchup`. A new agent arrives and instantly knows everything the swarm learned. Intelligence compounds across sessions.
+3. **The ratchet effect**: Show `mycelium catchup`. A new agent arrives and instantly knows everything the swarm learned. Intelligence compounds across sessions. Synthesis is structure-aware — groups memories by category (work, decisions, status, context) for better briefings.
 
-4. **Negative results matter**: Show `mycelium memory ls failed/`. Agents log what didn't work so others don't repeat dead ends.
+4. **Negative results matter**: Show `mycelium memory decisions`. Agents log what didn't work (and why) so others don't repeat dead ends. The structured category convention (`decisions/no-qdrant`) makes failures as discoverable as successes.
 
 5. **CFN integration**: Agent registration → CFN mgmt plane. ioc-cfn-svc routes extraction + evidence back to mycelium-backend. Mycelium serves as both the knowledge-memory and cognition engine backends.
 

@@ -1,99 +1,144 @@
 ---
 name: mycelium
-description: Use the mycelium CLI to join coordination rooms, negotiate with other agents via CognitiveEngine, and receive individual task assignments.
+description: Use the mycelium CLI to join coordination rooms, negotiate with other agents via CognitiveEngine, and share persistent memory across sessions.
 user-invocable: true
 ---
 
-Use this skill when you need to coordinate with other agents via Mycelium rooms.
-All coordination uses the `mycelium` CLI — you do not need to know the underlying protocol.
+# Mycelium Coordination
 
-## Activation
+Mycelium provides persistent shared memory and real-time coordination between AI agents.
+All interaction flows through **rooms** (shared namespaces) and **CognitiveEngine** (the mediator).
+Agents never communicate directly with each other.
 
-This skill activates when:
-- A user appends `/mycelium` to their message
-- You are assigned to a multi-agent coordination task
-- Another agent delegates a task to you via a room
+## Core Concepts
 
-## Coordination flow
+- **Rooms** are namespaces. They can be `sync` (real-time negotiation), `async` (persistent memory), or `hybrid` (both).
+- **CognitiveEngine** mediates all coordination. It drives negotiation rounds and synthesizes accumulated context.
+- **Memory** is the persistence layer. Key-value entries scoped to a room, with optional vector embeddings for semantic search.
 
-The coordination protocol is **push-based**. Commands return immediately; CognitiveEngine
-will message you in this channel when it is your turn.
+## Memory Operations
 
-### Full example
+```bash
+# Write a memory (value can be plain text or JSON)
+mycelium memory set <key> <value> --handle <agent-handle>
+mycelium memory set "decision/api-style" '{"choice": "REST", "rationale": "simpler"}' --handle claude-agent
 
+# Read a memory by key
+mycelium memory get <key>
+
+# List memories (log-style output with values)
+mycelium memory ls
+mycelium memory ls --prefix "decision/"
+
+# Semantic search (natural language query against vector embeddings)
+mycelium memory search "what was decided about the API design"
+
+# Delete a memory
+mycelium memory rm <key>
+
+# Subscribe to changes on a key pattern
+mycelium memory subscribe "decision/*" --handle claude-agent
 ```
-# Step 1 — join the coordination room (returns immediately)
-mycelium room join --handle julia-agent -m "I hold Boardwalk, open to trade"
 
-# Step 2 — wait. CognitiveEngine will message you in this channel when it is your turn.
+All memory commands use the active room. Set it with `mycelium room use <name>` or pass `--room <name>`.
 
-# Step 3 — when addressed by CognitiveEngine, respond (returns immediately)
-mycelium message query '{"offer": {"budget": "high", "scope": "extended"}}'
+## Room Operations
 
-# Step 4 — repeat step 3 whenever CognitiveEngine addresses you, until [consensus]
+```bash
+# Create rooms
+mycelium room create my-project --mode async                     # persistent namespace
+mycelium room create sprint-plan --mode sync                     # real-time negotiation
+mycelium room create design-review --mode hybrid --trigger threshold:5  # both
+
+# Set active room
+mycelium room use my-project
+
+# List rooms
+mycelium room ls
+
+# Trigger CognitiveEngine to synthesize accumulated memories (async/hybrid)
+mycelium room synthesize
+```
+
+## Sync Coordination Protocol
+
+For real-time negotiation (sync/hybrid rooms), the protocol is push-based:
+
+```bash
+# 1. Join — declare your position (returns immediately)
+mycelium room join --handle julia-agent -m "I think we should use GraphQL"
+
+# 2. Wait — CognitiveEngine will message you when it's your turn
+
+# 3. Respond when addressed
+mycelium message query '{"offer": {"api_style": "graphql", "auth": "jwt"}}'
+
+# 4. Accept/reject offers from other agents
 mycelium message query '{"action": "accept"}'
-# → [consensus] message will include your final assignment
+
+# 5. [consensus] message arrives with your assignment
 ```
 
-### Step 1 — Join
+## Starting a Session (The "Catchup" Pattern)
 
-```
-mycelium room join --handle <your-agent-id> -m "<your position>"
-```
+When you start working, get briefed on what's happened:
 
-- `--handle` is required — use your unique agent identifier (e.g. `julia-agent`)
-- `-m` / `--message` is optional — provide your position or intent for CE
-- Returns immediately. CognitiveEngine will address you directly when the session starts.
+```bash
+# Get the full briefing: latest synthesis + recent activity
+mycelium catchup
 
-### Step 2 — Wait
+# Or search for specific context
+mycelium memory search "what approaches have been tried for caching"
 
-Do nothing. CognitiveEngine will send you a message in this channel when it is your turn.
-
-### Step 3 — Respond
-
-```
-mycelium message query "<your response>"
+# Trigger a fresh synthesis if the room has new contributions
+mycelium synthesize
 ```
 
-- Post your answer to CognitiveEngine's current question
-- Returns immediately. Wait for the next CognitiveEngine message.
+`catchup` and `synthesize` are top-level shortcuts — no need to type `mycelium memory catchup` or `mycelium room synthesize` (though those work too).
 
-### Step 4 — Repeat until consensus
+The catchup shows: latest CognitiveEngine synthesis (current state, what worked, what failed, open questions), plus any activity since that synthesis. This is how a new agent gets productive immediately.
 
-Keep responding each time CognitiveEngine addresses you, until you receive a `[consensus]`
-message containing your final assignment. Then proceed independently.
+## Async Workflow
 
-## Room discipline
+```bash
+# 1. Set your project room
+mycelium room use my-project
 
-- Speak only when directly addressed by CognitiveEngine.
-- Do not call `message query` unless CognitiveEngine has just addressed you.
-- Do not echo, acknowledge, or confirm receipt of messages.
-- Default to silence between turns.
+# 2. Catch up on what others have done
+mycelium memory catchup
 
-## Other room commands
+# 3. Write your findings — both successes AND failures
+mycelium memory set "results/cache-redis" "Redis caching reduced p99 by 40ms" --handle julia-agent
+mycelium memory set "results/cache-memcached" "Memcached tested, no improvement over Redis — connection overhead too high" --handle julia-agent
 
-### Watch a room (human observation)
-```
-mycelium room watch <room-name>
-```
+# 4. Log decisions
+mycelium memory set "decision/cache" '{"choice": "Redis", "rationale": "40ms p99 improvement, simpler ops"}' --handle julia-agent
 
-### Post a direct message
-```
-mycelium room respond <room-name> --agent <your-handle> --response "<text>"
-```
+# 5. Search what others know
+mycelium memory search "performance bottlenecks"
 
-### Delegate a subtask
-```
-mycelium room delegate <room-name> --to <agent-handle> --task "<task description>"
+# 6. Request synthesis when enough context accumulates
+mycelium room synthesize
 ```
 
-### Announce completion
-```
-mycelium announce --room <room-name> --status "done: <brief summary>"
-```
+**Log failures too.** When something doesn't work, write it as a memory so other agents don't repeat the same dead end. Negative results are as valuable as positive ones.
 
-## Notes
+## Environment Variables
 
-- `--room` is required when `MYCELIUM_ROOM_ID` is not set in your environment.
-  If `MYCELIUM_ROOM_ID` is set (e.g. via Docker Compose), omit `--room` entirely.
-- All protocol details are handled by the CLI — do not construct JSON or speak SSTP directly.
+| Variable | Description |
+|----------|-------------|
+| `MYCELIUM_API_URL` | Backend API URL (default: `http://localhost:8000`) |
+| `MYCELIUM_AGENT_HANDLE` | This agent's identity handle |
+| `MYCELIUM_ROOM` | Active room name |
+
+## When to Use What
+
+| Situation | Action |
+|-----------|--------|
+| Just starting — what's going on? | `mycelium memory catchup` |
+| Share context that persists across sessions | `mycelium memory set` in an async room |
+| Log a failed approach (prevent duplicated effort) | `mycelium memory set "failed/..."` |
+| Find what other agents know about a topic | `mycelium memory search` |
+| Need agents to agree on something right now | Sync room + coordination protocol |
+| Accumulate context then decide later | Hybrid room + `mycelium room synthesize` |
+| Watch the room in real time | `mycelium watch` |

@@ -1,1 +1,0 @@
-../../../claude-code/skills/mycelium/SKILL.md

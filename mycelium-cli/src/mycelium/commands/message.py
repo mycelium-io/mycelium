@@ -17,6 +17,7 @@ import typer
 from pydantic import ValidationError
 
 from mycelium.config import MyceliumConfig
+from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
 from mycelium.sstp import ProposeReply, RespondReply
 
@@ -30,13 +31,12 @@ app = typer.Typer(
 
 
 def _post(ctx: typer.Context, room: str | None, handle: str | None, content: str) -> None:
+    from mycelium.commands.room import _resolve_room
     from mycelium_backend_client import Client
     from mycelium_backend_client.api.messages import (
         send_message_rooms_room_name_messages_post as send_api,
     )
     from mycelium_backend_client.models import MessageCreate
-
-    from mycelium.commands.room import _resolve_room
 
     json_output = ctx.obj.get("json", False) if ctx.obj else False
 
@@ -65,6 +65,11 @@ def _post(ctx: typer.Context, room: str | None, handle: str | None, content: str
 # ── propose ───────────────────────────────────────────────────────────────────
 
 
+@doc_ref(
+    usage="mycelium message propose budget=<v> timeline=<v> scope=<v> quality=<v> -r <room> -H <handle>",
+    desc="Make a negotiation proposal with issue values. Only valid after <code>room await</code> returns <code>action: propose</code>.",
+    group="message",
+)
 @app.command("propose")
 def propose(
     ctx: typer.Context,
@@ -124,6 +129,11 @@ def propose(
 VALID_ACTIONS = {"accept", "reject", "end"}
 
 
+@doc_ref(
+    usage="mycelium message respond <accept|reject> -r <room> -H <handle>",
+    desc="Accept or reject the current proposal. Only valid after <code>room await</code> returns <code>action: respond</code>.",
+    group="message",
+)
 @app.command("respond")
 def respond(
     ctx: typer.Context,

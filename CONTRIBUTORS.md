@@ -12,5 +12,5 @@
 - [AgensGraph](https://github.com/skaiworldwide-oss/agensgraph) — SKAI Worldwide
 - [FastAPI](https://fastapi.tiangolo.com/) — Sebastian Ramirez
 - [litellm](https://github.com/BerriAI/litellm) — BerriAI
-- [fastembed](https://github.com/qdrant/fastembed) — Qdrant
+- [sentence-transformers](https://www.sbert.net/) — UKPLab
 - [pgvector](https://github.com/pgvector/pgvector) — Andrew Kane

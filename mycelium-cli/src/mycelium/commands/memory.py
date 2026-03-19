@@ -2,14 +2,22 @@
 Memory commands — persistent namespaced memory operations.
 
 Uses the generated OpenAPI client for type-safe API access.
+When a key matches a known category prefix (work/, decisions/, context/, status/),
+the write is validated against SSTP MemoryLogEntry — same pattern as ProposeReply
+validates negotiation offers before posting.
 """
 
 import json
+from datetime import UTC, datetime
 
 import typer
+from pydantic import ValidationError
 from rich.console import Console
+from rich.table import Table
 
 from mycelium.config import MyceliumConfig
+from mycelium.doc_ref import doc_ref
+from mycelium.sstp import MEMORY_CATEGORIES, MemoryLogEntry
 
 app = typer.Typer(
     help="Read and write persistent memories scoped to rooms. Memories persist across sessions and support semantic vector search.",
@@ -40,66 +48,89 @@ def _get_active_room(room: str | None) -> str:
     raise typer.Exit(1)
 
 
+@doc_ref(
+    usage="mycelium memory set <key> <value> [--handle <handle>]",
+    desc="Write a memory (upsert). Structured category keys (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code>) are auto-validated. Always upserts — the backend handles versioning.",
+    group="memory",
+)
 @app.command(name="set")
 def memory_set(
-    key: str = typer.Argument(..., help="Memory key (e.g. 'project/status')"),
+    key: str = typer.Argument(..., help="Memory key (e.g. 'status/deploy', 'project/config')"),
     value: str = typer.Argument(..., help="Memory value (string or JSON)"),
     room: str | None = typer.Option(
         None, "--room", "-r", help="Room name (defaults to active room)"
     ),
-    handle: str = typer.Option("cli-user", "--handle", "-h", help="Agent handle"),
+    handle: str = typer.Option("cli-user", "--handle", "-H", help="Agent handle"),
     no_embed: bool = typer.Option(False, "--no-embed", help="Skip vector embedding"),
     tags: str | None = typer.Option(None, "--tags", "-t", help="Comma-separated tags"),
-    update: bool = typer.Option(
-        False, "--update", "-u", help="Allow overwriting an existing memory"
-    ),
 ) -> None:
-    """Write a memory to a room's persistent namespace.
+    """Write a memory to a room's persistent namespace (upsert).
 
-    Fails if the key already exists unless --update is passed.
+    Keys with a known category prefix (work/, decisions/, context/, status/) are
+    validated for slug format. Other keys pass through freely.
+
+    Always upserts — the backend handles versioning.
+
+    Examples:
+        mycelium memory set status/deploy ACTIVE
+        mycelium memory set decisions/db-choice "Chose AgensGraph for graph+SQL+vector"
+        mycelium memory set work/api-server "Built 12 endpoints with auth"
+        mycelium memory set custom/anything "Freeform value, no category validation"
     """
     from mycelium_backend_client.api.memory import (
         create_memories_rooms_room_name_memory_post as create_api,
-    )
-    from mycelium_backend_client.api.memory import (
-        get_memory_rooms_room_name_memory_key_get as get_api,
     )
     from mycelium_backend_client.models import MemoryBatchCreate, MemoryCreate
 
     room_name = _get_active_room(room)
 
-    # Check for existing key unless --update is set
-    if not update:
-        try:
-            from mycelium_backend_client.errors import UnexpectedStatus
-
-            with _get_client() as client:
-                existing = get_api.sync(room_name=room_name, key=key, client=client)
-                if existing is not None:
+    # Validate structured keys when category prefix is recognized
+    entry: MemoryLogEntry | None = None
+    if "/" in key:
+        category = key.split("/", 1)[0]
+        if category in MEMORY_CATEGORIES:
+            slug = key.split("/", 1)[1]
+            try:
+                entry = MemoryLogEntry(category=category, slug=slug, content=value)  # type: ignore[arg-type]
+            except ValidationError as exc:
+                errors = exc.errors()
+                if any(e["loc"] == ("slug",) for e in errors):
                     console.print(
-                        f"[red]Error:[/red] {room_name}/{key} already exists (v{existing.version}). "
-                        f"Use [bold]--update[/bold] to overwrite."
+                        f"[red]Error:[/red] invalid slug '{slug}' for {category}/ key. "
+                        "Use lowercase alphanumeric with hyphens/dots/underscores."
                     )
-                    raise typer.Exit(1)
-        except UnexpectedStatus as e:
-            if e.status_code != 404:
-                raise
-
-    # Try to parse value as JSON
-    try:
-        parsed_value = json.loads(value)
-    except json.JSONDecodeError:
-        parsed_value = value
+                else:
+                    console.print(f"[red]Error:[/red] {exc}")
+                raise typer.Exit(1) from exc
 
     tag_list = [t.strip() for t in tags.split(",")] if tags else None
 
-    item = MemoryCreate(
-        key=key,
-        value=parsed_value,
-        created_by=handle,
-        embed=not no_embed,
-        tags=tag_list,
-    )
+    if entry is not None:
+        # Structured category key — auto-timestamp and structured value
+        timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        item = MemoryCreate(
+            key=entry.key,
+            value={"text": entry.content, "logged_at": timestamp, "category": entry.category},
+            created_by=handle,
+            embed=not no_embed,
+            content_text=f"[{timestamp}] {entry.content}",
+            tags=tag_list,
+        )
+    else:
+        # Freeform key — pass value through as-is
+        try:
+            parsed_value = json.loads(value)
+        except json.JSONDecodeError:
+            parsed_value = value
+
+        item = MemoryCreate(
+            key=key,
+            value=parsed_value,
+            created_by=handle,
+            embed=not no_embed,
+            tags=tag_list,
+        )
+
     batch = MemoryBatchCreate(items=[item])
 
     with _get_client() as client:
@@ -110,6 +141,11 @@ def memory_set(
             console.print(f"[green]Memory set:[/green] {room_name}/{key}")
 
 
+@doc_ref(
+    usage="mycelium memory get <key>",
+    desc="Read a memory by exact key.",
+    group="memory",
+)
 @app.command(name="get")
 def memory_get(
     key: str = typer.Argument(..., help="Memory key"),
@@ -139,6 +175,11 @@ def memory_get(
             console.print(str(value))
 
 
+@doc_ref(
+    usage="mycelium memory ls [prefix/]",
+    desc="List memories. Optional prefix filters by namespace.",
+    group="memory",
+)
 @app.command(name="ls")
 def memory_ls(
     namespace: str | None = typer.Argument(
@@ -183,6 +224,11 @@ def memory_ls(
             console.print()
 
 
+@doc_ref(
+    usage="mycelium memory search <query>",
+    desc="Semantic search — finds memories by meaning using cosine similarity on local embeddings.",
+    group="memory",
+)
 @app.command(name="search")
 def memory_search(
     query: str = typer.Argument(..., help="Natural language search query"),
@@ -243,7 +289,7 @@ def memory_rm(
 def memory_subscribe(
     pattern: str = typer.Argument(..., help="Key glob pattern (e.g. 'project/*')"),
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
-    handle: str = typer.Option("cli-user", "--handle", "-h", help="Subscriber agent handle"),
+    handle: str = typer.Option("cli-user", "--handle", "-H", help="Subscriber agent handle"),
 ) -> None:
     """Subscribe to memory change notifications."""
     from mycelium_backend_client.api.memory import (
@@ -261,6 +307,11 @@ def memory_subscribe(
             console.print(f"[green]Subscribed:[/green] {pattern} (id: {sub_id}...)")
 
 
+@doc_ref(
+    usage="mycelium catchup",
+    desc="Get a full briefing on everything in the room — ideal for a new agent joining an active project.",
+    group="other",
+)
 @app.command(name="catchup")
 def memory_catchup(
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
@@ -317,3 +368,90 @@ def memory_catchup(
     else:
         console.print("[dim]No new activity since last synthesis.[/dim]")
     console.print()
+
+
+# ── Structured memory commands ───────────────────────────────────────────────
+
+
+def _list_by_category(category: str, room: str | None, limit: int) -> None:
+    """Shared implementation for category-filtered listing (status, work, etc.)."""
+    from mycelium_backend_client.api.memory import (
+        list_memories_rooms_room_name_memory_get as list_api,
+    )
+
+    room_name = _get_active_room(room)
+    prefix = f"{category}/"
+
+    with _get_client() as client:
+        result = list_api.sync(room_name=room_name, client=client, prefix=prefix, limit=limit)
+        if not result:
+            console.print(f"[dim]No {category} memories found[/dim]")
+            return
+
+        table = Table(title=f"{room_name} — {category}", show_lines=False)
+        table.add_column("Key", style="cyan", no_wrap=True)
+        table.add_column("Value", max_width=80)
+        table.add_column("By", style="dim")
+        table.add_column("Updated", style="dim")
+
+        for mem in result:
+            # Strip the category prefix for cleaner display
+            short_key = mem.key.removeprefix(prefix)
+            value = mem.value
+            if hasattr(value, "to_dict"):
+                value = value.to_dict()
+            if isinstance(value, dict):
+                # For status, prefer a "status" or "text" field if present
+                display = value.get("status") or value.get("text") or json.dumps(value, default=str)
+            else:
+                display = str(value)
+            display = display[:80]
+            ts = str(mem.updated_at)[:16].replace("T", " ") if mem.updated_at else ""
+            table.add_row(short_key, display, mem.created_by, ts)
+
+        console.print(table)
+
+
+@app.command(name="status")
+def memory_status(
+    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
+) -> None:
+    """Show current status of everything — filters to status/* memories."""
+    _list_by_category("status", room, limit)
+
+
+@app.command(name="work")
+def memory_work(
+    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
+) -> None:
+    """Show what's been built — filters to work/* memories."""
+    _list_by_category("work", room, limit)
+
+
+@app.command(name="decisions")
+def memory_decisions(
+    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
+) -> None:
+    """Show why choices were made — filters to decisions/* memories."""
+    _list_by_category("decisions", room, limit)
+
+
+@app.command(name="context")
+def memory_context(
+    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
+) -> None:
+    """Show background and preferences — filters to context/* memories."""
+    _list_by_category("context", room, limit)
+
+
+@app.command(name="procedures")
+def memory_procedures(
+    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
+) -> None:
+    """Show reusable how-to procedures — filters to procedures/* memories."""
+    _list_by_category("procedures", room, limit)

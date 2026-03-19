@@ -71,7 +71,7 @@ mycelium install
 
 # Create a room and start sharing context
 mycelium room create my-project --mode async
-mycelium room set my-project
+mycelium room use my-project
 mycelium memory set "context/goal" "Build a REST API for the new service"
 mycelium memory set "decision/db" "PostgreSQL with pgvector for embeddings"
 
@@ -191,4 +191,4 @@ Interactive API docs at `http://localhost:8000/docs` when the backend is running
 - [Internet of Cognition](https://outshift.cisco.com) — Outshift by Cisco
 - [NegMAS](https://negmas.readthedocs.io/) — Multi-issue negotiation
 - [AgensGraph](https://github.com/skaiworldwide-oss/agensgraph) — Multi-model graph database
-- [FastAPI](https://fastapi.tiangolo.com/) + [pgvector](https://github.com/pgvector/pgvector) + [fastembed](https://github.com/qdrant/fastembed)
+- [FastAPI](https://fastapi.tiangolo.com/) + [pgvector](https://github.com/pgvector/pgvector) + [sentence-transformers](https://www.sbert.net/)

@@ -95,7 +95,7 @@ class RoomNegotiator(SAONegotiator):
         room_name: str,
         loop: asyncio.AbstractEventLoop,
         post_message_coro: Any,
-        reply_timeout: float = 60.0,
+        reply_timeout: float = 30.0,
     ) -> None:
         super().__init__(name=name)
         self._participant_id = participant_id

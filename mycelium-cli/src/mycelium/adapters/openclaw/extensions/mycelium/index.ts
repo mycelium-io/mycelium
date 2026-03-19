@@ -1,7 +1,12 @@
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
 /**
  * mycelium — OpenClaw Plugin
  *
  * Bridges OpenClaw agents to the Mycelium coordination backend.
+ * Uses prependSystemContext (cached) for static instructions and prependContext (per-turn) for dynamic coordination state.
  *
  * Hook surface:
  *   gateway_start      — verify backend connectivity on startup
@@ -34,7 +39,7 @@ Use the \`mycelium\` CLI to participate. Never write JSON by hand.
 ## Step 1 — Join the coordination backchannel
 
 \`\`\`
-mycelium room join --handle <your-agent-id> --channel <room-name> -m "<your position>"
+mycelium room join --handle <your-agent-id> --room <room-name> -m "<your position>"
 \`\`\`
 
 This command returns immediately. CognitiveEngine will address you directly in this
@@ -50,18 +55,18 @@ The tick message will say either \`action: "propose"\` or \`action: "respond"\`.
 
 **If action is "propose"** — pick one value per issue from the options listed and run:
 \`\`\`
-mycelium message propose ISSUE=VALUE ISSUE=VALUE ... --channel <room-name> --handle <your-agent-id>
+mycelium message propose ISSUE=VALUE ISSUE=VALUE ... --room <room-name> --handle <your-agent-id>
 \`\`\`
 Example:
 \`\`\`
-mycelium message propose budget=medium timeline=standard scope=standard quality=standard --channel <room-name> --handle <your-agent-id>
+mycelium message propose budget=medium timeline=standard scope=standard quality=standard --room <room-name> --handle <your-agent-id>
 \`\`\`
 
 **If action is "respond"** — evaluate the offer and run one of:
 \`\`\`
-mycelium message respond accept --channel <room-name> --handle <your-agent-id>
-mycelium message respond reject --channel <room-name> --handle <your-agent-id>
-mycelium message respond end    --channel <room-name> --handle <your-agent-id>
+mycelium message respond accept --room <room-name> --handle <your-agent-id>
+mycelium message respond reject --room <room-name> --handle <your-agent-id>
+mycelium message respond end    --room <room-name> --handle <your-agent-id>
 \`\`\`
 
 Each command returns immediately. Wait for the next CognitiveEngine message.
@@ -84,6 +89,12 @@ const API_URL = (process.env.MYCELIUM_API_URL ?? "").replace(/\/$/, "");
 const WORKSPACE_ID = process.env.MYCELIUM_WORKSPACE_ID ?? "";
 const MAS_ID = process.env.MYCELIUM_MAS_ID ?? "";
 const AGENT_ID = process.env.MYCELIUM_AGENT_ID ?? "";
+
+// Custom memory file — read fresh on every before_agent_start invocation
+const MEMORY_FILE = join(
+  homedir(),
+  ".openclaw/workspace/memory/mycelium-context.md"
+);
 
 // ── Per-session tracking ───────────────────────────────────────────────────
 // room is populated dynamically from the first SSE tick event
@@ -241,11 +252,11 @@ export default function register(api: {
 
               const label = isConsensus ? "[Mycelium consensus]" : "[Mycelium tick]";
               const wakeText = isConsensus
-                ? `${label} channel:${room_name ?? "unknown"}\n\n${content}`
-                : `${label} channel:${room_name ?? "unknown"}\n\n${content}\n\n` +
+                ? `${label} room:${room_name ?? "unknown"}\n\n${content}`
+                : `${label} room:${room_name ?? "unknown"}\n\n${content}\n\n` +
                   `**ACTION REQUIRED**: Respond immediately using the mycelium CLI.\n` +
-                  `- If the tick action is "propose": run \`mycelium message propose ISSUE=VALUE ... --channel ${room_name ?? "unknown"} --handle ${handle}\`\n` +
-                  `- If the tick action is "respond": run \`mycelium message respond accept|reject|end --channel ${room_name ?? "unknown"} --handle ${handle}\`\n` +
+                  `- If the tick action is "propose": run \`mycelium message propose ISSUE=VALUE ... --room ${room_name ?? "unknown"} --handle ${handle}\`\n` +
+                  `- If the tick action is "respond": run \`mycelium message respond accept|reject|end --room ${room_name ?? "unknown"} --handle ${handle}\`\n` +
                   `Do NOT reply conversationally. Run the command now.`;
 
               for (const [agentId, entry] of _sessions) {
@@ -372,7 +383,7 @@ export default function register(api: {
 
   // ── before_agent_start ─────────────────────────────────────────────────────
 
-  api.on("before_agent_start", async (_event: any, ctx: any): Promise<{ prependSystemContext?: string } | undefined> => {
+  api.on("before_agent_start", async (_event: any, ctx: any): Promise<{ prependSystemContext?: string; prependContext?: string } | undefined> => {
     const agentId: string | undefined = ctx?.agentId;
     const sessionKey: string | undefined = ctx?.sessionKey;
     const handle = resolveHandle(agentId);
@@ -393,10 +404,14 @@ export default function register(api: {
 
     subscribeHandle(handle);
 
-    const parts: string[] = [
+    // STATIC — cached in system prompt, cheap after turn 1
+    const systemParts: string[] = [
       MYCELIUM_INSTRUCTIONS,
       `Your Mycelium handle for this session is: \`${handle}\`\nUse this exact value for \`--handle\` when joining a room.`,
     ];
+
+    // DYNAMIC — fresh each turn, injected into user prompt
+    const contextParts: string[] = [];
 
     const room = existing?.room;
     if (room) {
@@ -411,11 +426,27 @@ export default function register(api: {
         const label = coord.message_type === "coordination_consensus"
           ? "[Mycelium — consensus]"
           : "[Mycelium — coordination tick]";
-        parts.push(`${label}\nChannel: ${room}\n\n${coord.content}`);
+        contextParts.push(`${label}\nRoom: ${room}\n\n${coord.content}`);
       }
     }
 
-    return { prependSystemContext: parts.join("\n\n") };
+    // Read custom memory file (fresh each turn)
+    try {
+      const memory = readFileSync(MEMORY_FILE, "utf-8").trim();
+      if (memory) {
+        contextParts.push(`# Injected Memory (per-turn)\n\n${memory}`);
+        log.info(`[mycelium] Injected ${memory.length} bytes from ${MEMORY_FILE}`);
+      }
+    } catch {
+      // Memory file doesn't exist yet — skip
+    }
+
+    log.info(`[mycelium] prependSystemContext: ${systemParts.join("\n\n").length} chars (cached), prependContext: ${contextParts.length ? contextParts.join("\n\n").length : 0} chars (dynamic)`);
+
+    return {
+      prependSystemContext: systemParts.join("\n\n"),
+      prependContext: contextParts.length ? contextParts.join("\n\n") : undefined,
+    };
   });
 
   // ── message_sent ───────────────────────────────────────────────────────────

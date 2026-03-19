@@ -188,8 +188,8 @@ def _prompt_ioc() -> bool:
     print()
 
     options = [
-        "Yes  — install with IoC CFN management plane",
-        "No   — Mycelium only (default)",
+        "Yes  — install with IoC CFN management plane (default)",
+        "No   — Mycelium only",
     ]
 
     choice = select(options, cursor="  ▸ ", cursor_style="cyan")
@@ -345,6 +345,20 @@ def _compose_up(
     return result.returncode == 0, needs_build
 
 
+def _ensure_cfn_databases(db_container: str = "mycelium-db") -> None:
+    """Create cfn_mgmt and cfn_cp databases if they don't exist.
+
+    initdb scripts only run on first postgres init, so on upgrades with an
+    existing volume the CFN databases won't be present. This is idempotent.
+    """
+    for db in ("cfn_mgmt", "cfn_cp"):
+        sql = f"SELECT 'CREATE DATABASE {db}' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '{db}')\\gexec"
+        subprocess.run(
+            ["docker", "exec", db_container, "psql", "-U", "postgres", "-c", sql],
+            capture_output=True,
+        )
+
+
 def _wait_for_health(urls: list[str], timeout: int = 120) -> bool:
     try:
         import httpx
@@ -455,13 +469,32 @@ def install(
     ),
     llm_base_url: str = typer.Option("", "--llm-base-url", help="LLM base URL (non-interactive)"),
     llm_api_key: str = typer.Option("", "--llm-api-key", help="LLM API key (non-interactive)"),
-    ioc: bool = typer.Option(False, "--ioc", help="Enable IoC CFN stack (non-interactive)"),
+    ioc: bool = typer.Option(True, "--ioc/--no-ioc", help="Enable IoC CFN stack (default: on)"),
 ) -> None:
     """
-    Install an Mycelium instance.
+    Install a Mycelium instance.
 
-    Checks system requirements, prompts for configuration, then brings up
-    all services via docker compose.
+    By default this runs interactively — it plays an intro animation, prompts
+    for LLM configuration, and walks you through bringing up all services via
+    Docker Compose.
+
+    \b
+    NON-INTERACTIVE MODE
+    If you are running in a script, CI pipeline, or any non-TTY environment,
+    pass -n / --non-interactive and supply config via flags:
+
+      mycelium install -n \\
+        --llm-model anthropic/claude-sonnet-4-6 \\
+        --llm-api-key sk-ant-... \\
+        [--no-ioc]
+
+    \b
+    FLAGS (non-interactive)
+      --llm-model     LLM in litellm format, e.g. anthropic/claude-sonnet-4-6
+                      or openai/gpt-4o or ollama/llama3
+      --llm-base-url  Custom base URL (required for ollama / local models)
+      --llm-api-key   API key for the chosen LLM provider
+      --no-ioc        Skip the IoC CFN management-plane stack (default: included)
     """
     try:
         import sys
@@ -507,6 +540,10 @@ def install(
                 typer.secho("\n  ✗ docker compose up failed", fg=typer.colors.RED)
                 raise typer.Exit(1) from None
 
+            if ioc:
+                _ensure_cfn_databases()
+                typer.echo("  ✓ CFN databases provisioned")
+
             api_url = f"http://localhost:{custom_ports['backend']}"
             health_timeout = 300 if needs_build else 120
             _wait_for_health([f"{api_url}/health"], timeout=health_timeout)
@@ -525,10 +562,11 @@ def install(
 
         if not sys.stdin.isatty():
             typer.secho(
-                "\n  ✗ mycelium install requires an interactive terminal.\n"
-                "  Run it directly in your shell, not via a script or pipe.\n",
+                "\n  ✗ Non-interactive terminal detected — interactive install requires a TTY.\n",
                 fg=typer.colors.RED,
             )
+            ctx = typer.get_current_context()
+            typer.echo(ctx.get_help())
             raise typer.Exit(1) from None
 
         from mycelium.animations import run_animation_live
@@ -706,6 +744,10 @@ def install(
         if not ok:
             typer.secho("\n  ✗ docker compose up failed", fg=typer.colors.RED)
             raise typer.Exit(1) from None
+
+        if ioc_enabled:
+            _ensure_cfn_databases()
+            typer.echo("  ✓ CFN databases provisioned")
 
         # ── Phase 4: Health checks ─────────────────────────────────────────
         # Allow extra time on first run when the backend image is being built.

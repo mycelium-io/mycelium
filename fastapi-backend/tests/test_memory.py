@@ -277,3 +277,98 @@ async def test_hybrid_room_creation(client: AsyncClient):
     assert data["mode"] == "hybrid"
     assert data["trigger_config"]["type"] == "threshold"
     assert data["trigger_config"]["min_contributions"] == 3
+
+
+# ── Structured memory (category convention) tests ────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_structured_memory_categories(client: AsyncClient):
+    """Test creating and listing memories with structured category prefixes."""
+    await client.post("/rooms", json={"name": "struct-test", "mode": "async"})
+
+    # Create memories across categories
+    resp = await client.post(
+        "/rooms/struct-test/memory",
+        json={
+            "items": [
+                {
+                    "key": "work/cron-setup",
+                    "value": {"text": "Created crontab", "category": "work"},
+                    "created_by": "agent-a",
+                    "embed": False,
+                },
+                {
+                    "key": "status/cron",
+                    "value": {"text": "ACTIVE", "category": "status"},
+                    "created_by": "agent-a",
+                    "embed": False,
+                },
+                {
+                    "key": "decisions/polling-interval",
+                    "value": {"text": "5min interval", "category": "decisions"},
+                    "created_by": "agent-b",
+                    "embed": False,
+                },
+                {
+                    "key": "context/user-goal",
+                    "value": {"text": "Monitor ticket availability", "category": "context"},
+                    "created_by": "agent-a",
+                    "embed": False,
+                },
+            ]
+        },
+    )
+    assert resp.status_code == 201
+    assert len(resp.json()) == 4
+
+    # Filter by each category prefix
+    for cat, expected_count in [("work/", 1), ("status/", 1), ("decisions/", 1), ("context/", 1)]:
+        resp = await client.get("/rooms/struct-test/memory", params={"prefix": cat})
+        data = resp.json()
+        assert len(data) == expected_count, f"Expected {expected_count} for {cat}, got {len(data)}"
+        assert all(m["key"].startswith(cat) for m in data)
+
+
+@pytest.mark.asyncio
+async def test_structured_memory_upsert_preserves_category(client: AsyncClient):
+    """Test that upserting a structured memory preserves the category key."""
+    await client.post("/rooms", json={"name": "struct-upsert", "mode": "async"})
+
+    # Initial write
+    resp = await client.post(
+        "/rooms/struct-upsert/memory",
+        json={
+            "items": [
+                {
+                    "key": "status/deploy",
+                    "value": {"text": "PENDING", "category": "status"},
+                    "created_by": "agent-a",
+                    "embed": False,
+                }
+            ]
+        },
+    )
+    assert resp.json()[0]["version"] == 1
+
+    # Upsert with new status
+    resp = await client.post(
+        "/rooms/struct-upsert/memory",
+        json={
+            "items": [
+                {
+                    "key": "status/deploy",
+                    "value": {"text": "ACTIVE", "category": "status"},
+                    "created_by": "agent-b",
+                    "embed": False,
+                }
+            ]
+        },
+    )
+    assert resp.json()[0]["version"] == 2
+    assert resp.json()[0]["updated_by"] == "agent-b"
+
+    # Verify via prefix filter
+    resp = await client.get("/rooms/struct-upsert/memory", params={"prefix": "status/"})
+    assert len(resp.json()) == 1
+    assert resp.json()[0]["value"]["text"] == "ACTIVE"

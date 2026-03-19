@@ -1,7 +1,7 @@
 """Embedding manager (ported from ioc-cfn-cognitive-agents).
 
 Rewired: config path resolves relative to this file.
-Dependencies: fastembed (huggingface/ONNX default), openai (optional).
+Dependencies: sentence-transformers (huggingface default), openai (optional).
 """
 
 from __future__ import annotations
@@ -25,25 +25,27 @@ class EmbeddingManager:
         self.model_type = self.config.get("embedding_model_type", "huggingface")
 
         if self.model_type == "huggingface":
-            from fastembed import TextEmbedding  # type: ignore[import-untyped]
+            from sentence_transformers import SentenceTransformer
 
-            self.model_name = self.config.get("embedding_model_name", "BAAI/bge-small-en-v1.5")
-            self.model = TextEmbedding(model_name=self.model_name)
+            self.model_name = self.config.get(
+                "embedding_model_name", "sentence-transformers/all-MiniLM-L6-v2"
+            )
+            self.model = SentenceTransformer(self.model_name)
         elif self.model_type == "openai":
             self.model_name = self.config.get("embedding_model_name", "")
             self.openai_key = self.config.get("openai_api_key", "")
             if not self.openai_key:
-                from fastembed import TextEmbedding  # type: ignore[import-untyped]
+                from sentence_transformers import SentenceTransformer
 
                 self.model_type = "huggingface"
-                self.model_name = "BAAI/bge-small-en-v1.5"
-                self.model = TextEmbedding(model_name=self.model_name)
+                self.model_name = "sentence-transformers/all-MiniLM-L6-v2"
+                self.model = SentenceTransformer(self.model_name)
         else:
-            from fastembed import TextEmbedding  # type: ignore[import-untyped]
+            from sentence_transformers import SentenceTransformer
 
             self.model_type = "huggingface"
-            self.model_name = "BAAI/bge-small-en-v1.5"
-            self.model = TextEmbedding(model_name=self.model_name)
+            self.model_name = "sentence-transformers/all-MiniLM-L6-v2"
+            self.model = SentenceTransformer(self.model_name)
 
     def preprocess_text(self, text: str, chunk_size: int = 512, overlap: int = 50) -> list[str]:
         chunks = []
@@ -56,7 +58,7 @@ class EmbeddingManager:
 
     def generate_embeddings(self, text_chunks: list[str]) -> list | np.ndarray:
         if self.model_type == "huggingface":
-            return np.array(list(self.model.embed(text_chunks)))
+            return self.model.encode(text_chunks)
         if self.model_type == "openai":
             from openai import OpenAI  # type: ignore[import-untyped]
 

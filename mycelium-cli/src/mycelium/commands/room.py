@@ -5,11 +5,11 @@ Commands:
 - (default): Show current active room
 - ls: List rooms
 - create: Create a new room
-- set: Set active room context
+- use: Switch active room context
 - delete: Delete a room
 - join: Join coordination backchannel (blocks until first coordination tick)
 - watch: Stream messages from a room via SSE
-- respond: Post a message to a room
+- post: Post a message to a room
 - delegate: Delegate a task to an agent in a room
 """
 
@@ -20,6 +20,7 @@ from pathlib import Path
 import typer
 
 from mycelium.config import MyceliumConfig
+from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
 from mycelium.exceptions import ConfigNotFoundError, MyceliumError
 
@@ -55,7 +56,7 @@ def room_main(ctx: typer.Context) -> None:
                 typer.echo(json_module.dumps({"active_room": None}))
             else:
                 typer.secho("No active room set.", fg=typer.colors.YELLOW)
-                typer.echo("Set a room with: mycelium room set <name>")
+                typer.echo("Set a room with: mycelium room use <name>")
             raise typer.Exit(1)
 
         from mycelium_backend_client.api.rooms import list_rooms_rooms_get as list_api
@@ -81,6 +82,11 @@ def room_main(ctx: typer.Context) -> None:
         print_error(e, verbose=verbose)
 
 
+@doc_ref(
+    usage="mycelium room ls",
+    desc="List all rooms with mode, state, and member count.",
+    group="room",
+)
 @app.command("ls")
 def list_rooms(
     ctx: typer.Context,
@@ -130,13 +136,18 @@ def list_rooms(
                     typer.echo(f"    {room['name']}  (created {created_at})")
 
             typer.echo("")
-            typer.echo("Use 'mycelium room set <name>' to set the active room")
+            typer.echo("Use 'mycelium room use <name>' to set the active room")
 
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)
 
 
+@doc_ref(
+    usage="mycelium room create <name> --mode <async|sync|hybrid> [--trigger threshold:N]",
+    desc="Create a new coordination room. Mode is required.",
+    group="room",
+)
 @app.command()
 def create(
     ctx: typer.Context,
@@ -201,13 +212,18 @@ def create(
             typer.echo(f"  ID:      {room_data.get('id')}")
             typer.echo(f"  Created: {str(room_data.get('created_at', ''))[:10]}")
             typer.echo("")
-            typer.echo(f"  Run 'mycelium room set {name}' to make it your active room")
+            typer.echo(f"  Run 'mycelium room use {name}' to make it your active room")
 
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)
 
 
+@doc_ref(
+    usage="mycelium synthesize",
+    desc="Trigger CE to synthesize all memories in the active room into a structured summary.",
+    group="other",
+)
 @app.command()
 def synthesize(
     ctx: typer.Context,
@@ -255,12 +271,17 @@ def synthesize(
         print_error(e, verbose=verbose)
 
 
-@app.command()
-def set(
+@doc_ref(
+    usage="mycelium room use <name>",
+    desc="Switch active room. Subsequent <code>memory</code> and <code>message</code> commands use this room by default.",
+    group="room",
+)
+@app.command("use")
+def use(
     ctx: typer.Context,
     room_name: str = typer.Argument(..., help="Room name to set as active"),
 ) -> None:
-    """Set active room for this project."""
+    """Switch active room for this project."""
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
         json_output = ctx.obj.get("json", False) if ctx.obj else False
@@ -335,7 +356,7 @@ def _resolve_room(config: MyceliumConfig, channel: str | None = None) -> str:
     Priority:
       1. --room flag (explicit override, used as-is)
       2. MYCELIUM_ROOM_ID env var (used as-is)
-      3. config.rooms.active (set via 'mycelium room set')
+      3. config.rooms.active (set via 'mycelium room use')
       4. Error
     """
     if channel:
@@ -349,7 +370,7 @@ def _resolve_room(config: MyceliumConfig, channel: str | None = None) -> str:
         "No room context found",
         suggestion=(
             "Pass --room <room>, set MYCELIUM_ROOM_ID in your environment, "
-            "or run: mycelium room set <name>"
+            "or run: mycelium room use <name>"
         ),
     )
 
@@ -486,6 +507,11 @@ def _render_coordination_event(msg: dict, current_identity: str) -> tuple[str | 
     return None, False
 
 
+@doc_ref(
+    usage="mycelium room join --handle <handle> -m <position> [-r <room>]",
+    desc="Join a sync room with an initial position. Starts the 60s join window if you're the first.",
+    group="room",
+)
 @app.command()
 def join(
     ctx: typer.Context,
@@ -503,7 +529,7 @@ def join(
     """
     Join the coordination backchannel for the current room.
 
-    Room is resolved from --room, MYCELIUM_ROOM_ID env var, or 'mycelium room set'.
+    Room is resolved from --room, MYCELIUM_ROOM_ID env var, or 'mycelium room use'.
     Returns immediately after joining — CognitiveEngine will address you in this room
     when the session starts and when it is your turn to respond.
 
@@ -703,6 +729,11 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
                     console.print(rendered, highlight=False)
 
 
+@doc_ref(
+    usage="mycelium room await --handle <handle> [-r <room>]",
+    desc="Block and wait for a negotiation tick. Returns when CE has an action for your agent.",
+    group="room",
+)
 @app.command(name="await")
 def await_tick(
     ctx: typer.Context,
@@ -813,6 +844,11 @@ def await_tick(
         print_error(e, verbose=verbose)
 
 
+@doc_ref(
+    usage="mycelium watch [room]",
+    desc="Stream live room activity via SSE. Messages appear in real time as other agents write.",
+    group="other",
+)
 @app.command()
 def watch(
     ctx: typer.Context,
@@ -842,8 +878,8 @@ def watch(
         print_error(e, verbose=verbose)
 
 
-@app.command()
-def respond(
+@app.command("post")
+def post(
     ctx: typer.Context,
     session_id: str = typer.Argument(..., help="Room session/name"),
     agent: str = typer.Option(..., "--agent", "-a", help="Agent handle sending the response"),
@@ -853,7 +889,7 @@ def respond(
     Post a message to a room (triggers NOTIFY).
 
     Examples:
-        mycelium room respond my-room --agent alpha#a1b2 --response "Task complete"
+        mycelium room post my-room --agent alpha#a1b2 --response "Task complete"
     """
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
