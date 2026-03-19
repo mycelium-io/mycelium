@@ -270,6 +270,18 @@ def _get_compose_path() -> Path:
     dest = Path.home() / ".mycelium" / "docker" / "compose.yml"
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(compose_ref.read_bytes())
+
+    # Also extract initdb scripts so the ./initdb volume mount works
+    initdb_ref = importlib.resources.files("mycelium.docker") / "initdb"
+    initdb_dest = dest.parent / "initdb"
+    initdb_dest.mkdir(parents=True, exist_ok=True)
+    try:
+        for entry in initdb_ref.iterdir():
+            if entry.is_file():
+                (initdb_dest / entry.name).write_bytes(entry.read_bytes())
+    except Exception:
+        pass  # non-critical: _ensure_cfn_databases handles this at runtime
+
     return dest
 
 
@@ -303,37 +315,73 @@ def _remove_orphan_containers() -> None:
             subprocess.run(["docker", "rm", "-f", name], capture_output=True)
 
 
+def _compose_base_args(compose_path: Path, env_path: Path, profiles: list[str] | None = None) -> list[str]:
+    """Return the common docker compose CLI prefix."""
+    args = [
+        "docker", "compose",
+        "-p", "mycelium",
+        "-f", str(compose_path),
+        "--env-file", str(env_path),
+    ]
+    for profile in profiles or []:
+        args += ["--profile", profile]
+    return args
+
+
 def _compose_up(
     compose_path: Path, env_path: Path, profiles: list[str] | None = None
 ) -> tuple[bool, bool]:
-    """Bring the stack up.  Returns (success, needs_build)."""
-    # Build context exists when running from a repo checkout. Packaged installs
-    # extract compose to ~/.mycelium/docker/ where ../fastapi-backend is absent —
-    # those installs pull pre-built GHCR images instead.
+    """Bring the stack up.  Returns (success, needs_build).
+
+    When the ``cfn`` profile is active the database is started first so that
+    ``_ensure_cfn_databases()`` can create ``cfn_mgmt`` and ``cfn_cp`` before
+    ``ioc-cfn-mgmt-plane-svc`` attempts to connect.
+    """
     build_context = compose_path.parent.parent / "fastapi-backend"
     can_build = build_context.exists()
     needs_build = can_build and not _image_exists("ghcr.io/mycelium-io/mycelium-backend:latest")
 
     _remove_orphan_containers()
 
-    args = [
-        "docker",
-        "compose",
-        "-p",
-        "mycelium",
-        "-f",
-        str(compose_path),
-        "--env-file",
-        str(env_path),
-    ]
-    for profile in profiles or []:
-        args += ["--profile", profile]
+    base = _compose_base_args(compose_path, env_path, profiles)
     up_flags = ["up", "--pull", "missing", "--force-recreate", "-d"]
     if can_build:
         up_flags.append("--build")
     else:
         up_flags.append("--no-build")
-    args += up_flags
+
+    cfn_active = profiles and "cfn" in profiles
+
+    if cfn_active:
+        # Phase 1: bring up just the database and wait for it to be healthy
+        db_args = _compose_base_args(compose_path, env_path) + [
+            "up", "--pull", "missing", "--force-recreate", "-d",
+        ]
+        if can_build:
+            db_args.append("--build")
+        else:
+            db_args.append("--no-build")
+        db_args.append("mycelium-db")
+
+        print()
+        typer.secho("  Starting database first to provision CFN schemas…", dim=True)
+        result = subprocess.run(db_args, text=True)
+        if result.returncode != 0:
+            typer.secho("\n  ✗ failed to start mycelium-db", fg=typer.colors.RED)
+            return False, needs_build
+
+        # Wait for the health check to pass before creating databases
+        subprocess.run(
+            _compose_base_args(compose_path, env_path)
+            + ["exec", "-T", "mycelium-db", "sh", "-c",
+               "until pg_isready -U postgres -d mycelium; do sleep 1; done"],
+            capture_output=True, timeout=60,
+        )
+        _ensure_cfn_databases()
+        typer.echo("  ✓ CFN databases provisioned")
+
+    # Phase 2 (or only phase): bring up the full stack
+    args = base + up_flags
 
     print()
     typer.secho("  Running: " + " ".join(args[2:]), dim=True)
@@ -540,10 +588,6 @@ def install(
                 typer.secho("\n  ✗ docker compose up failed", fg=typer.colors.RED)
                 raise typer.Exit(1) from None
 
-            if ioc:
-                _ensure_cfn_databases()
-                typer.echo("  ✓ CFN databases provisioned")
-
             api_url = f"http://localhost:{custom_ports['backend']}"
             health_timeout = 300 if needs_build else 120
             _wait_for_health([f"{api_url}/health"], timeout=health_timeout)
@@ -744,10 +788,6 @@ def install(
         if not ok:
             typer.secho("\n  ✗ docker compose up failed", fg=typer.colors.RED)
             raise typer.Exit(1) from None
-
-        if ioc_enabled:
-            _ensure_cfn_databases()
-            typer.echo("  ✓ CFN databases provisioned")
 
         # ── Phase 4: Health checks ─────────────────────────────────────────
         # Allow extra time on first run when the backend image is being built.
