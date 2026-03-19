@@ -45,7 +45,6 @@ def adapter_main(ctx: typer.Context) -> None:
 
 
 _OPENCLAW_STEPS = {
-    "local-gateway": "write Mycelium env vars into the local openclaw systemd service",
     "docker-env": "show env vars for Docker-based experiment agents",
 }
 
@@ -141,9 +140,7 @@ def add(
                     f"Unknown step '{step}'. Known steps: {known_steps}", fg=typer.colors.RED
                 )
                 raise typer.Exit(1)
-            if step == "local-gateway":
-                _step_local_gateway(config)
-            elif step == "docker-env":
+            if step == "docker-env":
                 _step_docker_env(config)
             return
 
@@ -194,12 +191,10 @@ def add(
             typer.echo("")
             typer.secho("  Next steps:", bold=True)
             typer.echo("")
-            typer.echo("  Wire the adapter into your local openclaw gateway:")
-            typer.secho(
-                "    $ mycelium adapter add openclaw --step=local-gateway", fg=typer.colors.CYAN
-            )
+            typer.echo("  Restart the openclaw gateway to pick up the updated plugin:")
+            typer.secho("    $ openclaw gateway restart", fg=typer.colors.CYAN)
             typer.echo("")
-            typer.echo("  Set up env vars for Docker-based experiment agents:")
+            typer.echo("  For Docker-based experiment agents, get required env vars:")
             typer.secho(
                 "    $ mycelium adapter add openclaw --step=docker-env", fg=typer.colors.CYAN
             )
@@ -490,74 +485,6 @@ def _allow_plugin_remove(plugin_id: str) -> None:
         config_path.write_text(_json.dumps(cfg, indent=2))
     except Exception:
         pass
-
-
-def _step_local_gateway(config: "MyceliumConfig") -> None:
-    """Write Mycelium env vars into the local openclaw systemd user service and restart it."""
-    service_path = Path.home() / ".config" / "systemd" / "user" / "openclaw-gateway.service"
-
-    if not service_path.exists():
-        typer.secho("  ✗ openclaw-gateway.service not found.", fg=typer.colors.RED)
-        typer.echo("    Start the openclaw gateway first so it can create the service file:")
-        typer.echo("      $ openclaw gateway start")
-        typer.echo("    Then re-run this step.")
-        raise typer.Exit(1)
-
-    env_vars: dict[str, str] = {"MYCELIUM_API_URL": config.server.api_url}
-    if config.server.workspace_id:
-        env_vars["MYCELIUM_WORKSPACE_ID"] = config.server.workspace_id
-    if config.server.mas_id:
-        env_vars["MYCELIUM_MAS_ID"] = config.server.mas_id
-
-    lines = service_path.read_text().splitlines()
-    injected: set[str] = set()
-    new_lines: list[str] = []
-
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("Environment="):
-            key = stripped[len("Environment=") :].split("=")[0]
-            if key in env_vars:
-                new_lines.append(f"Environment={key}={env_vars[key]}")
-                injected.add(key)
-                continue
-        new_lines.append(line)
-
-    # Insert any vars not already present, after the last Environment= line
-    for key, val in env_vars.items():
-        if key not in injected:
-            for i in range(len(new_lines) - 1, -1, -1):
-                if new_lines[i].strip().startswith("Environment="):
-                    new_lines.insert(i + 1, f"Environment={key}={val}")
-                    break
-
-    service_path.write_text("\n".join(new_lines) + "\n")
-
-    subprocess.run(["systemctl", "--user", "daemon-reload"], check=True, capture_output=True)
-
-    is_active = (
-        subprocess.run(
-            ["systemctl", "--user", "is-active", "openclaw-gateway.service"],
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-        == "active"
-    )
-
-    if is_active:
-        subprocess.run(
-            ["systemctl", "--user", "restart", "openclaw-gateway.service"],
-            check=True,
-            capture_output=True,
-        )
-
-    typer.secho("  ✓ openclaw-gateway.service updated", fg=typer.colors.GREEN)
-    for key, val in env_vars.items():
-        typer.echo(f"    {key} = {val}")
-    if is_active:
-        typer.secho("  ↺  gateway restarted", fg=typer.colors.CYAN)
-    else:
-        typer.echo("  (gateway not running — changes will apply on next start)")
 
 
 def _step_docker_env(config: "MyceliumConfig") -> None:
