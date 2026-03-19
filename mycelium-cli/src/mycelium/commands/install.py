@@ -826,9 +826,13 @@ def install(
         typer.echo("    graph-db-viewer   → http://localhost:5457  (dev profile only)")
         print()
         typer.echo("  Next steps:")
-        typer.echo("    mycelium adapter add openclaw   # wire openclaw agents")
-        typer.echo("    mycelium room create <name>     # create your first room")
-        typer.echo("    mycelium metrics install         # enable agent metrics (optional)")
+        typer.echo("    mycelium adapter add openclaw                # wire openclaw agents")
+        typer.echo("    mycelium room create <name>                  # create your first room")
+        print()
+        typer.echo("  Metrics (optional):")
+        typer.echo("    mycelium metrics install                     # install metrics dependencies")
+        typer.echo("    mycelium adapter add openclaw --step=otel    # enable OpenClaw telemetry")
+        typer.echo("    mycelium metrics collect --bg && mycelium metrics show")
         print()
 
     except KeyboardInterrupt:
