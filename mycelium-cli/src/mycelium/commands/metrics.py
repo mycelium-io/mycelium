@@ -234,7 +234,10 @@ def _extract_agents(oc: dict | None) -> list[dict]:
         return []
     agents = oc.get("agents", [])
     if isinstance(agents, dict):
-        return [{"name": k, **v} for k, v in agents.items()]
+        return [
+            {"name": k, **(v if isinstance(v, dict) else {})}
+            for k, v in agents.items()
+        ]
     return agents
 
 
