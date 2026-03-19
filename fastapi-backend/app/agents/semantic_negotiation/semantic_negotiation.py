@@ -78,7 +78,7 @@ class SemanticNegotiationPipeline:
         room_name: str = "unknown",
         loop: asyncio.AbstractEventLoop | None = None,
         post_message_coro: Callable | None = None,
-        reply_timeout: float = 60.0,
+        reply_timeout: float = 30.0,
     ) -> None:
         self.context = context
         self.agents = agents or []

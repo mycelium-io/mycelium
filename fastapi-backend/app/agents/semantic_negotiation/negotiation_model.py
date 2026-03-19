@@ -276,7 +276,7 @@ class NegotiationModel:
         room_name: str = "unknown",
         loop: asyncio.AbstractEventLoop | None = None,
         post_message_coro: Callable | None = None,
-        reply_timeout: float = 60.0,
+        reply_timeout: float = 30.0,
         session_id: str = "unknown",
         registry: dict[str, RoomNegotiator] | None = None,
     ) -> NegotiationResult:

@@ -35,8 +35,12 @@ class Settings(BaseSettings):
     LLM_BASE_URL: str | None = None  # optional, for custom endpoints (ollama, vllm, etc.)
 
     # Coordination
-    COORDINATION_JOIN_WINDOW_SECONDS: int = 60
-    COORDINATION_TICK_TIMEOUT_SECONDS: int = 60
+    # How long to wait for additional agents to join after the first agent joins
+    # a sync/hybrid room before CognitiveEngine fires tick-0 (starts negotiation).
+    COORDINATION_JOIN_WINDOW_SECONDS: int = 30
+    # Per-round timeout: how long CognitiveEngine waits for an agent to reply
+    # during a negotiation round before falling back to the safe default.
+    COORDINATION_TICK_TIMEOUT_SECONDS: int = 30
 
     # Embedding (for persistent memory semantic search)
     EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"

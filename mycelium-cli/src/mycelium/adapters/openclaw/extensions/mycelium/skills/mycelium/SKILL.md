@@ -79,8 +79,6 @@ mycelium message query '{"action": "accept"}'
 # 5. [consensus] message arrives with your assignment
 ```
 
-**Room discipline**: speak only when CognitiveEngine addresses you. Default to silence between turns.
-
 ## Starting a Session (The "Catchup" Pattern)
 
 When you start working, get briefed on what's happened:
