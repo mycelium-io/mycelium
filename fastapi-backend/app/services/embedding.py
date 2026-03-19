@@ -7,21 +7,23 @@ Uses all-MiniLM-L6-v2 (384 dimensions, runs locally from HF cache).
 
 import logging
 import os
-
-from sentence_transformers import SentenceTransformer
+from typing import Any
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-_model: SentenceTransformer | None = None
+_model: Any = None
 
 # Set MYCELIUM_STUB_EMBEDDINGS=1 to skip model loading (CI, offline environments).
 _STUB = os.getenv("MYCELIUM_STUB_EMBEDDINGS", "").strip() not in ("", "0", "false")
 
 
-def _load_model() -> SentenceTransformer:
-    """Load the model, preferring the local HF cache snapshot to avoid network calls."""
+def _load_model() -> Any:
+    """Load the model lazily — defers the heavy sentence_transformers import
+    until the first actual embedding call, so startup isn't blocked."""
+    from sentence_transformers import SentenceTransformer
+
     hf_cache = os.path.expanduser("~/.cache/huggingface/hub")
     model_slug = settings.EMBEDDING_MODEL.replace("/", "--")
     snapshots_dir = os.path.join(hf_cache, f"models--{model_slug}", "snapshots")
@@ -37,7 +39,7 @@ def _load_model() -> SentenceTransformer:
     return model
 
 
-def _get_model() -> SentenceTransformer:
+def _get_model() -> Any:
     global _model
     if _model is None:
         _model = _load_model()

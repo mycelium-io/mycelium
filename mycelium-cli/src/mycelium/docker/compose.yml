@@ -34,7 +34,6 @@ services:
       context: ../fastapi-backend
       dockerfile: Dockerfile
     image: ghcr.io/mycelium-io/mycelium-backend:latest
-    platform: linux/amd64
     container_name: mycelium-backend
     restart: unless-stopped
     depends_on:
