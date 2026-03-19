@@ -430,21 +430,25 @@ def _install_openclaw_skill() -> None:
         (dest_dir / f.name).write_bytes(f.read_bytes())
 
 
-def _normalize_plugin_entries(plugins_section: dict) -> list:
-    """Ensure plugins.entries is a list of dicts, converting from dict if needed.
+def _normalize_plugin_entries(plugins_section: dict) -> dict:
+    """Ensure plugins.entries is a dict (record), converting from list if needed.
 
-    Mutates *plugins_section* in place and returns the list.
+    OpenClaw validates entries as a record (``{plugin_id: {enabled: bool}}``).
+    Mutates *plugins_section* in place and returns the dict.
     """
     entries = plugins_section.get("entries")
-    if isinstance(entries, list):
-        return entries
     if isinstance(entries, dict):
-        entries = [
-            {"name": k, **(v if isinstance(v, dict) else {"enabled": v})}
-            for k, v in entries.items()
-        ]
+        return entries
+    if isinstance(entries, list):
+        converted: dict = {}
+        for e in entries:
+            if isinstance(e, dict):
+                key = e.get("name") or e.get("id")
+                if key:
+                    converted[key] = {k: v for k, v in e.items() if k not in ("name", "id")}
+        entries = converted
     else:
-        entries = []
+        entries = {}
     plugins_section["entries"] = entries
     return entries
 
@@ -471,12 +475,8 @@ def _allow_plugin(plugin_id: str) -> None:
             paths.append(ext_path)
 
         entries = _normalize_plugin_entries(plugins_section)
-        has_entry = any(
-            isinstance(e, dict) and (e.get("name") == plugin_id or e.get("id") == plugin_id)
-            for e in entries
-        )
-        if not has_entry:
-            entries.append({"name": plugin_id, "enabled": True})
+        if plugin_id not in entries:
+            entries[plugin_id] = {"enabled": True}
 
         config_path.write_text(_json.dumps(cfg, indent=2))
     except Exception:
@@ -524,10 +524,7 @@ def _allow_plugin_remove(plugin_id: str) -> None:
             paths.remove(ext_path)
 
         entries = _normalize_plugin_entries(plugins_section)
-        plugins_section["entries"] = [
-            e for e in entries
-            if not (isinstance(e, dict) and (e.get("name") == plugin_id or e.get("id") == plugin_id))
-        ]
+        entries.pop(plugin_id, None)
 
         config_path.write_text(_json.dumps(cfg, indent=2))
     except Exception:
@@ -626,13 +623,8 @@ def _configure_otel(port: int | None = None) -> bool:
             allow_list.append("diagnostics-otel")
 
         entries = _normalize_plugin_entries(plugins)
-        has_otel_entry = any(
-            e.get("name") == "diagnostics-otel" or e.get("id") == "diagnostics-otel"
-            for e in entries
-            if isinstance(e, dict)
-        )
-        if not has_otel_entry:
-            entries.append({"name": "diagnostics-otel", "enabled": True})
+        if "diagnostics-otel" not in entries:
+            entries["diagnostics-otel"] = {"enabled": True}
 
         config_path.write_text(json_module.dumps(cfg, indent=2) + "\n")
     except OSError as exc:
