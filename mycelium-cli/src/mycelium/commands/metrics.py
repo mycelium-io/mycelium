@@ -230,21 +230,45 @@ def _get_openclaw_status() -> dict | None:
 
 
 def _extract_agents(oc: dict | None) -> list[dict]:
+    """Extract the agent list from ``openclaw status --json``.
+
+    The actual agent records live at ``oc["agents"]["agents"]``, each with
+    ``id`` and ``workspaceDir`` fields.  We normalise ``id`` → ``name`` so
+    downstream code can use a single key.
+    """
     if not oc:
         return []
-    agents = oc.get("agents", [])
-    if isinstance(agents, dict):
-        return [
-            {"name": k, **(v if isinstance(v, dict) else {})}
-            for k, v in agents.items()
-        ]
-    return agents
+    agents_section = oc.get("agents")
+    if isinstance(agents_section, dict):
+        agent_list = agents_section.get("agents", [])
+    elif isinstance(agents_section, list):
+        agent_list = agents_section
+    else:
+        return []
+    result = []
+    for a in agent_list:
+        if not isinstance(a, dict):
+            continue
+        entry = dict(a)
+        if "name" not in entry and "id" in entry:
+            entry["name"] = entry["id"]
+        result.append(entry)
+    return result
 
 
 def _extract_oc_sessions(oc: dict | None) -> list[dict]:
+    """Extract recent sessions from ``openclaw status --json``.
+
+    Sessions live at ``oc["sessions"]["recent"]``.
+    """
     if not oc:
         return []
-    return oc.get("sessions", [])
+    sessions = oc.get("sessions")
+    if isinstance(sessions, dict):
+        return sessions.get("recent", [])
+    if isinstance(sessions, list):
+        return sessions
+    return []
 
 
 def _extract_oc_cost(oc: dict | None) -> dict | None:
@@ -359,7 +383,7 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
 
     agent_names: set[str] = set(by_agent_tokens.keys())
     for a in agents_meta:
-        agent_names.add(a.get("name", a.get("agentName", "")))
+        agent_names.add(a.get("name", ""))
 
     for name in sorted(agent_names):
         if not name:
@@ -370,9 +394,8 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
 
         ws_size = "—"
         for a in agents_meta:
-            aname = a.get("name", a.get("agentName", ""))
-            if aname == name:
-                wdir = a.get("workspaceDir") or a.get("workspace_dir")
+            if a.get("name") == name:
+                wdir = a.get("workspaceDir")
                 if wdir:
                     ws_size = _fmt_size(_dir_size(Path(wdir)))
                 break
@@ -427,8 +450,8 @@ def _render_session_table(sessions: list[dict]) -> None:
 
 def _render_workspace_tables(agents_meta: list[dict]) -> None:
     for agent in agents_meta:
-        name = agent.get("name", agent.get("agentName", "unknown"))
-        wdir = agent.get("workspaceDir") or agent.get("workspace_dir")
+        name = agent.get("name", "unknown")
+        wdir = agent.get("workspaceDir")
         if not wdir:
             continue
 
