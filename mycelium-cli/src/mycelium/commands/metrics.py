@@ -58,10 +58,21 @@ def install_metrics() -> None:
         pass
 
     typer.echo("Installing metrics dependencies...")
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "opentelemetry-proto", "protobuf>=4.21.0"],
-        capture_output=True, text=True,
-    )
+    packages = ["opentelemetry-proto", "protobuf>=4.21.0"]
+
+    # Prefer uv (used by uv tool installs which don't ship pip)
+    import shutil
+    if shutil.which("uv"):
+        result = subprocess.run(
+            ["uv", "pip", "install", "--python", sys.executable] + packages,
+            capture_output=True, text=True,
+        )
+    else:
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install"] + packages,
+            capture_output=True, text=True,
+        )
+
     if result.returncode != 0:
         typer.secho(f"✗ Install failed:\n{result.stderr}", fg=typer.colors.RED)
         raise typer.Exit(1)
