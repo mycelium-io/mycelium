@@ -565,7 +565,8 @@ def install(
                 "\n  ✗ Non-interactive terminal detected — interactive install requires a TTY.\n",
                 fg=typer.colors.RED,
             )
-            ctx = typer.get_current_context()
+            import click
+            ctx = click.get_current_context()
             typer.echo(ctx.get_help())
             raise typer.Exit(1) from None
 
