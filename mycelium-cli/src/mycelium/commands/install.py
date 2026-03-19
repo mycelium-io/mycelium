@@ -401,11 +401,24 @@ def _ensure_cfn_databases(db_container: str = "mycelium-db") -> None:
     duplicate-database error from CREATE DATABASE is silently ignored.
     """
     for db in ("cfn_mgmt", "cfn_cp"):
-        subprocess.run(
+        r = subprocess.run(
             ["docker", "exec", db_container, "psql", "-U", "postgres",
              "-c", f"CREATE DATABASE {db}"],
-            capture_output=True,
+            capture_output=True, text=True,
         )
+        if r.returncode != 0 and "already exists" not in (r.stderr or ""):
+            typer.secho(f"  ⚠  failed to create {db}: {(r.stderr or r.stdout or '').strip()}", fg=typer.colors.YELLOW)
+
+    # Verify at least cfn_mgmt was created
+    check = subprocess.run(
+        ["docker", "exec", db_container, "psql", "-U", "postgres",
+         "-tAc", "SELECT 1 FROM pg_database WHERE datname = 'cfn_mgmt'"],
+        capture_output=True, text=True,
+    )
+    if check.stdout.strip() != "1":
+        typer.secho("  ⚠  cfn_mgmt database not found after creation attempt", fg=typer.colors.YELLOW)
+        typer.secho(f"     docker exec returned: rc={check.returncode} "
+                    f"stdout={check.stdout.strip()!r} stderr={check.stderr.strip()!r}", dim=True)
 
 
 def _wait_for_health(urls: list[str], timeout: int = 120) -> bool:
