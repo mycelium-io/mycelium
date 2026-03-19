@@ -365,19 +365,29 @@ def _compose_up(
 
         print()
         typer.secho("  Starting database first to provision CFN schemas…", dim=True)
+        typer.secho(f"  [debug] Phase 1 cmd: {' '.join(db_args[2:])}", dim=True)
         result = subprocess.run(db_args, text=True)
+        typer.secho(f"  [debug] Phase 1 compose up rc={result.returncode}", dim=True)
         if result.returncode != 0:
             typer.secho("\n  ✗ failed to start mycelium-db", fg=typer.colors.RED)
             return False, needs_build
 
         # Wait for the health check to pass before creating databases
-        subprocess.run(
+        typer.secho("  [debug] Waiting for pg_isready …", dim=True)
+        wait_r = subprocess.run(
             _compose_base_args(compose_path, env_path)
             + ["exec", "-T", "mycelium-db", "sh", "-c",
                "until pg_isready -U postgres -d mycelium; do sleep 1; done"],
-            capture_output=True, timeout=60,
+            capture_output=True, text=True, timeout=60,
         )
+        typer.secho(f"  [debug] pg_isready rc={wait_r.returncode} "
+                    f"stdout={wait_r.stdout.strip()!r} stderr={wait_r.stderr.strip()!r}", dim=True)
+
         _ensure_cfn_databases()
+
+        # Verify databases exist before proceeding
+        _list_cfn_dbs("after Phase 1 create")
+
         typer.echo("  ✓ CFN databases provisioned")
 
     # Phase 2 (or only phase): bring up the full stack
@@ -390,7 +400,34 @@ def _compose_up(
     print()
 
     result = subprocess.run(args, text=True)
+
+    if cfn_active:
+        _list_cfn_dbs("after Phase 2 force-recreate")
+
     return result.returncode == 0, needs_build
+
+
+def _list_cfn_dbs(label: str, db_container: str = "mycelium-db") -> None:
+    """Debug helper: list cfn databases and the docker volume."""
+    r = subprocess.run(
+        ["docker", "exec", db_container, "psql", "-U", "postgres",
+         "-tAc", "SELECT datname FROM pg_database WHERE datname LIKE 'cfn%' ORDER BY 1"],
+        capture_output=True, text=True,
+    )
+    dbs = r.stdout.strip() or "(none)"
+    typer.secho(f"  [debug] CFN databases {label}: {dbs}  (rc={r.returncode})", dim=True)
+
+    v = subprocess.run(
+        ["docker", "volume", "ls", "--filter", "name=mycelium", "--format", "{{.Name}}"],
+        capture_output=True, text=True,
+    )
+    typer.secho(f"  [debug] volumes: {v.stdout.strip()}", dim=True)
+
+    cid = subprocess.run(
+        ["docker", "inspect", "--format", "{{.Id}}", db_container],
+        capture_output=True, text=True,
+    )
+    typer.secho(f"  [debug] mycelium-db container id: {cid.stdout.strip()[:12]}", dim=True)
 
 
 def _ensure_cfn_databases(db_container: str = "mycelium-db") -> None:
@@ -401,24 +438,13 @@ def _ensure_cfn_databases(db_container: str = "mycelium-db") -> None:
     duplicate-database error from CREATE DATABASE is silently ignored.
     """
     for db in ("cfn_mgmt", "cfn_cp"):
+        typer.secho(f"  [debug] CREATE DATABASE {db} …", dim=True)
         r = subprocess.run(
             ["docker", "exec", db_container, "psql", "-U", "postgres",
              "-c", f"CREATE DATABASE {db}"],
             capture_output=True, text=True,
         )
-        if r.returncode != 0 and "already exists" not in (r.stderr or ""):
-            typer.secho(f"  ⚠  failed to create {db}: {(r.stderr or r.stdout or '').strip()}", fg=typer.colors.YELLOW)
-
-    # Verify at least cfn_mgmt was created
-    check = subprocess.run(
-        ["docker", "exec", db_container, "psql", "-U", "postgres",
-         "-tAc", "SELECT 1 FROM pg_database WHERE datname = 'cfn_mgmt'"],
-        capture_output=True, text=True,
-    )
-    if check.stdout.strip() != "1":
-        typer.secho("  ⚠  cfn_mgmt database not found after creation attempt", fg=typer.colors.YELLOW)
-        typer.secho(f"     docker exec returned: rc={check.returncode} "
-                    f"stdout={check.stdout.strip()!r} stderr={check.stderr.strip()!r}", dim=True)
+        typer.secho(f"  [debug]   rc={r.returncode} stdout={r.stdout.strip()!r} stderr={r.stderr.strip()!r}", dim=True)
 
 
 def _wait_for_health(urls: list[str], timeout: int = 120) -> bool:
