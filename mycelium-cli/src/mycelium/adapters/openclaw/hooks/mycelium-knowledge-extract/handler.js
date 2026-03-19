@@ -268,8 +268,8 @@ export default async function HookHandler(event) {
   const meta = resolveSessionMeta(event, entries);
   const payload = buildPayload(meta, turns, entries);
 
-  const ingested = await ingestToMycelium(payload).catch(() => false);
-  if (!ingested) {
-    appendLog(LOG_FILE, payload);
-  }
+  // Fire-and-forget — don't block the hook response on LLM extraction
+  ingestToMycelium(payload).then((ok) => {
+    if (!ok) appendLog(LOG_FILE, payload);
+  }).catch(() => appendLog(LOG_FILE, payload));
 }
