@@ -138,7 +138,7 @@ services:
       PORT: 9002
       HEARTBEAT_INTERVAL_SECONDS: ${HEARTBEAT_INTERVAL_SECONDS:-29}
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9002/api/internal/diagnostics/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9002/api/internal/diagnostics/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 6
