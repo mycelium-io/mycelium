@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { execSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -85,10 +86,30 @@ Repeat steps 2–3 until you receive a \`[consensus]\` message containing your a
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-const API_URL = (process.env.MYCELIUM_API_URL ?? "").replace(/\/$/, "");
-const WORKSPACE_ID = process.env.MYCELIUM_WORKSPACE_ID ?? "";
-const MAS_ID = process.env.MYCELIUM_MAS_ID ?? "";
+// Config loaded from `mycelium --json config show` at gateway_start.
+// Falls back to env vars so Docker/CI overrides still work.
+let API_URL = (process.env.MYCELIUM_API_URL ?? "").replace(/\/$/, "");
+let WORKSPACE_ID = process.env.MYCELIUM_WORKSPACE_ID ?? "";
+let MAS_ID = process.env.MYCELIUM_MAS_ID ?? "";
 const AGENT_ID = process.env.MYCELIUM_AGENT_ID ?? "";
+
+function loadMyceliumConfig(): void {
+  try {
+    const raw = execSync("mycelium --json config show", { encoding: "utf-8", timeout: 5000 });
+    const cfg = JSON.parse(raw);
+    if (!process.env.MYCELIUM_API_URL && cfg?.server?.api_url) {
+      API_URL = cfg.server.api_url.replace(/\/$/, "");
+    }
+    if (!process.env.MYCELIUM_WORKSPACE_ID && cfg?.server?.workspace_id) {
+      WORKSPACE_ID = cfg.server.workspace_id;
+    }
+    if (!process.env.MYCELIUM_MAS_ID && cfg?.server?.mas_id) {
+      MAS_ID = cfg.server.mas_id;
+    }
+  } catch {
+    // mycelium CLI not installed or config unreadable — fall back to env vars
+  }
+}
 
 // Custom memory file — read fresh on every before_agent_start invocation
 const MEMORY_FILE = join(
@@ -168,11 +189,6 @@ export default function register(api: {
   logger: { info: (s: string) => void; warn: (s: string) => void };
   on: (event: string, handler: (...args: any[]) => any, opts?: object) => void;
 }): void {
-  if (!API_URL) {
-    api.logger.warn("[mycelium] MYCELIUM_API_URL not set — plugin inactive");
-    return;
-  }
-
   const log = api.logger;
 
   // ── SSE subscription helper ────────────────────────────────────────────────
@@ -312,6 +328,11 @@ export default function register(api: {
   // ── gateway_start ──────────────────────────────────────────────────────────
 
   api.on("gateway_start", async () => {
+    loadMyceliumConfig();
+    if (!API_URL) {
+      log.warn("[mycelium] No API URL found in config or env — plugin inactive");
+      return;
+    }
     try {
       const res = await fetch(`${API_URL}/health`);
       if (res.ok) {

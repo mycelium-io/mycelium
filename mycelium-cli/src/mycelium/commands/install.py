@@ -452,11 +452,17 @@ def _provision_backend(api_url: str, workspace_name: str = "default") -> tuple[s
     """
     Create a default workspace and MAS in the backend.
     Returns (workspace_id, mas_id).
+    Idempotent — fetches existing workspace/MAS on 409/400 conflict.
     Raises RuntimeError if the backend is unreachable or returns an error.
     """
     import json
     import urllib.error
     import urllib.request
+
+    def _get(path: str) -> list:
+        req = urllib.request.Request(f"{api_url}{path}", headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read())
 
     def _post(path: str, body: dict) -> dict:
         data = json.dumps(body).encode()
@@ -469,10 +475,24 @@ def _provision_backend(api_url: str, workspace_name: str = "default") -> tuple[s
         with urllib.request.urlopen(req, timeout=10) as resp:
             return json.loads(resp.read())
 
-    ws = _post("/api/workspaces", {"name": workspace_name})
+    try:
+        ws = _post("/api/workspaces", {"name": workspace_name})
+    except urllib.error.HTTPError as e:
+        if e.code in (400, 409):
+            workspaces = _get("/api/workspaces")
+            ws = next((w for w in workspaces if w.get("name") == workspace_name), workspaces[0])
+        else:
+            raise
     workspace_id: str = ws["id"]
 
-    mas = _post(f"/api/workspaces/{workspace_id}/mas", {"name": "default"})
+    try:
+        mas = _post(f"/api/workspaces/{workspace_id}/mas", {"name": "default"})
+    except urllib.error.HTTPError as e:
+        if e.code in (400, 409):
+            mas_list = _get(f"/api/workspaces/{workspace_id}/mas")
+            mas = mas_list[0]
+        else:
+            raise
     mas_id: str = mas["id"]
 
     return workspace_id, mas_id
@@ -613,7 +633,8 @@ def install(
                 "\n  ✗ Non-interactive terminal detected — interactive install requires a TTY.\n",
                 fg=typer.colors.RED,
             )
-            ctx = typer.get_current_context()
+            import click
+            ctx = click.get_current_context()
             typer.echo(ctx.get_help())
             raise typer.Exit(1) from None
 
