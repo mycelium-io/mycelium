@@ -12,6 +12,7 @@
 
 import fs from "fs";
 import fsPromises from "fs/promises";
+import { execSync } from "child_process";
 import path from "path";
 import os from "os";
 
@@ -204,12 +205,21 @@ function buildPayload(sessionMeta, turns, entries) {
 
 // ── Mycelium knowledge ingest ─────────────────────────────────────────────────
 
+function readMyceliumConfig() {
+  try {
+    const raw = execSync("mycelium --json config show", { encoding: "utf-8", timeout: 5000 });
+    return JSON.parse(raw)?.server ?? {};
+  } catch {
+    return {};
+  }
+}
+
 async function ingestToMycelium(payload) {
-  const apiUrl      = process.env.MYCELIUM_API_URL;
-  const workspaceId = process.env.MYCELIUM_WORKSPACE_ID;
-  const masId       = process.env.MYCELIUM_MAS_ID;
-  // Prefer the provisioned UUID; fall back to handle string
-  const agentId     = process.env.MYCELIUM_AGENT_ID || process.env.MYCELIUM_AGENT_HANDLE || null;
+  const cfg         = readMyceliumConfig();
+  const apiUrl      = process.env.MYCELIUM_API_URL      || cfg.api_url      || null;
+  const workspaceId = process.env.MYCELIUM_WORKSPACE_ID || cfg.workspace_id || null;
+  const masId       = process.env.MYCELIUM_MAS_ID       || cfg.mas_id       || null;
+  const agentId     = process.env.MYCELIUM_AGENT_ID     || process.env.MYCELIUM_AGENT_HANDLE || null;
 
   if (!apiUrl || !workspaceId || !masId) return false;
 
@@ -232,8 +242,7 @@ async function ingestToMycelium(payload) {
 // ── Local log fallback ────────────────────────────────────────────────────────
 
 function appendLog(filePath, data) {
-  const sep = "\n" + "=".repeat(80) + "\n";
-  fs.appendFileSync(filePath, sep + JSON.stringify(data, null, 2) + "\n");
+  fs.appendFileSync(filePath, JSON.stringify(data) + "\n");
 }
 
 // ── Handler ───────────────────────────────────────────────────────────────────

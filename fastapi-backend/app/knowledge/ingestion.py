@@ -1,9 +1,8 @@
 """
-Two-stage Anthropic LLM extraction service for OpenClaw turns.
+Two-stage LLM extraction service for OpenClaw turns.
 
-Ported from cfn/ioc-cfn-cognitive-agents/ingestion-cognitive-agent/app/agent/service.py
-(ConceptRelationshipExtractionService), adapted to use Anthropic tool use instead of
-AzureOpenAI structured output.
+Uses litellm (same provider/model/key/base_url config as the rest of Mycelium)
+so any configured LLM backend works — Anthropic, OpenAI, litellm proxy, etc.
 """
 
 from __future__ import annotations
@@ -12,43 +11,63 @@ import asyncio
 import hashlib
 import json
 import logging
-from typing import TYPE_CHECKING
 
+from app.config import settings
 from app.knowledge import service as kg_service
 from app.knowledge.prompts import get_concept_prompt, get_relationship_prompt
 from app.knowledge.schemas import KnowledgeGraphStoreRequest
-
-if TYPE_CHECKING:
-    import anthropic as anthropic_module
 
 logger = logging.getLogger(__name__)
 
 _TOOL_CALL_KEYS = ("id", "name", "input", "result")
 
 
+def _litellm_call(system: str, user: str, tools: list[dict], tool_name: str) -> dict:
+    """Call litellm with tool_choice forced to tool_name. Returns the tool input dict."""
+    import litellm
+
+    kwargs: dict = {
+        "model": settings.LLM_MODEL,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": t["name"],
+                    "description": t.get("description", ""),
+                    "parameters": t["input_schema"],
+                },
+            }
+            for t in tools
+        ],
+        "tool_choice": {"type": "function", "function": {"name": tool_name}},
+        "max_tokens": 4096,
+        "temperature": 0,
+    }
+    if settings.LLM_API_KEY:
+        kwargs["api_key"] = settings.LLM_API_KEY
+    if settings.LLM_BASE_URL:
+        kwargs["base_url"] = settings.LLM_BASE_URL
+
+    resp = litellm.completion(**kwargs)
+    for choice in resp.choices:
+        msg = choice.message
+        if msg.tool_calls:
+            for tc in msg.tool_calls:
+                if tc.function.name == tool_name:
+                    return json.loads(tc.function.arguments)
+    return {}
+
+
 class IngestionService:
     """Two-stage LLM extraction: openclaw turns → concepts + relationships → AgensGraph."""
 
-    def __init__(self, api_key: str | None, model: str) -> None:
-        self.api_key = api_key
-        self.model = model
-        self._client: anthropic_module.Anthropic | None = None
-
-    def _get_client(self) -> anthropic_module.Anthropic | None:
-        if self._client is not None:
-            return self._client
-        if not self.api_key:
-            return None
-        try:
-            import anthropic
-
-            self._client = anthropic.Anthropic(api_key=self.api_key)
-        except ImportError:
-            logger.warning("anthropic package not installed — LLM extraction unavailable")
-            return None
-        else:
-            return self._client
-        return None
+    def __init__(self, api_key: str | None = None, model: str | None = None) -> None:
+        # api_key / model kept for backwards compat but ignored — settings are used directly
+        pass
 
     @staticmethod
     def _generate_id(text: str) -> str:
@@ -101,12 +120,8 @@ class IngestionService:
     # ------------------------------------------------------------------
 
     def _llm_extract_concepts(self, compact_payload: list[dict]) -> list[dict]:
-        """Use Anthropic tool use to extract structured concepts from the payload."""
-        client = self._get_client()
-        if client is None:
-            return []
-
-        tool: dict = {
+        """Use litellm tool use to extract structured concepts from the payload."""
+        tool = {
             "name": "record_concepts",
             "description": "Record the extracted concepts",
             "input_schema": {
@@ -128,20 +143,13 @@ class IngestionService:
                 "required": ["concepts"],
             },
         }
-
-        response = client.messages.create(
-            model=self.model,
-            max_tokens=4096,
-            tools=[tool],
-            tool_choice={"type": "tool", "name": "record_concepts"},
+        result = _litellm_call(
             system=get_concept_prompt("openclaw"),
-            messages=[{"role": "user", "content": json.dumps(compact_payload)}],
+            user=json.dumps(compact_payload),
+            tools=[tool],
+            tool_name="record_concepts",
         )
-
-        for block in response.content:
-            if block.type == "tool_use" and block.name == "record_concepts":
-                return block.input.get("concepts", [])
-        return []
+        return result.get("concepts", [])
 
     # ------------------------------------------------------------------
     # Stage 2: relationship extraction
@@ -150,12 +158,8 @@ class IngestionService:
     def _llm_extract_relationships(
         self, concepts: list[dict], compact_payload: list[dict]
     ) -> list[dict]:
-        """Use Anthropic tool use to extract structured relationships between concepts."""
-        client = self._get_client()
-        if client is None:
-            return []
-
-        tool: dict = {
+        """Use litellm tool use to extract structured relationships between concepts."""
+        tool = {
             "name": "record_relationships",
             "description": "Record the extracted relationships",
             "input_schema": {
@@ -178,22 +182,13 @@ class IngestionService:
                 "required": ["relationships"],
             },
         }
-
-        user_msg = json.dumps({"concepts": concepts, "records": compact_payload})
-
-        response = client.messages.create(
-            model=self.model,
-            max_tokens=4096,
-            tools=[tool],
-            tool_choice={"type": "tool", "name": "record_relationships"},
+        result = _litellm_call(
             system=get_relationship_prompt("openclaw"),
-            messages=[{"role": "user", "content": user_msg}],
+            user=json.dumps({"concepts": concepts, "records": compact_payload}),
+            tools=[tool],
+            tool_name="record_relationships",
         )
-
-        for block in response.content:
-            if block.type == "tool_use" and block.name == "record_relationships":
-                return block.input.get("relationships", [])
-        return []
+        return result.get("relationships", [])
 
     # ------------------------------------------------------------------
     # Public entry point
