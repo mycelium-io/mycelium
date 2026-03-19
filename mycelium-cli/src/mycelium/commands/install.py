@@ -397,12 +397,13 @@ def _ensure_cfn_databases(db_container: str = "mycelium-db") -> None:
     """Create cfn_mgmt and cfn_cp databases if they don't exist.
 
     initdb scripts only run on first postgres init, so on upgrades with an
-    existing volume the CFN databases won't be present. This is idempotent.
+    existing volume the CFN databases won't be present.  Idempotent: a
+    duplicate-database error from CREATE DATABASE is silently ignored.
     """
     for db in ("cfn_mgmt", "cfn_cp"):
-        sql = f"SELECT 'CREATE DATABASE {db}' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '{db}')\\gexec"
         subprocess.run(
-            ["docker", "exec", db_container, "psql", "-U", "postgres", "-c", sql],
+            ["docker", "exec", db_container, "psql", "-U", "postgres",
+             "-c", f"CREATE DATABASE {db}"],
             capture_output=True,
         )
 
