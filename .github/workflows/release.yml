@@ -140,7 +140,7 @@ jobs:
       - name: Download binaries
         uses: actions/download-artifact@v4
         with:
-          pattern: mycelium-*
+          pattern: mycelium-(linux|darwin)-*
           path: mycelium-cli/dist/binaries
           merge-multiple: true
 
