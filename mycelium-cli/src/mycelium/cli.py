@@ -15,6 +15,7 @@ from mycelium.commands import (
     message,
     notebook,
     room,
+    session,
 )
 
 app = typer.Typer(
@@ -77,6 +78,7 @@ app.add_typer(config.app, name="config")
 app.add_typer(adapter.app, name="adapter")
 app.add_typer(docs.app, name="docs")
 app.add_typer(notebook.app, name="notebook")
+app.add_typer(session.app, name="session")
 
 
 if __name__ == "__main__":

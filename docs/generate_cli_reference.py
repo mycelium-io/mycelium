@@ -21,6 +21,7 @@ from pathlib import Path
 GROUP_CONFIG: list[tuple[str, str, str]] = [
     # (group_key, heading_text, sidebar_label)
     ("room", "room", "room"),
+    ("session", "session", "session"),
     ("memory", "memory", "memory"),
     ("notebook", "notebook", "notebook"),
     ("message", "message", "message"),
@@ -41,6 +42,7 @@ def _generate_html() -> tuple[str, str]:
     import mycelium.commands.message  # noqa: F401
     import mycelium.commands.notebook  # noqa: F401
     import mycelium.commands.room  # noqa: F401
+    import mycelium.commands.session  # noqa: F401
 
     entries = get_registry()
 

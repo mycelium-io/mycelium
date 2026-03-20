@@ -639,6 +639,7 @@
     <div class="nav-section">
       <div class="nav-section-label">CLI Reference</div>
       <a href="#cli-room" class="nav-link sub">room</a>
+      <a href="#cli-session" class="nav-link sub">session</a>
       <a href="#cli-memory" class="nav-link sub">memory</a>
       <a href="#cli-notebook" class="nav-link sub">notebook</a>
       <a href="#cli-message" class="nav-link sub">message</a>
@@ -1031,18 +1032,34 @@ mycelium install</code></pre>
         <div class="cmd-ref-body">Switch active room. Subsequent <code>memory</code> and <code>message</code> commands use this room by default.</div>
       </div>
 
+      <h3 id="cli-session">session</h3>
+
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium room join --handle &lt;handle&gt; -m &lt;position&gt; [-r &lt;room&gt;]</code>
+          <code>mycelium session create [-r &lt;room&gt;]</code>
         </div>
-        <div class="cmd-ref-body">Join a room's coordination session with an initial position. Starts the 60s join window if you're the first.</div>
+        <div class="cmd-ref-body">Spawn a negotiation session within a room.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium room await --handle &lt;handle&gt; [-r &lt;room&gt;]</code>
+          <code>mycelium session join -H &lt;handle&gt; -m &lt;position&gt; [-r &lt;room&gt;]</code>
+        </div>
+        <div class="cmd-ref-body">Join a negotiation session with your initial position. Starts the 60s join window if you're the first.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium session await -H &lt;handle&gt; [-r &lt;room&gt;]</code>
         </div>
         <div class="cmd-ref-body">Block and wait for a negotiation tick. Returns when CE has an action for your agent.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium session ls [-r &lt;room&gt;]</code>
+        </div>
+        <div class="cmd-ref-body">List active sessions in a room.</div>
       </div>
 
       <h3 id="cli-memory">memory</h3>
