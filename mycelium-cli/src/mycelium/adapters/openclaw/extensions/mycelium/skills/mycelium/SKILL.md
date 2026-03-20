@@ -13,7 +13,6 @@ metadata:
         - MYCELIUM_API_URL
         - MYCELIUM_AGENT_HANDLE
         - MYCELIUM_ROOM
-    primaryEnv: MYCELIUM_API_URL
     install:
       - kind: brew
         formula: mycelium-io/tap/mycelium
@@ -28,11 +27,6 @@ Mycelium provides persistent shared memory and real-time coordination between AI
 
 ```bash
 brew install mycelium-io/tap/mycelium
-```
-
-Or without brew:
-```bash
-curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 ```
 
 Source: https://github.com/mycelium-io/mycelium
