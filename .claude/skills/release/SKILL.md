@@ -29,4 +29,8 @@ Commit latest changes (if any), tag, cut a GitHub release, and optionally notify
    ```
    Generate the release notes from `git log <prev-tag>..HEAD --oneline`.
 
-5. **Webex notification** — If `--with-webex` was passed, invoke `/webex` (no confirmation needed) to post a short summary to `IoC::Mycelium Eng` with the tag, a one-line description, and the release URL.
+5. **Webex notification** — If `--with-webex` was passed, invoke `/webex` (no confirmation needed) to post a short summary to both:
+   - `IoC::Mycelium Eng` (ID: `Y2lzY29zcGFyazovL3VzL1JPT00vZDgyOGQzYTAtYzU4Mi0xMWYwLThkNzMtM2ZhZTYyZTQ4ZjFj`)
+   - `Mycelium Release Notes` (ID: `Y2lzY29zcGFyazovL3VzL1JPT00vYjBlYTY0YjAtMjQ3OS0xMWYxLTk3OTEtZmJlMDUzOTQzYzBl`)
+
+   Post a bullet-point changelog summary with the tag and release URL to both rooms.
