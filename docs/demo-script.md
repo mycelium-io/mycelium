@@ -15,12 +15,12 @@ mycelium --help
 
 ---
 
-## Part 1: Persistent Memory (Async Room)
+## Part 1: Persistent Memory
 
 ### Setup
 
 ```bash
-mycelium room create design-review --mode async --trigger threshold:5
+mycelium room create design-review --trigger threshold:5
 mycelium room use design-review
 ```
 
@@ -101,7 +101,7 @@ Also show `http://localhost:3000/room/design-review` in the browser for the UI v
 **Terminal 1 (or Claude Code instance 1) — julia-agent:**
 
 ```bash
-mycelium room create friday-demo --mode sync
+mycelium room create friday-demo
 mycelium room join --handle julia-agent -m "Prioritize CFN integration — need mgmt plane wired up before Friday demo" -r friday-demo
 mycelium room await --handle julia-agent -r friday-demo
 ```

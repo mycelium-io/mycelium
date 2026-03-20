@@ -7,12 +7,6 @@ import { fetchRoom } from "@/lib/api";
 import { EventStream } from "@/components/event-stream";
 import { MemoryPanel } from "@/components/memory-panel";
 
-const modeColors: Record<string, string> = {
-  sync: "bg-accent/10 text-accent border-accent/25",
-  async: "bg-emerald-500/10 text-emerald-400 border-emerald-500/25",
-  hybrid: "bg-purple-500/10 text-purple-400 border-purple-500/25",
-};
-
 export default function RoomPage() {
   const params = useParams();
   const router = useRouter();
@@ -37,11 +31,6 @@ export default function RoomPage() {
         </button>
         <Image src="/logo.png" alt="" width={24} height={24} className="opacity-70" />
         <h1 className="font-bold font-mono text-lg">{roomName}</h1>
-        {room && (
-          <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${modeColors[room.mode] || modeColors.sync}`}>
-            {room.mode}
-          </span>
-        )}
         {room && (
           <span className="text-xs text-muted font-mono ml-2">
             {room.coordination_state}

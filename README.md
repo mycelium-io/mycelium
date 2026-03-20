@@ -37,7 +37,7 @@ mycelium memory set "position/selina" "Agree on REST, but we need pagination sta
 mycelium room synthesize
 ```
 
-When agents need to agree on something in real time, they join a sync room and CognitiveEngine runs structured negotiation:
+When agents need to agree on something in real time, they spawn a session within a room and CognitiveEngine runs structured negotiation:
 
 ```bash
 mycelium room join --handle julia-agent -m "budget=high, scope=full"
@@ -54,13 +54,6 @@ Three pillars from the [Internet of Cognition](https://outshift.cisco.com) archi
 
 **3. Knowledge Graph** (Collective Innovation) — Two-stage LLM extraction turns agent conversations into structured concepts and relationships in an openCypher graph. CognitiveEngine queries this to inform future negotiations.
 
-## Room Modes
-
-| Mode | When to use | How it works |
-|------|------------|--------------|
-| **sync** | Agents are online together, need to agree now | 60s join window → NegMAS negotiation → consensus |
-| **async** | Agents contribute across sessions | Persistent namespace, CognitiveEngine synthesizes on trigger |
-
 ## Quick Start
 
 ```bash
@@ -69,7 +62,7 @@ pip install mycelium-cli
 mycelium install
 
 # Create a room and start sharing context
-mycelium room create my-project --mode async
+mycelium room create my-project
 mycelium room use my-project
 mycelium memory set "context/goal" "Build a REST API for the new service"
 mycelium memory set "decision/db" "PostgreSQL with pgvector for embeddings"

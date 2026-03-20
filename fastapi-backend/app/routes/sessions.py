@@ -36,7 +36,11 @@ async def _upsert_room(room_name: str, session: AsyncSession) -> Room:
     room = result.scalar_one_or_none()
     if not room:
         room = Room(
-            name=room_name, is_public=True, mode=settings.DEFAULT_ROOM_MODE, namespace=room_name
+            name=room_name,
+            is_public=True,
+            mode="async",
+            namespace=room_name,
+            is_namespace=True,
         )
         session.add(room)
         try:
@@ -133,7 +137,7 @@ async def join_room(
     asyncio.ensure_future(_notify_join(target_room.name, payload.agent_handle, payload.intent))
 
     # Start join timer for sync session rooms
-    if target_room.mode == "sync" and target_room.coordination_state == "idle":
+    if not target_room.is_namespace and target_room.coordination_state == "idle":
         deadline = datetime.now(UTC) + timedelta(seconds=settings.COORDINATION_JOIN_WINDOW_SECONDS)
         result = await db.execute(
             update(Room)

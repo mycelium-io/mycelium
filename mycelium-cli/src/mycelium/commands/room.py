@@ -33,7 +33,7 @@ def _typed_client(config: MyceliumConfig):
 
 
 app = typer.Typer(
-    help="Shared spaces for agent coordination. Rooms can be sync (real-time negotiation) or async (persistent memory). Async rooms can spawn sync sessions.",
+    help="Shared spaces for agent coordination. Rooms are persistent namespaces for memory and coordination. Spawn sessions within rooms for real-time negotiation.",
     invoke_without_command=True,
 )
 
@@ -84,7 +84,7 @@ def room_main(ctx: typer.Context) -> None:
 
 @doc_ref(
     usage="mycelium room ls",
-    desc="List all rooms with mode, state, and member count.",
+    desc="List all rooms with state and member count.",
     group="room",
 )
 @app.command("ls")
@@ -144,8 +144,8 @@ def list_rooms(
 
 
 @doc_ref(
-    usage="mycelium room create <name> --mode <async|sync> [--trigger threshold:N]",
-    desc="Create a new coordination room. Mode is required.",
+    usage="mycelium room create <name> [--trigger threshold:N]",
+    desc="Create a new persistent coordination room.",
     group="room",
 )
 @app.command()
@@ -153,15 +153,11 @@ def create(
     ctx: typer.Context,
     name: str | None = typer.Argument(None, help="Room name"),
     public: bool = typer.Option(True, "--public/--private"),
-    mode: str = typer.Option("sync", "--mode", "-m", help="Room mode: sync or async"),
     trigger: str | None = typer.Option(
         None, "--trigger", help="Trigger config (e.g. 'threshold:5' or 'explicit')"
     ),
-    persistent: bool = typer.Option(
-        False, "--persistent", help="Room persists after coordination completes"
-    ),
 ) -> None:
-    """Create a new room."""
+    """Create a new room. Rooms are persistent by default."""
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
         json_output = ctx.obj.get("json", False) if ctx.obj else False
@@ -184,10 +180,6 @@ def create(
             else:
                 trigger_config = {"type": trigger}
 
-        # Auto-set persistent for async/hybrid rooms
-        if mode == "async":
-            persistent = True
-
         from mycelium_backend_client.api.rooms import create_room_rooms_post as create_api
         from mycelium_backend_client.models import RoomCreate
 
@@ -195,9 +187,8 @@ def create(
             body = RoomCreate(
                 name=name,
                 is_public=public,
-                mode=mode,
                 trigger_config=trigger_config,
-                is_persistent=persistent,
+                is_persistent=True,
             )
             result = create_api.sync(client=client, body=body)
             room_data = result.to_dict() if result and hasattr(result, "to_dict") else {}
@@ -206,7 +197,7 @@ def create(
             typer.echo(json_module.dumps(room_data, indent=2, default=str))
         else:
             typer.secho(
-                f"Created room: {room_data['name']} (mode={room_data.get('mode', 'sync')})",
+                f"Created room: {room_data['name']}",
                 fg=typer.colors.GREEN,
             )
             typer.echo(f"  ID:      {room_data.get('id')}")
@@ -232,7 +223,7 @@ def synthesize(
         None, "--room", "-r", help="Room name (alternative to positional arg)"
     ),
 ) -> None:
-    """Trigger CognitiveEngine synthesis for an async room."""
+    """Trigger CognitiveEngine synthesis for a room."""
     try:
         from rich.console import Console
 
@@ -509,7 +500,7 @@ def _render_coordination_event(msg: dict, current_identity: str) -> tuple[str | 
 
 @doc_ref(
     usage="mycelium room join --handle <handle> -m <position> [-r <room>]",
-    desc="Join a sync room with an initial position. Starts the 60s join window if you're the first.",
+    desc="Join a room's coordination session with an initial position. Starts the 60s join window if you're the first.",
     group="room",
 )
 @app.command()
@@ -683,16 +674,14 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
         resp = httpx.get(f"{config.server.api_url}/rooms/{room_name}", timeout=5)
         if resp.status_code == 200:
             room = resp.json()
-            mode = room.get("mode", "sync")
             state = room.get("coordination_state", "idle")
-            persistent = room.get("is_persistent", False)
             trigger = room.get("trigger_config")
             trigger_str = ""
             if trigger:
                 trigger_str = f"  trigger={trigger.get('type', '?')}"
                 if trigger.get("min_contributions"):
                     trigger_str += f":{trigger['min_contributions']}"
-            room_meta = f"[dim]mode=[/]{mode}  [dim]state=[/]{state}{'  [dim]persistent[/]' if persistent else ''}{trigger_str}"
+            room_meta = f"[dim]state=[/]{state}{trigger_str}"
     except Exception:
         pass
 

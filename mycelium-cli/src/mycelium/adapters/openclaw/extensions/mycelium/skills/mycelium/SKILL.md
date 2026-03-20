@@ -35,7 +35,7 @@ Agents never communicate directly with each other.
 
 ## Core Concepts
 
-- **Rooms** are namespaces. They can be `sync` (real-time negotiation) or `async` (persistent memory). Async rooms can spawn sync sessions for real-time negotiation when needed.
+- **Rooms** are persistent namespaces. They hold memory that accumulates across sessions. Spawn sessions within rooms for real-time negotiation when needed.
 - **CognitiveEngine** mediates all coordination. It drives negotiation rounds and synthesizes accumulated context.
 - **Memory** is the persistence layer. Key-value entries scoped to a room, with optional vector embeddings for semantic search.
 
@@ -69,9 +69,9 @@ All memory commands use the active room. Set it with `mycelium room use <name>` 
 
 ```bash
 # Create rooms
-mycelium room create my-project --mode async                     # persistent namespace
-mycelium room create sprint-plan --mode sync                     # real-time negotiation
-mycelium room create design-review --mode async --trigger threshold:5   # async with synthesis trigger
+mycelium room create my-project
+mycelium room create sprint-plan
+mycelium room create design-review --trigger threshold:5   # with synthesis trigger
 
 # Set active room
 mycelium room use my-project
@@ -79,13 +79,13 @@ mycelium room use my-project
 # List rooms
 mycelium room ls
 
-# Trigger CognitiveEngine to synthesize accumulated memories (async)
+# Trigger CognitiveEngine to synthesize accumulated memories
 mycelium room synthesize
 ```
 
 ## Sync Coordination Protocol
 
-For real-time negotiation (sync rooms, or sync sessions spawned from async rooms), the protocol is push-based:
+For real-time negotiation (sessions spawned within rooms), the protocol is push-based:
 
 ```bash
 # 1. Join — declare your position (returns immediately)
@@ -159,9 +159,9 @@ mycelium room synthesize
 | Situation | Action |
 |-----------|--------|
 | Just starting — what's going on? | `mycelium memory catchup` |
-| Share context that persists across sessions | `mycelium memory set` in an async room |
+| Share context that persists across sessions | `mycelium memory set` in a room |
 | Log a failed approach (prevent duplicated effort) | `mycelium memory set "failed/..."` |
 | Find what other agents know about a topic | `mycelium memory search` |
-| Need agents to agree on something right now | Sync room + coordination protocol |
-| Accumulate context then decide later | Async room + `mycelium room synthesize` |
+| Need agents to agree on something right now | Spawn session + coordination protocol |
+| Accumulate context then decide later | Room + `mycelium room synthesize` |
 | Watch the room in real time | `mycelium watch` |

@@ -10,38 +10,22 @@ from httpx import AsyncClient
 
 
 @pytest.mark.asyncio
-async def test_create_room_with_mode(client: AsyncClient):
-    """Test creating a room with async mode."""
-    resp = await client.post(
-        "/rooms",
-        json={
-            "name": "test-async-room",
-            "mode": "async",
-            "is_persistent": True,
-        },
-    )
+async def test_create_room_defaults(client: AsyncClient):
+    """Test that rooms default to async mode with is_namespace=True."""
+    resp = await client.post("/rooms", json={"name": "test-default-room"})
     assert resp.status_code == 201
     data = resp.json()
-    assert data["name"] == "test-async-room"
+    assert data["name"] == "test-default-room"
     assert data["mode"] == "async"
     assert data["is_persistent"] is True
-
-
-@pytest.mark.asyncio
-async def test_create_room_default_sync(client: AsyncClient):
-    """Test that rooms default to sync mode."""
-    resp = await client.post("/rooms", json={"name": "test-sync-room"})
-    assert resp.status_code == 201
-    data = resp.json()
-    assert data["mode"] == "sync"
-    assert data["is_persistent"] is False
+    assert data["is_namespace"] is True
 
 
 @pytest.mark.asyncio
 async def test_create_and_get_memory(client: AsyncClient):
     """Test creating and retrieving a memory."""
     # Create room first
-    await client.post("/rooms", json={"name": "mem-test", "mode": "async"})
+    await client.post("/rooms", json={"name": "mem-test"})
 
     # Create memory (skip embedding since SQLite doesn't support vector)
     resp = await client.post(
@@ -74,7 +58,7 @@ async def test_create_and_get_memory(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_memory_upsert(client: AsyncClient):
     """Test that writing to the same key increments version."""
-    await client.post("/rooms", json={"name": "upsert-test", "mode": "async"})
+    await client.post("/rooms", json={"name": "upsert-test"})
 
     # First write
     resp = await client.post(
@@ -106,7 +90,7 @@ async def test_memory_upsert(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_memory_batch_create(client: AsyncClient):
     """Test batch creating multiple memories."""
-    await client.post("/rooms", json={"name": "batch-test", "mode": "async"})
+    await client.post("/rooms", json={"name": "batch-test"})
 
     resp = await client.post(
         "/rooms/batch-test/memory",
@@ -140,7 +124,7 @@ async def test_memory_batch_create(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_memory_list_with_prefix(client: AsyncClient):
     """Test listing memories with prefix filter."""
-    await client.post("/rooms", json={"name": "list-test", "mode": "async"})
+    await client.post("/rooms", json={"name": "list-test"})
 
     await client.post(
         "/rooms/list-test/memory",
@@ -167,7 +151,7 @@ async def test_memory_list_with_prefix(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_memory_delete(client: AsyncClient):
     """Test deleting a memory."""
-    await client.post("/rooms", json={"name": "del-test", "mode": "async"})
+    await client.post("/rooms", json={"name": "del-test"})
 
     await client.post(
         "/rooms/del-test/memory",
@@ -186,7 +170,7 @@ async def test_memory_delete(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_memory_not_found(client: AsyncClient):
     """Test 404 for non-existent memory."""
-    await client.post("/rooms", json={"name": "nf-test", "mode": "async"})
+    await client.post("/rooms", json={"name": "nf-test"})
 
     resp = await client.get("/rooms/nf-test/memory/does-not-exist")
     assert resp.status_code == 404
@@ -202,7 +186,7 @@ async def test_room_not_found_for_memory(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_subscription_crud(client: AsyncClient):
     """Test creating and listing subscriptions."""
-    await client.post("/rooms", json={"name": "sub-test", "mode": "async"})
+    await client.post("/rooms", json={"name": "sub-test"})
 
     # Create subscription
     resp = await client.post(
@@ -234,8 +218,8 @@ async def test_subscription_crud(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_async_room_join_no_timer(client: AsyncClient):
-    """Test that joining an async room doesn't start the coordination timer."""
-    await client.post("/rooms", json={"name": "async-join-test", "mode": "async"})
+    """Test that joining a namespace room auto-spawns a session (no direct timer)."""
+    await client.post("/rooms", json={"name": "async-join-test"})
 
     resp = await client.post(
         "/rooms/async-join-test/sessions",
@@ -246,30 +230,32 @@ async def test_async_room_join_no_timer(client: AsyncClient):
     )
     assert resp.status_code == 201
 
-    # Room should still be idle (no timer started)
+    # Namespace room should still be idle (sessions spawn inside it)
     resp = await client.get("/rooms/async-join-test")
     assert resp.json()["coordination_state"] == "idle"
 
 
 @pytest.mark.asyncio
-async def test_synthesize_sync_room_rejected(client: AsyncClient):
-    """Test that sync rooms reject synthesis requests."""
-    await client.post("/rooms", json={"name": "sync-synth-test", "mode": "sync"})
+async def test_synthesize_non_namespace_rejected(client: AsyncClient):
+    """Test that non-namespace rooms reject synthesis requests."""
+    # All user-created rooms are namespaces now, so we test via a session room
+    await client.post("/rooms", json={"name": "synth-ns"})
+    resp = await client.post("/rooms/synth-ns/sessions/spawn")
+    assert resp.status_code == 201
+    session_room = resp.json()["session_room"]
 
-    resp = await client.post("/rooms/sync-synth-test/synthesize")
+    resp = await client.post(f"/rooms/{session_room}/synthesize")
     assert resp.status_code == 400
 
 
 @pytest.mark.asyncio
-async def test_async_room_with_trigger(client: AsyncClient):
-    """Test creating an async room with trigger config (replaces hybrid mode)."""
+async def test_room_with_trigger(client: AsyncClient):
+    """Test creating a room with trigger config."""
     resp = await client.post(
         "/rooms",
         json={
-            "name": "async-trigger-test",
-            "mode": "async",
+            "name": "trigger-test",
             "trigger_config": {"type": "threshold", "min_contributions": 3},
-            "is_persistent": True,
         },
     )
     assert resp.status_code == 201
@@ -286,7 +272,7 @@ async def test_async_room_with_trigger(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_structured_memory_categories(client: AsyncClient):
     """Test creating and listing memories with structured category prefixes."""
-    await client.post("/rooms", json={"name": "struct-test", "mode": "async"})
+    await client.post("/rooms", json={"name": "struct-test"})
 
     # Create memories across categories
     resp = await client.post(
@@ -334,7 +320,7 @@ async def test_structured_memory_categories(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_structured_memory_upsert_preserves_category(client: AsyncClient):
     """Test that upserting a structured memory preserves the category key."""
-    await client.post("/rooms", json={"name": "struct-upsert", "mode": "async"})
+    await client.post("/rooms", json={"name": "struct-upsert"})
 
     # Initial write
     resp = await client.post(

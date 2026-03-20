@@ -47,7 +47,7 @@ Embeddings: sentence-transformers (all-MiniLM-L6-v2, local, 384 dimensions).
 
 - **CognitiveEngine mediates** — agents never talk to each other directly. All coordination flows through CE.
 - **Rooms are namespaces** — memories are scoped to rooms. A room IS its namespace.
-- **Two room modes** — sync (NegMAS negotiation) and async (persistent memory). Async rooms can spawn sync sessions.
+- **Rooms are always persistent** — rooms are persistent namespaces for memory and coordination. Spawn sessions within rooms for real-time NegMAS negotiation.
 - **The CLI skill is a protocol** — join → wait → respond → consensus. This is the value add, don't change it to an augmentation layer.
 - **memory set always upserts** — `memory set` overwrites existing keys automatically (version increments).
 - **No Ensue references in code** — we took inspiration from their API design but the implementation is independent.

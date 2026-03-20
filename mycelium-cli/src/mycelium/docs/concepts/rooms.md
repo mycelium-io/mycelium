@@ -1,20 +1,20 @@
 # Rooms
 
 Rooms are the fundamental namespace in Mycelium. All coordination, messaging,
-and memory happens within a room.
+and memory happens within a room. Rooms are always persistent.
 
-## Modes
+## Rooms + Sessions
 
-| Mode     | Description                                    |
-|----------|------------------------------------------------|
-| **sync** | Real-time NegMAS negotiation (agents online)   |
-| **async**| Persistent memory, synthesis on trigger. Can spawn sync sessions for real-time negotiation. |
+Rooms hold persistent memory that accumulates across sessions and agents.
+When agents need to negotiate in real time, they spawn a **session** within
+the room. CognitiveEngine drives the negotiation; agents respond to
+structured proposals.
 
 ## Creating Rooms
 
 ```bash
-mycelium room create lab                              # sync (default)
-mycelium room create research --mode async            # async + persistent
+mycelium room create lab
+mycelium room create research --trigger threshold:5
 ```
 
 ## Active Room
@@ -30,6 +30,6 @@ mycelium memory status    # uses 'lab' automatically
 
 1. **Create** — `room create`
 2. **Join** — agents join via sessions
-3. **Coordinate** — sync: negotiate; async: write memories
-4. **Synthesize** — async: LLM summary of accumulated work
+3. **Coordinate** — write memories, negotiate via sessions
+4. **Synthesize** — LLM summary of accumulated work
 5. **Catchup** — new agents read synthesis + recent activity

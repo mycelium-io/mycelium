@@ -762,9 +762,9 @@ mycelium install</code></pre>
 
       <h2 id="first-room">First Room</h2>
 
-      <p>Create a persistent room and start sharing context:</p>
-      <pre><code><span class="comment"># Create an async room (persistent memory)</span>
-<span class="cmd">mycelium room create</span> my-project <span class="flag">--mode</span> async
+      <p>Create a room and start sharing context:</p>
+      <pre><code><span class="comment"># Create a room (persistent by default)</span>
+<span class="cmd">mycelium room create</span> my-project
 
 <span class="comment"># Set it as your active room</span>
 <span class="cmd">mycelium room use</span> my-project
@@ -783,9 +783,9 @@ mycelium install</code></pre>
 <span class="comment"># Synthesize everything in the room</span>
 <span class="cmd">mycelium synthesize</span></code></pre>
 
-      <p>Now try a sync room — two agents negotiating a plan:</p>
+      <p>Now try real-time negotiation — two agents coordinating a plan:</p>
       <pre><code><span class="comment"># Terminal 1 — agent julia</span>
-<span class="cmd">mycelium room create</span> sprint-plan <span class="flag">--mode</span> sync
+<span class="cmd">mycelium room create</span> sprint-plan
 <span class="cmd">mycelium room join</span> <span class="flag">--handle</span> julia-agent <span class="flag">-m</span> <span class="str">"Prioritize the database migration first"</span> <span class="flag">-r</span> sprint-plan
 <span class="cmd">mycelium room await</span> <span class="flag">--handle</span> julia-agent <span class="flag">-r</span> sprint-plan
 
@@ -806,28 +806,15 @@ mycelium install</code></pre>
         to a room. A room IS its namespace — there's no separation between the two.
       </p>
 
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr><th>Mode</th><th>When to use</th><th>How it works</th></tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><code>async</code> <span class="badge badge-green">persistent</span></td>
-              <td>Agents contribute across sessions, no need to be online together</td>
-              <td>Persistent namespace; CognitiveEngine synthesizes when a trigger fires (e.g. <code>threshold:5</code>)</td>
-            </tr>
-            <tr>
-              <td><code>sync</code> <span class="badge badge-blue">real-time</span></td>
-              <td>Agents are online together and need to reach agreement now</td>
-              <td>60s join window → NegMAS negotiation pipeline → structured consensus</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <p>
+        Rooms are always persistent. Memory accumulates across sessions and agents.
+        When agents need to negotiate in real time, they spawn a <strong>session</strong>
+        within the room. CognitiveEngine drives the negotiation; agents respond to
+        structured proposals.
+      </p>
 
-      <h3>Room State Machine</h3>
-      <p>Sync rooms follow a state machine:</p>
+      <h3>Session State Machine</h3>
+      <p>Negotiation sessions follow a state machine:</p>
       <pre><code>idle → waiting → negotiating → complete
                 ↑         ↓
             (join window fires)</code></pre>
@@ -837,8 +824,8 @@ mycelium install</code></pre>
         assigned actions from the final tick returned by <code>room await</code>.
       </p>
 
-      <h3>Triggers (async rooms)</h3>
-      <p>Async rooms synthesize when a trigger fires:</p>
+      <h3>Triggers</h3>
+      <p>Rooms synthesize when a trigger fires:</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Trigger</th><th>Fires when</th></tr></thead>
@@ -946,7 +933,7 @@ mycelium install</code></pre>
         Agents never talk to each other directly — all coordination flows through CE.
       </p>
 
-      <h3>Negotiation Flow (sync rooms)</h3>
+      <h3>Negotiation Flow (sessions)</h3>
       <ol class="steps">
         <li>Agents call <code>room join</code> with their initial position and handle.</li>
         <li>After the 60s join window, CE runs the <strong>SemanticNegotiationPipeline</strong> on all positions.</li>
@@ -970,7 +957,7 @@ mycelium install</code></pre>
 <span class="cmd">mycelium room await</span> \
   <span class="flag">-H</span> selina-agent <span class="flag">-r</span> sprint-plan</code></pre>
 
-      <h3>Synthesis (async rooms)</h3>
+      <h3>Synthesis</h3>
       <p>
         When triggered, CE synthesizes all memories in the room using an LLM. The output is
         a structured summary readable by any agent.
@@ -979,7 +966,7 @@ mycelium install</code></pre>
 <span class="cmd">mycelium synthesize</span>
 
 <span class="comment"># Or let the threshold trigger do it automatically</span>
-<span class="cmd">mycelium room create</span> my-project <span class="flag">--mode</span> async <span class="flag">--trigger</span> threshold:5</code></pre>
+<span class="cmd">mycelium room create</span> my-project <span class="flag">--trigger</span> threshold:5</code></pre>
     </section>
 
     <hr class="divider">
@@ -1027,14 +1014,14 @@ mycelium install</code></pre>
         <div class="cmd-ref-header">
           <code>mycelium room ls</code>
         </div>
-        <div class="cmd-ref-body">List all rooms with mode, state, and member count.</div>
+        <div class="cmd-ref-body">List all rooms with state and member count.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium room create &lt;name&gt; --mode &lt;async|sync&gt; [--trigger threshold:N]</code>
+          <code>mycelium room create &lt;name&gt; [--trigger threshold:N]</code>
         </div>
-        <div class="cmd-ref-body">Create a new coordination room. Mode is required.</div>
+        <div class="cmd-ref-body">Create a new persistent coordination room.</div>
       </div>
 
       <div class="cmd-ref">
@@ -1048,7 +1035,7 @@ mycelium install</code></pre>
         <div class="cmd-ref-header">
           <code>mycelium room join --handle &lt;handle&gt; -m &lt;position&gt; [-r &lt;room&gt;]</code>
         </div>
-        <div class="cmd-ref-body">Join a sync room with an initial position. Starts the 60s join window if you're the first.</div>
+        <div class="cmd-ref-body">Join a room's coordination session with an initial position. Starts the 60s join window if you're the first.</div>
       </div>
 
       <div class="cmd-ref">
