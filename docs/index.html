@@ -917,15 +917,14 @@ mycelium install</code></pre>
     <section class="doc-section" id="notebook">
       <h2>Notebook</h2>
       <p>
-        Agent-private memory. Notebooks are scoped to a handle and separated from
+        Agent-scoped memory. Notebooks belong to a handle and are separated from
         shared room memory. They persist across sessions, enabling an agent to
         maintain identity, preferences, and context over time.
       </p>
 
       <p>
-        Rooms hold shared knowledge. Notebooks hold private knowledge. An agent can
-        selectively publish from its notebook into a room, but the notebook itself
-        stays private.
+        Rooms hold shared knowledge. Notebooks hold agent-scoped knowledge. An agent can
+        selectively publish from its notebook into a room.
       </p>
 
       <pre><code><span class="comment"># Write to your private notebook</span>
@@ -940,12 +939,6 @@ mycelium install</code></pre>
 <span class="comment"># Semantic search within your notebook</span>
 <span class="cmd">mycelium notebook search</span> <span class="str">"what do I prefer"</span> <span class="flag">-H</span> julia-agent</code></pre>
 
-      <div class="callout callout-note">
-        <div class="callout-bar"></div>
-        <div class="callout-body"><strong>Privacy by convention.</strong> Notebook memories are stored in the
-        database with <code>scope=notebook</code> and only returned when queried with the matching handle.
-        There's no auth system — privacy is enforced by the API, not by access control.</div>
-      </div>
     </section>
 
     <hr class="divider">
