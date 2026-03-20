@@ -104,6 +104,7 @@ jobs:
             --onefile \
             --name mycelium \
             --collect-all mycelium \
+            --collect-all pyfiglet \
             --hidden-import mycelium_backend_client \
             -p src \
             src/mycelium/cli.py
