@@ -157,7 +157,7 @@ def create(
         None, "--trigger", help="Trigger config (e.g. 'threshold:5' or 'explicit')"
     ),
 ) -> None:
-    """Create a new room. Rooms are persistent by default."""
+    """Create a new room."""
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
         json_output = ctx.obj.get("json", False) if ctx.obj else False
