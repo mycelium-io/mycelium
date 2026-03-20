@@ -232,3 +232,21 @@ jobs:
           git add Formula/mycelium.rb
           git diff --staged --quiet || git commit -m "chore: bump mycelium to v${{ steps.version.outputs.version }}"
           git push
+  publish-clawhub:
+    needs: build-and-release
+    name: Publish skill to clawhub
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to clawhub
+        run: |
+          curl -fsSL -X POST https://clawhub.ai/api/v1/skills \
+            -H "Authorization: Bearer ${{ secrets.CLAWHUB_TOKEN }}" \
+            -F "payload={\"slug\":\"mycelium-io\",\"displayName\":\"Mycelium\",\"version\":\"${{ steps.version.outputs.version }}\",\"changelog\":\"See https://github.com/mycelium-io/mycelium/releases/tag/${{ github.ref_name }}\",\"acceptLicenseTerms\":true,\"tags\":[\"latest\"]}" \
+            -F "files=@mycelium-cli/src/mycelium/adapters/openclaw/extensions/mycelium/skills/mycelium/SKILL.md;type=text/markdown;filename=SKILL.md"
