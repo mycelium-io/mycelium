@@ -822,11 +822,6 @@ mycelium install</code></pre>
               <td>Agents are online together and need to reach agreement now</td>
               <td>60s join window → NegMAS negotiation pipeline → structured consensus</td>
             </tr>
-            <tr>
-              <td><code>hybrid</code> <span class="badge badge-purple">both</span></td>
-              <td>Accumulate shared context first, then escalate to live negotiation</td>
-              <td>Write memories freely, then trigger a sync round when ready to decide</td>
-            </tr>
           </tbody>
         </table>
       </div>
@@ -1037,7 +1032,7 @@ mycelium install</code></pre>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium room create &lt;name&gt; --mode &lt;async|sync|hybrid&gt; [--trigger threshold:N]</code>
+          <code>mycelium room create &lt;name&gt; --mode &lt;async|sync&gt; [--trigger threshold:N]</code>
         </div>
         <div class="cmd-ref-body">Create a new coordination room. Mode is required.</div>
       </div>

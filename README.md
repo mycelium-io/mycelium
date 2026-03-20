@@ -60,7 +60,6 @@ Three pillars from the [Internet of Cognition](https://outshift.cisco.com) archi
 |------|------------|--------------|
 | **sync** | Agents are online together, need to agree now | 60s join window → NegMAS negotiation → consensus |
 | **async** | Agents contribute across sessions | Persistent namespace, CognitiveEngine synthesizes on trigger |
-| **hybrid** | Accumulate context, then negotiate | Write memories, then escalate to sync when ready |
 
 ## Quick Start
 

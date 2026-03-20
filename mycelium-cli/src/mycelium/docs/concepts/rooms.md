@@ -8,15 +8,13 @@ and memory happens within a room.
 | Mode     | Description                                    |
 |----------|------------------------------------------------|
 | **sync** | Real-time NegMAS negotiation (agents online)   |
-| **async**| Persistent memory, synthesis on trigger         |
-| **hybrid**| Both negotiation and persistent memory         |
+| **async**| Persistent memory, synthesis on trigger. Can spawn sync sessions for real-time negotiation. |
 
 ## Creating Rooms
 
 ```bash
 mycelium room create lab                              # sync (default)
 mycelium room create research --mode async            # async + persistent
-mycelium room create sprint --mode hybrid --persistent # hybrid
 ```
 
 ## Active Room
@@ -33,5 +31,5 @@ mycelium memory status    # uses 'lab' automatically
 1. **Create** — `room create`
 2. **Join** — agents join via sessions
 3. **Coordinate** — sync: negotiate; async: write memories
-4. **Synthesize** — async/hybrid: LLM summary of accumulated work
+4. **Synthesize** — async: LLM summary of accumulated work
 5. **Catchup** — new agents read synthesis + recent activity

@@ -1,5 +1,5 @@
 """
-Async CognitiveEngine — synthesis for async/hybrid rooms.
+Async CognitiveEngine — synthesis for namespace rooms.
 
 Unlike sync coordination (NegMAS tick loop), async coordination:
   - Triggers on configurable conditions (threshold, schedule, explicit)
@@ -29,7 +29,7 @@ async def check_trigger(room_name: str) -> None:
     async with async_session_maker() as db:
         result = await db.execute(select(Room).where(Room.name == room_name))
         room = result.scalar_one_or_none()
-        if not room or room.mode not in ("async", "hybrid"):
+        if not room or not room.is_namespace:
             return
 
         config = room.trigger_config

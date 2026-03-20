@@ -261,20 +261,21 @@ async def test_synthesize_sync_room_rejected(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_hybrid_room_creation(client: AsyncClient):
-    """Test creating a hybrid room with trigger config."""
+async def test_async_room_with_trigger(client: AsyncClient):
+    """Test creating an async room with trigger config (replaces hybrid mode)."""
     resp = await client.post(
         "/rooms",
         json={
-            "name": "hybrid-test",
-            "mode": "hybrid",
+            "name": "async-trigger-test",
+            "mode": "async",
             "trigger_config": {"type": "threshold", "min_contributions": 3},
             "is_persistent": True,
         },
     )
     assert resp.status_code == 201
     data = resp.json()
-    assert data["mode"] == "hybrid"
+    assert data["mode"] == "async"
+    assert data["is_namespace"] is True
     assert data["trigger_config"]["type"] == "threshold"
     assert data["trigger_config"]["min_contributions"] == 3
 

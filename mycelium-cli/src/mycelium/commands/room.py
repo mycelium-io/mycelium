@@ -33,7 +33,7 @@ def _typed_client(config: MyceliumConfig):
 
 
 app = typer.Typer(
-    help="Shared namespaces for agent coordination. Rooms can be sync (real-time negotiation), async (persistent memory), or hybrid.",
+    help="Shared spaces for agent coordination. Rooms can be sync (real-time negotiation) or async (persistent memory). Async rooms can spawn sync sessions.",
     invoke_without_command=True,
 )
 
@@ -144,7 +144,7 @@ def list_rooms(
 
 
 @doc_ref(
-    usage="mycelium room create <name> --mode <async|sync|hybrid> [--trigger threshold:N]",
+    usage="mycelium room create <name> --mode <async|sync> [--trigger threshold:N]",
     desc="Create a new coordination room. Mode is required.",
     group="room",
 )
@@ -153,7 +153,7 @@ def create(
     ctx: typer.Context,
     name: str | None = typer.Argument(None, help="Room name"),
     public: bool = typer.Option(True, "--public/--private"),
-    mode: str = typer.Option("sync", "--mode", "-m", help="Room mode: sync, async, or hybrid"),
+    mode: str = typer.Option("sync", "--mode", "-m", help="Room mode: sync or async"),
     trigger: str | None = typer.Option(
         None, "--trigger", help="Trigger config (e.g. 'threshold:5' or 'explicit')"
     ),
@@ -185,7 +185,7 @@ def create(
                 trigger_config = {"type": trigger}
 
         # Auto-set persistent for async/hybrid rooms
-        if mode in ("async", "hybrid"):
+        if mode == "async":
             persistent = True
 
         from mycelium_backend_client.api.rooms import create_room_rooms_post as create_api
@@ -232,7 +232,7 @@ def synthesize(
         None, "--room", "-r", help="Room name (alternative to positional arg)"
     ),
 ) -> None:
-    """Trigger CognitiveEngine synthesis for an async/hybrid room."""
+    """Trigger CognitiveEngine synthesis for an async room."""
     try:
         from rich.console import Console
 

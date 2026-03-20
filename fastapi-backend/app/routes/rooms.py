@@ -34,7 +34,7 @@ async def create_room(
     # Auto-set is_namespace from mode if not explicitly provided
     is_namespace = room.is_namespace
     if is_namespace is None:
-        is_namespace = room.mode in ("async", "hybrid")
+        is_namespace = room.mode == "async"
 
     db_room = Room(
         name=room.name,
@@ -93,10 +93,8 @@ async def synthesize_room(
     room = result.scalar_one_or_none()
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
-    if room.mode not in ("async", "hybrid"):
-        raise HTTPException(
-            status_code=400, detail="Synthesis only available for async/hybrid rooms"
-        )
+    if not room.is_namespace:
+        raise HTTPException(status_code=400, detail="Synthesis only available for async rooms")
     if room.coordination_state == "synthesizing":
         raise HTTPException(status_code=409, detail="Synthesis already in progress")
 
