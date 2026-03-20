@@ -622,21 +622,27 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
                 action = data.get("action", "propose")
                 participant = data.get("participant_id", "?")
                 if action == "propose":
-                    issues = list(_ISSUE_OPTIONS.keys())
-                    opts = "  ".join(
-                        f"[dim]{k}:[/] {' | '.join(v)}"
-                        for k, v in _ISSUE_OPTIONS.items()
-                        if k in issues
-                    )
-                    return f"\n  {ts()}  [bold cyan]round {round_num}[/] → [cyan]{participant}[/] propose\n              {opts}"
+                    issue_options = data.get("issue_options") or _ISSUE_OPTIONS
+                    header = f"\n  {ts()}  [bold magenta]CognitiveEngine[/] [dim]→[/] [cyan]{participant}[/]  [bold cyan]round {round_num}[/] — propose your offer:"
+                    if round_num == 1:
+                        header = f"\n  {ts()}  [bold magenta]CognitiveEngine[/] analyzed agent intents and generated negotiation issues and options.\n{header}"
+                    lines = [header]
+                    for k, v in issue_options.items():
+                        lines.append(f"              [bold white]{k}[/]")
+                        opts = v if isinstance(v, list) else [str(v)]
+                        for i, opt in enumerate(opts, 1):
+                            lines.append(f"                [dim]{i}.[/] {opt}")
+                    return "\n".join(lines)
                 if action == "respond":
                     offer = data.get("current_offer") or {}
                     proposer = data.get("proposer_id", "?")
-                    items = "  ".join(f"[dim]{k}:[/] {v}" for k, v in offer.items())
-                    return f"\n  {ts()}  [bold cyan]round {round_num}[/] → [cyan]{participant}[/] respond to {proposer}\n              {items}"
-                return (
-                    f"\n  {ts()}  [bold cyan]round {round_num}[/] → [cyan]{participant}[/] {action}"
-                )
+                    lines = [
+                        f"\n  {ts()}  [bold magenta]CognitiveEngine[/] [dim]→[/] [cyan]{participant}[/]  [bold cyan]round {round_num}[/] — respond to offer from {proposer}:"
+                    ]
+                    for k, v in offer.items():
+                        lines.append(f"              [dim]{k}:[/] {v}")
+                    return "\n".join(lines)
+                return f"\n  {ts()}  [bold magenta]CognitiveEngine[/] [dim]→[/] [cyan]{participant}[/]  [bold cyan]round {round_num}[/] — {action}"
             return f"\n  {ts()}  [bold cyan]tick {round_num}[/]"
 
         if mtype == "coordination_consensus":
