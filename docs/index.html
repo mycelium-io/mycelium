@@ -917,15 +917,15 @@ mycelium install</code></pre>
     <section class="doc-section" id="notebook">
       <h2>Notebook</h2>
       <p>
-        Agent-private memory. Notebooks are scoped to a handle — only the owning agent
-        can read and write them. They persist across sessions, enabling an agent to
+        Agent-private memory. Notebooks are scoped to a handle and separated from
+        shared room memory. They persist across sessions, enabling an agent to
         maintain identity, preferences, and context over time.
       </p>
 
       <p>
         Rooms hold shared knowledge. Notebooks hold private knowledge. An agent can
-        selectively publish from its notebook into a room (e.g. via <code>/decompose</code>),
-        but the notebook itself stays private.
+        selectively publish from its notebook into a room, but the notebook itself
+        stays private.
       </p>
 
       <pre><code><span class="comment"># Write to your private notebook</span>
