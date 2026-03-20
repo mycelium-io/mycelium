@@ -5,29 +5,31 @@ description: Run precommit checks (lint, format, tests) on the mycelium codebase
 
 # Precommit Checks
 
-Run all quality checks on the mycelium codebase. Report issues without auto-fixing.
+Run all quality checks on the mycelium codebase. Auto-fix issues where possible.
 
 ## Steps
 
-1. **Lint** — Run `ruff check` on both packages:
+1. **Lint + format** — Fix lint and format issues automatically:
    ```bash
-   cd fastapi-backend && ruff check .
-   cd mycelium-cli && ruff check .
+   cd fastapi-backend && uv run ruff check --fix . && uv run ruff format .
+   cd mycelium-cli && uv run ruff check --fix . && uv run ruff format .
    ```
 
-2. **Format check** — Run `ruff format --check` on both:
+2. **Tests** — Run pytest:
    ```bash
-   cd fastapi-backend && ruff format --check .
-   cd mycelium-cli && ruff format --check .
+   cd fastapi-backend && uv run pytest tests/ -x -q
    ```
 
-3. **Tests** — Run pytest if tests exist:
-   ```bash
-   cd fastapi-backend && python -m pytest tests/ -x -q
-   ```
+3. **CLI docs** — If any CLI command files were changed (`mycelium-cli/src/mycelium/commands/`):
+   - Ensure new commands have `@doc_ref` decorators
+   - Run `/generate-cli-docs` to regenerate the HTML CLI reference
 
-4. **CLI docs check** — If any CLI command files were changed (`mycelium-cli/src/mycelium/commands/`), remind the user to run `/generate-cli-docs` to regenerate the HTML CLI reference. Check if any new commands are missing `@doc_ref` decorators.
+4. **Docs consistency** — If any user-facing behavior changed (commands renamed, new features, API changes), grep for stale references and fix them in:
+   - `docs/index.html` — main docs page
+   - `docs/mycelium-dataflow.html` — scrolly presentation deck
+   - `docs/demo-script.md` — live demo script
+   - `README.md` — quickstart and overview
+   - `mycelium-cli/src/mycelium/docs/` — built-in CLI docs
+   - Adapter skills (`mycelium-cli/src/mycelium/adapters/*/skills/`)
 
-5. **Report** — Summarize all issues found. Do NOT auto-fix anything. Just report what needs attention.
-
-If everything passes, say so clearly.
+5. **Report** — Summarize what was fixed and any remaining issues.

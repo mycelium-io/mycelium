@@ -22,6 +22,7 @@ GROUP_CONFIG: list[tuple[str, str, str]] = [
     # (group_key, heading_text, sidebar_label)
     ("room", "room", "room"),
     ("memory", "memory", "memory"),
+    ("notebook", "notebook", "notebook"),
     ("message", "message", "message"),
     ("other", "synthesize / catchup / watch", "synthesize / catchup / watch"),
 ]
@@ -38,6 +39,7 @@ def _generate_html() -> tuple[str, str]:
     # Force-import all command modules so decorators run
     import mycelium.commands.memory  # noqa: F401
     import mycelium.commands.message  # noqa: F401
+    import mycelium.commands.notebook  # noqa: F401
     import mycelium.commands.room  # noqa: F401
 
     entries = get_registry()
