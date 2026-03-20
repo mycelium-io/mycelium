@@ -48,12 +48,7 @@ def upgrade() -> None:
     # Room: parent namespace for sessions spawned within a namespace
     op.add_column(
         "rooms",
-        sa.Column(
-            "parent_namespace",
-            sa.String(),
-            sa.ForeignKey("rooms.name"),
-            nullable=True,
-        ),
+        sa.Column("parent_namespace", sa.String(), nullable=True),
     )
 
     # Backfill: existing async/hybrid rooms become namespaces

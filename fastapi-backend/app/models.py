@@ -150,10 +150,9 @@ class Room(Base):
     namespace: Mapped[str | None] = mapped_column(String, nullable=True)
     # True for persistent namespaces (async rooms), False for ephemeral sessions (sync)
     is_namespace: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)
-    # For sessions spawned within a namespace, points to the parent namespace room name
-    parent_namespace: Mapped[str | None] = mapped_column(
-        String, ForeignKey("rooms.name"), nullable=True
-    )
+    # For sessions spawned within a namespace, points to the parent room name.
+    # No FK constraint — validated in application code to avoid AgensGraph create_all ordering issues.
+    parent_namespace: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class Message(Base):
