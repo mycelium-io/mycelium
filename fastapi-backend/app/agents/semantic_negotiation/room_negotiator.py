@@ -336,7 +336,24 @@ class RoomNegotiator(SAONegotiator):
         return {issues[i]: str(v) for i, v in enumerate(outcome)}
 
     def _dict_to_outcome(self, offer_dict: dict[str, str], issues: list[str]) -> tuple:
-        return tuple(offer_dict[issue] for issue in issues)
+        issue_options = self._issue_options()
+        result = []
+        for issue in issues:
+            if issue in offer_dict:
+                result.append(offer_dict[issue])
+            else:
+                # Agent omitted this issue — fall back to first available option
+                opts = issue_options.get(issue, [])
+                fallback = opts[0] if opts else ""
+                logger.warning(
+                    "[%s] %s — offer missing issue %r, using fallback %r",
+                    self._room_name,
+                    self.name,
+                    issue,
+                    fallback,
+                )
+                result.append(fallback)
+        return tuple(result)
 
     def _serialise_history(self, state: SAOState, issues: list[str]) -> list[dict]:
         rounds: list[dict] = []
