@@ -155,6 +155,11 @@ jobs:
           name: mycelium-darwin-arm64
           path: mycelium-cli/dist/binaries
 
+      - name: Generate checksums
+        run: |
+          cd mycelium-cli/dist
+          sha256sum *.whl binaries/mycelium-* > binaries/checksums.txt
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -178,6 +183,7 @@ jobs:
           files: |
             mycelium-cli/dist/*.whl
             mycelium-cli/dist/binaries/mycelium-*
+            mycelium-cli/dist/binaries/checksums.txt
           fail_on_unmatched_files: true
 
   update-tap:
