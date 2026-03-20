@@ -187,7 +187,6 @@ def create(
                 name=name,
                 is_public=public,
                 trigger_config=trigger_config,
-                is_persistent=True,
             )
             result = create_api.sync(client=client, body=body)
             room_data = result.to_dict() if result and hasattr(result, "to_dict") else {}
@@ -297,7 +296,7 @@ def use(
             typer.echo(json_module.dumps({"room": room_name}))
         else:
             typer.secho(f"Room set: {room_name}", fg=typer.colors.GREEN)
-            typer.echo("Next: Run 'mycelium room join -m <intent>' to join a coordination session")
+            typer.echo("Next: Run 'mycelium session join -H <handle> -m <position>' to start negotiating")
 
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False

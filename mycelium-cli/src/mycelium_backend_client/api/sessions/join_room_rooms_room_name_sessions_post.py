@@ -72,7 +72,7 @@ def sync_detailed(
 ) -> Response[HTTPValidationError | SessionRead]:
     """Join Room
 
-     Register agent presence in a room (join). Creates room if it doesn't exist.
+     Join a room. If the room is a namespace, auto-spawns a session and joins that.
 
     Args:
         room_name (str):
@@ -106,7 +106,7 @@ def sync(
 ) -> HTTPValidationError | SessionRead | None:
     """Join Room
 
-     Register agent presence in a room (join). Creates room if it doesn't exist.
+     Join a room. If the room is a namespace, auto-spawns a session and joins that.
 
     Args:
         room_name (str):
@@ -135,7 +135,7 @@ async def asyncio_detailed(
 ) -> Response[HTTPValidationError | SessionRead]:
     """Join Room
 
-     Register agent presence in a room (join). Creates room if it doesn't exist.
+     Join a room. If the room is a namespace, auto-spawns a session and joins that.
 
     Args:
         room_name (str):
@@ -167,7 +167,7 @@ async def asyncio(
 ) -> HTTPValidationError | SessionRead | None:
     """Join Room
 
-     Register agent presence in a room (join). Creates room if it doesn't exist.
+     Join a room. If the room is a namespace, auto-spawns a session and joins that.
 
     Args:
         room_name (str):
