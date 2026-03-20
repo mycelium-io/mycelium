@@ -25,6 +25,11 @@ async def create_room(
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Room already exists")
 
+    # Auto-set is_namespace from mode if not explicitly provided
+    is_namespace = room.is_namespace
+    if is_namespace is None:
+        is_namespace = room.mode in ("async", "hybrid")
+
     db_room = Room(
         name=room.name,
         description=room.description,
@@ -33,6 +38,7 @@ async def create_room(
         trigger_config=room.trigger_config,
         is_persistent=room.is_persistent,
         namespace=room.name,
+        is_namespace=is_namespace,
     )
     session.add(db_room)
     await session.commit()

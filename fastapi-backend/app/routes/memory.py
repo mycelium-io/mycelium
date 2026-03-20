@@ -156,13 +156,24 @@ async def create_memories(
         if item.embed:
             embedding = await asyncio.to_thread(embed_text, content_text)
 
-        # Check for existing memory (upsert)
-        existing_result = await db.execute(
-            select(Memory).where(
-                Memory.room_name == room_name,
-                Memory.key == item.key,
-            )
+        # Resolve scope and owner
+        scope = item.scope or "namespace"
+        owner_handle = item.owner_handle
+        if scope == "notebook":
+            owner_handle = owner_handle or item.created_by
+
+        # Check for existing memory (upsert) — scoped by (room, key, scope, owner)
+        upsert_query = select(Memory).where(
+            Memory.room_name == room_name,
+            Memory.key == item.key,
+            Memory.scope == scope,
         )
+        if scope == "notebook":
+            upsert_query = upsert_query.where(Memory.owner_handle == owner_handle)
+        else:
+            upsert_query = upsert_query.where(Memory.owner_handle.is_(None))
+
+        existing_result = await db.execute(upsert_query)
         existing = existing_result.scalar_one_or_none()
 
         if existing:
@@ -193,6 +204,8 @@ async def create_memories(
                 created_by=item.created_by,
                 updated_by=item.created_by,
                 tags=item.tags,
+                scope=scope,
+                owner_handle=owner_handle,
             )
             db.add(mem)
             await db.flush()
@@ -226,14 +239,20 @@ async def _check_async_trigger(room_name: str, new_count: int) -> None:
 async def list_memories(
     room_name: str,
     prefix: str | None = Query(None, description="Key prefix filter"),
+    scope: str = Query("namespace", description="Memory scope: namespace or notebook"),
+    handle: str | None = Query(None, description="Owner handle (required for notebook scope)"),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_async_session),
 ):
-    """List memories in a room, optionally filtered by key prefix."""
+    """List memories in a room, optionally filtered by key prefix and scope."""
     await _get_room(room_name, db)
 
-    query = select(Memory).where(Memory.room_name == room_name)
+    query = select(Memory).where(Memory.room_name == room_name, Memory.scope == scope)
+    if scope == "notebook":
+        if not handle:
+            raise HTTPException(status_code=400, detail="handle is required for notebook scope")
+        query = query.where(Memory.owner_handle == handle)
     if prefix:
         query = query.where(Memory.key.startswith(prefix))
     query = query.order_by(Memory.updated_at.desc()).limit(limit).offset(offset)

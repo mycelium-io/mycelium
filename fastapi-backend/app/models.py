@@ -148,6 +148,12 @@ class Room(Base):
     is_persistent: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)
     # Namespace identifier (defaults to room name)
     namespace: Mapped[str | None] = mapped_column(String, nullable=True)
+    # True for persistent namespaces (async rooms), False for ephemeral sessions (sync)
+    is_namespace: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)
+    # For sessions spawned within a namespace, points to the parent namespace room name
+    parent_namespace: Mapped[str | None] = mapped_column(
+        String, ForeignKey("rooms.name"), nullable=True
+    )
 
 
 class Message(Base):
@@ -218,7 +224,12 @@ class AuditEvent(Base):
 
 
 class Memory(Base):
-    """Persistent namespaced memory with optional vector embeddings for semantic search."""
+    """Persistent memory with optional vector embeddings for semantic search.
+
+    Memories have a scope:
+      - "namespace" (default): shared, visible to all agents in the room
+      - "notebook": private to a specific agent handle
+    """
 
     __tablename__ = "memories"
 
@@ -241,8 +252,14 @@ class Memory(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # "namespace" (shared) or "notebook" (agent-private)
+    scope: Mapped[str] = mapped_column(VARCHAR(20), server_default="namespace", nullable=False)
+    # For notebook-scoped memories, the owning agent handle
+    owner_handle: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
 
-    __table_args__ = (UniqueConstraint("room_name", "key", name="uq_memory_room_key"),)
+    __table_args__ = (
+        UniqueConstraint("room_name", "key", "scope", "owner_handle", name="uq_memory_scope_key"),
+    )
 
 
 class MemorySubscription(Base):

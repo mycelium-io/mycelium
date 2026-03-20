@@ -76,6 +76,9 @@ class RoomCreate(BaseModel):
     mode: str = Field("sync", pattern="^(sync|async|hybrid)$")
     trigger_config: dict | None = None
     is_persistent: bool = False
+    is_namespace: bool | None = Field(
+        None, description="Auto-set from mode if omitted (async/hybrid → True)"
+    )
 
 
 class RoomRead(BaseModel):
@@ -90,6 +93,8 @@ class RoomRead(BaseModel):
     trigger_config: dict | None = None
     last_synthesis_at: datetime | None = None
     is_persistent: bool = False
+    is_namespace: bool = False
+    parent_namespace: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -227,6 +232,10 @@ class MemoryCreate(BaseModel):
     )
     embed: bool = Field(True, description="Generate vector embedding for semantic search")
     created_by: str = Field(..., description="Agent handle creating this memory")
+    scope: str = Field("namespace", pattern="^(namespace|notebook)$")
+    owner_handle: str | None = Field(
+        None, description="Required for notebook scope — the owning agent handle"
+    )
 
 
 class MemoryBatchCreate(BaseModel):
@@ -245,6 +254,8 @@ class MemoryRead(BaseModel):
     tags: list[str] | None = None
     created_at: datetime
     updated_at: datetime
+    scope: str = "namespace"
+    owner_handle: str | None = None
 
     model_config = {"from_attributes": True}
 
