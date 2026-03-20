@@ -2,7 +2,7 @@
 Notebook API — agent-private memory scoped by handle.
 
 Convenience routes that delegate to the memory system with scope="notebook".
-Notebooks don't require a room — they use a system namespace "_notebooks".
+Notebooks don't require a user-created room — they use a system room "_notebooks".
 
 POST   /notebook/{handle}/memory           — write a notebook memory
 GET    /notebook/{handle}/memory           — list notebook memories
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/notebook/{handle}", tags=["notebook"])
 
-# System namespace for notebook memories — auto-created on first use.
+# System room for notebook memories — auto-created on first use.
 NOTEBOOK_ROOM = "_notebooks"
 
 
@@ -48,7 +48,7 @@ async def _ensure_notebook_room(db: AsyncSession) -> Room:
 
     room = Room(
         name=NOTEBOOK_ROOM,
-        description="System namespace for agent notebooks",
+        description="System room for agent notebooks",
         is_public=False,
         mode="async",
         is_namespace=True,

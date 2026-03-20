@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/rooms", tags=["rooms"])
 
+# Reserved room names — used by system internals, cannot be created/deleted by users.
+RESERVED_ROOMS = frozenset({"_notebooks"})
+
 
 @router.post("", response_model=RoomRead, status_code=201)
 async def create_room(
@@ -21,6 +24,9 @@ async def create_room(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Create a new room."""
+    if room.name in RESERVED_ROOMS:
+        raise HTTPException(status_code=400, detail=f"'{room.name}' is a reserved system name")
+
     result = await session.execute(select(Room).where(Room.name == room.name))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Room already exists")
@@ -182,6 +188,9 @@ async def delete_room(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Delete a room by name."""
+    if room_name in RESERVED_ROOMS:
+        raise HTTPException(status_code=400, detail=f"'{room_name}' is a reserved system room")
+
     result = await session.execute(select(Room).where(Room.name == room_name))
     room = result.scalar_one_or_none()
     if not room:
