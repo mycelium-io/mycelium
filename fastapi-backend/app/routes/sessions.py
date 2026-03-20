@@ -38,7 +38,6 @@ async def _upsert_room(room_name: str, session: AsyncSession) -> Room:
         room = Room(
             name=room_name,
             is_public=True,
-            mode="async",
             namespace=room_name,
             is_namespace=True,
         )

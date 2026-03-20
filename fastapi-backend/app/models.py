@@ -131,8 +131,8 @@ class Room(Base):
         VARCHAR(20), nullable=False, server_default="idle"
     )
     join_deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # Room mode: sync (real-time negotiation), async (persistent namespace)
-    mode: Mapped[str] = mapped_column(VARCHAR(10), nullable=False, server_default="async")
+    # Legacy column — kept for migration compat. Always "async" for rooms, "sync" for sessions.
+    mode: Mapped[str] = mapped_column(VARCHAR(10), nullable=False, server_default="async", default="async")
     # Trigger config for async CognitiveEngine activation
     # e.g. {"type": "threshold", "min_contributions": 5}
     # or   {"type": "schedule", "cron": "0 */6 * * *"}

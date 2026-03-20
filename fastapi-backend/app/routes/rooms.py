@@ -35,7 +35,6 @@ async def create_room(
         name=room.name,
         description=room.description,
         is_public=room.is_public,
-        mode="async",
         trigger_config=room.trigger_config,
         is_persistent=True,
         namespace=room.name,
