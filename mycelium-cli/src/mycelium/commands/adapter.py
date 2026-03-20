@@ -91,8 +91,12 @@ def add(
     Examples:
         mycelium adapter add openclaw
         mycelium adapter add openclaw --reinstall
+        mycelium adapter add openclaw --step=otel
         mycelium adapter add openclaw --step=local-gateway --step=otel
         mycelium adapter add openclaw --step=docker-env
+
+    With --step, the openclaw adapter is installed first when it is not yet registered
+    (so e.g. --step=otel performs a full install plus OTEL configuration on first use).
     """
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
@@ -132,7 +136,7 @@ def add(
 
         config = MyceliumConfig.load()
 
-        # ── Follow-up steps run independently of the base install ────────────
+        # ── Follow-up steps (openclaw): install base adapter first if needed ─
         if step is not None and len(step) > 0:
             if adapter_type != "openclaw":
                 typer.secho(
@@ -147,6 +151,26 @@ def add(
                         f"Unknown step '{s}'. Known steps: {known_steps}", fg=typer.colors.RED
                     )
                     raise typer.Exit(1)
+
+            # So `mycelium adapter add openclaw --step=otel` does full install + steps
+            # on first run (not only OTEL config without plugin/hooks).
+            need_base = "openclaw" not in config.adapters or reinstall
+            if need_base and not dry_run:
+                _install_openclaw(verbose=verbose)
+                if not reinstall:
+                    config.adapters["openclaw"] = {
+                        "type": "openclaw",
+                        "installed_at": datetime.now(UTC).isoformat(),
+                        "api_url": config.server.api_url,
+                    }
+                config.save()
+                verb = "reinstalled" if reinstall else "installed"
+                typer.secho(f"  ✓ openclaw adapter {verb} (prerequisite for --step)", fg=typer.colors.GREEN)
+            elif need_base and dry_run:
+                typer.secho(
+                    "  [dry-run] Would install openclaw adapter before running steps",
+                    fg=typer.colors.CYAN,
+                )
 
             completed: set[str] = set()
 
