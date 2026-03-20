@@ -56,8 +56,61 @@ jobs:
           cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-backend:cache
           cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-backend:cache,mode=max
 
-  build-and-release:
+  build-binaries:
     needs: publish-images
+    name: Build binary (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86_64
+          - os: macos-latest
+            platform: darwin-arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Build mycelium-client wheel
+        working-directory: mycelium-client
+        run: uv build --wheel
+
+      - name: Install CLI + client + PyInstaller
+        working-directory: mycelium-cli
+        run: |
+          uv venv .venv
+          uv pip install --python .venv/bin/python \
+            -e . \
+            ../mycelium-client/dist/*.whl \
+            pyinstaller
+
+      - name: Build binary
+        working-directory: mycelium-cli
+        run: |
+          .venv/bin/python -c "from mycelium.cli import app; app()" --help > /dev/null 2>&1 || true
+          .venv/bin/pyinstaller \
+            --onefile \
+            --name mycelium \
+            --collect-all mycelium \
+            --hidden-import mycelium_backend_client \
+            -p src \
+            src/mycelium/cli.py
+          mv dist/mycelium dist/mycelium-${{ matrix.platform }}
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mycelium-${{ matrix.platform }}
+          path: mycelium-cli/dist/mycelium-${{ matrix.platform }}
+
+  build-and-release:
+    needs: [publish-images, build-binaries]
     name: Build wheel and publish release
     runs-on: ubuntu-latest
 
@@ -84,6 +137,13 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: mycelium-*
+          path: mycelium-cli/dist/binaries
+          merge-multiple: true
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -104,5 +164,7 @@ jobs:
             ## What's changed
 
             See [commits since last release](https://github.com/mycelium-io/mycelium/commits/${{ github.ref_name }}).
-          files: mycelium-cli/dist/*.whl
+          files: |
+            mycelium-cli/dist/*.whl
+            mycelium-cli/dist/binaries/mycelium-*
           fail_on_unmatched_files: true
