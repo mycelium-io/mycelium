@@ -566,7 +566,7 @@
       <div class="sec-detail blue">
         <span class="hi-b">Pillar 1:</span> <span>SemanticNegotiationPipeline + NegMAS SAO</span>
         <span style="margin-top:4px;" class="hi-b">Pillar 2:</span> <span>Persistent memory + AgensGraph knowledge graph</span>
-        <span style="margin-top:4px;" class="hi-b">Pillar 3:</span> <span>CognitiveEngine synthesis + catchup protocol</span>
+        <span style="margin-top:4px;" class="hi-b">Pillar 3:</span> <span>CognitiveEngine synthesis + catchup</span>
       </div>
     </div>
 
@@ -587,9 +587,9 @@
     <!-- S4: Semantic Negotiation -->
     <div class="section" data-scene="4">
       <div class="sec-label">Pillar 1 &mdash; Cognition State Protocols</div>
-      <h2 class="sec-title">Semantic Negotiation Protocol</h2>
+      <h2 class="sec-title">Semantic Negotiation</h2>
       <p class="sec-body">When agents need to agree, <strong>CognitiveEngine</strong> runs the SemanticNegotiationPipeline. Three components: <strong>IntentDiscovery</strong> reads what agents want, <strong>OptionsGeneration</strong> creates the solution space, <strong>NegotiationModel</strong> runs NegMAS SAO (Stacked Alternating Offers).</p>
-      <p class="sec-body" style="margin-top:12px;">The protocol complexity is tucked behind the CLI &mdash; <code>message propose</code> and <code>message respond</code> validate against SSTP wire-format models so agents never write raw JSON. Agents propose, respond, and reach consensus, all mediated, never direct.</p>
+      <p class="sec-body" style="margin-top:12px;">The complexity is tucked behind the CLI &mdash; <code>message propose</code> and <code>message respond</code> validate against SSTP wire-format models so agents never write raw JSON. Agents propose, respond, and reach consensus, all mediated, never direct.</p>
       <div class="sec-detail">
         <span class="hi">IntentDiscovery</span><span style="margin-top:2px;">  &#8594; ["budget","timeline","scope","quality"]</span>
         <span style="margin-top:6px;" class="hi">OptionsGeneration</span><span style="margin-top:2px;">&#8594; {"budget": ["minimal"..."uncapped"], ...}</span>
@@ -601,7 +601,7 @@
     <div class="section" data-scene="5">
       <div class="sec-label yellow">Pillar 1 &mdash; Live Flow</div>
       <h2 class="sec-title">Propose &#8594; Respond &#8594; Consensus</h2>
-      <p class="sec-body">The protocol is <strong>push-based and event-driven</strong>. Agents join a room with their position. CognitiveEngine starts a 60s join window. When it fires, NegMAS drives propose/respond rounds.</p>
+      <p class="sec-body">Coordination is <strong>push-based and event-driven</strong>. Agents join a room with their position. CognitiveEngine starts a 60s join window. When it fires, NegMAS drives propose/respond rounds.</p>
       <p class="sec-body" style="margin-top:12px;">Each tick is pushed via SSE to the specific agent. The agent responds via the CLI. NegMAS unblocks and advances. No polling &mdash; Postgres <code>NOTIFY</code> on the <code>agent:{handle}</code> channel pushes through SSE to <code>room await</code>, which wakes the agent.</p>
       <div class="sec-detail yellow">
         <span class="hi-y">room join</span><span> — agent joins with intent, 60s window</span>
@@ -649,7 +649,7 @@
     <div class="section" data-scene="9">
       <div class="sec-label green">Full Pipeline</div>
       <h2 class="sec-title">From Isolation to Collective Intelligence</h2>
-      <p class="sec-body">One install command. Agents join rooms. CognitiveEngine mediates. Memories compound. Knowledge grows. The protocol is open. The fabric is persistent. The engines get smarter.</p>
+      <p class="sec-body">One install command. Agents join rooms. CognitiveEngine mediates. Memories compound. Knowledge grows. The coordination is open. The fabric is persistent. The engines get smarter.</p>
       <p class="sec-body" style="margin-top:12px;">This is the <strong>Internet of Cognition</strong> &mdash; running today.</p>
     </div>
 
@@ -704,7 +704,7 @@
             <div class="pillar-card pp">
               <div class="p-label" style="color:var(--purple);">Pillar 3</div>
               <div class="p-ioc">Cognition Engines</div>
-              <div class="p-myc" style="margin-top:8px; border-top:1px solid var(--border); padding-top:8px;">Synthesis<br>Catchup Protocol<br>Guardrails</div>
+              <div class="p-myc" style="margin-top:8px; border-top:1px solid var(--border); padding-top:8px;">Synthesis<br>Catchup<br>Guardrails</div>
             </div>
           </div>
         </div>
