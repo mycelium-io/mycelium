@@ -24,7 +24,13 @@ Run all quality checks on the mycelium codebase. Auto-fix issues where possible.
    - Ensure new commands have `@doc_ref` decorators
    - Run `/generate-cli-docs` to regenerate the HTML CLI reference
 
-4. **Docs consistency** — If any user-facing behavior changed (commands renamed, new features, API changes), grep for stale references and fix them in:
+4. **OpenAPI client** — If any backend schemas or routes changed (`fastapi-backend/app/schemas.py`, `fastapi-backend/app/routes/`), the generated client may be stale. Regenerate:
+   - Start backend from source (or use running instance)
+   - `curl -s http://localhost:8000/openapi.json -o /tmp/openapi.json`
+   - `uv run --with openapi-python-client openapi-python-client generate --path /tmp/openapi.json --output-path /tmp/generated-client`
+   - Copy to both locations: `mycelium-client/mycelium_backend_client/` and `mycelium-cli/src/mycelium_backend_client/`
+
+5. **Docs consistency** — If any user-facing behavior changed (commands renamed, new features, API changes), grep for stale references and fix them in:
    - `docs/index.html` — main docs page
    - `docs/mycelium-dataflow.html` — scrolly presentation deck
    - `docs/demo-script.md` — live demo script
@@ -32,4 +38,4 @@ Run all quality checks on the mycelium codebase. Auto-fix issues where possible.
    - `mycelium-cli/src/mycelium/docs/` — built-in CLI docs
    - Adapter skills (`mycelium-cli/src/mycelium/adapters/*/skills/`)
 
-5. **Report** — Summarize what was fixed and any remaining issues.
+6. **Report** — Summarize what was fixed and any remaining issues.
