@@ -77,6 +77,12 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
+      - name: Bump version to match tag
+        working-directory: mycelium-cli
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          sed -i.bak "s/^version = .*/version = \"$VERSION\"/" pyproject.toml && rm -f pyproject.toml.bak
+
       - name: Build mycelium-client wheel
         working-directory: mycelium-client
         run: uv build --wheel
