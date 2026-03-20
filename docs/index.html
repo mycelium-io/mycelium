@@ -1212,7 +1212,7 @@ mycelium install</code></pre>
   const INSTALL_CMDS = {
     curl: 'curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash',
     brew: 'brew install mycelium-io/tap/mycelium',
-    clawhub: 'Tell your agent: "install mycelium-io from clawhub.ai"',
+    clawhub: 'Tell your agent: "install https://clawhub.ai/juliarvalenti/mycelium-io"',
   };
   function setInstallTab(tab, el) {
     document.getElementById('install-cmd').textContent = INSTALL_CMDS[tab];
