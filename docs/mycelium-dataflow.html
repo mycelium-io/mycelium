@@ -635,13 +635,12 @@
     <!-- S8: CFN Integration -->
     <div class="section" data-scene="8">
       <div class="sec-label">CFN Integration</div>
-      <h2 class="sec-title">Cognitive Fabric Nodes</h2>
-      <p class="sec-body">Mycelium plugs into the <strong>Outshift CFN stack</strong>. Agent registration flows through <code>ioc-cfn-mgmt-plane</code>. <code>ioc-cfn-svc</code> routes knowledge extraction and evidence reasoning back to <strong>mycelium-backend</strong> &mdash; Mycelium serves as both the cognition engine and the knowledge-memory backend.</p>
-      <p class="sec-body" style="margin-top:12px;">On startup, Mycelium registers as a memory provider with the mgmt plane. <code>ioc-cfn-svc</code> then calls mycelium's <code>/api/knowledge-mgmt/extraction</code> and <code>/api/knowledge-mgmt/reasoning/evidence</code> endpoints for LLM extraction and graph queries.</p>
+      <h2 class="sec-title">Cognitive Fabric Node</h2>
+      <p class="sec-body">Each Mycelium deployment <em>is</em> a CFN node — self-contained, with its own agents, memory, and knowledge graph. Today it runs standalone. The architecture is designed so nodes can federate: sharing memory and coordinating across teams or organizations without any single point of control.</p>
+      <p class="sec-body" style="margin-top:12px;">On startup, Mycelium registers as a memory provider with <code>ioc-cfn-mgmt-plane</code>. <code>ioc-cfn-svc</code> routes knowledge extraction and evidence reasoning to <strong>mycelium-backend</strong>, which implements both the KNOWLEDGE_MEMORY_SVC and COGNITION_ENGINE_SVC contracts.</p>
       <div class="sec-detail">
-        <span class="hi">Management:</span> <span>ioc-cfn-mgmt-plane-svc :9000 &mdash; agent registration, lifecycle</span>
-        <span style="margin-top:4px;" class="hi">CFN core:</span> <span>ioc-cfn-svc :9002 &mdash; routes to mycelium-backend for knowledge + memory</span>
-        <span style="margin-top:4px;" class="hi">Mycelium:</span> <span>implements KNOWLEDGE_MEMORY_SVC + COGNITION_ENGINE_SVC contracts</span>
+        <span class="hi">Today:</span> <span>one node — mgmt-plane, cfn-svc, backend, AgensGraph</span>
+        <span style="margin-top:4px;" class="hi">Future:</span> <span>nodes federate — shared memory across orgs, no central authority</span>
       </div>
     </div>
 
@@ -917,46 +916,46 @@
 
       <!-- SCENE 8: CFN Integration -->
       <div class="scene" id="sc8">
-        <div style="width:100%; display:flex; flex-direction:column; gap:8px;">
-          <div style="font-size:12px; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--muted); margin-bottom:4px;">Outshift CFN Stack</div>
-          <div class="cfn-svc" style="border-color:rgba(56,189,248,0.35);">
-            <div class="svc-dot" style="background:var(--accent); box-shadow:0 0 8px rgba(56,189,248,0.5); animation: pulse 2s ease-in-out infinite;"></div>
-            <div>
-              <div class="svc-name" style="color:var(--accent);">ioc-cfn-mgmt-plane-svc</div>
-              <div class="svc-port">:9000 &middot; agent registration &middot; lifecycle</div>
+        <div style="width:100%; display:flex; flex-direction:column; gap:14px;">
+
+          <!-- TODAY: single node -->
+          <div style="font-size:11px; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--muted);">Today</div>
+          <div style="display:flex; justify-content:center;">
+            <div style="padding:14px 20px; background:rgba(56,189,248,0.07); border:1.5px solid rgba(56,189,248,0.45); border-radius:12px; text-align:center; min-width:160px;">
+              <div style="font-size:11px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--accent); margin-bottom:6px;">CFN Node</div>
+              <div style="font-size:13px; font-weight:700; color:var(--fg);">Mycelium</div>
+              <div style="font-size:11px; color:var(--muted); margin-top:4px; line-height:1.5;">mgmt-plane · cfn-svc<br>backend · AgensGraph</div>
+              <div style="font-size:10px; color:var(--accent); font-family:'SF Mono',monospace; margin-top:6px; opacity:0.8;">knowledge-memory + cognition engine</div>
             </div>
           </div>
-          <div class="cfn-svc" style="border-color:rgba(129,140,248,0.35);">
-            <div class="svc-dot" style="background:var(--blue); box-shadow:0 0 8px rgba(129,140,248,0.5); animation: pulse 2s ease-in-out infinite 0.3s;"></div>
-            <div>
-              <div class="svc-name" style="color:var(--blue);">ioc-cfn-svc</div>
-              <div class="svc-port">:9002 &middot; fabric orchestration</div>
+
+          <!-- DIVIDER -->
+          <div style="display:flex; align-items:center; gap:8px;">
+            <div style="flex:1; height:1px; background:var(--border);"></div>
+            <div style="font-size:10px; color:var(--dim); font-family:'SF Mono',monospace; white-space:nowrap;">future</div>
+            <div style="flex:1; height:1px; background:var(--border);"></div>
+          </div>
+
+          <!-- FUTURE: federated network -->
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; align-items:center;">
+            <div style="padding:10px 8px; background:rgba(56,189,248,0.07); border:1.5px solid rgba(56,189,248,0.45); border-radius:10px; text-align:center;">
+              <div style="font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--accent); margin-bottom:4px;">Node A</div>
+              <div style="font-size:12px; font-weight:700; color:var(--fg);">Mycelium</div>
+              <div style="font-size:10px; color:var(--muted); margin-top:3px;">team / org</div>
+            </div>
+            <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+              <div style="font-size:16px; color:var(--dim);">&#8596;</div>
+              <div style="font-size:9px; color:var(--dim); font-family:'SF Mono',monospace; text-align:center;">federated<br>memory</div>
+              <div style="font-size:16px; color:var(--dim);">&#8596;</div>
+            </div>
+            <div style="padding:10px 8px; background:rgba(129,140,248,0.07); border:1.5px solid rgba(129,140,248,0.35); border-radius:10px; text-align:center;">
+              <div style="font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--blue); margin-bottom:4px;">Node B</div>
+              <div style="font-size:12px; font-weight:700; color:var(--fg);">Mycelium</div>
+              <div style="font-size:10px; color:var(--muted); margin-top:3px;">team / org</div>
             </div>
           </div>
-          <div style="display:flex; gap:8px; margin-top:4px;">
-            <div style="flex:1; text-align:center; font-size:12px; color:var(--dim); font-family:'SF Mono',monospace;">KNOWLEDGE_MEMORY_SVC_URL &#8595;</div>
-            <div style="flex:1; text-align:center; font-size:12px; color:var(--dim); font-family:'SF Mono',monospace;">COGNITION_ENGINE_SVC_URL &#8595;</div>
-          </div>
-          <div class="cfn-svc" style="border-color:rgba(103,232,249,0.35);">
-            <div class="svc-dot" style="background:var(--yellow); box-shadow:0 0 8px rgba(103,232,249,0.5); animation: pulse 2s ease-in-out infinite 0.6s;"></div>
-            <div>
-              <div class="svc-name" style="color:var(--yellow);">mycelium-backend</div>
-              <div class="svc-port">:8000 &middot; serves as knowledge-memory + cognition engine</div>
-            </div>
-          </div>
-          <div style="display:flex; gap:8px; margin-top:4px;">
-            <div style="flex:1; text-align:center; font-size:15.5px; color:var(--dim);">&#8595;</div>
-          </div>
-          <div class="cfn-svc" style="border-color:rgba(192,132,252,0.35);">
-            <div class="svc-dot" style="background:var(--purple); box-shadow:0 0 8px rgba(192,132,252,0.5);"></div>
-            <div>
-              <div class="svc-name" style="color:var(--purple); font-size:13px;">mycelium-db (AgensGraph)</div>
-              <div class="svc-port">:5432 &middot; SQL + openCypher + pgvector &middot; hosts cfn_mgmt + cfn_cp</div>
-            </div>
-          </div>
-          <div style="padding:8px 12px; background:rgba(56,189,248,0.05); border:1px solid rgba(56,189,248,0.15); border-radius:8px; font-size:12px; color:var(--muted); text-align:center; font-family:'SF Mono',monospace;">
-            cfn-svc &#8594; mycelium extraction + evidence &#8594; AgensGraph &#8594; better negotiations
-          </div>
+          <div style="text-align:center; font-size:11px; color:var(--dim); font-family:'SF Mono',monospace;">each node is self-contained &middot; nodes federate knowledge across orgs</div>
+
         </div>
       </div>
 
