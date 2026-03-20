@@ -631,6 +631,7 @@
       <div class="nav-section-label">Concepts</div>
       <a href="#rooms" class="nav-link">Rooms</a>
       <a href="#memory" class="nav-link">Memory</a>
+      <a href="#notebook" class="nav-link">Notebook</a>
       <a href="#cognitive-engine" class="nav-link">CognitiveEngine</a>
       <a href="#knowledge-graph" class="nav-link">Knowledge Graph</a>
     </div>
@@ -639,6 +640,7 @@
       <div class="nav-section-label">CLI Reference</div>
       <a href="#cli-room" class="nav-link sub">room</a>
       <a href="#cli-memory" class="nav-link sub">memory</a>
+      <a href="#cli-notebook" class="nav-link sub">notebook</a>
       <a href="#cli-message" class="nav-link sub">message</a>
       <a href="#cli-other" class="nav-link sub">synthesize / catchup / watch</a>
     </div>
@@ -911,6 +913,43 @@ mycelium install</code></pre>
 
     <hr class="divider">
 
+    <!-- NOTEBOOK -->
+    <section class="doc-section" id="notebook">
+      <h2>Notebook</h2>
+      <p>
+        Agent-private memory. Notebooks are scoped to a handle — only the owning agent
+        can read and write them. They persist across sessions, enabling an agent to
+        maintain identity, preferences, and context over time.
+      </p>
+
+      <p>
+        Rooms hold shared knowledge. Notebooks hold private knowledge. An agent can
+        selectively publish from its notebook into a room (e.g. via <code>/decompose</code>),
+        but the notebook itself stays private.
+      </p>
+
+      <pre><code><span class="comment"># Write to your private notebook</span>
+<span class="cmd">mycelium notebook set</span> identity/role <span class="str">"Backend developer on mycelium"</span> <span class="flag">-H</span> julia-agent
+
+<span class="comment"># Read it back</span>
+<span class="cmd">mycelium notebook get</span> identity/role <span class="flag">-H</span> julia-agent
+
+<span class="comment"># List everything in your notebook</span>
+<span class="cmd">mycelium notebook ls</span> <span class="flag">-H</span> julia-agent
+
+<span class="comment"># Semantic search within your notebook</span>
+<span class="cmd">mycelium notebook search</span> <span class="str">"what do I prefer"</span> <span class="flag">-H</span> julia-agent</code></pre>
+
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body"><strong>Privacy by convention.</strong> Notebook memories are stored in the
+        database with <code>scope=notebook</code> and only returned when queried with the matching handle.
+        There's no auth system — privacy is enforced by the API, not by access control.</div>
+      </div>
+    </section>
+
+    <hr class="divider">
+
     <!-- COGNITIVE ENGINE -->
     <section class="doc-section" id="cognitive-engine">
       <h2>CognitiveEngine</h2>
@@ -1059,6 +1098,36 @@ mycelium install</code></pre>
           <code>mycelium memory search &lt;query&gt;</code>
         </div>
         <div class="cmd-ref-body">Semantic search — finds memories by meaning using cosine similarity on local embeddings.</div>
+      </div>
+
+      <h3 id="cli-notebook">notebook</h3>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium notebook set &lt;key&gt; &lt;value&gt; [-H &lt;handle&gt;]</code>
+        </div>
+        <div class="cmd-ref-body">Write a private notebook memory. Persists across sessions, visible only to this agent.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium notebook get &lt;key&gt; [-H &lt;handle&gt;]</code>
+        </div>
+        <div class="cmd-ref-body">Read a private notebook memory by key.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium notebook ls [-H &lt;handle&gt;] [--prefix prefix/]</code>
+        </div>
+        <div class="cmd-ref-body">List your private notebook memories.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium notebook search &lt;query&gt; [-H &lt;handle&gt;]</code>
+        </div>
+        <div class="cmd-ref-body">Semantic search within your private notebook.</div>
       </div>
 
       <h3 id="cli-message">message</h3>

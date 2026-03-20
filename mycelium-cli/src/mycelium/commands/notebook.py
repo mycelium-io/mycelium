@@ -112,7 +112,9 @@ def notebook_get(
                 if hasattr(val, "to_dict"):
                     val = val.to_dict()
                 console.print(f"[cyan]{result.key}[/cyan] (v{result.version})")
-                console.print(json.dumps(val, indent=2, default=str) if isinstance(val, dict) else str(val))
+                console.print(
+                    json.dumps(val, indent=2, default=str) if isinstance(val, dict) else str(val)
+                )
         except Exception as e:
             if hasattr(e, "status_code") and e.status_code == 404:
                 console.print(f"[dim]Not found: {key}[/dim]")
@@ -192,4 +194,6 @@ def notebook_search(
         for sr in result.results:
             mem = sr.memory
             sim = sr.similarity
-            console.print(f"  [cyan]{mem.key}[/cyan]  ({sim:.2f})  {mem.content_text[:60] if mem.content_text else ''}")
+            console.print(
+                f"  [cyan]{mem.key}[/cyan]  ({sim:.2f})  {mem.content_text[:60] if mem.content_text else ''}"
+            )
