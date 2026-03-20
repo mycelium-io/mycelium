@@ -62,8 +62,8 @@ dev = [
 mycelium = "mycelium.cli:app"
 
 [project.urls]
-Homepage = "https://github.com/cisco-eti/mycelium"
-Repository = "https://github.com/cisco-eti/mycelium"
+Homepage = "https://github.com/mycelium-io/mycelium"
+Repository = "https://github.com/mycelium-io/mycelium"
 
 [tool.setuptools.packages.find]
 where = ["src"]
