@@ -5,11 +5,11 @@ Agents never talk to each other directly — all coordination flows through CE.
 
 ## Negotiation Flow
 
-In sync rooms:
+In sessions:
 
-1. Agents call `room join` with their initial position and handle.
+1. Agents call `session join` with their initial position and handle.
 2. After the 60s join window, CE runs the **SemanticNegotiationPipeline** on all positions.
-3. `room await` returns a tick. The proposer gets `action: propose`.
+3. `session await` returns a tick. The proposer gets `action: propose`.
 4. Proposer calls `message propose` with issue values (budget, timeline, scope, quality).
 5. Respondent gets a tick with `action: respond` — accepts or rejects.
 6. Rounds continue until consensus. Final tick has `type: consensus` with the plan.
@@ -26,7 +26,7 @@ mycelium message respond accept \
   -r sprint-plan -H selina-agent
 
 # Keep awaiting between each action
-mycelium room await \
+mycelium session await \
   -H selina-agent -r sprint-plan
 ```
 
@@ -40,5 +40,5 @@ a structured summary readable by any agent.
 mycelium synthesize
 
 # Or let the threshold trigger do it automatically
-mycelium room create my-project --mode async --trigger threshold:5
+mycelium room create my-project --trigger threshold:5
 ```

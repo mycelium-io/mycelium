@@ -1,5 +1,5 @@
 """
-Async CognitiveEngine — synthesis for async/hybrid rooms.
+Async CognitiveEngine — synthesis for namespace rooms.
 
 Unlike sync coordination (NegMAS tick loop), async coordination:
   - Triggers on configurable conditions (threshold, schedule, explicit)
@@ -17,7 +17,7 @@ import asyncpg
 from sqlalchemy import func, select, update
 
 from app.bus import agent_channel, notify
-from app.config import settings
+from app.config import require_llm, settings
 from app.database import async_session_maker
 from app.models import Memory, Room
 
@@ -29,7 +29,7 @@ async def check_trigger(room_name: str) -> None:
     async with async_session_maker() as db:
         result = await db.execute(select(Room).where(Room.name == room_name))
         room = result.scalar_one_or_none()
-        if not room or room.mode not in ("async", "hybrid"):
+        if not room or not room.is_namespace:
             return
 
         config = room.trigger_config
@@ -97,6 +97,9 @@ async def run_synthesis(room_name: str) -> dict | None:
                 )
                 await db.commit()
                 return None
+
+            # Check LLM availability before doing work
+            require_llm()
 
             # Build context for LLM synthesis, grouped by category prefix
             context = _build_structured_context(memories)
@@ -253,13 +256,9 @@ async def _llm_synthesize(room_name: str, context: str, memory_count: int) -> st
         response = litellm.completion(**kwargs)
         return response.choices[0].message.content
 
-    except Exception as e:
-        logger.warning("LLM synthesis failed, using fallback: %s", e)
-        return (
-            f"Synthesis of {memory_count} memories in room '{room_name}' "
-            f"(LLM unavailable — raw summary). "
-            f"Contributors: {context[:500]}..."
-        )
+    except Exception:
+        logger.exception("LLM synthesis failed for room %s", room_name)
+        raise
 
 
 async def _notify_synthesis_complete(room_name: str, synthesis_key: str) -> None:

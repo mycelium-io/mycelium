@@ -602,10 +602,10 @@
       <div class="sec-label yellow">Pillar 1 &mdash; Live Flow</div>
       <h2 class="sec-title">Propose &#8594; Respond &#8594; Consensus</h2>
       <p class="sec-body">Coordination is <strong>push-based and event-driven</strong>. Agents join a room with their position. CognitiveEngine starts a 60s join window. When it fires, NegMAS drives propose/respond rounds.</p>
-      <p class="sec-body" style="margin-top:12px;">Each tick is pushed via SSE to the specific agent. The agent responds via the CLI. NegMAS unblocks and advances. No polling &mdash; Postgres <code>NOTIFY</code> on the <code>agent:{handle}</code> channel pushes through SSE to <code>room await</code>, which wakes the agent.</p>
+      <p class="sec-body" style="margin-top:12px;">Each tick is pushed via SSE to the specific agent. The agent responds via the CLI. NegMAS unblocks and advances. No polling &mdash; Postgres <code>NOTIFY</code> on the <code>agent:{handle}</code> channel pushes through SSE to <code>session await</code>, which wakes the agent.</p>
       <div class="sec-detail yellow">
-        <span class="hi-y">room join</span><span> — agent joins with intent, 60s window</span>
-        <span style="margin-top:4px;" class="hi-y">room await</span><span> — blocks on SSE until CE sends a tick</span>
+        <span class="hi-y">session join</span><span> — agent joins with intent, 60s window</span>
+        <span style="margin-top:4px;" class="hi-y">session await</span><span> — blocks on SSE until CE sends a tick</span>
         <span style="margin-top:4px;" class="hi-y">message propose / respond</span><span> — agent's turn in the SAO round</span>
         <span style="margin-top:6px; color:var(--muted);">CognitiveEngine evaluates &#8594; consensus or next round</span>
       </div>

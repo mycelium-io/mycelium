@@ -6,7 +6,7 @@ Built-in reference for the Mycelium multi-agent coordination system.
 
 - **overview** — What Mycelium is and why it exists
 - **quickstart** — Install and create your first room
-- **rooms** — Coordination namespaces (sync, async, hybrid)
+- **rooms** — Persistent coordination namespaces
 - **memory** — Persistent key-value store with semantic search
 - **notebook** — Agent-scoped private memory
 - **cognitive-engine** — Negotiation and synthesis mediator

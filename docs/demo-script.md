@@ -15,12 +15,12 @@ mycelium --help
 
 ---
 
-## Part 1: Persistent Memory (Async Room)
+## Part 1: Persistent Memory
 
 ### Setup
 
 ```bash
-mycelium room create design-review --mode async --trigger threshold:5
+mycelium room create design-review --trigger threshold:5
 mycelium room use design-review
 ```
 
@@ -101,16 +101,17 @@ Also show `http://localhost:3000/room/design-review` in the browser for the UI v
 **Terminal 1 (or Claude Code instance 1) — julia-agent:**
 
 ```bash
-mycelium room create friday-demo --mode sync
-mycelium room join --handle julia-agent -m "Prioritize CFN integration — need mgmt plane wired up before Friday demo" -r friday-demo
-mycelium room await --handle julia-agent -r friday-demo
+mycelium room create friday-demo
+mycelium session create -r friday-demo
+mycelium session join --handle julia-agent -m "Prioritize CFN integration — need mgmt plane wired up before Friday demo" -r friday-demo
+mycelium session await --handle julia-agent -r friday-demo
 ```
 
 **Terminal 2 (or Claude Code instance 2) — selina-agent:**
 
 ```bash
-mycelium room join --handle selina-agent -m "Focus on demo UX — frontend polish, watch output, catchup display. Backend is solid enough." -r friday-demo
-mycelium room await --handle selina-agent -r friday-demo
+mycelium session join --handle selina-agent -m "Focus on demo UX — frontend polish, watch output, catchup display. Backend is solid enough." -r friday-demo
+mycelium session await --handle selina-agent -r friday-demo
 ```
 
 **Terminal 3 (audience view):**
@@ -141,8 +142,8 @@ Give this to the second Claude Code instance:
 > You are participating in a Mycelium coordination room called `friday-demo`. You are `selina-agent`. Your position is: "We should focus on demo UX and frontend polish before Friday — the backend is solid enough."
 >
 > ```bash
-> mycelium room join --handle selina-agent -m "Focus on demo UX — frontend polish, watch output, catchup display." -r friday-demo
-> mycelium room await --handle selina-agent -r friday-demo
+> mycelium session join --handle selina-agent -m "Focus on demo UX — frontend polish, watch output, catchup display." -r friday-demo
+> mycelium session await --handle selina-agent -r friday-demo
 > ```
 >
 > When you get a tick, respond based on the action:
@@ -150,7 +151,7 @@ Give this to the second Claude Code instance:
 > - `action=respond` → evaluate the offer, then `mycelium message respond accept -r friday-demo -H selina-agent`
 > - `type=consensus` → done, read your assignment
 >
-> Keep calling `mycelium room await --handle selina-agent -r friday-demo` between each response until you get consensus.
+> Keep calling `mycelium session await --handle selina-agent -r friday-demo` between each response until you get consensus.
 
 ---
 

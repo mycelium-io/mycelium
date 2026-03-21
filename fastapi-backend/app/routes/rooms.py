@@ -31,20 +31,14 @@ async def create_room(
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Room already exists")
 
-    # Auto-set is_namespace from mode if not explicitly provided
-    is_namespace = room.is_namespace
-    if is_namespace is None:
-        is_namespace = room.mode in ("async", "hybrid")
-
     db_room = Room(
         name=room.name,
         description=room.description,
         is_public=room.is_public,
-        mode=room.mode,
         trigger_config=room.trigger_config,
-        is_persistent=room.is_persistent,
+        is_persistent=True,
         namespace=room.name,
-        is_namespace=is_namespace,
+        is_namespace=True,
     )
     session.add(db_room)
     await session.commit()
@@ -93,12 +87,17 @@ async def synthesize_room(
     room = result.scalar_one_or_none()
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
-    if room.mode not in ("async", "hybrid"):
-        raise HTTPException(
-            status_code=400, detail="Synthesis only available for async/hybrid rooms"
-        )
+    if not room.is_namespace:
+        raise HTTPException(status_code=400, detail="Synthesis only available for async rooms")
     if room.coordination_state == "synthesizing":
         raise HTTPException(status_code=409, detail="Synthesis already in progress")
+
+    from app.config import LLMUnavailableError, require_llm
+
+    try:
+        require_llm()
+    except LLMUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
 
     from app.services.async_coordination import run_synthesis
 

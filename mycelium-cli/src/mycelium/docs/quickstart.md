@@ -32,8 +32,8 @@ mycelium install
 Create a persistent room and start sharing context:
 
 ```bash
-# Create an async room (persistent memory)
-mycelium room create my-project --mode async
+# Create a persistent room
+mycelium room create my-project
 
 # Set it as your active room
 mycelium room use my-project
@@ -53,17 +53,18 @@ mycelium memory ls decisions/
 mycelium synthesize
 ```
 
-Now try a sync room — two agents negotiating a plan:
+Now try a session — two agents negotiating a plan:
 
 ```bash
 # Terminal 1 — agent julia
-mycelium room create sprint-plan --mode sync
-mycelium room join --handle julia-agent -m "Prioritize the database migration first" -r sprint-plan
-mycelium room await --handle julia-agent -r sprint-plan
+mycelium room create sprint-plan
+mycelium session create -r sprint-plan
+mycelium session join --handle julia-agent -m "Prioritize the database migration first" -r sprint-plan
+mycelium session await --handle julia-agent -r sprint-plan
 
 # Terminal 2 — agent selina
-mycelium room join --handle selina-agent -m "Focus on frontend polish, backend is solid" -r sprint-plan
-mycelium room await --handle selina-agent -r sprint-plan
+mycelium session join --handle selina-agent -m "Focus on frontend polish, backend is solid" -r sprint-plan
+mycelium session await --handle selina-agent -r sprint-plan
 
 # CognitiveEngine runs negotiation — await returns ticks with actions
 ```

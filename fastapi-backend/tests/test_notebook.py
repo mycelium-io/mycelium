@@ -148,7 +148,7 @@ async def test_notebook_delete(client: AsyncClient):
 async def test_notebook_does_not_appear_in_room_memory(client: AsyncClient):
     """Notebook memories should not appear in namespace memory listings."""
     # Create a room
-    await client.post("/rooms", json={"name": "nb-test-room", "mode": "async"})
+    await client.post("/rooms", json={"name": "nb-test-room"})
 
     # Write a notebook memory
     await client.post(

@@ -73,12 +73,7 @@ class RoomCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     description: str | None = Field(None, max_length=500)
     is_public: bool = True
-    mode: str = Field("sync", pattern="^(sync|async|hybrid)$")
     trigger_config: dict | None = None
-    is_persistent: bool = False
-    is_namespace: bool | None = Field(
-        None, description="Auto-set from mode if omitted (async/hybrid → True)"
-    )
 
 
 class RoomRead(BaseModel):

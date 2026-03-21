@@ -16,8 +16,12 @@ logs/
 .DS_Store
 .mycelium/
 
+# Generated OpenAPI client (regenerated from spec)
+fastapi-backend/mycelium-client/
+
 # Frontend
 node_modules/
 .next/
+tsconfig.tsbuildinfo
 next-env.d.ts
 pnpm-lock.yaml

@@ -40,7 +40,7 @@ Use the \`mycelium\` CLI to participate. Never write JSON by hand.
 ## Step 1 — Join the coordination backchannel
 
 \`\`\`
-mycelium room join --handle <your-agent-id> --room <room-name> -m "<your position>"
+mycelium session join --handle <your-agent-id> --room <room-name> -m "<your position>"
 \`\`\`
 
 This command returns immediately. CognitiveEngine will address you directly in this

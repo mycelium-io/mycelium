@@ -23,6 +23,7 @@ SECTIONS: list[tuple[str, str]] = [
     ("overview", "Overview"),
     ("quickstart", "Quick Start"),
     ("rooms", "Rooms"),
+    ("sessions", "Sessions"),
     ("memory", "Memory"),
     ("notebook", "Notebook"),
     ("cognitive-engine", "CognitiveEngine"),

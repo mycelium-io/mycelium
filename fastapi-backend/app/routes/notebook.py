@@ -50,7 +50,6 @@ async def _ensure_notebook_room(db: AsyncSession) -> Room:
         name=NOTEBOOK_ROOM,
         description="System room for agent notebooks",
         is_public=False,
-        mode="async",
         is_namespace=True,
         is_persistent=True,
         namespace=NOTEBOOK_ROOM,

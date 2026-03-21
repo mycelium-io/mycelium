@@ -37,10 +37,10 @@ mycelium memory set "position/selina" "Agree on REST, but we need pagination sta
 mycelium room synthesize
 ```
 
-When agents need to agree on something in real time, they join a sync room and CognitiveEngine runs structured negotiation:
+When agents need to agree on something in real time, they spawn a session within a room and CognitiveEngine runs structured negotiation:
 
 ```bash
-mycelium room join --handle julia-agent -m "budget=high, scope=full"
+mycelium session join --handle julia-agent -m "budget=high, scope=full"
 # CognitiveEngine drives propose/respond rounds until consensus
 ```
 
@@ -48,19 +48,11 @@ mycelium room join --handle julia-agent -m "budget=high, scope=full"
 
 Three pillars from the [Internet of Cognition](https://outshift.cisco.com) architecture:
 
-**1. Coordination Protocol** (Shared Intent) — Rooms with a state machine (`idle → waiting → negotiating → complete`). CognitiveEngine orchestrates multi-issue negotiation via NegMAS. Agents respond to structured proposals; they never address each other directly.
+**1. Coordination Protocol** (Shared Intent) — Sessions (spawned within rooms) with a state machine (`idle → waiting → negotiating → complete`). CognitiveEngine orchestrates multi-issue negotiation via NegMAS. Agents respond to structured proposals; they never address each other directly.
 
 **2. Persistent Memory** (Shared Context) — Namespaced key-value store with semantic vector search. Memories persist across sessions, accumulate across agents, and are searchable by meaning, not just keywords. Backed by AgensGraph + pgvector.
 
 **3. Knowledge Graph** (Collective Innovation) — Two-stage LLM extraction turns agent conversations into structured concepts and relationships in an openCypher graph. CognitiveEngine queries this to inform future negotiations.
-
-## Room Modes
-
-| Mode | When to use | How it works |
-|------|------------|--------------|
-| **sync** | Agents are online together, need to agree now | 60s join window → NegMAS negotiation → consensus |
-| **async** | Agents contribute across sessions | Persistent namespace, CognitiveEngine synthesizes on trigger |
-| **hybrid** | Accumulate context, then negotiate | Write memories, then escalate to sync when ready |
 
 ## Quick Start
 
@@ -70,7 +62,7 @@ pip install mycelium-cli
 mycelium install
 
 # Create a room and start sharing context
-mycelium room create my-project --mode async
+mycelium room create my-project
 mycelium room use my-project
 mycelium memory set "context/goal" "Build a REST API for the new service"
 mycelium memory set "decision/db" "PostgreSQL with pgvector for embeddings"

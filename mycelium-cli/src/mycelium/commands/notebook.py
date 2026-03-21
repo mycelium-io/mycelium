@@ -52,8 +52,8 @@ def notebook_set(
     no_embed: bool = typer.Option(False, "--no-embed", help="Skip vector embedding"),
 ) -> None:
     """Write a memory to your private notebook."""
-    from mycelium_backend_client.api.memory import (
-        create_memories_rooms_room_name_memory_post as create_api,
+    from mycelium_backend_client.api.notebook import (
+        write_notebook_notebook_handle_memory_post as write_api,
     )
     from mycelium_backend_client.models import MemoryBatchCreate, MemoryCreate
 
@@ -75,8 +75,8 @@ def notebook_set(
     batch = MemoryBatchCreate(items=[item])
 
     with _get_client() as client:
-        result = create_api.sync(room_name="_notebooks", client=client, body=batch)
-        if result:
+        result = write_api.sync(handle=agent_handle, client=client, body=batch)
+        if result and isinstance(result, list):
             mem = result[0]
             console.print(f"[green]Notebook set:[/green] {mem.key} (v{mem.version})")
 
@@ -92,8 +92,8 @@ def notebook_get(
     handle: str | None = typer.Option(None, "--handle", "-H", help="Agent handle"),
 ) -> None:
     """Read a notebook memory by key."""
-    from mycelium_backend_client.api.memory import (
-        get_memory_rooms_room_name_memory_key_get as get_api,
+    from mycelium_backend_client.api.notebook import (
+        get_notebook_memory_notebook_handle_memory_key_get as get_api,
     )
 
     agent_handle = _resolve_handle(handle)
@@ -101,11 +101,9 @@ def notebook_get(
     with _get_client() as client:
         try:
             result = get_api.sync(
-                room_name="_notebooks",
+                handle=agent_handle,
                 key=key,
                 client=client,
-                scope="notebook",
-                handle=agent_handle,
             )
             if result:
                 val = result.value
@@ -134,18 +132,16 @@ def notebook_ls(
     limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
 ) -> None:
     """List notebook memories."""
-    from mycelium_backend_client.api.memory import (
-        list_memories_rooms_room_name_memory_get as list_api,
+    from mycelium_backend_client.api.notebook import (
+        list_notebook_notebook_handle_memory_get as list_api,
     )
 
     agent_handle = _resolve_handle(handle)
 
     with _get_client() as client:
         result = list_api.sync(
-            room_name="_notebooks",
-            client=client,
-            scope="notebook",
             handle=agent_handle,
+            client=client,
             prefix=prefix,
             limit=limit,
         )
@@ -175,18 +171,17 @@ def notebook_search(
     limit: int = typer.Option(5, "--limit", "-n", help="Max results"),
 ) -> None:
     """Semantic search in your notebook."""
-    from mycelium_backend_client.api.memory import (
-        search_memories_rooms_room_name_memory_search_post as search_api,
+    from mycelium_backend_client.api.notebook import (
+        search_notebook_notebook_handle_memory_search_post as search_api,
     )
     from mycelium_backend_client.models import MemorySearchRequest
 
-    _resolve_handle(handle)  # validate handle exists
+    agent_handle = _resolve_handle(handle)
 
     body = MemorySearchRequest(query=query, limit=limit)
 
     with _get_client() as client:
-        # The search endpoint needs scope/handle params — use notebook room
-        result = search_api.sync(room_name="_notebooks", client=client, body=body)
+        result = search_api.sync(handle=agent_handle, client=client, body=body)
         if not result or not result.results:
             console.print("[dim]No matches found[/dim]")
             return

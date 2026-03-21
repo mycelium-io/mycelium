@@ -37,7 +37,7 @@ class Settings(BaseSettings):
 
     # Coordination
     # How long to wait for additional agents to join after the first agent joins
-    # a sync/hybrid room before CognitiveEngine fires tick-0 (starts negotiation).
+    # a session before CognitiveEngine fires tick-0 (starts negotiation).
     COORDINATION_JOIN_WINDOW_SECONDS: int = 30
     # Per-round timeout: how long CognitiveEngine waits for an agent to reply
     # during a negotiation round before falling back to the safe default.
@@ -57,12 +57,30 @@ class Settings(BaseSettings):
     # IoC CFN management plane (optional — registration skipped if unset)
     CFN_MGMT_URL: str | None = None
 
-    # Room defaults
-    DEFAULT_ROOM_MODE: str = "sync"
-
     model_config = SettingsConfigDict(
         env_file=tuple(_env_files), env_file_encoding="utf-8", extra="ignore"
     )
 
 
 settings = Settings()  # type: ignore[call-arg]
+
+
+class LLMUnavailableError(RuntimeError):
+    """Raised when LLM is required but not configured."""
+
+    def __init__(self) -> None:
+        model = settings.LLM_MODEL
+        super().__init__(
+            f"LLM unavailable — no API key configured for {model}. "
+            f"Set LLM_API_KEY (and optionally LLM_BASE_URL) in your .env."
+        )
+
+
+def require_llm() -> None:
+    """Raise LLMUnavailableError if LLM is not configured.
+
+    Ollama and other local providers (via LLM_BASE_URL) don't need an API key,
+    so we only error when there's no key AND no custom base URL.
+    """
+    if not settings.LLM_API_KEY and not settings.LLM_BASE_URL:
+        raise LLMUnavailableError
