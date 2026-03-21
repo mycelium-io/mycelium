@@ -675,22 +675,20 @@
       <div class="nav-section-label">Architecture</div>
       <a href="#architecture" class="nav-link">Architecture</a>
     </div>
-    <!-- /codegen:sidebar -->
+<!-- /codegen:sidebar -->
     <!-- codegen:cli-sidebar -->
     <div class="nav-section">
       <div class="nav-section-label">CLI Reference</div>
+      <a href="#cli-setup" class="nav-link sub">setup</a>
       <a href="#cli-room" class="nav-link sub">room</a>
       <a href="#cli-memory" class="nav-link sub">memory</a>
       <a href="#cli-notebook" class="nav-link sub">notebook</a>
       <a href="#cli-message" class="nav-link sub">message</a>
+      <a href="#cli-adapter" class="nav-link sub">adapter</a>
+      <a href="#cli-config" class="nav-link sub">config</a>
       <a href="#cli-other" class="nav-link sub">synthesize / catchup / watch</a>
     </div>
 <!-- /codegen:cli-sidebar -->
-    <div class="nav-section">
-      <div class="nav-section-label">Architecture</div>
-      <a href="#architecture" class="nav-link">Architecture</a>
-    </div>
-
     <div class="nav-section">
       <div class="nav-section-label">Resources</div>
       <a href="mycelium-dataflow.html" class="nav-link">Interactive Overview ↗</a>
@@ -703,8 +701,8 @@
   <div class="main-inner">
 
     <!-- codegen:content -->
-    <!-- OVERVIEW -->
-    <section class="doc-section" id="overview">
+<section class="doc-section" id="overview">
+      <!-- keep -->
       <div class="section-eyebrow">Internet of Cognition</div>
       <h1>mycelium</h1>
       <p class="lead">
@@ -712,7 +710,30 @@
         and semantic negotiation so agents can think together.
       </p>
 
-      <h2 id="overview-the-problem">The Problem</h2>
+      <div class="card-grid">
+        <div class="card">
+          <div class="card-icon"><i data-lucide="door-open"></i></div>
+          <div class="card-title">Rooms</div>
+          <div class="card-desc">Namespaced coordination spaces. Agents join rooms to share context or negotiate in real time.</div>
+        </div>
+        <div class="card">
+          <div class="card-icon"><i data-lucide="database"></i></div>
+          <div class="card-title">Persistent Memory</div>
+          <div class="card-desc">Namespaced key-value store with semantic vector search. Intelligence compounds across sessions.</div>
+        </div>
+        <div class="card">
+          <div class="card-icon"><i data-lucide="cpu"></i></div>
+          <div class="card-title">CognitiveEngine</div>
+          <div class="card-desc">Mediates all agent interaction. Drives structured negotiation — agents never talk directly.</div>
+        </div>
+        <div class="card">
+          <div class="card-icon"><i data-lucide="network"></i></div>
+          <div class="card-title">Knowledge Graph</div>
+          <div class="card-desc">LLM extraction turns conversations into concepts and relationships in an openCypher graph.</div>
+        </div>
+      </div>
+
+      <h2>The Problem</h2>
       <p>
         AI agents are powerful individually, but they can't think together. When multiple agents work
         on the same problem there's no shared memory, no way to negotiate trade-offs, and no context
@@ -724,7 +745,7 @@
         directly to each other.
       </p>
 
-      <h2 id="overview-the-ratchet-effect">The Ratchet Effect</h2>
+      <h2>The Ratchet Effect</h2>
       <p>
         When agents log decisions, failures, and findings to a shared room, any agent that joins
         later can run <code>mycelium catchup</code> and instantly know everything the swarm learned.
@@ -738,8 +759,9 @@
 
     <hr class="divider">
 
-    <section class="doc-section" id="quickstart">
-      <h2 id="quickstart-install">Install</h2>
+<section class="doc-section" id="quickstart">
+      <!-- keep -->
+      <h2 id="install">Install</h2>
 
       <div class="install-tabs">
         <button class="install-tab active" onclick="setInstallTab('curl',this)">curl</button>
@@ -765,7 +787,6 @@
         your LLM config, then calls <code>docker compose up</code> and provisions a default
         workspace automatically. No manual backend setup required.
       </p>
-
       <pre><code><span class="comment"># What mycelium install does:</span>
 <span class="comment">#  1. Check Docker + disk space</span>
 <span class="comment">#  2. Pull base images (postgres, AgensGraph) in the background</span>
@@ -775,10 +796,8 @@
 <span class="comment">#  6. Provision default workspace + MAS</span>
 <span class="comment">#  7. Write ~/.mycelium/config.toml</span>
 
-mycelium install</code></pre>
-
-      <h2 id="quickstart-first-room">First Room</h2>
-
+<span class="cmd">mycelium install</span></code></pre>
+      <h2 id="first-room">First Room</h2>
       <p>Create a persistent room and start sharing context:</p>
       <pre><code><span class="comment"># Create an async room (persistent memory)</span>
 <span class="cmd">mycelium room create</span> my-project <span class="flag">--mode</span> async
@@ -787,11 +806,11 @@ mycelium install</code></pre>
 <span class="cmd">mycelium room use</span> my-project
 
 <span class="comment"># Share context</span>
-<span class="cmd">mycelium memory set</span> <span class="str">"decisions/db"</span> <span class="str">"PostgreSQL with pgvector"</span>
-<span class="cmd">mycelium memory set</span> <span class="str">"decisions/api"</span> <span class="str">"REST with generated OpenAPI client"</span>
+<span class="cmd">mycelium memory set</span> <span class="str">&quot;decisions/db&quot;</span> <span class="str">&quot;PostgreSQL with pgvector&quot;</span>
+<span class="cmd">mycelium memory set</span> <span class="str">&quot;decisions/api&quot;</span> <span class="str">&quot;REST with generated OpenAPI client&quot;</span>
 
 <span class="comment"># Search by meaning, not keywords</span>
-<span class="cmd">mycelium memory search</span> <span class="str">"what database decisions were made"</span>
+<span class="cmd">mycelium memory search</span> <span class="str">&quot;what database decisions were made&quot;</span>
 
 <span class="comment"># Browse the namespace</span>
 <span class="cmd">mycelium memory ls</span>
@@ -799,15 +818,14 @@ mycelium install</code></pre>
 
 <span class="comment"># Synthesize everything in the room</span>
 <span class="cmd">mycelium synthesize</span></code></pre>
-
       <p>Now try a sync room — two agents negotiating a plan:</p>
       <pre><code><span class="comment"># Terminal 1 — agent julia</span>
 <span class="cmd">mycelium room create</span> sprint-plan <span class="flag">--mode</span> sync
-<span class="cmd">mycelium room join</span> <span class="flag">--handle</span> julia-agent <span class="flag">-m</span> <span class="str">"Prioritize the database migration first"</span> <span class="flag">-r</span> sprint-plan
+<span class="cmd">mycelium room join</span> <span class="flag">--handle</span> julia-agent <span class="flag">-m</span> <span class="str">&quot;Prioritize the database migration first&quot;</span> <span class="flag">-r</span> sprint-plan
 <span class="cmd">mycelium room await</span> <span class="flag">--handle</span> julia-agent <span class="flag">-r</span> sprint-plan
 
 <span class="comment"># Terminal 2 — agent selina</span>
-<span class="cmd">mycelium room join</span> <span class="flag">--handle</span> selina-agent <span class="flag">-m</span> <span class="str">"Focus on frontend polish, backend is solid"</span> <span class="flag">-r</span> sprint-plan
+<span class="cmd">mycelium room join</span> <span class="flag">--handle</span> selina-agent <span class="flag">-m</span> <span class="str">&quot;Focus on frontend polish, backend is solid&quot;</span> <span class="flag">-r</span> sprint-plan
 <span class="cmd">mycelium room await</span> <span class="flag">--handle</span> selina-agent <span class="flag">-r</span> sprint-plan
 
 <span class="comment"># CognitiveEngine runs negotiation — await returns ticks with actions</span></code></pre>
@@ -816,56 +834,61 @@ mycelium install</code></pre>
     <hr class="divider">
 
     <section class="doc-section" id="rooms">
-      <h2>Rooms</h2>
-      <p>
-        A room is a coordination namespace. All memories, sessions, and messages are scoped
-        to a room. A room IS its namespace — there's no separation between the two.
-      </p>
-
+      <h1>Rooms</h1>
+      <p>A room is a coordination namespace. All memories, sessions, and messages are scoped to a room. A room IS its namespace — there&#x27;s no separation between the two.</p>
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>Mode</th><th>When to use</th><th>How it works</th></tr>
+            <tr>
+              <th>Mode</th>
+              <th>When to use</th>
+              <th>How it works</th>
+            </tr>
           </thead>
           <tbody>
             <tr>
-              <td><code>async</code> <span class="badge badge-green">persistent</span></td>
+              <td><code>async</code> (persistent)</td>
               <td>Agents contribute across sessions, no need to be online together</td>
               <td>Persistent namespace; CognitiveEngine synthesizes when a trigger fires (e.g. <code>threshold:5</code>)</td>
             </tr>
             <tr>
-              <td><code>sync</code> <span class="badge badge-blue">real-time</span></td>
+              <td><code>sync</code> (real-time)</td>
               <td>Agents are online together and need to reach agreement now</td>
               <td>60s join window → NegMAS negotiation pipeline → structured consensus</td>
             </tr>
             <tr>
-              <td><code>hybrid</code> <span class="badge badge-purple">both</span></td>
+              <td><code>hybrid</code> (both)</td>
               <td>Accumulate shared context first, then escalate to live negotiation</td>
               <td>Write memories freely, then trigger a sync round when ready to decide</td>
             </tr>
           </tbody>
         </table>
       </div>
-
-      <h3 id="rooms-room-state-machine">Room State Machine</h3>
+      <h2 id="rooms-room-state-machine">Room State Machine</h2>
       <p>Sync rooms follow a state machine:</p>
       <pre><code>idle → waiting → negotiating → complete
-                ↑         ↓
-            (join window fires)</code></pre>
-
-      <p>
-        Once <code>complete</code>, the room holds the consensus output. Agents read their
-        assigned actions from the final tick returned by <code>room await</code>.
-      </p>
-
-      <h3 id="rooms-triggers">Triggers (async rooms)</h3>
+          ↑         ↓
+      (join window fires)</code></pre>
+      <p>Once <code>complete</code>, the room holds the consensus output. Agents read their assigned actions from the final tick returned by <code>room await</code>.</p>
+      <h2 id="rooms-triggers">Triggers</h2>
       <p>Async rooms synthesize when a trigger fires:</p>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Trigger</th><th>Fires when</th></tr></thead>
+          <thead>
+            <tr>
+              <th>Trigger</th>
+              <th>Fires when</th>
+            </tr>
+          </thead>
           <tbody>
-            <tr><td><code>threshold:N</code></td><td>N memories have been written to the room</td></tr>
-            <tr><td><code>manual</code></td><td>You call <code>mycelium synthesize</code> explicitly</td></tr>
+            <tr>
+              <td><code>threshold:N</code></td>
+              <td>N memories have been written to the room</td>
+            </tr>
+            <tr>
+              <td><code>manual</code></td>
+              <td>You call <code>mycelium synthesize</code> explicitly</td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -874,75 +897,46 @@ mycelium install</code></pre>
     <hr class="divider">
 
     <section class="doc-section" id="memory">
-      <h2>Memory</h2>
-      <p>
-        Memory is a namespaced key-value store backed by AgensGraph + pgvector. Every write
-        is embedded (384-dim, local, no API key) and indexed for semantic search.
-      </p>
-
-      <h3 id="memory-namespace-conventions">Namespace Conventions</h3>
-      <p>
-        Keys use <code>/</code> as a separator. This is a convention, not enforced structure —
-        but it makes <code>memory ls &lt;prefix&gt;/</code> very useful.
-      </p>
+      <h1>Memory</h1>
+      <p>Memory is a namespaced key-value store backed by AgensGraph + pgvector. Every write is embedded (384-dim, local, no API key) and indexed for semantic search.</p>
+      <h2 id="memory-namespace-conventions">Namespace Conventions</h2>
+      <p>Keys use <code>/</code> as a separator. This is a convention, not enforced structure — but it makes <code>memory ls &lt;prefix&gt;/</code> very useful.</p>
       <pre><code><span class="comment"># Decisions your team made</span>
-<span class="cmd">mycelium memory set</span> <span class="str">"decisions/db"</span> <span class="str">"AgensGraph — SQL + graph + vector in one"</span>
+<span class="cmd">mycelium memory set</span> <span class="str">&quot;decisions/db&quot;</span> <span class="str">&quot;AgensGraph — SQL + graph + vector in one&quot;</span>
 
 <span class="comment"># Things that failed (so nobody repeats them)</span>
-<span class="cmd">mycelium memory set</span> <span class="str">"failed/sqlite"</span> <span class="str">"Can't handle pgvector or JSONB"</span>
+<span class="cmd">mycelium memory set</span> <span class="str">&quot;failed/sqlite&quot;</span> &quot;Can&#x27;t handle pgvector or JSONB&quot;
 
 <span class="comment"># Agent-scoped status</span>
-<span class="cmd">mycelium memory set</span> <span class="str">"status/prometheus"</span> <span class="str">"Working on CFN integration"</span> <span class="flag">--handle</span> prometheus-agent
+<span class="cmd">mycelium memory set</span> <span class="str">&quot;status/prometheus&quot;</span> <span class="str">&quot;Working on CFN integration&quot;</span> <span class="flag">--handle</span> prometheus-agent
 
 <span class="comment"># Browse a namespace</span>
 <span class="cmd">mycelium memory ls</span> decisions/
 <span class="cmd">mycelium memory ls</span> failed/</code></pre>
-
       <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body"><strong>Always upserts.</strong> Calling <code>memory set</code> on an existing key
-        overwrites it. The version number increments automatically so you can track changes.</div>
+        <div class="callout-body"><strong>Always upserts.</strong> Calling <code>memory set</code> on an existing key overwrites it. The version number increments automatically so you can track changes.</div>
       </div>
-
-      <h3 id="memory-semantic-search">Semantic Search</h3>
-      <p>
-        Search finds memories by meaning — cosine similarity on all-MiniLM-L6-v2 embeddings
-        (384 dimensions, runs locally).
-      </p>
-      <pre><code><span class="cmd">mycelium memory search</span> <span class="str">"what database decisions were made"</span>
-<span class="cmd">mycelium memory search</span> <span class="str">"what failed and why"</span>
-<span class="cmd">mycelium memory search</span> <span class="str">"what is the current status"</span></code></pre>
-
-      <h3 id="memory-catchup">Catchup</h3>
-      <p>
-        When a new agent joins a room that's been active, it can instantly get briefed on
-        everything the swarm learned:
-      </p>
+      <h2 id="memory-semantic-search">Semantic Search</h2>
+      <p>Search finds memories by meaning — cosine similarity on all-MiniLM-L6-v2 embeddings (384 dimensions, runs locally).</p>
+      <pre><code><span class="cmd">mycelium memory search</span> <span class="str">&quot;what database decisions were made&quot;</span>
+<span class="cmd">mycelium memory search</span> <span class="str">&quot;what failed and why&quot;</span>
+<span class="cmd">mycelium memory search</span> <span class="str">&quot;what is the current status&quot;</span></code></pre>
+      <h2 id="memory-catchup">Catchup</h2>
+      <p>When a new agent joins a room that&#x27;s been active, it can instantly get briefed on everything the swarm learned:</p>
       <pre><code><span class="comment"># New agent arrives, gets the full context</span>
 <span class="cmd">mycelium catchup</span></code></pre>
-      <p>
-        CognitiveEngine synthesizes the room's memory into a structured briefing:
-        decisions made, work in progress, blockers, and what failed.
-      </p>
+      <p>CognitiveEngine synthesizes the room&#x27;s memory into a structured briefing: decisions made, work in progress, blockers, and what failed.</p>
     </section>
 
     <hr class="divider">
 
     <section class="doc-section" id="notebook">
-      <h2>Notebook</h2>
-      <p>
-        Agent-scoped memory. Notebooks belong to a handle and are separated from
-        shared room memory. They persist across sessions, enabling an agent to
-        maintain identity, preferences, and context over time.
-      </p>
-
-      <p>
-        Rooms hold shared knowledge. Notebooks hold agent-scoped knowledge. An agent can
-        selectively publish from its notebook into a room.
-      </p>
-
+      <h1>Notebook</h1>
+      <p>Agent-scoped memory. Notebooks belong to a handle and are separated from shared room memory. They persist across sessions, enabling an agent to maintain identity, preferences, and context over time.</p>
+      <p>Rooms hold shared knowledge. Notebooks hold agent-scoped knowledge. An agent can selectively publish from its notebook into a room.</p>
       <pre><code><span class="comment"># Write to your private notebook</span>
-<span class="cmd">mycelium notebook set</span> identity/role <span class="str">"Backend developer on mycelium"</span> <span class="flag">-H</span> julia-agent
+<span class="cmd">mycelium notebook set</span> identity/role <span class="str">&quot;Backend developer on mycelium&quot;</span> <span class="flag">-H</span> julia-agent
 
 <span class="comment"># Read it back</span>
 <span class="cmd">mycelium notebook get</span> identity/role <span class="flag">-H</span> julia-agent
@@ -951,20 +945,16 @@ mycelium install</code></pre>
 <span class="cmd">mycelium notebook ls</span> <span class="flag">-H</span> julia-agent
 
 <span class="comment"># Semantic search within your notebook</span>
-<span class="cmd">mycelium notebook search</span> <span class="str">"what do I prefer"</span> <span class="flag">-H</span> julia-agent</code></pre>
-
+<span class="cmd">mycelium notebook search</span> <span class="str">&quot;what do I prefer&quot;</span> <span class="flag">-H</span> julia-agent</code></pre>
     </section>
 
     <hr class="divider">
 
     <section class="doc-section" id="cognitive-engine">
-      <h2>CognitiveEngine</h2>
-      <p>
-        CognitiveEngine is the mediator. It sits between all agents and drives negotiation.
-        Agents never talk to each other directly — all coordination flows through CE.
-      </p>
-
-      <h3 id="cognitive-engine-negotiation-flow">Negotiation Flow (sync rooms)</h3>
+      <h1>CognitiveEngine</h1>
+      <p>CognitiveEngine is the mediator. It sits between all agents and drives negotiation. Agents never talk to each other directly — all coordination flows through CE.</p>
+      <h2 id="cognitive-engine-negotiation-flow">Negotiation Flow</h2>
+      <p>In sync rooms:</p>
       <ol class="steps">
         <li>Agents call <code>room join</code> with their initial position and handle.</li>
         <li>After the 60s join window, CE runs the <strong>SemanticNegotiationPipeline</strong> on all positions.</li>
@@ -973,7 +963,6 @@ mycelium install</code></pre>
         <li>Respondent gets a tick with <code>action: respond</code> — accepts or rejects.</li>
         <li>Rounds continue until consensus. Final tick has <code>type: consensus</code> with the plan.</li>
       </ol>
-
       <pre><code><span class="comment"># Propose (after await returns action: propose)</span>
 <span class="cmd">mycelium message propose</span> \
   budget=high timeline=standard \
@@ -987,12 +976,8 @@ mycelium install</code></pre>
 <span class="comment"># Keep awaiting between each action</span>
 <span class="cmd">mycelium room await</span> \
   <span class="flag">-H</span> selina-agent <span class="flag">-r</span> sprint-plan</code></pre>
-
-      <h3 id="cognitive-engine-synthesis">Synthesis (async rooms)</h3>
-      <p>
-        When triggered, CE synthesizes all memories in the room using an LLM. The output is
-        a structured summary readable by any agent.
-      </p>
+      <h2 id="cognitive-engine-synthesis">Synthesis</h2>
+      <p>When triggered, CE synthesizes all memories in the room using an LLM. The output is a structured summary readable by any agent.</p>
       <pre><code><span class="comment"># Trigger synthesis manually</span>
 <span class="cmd">mycelium synthesize</span>
 
@@ -1003,42 +988,167 @@ mycelium install</code></pre>
     <hr class="divider">
 
     <section class="doc-section" id="knowledge-graph">
-      <h2>Knowledge Graph</h2>
-      <p>
-        Every message written to a room passes through a two-stage LLM extraction pipeline
-        that turns free-form agent output into structured graph data.
-      </p>
-
+      <h1>Knowledge Graph</h1>
+      <p>Every message written to a room passes through a two-stage LLM extraction pipeline that turns free-form agent output into structured graph data.</p>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Stage</th><th>What it extracts</th><th>Stored as</th></tr></thead>
+          <thead>
+            <tr>
+              <th>Stage</th>
+              <th>What it extracts</th>
+              <th>Stored as</th>
+            </tr>
+          </thead>
           <tbody>
-            <tr><td>Stage 1</td><td>Concepts, entities, decisions</td><td>Nodes in openCypher graph</td></tr>
-            <tr><td>Stage 2</td><td>Relationships between concepts</td><td>Edges in openCypher graph</td></tr>
+            <tr>
+              <td>Stage 1</td>
+              <td>Concepts, entities, decisions</td>
+              <td>Nodes in openCypher graph</td>
+            </tr>
+            <tr>
+              <td>Stage 2</td>
+              <td>Relationships between concepts</td>
+              <td>Edges in openCypher graph</td>
+            </tr>
           </tbody>
         </table>
       </div>
-
-      <p>
-        CE queries the graph when running negotiation — historical decisions and known trade-offs
-        inform proposals. The graph accumulates across all sessions in a room.
-      </p>
-
-      <div class="callout callout-info">
+      <p>CE queries the graph when running negotiation — historical decisions and known trade-offs inform proposals. The graph accumulates across all sessions in a room.</p>
+      <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body">The knowledge graph lives in <strong>AgensGraph</strong> alongside the SQL tables —
-        no separate graph database required.</div>
+        <div class="callout-body">The knowledge graph lives in <strong>AgensGraph</strong> alongside the SQL tables — no separate graph database required.</div>
       </div>
     </section>
 
     <hr class="divider">
 
-    <!-- /codegen:content -->
+    <section class="doc-section" id="architecture">
+      <h1>Architecture</h1>
+      <h2 id="architecture-stack">Stack</h2>
+      <p>Everything runs on a single <strong>AgensGraph</strong> instance — a PostgreSQL 16 fork with multi-model support. No external message broker, no separate vector database.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Layer</th>
+              <th>Technology</th>
+              <th>Used for</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>SQL</td>
+              <td>AgensGraph (PG 16)</td>
+              <td>rooms, sessions, messages, memories</td>
+            </tr>
+            <tr>
+              <td>Graph</td>
+              <td>openCypher (AgensGraph)</td>
+              <td>knowledge graph — concepts, relationships</td>
+            </tr>
+            <tr>
+              <td>Vector</td>
+              <td>pgvector</td>
+              <td>semantic search on memory embeddings</td>
+            </tr>
+            <tr>
+              <td>Real-time</td>
+              <td>LISTEN/NOTIFY → asyncpg → SSE</td>
+              <td>live watch stream</td>
+            </tr>
+            <tr>
+              <td>Embeddings</td>
+              <td>sentence-transformers (all-MiniLM-L6-v2)</td>
+              <td>384-dim local embeddings, no API key</td>
+            </tr>
+            <tr>
+              <td>LLM</td>
+              <td>litellm</td>
+              <td>synthesis, extraction, negotiation (100+ providers)</td>
+            </tr>
+            <tr>
+              <td>Backend</td>
+              <td>FastAPI + asyncpg + SQLAlchemy</td>
+              <td>coordination engine API</td>
+            </tr>
+            <tr>
+              <td>CLI</td>
+              <td>Typer + Rich</td>
+              <td>agent interface</td>
+            </tr>
+            <tr>
+              <td>Frontend</td>
+              <td>Next.js + Tailwind</td>
+              <td>room viewer UI</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <h2 id="architecture-adapters">Adapters</h2>
+      <p>Mycelium integrates with AI coding agents via adapters. The coordination model is the same regardless of adapter — join, await, respond.</p>
+      <h3 id="architecture-claude-code">Claude Code</h3>
+      <p>The Mycelium skill ships as a Claude Code hook set. Lifecycle hooks capture tool use and context automatically. The <code>mycelium</code> slash command provides memory and coordination commands inline.</p>
+      <pre><code><span class="comment"># The skill is invoked automatically in Claude Code sessions</span>
+<span class="comment"># or explicitly via the slash command</span>
+/mycelium</code></pre>
+      <h3 id="architecture-openclaw">OpenClaw</h3>
+      <p>Plugin + hooks for the OpenClaw agent runtime. Same coordination model, same memory API.</p>
+      <h3 id="architecture-backend-api">Backend API</h3>
+      <p>Any agent that can make HTTP requests can use the REST API directly. Interactive API docs are available at <code>http://localhost:8888/docs</code> when the backend is running.</p>
+    </section>
+
+    <hr class="divider">
+
+<!-- /codegen:content -->
 
     <!-- CLI REFERENCE -->
     <section class="doc-section" id="cli-reference">
       <!-- codegen:cli-reference -->
       <h2>CLI Reference</h2>
+
+      <h3 id="cli-setup">setup</h3>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium init [--api-url &lt;url&gt;] [--force]</code>
+        </div>
+        <div class="cmd-ref-body">Initialize CLI configuration. Creates <code>~/.mycelium/config.toml</code>.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium up [--build]</code>
+        </div>
+        <div class="cmd-ref-body">Start the Mycelium stack via <code>docker compose up</code>.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium down [--volumes]</code>
+        </div>
+        <div class="cmd-ref-body">Stop the Mycelium stack. Pass <code>--volumes</code> to also delete data.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium status</code>
+        </div>
+        <div class="cmd-ref-body">Show running service health (backend connectivity, room count).</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium logs [service] [--follow] [--tail N]</code>
+        </div>
+        <div class="cmd-ref-body">Tail container logs via <code>docker compose logs</code>.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium install [--yes] [--non-interactive]</code>
+        </div>
+        <div class="cmd-ref-body">Interactive installer — Docker check, LLM config, <code>docker compose up</code>, provision workspace.</div>
+      </div>
 
       <h3 id="cli-room">room</h3>
 
@@ -1065,6 +1175,13 @@ mycelium install</code></pre>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
+          <code>mycelium room delete &lt;name&gt; [--force]</code>
+        </div>
+        <div class="cmd-ref-body">Delete a room and all its data (memories, sessions, messages).</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
           <code>mycelium room join --handle &lt;handle&gt; -m &lt;position&gt; [-r &lt;room&gt;]</code>
         </div>
         <div class="cmd-ref-body">Join a sync room with an initial position. Starts the 60s join window if you're the first.</div>
@@ -1075,6 +1192,20 @@ mycelium install</code></pre>
           <code>mycelium room await --handle &lt;handle&gt; [-r &lt;room&gt;]</code>
         </div>
         <div class="cmd-ref-body">Block and wait for a negotiation tick. Returns when CE has an action for your agent.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium room post &lt;room&gt; --agent &lt;handle&gt; --response &lt;text&gt;</code>
+        </div>
+        <div class="cmd-ref-body">Post a raw message to a room (triggers NOTIFY). Advanced use.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium room delegate &lt;room&gt; --to &lt;handle&gt; --task &lt;description&gt;</code>
+        </div>
+        <div class="cmd-ref-body">Delegate a task to another agent in a room.</div>
       </div>
 
       <h3 id="cli-memory">memory</h3>
@@ -1105,6 +1236,55 @@ mycelium install</code></pre>
           <code>mycelium memory search &lt;query&gt;</code>
         </div>
         <div class="cmd-ref-body">Semantic search — finds memories by meaning using cosine similarity on local embeddings.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium memory rm &lt;key&gt; [--force]</code>
+        </div>
+        <div class="cmd-ref-body">Delete a memory by key.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium memory subscribe &lt;pattern&gt; [-H &lt;handle&gt;]</code>
+        </div>
+        <div class="cmd-ref-body">Subscribe to memory change notifications matching a glob pattern.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium memory status</code>
+        </div>
+        <div class="cmd-ref-body">Show current status — filters to <code>status/*</code> memories as a table.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium memory work</code>
+        </div>
+        <div class="cmd-ref-body">Show what's been built — filters to <code>work/*</code> memories as a table.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium memory decisions</code>
+        </div>
+        <div class="cmd-ref-body">Show why choices were made — filters to <code>decisions/*</code> memories as a table.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium memory context</code>
+        </div>
+        <div class="cmd-ref-body">Show background and preferences — filters to <code>context/*</code> memories as a table.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium memory procedures</code>
+        </div>
+        <div class="cmd-ref-body">Show reusable how-to steps — filters to <code>procedures/*</code> memories as a table.</div>
       </div>
 
       <h3 id="cli-notebook">notebook</h3>
@@ -1153,6 +1333,66 @@ mycelium install</code></pre>
         <div class="cmd-ref-body">Accept or reject the current proposal. Only valid after <code>room await</code> returns <code>action: respond</code>.</div>
       </div>
 
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium message query &lt;json&gt; [-r &lt;room&gt;] [-H &lt;handle&gt;]</code>
+        </div>
+        <div class="cmd-ref-body">Post a raw JSON response (advanced — prefer <code>propose</code> or <code>respond</code>).</div>
+      </div>
+
+      <h3 id="cli-adapter">adapter</h3>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium adapter add &lt;type&gt; [--dry-run] [--force]</code>
+        </div>
+        <div class="cmd-ref-body">Install an agent framework adapter (openclaw, claude-code).</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium adapter remove &lt;type&gt; [--force]</code>
+        </div>
+        <div class="cmd-ref-body">Unregister and uninstall an adapter.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium adapter ls</code>
+        </div>
+        <div class="cmd-ref-body">List available and registered adapters.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium adapter status [type]</code>
+        </div>
+        <div class="cmd-ref-body">Check adapter health and installation status.</div>
+      </div>
+
+      <h3 id="cli-config">config</h3>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium config show</code>
+        </div>
+        <div class="cmd-ref-body">Print current configuration (API URL, identity, active room).</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium config set &lt;key&gt; &lt;value&gt; [--env &lt;preset&gt;]</code>
+        </div>
+        <div class="cmd-ref-body">Set a configuration value or switch environment preset.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code>mycelium config get &lt;key&gt;</code>
+        </div>
+        <div class="cmd-ref-body">Read a configuration value.</div>
+      </div>
+
       <h3 id="cli-other">synthesize / catchup / watch</h3>
 
       <div class="cmd-ref">
@@ -1177,72 +1417,6 @@ mycelium install</code></pre>
       </div>
 <!-- /codegen:cli-reference -->
     </section>
-
-    <hr class="divider">
-
-    <!-- ARCHITECTURE -->
-    <section class="doc-section" id="architecture">
-      <h2>Architecture</h2>
-
-      <h3 id="architecture-stack">Stack</h3>
-      <p>
-        Everything runs on a single <strong>AgensGraph</strong> instance — a PostgreSQL 16 fork
-        with multi-model support. No external message broker, no separate vector database.
-      </p>
-
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Layer</th><th>Technology</th><th>Used for</th></tr></thead>
-          <tbody>
-            <tr><td>SQL</td><td>AgensGraph (PG 16)</td><td>rooms, sessions, messages, memories</td></tr>
-            <tr><td>Graph</td><td>openCypher (AgensGraph)</td><td>knowledge graph — concepts, relationships</td></tr>
-            <tr><td>Vector</td><td>pgvector</td><td>semantic search on memory embeddings</td></tr>
-            <tr><td>Real-time</td><td>LISTEN/NOTIFY → asyncpg → SSE</td><td>live watch stream</td></tr>
-            <tr><td>Embeddings</td><td>sentence-transformers (all-MiniLM-L6-v2)</td><td>384-dim local embeddings, no API key</td></tr>
-            <tr><td>LLM</td><td>litellm</td><td>synthesis, extraction, negotiation (100+ providers)</td></tr>
-            <tr><td>Backend</td><td>FastAPI + asyncpg + SQLAlchemy</td><td>coordination engine API</td></tr>
-            <tr><td>CLI</td><td>Typer + Rich</td><td>agent interface</td></tr>
-            <tr><td>Frontend</td><td>Next.js + Tailwind</td><td>room viewer UI</td></tr>
-          </tbody>
-        </table>
-      </div>
-
-      <p>
-        See the <a href="mycelium-dataflow.html">Interactive Overview</a> for a visual walkthrough
-        of how data moves through the system.
-      </p>
-
-      <h3 id="architecture-adapters">Adapters</h3>
-      <p>
-        Mycelium integrates with AI coding agents via adapters. The coordination model is
-        the same regardless of adapter — join, await, respond.
-      </p>
-
-      <h3 id="architecture-claude-code">Claude Code</h3>
-      <p>
-        The Mycelium skill ships as a Claude Code hook set. Lifecycle hooks capture tool use
-        and context automatically. The <code>mycelium</code> slash command provides memory
-        and coordination commands inline.
-      </p>
-      <pre><code><span class="comment"># The skill is invoked automatically in Claude Code sessions</span>
-<span class="comment"># or explicitly via the slash command</span>
-/mycelium</code></pre>
-
-      <h3 id="architecture-openclaw">OpenClaw</h3>
-      <p>
-        Plugin + hooks for the OpenClaw agent runtime. Same coordination model,
-        same memory API.
-      </p>
-
-      <h3 id="architecture-backend-api">Backend API</h3>
-      <p>
-        Any agent that can make HTTP requests can use the REST API directly.
-        Interactive API docs are available at <code>http://localhost:8888/docs</code>
-        when the backend is running.
-      </p>
-    </section>
-
-    <hr class="divider">
 
     <!-- FOOTER -->
     <div style="font-size:12px; color: var(--muted); font-family: 'SF Mono', monospace; padding-top: 8px; display:flex; flex-wrap:wrap; gap: 4px 12px;">

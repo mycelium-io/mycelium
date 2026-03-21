@@ -341,22 +341,50 @@ def _generate_sidebar() -> str:
 
 # ── Main content generation ──
 
-def _generate_content_sections() -> str:
-    """Generate all content section HTML from markdown files."""
+def _extract_kept_sections(html: str) -> dict[str, str]:
+    """Extract sections marked <!-- keep --> from existing index.html.
+
+    Sections with this comment are hand-crafted HTML (interactive components,
+    card grids, etc.) that can't be expressed in markdown. The generator
+    preserves them verbatim. Remove the comment to switch to markdown-generated.
+    """
+    kept: dict[str, str] = {}
+    for m in re.finditer(
+        r'(<section\s+class="doc-section"\s+id="([^"]+)"[^>]*>.*?</section>)',
+        html,
+        re.DOTALL,
+    ):
+        if "<!-- keep -->" in m.group(1):
+            kept[m.group(2)] = m.group(1)
+    return kept
+
+
+def _generate_content_sections(existing_html: str) -> str:
+    """Generate all content section HTML from markdown files.
+
+    Sections in the existing HTML that contain <!-- keep --> are preserved
+    verbatim. All others are regenerated from their markdown source.
+    """
+    kept = _extract_kept_sections(existing_html)
     sections = []
 
     for md_file, section_id, _, _ in SECTION_CONFIG:
-        md_path = DOCS_DIR / md_file
-        if not md_path.exists():
-            print(f"  WARNING: {md_path} not found, skipping")
-            continue
+        if section_id in kept:
+            print(f"  {section_id}: kept (hand-crafted HTML)")
+            sections.append(kept[section_id])
+        else:
+            md_path = DOCS_DIR / md_file
+            if not md_path.exists():
+                print(f"  WARNING: {md_path} not found, skipping")
+                continue
 
-        md_content = md_path.read_text()
-        section_html = _md_to_html(md_content, section_id)
+            md_content = md_path.read_text()
+            section_html = _md_to_html(md_content, section_id)
 
-        sections.append(f'    <section class="doc-section" id="{section_id}">')
-        sections.append(section_html)
-        sections.append("    </section>")
+            sections.append(f'    <section class="doc-section" id="{section_id}">')
+            sections.append(section_html)
+            sections.append("    </section>")
+
         sections.append("")
         sections.append('    <hr class="divider">')
         sections.append("")
@@ -390,7 +418,7 @@ def main() -> None:
 
     # Generate content sections from markdown
     print("Generating content sections from markdown...")
-    sections_html = _generate_content_sections()
+    sections_html = _generate_content_sections(content)
     content = _replace_between_markers(content, "codegen:content", sections_html)
 
     # Generate CLI reference from @doc_ref

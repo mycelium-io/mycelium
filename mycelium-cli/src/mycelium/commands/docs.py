@@ -259,7 +259,9 @@ def docs_main(
             return
 
         typer.secho(f"Section not found: {section}", fg=typer.colors.RED)
-        typer.secho("Run 'mycelium docs --list' to see available docs.", fg=typer.colors.BRIGHT_BLACK)
+        typer.secho(
+            "Run 'mycelium docs --list' to see available docs.", fg=typer.colors.BRIGHT_BLACK
+        )
         raise typer.Exit(1)
 
     # Section + topic (legacy path: "mycelium docs concepts rooms")
@@ -299,7 +301,10 @@ def _print_doc_list(docs_root: Path) -> None:
                 typer.echo(f"  {cmd:<40} {title}")
 
     typer.echo("")
-    typer.secho("  mycelium docs --full                   Dump all sections as markdown", fg=typer.colors.BRIGHT_BLACK)
+    typer.secho(
+        "  mycelium docs --full                   Dump all sections as markdown",
+        fg=typer.colors.BRIGHT_BLACK,
+    )
 
 
 def _print_section_list(docs_root: Path, section: str) -> None:
