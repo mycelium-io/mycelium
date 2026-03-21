@@ -27,7 +27,7 @@ from app.agents.semantic_negotiation import (
     SemanticNegotiationPipeline,
 )
 from app.bus import agent_channel, notify, room_channel
-from app.config import settings
+from app.config import require_llm, settings
 from app.database import async_session_maker
 from app.models import Message, Room, Session
 
@@ -80,6 +80,22 @@ async def _run_tick(room_name: str, tick: int) -> None:
 
     if tick != 0:
         # Subsequent ticks are handled by on_agent_response routing to the pipeline
+        return
+
+    # Check LLM availability before starting negotiation
+    try:
+        require_llm()
+    except RuntimeError as exc:
+        logger.error("Cannot start negotiation for %s: %s", room_name, exc)
+        await _post_message(
+            room_name,
+            message_type="coordination_error",
+            content=json.dumps({"error": str(exc)}),
+        )
+        await db.execute(
+            update(Room).where(Room.name == room_name).values(coordination_state="idle")
+        )
+        await db.commit()
         return
 
     # --- Tick 0: initialise state and launch pipeline ---
@@ -143,6 +159,16 @@ async def _run_tick(room_name: str, tick: int) -> None:
                 await db.commit()
         except Exception as exc:
             logger.error("Negotiation pipeline failed for room %s: %s", room_name, exc)
+            await _post_message(
+                room_name,
+                message_type="coordination_error",
+                content=json.dumps({"error": str(exc)}),
+            )
+            async with async_session_maker() as db:
+                await db.execute(
+                    update(Room).where(Room.name == room_name).values(coordination_state="idle")
+                )
+                await db.commit()
         finally:
             _state.pop(room_name, None)
             _pipelines.pop(room_name, None)

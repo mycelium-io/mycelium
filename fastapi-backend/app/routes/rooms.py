@@ -92,6 +92,13 @@ async def synthesize_room(
     if room.coordination_state == "synthesizing":
         raise HTTPException(status_code=409, detail="Synthesis already in progress")
 
+    from app.config import LLMUnavailableError, require_llm
+
+    try:
+        require_llm()
+    except LLMUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
     from app.services.async_coordination import run_synthesis
 
     result = await run_synthesis(room_name)

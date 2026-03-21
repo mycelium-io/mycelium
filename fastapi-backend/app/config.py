@@ -63,3 +63,24 @@ class Settings(BaseSettings):
 
 
 settings = Settings()  # type: ignore[call-arg]
+
+
+class LLMUnavailableError(RuntimeError):
+    """Raised when LLM is required but not configured."""
+
+    def __init__(self) -> None:
+        model = settings.LLM_MODEL
+        super().__init__(
+            f"LLM unavailable — no API key configured for {model}. "
+            f"Set LLM_API_KEY (and optionally LLM_BASE_URL) in your .env."
+        )
+
+
+def require_llm() -> None:
+    """Raise LLMUnavailableError if LLM is not configured.
+
+    Ollama and other local providers (via LLM_BASE_URL) don't need an API key,
+    so we only error when there's no key AND no custom base URL.
+    """
+    if not settings.LLM_API_KEY and not settings.LLM_BASE_URL:
+        raise LLMUnavailableError
