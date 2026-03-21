@@ -312,14 +312,14 @@ async def test_async_room_full_flow(integration_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_sync_room_still_works(integration_client: AsyncClient):
-    """Verify sync rooms still behave as before — join starts the timer."""
+    """Verify joining a namespace room spawns a sync session that enters waiting."""
     client = integration_client
 
-    # Create sync room
-    resp = await client.post("/rooms", json={"name": "e2e-sync", "mode": "sync"})
+    # Create namespace room
+    resp = await client.post("/rooms", json={"name": "e2e-sync"})
     assert resp.status_code == 201
 
-    # Join should set state to waiting
+    # Join auto-spawns a session; the session room enters waiting
     resp = await client.post(
         "/rooms/e2e-sync/sessions",
         json={
@@ -328,23 +328,28 @@ async def test_sync_room_still_works(integration_client: AsyncClient):
         },
     )
     assert resp.status_code == 201
+    session_room_name = resp.json()["room_name"]
+    assert "e2e-sync:session:" in session_room_name
 
-    # Room should be in waiting state
+    # The spawned session room should be in waiting state
+    resp = await client.get(f"/rooms/{session_room_name}")
+    session_room = resp.json()
+    assert session_room["coordination_state"] == "waiting"
+
+    # The parent namespace should still be idle
     resp = await client.get("/rooms/e2e-sync")
-    room = resp.json()
-    assert room["coordination_state"] == "waiting"
-    assert room["mode"] == "sync"
+    assert resp.json()["coordination_state"] == "idle"
 
 
 @pytest.mark.asyncio
-async def test_async_room_join_no_timer(integration_client: AsyncClient):
-    """Verify async room join does NOT start coordination timer."""
+async def test_namespace_room_stays_idle_after_join(integration_client: AsyncClient):
+    """Verify namespace room stays idle — the spawned session gets the state change."""
     client = integration_client
 
-    await client.post("/rooms", json={"name": "e2e-async-join", "mode": "async"})
+    await client.post("/rooms", json={"name": "e2e-ns-join"})
 
     resp = await client.post(
-        "/rooms/e2e-async-join/sessions",
+        "/rooms/e2e-ns-join/sessions",
         json={
             "agent_handle": "agent-a",
             "intent": "just sharing context",
@@ -352,8 +357,8 @@ async def test_async_room_join_no_timer(integration_client: AsyncClient):
     )
     assert resp.status_code == 201
 
-    # Room should still be idle
-    resp = await client.get("/rooms/e2e-async-join")
+    # Namespace room should still be idle
+    resp = await client.get("/rooms/e2e-ns-join")
     assert resp.json()["coordination_state"] == "idle"
 
 
