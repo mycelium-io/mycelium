@@ -351,6 +351,7 @@
   .str { color: var(--green); }
   .flag { color: var(--cyan); }
   .cmd { color: var(--accent); }
+  .arg { color: var(--purple); font-style: italic; }
 
   /* ── CALLOUTS ── */
   .callout {
@@ -1110,42 +1111,42 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium init [--api-url &lt;url&gt;] [--force]</code>
+          <code><span class="cmd">mycelium init</span> [<span class="flag">--api-url</span> <span class="arg">&lt;url&gt;</span>] [<span class="flag">--force</span>]</code>
         </div>
         <div class="cmd-ref-body">Initialize CLI configuration. Creates <code>~/.mycelium/config.toml</code>.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium up [--build]</code>
+          <code><span class="cmd">mycelium up</span> [<span class="flag">--build</span>]</code>
         </div>
         <div class="cmd-ref-body">Start the Mycelium stack via <code>docker compose up</code>.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium down [--volumes]</code>
+          <code><span class="cmd">mycelium down</span> [<span class="flag">--volumes</span>]</code>
         </div>
         <div class="cmd-ref-body">Stop the Mycelium stack. Pass <code>--volumes</code> to also delete data.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium status</code>
+          <code><span class="cmd">mycelium status</span></code>
         </div>
         <div class="cmd-ref-body">Show running service health (backend connectivity, room count).</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium logs [service] [--follow] [--tail N]</code>
+          <code><span class="cmd">mycelium logs</span> [service] [<span class="flag">--follow</span>] [<span class="flag">--tail</span> N]</code>
         </div>
         <div class="cmd-ref-body">Tail container logs via <code>docker compose logs</code>.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium install [--yes] [--non-interactive]</code>
+          <code><span class="cmd">mycelium install</span> [<span class="flag">--yes</span>] [<span class="flag">--non-interactive</span>]</code>
         </div>
         <div class="cmd-ref-body">Interactive installer — Docker check, LLM config, <code>docker compose up</code>, provision workspace.</div>
       </div>
@@ -1154,56 +1155,56 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium room ls</code>
+          <code><span class="cmd">mycelium room ls</span></code>
         </div>
         <div class="cmd-ref-body">List all rooms with mode, state, and member count.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium room create &lt;name&gt; --mode &lt;async|sync|hybrid&gt; [--trigger threshold:N]</code>
+          <code><span class="cmd">mycelium room create</span> <span class="arg">&lt;name&gt;</span> <span class="flag">--mode</span> &lt;async|sync|hybrid&gt; [<span class="flag">--trigger</span> threshold:N]</code>
         </div>
         <div class="cmd-ref-body">Create a new coordination room. Mode is required.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium room use &lt;name&gt;</code>
+          <code><span class="cmd">mycelium room use</span> <span class="arg">&lt;name&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Switch active room. Subsequent <code>memory</code> and <code>message</code> commands use this room by default.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium room delete &lt;name&gt; [--force]</code>
+          <code><span class="cmd">mycelium room delete</span> <span class="arg">&lt;name&gt;</span> [<span class="flag">--force</span>]</code>
         </div>
         <div class="cmd-ref-body">Delete a room and all its data (memories, sessions, messages).</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium room join --handle &lt;handle&gt; -m &lt;position&gt; [-r &lt;room&gt;]</code>
+          <code><span class="cmd">mycelium room join</span> <span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span> <span class="flag">-m</span> <span class="arg">&lt;position&gt;</span> [<span class="flag">-r</span> <span class="arg">&lt;room&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Join a sync room with an initial position. Starts the 60s join window if you're the first.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium room await --handle &lt;handle&gt; [-r &lt;room&gt;]</code>
+          <code><span class="cmd">mycelium room await</span> <span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span> [<span class="flag">-r</span> <span class="arg">&lt;room&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Block and wait for a negotiation tick. Returns when CE has an action for your agent.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium room post &lt;room&gt; --agent &lt;handle&gt; --response &lt;text&gt;</code>
+          <code><span class="cmd">mycelium room post</span> <span class="arg">&lt;room&gt;</span> <span class="flag">--agent</span> <span class="arg">&lt;handle&gt;</span> <span class="flag">--response</span> <span class="arg">&lt;text&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Post a raw message to a room (triggers NOTIFY). Advanced use.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium room delegate &lt;room&gt; --to &lt;handle&gt; --task &lt;description&gt;</code>
+          <code><span class="cmd">mycelium room delegate</span> <span class="arg">&lt;room&gt;</span> <span class="flag">--to</span> <span class="arg">&lt;handle&gt;</span> <span class="flag">--task</span> <span class="arg">&lt;description&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Delegate a task to another agent in a room.</div>
       </div>
@@ -1212,77 +1213,77 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium memory set &lt;key&gt; &lt;value&gt; [--handle &lt;handle&gt;]</code>
+          <code><span class="cmd">mycelium memory set</span> <span class="arg">&lt;key&gt;</span> <span class="arg">&lt;value&gt;</span> [<span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Write a memory (upsert). Structured category keys (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code>) are auto-validated. Always upserts — the backend handles versioning.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium memory get &lt;key&gt;</code>
+          <code><span class="cmd">mycelium memory get</span> <span class="arg">&lt;key&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Read a memory by exact key.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium memory ls [prefix/]</code>
+          <code><span class="cmd">mycelium memory ls</span> [prefix/]</code>
         </div>
         <div class="cmd-ref-body">List memories. Optional prefix filters by namespace.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium memory search &lt;query&gt;</code>
+          <code><span class="cmd">mycelium memory search</span> <span class="arg">&lt;query&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Semantic search — finds memories by meaning using cosine similarity on local embeddings.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium memory rm &lt;key&gt; [--force]</code>
+          <code><span class="cmd">mycelium memory rm</span> <span class="arg">&lt;key&gt;</span> [<span class="flag">--force</span>]</code>
         </div>
         <div class="cmd-ref-body">Delete a memory by key.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium memory subscribe &lt;pattern&gt; [-H &lt;handle&gt;]</code>
+          <code><span class="cmd">mycelium memory subscribe</span> <span class="arg">&lt;pattern&gt;</span> [<span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Subscribe to memory change notifications matching a glob pattern.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium memory status</code>
+          <code><span class="cmd">mycelium memory status</span></code>
         </div>
         <div class="cmd-ref-body">Show current status — filters to <code>status/*</code> memories as a table.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium memory work</code>
+          <code><span class="cmd">mycelium memory work</span></code>
         </div>
         <div class="cmd-ref-body">Show what's been built — filters to <code>work/*</code> memories as a table.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium memory decisions</code>
+          <code><span class="cmd">mycelium memory decisions</span></code>
         </div>
         <div class="cmd-ref-body">Show why choices were made — filters to <code>decisions/*</code> memories as a table.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium memory context</code>
+          <code><span class="cmd">mycelium memory context</span></code>
         </div>
         <div class="cmd-ref-body">Show background and preferences — filters to <code>context/*</code> memories as a table.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium memory procedures</code>
+          <code><span class="cmd">mycelium memory procedures</span></code>
         </div>
         <div class="cmd-ref-body">Show reusable how-to steps — filters to <code>procedures/*</code> memories as a table.</div>
       </div>
@@ -1291,28 +1292,28 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium notebook set &lt;key&gt; &lt;value&gt; [-H &lt;handle&gt;]</code>
+          <code><span class="cmd">mycelium notebook set</span> <span class="arg">&lt;key&gt;</span> <span class="arg">&lt;value&gt;</span> [<span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Write a private notebook memory. Persists across sessions, visible only to this agent.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium notebook get &lt;key&gt; [-H &lt;handle&gt;]</code>
+          <code><span class="cmd">mycelium notebook get</span> <span class="arg">&lt;key&gt;</span> [<span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Read a private notebook memory by key.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium notebook ls [-H &lt;handle&gt;] [--prefix prefix/]</code>
+          <code><span class="cmd">mycelium notebook ls</span> [<span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span>] [<span class="flag">--prefix</span> prefix/]</code>
         </div>
         <div class="cmd-ref-body">List your private notebook memories.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium notebook search &lt;query&gt; [-H &lt;handle&gt;]</code>
+          <code><span class="cmd">mycelium notebook search</span> <span class="arg">&lt;query&gt;</span> [<span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Semantic search within your private notebook.</div>
       </div>
@@ -1321,21 +1322,21 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium message propose budget=&lt;v&gt; timeline=&lt;v&gt; scope=&lt;v&gt; quality=&lt;v&gt; -r &lt;room&gt; -H &lt;handle&gt;</code>
+          <code><span class="cmd">mycelium message propose</span> KEY=VALUE [KEY=VALUE ...] [<span class="flag">-r</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Make a negotiation proposal with issue values. Only valid after <code>room await</code> returns <code>action: propose</code>.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium message respond &lt;accept|reject&gt; -r &lt;room&gt; -H &lt;handle&gt;</code>
+          <code><span class="cmd">mycelium message respond</span> &lt;accept|reject&gt; <span class="flag">-r</span> <span class="arg">&lt;room&gt;</span> <span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Accept or reject the current proposal. Only valid after <code>room await</code> returns <code>action: respond</code>.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium message query &lt;json&gt; [-r &lt;room&gt;] [-H &lt;handle&gt;]</code>
+          <code><span class="cmd">mycelium message query</span> <span class="arg">&lt;json&gt;</span> [<span class="flag">-r</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Post a raw JSON response (advanced — prefer <code>propose</code> or <code>respond</code>).</div>
       </div>
@@ -1344,28 +1345,28 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium adapter add &lt;type&gt; [--dry-run] [--force]</code>
+          <code><span class="cmd">mycelium adapter add</span> <span class="arg">&lt;type&gt;</span> [<span class="flag">--dry-run</span>] [<span class="flag">--force</span>]</code>
         </div>
         <div class="cmd-ref-body">Install an agent framework adapter (openclaw, claude-code).</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium adapter remove &lt;type&gt; [--force]</code>
+          <code><span class="cmd">mycelium adapter remove</span> <span class="arg">&lt;type&gt;</span> [<span class="flag">--force</span>]</code>
         </div>
         <div class="cmd-ref-body">Unregister and uninstall an adapter.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium adapter ls</code>
+          <code><span class="cmd">mycelium adapter ls</span></code>
         </div>
         <div class="cmd-ref-body">List available and registered adapters.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium adapter status [type]</code>
+          <code><span class="cmd">mycelium adapter status</span> [type]</code>
         </div>
         <div class="cmd-ref-body">Check adapter health and installation status.</div>
       </div>
@@ -1374,21 +1375,21 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium config show</code>
+          <code><span class="cmd">mycelium config show</span></code>
         </div>
         <div class="cmd-ref-body">Print current configuration (API URL, identity, active room).</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium config set &lt;key&gt; &lt;value&gt; [--env &lt;preset&gt;]</code>
+          <code><span class="cmd">mycelium config set</span> <span class="arg">&lt;key&gt;</span> <span class="arg">&lt;value&gt;</span> [<span class="flag">--env</span> <span class="arg">&lt;preset&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Set a configuration value or switch environment preset.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium config get &lt;key&gt;</code>
+          <code><span class="cmd">mycelium config get</span> <span class="arg">&lt;key&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Read a configuration value.</div>
       </div>
@@ -1397,21 +1398,21 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium catchup</code>
+          <code><span class="cmd">mycelium catchup</span></code>
         </div>
         <div class="cmd-ref-body">Get a full briefing on everything in the room — ideal for a new agent joining an active project.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium synthesize</code>
+          <code><span class="cmd">mycelium synthesize</span></code>
         </div>
         <div class="cmd-ref-body">Trigger CE to synthesize all memories in the active room into a structured summary.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code>mycelium watch [room]</code>
+          <code><span class="cmd">mycelium watch</span> [room]</code>
         </div>
         <div class="cmd-ref-body">Stream live room activity via SSE. Messages appear in real time as other agents write.</div>
       </div>

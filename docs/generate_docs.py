@@ -215,6 +215,26 @@ def _highlight_code(code: str, lang: str) -> str:
     return "\n".join(out)
 
 
+def _highlight_usage(usage: str) -> str:
+    """Syntax-highlight a CLI usage string for the docs site.
+
+    Applies .cmd to the command, .flag to flags, .arg to placeholders,
+    and .str to quoted strings.
+    """
+    s = html.escape(usage)
+    # Command prefix: "mycelium <subcommand> [<subcommand>]"
+    s = re.sub(r"^(mycelium(?:\s+\w+){1,2})", r'<span class="cmd">\1</span>', s)
+    # Quoted strings
+    s = re.sub(r'(&quot;[^&]*&quot;)', r'<span class="str">\1</span>', s)
+    # Flags: --foo, -f (after whitespace or bracket)
+    s = re.sub(r"([\s\[])(-{1,2}\w[\w-]*)", r'\1<span class="flag">\2</span>', s)
+    # Angle-bracket placeholders: <url>, <key>
+    s = re.sub(r"(&lt;\w+&gt;)", r'<span class="arg">\1</span>', s)
+    # Bare UPPER placeholders: ROOM, KEY, QUERY (only fully uppercase words 2+ chars)
+    s = re.sub(r"(?<=\s)([A-Z]{2,})(?=[\s\]\)]|$)", r'<span class="arg">\1</span>', s)
+    return s
+
+
 def _parse_table(lines: list[str], start: int) -> str:
     """Parse a markdown table into HTML."""
     header_line = lines[start].strip().strip("|")
@@ -298,11 +318,11 @@ def _generate_cli_reference() -> tuple[str, str]:
         )
 
         for entry in groups[group_key]:
-            escaped_usage = html.escape(entry.usage)
+            highlighted_usage = _highlight_usage(entry.usage)
             section_lines.append("")
             section_lines.append('      <div class="cmd-ref">')
             section_lines.append('        <div class="cmd-ref-header">')
-            section_lines.append(f"          <code>{escaped_usage}</code>")
+            section_lines.append(f"          <code>{highlighted_usage}</code>")
             section_lines.append("        </div>")
             section_lines.append(f'        <div class="cmd-ref-body">{entry.desc}</div>')
             section_lines.append("      </div>")

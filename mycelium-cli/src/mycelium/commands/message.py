@@ -66,7 +66,7 @@ def _post(ctx: typer.Context, room: str | None, handle: str | None, content: str
 
 
 @doc_ref(
-    usage="mycelium message propose budget=<v> timeline=<v> scope=<v> quality=<v> -r <room> -H <handle>",
+    usage="mycelium message propose KEY=VALUE [KEY=VALUE ...] [-r <room>] [-H <handle>]",
     desc="Make a negotiation proposal with issue values. Only valid after <code>room await</code> returns <code>action: propose</code>.",
     group="message",
 )
