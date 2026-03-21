@@ -23,6 +23,7 @@ Run all quality checks on the mycelium codebase. Auto-fix issues where possible.
 3. **CLI docs** — If any CLI command files were changed (`mycelium-cli/src/mycelium/commands/`):
    - Ensure new commands have `@doc_ref` decorators
    - Run `/generate-cli-docs` to regenerate the HTML CLI reference
+   - If markdown source files changed (`mycelium-cli/src/mycelium/docs/*.md`), also run `cd mycelium-cli && uv run python ../docs/generate_docs.py` to regenerate `docs/index.html`
 
 4. **OpenAPI client** — If any backend schemas or routes changed (`fastapi-backend/app/schemas.py`, `fastapi-backend/app/routes/`), the generated client may be stale. Regenerate:
    - Start backend from source (or use running instance)

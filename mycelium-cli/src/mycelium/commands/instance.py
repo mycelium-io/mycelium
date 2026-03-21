@@ -16,6 +16,7 @@ from pathlib import Path
 import typer
 
 from mycelium.config import MyceliumConfig, ServerConfig
+from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
 from mycelium.exceptions import ConfigNotFoundError
 from mycelium.http_client import MyceliumHTTPClient  # kept for health check
@@ -74,6 +75,11 @@ def _get_env_path() -> Path | None:
     return env_path if env_path.exists() else None
 
 
+@doc_ref(
+    usage="mycelium init [--api-url <url>] [--force]",
+    desc="Initialize CLI configuration. Creates <code>~/.mycelium/config.toml</code>.",
+    group="setup",
+)
 def init(
     ctx: typer.Context,
     api_url: str | None = typer.Option(
@@ -136,6 +142,11 @@ def init(
         print_error(e, verbose=verbose)
 
 
+@doc_ref(
+    usage="mycelium up [--build]",
+    desc="Start the Mycelium stack via <code>docker compose up</code>.",
+    group="setup",
+)
 def start(
     ctx: typer.Context,
     build: bool = typer.Option(False, "--build", help="Rebuild images before starting"),
@@ -182,6 +193,11 @@ def start(
         print_error(e, verbose=verbose)
 
 
+@doc_ref(
+    usage="mycelium down [--volumes]",
+    desc="Stop the Mycelium stack. Pass <code>--volumes</code> to also delete data.",
+    group="setup",
+)
 def stop(
     ctx: typer.Context,
     volumes: bool = typer.Option(
@@ -225,6 +241,11 @@ def stop(
         print_error(e, verbose=verbose)
 
 
+@doc_ref(
+    usage="mycelium status",
+    desc="Show running service health (backend connectivity, room count).",
+    group="setup",
+)
 def status(ctx: typer.Context) -> None:
     """
     Show service health.
@@ -302,6 +323,11 @@ def status(ctx: typer.Context) -> None:
         print_error(e, verbose=verbose)
 
 
+@doc_ref(
+    usage="mycelium logs [service] [--follow] [--tail N]",
+    desc="Tail container logs via <code>docker compose logs</code>.",
+    group="setup",
+)
 def logs(
     ctx: typer.Context,
     service: str | None = typer.Argument(

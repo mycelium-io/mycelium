@@ -303,6 +303,11 @@ def use(
         print_error(e, verbose=verbose)
 
 
+@doc_ref(
+    usage="mycelium room delete <name> [--force]",
+    desc="Delete a room and all its data (memories, sessions, messages).",
+    group="room",
+)
 @app.command()
 def delete(
     ctx: typer.Context,
@@ -684,6 +689,102 @@ def watch(
         _watch_room(config, name, timeout)
     except KeyboardInterrupt:
         typer.echo("\n  [Stopped]")
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+
+
+
+@doc_ref(
+    usage="mycelium room post <room> --agent <handle> --response <text>",
+    desc="Post a raw message to a room (triggers NOTIFY). Advanced use.",
+    group="room",
+)
+@app.command("post")
+def post(
+    ctx: typer.Context,
+    session_id: str = typer.Argument(..., help="Room session/name"),
+    agent: str = typer.Option(..., "--agent", "-a", help="Agent handle sending the response"),
+    response_text: str = typer.Option(..., "--response", "-r", help="Response message text"),
+) -> None:
+    """
+    Post a message to a room (triggers NOTIFY).
+
+    Examples:
+        mycelium room post my-room --agent alpha#a1b2 --response "Task complete"
+    """
+    try:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
+        json_output = ctx.obj.get("json", False) if ctx.obj else False
+
+        config = MyceliumConfig.load()
+
+        from mycelium_backend_client.api.messages import (
+            send_message_rooms_room_name_messages_post as send_api,
+        )
+        from mycelium_backend_client.models import MessageCreate
+
+        with _typed_client(config) as client:
+            body = MessageCreate(sender_handle=agent, message_type="direct", content=response_text)
+            result = send_api.sync(room_name=session_id, client=client, body=body)
+            data = result.to_dict() if result and hasattr(result, "to_dict") else {}
+
+        if json_output:
+            typer.echo(json_module.dumps(data, indent=2, default=str))
+        else:
+            typer.secho("Message sent", fg=typer.colors.GREEN)
+            typer.echo(f"  {agent}: {response_text[:80]}")
+
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+
+
+@doc_ref(
+    usage="mycelium room delegate <room> --to <handle> --task <description>",
+    desc="Delegate a task to another agent in a room.",
+    group="room",
+)
+@app.command()
+def delegate(
+    ctx: typer.Context,
+    session_id: str = typer.Argument(..., help="Room session/name"),
+    to: str = typer.Option(..., "--to", help="Target agent handle"),
+    task: str = typer.Option(..., "--task", "-t", help="Task description to delegate"),
+) -> None:
+    """
+    Delegate a task to an agent in a room.
+
+    Posts a 'delegate' type message to the room.
+
+    Examples:
+        mycelium room delegate my-room --to cfn-agent --task "Scan CVE-2024-1234"
+    """
+    try:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
+        json_output = ctx.obj.get("json", False) if ctx.obj else False
+
+        config = MyceliumConfig.load()
+        sender = config.get_current_identity()
+
+        from mycelium_backend_client.api.messages import (
+            send_message_rooms_room_name_messages_post as send_api,
+        )
+        from mycelium_backend_client.models import MessageCreate
+
+        with _typed_client(config) as client:
+            body = MessageCreate(
+                sender_handle=sender, message_type="delegate", content=task, recipient_handle=to
+            )
+            result = send_api.sync(room_name=session_id, client=client, body=body)
+            data = result.to_dict() if result and hasattr(result, "to_dict") else {}
+
+        if json_output:
+            typer.echo(json_module.dumps(data, indent=2, default=str))
+        else:
+            typer.secho("Task delegated", fg=typer.colors.GREEN)
+            typer.echo(f"  {sender} -> {to}: {task[:80]}")
+
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)
