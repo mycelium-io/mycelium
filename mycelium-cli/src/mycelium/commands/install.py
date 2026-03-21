@@ -20,6 +20,7 @@ from pathlib import Path
 
 import typer
 
+from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
 
 LOG_WINDOW = 4
@@ -475,6 +476,11 @@ def _write_mycelium_config(api_url: str, workspace_id: str, mas_id: str) -> None
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 
+@doc_ref(
+    usage="mycelium install [--yes] [--non-interactive]",
+    desc="Interactive installer — Docker check, LLM config, <code>docker compose up</code>, provision workspace.",
+    group="setup",
+)
 def install(
     ctx: typer.Context,
     ascii_: bool = typer.Option(False, "--ascii", help="Use ASCII rendering"),

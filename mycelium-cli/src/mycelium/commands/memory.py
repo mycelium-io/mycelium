@@ -262,6 +262,11 @@ def memory_search(
             console.print()
 
 
+@doc_ref(
+    usage="mycelium memory rm <key> [--force]",
+    desc="Delete a memory by key.",
+    group="memory",
+)
 @app.command(name="rm")
 def memory_rm(
     key: str = typer.Argument(..., help="Memory key to delete"),
@@ -285,6 +290,11 @@ def memory_rm(
         console.print(f"[green]Deleted:[/green] {key}")
 
 
+@doc_ref(
+    usage="mycelium memory subscribe <pattern> [-H <handle>]",
+    desc="Subscribe to memory change notifications matching a glob pattern.",
+    group="memory",
+)
 @app.command(name="subscribe")
 def memory_subscribe(
     pattern: str = typer.Argument(..., help="Key glob pattern (e.g. 'project/*')"),
@@ -412,6 +422,11 @@ def _list_by_category(category: str, room: str | None, limit: int) -> None:
         console.print(table)
 
 
+@doc_ref(
+    usage="mycelium memory status",
+    desc="Show current status — filters to <code>status/*</code> memories as a table.",
+    group="memory",
+)
 @app.command(name="status")
 def memory_status(
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
@@ -421,6 +436,11 @@ def memory_status(
     _list_by_category("status", room, limit)
 
 
+@doc_ref(
+    usage="mycelium memory work",
+    desc="Show what's been built — filters to <code>work/*</code> memories as a table.",
+    group="memory",
+)
 @app.command(name="work")
 def memory_work(
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
@@ -430,6 +450,11 @@ def memory_work(
     _list_by_category("work", room, limit)
 
 
+@doc_ref(
+    usage="mycelium memory decisions",
+    desc="Show why choices were made — filters to <code>decisions/*</code> memories as a table.",
+    group="memory",
+)
 @app.command(name="decisions")
 def memory_decisions(
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
@@ -439,6 +464,11 @@ def memory_decisions(
     _list_by_category("decisions", room, limit)
 
 
+@doc_ref(
+    usage="mycelium memory context",
+    desc="Show background and preferences — filters to <code>context/*</code> memories as a table.",
+    group="memory",
+)
 @app.command(name="context")
 def memory_context(
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
@@ -448,6 +478,11 @@ def memory_context(
     _list_by_category("context", room, limit)
 
 
+@doc_ref(
+    usage="mycelium memory procedures",
+    desc="Show reusable how-to steps — filters to <code>procedures/*</code> memories as a table.",
+    group="memory",
+)
 @app.command(name="procedures")
 def memory_procedures(
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
