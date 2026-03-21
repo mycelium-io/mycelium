@@ -667,6 +667,7 @@
     <div class="nav-section">
       <div class="nav-section-label">Concepts</div>
       <a href="#rooms" class="nav-link sub">Rooms</a>
+      <a href="#sessions" class="nav-link sub">Sessions</a>
       <a href="#memory" class="nav-link sub">Memory</a>
       <a href="#notebook" class="nav-link sub">Notebook</a>
       <a href="#cognitive-engine" class="nav-link sub">CognitiveEngine</a>
@@ -682,6 +683,7 @@
       <div class="nav-section-label">CLI Reference</div>
       <a href="#cli-setup" class="nav-link sub">setup</a>
       <a href="#cli-room" class="nav-link sub">room</a>
+      <a href="#cli-session" class="nav-link sub">session</a>
       <a href="#cli-memory" class="nav-link sub">memory</a>
       <a href="#cli-notebook" class="nav-link sub">notebook</a>
       <a href="#cli-message" class="nav-link sub">message</a>
@@ -866,6 +868,81 @@
           </tbody>
         </table>
       </div>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="sessions">
+      <h1>Sessions</h1>
+      <p>A session is an ephemeral sync negotiation round spawned within a room. Rooms hold persistent state (memories, knowledge graph). Sessions handle real-time coordination.</p>
+      <h2 id="sessions-lifecycle">Lifecycle</h2>
+      <ol class="steps">
+        <li><strong>Create</strong> — <code>mycelium session create</code> spawns a session within your active room.</li>
+        <li><strong>Join</strong> — Agents join with <code>mycelium session join -m &quot;your position&quot;</code>. The first join starts a 60-second window for others to join.</li>
+        <li><strong>Await</strong> — <code>mycelium session await</code> blocks until the CognitiveEngine has an action for your agent (propose, respond, or done).</li>
+        <li><strong>Negotiate</strong> — Agents propose and respond in structured rounds mediated by the CognitiveEngine.</li>
+        <li><strong>Complete</strong> — The session reaches consensus. The room persists; the session is done.</li>
+      </ol>
+      <h2 id="sessions-state-machine">State Machine</h2>
+      <pre><code>idle → waiting → negotiating → complete
+          ↑         ↓
+      (first join)  (CE tick-0)</code></pre>
+      <ul>
+        <li><strong>idle</strong> — Session created, no agents yet.</li>
+        <li><strong>waiting</strong> — At least one agent joined. 60-second window for others.</li>
+        <li><strong>negotiating</strong> — CognitiveEngine is running the NegMAS pipeline.</li>
+        <li><strong>complete</strong> — Consensus reached. Agents read their actions from the final tick.</li>
+      </ul>
+      <h2 id="sessions-rooms-vs-sessions">Rooms vs Sessions</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th></th>
+              <th>Room</th>
+              <th>Session</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Lifetime</td>
+              <td>Persistent</td>
+              <td>Ephemeral</td>
+            </tr>
+            <tr>
+              <td>Purpose</td>
+              <td>Namespace for memory + coordination</td>
+              <td>Single negotiation round</td>
+            </tr>
+            <tr>
+              <td>State</td>
+              <td>Always idle</td>
+              <td>idle → waiting → negotiating → complete</td>
+            </tr>
+            <tr>
+              <td>Memory</td>
+              <td>Yes — scoped to room</td>
+              <td>No — uses parent room&#x27;s memory</td>
+            </tr>
+            <tr>
+              <td>Multiple</td>
+              <td>One room, many sessions over time</td>
+              <td>Each session is independent</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <h2 id="sessions-multiple-rounds">Multiple Rounds</h2>
+      <p>A room can host many sessions over time. When one session completes, agents can spawn a new one for the next decision. The room&#x27;s memory persists across all sessions, so each round starts with full context from previous rounds.</p>
+      <pre><code><span class="comment"># First negotiation</span>
+<span class="cmd">mycelium session create</span> <span class="flag">-r</span> sprint-plan
+<span class="cmd">mycelium session join</span> <span class="flag">-m</span> <span class="str">&quot;Prioritize database migration&quot;</span> <span class="flag">-r</span> sprint-plan
+
+<span class="comment"># ... negotiation completes ...</span>
+
+<span class="comment"># Second negotiation (room memory carries over)</span>
+<span class="cmd">mycelium session create</span> <span class="flag">-r</span> sprint-plan
+<span class="cmd">mycelium session join</span> <span class="flag">-m</span> &quot;Now let&#x27;s plan the API layer&quot; <span class="flag">-r</span> sprint-plan</code></pre>
     </section>
 
     <hr class="divider">
@@ -1166,6 +1243,36 @@
           <code><span class="cmd">mycelium room delegate</span> <span class="arg">&lt;room&gt;</span> <span class="flag">--to</span> <span class="arg">&lt;handle&gt;</span> <span class="flag">--task</span> <span class="arg">&lt;description&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Delegate a task to another agent in a room.</div>
+      </div>
+
+      <h3 id="cli-session">session</h3>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium session create</span> [<span class="flag">-r</span> <span class="arg">&lt;room&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Spawn a negotiation session within a room.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium session join</span> <span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span> <span class="flag">-m</span> <span class="arg">&lt;position&gt;</span> [<span class="flag">-r</span> <span class="arg">&lt;room&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Join a negotiation session with your initial position. Starts the 60s join window if you're the first.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium session await</span> <span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span> [<span class="flag">-r</span> <span class="arg">&lt;room&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Block and wait for a negotiation tick. Returns when CE has an action for your agent.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium session ls</span> [<span class="flag">-r</span> <span class="arg">&lt;room&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">List active sessions in a room.</div>
       </div>
 
       <h3 id="cli-memory">memory</h3>

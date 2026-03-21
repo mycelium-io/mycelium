@@ -23,6 +23,7 @@ SECTION_CONFIG: list[tuple[str, str, str, str]] = [
     ("overview.md", "overview", "Start here", "Overview"),
     ("quickstart.md", "quickstart", "Start here", "Quick Start"),
     ("rooms.md", "rooms", "Concepts", "Rooms"),
+    ("sessions.md", "sessions", "Concepts", "Sessions"),
     ("memory.md", "memory", "Concepts", "Memory"),
     ("notebook.md", "notebook", "Concepts", "Notebook"),
     ("cognitive-engine.md", "cognitive-engine", "Concepts", "CognitiveEngine"),
@@ -273,6 +274,7 @@ def _parse_table(lines: list[str], start: int) -> str:
 GROUP_CONFIG: list[tuple[str, str, str]] = [
     ("setup", "setup", "setup"),
     ("room", "room", "room"),
+    ("session", "session", "session"),
     ("memory", "memory", "memory"),
     ("notebook", "notebook", "notebook"),
     ("message", "message", "message"),
@@ -295,6 +297,7 @@ def _generate_cli_reference() -> tuple[str, str]:
     import mycelium.commands.message  # noqa: F401
     import mycelium.commands.notebook  # noqa: F401
     import mycelium.commands.room  # noqa: F401
+    import mycelium.commands.session  # noqa: F401
 
     entries = get_registry()
 

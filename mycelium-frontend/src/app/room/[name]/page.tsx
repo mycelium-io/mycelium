@@ -6,6 +6,7 @@ import Image from "next/image";
 import { fetchRoom } from "@/lib/api";
 import { EventStream } from "@/components/event-stream";
 import { MemoryPanel } from "@/components/memory-panel";
+import { SessionsPanel } from "@/components/sessions-panel";
 
 export default function RoomPage() {
   const params = useParams();
@@ -50,9 +51,17 @@ export default function RoomPage() {
           </div>
         </div>
 
-        {/* Right: Memory panel */}
+        {/* Right: Sessions + Memory */}
         <div className="w-[40%] flex flex-col">
-          <MemoryPanel roomName={roomName} refreshTrigger={memoryRefresh} />
+          <div className="border-b border-border">
+            <div className="px-4 py-2 border-b border-border">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Sessions</span>
+            </div>
+            <SessionsPanel roomName={roomName} />
+          </div>
+          <div className="flex-1 overflow-hidden flex flex-col">
+            <MemoryPanel roomName={roomName} refreshTrigger={memoryRefresh} />
+          </div>
         </div>
       </div>
     </div>
