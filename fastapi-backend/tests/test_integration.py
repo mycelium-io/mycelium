@@ -428,6 +428,10 @@ async def test_sync_multiple_agents_join(integration_client: AsyncClient):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(
+    not os.environ.get("MYCELIUM_LLM_TESTS"),
+    reason="Set MYCELIUM_LLM_TESTS=1 to enable (costs tokens)",
+)
 async def test_sync_negotiation_produces_messages(integration_client: AsyncClient):
     """Full sync negotiation: join → wait → CognitiveEngine runs → messages appear."""
     client = integration_client
