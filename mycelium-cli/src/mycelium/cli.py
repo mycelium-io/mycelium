@@ -70,7 +70,9 @@ def skill() -> None:
             typer.echo(p.read_text())
     except (TypeError, FileNotFoundError):
         # Fallback for editable installs
-        fallback = Path(__file__).parent / "adapters" / "claude-code" / "skills" / "mycelium" / "SKILL.md"
+        fallback = (
+            Path(__file__).parent / "adapters" / "claude-code" / "skills" / "mycelium" / "SKILL.md"
+        )
         if fallback.exists():
             typer.echo(fallback.read_text())
         else:

@@ -93,7 +93,7 @@ async def _run_tick(room_name: str, tick: int) -> None:
             content=json.dumps({"error": str(exc)}),
         )
         await db.execute(
-            update(Room).where(Room.name == room_name).values(coordination_state="idle")
+            update(Room).where(Room.name == room_name).values(coordination_state="failed")
         )
         await db.commit()
         return
@@ -166,7 +166,7 @@ async def _run_tick(room_name: str, tick: int) -> None:
             )
             async with async_session_maker() as db:
                 await db.execute(
-                    update(Room).where(Room.name == room_name).values(coordination_state="idle")
+                    update(Room).where(Room.name == room_name).values(coordination_state="failed")
                 )
                 await db.commit()
         finally:

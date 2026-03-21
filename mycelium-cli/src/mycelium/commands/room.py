@@ -296,7 +296,9 @@ def use(
             typer.echo(json_module.dumps({"room": room_name}))
         else:
             typer.secho(f"Room set: {room_name}", fg=typer.colors.GREEN)
-            typer.echo("Next: Run 'mycelium session join -H <handle> -m <position>' to start negotiating")
+            typer.echo(
+                "Next: Run 'mycelium session join -H <handle> -m <position>' to start negotiating"
+            )
 
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
@@ -692,7 +694,6 @@ def watch(
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)
-
 
 
 @doc_ref(

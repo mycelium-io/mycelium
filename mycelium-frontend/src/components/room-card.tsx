@@ -8,6 +8,7 @@ const stateIndicator: Record<string, string> = {
   negotiating: "bg-accent animate-pulse",
   complete: "bg-emerald-400",
   synthesizing: "bg-purple-400 animate-pulse",
+  failed: "bg-red-400",
 };
 
 interface RoomCardProps {

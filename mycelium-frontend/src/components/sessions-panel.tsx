@@ -8,6 +8,7 @@ interface SessionRoom {
   coordination_state: string;
   created_at: string;
   parent_namespace: string;
+  join_deadline: string | null;
 }
 
 interface AgentSession {
@@ -21,7 +22,24 @@ const stateColors: Record<string, string> = {
   waiting: "bg-yellow-500/20 text-yellow-400",
   negotiating: "bg-accent/20 text-accent",
   complete: "bg-emerald-500/20 text-emerald-400",
+  failed: "bg-red-500/20 text-red-400",
 };
+
+function Countdown({ deadline }: { deadline: string }) {
+  const [remaining, setRemaining] = useState("");
+
+  useEffect(() => {
+    const tick = () => {
+      const secs = Math.max(0, Math.floor((new Date(deadline).getTime() - Date.now()) / 1000));
+      setRemaining(secs > 0 ? `${secs}s` : "closing…");
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [deadline]);
+
+  return <span className="text-[10px] text-yellow-400/70 font-mono tabular-nums">{remaining}</span>;
+}
 
 export function SessionsPanel({ roomName }: { roomName: string }) {
   const [sessions, setSessions] = useState<SessionRoom[]>([]);
@@ -32,11 +50,16 @@ export function SessionsPanel({ roomName }: { roomName: string }) {
     const load = async () => {
       const rooms = await fetchChildRooms(roomName);
       setSessions(rooms);
+      // Refresh agents for expanded session
+      if (expanded) {
+        const data = await fetchSessions(expanded);
+        setAgents((prev) => ({ ...prev, [expanded]: data.sessions || [] }));
+      }
     };
     load();
-    const interval = setInterval(load, 5000);
+    const interval = setInterval(load, 3000);
     return () => clearInterval(interval);
-  }, [roomName]);
+  }, [roomName, expanded]);
 
   const toggleSession = async (sessionName: string) => {
     if (expanded === sessionName) {
@@ -44,10 +67,8 @@ export function SessionsPanel({ roomName }: { roomName: string }) {
       return;
     }
     setExpanded(sessionName);
-    if (!agents[sessionName]) {
-      const data = await fetchSessions(sessionName);
-      setAgents((prev) => ({ ...prev, [sessionName]: data.sessions || [] }));
-    }
+    const data = await fetchSessions(sessionName);
+    setAgents((prev) => ({ ...prev, [sessionName]: data.sessions || [] }));
   };
 
   if (sessions.length === 0) {
@@ -81,6 +102,9 @@ export function SessionsPanel({ roomName }: { roomName: string }) {
               <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${stateColors[s.coordination_state] || "bg-muted/40"}`}>
                 {s.coordination_state}
               </span>
+              {s.coordination_state === "waiting" && s.join_deadline && (
+                <Countdown deadline={s.join_deadline} />
+              )}
             </button>
 
             {isExpanded && (
