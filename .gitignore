@@ -22,5 +22,6 @@ fastapi-backend/mycelium-client/
 # Frontend
 node_modules/
 .next/
+tsconfig.tsbuildinfo
 next-env.d.ts
 pnpm-lock.yaml
