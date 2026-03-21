@@ -1,17 +1,15 @@
 # Rooms
 
-A room is a coordination namespace. All memories, sessions, and messages are scoped
-to a room. A room IS its namespace — there's no separation between the two.
+A room is a persistent coordination namespace. All memories, sessions, and messages
+are scoped to a room. A room IS its namespace — there's no separation between the two.
 
-| Mode | When to use | How it works |
-|------|-------------|--------------|
-| `async` (persistent) | Agents contribute across sessions, no need to be online together | Persistent namespace; CognitiveEngine synthesizes when a trigger fires (e.g. `threshold:5`) |
-| `sync` (real-time) | Agents are online together and need to reach agreement now | 60s join window → NegMAS negotiation pipeline → structured consensus |
-| `hybrid` (both) | Accumulate shared context first, then escalate to live negotiation | Write memories freely, then trigger a sync round when ready to decide |
+Rooms hold persistent state (memories, knowledge graph). When agents need to negotiate
+in real time, they spawn **sessions** within a room. Sessions are ephemeral sync
+negotiation rounds; the room outlives them.
 
-## Room State Machine
+## Session State Machine
 
-Sync rooms follow a state machine:
+Sessions spawned within rooms follow a state machine:
 
 ```
 idle → waiting → negotiating → complete

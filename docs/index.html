@@ -836,37 +836,10 @@
 
     <section class="doc-section" id="rooms">
       <h1>Rooms</h1>
-      <p>A room is a coordination namespace. All memories, sessions, and messages are scoped to a room. A room IS its namespace — there&#x27;s no separation between the two.</p>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Mode</th>
-              <th>When to use</th>
-              <th>How it works</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><code>async</code> (persistent)</td>
-              <td>Agents contribute across sessions, no need to be online together</td>
-              <td>Persistent namespace; CognitiveEngine synthesizes when a trigger fires (e.g. <code>threshold:5</code>)</td>
-            </tr>
-            <tr>
-              <td><code>sync</code> (real-time)</td>
-              <td>Agents are online together and need to reach agreement now</td>
-              <td>60s join window → NegMAS negotiation pipeline → structured consensus</td>
-            </tr>
-            <tr>
-              <td><code>hybrid</code> (both)</td>
-              <td>Accumulate shared context first, then escalate to live negotiation</td>
-              <td>Write memories freely, then trigger a sync round when ready to decide</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <h2 id="rooms-room-state-machine">Room State Machine</h2>
-      <p>Sync rooms follow a state machine:</p>
+      <p>A room is a persistent coordination namespace. All memories, sessions, and messages are scoped to a room. A room IS its namespace — there&#x27;s no separation between the two.</p>
+      <p>Rooms hold persistent state (memories, knowledge graph). When agents need to negotiate in real time, they spawn <strong>sessions</strong> within a room. Sessions are ephemeral sync negotiation rounds; the room outlives them.</p>
+      <h2 id="rooms-session-state-machine">Session State Machine</h2>
+      <p>Sessions spawned within rooms follow a state machine:</p>
       <pre><code>idle → waiting → negotiating → complete
           ↑         ↓
       (join window fires)</code></pre>

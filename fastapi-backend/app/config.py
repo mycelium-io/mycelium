@@ -37,7 +37,7 @@ class Settings(BaseSettings):
 
     # Coordination
     # How long to wait for additional agents to join after the first agent joins
-    # a sync/hybrid room before CognitiveEngine fires tick-0 (starts negotiation).
+    # a session before CognitiveEngine fires tick-0 (starts negotiation).
     COORDINATION_JOIN_WINDOW_SECONDS: int = 30
     # Per-round timeout: how long CognitiveEngine waits for an agent to reply
     # during a negotiation round before falling back to the safe default.

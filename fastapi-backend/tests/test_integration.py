@@ -67,7 +67,7 @@ async def test_memory_create_with_embedding(integration_client: AsyncClient):
     client = integration_client
 
     # Create async room
-    resp = await client.post("/rooms", json={"name": "e2e-embed", "mode": "async"})
+    resp = await client.post("/rooms", json={"name": "e2e-embed"})
     assert resp.status_code == 201
 
     # Create memory with embedding (embed=True is default)
@@ -95,7 +95,7 @@ async def test_semantic_search(integration_client: AsyncClient):
     """Test semantic vector search returns relevant results ranked by similarity."""
     client = integration_client
 
-    await client.post("/rooms", json={"name": "e2e-search", "mode": "async"})
+    await client.post("/rooms", json={"name": "e2e-search"})
 
     # Write several memories with different topics
     await client.post(
@@ -156,7 +156,7 @@ async def test_semantic_search_with_min_similarity(integration_client: AsyncClie
     """Test that min_similarity filters out low-relevance results."""
     client = integration_client
 
-    await client.post("/rooms", json={"name": "e2e-minsim", "mode": "async"})
+    await client.post("/rooms", json={"name": "e2e-minsim"})
 
     await client.post(
         "/rooms/e2e-minsim/memory",
@@ -198,7 +198,7 @@ async def test_upsert_preserves_embedding(integration_client: AsyncClient):
     """Test that upserting a memory updates the embedding."""
     client = integration_client
 
-    await client.post("/rooms", json={"name": "e2e-upsert", "mode": "async"})
+    await client.post("/rooms", json={"name": "e2e-upsert"})
 
     # Create
     await client.post(
@@ -258,7 +258,6 @@ async def test_async_room_full_flow(integration_client: AsyncClient):
         "/rooms",
         json={
             "name": "e2e-flow",
-            "mode": "async",
             "trigger_config": {"type": "threshold", "min_contributions": 2},
             "is_persistent": True,
         },
@@ -483,22 +482,15 @@ async def test_sync_negotiation_produces_messages(integration_client: AsyncClien
 
 
 @pytest.mark.asyncio
-async def test_hybrid_room_supports_both_modes(integration_client: AsyncClient):
-    """Hybrid room: can write memories AND trigger sync coordination."""
+async def test_namespace_room_supports_memory_and_sessions(integration_client: AsyncClient):
+    """Namespace room: can write memories AND spawn sync sessions."""
     client = integration_client
 
-    await client.post(
-        "/rooms",
-        json={
-            "name": "e2e-hybrid",
-            "mode": "hybrid",
-            "is_persistent": True,
-        },
-    )
+    await client.post("/rooms", json={"name": "e2e-ns-both"})
 
-    # Write memories (async behavior)
+    # Write memories (persistent namespace behavior)
     resp = await client.post(
-        "/rooms/e2e-hybrid/memory",
+        "/rooms/e2e-ns-both/memory",
         json={
             "items": [
                 {
@@ -512,23 +504,27 @@ async def test_hybrid_room_supports_both_modes(integration_client: AsyncClient):
     )
     assert resp.status_code == 201
 
-    # Join for sync coordination
+    # Join spawns a sync session within the namespace
     resp = await client.post(
-        "/rooms/e2e-hybrid/sessions",
+        "/rooms/e2e-ns-both/sessions",
         json={
             "agent_handle": "agent-a",
             "intent": "Ready to negotiate API design",
         },
     )
     assert resp.status_code == 201
+    session_room_name = resp.json()["room_name"]
 
-    # Room should transition to waiting (hybrid allows sync)
-    resp = await client.get("/rooms/e2e-hybrid")
-    room = resp.json()
-    assert room["coordination_state"] == "waiting"
+    # Session room should be in waiting state
+    resp = await client.get(f"/rooms/{session_room_name}")
+    assert resp.json()["coordination_state"] == "waiting"
 
-    # Memory should still be accessible
-    resp = await client.get("/rooms/e2e-hybrid/memory/context/background")
+    # Namespace room stays idle
+    resp = await client.get("/rooms/e2e-ns-both")
+    assert resp.json()["coordination_state"] == "idle"
+
+    # Memory should still be accessible on the namespace
+    resp = await client.get("/rooms/e2e-ns-both/memory/context/background")
     assert resp.status_code == 200
     assert resp.json()["value"]["text"] == "We need to decide on API design"
 
@@ -538,17 +534,18 @@ async def test_messages_route_during_negotiation(integration_client: AsyncClient
     """Agent messages during negotiation get routed to coordination service."""
     client = integration_client
 
-    await client.post("/rooms", json={"name": "e2e-msg-route", "mode": "sync"})
+    await client.post("/rooms", json={"name": "e2e-msg-route"})
 
-    await client.post(
+    resp = await client.post(
         "/rooms/e2e-msg-route/sessions",
         json={
             "agent_handle": "agent-a",
             "intent": "testing message routing",
         },
     )
+    session_room_name = resp.json()["room_name"]
 
-    # Manually set room to negotiating state to test routing
+    # Manually set session room to negotiating state to test routing
     from sqlalchemy import update as sa_update
 
     from app.database import async_session_maker
@@ -557,14 +554,14 @@ async def test_messages_route_during_negotiation(integration_client: AsyncClient
     async with async_session_maker() as db:
         await db.execute(
             sa_update(Room)
-            .where(Room.name == "e2e-msg-route")
+            .where(Room.name == session_room_name)
             .values(coordination_state="negotiating")
         )
         await db.commit()
 
-    # Post a message — should succeed even during negotiation
+    # Post a message to session room — should succeed even during negotiation
     resp = await client.post(
-        "/rooms/e2e-msg-route/messages",
+        f"/rooms/{session_room_name}/messages",
         json={
             "sender_handle": "agent-a",
             "message_type": "direct",
@@ -574,5 +571,5 @@ async def test_messages_route_during_negotiation(integration_client: AsyncClient
     assert resp.status_code == 201
 
     # Message should be recorded
-    resp = await client.get("/rooms/e2e-msg-route/messages")
+    resp = await client.get(f"/rooms/{session_room_name}/messages")
     assert resp.json()["total"] >= 1
