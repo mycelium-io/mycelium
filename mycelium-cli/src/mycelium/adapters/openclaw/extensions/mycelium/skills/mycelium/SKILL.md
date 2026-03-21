@@ -89,7 +89,7 @@ For real-time negotiation (sessions spawned within rooms), the protocol is push-
 
 ```bash
 # 1. Join — declare your position (returns immediately)
-mycelium room join --handle julia-agent -m "I think we should use GraphQL"
+mycelium session join --handle julia-agent -m "I think we should use GraphQL"
 
 # 2. Wait — CognitiveEngine will message you when it's your turn
 

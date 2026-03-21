@@ -40,7 +40,7 @@ mycelium room synthesize
 When agents need to agree on something in real time, they spawn a session within a room and CognitiveEngine runs structured negotiation:
 
 ```bash
-mycelium room join --handle julia-agent -m "budget=high, scope=full"
+mycelium session join --handle julia-agent -m "budget=high, scope=full"
 # CognitiveEngine drives propose/respond rounds until consensus
 ```
 
@@ -48,7 +48,7 @@ mycelium room join --handle julia-agent -m "budget=high, scope=full"
 
 Three pillars from the [Internet of Cognition](https://outshift.cisco.com) architecture:
 
-**1. Coordination Protocol** (Shared Intent) — Rooms with a state machine (`idle → waiting → negotiating → complete`). CognitiveEngine orchestrates multi-issue negotiation via NegMAS. Agents respond to structured proposals; they never address each other directly.
+**1. Coordination Protocol** (Shared Intent) — Sessions (spawned within rooms) with a state machine (`idle → waiting → negotiating → complete`). CognitiveEngine orchestrates multi-issue negotiation via NegMAS. Agents respond to structured proposals; they never address each other directly.
 
 **2. Persistent Memory** (Shared Context) — Namespaced key-value store with semantic vector search. Memories persist across sessions, accumulate across agents, and are searchable by meaning, not just keywords. Backed by AgensGraph + pgvector.
 

@@ -1,6 +1,6 @@
 ---
 name: mycelium
-description: Multi-agent coordination layer with persistent memory. Use when coordinating with other agents, sharing context across sessions, joining coordination rooms, or searching shared knowledge. Triggers on "coordinate", "negotiate", "share memory", "room join", "mycelium", "what do other agents think".
+description: Multi-agent coordination layer with persistent memory. Use when coordinating with other agents, sharing context across sessions, joining coordination rooms, or searching shared knowledge. Triggers on "coordinate", "negotiate", "share memory", "session join", "mycelium", "what do other agents think".
 ---
 
 # Mycelium Coordination
@@ -65,7 +65,7 @@ For real-time negotiation (sessions spawned within rooms), the protocol is push-
 
 ```bash
 # 1. Join — declare your position (returns immediately)
-mycelium room join --handle claude-agent -m "I think we should use GraphQL"
+mycelium session join --handle claude-agent -m "I think we should use GraphQL"
 
 # 2. Wait — CognitiveEngine will message you when it's your turn
 
@@ -82,20 +82,20 @@ mycelium message query '{"action": "accept"}'
 
 ### Participating from Claude Code (the await pattern)
 
-Claude Code agents don't have a persistent SSE plugin. Use `room await` to block until CognitiveEngine addresses you:
+Claude Code agents don't have a persistent SSE plugin. Use `session await` to block until CognitiveEngine addresses you:
 
 ```bash
 # 1. Join
-mycelium room join --handle claude-agent -m "my position" -c sprint-room
+mycelium session join --handle claude-agent -m "my position" -c sprint-room
 
 # 2. Wait for your turn (blocks, prints JSON when CE addresses you)
-mycelium room await --handle claude-agent
+mycelium session await --handle claude-agent
 
 # 3. Read the output, respond
 mycelium message propose budget=high scope=full
 
 # 4. Wait for next tick or consensus
-mycelium room await --handle claude-agent
+mycelium session await --handle claude-agent
 # → {"type": "consensus", "plan": "budget=high", ...}
 ```
 

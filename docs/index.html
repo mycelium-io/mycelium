@@ -802,8 +802,8 @@
 <span class="cmd">mycelium install</span></code></pre>
       <h2 id="first-room">First Room</h2>
       <p>Create a persistent room and start sharing context:</p>
-      <pre><code><span class="comment"># Create an async room (persistent memory)</span>
-<span class="cmd">mycelium room create</span> my-project <span class="flag">--mode</span> async
+      <pre><code><span class="comment"># Create a persistent room</span>
+<span class="cmd">mycelium room create</span> my-project
 
 <span class="comment"># Set it as your active room</span>
 <span class="cmd">mycelium room use</span> my-project
@@ -821,15 +821,16 @@
 
 <span class="comment"># Synthesize everything in the room</span>
 <span class="cmd">mycelium synthesize</span></code></pre>
-      <p>Now try a sync room — two agents negotiating a plan:</p>
+      <p>Now try a session — two agents negotiating a plan:</p>
       <pre><code><span class="comment"># Terminal 1 — agent julia</span>
-<span class="cmd">mycelium room create</span> sprint-plan <span class="flag">--mode</span> sync
-<span class="cmd">mycelium room join</span> <span class="flag">--handle</span> julia-agent <span class="flag">-m</span> <span class="str">&quot;Prioritize the database migration first&quot;</span> <span class="flag">-r</span> sprint-plan
-<span class="cmd">mycelium room await</span> <span class="flag">--handle</span> julia-agent <span class="flag">-r</span> sprint-plan
+<span class="cmd">mycelium room create</span> sprint-plan
+<span class="cmd">mycelium session create</span> <span class="flag">-r</span> sprint-plan
+<span class="cmd">mycelium session join</span> <span class="flag">--handle</span> julia-agent <span class="flag">-m</span> <span class="str">&quot;Prioritize the database migration first&quot;</span> <span class="flag">-r</span> sprint-plan
+<span class="cmd">mycelium session await</span> <span class="flag">--handle</span> julia-agent <span class="flag">-r</span> sprint-plan
 
 <span class="comment"># Terminal 2 — agent selina</span>
-<span class="cmd">mycelium room join</span> <span class="flag">--handle</span> selina-agent <span class="flag">-m</span> <span class="str">&quot;Focus on frontend polish, backend is solid&quot;</span> <span class="flag">-r</span> sprint-plan
-<span class="cmd">mycelium room await</span> <span class="flag">--handle</span> selina-agent <span class="flag">-r</span> sprint-plan
+<span class="cmd">mycelium session join</span> <span class="flag">--handle</span> selina-agent <span class="flag">-m</span> <span class="str">&quot;Focus on frontend polish, backend is solid&quot;</span> <span class="flag">-r</span> sprint-plan
+<span class="cmd">mycelium session await</span> <span class="flag">--handle</span> selina-agent <span class="flag">-r</span> sprint-plan
 
 <span class="comment"># CognitiveEngine runs negotiation — await returns ticks with actions</span></code></pre>
     </section>
@@ -1005,11 +1006,11 @@
       <h1>CognitiveEngine</h1>
       <p>CognitiveEngine is the mediator. It sits between all agents and drives negotiation. Agents never talk to each other directly — all coordination flows through CE.</p>
       <h2 id="cognitive-engine-negotiation-flow">Negotiation Flow</h2>
-      <p>In sync rooms:</p>
+      <p>In sessions:</p>
       <ol class="steps">
-        <li>Agents call <code>room join</code> with their initial position and handle.</li>
+        <li>Agents call <code>session join</code> with their initial position and handle.</li>
         <li>After the 60s join window, CE runs the <strong>SemanticNegotiationPipeline</strong> on all positions.</li>
-        <li><code>room await</code> returns a tick. The proposer gets <code>action: propose</code>.</li>
+        <li><code>session await</code> returns a tick. The proposer gets <code>action: propose</code>.</li>
         <li>Proposer calls <code>message propose</code> with issue values (budget, timeline, scope, quality).</li>
         <li>Respondent gets a tick with <code>action: respond</code> — accepts or rejects.</li>
         <li>Rounds continue until consensus. Final tick has <code>type: consensus</code> with the plan.</li>
@@ -1025,7 +1026,7 @@
   <span class="flag">-r</span> sprint-plan <span class="flag">-H</span> selina-agent
 
 <span class="comment"># Keep awaiting between each action</span>
-<span class="cmd">mycelium room await</span> \
+<span class="cmd">mycelium session await</span> \
   <span class="flag">-H</span> selina-agent <span class="flag">-r</span> sprint-plan</code></pre>
       <h2 id="cognitive-engine-synthesis">Synthesis</h2>
       <p>When triggered, CE synthesizes all memories in the room using an LLM. The output is a structured summary readable by any agent.</p>
@@ -1033,7 +1034,7 @@
 <span class="cmd">mycelium synthesize</span>
 
 <span class="comment"># Or let the threshold trigger do it automatically</span>
-<span class="cmd">mycelium room create</span> my-project <span class="flag">--mode</span> async <span class="flag">--trigger</span> threshold:5</code></pre>
+<span class="cmd">mycelium room create</span> my-project <span class="flag">--trigger</span> threshold:5</code></pre>
     </section>
 
     <hr class="divider">
@@ -1390,14 +1391,14 @@
         <div class="cmd-ref-header">
           <code><span class="cmd">mycelium message propose</span> KEY=VALUE [KEY=VALUE ...] [<span class="flag">-r</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span>]</code>
         </div>
-        <div class="cmd-ref-body">Make a negotiation proposal with issue values. Only valid after <code>room await</code> returns <code>action: propose</code>.</div>
+        <div class="cmd-ref-body">Make a negotiation proposal with issue values. Only valid after <code>session await</code> returns <code>action: propose</code>.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
           <code><span class="cmd">mycelium message respond</span> &lt;accept|reject&gt; <span class="flag">-r</span> <span class="arg">&lt;room&gt;</span> <span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span></code>
         </div>
-        <div class="cmd-ref-body">Accept or reject the current proposal. Only valid after <code>room await</code> returns <code>action: respond</code>.</div>
+        <div class="cmd-ref-body">Accept or reject the current proposal. Only valid after <code>session await</code> returns <code>action: respond</code>.</div>
       </div>
 
       <div class="cmd-ref">

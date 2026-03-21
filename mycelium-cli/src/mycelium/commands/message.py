@@ -67,7 +67,7 @@ def _post(ctx: typer.Context, room: str | None, handle: str | None, content: str
 
 @doc_ref(
     usage="mycelium message propose KEY=VALUE [KEY=VALUE ...] [-r <room>] [-H <handle>]",
-    desc="Make a negotiation proposal with issue values. Only valid after <code>room await</code> returns <code>action: propose</code>.",
+    desc="Make a negotiation proposal with issue values. Only valid after <code>session await</code> returns <code>action: propose</code>.",
     group="message",
 )
 @app.command("propose")
@@ -131,7 +131,7 @@ VALID_ACTIONS = {"accept", "reject", "end"}
 
 @doc_ref(
     usage="mycelium message respond <accept|reject> -r <room> -H <handle>",
-    desc="Accept or reject the current proposal. Only valid after <code>room await</code> returns <code>action: respond</code>.",
+    desc="Accept or reject the current proposal. Only valid after <code>session await</code> returns <code>action: respond</code>.",
     group="message",
 )
 @app.command("respond")
