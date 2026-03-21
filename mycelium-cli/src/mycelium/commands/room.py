@@ -314,6 +314,11 @@ def use(
         print_error(e, verbose=verbose)
 
 
+@doc_ref(
+    usage="mycelium room delete <name> [--force]",
+    desc="Delete a room and all its data (memories, sessions, messages).",
+    group="room",
+)
 @app.command()
 def delete(
     ctx: typer.Context,
@@ -884,6 +889,11 @@ def watch(
         print_error(e, verbose=verbose)
 
 
+@doc_ref(
+    usage="mycelium room post <room> --agent <handle> --response <text>",
+    desc="Post a raw message to a room (triggers NOTIFY). Advanced use.",
+    group="room",
+)
 @app.command("post")
 def post(
     ctx: typer.Context,
@@ -924,6 +934,11 @@ def post(
         print_error(e, verbose=verbose)
 
 
+@doc_ref(
+    usage="mycelium room delegate <room> --to <handle> --task <description>",
+    desc="Delegate a task to another agent in a room.",
+    group="room",
+)
 @app.command()
 def delegate(
     ctx: typer.Context,

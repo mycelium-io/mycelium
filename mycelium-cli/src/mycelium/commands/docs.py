@@ -2,6 +2,8 @@
 Documentation commands for Mycelium CLI.
 
 Provides built-in, agent-friendly documentation accessible from the command line.
+Section files mirror the GUI docs at mycelium-io.github.io/mycelium/ — markdown
+is the single source of truth for both.
 """
 
 import re
@@ -15,6 +17,23 @@ app = typer.Typer(
     invoke_without_command=True,
 )
 
+# Ordered list of top-level doc sections (filename stem → display name).
+# Order matches the GUI sidebar.
+SECTIONS: list[tuple[str, str]] = [
+    ("overview", "Overview"),
+    ("quickstart", "Quick Start"),
+    ("rooms", "Rooms"),
+    ("memory", "Memory"),
+    ("notebook", "Notebook"),
+    ("cognitive-engine", "CognitiveEngine"),
+    ("knowledge-graph", "Knowledge Graph"),
+    ("cli-reference", "CLI Reference"),
+    ("architecture", "Architecture"),
+]
+
+# Legacy section dirs still searched for backward compat
+_LEGACY_DIRS = ("concepts", "commands", "guides", "examples")
+
 
 def _get_docs_root() -> Path:
     """Get the path to the bundled docs directory."""
@@ -23,26 +42,6 @@ def _get_docs_root() -> Path:
             return docs_path
     except (TypeError, FileNotFoundError):
         return Path(__file__).parent.parent / "docs"
-
-
-def _list_docs(docs_root: Path, section: str | None = None) -> list[tuple[str, str, str]]:
-    """List available documentation files."""
-    results = []
-    if section:
-        section_path = docs_root / section
-        if section_path.is_dir():
-            for f in sorted(section_path.glob("*.md")):
-                results.append((section, f.stem, _extract_title(f)))
-    else:
-        index_path = docs_root / "index.md"
-        if index_path.exists():
-            results.append(("", "index", _extract_title(index_path)))
-        for section_name in ["concepts", "commands", "guides", "examples"]:
-            section_path = docs_root / section_name
-            if section_path.is_dir():
-                for f in sorted(section_path.glob("*.md")):
-                    results.append((section_name, f.stem, _extract_title(f)))
-    return results
 
 
 def _extract_title(path: Path) -> str:
@@ -55,6 +54,33 @@ def _extract_title(path: Path) -> str:
         return path.stem.replace("-", " ").title()
     except Exception:
         return path.stem.replace("-", " ").title()
+
+
+def _list_docs(docs_root: Path, section: str | None = None) -> list[tuple[str, str, str]]:
+    """List available documentation files."""
+    results = []
+    if section:
+        # List files in a legacy subdirectory
+        section_path = docs_root / section
+        if section_path.is_dir():
+            for f in sorted(section_path.glob("*.md")):
+                results.append((section, f.stem, _extract_title(f)))
+        return results
+
+    # Top-level sections
+    for stem, display_name in SECTIONS:
+        md_path = docs_root / f"{stem}.md"
+        if md_path.exists():
+            results.append(("", stem, display_name))
+
+    # Legacy subdirectories
+    for section_name in _LEGACY_DIRS:
+        section_path = docs_root / section_name
+        if section_path.is_dir():
+            for f in sorted(section_path.glob("*.md")):
+                results.append((section_name, f.stem, _extract_title(f)))
+
+    return results
 
 
 def _find_doc(docs_root: Path, section: str, topic: str) -> Path | None:
@@ -96,6 +122,16 @@ def _render_markdown(content: str, full: bool = False) -> str:
     return "\n".join(lines)
 
 
+def _concat_all(docs_root: Path) -> str:
+    """Concatenate all section markdown files in order."""
+    parts = []
+    for stem, _ in SECTIONS:
+        md_path = docs_root / f"{stem}.md"
+        if md_path.exists():
+            parts.append(md_path.read_text().rstrip())
+    return "\n\n---\n\n".join(parts) + "\n"
+
+
 def _search_docs(
     docs_root: Path, query: str, context_lines: int = 2
 ) -> list[tuple[str, str, str, list[str]]]:
@@ -104,41 +140,51 @@ def _search_docs(
     query_lower = query.lower()
     query_pattern = re.compile(re.escape(query), re.IGNORECASE)
 
-    for section_name in ["", "concepts", "commands", "guides", "examples"]:
-        if section_name:
-            search_path = docs_root / section_name
-            if not search_path.is_dir():
-                continue
-            files = search_path.glob("*.md")
-        else:
-            files = [docs_root / "index.md"]
+    # Search top-level section files
+    search_files: list[tuple[str, Path]] = []
+    for stem, _ in SECTIONS:
+        md_path = docs_root / f"{stem}.md"
+        if md_path.exists():
+            search_files.append(("", md_path))
 
-        for f in files:
-            if not f.exists():
-                continue
-            try:
-                content = f.read_text()
-            except Exception:
-                continue
-            if query_lower in content.lower():
-                title = _extract_title(f)
-                lines = content.split("\n")
-                context = []
-                for i, line in enumerate(lines):
-                    if query_lower in line.lower():
-                        start = max(0, i - context_lines)
-                        end = min(len(lines), i + context_lines + 1)
-                        for j in range(start, end):
-                            ctx_line = lines[j].strip()
-                            if not ctx_line:
-                                continue
-                            highlighted = query_pattern.sub(
-                                lambda m: typer.style(m.group(), fg=typer.colors.YELLOW, bold=True),
-                                ctx_line[:100],
-                            )
-                            context.append(highlighted)
-                        break
-                results.append((section_name or "", f.stem, title, context))
+    # Search legacy dirs
+    for section_name in _LEGACY_DIRS:
+        section_path = docs_root / section_name
+        if section_path.is_dir():
+            for f in section_path.glob("*.md"):
+                search_files.append((section_name, f))
+
+    # Also search index
+    index_path = docs_root / "index.md"
+    if index_path.exists():
+        search_files.append(("", index_path))
+
+    for section_name, f in search_files:
+        try:
+            content = f.read_text()
+        except Exception:
+            continue
+        if query_lower not in content.lower():
+            continue
+        title = _extract_title(f)
+        lines = content.split("\n")
+        context = []
+        for i, line in enumerate(lines):
+            if query_lower in line.lower():
+                start = max(0, i - context_lines)
+                end = min(len(lines), i + context_lines + 1)
+                for j in range(start, end):
+                    ctx_line = lines[j].strip()
+                    if not ctx_line:
+                        continue
+                    highlighted = query_pattern.sub(
+                        lambda m: typer.style(m.group(), fg=typer.colors.YELLOW, bold=True),
+                        ctx_line[:100],
+                    )
+                    context.append(highlighted)
+                break
+        stem = f.stem
+        results.append((section_name, stem, title, context))
 
     return results
 
@@ -155,9 +201,13 @@ def docs_main(
     Built-in documentation for Mycelium CLI.
 
     Examples:
-        mycelium docs concepts rooms
-        mycelium docs --list
-        mycelium docs search "stream"
+        mycelium docs                    # Index
+        mycelium docs --full             # Dump all sections as markdown
+        mycelium docs overview           # Read a section
+        mycelium docs rooms              # Rooms documentation
+        mycelium docs --list             # List all docs
+        mycelium docs search "memory"    # Search all docs
+        mycelium docs concepts rooms     # Legacy: read from subdirectory
     """
     if ctx.invoked_subcommand is not None:
         return
@@ -179,28 +229,40 @@ def docs_main(
         _do_search(docs_root, topic)
         return
 
+    # No section: show index or --full dump
     if not section:
+        if full:
+            typer.echo(_concat_all(docs_root))
+            return
         doc_path = docs_root / "index.md"
         if doc_path.exists():
-            content = doc_path.read_text()
-            typer.echo(_render_markdown(content, full=full))
+            typer.echo(_render_markdown(doc_path.read_text(), full=False))
         else:
             _print_doc_list(docs_root)
         return
 
+    # Try top-level section file first (e.g. "mycelium docs rooms")
     if not topic:
+        top_level = docs_root / f"{section}.md"
+        if top_level.exists():
+            content = top_level.read_text()
+            if full:
+                typer.echo(content)
+            else:
+                typer.echo(_render_markdown(content, full=False))
+            return
+
+        # Try legacy subdirectory
         section_path = docs_root / section
         if section_path.is_dir():
             _print_section_list(docs_root, section)
-        else:
-            doc_path = docs_root / f"{section}.md"
-            if doc_path.exists():
-                typer.echo(_render_markdown(doc_path.read_text(), full=full))
-            else:
-                typer.secho(f"Section not found: {section}", fg=typer.colors.RED)
-                raise typer.Exit(1)
-        return
+            return
 
+        typer.secho(f"Section not found: {section}", fg=typer.colors.RED)
+        typer.secho("Run 'mycelium docs --list' to see available docs.", fg=typer.colors.BRIGHT_BLACK)
+        raise typer.Exit(1)
+
+    # Section + topic (legacy path: "mycelium docs concepts rooms")
     doc_path = _find_doc(docs_root, section, topic)
     if doc_path:
         content = doc_path.read_text()
@@ -218,16 +280,26 @@ def docs_main(
 def _print_doc_list(docs_root: Path) -> None:
     typer.secho("Available Documentation", bold=True)
     typer.echo("")
-    docs = _list_docs(docs_root)
-    current_section = None
-    for section, topic, title in docs:
-        if section != current_section:
-            if section:
-                typer.echo("")
-                typer.secho(section.upper(), fg=typer.colors.CYAN)
-            current_section = section
-        cmd = f"mycelium docs {section} {topic}" if section else "mycelium docs"
-        typer.echo(f"  {cmd:<40} {title}")
+
+    typer.secho("SECTIONS", fg=typer.colors.CYAN)
+    for stem, display_name in SECTIONS:
+        md_path = docs_root / f"{stem}.md"
+        if md_path.exists():
+            typer.echo(f"  mycelium docs {stem:<24} {display_name}")
+
+    # Legacy subdirectories
+    for section_name in _LEGACY_DIRS:
+        section_path = docs_root / section_name
+        if section_path.is_dir() and any(section_path.glob("*.md")):
+            typer.echo("")
+            typer.secho(section_name.upper(), fg=typer.colors.CYAN)
+            for f in sorted(section_path.glob("*.md")):
+                title = _extract_title(f)
+                cmd = f"mycelium docs {section_name} {f.stem}"
+                typer.echo(f"  {cmd:<40} {title}")
+
+    typer.echo("")
+    typer.secho("  mycelium docs --full                   Dump all sections as markdown", fg=typer.colors.BRIGHT_BLACK)
 
 
 def _print_section_list(docs_root: Path, section: str) -> None:
@@ -247,7 +319,7 @@ def _do_search(docs_root: Path, query: str) -> None:
     typer.secho(f"Search results for '{query}':", bold=True)
     typer.echo("")
     for section, topic, title, context_lines in results:
-        cmd = f"mycelium docs {section} {topic}" if section else "mycelium docs"
+        cmd = f"mycelium docs {section} {topic}" if section else f"mycelium docs {topic}"
         typer.echo(f"  {cmd}")
         typer.secho(f"    {title}", fg=typer.colors.CYAN)
         if context_lines:

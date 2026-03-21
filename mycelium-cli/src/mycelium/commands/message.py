@@ -181,6 +181,11 @@ def respond(
 # ── query (raw / advanced) ────────────────────────────────────────────────────
 
 
+@doc_ref(
+    usage="mycelium message query <json> [-r <room>] [-H <handle>]",
+    desc="Post a raw JSON response (advanced — prefer <code>propose</code> or <code>respond</code>).",
+    group="message",
+)
 @app.command("query")
 def query(
     ctx: typer.Context,

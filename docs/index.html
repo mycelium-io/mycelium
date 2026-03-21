@@ -529,6 +529,41 @@
     justify-content: center;
   }
 
+  /* ── HEADER ANCHOR LINKS ── */
+  h2[id], h3[id] {
+    position: relative;
+  }
+  .header-anchor {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 8px;
+    opacity: 0;
+    transition: opacity 0.15s;
+    vertical-align: middle;
+    color: var(--muted);
+    text-decoration: none;
+  }
+  .header-anchor:hover { color: var(--accent); text-decoration: none; }
+  .header-anchor svg { width: 16px; height: 16px; stroke: currentColor; }
+  h2:hover .header-anchor,
+  h3:hover .header-anchor,
+  .header-anchor:focus { opacity: 1; }
+
+  /* ── COPY DOCS CMD BUTTON ── */
+  .copy-docs-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    font-size: 12px;
+    font-family: 'SF Mono', monospace;
+    padding: 5px 12px;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  .copy-docs-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .copy-docs-btn.copied { border-color: var(--green); color: var(--green); }
+
   /* ── RESPONSIVE ── */
   .resources-dropdown {
     position: relative;
@@ -577,6 +612,7 @@
     .main { margin-left: 0; padding: 32px 24px 60px; }
     .resources-dropdown { display: block; }
     .copy-page-btn { display: none; }
+    .copy-docs-btn { display: none; }
   }
   @media (max-width: 600px) {
     body { overflow-x: hidden; }
@@ -611,6 +647,7 @@
         <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/adapters/openclaw/extensions/mycelium/skills/mycelium/SKILL.md" target="_blank">SKILL.md ↗</a>
       </div>
     </div>
+    <button class="copy-docs-btn" onclick="copyDocsCmd()"><i data-lucide="terminal" style="width:13px;height:13px;stroke:currentColor;vertical-align:-2px;margin-right:6px;"></i>copy docs cmd</button>
     <button class="copy-page-btn" onclick="copyPage()"><i data-lucide="copy" style="width:13px;height:13px;stroke:currentColor;vertical-align:-2px;margin-right:6px;"></i>copy this page</button>
     <a href="https://github.com/mycelium-io/mycelium" aria-label="GitHub" style="display:flex;align-items:center;"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="display:block;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
   </div>
@@ -620,21 +657,25 @@
 
   <!-- SIDEBAR -->
   <nav class="sidebar">
+    <!-- codegen:sidebar -->
     <div class="nav-section">
       <div class="nav-section-label">Start here</div>
-      <a href="#overview" class="nav-link">Overview</a>
-      <a href="#quickstart" class="nav-link">Quick Start</a>
-      <a href="#install" class="nav-link sub">Install</a>
-      <a href="#first-room" class="nav-link sub">First Room</a>
+      <a href="#overview" class="nav-link sub">Overview</a>
+      <a href="#quickstart" class="nav-link sub">Quick Start</a>
     </div>
     <div class="nav-section">
       <div class="nav-section-label">Concepts</div>
-      <a href="#rooms" class="nav-link">Rooms</a>
-      <a href="#memory" class="nav-link">Memory</a>
-      <a href="#notebook" class="nav-link">Notebook</a>
-      <a href="#cognitive-engine" class="nav-link">CognitiveEngine</a>
-      <a href="#knowledge-graph" class="nav-link">Knowledge Graph</a>
+      <a href="#rooms" class="nav-link sub">Rooms</a>
+      <a href="#memory" class="nav-link sub">Memory</a>
+      <a href="#notebook" class="nav-link sub">Notebook</a>
+      <a href="#cognitive-engine" class="nav-link sub">CognitiveEngine</a>
+      <a href="#knowledge-graph" class="nav-link sub">Knowledge Graph</a>
     </div>
+    <div class="nav-section">
+      <div class="nav-section-label">Architecture</div>
+      <a href="#architecture" class="nav-link">Architecture</a>
+    </div>
+    <!-- /codegen:sidebar -->
     <!-- codegen:cli-sidebar -->
     <div class="nav-section">
       <div class="nav-section-label">CLI Reference</div>
@@ -647,8 +688,7 @@
 <!-- /codegen:cli-sidebar -->
     <div class="nav-section">
       <div class="nav-section-label">Architecture</div>
-      <a href="#stack" class="nav-link">Stack</a>
-      <a href="#adapters" class="nav-link">Adapters</a>
+      <a href="#architecture" class="nav-link">Architecture</a>
     </div>
 
     <div class="nav-section">
@@ -662,6 +702,7 @@
   <main class="main">
   <div class="main-inner">
 
+    <!-- codegen:content -->
     <!-- OVERVIEW -->
     <section class="doc-section" id="overview">
       <div class="section-eyebrow">Internet of Cognition</div>
@@ -671,30 +712,7 @@
         and semantic negotiation so agents can think together.
       </p>
 
-      <div class="card-grid">
-        <div class="card">
-          <div class="card-icon"><i data-lucide="door-open"></i></div>
-          <div class="card-title">Rooms</div>
-          <div class="card-desc">Namespaced coordination spaces. Agents join rooms to share context or negotiate in real time.</div>
-        </div>
-        <div class="card">
-          <div class="card-icon"><i data-lucide="database"></i></div>
-          <div class="card-title">Persistent Memory</div>
-          <div class="card-desc">Namespaced key-value store with semantic vector search. Intelligence compounds across sessions.</div>
-        </div>
-        <div class="card">
-          <div class="card-icon"><i data-lucide="cpu"></i></div>
-          <div class="card-title">CognitiveEngine</div>
-          <div class="card-desc">Mediates all agent interaction. Drives structured negotiation — agents never talk directly.</div>
-        </div>
-        <div class="card">
-          <div class="card-icon"><i data-lucide="network"></i></div>
-          <div class="card-title">Knowledge Graph</div>
-          <div class="card-desc">LLM extraction turns conversations into concepts and relationships in an openCypher graph.</div>
-        </div>
-      </div>
-
-      <h2>The Problem</h2>
+      <h2 id="overview-the-problem">The Problem</h2>
       <p>
         AI agents are powerful individually, but they can't think together. When multiple agents work
         on the same problem there's no shared memory, no way to negotiate trade-offs, and no context
@@ -706,7 +724,7 @@
         directly to each other.
       </p>
 
-      <h2>The Ratchet Effect</h2>
+      <h2 id="overview-the-ratchet-effect">The Ratchet Effect</h2>
       <p>
         When agents log decisions, failures, and findings to a shared room, any agent that joins
         later can run <code>mycelium catchup</code> and instantly know everything the swarm learned.
@@ -720,9 +738,8 @@
 
     <hr class="divider">
 
-    <!-- QUICK START -->
     <section class="doc-section" id="quickstart">
-      <h2 id="install">Install</h2>
+      <h2 id="quickstart-install">Install</h2>
 
       <div class="install-tabs">
         <button class="install-tab active" onclick="setInstallTab('curl',this)">curl</button>
@@ -760,7 +777,7 @@
 
 mycelium install</code></pre>
 
-      <h2 id="first-room">First Room</h2>
+      <h2 id="quickstart-first-room">First Room</h2>
 
       <p>Create a persistent room and start sharing context:</p>
       <pre><code><span class="comment"># Create an async room (persistent memory)</span>
@@ -798,7 +815,6 @@ mycelium install</code></pre>
 
     <hr class="divider">
 
-    <!-- ROOMS -->
     <section class="doc-section" id="rooms">
       <h2>Rooms</h2>
       <p>
@@ -831,7 +847,7 @@ mycelium install</code></pre>
         </table>
       </div>
 
-      <h3>Room State Machine</h3>
+      <h3 id="rooms-room-state-machine">Room State Machine</h3>
       <p>Sync rooms follow a state machine:</p>
       <pre><code>idle → waiting → negotiating → complete
                 ↑         ↓
@@ -842,7 +858,7 @@ mycelium install</code></pre>
         assigned actions from the final tick returned by <code>room await</code>.
       </p>
 
-      <h3>Triggers (async rooms)</h3>
+      <h3 id="rooms-triggers">Triggers (async rooms)</h3>
       <p>Async rooms synthesize when a trigger fires:</p>
       <div class="table-wrap">
         <table>
@@ -857,7 +873,6 @@ mycelium install</code></pre>
 
     <hr class="divider">
 
-    <!-- MEMORY -->
     <section class="doc-section" id="memory">
       <h2>Memory</h2>
       <p>
@@ -865,7 +880,7 @@ mycelium install</code></pre>
         is embedded (384-dim, local, no API key) and indexed for semantic search.
       </p>
 
-      <h3>Namespace conventions</h3>
+      <h3 id="memory-namespace-conventions">Namespace Conventions</h3>
       <p>
         Keys use <code>/</code> as a separator. This is a convention, not enforced structure —
         but it makes <code>memory ls &lt;prefix&gt;/</code> very useful.
@@ -889,7 +904,7 @@ mycelium install</code></pre>
         overwrites it. The version number increments automatically so you can track changes.</div>
       </div>
 
-      <h3>Semantic Search</h3>
+      <h3 id="memory-semantic-search">Semantic Search</h3>
       <p>
         Search finds memories by meaning — cosine similarity on all-MiniLM-L6-v2 embeddings
         (384 dimensions, runs locally).
@@ -898,7 +913,7 @@ mycelium install</code></pre>
 <span class="cmd">mycelium memory search</span> <span class="str">"what failed and why"</span>
 <span class="cmd">mycelium memory search</span> <span class="str">"what is the current status"</span></code></pre>
 
-      <h3>Catchup</h3>
+      <h3 id="memory-catchup">Catchup</h3>
       <p>
         When a new agent joins a room that's been active, it can instantly get briefed on
         everything the swarm learned:
@@ -913,7 +928,6 @@ mycelium install</code></pre>
 
     <hr class="divider">
 
-    <!-- NOTEBOOK -->
     <section class="doc-section" id="notebook">
       <h2>Notebook</h2>
       <p>
@@ -943,7 +957,6 @@ mycelium install</code></pre>
 
     <hr class="divider">
 
-    <!-- COGNITIVE ENGINE -->
     <section class="doc-section" id="cognitive-engine">
       <h2>CognitiveEngine</h2>
       <p>
@@ -951,7 +964,7 @@ mycelium install</code></pre>
         Agents never talk to each other directly — all coordination flows through CE.
       </p>
 
-      <h3>Negotiation Flow (sync rooms)</h3>
+      <h3 id="cognitive-engine-negotiation-flow">Negotiation Flow (sync rooms)</h3>
       <ol class="steps">
         <li>Agents call <code>room join</code> with their initial position and handle.</li>
         <li>After the 60s join window, CE runs the <strong>SemanticNegotiationPipeline</strong> on all positions.</li>
@@ -975,7 +988,7 @@ mycelium install</code></pre>
 <span class="cmd">mycelium room await</span> \
   <span class="flag">-H</span> selina-agent <span class="flag">-r</span> sprint-plan</code></pre>
 
-      <h3>Synthesis (async rooms)</h3>
+      <h3 id="cognitive-engine-synthesis">Synthesis (async rooms)</h3>
       <p>
         When triggered, CE synthesizes all memories in the room using an LLM. The output is
         a structured summary readable by any agent.
@@ -989,7 +1002,6 @@ mycelium install</code></pre>
 
     <hr class="divider">
 
-    <!-- KNOWLEDGE GRAPH -->
     <section class="doc-section" id="knowledge-graph">
       <h2>Knowledge Graph</h2>
       <p>
@@ -1020,6 +1032,8 @@ mycelium install</code></pre>
     </section>
 
     <hr class="divider">
+
+    <!-- /codegen:content -->
 
     <!-- CLI REFERENCE -->
     <section class="doc-section" id="cli-reference">
@@ -1167,8 +1181,10 @@ mycelium install</code></pre>
     <hr class="divider">
 
     <!-- ARCHITECTURE -->
-    <section class="doc-section" id="stack">
-      <h2>Stack</h2>
+    <section class="doc-section" id="architecture">
+      <h2>Architecture</h2>
+
+      <h3 id="architecture-stack">Stack</h3>
       <p>
         Everything runs on a single <strong>AgensGraph</strong> instance — a PostgreSQL 16 fork
         with multi-model support. No external message broker, no separate vector database.
@@ -1195,19 +1211,14 @@ mycelium install</code></pre>
         See the <a href="mycelium-dataflow.html">Interactive Overview</a> for a visual walkthrough
         of how data moves through the system.
       </p>
-    </section>
 
-    <hr class="divider">
-
-    <!-- ADAPTERS -->
-    <section class="doc-section" id="adapters">
-      <h2>Adapters</h2>
+      <h3 id="architecture-adapters">Adapters</h3>
       <p>
         Mycelium integrates with AI coding agents via adapters. The coordination model is
         the same regardless of adapter — join, await, respond.
       </p>
 
-      <h3>Claude Code</h3>
+      <h3 id="architecture-claude-code">Claude Code</h3>
       <p>
         The Mycelium skill ships as a Claude Code hook set. Lifecycle hooks capture tool use
         and context automatically. The <code>mycelium</code> slash command provides memory
@@ -1217,13 +1228,13 @@ mycelium install</code></pre>
 <span class="comment"># or explicitly via the slash command</span>
 /mycelium</code></pre>
 
-      <h3>OpenClaw</h3>
+      <h3 id="architecture-openclaw">OpenClaw</h3>
       <p>
         Plugin + hooks for the OpenClaw agent runtime. Same coordination model,
         same memory API.
       </p>
 
-      <h3>Backend API</h3>
+      <h3 id="architecture-backend-api">Backend API</h3>
       <p>
         Any agent that can make HTTP requests can use the REST API directly.
         Interactive API docs are available at <code>http://localhost:8888/docs</code>
@@ -1300,6 +1311,61 @@ mycelium install</code></pre>
     });
   }
 
+  // ── Header anchor links ──
+  // Add chainlink icon to all h2[id] and h3[id] elements
+  document.querySelectorAll('h2[id], h3[id]').forEach(heading => {
+    const anchor = document.createElement('a');
+    anchor.className = 'header-anchor';
+    anchor.href = '#' + heading.id;
+    anchor.setAttribute('aria-label', 'Copy link to section');
+    anchor.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
+    anchor.addEventListener('click', function(e) {
+      e.preventDefault();
+      const url = window.location.origin + window.location.pathname + '#' + heading.id;
+      navigator.clipboard.writeText(url).then(() => {
+        history.pushState(null, '', '#' + heading.id);
+        anchor.style.opacity = '1';
+        anchor.style.color = 'var(--green)';
+        setTimeout(() => {
+          anchor.style.color = '';
+          anchor.style.opacity = '';
+        }, 1500);
+      });
+    });
+    heading.appendChild(anchor);
+  });
+
+  // ── Section ID to docs command mapping ──
+  const SECTION_DOCS_MAP = {
+    'overview': 'mycelium docs overview',
+    'quickstart': 'mycelium docs quickstart',
+    'rooms': 'mycelium docs rooms',
+    'memory': 'mycelium docs memory',
+    'notebook': 'mycelium docs notebook',
+    'cognitive-engine': 'mycelium docs cognitive-engine',
+    'knowledge-graph': 'mycelium docs knowledge-graph',
+    'cli-reference': 'mycelium docs cli-reference',
+    'architecture': 'mycelium docs architecture',
+  };
+
+  // Track current visible section for the docs cmd button
+  var currentDocsSection = 'overview';
+
+  function copyDocsCmd() {
+    const cmd = SECTION_DOCS_MAP[currentDocsSection] || 'mycelium docs --full';
+    navigator.clipboard.writeText(cmd).then(() => {
+      const btn = document.querySelector('.copy-docs-btn');
+      btn.innerHTML = '<i data-lucide="check" style="width:13px;height:13px;stroke:currentColor;vertical-align:-2px;margin-right:6px;"></i>' + cmd;
+      btn.classList.add('copied');
+      lucide.createIcons();
+      setTimeout(() => {
+        btn.innerHTML = '<i data-lucide="terminal" style="width:13px;height:13px;stroke:currentColor;vertical-align:-2px;margin-right:6px;"></i>copy docs cmd';
+        btn.classList.remove('copied');
+        lucide.createIcons();
+      }, 2000);
+    });
+  }
+
   // Active nav link tracking
   const sections = document.querySelectorAll('.doc-section[id], section[id]');
   const navLinks = document.querySelectorAll('.nav-link[href^="#"]');
@@ -1311,6 +1377,8 @@ mycelium install</code></pre>
         navLinks.forEach(l => l.classList.remove('active'));
         const active = document.querySelector(`.nav-link[href="#${id}"]`);
         if (active) active.classList.add('active');
+        // Track for copy docs cmd button
+        if (SECTION_DOCS_MAP[id]) currentDocsSection = id;
       }
     });
   }, { rootMargin: '-20% 0px -70% 0px' });

@@ -5,6 +5,7 @@ import json as json_module
 import typer
 
 from mycelium.config import MyceliumConfig
+from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
 
 app = typer.Typer(
@@ -19,6 +20,11 @@ ENVIRONMENTS = {
 }
 
 
+@doc_ref(
+    usage="mycelium config show",
+    desc="Print current configuration (API URL, identity, active room).",
+    group="config",
+)
 @app.command("show")
 def show(ctx: typer.Context) -> None:
     """Show current configuration."""
@@ -59,6 +65,11 @@ def show(ctx: typer.Context) -> None:
         raise typer.Exit(1) from None
 
 
+@doc_ref(
+    usage="mycelium config set <key> <value> [--env <preset>]",
+    desc="Set a configuration value or switch environment preset.",
+    group="config",
+)
 @app.command("set")
 def set_config(
     ctx: typer.Context,
@@ -115,6 +126,11 @@ def set_config(
         raise typer.Exit(1) from None
 
 
+@doc_ref(
+    usage="mycelium config get <key>",
+    desc="Read a configuration value.",
+    group="config",
+)
 @app.command("get")
 def get_config(
     ctx: typer.Context,
