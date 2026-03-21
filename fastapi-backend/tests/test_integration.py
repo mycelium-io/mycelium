@@ -367,12 +367,12 @@ async def test_namespace_room_stays_idle_after_join(integration_client: AsyncCli
 
 @pytest.mark.asyncio
 async def test_sync_join_starts_timer(integration_client: AsyncClient):
-    """Joining a sync room transitions it to 'waiting' state."""
+    """Joining a namespace room spawns a session that transitions to 'waiting'."""
     client = integration_client
 
-    await client.post("/rooms", json={"name": "e2e-timer", "mode": "sync"})
+    await client.post("/rooms", json={"name": "e2e-timer"})
 
-    # First agent joins — should start the timer
+    # First agent joins — auto-spawns session, starts the timer
     resp = await client.post(
         "/rooms/e2e-timer/sessions",
         json={
@@ -381,11 +381,12 @@ async def test_sync_join_starts_timer(integration_client: AsyncClient):
         },
     )
     assert resp.status_code == 201
+    session_room_name = resp.json()["room_name"]
 
-    resp = await client.get("/rooms/e2e-timer")
-    room = resp.json()
-    assert room["coordination_state"] == "waiting"
-    assert room["join_deadline"] is not None
+    resp = await client.get(f"/rooms/{session_room_name}")
+    session_room = resp.json()
+    assert session_room["coordination_state"] == "waiting"
+    assert session_room["join_deadline"] is not None
 
 
 @pytest.mark.asyncio
@@ -393,9 +394,9 @@ async def test_sync_multiple_agents_join(integration_client: AsyncClient):
     """Multiple agents can join during the waiting window."""
     client = integration_client
 
-    await client.post("/rooms", json={"name": "e2e-multi", "mode": "sync"})
+    await client.post("/rooms", json={"name": "e2e-multi"})
 
-    # Two agents join
+    # Two agents join — both land in the same pending session
     resp1 = await client.post(
         "/rooms/e2e-multi/sessions",
         json={
@@ -404,6 +405,7 @@ async def test_sync_multiple_agents_join(integration_client: AsyncClient):
         },
     )
     assert resp1.status_code == 201
+    session_room_name = resp1.json()["room_name"]
 
     resp2 = await client.post(
         "/rooms/e2e-multi/sessions",
@@ -414,15 +416,15 @@ async def test_sync_multiple_agents_join(integration_client: AsyncClient):
     )
     assert resp2.status_code == 201
 
-    # Both sessions should exist
-    resp = await client.get("/rooms/e2e-multi/sessions")
+    # Both sessions should exist in the session room
+    resp = await client.get(f"/rooms/{session_room_name}/sessions")
     sessions = resp.json()
     assert sessions["total"] == 2
     handles = {s["agent_handle"] for s in sessions["sessions"]}
     assert handles == {"alpha", "beta"}
 
-    # Room should still be waiting (timer hasn't fired)
-    resp = await client.get("/rooms/e2e-multi")
+    # Session room should still be waiting (timer hasn't fired)
+    resp = await client.get(f"/rooms/{session_room_name}")
     assert resp.json()["coordination_state"] == "waiting"
 
 
@@ -431,17 +433,19 @@ async def test_sync_negotiation_produces_messages(integration_client: AsyncClien
     """Full sync negotiation: join → wait → CognitiveEngine runs → messages appear."""
     client = integration_client
 
-    # Create sync room with a very short join window for testing
-    await client.post("/rooms", json={"name": "e2e-negot", "mode": "sync"})
+    # Create namespace room
+    await client.post("/rooms", json={"name": "e2e-negot"})
 
-    # Two agents join
-    await client.post(
+    # Two agents join — auto-spawns a session
+    resp = await client.post(
         "/rooms/e2e-negot/sessions",
         json={
             "agent_handle": "agent-x",
             "intent": "I want scope=full and quality=premium",
         },
     )
+    session_room_name = resp.json()["room_name"]
+
     await client.post(
         "/rooms/e2e-negot/sessions",
         json={
@@ -450,21 +454,21 @@ async def test_sync_negotiation_produces_messages(integration_client: AsyncClien
         },
     )
 
-    # Manually trigger tick-0 (bypassing the 60s timer for testing)
+    # Manually trigger tick-0 on the session room (bypassing the 60s timer for testing)
     from app.services.coordination import _run_tick
 
-    await _run_tick("e2e-negot", tick=0)
+    await _run_tick(session_room_name, tick=0)
 
     # Give the pipeline thread a moment to start
     await asyncio.sleep(2)
 
-    # Room should be in negotiating state
-    resp = await client.get("/rooms/e2e-negot")
+    # Session room should be in negotiating state
+    resp = await client.get(f"/rooms/{session_room_name}")
     room = resp.json()
     assert room["coordination_state"] in ("negotiating", "complete")
 
-    # CognitiveEngine should have posted messages
-    resp = await client.get("/rooms/e2e-negot/messages")
+    # CognitiveEngine should have posted messages to the session room
+    resp = await client.get(f"/rooms/{session_room_name}/messages")
     messages = resp.json()["messages"]
     assert len(messages) > 0
 
