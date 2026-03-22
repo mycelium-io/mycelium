@@ -110,7 +110,13 @@ async def lifespan(app: FastAPI):
     logger.info("Database tables ensured")
     # Register with IoC CFN mgmt plane if configured
     _register_memory_provider()
+    # Incremental scan of filesystem → search index
+    from app.services.reindex import start_watcher, startup_scan, stop_watcher
+
+    await startup_scan()
+    start_watcher()
     yield
+    stop_watcher()
     logger.info("Mycelium backend shutting down")
 
 

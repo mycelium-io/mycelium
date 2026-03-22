@@ -26,6 +26,32 @@ mycelium memory ls failed/
 > **Always upserts.** Calling `memory set` on an existing key overwrites it.
 > The version number increments automatically so you can track changes.
 
+## Filesystem-Native Storage
+
+Every memory is a markdown file at `~/.mycelium/rooms/{room}/{key}.md` with YAML
+frontmatter. You can read, edit, or version-control these files directly.
+
+```bash
+# View the raw file
+cat ~/.mycelium/rooms/design-review/decisions/database.md
+
+# Edit with any tool
+vim ~/.mycelium/rooms/design-review/decisions/database.md
+
+# Git-track a room's memory
+cd ~/.mycelium/rooms/design-review && git init
+```
+
+The pgvector search index auto-syncs when:
+- You use `mycelium memory set` (immediate dual-write)
+- The backend starts up (incremental scan of changed files)
+- Files change on disk while the backend is running (file watcher)
+
+For bulk edits, you can also trigger a manual reindex:
+```bash
+mycelium memory reindex
+```
+
 ## Semantic Search
 
 Search finds memories by meaning — cosine similarity on all-MiniLM-L6-v2 embeddings

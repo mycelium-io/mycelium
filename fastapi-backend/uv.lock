@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = "==3.12.*"
 resolution-markers = [
     "sys_platform == 'win32'",
@@ -982,6 +982,7 @@ dependencies = [
     { name = "python-multipart" },
     { name = "sentence-transformers" },
     { name = "transformers" },
+    { name = "watchdog" },
 ]
 
 [package.dev-dependencies]
@@ -1015,6 +1016,7 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.9" },
     { name = "sentence-transformers", specifier = "<3" },
     { name = "transformers", specifier = "<4.40" },
+    { name = "watchdog", specifier = ">=6.0.0" },
 ]
 
 [package.metadata.requires-dev]
