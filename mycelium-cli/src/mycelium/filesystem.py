@@ -1,11 +1,8 @@
 """
-Filesystem-native memory operations for the CLI.
+Memory file operations for the CLI.
 
-When the backend server is not needed (basic CRUD), the CLI can
-read and write .mycelium/ directories directly. This module provides
-the local filesystem layer that mirrors the backend's filesystem service.
-
-Agents that don't know the Mycelium CLI can also just cat/grep/sed these files.
+Reads and writes markdown files in .mycelium/ directories.
+Mirrors the backend's filesystem service for local access.
 """
 
 import re

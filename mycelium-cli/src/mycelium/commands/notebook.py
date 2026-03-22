@@ -1,8 +1,9 @@
 """
 Notebook commands — agent-private persistent memory.
 
-Filesystem-native: notebooks are stored in .mycelium/notebooks/{handle}/
-Search uses pgvector via the backend API.
+Notebooks are scoped to a handle. They store identity, preferences,
+session history, and context that belongs to a specific agent — not
+shared with the room by default.
 """
 
 import json
@@ -19,7 +20,7 @@ from mycelium.filesystem import (
 )
 
 app = typer.Typer(
-    help="Agent-private memory. Stored as markdown files in .mycelium/notebooks/{handle}/.",
+    help="Agent-private memory. Persists identity, preferences, and context across sessions.",
     invoke_without_command=True,
 )
 
@@ -45,7 +46,7 @@ def _resolve_handle(handle: str | None) -> str:
 
 @doc_ref(
     usage="mycelium notebook set <key> <value> [-H <handle>]",
-    desc="Write a private notebook memory as a markdown file in <code>.mycelium/notebooks/{handle}/</code>.",
+    desc="Write a private notebook memory. Persists across sessions, visible only to this agent.",
     group="notebook",
 )
 @app.command(name="set")
@@ -55,10 +56,7 @@ def notebook_set(
     handle: str | None = typer.Option(None, "--handle", "-H", help="Agent handle"),
     no_embed: bool = typer.Option(False, "--no-embed", help="Skip vector embedding"),
 ) -> None:
-    """Write a memory to your private notebook.
-
-    Writes to .mycelium/notebooks/{handle}/ and updates the search index.
-    """
+    """Write a memory to your private notebook."""
     from mycelium_backend_client.api.notebook import (
         write_notebook_notebook_handle_memory_post as write_api,
     )
@@ -93,7 +91,7 @@ def notebook_set(
 
 @doc_ref(
     usage="mycelium notebook get <key> [-H <handle>]",
-    desc="Read a private notebook memory from <code>.mycelium/notebooks/{handle}/</code>.",
+    desc="Read a private notebook memory by key.",
     group="notebook",
 )
 @app.command(name="get")
@@ -126,7 +124,7 @@ def notebook_get(
 
 @doc_ref(
     usage="mycelium notebook ls [-H <handle>] [--prefix prefix/]",
-    desc="List your private notebook memories from <code>.mycelium/notebooks/{handle}/</code>.",
+    desc="List your private notebook memories.",
     group="notebook",
 )
 @app.command(name="ls")

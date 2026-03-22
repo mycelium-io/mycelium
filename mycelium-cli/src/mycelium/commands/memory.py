@@ -1,11 +1,8 @@
 """
-Memory commands — filesystem-native persistent memory operations.
+Memory commands — persistent namespaced memory operations.
 
-Source of truth: markdown files in .mycelium/rooms/{room}/
-Search index: pgvector embeddings via the backend API
-
-Basic CRUD (set, get, ls, rm) operates on the filesystem directly.
-Search and subscribe still use the backend API (pgvector/NOTIFY).
+CRUD operations read/write markdown files in .mycelium/rooms/{room}/.
+Search and subscribe use the backend API (pgvector/NOTIFY).
 """
 
 import json
@@ -56,7 +53,7 @@ def _get_active_room(room: str | None) -> str:
 
 @doc_ref(
     usage="mycelium memory set <key> <value> [--handle <handle>]",
-    desc="Write a memory as a markdown file (upsert). Also updates the pgvector search index via the backend API. Structured category keys (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code>) are auto-validated.",
+    desc="Write a memory (upsert). Structured category keys (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code>) are auto-validated. Always upserts — the backend handles versioning.",
     group="memory",
 )
 @app.command(name="set")
@@ -72,8 +69,10 @@ def memory_set(
 ) -> None:
     """Write a memory to a room's persistent namespace (upsert).
 
-    Writes a markdown file to .mycelium/rooms/{room}/{key}.md and updates
-    the pgvector search index via the backend API.
+    Keys with a known category prefix (work/, decisions/, context/, status/) are
+    validated for slug format. Other keys pass through freely.
+
+    Always upserts — the backend handles versioning.
 
     Examples:
         mycelium memory set status/deploy ACTIVE
@@ -153,7 +152,7 @@ def memory_set(
 
 @doc_ref(
     usage="mycelium memory get <key>",
-    desc="Read a memory — reads the markdown file directly from <code>.mycelium/rooms/</code>.",
+    desc="Read a memory by exact key.",
     group="memory",
 )
 @app.command(name="get")
@@ -188,7 +187,7 @@ def memory_get(
 
 @doc_ref(
     usage="mycelium memory ls [prefix/]",
-    desc="List memories — reads <code>.mycelium/rooms/</code> directory. Same as <code>ls .mycelium/rooms/&lt;room&gt;/</code>.",
+    desc="List memories. Optional prefix filters by namespace.",
     group="memory",
 )
 @app.command(name="ls")
@@ -294,17 +293,16 @@ def memory_rm(
 
 @doc_ref(
     usage="mycelium memory reindex",
-    desc="Re-index the room's filesystem into the pgvector search index. Run this after direct file edits (<code>cat</code>, <code>vim</code>, <code>git pull</code>).",
+    desc="Re-index the room into the pgvector search index. Run after editing memory files outside the CLI.",
     group="memory",
 )
 @app.command(name="reindex")
 def memory_reindex(
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
 ) -> None:
-    """Re-index the room's filesystem into the pgvector search index.
+    """Re-index the room into the pgvector search index.
 
-    Run this after editing files directly (cat, vim, sed, git pull)
-    to update the semantic search index.
+    Run after editing memory files outside the CLI to update search.
     """
     import httpx
 

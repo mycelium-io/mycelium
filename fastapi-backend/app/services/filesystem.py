@@ -1,9 +1,5 @@
 """
-Filesystem-native memory storage.
-
-Rooms are folders. Memories are markdown files with YAML frontmatter.
-The .mycelium/ directory is the source of truth for all shared context.
-AgensGraph becomes the semantic search index, not the primary storage layer.
+Memory storage — markdown files with YAML frontmatter.
 
 File format:
     ---

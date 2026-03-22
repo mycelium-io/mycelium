@@ -2,12 +2,12 @@
 
 ## Project
 
-Mycelium — multi-agent coordination + filesystem-native persistent memory, built on the Internet of Cognition.
+Mycelium — multi-agent coordination + persistent memory, built on the Internet of Cognition.
 
 ## Structure
 
 ```
-.mycelium/              Filesystem-native memory (rooms are folders, memories are markdown files)
+.mycelium/              Memory storage (rooms are folders, memories are markdown files)
 ├── rooms/{name}/       Room directories with standard namespace subdirs
 ├── notebooks/{handle}/ Agent-private notebook directories
 └── config.toml         Project-local configuration
@@ -37,7 +37,7 @@ cd mycelium-frontend && pnpm install && pnpm dev
 
 ## Architecture
 
-**Filesystem-native memory**: Source of truth is `.mycelium/rooms/{room}/{key}.md`. Markdown files with YAML frontmatter. The entire unix toolchain works — `cat`, `grep`, `sed`, `git diff`.
+**Memory**: Stored as markdown files with YAML frontmatter in `.mycelium/rooms/{room}/{key}.md`.
 
 **AgensGraph** (PostgreSQL 16 fork) is the search index and coordination backend:
 - pgvector: semantic vector search over memory embeddings (updated on write)
@@ -59,13 +59,12 @@ Embeddings: sentence-transformers (all-MiniLM-L6-v2, local, 384 dimensions).
 
 ## Key design decisions
 
-- **Filesystem is source of truth** — markdown files in `.mycelium/` are the primary storage. AgensGraph is the search index.
 - **CognitiveEngine mediates** — agents never talk to each other directly. All coordination flows through CE.
-- **Rooms are folders** — `mkdir -p .mycelium/rooms/my-project` creates a room. Standard subdirs: `decisions/`, `failed/`, `status/`, `context/`, `work/`, `procedures/`, `log/`.
+- **Rooms are folders** — `.mycelium/rooms/{name}/` with standard subdirs: `decisions/`, `failed/`, `status/`, `context/`, `work/`, `procedures/`, `log/`.
 - **Rooms are always persistent** — rooms are persistent namespaces for memory and coordination. Spawn sessions within rooms for real-time NegMAS negotiation.
 - **The CLI skill is a protocol** — join → wait → respond → consensus. This is the value add, don't change it to an augmentation layer.
 - **memory set always upserts** — `memory set` overwrites existing keys automatically (version increments).
-- **Git for sharing** — rooms can be shared via git push/pull. No custom sync protocol.
+- **Git for sharing** — rooms can be shared via git push/pull.
 - **No Ensue references in code** — we took inspiration from their API design but the implementation is independent.
 
 ## Conventions

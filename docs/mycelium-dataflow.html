@@ -565,7 +565,7 @@
       <p class="sec-body" style="margin-top:12px;">Each pillar maps directly to Mycelium components and connects to the Outshift CFN services &mdash; <code>ioc-cfn-mgmt-plane</code> for agent registration and <code>ioc-cfn-svc</code> for fabric orchestration. Mycelium itself serves as the knowledge-memory backend.</p>
       <div class="sec-detail blue">
         <span class="hi-b">Pillar 1:</span> <span>SemanticNegotiationPipeline + NegMAS SAO</span>
-        <span style="margin-top:4px;" class="hi-b">Pillar 2:</span> <span>Filesystem-native memory (.mycelium/) + pgvector search index</span>
+        <span style="margin-top:4px;" class="hi-b">Pillar 2:</span> <span>Persistent memory (.mycelium/) + pgvector search index</span>
         <span style="margin-top:4px;" class="hi-b">Pillar 3:</span> <span>CognitiveEngine synthesis + catchup</span>
       </div>
     </div>
@@ -574,13 +574,12 @@
     <div class="section" data-scene="3">
       <div class="sec-label">Infrastructure</div>
       <h2 class="sec-title">Infrastructure Overview</h2>
-      <p class="sec-body">Memory is <strong>filesystem-native</strong> &mdash; markdown files in <code>.mycelium/</code>. AgensGraph provides the <strong>semantic search index</strong> and session coordination. The backend is <strong>FastAPI</strong> with Postgres <code>LISTEN/NOTIFY</code> for real-time SSE.</p>
-      <p class="sec-body" style="margin-top:12px;">CFN services plug in via the <code>cfn</code> Docker Compose profile. Agents connect through adapters &mdash; Claude Code via hooks + skill, OpenClaw via plugin &mdash; or <strong>directly via the filesystem</strong> (<code>cat</code>, <code>grep</code>, native file I/O).</p>
+      <p class="sec-body">Memories are markdown files in <code>.mycelium/</code>. <strong>AgensGraph</strong> maintains the pgvector search index and session coordination state. The backend is <strong>FastAPI</strong> with Postgres <code>LISTEN/NOTIFY</code> for real-time SSE.</p>
+      <p class="sec-body" style="margin-top:12px;">CFN services plug in via the <code>cfn</code> Docker Compose profile. Agents connect through adapters &mdash; Claude Code via hooks + skill, OpenClaw via plugin &mdash; receiving coordination events over persistent SSE streams.</p>
       <div class="sec-detail">
-        <span class="hi">.mycelium/:</span> <span>filesystem — rooms are folders, memories are markdown files</span>
-        <span style="margin-top:4px;" class="hi">mycelium-cli:</span> <span>agent adapters — Claude Code (hooks + skill) &middot; OpenClaw (plugin)</span>
+        <span class="hi">mycelium-cli:</span> <span>agent adapters — Claude Code (hooks + skill) &middot; OpenClaw (plugin)</span>
         <span style="margin-top:4px;" class="hi">mycelium-backend:</span> <span>FastAPI :8000 &middot; asyncpg LISTEN/NOTIFY &middot; CognitiveEngine</span>
-        <span style="margin-top:4px;" class="hi">mycelium-db:</span> <span>AgensGraph :5432 &middot; search index (pgvector) + session coordination</span>
+        <span style="margin-top:4px;" class="hi">mycelium-db:</span> <span>AgensGraph :5432 &middot; SQL + pgvector + openCypher</span>
         <span style="margin-top:4px;" class="hi">CFN:</span> <span>mgmt-plane :9000 &middot; cfn-svc :9002</span>
       </div>
     </div>
@@ -615,14 +614,13 @@
     <!-- S6: Persistent Memory -->
     <div class="section" data-scene="6">
       <div class="sec-label green">Pillar 2 &mdash; Cognition Fabric</div>
-      <h2 class="sec-title">Filesystem-Native Memory</h2>
-      <p class="sec-body">Rooms are folders. Memories are <strong>markdown files</strong>. The <code>.mycelium/</code> directory is the source of truth. Agents read and write files using skills they already have &mdash; <code>cat</code>, <code>grep</code>, <code>sed</code>, native file I/O. No custom client needed.</p>
-      <p class="sec-body" style="margin-top:12px;">AgensGraph runs behind the scenes as the <strong>semantic search index</strong> &mdash; pgvector embeddings are updated on every write. <code>mycelium memory search</code> queries this index. But the files are the truth, and the entire unix toolchain works out of the box.</p>
+      <h2 class="sec-title">Persistent Memory</h2>
+      <p class="sec-body">Rooms are folders. Memories are <strong>markdown files</strong> in <code>.mycelium/rooms/{room}/</code>. They carry <strong>vector embeddings</strong> for semantic search and accumulate across agents. This is the <strong>ratchet effect</strong> &mdash; intelligence that doesn't reset.</p>
+      <p class="sec-body" style="margin-top:12px;">Memories version automatically on upsert. AgensGraph maintains a <strong>pgvector search index</strong> updated on every write. Standard namespace conventions &mdash; <code>decisions/</code>, <code>work/</code>, <code>status/</code>, <code>context/</code> &mdash; structure the knowledge.</p>
       <div class="sec-detail green">
-        <span class="hi-g">Source of truth:</span> <span>.mycelium/rooms/{room}/{key}.md</span>
-        <span style="margin-top:4px;" class="hi-g">Search index:</span> <span>pgvector embeddings in AgensGraph (updated on write)</span>
+        <span class="hi-g">Storage:</span> <span>.mycelium/rooms/{room}/{key}.md &mdash; YAML frontmatter + markdown</span>
+        <span style="margin-top:4px;" class="hi-g">Search:</span> <span>pgvector embeddings in AgensGraph (updated on write)</span>
         <span style="margin-top:4px;" class="hi-g">Sharing:</span> <span>git push/pull &middot; symlinks &middot; CFN federation (v2)</span>
-        <span style="margin-top:4px;" class="hi-g">Format:</span> <span>YAML frontmatter + markdown body</span>
       </div>
     </div>
 
@@ -705,7 +703,7 @@
             <div class="pillar-card pb">
               <div class="p-label" style="color:var(--blue);">Pillar 2</div>
               <div class="p-ioc">Cognition Fabric</div>
-              <div class="p-myc" style="margin-top:8px; border-top:1px solid var(--border); padding-top:8px;">Filesystem-Native Memory<br>.mycelium/ + pgvector index<br>Knowledge Graph</div>
+              <div class="p-myc" style="margin-top:8px; border-top:1px solid var(--border); padding-top:8px;">Persistent Memory<br>.mycelium/ + pgvector<br>Knowledge Graph</div>
             </div>
             <div class="pillar-card pp">
               <div class="p-label" style="color:var(--purple);">Pillar 3</div>

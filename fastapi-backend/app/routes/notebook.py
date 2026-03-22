@@ -1,8 +1,7 @@
 """
 Notebook API — agent-private memory scoped by handle.
 
-Filesystem-native: notebooks are stored in .mycelium/notebooks/{handle}/
-DB is used only for the pgvector search index.
+Notebooks are stored in .mycelium/notebooks/{handle}/.
 
 POST   /notebook/{handle}/memory           — write a notebook memory
 GET    /notebook/{handle}/memory           — list notebook memories
@@ -80,10 +79,7 @@ async def write_notebook(
     payload: MemoryBatchCreate,
     db: AsyncSession = Depends(get_async_session),
 ):
-    """Write memories to an agent's private notebook.
-
-    Writes markdown files to .mycelium/notebooks/{handle}/ and indexes in DB.
-    """
+    """Write memories to an agent's private notebook."""
     await _ensure_notebook_room(db)
     notebook_dir = get_notebook_dir(handle)
 

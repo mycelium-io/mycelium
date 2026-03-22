@@ -1,8 +1,5 @@
 """
-Memory API — filesystem-native persistent memory with semantic vector search.
-
-Source of truth: markdown files in .mycelium/rooms/{room_name}/
-Search index: pgvector embeddings in AgensGraph (updated on write)
+Memory API — persistent namespaced key-value store with semantic vector search.
 
 POST   /rooms/{room}/memory              — create/upsert memories (batch support)
 GET    /rooms/{room}/memory              — list memories (prefix filter, pagination)
@@ -154,8 +151,8 @@ async def create_memories(
 ):
     """Create or upsert one or more memories (batch: 1-100 items).
 
-    Writes markdown files to .mycelium/rooms/{room_name}/ as source of truth.
-    Updates the DB search index (pgvector embeddings) in parallel.
+    Writes markdown files to .mycelium/rooms/{room_name}/ and updates
+    the pgvector search index.
     """
     await _get_room(room_name, db)
     room_dir = get_room_dir(room_name)
@@ -196,7 +193,7 @@ async def create_memories(
         if existing:
             new_version = existing.version + 1
 
-            # Write to filesystem (source of truth)
+            # Write markdown file
             file_content = value_to_content(value)
             rel_path = write_memory_file(
                 room_dir,
@@ -232,7 +229,7 @@ async def create_memories(
                 _notify_subscribers(room_name, item.key, item.created_by, existing.version)
             )
         else:
-            # Write to filesystem (source of truth)
+            # Write markdown file
             file_content = value_to_content(value)
             rel_path = write_memory_file(
                 room_dir,
@@ -302,7 +299,7 @@ async def list_memories(
 ):
     """List memories in a room.
 
-    Reads from the filesystem as source of truth, falls back to DB index.
+    Reads from the filesystem, falls back to DB index.
     """
     await _get_room(room_name, db)
 
@@ -380,7 +377,7 @@ async def search_memories(
 ):
     """Semantic vector search over memories in a room.
 
-    Search always uses the pgvector index — this is what AgensGraph is for.
+    Search uses the pgvector index.
     """
     await _get_room(room_name, db)
 

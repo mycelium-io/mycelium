@@ -1,4 +1,4 @@
-"""Room CRUD endpoints — filesystem-native rooms."""
+"""Room CRUD endpoints."""
 
 import logging
 
@@ -119,10 +119,7 @@ async def catchup_room(
     room_name: str,
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Get a briefing for an agent joining a room: latest synthesis + recent activity.
-
-    Reads from filesystem as source of truth, with DB enrichment.
-    """
+    """Get a briefing for an agent joining a room: latest synthesis + recent activity."""
     from app.services.filesystem import list_memory_files
 
     result = await session.execute(select(Room).where(Room.name == room_name))

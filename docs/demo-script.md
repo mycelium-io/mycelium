@@ -46,10 +46,9 @@ cat .mycelium/rooms/design-review/decisions/database.md
 # Consolidated to single AgensGraph instance — SQL + graph + vector in one DB
 ```
 
-### Agent 2: Selina shares research — no CLI needed!
+### Agent 2: Selina shares research
 
 ```bash
-# Any agent can just write files directly:
 cat > .mycelium/rooms/design-review/research/pgvector-perf.md << 'EOF'
 ---
 key: research/pgvector-perf
@@ -83,10 +82,9 @@ mycelium memory set status/cfn-integration "Working on CFN integration — mappi
 mycelium memory set context/blocker "Need ioc-cfn-mgmt-plane-svc running to test agent registration flow" -H prometheus-agent
 ```
 
-### Browse & Search — filesystem and CLI interchangeably
+### Browse & Search
 
 ```bash
-# The filesystem IS the memory:
 ls .mycelium/rooms/design-review/decisions/
 # api-style.md  database.md  llm-provider.md  no-qdrant.md  no-sqlite-tests.md
 
@@ -211,20 +209,16 @@ Give this to the second Claude Code instance:
 
 1. **The problem**: Agents today are semantically isolated. No shared intent, no shared context, no ratchet effect.
 
-2. **Filesystem-native memory**: Rooms are folders. Memories are markdown files. The entire unix toolchain works — `cat`, `grep`, `sed`, `git diff`. No custom client needed. Every agent already knows how to read and write files.
-
-3. **IoC three pillars realized**:
+2. **IoC three pillars realized**:
    - Cognition State Protocols → CognitiveEngine + NegMAS semantic negotiation
-   - Cognition Fabric → Filesystem-native memory + pgvector search index
+   - Cognition Fabric → Persistent memory + pgvector search index
    - Cognition Engines → CognitiveEngine synthesis + guardrails
 
 4. **The ratchet effect**: Show `mycelium catchup`. A new agent arrives and instantly knows everything the swarm learned. Intelligence compounds across sessions. Synthesis is structure-aware — groups memories by category (work, decisions, status, context) for better briefings.
 
 5. **Negative results matter**: Show `mycelium memory decisions`. Agents log what didn't work (and why) so others don't repeat dead ends. The structured category convention (`decisions/no-qdrant`) makes failures as discoverable as successes.
 
-6. **Git-native sharing**: Rooms can be shared via git push/pull. Cross-machine coordination with zero custom sync protocol. Merge conflicts handled by git — a tool every developer already knows.
-
-7. **CFN integration**: Agent registration → CFN mgmt plane. ioc-cfn-svc routes extraction + evidence back to mycelium-backend. Mycelium serves as both the knowledge-memory and cognition engine backends.
+6. **CFN integration**: Agent registration → CFN mgmt plane. ioc-cfn-svc routes extraction + evidence back to mycelium-backend. Mycelium serves as both the knowledge-memory and cognition engine backends.
 
 ### Key URLs during demo
 
