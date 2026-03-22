@@ -52,7 +52,8 @@ class Settings(BaseSettings):
 
     # Filesystem-native memory storage
     # Root directory for .mycelium/ data (rooms, notebooks, config)
-    MYCELIUM_DATA_DIR: str = ".mycelium"
+    # Defaults to ~/.mycelium/ so backend and CLI share the same directory.
+    MYCELIUM_DATA_DIR: str = str(Path.home() / ".mycelium")
 
     # Embedding (for persistent memory semantic search)
     EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"

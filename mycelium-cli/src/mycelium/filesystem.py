@@ -14,19 +14,14 @@ import yaml
 
 
 def get_mycelium_dir() -> Path:
-    """Find the .mycelium directory by walking up from cwd.
+    """Get the .mycelium data directory.
 
-    Looks for .mycelium/ in cwd first, then walks up.
-    Falls back to cwd/.mycelium if nothing found.
+    Uses ~/.mycelium/ — the same location the backend defaults to,
+    so CLI and backend always share the same filesystem.
     """
-    current = Path.cwd()
-    while current != current.parent:
-        candidate = current / ".mycelium"
-        if candidate.is_dir():
-            return candidate
-        current = current.parent
-    # Default: create in cwd
-    return Path.cwd() / ".mycelium"
+    data_dir = Path.home() / ".mycelium"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    return data_dir
 
 
 def get_room_dir(room_name: str) -> Path:
