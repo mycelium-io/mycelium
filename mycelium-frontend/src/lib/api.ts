@@ -40,6 +40,11 @@ export async function fetchCatchup(roomName: string) {
   return res.json();
 }
 
+export async function reindexRoom(roomName: string) {
+  const res = await fetch(`${API}/rooms/${roomName}/reindex`, { method: "POST" });
+  return res.json();
+}
+
 export async function fetchMessages(roomName: string) {
   const res = await fetch(`${API}/rooms/${roomName}/messages`, { cache: "no-store" });
   return res.json();

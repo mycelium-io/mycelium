@@ -257,6 +257,8 @@ class Memory(Base):
     scope: Mapped[str] = mapped_column(VARCHAR(20), server_default="namespace", nullable=False)
     # For notebook-scoped memories, the owning agent handle
     owner_handle: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    # Filesystem path relative to .mycelium/ data dir
+    file_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("room_name", "key", "scope", "owner_handle", name="uq_memory_scope_key"),

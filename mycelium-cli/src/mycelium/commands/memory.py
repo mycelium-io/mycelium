@@ -1,10 +1,8 @@
 """
 Memory commands — persistent namespaced memory operations.
 
-Uses the generated OpenAPI client for type-safe API access.
-When a key matches a known category prefix (work/, decisions/, context/, status/),
-the write is validated against SSTP MemoryLogEntry — same pattern as ProposeReply
-validates negotiation offers before posting.
+CRUD operations read/write markdown files in .mycelium/rooms/{room}/.
+Search and subscribe use the backend API (pgvector/NOTIFY).
 """
 
 import json
@@ -17,10 +15,15 @@ from rich.table import Table
 
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
+from mycelium.filesystem import (
+    get_room_dir,
+    list_memories,
+    read_memory,
+)
 from mycelium.sstp import MEMORY_CATEGORIES, MemoryLogEntry
 
 app = typer.Typer(
-    help="Read and write persistent memories scoped to rooms. Memories persist across sessions and support semantic vector search.",
+    help="Read and write persistent memories scoped to rooms. Memories are markdown files in .mycelium/rooms/. Supports semantic vector search via pgvector.",
     no_args_is_help=True,
 )
 console = Console()
@@ -75,7 +78,6 @@ def memory_set(
         mycelium memory set status/deploy ACTIVE
         mycelium memory set decisions/db-choice "Chose AgensGraph for graph+SQL+vector"
         mycelium memory set work/api-server "Built 12 endpoints with auth"
-        mycelium memory set custom/anything "Freeform value, no category validation"
     """
     from mycelium_backend_client.api.memory import (
         create_memories_rooms_room_name_memory_post as create_api,
@@ -133,10 +135,17 @@ def memory_set(
 
     batch = MemoryBatchCreate(items=[item])
 
+    # The backend API now writes the file AND updates the search index
     with _get_client() as client:
         result = create_api.sync(room_name=room_name, client=client, body=batch)
         if result and isinstance(result, list) and len(result) > 0:
-            console.print(f"[green]Memory set:[/green] {room_name}/{key} (v{result[0].version})")
+            mem = result[0]
+            file_path = getattr(mem, "file_path", None)
+            version_info = f"v{mem.version}" if hasattr(mem, "version") else ""
+            path_info = f"  [{file_path}]" if file_path else ""
+            console.print(
+                f"[green]Memory set:[/green] {room_name}/{key} ({version_info}){path_info}"
+            )
         else:
             console.print(f"[green]Memory set:[/green] {room_name}/{key}")
 
@@ -150,29 +159,30 @@ def memory_set(
 def memory_get(
     key: str = typer.Argument(..., help="Memory key"),
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    raw: bool = typer.Option(False, "--raw", help="Show raw markdown file content"),
 ) -> None:
-    """Read a memory by key."""
-    from mycelium_backend_client.api.memory import (
-        get_memory_rooms_room_name_memory_key_get as get_api,
-    )
-
+    """Read a memory by key — reads directly from the filesystem."""
     room_name = _get_active_room(room)
+    room_dir = get_room_dir(room_name)
 
-    with _get_client() as client:
-        result = get_api.sync(room_name=room_name, key=key, client=client)
-        if result is None:
-            console.print(f"[red]Not found:[/red] {key}")
-            raise typer.Exit(1)
-        console.print(
-            f"[cyan]{result.key}[/cyan]  [dim]v{result.version}  {result.created_by}[/dim]"
-        )
-        value = result.value
-        if hasattr(value, "to_dict"):
-            value = value.to_dict()
-        if isinstance(value, dict):
-            console.print(json.dumps(value, indent=2, default=str))
-        else:
-            console.print(str(value))
+    result = read_memory(room_dir, key)
+    if result is None:
+        console.print(f"[red]Not found:[/red] {key}")
+        raise typer.Exit(1)
+
+    meta, content = result
+
+    if raw:
+        # Show the raw file
+        file_path = room_dir / f"{key}.md"
+        if file_path.exists():
+            console.print(file_path.read_text(encoding="utf-8"))
+        return
+
+    version = meta.get("version", "?")
+    created_by = meta.get("created_by", "?")
+    console.print(f"[cyan]{key}[/cyan]  [dim]v{version}  {created_by}[/dim]")
+    console.print(content)
 
 
 @doc_ref(
@@ -191,42 +201,32 @@ def memory_ls(
     ),
     limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
 ) -> None:
-    """List memories in a room, optionally filtered by namespace prefix."""
-    # Positional arg takes priority over --prefix flag
+    """List memories in a room — reads directly from the filesystem."""
     prefix = namespace or prefix
-    from mycelium_backend_client.api.memory import (
-        list_memories_rooms_room_name_memory_get as list_api,
-    )
-
     room_name = _get_active_room(room)
+    room_dir = get_room_dir(room_name)
 
-    with _get_client() as client:
-        result = list_api.sync(room_name=room_name, client=client, prefix=prefix, limit=limit)
-        if not result:
-            console.print("[dim]No memories found[/dim]")
-            return
+    entries = list_memories(room_dir, prefix=prefix, limit=limit)
+    if not entries:
+        console.print("[dim]No memories found[/dim]")
+        return
 
-        console.print(f"[bold]{room_name}[/bold] ({len(result)} memories)\n")
+    console.print(f"[bold]{room_name}[/bold] ({len(entries)} memories)\n")
 
-        for mem in result:
-            ts = str(mem.updated_at)[:16].replace("T", " ") if mem.updated_at else ""
-            console.print(
-                f"[cyan]{mem.key}[/cyan]  [dim]v{mem.version}  {mem.created_by}  {ts}[/dim]"
-            )
-            value = mem.value
-            if hasattr(value, "to_dict"):
-                value = value.to_dict()
-            if isinstance(value, dict):
-                flat = json.dumps(value, default=str)
-                console.print(f"  {flat[:120]}{'...' if len(flat) > 120 else ''}")
-            elif isinstance(value, str):
-                console.print(f"  {value[:120]}")
-            console.print()
+    for key, meta, content in entries:
+        ts = str(meta.get("updated_at", ""))[:16].replace("T", " ")
+        version = meta.get("version", "?")
+        created_by = meta.get("created_by", "?")
+        console.print(f"[cyan]{key}[/cyan]  [dim]v{version}  {created_by}  {ts}[/dim]")
+        display = content[:120] if content else ""
+        if display:
+            console.print(f"  {display}{'...' if len(content) > 120 else ''}")
+        console.print()
 
 
 @doc_ref(
     usage="mycelium memory search <query>",
-    desc="Semantic search — finds memories by meaning using cosine similarity on local embeddings.",
+    desc="Semantic search — finds memories by meaning using cosine similarity on local embeddings. Requires the backend API.",
     group="memory",
 )
 @app.command(name="search")
@@ -235,7 +235,7 @@ def memory_search(
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
     limit: int = typer.Option(5, "--limit", "-n", help="Max results"),
 ) -> None:
-    """Semantic search over memories."""
+    """Semantic search over memories (uses pgvector via backend API)."""
     from mycelium_backend_client.api.memory import (
         search_memories_rooms_room_name_memory_search_post as search_api,
     )
@@ -264,7 +264,7 @@ def memory_search(
 
 @doc_ref(
     usage="mycelium memory rm <key> [--force]",
-    desc="Delete a memory by key.",
+    desc="Delete a memory — removes the markdown file and search index entry.",
     group="memory",
 )
 @app.command(name="rm")
@@ -273,7 +273,7 @@ def memory_rm(
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
     force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
 ) -> None:
-    """Delete a memory."""
+    """Delete a memory — removes both the file and search index."""
     from mycelium_backend_client.api.memory import (
         delete_memory_rooms_room_name_memory_key_delete as delete_api,
     )
@@ -285,9 +285,41 @@ def memory_rm(
         if not confirm:
             raise typer.Exit(0)
 
+    # Delete via backend (handles both file + DB)
     with _get_client() as client:
         delete_api.sync_detailed(room_name=room_name, key=key, client=client)
         console.print(f"[green]Deleted:[/green] {key}")
+
+
+@doc_ref(
+    usage="mycelium memory reindex",
+    desc="Re-index the room into the pgvector search index. Run after editing memory files outside the CLI.",
+    group="memory",
+)
+@app.command(name="reindex")
+def memory_reindex(
+    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+) -> None:
+    """Re-index the room into the pgvector search index.
+
+    Run after editing memory files outside the CLI to update search.
+    """
+    import httpx
+
+    room_name = _get_active_room(room)
+    cfg = MyceliumConfig.load()
+
+    console.print(f"[dim]Re-indexing {room_name}...[/dim]")
+    with httpx.Client(base_url=cfg.server.api_url, timeout=120) as client:
+        resp = client.post(f"/rooms/{room_name}/reindex")
+        resp.raise_for_status()
+        data = resp.json()
+
+    indexed = data.get("indexed", 0)
+    errors = data.get("errors", 0)
+    console.print(f"[green]Re-indexed:[/green] {indexed} memories")
+    if errors:
+        console.print(f"[yellow]Errors:[/yellow] {errors}")
 
 
 @doc_ref(
@@ -319,7 +351,7 @@ def memory_subscribe(
 
 @doc_ref(
     usage="mycelium catchup",
-    desc="Get a full briefing on everything in the room — ideal for a new agent joining an active project.",
+    desc="Get a full briefing on everything in the room — reads from <code>.mycelium/rooms/</code> and the latest synthesis.",
     group="other",
 )
 @app.command(name="catchup")
@@ -349,7 +381,7 @@ def memory_catchup(
     synth = data.get("latest_synthesis")
     if synth:
         console.print("[bold green]Latest Synthesis[/bold green]")
-        console.print(f"[dim]{synth['key']}  {synth['created_at'][:16]}[/dim]\n")
+        console.print(f"[dim]{synth['key']}  {str(synth['created_at'])[:16]}[/dim]\n")
         content = synth["content"]
         if isinstance(content, dict):
             content = content.get("synthesis", json.dumps(content, default=str))
@@ -369,7 +401,7 @@ def memory_catchup(
         )
         for mem in recent[:10]:
             console.print(
-                f"  [cyan]{mem['key']}[/cyan]  [dim]{mem['created_by']}  {mem['created_at'][:16]}[/dim]"
+                f"  [cyan]{mem['key']}[/cyan]  [dim]{mem['created_by']}  {str(mem['created_at'])[:16]}[/dim]"
             )
             if mem.get("content_text"):
                 console.print(f"    {mem['content_text'][:150]}")
@@ -384,42 +416,30 @@ def memory_catchup(
 
 
 def _list_by_category(category: str, room: str | None, limit: int) -> None:
-    """Shared implementation for category-filtered listing (status, work, etc.)."""
-    from mycelium_backend_client.api.memory import (
-        list_memories_rooms_room_name_memory_get as list_api,
-    )
-
+    """Shared implementation for category-filtered listing — reads from filesystem."""
     room_name = _get_active_room(room)
+    room_dir = get_room_dir(room_name)
     prefix = f"{category}/"
 
-    with _get_client() as client:
-        result = list_api.sync(room_name=room_name, client=client, prefix=prefix, limit=limit)
-        if not result:
-            console.print(f"[dim]No {category} memories found[/dim]")
-            return
+    entries = list_memories(room_dir, prefix=prefix, limit=limit)
+    if not entries:
+        console.print(f"[dim]No {category} memories found[/dim]")
+        return
 
-        table = Table(title=f"{room_name} — {category}", show_lines=False)
-        table.add_column("Key", style="cyan", no_wrap=True)
-        table.add_column("Value", max_width=80)
-        table.add_column("By", style="dim")
-        table.add_column("Updated", style="dim")
+    table = Table(title=f"{room_name} — {category}", show_lines=False)
+    table.add_column("Key", style="cyan", no_wrap=True)
+    table.add_column("Value", max_width=80)
+    table.add_column("By", style="dim")
+    table.add_column("Updated", style="dim")
 
-        for mem in result:
-            # Strip the category prefix for cleaner display
-            short_key = mem.key.removeprefix(prefix)
-            value = mem.value
-            if hasattr(value, "to_dict"):
-                value = value.to_dict()
-            if isinstance(value, dict):
-                # For status, prefer a "status" or "text" field if present
-                display = value.get("status") or value.get("text") or json.dumps(value, default=str)
-            else:
-                display = str(value)
-            display = display[:80]
-            ts = str(mem.updated_at)[:16].replace("T", " ") if mem.updated_at else ""
-            table.add_row(short_key, display, mem.created_by, ts)
+    for key, meta, content in entries:
+        short_key = key.removeprefix(prefix)
+        display = content[:80] if content else ""
+        ts = str(meta.get("updated_at", ""))[:16].replace("T", " ")
+        created_by = meta.get("created_by", "?")
+        table.add_row(short_key, display, created_by, ts)
 
-        console.print(table)
+    console.print(table)
 
 
 @doc_ref(

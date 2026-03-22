@@ -79,6 +79,9 @@ def sync_detailed(
 
      Create or upsert one or more memories (batch: 1-100 items).
 
+    Writes markdown files to .mycelium/rooms/{room_name}/ as source of truth.
+    Updates the DB search index (pgvector embeddings) in parallel.
+
     Args:
         room_name (str):
         body (MemoryBatchCreate):
@@ -113,6 +116,9 @@ def sync(
 
      Create or upsert one or more memories (batch: 1-100 items).
 
+    Writes markdown files to .mycelium/rooms/{room_name}/ as source of truth.
+    Updates the DB search index (pgvector embeddings) in parallel.
+
     Args:
         room_name (str):
         body (MemoryBatchCreate):
@@ -141,6 +147,9 @@ async def asyncio_detailed(
     """Create Memories
 
      Create or upsert one or more memories (batch: 1-100 items).
+
+    Writes markdown files to .mycelium/rooms/{room_name}/ as source of truth.
+    Updates the DB search index (pgvector embeddings) in parallel.
 
     Args:
         room_name (str):
@@ -173,6 +182,9 @@ async def asyncio(
     """Create Memories
 
      Create or upsert one or more memories (batch: 1-100 items).
+
+    Writes markdown files to .mycelium/rooms/{room_name}/ as source of truth.
+    Updates the DB search index (pgvector embeddings) in parallel.
 
     Args:
         room_name (str):

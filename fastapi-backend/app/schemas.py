@@ -251,6 +251,7 @@ class MemoryRead(BaseModel):
     updated_at: datetime
     scope: str = "namespace"
     owner_handle: str | None = None
+    file_path: str | None = None
 
     model_config = {"from_attributes": True}
 

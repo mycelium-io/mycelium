@@ -1,4 +1,4 @@
-"""Room CRUD endpoints — no Yjs state, no canvas."""
+"""Room CRUD endpoints."""
 
 import logging
 
@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_async_session
 from app.models import Room
 from app.schemas import RoomCreate, RoomRead
+from app.services.filesystem import ensure_room_structure, get_room_dir, remove_room_dir
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,12 @@ async def create_room(
     session.add(db_room)
     await session.commit()
     await session.refresh(db_room)
+
+    # Create filesystem directory with standard namespace structure
+    room_dir = get_room_dir(room.name)
+    ensure_room_structure(room_dir)
+    logger.info("Created room directory: %s", room_dir)
+
     return db_room
 
 
@@ -113,72 +120,82 @@ async def catchup_room(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Get a briefing for an agent joining a room: latest synthesis + recent activity."""
-    from app.models import Memory
+    from app.services.filesystem import list_memory_files
 
     result = await session.execute(select(Room).where(Room.name == room_name))
     room = result.scalar_one_or_none()
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
 
-    # Get latest synthesis
-    synth_result = await session.execute(
-        select(Memory)
-        .where(Memory.room_name == room_name, Memory.key.startswith("_synthesis/"))
-        .order_by(Memory.created_at.desc())
-        .limit(1)
-    )
-    latest_synthesis = synth_result.scalar_one_or_none()
+    room_dir = get_room_dir(room_name)
 
-    # Get memories since last synthesis (or all if no synthesis exists)
-    recent_query = (
-        select(Memory)
-        .where(Memory.room_name == room_name)
-        .where(Memory.key.not_like("_synthesis/%"))
-    )
-    if latest_synthesis:
-        recent_query = recent_query.where(Memory.created_at > latest_synthesis.created_at)
-    recent_query = recent_query.order_by(Memory.created_at.desc()).limit(50)
+    # Get latest synthesis from filesystem
+    synthesis_entries = list_memory_files(room_dir, prefix="_synthesis/", limit=1)
+    latest_synthesis_data = None
+    if synthesis_entries:
+        s_key, s_meta, s_content = synthesis_entries[0]
+        latest_synthesis_data = {
+            "key": s_key,
+            "content": s_content,
+            "created_at": s_meta.get("created_at", ""),
+        }
 
-    recent_result = await session.execute(recent_query)
-    recent_memories = list(recent_result.scalars().all())
+    # Get all memory files (excluding synthesis)
+    all_entries = list_memory_files(room_dir, limit=1000)
+    non_synthesis = [(k, m, c) for k, m, c in all_entries if not k.startswith("_synthesis/")]
 
-    # Count total memories
-    from sqlalchemy import func
+    # Filter to recent (after latest synthesis)
+    if latest_synthesis_data and latest_synthesis_data.get("created_at"):
+        synth_time = str(latest_synthesis_data["created_at"])
+        recent_entries = [
+            (k, m, c) for k, m, c in non_synthesis if str(m.get("updated_at", "")) > synth_time
+        ]
+    else:
+        recent_entries = non_synthesis
 
-    count_result = await session.execute(
-        select(func.count()).select_from(Memory).where(Memory.room_name == room_name)
-    )
-    total = count_result.scalar() or 0
+    recent_entries = recent_entries[:50]
 
-    # Count contributors
-    contributors_result = await session.execute(
-        select(Memory.created_by).where(Memory.room_name == room_name).distinct()
-    )
-    contributors = [r[0] for r in contributors_result.fetchall()]
+    # Gather contributors
+    contributors = list({m.get("created_by", "unknown") for _, m, _ in non_synthesis})
 
     return {
         "room": room_name,
         "mode": room.mode,
-        "total_memories": total,
+        "total_memories": len(non_synthesis),
         "contributors": contributors,
-        "latest_synthesis": {
-            "key": latest_synthesis.key,
-            "content": latest_synthesis.content_text or latest_synthesis.value,
-            "created_at": latest_synthesis.created_at.isoformat(),
-        }
-        if latest_synthesis
-        else None,
+        "latest_synthesis": latest_synthesis_data,
         "recent_activity": [
             {
-                "key": m.key,
-                "created_by": m.created_by,
-                "content_text": (m.content_text or "")[:200],
-                "created_at": m.created_at.isoformat(),
+                "key": k,
+                "created_by": m.get("created_by", "unknown"),
+                "content_text": c[:200] if c else "",
+                "created_at": str(m.get("created_at", "")),
             }
-            for m in recent_memories
+            for k, m, c in recent_entries[:10]
         ],
-        "memories_since_synthesis": len(recent_memories),
+        "memories_since_synthesis": len(recent_entries),
     }
+
+
+@router.post("/{room_name}/reindex", status_code=200)
+async def reindex_room(
+    room_name: str,
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Re-index a room's filesystem into the pgvector search index.
+
+    Scans .mycelium/rooms/{room_name}/ and upserts all markdown files
+    into the memories table with fresh embeddings.
+    """
+    result = await session.execute(select(Room).where(Room.name == room_name))
+    room = result.scalar_one_or_none()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    from app.services.indexer import index_room
+
+    stats = await index_room(room_name, session)
+    return {"status": "complete", **stats}
 
 
 @router.delete("/{room_name}", status_code=204)
@@ -197,3 +214,7 @@ async def delete_room(
 
     await session.delete(room)
     await session.commit()
+
+    # Remove filesystem directory
+    remove_room_dir(room_name)
+    logger.info("Removed room directory for: %s", room_name)

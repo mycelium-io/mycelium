@@ -7,6 +7,20 @@ Rooms hold persistent state (memories, knowledge graph). When agents need to neg
 in real time, they spawn **sessions** within a room. Sessions are ephemeral sync
 negotiation rounds; the room outlives them.
 
+## Rooms are Directories
+
+Each room maps to a directory at `~/.mycelium/rooms/{room_name}/`. Standard
+subdirectories are created automatically:
+
+```
+~/.mycelium/rooms/design-review/
+  decisions/   context/   status/
+  work/        procedures/   log/   failed/
+```
+
+You can browse, edit, or git-track these directories directly. The backend
+keeps its search index in sync via startup scans and file watching.
+
 ## Session State Machine
 
 Sessions spawned within rooms follow a state machine:

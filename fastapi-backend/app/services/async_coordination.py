@@ -20,6 +20,7 @@ from app.bus import agent_channel, notify
 from app.config import require_llm, settings
 from app.database import async_session_maker
 from app.models import Memory, Room
+from app.services.filesystem import get_room_dir, write_memory_file
 
 logger = logging.getLogger(__name__)
 
@@ -107,9 +108,21 @@ async def run_synthesis(room_name: str) -> dict | None:
             # Call LLM for synthesis
             synthesis_text = await _llm_synthesize(room_name, context, len(memories))
 
-            # Write synthesis result as a memory
+            # Write synthesis result as a markdown file + DB index
             timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
             synthesis_key = f"_synthesis/{timestamp}"
+
+            # Write markdown file
+            room_dir = get_room_dir(room_name)
+            write_memory_file(
+                room_dir,
+                synthesis_key,
+                synthesis_text,
+                created_by="CognitiveEngine",
+                updated_by="CognitiveEngine",
+                version=1,
+                extra_meta={"memory_count": len(memories)},
+            )
 
             synthesis_mem = Memory(
                 room_name=room_name,
@@ -118,6 +131,7 @@ async def run_synthesis(room_name: str) -> dict | None:
                 content_text=synthesis_text,
                 created_by="CognitiveEngine",
                 updated_by="CognitiveEngine",
+                file_path=f"rooms/{room_name}/{synthesis_key}.md",
             )
             db.add(synthesis_mem)
 

@@ -10,6 +10,7 @@ interface Memory {
   version: number;
   created_by: string;
   updated_at: string;
+  file_path?: string;
 }
 
 interface SearchResult {
@@ -184,6 +185,9 @@ export function MemoryPanel({ roomName, refreshTrigger }: Props) {
                 <p className="text-xs text-muted line-clamp-2 font-mono">
                   {formatValue(mem.value)}
                 </p>
+                {mem.file_path && (
+                  <p className="text-[10px] text-muted/30 mt-1 font-mono">{mem.file_path}</p>
+                )}
               </div>
             ))}
             {memories.length === 0 && (

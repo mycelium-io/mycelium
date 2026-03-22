@@ -20,6 +20,7 @@ dependencies = [
     "sentence-transformers<3",
     "pip-system-certs>=5.3",
     "transformers<4.40",
+    "watchdog>=6.0.0",
 ]
 
 [dependency-groups]

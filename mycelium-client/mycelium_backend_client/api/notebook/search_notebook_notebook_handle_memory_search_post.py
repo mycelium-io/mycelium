@@ -72,7 +72,7 @@ def sync_detailed(
 ) -> Response[HTTPValidationError | MemorySearchResponse]:
     """Search Notebook
 
-     Semantic search within an agent's notebook.
+     Semantic search within an agent's notebook (uses pgvector index).
 
     Args:
         handle (str):
@@ -106,7 +106,7 @@ def sync(
 ) -> HTTPValidationError | MemorySearchResponse | None:
     """Search Notebook
 
-     Semantic search within an agent's notebook.
+     Semantic search within an agent's notebook (uses pgvector index).
 
     Args:
         handle (str):
@@ -135,7 +135,7 @@ async def asyncio_detailed(
 ) -> Response[HTTPValidationError | MemorySearchResponse]:
     """Search Notebook
 
-     Semantic search within an agent's notebook.
+     Semantic search within an agent's notebook (uses pgvector index).
 
     Args:
         handle (str):
@@ -167,7 +167,7 @@ async def asyncio(
 ) -> HTTPValidationError | MemorySearchResponse | None:
     """Search Notebook
 
-     Semantic search within an agent's notebook.
+     Semantic search within an agent's notebook (uses pgvector index).
 
     Args:
         handle (str):

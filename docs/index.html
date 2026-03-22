@@ -841,6 +841,12 @@
       <h1>Rooms</h1>
       <p>A room is a persistent coordination namespace. All memories, sessions, and messages are scoped to a room. A room IS its namespace — there&#x27;s no separation between the two.</p>
       <p>Rooms hold persistent state (memories, knowledge graph). When agents need to negotiate in real time, they spawn <strong>sessions</strong> within a room. Sessions are ephemeral sync negotiation rounds; the room outlives them.</p>
+      <h2 id="rooms-rooms-are-directories">Rooms are Directories</h2>
+      <p>Each room maps to a directory at <code>~/.mycelium/rooms/{room_name}/</code>. Standard subdirectories are created automatically:</p>
+      <pre><code>~/.mycelium/rooms/design-review/
+  decisions/   context/   status/
+  work/        procedures/   log/   failed/</code></pre>
+      <p>You can browse, edit, or git-track these directories directly. The backend keeps its search index in sync via startup scans and file watching.</p>
       <h2 id="rooms-session-state-machine">Session State Machine</h2>
       <p>Sessions spawned within rooms follow a state machine:</p>
       <pre><code>idle → waiting → negotiating → complete
@@ -969,6 +975,24 @@
         <div class="callout-bar"></div>
         <div class="callout-body"><strong>Always upserts.</strong> Calling <code>memory set</code> on an existing key overwrites it. The version number increments automatically so you can track changes.</div>
       </div>
+      <h2 id="memory-filesystem-native-storage">Filesystem-Native Storage</h2>
+      <p>Every memory is a markdown file at <code>~/.mycelium/rooms/{room}/{key}.md</code> with YAML frontmatter. You can read, edit, or version-control these files directly.</p>
+      <pre><code><span class="comment"># View the raw file</span>
+cat ~/.mycelium/rooms/design-review/decisions/database.md
+
+<span class="comment"># Edit with any tool</span>
+vim ~/.mycelium/rooms/design-review/decisions/database.md
+
+<span class="comment"># Git-track a room&#x27;s memory</span>
+cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
+      <p>The pgvector search index auto-syncs when:</p>
+      <ul>
+        <li>You use <code>mycelium memory set</code> (immediate dual-write)</li>
+        <li>The backend starts up (incremental scan of changed files)</li>
+        <li>Files change on disk while the backend is running (file watcher)</li>
+      </ul>
+      <p>For bulk edits, you can also trigger a manual reindex:</p>
+      <pre><code><span class="cmd">mycelium memory reindex</span></code></pre>
       <h2 id="memory-semantic-search">Semantic Search</h2>
       <p>Search finds memories by meaning — cosine similarity on all-MiniLM-L6-v2 embeddings (384 dimensions, runs locally).</p>
       <pre><code><span class="cmd">mycelium memory search</span> <span class="str">&quot;what database decisions were made&quot;</span>
@@ -1197,6 +1221,13 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium migrate</span> [<span class="flag">--revision</span> <span class="arg">&lt;target&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Run database migrations (alembic upgrade). Defaults to latest.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
           <code><span class="cmd">mycelium install</span> [<span class="flag">--yes</span>] [<span class="flag">--non-interactive</span>]</code>
         </div>
         <div class="cmd-ref-body">Interactive installer — Docker check, LLM config, <code>docker compose up</code>, provision workspace.</div>
@@ -1303,14 +1334,21 @@
         <div class="cmd-ref-header">
           <code><span class="cmd">mycelium memory search</span> <span class="arg">&lt;query&gt;</span></code>
         </div>
-        <div class="cmd-ref-body">Semantic search — finds memories by meaning using cosine similarity on local embeddings.</div>
+        <div class="cmd-ref-body">Semantic search — finds memories by meaning using cosine similarity on local embeddings. Requires the backend API.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
           <code><span class="cmd">mycelium memory rm</span> <span class="arg">&lt;key&gt;</span> [<span class="flag">--force</span>]</code>
         </div>
-        <div class="cmd-ref-body">Delete a memory by key.</div>
+        <div class="cmd-ref-body">Delete a memory — removes the markdown file and search index entry.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium memory reindex</span></code>
+        </div>
+        <div class="cmd-ref-body">Re-index the room into the pgvector search index. Run after editing memory files outside the CLI.</div>
       </div>
 
       <div class="cmd-ref">
@@ -1382,7 +1420,7 @@
         <div class="cmd-ref-header">
           <code><span class="cmd">mycelium notebook search</span> <span class="arg">&lt;query&gt;</span> [<span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span>]</code>
         </div>
-        <div class="cmd-ref-body">Semantic search within your private notebook.</div>
+        <div class="cmd-ref-body">Semantic search within your private notebook (uses pgvector).</div>
       </div>
 
       <h3 id="cli-message">message</h3>
@@ -1467,7 +1505,7 @@
         <div class="cmd-ref-header">
           <code><span class="cmd">mycelium catchup</span></code>
         </div>
-        <div class="cmd-ref-body">Get a full briefing on everything in the room — ideal for a new agent joining an active project.</div>
+        <div class="cmd-ref-body">Get a full briefing on everything in the room — reads from <code>.mycelium/rooms/</code> and the latest synthesis.</div>
       </div>
 
       <div class="cmd-ref">
