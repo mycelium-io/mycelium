@@ -13,7 +13,19 @@ Agents never communicate directly with each other.
 
 - **Rooms** are persistent namespaces. They hold memory that accumulates across sessions. Spawn sessions within rooms for real-time negotiation when needed.
 - **CognitiveEngine** mediates all coordination. It drives negotiation rounds and synthesizes accumulated context.
-- **Memory** is the persistence layer. Key-value entries scoped to a room, with optional vector embeddings for semantic search.
+- **Memory** is filesystem-native. Each memory is a markdown file at `~/.mycelium/rooms/{room}/{key}.md` with YAML frontmatter. The database is a search index that auto-syncs via file watcher.
+
+## Memory as Files
+
+Every memory is a readable, editable markdown file:
+
+```
+~/.mycelium/rooms/my-project/decisions/db.md
+~/.mycelium/rooms/my-project/work/api.md
+~/.mycelium/rooms/my-project/context/team.md
+```
+
+You can read them with `cat`, edit with any tool, or `git` the directory. Changes are auto-indexed — no manual reindex needed.
 
 ## Memory Operations
 
