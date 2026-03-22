@@ -13,6 +13,7 @@ from ...types import Response
 def _get_kwargs(
     room_name: str,
 ) -> dict[str, Any]:
+
     _kwargs: dict[str, Any] = {
         "method": "get",
         "url": "/rooms/{room_name}/catchup".format(
@@ -61,6 +62,8 @@ def sync_detailed(
 
      Get a briefing for an agent joining a room: latest synthesis + recent activity.
 
+    Reads from filesystem as source of truth, with DB enrichment.
+
     Args:
         room_name (str):
 
@@ -92,6 +95,8 @@ def sync(
 
      Get a briefing for an agent joining a room: latest synthesis + recent activity.
 
+    Reads from filesystem as source of truth, with DB enrichment.
+
     Args:
         room_name (str):
 
@@ -117,6 +122,8 @@ async def asyncio_detailed(
     """Catchup Room
 
      Get a briefing for an agent joining a room: latest synthesis + recent activity.
+
+    Reads from filesystem as source of truth, with DB enrichment.
 
     Args:
         room_name (str):
@@ -146,6 +153,8 @@ async def asyncio(
     """Catchup Room
 
      Get a briefing for an agent joining a room: latest synthesis + recent activity.
+
+    Reads from filesystem as source of truth, with DB enrichment.
 
     Args:
         room_name (str):

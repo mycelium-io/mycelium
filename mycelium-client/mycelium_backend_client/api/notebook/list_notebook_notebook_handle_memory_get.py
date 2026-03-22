@@ -18,6 +18,7 @@ def _get_kwargs(
     limit: int | Unset = 100,
     offset: int | Unset = 0,
 ) -> dict[str, Any]:
+
     params: dict[str, Any] = {}
 
     json_prefix: None | str | Unset
@@ -89,7 +90,7 @@ def sync_detailed(
 ) -> Response[HTTPValidationError | list[MemoryRead]]:
     """List Notebook
 
-     List an agent's notebook memories.
+     List an agent's notebook memories from filesystem.
 
     Args:
         handle (str):
@@ -129,7 +130,7 @@ def sync(
 ) -> HTTPValidationError | list[MemoryRead] | None:
     """List Notebook
 
-     List an agent's notebook memories.
+     List an agent's notebook memories from filesystem.
 
     Args:
         handle (str):
@@ -164,7 +165,7 @@ async def asyncio_detailed(
 ) -> Response[HTTPValidationError | list[MemoryRead]]:
     """List Notebook
 
-     List an agent's notebook memories.
+     List an agent's notebook memories from filesystem.
 
     Args:
         handle (str):
@@ -202,7 +203,7 @@ async def asyncio(
 ) -> HTTPValidationError | list[MemoryRead] | None:
     """List Notebook
 
-     List an agent's notebook memories.
+     List an agent's notebook memories from filesystem.
 
     Args:
         handle (str):

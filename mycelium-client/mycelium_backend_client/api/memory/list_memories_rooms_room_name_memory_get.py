@@ -20,6 +20,7 @@ def _get_kwargs(
     limit: int | Unset = 100,
     offset: int | Unset = 0,
 ) -> dict[str, Any]:
+
     params: dict[str, Any] = {}
 
     json_prefix: None | str | Unset
@@ -102,7 +103,9 @@ def sync_detailed(
 ) -> Response[HTTPValidationError | list[MemoryRead]]:
     """List Memories
 
-     List memories in a room, optionally filtered by key prefix and scope.
+     List memories in a room.
+
+    Reads from the filesystem as source of truth, falls back to DB index.
 
     Args:
         room_name (str):
@@ -148,7 +151,9 @@ def sync(
 ) -> HTTPValidationError | list[MemoryRead] | None:
     """List Memories
 
-     List memories in a room, optionally filtered by key prefix and scope.
+     List memories in a room.
+
+    Reads from the filesystem as source of truth, falls back to DB index.
 
     Args:
         room_name (str):
@@ -189,7 +194,9 @@ async def asyncio_detailed(
 ) -> Response[HTTPValidationError | list[MemoryRead]]:
     """List Memories
 
-     List memories in a room, optionally filtered by key prefix and scope.
+     List memories in a room.
+
+    Reads from the filesystem as source of truth, falls back to DB index.
 
     Args:
         room_name (str):
@@ -233,7 +240,9 @@ async def asyncio(
 ) -> HTTPValidationError | list[MemoryRead] | None:
     """List Memories
 
-     List memories in a room, optionally filtered by key prefix and scope.
+     List memories in a room.
+
+    Reads from the filesystem as source of truth, falls back to DB index.
 
     Args:
         room_name (str):

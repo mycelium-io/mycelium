@@ -74,6 +74,8 @@ def sync_detailed(
 
      Semantic vector search over memories in a room.
 
+    Search always uses the pgvector index — this is what AgensGraph is for.
+
     Args:
         room_name (str):
         body (MemorySearchRequest):
@@ -108,6 +110,8 @@ def sync(
 
      Semantic vector search over memories in a room.
 
+    Search always uses the pgvector index — this is what AgensGraph is for.
+
     Args:
         room_name (str):
         body (MemorySearchRequest):
@@ -136,6 +140,8 @@ async def asyncio_detailed(
     """Search Memories
 
      Semantic vector search over memories in a room.
+
+    Search always uses the pgvector index — this is what AgensGraph is for.
 
     Args:
         room_name (str):
@@ -168,6 +174,8 @@ async def asyncio(
     """Search Memories
 
      Semantic vector search over memories in a room.
+
+    Search always uses the pgvector index — this is what AgensGraph is for.
 
     Args:
         room_name (str):

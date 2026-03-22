@@ -15,6 +15,7 @@ def _get_kwargs(
     workspace_id: UUID,
     mas_id: UUID,
 ) -> dict[str, Any]:
+
     _kwargs: dict[str, Any] = {
         "method": "post",
         "url": "/api/workspaces/{workspace_id}/multi-agentic-systems/{mas_id}/shared-memories".format(

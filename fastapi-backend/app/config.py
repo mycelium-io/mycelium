@@ -50,6 +50,10 @@ class Settings(BaseSettings):
             return 30
         return v
 
+    # Filesystem-native memory storage
+    # Root directory for .mycelium/ data (rooms, notebooks, config)
+    MYCELIUM_DATA_DIR: str = ".mycelium"
+
     # Embedding (for persistent memory semantic search)
     EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
     EMBEDDING_DIMENSIONS: int = 384

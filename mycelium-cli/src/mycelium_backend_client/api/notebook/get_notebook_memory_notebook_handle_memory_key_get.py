@@ -15,6 +15,7 @@ def _get_kwargs(
     handle: str,
     key: str,
 ) -> dict[str, Any]:
+
     _kwargs: dict[str, Any] = {
         "method": "get",
         "url": "/notebook/{handle}/memory/{key}".format(
@@ -64,7 +65,7 @@ def sync_detailed(
 ) -> Response[HTTPValidationError | MemoryRead]:
     """Get Notebook Memory
 
-     Get a specific notebook memory by key.
+     Get a specific notebook memory by key. Reads from filesystem first.
 
     Args:
         handle (str):
@@ -98,7 +99,7 @@ def sync(
 ) -> HTTPValidationError | MemoryRead | None:
     """Get Notebook Memory
 
-     Get a specific notebook memory by key.
+     Get a specific notebook memory by key. Reads from filesystem first.
 
     Args:
         handle (str):
@@ -127,7 +128,7 @@ async def asyncio_detailed(
 ) -> Response[HTTPValidationError | MemoryRead]:
     """Get Notebook Memory
 
-     Get a specific notebook memory by key.
+     Get a specific notebook memory by key. Reads from filesystem first.
 
     Args:
         handle (str):
@@ -159,7 +160,7 @@ async def asyncio(
 ) -> HTTPValidationError | MemoryRead | None:
     """Get Notebook Memory
 
-     Get a specific notebook memory by key.
+     Get a specific notebook memory by key. Reads from filesystem first.
 
     Args:
         handle (str):

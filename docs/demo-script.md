@@ -15,13 +15,17 @@ mycelium --help
 
 ---
 
-## Part 1: Persistent Memory
+## Part 1: Filesystem-Native Memory
 
 ### Setup
 
 ```bash
 mycelium room create design-review --trigger threshold:5
 mycelium room use design-review
+
+# Room is a folder now:
+ls .mycelium/rooms/design-review/
+# decisions/  failed/  status/  context/  work/  procedures/  log/
 ```
 
 ### Agent 1: Julia shares architecture decisions
@@ -31,14 +35,38 @@ mycelium room use design-review
 mycelium memory set decisions/database "Consolidated to single AgensGraph instance — SQL + graph + vector in one DB" -H julia-agent
 mycelium memory set decisions/llm-provider "litellm — 100+ providers, one interface" -H julia-agent
 mycelium memory set decisions/api-style "REST for now, generated OpenAPI client for type safety" -H julia-agent
+
+# These are just markdown files:
+cat .mycelium/rooms/design-review/decisions/database.md
+# ---
+# key: decisions/database
+# created_by: julia-agent
+# version: 1
+# ---
+# Consolidated to single AgensGraph instance — SQL + graph + vector in one DB
 ```
 
-### Agent 2: Selina shares research
+### Agent 2: Selina shares research — no CLI needed!
 
 ```bash
-# research/ isn't a structured category — passes through without slug validation
-mycelium memory set "research/pgvector-perf" "pgvector cosine search on 384-dim embeddings: <5ms for 10k memories" --handle selina-agent
-mycelium memory set "research/embeddings" "sentence-transformers/all-MiniLM-L6-v2 runs locally, 384 dimensions, no API key needed" --handle selina-agent
+# Any agent can just write files directly:
+cat > .mycelium/rooms/design-review/research/pgvector-perf.md << 'EOF'
+---
+key: research/pgvector-perf
+created_by: selina-agent
+version: 1
+---
+pgvector cosine search on 384-dim embeddings: <5ms for 10k memories
+EOF
+
+cat > .mycelium/rooms/design-review/research/embeddings.md << 'EOF'
+---
+key: research/embeddings
+created_by: selina-agent
+version: 1
+---
+sentence-transformers/all-MiniLM-L6-v2 runs locally, 384 dimensions, no API key needed
+EOF
 ```
 
 ### Agent 3: Kappa reports what didn't work
@@ -55,24 +83,32 @@ mycelium memory set status/cfn-integration "Working on CFN integration — mappi
 mycelium memory set context/blocker "Need ioc-cfn-mgmt-plane-svc running to test agent registration flow" -H prometheus-agent
 ```
 
-### Browse & Search
+### Browse & Search — filesystem and CLI interchangeably
 
 ```bash
-# List all memories
-mycelium memory ls
+# The filesystem IS the memory:
+ls .mycelium/rooms/design-review/decisions/
+# api-style.md  database.md  llm-provider.md  no-qdrant.md  no-sqlite-tests.md
 
-# Browse by structured category (table view)
+grep -r "AgensGraph" .mycelium/rooms/design-review/
+# decisions/database.md:Consolidated to single AgensGraph instance...
+# decisions/no-qdrant.md:...AgensGraph+pgvector eliminates the need
+
+# Or use the CLI for structured views:
 mycelium memory decisions     # Why choices were made
 mycelium memory status        # Current state of things
-mycelium memory work          # What's been built
 mycelium memory context       # Background & constraints
 
-# Or use prefix filter for any namespace
-mycelium memory ls research/
+# Read with cat or with the CLI:
+cat .mycelium/rooms/design-review/decisions/database.md
+mycelium memory get decisions/database
 
-# Semantic search
+# Semantic search (uses pgvector index):
 mycelium memory search "what database decisions were made"
 mycelium memory search "what failed"
+
+# Re-index after direct file writes (updates pgvector search index):
+# POST /rooms/design-review/reindex
 
 # Synthesize — now structure-aware, groups by category
 mycelium synthesize
@@ -91,6 +127,20 @@ mycelium watch design-review
 Then write memories from the first terminal — they appear live in the watch output.
 
 Also show `http://localhost:3000/room/design-review` in the browser for the UI view.
+
+### Git-based sharing
+
+```bash
+# Initialize git in the room:
+cd .mycelium/rooms/design-review && git init && git add -A && git commit -m "initial room state"
+
+# Agent A pushes findings:
+git push origin main
+
+# Agent B on another machine picks up context:
+git pull
+mycelium catchup
+```
 
 ---
 
@@ -161,16 +211,20 @@ Give this to the second Claude Code instance:
 
 1. **The problem**: Agents today are semantically isolated. No shared intent, no shared context, no ratchet effect.
 
-2. **IoC three pillars realized**:
+2. **Filesystem-native memory**: Rooms are folders. Memories are markdown files. The entire unix toolchain works — `cat`, `grep`, `sed`, `git diff`. No custom client needed. Every agent already knows how to read and write files.
+
+3. **IoC three pillars realized**:
    - Cognition State Protocols → CognitiveEngine + NegMAS semantic negotiation
-   - Cognition Fabric → Persistent memory + knowledge graph (AgensGraph + pgvector)
+   - Cognition Fabric → Filesystem-native memory + pgvector search index
    - Cognition Engines → CognitiveEngine synthesis + guardrails
 
-3. **The ratchet effect**: Show `mycelium catchup`. A new agent arrives and instantly knows everything the swarm learned. Intelligence compounds across sessions. Synthesis is structure-aware — groups memories by category (work, decisions, status, context) for better briefings.
+4. **The ratchet effect**: Show `mycelium catchup`. A new agent arrives and instantly knows everything the swarm learned. Intelligence compounds across sessions. Synthesis is structure-aware — groups memories by category (work, decisions, status, context) for better briefings.
 
-4. **Negative results matter**: Show `mycelium memory decisions`. Agents log what didn't work (and why) so others don't repeat dead ends. The structured category convention (`decisions/no-qdrant`) makes failures as discoverable as successes.
+5. **Negative results matter**: Show `mycelium memory decisions`. Agents log what didn't work (and why) so others don't repeat dead ends. The structured category convention (`decisions/no-qdrant`) makes failures as discoverable as successes.
 
-5. **CFN integration**: Agent registration → CFN mgmt plane. ioc-cfn-svc routes extraction + evidence back to mycelium-backend. Mycelium serves as both the knowledge-memory and cognition engine backends.
+6. **Git-native sharing**: Rooms can be shared via git push/pull. Cross-machine coordination with zero custom sync protocol. Merge conflicts handled by git — a tool every developer already knows.
+
+7. **CFN integration**: Agent registration → CFN mgmt plane. ioc-cfn-svc routes extraction + evidence back to mycelium-backend. Mycelium serves as both the knowledge-memory and cognition engine backends.
 
 ### Key URLs during demo
 

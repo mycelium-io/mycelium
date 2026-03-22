@@ -1,8 +1,8 @@
 """
 Notebook API — agent-private memory scoped by handle.
 
-Convenience routes that delegate to the memory system with scope="notebook".
-Notebooks don't require a user-created room — they use a system room "_notebooks".
+Filesystem-native: notebooks are stored in .mycelium/notebooks/{handle}/
+DB is used only for the pgvector search index.
 
 POST   /notebook/{handle}/memory           — write a notebook memory
 GET    /notebook/{handle}/memory           — list notebook memories
@@ -30,6 +30,14 @@ from app.schemas import (
     MemorySearchResult,
 )
 from app.services.embedding import embed_text
+from app.services.filesystem import (
+    delete_memory_file,
+    get_notebook_dir,
+    list_memory_files,
+    read_memory_file,
+    value_to_content,
+    write_memory_file,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +80,12 @@ async def write_notebook(
     payload: MemoryBatchCreate,
     db: AsyncSession = Depends(get_async_session),
 ):
-    """Write memories to an agent's private notebook."""
+    """Write memories to an agent's private notebook.
+
+    Writes markdown files to .mycelium/notebooks/{handle}/ and indexes in DB.
+    """
     await _ensure_notebook_room(db)
+    notebook_dir = get_notebook_dir(handle)
 
     results = []
     for item in payload.items:
@@ -95,18 +107,57 @@ async def write_notebook(
         )
         existing = existing_result.scalar_one_or_none()
 
+        now = datetime.now(UTC)
+
         if existing:
+            new_version = existing.version + 1
+
+            # Write to filesystem
+            file_content = value_to_content(value)
+            rel_path = write_memory_file(
+                notebook_dir,
+                item.key,
+                file_content,
+                created_by=existing.created_by,
+                updated_by=handle,
+                version=new_version,
+                tags=item.tags,
+                created_at=existing.created_at,
+                updated_at=now,
+                scope="notebook",
+                owner_handle=handle,
+            )
+
+            # Update search index
             existing.value = value
             existing.content_text = content_text
             existing.embedding = embedding
             existing.updated_by = handle
-            existing.version = existing.version + 1
+            existing.version = new_version
             existing.tags = item.tags
-            existing.updated_at = datetime.now(UTC)
+            existing.updated_at = now
+            existing.file_path = str(rel_path.relative_to(notebook_dir.parent.parent))
             await db.flush()
             await db.refresh(existing)
             results.append(existing)
         else:
+            # Write to filesystem
+            file_content = value_to_content(value)
+            rel_path = write_memory_file(
+                notebook_dir,
+                item.key,
+                file_content,
+                created_by=handle,
+                updated_by=handle,
+                version=1,
+                tags=item.tags,
+                created_at=now,
+                updated_at=now,
+                scope="notebook",
+                owner_handle=handle,
+            )
+
+            # Create search index entry
             mem = Memory(
                 room_name=NOTEBOOK_ROOM,
                 key=item.key,
@@ -118,6 +169,7 @@ async def write_notebook(
                 tags=item.tags,
                 scope="notebook",
                 owner_handle=handle,
+                file_path=str(rel_path.relative_to(notebook_dir.parent.parent)),
             )
             db.add(mem)
             await db.flush()
@@ -136,7 +188,49 @@ async def list_notebook(
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_async_session),
 ):
-    """List an agent's notebook memories."""
+    """List an agent's notebook memories from filesystem."""
+    notebook_dir = get_notebook_dir(handle)
+    file_entries = list_memory_files(notebook_dir, prefix=prefix, limit=limit + offset)
+    file_entries = file_entries[offset : offset + limit]
+
+    if file_entries:
+        result_list = []
+        for key, meta, content in file_entries:
+            db_result = await db.execute(
+                select(Memory).where(
+                    Memory.room_name == NOTEBOOK_ROOM,
+                    Memory.key == key,
+                    Memory.scope == "notebook",
+                    Memory.owner_handle == handle,
+                )
+            )
+            db_mem = db_result.scalar_one_or_none()
+            if db_mem:
+                result_list.append(MemoryRead.model_validate(db_mem))
+            else:
+                from uuid import uuid4
+
+                result_list.append(
+                    MemoryRead(
+                        id=uuid4(),
+                        room_name=NOTEBOOK_ROOM,
+                        key=key,
+                        value={"text": content} if content else {},
+                        content_text=content,
+                        created_by=meta.get("created_by", handle),
+                        updated_by=meta.get("updated_by"),
+                        version=meta.get("version", 1),
+                        tags=meta.get("tags"),
+                        created_at=meta.get("created_at", datetime.now(UTC)),
+                        updated_at=meta.get("updated_at", datetime.now(UTC)),
+                        scope="notebook",
+                        owner_handle=handle,
+                        file_path=f"notebooks/{handle}/{key}.md",
+                    )
+                )
+        return result_list
+
+    # Fallback to DB
     query = (
         select(Memory)
         .where(
@@ -161,7 +255,7 @@ async def search_notebook(
     payload: MemorySearchRequest,
     db: AsyncSession = Depends(get_async_session),
 ):
-    """Semantic search within an agent's notebook."""
+    """Semantic search within an agent's notebook (uses pgvector index)."""
     from sqlalchemy import text
 
     query_embedding = await asyncio.to_thread(embed_text, payload.query)
@@ -169,6 +263,7 @@ async def search_notebook(
     stmt = text("""
         SELECT id, room_name, key, value, content_text, created_by, updated_by,
                version, tags, created_at, updated_at, expires_at, scope, owner_handle,
+               file_path,
                1 - (embedding <=> CAST(:embedding AS vector)) AS similarity
         FROM memories
         WHERE room_name = :room_name
@@ -208,6 +303,7 @@ async def search_notebook(
             updated_at=row.updated_at,
             scope=row.scope,
             owner_handle=row.owner_handle,
+            file_path=getattr(row, "file_path", None),
         )
         results.append(MemorySearchResult(memory=memory_read, similarity=similarity))
 
@@ -220,7 +316,44 @@ async def get_notebook_memory(
     key: str,
     db: AsyncSession = Depends(get_async_session),
 ):
-    """Get a specific notebook memory by key."""
+    """Get a specific notebook memory by key. Reads from filesystem first."""
+    notebook_dir = get_notebook_dir(handle)
+    file_data = read_memory_file(notebook_dir, key)
+
+    if file_data:
+        meta, content = file_data
+        db_result = await db.execute(
+            select(Memory).where(
+                Memory.room_name == NOTEBOOK_ROOM,
+                Memory.key == key,
+                Memory.scope == "notebook",
+                Memory.owner_handle == handle,
+            )
+        )
+        db_mem = db_result.scalar_one_or_none()
+        if db_mem:
+            return MemoryRead.model_validate(db_mem)
+
+        from uuid import uuid4
+
+        return MemoryRead(
+            id=uuid4(),
+            room_name=NOTEBOOK_ROOM,
+            key=key,
+            value={"text": content} if content else {},
+            content_text=content,
+            created_by=meta.get("created_by", handle),
+            updated_by=meta.get("updated_by"),
+            version=meta.get("version", 1),
+            tags=meta.get("tags"),
+            created_at=meta.get("created_at", datetime.now(UTC)),
+            updated_at=meta.get("updated_at", datetime.now(UTC)),
+            scope="notebook",
+            owner_handle=handle,
+            file_path=f"notebooks/{handle}/{key}.md",
+        )
+
+    # Fallback to DB
     result = await db.execute(
         select(Memory).where(
             Memory.room_name == NOTEBOOK_ROOM,
@@ -241,7 +374,10 @@ async def delete_notebook_memory(
     key: str,
     db: AsyncSession = Depends(get_async_session),
 ):
-    """Delete a notebook memory by key."""
+    """Delete a notebook memory. Removes both file and DB index."""
+    notebook_dir = get_notebook_dir(handle)
+    delete_memory_file(notebook_dir, key)
+
     result = await db.execute(
         select(Memory).where(
             Memory.room_name == NOTEBOOK_ROOM,
