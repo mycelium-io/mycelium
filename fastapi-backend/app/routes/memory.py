@@ -546,18 +546,24 @@ async def delete_memory(
     key: str,
     db: AsyncSession = Depends(get_async_session),
 ):
-    """Delete a memory by key. Removes both the file and the DB search index entry."""
+    """Delete a memory by key. Removes the file and the DB search index entry.
+
+    Either the file or the DB entry (or both) must exist — 404 only if neither is found.
+    """
     # Delete from filesystem
     room_dir = get_room_dir(room_name)
-    delete_memory_file(room_dir, key)
+    file_deleted = delete_memory_file(room_dir, key)
 
     # Delete from DB search index
     result = await db.execute(
         select(Memory).where(Memory.room_name == room_name, Memory.key == key)
     )
     memory = result.scalar_one_or_none()
-    if not memory:
-        # File might have been deleted but not in DB, or vice versa
+    db_deleted = False
+    if memory:
+        await db.delete(memory)
+        await db.commit()
+        db_deleted = True
+
+    if not file_deleted and not db_deleted:
         raise HTTPException(status_code=404, detail="Memory not found")
-    await db.delete(memory)
-    await db.commit()

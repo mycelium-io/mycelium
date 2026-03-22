@@ -293,6 +293,38 @@ def memory_rm(
 
 
 @doc_ref(
+    usage="mycelium memory reindex",
+    desc="Re-index the room's filesystem into the pgvector search index. Run this after direct file edits (<code>cat</code>, <code>vim</code>, <code>git pull</code>).",
+    group="memory",
+)
+@app.command(name="reindex")
+def memory_reindex(
+    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+) -> None:
+    """Re-index the room's filesystem into the pgvector search index.
+
+    Run this after editing files directly (cat, vim, sed, git pull)
+    to update the semantic search index.
+    """
+    import httpx
+
+    room_name = _get_active_room(room)
+    cfg = MyceliumConfig.load()
+
+    console.print(f"[dim]Re-indexing {room_name}...[/dim]")
+    with httpx.Client(base_url=cfg.server.api_url, timeout=120) as client:
+        resp = client.post(f"/rooms/{room_name}/reindex")
+        resp.raise_for_status()
+        data = resp.json()
+
+    indexed = data.get("indexed", 0)
+    errors = data.get("errors", 0)
+    console.print(f"[green]Re-indexed:[/green] {indexed} memories")
+    if errors:
+        console.print(f"[yellow]Errors:[/yellow] {errors}")
+
+
+@doc_ref(
     usage="mycelium memory subscribe <pattern> [-H <handle>]",
     desc="Subscribe to memory change notifications matching a glob pattern.",
     group="memory",

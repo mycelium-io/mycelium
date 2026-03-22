@@ -374,9 +374,12 @@ async def delete_notebook_memory(
     key: str,
     db: AsyncSession = Depends(get_async_session),
 ):
-    """Delete a notebook memory. Removes both file and DB index."""
+    """Delete a notebook memory. Removes file and DB index.
+
+    Either the file or the DB entry (or both) must exist — 404 only if neither is found.
+    """
     notebook_dir = get_notebook_dir(handle)
-    delete_memory_file(notebook_dir, key)
+    file_deleted = delete_memory_file(notebook_dir, key)
 
     result = await db.execute(
         select(Memory).where(
@@ -387,7 +390,11 @@ async def delete_notebook_memory(
         )
     )
     memory = result.scalar_one_or_none()
-    if not memory:
+    db_deleted = False
+    if memory:
+        await db.delete(memory)
+        await db.commit()
+        db_deleted = True
+
+    if not file_deleted and not db_deleted:
         raise HTTPException(status_code=404, detail="Notebook memory not found")
-    await db.delete(memory)
-    await db.commit()
