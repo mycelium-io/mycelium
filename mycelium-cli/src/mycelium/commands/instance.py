@@ -392,7 +392,9 @@ def _get_backend_dir() -> Path:
 )
 def migrate(
     ctx: typer.Context,
-    revision: str = typer.Option("head", "--revision", "-r", help="Target revision (default: head)"),
+    revision: str = typer.Option(
+        "head", "--revision", "-r", help="Target revision (default: head)"
+    ),
 ) -> None:
     """
     Run database migrations.
