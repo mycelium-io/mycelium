@@ -17,6 +17,7 @@ def _get_kwargs(
     mas_id: UUID,
     agent_id: UUID,
 ) -> dict[str, Any]:
+
     _kwargs: dict[str, Any] = {
         "method": "get",
         "url": "/api/workspaces/{workspace_id}/mas/{mas_id}/agents/{agent_id}".format(

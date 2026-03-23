@@ -1,29 +1,25 @@
-# Mycelium CLI Documentation
+# Mycelium Documentation
 
-Built-in reference for the Mycelium multi-agent coordination CLI.
+Built-in reference for the Mycelium multi-agent coordination system.
 
 ## Sections
 
-- **concepts** — Core ideas: rooms, memory, coordination, synthesis
-- **guides** — How-to walkthroughs for common workflows
+- **overview** — What Mycelium is and why it exists
+- **quickstart** — Install and create your first room
+- **rooms** — Persistent coordination namespaces
+- **memory** — Persistent key-value store with semantic search
+- **notebook** — Agent-scoped private memory
+- **cognitive-engine** — Negotiation and synthesis mediator
+- **knowledge-graph** — LLM-extracted concept graph
+- **cli-reference** — All CLI commands (generated from source)
+- **architecture** — Stack, adapters, and integrations
 
-## Quick Start
-
-```bash
-mycelium init              # Set up local config
-mycelium up                # Start the backend
-mycelium room create lab   # Create a room
-mycelium room use lab      # Make it your active room
-mycelium memory set work/setup "Initialized the project"
-mycelium memory status     # See what's active
-mycelium catchup           # Get briefed on a room
-```
-
-## Browse
+## Usage
 
 ```bash
-mycelium docs --list                  # List all docs
-mycelium docs concepts memory         # Read about memory
-mycelium docs guides structured-memory # Structured memory guide
-mycelium docs search "synthesis"      # Search docs
+mycelium docs                    # This index
+mycelium docs --full             # Dump all sections as markdown
+mycelium docs overview           # Read a section
+mycelium docs cli-reference      # CLI command reference
+mycelium docs search "memory"    # Search all docs
 ```

@@ -2,8 +2,10 @@
 Shared test fixtures.
 
 Uses an in-memory SQLite DB so no Postgres is required.
+Sets MYCELIUM_DATA_DIR to a temp directory for filesystem tests.
 """
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -13,6 +15,12 @@ from app.main import app
 from app.models import Base
 
 TEST_DATABASE_URL = "sqlite+aiosqlite://"
+
+
+@pytest.fixture(autouse=True)
+def _set_data_dir(tmp_path, monkeypatch):
+    """Use a temp directory for .mycelium/ data in all tests."""
+    monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))
 
 
 @pytest_asyncio.fixture()

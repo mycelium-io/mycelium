@@ -15,7 +15,6 @@ Commands:
 
 import json as json_module
 import os
-from pathlib import Path
 
 import typer
 
@@ -33,7 +32,7 @@ def _typed_client(config: MyceliumConfig):
 
 
 app = typer.Typer(
-    help="Shared namespaces for agent coordination. Rooms can be sync (real-time negotiation), async (persistent memory), or hybrid.",
+    help="Shared spaces for agent coordination. Rooms are persistent namespaces for memory and coordination. Spawn sessions within rooms for real-time negotiation.",
     invoke_without_command=True,
 )
 
@@ -84,7 +83,7 @@ def room_main(ctx: typer.Context) -> None:
 
 @doc_ref(
     usage="mycelium room ls",
-    desc="List all rooms with mode, state, and member count.",
+    desc="List all rooms with state and member count.",
     group="room",
 )
 @app.command("ls")
@@ -144,8 +143,8 @@ def list_rooms(
 
 
 @doc_ref(
-    usage="mycelium room create <name> --mode <async|sync|hybrid> [--trigger threshold:N]",
-    desc="Create a new coordination room. Mode is required.",
+    usage="mycelium room create <name> [--trigger threshold:N]",
+    desc="Create a new persistent coordination room.",
     group="room",
 )
 @app.command()
@@ -153,12 +152,8 @@ def create(
     ctx: typer.Context,
     name: str | None = typer.Argument(None, help="Room name"),
     public: bool = typer.Option(True, "--public/--private"),
-    mode: str = typer.Option("sync", "--mode", "-m", help="Room mode: sync, async, or hybrid"),
     trigger: str | None = typer.Option(
         None, "--trigger", help="Trigger config (e.g. 'threshold:5' or 'explicit')"
-    ),
-    persistent: bool = typer.Option(
-        False, "--persistent", help="Room persists after coordination completes"
     ),
 ) -> None:
     """Create a new room."""
@@ -184,10 +179,6 @@ def create(
             else:
                 trigger_config = {"type": trigger}
 
-        # Auto-set persistent for async/hybrid rooms
-        if mode in ("async", "hybrid"):
-            persistent = True
-
         from mycelium_backend_client.api.rooms import create_room_rooms_post as create_api
         from mycelium_backend_client.models import RoomCreate
 
@@ -195,22 +186,28 @@ def create(
             body = RoomCreate(
                 name=name,
                 is_public=public,
-                mode=mode,
                 trigger_config=trigger_config,
-                is_persistent=persistent,
             )
             result = create_api.sync(client=client, body=body)
             room_data = result.to_dict() if result and hasattr(result, "to_dict") else {}
+
+        # The backend now creates the directory, but also create locally
+        # in case the CLI is running on a different machine
+        from mycelium.filesystem import ensure_room_structure, get_room_dir
+
+        room_dir = get_room_dir(name)
+        ensure_room_structure(room_dir)
 
         if json_output:
             typer.echo(json_module.dumps(room_data, indent=2, default=str))
         else:
             typer.secho(
-                f"Created room: {room_data['name']} (mode={room_data.get('mode', 'sync')})",
+                f"Created room: {room_data['name']}",
                 fg=typer.colors.GREEN,
             )
             typer.echo(f"  ID:      {room_data.get('id')}")
             typer.echo(f"  Created: {str(room_data.get('created_at', ''))[:10]}")
+            typer.echo(f"  Path:    {room_dir}")
             typer.echo("")
             typer.echo(f"  Run 'mycelium room use {name}' to make it your active room")
 
@@ -232,7 +229,7 @@ def synthesize(
         None, "--room", "-r", help="Room name (alternative to positional arg)"
     ),
 ) -> None:
-    """Trigger CognitiveEngine synthesis for an async/hybrid room."""
+    """Trigger CognitiveEngine synthesis for a room."""
     try:
         from rich.console import Console
 
@@ -307,13 +304,20 @@ def use(
             typer.echo(json_module.dumps({"room": room_name}))
         else:
             typer.secho(f"Room set: {room_name}", fg=typer.colors.GREEN)
-            typer.echo("Next: Run 'mycelium room join -m <intent>' to join a coordination session")
+            typer.echo(
+                "Next: Run 'mycelium session join -H <handle> -m <position>' to start negotiating"
+            )
 
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)
 
 
+@doc_ref(
+    usage="mycelium room delete <name> [--force]",
+    desc="Delete a room and all its data (memories, sessions, messages).",
+    group="room",
+)
 @app.command()
 def delete(
     ctx: typer.Context,
@@ -507,73 +511,6 @@ def _render_coordination_event(msg: dict, current_identity: str) -> tuple[str | 
     return None, False
 
 
-@doc_ref(
-    usage="mycelium room join --handle <handle> -m <position> [-r <room>]",
-    desc="Join a sync room with an initial position. Starts the 60s join window if you're the first.",
-    group="room",
-)
-@app.command()
-def join(
-    ctx: typer.Context,
-    message: str | None = typer.Option(
-        None, "--message", "-m", help="Your requirements/intent for this coordination session"
-    ),
-    file: Path | None = typer.Option(None, "--file", "-f", help="Read requirements from a file"),
-    room: str | None = typer.Option(
-        None, "--room", "-r", help="Room to join (overrides MYCELIUM_ROOM_ID)"
-    ),
-    handle: str = typer.Option(
-        ..., "--handle", "-H", help="Agent handle (your identity in this coordination session)"
-    ),
-) -> None:
-    """
-    Join the coordination backchannel for the current room.
-
-    Room is resolved from --room, MYCELIUM_ROOM_ID env var, or 'mycelium room use'.
-    Returns immediately after joining — CognitiveEngine will address you in this room
-    when the session starts and when it is your turn to respond.
-
-    Examples:
-        mycelium room join --handle julia-agent -m "My human wants to visit Hawaii"
-        mycelium room join --handle local-agent -m "..." --room my-experiment
-        mycelium room join --handle local-agent -f requirements.txt
-    """
-    try:
-        verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
-        json_output = ctx.obj.get("json", False) if ctx.obj else False
-
-        config = MyceliumConfig.load()
-        room_name = _resolve_room(config, room)
-
-        # Resolve intent from -m or -f
-        intent: str | None = None
-        if message:
-            intent = message
-        elif file:
-            intent = file.read_text().strip()
-
-        from mycelium_backend_client.api.sessions import (
-            join_room_rooms_room_name_sessions_post as join_api,
-        )
-        from mycelium_backend_client.models import SessionCreate
-
-        with _typed_client(config) as client:
-            body = SessionCreate(agent_handle=handle, intent=intent)
-            result = join_api.sync(room_name=room_name, client=client, body=body)
-            data = result.to_dict() if result and hasattr(result, "to_dict") else {}
-
-        if json_output:
-            typer.echo(json_module.dumps(data, indent=2, default=str))
-            return
-
-        typer.echo(f"  Joined {room_name} as {handle}.")
-        typer.echo("  CognitiveEngine will address you here when it is your turn.")
-
-    except Exception as e:
-        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
-        print_error(e, verbose=verbose)
-
-
 def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
     """Core SSE watch loop — pretty-renders coordination and memory events."""
     import time
@@ -683,16 +620,14 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
         resp = httpx.get(f"{config.server.api_url}/rooms/{room_name}", timeout=5)
         if resp.status_code == 200:
             room = resp.json()
-            mode = room.get("mode", "sync")
             state = room.get("coordination_state", "idle")
-            persistent = room.get("is_persistent", False)
             trigger = room.get("trigger_config")
             trigger_str = ""
             if trigger:
                 trigger_str = f"  trigger={trigger.get('type', '?')}"
                 if trigger.get("min_contributions"):
                     trigger_str += f":{trigger['min_contributions']}"
-            room_meta = f"[dim]mode=[/]{mode}  [dim]state=[/]{state}{'  [dim]persistent[/]' if persistent else ''}{trigger_str}"
+            room_meta = f"[dim]state=[/]{state}{trigger_str}"
     except Exception:
         pass
 
@@ -736,121 +671,6 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
 
 
 @doc_ref(
-    usage="mycelium room await --handle <handle> [-r <room>]",
-    desc="Block and wait for a negotiation tick. Returns when CE has an action for your agent.",
-    group="room",
-)
-@app.command(name="await")
-def await_tick(
-    ctx: typer.Context,
-    handle: str = typer.Option(
-        ..., "--handle", "-H", help="Your agent handle (listens for ticks addressed to you)"
-    ),
-    room: str | None = typer.Option(None, "--room", "-r", help="Room (overrides active room)"),
-    timeout: int = typer.Option(120, "--timeout", "-t", help="Timeout in seconds (default 120)"),
-) -> None:
-    """
-    Block until CognitiveEngine addresses you, then print the tick and exit.
-
-    Designed for Claude Code agents: call this in a loop to participate in
-    sync negotiation without a persistent SSE plugin.
-
-    Flow:
-        1. mycelium room join --handle my-agent -m "my position"
-        2. mycelium room await --handle my-agent        # blocks
-           → prints tick JSON when CE addresses you
-        3. mycelium message propose budget=high          # respond
-        4. mycelium room await --handle my-agent        # wait for next tick
-    """
-    import time
-
-    import httpx
-
-    try:
-        config = MyceliumConfig.load()
-        room_name = _resolve_room(config, room)
-
-        # Listen on the agent's personal SSE stream, not the room stream
-        url = f"{config.server.api_url}/agents/{handle}/stream"
-        start = time.time()
-
-        with httpx.Client(timeout=None) as http, http.stream("GET", url) as response:
-            for line in response.iter_lines():
-                if timeout > 0 and (time.time() - start) >= timeout:
-                    typer.echo(json_module.dumps({"type": "timeout", "seconds": timeout}))
-                    raise typer.Exit(1)
-
-                line = line.strip()
-                if not line or line.startswith(":"):
-                    continue
-                if not line.startswith("data:"):
-                    continue
-
-                payload = line[5:].strip()
-                try:
-                    msg = json_module.loads(payload)
-                except json_module.JSONDecodeError:
-                    continue
-
-                mtype = msg.get("message_type", "")
-
-                # coordination_tick addressed to us → print and exit
-                if mtype == "coordination_tick":
-                    try:
-                        data = json_module.loads(msg.get("content", "{}"))
-                    except json_module.JSONDecodeError:
-                        data = {}
-                    # SSTP envelope: action fields live under data["payload"]
-                    if "payload" in data and isinstance(data["payload"], dict):
-                        data = data["payload"]
-                    participant = data.get("participant_id")
-                    if participant == handle or participant is None:
-                        typer.echo(
-                            json_module.dumps(
-                                {
-                                    "type": "tick",
-                                    "room": msg.get("room_name", room_name),
-                                    "round": data.get("round"),
-                                    "action": data.get("action"),
-                                    "issue_options": data.get("issue_options", {}),
-                                    "current_offer": data.get("current_offer"),
-                                    "proposer_id": data.get("proposer_id"),
-                                    "history": data.get("history"),
-                                }
-                            )
-                        )
-                        return
-
-                # coordination_consensus → print and exit
-                if mtype == "coordination_consensus":
-                    try:
-                        data = json_module.loads(msg.get("content", "{}"))
-                    except json_module.JSONDecodeError:
-                        data = {}
-                    typer.echo(
-                        json_module.dumps(
-                            {
-                                "type": "consensus",
-                                "room": msg.get("room_name", room_name),
-                                "plan": data.get("plan"),
-                                "assignments": data.get("assignments"),
-                                "broken": data.get("broken", False),
-                            }
-                        )
-                    )
-                    return
-
-    except KeyboardInterrupt:
-        typer.echo(json_module.dumps({"type": "interrupted"}))
-        raise typer.Exit(1)
-    except typer.Exit:
-        raise
-    except Exception as e:
-        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
-        print_error(e, verbose=verbose)
-
-
-@doc_ref(
     usage="mycelium watch [room]",
     desc="Stream live room activity via SSE. Messages appear in real time as other agents write.",
     group="other",
@@ -884,6 +704,11 @@ def watch(
         print_error(e, verbose=verbose)
 
 
+@doc_ref(
+    usage="mycelium room post <room> --agent <handle> --response <text>",
+    desc="Post a raw message to a room (triggers NOTIFY). Advanced use.",
+    group="room",
+)
 @app.command("post")
 def post(
     ctx: typer.Context,
@@ -924,6 +749,11 @@ def post(
         print_error(e, verbose=verbose)
 
 
+@doc_ref(
+    usage="mycelium room delegate <room> --to <handle> --task <description>",
+    desc="Delegate a task to another agent in a room.",
+    group="room",
+)
 @app.command()
 def delegate(
     ctx: typer.Context,

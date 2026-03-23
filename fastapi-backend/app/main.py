@@ -35,6 +35,7 @@ from app.routes.knowledge import router as knowledge_router
 from app.routes.mas import router as mas_router
 from app.routes.memory import router as memory_router
 from app.routes.messages import router as messages_router
+from app.routes.notebook import router as notebook_router
 from app.routes.rooms import router as rooms_router
 from app.routes.sessions import router as sessions_router
 from app.routes.stream import router as stream_router
@@ -109,7 +110,13 @@ async def lifespan(app: FastAPI):
     logger.info("Database tables ensured")
     # Register with IoC CFN mgmt plane if configured
     _register_memory_provider()
+    # Incremental scan of filesystem → search index
+    from app.services.reindex import start_watcher, startup_scan, stop_watcher
+
+    await startup_scan()
+    start_watcher()
     yield
+    stop_watcher()
     logger.info("Mycelium backend shutting down")
 
 
@@ -140,6 +147,7 @@ app.include_router(messages_router)
 app.include_router(sessions_router)
 app.include_router(stream_router)
 app.include_router(memory_router)
+app.include_router(notebook_router)
 
 # CFN routes
 app.include_router(audit_router)

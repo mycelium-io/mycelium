@@ -26,10 +26,10 @@ category prefix, it checks the slug format and auto-timestamps the content.
 
 ## Workflow
 
-### 1. Set up a persistent room
+### 1. Set up a room
 
 ```bash
-mycelium room create project-x --mode async --persistent
+mycelium room create project-x
 mycelium room use project-x
 ```
 
@@ -75,7 +75,7 @@ mycelium catchup
 If synthesis has run, you'll get a structured briefing:
 
 ```
-project-x  async room  12 memories  2 contributors
+project-x  12 memories  2 contributors
 
 Latest Synthesis
   _synthesis/20260318T030000Z  2026-03-18 03:00

@@ -19,6 +19,7 @@ def _get_kwargs(
     sender: None | str | Unset = UNSET,
     message_type: None | str | Unset = UNSET,
 ) -> dict[str, Any]:
+
     params: dict[str, Any] = {}
 
     params["limit"] = limit

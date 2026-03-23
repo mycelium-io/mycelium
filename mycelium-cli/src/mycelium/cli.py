@@ -2,6 +2,9 @@
 Mycelium CLI — Multi-agent coordination + persistent memory.
 """
 
+from importlib import resources
+from pathlib import Path
+
 import typer
 
 from mycelium import __version__
@@ -13,7 +16,9 @@ from mycelium.commands import (
     instance,
     memory,
     message,
+    notebook,
     room,
+    session,
 )
 
 app = typer.Typer(
@@ -55,6 +60,26 @@ def main(
     ctx.obj["json"] = json_output
 
 
+@app.command(name="skill")
+def skill() -> None:
+    """Print the Mycelium SKILL.md (Claude Code adapter skill definition)."""
+    try:
+        with resources.as_file(
+            resources.files("mycelium").joinpath("adapters/claude-code/skills/mycelium/SKILL.md")
+        ) as p:
+            typer.echo(p.read_text())
+    except (TypeError, FileNotFoundError):
+        # Fallback for editable installs
+        fallback = (
+            Path(__file__).parent / "adapters" / "claude-code" / "skills" / "mycelium" / "SKILL.md"
+        )
+        if fallback.exists():
+            typer.echo(fallback.read_text())
+        else:
+            typer.secho("SKILL.md not found", fg=typer.colors.RED)
+            raise typer.Exit(1)
+
+
 # Top-level instance commands
 app.command(name="init")(instance.init)
 app.command(name="install")(install.install)
@@ -62,6 +87,7 @@ app.command(name="up")(instance.start)
 app.command(name="down")(instance.stop)
 app.command(name="status")(instance.status)
 app.command(name="logs")(instance.logs)
+app.command(name="migrate")(instance.migrate)
 
 # Top-level shortcuts
 app.command(name="watch")(room.watch)
@@ -75,6 +101,8 @@ app.add_typer(memory.app, name="memory")
 app.add_typer(config.app, name="config")
 app.add_typer(adapter.app, name="adapter")
 app.add_typer(docs.app, name="docs")
+app.add_typer(notebook.app, name="notebook")
+app.add_typer(session.app, name="session")
 
 
 if __name__ == "__main__":

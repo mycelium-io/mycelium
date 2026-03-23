@@ -38,6 +38,14 @@ from app.schemas import (
     SubscriptionRead,
 )
 from app.services.embedding import embed_text
+from app.services.filesystem import (
+    delete_memory_file,
+    get_room_dir,
+    list_memory_files,
+    read_memory_file,
+    value_to_content,
+    write_memory_file,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +112,6 @@ async def _notify_subscribers(
             database=parsed.path.lstrip("/"),
         )
         try:
-            # Fetch matching subscriptions
             rows = await conn.fetch(
                 "SELECT subscriber, key_pattern FROM memory_subscriptions WHERE room_name = $1",
                 room_name,
@@ -142,8 +149,13 @@ async def create_memories(
     payload: MemoryBatchCreate,
     db: AsyncSession = Depends(get_async_session),
 ):
-    """Create or upsert one or more memories (batch: 1-100 items)."""
+    """Create or upsert one or more memories (batch: 1-100 items).
+
+    Writes markdown files to .mycelium/rooms/{room_name}/ and updates
+    the pgvector search index.
+    """
     await _get_room(room_name, db)
+    room_dir = get_room_dir(room_name)
 
     results = []
     for item in payload.items:
@@ -151,28 +163,61 @@ async def create_memories(
         value = item.value if isinstance(item.value, dict) else {"text": item.value}
         content_text = item.content_text or _flatten_value(item.value)
 
-        # Generate embedding
+        # Generate embedding for search index
         embedding = None
         if item.embed:
             embedding = await asyncio.to_thread(embed_text, content_text)
 
-        # Check for existing memory (upsert)
-        existing_result = await db.execute(
-            select(Memory).where(
-                Memory.room_name == room_name,
-                Memory.key == item.key,
-            )
+        # Resolve scope and owner
+        scope = item.scope or "namespace"
+        owner_handle = item.owner_handle
+        if scope == "notebook":
+            owner_handle = owner_handle or item.created_by
+
+        # Check for existing memory (upsert) — scoped by (room, key, scope, owner)
+        upsert_query = select(Memory).where(
+            Memory.room_name == room_name,
+            Memory.key == item.key,
+            Memory.scope == scope,
         )
+        if scope == "notebook":
+            upsert_query = upsert_query.where(Memory.owner_handle == owner_handle)
+        else:
+            upsert_query = upsert_query.where(Memory.owner_handle.is_(None))
+
+        existing_result = await db.execute(upsert_query)
         existing = existing_result.scalar_one_or_none()
 
+        now = datetime.now(UTC)
+
         if existing:
+            new_version = existing.version + 1
+
+            # Write markdown file
+            file_content = value_to_content(value)
+            rel_path = write_memory_file(
+                room_dir,
+                item.key,
+                file_content,
+                created_by=existing.created_by,
+                updated_by=item.created_by,
+                version=new_version,
+                tags=item.tags,
+                created_at=existing.created_at,
+                updated_at=now,
+                scope=scope,
+                owner_handle=owner_handle,
+            )
+
+            # Update search index
             existing.value = value
             existing.content_text = content_text
             existing.embedding = embedding
             existing.updated_by = item.created_by
-            existing.version = existing.version + 1
+            existing.version = new_version
             existing.tags = item.tags
-            existing.updated_at = datetime.now(UTC)
+            existing.updated_at = now
+            existing.file_path = str(rel_path.relative_to(room_dir.parent.parent))
             await db.flush()
             await db.refresh(existing)
             results.append(existing)
@@ -184,6 +229,23 @@ async def create_memories(
                 _notify_subscribers(room_name, item.key, item.created_by, existing.version)
             )
         else:
+            # Write markdown file
+            file_content = value_to_content(value)
+            rel_path = write_memory_file(
+                room_dir,
+                item.key,
+                file_content,
+                created_by=item.created_by,
+                updated_by=item.created_by,
+                version=1,
+                tags=item.tags,
+                created_at=now,
+                updated_at=now,
+                scope=scope,
+                owner_handle=owner_handle,
+            )
+
+            # Create search index entry
             mem = Memory(
                 room_name=room_name,
                 key=item.key,
@@ -193,6 +255,9 @@ async def create_memories(
                 created_by=item.created_by,
                 updated_by=item.created_by,
                 tags=item.tags,
+                scope=scope,
+                owner_handle=owner_handle,
+                file_path=str(rel_path.relative_to(room_dir.parent.parent)),
             )
             db.add(mem)
             await db.flush()
@@ -226,14 +291,72 @@ async def _check_async_trigger(room_name: str, new_count: int) -> None:
 async def list_memories(
     room_name: str,
     prefix: str | None = Query(None, description="Key prefix filter"),
+    scope: str = Query("namespace", description="Memory scope: namespace or notebook"),
+    handle: str | None = Query(None, description="Owner handle (required for notebook scope)"),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_async_session),
 ):
-    """List memories in a room, optionally filtered by key prefix."""
+    """List memories in a room.
+
+    Reads from the filesystem, falls back to DB index.
+    """
     await _get_room(room_name, db)
 
-    query = select(Memory).where(Memory.room_name == room_name)
+    if scope == "notebook" and not handle:
+        raise HTTPException(status_code=400, detail="handle is required for notebook scope")
+
+    # Read from filesystem
+    room_dir = get_room_dir(room_name)
+    file_entries = list_memory_files(room_dir, prefix=prefix, limit=limit + offset)
+
+    # Skip offset entries
+    file_entries = file_entries[offset : offset + limit]
+
+    if file_entries:
+        # Build MemoryRead objects from filesystem data, enriched by DB index
+        result_list = []
+        for key, meta, content in file_entries:
+            # Try to get DB record for ID and embedding info
+            db_result = await db.execute(
+                select(Memory).where(
+                    Memory.room_name == room_name,
+                    Memory.key == key,
+                    Memory.scope == scope,
+                )
+            )
+            db_mem = db_result.scalar_one_or_none()
+
+            if db_mem:
+                result_list.append(MemoryRead.model_validate(db_mem))
+            else:
+                # File exists but no DB index — build from filesystem metadata
+                from uuid import uuid4
+
+                result_list.append(
+                    MemoryRead(
+                        id=uuid4(),
+                        room_name=room_name,
+                        key=key,
+                        value={"text": content} if content else {},
+                        content_text=content,
+                        created_by=meta.get("created_by", "unknown"),
+                        updated_by=meta.get("updated_by"),
+                        version=meta.get("version", 1),
+                        tags=meta.get("tags"),
+                        created_at=meta.get("created_at", datetime.now(UTC)),
+                        updated_at=meta.get("updated_at", datetime.now(UTC)),
+                        scope=meta.get("scope", "namespace"),
+                        owner_handle=meta.get("owner_handle"),
+                        file_path=f"rooms/{room_name}/{key}.md",
+                    )
+                )
+        return result_list
+
+    # Fallback to DB for rooms that haven't been migrated yet
+    query = select(Memory).where(Memory.room_name == room_name, Memory.scope == scope)
+    if scope == "notebook":
+        query = query.where(Memory.owner_handle == handle)
     if prefix:
         query = query.where(Memory.key.startswith(prefix))
     query = query.order_by(Memory.updated_at.desc()).limit(limit).offset(offset)
@@ -252,16 +375,18 @@ async def search_memories(
     payload: MemorySearchRequest,
     db: AsyncSession = Depends(get_async_session),
 ):
-    """Semantic vector search over memories in a room."""
+    """Semantic vector search over memories in a room.
+
+    Search uses the pgvector index.
+    """
     await _get_room(room_name, db)
 
     query_embedding = await asyncio.to_thread(embed_text, payload.query)
 
     # Use pgvector cosine distance operator
-    # Note: CAST() instead of :: to avoid SQLAlchemy param binding conflict
     stmt = text("""
         SELECT id, room_name, key, value, content_text, created_by, updated_by,
-               version, tags, created_at, updated_at, expires_at,
+               version, tags, created_at, updated_at, expires_at, file_path,
                1 - (embedding <=> CAST(:embedding AS vector)) AS similarity
         FROM memories
         WHERE room_name = :room_name
@@ -297,6 +422,7 @@ async def search_memories(
             tags=row.tags,
             created_at=row.created_at,
             updated_at=row.updated_at,
+            file_path=getattr(row, "file_path", None),
         )
         results.append(MemorySearchResult(memory=memory_read, similarity=similarity))
 
@@ -365,7 +491,43 @@ async def get_memory(
     key: str,
     db: AsyncSession = Depends(get_async_session),
 ):
-    """Get a specific memory by key."""
+    """Get a specific memory by key.
+
+    Reads from the filesystem first, falls back to DB index.
+    """
+    # Try filesystem first
+    room_dir = get_room_dir(room_name)
+    file_data = read_memory_file(room_dir, key)
+    if file_data:
+        meta, content = file_data
+        # Get the DB record for the full MemoryRead (ID, embedding status, etc.)
+        db_result = await db.execute(
+            select(Memory).where(Memory.room_name == room_name, Memory.key == key)
+        )
+        db_mem = db_result.scalar_one_or_none()
+        if db_mem:
+            return MemoryRead.model_validate(db_mem)
+        # File exists but no DB record — return from filesystem metadata
+        from uuid import uuid4
+
+        return MemoryRead(
+            id=uuid4(),
+            room_name=room_name,
+            key=key,
+            value={"text": content} if content else {},
+            content_text=content,
+            created_by=meta.get("created_by", "unknown"),
+            updated_by=meta.get("updated_by"),
+            version=meta.get("version", 1),
+            tags=meta.get("tags"),
+            created_at=meta.get("created_at", datetime.now(UTC)),
+            updated_at=meta.get("updated_at", datetime.now(UTC)),
+            scope=meta.get("scope", "namespace"),
+            owner_handle=meta.get("owner_handle"),
+            file_path=f"rooms/{room_name}/{key}.md",
+        )
+
+    # Fallback to DB
     result = await db.execute(
         select(Memory).where(Memory.room_name == room_name, Memory.key == key)
     )
@@ -381,12 +543,24 @@ async def delete_memory(
     key: str,
     db: AsyncSession = Depends(get_async_session),
 ):
-    """Delete a memory by key."""
+    """Delete a memory by key. Removes the file and the DB search index entry.
+
+    Either the file or the DB entry (or both) must exist — 404 only if neither is found.
+    """
+    # Delete from filesystem
+    room_dir = get_room_dir(room_name)
+    file_deleted = delete_memory_file(room_dir, key)
+
+    # Delete from DB search index
     result = await db.execute(
         select(Memory).where(Memory.room_name == room_name, Memory.key == key)
     )
     memory = result.scalar_one_or_none()
-    if not memory:
+    db_deleted = False
+    if memory:
+        await db.delete(memory)
+        await db.commit()
+        db_deleted = True
+
+    if not file_deleted and not db_deleted:
         raise HTTPException(status_code=404, detail="Memory not found")
-    await db.delete(memory)
-    await db.commit()

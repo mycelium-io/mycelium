@@ -15,13 +15,17 @@ mycelium --help
 
 ---
 
-## Part 1: Persistent Memory (Async Room)
+## Part 1: Filesystem-Native Memory
 
 ### Setup
 
 ```bash
-mycelium room create design-review --mode async --trigger threshold:5
+mycelium room create design-review --trigger threshold:5
 mycelium room use design-review
+
+# Room is a folder now:
+ls .mycelium/rooms/design-review/
+# decisions/  failed/  status/  context/  work/  procedures/  log/
 ```
 
 ### Agent 1: Julia shares architecture decisions
@@ -31,14 +35,37 @@ mycelium room use design-review
 mycelium memory set decisions/database "Consolidated to single AgensGraph instance — SQL + graph + vector in one DB" -H julia-agent
 mycelium memory set decisions/llm-provider "litellm — 100+ providers, one interface" -H julia-agent
 mycelium memory set decisions/api-style "REST for now, generated OpenAPI client for type safety" -H julia-agent
+
+# These are just markdown files:
+cat .mycelium/rooms/design-review/decisions/database.md
+# ---
+# key: decisions/database
+# created_by: julia-agent
+# version: 1
+# ---
+# Consolidated to single AgensGraph instance — SQL + graph + vector in one DB
 ```
 
 ### Agent 2: Selina shares research
 
 ```bash
-# research/ isn't a structured category — passes through without slug validation
-mycelium memory set "research/pgvector-perf" "pgvector cosine search on 384-dim embeddings: <5ms for 10k memories" --handle selina-agent
-mycelium memory set "research/embeddings" "sentence-transformers/all-MiniLM-L6-v2 runs locally, 384 dimensions, no API key needed" --handle selina-agent
+cat > .mycelium/rooms/design-review/research/pgvector-perf.md << 'EOF'
+---
+key: research/pgvector-perf
+created_by: selina-agent
+version: 1
+---
+pgvector cosine search on 384-dim embeddings: <5ms for 10k memories
+EOF
+
+cat > .mycelium/rooms/design-review/research/embeddings.md << 'EOF'
+---
+key: research/embeddings
+created_by: selina-agent
+version: 1
+---
+sentence-transformers/all-MiniLM-L6-v2 runs locally, 384 dimensions, no API key needed
+EOF
 ```
 
 ### Agent 3: Kappa reports what didn't work
@@ -58,21 +85,28 @@ mycelium memory set context/blocker "Need ioc-cfn-mgmt-plane-svc running to test
 ### Browse & Search
 
 ```bash
-# List all memories
-mycelium memory ls
+ls .mycelium/rooms/design-review/decisions/
+# api-style.md  database.md  llm-provider.md  no-qdrant.md  no-sqlite-tests.md
 
-# Browse by structured category (table view)
+grep -r "AgensGraph" .mycelium/rooms/design-review/
+# decisions/database.md:Consolidated to single AgensGraph instance...
+# decisions/no-qdrant.md:...AgensGraph+pgvector eliminates the need
+
+# Or use the CLI for structured views:
 mycelium memory decisions     # Why choices were made
 mycelium memory status        # Current state of things
-mycelium memory work          # What's been built
 mycelium memory context       # Background & constraints
 
-# Or use prefix filter for any namespace
-mycelium memory ls research/
+# Read with cat or with the CLI:
+cat .mycelium/rooms/design-review/decisions/database.md
+mycelium memory get decisions/database
 
-# Semantic search
+# Semantic search (uses pgvector index):
 mycelium memory search "what database decisions were made"
 mycelium memory search "what failed"
+
+# Re-index after direct file writes (updates pgvector search index):
+# POST /rooms/design-review/reindex
 
 # Synthesize — now structure-aware, groups by category
 mycelium synthesize
@@ -92,6 +126,20 @@ Then write memories from the first terminal — they appear live in the watch ou
 
 Also show `http://localhost:3000/room/design-review` in the browser for the UI view.
 
+### Git-based sharing
+
+```bash
+# Initialize git in the room:
+cd .mycelium/rooms/design-review && git init && git add -A && git commit -m "initial room state"
+
+# Agent A pushes findings:
+git push origin main
+
+# Agent B on another machine picks up context:
+git pull
+mycelium catchup
+```
+
 ---
 
 ## Part 2: Sync Negotiation (CognitiveEngine)
@@ -101,16 +149,17 @@ Also show `http://localhost:3000/room/design-review` in the browser for the UI v
 **Terminal 1 (or Claude Code instance 1) — julia-agent:**
 
 ```bash
-mycelium room create friday-demo --mode sync
-mycelium room join --handle julia-agent -m "Prioritize CFN integration — need mgmt plane wired up before Friday demo" -r friday-demo
-mycelium room await --handle julia-agent -r friday-demo
+mycelium room create friday-demo
+mycelium session create -r friday-demo
+mycelium session join --handle julia-agent -m "Prioritize CFN integration — need mgmt plane wired up before Friday demo" -r friday-demo
+mycelium session await --handle julia-agent -r friday-demo
 ```
 
 **Terminal 2 (or Claude Code instance 2) — selina-agent:**
 
 ```bash
-mycelium room join --handle selina-agent -m "Focus on demo UX — frontend polish, watch output, catchup display. Backend is solid enough." -r friday-demo
-mycelium room await --handle selina-agent -r friday-demo
+mycelium session join --handle selina-agent -m "Focus on demo UX — frontend polish, watch output, catchup display. Backend is solid enough." -r friday-demo
+mycelium session await --handle selina-agent -r friday-demo
 ```
 
 **Terminal 3 (audience view):**
@@ -141,8 +190,8 @@ Give this to the second Claude Code instance:
 > You are participating in a Mycelium coordination room called `friday-demo`. You are `selina-agent`. Your position is: "We should focus on demo UX and frontend polish before Friday — the backend is solid enough."
 >
 > ```bash
-> mycelium room join --handle selina-agent -m "Focus on demo UX — frontend polish, watch output, catchup display." -r friday-demo
-> mycelium room await --handle selina-agent -r friday-demo
+> mycelium session join --handle selina-agent -m "Focus on demo UX — frontend polish, watch output, catchup display." -r friday-demo
+> mycelium session await --handle selina-agent -r friday-demo
 > ```
 >
 > When you get a tick, respond based on the action:
@@ -150,7 +199,7 @@ Give this to the second Claude Code instance:
 > - `action=respond` → evaluate the offer, then `mycelium message respond accept -r friday-demo -H selina-agent`
 > - `type=consensus` → done, read your assignment
 >
-> Keep calling `mycelium room await --handle selina-agent -r friday-demo` between each response until you get consensus.
+> Keep calling `mycelium session await --handle selina-agent -r friday-demo` between each response until you get consensus.
 
 ---
 
@@ -164,12 +213,16 @@ Give this to the second Claude Code instance:
    - **SHARED INTENT** → CognitiveEngine + NegMAS semantic negotiation
    - **SHARED MEMORY** → Persistent memory + knowledge graph (AgensGraph + pgvector)
    - **SHARED CONTEXT** → CognitiveEngine synthesis + catchup + guardrails
+2. **IoC three pillars realized**:
+   - Cognition State Protocols → CognitiveEngine + NegMAS semantic negotiation
+   - Cognition Fabric → Persistent memory + pgvector search index
+   - Cognition Engines → CognitiveEngine synthesis + guardrails
 
-3. **The ratchet effect**: Show `mycelium catchup`. A new agent arrives and instantly knows everything the swarm learned. Intelligence compounds across sessions. Synthesis is structure-aware — groups memories by category (work, decisions, status, context) for better briefings.
+4. **The ratchet effect**: Show `mycelium catchup`. A new agent arrives and instantly knows everything the swarm learned. Intelligence compounds across sessions. Synthesis is structure-aware — groups memories by category (work, decisions, status, context) for better briefings.
 
-4. **Negative results matter**: Show `mycelium memory decisions`. Agents log what didn't work (and why) so others don't repeat dead ends. The structured category convention (`decisions/no-qdrant`) makes failures as discoverable as successes.
+5. **Negative results matter**: Show `mycelium memory decisions`. Agents log what didn't work (and why) so others don't repeat dead ends. The structured category convention (`decisions/no-qdrant`) makes failures as discoverable as successes.
 
-5. **CFN integration**: Agent registration → CFN mgmt plane. ioc-cfn-svc routes extraction + evidence back to mycelium-backend. Mycelium serves as both the knowledge-memory and cognition engine backends.
+6. **CFN integration**: Agent registration → CFN mgmt plane. ioc-cfn-svc routes extraction + evidence back to mycelium-backend. Mycelium serves as both the knowledge-memory and cognition engine backends.
 
 ### Key URLs during demo
 

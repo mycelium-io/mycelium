@@ -15,6 +15,7 @@ def _get_kwargs(
     room_name: str,
     key: str,
 ) -> dict[str, Any]:
+
     _kwargs: dict[str, Any] = {
         "method": "get",
         "url": "/rooms/{room_name}/memory/{key}".format(
@@ -66,6 +67,8 @@ def sync_detailed(
 
      Get a specific memory by key.
 
+    Reads from the filesystem first, falls back to DB index.
+
     Args:
         room_name (str):
         key (str):
@@ -100,6 +103,8 @@ def sync(
 
      Get a specific memory by key.
 
+    Reads from the filesystem first, falls back to DB index.
+
     Args:
         room_name (str):
         key (str):
@@ -128,6 +133,8 @@ async def asyncio_detailed(
     """Get Memory
 
      Get a specific memory by key.
+
+    Reads from the filesystem first, falls back to DB index.
 
     Args:
         room_name (str):
@@ -160,6 +167,8 @@ async def asyncio(
     """Get Memory
 
      Get a specific memory by key.
+
+    Reads from the filesystem first, falls back to DB index.
 
     Args:
         room_name (str):

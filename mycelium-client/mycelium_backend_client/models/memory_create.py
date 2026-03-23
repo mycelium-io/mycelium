@@ -25,6 +25,8 @@ class MemoryCreate:
         tags (list[str] | None | Unset):
         content_text (None | str | Unset): Text for embedding; auto-generated from value if omitted
         embed (bool | Unset): Generate vector embedding for semantic search Default: True.
+        scope (str | Unset):  Default: 'namespace'.
+        owner_handle (None | str | Unset): Required for notebook scope — the owning agent handle
     """
 
     key: str
@@ -33,6 +35,8 @@ class MemoryCreate:
     tags: list[str] | None | Unset = UNSET
     content_text: None | str | Unset = UNSET
     embed: bool | Unset = True
+    scope: str | Unset = "namespace"
+    owner_handle: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -65,6 +69,14 @@ class MemoryCreate:
 
         embed = self.embed
 
+        scope = self.scope
+
+        owner_handle: None | str | Unset
+        if isinstance(self.owner_handle, Unset):
+            owner_handle = UNSET
+        else:
+            owner_handle = self.owner_handle
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
@@ -80,6 +92,10 @@ class MemoryCreate:
             field_dict["content_text"] = content_text
         if embed is not UNSET:
             field_dict["embed"] = embed
+        if scope is not UNSET:
+            field_dict["scope"] = scope
+        if owner_handle is not UNSET:
+            field_dict["owner_handle"] = owner_handle
 
         return field_dict
 
@@ -133,6 +149,17 @@ class MemoryCreate:
 
         embed = d.pop("embed", UNSET)
 
+        scope = d.pop("scope", UNSET)
+
+        def _parse_owner_handle(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        owner_handle = _parse_owner_handle(d.pop("owner_handle", UNSET))
+
         memory_create = cls(
             key=key,
             value=value,
@@ -140,6 +167,8 @@ class MemoryCreate:
             tags=tags,
             content_text=content_text,
             embed=embed,
+            scope=scope,
+            owner_handle=owner_handle,
         )
 
         memory_create.additional_properties = d
