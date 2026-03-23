@@ -109,6 +109,18 @@ def status() -> None:
             console.print("  [dim]Stale PID file exists — run [bold]mycelium metrics stop[/bold] to clean up[/dim]")
         all_ok = False
 
+    collector_log = _MYCELIUM_DIR / "collector.log"
+    if collector_log.exists():
+        try:
+            log_lines = collector_log.read_text().strip().splitlines()
+            recent = log_lines[-5:] if len(log_lines) > 5 else log_lines
+            if recent:
+                console.print(f"  [dim]Log ({collector_log}):[/dim]")
+                for ln in recent:
+                    console.print(f"  [dim]  {ln}[/dim]")
+        except OSError:
+            pass
+
     # ── Metrics data file ────────────────────────────────────────────────
     if _METRICS_JSON.exists():
         try:
@@ -209,13 +221,16 @@ def collect(
             except (OSError, ValueError):
                 _PID_FILE.unlink(missing_ok=True)
 
+        log_file = _MYCELIUM_DIR / "collector.log"
+        log_fh = open(log_file, "a")  # noqa: SIM115
+
         proc = subprocess.Popen(
             [
                 sys.executable, "-m", "mycelium.collector_main",
                 "--port", str(resolved_port),
             ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=log_fh,
+            stderr=log_fh,
             start_new_session=True,
         )
 
@@ -224,6 +239,7 @@ def collect(
         typer.secho(f"✓ Collector started (PID {proc.pid})", fg=typer.colors.GREEN)
         typer.echo(f"  OTLP receiver on port {resolved_port}")
         typer.echo(f"  Metrics file: {_METRICS_JSON}")
+        typer.echo(f"  Log file: {log_file}")
     else:
         # Check if something is already listening on the port
         import socket

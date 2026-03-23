@@ -246,9 +246,12 @@ class OTLPHandler(BaseHTTPRequestHandler):
             try:
                 body = gzip.decompress(body)
             except Exception:
+                log.warning("gzip decompress failed for %s (%d bytes)", self.path, content_length)
                 self.send_response(400)
                 self.end_headers()
                 return
+
+        log.info("POST %s  %d bytes", self.path, len(body))
 
         try:
             if self.path == "/v1/metrics":

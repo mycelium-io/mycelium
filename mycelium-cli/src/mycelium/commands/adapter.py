@@ -675,10 +675,21 @@ def _step_local_gateway(config: "MyceliumConfig") -> None:
 
     for key, val in env_vars.items():
         if key not in injected:
+            inserted = False
             for i in range(len(new_lines) - 1, -1, -1):
                 if new_lines[i].strip().startswith("Environment="):
                     new_lines.insert(i + 1, f"Environment={key}={val}")
+                    inserted = True
                     break
+            if not inserted:
+                # No existing Environment= lines; insert after [Service] header
+                for i, ln in enumerate(new_lines):
+                    if ln.strip() == "[Service]":
+                        new_lines.insert(i + 1, f"Environment={key}={val}")
+                        inserted = True
+                        break
+            if not inserted:
+                new_lines.append(f"Environment={key}={val}")
 
     service_path.write_text("\n".join(new_lines) + "\n")
 
