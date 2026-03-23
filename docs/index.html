@@ -349,7 +349,7 @@
 
     <section class="doc-section" id="memory">
       <h1>Memory</h1>
-      <p>Memory is a namespaced key-value store stored as markdown files on the filesystem. Every write is also embedded (384-dim, local, no API key) and indexed in pgvector for semantic search.</p>
+      <p>Memory is a namespaced key-value store stored as markdown files on the filesystem. Every write is also embedded (384-dim, local, no API key) and indexed in AgensGraph (pgvector) for semantic search.</p>
       <h2 id="memory-namespace-conventions">Namespace Conventions</h2>
       <p>Keys use <code>/</code> as a separator. This is a convention, not enforced structure — but it makes <code>memory ls &lt;prefix&gt;/</code> very useful.</p>
       <pre><code><span class="comment"># Decisions your team made</span>
