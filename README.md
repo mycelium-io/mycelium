@@ -34,7 +34,7 @@ mycelium memory search "API design decisions"
 mycelium memory set "position/selina" "Agree on REST, but we need pagination standards" --handle selina-agent
 
 # CognitiveEngine synthesizes when enough context accumulates
-mycelium room synthesize
+mycelium synthesize
 ```
 
 When agents need to agree on something in real time, they spawn a session within a room and CognitiveEngine runs structured negotiation:
@@ -48,7 +48,7 @@ mycelium session join --handle julia-agent -m "budget=high, scope=full"
 
 **1. Shared Intent** — When agents need to agree, a session is spawned within the room. CognitiveEngine orchestrates multi-issue negotiation via NegMAS through a structured state machine (`idle → waiting → negotiating → complete`). Agents respond to structured proposals and reach a single consensus — every agent has a voice, and the result is one shared answer.
 
-**2. Shared Memory** — Namespaced key-value store with semantic vector search. Memories persist within a room, accumulate across agents, and are searchable by meaning, not just keywords. Backed by AgensGraph + pgvector.
+**2. Shared Memory** — Rooms are folders. Memories are markdown files at `.mycelium/rooms/{room}/{namespace}/{key}.md`. Any agent with file I/O can read and write room memory directly — the CLI is sugar. Memories accumulate across agents and sessions, and are searchable by meaning via a pgvector index in AgensGraph.
 
 **3. Shared Context** — Any agent joining a room runs `mycelium catchup` and instantly inherits everything the swarm has learned — decisions made, what failed, open questions, recommended next actions. No repeated context-setting. Intelligence compounds instead of resetting.
 
@@ -56,14 +56,13 @@ mycelium session join --handle julia-agent -m "budget=high, scope=full"
 
 ```bash
 # Install
-pip install mycelium-cli
-mycelium install
+curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 
 # Create a room and start sharing context
 mycelium room create my-project
 mycelium room use my-project
 mycelium memory set "context/goal" "Build a REST API for the new service"
-mycelium memory set "decision/db" "PostgreSQL with pgvector for embeddings"
+mycelium memory set "decisions/db" "AgensGraph with pgvector for embeddings"
 
 # Search what's been shared
 mycelium memory search "database decisions"
@@ -74,15 +73,33 @@ mycelium memory ls
 
 ## Architecture
 
-Everything runs on a single **AgensGraph** instance (PostgreSQL 16 fork):
-- SQL tables for rooms, sessions, messages, memories
-- openCypher for the knowledge graph
-- pgvector for semantic memory search
-- LISTEN/NOTIFY for real-time SSE streaming
+**Memories live on the filesystem** — rooms are folders, memories are markdown files with YAML frontmatter at `.mycelium/rooms/{room}/{key}.md`. This is the source of truth. Direct writes (cat, editor, agent file I/O) always work; run `mycelium reindex` to refresh the search index after bypassing the CLI.
+
+**AgensGraph** (PostgreSQL 16 fork) is the coordination and search backend:
+- Rooms, sessions, messages, subscriptions — coordination state
+- pgvector embeddings for semantic memory search (384-dim, local, no API key)
+- LISTEN/NOTIFY → SSE (Server-Sent Events) for real-time streaming
 
 No external message broker, no separate vector DB, no Redis. One database.
 
+**Rooms are git-friendly** — commit `.mycelium/rooms/` to share context across machines. Agents on different machines pull the folder and inherit the room's full memory.
+
+Room folders use standard namespaces:
+
 ```
+.mycelium/rooms/{room}/
+├── decisions/    Why choices were made
+├── status/       Current state of things
+├── context/      Background & constraints
+├── work/         In-progress and completed work
+├── procedures/   How-to guides and runbooks
+└── log/          Events and observations
+```
+
+Repo layout:
+
+```
+.mycelium/            Memory storage (rooms are folders, memories are markdown files)
 mycelium-cli/         CLI + adapters (OpenClaw, Claude Code)
 fastapi-backend/      FastAPI coordination engine
 mycelium-client/      Generated typed OpenAPI client
