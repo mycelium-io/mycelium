@@ -239,8 +239,27 @@ class OTLPHandler(BaseHTTPRequestHandler):
     output_path: Path
 
     def do_POST(self) -> None:
-        content_length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(content_length) if content_length > 0 else b""
+        cl_header = self.headers.get("Content-Length")
+        if cl_header is not None:
+            content_length = int(cl_header)
+            body = self.rfile.read(content_length) if content_length > 0 else b""
+        elif self.headers.get("Transfer-Encoding", "").lower() == "chunked":
+            # Read chunked transfer encoding
+            chunks = []
+            while True:
+                size_line = self.rfile.readline().strip()
+                chunk_size = int(size_line, 16)
+                if chunk_size == 0:
+                    self.rfile.readline()  # trailing CRLF
+                    break
+                chunks.append(self.rfile.read(chunk_size))
+                self.rfile.readline()  # trailing CRLF
+            body = b"".join(chunks)
+        else:
+            body = self.rfile.read()
+        log.info("POST %s  headers: %s", self.path,
+                 {k: v for k, v in self.headers.items() if k.lower() in
+                  ('content-length', 'content-type', 'content-encoding', 'transfer-encoding', 'user-agent')})
 
         if self.headers.get("Content-Encoding", "").lower() == "gzip":
             try:
