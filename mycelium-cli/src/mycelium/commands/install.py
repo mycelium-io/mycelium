@@ -906,7 +906,7 @@ def install(
         typer.echo("  Metrics (optional):")
         typer.echo("    mycelium metrics install                     # install metrics dependencies")
         typer.echo("    mycelium adapter add openclaw --step=otel    # enable OpenClaw telemetry")
-        typer.echo("    mycelium metrics collect --bg && mycelium metrics show")
+        typer.echo("    mycelium metrics collect && mycelium metrics show")
         print()
 
     except KeyboardInterrupt:

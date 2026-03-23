@@ -80,15 +80,121 @@ def install_metrics() -> None:
     typer.secho("✓ Metrics dependencies installed.", fg=typer.colors.GREEN)
 
 
+@app.command("status")
+def status() -> None:
+    """Show the health of the metrics pipeline (collector, config, data)."""
+    from datetime import UTC, datetime
+
+    all_ok = True
+
+    # ── Collector process ────────────────────────────────────────────────
+    collector_alive = False
+    collector_pid: int | None = None
+    collector_port = _DEFAULT_PORT
+    if _PID_FILE.exists():
+        try:
+            lines = _PID_FILE.read_text().strip().splitlines()
+            collector_pid = int(lines[0])
+            if len(lines) >= 2:
+                collector_port = int(lines[1])
+            os.kill(collector_pid, 0)
+            collector_alive = True
+        except (OSError, ValueError):
+            collector_alive = False
+    if collector_alive:
+        console.print(f"[green]✓[/green] Collector running  PID {collector_pid}  port {collector_port}")
+    else:
+        console.print("[red]✗[/red] Collector not running")
+        if _PID_FILE.exists():
+            console.print("  [dim]Stale PID file exists — run [bold]mycelium metrics stop[/bold] to clean up[/dim]")
+        all_ok = False
+
+    # ── Metrics data file ────────────────────────────────────────────────
+    if _METRICS_JSON.exists():
+        try:
+            stat = _METRICS_JSON.stat()
+            mtime = datetime.fromtimestamp(stat.st_mtime, tz=UTC)
+            age = datetime.now(UTC) - mtime
+            age_str = f"{int(age.total_seconds())}s ago"
+            if age.total_seconds() > 3600:
+                age_str = f"{age.total_seconds() / 3600:.1f}h ago"
+            elif age.total_seconds() > 60:
+                age_str = f"{int(age.total_seconds() / 60)}m ago"
+
+            data = json.loads(_METRICS_JSON.read_text())
+            sessions = data.get("sessions", [])
+            counters = data.get("counters", {})
+            msgs = counters.get("messages", {}).get("processed", 0)
+            total_tok = counters.get("tokens", {}).get("total", {}).get("total", 0)
+
+            console.print(
+                f"[green]✓[/green] Data file          {_METRICS_JSON}"
+            )
+            console.print(
+                f"  [dim]Last updated {age_str}  •  {msgs} messages  •  {len(sessions)} sessions  •  {total_tok:,} tokens[/dim]"
+            )
+        except Exception:
+            console.print(f"[yellow]⚠[/yellow] Data file exists but unreadable: {_METRICS_JSON}")
+            all_ok = False
+    else:
+        console.print("[yellow]⚠[/yellow] No metrics data yet (no messages received)")
+
+    # ── OpenClaw OTEL config ─────────────────────────────────────────────
+    oc_config_path = Path.home() / ".openclaw" / "openclaw.json"
+    otel_endpoint: str | None = None
+    otel_enabled = False
+    if oc_config_path.exists():
+        try:
+            cfg = json.loads(oc_config_path.read_text())
+            diag = cfg.get("diagnostics", {})
+            otel = diag.get("otel", {})
+            otel_enabled = diag.get("enabled", False) and otel.get("enabled", False)
+            otel_endpoint = otel.get("endpoint", "")
+        except Exception:
+            pass
+
+    if otel_enabled and otel_endpoint:
+        console.print(f"[green]✓[/green] OTEL plugin        enabled → {otel_endpoint}")
+
+        # Check endpoint matches collector port
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(otel_endpoint)
+            ep_port = parsed.port or 80
+            if collector_alive and ep_port != collector_port:
+                console.print(
+                    f"  [red]✗ Port mismatch:[/red] plugin sends to :{ep_port} but collector listens on :{collector_port}"
+                )
+                all_ok = False
+            elif collector_alive:
+                console.print(f"  [dim]Endpoint port :{ep_port} matches collector[/dim]")
+        except Exception:
+            pass
+    elif oc_config_path.exists():
+        console.print("[red]✗[/red] OTEL plugin        not enabled in openclaw.json")
+        console.print("  [dim]Run [bold]mycelium adapter add openclaw --step=otel[/bold] to configure[/dim]")
+        all_ok = False
+    else:
+        console.print("[yellow]⚠[/yellow] No openclaw.json found (gateway not configured)")
+        all_ok = False
+
+    # ── Summary ──────────────────────────────────────────────────────────
+    console.print()
+    if all_ok:
+        console.print("[bold green]Pipeline healthy[/bold green]")
+    else:
+        console.print("[bold yellow]Pipeline has issues — see above[/bold yellow]")
+
+
 @app.command("collect")
 def collect(
     port: int | None = typer.Option(None, "--port", "-p", help=f"OTLP receiver port (default: {_DEFAULT_PORT})"),
-    bg: bool = typer.Option(False, "--bg", help="Run collector in the background"),
+    fg: bool = typer.Option(False, "--fg", help="Run collector in the foreground (default: background)"),
 ) -> None:
     """Start the OTLP HTTP receiver to collect OpenClaw telemetry."""
     resolved_port = _resolve_port(port)
 
-    if bg:
+    if not fg:
         _MYCELIUM_DIR.mkdir(parents=True, exist_ok=True)
 
         if _PID_FILE.exists():
@@ -119,6 +225,32 @@ def collect(
         typer.echo(f"  OTLP receiver on port {resolved_port}")
         typer.echo(f"  Metrics file: {_METRICS_JSON}")
     else:
+        # Check if something is already listening on the port
+        import socket
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            sock.bind(("127.0.0.1", resolved_port))
+        except OSError:
+            typer.secho(
+                f"✗ Port {resolved_port} is already in use.",
+                fg=typer.colors.RED,
+            )
+            if _PID_FILE.exists():
+                try:
+                    bg_pid = int(_PID_FILE.read_text().strip().splitlines()[0])
+                    os.kill(bg_pid, 0)
+                    typer.echo(
+                        f"  A background collector is running (PID {bg_pid}).\n"
+                        f"  Stop it first:  mycelium metrics stop"
+                    )
+                except (OSError, ValueError):
+                    typer.echo("  Another process is using this port.")
+            else:
+                typer.echo("  Another process is using this port.")
+            raise typer.Exit(1)
+        finally:
+            sock.close()
+
         typer.echo(f"Starting OTLP collector on port {resolved_port}...")
         typer.echo("Press Ctrl+C to stop.\n")
 
@@ -172,7 +304,7 @@ def show(
         console.print(
             "[yellow]No metrics data available.[/yellow]\n\n"
             "  Start the collector:  [bold]mycelium metrics collect[/bold]\n"
-            "  Or with background:   [bold]mycelium metrics collect --bg[/bold]\n\n"
+            "  (runs in background by default; use --fg for foreground)\n\n"
             "  Make sure OpenClaw's diagnostics-otel plugin is configured:\n"
             "    [bold]mycelium adapter add openclaw --step=otel[/bold]"
         )

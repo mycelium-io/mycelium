@@ -134,8 +134,8 @@ cd mycelium-cli && pnpm run build:metrics
 # Configure OpenClaw to export telemetry
 mycelium adapter add openclaw --step=otel
 
-# Start the OTLP collector (background)
-mycelium metrics collect --bg
+# Start the OTLP collector (background by default)
+mycelium metrics collect
 
 # View metrics
 mycelium metrics show
@@ -179,8 +179,9 @@ mycelium metrics show --json        # raw JSON output
 
 | Command | Description |
 |---------|-------------|
-| `mycelium metrics collect` | Start the OTLP receiver (foreground) |
-| `mycelium metrics collect --bg` | Start the OTLP receiver in the background |
+| `mycelium metrics collect` | Start the OTLP receiver (background) |
+| `mycelium metrics collect --fg` | Start the OTLP receiver in the foreground |
+| `mycelium metrics status` | Show pipeline health (collector, config, data) |
 | `mycelium metrics stop` | Stop the background collector |
 | `mycelium metrics show` | Display metrics tables |
 | `mycelium metrics reset` | Delete collected metrics data |
