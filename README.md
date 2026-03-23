@@ -12,7 +12,7 @@
 </p>
 
 <div align="center">
-  <em>A coordination layer for multi-agent systems — shared rooms, persistent memory, and semantic negotiation, built on the Internet of Cognition.</em>
+  <em>A coordination layer for multi-agent systems — shared rooms, persistent memory, and semantic negotiation.</em>
 </div>
 
 ---
@@ -23,7 +23,7 @@ AI agents are powerful individually, but they can't think together. When multipl
 
 ## What Mycelium Does
 
-Mycelium gives agents **rooms** to coordinate in, **persistent memory** that compounds across sessions, and a **CognitiveEngine** that mediates negotiation so agents never have to talk directly to each other.
+Mycelium gives agents **rooms** to coordinate in, **persistent memory** that accumulates within a room, and a **CognitiveEngine** that mediates negotiation so every agent has a voice and the team arrives at a single shared answer.
 
 ```bash
 # Agent 1 shares context in a persistent room
@@ -46,13 +46,11 @@ mycelium session join --handle julia-agent -m "budget=high, scope=full"
 
 ## How It Works
 
-Three pillars from the [Internet of Cognition](https://outshift.cisco.com) architecture:
+**1. Shared Intent** — When agents need to agree, a session is spawned within the room. CognitiveEngine orchestrates multi-issue negotiation via NegMAS through a structured state machine (`idle → waiting → negotiating → complete`). Agents respond to structured proposals and reach a single consensus — every agent has a voice, and the result is one shared answer.
 
-**1. Coordination Protocol** (Shared Intent) — Sessions (spawned within rooms) with a state machine (`idle → waiting → negotiating → complete`). CognitiveEngine orchestrates multi-issue negotiation via NegMAS. Agents respond to structured proposals; they never address each other directly.
+**2. Shared Memory** — Namespaced key-value store with semantic vector search. Memories persist within a room, accumulate across agents, and are searchable by meaning, not just keywords. Backed by AgensGraph + pgvector.
 
-**2. Persistent Memory** (Shared Context) — Namespaced key-value store with semantic vector search. Memories persist across sessions, accumulate across agents, and are searchable by meaning, not just keywords. Backed by AgensGraph + pgvector.
-
-**3. Knowledge Graph** (Collective Innovation) — Two-stage LLM extraction turns agent conversations into structured concepts and relationships in an openCypher graph. CognitiveEngine queries this to inform future negotiations.
+**3. Shared Context** — Two-stage LLM extraction turns agent conversations into structured concepts and relationships in an openCypher knowledge graph. Any agent joining later runs `mycelium catchup` and instantly inherits everything the room has learned.
 
 ## Quick Start
 
@@ -119,7 +117,9 @@ Interactive API docs at `http://localhost:8000/docs` when the backend is running
 
 ## Built On
 
-- [Internet of Cognition](https://outshift.cisco.com) — Outshift by Cisco
+Mycelium builds on OSS projects we found invaluable in this space:
+
+- [ioc-cfn-mgmt-plane](https://outshift.cisco.com) + [ioc-cfn-svc](https://outshift.cisco.com) — Agent registration and fabric orchestration, from Outshift by Cisco [Internet of Cognition](https://outshift.cisco.com/internet-of-cognition) concepts
 - [NegMAS](https://negmas.readthedocs.io/) — Multi-issue negotiation
 - [AgensGraph](https://github.com/skaiworldwide-oss/agensgraph) — Multi-model graph database
 - [FastAPI](https://fastapi.tiangolo.com/) + [pgvector](https://github.com/pgvector/pgvector) + [sentence-transformers](https://www.sbert.net/)
