@@ -209,10 +209,6 @@ Give this to the second Claude Code instance:
 
 1. **The problem**: Agents today are semantically isolated. No shared intent, no shared context, no ratchet effect.
 
-2. **SHARED INTENT · SHARED MEMORY · SHARED CONTEXT (in the product)**:
-   - **SHARED INTENT** → CognitiveEngine + NegMAS semantic negotiation
-   - **SHARED MEMORY** → Persistent memory + knowledge graph (AgensGraph + pgvector)
-   - **SHARED CONTEXT** → CognitiveEngine synthesis + catchup + guardrails
 2. **IoC three pillars realized**:
    - Cognition State Protocols → CognitiveEngine + NegMAS semantic negotiation
    - Cognition Fabric → Persistent memory + pgvector search index
