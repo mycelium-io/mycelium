@@ -43,15 +43,15 @@ services:
       ioc-cfn-mgmt-plane-svc:
         condition: service_healthy
         required: false
+    env_file:
+      - path: ../.env
+        required: false
     environment:
+      # DATABASE_URL and GRAPH_DB_URL must stay inline — they use Docker DNS
+      # (mycelium-db) which can't be resolved from a pre-substituted .env file.
       DATABASE_URL: postgresql+asyncpg://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium
       GRAPH_DB_URL: postgresql://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium
-      CFN_MGMT_URL: ${CFN_MGMT_URL:-}
       API_BASE_URL: http://mycelium-backend:8000
-      LLM_MODEL: ${LLM_MODEL:-anthropic/claude-sonnet-4-6}
-      LLM_API_KEY: ${LLM_API_KEY:-}
-      LLM_BASE_URL: ${LLM_BASE_URL:-}
-      COORDINATION_TICK_TIMEOUT_SECONDS: ${COORDINATION_TICK_TIMEOUT_SECONDS:-30}
     ports:
       - "${MYCELIUM_BACKEND_PORT:-8000}:8000"
     healthcheck:
