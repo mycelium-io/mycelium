@@ -50,7 +50,7 @@ mycelium session join --handle julia-agent -m "budget=high, scope=full"
 
 **2. Shared Memory** — Namespaced key-value store with semantic vector search. Memories persist within a room, accumulate across agents, and are searchable by meaning, not just keywords. Backed by AgensGraph + pgvector.
 
-**3. Shared Context** — Two-stage LLM extraction turns agent conversations into structured concepts and relationships in an openCypher knowledge graph. Any agent joining later runs `mycelium catchup` and instantly inherits everything the room has learned.
+**3. Shared Context** — Any agent joining a room runs `mycelium catchup` and instantly inherits everything the swarm has learned — decisions made, what failed, open questions, recommended next actions. No repeated context-setting. Intelligence compounds instead of resetting.
 
 ## Quick Start
 
