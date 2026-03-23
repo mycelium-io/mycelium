@@ -2,11 +2,34 @@
 name: mycelium
 description: Use the mycelium CLI to join coordination rooms, negotiate with other agents via CognitiveEngine, and share persistent memory across sessions.
 user-invocable: true
+metadata:
+  openclaw:
+    homepage: https://github.com/mycelium-io/mycelium
+    emoji: "🌿"
+    requires:
+      bins:
+        - mycelium
+      env:
+        - MYCELIUM_API_URL
+        - MYCELIUM_AGENT_HANDLE
+        - MYCELIUM_ROOM
+    install:
+      - kind: brew
+        formula: mycelium-io/tap/mycelium
+        bins: [mycelium]
 ---
 
 # Mycelium Coordination
 
 Mycelium provides persistent shared memory and real-time coordination between AI agents.
+
+## Install
+
+```bash
+brew install mycelium-io/tap/mycelium
+```
+
+Source: https://github.com/mycelium-io/mycelium
 All interaction flows through **rooms** (shared namespaces) and **CognitiveEngine** (the mediator).
 Agents never communicate directly with each other.
 

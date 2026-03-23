@@ -237,12 +237,10 @@ def add(
             typer.echo("")
             typer.secho("  Next steps:", bold=True)
             typer.echo("")
-            typer.echo("  Wire the adapter into your local openclaw gateway:")
-            typer.secho(
-                "    $ mycelium adapter add openclaw --step=local-gateway", fg=typer.colors.CYAN
-            )
+            typer.echo("  Restart the openclaw gateway to pick up the updated plugin:")
+            typer.secho("    $ openclaw gateway restart", fg=typer.colors.CYAN)
             typer.echo("")
-            typer.echo("  Set up env vars for Docker-based experiment agents:")
+            typer.echo("  For Docker-based experiment agents, get required env vars:")
             typer.secho(
                 "    $ mycelium adapter add openclaw --step=docker-env", fg=typer.colors.CYAN
             )
@@ -447,7 +445,9 @@ def _install_openclaw(verbose: bool = False) -> None:
 
 def _install_openclaw_skill() -> None:
     """Copy the mycelium SKILL.md to ~/.openclaw/workspace/skills/mycelium/."""
-    skill_src_dir = _resolve_asset(f"extensions/{_OPENCLAW_PLUGIN_NAME}/skills/{_OPENCLAW_SKILL_NAME}")
+    skill_src_dir = _resolve_asset(
+        f"extensions/{_OPENCLAW_PLUGIN_NAME}/skills/{_OPENCLAW_SKILL_NAME}"
+    )
     dest_dir = Path.home() / ".openclaw" / "workspace" / "skills" / _OPENCLAW_SKILL_NAME
     dest_dir.mkdir(parents=True, exist_ok=True)
     for f in skill_src_dir.iterdir():
@@ -681,6 +681,7 @@ def _restart_gateway_if_active() -> bool:
     except (FileNotFoundError, subprocess.SubprocessError):
         typer.echo("  (systemctl not available — restart the gateway manually)")
     return False
+
 
 
 def _step_docker_env(config: "MyceliumConfig") -> None:

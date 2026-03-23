@@ -120,9 +120,15 @@ INGEST_BASE = {
 
 async def test_ingest_no_api_key_returns_zero_counts(client: AsyncClient):
     """When ANTHROPIC_API_KEY is unset the endpoint succeeds with 0 counts."""
-    with patch("app.routes.knowledge.settings") as mock_settings:
+    with (
+        patch("app.routes.knowledge.settings") as mock_settings,
+        patch("app.knowledge.ingestion.settings") as mock_ingest_settings,
+    ):
         mock_settings.LLM_API_KEY = None
         mock_settings.LLM_MODEL = "anthropic/claude-sonnet-4-6"
+        mock_ingest_settings.LLM_API_KEY = None
+        mock_ingest_settings.LLM_MODEL = "anthropic/claude-sonnet-4-6"
+        mock_ingest_settings.LLM_BASE_URL = None
         resp = await client.post("/api/knowledge/ingest", json=INGEST_BASE)
 
     assert resp.status_code == 200
@@ -156,51 +162,38 @@ async def test_ingest_missing_required_fields(client: AsyncClient):
 
 
 async def test_ingest_with_mocked_llm(client: AsyncClient):
-    """With a mocked Anthropic client, extracted concepts/relations are stored."""
-    # Build fake tool-use blocks for both LLM stages
-    fake_concepts_block = MagicMock()
-    fake_concepts_block.type = "tool_use"
-    fake_concepts_block.name = "record_concepts"
-    fake_concepts_block.input = {
-        "concepts": [
-            {"name": "X", "type": "entity", "description": "The concept X"},
-            {"name": "Y", "type": "fact", "description": "The fact Y"},
-        ]
-    }
+    """With a mocked litellm, extracted concepts/relations are stored."""
 
-    fake_rel_block = MagicMock()
-    fake_rel_block.type = "tool_use"
-    fake_rel_block.name = "record_relationships"
-    fake_rel_block.input = {
-        "relationships": [
-            {"source": "X", "target": "Y", "relationship": "IS_DEFINED_AS", "description": "X is Y"}
-        ]
-    }
-
-    fake_concepts_resp = MagicMock()
-    fake_concepts_resp.content = [fake_concepts_block]
-
-    fake_rel_resp = MagicMock()
-    fake_rel_resp.content = [fake_rel_block]
-
-    def _fake_create(**kwargs):
-        tool_name = (kwargs.get("tool_choice") or {}).get("name", "")
+    def _fake_litellm_call(system, user, tools, tool_name):
         if tool_name == "record_concepts":
-            return fake_concepts_resp
-        return fake_rel_resp
+            return {
+                "concepts": [
+                    {"name": "X", "type": "entity", "description": "The concept X"},
+                    {"name": "Y", "type": "fact", "description": "The fact Y"},
+                ]
+            }
+        return {
+            "relationships": [
+                {
+                    "source": "X",
+                    "target": "Y",
+                    "relationship": "IS_DEFINED_AS",
+                    "description": "X is Y",
+                }
+            ]
+        }
 
     with (
         patch("app.routes.knowledge.settings") as mock_settings,
-        patch("app.knowledge.ingestion.IngestionService._get_client") as mock_client,
+        patch("app.knowledge.ingestion.settings") as mock_ingest_settings,
+        patch("app.knowledge.ingestion._litellm_call", side_effect=_fake_litellm_call),
         patch("app.knowledge.ingestion.kg_service.create_graph_store") as mock_store,
     ):
-        mock_settings.ANTHROPIC_API_KEY = "sk-fake"
-        mock_settings.COORDINATION_LLM_MODEL = "claude-sonnet-4-6"
-
-        fake_anthropic = MagicMock()
-        fake_anthropic.messages.create.side_effect = _fake_create
-        mock_client.return_value = fake_anthropic
-
+        mock_settings.LLM_API_KEY = "sk-fake"
+        mock_settings.LLM_MODEL = "anthropic/claude-sonnet-4-6"
+        mock_ingest_settings.LLM_API_KEY = "sk-fake"
+        mock_ingest_settings.LLM_MODEL = "anthropic/claude-sonnet-4-6"
+        mock_ingest_settings.LLM_BASE_URL = None
         mock_store_resp = MagicMock()
         mock_store_resp.status.value = "success"
         mock_store.return_value = mock_store_resp

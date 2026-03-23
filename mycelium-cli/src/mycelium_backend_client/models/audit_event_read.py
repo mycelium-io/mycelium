@@ -12,7 +12,9 @@ from dateutil.parser import isoparse
 from ..types import UNSET, Unset
 
 if TYPE_CHECKING:
-    from ..models.audit_event_read_audit_information_type_0 import AuditEventReadAuditInformationType0
+    from ..models.audit_event_read_audit_information_type_0 import (
+        AuditEventReadAuditInformationType0,
+    )
 
 
 T = TypeVar("T", bound="AuditEventRead")
@@ -51,7 +53,9 @@ class AuditEventRead:
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.audit_event_read_audit_information_type_0 import AuditEventReadAuditInformationType0
+        from ..models.audit_event_read_audit_information_type_0 import (
+            AuditEventReadAuditInformationType0,
+        )
 
         id = str(self.id)
 
@@ -117,7 +121,9 @@ class AuditEventRead:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.audit_event_read_audit_information_type_0 import AuditEventReadAuditInformationType0
+        from ..models.audit_event_read_audit_information_type_0 import (
+            AuditEventReadAuditInformationType0,
+        )
 
         d = dict(src_dict)
         id = UUID(d.pop("id"))
@@ -147,7 +153,9 @@ class AuditEventRead:
 
         operation_id = _parse_operation_id(d.pop("operation_id", UNSET))
 
-        def _parse_audit_information(data: object) -> AuditEventReadAuditInformationType0 | None | Unset:
+        def _parse_audit_information(
+            data: object,
+        ) -> AuditEventReadAuditInformationType0 | None | Unset:
             if data is None:
                 return data
             if isinstance(data, Unset):
@@ -171,7 +179,9 @@ class AuditEventRead:
                 return data
             return cast(None | str | Unset, data)
 
-        audit_extra_information = _parse_audit_extra_information(d.pop("audit_extra_information", UNSET))
+        audit_extra_information = _parse_audit_extra_information(
+            d.pop("audit_extra_information", UNSET)
+        )
 
         audit_event_read = cls(
             id=id,

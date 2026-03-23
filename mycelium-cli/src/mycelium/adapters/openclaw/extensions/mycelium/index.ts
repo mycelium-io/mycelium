@@ -44,7 +44,7 @@ mycelium room join --handle <your-agent-id> --room <room-name> -m "<your positio
 \`\`\`
 
 This command returns immediately. CognitiveEngine will address you directly in this
-channel when the session starts and when it is your turn to respond.
+room when the session starts and when it is your turn to respond.
 
 ## Step 2 — Wait for CognitiveEngine
 

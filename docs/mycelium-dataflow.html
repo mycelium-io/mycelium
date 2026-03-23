@@ -20,7 +20,7 @@
     --yellow: #67e8f9;
     --text: #e2eaf6;
     --muted: #4a6080;
-    --dim: #1e2d42;
+    --dim: #4a6a8a;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html { scroll-behavior: smooth; }
@@ -203,7 +203,7 @@
   .sec-detail.green  { border-color: var(--green); }
   .sec-detail.purple { border-color: var(--purple); }
   .sec-detail.yellow { border-color: var(--yellow); }
-  .sec-detail span { display: block; }
+  .sec-detail > span { display: block; }
   .sec-detail .hi   { color: var(--accent); }
   .sec-detail .hi-b { color: var(--blue); }
   .sec-detail .hi-g { color: var(--green); }
@@ -220,7 +220,7 @@
     text-align: center;
   }
   .d-box .d-label {
-    font-size: 9px;
+    font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.12em;
     text-transform: uppercase;
@@ -228,7 +228,7 @@
     font-family: 'SF Mono', monospace;
   }
   .d-box .d-name { font-size: 13px; font-weight: 700; color: var(--text); }
-  .d-box .d-sub  { font-size: 10.5px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+  .d-box .d-sub  { font-size: 12.5px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
   .d-arrow { color: var(--accent); font-size: 18px; flex-shrink: 0; }
   .d-arrow-v { color: var(--accent); font-size: 18px; text-align: center; line-height: 1; margin: 4px 0; }
 
@@ -244,13 +244,13 @@
     position: relative;
   }
   .iso-agent .icon { font-size: 28px; margin-bottom: 10px; opacity: 0.7; }
-  .iso-agent .name { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
-  .iso-agent .cap { font-size: 10px; color: var(--muted); line-height: 1.4; }
+  .iso-agent .name { font-size: 13.5px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+  .iso-agent .cap { font-size: 12px; color: var(--muted); line-height: 1.4; }
   .iso-gap {
     width: 100%;
     padding: 12px 0;
     text-align: center;
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 700;
     font-family: 'SF Mono', monospace;
     letter-spacing: 0.12em;
@@ -271,9 +271,9 @@
     text-align: center;
     transition: border-color 0.3s;
   }
-  .pillar-card .p-label { font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; font-family: 'SF Mono', monospace; margin-bottom: 6px; }
-  .pillar-card .p-ioc { font-size: 11px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
-  .pillar-card .p-myc { font-size: 10px; color: var(--muted); line-height: 1.4; }
+  .pillar-card .p-label { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; font-family: 'SF Mono', monospace; margin-bottom: 6px; }
+  .pillar-card .p-ioc { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+  .pillar-card .p-myc { font-size: 12px; color: var(--muted); line-height: 1.4; }
   .pillar-card.po { border-color: rgba(56,189,248,0.35); }
   .pillar-card.pb { border-color: rgba(129,140,248,0.35); }
   .pillar-card.pp { border-color: rgba(192,132,252,0.35); }
@@ -291,8 +291,8 @@
     transition: border-color 0.3s;
   }
   .sc3-box .icon { font-size: 22px; margin-bottom: 8px; }
-  .sc3-box .name { font-size: 12px; font-weight: 700; margin-bottom: 3px; }
-  .sc3-box .sub  { font-size: 10px; color: var(--muted); line-height: 1.4; }
+  .sc3-box .name { font-size: 13.5px; font-weight: 700; margin-bottom: 3px; }
+  .sc3-box .sub  { font-size: 12px; color: var(--muted); line-height: 1.4; }
   .sc3-box.o { border-color: rgba(56,189,248,0.35); }
   .sc3-box.b { border-color: rgba(129,140,248,0.35); }
   .sc3-box.g { border-color: rgba(52,211,153,0.3); }
@@ -307,7 +307,7 @@
 
   /* ── SCENE 4: PIPELINE ── */
   #sc4 { flex-direction: column; gap: 10px; padding: 32px; }
-  .pipe-header { font-size: 10px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); font-family: 'SF Mono', monospace; margin-bottom: 4px; }
+  .pipe-header { font-size: 12px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); font-family: 'SF Mono', monospace; margin-bottom: 4px; }
   .pipe-comp {
     display: flex;
     align-items: stretch;
@@ -322,22 +322,22 @@
   .pipe-comp.lit-p { border-color: rgba(192,132,252,0.4); }
   .pipe-comp.lit-o { border-color: rgba(56,189,248,0.4); }
   .pipe-badge {
-    width: 28px; font-size: 9px; font-weight: 800; letter-spacing: 0.08em;
+    width: 28px; font-size: 11px; font-weight: 800; letter-spacing: 0.08em;
     text-transform: uppercase; font-family: 'SF Mono', monospace;
     writing-mode: vertical-rl; text-orientation: mixed;
     display: flex; align-items: center; justify-content: center;
     border-radius: 4px; flex-shrink: 0;
   }
   .pipe-body { flex: 1; }
-  .pipe-name { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
-  .pipe-desc { font-size: 11px; color: var(--muted); line-height: 1.5; }
-  .pipe-out  { font-size: 10px; color: var(--muted); font-family: 'SF Mono', monospace; margin-top: 6px; }
+  .pipe-name { font-size: 14.5px; font-weight: 700; margin-bottom: 4px; }
+  .pipe-desc { font-size: 13px; color: var(--muted); line-height: 1.5; }
+  .pipe-out  { font-size: 12px; color: var(--muted); font-family: 'SF Mono', monospace; margin-top: 6px; }
   .pipe-arrow { text-align: center; color: var(--accent); font-size: 16px; margin: 2px 0; }
 
   /* ── SCENE 5: TICK LOOP ── */
   #sc5 { flex-direction: column; gap: 12px; padding: 28px; }
   .tick-header { display: flex; justify-content: space-between; align-items: center; }
-  .tick-col-label { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; font-family: 'SF Mono', monospace; padding: 4px 10px; border-radius: 20px; }
+  .tick-col-label { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; font-family: 'SF Mono', monospace; padding: 4px 10px; border-radius: 20px; }
   .tcl-ce { color: var(--accent); background: rgba(56,189,248,0.1); border: 1px solid rgba(56,189,248,0.2); }
   .tcl-ag { color: var(--blue);   background: rgba(129,140,248,0.1);  border: 1px solid rgba(129,140,248,0.2); }
   .tick-cols { display: grid; grid-template-columns: 1fr 40px 1fr; gap: 0; }
@@ -351,9 +351,9 @@
     font-size: 11px;
     transition: border-color 0.4s, background 0.4s;
   }
-  .tick-card .tc-step { font-size: 9px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; font-family: 'SF Mono', monospace; margin-bottom: 4px; color: var(--muted); }
-  .tick-card .tc-body { color: var(--text); font-weight: 600; font-size: 11px; }
-  .tick-card .tc-sub  { font-size: 10px; color: var(--muted); margin-top: 2px; line-height: 1.4; font-family: 'SF Mono', monospace; }
+  .tick-card .tc-step { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; font-family: 'SF Mono', monospace; margin-bottom: 4px; color: var(--muted); }
+  .tick-card .tc-body { color: var(--text); font-weight: 600; font-size: 13px; }
+  .tick-card .tc-sub  { font-size: 12px; color: var(--muted); margin-top: 2px; line-height: 1.4; font-family: 'SF Mono', monospace; }
   .tick-card.ce-lit { border-color: rgba(56,189,248,0.35); background: rgba(56,189,248,0.04); }
   .tick-card.ag-lit { border-color: rgba(129,140,248,0.35);  background: rgba(129,140,248,0.04); }
   .tick-card.ok-lit { border-color: rgba(52,211,153,0.35);  background: rgba(52,211,153,0.04); }
@@ -369,7 +369,7 @@
     border-radius: 8px;
     padding: 16px 18px;
     font-family: 'SF Mono', monospace;
-    font-size: 11px;
+    font-size: 13px;
     line-height: 1.7;
     color: var(--muted);
     overflow-x: auto;
@@ -398,8 +398,8 @@
     transition: border-color 0.4s;
   }
   .cfn-svc .svc-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-  .cfn-svc .svc-name { font-size: 12px; font-weight: 700; }
-  .cfn-svc .svc-port { font-size: 10.5px; color: var(--muted); font-family: 'SF Mono', monospace; margin-top: 1px; }
+  .cfn-svc .svc-name { font-size: 13.5px; font-weight: 700; }
+  .cfn-svc .svc-port { font-size: 12.5px; color: var(--muted); font-family: 'SF Mono', monospace; margin-top: 1px; }
 
   /* ── SCENE 9: FINAL ── */
   #sc9 { flex-direction: column; gap: 14px; padding: 32px; }
@@ -411,11 +411,11 @@
     border: 1px solid var(--border);
     border-radius: 8px;
     text-align: center;
-    font-size: 11px;
+    font-size: 13px;
   }
-  .final-box .fb-label { font-size: 9px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; font-family: 'SF Mono', monospace; margin-bottom: 5px; }
-  .final-box .fb-name  { font-size: 12px; font-weight: 700; color: var(--text); }
-  .final-box .fb-sub   { font-size: 10px; color: var(--muted); margin-top: 3px; line-height: 1.3; }
+  .final-box .fb-label { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; font-family: 'SF Mono', monospace; margin-bottom: 5px; }
+  .final-box .fb-name  { font-size: 13.5px; font-weight: 700; color: var(--text); }
+  .final-box .fb-sub   { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.3; }
   .final-box.fo { border-color: rgba(56,189,248,0.3);  }
   .final-box.fb { border-color: rgba(129,140,248,0.3);  }
   .final-box.fg { border-color: rgba(52,211,153,0.3);  }
@@ -431,8 +431,8 @@
     grid-template-columns: 1fr 1fr;
     gap: 12px;
   }
-  .fs-item .fs-k { font-size: 9px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; font-family: 'SF Mono', monospace; color: var(--muted); margin-bottom: 3px; }
-  .fs-item .fs-v { font-size: 12px; color: var(--text); line-height: 1.4; }
+  .fs-item .fs-k { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; font-family: 'SF Mono', monospace; color: var(--muted); margin-bottom: 3px; }
+  .fs-item .fs-v { font-size: 13.5px; color: var(--text); line-height: 1.4; }
 
   /* ── PROGRESS ── */
   #pg-bar {
@@ -566,30 +566,30 @@
       <div class="sec-detail blue">
         <span class="hi-b">Pillar 1:</span> <span>SemanticNegotiationPipeline + NegMAS SAO</span>
         <span style="margin-top:4px;" class="hi-b">Pillar 2:</span> <span>Persistent memory + AgensGraph knowledge graph</span>
-        <span style="margin-top:4px;" class="hi-b">Pillar 3:</span> <span>CognitiveEngine synthesis + catchup protocol</span>
+        <span style="margin-top:4px;" class="hi-b">Pillar 3:</span> <span>CognitiveEngine synthesis + catchup</span>
       </div>
     </div>
 
     <!-- S3: Infrastructure -->
     <div class="section" data-scene="3">
       <div class="sec-label">Infrastructure</div>
-      <h2 class="sec-title">Single Database, Full Stack</h2>
+      <h2 class="sec-title">Infrastructure Overview</h2>
       <p class="sec-body">Everything runs on one <strong>AgensGraph</strong> instance &mdash; SQL tables, openCypher graph, pgvector embeddings. The backend is <strong>FastAPI</strong> with Postgres <code>LISTEN/NOTIFY</code> for real-time SSE.</p>
       <p class="sec-body" style="margin-top:12px;">CFN services plug in via the <code>cfn</code> Docker Compose profile. Agents connect through adapters &mdash; Claude Code via hooks + skill, OpenClaw via plugin &mdash; receiving coordination events over persistent SSE streams.</p>
       <div class="sec-detail">
-        <span class="hi">Database:</span> <span>AgensGraph (Postgres + openCypher + pgvector)</span>
-        <span style="margin-top:4px;" class="hi">Backend:</span> <span>FastAPI :8000 + asyncpg LISTEN/NOTIFY</span>
-        <span style="margin-top:4px;" class="hi">Agents:</span> <span>Claude Code (hooks + skill) &middot; OpenClaw (plugin + adapter)</span>
-        <span style="margin-top:4px;" class="hi">LLM:</span> <span>litellm (100+ provider support)</span>
+        <span class="hi">mycelium-cli:</span> <span>agent adapters — Claude Code (hooks + skill) &middot; OpenClaw (plugin)</span>
+        <span style="margin-top:4px;" class="hi">mycelium-backend:</span> <span>FastAPI :8000 &middot; asyncpg LISTEN/NOTIFY &middot; CognitiveEngine</span>
+        <span style="margin-top:4px;" class="hi">mycelium-db:</span> <span>AgensGraph :5432 &middot; SQL + openCypher + pgvector</span>
+        <span style="margin-top:4px;" class="hi">CFN:</span> <span>mgmt-plane :9000 &middot; cfn-svc :9002</span>
       </div>
     </div>
 
     <!-- S4: Semantic Negotiation -->
     <div class="section" data-scene="4">
       <div class="sec-label">Pillar 1 &mdash; Cognition State Protocols</div>
-      <h2 class="sec-title">Semantic Negotiation Protocol</h2>
+      <h2 class="sec-title">Semantic Negotiation</h2>
       <p class="sec-body">When agents need to agree, <strong>CognitiveEngine</strong> runs the SemanticNegotiationPipeline. Three components: <strong>IntentDiscovery</strong> reads what agents want, <strong>OptionsGeneration</strong> creates the solution space, <strong>NegotiationModel</strong> runs NegMAS SAO (Stacked Alternating Offers).</p>
-      <p class="sec-body" style="margin-top:12px;">The protocol complexity is tucked behind the CLI &mdash; <code>message propose</code> and <code>message respond</code> validate against SSTP wire-format models so agents never write raw JSON. Agents propose, respond, and reach consensus, all mediated, never direct.</p>
+      <p class="sec-body" style="margin-top:12px;">The complexity is tucked behind the CLI &mdash; <code>message propose</code> and <code>message respond</code> validate against SSTP wire-format models so agents never write raw JSON. Agents propose, respond, and reach consensus, all mediated, never direct.</p>
       <div class="sec-detail">
         <span class="hi">IntentDiscovery</span><span style="margin-top:2px;">  &#8594; ["budget","timeline","scope","quality"]</span>
         <span style="margin-top:6px;" class="hi">OptionsGeneration</span><span style="margin-top:2px;">&#8594; {"budget": ["minimal"..."uncapped"], ...}</span>
@@ -601,13 +601,13 @@
     <div class="section" data-scene="5">
       <div class="sec-label yellow">Pillar 1 &mdash; Live Flow</div>
       <h2 class="sec-title">Propose &#8594; Respond &#8594; Consensus</h2>
-      <p class="sec-body">The protocol is <strong>push-based and event-driven</strong>. Agents join a room with their position. CognitiveEngine starts a 60s join window. When it fires, NegMAS drives propose/respond rounds.</p>
+      <p class="sec-body">Coordination is <strong>push-based and event-driven</strong>. Agents join a room with their position. CognitiveEngine starts a 60s join window. When it fires, NegMAS drives propose/respond rounds.</p>
       <p class="sec-body" style="margin-top:12px;">Each tick is pushed via SSE to the specific agent. The agent responds via the CLI. NegMAS unblocks and advances. No polling &mdash; Postgres <code>NOTIFY</code> on the <code>agent:{handle}</code> channel pushes through SSE to <code>room await</code>, which wakes the agent.</p>
       <div class="sec-detail yellow">
-        <span class="hi-y">$ mycelium room join -r design-review -H julia-agent -m "prioritize db migration"</span>
-        <span style="margin-top:4px;" class="hi-y">$ mycelium room await -r design-review -H julia-agent</span>
-        <span style="margin-top:4px;" class="hi-y">$ mycelium message propose budget=high scope=extended -r design-review -H julia-agent</span>
-        <span style="margin-top:6px;">CognitiveEngine evaluates &#8594; consensus or next round</span>
+        <span class="hi-y">room join</span><span> — agent joins with intent, 60s window</span>
+        <span style="margin-top:4px;" class="hi-y">room await</span><span> — blocks on SSE until CE sends a tick</span>
+        <span style="margin-top:4px;" class="hi-y">message propose / respond</span><span> — agent's turn in the SAO round</span>
+        <span style="margin-top:6px; color:var(--muted);">CognitiveEngine evaluates &#8594; consensus or next round</span>
       </div>
     </div>
 
@@ -635,13 +635,12 @@
     <!-- S8: CFN Integration -->
     <div class="section" data-scene="8">
       <div class="sec-label">CFN Integration</div>
-      <h2 class="sec-title">Cognitive Fabric Nodes</h2>
-      <p class="sec-body">Mycelium plugs into the <strong>Outshift CFN stack</strong>. Agent registration flows through <code>ioc-cfn-mgmt-plane</code>. <code>ioc-cfn-svc</code> routes knowledge extraction and evidence reasoning back to <strong>mycelium-backend</strong> &mdash; Mycelium serves as both the cognition engine and the knowledge-memory backend.</p>
-      <p class="sec-body" style="margin-top:12px;">On startup, Mycelium registers as a memory provider with the mgmt plane. <code>ioc-cfn-svc</code> then calls mycelium's <code>/api/knowledge-mgmt/extraction</code> and <code>/api/knowledge-mgmt/reasoning/evidence</code> endpoints for LLM extraction and graph queries.</p>
+      <h2 class="sec-title">Cognitive Fabric Node</h2>
+      <p class="sec-body">Each Mycelium deployment <em>is</em> a CFN node — self-contained, with its own agents, memory, and knowledge graph. Today it runs standalone. The architecture is designed so nodes can federate: sharing memory and coordinating across teams or organizations without any single point of control.</p>
+      <p class="sec-body" style="margin-top:12px;">On startup, Mycelium registers as a memory provider with <code>ioc-cfn-mgmt-plane</code>. <code>ioc-cfn-svc</code> routes knowledge extraction and evidence reasoning to <strong>mycelium-backend</strong>, which implements both the KNOWLEDGE_MEMORY_SVC and COGNITION_ENGINE_SVC contracts.</p>
       <div class="sec-detail">
-        <span class="hi">Management:</span> <span>ioc-cfn-mgmt-plane-svc :9000 &mdash; agent registration, lifecycle</span>
-        <span style="margin-top:4px;" class="hi">CFN core:</span> <span>ioc-cfn-svc :9002 &mdash; routes to mycelium-backend for knowledge + memory</span>
-        <span style="margin-top:4px;" class="hi">Mycelium:</span> <span>implements KNOWLEDGE_MEMORY_SVC + COGNITION_ENGINE_SVC contracts</span>
+        <span class="hi">Today:</span> <span>one node — mgmt-plane, cfn-svc, backend, AgensGraph</span>
+        <span style="margin-top:4px;" class="hi">Future:</span> <span>nodes federate — shared memory across orgs, no central authority</span>
       </div>
     </div>
 
@@ -649,7 +648,7 @@
     <div class="section" data-scene="9">
       <div class="sec-label green">Full Pipeline</div>
       <h2 class="sec-title">From Isolation to Collective Intelligence</h2>
-      <p class="sec-body">One install command. Agents join rooms. CognitiveEngine mediates. Memories compound. Knowledge grows. The protocol is open. The fabric is persistent. The engines get smarter.</p>
+      <p class="sec-body">One install command. Agents join rooms. CognitiveEngine mediates. Memories compound. Knowledge grows. The coordination is open. The fabric is persistent. The engines get smarter.</p>
       <p class="sec-body" style="margin-top:12px;">This is the <strong>Internet of Cognition</strong> &mdash; running today.</p>
     </div>
 
@@ -681,7 +680,7 @@
           </div>
           <div class="iso-gap">NO SHARED INTENT &middot; NO SHARED CONTEXT &middot; NO RATCHET</div>
           <div style="text-align:center; padding:12px 16px; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:8px;">
-            <div style="font-size:11px; color:var(--muted); line-height:1.6;">Each agent starts from zero. Past decisions are lost.<br>Context evaporates between sessions.</div>
+            <div style="font-size:13px; color:var(--muted); line-height:1.6;">Each agent starts from zero. Past decisions are lost.<br>Context evaporates between sessions.</div>
           </div>
         </div>
       </div>
@@ -689,7 +688,7 @@
       <!-- SCENE 2: Three Pillars -->
       <div class="scene" id="sc2">
         <div style="width:100%; display:flex; flex-direction:column; gap:10px;">
-          <div style="font-size:10px; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--muted); margin-bottom:4px;">IoC Paper &#8594; Mycelium Implementation</div>
+          <div style="font-size:12px; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--muted); margin-bottom:4px;">IoC Paper &#8594; Mycelium Implementation</div>
           <div class="pillar-row">
             <div class="pillar-card po">
               <div class="p-label" style="color:var(--accent);">Pillar 1</div>
@@ -704,15 +703,7 @@
             <div class="pillar-card pp">
               <div class="p-label" style="color:var(--purple);">Pillar 3</div>
               <div class="p-ioc">Cognition Engines</div>
-              <div class="p-myc" style="margin-top:8px; border-top:1px solid var(--border); padding-top:8px;">Synthesis<br>Catchup Protocol<br>Guardrails</div>
-            </div>
-          </div>
-          <div style="display:flex; gap:8px; width:100%;">
-            <div style="flex:1; text-align:center; padding:8px; background:rgba(52,211,153,0.05); border:1px solid rgba(52,211,153,0.2); border-radius:8px; font-size:10px; color:var(--green); font-family:'SF Mono',monospace;">
-              ioc-cfn-mgmt-plane :9000
-            </div>
-            <div style="flex:1; text-align:center; padding:8px; background:rgba(52,211,153,0.05); border:1px solid rgba(52,211,153,0.2); border-radius:8px; font-size:10px; color:var(--green); font-family:'SF Mono',monospace;">
-              ioc-cfn-svc :9002
+              <div class="p-myc" style="margin-top:8px; border-top:1px solid var(--border); padding-top:8px;">Synthesis<br>Catchup<br>Guardrails</div>
             </div>
           </div>
         </div>
@@ -720,37 +711,53 @@
 
       <!-- SCENE 3: Infrastructure -->
       <div class="scene" id="sc3">
-        <div style="width:100%; display:flex; flex-direction:column; gap:14px;">
-          <div class="sc3-row">
-            <div class="sc3-box o">
-              <div class="name">Agent Adapters</div>
-              <div class="sub">Claude Code &middot; OpenClaw<br>hooks + skill &middot; plugin</div>
+        <div style="width:100%; display:flex; flex-direction:column; gap:8px;">
+
+          <!-- layer label -->
+          <div style="font-size:11px; font-weight:700; letter-spacing:0.18em; text-transform:uppercase; color:var(--muted); font-family:'SF Mono',monospace; padding-left:2px;">clients</div>
+
+          <!-- mycelium-cli -->
+          <div style="padding:12px 16px; background:rgba(56,189,248,0.05); border:1px solid rgba(56,189,248,0.25); border-radius:10px; display:flex; align-items:center; justify-content:space-between;">
+            <div>
+              <div style="font-size:13.5px; font-weight:700; color:var(--accent);">mycelium-cli</div>
+              <div style="font-size:12px; color:var(--muted); margin-top:3px;">agent adapters &middot; Claude Code (hooks + skill) &middot; OpenClaw (plugin)</div>
             </div>
-            <div style="display:flex; align-items:center; padding:0 6px; color:var(--dim); font-size:18px;">&#8644;</div>
-            <div class="sc3-box b">
-              <div class="name">mycelium-backend</div>
-              <div class="sub">FastAPI :8000<br>rooms &middot; SSE &middot; coordination</div>
+            <div style="font-size:12px; color:var(--muted); font-family:'SF Mono',monospace; white-space:nowrap; padding-left:12px; opacity:0.6;">install / CLI</div>
+          </div>
+
+          <!-- connector -->
+          <div style="display:flex; justify-content:center;"><div style="width:2px; height:12px; background:linear-gradient(to bottom,rgba(56,189,248,0.4),rgba(129,140,248,0.4));"></div></div>
+
+          <div style="font-size:11px; font-weight:700; letter-spacing:0.18em; text-transform:uppercase; color:var(--muted); font-family:'SF Mono',monospace; padding-left:2px;">core</div>
+
+          <!-- mycelium-backend -->
+          <div style="padding:12px 16px; background:rgba(129,140,248,0.05); border:1px solid rgba(129,140,248,0.3); border-radius:10px; display:flex; align-items:center; justify-content:space-between;">
+            <div>
+              <div style="font-size:13.5px; font-weight:700; color:var(--blue);">mycelium-backend</div>
+              <div style="font-size:12px; color:var(--muted); margin-top:3px;">FastAPI &middot; CognitiveEngine &middot; rooms &middot; SSE &middot; LISTEN/NOTIFY</div>
+            </div>
+            <div style="font-size:12px; color:var(--blue); font-family:'SF Mono',monospace; white-space:nowrap; padding-left:12px; opacity:0.7;">:8000</div>
+          </div>
+
+          <!-- connector -->
+          <div style="display:flex; justify-content:center;"><div style="width:2px; height:12px; background:linear-gradient(to bottom,rgba(129,140,248,0.4),rgba(52,211,153,0.4));"></div></div>
+
+          <div style="font-size:11px; font-weight:700; letter-spacing:0.18em; text-transform:uppercase; color:var(--muted); font-family:'SF Mono',monospace; padding-left:2px;">data &amp; integrations</div>
+
+          <!-- bottom row: db, cfn -->
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+            <div style="padding:12px 12px; background:rgba(52,211,153,0.05); border:1px solid rgba(52,211,153,0.25); border-radius:10px;">
+              <div style="font-size:13px; font-weight:700; color:var(--green);">mycelium-db</div>
+              <div style="font-size:12px; color:var(--muted); margin-top:4px; line-height:1.5;">AgensGraph<br>SQL · Cypher · pgvector</div>
+              <div style="font-size:12px; color:var(--green); font-family:'SF Mono',monospace; margin-top:6px; opacity:0.7;">:5432</div>
+            </div>
+            <div style="padding:12px 12px; background:rgba(192,132,252,0.05); border:1px solid rgba(192,132,252,0.25); border-radius:10px;">
+              <div style="font-size:13px; font-weight:700; color:var(--purple);">CFN Services</div>
+              <div style="font-size:12px; color:var(--muted); margin-top:4px; line-height:1.5;">mgmt-plane<br>cfn-svc</div>
+              <div style="font-size:12px; color:var(--purple); font-family:'SF Mono',monospace; margin-top:6px; opacity:0.7;">:9000 · :9002</div>
             </div>
           </div>
-          <div class="sc3-conn"></div>
-          <div class="sc3-row">
-            <div class="sc3-box g" style="flex:2;">
-              <div class="name">mycelium-db (AgensGraph)</div>
-              <div class="sub">SQL + openCypher + pgvector &middot; single instance &middot; :5432</div>
-            </div>
-          </div>
-          <div class="sc3-conn"></div>
-          <div class="sc3-row">
-            <div class="sc3-box p" style="font-size:10px;">
-              <div class="name" style="font-size:11px;">CFN Services</div>
-              <div class="sub">mgmt-plane :9000 &middot; cfn :9002 &middot; memory :9003</div>
-            </div>
-            <div style="display:flex; align-items:center; padding:0 6px; color:var(--dim); font-size:18px;">&#8644;</div>
-            <div class="sc3-box g" style="font-size:10px;">
-              <div class="name" style="font-size:11px;">litellm</div>
-              <div class="sub">100+ LLM providers<br>synthesis &middot; extraction</div>
-            </div>
-          </div>
+
         </div>
       </div>
 
@@ -784,7 +791,7 @@
               <div class="pipe-out">&#8594; NegotiationResult {agreement, steps, timedout}</div>
             </div>
           </div>
-          <div style="padding:10px 14px; background:rgba(251,191,36,0.05); border:1px solid rgba(251,191,36,0.2); border-radius:8px; font-size:10.5px; color:var(--muted); font-family:'SF Mono',monospace;">
+          <div style="padding:10px 14px; background:rgba(251,191,36,0.05); border:1px solid rgba(251,191,36,0.2); border-radius:8px; font-size:12.5px; color:var(--muted); font-family:'SF Mono',monospace;">
             <span style="color:var(--yellow);">CognitiveEngine</span> orchestrates all three. Has access to<br>agent identities, intents, shared memories + knowledge graph.
           </div>
         </div>
@@ -792,68 +799,75 @@
 
       <!-- SCENE 5: Tick Loop -->
       <div class="scene" id="sc5">
-        <div style="width:100%; display:flex; flex-direction:column; gap:10px;">
-          <div class="tick-header">
-            <span class="tick-col-label tcl-ce">CognitiveEngine</span>
-            <span style="font-size:10px; color:var(--dim); font-family:'SF Mono',monospace;">room channel</span>
-            <span class="tick-col-label tcl-ag">agent (CLI)</span>
+        <div style="width:100%; display:flex; flex-direction:column; gap:6px;">
+
+          <!-- header -->
+          <div style="display:grid; grid-template-columns:1fr 56px 1fr; gap:6px; margin-bottom:2px;">
+            <div class="tick-col-label tcl-ce" style="text-align:center;">julia-agent</div>
+            <div style="text-align:center; font-size:11px; color:var(--dim); font-family:'SF Mono',monospace; padding-top:4px;">CE</div>
+            <div class="tick-col-label tcl-ag" style="text-align:center;">selina-agent</div>
           </div>
-          <div class="tick-cols">
-            <div class="tick-side">
-              <div class="tick-card ce-lit">
-                <div class="tc-step">1. join window fires</div>
-                <div class="tc-body">_run_tick(room, 0)</div>
-                <div class="tc-sub">fetch sessions + intents</div>
-              </div>
-              <div class="tick-card ce-lit">
-                <div class="tc-step">3. NegMAS drives</div>
-                <div class="tc-body">propose() called</div>
-                <div class="tc-sub">POST coordination_tick<br>NOTIFY agent:handle</div>
-              </div>
-              <div class="tick-card ce-lit">
-                <div class="tc-step">5. Future resolved</div>
-                <div class="tc-body">on_agent_response()</div>
-                <div class="tc-sub">NegMAS unblocks &#8594; advance</div>
-              </div>
-              <div class="tick-card ok-lit">
-                <div class="tc-step">7. consensus</div>
-                <div class="tc-body" style="color:var(--green);">agreement reached</div>
-                <div class="tc-sub">NOTIFY all &#8594; complete</div>
-              </div>
+
+          <!-- coordination_start -->
+          <div style="padding:7px 12px; background:rgba(56,189,248,0.04); border:1px solid rgba(56,189,248,0.12); border-radius:6px; font-size:11px; font-family:'SF Mono',monospace; color:var(--muted);">
+            <span style="color:var(--yellow);">CognitiveEngine</span> <span style="color:var(--muted);">analyzed agent intents and generated negotiation issues and options.</span>
+          </div>
+
+          <!-- round label -->
+          <div style="font-size:11px; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--dim); text-align:center;">&#8212; round 1 &#8212;</div>
+
+          <!-- CE → julia: propose -->
+          <div style="display:grid; grid-template-columns:1fr 56px 1fr; gap:6px; align-items:center;">
+            <div style="background:rgba(0,0,0,0.4); border:1px solid rgba(56,189,248,0.22); border-radius:7px; padding:8px 10px; font-family:'SF Mono',monospace; font-size:11px; line-height:1.7;">
+              <div style="font-size:10px; color:var(--muted); margin-bottom:5px;">← SSE: coordination_tick (propose)</div>
+              <span style="color:var(--yellow);">CognitiveEngine</span> <span style="color:var(--dim);">→</span> <span style="color:var(--accent);">julia-agent</span> &nbsp;<span style="color:var(--blue);">round 1</span> — propose your offer:<br>
+              <span style="color:var(--text); padding-left:8px; display:inline-block; margin-top:3px;">price</span><br>
+              <span style="color:var(--muted); padding-left:16px;">1. at listing &nbsp;2. 5–10% below &nbsp;3. comps-based</span><br>
+              <span style="color:var(--text); padding-left:8px; display:inline-block;">deck with city views</span><br>
+              <span style="color:var(--muted); padding-left:16px;">1. panoramic &nbsp;2. partial &nbsp;3. seasonal</span><br>
+              <span style="color:var(--muted); padding-left:8px; margin-top:2px; display:inline-block; font-size:10px;">+ 6 more issues…</span>
             </div>
-            <div class="tick-mid">
-              <div class="mid-arrow" style="color:var(--accent);">&#8594;</div>
-              <div class="mid-line"></div>
-              <div class="mid-arrow" style="color:var(--blue);">&#8592;</div>
-              <div class="mid-line" style="background:linear-gradient(to bottom,var(--blue),var(--green));"></div>
-              <div class="mid-arrow" style="color:var(--green);">&#8594;</div>
-            </div>
-            <div class="tick-side">
-              <div class="tick-card" style="border-color:var(--border); min-height:24px;"></div>
-              <div class="tick-card ag-lit">
-                <div class="tc-step">2+4. SSE &#8594; agent wakes</div>
-                <div class="tc-body">mycelium message propose</div>
-                <div class="tc-sub">budget=high scope=extended</div>
-              </div>
-              <div class="tick-card ag-lit">
-                <div class="tc-step">6. other agent responds</div>
-                <div class="tc-body">respond accept</div>
-                <div class="tc-sub">evaluates &#8594; aligned</div>
-              </div>
-              <div class="tick-card ok-lit">
-                <div class="tc-step">8. received</div>
-                <div class="tc-body" style="color:var(--green);">[consensus]</div>
-                <div class="tc-sub">assignments delivered</div>
-              </div>
+            <div style="text-align:center; font-size:14.5px; color:var(--dim);">&#8592;</div>
+            <div style="background:rgba(0,0,0,0.15); border:1px dashed rgba(129,140,248,0.12); border-radius:7px; padding:8px 10px; font-size:11px; color:var(--dim); font-family:'SF Mono',monospace; text-align:center;">waiting…</div>
+          </div>
+
+          <!-- CE → selina: respond (reject) -->
+          <div style="display:grid; grid-template-columns:1fr 56px 1fr; gap:6px; align-items:center;">
+            <div style="background:rgba(52,211,153,0.03); border:1px solid rgba(52,211,153,0.12); border-radius:7px; padding:6px 10px; font-size:11px; font-family:'SF Mono',monospace; color:var(--muted); text-align:center;">offer sent</div>
+            <div style="text-align:center; font-size:14.5px; color:var(--dim);">&#8594;</div>
+            <div style="background:rgba(0,0,0,0.4); border:1px solid rgba(129,140,248,0.22); border-radius:7px; padding:8px 10px; font-family:'SF Mono',monospace; font-size:11px; line-height:1.65;">
+              <div style="font-size:10px; color:var(--muted); margin-bottom:4px;">← SSE: coordination_tick (respond)</div>
+              <span style="color:var(--green);">$</span> <span style="color:var(--text);">mycelium message respond</span><br>
+              <span style="color:rgba(248,113,113,0.8);">reject</span> <span style="color:var(--blue);">-r</span> <span style="color:var(--purple);">testing-thursday-10</span> <span style="color:var(--blue);">-H</span> <span style="color:var(--accent);">selina-agent</span>
             </div>
           </div>
+
+          <!-- ellipsis -->
+          <div style="font-size:11px; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--dim); text-align:center;">&#8212; rounds alternate (SAO) &#8212;</div>
+
+          <!-- final: julia accepts -->
+          <div style="display:grid; grid-template-columns:1fr 56px 1fr; gap:6px; align-items:center;">
+            <div style="background:rgba(0,0,0,0.4); border:1px solid rgba(52,211,153,0.3); border-radius:7px; padding:8px 10px; font-family:'SF Mono',monospace; font-size:11px; line-height:1.65;">
+              <div style="font-size:10px; color:var(--muted); margin-bottom:4px;">← SSE: coordination_tick (respond)</div>
+              <span style="color:var(--green);">$</span> <span style="color:var(--text);">mycelium message respond</span><br>
+              <span style="color:var(--green);">accept</span> <span style="color:var(--blue);">-r</span> <span style="color:var(--purple);">testing-thursday-10</span> <span style="color:var(--blue);">-H</span> <span style="color:var(--accent);">julia-agent</span>
+            </div>
+            <div style="text-align:center; font-size:14.5px; color:var(--green);">&#8592;</div>
+            <div style="background:rgba(52,211,153,0.03); border:1px solid rgba(52,211,153,0.12); border-radius:7px; padding:6px 10px; font-size:11px; font-family:'SF Mono',monospace; color:var(--muted); text-align:center;">offer sent</div>
+          </div>
+
+          <!-- consensus -->
+          <div style="padding:7px 12px; background:rgba(52,211,153,0.06); border:1px solid rgba(52,211,153,0.25); border-radius:7px; font-size:11px; font-family:'SF Mono',monospace; color:var(--muted); text-align:center;">
+            <span style="color:var(--yellow);">CognitiveEngine</span> &rarr; coordination_consensus &nbsp;<span style="color:var(--green);">{timedout: false, assignments: {...}}</span>
+          </div>
+
         </div>
       </div>
 
       <!-- SCENE 6: Persistent Memory (terminal mockup) -->
       <div class="scene" id="sc6">
         <div style="width:100%; display:flex; flex-direction:column; gap:10px;">
-          <div style="font-size:10px; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--muted); margin-bottom:4px;">Persistent Memory &mdash; CLI</div>
+          <div style="font-size:12px; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--muted); margin-bottom:4px;">Persistent Memory &mdash; CLI</div>
           <div class="term-block">
             <span class="prompt">$</span> <span class="cmd">mycelium memory set</span> <span class="val">"position/julia"</span> <span class="val">"REST is better than GraphQL"</span> <span class="flag">--handle julia-agent</span><br>
             <span class="output">Memory set: design-review/<span class="key">position/julia</span> (v1)</span>
@@ -870,7 +884,7 @@
             <span class="key">position/selina</span> &nbsp;&nbsp;&nbsp;<span class="tdim">v1</span>&nbsp; <span class="output">selina-agent</span> &nbsp;<span class="tdim">2026-03-17</span><br>
             <span class="key">position/kappa</span> &nbsp;&nbsp;&nbsp;&nbsp;<span class="tdim">v1</span>&nbsp; <span class="output">kappa-agent</span> &nbsp;&nbsp;<span class="tdim">2026-03-17</span>
           </div>
-          <div style="padding:8px 12px; background:rgba(52,211,153,0.05); border:1px solid rgba(52,211,153,0.2); border-radius:8px; font-size:10px; color:var(--green); text-align:center; font-family:'SF Mono',monospace;">
+          <div style="padding:8px 12px; background:rgba(52,211,153,0.05); border:1px solid rgba(52,211,153,0.2); border-radius:8px; font-size:12px; color:var(--green); text-align:center; font-family:'SF Mono',monospace;">
             vector embeddings &middot; namespace scoping &middot; cross-session persistence
           </div>
         </div>
@@ -879,7 +893,7 @@
       <!-- SCENE 7: Catchup & Synthesis (terminal mockup) -->
       <div class="scene" id="sc7">
         <div style="width:100%; display:flex; flex-direction:column; gap:10px;">
-          <div style="font-size:10px; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--muted); margin-bottom:4px;">Catchup</div>
+          <div style="font-size:12px; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--muted); margin-bottom:4px;">Catchup</div>
           <div class="term-block" style="line-height:1.8;">
             <span class="prompt">$</span> <span class="cmd">mycelium catchup</span><br>
             <span class="val">design-review</span> &nbsp;<span class="tdim">async room</span> &nbsp;<span class="output">47 memories</span> &nbsp;<span class="tdim">6 contributors</span><br>
@@ -894,7 +908,7 @@
             <span style="color:var(--text); font-weight:600;">## Open Questions</span><br>
             <span class="output">Pagination standards not yet decided.</span>
           </div>
-          <div style="padding:8px 12px; background:rgba(192,132,252,0.05); border:1px solid rgba(192,132,252,0.2); border-radius:8px; font-size:10px; color:var(--purple); text-align:center; font-family:'SF Mono',monospace;">
+          <div style="padding:8px 12px; background:rgba(192,132,252,0.05); border:1px solid rgba(192,132,252,0.2); border-radius:8px; font-size:12px; color:var(--purple); text-align:center; font-family:'SF Mono',monospace;">
             new agent arrives &#8594; absorbs swarm knowledge &#8594; zero context loss
           </div>
         </div>
@@ -902,53 +916,57 @@
 
       <!-- SCENE 8: CFN Integration -->
       <div class="scene" id="sc8">
-        <div style="width:100%; display:flex; flex-direction:column; gap:8px;">
-          <div style="font-size:10px; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--muted); margin-bottom:4px;">Outshift CFN Stack</div>
-          <div class="cfn-svc" style="border-color:rgba(56,189,248,0.35);">
-            <div class="svc-dot" style="background:var(--accent); box-shadow:0 0 8px rgba(56,189,248,0.5); animation: pulse 2s ease-in-out infinite;"></div>
-            <div>
-              <div class="svc-name" style="color:var(--accent);">ioc-cfn-mgmt-plane-svc</div>
-              <div class="svc-port">:9000 &middot; agent registration &middot; lifecycle</div>
+        <div style="width:100%; display:flex; flex-direction:column; gap:12px;">
+
+          <!-- top row: node A — node B -->
+          <div style="display:grid; grid-template-columns:1fr auto 1fr; gap:0; align-items:center;">
+            <div style="padding:12px 10px; background:rgba(56,189,248,0.07); border:1.5px solid rgba(56,189,248,0.45); border-radius:10px; text-align:center;">
+              <div style="font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--accent); margin-bottom:4px;">Node A</div>
+              <div style="font-size:12.5px; font-weight:700; color:var(--fg);">Mycelium</div>
+              <div style="font-size:10px; color:var(--muted); margin-top:3px;">team / org</div>
+            </div>
+            <div style="width:32px; height:1.5px; background:rgba(255,255,255,0.15);"></div>
+            <div style="padding:12px 10px; background:rgba(129,140,248,0.07); border:1.5px solid rgba(129,140,248,0.35); border-radius:10px; text-align:center;">
+              <div style="font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--blue); margin-bottom:4px;">Node B</div>
+              <div style="font-size:12.5px; font-weight:700; color:var(--fg);">Mycelium</div>
+              <div style="font-size:10px; color:var(--muted); margin-top:3px;">team / org</div>
             </div>
           </div>
-          <div class="cfn-svc" style="border-color:rgba(129,140,248,0.35);">
-            <div class="svc-dot" style="background:var(--blue); box-shadow:0 0 8px rgba(129,140,248,0.5); animation: pulse 2s ease-in-out infinite 0.3s;"></div>
-            <div>
-              <div class="svc-name" style="color:var(--blue);">ioc-cfn-svc</div>
-              <div class="svc-port">:9002 &middot; fabric orchestration</div>
+
+          <!-- vertical connectors -->
+          <div style="display:grid; grid-template-columns:1fr auto 1fr; align-items:start;">
+            <div style="display:flex; justify-content:center;"><div style="width:1.5px; height:20px; background:rgba(255,255,255,0.12);"></div></div>
+            <div style="width:32px;"></div>
+            <div style="display:flex; justify-content:center;"><div style="width:1.5px; height:20px; background:rgba(255,255,255,0.12);"></div></div>
+          </div>
+
+          <!-- bottom row: node C — node D -->
+          <div style="display:grid; grid-template-columns:1fr auto 1fr; gap:0; align-items:center;">
+            <div style="padding:12px 10px; background:rgba(52,211,153,0.07); border:1.5px solid rgba(52,211,153,0.3); border-radius:10px; text-align:center;">
+              <div style="font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--green); margin-bottom:4px;">Node C</div>
+              <div style="font-size:12.5px; font-weight:700; color:var(--fg);">Mycelium</div>
+              <div style="font-size:10px; color:var(--muted); margin-top:3px;">team / org</div>
+            </div>
+            <div style="width:32px; height:1.5px; background:rgba(255,255,255,0.15);"></div>
+            <div style="padding:12px 10px; background:rgba(192,132,252,0.07); border:1.5px solid rgba(192,132,252,0.3); border-radius:10px; text-align:center;">
+              <div style="font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--purple); margin-bottom:4px;">Node D</div>
+              <div style="font-size:12.5px; font-weight:700; color:var(--fg);">Mycelium</div>
+              <div style="font-size:10px; color:var(--muted); margin-top:3px;">team / org</div>
             </div>
           </div>
-          <div style="display:flex; gap:8px; margin-top:4px;">
-            <div style="flex:1; text-align:center; font-size:10px; color:var(--dim); font-family:'SF Mono',monospace;">KNOWLEDGE_MEMORY_SVC_URL &#8595;</div>
-            <div style="flex:1; text-align:center; font-size:10px; color:var(--dim); font-family:'SF Mono',monospace;">COGNITION_ENGINE_SVC_URL &#8595;</div>
+
+          <div style="display:flex; align-items:center; justify-content:center; gap:10px; margin-top:4px;">
+            <div style="padding:3px 10px; background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.3); border-radius:20px; font-size:10px; font-weight:700; font-family:'SF Mono',monospace; color:var(--accent); letter-spacing:0.08em;">v2</div>
+            <div style="font-size:11px; color:var(--muted); font-family:'SF Mono',monospace;">each node self-contained &middot; knowledge federates across orgs</div>
           </div>
-          <div class="cfn-svc" style="border-color:rgba(103,232,249,0.35);">
-            <div class="svc-dot" style="background:var(--yellow); box-shadow:0 0 8px rgba(103,232,249,0.5); animation: pulse 2s ease-in-out infinite 0.6s;"></div>
-            <div>
-              <div class="svc-name" style="color:var(--yellow);">mycelium-backend</div>
-              <div class="svc-port">:8000 &middot; serves as knowledge-memory + cognition engine</div>
-            </div>
-          </div>
-          <div style="display:flex; gap:8px; margin-top:4px;">
-            <div style="flex:1; text-align:center; font-size:14px; color:var(--dim);">&#8595;</div>
-          </div>
-          <div class="cfn-svc" style="border-color:rgba(192,132,252,0.35);">
-            <div class="svc-dot" style="background:var(--purple); box-shadow:0 0 8px rgba(192,132,252,0.5);"></div>
-            <div>
-              <div class="svc-name" style="color:var(--purple); font-size:11px;">mycelium-db (AgensGraph)</div>
-              <div class="svc-port">:5432 &middot; SQL + openCypher + pgvector &middot; hosts cfn_mgmt + cfn_cp</div>
-            </div>
-          </div>
-          <div style="padding:8px 12px; background:rgba(56,189,248,0.05); border:1px solid rgba(56,189,248,0.15); border-radius:8px; font-size:10px; color:var(--muted); text-align:center; font-family:'SF Mono',monospace;">
-            cfn-svc &#8594; mycelium extraction + evidence &#8594; AgensGraph &#8594; better negotiations
-          </div>
+
         </div>
       </div>
 
       <!-- SCENE 9: End-to-End -->
       <div class="scene" id="sc9">
         <div style="width:100%; display:flex; flex-direction:column; gap:12px;">
-          <div style="font-size:10px; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--muted); margin-bottom:2px;">end-to-end pipeline</div>
+          <div style="font-size:12px; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--muted); margin-bottom:2px;">end-to-end pipeline</div>
           <div class="final-row">
             <div class="final-box fo">
               <div class="fb-label" style="color:var(--accent);">setup</div>

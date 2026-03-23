@@ -344,7 +344,7 @@ def _compose_up(
     _remove_orphan_containers()
 
     base = _compose_base_args(compose_path, env_path, profiles)
-    up_flags = ["up", "--pull", "missing", "--force-recreate", "-d"]
+    up_flags = ["up", "--pull", "always", "--force-recreate", "-d"]
     if can_build:
         up_flags.append("--build")
     else:
@@ -355,7 +355,7 @@ def _compose_up(
     if cfn_active:
         # Phase 1: bring up just the database and wait for it to be healthy
         db_args = _compose_base_args(compose_path, env_path) + [
-            "up", "--pull", "missing", "--force-recreate", "-d",
+            "up", "--pull", "always", "--force-recreate", "-d",
         ]
         if can_build:
             db_args.append("--build")
@@ -460,7 +460,9 @@ def _provision_backend(api_url: str, workspace_name: str = "default") -> tuple[s
     import urllib.request
 
     def _get(path: str) -> list:
-        req = urllib.request.Request(f"{api_url}{path}", headers={"Content-Type": "application/json"})
+        req = urllib.request.Request(
+            f"{api_url}{path}", headers={"Content-Type": "application/json"}
+        )
         with urllib.request.urlopen(req, timeout=10) as resp:
             return json.loads(resp.read())
 
@@ -634,6 +636,7 @@ def install(
                 fg=typer.colors.RED,
             )
             import click
+
             ctx = click.get_current_context()
             typer.echo(ctx.get_help())
             raise typer.Exit(1) from None

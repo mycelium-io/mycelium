@@ -56,8 +56,68 @@ jobs:
           cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-backend:cache
           cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-backend:cache,mode=max
 
-  build-and-release:
+  build-binaries:
     needs: publish-images
+    name: Build binary (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86_64
+          - os: macos-latest
+            platform: darwin-arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Bump version to match tag
+        working-directory: mycelium-cli
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          sed -i.bak "s/^version = .*/version = \"$VERSION\"/" pyproject.toml && rm -f pyproject.toml.bak
+
+      - name: Build mycelium-client wheel
+        working-directory: mycelium-client
+        run: uv build --wheel
+
+      - name: Install CLI + client + PyInstaller
+        working-directory: mycelium-cli
+        run: |
+          uv venv .venv
+          uv pip install --python .venv/bin/python \
+            -e . \
+            ../mycelium-client/dist/*.whl \
+            pyinstaller
+
+      - name: Build binary
+        working-directory: mycelium-cli
+        run: |
+          .venv/bin/python -c "from mycelium.cli import app; app()" --help > /dev/null 2>&1 || true
+          .venv/bin/pyinstaller \
+            --onefile \
+            --name mycelium \
+            --collect-all mycelium \
+            --collect-all pyfiglet \
+            --hidden-import mycelium_backend_client \
+            -p src \
+            src/mycelium/cli.py
+          mv dist/mycelium dist/mycelium-${{ matrix.platform }}
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mycelium-${{ matrix.platform }}
+          path: mycelium-cli/dist/mycelium-${{ matrix.platform }}
+
+  build-and-release:
+    needs: [publish-images, build-binaries]
     name: Build wheel and publish release
     runs-on: ubuntu-latest
 
@@ -84,6 +144,23 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
+      - name: Download linux binary
+        uses: actions/download-artifact@v4
+        with:
+          name: mycelium-linux-x86_64
+          path: mycelium-cli/dist/binaries
+
+      - name: Download darwin binary
+        uses: actions/download-artifact@v4
+        with:
+          name: mycelium-darwin-arm64
+          path: mycelium-cli/dist/binaries
+
+      - name: Generate checksums
+        run: |
+          cd mycelium-cli/dist
+          sha256sum *.whl binaries/mycelium-* > binaries/checksums.txt
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -104,5 +181,79 @@ jobs:
             ## What's changed
 
             See [commits since last release](https://github.com/mycelium-io/mycelium/commits/${{ github.ref_name }}).
-          files: mycelium-cli/dist/*.whl
+          files: |
+            mycelium-cli/dist/*.whl
+            mycelium-cli/dist/binaries/mycelium-*
+            mycelium-cli/dist/binaries/checksums.txt
           fail_on_unmatched_files: true
+
+  update-tap:
+    needs: build-and-release
+    name: Update homebrew tap
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Download binaries and compute SHA256
+        id: shas
+        run: |
+          curl -fsSL -o mycelium-darwin-arm64 \
+            https://github.com/mycelium-io/mycelium/releases/download/${{ github.ref_name }}/mycelium-darwin-arm64
+          curl -fsSL -o mycelium-linux-x86_64 \
+            https://github.com/mycelium-io/mycelium/releases/download/${{ github.ref_name }}/mycelium-linux-x86_64
+          echo "darwin=$(sha256sum mycelium-darwin-arm64 | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "linux=$(sha256sum mycelium-linux-x86_64 | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout homebrew-tap
+        uses: actions/checkout@v4
+        with:
+          repository: mycelium-io/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Update formula
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          DARWIN_SHA="${{ steps.shas.outputs.darwin }}"
+          LINUX_SHA="${{ steps.shas.outputs.linux }}"
+          FORMULA="homebrew-tap/Formula/mycelium.rb"
+
+          sed -i "s/version \".*\"/version \"${VERSION}\"/" "$FORMULA"
+          # darwin sha is the one after "on_arm do" block
+          awk -v ver="$VERSION" -v dsha="$DARWIN_SHA" -v lsha="$LINUX_SHA" '
+            /on_arm do/{arm=1}
+            /on_intel do/{arm=0; intel=1}
+            arm && /sha256/{sub(/sha256 ".*"/, "sha256 \""dsha"\""); arm=0}
+            intel && /sha256/{sub(/sha256 ".*"/, "sha256 \""lsha"\""); intel=0}
+            {print}
+          ' "$FORMULA" > /tmp/mycelium.rb && mv /tmp/mycelium.rb "$FORMULA"
+
+      - name: Commit and push
+        working-directory: homebrew-tap
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/mycelium.rb
+          git diff --staged --quiet || git commit -m "chore: bump mycelium to v${{ steps.version.outputs.version }}"
+          git push
+  publish-clawhub:
+    needs: build-and-release
+    name: Publish skill to clawhub
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to clawhub
+        run: |
+          curl -fsSL -X POST https://clawhub.ai/api/v1/skills \
+            -H "Authorization: Bearer ${{ secrets.CLAWHUB_TOKEN }}" \
+            -F "payload={\"slug\":\"mycelium-io\",\"displayName\":\"Mycelium\",\"version\":\"${{ steps.version.outputs.version }}\",\"changelog\":\"See https://github.com/mycelium-io/mycelium/releases/tag/${{ github.ref_name }}\",\"acceptLicenseTerms\":true,\"tags\":[\"latest\"]}" \
+            -F "files=@mycelium-cli/src/mycelium/adapters/openclaw/extensions/mycelium/skills/mycelium/SKILL.md;type=text/markdown;filename=SKILL.md"

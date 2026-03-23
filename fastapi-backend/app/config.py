@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Config file search order: local .env first, then global ~/.mycelium/.env
@@ -41,6 +42,13 @@ class Settings(BaseSettings):
     # Per-round timeout: how long CognitiveEngine waits for an agent to reply
     # during a negotiation round before falling back to the safe default.
     COORDINATION_TICK_TIMEOUT_SECONDS: int = 30
+
+    @field_validator("COORDINATION_TICK_TIMEOUT_SECONDS", mode="before")
+    @classmethod
+    def _coerce_tick_timeout(cls, v: object) -> object:
+        if v == "" or v is None:
+            return 30
+        return v
 
     # Embedding (for persistent memory semantic search)
     EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
