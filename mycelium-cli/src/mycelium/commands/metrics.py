@@ -574,14 +574,27 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
     by_agent_hist = (otel or {}).get("histograms", {}).get("by_agent", {})
     otel_sessions = (otel or {}).get("sessions", [])
 
-    agent_names: set[str] = set(by_agent_tokens.keys())
+    session_tokens_by_agent: dict[str, dict[str, int]] = {}
+    for s in otel_sessions:
+        a = s.get("agent", "")
+        if not a:
+            continue
+        bucket = session_tokens_by_agent.setdefault(a, {
+            "input": 0, "output": 0, "cache_read": 0, "cache_write": 0, "total": 0,
+        })
+        st = s.get("tokens", {})
+        for k in ("input", "output", "cache_read", "cache_write", "total"):
+            bucket[k] += st.get(k, 0)
+
+    agent_names: set[str] = set(by_agent_tokens.keys()) | set(session_tokens_by_agent.keys())
     for a in agents_meta:
         agent_names.add(a.get("name", ""))
+    agent_names.discard("matrix")
 
     for name in sorted(agent_names):
         if not name:
             continue
-        tok = by_agent_tokens.get(name, {})
+        tok = by_agent_tokens.get(name, session_tokens_by_agent.get(name, {}))
         cost = by_agent_cost.get(name) if name in by_agent_cost else None
         agent_sessions = [s for s in otel_sessions if s.get("agent") == name]
         sess_count = len(agent_sessions)

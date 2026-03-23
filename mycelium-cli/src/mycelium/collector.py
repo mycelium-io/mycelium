@@ -169,9 +169,12 @@ class MetricsStore:
 
         ts = datetime.fromtimestamp(start_ns / 1_000_000_000, tz=UTC).isoformat()
 
+        session_key = attrs.get("openclaw.sessionKey", "")
+        agent = _agent_from_session_key(session_key) or attrs.get("openclaw.channel", "")
+
         record = {
             "session_id": session_id,
-            "agent": attrs.get("openclaw.channel", ""),
+            "agent": agent,
             "model": attrs.get("openclaw.model", ""),
             "provider": attrs.get("openclaw.provider", ""),
             "tokens": {
@@ -206,6 +209,15 @@ class MetricsStore:
                     self._sessions, key=lambda k: self._sessions[k].get("timestamp", "")
                 )
                 del self._sessions[oldest_key]
+
+
+def _agent_from_session_key(session_key: str) -> str:
+    """Extract agent name from a session key like 'agent:selina-agent:matrix:...'."""
+    if session_key.startswith("agent:"):
+        parts = session_key.split(":", 3)
+        if len(parts) >= 2:
+            return parts[1]
+    return ""
 
 
 def _zero_tokens() -> dict:
