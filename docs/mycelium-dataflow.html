@@ -319,10 +319,10 @@
   .pillar-card.pb { border-color: rgba(129,140,248,0.35); }
   .pillar-card.pp { border-color: rgba(192,132,252,0.35); }
 
-  /* ── SCENE 3: INFRASTRUCTURE ── */
-  #sc3 { flex-direction: column; gap: 14px; }
-  .sc3-row { display: flex; gap: 12px; width: 100%; justify-content: center; }
-  .sc3-box {
+  /* ── SCENE 8a: INFRASTRUCTURE ── */
+  #sc8a { flex-direction: column; gap: 14px; }
+  .sc8a-row { display: flex; gap: 12px; width: 100%; justify-content: center; }
+  .sc8a-box {
     flex: 1;
     background: var(--card);
     border: 1px solid var(--border);
@@ -331,14 +331,14 @@
     text-align: center;
     transition: border-color 0.3s;
   }
-  .sc3-box .icon { font-size: 22px; margin-bottom: 8px; }
-  .sc3-box .name { font-size: 13.5px; font-weight: 700; margin-bottom: 3px; }
-  .sc3-box .sub  { font-size: 12px; color: var(--muted); line-height: 1.4; }
-  .sc3-box.o { border-color: rgba(56,189,248,0.35); }
-  .sc3-box.b { border-color: rgba(129,140,248,0.35); }
-  .sc3-box.g { border-color: rgba(52,211,153,0.3); }
-  .sc3-box.p { border-color: rgba(192,132,252,0.3); }
-  .sc3-conn {
+  .sc8a-box .icon { font-size: 22px; margin-bottom: 8px; }
+  .sc8a-box .name { font-size: 13.5px; font-weight: 700; margin-bottom: 3px; }
+  .sc8a-box .sub  { font-size: 12px; color: var(--muted); line-height: 1.4; }
+  .sc8a-box.o { border-color: rgba(56,189,248,0.35); }
+  .sc8a-box.b { border-color: rgba(129,140,248,0.35); }
+  .sc8a-box.g { border-color: rgba(52,211,153,0.3); }
+  .sc8a-box.p { border-color: rgba(192,132,252,0.3); }
+  .sc8a-conn {
     width: 100%;
     height: 2px;
     background: linear-gradient(to right, rgba(56,189,248,0.4), rgba(129,140,248,0.4), rgba(192,132,252,0.4));
@@ -426,9 +426,9 @@
   /* ── SCENE 7: CATCHUP ── */
   #sc7 { flex-direction: column; gap: 8px; padding: 28px; }
 
-  /* ── SCENE 8: CFN ── */
-  #sc8 { flex-direction: column; gap: 12px; padding: 28px; }
-  .cfn-svc {
+  /* ── SCENE 8b: CFN ── */
+  #sc8b { flex-direction: column; gap: 12px; padding: 28px; }
+  #sc8b .cfn-svc {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -438,9 +438,9 @@
     border-radius: 8px;
     transition: border-color 0.4s;
   }
-  .cfn-svc .svc-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-  .cfn-svc .svc-name { font-size: 13.5px; font-weight: 700; }
-  .cfn-svc .svc-port { font-size: 12.5px; color: var(--muted); font-family: 'SF Mono', monospace; margin-top: 1px; }
+  #sc8b .cfn-svc .svc-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  #sc8b .cfn-svc .svc-name { font-size: 13.5px; font-weight: 700; }
+  #sc8b .cfn-svc .svc-port { font-size: 12.5px; color: var(--muted); font-family: 'SF Mono', monospace; margin-top: 1px; }
 
   /* ── SCENE 9: FINAL ── */
   #sc9 { flex-direction: column; gap: 14px; padding: 32px; }
@@ -582,7 +582,7 @@
   }
 
   @media (max-width: 480px) {
-    .sc3-row { flex-direction: column; }
+    .sc8a-row { flex-direction: column; }
     .final-row { flex-wrap: wrap; gap: 6px; }
     .final-box { flex: none; width: calc(50% - 16px); }
     .final-arrow { display: none; }
@@ -681,10 +681,11 @@
       <div class="sec-label green">Pillar 2 &mdash; Shared memory</div>
       <h2 class="sec-title">Persistent Memory</h2>
       <p class="sec-body">Rooms are folders. Memories are <strong>markdown files</strong> in <code>.mycelium/rooms/{room}/</code>. They carry <strong>vector embeddings</strong> for semantic search and accumulate across agents. This is the <strong>ratchet effect</strong> &mdash; intelligence that doesn't reset.</p>
-      <p class="sec-body" style="margin-top:12px;">Memories version automatically on upsert. AgensGraph maintains a <strong>pgvector search index</strong> updated on every write. Standard namespace conventions &mdash; <code>decisions/</code>, <code>work/</code>, <code>status/</code>, <code>context/</code> &mdash; structure the knowledge.</p>
+      <p class="sec-body" style="margin-top:12px;"><strong>Files on disk, search in the graph:</strong> each memory is a markdown file under <code>.mycelium/</code>; AgensGraph stores <strong>embeddings</strong> for semantic search and holds the coordination state the backend uses for rooms and SSE.</p>
+      <p class="sec-body" style="margin-top:12px;">Memories version automatically on upsert, and <strong>each write refreshes the searchable index</strong>. Standard namespace conventions &mdash; <code>decisions/</code>, <code>work/</code>, <code>status/</code>, <code>context/</code> &mdash; structure the knowledge.</p>
       <div class="sec-detail green">
         <span class="hi-g">Storage:</span> <span>.mycelium/rooms/{room}/{key}.md &mdash; YAML frontmatter + markdown</span>
-        <span style="margin-top:4px;" class="hi-g">Search:</span> <span>pgvector embeddings in AgensGraph (updated on write)</span>
+        <span style="margin-top:4px;" class="hi-g">Search:</span> <span><code>mycelium memory search</code> &mdash; similarity over stored embeddings</span>
         <span style="margin-top:4px;" class="hi-g">Sharing:</span> <span>git push/pull &middot; symlinks &middot; CFN federation (v2)</span>
       </div>
     </div>
@@ -925,7 +926,7 @@
             <span class="output">&nbsp; REST chosen over GraphQL</span>
           </div>
           <div style="padding:8px 12px; background:rgba(52,211,153,0.05); border:1px solid rgba(52,211,153,0.2); border-radius:8px; font-size:12px; color:var(--green); text-align:center; font-family:'SF Mono',monospace;">
-            files = truth &middot; pgvector = search index &middot; git = sharing &middot; unix = toolchain
+            files = truth &middot; graph = search &middot; git = sharing &middot; unix = toolchain
           </div>
         </div>
       </div>
