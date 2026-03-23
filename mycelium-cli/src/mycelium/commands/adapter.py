@@ -21,6 +21,7 @@ from pathlib import Path
 import typer
 
 from mycelium.config import MyceliumConfig
+from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
 
 app = typer.Typer(
@@ -63,6 +64,11 @@ _OPENCLAW_SCAFFOLD_ASSETS = [
 ]
 
 
+@doc_ref(
+    usage="mycelium adapter add <type> [--dry-run] [--force]",
+    desc="Install an agent framework adapter (openclaw, claude-code).",
+    group="adapter",
+)
 @app.command("add")
 def add(
     ctx: typer.Context,
@@ -253,6 +259,11 @@ def add(
         raise typer.Exit(1) from None
 
 
+@doc_ref(
+    usage="mycelium adapter remove <type> [--force]",
+    desc="Unregister and uninstall an adapter.",
+    group="adapter",
+)
 @app.command("remove")
 def remove(
     ctx: typer.Context,
@@ -289,6 +300,11 @@ def remove(
         raise typer.Exit(1) from None
 
 
+@doc_ref(
+    usage="mycelium adapter ls",
+    desc="List available and registered adapters.",
+    group="adapter",
+)
 @app.command("ls")
 def list_adapters(ctx: typer.Context) -> None:
     """List registered adapters."""
@@ -317,6 +333,11 @@ def list_adapters(ctx: typer.Context) -> None:
         print_error(e, verbose=verbose)
 
 
+@doc_ref(
+    usage="mycelium adapter status [type]",
+    desc="Check adapter health and installation status.",
+    group="adapter",
+)
 @app.command("status")
 def status(
     ctx: typer.Context,

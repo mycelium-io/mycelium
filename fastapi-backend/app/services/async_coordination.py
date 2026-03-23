@@ -1,5 +1,5 @@
 """
-Async CognitiveEngine — synthesis for async/hybrid rooms.
+Async CognitiveEngine — synthesis for namespace rooms.
 
 Unlike sync coordination (NegMAS tick loop), async coordination:
   - Triggers on configurable conditions (threshold, schedule, explicit)
@@ -17,9 +17,10 @@ import asyncpg
 from sqlalchemy import func, select, update
 
 from app.bus import agent_channel, notify
-from app.config import settings
+from app.config import require_llm, settings
 from app.database import async_session_maker
 from app.models import Memory, Room
+from app.services.filesystem import get_room_dir, write_memory_file
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ async def check_trigger(room_name: str) -> None:
     async with async_session_maker() as db:
         result = await db.execute(select(Room).where(Room.name == room_name))
         room = result.scalar_one_or_none()
-        if not room or room.mode not in ("async", "hybrid"):
+        if not room or not room.is_namespace:
             return
 
         config = room.trigger_config
@@ -98,15 +99,30 @@ async def run_synthesis(room_name: str) -> dict | None:
                 await db.commit()
                 return None
 
+            # Check LLM availability before doing work
+            require_llm()
+
             # Build context for LLM synthesis, grouped by category prefix
             context = _build_structured_context(memories)
 
             # Call LLM for synthesis
             synthesis_text = await _llm_synthesize(room_name, context, len(memories))
 
-            # Write synthesis result as a memory
+            # Write synthesis result as a markdown file + DB index
             timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
             synthesis_key = f"_synthesis/{timestamp}"
+
+            # Write markdown file
+            room_dir = get_room_dir(room_name)
+            write_memory_file(
+                room_dir,
+                synthesis_key,
+                synthesis_text,
+                created_by="CognitiveEngine",
+                updated_by="CognitiveEngine",
+                version=1,
+                extra_meta={"memory_count": len(memories)},
+            )
 
             synthesis_mem = Memory(
                 room_name=room_name,
@@ -115,6 +131,7 @@ async def run_synthesis(room_name: str) -> dict | None:
                 content_text=synthesis_text,
                 created_by="CognitiveEngine",
                 updated_by="CognitiveEngine",
+                file_path=f"rooms/{room_name}/{synthesis_key}.md",
             )
             db.add(synthesis_mem)
 
@@ -253,13 +270,9 @@ async def _llm_synthesize(room_name: str, context: str, memory_count: int) -> st
         response = litellm.completion(**kwargs)
         return response.choices[0].message.content
 
-    except Exception as e:
-        logger.warning("LLM synthesis failed, using fallback: %s", e)
-        return (
-            f"Synthesis of {memory_count} memories in room '{room_name}' "
-            f"(LLM unavailable — raw summary). "
-            f"Contributors: {context[:500]}..."
-        )
+    except Exception:
+        logger.exception("LLM synthesis failed for room %s", room_name)
+        raise
 
 
 async def _notify_synthesis_complete(room_name: str, synthesis_key: str) -> None:

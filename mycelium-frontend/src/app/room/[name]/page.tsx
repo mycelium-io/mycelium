@@ -6,12 +6,7 @@ import Image from "next/image";
 import { fetchRoom } from "@/lib/api";
 import { EventStream } from "@/components/event-stream";
 import { MemoryPanel } from "@/components/memory-panel";
-
-const modeColors: Record<string, string> = {
-  sync: "bg-accent/10 text-accent border-accent/25",
-  async: "bg-emerald-500/10 text-emerald-400 border-emerald-500/25",
-  hybrid: "bg-purple-500/10 text-purple-400 border-purple-500/25",
-};
+import { SessionsPanel } from "@/components/sessions-panel";
 
 export default function RoomPage() {
   const params = useParams();
@@ -38,11 +33,6 @@ export default function RoomPage() {
         <Image src="/logo.png" alt="" width={24} height={24} className="opacity-70" />
         <h1 className="font-bold font-mono text-lg">{roomName}</h1>
         {room && (
-          <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${modeColors[room.mode] || modeColors.sync}`}>
-            {room.mode}
-          </span>
-        )}
-        {room && (
           <span className="text-xs text-muted font-mono ml-2">
             {room.coordination_state}
           </span>
@@ -61,9 +51,17 @@ export default function RoomPage() {
           </div>
         </div>
 
-        {/* Right: Memory panel */}
+        {/* Right: Sessions + Memory */}
         <div className="w-[40%] flex flex-col">
-          <MemoryPanel roomName={roomName} refreshTrigger={memoryRefresh} />
+          <div className="border-b border-border">
+            <div className="px-4 py-2 border-b border-border">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Sessions</span>
+            </div>
+            <SessionsPanel roomName={roomName} />
+          </div>
+          <div className="flex-1 overflow-hidden flex flex-col">
+            <MemoryPanel roomName={roomName} refreshTrigger={memoryRefresh} />
+          </div>
         </div>
       </div>
     </div>

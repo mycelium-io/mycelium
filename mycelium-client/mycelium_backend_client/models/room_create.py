@@ -22,17 +22,13 @@ class RoomCreate:
         name (str):
         description (None | str | Unset):
         is_public (bool | Unset):  Default: True.
-        mode (str | Unset):  Default: 'sync'.
         trigger_config (None | RoomCreateTriggerConfigType0 | Unset):
-        is_persistent (bool | Unset):  Default: False.
     """
 
     name: str
     description: None | str | Unset = UNSET
     is_public: bool | Unset = True
-    mode: str | Unset = "sync"
     trigger_config: None | RoomCreateTriggerConfigType0 | Unset = UNSET
-    is_persistent: bool | Unset = False
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -48,8 +44,6 @@ class RoomCreate:
 
         is_public = self.is_public
 
-        mode = self.mode
-
         trigger_config: dict[str, Any] | None | Unset
         if isinstance(self.trigger_config, Unset):
             trigger_config = UNSET
@@ -57,8 +51,6 @@ class RoomCreate:
             trigger_config = self.trigger_config.to_dict()
         else:
             trigger_config = self.trigger_config
-
-        is_persistent = self.is_persistent
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -71,12 +63,8 @@ class RoomCreate:
             field_dict["description"] = description
         if is_public is not UNSET:
             field_dict["is_public"] = is_public
-        if mode is not UNSET:
-            field_dict["mode"] = mode
         if trigger_config is not UNSET:
             field_dict["trigger_config"] = trigger_config
-        if is_persistent is not UNSET:
-            field_dict["is_persistent"] = is_persistent
 
         return field_dict
 
@@ -98,8 +86,6 @@ class RoomCreate:
 
         is_public = d.pop("is_public", UNSET)
 
-        mode = d.pop("mode", UNSET)
-
         def _parse_trigger_config(data: object) -> None | RoomCreateTriggerConfigType0 | Unset:
             if data is None:
                 return data
@@ -117,15 +103,11 @@ class RoomCreate:
 
         trigger_config = _parse_trigger_config(d.pop("trigger_config", UNSET))
 
-        is_persistent = d.pop("is_persistent", UNSET)
-
         room_create = cls(
             name=name,
             description=description,
             is_public=is_public,
-            mode=mode,
             trigger_config=trigger_config,
-            is_persistent=is_persistent,
         )
 
         room_create.additional_properties = d

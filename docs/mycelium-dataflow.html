@@ -565,7 +565,7 @@
       <p class="sec-body" style="margin-top:12px;">Each pillar maps directly to Mycelium components and connects to the Outshift CFN services &mdash; <code>ioc-cfn-mgmt-plane</code> for agent registration and <code>ioc-cfn-svc</code> for fabric orchestration. Mycelium itself serves as the knowledge-memory backend.</p>
       <div class="sec-detail blue">
         <span class="hi-b">Pillar 1:</span> <span>SemanticNegotiationPipeline + NegMAS SAO</span>
-        <span style="margin-top:4px;" class="hi-b">Pillar 2:</span> <span>Persistent memory + AgensGraph knowledge graph</span>
+        <span style="margin-top:4px;" class="hi-b">Pillar 2:</span> <span>Persistent memory (.mycelium/) + pgvector search index</span>
         <span style="margin-top:4px;" class="hi-b">Pillar 3:</span> <span>CognitiveEngine synthesis + catchup</span>
       </div>
     </div>
@@ -574,12 +574,12 @@
     <div class="section" data-scene="3">
       <div class="sec-label">Infrastructure</div>
       <h2 class="sec-title">Infrastructure Overview</h2>
-      <p class="sec-body">Everything runs on one <strong>AgensGraph</strong> instance &mdash; SQL tables, openCypher graph, pgvector embeddings. The backend is <strong>FastAPI</strong> with Postgres <code>LISTEN/NOTIFY</code> for real-time SSE.</p>
+      <p class="sec-body">Memories are markdown files in <code>.mycelium/</code>. <strong>AgensGraph</strong> maintains the pgvector search index and session coordination state. The backend is <strong>FastAPI</strong> with Postgres <code>LISTEN/NOTIFY</code> for real-time SSE.</p>
       <p class="sec-body" style="margin-top:12px;">CFN services plug in via the <code>cfn</code> Docker Compose profile. Agents connect through adapters &mdash; Claude Code via hooks + skill, OpenClaw via plugin &mdash; receiving coordination events over persistent SSE streams.</p>
       <div class="sec-detail">
         <span class="hi">mycelium-cli:</span> <span>agent adapters — Claude Code (hooks + skill) &middot; OpenClaw (plugin)</span>
         <span style="margin-top:4px;" class="hi">mycelium-backend:</span> <span>FastAPI :8000 &middot; asyncpg LISTEN/NOTIFY &middot; CognitiveEngine</span>
-        <span style="margin-top:4px;" class="hi">mycelium-db:</span> <span>AgensGraph :5432 &middot; SQL + openCypher + pgvector</span>
+        <span style="margin-top:4px;" class="hi">mycelium-db:</span> <span>AgensGraph :5432 &middot; SQL + pgvector + openCypher</span>
         <span style="margin-top:4px;" class="hi">CFN:</span> <span>mgmt-plane :9000 &middot; cfn-svc :9002</span>
       </div>
     </div>
@@ -602,10 +602,10 @@
       <div class="sec-label yellow">Pillar 1 &mdash; Live Flow</div>
       <h2 class="sec-title">Propose &#8594; Respond &#8594; Consensus</h2>
       <p class="sec-body">Coordination is <strong>push-based and event-driven</strong>. Agents join a room with their position. CognitiveEngine starts a 60s join window. When it fires, NegMAS drives propose/respond rounds.</p>
-      <p class="sec-body" style="margin-top:12px;">Each tick is pushed via SSE to the specific agent. The agent responds via the CLI. NegMAS unblocks and advances. No polling &mdash; Postgres <code>NOTIFY</code> on the <code>agent:{handle}</code> channel pushes through SSE to <code>room await</code>, which wakes the agent.</p>
+      <p class="sec-body" style="margin-top:12px;">Each tick is pushed via SSE to the specific agent. The agent responds via the CLI. NegMAS unblocks and advances. No polling &mdash; Postgres <code>NOTIFY</code> on the <code>agent:{handle}</code> channel pushes through SSE to <code>session await</code>, which wakes the agent.</p>
       <div class="sec-detail yellow">
-        <span class="hi-y">room join</span><span> — agent joins with intent, 60s window</span>
-        <span style="margin-top:4px;" class="hi-y">room await</span><span> — blocks on SSE until CE sends a tick</span>
+        <span class="hi-y">session join</span><span> — agent joins with intent, 60s window</span>
+        <span style="margin-top:4px;" class="hi-y">session await</span><span> — blocks on SSE until CE sends a tick</span>
         <span style="margin-top:4px;" class="hi-y">message propose / respond</span><span> — agent's turn in the SAO round</span>
         <span style="margin-top:6px; color:var(--muted);">CognitiveEngine evaluates &#8594; consensus or next round</span>
       </div>
@@ -615,8 +615,13 @@
     <div class="section" data-scene="6">
       <div class="sec-label green">Pillar 2 &mdash; Cognition Fabric</div>
       <h2 class="sec-title">Persistent Memory</h2>
-      <p class="sec-body">Agents write memories scoped to rooms. Memories persist across sessions, carry <strong>vector embeddings</strong> for semantic search, and accumulate across agents. This is the <strong>ratchet effect</strong> &mdash; intelligence that doesn't reset.</p>
-      <p class="sec-body" style="margin-top:12px;">Memories are key-value entries with namespace paths like <code>agent/branch/topic</code>. They version automatically and support semantic similarity search via pgvector.</p>
+      <p class="sec-body">Rooms are folders. Memories are <strong>markdown files</strong> in <code>.mycelium/rooms/{room}/</code>. They carry <strong>vector embeddings</strong> for semantic search and accumulate across agents. This is the <strong>ratchet effect</strong> &mdash; intelligence that doesn't reset.</p>
+      <p class="sec-body" style="margin-top:12px;">Memories version automatically on upsert. AgensGraph maintains a <strong>pgvector search index</strong> updated on every write. Standard namespace conventions &mdash; <code>decisions/</code>, <code>work/</code>, <code>status/</code>, <code>context/</code> &mdash; structure the knowledge.</p>
+      <div class="sec-detail green">
+        <span class="hi-g">Storage:</span> <span>.mycelium/rooms/{room}/{key}.md &mdash; YAML frontmatter + markdown</span>
+        <span style="margin-top:4px;" class="hi-g">Search:</span> <span>pgvector embeddings in AgensGraph (updated on write)</span>
+        <span style="margin-top:4px;" class="hi-g">Sharing:</span> <span>git push/pull &middot; symlinks &middot; CFN federation (v2)</span>
+      </div>
     </div>
 
     <!-- S7: Catchup & Synthesis -->
@@ -698,7 +703,7 @@
             <div class="pillar-card pb">
               <div class="p-label" style="color:var(--blue);">Pillar 2</div>
               <div class="p-ioc">Cognition Fabric</div>
-              <div class="p-myc" style="margin-top:8px; border-top:1px solid var(--border); padding-top:8px;">Persistent Memory<br>AgensGraph + pgvector<br>Knowledge Graph</div>
+              <div class="p-myc" style="margin-top:8px; border-top:1px solid var(--border); padding-top:8px;">Persistent Memory<br>.mycelium/ + pgvector<br>Knowledge Graph</div>
             </div>
             <div class="pillar-card pp">
               <div class="p-label" style="color:var(--purple);">Pillar 3</div>
@@ -867,25 +872,31 @@
       <!-- SCENE 6: Persistent Memory (terminal mockup) -->
       <div class="scene" id="sc6">
         <div style="width:100%; display:flex; flex-direction:column; gap:10px;">
-          <div style="font-size:12px; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--muted); margin-bottom:4px;">Persistent Memory &mdash; CLI</div>
+          <div style="font-size:12px; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--muted); margin-bottom:4px;">Filesystem-Native Memory</div>
           <div class="term-block">
-            <span class="prompt">$</span> <span class="cmd">mycelium memory set</span> <span class="val">"position/julia"</span> <span class="val">"REST is better than GraphQL"</span> <span class="flag">--handle julia-agent</span><br>
-            <span class="output">Memory set: design-review/<span class="key">position/julia</span> (v1)</span>
+            <span class="prompt">$</span> <span class="cmd">mycelium memory set</span> <span class="val">"decisions/api"</span> <span class="val">"REST chosen over GraphQL"</span> <span class="flag">--handle julia-agent</span><br>
+            <span class="output">Memory set: design-review/decisions/api (v1)  [rooms/design-review/decisions/api.md]</span>
+          </div>
+          <div class="term-block">
+            <span class="prompt">$</span> <span class="cmd">cat</span> <span class="val">.mycelium/rooms/design-review/decisions/api.md</span><br>
+            <span class="tdim">---</span><br>
+            <span class="key">key:</span> <span class="output">decisions/api</span><br>
+            <span class="key">created_by:</span> <span class="output">julia-agent</span><br>
+            <span class="key">version:</span> <span class="output">1</span><br>
+            <span class="tdim">---</span><br>
+            <span class="output">REST chosen over GraphQL</span>
+          </div>
+          <div class="term-block">
+            <span class="prompt">$</span> <span class="cmd">ls</span> <span class="val">.mycelium/rooms/design-review/decisions/</span><br>
+            <span class="output">api.md &nbsp;&nbsp;db.md &nbsp;&nbsp;auth.md</span>
           </div>
           <div class="term-block">
             <span class="prompt">$</span> <span class="cmd">mycelium memory search</span> <span class="val">"API design decisions"</span><br>
-            <span class="key">position/julia</span> <span class="tdim">(similarity: 0.72, v1)</span><br>
-            <span class="output">&nbsp; REST is better than GraphQL</span>
-          </div>
-          <div class="term-block">
-            <span class="prompt">$</span> <span class="cmd">mycelium memory ls</span> <span class="val">position/</span><br>
-            <span class="output">design-review <span class="tdim">(3 memories)</span></span><br>
-            <span class="key">position/julia</span> &nbsp;&nbsp;&nbsp;&nbsp;<span class="tdim">v1</span>&nbsp; <span class="output">julia-agent</span> &nbsp;&nbsp;<span class="tdim">2026-03-17</span><br>
-            <span class="key">position/selina</span> &nbsp;&nbsp;&nbsp;<span class="tdim">v1</span>&nbsp; <span class="output">selina-agent</span> &nbsp;<span class="tdim">2026-03-17</span><br>
-            <span class="key">position/kappa</span> &nbsp;&nbsp;&nbsp;&nbsp;<span class="tdim">v1</span>&nbsp; <span class="output">kappa-agent</span> &nbsp;&nbsp;<span class="tdim">2026-03-17</span>
+            <span class="key">decisions/api</span> <span class="tdim">(similarity: 0.82, v1)</span><br>
+            <span class="output">&nbsp; REST chosen over GraphQL</span>
           </div>
           <div style="padding:8px 12px; background:rgba(52,211,153,0.05); border:1px solid rgba(52,211,153,0.2); border-radius:8px; font-size:12px; color:var(--green); text-align:center; font-family:'SF Mono',monospace;">
-            vector embeddings &middot; namespace scoping &middot; cross-session persistence
+            files = truth &middot; pgvector = search index &middot; git = sharing &middot; unix = toolchain
           </div>
         </div>
       </div>

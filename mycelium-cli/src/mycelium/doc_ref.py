@@ -5,8 +5,8 @@ Usage:
     from mycelium.doc_ref import doc_ref
 
     @doc_ref(
-        usage="mycelium room create <name> --mode <async|sync|hybrid> [--trigger threshold:N]",
-        desc="Create a new coordination room. Mode is required.",
+        usage="mycelium room create <name> [--trigger threshold:N]",
+        desc="Create a new persistent coordination room.",
         group="room",
     )
     @app.command()

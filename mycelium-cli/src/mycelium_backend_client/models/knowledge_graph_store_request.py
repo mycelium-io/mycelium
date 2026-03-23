@@ -6,15 +6,11 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
-from ..models.knowledge_graph_store_request_memory_type_type_0 import (
-    KnowledgeGraphStoreRequestMemoryTypeType0,
-)
+from ..models.knowledge_graph_store_request_memory_type_type_0 import KnowledgeGraphStoreRequestMemoryTypeType0
 from ..types import UNSET, Unset
 
 if TYPE_CHECKING:
-    from ..models.knowledge_graph_store_request_records_type_0 import (
-        KnowledgeGraphStoreRequestRecordsType0,
-    )
+    from ..models.knowledge_graph_store_request_records_type_0 import KnowledgeGraphStoreRequestRecordsType0
 
 
 T = TypeVar("T", bound="KnowledgeGraphStoreRequest")
@@ -41,9 +37,7 @@ class KnowledgeGraphStoreRequest:
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.knowledge_graph_store_request_records_type_0 import (
-            KnowledgeGraphStoreRequestRecordsType0,
-        )
+        from ..models.knowledge_graph_store_request_records_type_0 import KnowledgeGraphStoreRequestRecordsType0
 
         request_id = self.request_id
 
@@ -97,9 +91,7 @@ class KnowledgeGraphStoreRequest:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.knowledge_graph_store_request_records_type_0 import (
-            KnowledgeGraphStoreRequestRecordsType0,
-        )
+        from ..models.knowledge_graph_store_request_records_type_0 import KnowledgeGraphStoreRequestRecordsType0
 
         d = dict(src_dict)
         request_id = d.pop("request_id", UNSET)
@@ -121,9 +113,7 @@ class KnowledgeGraphStoreRequest:
 
         records = _parse_records(d.pop("records", UNSET))
 
-        def _parse_memory_type(
-            data: object,
-        ) -> KnowledgeGraphStoreRequestMemoryTypeType0 | None | Unset:
+        def _parse_memory_type(data: object) -> KnowledgeGraphStoreRequestMemoryTypeType0 | None | Unset:
             if data is None:
                 return data
             if isinstance(data, Unset):

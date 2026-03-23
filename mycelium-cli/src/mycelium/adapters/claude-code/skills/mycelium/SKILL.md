@@ -1,6 +1,6 @@
 ---
 name: mycelium
-description: Multi-agent coordination layer with persistent memory. Use when coordinating with other agents, sharing context across sessions, joining coordination rooms, or searching shared knowledge. Triggers on "coordinate", "negotiate", "share memory", "room join", "mycelium", "what do other agents think".
+description: Multi-agent coordination layer with persistent memory. Use when coordinating with other agents, sharing context across sessions, joining coordination rooms, or searching shared knowledge. Triggers on "coordinate", "negotiate", "share memory", "session join", "mycelium", "what do other agents think".
 ---
 
 # Mycelium Coordination
@@ -11,9 +11,21 @@ Agents never communicate directly with each other.
 
 ## Core Concepts
 
-- **Rooms** are namespaces. They can be `sync` (real-time negotiation), `async` (persistent memory), or `hybrid` (both).
+- **Rooms** are persistent namespaces. They hold memory that accumulates across sessions. Spawn sessions within rooms for real-time negotiation when needed.
 - **CognitiveEngine** mediates all coordination. It drives negotiation rounds and synthesizes accumulated context.
-- **Memory** is the persistence layer. Key-value entries scoped to a room, with optional vector embeddings for semantic search.
+- **Memory** is filesystem-native. Each memory is a markdown file at `~/.mycelium/rooms/{room}/{key}.md` with YAML frontmatter. The database is a search index that auto-syncs via file watcher.
+
+## Memory as Files
+
+Every memory is a readable, editable markdown file:
+
+```
+~/.mycelium/rooms/my-project/decisions/db.md
+~/.mycelium/rooms/my-project/work/api.md
+~/.mycelium/rooms/my-project/context/team.md
+```
+
+You can read them with `cat`, edit with any tool, or `git` the directory. Changes are auto-indexed — no manual reindex needed.
 
 ## Memory Operations
 
@@ -45,9 +57,9 @@ All memory commands use the active room. Set it with `mycelium room use <name>` 
 
 ```bash
 # Create rooms
-mycelium room create my-project --mode async                     # persistent namespace
-mycelium room create sprint-plan --mode sync                     # real-time negotiation
-mycelium room create design-review --mode hybrid --trigger threshold:5  # both
+mycelium room create my-project
+mycelium room create sprint-plan
+mycelium room create design-review --trigger threshold:5   # with synthesis trigger
 
 # Set active room
 mycelium room use my-project
@@ -55,17 +67,17 @@ mycelium room use my-project
 # List rooms
 mycelium room ls
 
-# Trigger CognitiveEngine to synthesize accumulated memories (async/hybrid)
+# Trigger CognitiveEngine to synthesize accumulated memories
 mycelium room synthesize
 ```
 
 ## Sync Coordination Protocol
 
-For real-time negotiation (sync/hybrid rooms), the protocol is push-based:
+For real-time negotiation (sessions spawned within rooms), the protocol is push-based:
 
 ```bash
 # 1. Join — declare your position (returns immediately)
-mycelium room join --handle claude-agent -m "I think we should use GraphQL"
+mycelium session join --handle claude-agent -m "I think we should use GraphQL"
 
 # 2. Wait — CognitiveEngine will message you when it's your turn
 
@@ -82,20 +94,20 @@ mycelium message query '{"action": "accept"}'
 
 ### Participating from Claude Code (the await pattern)
 
-Claude Code agents don't have a persistent SSE plugin. Use `room await` to block until CognitiveEngine addresses you:
+Claude Code agents don't have a persistent SSE plugin. Use `session await` to block until CognitiveEngine addresses you:
 
 ```bash
 # 1. Join
-mycelium room join --handle claude-agent -m "my position" -c sprint-room
+mycelium session join --handle claude-agent -m "my position" -c sprint-room
 
 # 2. Wait for your turn (blocks, prints JSON when CE addresses you)
-mycelium room await --handle claude-agent
+mycelium session await --handle claude-agent
 
 # 3. Read the output, respond
 mycelium message propose budget=high scope=full
 
 # 4. Wait for next tick or consensus
-mycelium room await --handle claude-agent
+mycelium session await --handle claude-agent
 # → {"type": "consensus", "plan": "budget=high", ...}
 ```
 
@@ -162,9 +174,9 @@ mycelium room synthesize
 | Situation | Action |
 |-----------|--------|
 | Just starting — what's going on? | `mycelium memory catchup` |
-| Share context that persists across sessions | `mycelium memory set` in an async room |
+| Share context that persists across sessions | `mycelium memory set` in a room |
 | Log a failed approach (prevent duplicated effort) | `mycelium memory set "failed/..."` |
 | Find what other agents know about a topic | `mycelium memory search` |
-| Need agents to agree on something right now | Sync room + coordination protocol |
-| Accumulate context then decide later | Hybrid room + `mycelium room synthesize` |
+| Need agents to agree on something right now | Spawn session + coordination protocol |
+| Accumulate context then decide later | Room + `mycelium room synthesize` |
 | Watch the room in real time | `mycelium watch` |

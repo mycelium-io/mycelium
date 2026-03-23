@@ -11,7 +11,6 @@ interface Props {
 
 export function CreateRoomDialog({ open, onClose, onCreated }: Props) {
   const [name, setName] = useState("");
-  const [mode, setMode] = useState("async");
   const [threshold, setThreshold] = useState("5");
   const [loading, setLoading] = useState(false);
 
@@ -20,8 +19,8 @@ export function CreateRoomDialog({ open, onClose, onCreated }: Props) {
   const handleCreate = async () => {
     setLoading(true);
     try {
-      const trigger = mode !== "sync" ? { type: "threshold", min_contributions: parseInt(threshold) } : undefined;
-      await createRoom({ name, mode, trigger_config: trigger, is_persistent: mode !== "sync" });
+      const trigger = { type: "threshold", min_contributions: parseInt(threshold) };
+      await createRoom({ name, trigger_config: trigger, is_persistent: true });
       onCreated();
       onClose();
       setName("");
@@ -43,34 +42,13 @@ export function CreateRoomDialog({ open, onClose, onCreated }: Props) {
           placeholder="design-review"
         />
 
-        <label className="block text-sm text-muted mb-1">Mode</label>
-        <div className="flex gap-2 mb-4">
-          {["sync", "async", "hybrid"].map(m => (
-            <button
-              key={m}
-              onClick={() => setMode(m)}
-              className={`flex-1 py-2 rounded-lg text-sm font-bold uppercase tracking-wider border transition-all ${
-                mode === m
-                  ? "border-accent/40 bg-accent/10 text-accent"
-                  : "border-border text-muted hover:border-border/80"
-              }`}
-            >
-              {m}
-            </button>
-          ))}
-        </div>
-
-        {mode !== "sync" && (
-          <>
-            <label className="block text-sm text-muted mb-1">Synthesis trigger (memory threshold)</label>
-            <input
-              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:border-accent/50 focus:outline-none mb-4"
-              type="number"
-              value={threshold}
-              onChange={e => setThreshold(e.target.value)}
-            />
-          </>
-        )}
+        <label className="block text-sm text-muted mb-1">Synthesis trigger (memory threshold)</label>
+        <input
+          className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:border-accent/50 focus:outline-none mb-4"
+          type="number"
+          value={threshold}
+          onChange={e => setThreshold(e.target.value)}
+        />
 
         <div className="flex gap-3 justify-end">
           <button onClick={onClose} className="px-4 py-2 text-sm text-muted hover:text-white transition-colors">

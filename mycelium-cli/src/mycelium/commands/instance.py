@@ -16,6 +16,7 @@ from pathlib import Path
 import typer
 
 from mycelium.config import MyceliumConfig, ServerConfig
+from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
 from mycelium.exceptions import ConfigNotFoundError
 from mycelium.http_client import MyceliumHTTPClient  # kept for health check
@@ -74,6 +75,11 @@ def _get_env_path() -> Path | None:
     return env_path if env_path.exists() else None
 
 
+@doc_ref(
+    usage="mycelium init [--api-url <url>] [--force]",
+    desc="Initialize CLI configuration. Creates <code>~/.mycelium/config.toml</code>.",
+    group="setup",
+)
 def init(
     ctx: typer.Context,
     api_url: str | None = typer.Option(
@@ -136,6 +142,11 @@ def init(
         print_error(e, verbose=verbose)
 
 
+@doc_ref(
+    usage="mycelium up [--build]",
+    desc="Start the Mycelium stack via <code>docker compose up</code>.",
+    group="setup",
+)
 def start(
     ctx: typer.Context,
     build: bool = typer.Option(False, "--build", help="Rebuild images before starting"),
@@ -182,6 +193,11 @@ def start(
         print_error(e, verbose=verbose)
 
 
+@doc_ref(
+    usage="mycelium down [--volumes]",
+    desc="Stop the Mycelium stack. Pass <code>--volumes</code> to also delete data.",
+    group="setup",
+)
 def stop(
     ctx: typer.Context,
     volumes: bool = typer.Option(
@@ -225,6 +241,11 @@ def stop(
         print_error(e, verbose=verbose)
 
 
+@doc_ref(
+    usage="mycelium status",
+    desc="Show running service health (backend connectivity, room count).",
+    group="setup",
+)
 def status(ctx: typer.Context) -> None:
     """
     Show service health.
@@ -302,6 +323,11 @@ def status(ctx: typer.Context) -> None:
         print_error(e, verbose=verbose)
 
 
+@doc_ref(
+    usage="mycelium logs [service] [--follow] [--tail N]",
+    desc="Tail container logs via <code>docker compose logs</code>.",
+    group="setup",
+)
 def logs(
     ctx: typer.Context,
     service: str | None = typer.Argument(
@@ -328,6 +354,107 @@ def logs(
             cmd.append(service)
 
         subprocess.run(cmd, check=False)
+
+    except typer.Exit:
+        raise
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+
+
+def _get_backend_dir() -> Path:
+    """Find the fastapi-backend directory (for running alembic)."""
+    import importlib.resources
+
+    try:
+        pkg_path = Path(str(importlib.resources.files("mycelium")))
+        for depth in range(2, 7):
+            candidate = pkg_path.parents[depth] / "fastapi-backend"
+            if (candidate / "alembic.ini").exists():
+                return candidate
+    except Exception:
+        pass
+
+    if (Path.cwd() / "alembic.ini").exists():
+        return Path.cwd()
+
+    candidate = Path.cwd() / "fastapi-backend"
+    if (candidate / "alembic.ini").exists():
+        return candidate
+
+    return Path.cwd()
+
+
+@doc_ref(
+    usage="mycelium migrate [--revision <target>]",
+    desc="Run database migrations (alembic upgrade). Defaults to latest.",
+    group="setup",
+)
+def migrate(
+    ctx: typer.Context,
+    revision: str = typer.Option("head", "--revision", "-r", help="Target revision (default: head)"),
+) -> None:
+    """
+    Run database migrations.
+
+    Applies pending alembic migrations against the configured database.
+    Defaults to upgrading to the latest revision.
+
+    Examples:
+        mycelium migrate              # upgrade to latest
+        mycelium migrate -r head      # same as above
+        mycelium migrate -r 0008      # upgrade to specific revision
+    """
+    try:
+        backend_dir = _get_backend_dir()
+        if not (backend_dir / "alembic.ini").exists():
+            typer.secho(f"alembic.ini not found in {backend_dir}", fg=typer.colors.RED)
+            typer.echo("Run this from the repo root or set MYCELIUM_COMPOSE_FILE.")
+            raise typer.Exit(1)
+
+        env_path = _get_env_path()
+
+        import os
+
+        env = {**os.environ}
+        if env_path and env_path.exists():
+            from dotenv import dotenv_values
+
+            env.update({k: v for k, v in dotenv_values(env_path).items() if v is not None})
+
+        backend_env = backend_dir / ".env"
+        if backend_env.exists():
+            from dotenv import dotenv_values
+
+            env.update({k: v for k, v in dotenv_values(backend_env).items() if v is not None})
+
+        if "DATABASE_URL" not in env:
+            typer.secho("DATABASE_URL not set.", fg=typer.colors.RED)
+            typer.echo("Set it in ~/.mycelium/.env or fastapi-backend/.env")
+            raise typer.Exit(1)
+
+        typer.echo(f"Running migrations (target: {revision})...")
+        cmd = ["uv", "run", "alembic", "upgrade", revision]
+        result = subprocess.run(
+            cmd, cwd=str(backend_dir), env=env, check=False, capture_output=True, text=True
+        )
+
+        if result.stdout:
+            typer.echo(result.stdout.rstrip())
+        if result.stderr:
+            for line in result.stderr.strip().split("\n"):
+                if "Running upgrade" in line:
+                    typer.secho(f"  {line.split('] ')[-1]}", fg=typer.colors.GREEN)
+                elif "ERROR" in line:
+                    typer.secho(f"  {line}", fg=typer.colors.RED)
+
+        if result.returncode == 0:
+            typer.secho("Migrations complete.", fg=typer.colors.GREEN)
+        else:
+            typer.secho("Migration failed.", fg=typer.colors.RED)
+            if result.stderr and "ERROR" not in result.stderr:
+                typer.echo(result.stderr)
+            raise typer.Exit(result.returncode)
 
     except typer.Exit:
         raise

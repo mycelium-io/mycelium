@@ -9,9 +9,7 @@ from attrs import field as _attrs_field
 from ..types import UNSET, Unset
 
 if TYPE_CHECKING:
-    from ..models.knowledge_graph_delete_request_records_type_0 import (
-        KnowledgeGraphDeleteRequestRecordsType0,
-    )
+    from ..models.knowledge_graph_delete_request_records_type_0 import KnowledgeGraphDeleteRequestRecordsType0
 
 
 T = TypeVar("T", bound="KnowledgeGraphDeleteRequest")
@@ -34,9 +32,7 @@ class KnowledgeGraphDeleteRequest:
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.knowledge_graph_delete_request_records_type_0 import (
-            KnowledgeGraphDeleteRequestRecordsType0,
-        )
+        from ..models.knowledge_graph_delete_request_records_type_0 import KnowledgeGraphDeleteRequestRecordsType0
 
         request_id = self.request_id
 
@@ -76,9 +72,7 @@ class KnowledgeGraphDeleteRequest:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.knowledge_graph_delete_request_records_type_0 import (
-            KnowledgeGraphDeleteRequestRecordsType0,
-        )
+        from ..models.knowledge_graph_delete_request_records_type_0 import KnowledgeGraphDeleteRequestRecordsType0
 
         d = dict(src_dict)
         request_id = d.pop("request_id", UNSET)

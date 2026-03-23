@@ -33,6 +33,9 @@ class MemoryRead:
         content_text (None | str | Unset):
         updated_by (None | str | Unset):
         tags (list[str] | None | Unset):
+        scope (str | Unset):  Default: 'namespace'.
+        owner_handle (None | str | Unset):
+        file_path (None | str | Unset):
     """
 
     id: UUID
@@ -46,6 +49,9 @@ class MemoryRead:
     content_text: None | str | Unset = UNSET
     updated_by: None | str | Unset = UNSET
     tags: list[str] | None | Unset = UNSET
+    scope: str | Unset = "namespace"
+    owner_handle: None | str | Unset = UNSET
+    file_path: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -92,6 +98,20 @@ class MemoryRead:
         else:
             tags = self.tags
 
+        scope = self.scope
+
+        owner_handle: None | str | Unset
+        if isinstance(self.owner_handle, Unset):
+            owner_handle = UNSET
+        else:
+            owner_handle = self.owner_handle
+
+        file_path: None | str | Unset
+        if isinstance(self.file_path, Unset):
+            file_path = UNSET
+        else:
+            file_path = self.file_path
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
@@ -112,6 +132,12 @@ class MemoryRead:
             field_dict["updated_by"] = updated_by
         if tags is not UNSET:
             field_dict["tags"] = tags
+        if scope is not UNSET:
+            field_dict["scope"] = scope
+        if owner_handle is not UNSET:
+            field_dict["owner_handle"] = owner_handle
+        if file_path is not UNSET:
+            field_dict["file_path"] = file_path
 
         return field_dict
 
@@ -182,6 +208,26 @@ class MemoryRead:
 
         tags = _parse_tags(d.pop("tags", UNSET))
 
+        scope = d.pop("scope", UNSET)
+
+        def _parse_owner_handle(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        owner_handle = _parse_owner_handle(d.pop("owner_handle", UNSET))
+
+        def _parse_file_path(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        file_path = _parse_file_path(d.pop("file_path", UNSET))
+
         memory_read = cls(
             id=id,
             room_name=room_name,
@@ -194,6 +240,9 @@ class MemoryRead:
             content_text=content_text,
             updated_by=updated_by,
             tags=tags,
+            scope=scope,
+            owner_handle=owner_handle,
+            file_path=file_path,
         )
 
         memory_read.additional_properties = d

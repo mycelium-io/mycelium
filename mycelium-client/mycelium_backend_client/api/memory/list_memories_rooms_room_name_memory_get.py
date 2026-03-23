@@ -15,9 +15,12 @@ def _get_kwargs(
     room_name: str,
     *,
     prefix: None | str | Unset = UNSET,
+    scope: str | Unset = "namespace",
+    handle: None | str | Unset = UNSET,
     limit: int | Unset = 100,
     offset: int | Unset = 0,
 ) -> dict[str, Any]:
+
     params: dict[str, Any] = {}
 
     json_prefix: None | str | Unset
@@ -26,6 +29,15 @@ def _get_kwargs(
     else:
         json_prefix = prefix
     params["prefix"] = json_prefix
+
+    params["scope"] = scope
+
+    json_handle: None | str | Unset
+    if isinstance(handle, Unset):
+        json_handle = UNSET
+    else:
+        json_handle = handle
+    params["handle"] = json_handle
 
     params["limit"] = limit
 
@@ -84,16 +96,22 @@ def sync_detailed(
     *,
     client: AuthenticatedClient | Client,
     prefix: None | str | Unset = UNSET,
+    scope: str | Unset = "namespace",
+    handle: None | str | Unset = UNSET,
     limit: int | Unset = 100,
     offset: int | Unset = 0,
 ) -> Response[HTTPValidationError | list[MemoryRead]]:
     """List Memories
 
-     List memories in a room, optionally filtered by key prefix.
+     List memories in a room.
+
+    Reads from the filesystem as source of truth, falls back to DB index.
 
     Args:
         room_name (str):
         prefix (None | str | Unset): Key prefix filter
+        scope (str | Unset): Memory scope: namespace or notebook Default: 'namespace'.
+        handle (None | str | Unset): Owner handle (required for notebook scope)
         limit (int | Unset):  Default: 100.
         offset (int | Unset):  Default: 0.
 
@@ -108,6 +126,8 @@ def sync_detailed(
     kwargs = _get_kwargs(
         room_name=room_name,
         prefix=prefix,
+        scope=scope,
+        handle=handle,
         limit=limit,
         offset=offset,
     )
@@ -124,16 +144,22 @@ def sync(
     *,
     client: AuthenticatedClient | Client,
     prefix: None | str | Unset = UNSET,
+    scope: str | Unset = "namespace",
+    handle: None | str | Unset = UNSET,
     limit: int | Unset = 100,
     offset: int | Unset = 0,
 ) -> HTTPValidationError | list[MemoryRead] | None:
     """List Memories
 
-     List memories in a room, optionally filtered by key prefix.
+     List memories in a room.
+
+    Reads from the filesystem as source of truth, falls back to DB index.
 
     Args:
         room_name (str):
         prefix (None | str | Unset): Key prefix filter
+        scope (str | Unset): Memory scope: namespace or notebook Default: 'namespace'.
+        handle (None | str | Unset): Owner handle (required for notebook scope)
         limit (int | Unset):  Default: 100.
         offset (int | Unset):  Default: 0.
 
@@ -149,6 +175,8 @@ def sync(
         room_name=room_name,
         client=client,
         prefix=prefix,
+        scope=scope,
+        handle=handle,
         limit=limit,
         offset=offset,
     ).parsed
@@ -159,16 +187,22 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient | Client,
     prefix: None | str | Unset = UNSET,
+    scope: str | Unset = "namespace",
+    handle: None | str | Unset = UNSET,
     limit: int | Unset = 100,
     offset: int | Unset = 0,
 ) -> Response[HTTPValidationError | list[MemoryRead]]:
     """List Memories
 
-     List memories in a room, optionally filtered by key prefix.
+     List memories in a room.
+
+    Reads from the filesystem as source of truth, falls back to DB index.
 
     Args:
         room_name (str):
         prefix (None | str | Unset): Key prefix filter
+        scope (str | Unset): Memory scope: namespace or notebook Default: 'namespace'.
+        handle (None | str | Unset): Owner handle (required for notebook scope)
         limit (int | Unset):  Default: 100.
         offset (int | Unset):  Default: 0.
 
@@ -183,6 +217,8 @@ async def asyncio_detailed(
     kwargs = _get_kwargs(
         room_name=room_name,
         prefix=prefix,
+        scope=scope,
+        handle=handle,
         limit=limit,
         offset=offset,
     )
@@ -197,16 +233,22 @@ async def asyncio(
     *,
     client: AuthenticatedClient | Client,
     prefix: None | str | Unset = UNSET,
+    scope: str | Unset = "namespace",
+    handle: None | str | Unset = UNSET,
     limit: int | Unset = 100,
     offset: int | Unset = 0,
 ) -> HTTPValidationError | list[MemoryRead] | None:
     """List Memories
 
-     List memories in a room, optionally filtered by key prefix.
+     List memories in a room.
+
+    Reads from the filesystem as source of truth, falls back to DB index.
 
     Args:
         room_name (str):
         prefix (None | str | Unset): Key prefix filter
+        scope (str | Unset): Memory scope: namespace or notebook Default: 'namespace'.
+        handle (None | str | Unset): Owner handle (required for notebook scope)
         limit (int | Unset):  Default: 100.
         offset (int | Unset):  Default: 0.
 
@@ -223,6 +265,8 @@ async def asyncio(
             room_name=room_name,
             client=client,
             prefix=prefix,
+            scope=scope,
+            handle=handle,
             limit=limit,
             offset=offset,
         )

@@ -68,7 +68,7 @@ Changes trigger real-time notifications via SSE.
 
 ## Synthesis
 
-Async/hybrid rooms can synthesize accumulated memories into LLM-generated
+Async rooms can synthesize accumulated memories into LLM-generated
 summaries. Synthesis groups memories by structured categories when available.
 
 ```bash
