@@ -31,14 +31,22 @@ app = typer.Typer(
 
 ADAPTER_TYPES = {
     "openclaw": "plugin-based — installs mycelium via `openclaw plugins install`",
+    "claude-code": "skill + hooks — copies SKILL.md and lifecycle hooks into ~/.claude/",
     "cursor": "sdk-based — generates CFN harness for Cursor agents (planned)",
-    "claude-code": "sdk-based — generates CFN harness for Claude Code (planned)",
 }
 
 _OPENCLAW_PLUGIN_NAME = "mycelium"
 _OPENCLAW_HOOK_NAME = "mycelium-bootstrap"
 _OPENCLAW_EXTRACTOR_HOOK_NAME = "mycelium-knowledge-extract"
 _OPENCLAW_SKILL_NAME = "mycelium"
+
+_CLAUDE_CODE_SKILL_NAME = "mycelium"
+_CLAUDE_CODE_HOOKS = [
+    "mycelium-session-start.sh",
+    "mycelium-session-end.sh",
+    "mycelium-post-tool-use.sh",
+    "mycelium-pre-compact.sh",
+]
 
 
 @app.callback()
@@ -205,16 +213,24 @@ def add(
             raise typer.Exit(0)
 
         if dry_run:
-            plugin_src = _resolve_asset(f"extensions/{_OPENCLAW_PLUGIN_NAME}")
-            hook_src = _resolve_asset(f"hooks/{_OPENCLAW_HOOK_NAME}")
             typer.secho(f"[dry-run] Would install adapter: {adapter_type}", fg=typer.colors.CYAN)
-            typer.echo(f"  openclaw plugins install {plugin_src}")
-            typer.echo(f"  openclaw hooks install   {hook_src}")
+            if adapter_type == "claude-code":
+                claude_dir = Path.home() / ".claude"
+                typer.echo(f"  skill → {claude_dir}/skills/{_CLAUDE_CODE_SKILL_NAME}/SKILL.md")
+                for hook in _CLAUDE_CODE_HOOKS:
+                    typer.echo(f"  hook  → {claude_dir}/hooks/{hook}")
+            else:
+                plugin_src = _resolve_asset(f"extensions/{_OPENCLAW_PLUGIN_NAME}")
+                hook_src = _resolve_asset(f"hooks/{_OPENCLAW_HOOK_NAME}")
+                typer.echo(f"  openclaw plugins install {plugin_src}")
+                typer.echo(f"  openclaw hooks install   {hook_src}")
             typer.echo(f"  api_url: {config.server.api_url}")
             return
 
         if adapter_type == "openclaw":
             _install_openclaw(verbose=verbose)
+        elif adapter_type == "claude-code":
+            _install_claude_code(verbose=verbose)
         else:
             typer.secho(
                 f"Adapter '{adapter_type}' is planned but not yet implemented.",
@@ -233,6 +249,20 @@ def add(
 
         if json_output:
             typer.echo(json_module.dumps(config.adapters.get(adapter_type, {}), indent=2))
+        elif adapter_type == "claude-code":
+            verb = "reinstalled" if reinstall else "installed"
+            typer.secho(f"Adapter 'claude-code' {verb}.", fg=typer.colors.GREEN)
+            typer.echo(f"  skill:   ~/.claude/skills/{_CLAUDE_CODE_SKILL_NAME}/SKILL.md")
+            for hook in _CLAUDE_CODE_HOOKS:
+                typer.echo(f"  hook:    ~/.claude/hooks/{hook}")
+            typer.echo("")
+            typer.secho("  Next steps:", bold=True)
+            typer.echo("")
+            typer.echo("  Set your active room, then start a Claude Code session:")
+            typer.secho("    $ mycelium room use <room-name>", fg=typer.colors.CYAN)
+            typer.echo("")
+            typer.echo("  Invoke the skill from within a session:")
+            typer.secho("    /mycelium", fg=typer.colors.CYAN)
         else:
             verb = "reinstalled" if reinstall else "installed"
             typer.secho(f"Adapter '{adapter_type}' {verb}.", fg=typer.colors.GREEN)
@@ -382,14 +412,14 @@ def status(
 # ── Adapter-specific install / uninstall ──────────────────────────────────────
 
 
-def _resolve_asset(subpath: str) -> Path:
+def _resolve_asset(subpath: str, adapter: str = "openclaw") -> Path:
     """
-    Return a real filesystem path to a bundled openclaw adapter asset.
+    Return a real filesystem path to a bundled adapter asset.
 
     For non-editable installs where the package lives inside a zip, extract
     the entire directory tree to a temp dir first.
     """
-    pkg = importlib.resources.files("mycelium.adapters.openclaw")
+    pkg = importlib.resources.files(f"mycelium.adapters.{adapter}")
     parts = subpath.split("/")
     src = Path(str(pkg))
     for part in parts:
@@ -496,6 +526,42 @@ def _normalize_plugin_entries(plugins_section: dict) -> dict:
         entries = {}
     plugins_section["entries"] = entries
     return entries
+
+
+def _install_claude_code(verbose: bool = False) -> None:
+    """
+    Install the bundled Claude Code adapter assets into ~/.claude/.
+
+    - Skill (SKILL.md): copied to ~/.claude/skills/mycelium/
+    - Hooks (*.sh): copied to ~/.claude/hooks/  (made executable)
+    """
+    claude_dir = Path.home() / ".claude"
+
+    # Install skill
+    skill_src = _resolve_asset(f"skills/{_CLAUDE_CODE_SKILL_NAME}", adapter="claude-code")
+    skill_dst = claude_dir / "skills" / _CLAUDE_CODE_SKILL_NAME
+    skill_dst.mkdir(parents=True, exist_ok=True)
+    for f in skill_src.iterdir():
+        dest = skill_dst / f.name
+        dest.write_bytes(f.read_bytes())
+        if verbose:
+            typer.echo(f"  skill: {dest}")
+
+    # Install hooks
+    hooks_src = _resolve_asset("hooks", adapter="claude-code")
+    hooks_dst = claude_dir / "hooks"
+    hooks_dst.mkdir(parents=True, exist_ok=True)
+    for hook_name in _CLAUDE_CODE_HOOKS:
+        src_file = hooks_src / hook_name
+        if not src_file.exists():
+            if verbose:
+                typer.echo(f"  skip (not found): {hook_name}")
+            continue
+        dst_file = hooks_dst / hook_name
+        dst_file.write_bytes(src_file.read_bytes())
+        dst_file.chmod(0o755)
+        if verbose:
+            typer.echo(f"  hook: {dst_file}")
 
 
 def _allow_plugin(plugin_id: str) -> None:
@@ -734,7 +800,19 @@ def _check_adapter_status(name: str, info: dict) -> dict:
     details: list[str] = []
     ok = True
 
-    if name == "openclaw":
+    if name == "claude-code":
+        claude_dir = Path.home() / ".claude"
+        skill_ok = (claude_dir / "skills" / _CLAUDE_CODE_SKILL_NAME / "SKILL.md").exists()
+        details.append(f"  {'✓' if skill_ok else '✗'} skill:{_CLAUDE_CODE_SKILL_NAME}")
+        if not skill_ok:
+            ok = False
+        for hook_name in _CLAUDE_CODE_HOOKS:
+            hook_ok = (claude_dir / "hooks" / hook_name).exists()
+            details.append(f"  {'✓' if hook_ok else '✗'} hook:{hook_name}")
+            if not hook_ok:
+                ok = False
+
+    elif name == "openclaw":
         # Check skill via filesystem (openclaw has no skills install/list CLI)
         skill_dir = Path.home() / ".openclaw" / "workspace" / "skills" / _OPENCLAW_SKILL_NAME
         skill_ok = (skill_dir / "SKILL.md").exists()

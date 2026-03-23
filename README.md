@@ -12,7 +12,7 @@
 </p>
 
 <div align="center">
-  <em>A coordination layer for multi-agent systems — shared rooms, persistent memory, and semantic negotiation, built on the Internet of Cognition.</em>
+  <em>A coordination layer for multi-agent systems — shared rooms, persistent memory, and semantic negotiation.</em>
 </div>
 
 ---
@@ -23,7 +23,7 @@ AI agents are powerful individually, but they can't think together. When multipl
 
 ## What Mycelium Does
 
-Mycelium gives agents **rooms** to coordinate in, **persistent memory** that compounds across sessions, and a **CognitiveEngine** that mediates negotiation so agents never have to talk directly to each other.
+Mycelium gives agents **rooms** to coordinate in, **persistent memory** that accumulates within a room, and a **CognitiveEngine** that mediates negotiation so every agent has a voice and the team arrives at a single shared answer.
 
 ```bash
 # Agent 1 shares context in a persistent room
@@ -34,7 +34,7 @@ mycelium memory search "API design decisions"
 mycelium memory set "position/selina" "Agree on REST, but we need pagination standards" --handle selina-agent
 
 # CognitiveEngine synthesizes when enough context accumulates
-mycelium room synthesize
+mycelium synthesize
 ```
 
 When agents need to agree on something in real time, they spawn a session within a room and CognitiveEngine runs structured negotiation:
@@ -46,26 +46,23 @@ mycelium session join --handle julia-agent -m "budget=high, scope=full"
 
 ## How It Works
 
-Three pillars from the [Internet of Cognition](https://outshift.cisco.com) architecture:
+**1. Shared Intent** — When agents need to agree, a session is spawned within the room. CognitiveEngine orchestrates multi-issue negotiation via NegMAS through a structured state machine (`idle → waiting → negotiating → complete`). Agents respond to structured proposals and reach a single consensus — every agent has a voice, and the result is one shared answer.
 
-**1. Coordination Protocol** (Shared Intent) — Sessions (spawned within rooms) with a state machine (`idle → waiting → negotiating → complete`). CognitiveEngine orchestrates multi-issue negotiation via NegMAS. Agents respond to structured proposals; they never address each other directly.
+**2. Shared Memory** — Rooms are folders. Memories are markdown files at `.mycelium/rooms/{room}/{namespace}/{key}.md`. Any agent with file I/O can read and write room memory directly — the CLI is sugar. Memories accumulate across agents and sessions, and are searchable by meaning via a pgvector index in AgensGraph.
 
-**2. Persistent Memory** (Shared Context) — Namespaced key-value store with semantic vector search. Memories persist across sessions, accumulate across agents, and are searchable by meaning, not just keywords. Backed by AgensGraph + pgvector.
-
-**3. Knowledge Graph** (Collective Innovation) — Two-stage LLM extraction turns agent conversations into structured concepts and relationships in an openCypher graph. CognitiveEngine queries this to inform future negotiations.
+**3. Shared Context** — Any agent joining a room runs `mycelium catchup` and instantly inherits everything the swarm has learned — decisions made, what failed, open questions, recommended next actions. No repeated context-setting. Intelligence compounds instead of resetting.
 
 ## Quick Start
 
 ```bash
 # Install
-pip install mycelium-cli
-mycelium install
+curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 
 # Create a room and start sharing context
 mycelium room create my-project
 mycelium room use my-project
 mycelium memory set "context/goal" "Build a REST API for the new service"
-mycelium memory set "decision/db" "PostgreSQL with pgvector for embeddings"
+mycelium memory set "decisions/db" "AgensGraph with pgvector for embeddings"
 
 # Search what's been shared
 mycelium memory search "database decisions"
@@ -76,15 +73,33 @@ mycelium memory ls
 
 ## Architecture
 
-Everything runs on a single **AgensGraph** instance (PostgreSQL 16 fork):
-- SQL tables for rooms, sessions, messages, memories
-- openCypher for the knowledge graph
-- pgvector for semantic memory search
-- LISTEN/NOTIFY for real-time SSE streaming
+**Memories live on the filesystem** — rooms are folders, memories are markdown files with YAML frontmatter at `.mycelium/rooms/{room}/{key}.md`. This is the source of truth. Direct writes (cat, editor, agent file I/O) always work; run `mycelium reindex` to refresh the search index after bypassing the CLI.
+
+**AgensGraph** (PostgreSQL 16 fork) is the coordination and search backend:
+- Rooms, sessions, messages, subscriptions — coordination state
+- pgvector embeddings for semantic memory search (384-dim, local, no API key)
+- LISTEN/NOTIFY → SSE (Server-Sent Events) for real-time streaming
 
 No external message broker, no separate vector DB, no Redis. One database.
 
+**Rooms are git-friendly** — commit `.mycelium/rooms/` to share context across machines. Agents on different machines pull the folder and inherit the room's full memory.
+
+Room folders use standard namespaces:
+
 ```
+.mycelium/rooms/{room}/
+├── decisions/    Why choices were made
+├── status/       Current state of things
+├── context/      Background & constraints
+├── work/         In-progress and completed work
+├── procedures/   How-to guides and runbooks
+└── log/          Events and observations
+```
+
+Repo layout:
+
+```
+.mycelium/            Memory storage (rooms are folders, memories are markdown files)
 mycelium-cli/         CLI + adapters (OpenClaw, Claude Code)
 fastapi-backend/      FastAPI coordination engine
 mycelium-client/      Generated typed OpenAPI client
@@ -185,7 +200,9 @@ Interactive API docs at `http://localhost:8000/docs` when the backend is running
 
 ## Built On
 
-- [Internet of Cognition](https://outshift.cisco.com) — Outshift by Cisco
+Mycelium builds on OSS projects we found invaluable in this space:
+
+- [ioc-cfn-mgmt-plane](https://outshift.cisco.com) + [ioc-cfn-svc](https://outshift.cisco.com) — Agent registration and fabric orchestration, from Outshift by Cisco [Internet of Cognition](https://outshift.cisco.com/internet-of-cognition) concepts
 - [NegMAS](https://negmas.readthedocs.io/) — Multi-issue negotiation
 - [AgensGraph](https://github.com/skaiworldwide-oss/agensgraph) — Multi-model graph database
 - [FastAPI](https://fastapi.tiangolo.com/) + [pgvector](https://github.com/pgvector/pgvector) + [sentence-transformers](https://www.sbert.net/)
