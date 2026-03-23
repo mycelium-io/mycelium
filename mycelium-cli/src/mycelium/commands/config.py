@@ -43,6 +43,18 @@ def show(ctx: typer.Context) -> None:
                         },
                         "identity": {"name": config.identity.name},
                         "room": {"active": config.rooms.active},
+                        "llm": {
+                            "model": config.llm.model,
+                            "api_key": config.llm.api_key,
+                            "base_url": config.llm.base_url,
+                        },
+                        "runtime": {
+                            "db_password": config.runtime.db_password,
+                            "coordination_tick_timeout_seconds": config.runtime.coordination_tick_timeout_seconds,
+                            "cfn_mgmt_url": config.runtime.cfn_mgmt_url,
+                            "admin_user_password": config.runtime.admin_user_password,
+                            "cfn_dev_mode": config.runtime.cfn_dev_mode,
+                        },
                     },
                     indent=2,
                 )
@@ -58,6 +70,31 @@ def show(ctx: typer.Context) -> None:
                 typer.echo(f"  Identity:     {config.identity.name}")
             if config.rooms.active:
                 typer.echo(f"  Active Room:  {config.rooms.active}")
+            if config.llm.model or config.llm.api_key or config.llm.base_url:
+                typer.secho("  LLM:", bold=True)
+                if config.llm.model:
+                    typer.echo(f"    model:    {config.llm.model}")
+                if config.llm.api_key:
+                    typer.echo(f"    api_key:  {'*' * 8}{config.llm.api_key[-4:]}")
+                if config.llm.base_url:
+                    typer.echo(f"    base_url: {config.llm.base_url}")
+            rt = config.runtime
+            runtime_vals = {
+                "db_password": rt.db_password,
+                "coordination_tick_timeout_seconds": rt.coordination_tick_timeout_seconds,
+                "cfn_mgmt_url": rt.cfn_mgmt_url,
+                "admin_user_password": rt.admin_user_password,
+                "cfn_dev_mode": rt.cfn_dev_mode,
+            }
+            if any(v is not None for v in runtime_vals.values()):
+                typer.secho("  Runtime:", bold=True)
+                for k, v in runtime_vals.items():
+                    if v is None:
+                        continue
+                    if k == "admin_user_password" or k == "db_password":
+                        typer.echo(f"    {k}: {'*' * 8}")
+                    else:
+                        typer.echo(f"    {k}: {v}")
 
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
@@ -153,6 +190,67 @@ def get_config(
         else:
             typer.echo(value)
 
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+        raise typer.Exit(1) from None
+
+
+@doc_ref(
+    usage="mycelium config apply [--restart]",
+    desc="Regenerate <code>~/.mycelium/.env</code> from config.toml and optionally restart the backend.",
+    group="config",
+)
+@app.command("apply")
+def apply(
+    ctx: typer.Context,
+    restart: bool = typer.Option(
+        False, "--restart", help="Restart mycelium-backend after regenerating .env"
+    ),
+) -> None:
+    """
+    Regenerate ~/.mycelium/.env from config.toml.
+
+    Run this after 'mycelium config set llm.*' or 'config set runtime.*'
+    to push changes to the running Docker stack.
+    """
+    import subprocess
+
+    from mycelium.docker_utils import generate_env_file, get_compose_path
+
+    try:
+        config = MyceliumConfig.load()
+        env_path = MyceliumConfig.get_global_config_dir() / ".env"
+        generate_env_file(env_path, config)
+        typer.secho(f"  ✓ Regenerated {env_path}", fg=typer.colors.GREEN)
+
+        if restart:
+            compose_path = get_compose_path()
+            result = subprocess.run(
+                [
+                    "docker",
+                    "compose",
+                    "-p",
+                    "mycelium",
+                    "-f",
+                    str(compose_path),
+                    "--env-file",
+                    str(env_path),
+                    "restart",
+                    "mycelium-backend",
+                ],
+                text=True,
+            )
+            if result.returncode == 0:
+                typer.secho("  ✓ mycelium-backend restarted", fg=typer.colors.GREEN)
+            else:
+                typer.secho("  ✗ restart failed", fg=typer.colors.RED)
+                raise typer.Exit(1) from None
+        else:
+            typer.echo("  Run 'mycelium restart' to apply changes to running containers.")
+
+    except typer.Exit:
+        raise
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)

@@ -61,6 +61,28 @@ class ServerConfig(BaseModel):
         return v.rstrip("/")
 
 
+class LLMConfig(BaseModel):
+    """LLM configuration for the CognitiveEngine."""
+
+    model: str | None = Field(default=None, description="LLM model in litellm format")
+    api_key: str | None = Field(default=None, description="API key for the LLM provider")
+    base_url: str | None = Field(default=None, description="Custom base URL (Ollama, local)")
+
+
+class RuntimeConfig(BaseModel):
+    """Docker runtime configuration derived to ~/.mycelium/.env."""
+
+    db_password: str | None = Field(default=None, description="Postgres password")
+    coordination_tick_timeout_seconds: int | None = Field(
+        default=None, description="Seconds before a coordination tick times out"
+    )
+    cfn_mgmt_url: str | None = Field(default=None, description="IoC CFN management plane URL")
+    admin_user_password: str | None = Field(
+        default=None, description="CFN management plane admin password"
+    )
+    cfn_dev_mode: bool | None = Field(default=None, description="Enable CFN dev mode")
+
+
 class RoomConfig(BaseModel):
     """Room management configuration."""
 
@@ -75,6 +97,8 @@ class MyceliumConfig(BaseModel):
 
     identity: IdentityConfig = Field(default_factory=IdentityConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
+    llm: LLMConfig = Field(default_factory=LLMConfig)
+    runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     rooms: RoomConfig = Field(default_factory=RoomConfig)
     adapters: dict[str, Any] = Field(
         default_factory=dict,

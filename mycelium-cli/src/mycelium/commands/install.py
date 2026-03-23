@@ -17,10 +17,15 @@ import sys
 import threading
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from mycelium.config import MyceliumConfig
 
 import typer
 
 from mycelium.doc_ref import doc_ref
+from mycelium.docker_utils import generate_env_file, get_compose_path
 from mycelium.error_handler import print_error
 
 LOG_WINDOW = 4
@@ -205,73 +210,12 @@ def _prompt_ioc() -> bool:
     return enabled
 
 
-# ── Env file ─────────────────────────────────────────────────────────────────
-
-
-def _write_env_file(env_path: Path, llm_config: dict[str, str]) -> None:
-    import importlib.resources
-
-    defaults_ref = importlib.resources.files("mycelium.docker") / "env.defaults"
-    defaults_text = defaults_ref.read_text(encoding="utf-8")
-
-    lines = []
-    for line in defaults_text.splitlines():
-        key = line.split("=")[0].strip() if "=" in line else None
-        if key and key in llm_config:
-            lines.append(f"{key}={llm_config[key]}")
-        else:
-            lines.append(line)
-
-    # Append any new keys from llm_config not already in defaults
-    existing_keys = {ln.split("=")[0].strip() for ln in lines if "=" in ln}
-    for key, value in llm_config.items():
-        if key not in existing_keys:
-            lines.append(f"{key}={value}")
-
-    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-
 # ── Docker compose ────────────────────────────────────────────────────────────
 
 
 def _get_compose_path() -> Path:
-    """
-    Resolve the canonical compose file path.
-
-    For editable installs (dev), walk up from the package source to find the
-    repo's services/docker-compose.yml — this keeps build context relative
-    paths (../cfn/..., ../fastapi-backend) correct.
-
-    For non-editable installs, extract the bundled compose to ~/.mycelium/docker/.
-    Build contexts won't work in that case, but pull-only services will.
-    """
-    import importlib.resources
-    import os
-
-    if env_path := os.getenv("MYCELIUM_COMPOSE_FILE"):
-        return Path(env_path)
-
-    # Check cwd — covers running `mycelium install` from the repo root
-    cwd_candidate = Path.cwd() / "services" / "docker-compose.yml"
-    if cwd_candidate.exists():
-        return cwd_candidate
-
-    # Walk up from package location to find services/docker-compose.yml
-    try:
-        pkg_path = Path(str(importlib.resources.files("mycelium")))
-        for depth in range(2, 7):
-            candidate = pkg_path.parents[depth] / "services" / "docker-compose.yml"
-            if candidate.exists():
-                return candidate
-    except Exception:
-        pass
-
-    # Fallback: extract bundled compose (relative build paths will be wrong)
-    compose_ref = importlib.resources.files("mycelium.docker") / "compose.yml"
-    dest = Path.home() / ".mycelium" / "docker" / "compose.yml"
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_bytes(compose_ref.read_bytes())
-    return dest
+    """Resolve the canonical compose file path. Delegates to docker_utils."""
+    return get_compose_path()
 
 
 def _image_exists(image: str) -> bool:
@@ -494,14 +438,22 @@ def _provision_backend(api_url: str, workspace_name: str = "default") -> tuple[s
 # ── Config write ─────────────────────────────────────────────────────────────
 
 
-def _write_mycelium_config(api_url: str, workspace_id: str, mas_id: str) -> None:
+def _write_mycelium_config(
+    api_url: str,
+    workspace_id: str,
+    mas_id: str,
+    base_config: "MyceliumConfig | None" = None,
+) -> None:
     from mycelium.config import MyceliumConfig, ServerConfig
 
     config_path = MyceliumConfig.get_global_config_path()
-    try:
-        config = MyceliumConfig.load(config_path) if config_path.exists() else MyceliumConfig()
-    except Exception:
-        config = MyceliumConfig()
+    if base_config is not None:
+        config = base_config
+    else:
+        try:
+            config = MyceliumConfig.load(config_path) if config_path.exists() else MyceliumConfig()
+        except Exception:
+            config = MyceliumConfig()
 
     config.server = ServerConfig(
         api_url=api_url,
@@ -580,18 +532,27 @@ def install(
                 typer.secho(f"\n  ✗ Docker Compose: {compose_ver}", fg=typer.colors.RED)
                 raise typer.Exit(1) from None
 
-            llm_config: dict[str, str] = {}
-            if llm_model:
-                llm_config["LLM_MODEL"] = llm_model
-            if llm_base_url:
-                llm_config["LLM_BASE_URL"] = llm_base_url
-            if llm_api_key:
-                llm_config["LLM_API_KEY"] = llm_api_key
+            from mycelium.config import LLMConfig, MyceliumConfig, RuntimeConfig
 
             compose_profiles: list[str] = []
+            cfn_mgmt_url = None
             if ioc:
-                llm_config["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
+                cfn_mgmt_url = "http://ioc-cfn-mgmt-plane-svc:9000"
                 compose_profiles.append("cfn")
+
+            config_path = MyceliumConfig.get_global_config_path()
+            try:
+                config = (
+                    MyceliumConfig.load(config_path) if config_path.exists() else MyceliumConfig()
+                )
+            except Exception:
+                config = MyceliumConfig()
+            config.llm = LLMConfig(
+                model=llm_model or None,
+                api_key=llm_api_key or None,
+                base_url=llm_base_url or None,
+            )
+            config.runtime = RuntimeConfig(cfn_mgmt_url=cfn_mgmt_url)
 
             custom_ports = {"db": 5432, "backend": 8000}
 
@@ -599,7 +560,7 @@ def install(
             env_dir = Path.home() / ".mycelium"
             env_dir.mkdir(parents=True, exist_ok=True)
             env_path = env_dir / ".env"
-            _write_env_file(env_path, llm_config)
+            generate_env_file(env_path, config)
             typer.echo(f"  ✓ Wrote {env_path}")
 
             compose_path = _get_compose_path()
@@ -627,7 +588,7 @@ def install(
                 workspace_id, mas_id = "", ""
 
             _run_migrations()
-            _write_mycelium_config(api_url, workspace_id, mas_id)
+            _write_mycelium_config(api_url, workspace_id, mas_id, base_config=config)
             typer.secho("  ✓ Done.", fg=typer.colors.GREEN, bold=True)
             return
 
@@ -766,13 +727,29 @@ def install(
             raise typer.Exit(1) from None
 
         # ── Phase 2: Interactive prompts ──────────────────────────────────
+        from mycelium.config import LLMConfig, MyceliumConfig, RuntimeConfig
+
         llm_config = _prompt_llm()
 
         ioc_enabled = _prompt_ioc()
         compose_profiles: list[str] = []
+        cfn_mgmt_url = None
         if ioc_enabled:
-            llm_config["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
+            cfn_mgmt_url = "http://ioc-cfn-mgmt-plane-svc:9000"
             compose_profiles.append("cfn")
+
+        # Persist LLM + runtime settings to config.toml
+        config_path = MyceliumConfig.get_global_config_path()
+        try:
+            _cfg = MyceliumConfig.load(config_path) if config_path.exists() else MyceliumConfig()
+        except Exception:
+            _cfg = MyceliumConfig()
+        _cfg.llm = LLMConfig(
+            model=llm_config.get("LLM_MODEL") or None,
+            api_key=llm_config.get("LLM_API_KEY") or None,
+            base_url=llm_config.get("LLM_BASE_URL") or None,
+        )
+        _cfg.runtime = RuntimeConfig(cfn_mgmt_url=cfn_mgmt_url)
 
         # Port check — allow user to pick alternatives
         default_ports = {"db": 5432, "backend": 8000}
@@ -803,12 +780,8 @@ def install(
         env_dir.mkdir(parents=True, exist_ok=True)
         env_path = env_dir / ".env"
 
-        # Don't clobber existing .env — merge LLM config in
-        if not env_path.exists():
-            _write_env_file(env_path, llm_config)
-            typer.echo(f"  ✓ Wrote {env_path}")
-        else:
-            typer.echo(f"  ~ Using existing {env_path}")
+        generate_env_file(env_path, _cfg)
+        typer.echo(f"  ✓ Wrote {env_path}")
 
         compose_path = _get_compose_path()
         typer.echo(f"  ✓ Compose file → {compose_path}")
@@ -843,7 +816,7 @@ def install(
 
         # ── Phase 6: Migrate DB + write config ────────────────────────────
         _run_migrations()
-        _write_mycelium_config(api_url, workspace_id, mas_id)
+        _write_mycelium_config(api_url, workspace_id, mas_id, base_config=_cfg)
         typer.secho("  ✓ Config written to ~/.mycelium/config.toml", fg=typer.colors.GREEN)
 
         # ── Done ───────────────────────────────────────────────────────────
