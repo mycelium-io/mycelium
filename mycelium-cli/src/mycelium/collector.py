@@ -252,15 +252,24 @@ class OTLPHandler(BaseHTTPRequestHandler):
                 return
 
         log.info("POST %s  %d bytes", self.path, len(body))
+        if body and len(body) > 0:
+            log.info("  raw hex (%d): %s", len(body), body[:256].hex())
 
         try:
             if self.path == "/v1/metrics":
                 self.store.ingest_metrics(body)
                 self._flush()
+                log.info("  metrics store: %s", {
+                    k: v for k, v in self.store.to_dict().get("counters", {}).get("tokens", {}).get("total", {}).items()
+                    if v
+                })
             elif self.path == "/v1/traces":
                 self.store.ingest_traces(body)
                 self._flush()
-            # /v1/logs accepted silently, data discarded
+                sessions = self.store.to_dict().get("sessions", [])
+                log.info("  traces: %d sessions", len(sessions))
+            elif self.path == "/v1/logs":
+                log.info("  (logs endpoint — discarded)")
         except Exception:
             log.exception("Failed to process %s", self.path)
 

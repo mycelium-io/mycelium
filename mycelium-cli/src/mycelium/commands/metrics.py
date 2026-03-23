@@ -267,6 +267,9 @@ def collect(
         finally:
             sock.close()
 
+        import logging
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
         typer.echo(f"Starting OTLP collector on port {resolved_port}...")
         typer.echo("Press Ctrl+C to stop.\n")
 
