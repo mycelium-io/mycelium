@@ -39,12 +39,30 @@ Agents never communicate directly with each other.
 - **CognitiveEngine** mediates all coordination. It drives negotiation rounds and synthesizes accumulated context.
 - **Memory** is filesystem-native. Each memory is a markdown file at `~/.mycelium/rooms/{room}/{key}.md`. The database is a search index that auto-syncs.
 
+## Memory as Files
+
+Every memory is a readable, editable markdown file:
+
+```
+~/.mycelium/rooms/my-project/decisions/db.md
+~/.mycelium/rooms/my-project/work/api.md
+~/.mycelium/rooms/my-project/context/team.md
+```
+
+You can read them with your native file tools, edit them directly, or `git` the directory. Changes are auto-indexed by the file watcher — no manual reindex needed.
+
+The filesystem is the source of truth. The database is just a search index. This means:
+- `cat`, `grep`, `sed`, pipes — the full unix toolchain works on room memory
+- Direct file writes from any tool participate in the room automatically
+- `git push` / `git pull` shares a room across machines or agents
+- Run `mycelium memory reindex` if you write files outside the watcher's view
+
 ## Memory Operations
 
 ```bash
 # Write a memory (value can be plain text or JSON)
 mycelium memory set <key> <value> --handle <agent-handle>
-mycelium memory set "decision/api-style" '{"choice": "REST", "rationale": "simpler"}' --handle claude-agent
+mycelium memory set "decision/api-style" '{"choice": "REST", "rationale": "simpler"}' --handle my-agent
 
 # Read a memory by key
 mycelium memory get <key>
@@ -60,7 +78,7 @@ mycelium memory search "what was decided about the API design"
 mycelium memory rm <key>
 
 # Subscribe to changes on a key pattern
-mycelium memory subscribe "decision/*" --handle claude-agent
+mycelium memory subscribe "decision/*" --handle my-agent
 ```
 
 All memory commands use the active room. Set it with `mycelium room use <name>` or pass `--room <name>`.
@@ -83,23 +101,32 @@ mycelium room ls
 mycelium room synthesize
 ```
 
-## Sync Coordination Protocol
+## Coordination Protocol (OpenClaw)
 
-For real-time negotiation (sessions spawned within rooms), the protocol is push-based:
+> **Do NOT use `session await`** — that command is for synchronous single-threaded agents that must poll for their turn.
+> OpenClaw agents are woken by the gateway when CognitiveEngine addresses them.
+> Using `session await` will block the gateway thread and prevent other agents from responding.
+
+The coordination protocol is **non-blocking and push-based**. Every command returns immediately.
+CognitiveEngine will send you a message when it is your turn.
 
 ```bash
 # 1. Join — declare your position (returns immediately)
-mycelium session join --handle julia-agent -m "I think we should use GraphQL"
+mycelium session join --handle <your-handle> --room <room-name> -m "I think we should use GraphQL"
 
-# 2. Wait — CognitiveEngine will message you when it's your turn
+# 2. Do nothing — CognitiveEngine will wake you when it's your turn
 
-# 3. Respond when addressed
-mycelium message query '{"offer": {"api_style": "graphql", "auth": "jwt"}}'
+# 3. If the tick action is "propose" — pick values for each issue:
+mycelium message propose ISSUE=VALUE ISSUE=VALUE ... --room <room-name> --handle <your-handle>
+# example:
+mycelium message propose budget=medium timeline=standard scope=full --room <room-name> --handle <your-handle>
 
-# 4. Accept/reject offers from other agents
-mycelium message query '{"action": "accept"}'
+# 4. If the tick action is "respond" — accept, reject, or end:
+mycelium message respond accept --room <room-name> --handle <your-handle>
+mycelium message respond reject --room <room-name> --handle <your-handle>
+mycelium message respond end    --room <room-name> --handle <your-handle>
 
-# 5. [consensus] message arrives with your assignment
+# 5. [consensus] message arrives with your assignment — proceed independently
 ```
 
 ## Starting a Session (The "Catchup" Pattern)
@@ -131,11 +158,11 @@ mycelium room use my-project
 mycelium memory catchup
 
 # 3. Write your findings — both successes AND failures
-mycelium memory set "results/cache-redis" "Redis caching reduced p99 by 40ms" --handle julia-agent
-mycelium memory set "results/cache-memcached" "Memcached tested, no improvement over Redis — connection overhead too high" --handle julia-agent
+mycelium memory set "results/cache-redis" "Redis caching reduced p99 by 40ms" --handle my-agent
+mycelium memory set "results/cache-memcached" "Memcached tested, no improvement over Redis — connection overhead too high" --handle my-agent
 
 # 4. Log decisions
-mycelium memory set "decision/cache" '{"choice": "Redis", "rationale": "40ms p99 improvement, simpler ops"}' --handle julia-agent
+mycelium memory set "decision/cache" '{"choice": "Redis", "rationale": "40ms p99 improvement, simpler ops"}' --handle my-agent
 
 # 5. Search what others know
 mycelium memory search "performance bottlenecks"
