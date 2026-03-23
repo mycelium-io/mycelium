@@ -12,622 +12,7 @@
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="https://mycelium-io.github.io/mycelium/og.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,600&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
-<style>
-  :root {
-    --bg: #05090f;
-    --surface: #080e18;
-    --card: #0c1524;
-    --border: #162035;
-    --border2: #1e2d42;
-    --accent: #38bdf8;
-    --accent2: #7dd3fc;
-    --blue: #818cf8;
-    --green: #34d399;
-    --purple: #c084fc;
-    --cyan: #67e8f9;
-    --text: #e2eaf6;
-    --muted: #4a6080;
-    --dim: #1e2d42;
-    --sidebar-width: 240px;
-  }
-
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html { scroll-behavior: smooth; }
-
-  body {
-    background: var(--bg);
-    color: var(--text);
-    position: relative;
-    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-    font-size: 1rem;
-    line-height: 1.65;
-    min-height: 100vh;
-  }
-
-  /* ── MYCELIUM CANVAS BG ── */
-  #mycelium-bg {
-    position: fixed;
-    inset: 0;
-    z-index: -1;
-    width: 100%;
-    height: 100%;
-  }
-
-  /* ── TOP NAV ── */
-  .topnav {
-    position: fixed;
-    top: 0; left: 0; right: 0;
-    height: 62px;
-    background: rgba(5, 9, 15, 0.92);
-    backdrop-filter: blur(12px);
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    padding: 0 29px;
-    gap: 24px;
-    z-index: 100;
-  }
-  .topnav-brand {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    text-decoration: none;
-    color: var(--text);
-    font-family: 'Cormorant Garamond', Georgia, serif;
-    font-weight: 600;
-    font-style: italic;
-    font-size: 24px;
-    letter-spacing: -0.01em;
-  }
-  .topnav-brand img {
-    width: 31px;
-    height: 31px;
-    object-fit: contain;
-  }
-  .topnav-sep {
-    color: var(--border2);
-    font-size: 1.35rem;
-    font-weight: 200;
-  }
-  .topnav-page {
-    font-size: 0.975rem;
-    color: var(--muted);
-    font-family: 'SF Mono', 'Fira Mono', monospace;
-  }
-  .topnav-right {
-    margin-left: auto;
-    display: flex;
-    align-items: center;
-    gap: 19px;
-  }
-  .topnav-right a {
-    color: var(--muted);
-    text-decoration: none;
-    font-size: 15px;
-    font-family: 'SF Mono', monospace;
-    transition: color 0.2s;
-  }
-  .topnav-right a:hover { color: var(--accent); }
-  .copy-page-btn {
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--muted);
-    font-size: 12px;
-    font-family: 'SF Mono', monospace;
-    padding: 5px 12px;
-    cursor: pointer;
-    transition: border-color 0.2s, color 0.2s;
-  }
-  .copy-page-btn:hover { border-color: var(--accent); color: var(--accent); }
-  .copy-page-btn.copied { border-color: var(--green); color: var(--green); }
-
-  /* ── LAYOUT ── */
-  .layout {
-    display: flex;
-    padding-top: 62px;
-    min-height: 100vh;
-  }
-
-  /* ── SIDEBAR ── */
-  .sidebar {
-    width: var(--sidebar-width);
-    flex-shrink: 0;
-    position: fixed;
-    top: 62px;
-    bottom: 0;
-    overflow-y: auto;
-    padding: 28px 0 40px;
-    border-right: 1px solid var(--border);
-    background: rgba(5, 9, 15, 0.85);
-  }
-  .sidebar::-webkit-scrollbar { width: 4px; }
-  .sidebar::-webkit-scrollbar-track { background: transparent; }
-  .sidebar::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
-
-  .nav-section {
-    margin-bottom: 28px;
-    padding: 0 20px;
-  }
-  .nav-section-label {
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    color: var(--muted);
-    font-family: 'SF Mono', monospace;
-    margin-bottom: 8px;
-    padding-left: 8px;
-  }
-  .nav-link {
-    display: block;
-    padding: 5px 8px;
-    border-radius: 6px;
-    color: var(--muted);
-    text-decoration: none;
-    font-size: 0.8125rem;
-    transition: color 0.15s, background 0.15s;
-    line-height: 1.4;
-  }
-  .nav-link:hover { color: var(--text); background: var(--card); }
-  .nav-link.active { color: var(--accent); background: rgba(56,189,248,0.08); }
-  .nav-link.sub {
-    padding-left: 20px;
-    font-size: 0.8125rem;
-  }
-
-  /* ── MAIN CONTENT ── */
-  .main {
-    margin-left: var(--sidebar-width);
-    flex: 1;
-    padding: 56px 64px 80px 72px;
-    min-width: 0;
-    background: rgba(5, 9, 15, 0.25);
-  }
-  .main-inner {
-    max-width: 70ch;
-    margin: 0 auto;
-    background: rgba(5, 9, 15, 0.6);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 48px 48px 56px;
-  }
-
-  /* ── SECTIONS ── */
-  .doc-section {
-    margin-bottom: 72px;
-    padding-top: 8px;
-  }
-
-  .section-eyebrow {
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--accent);
-    font-family: 'SF Mono', monospace;
-    margin-bottom: 12px;
-  }
-
-  h1 {
-    font-size: 2.375rem;
-    font-weight: 600;
-    font-style: italic;
-    letter-spacing: -0.02em;
-    line-height: 1.15;
-    font-family: 'Cormorant Garamond', Georgia, serif;
-    margin-bottom: 16px;
-  }
-
-  h2 {
-    font-size: 1.5rem;
-    font-weight: 700;
-    letter-spacing: -0.01em;
-    margin-bottom: 14px;
-    margin-top: 40px;
-    color: var(--text);
-  }
-
-  h3 {
-    font-size: 1.125rem;
-    font-weight: 700;
-    margin-bottom: 10px;
-    margin-top: 28px;
-    color: var(--accent2);
-    font-family: 'SF Mono', monospace;
-    letter-spacing: 0.02em;
-  }
-
-  p {
-    color: var(--text);
-    margin-bottom: 14px;
-  }
-
-  a { color: var(--accent); text-decoration: none; }
-  a:hover { text-decoration: underline; }
-
-  strong { color: var(--text); font-weight: 600; }
-
-  .lead {
-    font-size: 1.125rem;
-    color: var(--muted);
-    line-height: 1.6;
-    margin-bottom: 32px;
-  }
-
-  /* ── DIVIDER ── */
-  .divider {
-    border: none;
-    border-top: 1px solid var(--border);
-    margin: 48px 0;
-  }
-
-  /* ── CODE ── */
-  code {
-    font-family: 'SF Mono', 'Fira Mono', 'Menlo', monospace;
-    font-size: 13px;
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 2px 6px;
-    color: var(--accent2);
-  }
-
-  pre {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 20px 24px;
-    overflow-x: auto;
-    margin: 16px 0 24px;
-    position: relative;
-  }
-  pre code {
-    background: none;
-    border: none;
-    padding: 0;
-    font-size: 0.8125rem;
-    color: var(--text);
-    line-height: 1.65;
-  }
-  .pre-label {
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    color: var(--muted);
-    font-family: 'SF Mono', monospace;
-    margin-bottom: 8px;
-  }
-
-  .install-block {
-    position: relative;
-  }
-  .install-copy-btn {
-    position: absolute;
-    top: 50%;
-    right: 10px;
-    transform: translateY(-50%);
-    background: rgba(12, 21, 36, 0.5);
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    color: var(--muted);
-    padding: 5px;
-    width: 28px;
-    height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: border-color 0.2s, color 0.2s;
-  }
-  .install-copy-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--card); }
-  .install-copy-btn.copied { border-color: var(--green); color: var(--green); }
-  .install-copy-btn svg { width: 13px; height: 13px; stroke: currentColor; }
-  .install-tabs {
-    display: flex;
-    gap: 4px;
-    margin-bottom: 8px;
-  }
-  .install-tab {
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    color: var(--muted);
-    font-size: 11px;
-    font-family: 'SF Mono', monospace;
-    padding: 4px 10px;
-    cursor: pointer;
-    transition: border-color 0.2s, color 0.2s, background 0.2s;
-  }
-  .install-tab:hover { border-color: var(--accent); color: var(--accent); }
-  .install-tab.active { border-color: var(--accent); color: var(--accent); background: rgba(56,189,248,0.08); }
-
-  .comment { color: var(--muted); }
-  .kw { color: var(--purple); }
-  .str { color: var(--green); }
-  .flag { color: var(--cyan); }
-  .cmd { color: var(--accent); }
-  .arg { color: var(--purple); font-style: italic; }
-
-  /* ── CALLOUTS ── */
-  .callout {
-    border-radius: 10px;
-    margin: 20px 0;
-    font-size: 14px;
-    line-height: 1.6;
-    overflow: hidden;
-    display: flex;
-  }
-  .callout-bar {
-    width: 4px;
-    flex-shrink: 0;
-    border-radius: 10px 0 0 10px;
-  }
-  .callout-body {
-    padding: 14px 18px;
-    border-radius: 0 10px 10px 0;
-    flex: 1;
-  }
-  .callout-info .callout-bar { background: var(--accent); }
-  .callout-info .callout-body {
-    background: rgba(56,189,248,0.06);
-    color: var(--accent2);
-  }
-  .callout-note .callout-bar { background: var(--purple); }
-  .callout-note .callout-body {
-    background: rgba(192,132,252,0.06);
-    color: #d8b4fe;
-  }
-  .callout strong { color: inherit; }
-
-  /* ── TABLE ── */
-  .table-wrap { overflow-x: auto; margin: 20px 0; }
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 14px;
-  }
-  th {
-    text-align: left;
-    padding: 10px 16px;
-    border-bottom: 1px solid var(--border2);
-    font-size: 11px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--muted);
-    font-family: 'SF Mono', monospace;
-    font-weight: 600;
-  }
-  td {
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border);
-    vertical-align: top;
-    line-height: 1.5;
-  }
-  tr:last-child td { border-bottom: none; }
-  td:first-child { color: var(--accent2); font-family: 'SF Mono', monospace; font-size: 13px; }
-  tr:hover td { background: rgba(255,255,255,0.02); }
-
-  /* ── CARDS ── */
-  .card-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
-    gap: 16px;
-    margin: 24px 0;
-  }
-  .card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 20px;
-    transition: border-color 0.2s;
-  }
-  .card:hover { border-color: var(--border2); }
-  .card-icon {
-    margin-bottom: 10px;
-    color: var(--accent);
-  }
-  .card-icon svg {
-    width: 20px;
-    height: 20px;
-    stroke: currentColor;
-  }
-  .card-title {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text);
-    margin-bottom: 6px;
-  }
-  .card-desc {
-    font-size: 13px;
-    color: var(--muted);
-    line-height: 1.5;
-  }
-
-  /* ── BADGE ── */
-  .badge {
-    display: inline-block;
-    font-size: 11px;
-    font-family: 'SF Mono', monospace;
-    font-weight: 600;
-    padding: 2px 8px;
-    border-radius: 4px;
-    letter-spacing: 0.05em;
-    vertical-align: middle;
-  }
-  .badge-blue { background: rgba(129,140,248,0.15); color: var(--blue); border: 1px solid rgba(129,140,248,0.25); }
-  .badge-green { background: rgba(52,211,153,0.12); color: var(--green); border: 1px solid rgba(52,211,153,0.2); }
-  .badge-purple { background: rgba(192,132,252,0.12); color: var(--purple); border: 1px solid rgba(192,132,252,0.2); }
-
-  /* ── CMD REF ── */
-  .cmd-ref {
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    margin: 12px 0;
-    overflow: hidden;
-  }
-  .cmd-ref-header {
-    display: flex;
-    align-items: baseline;
-    gap: 12px;
-    padding: 14px 20px;
-    background: var(--card);
-    border-bottom: 1px solid var(--border);
-    cursor: pointer;
-  }
-  .cmd-ref-header code {
-    background: none;
-    border: none;
-    padding: 0;
-    font-size: 14px;
-    color: var(--accent);
-    font-weight: 600;
-  }
-  .cmd-ref-desc {
-    font-size: 13px;
-    color: var(--muted);
-  }
-  .cmd-ref-body {
-    padding: 16px 20px;
-    font-size: 0.8125rem;
-    line-height: 1.6;
-    color: var(--text);
-    opacity: 0.85;
-  }
-
-  /* ── STEP LIST ── */
-  .steps {
-    counter-reset: step;
-    list-style: none;
-    margin: 20px 0;
-  }
-  .steps li {
-    counter-increment: step;
-    position: relative;
-    padding-left: 44px;
-    margin-bottom: 20px;
-  }
-  .steps li::before {
-    content: counter(step);
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    background: rgba(56,189,248,0.1);
-    border: 1px solid rgba(56,189,248,0.25);
-    color: var(--accent);
-    font-size: 12px;
-    font-weight: 700;
-    font-family: 'SF Mono', monospace;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  /* ── HEADER ANCHOR LINKS ── */
-  h2[id], h3[id] {
-    position: relative;
-  }
-  .header-anchor {
-    display: inline-flex;
-    align-items: center;
-    margin-left: 8px;
-    opacity: 0;
-    transition: opacity 0.15s;
-    vertical-align: middle;
-    color: var(--muted);
-    text-decoration: none;
-  }
-  .header-anchor:hover { color: var(--accent); text-decoration: none; }
-  .header-anchor svg { width: 16px; height: 16px; stroke: currentColor; }
-  h2:hover .header-anchor,
-  h3:hover .header-anchor,
-  .header-anchor:focus { opacity: 1; }
-
-  /* ── COPY DOCS CMD BUTTON ── */
-  .copy-docs-btn {
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--muted);
-    font-size: 12px;
-    font-family: 'SF Mono', monospace;
-    padding: 5px 12px;
-    cursor: pointer;
-    transition: border-color 0.2s, color 0.2s;
-  }
-  .copy-docs-btn:hover { border-color: var(--accent); color: var(--accent); }
-  .copy-docs-btn.copied { border-color: var(--green); color: var(--green); }
-
-  /* ── RESPONSIVE ── */
-  .resources-dropdown {
-    position: relative;
-    display: none;
-  }
-  .resources-btn {
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--muted);
-    font-size: 12px;
-    font-family: 'SF Mono', monospace;
-    padding: 5px 10px;
-    cursor: pointer;
-    transition: border-color 0.2s, color 0.2s;
-    white-space: nowrap;
-  }
-  .resources-btn:hover { border-color: var(--accent); color: var(--accent); }
-  .resources-menu {
-    display: none;
-    position: absolute;
-    top: calc(100% + 8px);
-    right: 0;
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 6px;
-    min-width: 180px;
-    z-index: 100;
-  }
-  .resources-menu.open { display: block; }
-  .resources-menu a {
-    display: block;
-    padding: 8px 12px;
-    color: var(--muted);
-    text-decoration: none;
-    font-size: 13px;
-    font-family: 'SF Mono', monospace;
-    border-radius: 5px;
-    transition: background 0.15s, color 0.15s;
-  }
-  .resources-menu a:hover { background: rgba(56,189,248,0.08); color: var(--accent); }
-
-  @media (max-width: 860px) {
-    .sidebar { display: none; }
-    .main { margin-left: 0; padding: 32px 24px 60px; }
-    .resources-dropdown { display: block; }
-    .copy-page-btn { display: none; }
-    .copy-docs-btn { display: none; }
-  }
-  @media (max-width: 600px) {
-    body { overflow-x: hidden; }
-    .topnav { padding: 0 16px; gap: 12px; }
-    .topnav-sep, .topnav-page { display: none; }
-    .topnav-right { gap: 12px; }
-    .main { padding: 24px 16px 60px; }
-    h1 { font-size: 1.75rem; }
-    h2 { font-size: 1.25rem; }
-    .main-inner { padding: 24px 16px 32px; }
-    pre { font-size: 0.75rem; overflow-x: auto; }
-    .cmd-ref-header code { font-size: 0.75rem; word-break: break-all; }
-  }
-</style>
+<link rel="stylesheet" href="mycelium.css">
 </head>
 <body>
 <canvas id="mycelium-bg"></canvas>
@@ -644,7 +29,8 @@
     <div class="resources-dropdown">
       <button class="resources-btn" onclick="toggleResources(event)">Resources <i data-lucide="chevron-down" style="width:12px;height:12px;stroke:currentColor;vertical-align:-2px;"></i></button>
       <div class="resources-menu" id="resources-menu">
-        <a href="mycelium-dataflow.html" target="_blank">Interactive Overview ↗</a>
+        <a href="stories.html">User Stories</a>
+        <a href="mycelium-dataflow.html" target="_blank">Interactive Overview</a>
         <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/adapters/openclaw/extensions/mycelium/skills/mycelium/SKILL.md" target="_blank">SKILL.md ↗</a>
       </div>
     </div>
@@ -693,8 +79,16 @@
     </div>
 <!-- /codegen:cli-sidebar -->
     <div class="nav-section">
-      <div class="nav-section-label">Resources</div>
-      <a href="mycelium-dataflow.html" class="nav-link">Interactive Overview ↗</a>
+      <div class="nav-section-label">Adapters</div>
+      <a href="#adapters" class="nav-link sub">Overview</a>
+      <a href="#adapter-claude-code" class="nav-link sub">Claude Code</a>
+      <a href="#adapter-openclaw" class="nav-link sub">OpenClaw</a>
+      <a href="#adapter-api" class="nav-link sub">REST API</a>
+    </div>
+    <div class="nav-section">
+      <div class="nav-section-label">More</div>
+      <a href="stories.html" class="nav-link">User Stories</a>
+      <a href="mycelium-dataflow.html" class="nav-link">Interactive Overview</a>
       <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/adapters/openclaw/extensions/mycelium/skills/mycelium/SKILL.md" class="nav-link" target="_blank">SKILL.md ↗</a>
     </div>
   </nav>
@@ -1160,17 +554,228 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
           </tbody>
         </table>
       </div>
-      <h2 id="architecture-adapters">Adapters</h2>
-      <p>Mycelium integrates with AI coding agents via adapters. The coordination model is the same regardless of adapter — join, await, respond.</p>
-      <h3 id="architecture-claude-code">Claude Code</h3>
-      <p>The Mycelium skill ships as a Claude Code hook set. Lifecycle hooks capture tool use and context automatically. The <code>mycelium</code> slash command provides memory and coordination commands inline.</p>
-      <pre><code><span class="comment"># The skill is invoked automatically in Claude Code sessions</span>
-<span class="comment"># or explicitly via the slash command</span>
-/mycelium</code></pre>
-      <h3 id="architecture-openclaw">OpenClaw</h3>
-      <p>Plugin + hooks for the OpenClaw agent runtime. Same coordination model, same memory API.</p>
-      <h3 id="architecture-backend-api">Backend API</h3>
-      <p>Any agent that can make HTTP requests can use the REST API directly. Interactive API docs are available at <code>http://localhost:8888/docs</code> when the backend is running.</p>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="adapters">
+      <div class="section-eyebrow">Integration</div>
+      <h1>Adapters</h1>
+      <p class="lead">
+        Adapters connect AI coding agents to Mycelium. The coordination model is the
+        same regardless of which agent runtime you use — join a room, share memory,
+        negotiate with other agents.
+      </p>
+
+      <div class="card-grid">
+        <div class="card">
+          <div class="card-icon"><i data-lucide="terminal-square"></i></div>
+          <div class="card-title">Claude Code</div>
+          <div class="card-desc">Lifecycle hooks + slash command skill. Sessions, memory, and negotiation inline.</div>
+        </div>
+        <div class="card">
+          <div class="card-icon"><i data-lucide="plug"></i></div>
+          <div class="card-title">OpenClaw</div>
+          <div class="card-desc">Plugin + hooks for the OpenClaw agent runtime. Auto-injects coordination context at bootstrap.</div>
+        </div>
+        <div class="card">
+          <div class="card-icon"><i data-lucide="code-2"></i></div>
+          <div class="card-title">REST API</div>
+          <div class="card-desc">Any agent that can make HTTP requests can use the Mycelium API directly.</div>
+        </div>
+      </div>
+
+      <pre><code><span class="comment"># List available adapters</span>
+<span class="cmd">mycelium adapter ls</span>
+
+<span class="comment"># Install an adapter</span>
+<span class="cmd">mycelium adapter add</span> <span class="arg">claude-code</span>
+<span class="cmd">mycelium adapter add</span> <span class="arg">openclaw</span>
+
+<span class="comment"># Check health</span>
+<span class="cmd">mycelium adapter status</span>
+<span class="cmd">mycelium adapter status</span> <span class="arg">claude-code</span></code></pre>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="adapter-claude-code">
+      <h1>Claude Code</h1>
+      <p>
+        The Claude Code adapter installs lifecycle hooks and a <code>/mycelium</code> skill
+        into your Claude Code environment. Once installed, every Claude Code session can
+        read and write shared memory, join rooms, and run the negotiation protocol.
+      </p>
+
+      <h2 id="cc-install">Install</h2>
+      <pre><code><span class="cmd">mycelium adapter add</span> <span class="arg">claude-code</span></code></pre>
+
+      <p>This copies into <code>~/.claude/</code>:</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Asset</th><th>Destination</th><th>Purpose</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>SKILL.md</code></td>
+              <td><code>~/.claude/skills/mycelium/</code></td>
+              <td>The <code>/mycelium</code> slash command — memory, sessions, coordination protocol</td>
+            </tr>
+            <tr>
+              <td><code>mycelium-session-start.sh</code></td>
+              <td><code>~/.claude/hooks/</code></td>
+              <td>Runs on session start — prints catchup briefing if a room is active</td>
+            </tr>
+            <tr>
+              <td><code>mycelium-session-end.sh</code></td>
+              <td><code>~/.claude/hooks/</code></td>
+              <td>Runs on session end — flushes any queued memory writes</td>
+            </tr>
+            <tr>
+              <td><code>mycelium-post-tool-use.sh</code></td>
+              <td><code>~/.claude/hooks/</code></td>
+              <td>Captures tool-use context for async memory batching</td>
+            </tr>
+            <tr>
+              <td><code>mycelium-pre-compact.sh</code></td>
+              <td><code>~/.claude/hooks/</code></td>
+              <td>Saves current context to room memory before compaction</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="cc-usage">Using the skill</h2>
+      <p>Once installed, invoke the skill from any Claude Code session:</p>
+      <pre><code>/mycelium</code></pre>
+      <p>The skill provides the full Mycelium coordination protocol inline — share memory, join negotiation sessions, and read what other agents know without leaving your current task.</p>
+
+      <h2 id="cc-hooks">What the hooks do</h2>
+      <p>
+        Claude Code doesn't have a persistent SSE connection, so the hooks bridge the gap.
+        On session start, <code>mycelium-session-start</code> runs a quick catchup so the
+        agent knows what's happened in the active room. On session end,
+        <code>mycelium-session-end</code> flushes any pending writes.
+      </p>
+
+      <div class="callout callout-info">
+        <div class="callout-bar"></div>
+        <div class="callout-body">
+          Hooks only fire if <code>MYCELIUM_ROOM</code> (or the active room in
+          <code>~/.mycelium/config.toml</code>) is set. If no room is configured, the
+          hooks are no-ops — no performance cost.
+        </div>
+      </div>
+
+      <h2 id="cc-env">Environment variables</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Variable</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>MYCELIUM_API_URL</code></td><td>Backend URL (default: <code>http://localhost:8000</code>)</td></tr>
+            <tr><td><code>MYCELIUM_ROOM</code></td><td>Active room name</td></tr>
+            <tr><td><code>MYCELIUM_AGENT_HANDLE</code></td><td>This agent's identity handle</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="cc-first-session">First session</h2>
+      <pre><code><span class="comment"># 1. Set your active room</span>
+<span class="cmd">mycelium room use</span> my-project
+
+<span class="comment"># 2. Start a Claude Code session — hooks fire automatically</span>
+<span class="comment">#    The /mycelium skill is now available</span>
+
+<span class="comment"># 3. From within the session, get a briefing</span>
+<span class="cmd">mycelium catchup</span>
+
+<span class="comment"># 4. Share context from your session</span>
+<span class="cmd">mycelium memory set</span> <span class="str">"work/auth"</span> <span class="str">"Implemented JWT with refresh tokens"</span> <span class="flag">--handle</span> claude-agent
+
+<span class="comment"># 5. Find what other agents know</span>
+<span class="cmd">mycelium memory search</span> <span class="str">"authentication approach"</span></code></pre>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="adapter-openclaw">
+      <h1>OpenClaw</h1>
+      <p>
+        The OpenClaw adapter installs a plugin, two hooks, and a skill into your
+        OpenClaw environment. The plugin handles session lifecycle and forwards
+        coordination state. The bootstrap hook injects room context into every
+        agent at startup.
+      </p>
+
+      <h2 id="oc-install">Install</h2>
+      <pre><code><span class="cmd">mycelium adapter add</span> <span class="arg">openclaw</span></code></pre>
+
+      <p>This installs via <code>openclaw plugins install</code> and <code>openclaw hooks install</code>:</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Asset</th><th>Type</th><th>Purpose</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>mycelium</code></td><td>Plugin</td><td>Session lifecycle, message forwarding, coordination state</td></tr>
+            <tr><td><code>mycelium-bootstrap</code></td><td>Hook</td><td>Injects MYCELIUM_API_URL, MYCELIUM_ROOM, and coordination instructions at agent bootstrap</td></tr>
+            <tr><td><code>mycelium-knowledge-extract</code></td><td>Hook</td><td>Two-stage LLM extraction pipeline — turns agent output into graph nodes and edges</td></tr>
+            <tr><td><code>mycelium</code> SKILL.md</td><td>Skill</td><td>Coordination skill available to all OpenClaw agents</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="oc-after-install">After install</h2>
+      <pre><code><span class="comment"># Restart the OpenClaw gateway to pick up the plugin</span>
+openclaw gateway restart
+
+<span class="comment"># For Docker-based experiment agents, get required env vars</span>
+<span class="cmd">mycelium adapter add</span> openclaw <span class="flag">--step</span>=docker-env
+
+<span class="comment"># Copy assets to a directory without running install commands</span>
+<span class="cmd">mycelium adapter add</span> openclaw <span class="flag">--scaffold-only</span> /path/to/dir</code></pre>
+
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body">
+          OpenClaw's static scanner flags the plugin as a possible security concern
+          because it reads env vars and makes network calls. This is expected — it
+          posts coordination data to your local Mycelium backend.
+          <code>mycelium adapter add openclaw</code> automatically adds the plugin to
+          <code>plugins.allow</code> to suppress the warning.
+        </div>
+      </div>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="adapter-api">
+      <h1>REST API</h1>
+      <p>
+        Any agent or tool that can make HTTP requests can use the Mycelium API directly —
+        no adapter required. The API is the same one the CLI wraps.
+      </p>
+
+      <h2 id="api-docs">Interactive docs</h2>
+      <p>When the backend is running, interactive API docs are available at:</p>
+      <pre><code>http://localhost:8888/docs</code></pre>
+
+      <h2 id="api-example">Quick example</h2>
+      <pre><code><span class="comment"># Write a memory</span>
+curl -X POST http://localhost:8888/api/memory \
+  -H "Content-Type: application/json" \
+  -d '{"room": "my-project", "key": "work/api", "value": "REST with OpenAPI client"}'
+
+<span class="comment"># Read it back</span>
+curl http://localhost:8888/api/memory/my-project/work/api
+
+<span class="comment"># Semantic search</span>
+curl -X POST http://localhost:8888/api/memory/search \
+  -H "Content-Type: application/json" \
+  -d '{"room": "my-project", "query": "what was decided about the API"}'</code></pre>
     </section>
 
     <hr class="divider">
@@ -1626,6 +1231,10 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
     'knowledge-graph': 'mycelium docs knowledge-graph',
     'cli-reference': 'mycelium docs cli-reference',
     'architecture': 'mycelium docs architecture',
+    'adapters': 'mycelium docs adapters',
+    'adapter-claude-code': 'mycelium docs adapters claude-code',
+    'adapter-openclaw': 'mycelium docs adapters openclaw',
+    'adapter-api': 'mycelium docs adapters api',
   };
 
   // Track current visible section for the docs cmd button

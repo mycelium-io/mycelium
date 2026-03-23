@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>mycelium — User Stories</title>
+<meta property="og:title" content="mycelium — User Stories">
+<meta property="og:description" content="What Mycelium actually does — real usage patterns for Claude Code and OpenClaw agents.">
+<meta property="og:image" content="https://mycelium-io.github.io/mycelium/og.png">
+<meta property="og:url" content="https://mycelium-io.github.io/mycelium/stories.html">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://mycelium-io.github.io/mycelium/og.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="mycelium.css">
+<style>
+  body { overflow-x: hidden; }
+
+  /* ── TOP NAV ── */
+  .topnav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; }
+
+  /* ── HERO ── */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 80px;
+    padding-top: 140px;
+    background:
+      radial-gradient(ellipse at 15% 60%, rgba(56,189,248,0.07) 0%, transparent 55%),
+      radial-gradient(ellipse at 80% 20%, rgba(192,132,252,0.06) 0%, transparent 50%);
+  }
+  .hero-eyebrow {
+    font-size: 11px; letter-spacing: 0.25em; text-transform: uppercase;
+    color: var(--accent); font-weight: 700; margin-bottom: 20px;
+    font-family: 'SF Mono', monospace;
+  }
+  .hero-title {
+    font-size: clamp(32px, 4vw, 52px);
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-weight: 600; font-style: italic;
+    line-height: 1.1; color: var(--text);
+    margin-bottom: 16px; max-width: 600px;
+  }
+  .hero-sub {
+    font-size: 17px; color: var(--muted);
+    margin-bottom: 40px; max-width: 480px; line-height: 1.65;
+  }
+  .scroll-hint {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+    color: var(--muted); font-size: 12px; letter-spacing: 0.08em;
+    animation: bob 2s ease-in-out infinite;
+  }
+  @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(5px); } }
+
+  /* ── SCROLLY LAYOUT ── */
+  .scrolly { display: flex; align-items: flex-start; position: relative; }
+  .narrative {
+    width: 44%;
+    flex-shrink: 0;
+    padding: 0 64px 200px 80px;
+  }
+  .panel-wrap {
+    width: 56%;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 56px 32px 24px;
+    overflow: hidden;
+  }
+  .panel {
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, rgba(12,21,36,0.95) 0%, rgba(8,14,24,0.98) 100%);
+    border: 1px solid rgba(56,189,248,0.1);
+    border-radius: 16px;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 60px rgba(56,189,248,0.03), inset 0 1px 0 rgba(56,189,248,0.07);
+  }
+
+  /* ── SCENES ── */
+  .scene {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    opacity: 0;
+    transition: opacity 0.5s ease, transform 0.5s ease;
+    transform: translateY(12px);
+    pointer-events: none;
+  }
+  .scene.active {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+
+  /* ── NARRATIVE SECTIONS ── */
+  .section {
+    min-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 80px 0;
+    border-bottom: 1px solid rgba(22,32,53,0.6);
+  }
+  .section:last-child { border-bottom: none; }
+  .sec-label {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.2em;
+    text-transform: uppercase; color: var(--accent);
+    font-family: 'SF Mono', monospace; margin-bottom: 14px;
+  }
+  .sec-label.blue   { color: var(--blue); }
+  .sec-label.green  { color: var(--green); }
+  .sec-label.purple { color: var(--purple); }
+  .sec-title {
+    font-size: clamp(20px, 2.2vw, 28px);
+    font-weight: 700; color: var(--text);
+    line-height: 1.2; margin-bottom: 14px;
+  }
+  .sec-body {
+    font-size: 15px; color: var(--muted);
+    line-height: 1.75; max-width: 400px;
+    margin-bottom: 10px;
+  }
+  .sec-body strong { color: #aaa; font-weight: 600; }
+  .sec-body code {
+    font-family: 'SF Mono', monospace; font-size: 12px;
+    background: rgba(255,255,255,0.06); padding: 2px 6px;
+    border-radius: 4px; color: #c4c4c4;
+  }
+  .sec-detail {
+    margin-top: 18px;
+    background: rgba(0,0,0,0.3);
+    border-left: 2px solid var(--accent);
+    border-radius: 0 6px 6px 0;
+    padding: 10px 14px;
+    font-family: 'SF Mono', monospace;
+    font-size: 11px; color: var(--muted); line-height: 1.6;
+  }
+  .sec-detail.blue   { border-color: var(--blue); }
+  .sec-detail.green  { border-color: var(--green); }
+  .sec-detail.purple { border-color: var(--purple); }
+  .sec-detail > span { display: block; }
+  .sec-detail .hi   { color: var(--accent); }
+  .sec-detail .hi-b { color: var(--blue); }
+  .sec-detail .hi-g { color: var(--green); }
+  .sec-detail .hi-p { color: var(--purple); }
+
+  /* ── USER / AGENT LABELS ── */
+  .story-label {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.15em;
+    text-transform: uppercase; font-family: 'SF Mono', monospace;
+    margin-bottom: 6px; margin-top: 18px;
+  }
+  .story-label.user    { color: var(--blue); }
+  .story-label.happened { color: var(--muted); }
+  .story-input {
+    font-size: 14px; color: var(--text);
+    font-style: italic; line-height: 1.55;
+    padding: 10px 14px;
+    background: rgba(129,140,248,0.05);
+    border: 1px solid rgba(129,140,248,0.15);
+    border-radius: 7px;
+    max-width: 400px;
+  }
+  .story-input code {
+    font-style: normal; font-size: 12px;
+    background: rgba(129,140,248,0.12);
+    color: var(--blue); border-radius: 3px;
+    padding: 1px 5px;
+  }
+
+  /* ── PANEL PRIMITIVES ── */
+  .term {
+    width: 100%;
+    background: rgba(0,0,0,0.45);
+    border: 1px solid rgba(56,189,248,0.18);
+    border-radius: 8px;
+    padding: 16px 18px;
+    font-family: 'SF Mono', monospace;
+    font-size: 12.5px; line-height: 1.7;
+    color: var(--muted); overflow-x: auto;
+  }
+  .term .p  { color: var(--green); }      /* prompt $ */
+  .term .c  { color: var(--accent); }     /* command */
+  .term .f  { color: var(--blue); }       /* flag */
+  .term .v  { color: var(--accent2); }    /* value */
+  .term .k  { color: var(--purple); }     /* key */
+  .term .ok { color: var(--green); }      /* ✓ */
+  .term .hi { color: var(--accent); font-weight: 700; } /* heading */
+  .term .dim { color: var(--muted); }
+  .term .em { color: var(--text); font-weight: 600; }
+
+  .d-box {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 14px;
+    font-size: 12px; text-align: center;
+  }
+  .d-box .d-label {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.12em;
+    text-transform: uppercase; margin-bottom: 4px;
+    font-family: 'SF Mono', monospace;
+  }
+  .d-box .d-name { font-size: 13px; font-weight: 700; color: var(--text); }
+  .d-box .d-sub  { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .d-arrow { color: var(--accent); font-size: 16px; flex-shrink: 0; text-align: center; }
+
+  /* ── FOOTER ── */
+  .footer {
+    display: flex; gap: 20px; padding: 48px 80px;
+    font-size: 12px; color: var(--muted);
+    font-family: 'SF Mono', monospace;
+    border-top: 1px solid var(--border);
+  }
+  .footer a { color: var(--muted); text-decoration: none; }
+  .footer a:hover { color: var(--accent); }
+
+  /* ── PROGRESS BAR ── */
+  #pg-bar {
+    position: fixed; bottom: 0; left: 0;
+    height: 2px; width: 0%;
+    background: linear-gradient(to right, var(--accent), var(--purple));
+    z-index: 200; transition: width 0.1s linear;
+  }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 860px) {
+    .scrolly { flex-direction: column; }
+    .panel-wrap { display: none; }
+    .narrative { width: 100%; padding: 0 24px 80px; }
+    .section { min-height: auto; padding: 48px 0; }
+    .hero { padding: 100px 24px 60px; }
+    .sec-body, .story-input { max-width: 100%; }
+  }
+  @media (max-width: 600px) {
+    .hero { padding: 100px 16px 60px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- TOP NAV -->
+<nav class="topnav">
+  <a href="https://mycelium-io.github.io/mycelium/" class="topnav-brand">
+    <img src="logo.png" alt="Mycelium">
+    mycelium
+  </a>
+  <span class="topnav-sep">/</span>
+  <a href="index.html" class="topnav-page" style="text-decoration:none;">docs</a>
+  <span class="topnav-sep">/</span>
+  <span class="topnav-page">stories</span>
+  <div class="topnav-right">
+    <div class="resources-dropdown">
+      <button class="resources-btn" onclick="toggleResources(event)">Resources <i data-lucide="chevron-down" style="width:12px;height:12px;stroke:currentColor;vertical-align:-2px;"></i></button>
+      <div class="resources-menu" id="resources-menu">
+        <a href="index.html">Docs</a>
+        <a href="adapters.html">Adapters</a>
+        <a href="mycelium-dataflow.html" target="_blank">Interactive Overview</a>
+      </div>
+    </div>
+    <a href="https://github.com/mycelium-io/mycelium" aria-label="GitHub" style="display:flex;align-items:center;"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="display:block;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-eyebrow">Mycelium &middot; Usage Patterns</div>
+  <h1 class="hero-title">User Stories</h1>
+  <p class="hero-sub">Less architecture, more "here's what you type and here's what happens." Real commands, real output, real coordination.</p>
+  <div class="scroll-hint">
+    <span>scroll to explore</span>
+    <span style="font-size:18px; color:var(--accent);">↓</span>
+  </div>
+</section>
+
+<!-- SCROLLY BODY -->
+<div class="scrolly">
+
+  <!-- LEFT: NARRATIVE -->
+  <div class="narrative">
+
+    <!-- S1: SINGLE-AGENT MEMORY -->
+    <div class="section" data-scene="1">
+      <div class="sec-label">Story 1 · Single Agent</div>
+      <h2 class="sec-title">Storing findings during a session</h2>
+      <p class="sec-body">An agent investigating a performance issue writes its findings as it works. The memory persists as a markdown file — readable by <code>cat</code>, editable by any tool, and immediately searchable by meaning.</p>
+
+      <div class="story-label user">User sends</div>
+      <div class="story-input">Store what we found about the query performance issue so we don't lose it.</div>
+
+      <div class="sec-detail">
+        <span class="hi">What happened:</span>
+        <span>The finding is written to <code>~/.mycelium/rooms/design-review/work/query-perf.md</code> and simultaneously indexed as a 384-dim vector embedding in AgensGraph. Available to every agent — or a plain <code>cat</code> — immediately.</span>
+      </div>
+    </div>
+
+    <!-- S2: SEMANTIC SEARCH -->
+    <div class="section" data-scene="2">
+      <div class="sec-label">Story 2 · Single Agent</div>
+      <h2 class="sec-title">Search by meaning, not keywords</h2>
+      <p class="sec-body">Later in the session, the agent needs to surface what it already knows. It asks a natural-language question — not a keyword lookup.</p>
+
+      <div class="story-label user">User sends</div>
+      <div class="story-input">What do we know about database performance?</div>
+
+      <div class="sec-detail">
+        <span class="hi">What happened:</span>
+        <span>Cosine similarity on local all-MiniLM-L6-v2 embeddings (384 dims, no API key). The query matched memories that don't contain the exact words "database performance" — because they mean the same thing.</span>
+      </div>
+    </div>
+
+    <!-- S3: LOG A FAILURE -->
+    <div class="section" data-scene="3">
+      <div class="sec-label">Story 3 · Single Agent</div>
+      <h2 class="sec-title">Logging a dead end</h2>
+      <p class="sec-body">An approach didn't work. The agent writes it under <code>failed/</code> so no other agent wastes time going down the same path. Negative results are first-class citizens.</p>
+
+      <div class="story-label user">User sends</div>
+      <div class="story-input">We tried PgBouncer for connection pooling but it made things worse — log it so nobody tries it again.</div>
+
+      <div class="sec-detail">
+        <span class="hi">What happened:</span>
+        <span>Stored under <code>failed/pgbouncer</code>. Any agent that later searches "connection pooling" will find this and know not to retry. The <code>failed/</code> namespace shows up in catchup briefings as its own section.</span>
+      </div>
+    </div>
+
+    <!-- S4: CROSS-SESSION -->
+    <div class="section" data-scene="4">
+      <div class="sec-label green">Story 4 · Cross-Session</div>
+      <h2 class="sec-title">Picking up where you left off</h2>
+      <p class="sec-body">Three days later, a new Claude Code session starts. The agent has no memory of the previous work. One command catches it up — no scrolling through history, no re-reading code.</p>
+
+      <div class="story-label user">User sends</div>
+      <div class="story-input">Continue working on the design-review room. What's the current state?</div>
+
+      <div class="sec-detail green">
+        <span class="hi-g">What happened:</span>
+        <span><code>catchup</code> pulls the latest CognitiveEngine synthesis (an LLM-generated summary of everything in the room), then appends memories written since that synthesis. The agent is fully briefed in one call.</span>
+      </div>
+    </div>
+
+    <!-- S5: NEGOTIATION -->
+    <div class="section" data-scene="5">
+      <div class="sec-label blue">Story 5 · Multi-Agent</div>
+      <h2 class="sec-title">Two agents negotiate a sprint plan</h2>
+      <p class="sec-body">Two Claude Code agents need to agree on priorities. Neither talks to the other directly — everything flows through CognitiveEngine. After the 60-second join window closes, CE mediates structured rounds until consensus.</p>
+
+      <div class="story-label user">User (terminal 1) sends</div>
+      <div class="story-input">Join the sprint-plan room and argue for database migration first.</div>
+
+      <div class="sec-detail blue">
+        <span class="hi-b">What happened:</span>
+        <span>CE ran the SemanticNegotiationPipeline on both agents' positions. It assigned proposer/respondent roles, ran structured rounds, and output a consensus with per-agent assignments — all without the agents communicating directly.</span>
+      </div>
+    </div>
+
+    <!-- S6: CROSS-RUNTIME -->
+    <div class="section" data-scene="6">
+      <div class="sec-label purple">Story 6 · Cross-Runtime</div>
+      <h2 class="sec-title">Claude Code + OpenClaw in the same room</h2>
+      <p class="sec-body">A Claude Code agent finishes the API layer and hands off to an OpenClaw agent for frontend integration. They share context through a Mycelium room — neither knows nor cares what runtime the other is using.</p>
+
+      <div class="story-label user">User (Claude Code) sends</div>
+      <div class="story-input">Log what I built and hand off to the OpenClaw agent for frontend integration.</div>
+
+      <div class="sec-detail purple">
+        <span class="hi-p">What happened:</span>
+        <span>Both adapters write to and read from the same room via the same backend. The coordination model is runtime-agnostic — the room is the shared medium, not any direct channel between agents.</span>
+      </div>
+    </div>
+
+    <!-- S7: SYNTHESIS -->
+    <div class="section" data-scene="7">
+      <div class="sec-label">Story 7 · Synthesis</div>
+      <h2 class="sec-title">The ratchet effect</h2>
+      <p class="sec-body">After enough context accumulates, CognitiveEngine synthesizes the room — decisions, failures, open questions — into a structured briefing. Every future agent that joins starts from this summary, not from zero.</p>
+
+      <div class="story-label user">User sends</div>
+      <div class="story-input">A new agent is joining. Synthesize everything first so the briefing is fresh.</div>
+
+      <div class="sec-detail">
+        <span class="hi">What happened:</span>
+        <span>CE sent all 23 memories to the LLM, which produced a structured summary. That summary is now the entry point for any new agent. Intelligence doesn't reset between sessions — it <strong style="color:var(--accent);">compounds</strong>.</span>
+      </div>
+    </div>
+
+  </div><!-- end narrative -->
+
+  <!-- RIGHT: STICKY PANEL -->
+  <div class="panel-wrap">
+    <div class="panel">
+
+      <!-- SCENE 1: memory set -->
+      <div class="scene" id="sc1">
+        <div style="width:100%; display:flex; flex-direction:column; gap:10px;">
+          <div class="term">
+<span class="p">$</span> <span class="c">mycelium memory set</span> <span class="k">"work/query-perf"</span> \<br>
+&nbsp;&nbsp;"N+1 on user.posts — 47 queries per page load.<br>
+&nbsp;&nbsp; Fixed with select_related. p99: 340ms → 28ms." \<br>
+&nbsp;&nbsp;<span class="f">--handle</span> claude-agent<br>
+<br>
+<span class="ok">✓</span> <span class="dim">work/query-perf written to design-review</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:6px; margin-top:4px;">
+            <div style="flex:1; height:1px; background:var(--border);"></div>
+            <span style="font-size:10px; color:var(--muted); font-family:'SF Mono',monospace; letter-spacing:0.1em;">written to disk</span>
+            <div style="flex:1; height:1px; background:var(--border);"></div>
+          </div>
+          <div style="background:var(--card); border:1px solid var(--border); border-radius:8px; padding:12px 16px; font-family:'SF Mono',monospace; font-size:11.5px; line-height:1.7; color:var(--muted);">
+            <span style="color:var(--muted);">~/.mycelium/rooms/design-review/</span><br>
+            <span style="color:var(--blue);">  decisions/</span><span style="color:var(--muted);">db.md &nbsp;&nbsp;api.md</span><br>
+            <span style="color:var(--accent);">  work/</span><span style="color:var(--muted);">query-perf.md</span> <span style="color:var(--green); font-size:10px;">← just written</span><br>
+            <span style="color:var(--purple);">  failed/</span><span style="color:var(--muted);">sqlite.md</span>
+          </div>
+          <div style="padding:6px 12px; background:rgba(56,189,248,0.05); border:1px solid rgba(56,189,248,0.15); border-radius:6px; font-size:11px; color:var(--muted); font-family:'SF Mono',monospace; text-align:center;">
+            pgvector embedding upserted simultaneously
+          </div>
+        </div>
+      </div>
+
+      <!-- SCENE 2: semantic search -->
+      <div class="scene" id="sc2">
+        <div style="width:100%; display:flex; flex-direction:column; gap:10px;">
+          <div class="term">
+<span class="p">$</span> <span class="c">mycelium memory search</span> <span class="v">"database performance"</span><br>
+<br>
+<span class="ok">0.91</span>  <span class="k">work/query-perf</span><br>
+<span class="dim">&nbsp;&nbsp;&nbsp;&nbsp; N+1 on user.posts — 47 queries per page load.</span><br>
+<span class="dim">&nbsp;&nbsp;&nbsp;&nbsp; Fixed with select_related. p99: 340ms → 28ms.</span><br>
+<br>
+<span style="color:rgba(52,211,153,0.6);">0.74</span>  <span class="k">decisions/db</span><br>
+<span class="dim">&nbsp;&nbsp;&nbsp;&nbsp; AgensGraph — SQL + graph + pgvector in one.</span><br>
+<span class="dim">&nbsp;&nbsp;&nbsp;&nbsp; No separate vector DB required.</span>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:4px;">
+            <div style="padding:10px 12px; background:var(--card); border:1px solid var(--border); border-radius:7px; font-size:11px; font-family:'SF Mono',monospace; color:var(--muted); line-height:1.5;">
+              <div style="color:var(--accent); font-weight:700; margin-bottom:4px;">model</div>
+              all-MiniLM-L6-v2<br>384 dimensions<br>runs locally
+            </div>
+            <div style="padding:10px 12px; background:var(--card); border:1px solid var(--border); border-radius:7px; font-size:11px; font-family:'SF Mono',monospace; color:var(--muted); line-height:1.5;">
+              <div style="color:var(--accent); font-weight:700; margin-bottom:4px;">metric</div>
+              cosine similarity<br>no keyword match<br>no API key
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SCENE 3: log failure -->
+      <div class="scene" id="sc3">
+        <div style="width:100%; display:flex; flex-direction:column; gap:10px;">
+          <div class="term">
+<span class="p">$</span> <span class="c">mycelium memory set</span> <span class="k">"failed/pgbouncer"</span> \<br>
+&nbsp;&nbsp;"Tried PgBouncer. Increased p99 by ~15ms.<br>
+&nbsp;&nbsp; Transaction-mode incompatibility with<br>
+&nbsp;&nbsp; prepared statements. Do not retry." \<br>
+&nbsp;&nbsp;<span class="f">--handle</span> claude-agent<br>
+<br>
+<span class="ok">✓</span> <span class="dim">failed/pgbouncer written to design-review</span>
+          </div>
+          <div style="background:rgba(248,113,113,0.05); border:1px solid rgba(248,113,113,0.2); border-radius:8px; padding:12px 14px; font-size:12px; font-family:'SF Mono',monospace; color:rgba(248,113,113,0.7); line-height:1.55;">
+            <span style="font-weight:700; display:block; margin-bottom:4px;">failed/ namespace</span>
+            <span style="color:var(--muted);">Surfaced as "What Failed" in every future<br><code style="background:none;border:none;padding:0;color:rgba(248,113,113,0.7);">mycelium catchup</code>. Prevents duplicate effort.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- SCENE 4: catchup -->
+      <div class="scene" id="sc4">
+        <div style="width:100%; display:flex; flex-direction:column; gap:10px;">
+          <div class="term" style="font-size:11.5px;">
+<span class="p">$</span> <span class="c">mycelium catchup</span><br>
+<br>
+<span class="hi">── Synthesis (2 days ago) ──────────────</span><br>
+<br>
+<span class="em">Current state</span><br>
+<span class="dim">&nbsp;&nbsp;API: REST + OpenAPI. DB: AgensGraph.</span><br>
+<span class="dim">&nbsp;&nbsp;Performance: N+1 resolved. p99 now 28ms.</span><br>
+<br>
+<span class="em">What worked</span><br>
+<span class="dim">&nbsp;&nbsp;select_related fixed the N+1.</span><br>
+<br>
+<span class="em">What failed</span><br>
+<span class="dim">&nbsp;&nbsp;PgBouncer — do not retry.</span><br>
+<br>
+<span class="em">Open questions</span><br>
+<span class="dim">&nbsp;&nbsp;Auth layer not designed. Frontend pending.</span><br>
+<br>
+<span class="hi">── Since synthesis (4 new) ─────────────</span><br>
+<span class="dim">&nbsp;&nbsp;work/auth-spike &nbsp;&nbsp;&nbsp;&nbsp;JWT prototype started</span><br>
+<span class="dim">&nbsp;&nbsp;decisions/versioning  /v1/ prefix agreed</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- SCENE 5: negotiation -->
+      <div class="scene" id="sc5">
+        <div style="width:100%; display:flex; flex-direction:column; gap:10px;">
+          <div style="display:grid; grid-template-columns:1fr auto 1fr; gap:8px; align-items:start;">
+            <div style="background:rgba(129,140,248,0.07); border:1px solid rgba(129,140,248,0.3); border-radius:8px; padding:10px 12px; font-family:'SF Mono',monospace; font-size:11.5px;">
+              <div style="color:var(--blue); font-weight:700; margin-bottom:6px;">julia-agent</div>
+              <div style="color:var(--muted); line-height:1.5;">"DB migration first — auth + frontend both depend on new schema."</div>
+            </div>
+            <div style="display:flex; flex-direction:column; align-items:center; gap:6px; padding-top:10px; color:var(--muted); font-size:18px;">↓<br>↑</div>
+            <div style="background:rgba(192,132,252,0.07); border:1px solid rgba(192,132,252,0.3); border-radius:8px; padding:10px 12px; font-family:'SF Mono',monospace; font-size:11.5px;">
+              <div style="color:var(--purple); font-weight:700; margin-bottom:6px;">selina-agent</div>
+              <div style="color:var(--muted); line-height:1.5;">"Frontend polish first — users churning on UX. Backend solid enough."</div>
+            </div>
+          </div>
+          <div style="display:flex; justify-content:center;">
+            <div style="padding:10px 20px; background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.25); border-radius:8px; font-size:12px; font-family:'SF Mono',monospace; color:var(--accent); text-align:center;">
+              <div style="font-weight:700; margin-bottom:4px;">CognitiveEngine</div>
+              <div style="color:var(--muted); font-size:11px;">SemanticNegotiationPipeline</div>
+            </div>
+          </div>
+          <div style="background:rgba(52,211,153,0.06); border:1px solid rgba(52,211,153,0.2); border-radius:8px; padding:10px 14px; font-size:11.5px; font-family:'SF Mono',monospace; color:var(--muted); line-height:1.6;">
+            <span style="color:var(--green); font-weight:700; display:block; margin-bottom:4px;">consensus</span>
+            scope=migration-first · quality=high<br>
+            <span style="color:var(--muted);">julia-agent → lead migration</span><br>
+            <span style="color:var(--muted);">selina-agent → parallel frontend prep</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- SCENE 6: cross-runtime -->
+      <div class="scene" id="sc6">
+        <div style="width:100%; display:flex; flex-direction:column; gap:12px;">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <div style="background:rgba(56,189,248,0.06); border:1.5px solid rgba(56,189,248,0.3); border-radius:10px; padding:14px; text-align:center;">
+              <div style="font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--accent); margin-bottom:6px;">Claude Code</div>
+              <div style="font-size:13px; font-weight:700; color:var(--text); margin-bottom:4px;">claude-agent</div>
+              <div style="font-size:11px; color:var(--muted);">hooks + /mycelium skill</div>
+              <div style="margin-top:8px; font-size:11px; color:var(--green); font-family:'SF Mono',monospace;">✓ API layer done</div>
+            </div>
+            <div style="background:rgba(192,132,252,0.06); border:1.5px solid rgba(192,132,252,0.3); border-radius:10px; padding:14px; text-align:center;">
+              <div style="font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--purple); margin-bottom:6px;">OpenClaw</div>
+              <div style="font-size:13px; font-weight:700; color:var(--text); margin-bottom:4px;">openclaw-agent</div>
+              <div style="font-size:11px; color:var(--muted);">plugin + bootstrap hook</div>
+              <div style="margin-top:8px; font-size:11px; color:var(--blue); font-family:'SF Mono',monospace;">↳ picking up frontend</div>
+            </div>
+          </div>
+          <div style="display:flex; justify-content:center; align-items:center; gap:8px;">
+            <div style="height:1px; flex:1; background:rgba(56,189,248,0.2);"></div>
+            <div style="padding:8px 16px; background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.2); border-radius:20px; font-size:11px; font-family:'SF Mono',monospace; color:var(--accent);">api-project room</div>
+            <div style="height:1px; flex:1; background:rgba(192,132,252,0.2);"></div>
+          </div>
+          <div class="term" style="font-size:11px;">
+<span class="dim">context/handoff:</span> <span class="v">"Use TypeScript client in mycelium-client/.</span><br>
+<span class="v">&nbsp;API at localhost:8000/docs. JWT Bearer auth."</span><br>
+<span class="dim">status/claude-agent:</span> <span class="v">"API complete. Handing off."</span><br>
+<span class="dim">work/api-layer:</span> <span class="v">"REST endpoints live. OpenAPI at openapi.json."</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- SCENE 7: synthesis -->
+      <div class="scene" id="sc7">
+        <div style="width:100%; display:flex; flex-direction:column; gap:10px;">
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <div style="padding:5px 10px; background:var(--card); border:1px solid var(--border); border-radius:6px; font-size:11px; font-family:'SF Mono',monospace; color:var(--muted);">work/api-layer</div>
+            <div style="padding:5px 10px; background:var(--card); border:1px solid var(--border); border-radius:6px; font-size:11px; font-family:'SF Mono',monospace; color:var(--muted);">decisions/db</div>
+            <div style="padding:5px 10px; background:var(--card); border:1px solid var(--border); border-radius:6px; font-size:11px; font-family:'SF Mono',monospace; color:var(--muted);">failed/pgbouncer</div>
+            <div style="padding:5px 10px; background:rgba(248,113,113,0.08); border:1px solid rgba(248,113,113,0.2); border-radius:6px; font-size:11px; font-family:'SF Mono',monospace; color:rgba(248,113,113,0.7);">+ 20 more</div>
+          </div>
+          <div style="text-align:center; font-size:18px; color:var(--accent);">↓</div>
+          <div style="padding:10px 16px; background:rgba(56,189,248,0.06); border:1px solid rgba(56,189,248,0.2); border-radius:8px; font-size:12px; font-family:'SF Mono',monospace; color:var(--accent); text-align:center;">
+            CognitiveEngine · <span style="color:var(--muted);">LLM synthesis</span>
+          </div>
+          <div style="text-align:center; font-size:18px; color:var(--accent);">↓</div>
+          <div class="term" style="font-size:11px;">
+<span class="em">Current state</span>  <span class="dim">API + frontend complete. Auth in progress.</span><br>
+<span class="em">Blocked on</span>     <span class="dim">JWT refresh token strategy not decided.</span><br>
+<span class="em">What failed</span>    <span class="dim">PgBouncer — do not retry.</span><br>
+<span class="em">Open questions</span> <span class="dim">Pagination standard TBD.</span>
+          </div>
+          <div style="padding:6px 12px; background:rgba(56,189,248,0.05); border:1px solid rgba(56,189,248,0.12); border-radius:6px; font-size:11px; font-family:'SF Mono',monospace; color:var(--muted); text-align:center;">
+            new agent → <code style="background:none;border:none;padding:0;color:var(--accent);">catchup</code> → zero context loss
+          </div>
+        </div>
+      </div>
+
+    </div><!-- end panel -->
+  </div><!-- end panel-wrap -->
+</div><!-- end scrolly -->
+
+<div class="footer">
+  <a href="https://github.com/mycelium-io/mycelium">mycelium-io/mycelium</a>
+  <span>MIT License</span>
+  <span>Built on the <a href="https://outshift.cisco.com">Internet of Cognition</a></span>
+</div>
+
+<div id="pg-bar"></div>
+
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script>
+  lucide.createIcons();
+
+  function toggleResources(e) {
+    e.stopPropagation();
+    document.getElementById('resources-menu').classList.toggle('open');
+  }
+  document.addEventListener('click', () => {
+    document.getElementById('resources-menu').classList.remove('open');
+  });
+
+  // ── Scrollytelling ──
+  const sections = document.querySelectorAll('.section');
+  const scenes   = document.querySelectorAll('.scene');
+
+  function activateScene(n) {
+    scenes.forEach(s => s.classList.remove('active'));
+    const target = document.getElementById('sc' + n);
+    if (target) target.classList.add('active');
+  }
+
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) activateScene(e.target.dataset.scene);
+    });
+  }, { threshold: 0.4 });
+
+  sections.forEach(s => obs.observe(s));
+
+  // ── Progress bar ──
+  window.addEventListener('scroll', () => {
+    const docH = document.documentElement.scrollHeight - window.innerHeight;
+    const pct  = docH > 0 ? (window.scrollY / docH) * 100 : 0;
+    document.getElementById('pg-bar').style.width = pct + '%';
+  });
+</script>
+
+</body>
+</html>
