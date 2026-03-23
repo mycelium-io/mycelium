@@ -212,6 +212,53 @@
     margin-bottom: 12px;
   }
 
+  /* Overview tagline — intent · memory · context */
+  .pillars-eyebrow {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.28em 0.42em;
+    font-size: clamp(10px, 1.2vw + 8px, 12px);
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    margin-bottom: 14px;
+    line-height: 1.35;
+  }
+  .pillars-eyebrow .pillar {
+    color: var(--accent2);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .pillars-eyebrow .pillar-sep {
+    color: var(--dim);
+    font-weight: 400;
+    user-select: none;
+    flex-shrink: 0;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  .doc-footer-tagline {
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  @media (max-width: 520px) {
+    .pillars-eyebrow {
+      flex-direction: column;
+      align-items: flex-start;
+      flex-wrap: nowrap;
+      gap: 0.2em;
+    }
+    .pillars-eyebrow .pillar-sep {
+      display: none;
+    }
+  }
+
   h1 {
     font-size: 2.375rem;
     font-weight: 600;
@@ -564,7 +611,13 @@
 
     <!-- OVERVIEW -->
     <section class="doc-section" id="overview">
-      <div class="section-eyebrow">Internet of Cognition</div>
+      <div class="pillars-eyebrow" aria-label="What mycelium provides">
+        <span class="pillar">SHARED INTENT</span>
+        <span class="pillar-sep" aria-hidden="true">&middot;</span>
+        <span class="pillar">SHARED MEMORY</span>
+        <span class="pillar-sep" aria-hidden="true">&middot;</span>
+        <span class="pillar">SHARED CONTEXT</span>
+      </div>
       <h1>mycelium</h1>
       <p class="lead">
         A coordination layer for multi-agent systems — shared rooms, persistent memory,
@@ -1068,7 +1121,7 @@ mycelium install</code></pre>
     <div style="font-size:12px; color: var(--muted); font-family: 'SF Mono', monospace; padding-top: 8px; display:flex; flex-wrap:wrap; gap: 4px 12px;">
       <a href="https://github.com/mycelium-io/mycelium" style="color: var(--muted);">mycelium-io/mycelium</a>
       <span>MIT License</span>
-      <span>Built on the <a href="https://outshift.cisco.com" style="color: var(--muted);">Internet of Cognition</a></span>
+      <span class="doc-footer-tagline">SHARED INTENT &middot; SHARED MEMORY &middot; SHARED CONTEXT</span>
     </div>
 
   </div>

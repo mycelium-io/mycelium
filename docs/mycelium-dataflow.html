@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>mycelium — Adaptive Agent Coordination</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,600&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #05090f;
@@ -47,13 +47,39 @@
                 radial-gradient(ellipse at 50% 90%, rgba(52,211,153,0.05) 0%, transparent 50%);
   }
   .hero-eyebrow {
-    font-size: 11px;
-    letter-spacing: 0.25em;
-    text-transform: uppercase;
-    color: var(--accent);
-    font-weight: 700;
     margin-bottom: 24px;
-    font-family: 'SF Mono', monospace;
+  }
+  .hero-name {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-size: 2.375rem;
+    font-weight: 600;
+    font-style: italic;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    text-transform: none;
+    color: var(--text);
+  }
+  .hero-pillars-sub {
+    display: block;
+    margin-top: 12px;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: var(--accent2);
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    line-height: 1.45;
+    white-space: nowrap;
+  }
+  @media (max-width: 720px) {
+    .hero-pillars-sub {
+      white-space: normal;
+    }
+  }
+  @media (max-width: 600px) {
+    .hero-name {
+      font-size: 1.75rem;
+    }
   }
   .hero-title {
     font-size: clamp(40px, 5vw, 64px);
@@ -173,6 +199,10 @@
     line-height: 1.2;
     margin-bottom: 16px;
   }
+  .sec-title.sec-title-tagline {
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
   .sec-body {
     font-size: 15px;
     color: var(--muted);
@@ -180,6 +210,10 @@
     max-width: 440px;
   }
   .sec-body strong { color: #aaa; font-weight: 600; }
+  .sec-body strong.pillar-lead {
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
   .sec-body code {
     font-family: 'SF Mono', monospace;
     font-size: 12px;
@@ -272,7 +306,14 @@
     transition: border-color 0.3s;
   }
   .pillar-card .p-label { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; font-family: 'SF Mono', monospace; margin-bottom: 6px; }
-  .pillar-card .p-ioc { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+  .pillar-card .p-ioc {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
   .pillar-card .p-myc { font-size: 12px; color: var(--muted); line-height: 1.4; }
   .pillar-card.po { border-color: rgba(56,189,248,0.35); }
   .pillar-card.pb { border-color: rgba(129,140,248,0.35); }
@@ -452,6 +493,34 @@
     justify-content: space-between;
   }
   .footer span { color: var(--dim); }
+  .footer-left {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .footer-pillars {
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .footer-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    text-align: right;
+  }
+  .footer-meta a {
+    color: var(--muted);
+    text-decoration: none;
+  }
+  .footer-meta a:hover {
+    color: var(--accent);
+  }
 
   /* ── MOBILE ── */
   @media (max-width: 768px) {
@@ -503,6 +572,13 @@
       gap: 8px;
       text-align: center;
     }
+    .footer-meta {
+      align-items: center;
+      text-align: center;
+    }
+    .footer-left {
+      align-items: center;
+    }
   }
 
   @media (max-width: 480px) {
@@ -520,9 +596,9 @@
   <div style="display:flex; align-items:center; gap:56px;">
     <img src="logo.png" alt="Mycelium" style="width:320px; height:320px; object-fit:contain; flex-shrink:0; filter:none;">
     <div style="display:flex; flex-direction:column;">
-      <div class="hero-eyebrow">Mycelium &middot; Internet of Cognition</div>
+      <div class="hero-eyebrow"><span class="hero-name">mycelium</span><span class="hero-pillars-sub">SHARED INTENT &middot; SHARED MEMORY &middot; SHARED CONTEXT</span></div>
       <h1 class="hero-title">Adaptive Agent<br><span>Coordination</span></h1>
-      <p class="hero-sub">Semantic negotiation, persistent memory, and a knowledge fabric that compounds. The IoC three-pillar architecture, implemented and running on OpenClaw.</p>
+      <p class="hero-sub">Semantic negotiation, persistent memory, and a knowledge fabric that compounds—three layers working as one, implemented and running on OpenClaw.</p>
       <div class="hero-chips">
         <span class="chip chip-o">Claude Code</span>
         <span class="chip chip-o">OpenClaw</span>
@@ -550,19 +626,22 @@
     <div class="section" data-scene="1">
       <div class="sec-label" style="color:rgba(248,113,113,0.8);">The Problem</div>
       <h2 class="sec-title">Semantic Isolation</h2>
-      <p class="sec-body">Agents today can perceive, reason, and act &mdash; but they can't <strong>think together</strong>. No shared intent, no shared context, no ratchet effect. This is the gap the IoC paper identified.</p>
+      <p class="sec-body">Agents today can perceive, reason, and act &mdash; but they can't <strong>think together</strong>. No shared intent, no shared context, no ratchet effect. That is the coordination gap Mycelium is built to close.</p>
       <p class="sec-body" style="margin-top:12px;">Each agent runs in its own silo. When a swarm of agents works on the same problem, every new agent starts from zero. Past decisions are lost. Context evaporates between sessions.</p>
       <div class="sec-detail" style="border-color:rgba(248,113,113,0.5);">
         <span style="color:rgba(248,113,113,0.8);">Result:</span> <span>Linear scaling at best. No collective intelligence.</span>
       </div>
     </div>
 
-    <!-- S2: IoC Architecture -->
+    <!-- S2: Value -->
     <div class="section" data-scene="2">
-      <div class="sec-label blue">IoC Architecture</div>
+      <div class="sec-label blue">Value</div>
       <h2 class="sec-title">Three Pillars, One System</h2>
-      <p class="sec-body">Mycelium implements all three IoC pillars. <strong>Cognition State Protocols</strong> for shared intent via CognitiveEngine + NegMAS. <strong>Cognition Fabric</strong> for persistent memory and knowledge graph via CFN. <strong>Cognition Engines</strong> for synthesis and guardrails.</p>
-      <p class="sec-body" style="margin-top:12px;">Each pillar maps directly to Mycelium components and connects to the Outshift CFN services &mdash; <code>ioc-cfn-mgmt-plane</code> for agent registration and <code>ioc-cfn-svc</code> for fabric orchestration. Mycelium itself serves as the knowledge-memory backend.</p>
+      <p class="sec-body"> Mycelium delivers three core capabilities that transform isolated agents into a coordinated team.
+        <p class="sec-body"> <strong>Shared Intent</strong> — agents negotiate a single shared answer, not competing ones. Every agent has a voice. CognitiveEngine mediates until consensus is reached.</p>
+        <p class="sec-body"> <strong>Shared Memory</strong> — every decision, failure, and agreement is stored, searchable, and persistent across sessions. The room remembers everything so agents don't have to.</p>
+        <p class="sec-body"> <strong>Shared Context</strong> — any agent joining a mission inherits the full picture instantly. No repeated context-setting. No knowledge gaps.</p>
+      <p class="sec-body" style="margin-top:12px;"></p>
       <div class="sec-detail blue">
         <span class="hi-b">Pillar 1:</span> <span>SemanticNegotiationPipeline + NegMAS SAO</span>
         <span style="margin-top:4px;" class="hi-b">Pillar 2:</span> <span>Persistent memory + AgensGraph knowledge graph</span>
@@ -570,26 +649,12 @@
       </div>
     </div>
 
-    <!-- S3: Infrastructure -->
-    <div class="section" data-scene="3">
-      <div class="sec-label">Infrastructure</div>
-      <h2 class="sec-title">Infrastructure Overview</h2>
-      <p class="sec-body">Everything runs on one <strong>AgensGraph</strong> instance &mdash; SQL tables, openCypher graph, pgvector embeddings. The backend is <strong>FastAPI</strong> with Postgres <code>LISTEN/NOTIFY</code> for real-time SSE.</p>
-      <p class="sec-body" style="margin-top:12px;">CFN services plug in via the <code>cfn</code> Docker Compose profile. Agents connect through adapters &mdash; Claude Code via hooks + skill, OpenClaw via plugin &mdash; receiving coordination events over persistent SSE streams.</p>
-      <div class="sec-detail">
-        <span class="hi">mycelium-cli:</span> <span>agent adapters — Claude Code (hooks + skill) &middot; OpenClaw (plugin)</span>
-        <span style="margin-top:4px;" class="hi">mycelium-backend:</span> <span>FastAPI :8000 &middot; asyncpg LISTEN/NOTIFY &middot; CognitiveEngine</span>
-        <span style="margin-top:4px;" class="hi">mycelium-db:</span> <span>AgensGraph :5432 &middot; SQL + openCypher + pgvector</span>
-        <span style="margin-top:4px;" class="hi">CFN:</span> <span>mgmt-plane :9000 &middot; cfn-svc :9002</span>
-      </div>
-    </div>
-
     <!-- S4: Semantic Negotiation -->
     <div class="section" data-scene="4">
-      <div class="sec-label">Pillar 1 &mdash; Cognition State Protocols</div>
+      <div class="sec-label">Pillar 1 &mdash; Shared intent</div>
       <h2 class="sec-title">Semantic Negotiation</h2>
-      <p class="sec-body">When agents need to agree, <strong>CognitiveEngine</strong> runs the SemanticNegotiationPipeline. Three components: <strong>IntentDiscovery</strong> reads what agents want, <strong>OptionsGeneration</strong> creates the solution space, <strong>NegotiationModel</strong> runs NegMAS SAO (Stacked Alternating Offers).</p>
-      <p class="sec-body" style="margin-top:12px;">The complexity is tucked behind the CLI &mdash; <code>message propose</code> and <code>message respond</code> validate against SSTP wire-format models so agents never write raw JSON. Agents propose, respond, and reach consensus, all mediated, never direct.</p>
+      <p class="sec-body">When agents need to agree, <strong>CognitiveEngine</strong> runs the SemanticNegotiationPipeline. Three components work in sequence: <strong>IntentDiscovery</strong> reads what agents want, <strong>OptionsGeneration</strong> creates the solution space, <strong>NegotiationModel</strong> runs NegMAS SAO (Stacked Alternating Offers) until consensus is reached.</p>
+      <p class="sec-body" style="margin-top:12px;">The complexity is tucked behind the CLI &mdash; <code>message propose</code> and <code>message respond</code> validate against SSTP wire-format models so agents never write raw JSON. Agents propose, respond, and reach consensus &mdash; all mediated, never direct.</p>
       <div class="sec-detail">
         <span class="hi">IntentDiscovery</span><span style="margin-top:2px;">  &#8594; ["budget","timeline","scope","quality"]</span>
         <span style="margin-top:6px;" class="hi">OptionsGeneration</span><span style="margin-top:2px;">&#8594; {"budget": ["minimal"..."uncapped"], ...}</span>
@@ -613,7 +678,7 @@
 
     <!-- S6: Persistent Memory -->
     <div class="section" data-scene="6">
-      <div class="sec-label green">Pillar 2 &mdash; Cognition Fabric</div>
+      <div class="sec-label green">Pillar 2 &mdash; Shared memory</div>
       <h2 class="sec-title">Persistent Memory</h2>
       <p class="sec-body">Agents write memories scoped to rooms. Memories persist across sessions, carry <strong>vector embeddings</strong> for semantic search, and accumulate across agents. This is the <strong>ratchet effect</strong> &mdash; intelligence that doesn't reset.</p>
       <p class="sec-body" style="margin-top:12px;">Memories are key-value entries with namespace paths like <code>agent/branch/topic</code>. They version automatically and support semantic similarity search via pgvector.</p>
@@ -621,7 +686,7 @@
 
     <!-- S7: Catchup & Synthesis -->
     <div class="section" data-scene="7">
-      <div class="sec-label purple">Pillar 3 &mdash; Cognition Engines</div>
+      <div class="sec-label purple">Pillar 3 &mdash; Shared context</div>
       <h2 class="sec-title">Catchup</h2>
       <p class="sec-body">When a new agent arrives, it doesn't start from zero. <code>mycelium catchup</code> shows the latest CognitiveEngine synthesis plus recent activity. The synthesis is structured: <strong>Current State, What Worked, What Failed, Open Questions, Recommended Next Actions</strong>.</p>
       <p class="sec-body" style="margin-top:12px;">This pattern was proven by <strong>autoresearch@home</strong> &mdash; Ensue's distributed fork of Karpathy's autoresearch, where participants across the globe coordinated AI agents to optimize a training script. Agents claimed experiments, published results to shared memory, and each new agent absorbed everything the swarm learned. 700+ experiments ran overnight. Intelligence compounds instead of resetting.</p>
@@ -631,25 +696,40 @@
         <span style="margin-top:4px;" class="hi-p">Precedent:</span> <span>autoresearch@home &mdash; claim/run/publish via shared memory, zero duplication</span>
       </div>
     </div>
-
-    <!-- S8: CFN Integration -->
-    <div class="section" data-scene="8">
-      <div class="sec-label">CFN Integration</div>
-      <h2 class="sec-title">Cognitive Fabric Node</h2>
-      <p class="sec-body">Each Mycelium deployment <em>is</em> a CFN node — self-contained, with its own agents, memory, and knowledge graph. Today it runs standalone. The architecture is designed so nodes can federate: sharing memory and coordinating across teams or organizations without any single point of control.</p>
-      <p class="sec-body" style="margin-top:12px;">On startup, Mycelium registers as a memory provider with <code>ioc-cfn-mgmt-plane</code>. <code>ioc-cfn-svc</code> routes knowledge extraction and evidence reasoning to <strong>mycelium-backend</strong>, which implements both the KNOWLEDGE_MEMORY_SVC and COGNITION_ENGINE_SVC contracts.</p>
+    
+    <!-- S8a: Infrastructure -->
+    <div class="section" data-scene="8a">
+      <div class="sec-label">Architecture</div>
+      <h2 class="sec-title">How It's Built</h2>
+      <p class="sec-body">Everything runs on one <strong>AgensGraph</strong> instance &mdash; SQL tables, openCypher graph, pgvector embeddings. The backend is <strong>FastAPI</strong> with Postgres <code>LISTEN/NOTIFY</code> for real-time SSE.</p>
+      <p class="sec-body" style="margin-top:12px;">Mycelium builds on two OSS projects for agent registration and fabric orchestration: <code>ioc-cfn-mgmt-plane</code> handles agent registration and <code>ioc-cfn-svc</code> handles fabric orchestration. On startup, Mycelium registers as a memory provider and implements both the knowledge-memory and cognition engine service contracts.</p>
       <div class="sec-detail">
-        <span class="hi">Today:</span> <span>one node — mgmt-plane, cfn-svc, backend, AgensGraph</span>
-        <span style="margin-top:4px;" class="hi">Future:</span> <span>nodes federate — shared memory across orgs, no central authority</span>
+        <span class="hi">mycelium-cli:</span> <span>agent adapters — Claude Code (hooks + skill) &middot; OpenClaw (plugin)</span>
+        <span style="margin-top:4px;" class="hi">mycelium-backend:</span> <span>FastAPI :8000 &middot; asyncpg LISTEN/NOTIFY &middot; CognitiveEngine</span>
+        <span style="margin-top:4px;" class="hi">mycelium-db:</span> <span>AgensGraph :5432 &middot; SQL + openCypher + pgvector</span>
+        <span style="margin-top:4px;" class="hi">CF Services:</span> <span>mgmt-plane :9000 &middot; cfn-svc :9002</span>
       </div>
-    </div>
+
+    </div><!-- S8b: CFN Integration -->
+    <div class="section" data-scene="8b">
+        <div class="sec-label">Architecture</div>
+        <h2 class="sec-title">Standing on Shoulders</h2>
+        <p class="sec-body">Mycelium is built on OSS projects we found invaluable in this space. Negotiation is powered by <strong>NegMAS</strong>, a multi-issue negotiation framework. Memory and knowledge graph storage runs on <strong>AgensGraph</strong>, a multi-model graph database. Agent registration and fabric orchestration are handled by <strong>ioc-cfn-mgmt-plane</strong> and <strong>ioc-cfn-svc</strong>.</p>
+        <p class="sec-body" style="margin-top:12px;">Today, Mycelium runs as a single self-contained node &mdash; its own agents, memory, and knowledge graph, all on one host. The architecture is designed so that in the future, any number of Mycelium nodes will be able to federate across hosts, sharing memory and coordinating without any single point of control.</p>
+      </div>
+
 
     <!-- S9: End-to-End -->
     <div class="section" data-scene="9">
       <div class="sec-label green">Full Pipeline</div>
       <h2 class="sec-title">From Isolation to Collective Intelligence</h2>
       <p class="sec-body">One install command. Agents join rooms. CognitiveEngine mediates. Memories compound. Knowledge grows. The coordination is open. The fabric is persistent. The engines get smarter.</p>
-      <p class="sec-body" style="margin-top:12px;">This is the <strong>Internet of Cognition</strong> &mdash; running today.</p>
+      <p class="sec-body" style="margin-top:12px;">
+        <strong>SHARED INTENT.</strong><br>
+        <strong>SHARED MEMORY.</strong><br>
+        <strong>SHARED CONTEXT.</strong><br>
+        <br>
+        &hellip; running today.
     </div>
 
   </div>
@@ -688,78 +768,27 @@
       <!-- SCENE 2: Three Pillars -->
       <div class="scene" id="sc2">
         <div style="width:100%; display:flex; flex-direction:column; gap:10px;">
-          <div style="font-size:12px; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--muted); margin-bottom:4px;">IoC Paper &#8594; Mycelium Implementation</div>
+          <div style="font-size:12px; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--muted); margin-bottom:4px;">Idea &#8594; Implementation</div>
           <div class="pillar-row">
             <div class="pillar-card po">
               <div class="p-label" style="color:var(--accent);">Pillar 1</div>
-              <div class="p-ioc">Cognition State Protocols</div>
+              <div class="p-ioc">Shared intent</div>
               <div class="p-myc" style="margin-top:8px; border-top:1px solid var(--border); padding-top:8px;">CognitiveEngine<br>NegMAS SAO<br>SemanticNegotiation<br>Pipeline</div>
             </div>
             <div class="pillar-card pb">
               <div class="p-label" style="color:var(--blue);">Pillar 2</div>
-              <div class="p-ioc">Cognition Fabric</div>
+              <div class="p-ioc">SHARED MEMORY</div>
               <div class="p-myc" style="margin-top:8px; border-top:1px solid var(--border); padding-top:8px;">Persistent Memory<br>AgensGraph + pgvector<br>Knowledge Graph</div>
             </div>
             <div class="pillar-card pp">
               <div class="p-label" style="color:var(--purple);">Pillar 3</div>
-              <div class="p-ioc">Cognition Engines</div>
+              <div class="p-ioc">SHARED CONTEXT</div>
               <div class="p-myc" style="margin-top:8px; border-top:1px solid var(--border); padding-top:8px;">Synthesis<br>Catchup<br>Guardrails</div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- SCENE 3: Infrastructure -->
-      <div class="scene" id="sc3">
-        <div style="width:100%; display:flex; flex-direction:column; gap:8px;">
-
-          <!-- layer label -->
-          <div style="font-size:11px; font-weight:700; letter-spacing:0.18em; text-transform:uppercase; color:var(--muted); font-family:'SF Mono',monospace; padding-left:2px;">clients</div>
-
-          <!-- mycelium-cli -->
-          <div style="padding:12px 16px; background:rgba(56,189,248,0.05); border:1px solid rgba(56,189,248,0.25); border-radius:10px; display:flex; align-items:center; justify-content:space-between;">
-            <div>
-              <div style="font-size:13.5px; font-weight:700; color:var(--accent);">mycelium-cli</div>
-              <div style="font-size:12px; color:var(--muted); margin-top:3px;">agent adapters &middot; Claude Code (hooks + skill) &middot; OpenClaw (plugin)</div>
-            </div>
-            <div style="font-size:12px; color:var(--muted); font-family:'SF Mono',monospace; white-space:nowrap; padding-left:12px; opacity:0.6;">install / CLI</div>
-          </div>
-
-          <!-- connector -->
-          <div style="display:flex; justify-content:center;"><div style="width:2px; height:12px; background:linear-gradient(to bottom,rgba(56,189,248,0.4),rgba(129,140,248,0.4));"></div></div>
-
-          <div style="font-size:11px; font-weight:700; letter-spacing:0.18em; text-transform:uppercase; color:var(--muted); font-family:'SF Mono',monospace; padding-left:2px;">core</div>
-
-          <!-- mycelium-backend -->
-          <div style="padding:12px 16px; background:rgba(129,140,248,0.05); border:1px solid rgba(129,140,248,0.3); border-radius:10px; display:flex; align-items:center; justify-content:space-between;">
-            <div>
-              <div style="font-size:13.5px; font-weight:700; color:var(--blue);">mycelium-backend</div>
-              <div style="font-size:12px; color:var(--muted); margin-top:3px;">FastAPI &middot; CognitiveEngine &middot; rooms &middot; SSE &middot; LISTEN/NOTIFY</div>
-            </div>
-            <div style="font-size:12px; color:var(--blue); font-family:'SF Mono',monospace; white-space:nowrap; padding-left:12px; opacity:0.7;">:8000</div>
-          </div>
-
-          <!-- connector -->
-          <div style="display:flex; justify-content:center;"><div style="width:2px; height:12px; background:linear-gradient(to bottom,rgba(129,140,248,0.4),rgba(52,211,153,0.4));"></div></div>
-
-          <div style="font-size:11px; font-weight:700; letter-spacing:0.18em; text-transform:uppercase; color:var(--muted); font-family:'SF Mono',monospace; padding-left:2px;">data &amp; integrations</div>
-
-          <!-- bottom row: db, cfn -->
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-            <div style="padding:12px 12px; background:rgba(52,211,153,0.05); border:1px solid rgba(52,211,153,0.25); border-radius:10px;">
-              <div style="font-size:13px; font-weight:700; color:var(--green);">mycelium-db</div>
-              <div style="font-size:12px; color:var(--muted); margin-top:4px; line-height:1.5;">AgensGraph<br>SQL · Cypher · pgvector</div>
-              <div style="font-size:12px; color:var(--green); font-family:'SF Mono',monospace; margin-top:6px; opacity:0.7;">:5432</div>
-            </div>
-            <div style="padding:12px 12px; background:rgba(192,132,252,0.05); border:1px solid rgba(192,132,252,0.25); border-radius:10px;">
-              <div style="font-size:13px; font-weight:700; color:var(--purple);">CFN Services</div>
-              <div style="font-size:12px; color:var(--muted); margin-top:4px; line-height:1.5;">mgmt-plane<br>cfn-svc</div>
-              <div style="font-size:12px; color:var(--purple); font-family:'SF Mono',monospace; margin-top:6px; opacity:0.7;">:9000 · :9002</div>
-            </div>
-          </div>
-
-        </div>
-      </div>
 
       <!-- SCENE 4: Negotiation Pipeline -->
       <div class="scene" id="sc4">
@@ -913,9 +942,61 @@
           </div>
         </div>
       </div>
+      
+      <!-- SCENE 8a: Infrastructure -->
+      <div class="scene" id="sc8a">
+        <div style="width:100%; display:flex; flex-direction:column; gap:8px;">
 
-      <!-- SCENE 8: CFN Integration -->
-      <div class="scene" id="sc8">
+          <!-- layer label -->
+          <div style="font-size:11px; font-weight:700; letter-spacing:0.18em; text-transform:uppercase; color:var(--muted); font-family:'SF Mono',monospace; padding-left:2px;">clients</div>
+
+          <!-- mycelium-cli -->
+          <div style="padding:12px 16px; background:rgba(56,189,248,0.05); border:1px solid rgba(56,189,248,0.25); border-radius:10px; display:flex; align-items:center; justify-content:space-between;">
+            <div>
+              <div style="font-size:13.5px; font-weight:700; color:var(--accent);">mycelium-cli</div>
+              <div style="font-size:12px; color:var(--muted); margin-top:3px;">agent adapters &middot; Claude Code (hooks + skill) &middot; OpenClaw (plugin)</div>
+            </div>
+            <div style="font-size:12px; color:var(--muted); font-family:'SF Mono',monospace; white-space:nowrap; padding-left:12px; opacity:0.6;">install / CLI</div>
+          </div>
+
+          <!-- connector -->
+          <div style="display:flex; justify-content:center;"><div style="width:2px; height:12px; background:linear-gradient(to bottom,rgba(56,189,248,0.4),rgba(129,140,248,0.4));"></div></div>
+
+          <div style="font-size:11px; font-weight:700; letter-spacing:0.18em; text-transform:uppercase; color:var(--muted); font-family:'SF Mono',monospace; padding-left:2px;">core</div>
+
+          <!-- mycelium-backend -->
+          <div style="padding:12px 16px; background:rgba(129,140,248,0.05); border:1px solid rgba(129,140,248,0.3); border-radius:10px; display:flex; align-items:center; justify-content:space-between;">
+            <div>
+              <div style="font-size:13.5px; font-weight:700; color:var(--blue);">mycelium-backend</div>
+              <div style="font-size:12px; color:var(--muted); margin-top:3px;">FastAPI &middot; CognitiveEngine &middot; rooms &middot; SSE &middot; LISTEN/NOTIFY</div>
+            </div>
+            <div style="font-size:12px; color:var(--blue); font-family:'SF Mono',monospace; white-space:nowrap; padding-left:12px; opacity:0.7;">:8000</div>
+          </div>
+
+          <!-- connector -->
+          <div style="display:flex; justify-content:center;"><div style="width:2px; height:12px; background:linear-gradient(to bottom,rgba(129,140,248,0.4),rgba(52,211,153,0.4));"></div></div>
+
+          <div style="font-size:11px; font-weight:700; letter-spacing:0.18em; text-transform:uppercase; color:var(--muted); font-family:'SF Mono',monospace; padding-left:2px;">data &amp; integrations</div>
+
+          <!-- bottom row: db, cfn -->
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+            <div style="padding:12px 12px; background:rgba(52,211,153,0.05); border:1px solid rgba(52,211,153,0.25); border-radius:10px;">
+              <div style="font-size:13px; font-weight:700; color:var(--green);">mycelium-db</div>
+              <div style="font-size:12px; color:var(--muted); margin-top:4px; line-height:1.5;">AgensGraph<br>SQL · Cypher · pgvector</div>
+              <div style="font-size:12px; color:var(--green); font-family:'SF Mono',monospace; margin-top:6px; opacity:0.7;">:5432</div>
+            </div>
+            <div style="padding:12px 12px; background:rgba(192,132,252,0.05); border:1px solid rgba(192,132,252,0.25); border-radius:10px;">
+              <div style="font-size:13px; font-weight:700; color:var(--purple);">CFN Services</div>
+              <div style="font-size:12px; color:var(--muted); margin-top:4px; line-height:1.5;">mgmt-plane<br>cfn-svc</div>
+              <div style="font-size:12px; color:var(--purple); font-family:'SF Mono',monospace; margin-top:6px; opacity:0.7;">:9000 · :9002</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- SCENE 8b: CFN Integration -->
+      <div class="scene" id="sc8b">
         <div style="width:100%; display:flex; flex-direction:column; gap:12px;">
 
           <!-- top row: node A — node B -->
@@ -1033,8 +1114,14 @@
 </div><!-- end scrolly -->
 
 <div class="footer">
-  <span>Mycelium &middot; Internet of Cognition</span>
-  <span>Outshift by Cisco</span>
+  <div class="footer-left">
+    <span>mycelium</span>
+    <span class="footer-pillars">SHARED INTENT &middot; SHARED MEMORY &middot; SHARED CONTEXT</span>
+  </div>
+  <div class="footer-meta">
+    <a href="https://github.com/mycelium-io/mycelium">mycelium-io/mycelium</a>
+    <span>MIT License</span>
+  </div>
 </div>
 
 <div id="pg-bar"></div>
