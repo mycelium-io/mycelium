@@ -189,6 +189,11 @@ def add(
             completed: set[str] = set()
 
             for s in step:
+                if dry_run:
+                    typer.secho(f"  [dry-run] Would run step: {s}", fg=typer.colors.CYAN)
+                    completed.add(s)
+                    continue
+
                 if s == "local-gateway":
                     _step_local_gateway(config)
                     completed.add(s)
@@ -199,7 +204,7 @@ def add(
                     _step_docker_env(config)
                     completed.add(s)
 
-            if completed & _GATEWAY_RESTART_STEPS:
+            if completed & _GATEWAY_RESTART_STEPS and not dry_run:
                 _restart_gateway_if_active()
 
             return

@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build":         "uv sync --frozen",
-    "build:metrics": "uv sync --frozen --extra metrics",
+    "build:dev":     "uv sync --frozen --extra dev",
     "dev":           "echo \"CLI has no dev server\"",
     "lint":          "uv run ruff check .",
     "lint:fix":      "uv run ruff check . --fix",

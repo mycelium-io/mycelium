@@ -128,8 +128,8 @@ Mycelium includes a lightweight metrics collector that receives OpenTelemetry da
 ### Quick Start
 
 ```bash
-# Install the metrics dependencies
-cd mycelium-cli && pnpm run build:metrics
+# Install the CLI (metrics dependencies are included)
+cd mycelium-cli && pnpm run build
 
 # Configure OpenClaw to export telemetry
 mycelium adapter add openclaw --step=otel
