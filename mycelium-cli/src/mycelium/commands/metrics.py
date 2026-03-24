@@ -454,28 +454,56 @@ def _fmt_cost(n: float | None) -> str:
     return f"${n:,.4f}"
 
 
+def _sparkline(min_v: float, avg_v: float, max_v: float, width: int = 8) -> str:
+    """Generate a sparkline bar showing min/avg/max position."""
+    if max_v == min_v:
+        return "━" * width
+    
+    # Calculate position of avg within the range (0.0 to 1.0)
+    pos = (avg_v - min_v) / (max_v - min_v)
+    avg_idx = int(pos * (width - 1))
+    
+    # Build the bar: ━ for line, ● for average position
+    bar = ""
+    for i in range(width):
+        if i == avg_idx:
+            bar += "[bold cyan]●[/bold cyan]"
+        else:
+            bar += "[dim]━[/dim]"
+    return bar
+
+
 def _fmt_histogram_s(h: dict) -> str:
-    """Format a millisecond histogram as seconds: avg / min / max (n samples)."""
-    avg = h["sum"] / h["count"] / 1000
-    parts = [f"avg {avg:.1f}s"]
-    if h.get("min") is not None:
-        parts.append(f"min {h['min'] / 1000:.1f}s")
-    if h.get("max") is not None:
-        parts.append(f"max {h['max'] / 1000:.1f}s")
-    parts.append(f"n={h['count']}")
-    return " / ".join(parts)
+    """Format a millisecond histogram as seconds with visual sparkline."""
+    count = h["count"]
+    avg = h["sum"] / count / 1000
+    min_v = h.get("min")
+    max_v = h.get("max")
+
+    if min_v is not None and max_v is not None:
+        min_s = min_v / 1000
+        max_s = max_v / 1000
+        if min_s != max_s:
+            bar = _sparkline(min_s, avg, max_s)
+            return f"{min_s:.1f}s {bar} {max_s:.1f}s  [dim](avg {avg:.1f}s, n={count})[/dim]"
+    
+    # Fallback for single value or missing min/max
+    return f"[bold]{avg:.1f}s[/bold]  [dim](n={count})[/dim]"
 
 
 def _fmt_histogram_raw(h: dict) -> str:
-    """Format a unitless histogram: avg / min / max (n samples)."""
-    avg = h["sum"] / h["count"]
-    parts = [f"avg {avg:.1f}"]
-    if h.get("min") is not None:
-        parts.append(f"min {h['min']:.0f}")
-    if h.get("max") is not None:
-        parts.append(f"max {h['max']:.0f}")
-    parts.append(f"n={h['count']}")
-    return " / ".join(parts)
+    """Format a unitless histogram with visual sparkline."""
+    count = h["count"]
+    avg = h["sum"] / count
+    min_v = h.get("min")
+    max_v = h.get("max")
+
+    if min_v is not None and max_v is not None and min_v != max_v:
+        bar = _sparkline(min_v, avg, max_v)
+        return f"{min_v:.0f} {bar} {max_v:.0f}  [dim](avg {avg:.1f}, n={count})[/dim]"
+    
+    # Fallback for single value or missing min/max
+    return f"[bold]{avg:.1f}[/bold]  [dim](n={count})[/dim]"
 
 
 def _fmt_size(nbytes: int) -> str:
