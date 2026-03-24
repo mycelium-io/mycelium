@@ -839,6 +839,50 @@ def _render_workspace_tables(agents_meta: list[dict]) -> None:
         console.print()
 
 
+def _detect_model(otel: dict | None) -> str:
+    """Return the primary model name from OTLP token data (most tokens wins)."""
+    by_model = (otel or {}).get("counters", {}).get("tokens", {}).get("by_model", {})
+    if not by_model:
+        return ""
+    return max(by_model, key=lambda m: by_model[m].get("total", 0))
+
+
+# $/token for input; cache_read discount is a multiplier on input price.
+# Prices are per-token (not per 1K).  Sources: Anthropic, OpenAI, AWS Bedrock
+# pricing pages as of 2025-Q4.
+_MODEL_PRICING: list[tuple[str, dict]] = [
+    # Anthropic (direct + Bedrock)  — pattern, {input $/tok, cache_read_discount}
+    ("claude-sonnet-4",     {"input": 3.00 / 1e6, "cache_discount": 0.90}),
+    ("claude-3-7-sonnet",   {"input": 3.00 / 1e6, "cache_discount": 0.90}),
+    ("claude-3-5-sonnet",   {"input": 3.00 / 1e6, "cache_discount": 0.90}),
+    ("claude-3-5-haiku",    {"input": 0.80 / 1e6, "cache_discount": 0.90}),
+    ("claude-haiku-4",      {"input": 0.80 / 1e6, "cache_discount": 0.90}),
+    ("claude-3-haiku",      {"input": 0.25 / 1e6, "cache_discount": 0.90}),
+    ("claude-3-opus",       {"input": 15.0 / 1e6, "cache_discount": 0.90}),
+    ("claude-opus-4",       {"input": 15.0 / 1e6, "cache_discount": 0.90}),
+    # OpenAI
+    ("gpt-4o-mini",         {"input": 0.15 / 1e6, "cache_discount": 0.50}),
+    ("gpt-4o",              {"input": 2.50 / 1e6, "cache_discount": 0.50}),
+    ("gpt-4-turbo",         {"input": 10.0 / 1e6, "cache_discount": 0.50}),
+    ("o3-mini",             {"input": 1.10 / 1e6, "cache_discount": 0.50}),
+    ("o3",                  {"input": 10.0 / 1e6, "cache_discount": 0.50}),
+    ("o4-mini",             {"input": 1.10 / 1e6, "cache_discount": 0.50}),
+]
+
+# Fallback when no model matches (conservative Haiku-class estimate)
+_DEFAULT_PRICING = {"input": 0.80 / 1e6, "cache_discount": 0.90, "label": "unknown model"}
+
+
+def _get_model_pricing(model_name: str) -> tuple[dict, str]:
+    """Match a model string (e.g. 'bedrock/global.anthropic.claude-haiku-4-5-…')
+    against known pricing.  Returns (pricing_dict, short_label)."""
+    lower = model_name.lower()
+    for pattern, pricing in _MODEL_PRICING:
+        if pattern in lower:
+            return pricing, pattern
+    return _DEFAULT_PRICING, _DEFAULT_PRICING.get("label", "unknown")
+
+
 def _render_cost_savings_table(otel: dict | None, backend: dict | None) -> None:
     """Render a Cost Savings panel showing local embedding savings and cache efficiency."""
     counters = (otel or {}).get("counters", {})
@@ -909,14 +953,24 @@ def _render_cost_savings_table(otel: dict | None, backend: dict | None) -> None:
 
     if cache_read > 0 and (input_tokens + cache_read) > 0:
         cache_ratio = cache_read / (input_tokens + cache_read) * 100
+        model_name = _detect_model(otel)
+        pricing, pricing_label = _get_model_pricing(model_name)
+        input_price = pricing["input"]
+        cache_discount = pricing["cache_discount"]
+
         table.add_row("Prompt cache hit ratio", f"[green]{cache_ratio:.1f}%[/green]")
         table.add_row("  cache read tokens", _fmt_num(cache_read))
-        # Anthropic charges ~90% less for cached tokens
-        estimated_saving = cache_read * 0.003 / 1000 * 0.9
+
+        estimated_saving = cache_read * input_price * cache_discount
         if estimated_saving > 0.0001:
             table.add_row(
                 "  estimated cache savings",
                 f"[green]~{_fmt_cost(estimated_saving)}[/green]",
+            )
+            table.add_row(
+                "  pricing basis",
+                f"[dim]{pricing_label} @ ${input_price * 1e6:.2f}/MTok, "
+                f"{cache_discount:.0%} cache discount[/dim]",
             )
 
     console.print(table)
