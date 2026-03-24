@@ -482,12 +482,11 @@ def _sparkline(min_v: float, avg_v: float, max_v: float, width: int = 8) -> str:
     return bar
 
 
-def _add_histogram_s(table: Table, label: str, h: dict) -> None:
-    """Add a millisecond histogram to a table: sparkline row + detail row."""
-    count = h.get("count", 0)
+def _fmt_histogram_s(h: dict) -> str:
+    """Format a millisecond histogram as seconds with visual sparkline."""
+    count = h["count"]
     if count == 0:
-        table.add_row(label, "—")
-        return
+        return "—"
     avg = h["sum"] / count / 1000
     min_v = h.get("min")
     max_v = h.get("max")
@@ -495,32 +494,31 @@ def _add_histogram_s(table: Table, label: str, h: dict) -> None:
     if min_v is not None and max_v is not None:
         min_s = min_v / 1000
         max_s = max_v / 1000
+        # Only show sparkline if there's meaningful range (> 0.05s difference)
         if abs(max_s - min_s) > 0.05:
             bar = _sparkline(min_s, avg, max_s)
-            table.add_row(label, f"{min_s:.1f}s {bar} {max_s:.1f}s")
-            table.add_row("", f"[dim]avg {avg:.1f}s  n={count}[/dim]")
-            return
+            return f"{min_s:.1f}s {bar} {max_s:.1f}s  [dim](avg {avg:.1f}s, n={count})[/dim]"
 
-    table.add_row(label, f"[bold]{avg:.1f}s[/bold]  [dim](n={count})[/dim]")
+    # Single value or narrow range
+    return f"[bold]{avg:.1f}s[/bold]  [dim](n={count})[/dim]"
 
 
-def _add_histogram_raw(table: Table, label: str, h: dict) -> None:
-    """Add a unitless histogram to a table: sparkline row + detail row."""
-    count = h.get("count", 0)
+def _fmt_histogram_raw(h: dict) -> str:
+    """Format a unitless histogram with visual sparkline."""
+    count = h["count"]
     if count == 0:
-        table.add_row(label, "—")
-        return
+        return "—"
     avg = h["sum"] / count
     min_v = h.get("min")
     max_v = h.get("max")
 
+    # Only show sparkline if there's meaningful range
     if min_v is not None and max_v is not None and abs(max_v - min_v) > 0.5:
         bar = _sparkline(min_v, avg, max_v)
-        table.add_row(label, f"{min_v:.0f} {bar} {max_v:.0f}")
-        table.add_row("", f"[dim]avg {avg:.1f}  n={count}[/dim]")
-        return
+        return f"{min_v:.0f} {bar} {max_v:.0f}  [dim](avg {avg:.1f}, n={count})[/dim]"
 
-    table.add_row(label, f"[bold]{avg:.1f}[/bold]  [dim](n={count})[/dim]")
+    # Single value or narrow range
+    return f"[bold]{avg:.1f}[/bold]  [dim](n={count})[/dim]"
 
 
 def _fmt_size(nbytes: int) -> str:
@@ -559,18 +557,38 @@ def _render_summary_table(
 
     table.add_row("Messages", _fmt_num(messages.get("processed", 0)))
 
-    _add_histogram_s(table, "Run duration", histograms.get("run_duration_ms", {}))
-    _add_histogram_s(table, "Msg duration", histograms.get("message_duration_ms", {}))
-    _add_histogram_raw(table, "Queue depth", histograms.get("queue_depth", {}))
-    _add_histogram_s(table, "Queue wait", histograms.get("queue_wait_ms", {}))
+    run_dur = histograms.get("run_duration_ms", {})
+    if run_dur.get("count", 0) > 0:
+        table.add_row("Run duration", _fmt_histogram_s(run_dur))
+    else:
+        table.add_row("Run duration", "—")
+
+    msg_dur = histograms.get("message_duration_ms", {})
+    if msg_dur.get("count", 0) > 0:
+        table.add_row("Msg duration", _fmt_histogram_s(msg_dur))
+    else:
+        table.add_row("Msg duration", "—")
+
+    qdepth = histograms.get("queue_depth", {})
+    if qdepth.get("count", 0) > 0:
+        table.add_row("Queue depth", _fmt_histogram_raw(qdepth))
+    else:
+        table.add_row("Queue depth", "—")
+
+    qwait = histograms.get("queue_wait_ms", {})
+    if qwait.get("count", 0) > 0:
+        table.add_row("Queue wait", _fmt_histogram_s(qwait))
+    else:
+        table.add_row("Queue wait", "—")
 
     table.add_row("Sessions (OTEL)", _fmt_num(len(otel_sessions)))
     total_turns = sum(s.get("turns", 1) for s in otel_sessions)
     table.add_row("Total turns", _fmt_num(total_turns) if otel_sessions else "—")
 
+    # Context utilization histogram (newly captured)
     ctx = histograms.get("context_tokens", {})
     if ctx.get("count", 0) > 0:
-        _add_histogram_raw(table, "Context window", ctx)
+        table.add_row("Context window", _fmt_histogram_raw(ctx))
 
     # Webhook stats (newly captured)
     webhooks = counters.get("webhooks", {})
@@ -583,7 +601,7 @@ def _render_summary_table(
         table.add_row("Webhooks", wh_str)
         wh_dur = histograms.get("webhook_duration_ms", {})
         if wh_dur.get("count", 0) > 0:
-            _add_histogram_s(table, "Webhook latency", wh_dur)
+            table.add_row("Webhook latency", _fmt_histogram_s(wh_dur))
 
     # Session state and stuck (newly captured)
     stuck = counters.get("sessions_stuck", 0)
@@ -591,7 +609,7 @@ def _render_summary_table(
         table.add_row("Sessions stuck", f"[red]{_fmt_num(stuck)}[/red]")
         stuck_age = histograms.get("session_stuck_age_ms", {})
         if stuck_age.get("count", 0) > 0:
-            _add_histogram_s(table, "Stuck age", stuck_age)
+            table.add_row("Stuck age", _fmt_histogram_s(stuck_age))
 
     # Run attempts (newly captured)
     run_attempts = counters.get("run_attempts", 0)
@@ -914,7 +932,7 @@ def _render_cost_savings_table(otel: dict | None, backend: dict | None) -> None:
     be_histograms = (backend or {}).get("histograms", {}) if backend else {}
     embed_lat = be_histograms.get("embeddings.latency_ms", {})
     if embed_lat.get("count", 0) > 0:
-        _add_histogram_s(table, "Embedding latency (local)", embed_lat)
+        table.add_row("Embedding latency (local)", _fmt_histogram_s(embed_lat))
 
     total_index_files = files_indexed + files_skipped
     if total_index_files > 0:
@@ -931,7 +949,7 @@ def _render_cost_savings_table(otel: dict | None, backend: dict | None) -> None:
 
     idx_lat = be_histograms.get("indexer.duration_ms", {})
     if idx_lat.get("count", 0) > 0:
-        _add_histogram_s(table, "Index run duration", idx_lat)
+        table.add_row("Index run duration", _fmt_histogram_s(idx_lat))
 
     if cache_read > 0 and (input_tokens + cache_read) > 0:
         cache_ratio = cache_read / (input_tokens + cache_read) * 100
@@ -1008,14 +1026,14 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
     llm_lat = be_histograms.get("llm.latency_ms", {})
     if llm_lat.get("count", 0) > 0:
         table.add_section()
-        _add_histogram_s(table, "LLM latency (all)", llm_lat)
+        table.add_row("LLM latency (all)", _fmt_histogram_s(llm_lat))
 
     for key in sorted(be_histograms):
         if key.startswith("llm.latency_ms.") and key != "llm.latency_ms":
             h = be_histograms[key]
             if h.get("count", 0) > 0:
                 label = key.replace("llm.latency_ms.", "  ")
-                _add_histogram_s(table, label, h)
+                table.add_row(label, _fmt_histogram_s(h))
 
     # Knowledge graph stats
     knowledge = be_counters.get("knowledge", {})
@@ -1029,7 +1047,7 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
             table.add_row("  graph store errors", f"[red]{_fmt_num(kg_errors)}[/red]")
         kg_lat = be_histograms.get("knowledge.ingestion_duration_ms", {})
         if kg_lat.get("count", 0) > 0:
-            _add_histogram_s(table, "  ingestion duration", kg_lat)
+            table.add_row("  ingestion duration", _fmt_histogram_s(kg_lat))
 
     # Synthesis stats
     synthesis = be_counters.get("synthesis", {})
@@ -1038,7 +1056,7 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
         table.add_row("Synthesis runs", _fmt_num(synthesis["runs"]))
         synth_lat = be_histograms.get("synthesis.duration_ms", {})
         if synth_lat.get("count", 0) > 0:
-            _add_histogram_s(table, "  synthesis duration", synth_lat)
+            table.add_row("  synthesis duration", _fmt_histogram_s(synth_lat))
 
     # Memory stats
     memory = be_counters.get("memory", {})
@@ -1053,7 +1071,7 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
             table.add_row("Semantic searches", _fmt_num(memory["searches"]))
             search_lat = be_histograms.get("memory.search_latency_ms", {})
             if search_lat.get("count", 0) > 0:
-                _add_histogram_s(table, "  search latency", search_lat)
+                table.add_row("  search latency", _fmt_histogram_s(search_lat))
 
     console.print(table)
     console.print()
