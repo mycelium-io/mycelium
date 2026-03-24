@@ -596,6 +596,8 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
         agent_names.add(a.get("name", ""))
     agent_names.discard("matrix")
 
+    totals = {"input": 0, "output": 0, "total": 0, "sessions": 0, "turns": 0}
+
     for name in sorted(agent_names):
         if not name:
             continue
@@ -604,6 +606,12 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
         agent_sessions = [s for s in otel_sessions if s.get("agent") == name]
         sess_count = len(agent_sessions)
         total_turns = sum(s.get("turns", 1) for s in agent_sessions)
+
+        totals["input"] += tok.get("input", 0)
+        totals["output"] += tok.get("output", 0)
+        totals["total"] += tok.get("total", 0)
+        totals["sessions"] += sess_count
+        totals["turns"] += total_turns
 
         ah = by_agent_hist.get(name, {})
         run_h = ah.get("run_duration_ms", {})
@@ -630,6 +638,20 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
             avg_run,
             queue,
             ws_size,
+        )
+
+    if len(agent_names) > 1:
+        table.add_row(
+            "[bold]Total[/bold]",
+            f"[bold]{_fmt_num(totals['input'])}[/bold]",
+            f"[bold]{_fmt_num(totals['output'])}[/bold]",
+            f"[bold]{_fmt_num(totals['total'])}[/bold]",
+            "—",
+            f"[bold]{totals['sessions']}[/bold]",
+            f"[bold]{totals['turns']}[/bold]",
+            "—",
+            "—",
+            "—",
         )
 
     if not agent_names:
