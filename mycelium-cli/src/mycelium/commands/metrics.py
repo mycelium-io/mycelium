@@ -496,15 +496,21 @@ def _render_summary_table(
     table.add_column("Value", justify="right")
 
     counters = (otel or {}).get("counters", {})
-    tokens = counters.get("tokens", {}).get("total", {})
     histograms = (otel or {}).get("histograms", {})
     messages = counters.get("messages", {})
+    otel_sessions = (otel or {}).get("sessions", [])
 
-    table.add_row("Total tokens", _fmt_num(tokens.get("total", 0)))
-    table.add_row("  input", _fmt_num(tokens.get("input", 0)))
-    table.add_row("  output", _fmt_num(tokens.get("output", 0)))
-    table.add_row("  cache read", _fmt_num(tokens.get("cache_read", 0)))
-    table.add_row("  cache write", _fmt_num(tokens.get("cache_write", 0)))
+    session_tokens: dict[str, int] = {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0, "total": 0}
+    for s in otel_sessions:
+        st = s.get("tokens", {})
+        for k in session_tokens:
+            session_tokens[k] += st.get(k, 0)
+
+    table.add_row("Total tokens", _fmt_num(session_tokens["total"]))
+    table.add_row("  input", _fmt_num(session_tokens["input"]))
+    table.add_row("  output", _fmt_num(session_tokens["output"]))
+    table.add_row("  cache read", _fmt_num(session_tokens["cache_read"]))
+    table.add_row("  cache write", _fmt_num(session_tokens["cache_write"]))
 
     cost = counters.get("cost_usd", {}).get("total", 0.0)
     if oc_cost and oc_cost.get("total") is not None:
@@ -538,7 +544,6 @@ def _render_summary_table(
     else:
         table.add_row("Queue wait", "—")
 
-    otel_sessions = (otel or {}).get("sessions", [])
     table.add_row("Sessions (OTEL)", _fmt_num(len(otel_sessions)))
     total_turns = sum(s.get("turns", 1) for s in otel_sessions)
     table.add_row("Total turns", _fmt_num(total_turns) if otel_sessions else "—")
