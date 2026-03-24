@@ -443,6 +443,9 @@ def _get_port() -> int:
 def _fmt_num(n: int | float | None) -> str:
     if n is None:
         return "—"
+    # Show integers without decimals, floats with up to 2 decimals
+    if isinstance(n, float) and n == int(n):
+        return f"{int(n):,}"
     if isinstance(n, float):
         return f"{n:,.2f}"
     return f"{n:,}"
@@ -483,11 +486,12 @@ def _fmt_histogram_s(h: dict) -> str:
     if min_v is not None and max_v is not None:
         min_s = min_v / 1000
         max_s = max_v / 1000
-        if min_s != max_s:
+        # Only show sparkline if there's meaningful range (> 0.05s difference)
+        if abs(max_s - min_s) > 0.05:
             bar = _sparkline(min_s, avg, max_s)
             return f"{min_s:.1f}s {bar} {max_s:.1f}s  [dim](avg {avg:.1f}s, n={count})[/dim]"
     
-    # Fallback for single value or missing min/max
+    # Single value or narrow range
     return f"[bold]{avg:.1f}s[/bold]  [dim](n={count})[/dim]"
 
 
@@ -498,11 +502,12 @@ def _fmt_histogram_raw(h: dict) -> str:
     min_v = h.get("min")
     max_v = h.get("max")
 
-    if min_v is not None and max_v is not None and min_v != max_v:
+    # Only show sparkline if there's meaningful range
+    if min_v is not None and max_v is not None and abs(max_v - min_v) > 0.5:
         bar = _sparkline(min_v, avg, max_v)
         return f"{min_v:.0f} {bar} {max_v:.0f}  [dim](avg {avg:.1f}, n={count})[/dim]"
     
-    # Fallback for single value or missing min/max
+    # Single value or narrow range
     return f"[bold]{avg:.1f}[/bold]  [dim](n={count})[/dim]"
 
 
