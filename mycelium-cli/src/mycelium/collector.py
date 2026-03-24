@@ -288,6 +288,15 @@ def _attrs_dict(attributes) -> dict[str, str | int | float | bool]:
     return result
 
 
+def _deep_merge(base: dict, override: dict) -> None:
+    """Recursively merge *override* into *base*, preserving keys that only exist in base."""
+    for key, value in override.items():
+        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+            _deep_merge(base[key], value)
+        else:
+            base[key] = value
+
+
 def _fetch_backend_metrics(store: MetricsStore, api_url: str) -> None:
     """Poll the Mycelium backend /api/metrics endpoint (best-effort)."""
     import urllib.request
@@ -371,8 +380,8 @@ def run(port: int, output_path: Path, *, backend_api_url: str = "http://localhos
     if output_path.exists():
         try:
             existing = json.loads(output_path.read_text())
-            store._counters = existing.get("counters", store._counters)
-            store._histograms = existing.get("histograms", store._histograms)
+            _deep_merge(store._counters, existing.get("counters", {}))
+            _deep_merge(store._histograms, existing.get("histograms", {}))
             for s in existing.get("sessions", []):
                 sid = s.get("session_id", "")
                 if sid:
