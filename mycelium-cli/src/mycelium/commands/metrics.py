@@ -616,23 +616,6 @@ def _render_summary_table(
     if run_attempts:
         table.add_row("Run attempts", _fmt_num(run_attempts))
 
-    # By-model cost breakdown (previously ingested but not shown)
-    cost_by_model = counters.get("cost_usd", {}).get("by_model", {})
-    if cost_by_model:
-        table.add_section()
-        table.add_row("[dim]Cost by model[/dim]", "")
-        for model_name in sorted(cost_by_model):
-            table.add_row(f"  {model_name}", _fmt_cost(cost_by_model[model_name]))
-
-    # By-model token breakdown (previously ingested but not shown)
-    tokens_by_model = counters.get("tokens", {}).get("by_model", {})
-    if tokens_by_model:
-        table.add_section()
-        table.add_row("[dim]Tokens by model[/dim]", "")
-        for model_name in sorted(tokens_by_model):
-            mt = tokens_by_model[model_name]
-            table.add_row(f"  {model_name}", _fmt_num(mt.get("total", 0)))
-
     gw_status = "—"
     if oc:
         gw = oc.get("gateway", {})
@@ -642,6 +625,23 @@ def _render_summary_table(
             gw_status = gw
     table.add_row("Gateway", gw_status)
 
+    # By-model cost breakdown
+    cost_by_model = counters.get("cost_usd", {}).get("by_model", {})
+    if cost_by_model:
+        table.add_section()
+        table.add_row("[dim]Cost by model[/dim]", "")
+        for model_name in sorted(cost_by_model):
+            table.add_row(f"  {model_name}", _fmt_cost(cost_by_model[model_name]))
+
+    # By-model token breakdown
+    tokens_by_model = counters.get("tokens", {}).get("by_model", {})
+    if tokens_by_model:
+        table.add_section()
+        table.add_row("[dim]Tokens by model[/dim]", "")
+        for model_name in sorted(tokens_by_model):
+            mt = tokens_by_model[model_name]
+            table.add_row(f"  {model_name}", _fmt_num(mt.get("total", 0)))
+
     console.print(table)
     console.print()
 
@@ -650,27 +650,6 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
     counters = (otel or {}).get("counters", {})
     by_agent_cost = counters.get("cost_usd", {}).get("by_agent", {})
     by_agent_histograms = (otel or {}).get("histograms", {}).get("by_agent", {})
-    has_cost = bool(by_agent_cost)
-    has_hist = any(
-        h.get("run_duration_ms", {}).get("count", 0) > 0
-        for h in by_agent_histograms.values()
-    )
-
-    table = Table(title="Agents", title_style="bold cyan", title_justify="left", border_style="dim")
-    table.add_column("Agent", style="bold")
-    table.add_column("Input", justify="right")
-    table.add_column("Output", justify="right")
-    table.add_column("Cache R", justify="right", style="dim")
-    table.add_column("Cache W", justify="right", style="dim")
-    table.add_column("Total", justify="right")
-    if has_cost:
-        table.add_column("Cost", justify="right")
-    table.add_column("Sessions", justify="right")
-    table.add_column("Turns", justify="right")
-    if has_hist:
-        table.add_column("Avg Run", justify="right")
-    table.add_column("Workspace", justify="right")
-
     by_agent_tokens = counters.get("tokens", {}).get("by_agent", {})
     otel_sessions = (otel or {}).get("sessions", [])
 
@@ -689,7 +668,29 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
     agent_names: set[str] = set(by_agent_tokens.keys()) | set(session_tokens_by_agent.keys())
     for a in agents_meta:
         agent_names.add(a.get("name", ""))
-    agent_names -= {"matrix", "slack", "discord", "cli", ""}
+    _FILTERED_CHANNELS = {"matrix", "slack", "discord", "cli", ""}
+    agent_names -= _FILTERED_CHANNELS
+
+    has_cost = any(by_agent_cost.get(n) for n in agent_names)
+    has_hist = any(
+        by_agent_histograms.get(n, {}).get("run_duration_ms", {}).get("count", 0) > 0
+        for n in agent_names
+    )
+
+    table = Table(title="Agents", title_style="bold cyan", title_justify="left", border_style="dim")
+    table.add_column("Agent", style="bold")
+    table.add_column("Input", justify="right")
+    table.add_column("Output", justify="right")
+    table.add_column("Cache R", justify="right", style="dim")
+    table.add_column("Cache W", justify="right", style="dim")
+    table.add_column("Total", justify="right")
+    if has_cost:
+        table.add_column("Cost", justify="right")
+    table.add_column("Sessions", justify="right")
+    table.add_column("Turns", justify="right")
+    if has_hist:
+        table.add_column("Avg Run", justify="right")
+    table.add_column("Workspace", justify="right")
 
     totals: dict[str, int | float] = {
         "input": 0, "output": 0, "cache_read": 0, "cache_write": 0,
