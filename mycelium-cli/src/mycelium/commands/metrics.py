@@ -482,43 +482,61 @@ def _sparkline(min_v: float, avg_v: float, max_v: float, width: int = 8) -> str:
     return bar
 
 
+def _fmt_val_s(v: float) -> str:
+    """Format a seconds value to a fixed 6-char field like ' 1.9s ' or ' 0.0s '."""
+    return f"{v:.1f}s"
+
+
 def _fmt_histogram_s(h: dict) -> str:
-    """Format a millisecond histogram as seconds with visual sparkline."""
+    """Format a millisecond histogram as seconds with fixed-width aligned sparkline."""
     count = h["count"]
     if count == 0:
         return "—"
     avg = h["sum"] / count / 1000
     min_v = h.get("min")
     max_v = h.get("max")
+    _W = 6  # width for each value column (e.g. " 1.9s" or " 0.0s")
 
     if min_v is not None and max_v is not None:
         min_s = min_v / 1000
         max_s = max_v / 1000
-        # Only show sparkline if there's meaningful range (> 0.05s difference)
         if abs(max_s - min_s) > 0.05:
             bar = _sparkline(min_s, avg, max_s)
-            return f"{min_s:.1f}s {bar} {max_s:.1f}s  [dim](avg {avg:.1f}s, n={count})[/dim]"
+            return (
+                f"{_fmt_val_s(min_s):>{_W}} {bar} {_fmt_val_s(max_s):<{_W}}  "
+                f"[dim]avg {_fmt_val_s(avg):>{_W}}  n={count}[/dim]"
+            )
 
-    # Single value or narrow range
-    return f"[bold]{avg:.1f}s[/bold]  [dim](n={count})[/dim]"
+    bar = "━" * 8
+    return (
+        f"{_fmt_val_s(avg):>{_W}} {bar} {'':<{_W}}  "
+        f"[dim]avg {_fmt_val_s(avg):>{_W}}  n={count}[/dim]"
+    )
 
 
 def _fmt_histogram_raw(h: dict) -> str:
-    """Format a unitless histogram with visual sparkline."""
+    """Format a unitless histogram with fixed-width aligned sparkline."""
     count = h["count"]
     if count == 0:
         return "—"
     avg = h["sum"] / count
     min_v = h.get("min")
     max_v = h.get("max")
+    _W = 7  # width for each value column
 
-    # Only show sparkline if there's meaningful range
-    if min_v is not None and max_v is not None and abs(max_v - min_v) > 0.5:
-        bar = _sparkline(min_v, avg, max_v)
-        return f"{min_v:.0f} {bar} {max_v:.0f}  [dim](avg {avg:.1f}, n={count})[/dim]"
+    if min_v is not None and max_v is not None:
+        if abs(max_v - min_v) > 0.5:
+            bar = _sparkline(min_v, avg, max_v)
+            return (
+                f"{min_v:>{_W}.0f} {bar} {max_v:<{_W}.0f}  "
+                f"[dim]avg {avg:>{_W}.1f}  n={count}[/dim]"
+            )
 
-    # Single value or narrow range
-    return f"[bold]{avg:.1f}[/bold]  [dim](n={count})[/dim]"
+    bar = "━" * 8
+    return (
+        f"{avg:>{_W}.1f} {bar} {'':<{_W}}  "
+        f"[dim]avg {avg:>{_W}.1f}  n={count}[/dim]"
+    )
 
 
 def _fmt_size(nbytes: int) -> str:
