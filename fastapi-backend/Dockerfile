@@ -19,9 +19,8 @@ RUN python3 -c 'import tomllib; deps=tomllib.load(open("pyproject.toml","rb"))["
 COPY . .
 
 # Pre-download embedding model weights so the container starts without any
-# network dependency. This is a stable layer — only rebuilt when the base
-# image or deps change.
-RUN python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
+# network dependency. Non-fatal — if deps conflict, model downloads on first use.
+RUN python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')" || true
 
 RUN chmod +x start.sh
 

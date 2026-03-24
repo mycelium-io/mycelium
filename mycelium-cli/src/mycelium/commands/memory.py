@@ -6,6 +6,7 @@ Search and subscribe use the backend API (pgvector/NOTIFY).
 """
 
 import json
+import subprocess
 from datetime import UTC, datetime
 
 import typer
@@ -19,6 +20,7 @@ from mycelium.filesystem import (
     get_room_dir,
     list_memories,
     read_memory,
+    write_memory,
 )
 from mycelium.sstp import MEMORY_CATEGORIES, MemoryLogEntry
 
@@ -35,6 +37,41 @@ def _get_client():
 
     cfg = MyceliumConfig.load()
     return Client(base_url=cfg.server.api_url, raise_on_unexpected_status=True)
+
+
+def _write_local_copy(room_name: str, mem) -> None:
+    """Write a local copy of a memory file from the API response.
+
+    This ensures the agent has a local file for reads and git sync,
+    even when the backend is remote.
+    """
+    from mycelium_backend_client.types import UNSET
+
+    room_dir = get_room_dir(room_name)
+
+    # Extract content from the value field
+    value = mem.value
+    if hasattr(value, "to_dict"):
+        value = value.to_dict()
+    if isinstance(value, dict):
+        content = value.get("text", str(value))
+    else:
+        content = str(value)
+
+    tags = mem.tags if not isinstance(mem.tags, type(UNSET)) else None
+    updated_by = mem.updated_by if not isinstance(mem.updated_by, type(UNSET)) else None
+
+    write_memory(
+        room_dir,
+        mem.key,
+        content,
+        created_by=mem.created_by,
+        updated_by=updated_by,
+        version=mem.version,
+        tags=tags,
+        created_at=mem.created_at,
+        updated_at=mem.updated_at,
+    )
 
 
 def _get_active_room(room: str | None) -> str:
@@ -135,11 +172,16 @@ def memory_set(
 
     batch = MemoryBatchCreate(items=[item])
 
-    # The backend API now writes the file AND updates the search index
+    # The backend API writes the file on the server and updates the search index.
+    # We also write the file locally so the agent has a local copy for reads and git sync.
     with _get_client() as client:
         result = create_api.sync(room_name=room_name, client=client, body=batch)
         if result and isinstance(result, list) and len(result) > 0:
             mem = result[0]
+
+            # Write the file locally using the response metadata
+            _write_local_copy(room_name, mem)
+
             file_path = getattr(mem, "file_path", None)
             version_info = f"v{mem.version}" if hasattr(mem, "version") else ""
             path_info = f"  [{file_path}]" if file_path else ""
@@ -510,3 +552,104 @@ def memory_procedures(
 ) -> None:
     """Show reusable how-to procedures — filters to procedures/* memories."""
     _list_by_category("procedures", room, limit)
+
+
+# ── Sync commands ────────────────────────────────────────────────────────────
+
+
+def _git(room_dir, *args: str) -> subprocess.CompletedProcess:
+    """Run a git command in the room directory."""
+    return subprocess.run(
+        ["git", *args],
+        cwd=room_dir,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+@doc_ref(
+    usage="mycelium sync [--push] [--no-reindex]",
+    desc="Sync the active room with its git remote — pull, reindex, and optionally push local changes.",
+    group="other",
+)
+@app.command(name="sync")
+def memory_sync(
+    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    push: bool = typer.Option(False, "--push", help="Also commit and push local changes"),
+    no_reindex: bool = typer.Option(False, "--no-reindex", help="Skip re-indexing after pull"),
+    message: str = typer.Option("mycelium sync", "--message", "-m", help="Commit message for push"),
+) -> None:
+    """Sync room files with git remote — pull + reindex, optionally push.
+
+    Requires the room directory to be a git repo with a remote configured.
+    Use 'mycelium room init-git' to set up git for a room.
+
+    Examples:
+        mycelium sync                    # pull + reindex
+        mycelium sync --push             # commit + push + pull + reindex
+        mycelium sync --push -m "update" # push with custom message
+    """
+    room_name = _get_active_room(room)
+    room_dir = get_room_dir(room_name)
+
+    # Verify this is a git repo
+    result = _git(room_dir, "rev-parse", "--is-inside-work-tree")
+    if result.returncode != 0:
+        console.print(
+            f"[red]Error:[/red] {room_dir} is not a git repo. "
+            f"Run 'mycelium room init-git {room_name} --remote <url>' first."
+        )
+        raise typer.Exit(1)
+
+    # Push local changes first if requested
+    if push:
+        # Stage all changes in the room directory
+        _git(room_dir, "add", "-A")
+
+        # Check if there's anything to commit
+        status = _git(room_dir, "status", "--porcelain")
+        if status.stdout.strip():
+            result = _git(room_dir, "commit", "-m", message)
+            if result.returncode != 0:
+                console.print(f"[red]Commit failed:[/red] {result.stderr.strip()}")
+                raise typer.Exit(1)
+            console.print("[green]Committed[/green] local changes")
+
+        result = _git(room_dir, "push")
+        if result.returncode != 0:
+            console.print(f"[red]Push failed:[/red] {result.stderr.strip()}")
+            raise typer.Exit(1)
+        console.print("[green]Pushed[/green] to remote")
+
+    # Pull from remote
+    result = _git(room_dir, "pull", "--ff-only")
+    if result.returncode != 0:
+        # Try regular pull if ff-only fails
+        result = _git(room_dir, "pull")
+        if result.returncode != 0:
+            console.print(f"[red]Pull failed:[/red] {result.stderr.strip()}")
+            raise typer.Exit(1)
+
+    if "Already up to date" in result.stdout:
+        console.print("[dim]Already up to date[/dim]")
+    else:
+        console.print("[green]Pulled[/green] latest changes")
+
+    # Re-index the room's search index
+    if not no_reindex:
+        import httpx
+
+        cfg = MyceliumConfig.load()
+        try:
+            with httpx.Client(base_url=cfg.server.api_url, timeout=120) as client:
+                resp = client.post(f"/rooms/{room_name}/reindex")
+                resp.raise_for_status()
+                data = resp.json()
+            indexed = data.get("indexed", 0)
+            console.print(f"[green]Re-indexed:[/green] {indexed} memories")
+        except Exception as e:
+            console.print(f"[yellow]Warning:[/yellow] reindex failed: {e}")
+            console.print(
+                "[dim]Search index may be stale. Run 'mycelium memory reindex' when the backend is available.[/dim]"
+            )

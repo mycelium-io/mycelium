@@ -45,6 +45,8 @@ _CLAUDE_CODE_HOOKS = [
     "mycelium-session-end.sh",
     "mycelium-post-tool-use.sh",
     "mycelium-pre-compact.sh",
+    "mycelium-stop.sh",
+    "mycelium-sync.sh",
 ]
 
 
@@ -465,6 +467,8 @@ def _install_claude_code(verbose: bool = False) -> None:
 
     - Skill (SKILL.md): copied to ~/.claude/skills/mycelium/
     - Hooks (*.sh): copied to ~/.claude/hooks/  (made executable)
+    - Scripts (*.sh): copied to ~/.claude/scripts/ (support files for hooks)
+    - settings.json: registers Stop hook for git sync
     """
     claude_dir = Path.home() / ".claude"
 
@@ -493,6 +497,66 @@ def _install_claude_code(verbose: bool = False) -> None:
         dst_file.chmod(0o755)
         if verbose:
             typer.echo(f"  hook: {dst_file}")
+
+    # Install scripts (support files used by hooks)
+    scripts_src = _resolve_asset("scripts", adapter="claude-code")
+    scripts_dst = claude_dir / "scripts"
+    scripts_dst.mkdir(parents=True, exist_ok=True)
+    if scripts_src.exists():
+        for f in scripts_src.iterdir():
+            if f.is_file():
+                dest = scripts_dst / f.name
+                dest.write_bytes(f.read_bytes())
+                dest.chmod(0o755)
+                if verbose:
+                    typer.echo(f"  script: {dest}")
+
+    # Register Stop hook in settings.json for git sync
+    _register_claude_code_stop_hook(claude_dir, verbose=verbose)
+
+
+def _register_claude_code_stop_hook(claude_dir: Path, verbose: bool = False) -> None:
+    """Add mycelium-stop.sh to the Stop hooks in Claude Code settings.json."""
+    settings_path = claude_dir / "settings.json"
+    hook_command = str(claude_dir / "hooks" / "mycelium-stop.sh")
+
+    try:
+        if settings_path.exists():
+            settings = json_module.loads(settings_path.read_text())
+        else:
+            settings = {}
+
+        hooks = settings.setdefault("hooks", {})
+        stop_hooks = hooks.setdefault("Stop", [])
+
+        # Check if already registered
+        for entry in stop_hooks:
+            for h in entry.get("hooks", []):
+                if h.get("command", "") == hook_command:
+                    if verbose:
+                        typer.echo("  Stop hook already registered")
+                    return
+
+        # Add the hook
+        stop_hooks.append(
+            {
+                "matcher": "",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": hook_command,
+                        "timeout": 15,
+                    }
+                ],
+            }
+        )
+
+        settings_path.write_text(json_module.dumps(settings, indent=2) + "\n")
+        if verbose:
+            typer.echo(f"  registered Stop hook: {hook_command}")
+    except Exception as e:
+        if verbose:
+            typer.echo(f"  warning: could not register Stop hook: {e}")
 
 
 def _allow_plugin(plugin_id: str) -> None:

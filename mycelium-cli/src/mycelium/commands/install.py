@@ -594,6 +594,7 @@ def install(
                 compose_profiles.append("cfn")
 
             custom_ports = {"db": 5432, "backend": 8000}
+            llm_config["MYCELIUM_DATA_DIR"] = str(Path.home() / ".mycelium")
 
             typer.secho("  ── Starting services ──────────────────────────────────", bold=True)
             env_dir = Path.home() / ".mycelium"
@@ -794,6 +795,9 @@ def install(
             # Update llm_config with custom ports for env file
             llm_config["MYCELIUM_DB_PORT"] = str(custom_ports["db"])
             llm_config["MYCELIUM_BACKEND_PORT"] = str(custom_ports["backend"])
+
+        # Set MYCELIUM_DATA_DIR so compose mounts the host's .mycelium/ into the container
+        llm_config["MYCELIUM_DATA_DIR"] = str(Path.home() / ".mycelium")
 
         # ── Phase 3: Write env, bring up services ─────────────────────────
         print()

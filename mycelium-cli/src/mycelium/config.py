@@ -68,6 +68,14 @@ class RoomConfig(BaseModel):
         default=None,
         description="Currently active room name",
     )
+    git_remote: str | None = Field(
+        default=None,
+        description="Git remote URL for room sync (e.g. git@host:repo.git or https://...)",
+    )
+    auto_sync: bool = Field(
+        default=False,
+        description="Auto git-commit after memory set (for use with hooks)",
+    )
 
 
 class MyceliumConfig(BaseModel):

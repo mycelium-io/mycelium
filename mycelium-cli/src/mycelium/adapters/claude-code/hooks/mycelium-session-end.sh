@@ -66,6 +66,14 @@ ENDJSON
 fi
 
 # ---------------------------------------------------------------------------
+# Sync room files to git remote (if room is a git repo)
+# ---------------------------------------------------------------------------
+SYNC_SCRIPT="${SCRIPT_DIR}/mycelium-sync.sh"
+if [[ -x "$SYNC_SCRIPT" ]]; then
+    "$SYNC_SCRIPT" push-pull "mycelium: session ${SESSION_ID} ended (${MYCELIUM_AGENT_HANDLE})" 2>/dev/null &
+fi
+
+# ---------------------------------------------------------------------------
 # Cleanup temp files
 # ---------------------------------------------------------------------------
 rm -f "$BATCH_FILE"
