@@ -616,15 +616,6 @@ def _render_summary_table(
     if run_attempts:
         table.add_row("Run attempts", _fmt_num(run_attempts))
 
-    gw_status = "—"
-    if oc:
-        gw = oc.get("gateway", {})
-        if isinstance(gw, dict):
-            gw_status = gw.get("status", "unknown")
-        elif isinstance(gw, str):
-            gw_status = gw
-    table.add_row("Gateway", gw_status)
-
     # By-model cost breakdown
     cost_by_model = counters.get("cost_usd", {}).get("by_model", {})
     if cost_by_model:
