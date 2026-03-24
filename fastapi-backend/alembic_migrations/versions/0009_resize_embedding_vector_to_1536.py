@@ -3,11 +3,16 @@
 Supports pluggable embedding providers with different dimensions.
 All embeddings are zero-padded to 1536 so the column never needs resizing.
 
+Existing embeddings are cleared and rebuilt automatically on next backend
+startup (incremental scan + file watcher handle this).
+
 Revision ID: 0009
 Revises: 0008
 """
 
+import sqlalchemy as sa
 from alembic import op
+from pgvector.sqlalchemy import Vector
 
 revision = "0009"
 down_revision = "0008"
@@ -16,11 +21,12 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Resize the vector column: 384 → 1536
-    # pgvector ALTER COLUMN ... TYPE vector(N) re-validates and zero-pads existing data.
-    op.execute("ALTER TABLE memories ALTER COLUMN embedding TYPE vector(1536)")
+    # AgensGraph's pgvector can't ALTER TYPE vector(N) or cast between sizes.
+    # Drop and recreate. Embeddings are rebuilt on next startup scan.
+    op.drop_column("memories", "embedding")
+    op.add_column("memories", sa.Column("embedding", Vector(1536), nullable=True))
 
 
 def downgrade() -> None:
-    # Truncate back to 384 (loses dimensions > 384)
-    op.execute("ALTER TABLE memories ALTER COLUMN embedding TYPE vector(384)")
+    op.drop_column("memories", "embedding")
+    op.add_column("memories", sa.Column("embedding", Vector(384), nullable=True))
