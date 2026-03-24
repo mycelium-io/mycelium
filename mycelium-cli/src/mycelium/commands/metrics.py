@@ -500,17 +500,12 @@ def _render_summary_table(
     messages = counters.get("messages", {})
     otel_sessions = (otel or {}).get("sessions", [])
 
-    session_tokens: dict[str, int] = {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0, "total": 0}
-    for s in otel_sessions:
-        st = s.get("tokens", {})
-        for k in session_tokens:
-            session_tokens[k] += st.get(k, 0)
-
-    table.add_row("Total tokens", _fmt_num(session_tokens["total"]))
-    table.add_row("  input", _fmt_num(session_tokens["input"]))
-    table.add_row("  output", _fmt_num(session_tokens["output"]))
-    table.add_row("  cache read", _fmt_num(session_tokens["cache_read"]))
-    table.add_row("  cache write", _fmt_num(session_tokens["cache_write"]))
+    tokens = counters.get("tokens", {}).get("total", {})
+    table.add_row("Total tokens", _fmt_num(tokens.get("total", 0)))
+    table.add_row("  input", _fmt_num(tokens.get("input", 0)))
+    table.add_row("  output", _fmt_num(tokens.get("output", 0)))
+    table.add_row("  cache read", _fmt_num(tokens.get("cache_read", 0)))
+    table.add_row("  cache write", _fmt_num(tokens.get("cache_write", 0)))
 
     cost = counters.get("cost_usd", {}).get("total", 0.0)
     if oc_cost and oc_cost.get("total") is not None:
@@ -566,17 +561,14 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
     table.add_column("Agent", style="bold")
     table.add_column("Input", justify="right")
     table.add_column("Output", justify="right")
+    table.add_column("Cache R", justify="right", style="dim")
+    table.add_column("Cache W", justify="right", style="dim")
     table.add_column("Total", justify="right")
-    table.add_column("Cost (oc)", justify="right", style="dim")
     table.add_column("Sessions", justify="right")
     table.add_column("Turns", justify="right")
-    table.add_column("Avg Run", justify="right")
-    table.add_column("Queue", justify="right")
     table.add_column("Workspace", justify="right")
 
     by_agent_tokens = (otel or {}).get("counters", {}).get("tokens", {}).get("by_agent", {})
-    by_agent_cost = (otel or {}).get("counters", {}).get("cost_usd", {}).get("by_agent", {})
-    by_agent_hist = (otel or {}).get("histograms", {}).get("by_agent", {})
     otel_sessions = (otel or {}).get("sessions", [])
 
     session_tokens_by_agent: dict[str, dict[str, int]] = {}
@@ -591,33 +583,32 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
         for k in ("input", "output", "cache_read", "cache_write", "total"):
             bucket[k] += st.get(k, 0)
 
+    # Merge agent names from OTLP counters (may be channel names now, agent names later),
+    # session data (has actual agent names from trace spans), and registered agents
     agent_names: set[str] = set(by_agent_tokens.keys()) | set(session_tokens_by_agent.keys())
     for a in agents_meta:
         agent_names.add(a.get("name", ""))
-    agent_names.discard("matrix")
+    # Exclude generic channel names that aren't actual agents
+    agent_names -= {"matrix", "slack", "discord", "cli", ""}
 
-    totals = {"input": 0, "output": 0, "total": 0, "sessions": 0, "turns": 0}
+    totals = {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0, "total": 0, "sessions": 0, "turns": 0}
 
     for name in sorted(agent_names):
         if not name:
             continue
+        # Prefer OTLP counter data (cumulative), fall back to session-derived (capped at 200)
         tok = by_agent_tokens.get(name, session_tokens_by_agent.get(name, {}))
-        cost = by_agent_cost.get(name) if name in by_agent_cost else None
         agent_sessions = [s for s in otel_sessions if s.get("agent") == name]
         sess_count = len(agent_sessions)
         total_turns = sum(s.get("turns", 1) for s in agent_sessions)
 
         totals["input"] += tok.get("input", 0)
         totals["output"] += tok.get("output", 0)
+        totals["cache_read"] += tok.get("cache_read", 0)
+        totals["cache_write"] += tok.get("cache_write", 0)
         totals["total"] += tok.get("total", 0)
         totals["sessions"] += sess_count
         totals["turns"] += total_turns
-
-        ah = by_agent_hist.get(name, {})
-        run_h = ah.get("run_duration_ms", {})
-        avg_run = f"{run_h['sum'] / run_h['count'] / 1000:.1f}s" if run_h.get("count") else "—"
-        q_h = ah.get("queue_depth", {})
-        queue = f"{q_h['sum'] / q_h['count']:.0f}/{q_h.get('max', '?')}" if q_h.get("count") else "—"
 
         ws_size = "—"
         for a in agents_meta:
@@ -631,12 +622,11 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
             name,
             _fmt_num(tok.get("input", 0)),
             _fmt_num(tok.get("output", 0)),
+            _fmt_num(tok.get("cache_read", 0)),
+            _fmt_num(tok.get("cache_write", 0)),
             _fmt_num(tok.get("total", 0)),
-            _fmt_cost(cost),
             str(sess_count),
             str(total_turns) if total_turns else "—",
-            avg_run,
-            queue,
             ws_size,
         )
 
@@ -645,17 +635,16 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
             "[bold]Total[/bold]",
             f"[bold]{_fmt_num(totals['input'])}[/bold]",
             f"[bold]{_fmt_num(totals['output'])}[/bold]",
+            f"[bold]{_fmt_num(totals['cache_read'])}[/bold]",
+            f"[bold]{_fmt_num(totals['cache_write'])}[/bold]",
             f"[bold]{_fmt_num(totals['total'])}[/bold]",
-            "—",
             f"[bold]{totals['sessions']}[/bold]",
             f"[bold]{totals['turns']}[/bold]",
-            "—",
-            "—",
             "—",
         )
 
     if not agent_names:
-        table.add_row("(none)", *["—"] * 9)
+        table.add_row("(none)", *["—"] * 8)
 
     console.print(table)
     console.print()
