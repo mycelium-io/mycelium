@@ -333,6 +333,8 @@ def show(
     oc_sessions = _extract_oc_sessions(oc_status)
     oc_cost = _extract_oc_cost(oc_status)
 
+    backend_data = (otel_data or {}).get("backend")
+
     if json_output:
         combined = {
             "otel": otel_data or {},
@@ -342,10 +344,14 @@ def show(
                 "cost": oc_cost,
             },
         }
+        if backend_data:
+            combined["backend"] = backend_data
         console.print_json(json.dumps(combined, default=str))
         return
 
     _render_summary_table(otel_data, oc_status, oc_cost)
+    _render_cost_savings_table(otel_data, backend_data)
+    _render_mycelium_llm_table(backend_data)
     _render_agent_table(otel_data, agents_meta)
 
     if otel_data and otel_data.get("sessions"):
@@ -461,11 +467,11 @@ def _sparkline(min_v: float, avg_v: float, max_v: float, width: int = 8) -> str:
     """Generate a sparkline bar showing min/avg/max position."""
     if max_v == min_v:
         return "━" * width
-    
+
     # Calculate position of avg within the range (0.0 to 1.0)
     pos = (avg_v - min_v) / (max_v - min_v)
     avg_idx = int(pos * (width - 1))
-    
+
     # Build the bar: ━ for line, ● for average position
     bar = ""
     for i in range(width):
@@ -479,6 +485,8 @@ def _sparkline(min_v: float, avg_v: float, max_v: float, width: int = 8) -> str:
 def _fmt_histogram_s(h: dict) -> str:
     """Format a millisecond histogram as seconds with visual sparkline."""
     count = h["count"]
+    if count == 0:
+        return "—"
     avg = h["sum"] / count / 1000
     min_v = h.get("min")
     max_v = h.get("max")
@@ -490,7 +498,7 @@ def _fmt_histogram_s(h: dict) -> str:
         if abs(max_s - min_s) > 0.05:
             bar = _sparkline(min_s, avg, max_s)
             return f"{min_s:.1f}s {bar} {max_s:.1f}s  [dim](avg {avg:.1f}s, n={count})[/dim]"
-    
+
     # Single value or narrow range
     return f"[bold]{avg:.1f}s[/bold]  [dim](n={count})[/dim]"
 
@@ -498,6 +506,8 @@ def _fmt_histogram_s(h: dict) -> str:
 def _fmt_histogram_raw(h: dict) -> str:
     """Format a unitless histogram with visual sparkline."""
     count = h["count"]
+    if count == 0:
+        return "—"
     avg = h["sum"] / count
     min_v = h.get("min")
     max_v = h.get("max")
@@ -506,7 +516,7 @@ def _fmt_histogram_raw(h: dict) -> str:
     if min_v is not None and max_v is not None and abs(max_v - min_v) > 0.5:
         bar = _sparkline(min_v, avg, max_v)
         return f"{min_v:.0f} {bar} {max_v:.0f}  [dim](avg {avg:.1f}, n={count})[/dim]"
-    
+
     # Single value or narrow range
     return f"[bold]{avg:.1f}[/bold]  [dim](n={count})[/dim]"
 
@@ -549,7 +559,6 @@ def _render_summary_table(
 
     run_dur = histograms.get("run_duration_ms", {})
     if run_dur.get("count", 0) > 0:
-        avg_ms = run_dur["sum"] / run_dur["count"]
         table.add_row("Run duration", _fmt_histogram_s(run_dur))
     else:
         table.add_row("Run duration", "—")
@@ -576,6 +585,54 @@ def _render_summary_table(
     total_turns = sum(s.get("turns", 1) for s in otel_sessions)
     table.add_row("Total turns", _fmt_num(total_turns) if otel_sessions else "—")
 
+    # Context utilization histogram (newly captured)
+    ctx = histograms.get("context_tokens", {})
+    if ctx.get("count", 0) > 0:
+        table.add_row("Context window", _fmt_histogram_raw(ctx))
+
+    # Webhook stats (newly captured)
+    webhooks = counters.get("webhooks", {})
+    wh_received = webhooks.get("received", 0)
+    if wh_received > 0:
+        wh_errors = webhooks.get("errors", 0)
+        wh_str = _fmt_num(wh_received)
+        if wh_errors:
+            wh_str += f"  [red]({wh_errors} errors)[/red]"
+        table.add_row("Webhooks", wh_str)
+        wh_dur = histograms.get("webhook_duration_ms", {})
+        if wh_dur.get("count", 0) > 0:
+            table.add_row("Webhook latency", _fmt_histogram_s(wh_dur))
+
+    # Session state and stuck (newly captured)
+    stuck = counters.get("sessions_stuck", 0)
+    if stuck:
+        table.add_row("Sessions stuck", f"[red]{_fmt_num(stuck)}[/red]")
+        stuck_age = histograms.get("session_stuck_age_ms", {})
+        if stuck_age.get("count", 0) > 0:
+            table.add_row("Stuck age", _fmt_histogram_s(stuck_age))
+
+    # Run attempts (newly captured)
+    run_attempts = counters.get("run_attempts", 0)
+    if run_attempts:
+        table.add_row("Run attempts", _fmt_num(run_attempts))
+
+    # By-model cost breakdown (previously ingested but not shown)
+    cost_by_model = counters.get("cost_usd", {}).get("by_model", {})
+    if cost_by_model:
+        table.add_section()
+        table.add_row("[dim]Cost by model[/dim]", "")
+        for model_name in sorted(cost_by_model):
+            table.add_row(f"  {model_name}", _fmt_cost(cost_by_model[model_name]))
+
+    # By-model token breakdown (previously ingested but not shown)
+    tokens_by_model = counters.get("tokens", {}).get("by_model", {})
+    if tokens_by_model:
+        table.add_section()
+        table.add_row("[dim]Tokens by model[/dim]", "")
+        for model_name in sorted(tokens_by_model):
+            mt = tokens_by_model[model_name]
+            table.add_row(f"  {model_name}", _fmt_num(mt.get("total", 0)))
+
     gw_status = "—"
     if oc:
         gw = oc.get("gateway", {})
@@ -590,6 +647,15 @@ def _render_summary_table(
 
 
 def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
+    counters = (otel or {}).get("counters", {})
+    by_agent_cost = counters.get("cost_usd", {}).get("by_agent", {})
+    by_agent_histograms = (otel or {}).get("histograms", {}).get("by_agent", {})
+    has_cost = bool(by_agent_cost)
+    has_hist = any(
+        h.get("run_duration_ms", {}).get("count", 0) > 0
+        for h in by_agent_histograms.values()
+    )
+
     table = Table(title="Agents", title_style="bold cyan", title_justify="left", border_style="dim")
     table.add_column("Agent", style="bold")
     table.add_column("Input", justify="right")
@@ -597,11 +663,15 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
     table.add_column("Cache R", justify="right", style="dim")
     table.add_column("Cache W", justify="right", style="dim")
     table.add_column("Total", justify="right")
+    if has_cost:
+        table.add_column("Cost", justify="right")
     table.add_column("Sessions", justify="right")
     table.add_column("Turns", justify="right")
+    if has_hist:
+        table.add_column("Avg Run", justify="right")
     table.add_column("Workspace", justify="right")
 
-    by_agent_tokens = (otel or {}).get("counters", {}).get("tokens", {}).get("by_agent", {})
+    by_agent_tokens = counters.get("tokens", {}).get("by_agent", {})
     otel_sessions = (otel or {}).get("sessions", [])
 
     session_tokens_by_agent: dict[str, dict[str, int]] = {}
@@ -616,20 +686,19 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
         for k in ("input", "output", "cache_read", "cache_write", "total"):
             bucket[k] += st.get(k, 0)
 
-    # Merge agent names from OTLP counters (may be channel names now, agent names later),
-    # session data (has actual agent names from trace spans), and registered agents
     agent_names: set[str] = set(by_agent_tokens.keys()) | set(session_tokens_by_agent.keys())
     for a in agents_meta:
         agent_names.add(a.get("name", ""))
-    # Exclude generic channel names that aren't actual agents
     agent_names -= {"matrix", "slack", "discord", "cli", ""}
 
-    totals = {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0, "total": 0, "sessions": 0, "turns": 0}
+    totals: dict[str, int | float] = {
+        "input": 0, "output": 0, "cache_read": 0, "cache_write": 0,
+        "total": 0, "sessions": 0, "turns": 0, "cost": 0.0,
+    }
 
     for name in sorted(agent_names):
         if not name:
             continue
-        # Prefer OTLP counter data (cumulative), fall back to session-derived (capped at 200)
         tok = by_agent_tokens.get(name, session_tokens_by_agent.get(name, {}))
         agent_sessions = [s for s in otel_sessions if s.get("agent") == name]
         sess_count = len(agent_sessions)
@@ -643,6 +712,9 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
         totals["sessions"] += sess_count
         totals["turns"] += total_turns
 
+        agent_cost = by_agent_cost.get(name, 0.0)
+        totals["cost"] += agent_cost
+
         ws_size = "—"
         for a in agents_meta:
             if a.get("name") == name:
@@ -651,33 +723,51 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
                     ws_size = _fmt_size(_dir_size(Path(wdir)))
                 break
 
-        table.add_row(
+        avg_run = "—"
+        agent_h = by_agent_histograms.get(name, {})
+        rd = agent_h.get("run_duration_ms", {})
+        if rd.get("count", 0) > 0:
+            avg_s = rd["sum"] / rd["count"] / 1000
+            avg_run = f"{avg_s:.1f}s"
+
+        row: list[str] = [
             name,
             _fmt_num(tok.get("input", 0)),
             _fmt_num(tok.get("output", 0)),
             _fmt_num(tok.get("cache_read", 0)),
             _fmt_num(tok.get("cache_write", 0)),
             _fmt_num(tok.get("total", 0)),
-            str(sess_count),
-            str(total_turns) if total_turns else "—",
-            ws_size,
-        )
+        ]
+        if has_cost:
+            row.append(_fmt_cost(agent_cost) if agent_cost else "—")
+        row.append(str(sess_count))
+        row.append(str(total_turns) if total_turns else "—")
+        if has_hist:
+            row.append(avg_run)
+        row.append(ws_size)
+        table.add_row(*row)
 
     if len(agent_names) > 1:
-        table.add_row(
+        total_row: list[str] = [
             "[bold]Total[/bold]",
             f"[bold]{_fmt_num(totals['input'])}[/bold]",
             f"[bold]{_fmt_num(totals['output'])}[/bold]",
             f"[bold]{_fmt_num(totals['cache_read'])}[/bold]",
             f"[bold]{_fmt_num(totals['cache_write'])}[/bold]",
             f"[bold]{_fmt_num(totals['total'])}[/bold]",
-            f"[bold]{totals['sessions']}[/bold]",
-            f"[bold]{totals['turns']}[/bold]",
-            "—",
-        )
+        ]
+        if has_cost:
+            total_row.append(f"[bold]{_fmt_cost(totals['cost'])}[/bold]")
+        total_row.append(f"[bold]{totals['sessions']}[/bold]")
+        total_row.append(f"[bold]{totals['turns']}[/bold]")
+        if has_hist:
+            total_row.append("—")
+        total_row.append("—")
+        table.add_row(*total_row)
 
     if not agent_names:
-        table.add_row("(none)", *["—"] * 8)
+        placeholder_cols = 8 + (1 if has_cost else 0) + (1 if has_hist else 0)
+        table.add_row("(none)", *["—"] * placeholder_cols)
 
     console.print(table)
     console.print()
@@ -757,6 +847,190 @@ def _render_workspace_tables(agents_meta: list[dict]) -> None:
         console.print()
 
 
+def _render_cost_savings_table(otel: dict | None, backend: dict | None) -> None:
+    """Render a Cost Savings panel showing local embedding savings and cache efficiency."""
+    counters = (otel or {}).get("counters", {})
+    tokens = counters.get("tokens", {}).get("total", {})
+    cache_read = tokens.get("cache_read", 0)
+    input_tokens = tokens.get("input", 0)
+
+    be_counters = (backend or {}).get("counters", {}) if backend else {}
+    embeddings = be_counters.get("embeddings", {})
+    indexer = be_counters.get("indexer", {})
+
+    embed_count = embeddings.get("computed", 0)
+    cost_avoided = embeddings.get("estimated_cost_avoided_usd", 0.0)
+    files_indexed = indexer.get("files_indexed", 0)
+    files_skipped = indexer.get("files_skipped", 0)
+
+    has_data = embed_count > 0 or cache_read > 0 or files_indexed > 0
+
+    if not has_data:
+        return
+
+    table = Table(
+        title="Cost Savings",
+        title_style="bold green",
+        title_justify="left",
+        show_header=False,
+        border_style="dim",
+    )
+    table.add_column("Metric", style="bold")
+    table.add_column("Value", justify="right")
+
+    if embed_count > 0:
+        table.add_row("Local embeddings computed", _fmt_num(embed_count))
+        table.add_row(
+            "  estimated API cost avoided",
+            f"[green]{_fmt_cost(cost_avoided)}[/green]",
+        )
+        est_tokens = embeddings.get("estimated_tokens", 0)
+        if est_tokens:
+            table.add_row("  estimated tokens (local)", _fmt_num(est_tokens))
+
+        by_source_keys = [k for k in embeddings if k.startswith("by_source.")]
+        for key in sorted(by_source_keys):
+            label = key.replace("by_source.", "  ")
+            table.add_row(label, _fmt_num(embeddings[key]))
+
+    be_histograms = (backend or {}).get("histograms", {}) if backend else {}
+    embed_lat = be_histograms.get("embeddings.latency_ms", {})
+    if embed_lat.get("count", 0) > 0:
+        table.add_row("Embedding latency (local)", _fmt_histogram_s(embed_lat))
+
+    total_index_files = files_indexed + files_skipped
+    if total_index_files > 0:
+        skip_pct = files_skipped / total_index_files * 100
+        table.add_row("Indexer files processed", _fmt_num(total_index_files))
+        table.add_row(
+            "  skipped (unchanged)",
+            f"[green]{_fmt_num(files_skipped)} ({skip_pct:.0f}%)[/green]",
+        )
+        table.add_row("  indexed (re-embedded)", _fmt_num(files_indexed))
+        pruned = indexer.get("files_pruned", 0)
+        if pruned:
+            table.add_row("  pruned (deleted)", _fmt_num(pruned))
+
+    idx_lat = be_histograms.get("indexer.duration_ms", {})
+    if idx_lat.get("count", 0) > 0:
+        table.add_row("Index run duration", _fmt_histogram_s(idx_lat))
+
+    if cache_read > 0 and (input_tokens + cache_read) > 0:
+        cache_ratio = cache_read / (input_tokens + cache_read) * 100
+        table.add_row("Prompt cache hit ratio", f"[green]{cache_ratio:.1f}%[/green]")
+        table.add_row("  cache read tokens", _fmt_num(cache_read))
+        # Anthropic charges ~90% less for cached tokens
+        estimated_saving = cache_read * 0.003 / 1000 * 0.9
+        if estimated_saving > 0.0001:
+            table.add_row(
+                "  estimated cache savings",
+                f"[green]~{_fmt_cost(estimated_saving)}[/green]",
+            )
+
+    console.print(table)
+    console.print()
+
+
+def _render_mycelium_llm_table(backend: dict | None) -> None:
+    """Render a panel showing Mycelium backend's own LLM usage."""
+    if not backend:
+        return
+
+    be_counters = backend.get("counters", {})
+    llm = be_counters.get("llm", {})
+
+    if llm.get("calls", 0) == 0:
+        return
+
+    table = Table(
+        title="Mycelium LLM Usage (backend)",
+        title_style="bold magenta",
+        title_justify="left",
+        show_header=False,
+        border_style="dim",
+    )
+    table.add_column("Metric", style="bold")
+    table.add_column("Value", justify="right")
+
+    table.add_row("Total LLM calls", _fmt_num(llm.get("calls", 0)))
+    table.add_row("  input tokens", _fmt_num(llm.get("input_tokens", 0)))
+    table.add_row("  output tokens", _fmt_num(llm.get("output_tokens", 0)))
+    cost = llm.get("cost_usd", 0.0)
+    if cost > 0:
+        table.add_row("  total cost", _fmt_cost(cost))
+    errors = llm.get("errors", 0)
+    if errors > 0:
+        table.add_row("  errors", f"[red]{_fmt_num(errors)}[/red]")
+
+    by_op_keys = sorted(k for k in llm if k.startswith("by_operation."))
+    if by_op_keys:
+        table.add_section()
+        for key in by_op_keys:
+            label = key.replace("by_operation.", "")
+            table.add_row(f"  {label}", _fmt_num(llm[key]))
+
+    by_model_keys = sorted(k for k in llm if k.startswith("by_model."))
+    if by_model_keys:
+        table.add_section()
+        for key in by_model_keys:
+            label = key.replace("by_model.", "")
+            table.add_row(f"  model: {label}", _fmt_num(llm[key]))
+
+    be_histograms = backend.get("histograms", {})
+    llm_lat = be_histograms.get("llm.latency_ms", {})
+    if llm_lat.get("count", 0) > 0:
+        table.add_section()
+        table.add_row("LLM latency (all)", _fmt_histogram_s(llm_lat))
+
+    for key in sorted(be_histograms):
+        if key.startswith("llm.latency_ms.") and key != "llm.latency_ms":
+            h = be_histograms[key]
+            if h.get("count", 0) > 0:
+                label = key.replace("llm.latency_ms.", "  ")
+                table.add_row(label, _fmt_histogram_s(h))
+
+    # Knowledge graph stats
+    knowledge = be_counters.get("knowledge", {})
+    if knowledge.get("ingestions", 0) > 0:
+        table.add_section()
+        table.add_row("Knowledge ingestions", _fmt_num(knowledge["ingestions"]))
+        table.add_row("  concepts extracted", _fmt_num(knowledge.get("concepts_extracted", 0)))
+        table.add_row("  relations extracted", _fmt_num(knowledge.get("relations_extracted", 0)))
+        kg_errors = knowledge.get("errors", 0)
+        if kg_errors:
+            table.add_row("  graph store errors", f"[red]{_fmt_num(kg_errors)}[/red]")
+        kg_lat = be_histograms.get("knowledge.ingestion_duration_ms", {})
+        if kg_lat.get("count", 0) > 0:
+            table.add_row("  ingestion duration", _fmt_histogram_s(kg_lat))
+
+    # Synthesis stats
+    synthesis = be_counters.get("synthesis", {})
+    if synthesis.get("runs", 0) > 0:
+        table.add_section()
+        table.add_row("Synthesis runs", _fmt_num(synthesis["runs"]))
+        synth_lat = be_histograms.get("synthesis.duration_ms", {})
+        if synth_lat.get("count", 0) > 0:
+            table.add_row("  synthesis duration", _fmt_histogram_s(synth_lat))
+
+    # Memory stats
+    memory = be_counters.get("memory", {})
+    if memory.get("writes", 0) > 0 or memory.get("searches", 0) > 0:
+        table.add_section()
+        if memory.get("writes", 0) > 0:
+            table.add_row("Memory writes", _fmt_num(memory["writes"]))
+            embedded = memory.get("writes_embedded", 0)
+            if embedded:
+                table.add_row("  with embedding", _fmt_num(embedded))
+        if memory.get("searches", 0) > 0:
+            table.add_row("Semantic searches", _fmt_num(memory["searches"]))
+            search_lat = be_histograms.get("memory.search_latency_ms", {})
+            if search_lat.get("count", 0) > 0:
+                table.add_row("  search latency", _fmt_histogram_s(search_lat))
+
+    console.print(table)
+    console.print()
+
+
 def _render_field_legend() -> None:
     console.print("[dim]Field reference:[/dim]")
     console.print("[dim]  Total tokens   — cumulative LLM tokens across all agents (OTLP)[/dim]")
@@ -765,16 +1039,20 @@ def _render_field_legend() -> None:
     console.print("[dim]    cache read   — tokens served from prompt cache (reduced cost)[/dim]")
     console.print("[dim]    cache write  — tokens written to prompt cache[/dim]")
     console.print("[dim]  Cost (openclaw)— estimated cost reported by OpenClaw (unverified)[/dim]")
+    console.print("[dim]  Cost by model  — per-model cost breakdown (OTLP counters)[/dim]")
     console.print("[dim]  Messages      — total messages processed by the gateway (OTLP)[/dim]")
     console.print("[dim]  Run duration  — agent run duration: avg/min/max in seconds (OTLP histogram)[/dim]")
     console.print("[dim]  Msg duration  — message processing duration: avg/min/max (OTLP histogram)[/dim]")
     console.print("[dim]  Queue depth   — pending messages in queue: avg/min/max (OTLP histogram)[/dim]")
     console.print("[dim]  Queue wait    — time messages wait in queue: avg/min/max (OTLP histogram)[/dim]")
+    console.print("[dim]  Context window— context token utilization: avg/min/max (OTLP histogram)[/dim]")
+    console.print("[dim]  Webhooks      — webhook requests received and errors (OTLP counter)[/dim]")
     console.print("[dim]  Turns         — LLM round-trips per session (span count from OTLP traces)[/dim]")
     console.print("[dim]  Avg Run       — per-agent mean run duration in seconds (OTLP histogram)[/dim]")
-    console.print("[dim]  Queue         — per-agent queue depth: avg/max (OTLP histogram)[/dim]")
+    console.print("[dim]  Cost          — per-agent cost estimate (OTLP counter)[/dim]")
     console.print("[dim]  Workspace     — total file size in the agent's ~/.openclaw workspace dir[/dim]")
-    console.print("[dim]  Cost (oc)     — per-agent cost estimate reported by OpenClaw[/dim]")
+    console.print("[dim]  Cost Savings  — estimated savings from local embeddings vs cloud API[/dim]")
+    console.print("[dim]  LLM Usage     — Mycelium backend's own LLM calls (synthesis, extraction)[/dim]")
     console.print()
 
 

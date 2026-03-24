@@ -56,17 +56,39 @@ def _stub_vector(seed: str) -> list[float]:
     return v
 
 
-def embed_text(text: str) -> list[float]:
+def embed_text(text: str, *, source: str = "unknown") -> list[float]:
     """Generate embedding for a single text string."""
     if _STUB:
         return _stub_vector(text)
-    return _get_model().encode(text).tolist()
+
+    import time
+
+    from app.services.metrics import record_embedding, record_embedding_latency
+
+    t0 = time.monotonic()
+    result = _get_model().encode(text).tolist()
+    elapsed_ms = (time.monotonic() - t0) * 1000
+
+    record_embedding(source=source, text_length=len(text))
+    record_embedding_latency(elapsed_ms)
+    return result
 
 
-def embed_batch(texts: list[str]) -> list[list[float]]:
+def embed_batch(texts: list[str], *, source: str = "unknown") -> list[list[float]]:
     """Generate embeddings for multiple texts."""
     if not texts:
         return []
     if _STUB:
         return [_stub_vector(t) for t in texts]
-    return [e.tolist() for e in _get_model().encode(texts)]
+
+    import time
+
+    from app.services.metrics import record_embedding_batch, record_embedding_latency
+
+    t0 = time.monotonic()
+    results = [e.tolist() for e in _get_model().encode(texts)]
+    elapsed_ms = (time.monotonic() - t0) * 1000
+
+    record_embedding_batch(source, len(texts), sum(len(t) for t in texts))
+    record_embedding_latency(elapsed_ms)
+    return results

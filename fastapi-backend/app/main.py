@@ -164,3 +164,11 @@ app.include_router(knowledge_internal_router)
 async def root():
     """Health check."""
     return {"status": "ok", "service": "mycelium-backend"}
+
+
+@app.get("/api/metrics", tags=["metrics"])
+async def get_metrics():
+    """Return a snapshot of backend-collected metrics (embeddings, LLM, indexer, etc.)."""
+    from app.services.metrics import snapshot
+
+    return snapshot()

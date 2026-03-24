@@ -157,6 +157,8 @@ async def create_memories(
     await _get_room(room_name, db)
     room_dir = get_room_dir(room_name)
 
+    from app.services.metrics import record_memory_write
+
     results = []
     for item in payload.items:
         # Normalize value to dict
@@ -166,7 +168,8 @@ async def create_memories(
         # Generate embedding for search index
         embedding = None
         if item.embed:
-            embedding = await asyncio.to_thread(embed_text, content_text)
+            embedding = await asyncio.to_thread(embed_text, content_text, source="memory_create")
+        record_memory_write(scope=item.scope or "namespace", embedded=item.embed)
 
         # Resolve scope and owner
         scope = item.scope or "namespace"
@@ -379,9 +382,14 @@ async def search_memories(
 
     Search uses the pgvector index.
     """
+    import time as _time
+
+    from app.services.metrics import record_memory_search
+
+    _search_t0 = _time.monotonic()
     await _get_room(room_name, db)
 
-    query_embedding = await asyncio.to_thread(embed_text, payload.query)
+    query_embedding = await asyncio.to_thread(embed_text, payload.query, source="search_query")
 
     # Use pgvector cosine distance operator
     stmt = text("""
@@ -426,6 +434,7 @@ async def search_memories(
         )
         results.append(MemorySearchResult(memory=memory_read, similarity=similarity))
 
+    record_memory_search(duration_ms=(_time.monotonic() - _search_t0) * 1000)
     return MemorySearchResponse(results=results, total=len(results))
 
 

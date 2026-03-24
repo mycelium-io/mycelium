@@ -64,6 +64,11 @@ async def run_synthesis(room_name: str) -> dict | None:
     Reads all memories since last synthesis, calls LLM to produce a summary,
     and writes the result back as a memory under _synthesis/{timestamp}.
     """
+    import time as _time
+
+    from app.services.metrics import record_synthesis
+
+    _synth_t0 = _time.monotonic()
     async with async_session_maker() as db:
         # Set room state to synthesizing
         await db.execute(
@@ -149,6 +154,10 @@ async def run_synthesis(room_name: str) -> dict | None:
             # Notify agents with active sessions
             await _notify_synthesis_complete(room_name, synthesis_key)
 
+            record_synthesis(
+                room=room_name,
+                duration_ms=(_time.monotonic() - _synth_t0) * 1000,
+            )
             logger.info(
                 "Synthesis complete for room %s: %d memories → %s",
                 room_name,
@@ -158,6 +167,10 @@ async def run_synthesis(room_name: str) -> dict | None:
             return {"key": synthesis_key, "memory_count": len(memories)}
 
         except Exception as e:
+            record_synthesis(
+                room=room_name,
+                duration_ms=(_time.monotonic() - _synth_t0) * 1000,
+            )
             logger.exception("Synthesis failed for room %s: %s", room_name, e)
             await db.execute(
                 update(Room).where(Room.name == room_name).values(coordination_state="idle")
@@ -222,6 +235,10 @@ def _build_structured_context(memories: list) -> str:
 
 async def _llm_synthesize(room_name: str, context: str, memory_count: int) -> str:
     """Call LLM to synthesize accumulated memories into insights."""
+    import time
+
+    from app.services.metrics import record_llm_call
+
     try:
         import litellm
 
@@ -267,10 +284,29 @@ async def _llm_synthesize(room_name: str, context: str, memory_count: int) -> st
         if settings.LLM_BASE_URL:
             kwargs["api_base"] = settings.LLM_BASE_URL
 
+        t0 = time.monotonic()
         response = litellm.completion(**kwargs)
+        elapsed_ms = (time.monotonic() - t0) * 1000
+
+        usage = getattr(response, "usage", None)
+        input_tok = getattr(usage, "prompt_tokens", 0) or 0 if usage else 0
+        output_tok = getattr(usage, "completion_tokens", 0) or 0 if usage else 0
+        hidden = getattr(response, "_hidden_params", {})
+        cost = hidden.get("response_cost", 0.0) or 0.0
+
+        record_llm_call(
+            operation="synthesis",
+            model=settings.LLM_MODEL,
+            input_tokens=input_tok,
+            output_tokens=output_tok,
+            cost_usd=cost,
+            duration_ms=elapsed_ms,
+        )
+
         return response.choices[0].message.content
 
     except Exception:
+        record_llm_call(operation="synthesis", model=settings.LLM_MODEL, error=True)
         logger.exception("LLM synthesis failed for room %s", room_name)
         raise
 

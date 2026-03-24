@@ -90,7 +90,7 @@ async def write_notebook(
 
         embedding = None
         if item.embed:
-            embedding = await asyncio.to_thread(embed_text, content_text)
+            embedding = await asyncio.to_thread(embed_text, content_text, source="notebook_create")
 
         # Upsert scoped to this agent's notebook
         existing_result = await db.execute(
@@ -254,7 +254,7 @@ async def search_notebook(
     """Semantic search within an agent's notebook (uses pgvector index)."""
     from sqlalchemy import text
 
-    query_embedding = await asyncio.to_thread(embed_text, payload.query)
+    query_embedding = await asyncio.to_thread(embed_text, payload.query, source="notebook_search")
 
     stmt = text("""
         SELECT id, room_name, key, value, content_text, created_by, updated_by,

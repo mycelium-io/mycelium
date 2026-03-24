@@ -31,15 +31,28 @@ class MetricsStore:
             "tokens": {"by_agent": {}, "by_model": {}, "total": _zero_tokens()},
             "cost_usd": {"by_agent": {}, "by_model": {}, "total": 0.0},
             "messages": {"processed": 0, "queued": 0},
+            "webhooks": {"received": 0, "errors": 0},
+            "lanes": {"enqueue": 0, "dequeue": 0},
+            "sessions_state": {},
+            "sessions_stuck": 0,
+            "run_attempts": 0,
         }
         self._histograms: dict = {
             "run_duration_ms": _zero_histogram(),
             "message_duration_ms": _zero_histogram(),
             "queue_depth": _zero_histogram(),
             "queue_wait_ms": _zero_histogram(),
+            "context_tokens": _zero_histogram(),
+            "webhook_duration_ms": _zero_histogram(),
+            "session_stuck_age_ms": _zero_histogram(),
             "by_agent": {},
         }
         self._sessions: dict[str, dict] = {}
+        self._backend_metrics: dict | None = None
+
+    def set_backend_metrics(self, data: dict | None) -> None:
+        with self.lock:
+            self._backend_metrics = data
 
     def to_dict(self) -> dict:
         with self.lock:
@@ -48,12 +61,15 @@ class MetricsStore:
                 key=lambda s: s.get("timestamp", ""),
                 reverse=True,
             )[:_MAX_SESSIONS]
-            return {
+            result = {
                 "updated_at": datetime.now(UTC).isoformat(),
                 "counters": self._counters,
                 "histograms": self._histograms,
                 "sessions": sessions,
             }
+            if self._backend_metrics:
+                result["backend"] = self._backend_metrics
+            return result
 
     def ingest_metrics(self, request_bytes: bytes) -> None:
         from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import (
@@ -128,6 +144,28 @@ class MetricsStore:
                 elif name == "openclaw.message.queued":
                     self._counters["messages"]["queued"] = value
 
+                elif name == "openclaw.webhook.received":
+                    self._counters["webhooks"]["received"] = value
+
+                elif name == "openclaw.webhook.error":
+                    self._counters["webhooks"]["errors"] = value
+
+                elif name == "openclaw.queue.lane.enqueue":
+                    self._counters["lanes"]["enqueue"] = value
+
+                elif name == "openclaw.queue.lane.dequeue":
+                    self._counters["lanes"]["dequeue"] = value
+
+                elif name == "openclaw.session.state":
+                    state = attrs.get("openclaw.state", "unknown")
+                    self._counters["sessions_state"][state] = value
+
+                elif name == "openclaw.session.stuck":
+                    self._counters["sessions_stuck"] = value
+
+                elif name == "openclaw.run.attempt":
+                    self._counters["run_attempts"] = value
+
         elif metric.HasField("histogram"):
             for dp in metric.histogram.data_points:
                 attrs = _attrs_dict(dp.attributes)
@@ -146,6 +184,12 @@ class MetricsStore:
                     key = "queue_depth"
                 elif name == "openclaw.queue.wait_ms":
                     key = "queue_wait_ms"
+                elif name == "openclaw.context.tokens":
+                    key = "context_tokens"
+                elif name == "openclaw.webhook.duration_ms":
+                    key = "webhook_duration_ms"
+                elif name == "openclaw.session.stuck_age_ms":
+                    key = "session_stuck_age_ms"
 
                 if key:
                     self._histograms[key] = update
@@ -244,11 +288,25 @@ def _attrs_dict(attributes) -> dict[str, str | int | float | bool]:
     return result
 
 
+def _fetch_backend_metrics(store: MetricsStore, api_url: str) -> None:
+    """Poll the Mycelium backend /api/metrics endpoint (best-effort)."""
+    import urllib.request
+
+    try:
+        req = urllib.request.Request(f"{api_url}/api/metrics", method="GET")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+            store.set_backend_metrics(data)
+    except Exception as exc:
+        log.debug("Backend metrics poll failed (%s): %s", api_url, exc)
+
+
 class OTLPHandler(BaseHTTPRequestHandler):
     """HTTP handler for OTLP protobuf endpoints."""
 
     store: MetricsStore
     output_path: Path
+    backend_api_url: str
 
     def do_POST(self) -> None:
         cl_header = self.headers.get("Content-Length")
@@ -267,7 +325,9 @@ class OTLPHandler(BaseHTTPRequestHandler):
                 self.rfile.readline()
             body = b"".join(chunks)
         else:
-            body = self.rfile.read()
+            # No Content-Length and not chunked — treat as empty body to avoid blocking
+            log.warning("POST %s: no Content-Length or chunked encoding, assuming empty body", self.path)
+            body = b""
 
         if self.headers.get("Content-Encoding", "").lower() == "gzip":
             try:
@@ -304,7 +364,7 @@ class OTLPHandler(BaseHTTPRequestHandler):
         log.debug(format, *args)
 
 
-def run(port: int, output_path: Path) -> None:
+def run(port: int, output_path: Path, *, backend_api_url: str = "http://localhost:8000") -> None:
     """Start the OTLP HTTP receiver. Blocks until interrupted."""
     store = MetricsStore()
 
@@ -317,13 +377,30 @@ def run(port: int, output_path: Path) -> None:
                 sid = s.get("session_id", "")
                 if sid:
                     store._sessions[sid] = s
+            if existing.get("backend"):
+                store.set_backend_metrics(existing["backend"])
             log.info("Loaded existing data from %s", output_path)
         except Exception:
             log.warning("Could not load existing %s, starting fresh", output_path)
 
-    handler = type("Handler", (OTLPHandler,), {"store": store, "output_path": output_path})
+    handler = type(
+        "Handler",
+        (OTLPHandler,),
+        {"store": store, "output_path": output_path, "backend_api_url": backend_api_url},
+    )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Periodically poll backend metrics in a background thread
+    _stop_event = threading.Event()
+
+    def _backend_poller() -> None:
+        while not _stop_event.wait(30):
+            _fetch_backend_metrics(store, backend_api_url)
+
+    poller = threading.Thread(target=_backend_poller, daemon=True)
+    poller.start()
+    _fetch_backend_metrics(store, backend_api_url)
 
     server = HTTPServer(("127.0.0.1", port), handler)
     log.info("OTLP receiver listening on :%d", port)
@@ -332,7 +409,9 @@ def run(port: int, output_path: Path) -> None:
     except KeyboardInterrupt:
         pass
     finally:
+        _stop_event.set()
         server.server_close()
+        _fetch_backend_metrics(store, backend_api_url)
         data = store.to_dict()
         output_path.write_text(json.dumps(data, indent=2, default=str))
         log.info("Final state saved to %s", output_path)

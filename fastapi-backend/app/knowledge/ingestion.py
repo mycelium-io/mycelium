@@ -22,9 +22,15 @@ logger = logging.getLogger(__name__)
 _TOOL_CALL_KEYS = ("id", "name", "input", "result")
 
 
-def _litellm_call(system: str, user: str, tools: list[dict], tool_name: str) -> dict:
+def _litellm_call(
+    system: str, user: str, tools: list[dict], tool_name: str, *, operation: str = ""
+) -> dict:
     """Call litellm with tool_choice forced to tool_name. Returns the tool input dict."""
+    import time
+
     import litellm
+
+    from app.services.metrics import record_llm_call
 
     kwargs: dict = {
         "model": settings.LLM_MODEL,
@@ -52,7 +58,34 @@ def _litellm_call(system: str, user: str, tools: list[dict], tool_name: str) -> 
     if settings.LLM_BASE_URL:
         kwargs["base_url"] = settings.LLM_BASE_URL
 
-    resp = litellm.completion(**kwargs)
+    t0 = time.monotonic()
+    is_error = False
+    input_tok = output_tok = 0
+    cost = 0.0
+    try:
+        resp = litellm.completion(**kwargs)
+    except Exception:
+        is_error = True
+        raise
+    finally:
+        elapsed_ms = (time.monotonic() - t0) * 1000
+        if not is_error:
+            usage = getattr(resp, "usage", None)
+            if usage:
+                input_tok = getattr(usage, "prompt_tokens", 0) or 0
+                output_tok = getattr(usage, "completion_tokens", 0) or 0
+            hidden = getattr(resp, "_hidden_params", {})
+            cost = hidden.get("response_cost", 0.0) or 0.0
+        record_llm_call(
+            operation=operation or "knowledge",
+            model=settings.LLM_MODEL,
+            input_tokens=input_tok,
+            output_tokens=output_tok,
+            cost_usd=cost,
+            duration_ms=elapsed_ms,
+            error=is_error,
+        )
+
     for choice in resp.choices:
         msg = choice.message
         if msg.tool_calls:
@@ -148,6 +181,7 @@ class IngestionService:
             user=json.dumps(compact_payload),
             tools=[tool],
             tool_name="record_concepts",
+            operation="knowledge_concepts",
         )
         return result.get("concepts", [])
 
@@ -187,6 +221,7 @@ class IngestionService:
             user=json.dumps({"concepts": concepts, "records": compact_payload}),
             tools=[tool],
             tool_name="record_relationships",
+            operation="knowledge_relationships",
         )
         return result.get("relationships", [])
 
@@ -210,6 +245,11 @@ class IngestionService:
         4. Convert to KnowledgeGraphStoreRequest and store in AgensGraph.
         5. Return {graph_name, concepts_extracted, relations_extracted}.
         """
+        import time
+
+        from app.services.metrics import record_knowledge_ingestion
+
+        t0 = time.monotonic()
         compact_payload = self._build_compact_payload(records)
         logger.info("ingest: %d records -> %d compact turns", len(records), len(compact_payload))
 
@@ -272,8 +312,17 @@ class IngestionService:
         ks = knowledge_service or kg_service
         response = await asyncio.to_thread(ks.create_graph_store, store_req)
 
-        if response.status.value != "success":
+        is_error = response.status.value != "success"
+        if is_error:
             logger.warning("ingest: graph store failed: %s", response.message)
+
+        elapsed_ms = (time.monotonic() - t0) * 1000
+        record_knowledge_ingestion(
+            concepts=len(concepts_out),
+            relations=len(relations_out),
+            duration_ms=elapsed_ms,
+            error=is_error,
+        )
 
         return {
             "graph_name": graph_name,

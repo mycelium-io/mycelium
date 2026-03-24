@@ -15,12 +15,16 @@ def main() -> None:
     parser.add_argument(
         "--output", type=str, default=str(Path.home() / ".mycelium" / "metrics.json")
     )
+    parser.add_argument(
+        "--backend-url", type=str, default="http://localhost:8000",
+        help="Mycelium backend URL for polling /api/metrics",
+    )
 
     args = parser.parse_args()
 
     from mycelium.collector import run
 
-    run(args.port, Path(args.output))
+    run(args.port, Path(args.output), backend_api_url=args.backend_url)
 
 
 if __name__ == "__main__":
