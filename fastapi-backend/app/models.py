@@ -241,7 +241,7 @@ class Memory(Base):
     key: Mapped[str] = mapped_column(String(512), nullable=False, index=True)
     value: Mapped[dict] = mapped_column(JSONB().with_variant(JSON(), "sqlite"), nullable=False)
     content_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    embedding = mapped_column(Vector(384), nullable=True)
+    embedding = mapped_column(Vector(1536), nullable=True)
     created_by: Mapped[str] = mapped_column(String, nullable=False)
     updated_by: Mapped[str | None] = mapped_column(String, nullable=True)
     version: Mapped[int] = mapped_column(Integer, server_default="1", nullable=False)

@@ -56,8 +56,11 @@ class Settings(BaseSettings):
     MYCELIUM_DATA_DIR: str = str(Path.home() / ".mycelium")
 
     # Embedding (for persistent memory semantic search)
+    # Provider: "local" (sentence-transformers), "model2vec", "openai", "none"
+    EMBEDDING_PROVIDER: str = "local"
     EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
     EMBEDDING_DIMENSIONS: int = 384
+    EMBEDDING_API_KEY: str | None = None  # for remote providers (falls back to LLM_API_KEY)
 
     # IoC CFN management plane (optional — registration skipped if unset)
     CFN_MGMT_URL: str | None = None
