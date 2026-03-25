@@ -522,19 +522,19 @@ def _fmt_histogram_raw(h: dict) -> str:
     avg = h["sum"] / count
     min_v = h.get("min")
     max_v = h.get("max")
-    _W = 7  # width for each value column
+    _W = 6  # match _fmt_histogram_s field width
 
     if min_v is not None and max_v is not None:
         if abs(max_v - min_v) > 0.5:
             bar = _sparkline(min_v, avg, max_v)
             return (
-                f"{min_v:>{_W}.0f} {bar} {max_v:<{_W}.0f}  "
+                f"{min_v:>{_W}.0f}  {bar} {max_v:<{_W}.0f}  "
                 f"[dim]avg {avg:>{_W}.1f}  n={count}[/dim]"
             )
 
     bar = "━" * 8
     return (
-        f"{avg:>{_W}.1f} {bar} {'':<{_W}}  "
+        f"{avg:>{_W}.1f}  {bar} {'':<{_W}}  "
         f"[dim]avg {avg:>{_W}.1f}  n={count}[/dim]"
     )
 
@@ -1072,6 +1072,9 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
     if synthesis.get("runs", 0) > 0:
         table.add_section()
         table.add_row("Synthesis runs", _fmt_num(synthesis["runs"]))
+        synth_errors = synthesis.get("errors", 0)
+        if synth_errors:
+            table.add_row("  errors", f"[red]{_fmt_num(synth_errors)}[/red]")
         synth_lat = be_histograms.get("synthesis.duration_ms", {})
         if synth_lat.get("count", 0) > 0:
             table.add_row("  synthesis duration", _fmt_histogram_s(synth_lat))

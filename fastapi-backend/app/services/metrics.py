@@ -134,9 +134,11 @@ def record_memory_search(duration_ms: float = 0.0) -> None:
         _record_histogram("memory.search_latency_ms", duration_ms)
 
 
-def record_synthesis(room: str = "", duration_ms: float = 0.0) -> None:
+def record_synthesis(room: str = "", duration_ms: float = 0.0, *, error: bool = False) -> None:
     _inc("synthesis", "runs")
-    if duration_ms > 0:
+    if error:
+        _inc("synthesis", "errors")
+    if duration_ms > 0 and not error:
         _record_histogram("synthesis.duration_ms", duration_ms)
 
 

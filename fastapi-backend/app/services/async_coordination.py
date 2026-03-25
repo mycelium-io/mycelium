@@ -170,6 +170,7 @@ async def run_synthesis(room_name: str) -> dict | None:
             record_synthesis(
                 room=room_name,
                 duration_ms=(_time.monotonic() - _synth_t0) * 1000,
+                error=True,
             )
             logger.exception("Synthesis failed for room %s: %s", room_name, e)
             await db.execute(
