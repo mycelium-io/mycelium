@@ -94,6 +94,7 @@ app.command(name="migrate")(instance.migrate)
 app.command(name="watch")(room.watch)
 app.command(name="synthesize")(room.synthesize)
 app.command(name="catchup")(memory.memory_catchup)
+app.command(name="sync")(memory.memory_sync)
 
 # Command groups
 app.add_typer(room.app, name="room")

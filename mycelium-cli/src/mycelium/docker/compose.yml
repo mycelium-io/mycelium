@@ -11,6 +11,7 @@ services:
       context: ../fastapi-backend
       dockerfile: docker/Dockerfile.agensgraph
     image: ghcr.io/mycelium-io/mycelium-db:latest
+    pull_policy: always
     platform: linux/amd64
     container_name: mycelium-db
     restart: unless-stopped
@@ -34,6 +35,7 @@ services:
       context: ../fastapi-backend
       dockerfile: Dockerfile
     image: ghcr.io/mycelium-io/mycelium-backend:latest
+    pull_policy: always
     container_name: mycelium-backend
     restart: unless-stopped
     depends_on:
@@ -52,6 +54,8 @@ services:
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       COORDINATION_TICK_TIMEOUT_SECONDS: ${COORDINATION_TICK_TIMEOUT_SECONDS:-30}
+    volumes:
+      - ${MYCELIUM_DATA_DIR:-~/.mycelium}:/root/.mycelium
     ports:
       - "${MYCELIUM_BACKEND_PORT:-8000}:8000"
     healthcheck:

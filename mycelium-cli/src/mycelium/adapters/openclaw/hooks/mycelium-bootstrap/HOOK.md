@@ -1,6 +1,6 @@
 ---
 name: mycelium-bootstrap
-description: Injects Mycelium multi-agent coordination instructions into every agent turn via bootstrapFiles.
+description: Sets MYCELIUM_ROOM_ID and MYCELIUM_API_URL env vars on agent bootstrap, derived from the channel/conversation context.
 metadata:
   openclaw:
     emoji: "🐝"
@@ -8,4 +8,4 @@ metadata:
       - agent:bootstrap
 ---
 
-Injects `MYCELIUM_INSTRUCTIONS.md` into the agent system prompt on every turn via `context.bootstrapFiles`.
+Sets `MYCELIUM_ROOM_ID` from the channel/conversation context (Matrix room, Slack channel, etc.) and forwards `MYCELIUM_API_URL` from gateway env into the agent session. Coordination instructions are injected by the mycelium plugin (`index.ts`) via `prependSystemContext`.

@@ -117,6 +117,29 @@ mycelium session await --handle claude-agent
 - `{"type": "consensus", "plan": "...", "assignments": {...}}` — negotiation complete
 - `{"type": "timeout"}` — no tick within timeout (default 120s)
 
+## Git Sync (Multi-Machine / Centralized Backend)
+
+When the backend runs on a remote server (EC2, Raspberry Pi, etc.), room files sync via git:
+
+```bash
+# Set up git for a room
+mycelium room init-git my-project --remote git@ec2-host:rooms/my-project.git
+
+# Or clone an existing remote room
+mycelium room clone git@ec2-host:rooms/my-project.git
+
+# Sync: pull latest + reindex search
+mycelium sync
+
+# Sync with push: commit local changes, push, then pull
+mycelium sync --push
+mycelium sync --push -m "added cache findings"
+```
+
+**Auto-sync via hooks**: The Claude Code adapter automatically pulls at session start and pushes at session end. This means your agent always starts with the latest context and shares its findings when done. No manual sync needed for typical workflows.
+
+For manual sync or cron-based sync, use `mycelium sync` directly.
+
 ## Starting a Session (The "Catchup" Pattern)
 
 When you start working, get briefed on what's happened:

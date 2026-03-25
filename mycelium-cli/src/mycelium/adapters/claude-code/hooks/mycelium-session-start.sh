@@ -54,6 +54,14 @@ ENDJSON
     "$API_SCRIPT" POST "sessions/${SESSION_ID}/start" "$BODY" 2>/dev/null || true
 fi
 
+# ---------------------------------------------------------------------------
+# Sync room files from git remote (pull latest before starting work)
+# ---------------------------------------------------------------------------
+SYNC_SCRIPT="${SCRIPT_DIR}/mycelium-sync.sh"
+if [[ -x "$SYNC_SCRIPT" ]]; then
+    "$SYNC_SCRIPT" pull 2>/dev/null &
+fi
+
 # Initialize the batch file for this session
 BATCH_FILE="/tmp/mycelium-batch-${SESSION_ID}.jsonl"
 : > "$BATCH_FILE"

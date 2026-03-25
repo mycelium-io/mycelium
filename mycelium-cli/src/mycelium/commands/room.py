@@ -11,10 +11,12 @@ Commands:
 - watch: Stream messages from a room via SSE
 - post: Post a message to a room
 - delegate: Delegate a task to an agent in a room
+- init-git: Initialize git for a room with optional remote
 """
 
 import json as json_module
 import os
+import subprocess
 
 import typer
 
@@ -347,6 +349,179 @@ def delete(
             delete_api.sync_detailed(room_name=room_name, client=client)
 
         typer.secho(f"Room '{room_name}' deleted.", fg=typer.colors.GREEN)
+
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+
+
+@doc_ref(
+    usage="mycelium room init-git [room] --remote <url>",
+    desc="Initialize git for a room and optionally set a remote for sync.",
+    group="room",
+)
+@app.command("init-git")
+def init_git(
+    ctx: typer.Context,
+    room_name: str | None = typer.Argument(None, help="Room name (default: active room)"),
+    remote: str | None = typer.Option(None, "--remote", "-r", help="Git remote URL"),
+    branch: str = typer.Option("main", "--branch", "-b", help="Default branch name"),
+) -> None:
+    """Initialize git for a room directory and optionally configure a remote.
+
+    Sets up the room as a git repo so it can sync with a central server.
+    If --remote is provided, adds it as 'origin' and saves it to config.
+
+    Examples:
+        mycelium room init-git my-room --remote git@ec2-host:rooms/my-room.git
+        mycelium room init-git --remote https://github.com/team/room-repo.git
+    """
+    try:
+        config = MyceliumConfig.load()
+        name = room_name or _resolve_room(config)
+
+        from mycelium.filesystem import ensure_room_structure, get_room_dir
+
+        room_dir = get_room_dir(name)
+        ensure_room_structure(room_dir)
+
+        def _git(*args: str) -> subprocess.CompletedProcess:
+            return subprocess.run(
+                ["git", *args],
+                cwd=room_dir,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        # Check if already a git repo
+        check = _git("rev-parse", "--is-inside-work-tree")
+        if check.returncode == 0:
+            typer.echo(f"Room '{name}' is already a git repo at {room_dir}")
+        else:
+            _git("init", "-b", branch)
+            typer.secho(f"Initialized git repo: {room_dir}", fg=typer.colors.GREEN)
+
+            # Create .gitignore
+            gitignore = room_dir / ".gitignore"
+            if not gitignore.exists():
+                gitignore.write_text("# Mycelium room\n.DS_Store\n*.swp\n")
+
+            # Initial commit
+            _git("add", "-A")
+            _git("commit", "-m", "init: mycelium room")
+
+        # Add remote if provided
+        if remote:
+            # Remove existing origin if present
+            _git("remote", "remove", "origin")
+            result = _git("remote", "add", "origin", remote)
+            if result.returncode != 0:
+                typer.secho(f"Failed to add remote: {result.stderr.strip()}", fg=typer.colors.RED)
+                raise typer.Exit(1)
+            typer.echo(f"  Remote: {remote}")
+
+            # Save to config
+            config.rooms.git_remote = remote
+            config.save()
+
+        typer.echo("\nNext steps:")
+        if not remote:
+            typer.echo(f"  1. Add a remote: mycelium room init-git {name} --remote <url>")
+            typer.echo(f"  2. Or clone an existing room into {room_dir}")
+        else:
+            typer.echo(f"  1. Push: cd {room_dir} && git push -u origin {branch}")
+            typer.echo("  2. Or pull: mycelium sync")
+
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+
+
+@doc_ref(
+    usage="mycelium room clone <url> [room-name]",
+    desc="Clone a remote room repository into .mycelium/rooms/.",
+    group="room",
+)
+@app.command("clone")
+def clone_room(
+    ctx: typer.Context,
+    url: str = typer.Argument(..., help="Git remote URL to clone"),
+    room_name: str | None = typer.Argument(
+        None, help="Local room name (default: derived from URL)"
+    ),
+) -> None:
+    """Clone a remote room repo into .mycelium/rooms/.
+
+    Creates the room on the backend and sets it as active.
+
+    Examples:
+        mycelium room clone git@ec2-host:rooms/my-room.git
+        mycelium room clone https://github.com/team/room-repo.git my-room
+    """
+    try:
+        from mycelium.filesystem import get_mycelium_dir
+
+        config = MyceliumConfig.load()
+
+        # Derive room name from URL if not provided
+        if not room_name:
+            room_name = url.rstrip("/").split("/")[-1].removesuffix(".git")
+
+        rooms_dir = get_mycelium_dir() / "rooms"
+        rooms_dir.mkdir(parents=True, exist_ok=True)
+        target = rooms_dir / room_name
+
+        if target.exists():
+            typer.secho(f"Room directory already exists: {target}", fg=typer.colors.RED)
+            raise typer.Exit(1)
+
+        typer.echo(f"Cloning {url} → {target}")
+        result = subprocess.run(
+            ["git", "clone", url, str(target)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            typer.secho(f"Clone failed: {result.stderr.strip()}", fg=typer.colors.RED)
+            raise typer.Exit(1)
+
+        typer.secho(f"Cloned room: {room_name}", fg=typer.colors.GREEN)
+
+        # Save remote to config and set as active
+        config.rooms.git_remote = url
+        config.rooms.active = room_name
+        config.save()
+
+        # Register room on backend
+        try:
+            from mycelium_backend_client.api.rooms import create_room_rooms_post as create_api
+            from mycelium_backend_client.models import RoomCreate
+
+            with _typed_client(config) as client:
+                create_api.sync(client=client, body=RoomCreate(name=room_name, is_public=True))
+        except Exception:
+            typer.echo(
+                "[dim]Note: could not register room on backend — create it manually or reindex later[/dim]"
+            )
+
+        # Reindex
+        typer.echo("Re-indexing...")
+        import httpx
+
+        try:
+            with httpx.Client(base_url=config.server.api_url, timeout=120) as client:
+                resp = client.post(f"/rooms/{room_name}/reindex")
+                resp.raise_for_status()
+                data = resp.json()
+            typer.echo(f"  Indexed {data.get('indexed', 0)} memories")
+        except Exception:
+            typer.echo(
+                "[dim]  Reindex skipped — run 'mycelium memory reindex' when backend is available[/dim]"
+            )
+
+        typer.echo(f"\nRoom '{room_name}' is now active. Run 'mycelium catchup' to get briefed.")
 
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
