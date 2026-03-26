@@ -10,10 +10,38 @@ Thread-safe (asyncio.to_thread calls) via a threading lock.
 
 from __future__ import annotations
 
+import json
+import logging
 import threading
 from datetime import UTC, datetime
+from pathlib import Path
 
-_OPENAI_EMBEDDING_PRICE_PER_TOKEN = 0.02 / 1_000_000  # text-embedding-3-small
+_log = logging.getLogger(__name__)
+
+_PRICING_JSON = (
+    Path(__file__).resolve().parent.parent.parent.parent
+    / "mycelium-cli"
+    / "src"
+    / "mycelium"
+    / "data"
+    / "pricing.json"
+)
+
+
+def _load_embedding_price() -> float:
+    """Load the embedding baseline price from pricing.json.
+
+    Falls back to a hardcoded default if the file is missing or malformed.
+    """
+    try:
+        data = json.loads(_PRICING_JSON.read_text())
+        return data["embedding_baseline"]["input_per_token"]
+    except (OSError, json.JSONDecodeError, KeyError) as exc:
+        _log.debug("Could not load pricing.json (%s), using default embedding price", exc)
+        return 2e-08  # text-embedding-3-small fallback
+
+
+_EMBEDDING_PRICE_PER_TOKEN = _load_embedding_price()
 _AVG_TOKENS_PER_EMBEDDING = 60  # conservative estimate for short memory texts
 
 _lock = threading.Lock()
@@ -56,7 +84,7 @@ def record_embedding(source: str = "unknown", text_length: int = 0) -> None:
     _inc(
         "embeddings",
         "estimated_cost_avoided_usd",
-        estimated_tokens * _OPENAI_EMBEDDING_PRICE_PER_TOKEN,
+        estimated_tokens * _EMBEDDING_PRICE_PER_TOKEN,
     )
 
 
@@ -68,7 +96,7 @@ def record_embedding_batch(source: str, count: int, total_text_length: int = 0) 
     _inc(
         "embeddings",
         "estimated_cost_avoided_usd",
-        estimated_tokens * _OPENAI_EMBEDDING_PRICE_PER_TOKEN,
+        estimated_tokens * _EMBEDDING_PRICE_PER_TOKEN,
     )
 
 

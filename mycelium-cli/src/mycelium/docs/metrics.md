@@ -7,15 +7,15 @@ HTTP polling) — and writes it to a single JSON file for the CLI to render.
 ## Architecture
 
 ```
-┌──────────────┐   OTLP/HTTP protobuf   ┌────────────────────┐
+┌──────────────┐   OTLP/HTTP protobuf    ┌────────────────────┐
 │   OpenClaw   │ ──────────────────────▶ │  Metrics Collector │
 │   Gateway    │   /v1/metrics           │  (localhost:4318)  │
 │              │   /v1/traces            │                    │
 └──────────────┘                         │  ┌──────────────┐  │
                                          │  │ MetricsStore │  │
 ┌──────────────┐   GET /api/metrics      │  │  (in-memory) │  │
-│  Mycelium    │ ◀ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─  │  └──────┬───────┘  │
-│  Backend     │  (polled every 30s)     │         │ flush     │
+│  Mycelium    │ ◀ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │  └──────┬───────┘  │
+│  Backend     │  (polled every 30s)     │         │ flush    │
 │  (FastAPI)   │                         └─────────┼──────────┘
 └──────────────┘                                   ▼
                                          ~/.mycelium/metrics.json
@@ -153,70 +153,58 @@ The backend maintains its own in-process metrics store
 6. **Workspace Files** (opt-in via `--workspace`) — per-file size breakdown of
    each agent's `~/.openclaw` workspace directory.
 
-## Pricing Data (Requires Periodic Update)
+## Pricing Data
+
+All pricing lives in a single generated file:
+
+```
+mycelium-cli/src/mycelium/data/pricing.json
+```
+
+This file is consumed by both the CLI (prompt cache savings calculations) and
+the backend (embedding cost avoidance baseline). It is **not hand-edited** —
+run the update script to regenerate it from litellm's `model_cost` map:
+
+```bash
+npm run update:pricing          # from either mycelium-cli/ or fastapi-backend/
+```
+
+The script (`scripts/update-pricing.py`) runs in the backend's `uv`
+environment (where litellm is installed) and:
+
+1. Iterates a `TRACKED_MODELS` list of substring patterns (e.g. `"claude-sonnet-4"`,
+   `"gpt-4o"`) and finds the best matching litellm entry
+2. Extracts `input_cost_per_token` and computes `cache_discount` from
+   `cache_read_input_token_cost` (falling back to 90% if no cache pricing)
+3. Extracts the `text-embedding-3-small` price for the embedding baseline
+4. Writes `pricing.json` and prints a diff of any changes
 
 ### Prompt Cache Savings
 
-The **Cost Savings** panel estimates how much money prompt caching saved. This
-is calculated as:
+The **Cost Savings** panel estimates how much money prompt caching saved:
 
 ```
 savings = cache_read_tokens × input_price_per_token × cache_discount
 ```
 
-The model is auto-detected from the OTLP `tokens.by_model` data (whichever
-model has the most total tokens). Pricing is matched by substring against a
-hardcoded table in `mycelium-cli/src/mycelium/commands/metrics.py`:
-
-```python
-_MODEL_PRICING: list[tuple[str, dict]] = [
-    # (substring pattern, {input: $/token, cache_discount: fraction})
-    ("claude-sonnet-4",   {"input": 3.00 / 1e6, "cache_discount": 0.90}),
-    ("claude-3-7-sonnet", {"input": 3.00 / 1e6, "cache_discount": 0.90}),
-    ("claude-3-5-sonnet", {"input": 3.00 / 1e6, "cache_discount": 0.90}),
-    ("claude-3-5-haiku",  {"input": 0.80 / 1e6, "cache_discount": 0.90}),
-    ("claude-haiku-4",    {"input": 0.80 / 1e6, "cache_discount": 0.90}),
-    ("claude-3-haiku",    {"input": 0.25 / 1e6, "cache_discount": 0.90}),
-    ("claude-3-opus",     {"input": 15.0 / 1e6, "cache_discount": 0.90}),
-    ("claude-opus-4",     {"input": 15.0 / 1e6, "cache_discount": 0.90}),
-    ("gpt-4o-mini",       {"input": 0.15 / 1e6, "cache_discount": 0.50}),
-    ("gpt-4o",            {"input": 2.50 / 1e6, "cache_discount": 0.50}),
-    ("gpt-4-turbo",       {"input": 10.0 / 1e6, "cache_discount": 0.50}),
-    ("o3-mini",           {"input": 1.10 / 1e6, "cache_discount": 0.50}),
-    ("o3",                {"input": 10.0 / 1e6, "cache_discount": 0.50}),
-    ("o4-mini",           {"input": 1.10 / 1e6, "cache_discount": 0.50}),
-]
-```
+The model is auto-detected from OTLP `tokens.by_model` data (whichever model
+has the most total tokens). Pricing is matched by substring against the
+`models` array in `pricing.json`.
 
 **Fallback**: if no model matches, a conservative Haiku-class estimate is used
-($0.80/MTok input, 90% cache discount).
-
-**When to update**: whenever Anthropic or OpenAI change their per-token pricing,
-or when a new model is added that doesn't match an existing substring pattern.
-Check the `"pricing basis"` row in the Cost Savings output — if it says
-"unknown model", the table needs a new entry.
-
-Sources:
-- Anthropic: https://docs.anthropic.com/en/docs/about-claude/models
-- OpenAI: https://openai.com/api/pricing/
-- AWS Bedrock: https://aws.amazon.com/bedrock/pricing/
+($0.80/MTok input, 90% cache discount). The `"pricing basis"` row in the CLI
+output shows "unknown model" when the fallback is used — add the new pattern
+to `TRACKED_MODELS` in `scripts/update-pricing.py` and re-run.
 
 ### Local Embedding Cost Avoidance
 
 The backend estimates how much running embeddings locally (via
 `sentence-transformers/all-MiniLM-L6-v2`) saves versus calling a cloud
-embedding API. This uses a hardcoded constant in
-`fastapi-backend/app/services/metrics.py`:
+embedding API. It loads the `text-embedding-3-small` input price from
+`pricing.json` at startup (`embedding_baseline.input_per_token`).
 
-```python
-_OPENAI_EMBEDDING_PRICE_PER_TOKEN = 0.02 / 1_000_000  # text-embedding-3-small
-_AVG_TOKENS_PER_EMBEDDING = 60
-```
-
-**When to update**: if OpenAI changes `text-embedding-3-small` pricing, or if
-the comparison target changes to a different embedding model/provider.
-
-Source: https://openai.com/api/pricing/
+To change the comparison target model, edit `EMBEDDING_MODEL` in
+`scripts/update-pricing.py` and re-run.
 
 ### OpenClaw-Reported Cost
 
@@ -239,21 +227,22 @@ users can run `mycelium metrics reset` to start fresh.
 
 | File | Role |
 | ---- | ---- |
-| `mycelium-cli/src/mycelium/commands/metrics.py` | CLI commands, display rendering, pricing table |
-| `mycelium-cli/src/mycelium/collector.py`         | OTLP HTTP receiver, MetricsStore, backend poller |
-| `mycelium-cli/src/mycelium/collector_main.py`    | Entrypoint for background collector process |
-| `fastapi-backend/app/services/metrics.py`        | Backend in-process metrics store |
-| `fastapi-backend/app/main.py`                    | `GET /api/metrics` endpoint |
+| `mycelium-cli/src/mycelium/commands/metrics.py`  | CLI commands, display rendering, pricing lookup |
+| `mycelium-cli/src/mycelium/data/pricing.json`    | Generated model and embedding pricing data |
+| `mycelium-cli/src/mycelium/collector.py`          | OTLP HTTP receiver, MetricsStore, backend poller |
+| `mycelium-cli/src/mycelium/collector_main.py`     | Entrypoint for background collector process |
+| `fastapi-backend/app/services/metrics.py`         | Backend in-process metrics store |
+| `fastapi-backend/app/main.py`                     | `GET /api/metrics` endpoint |
+| `scripts/update-pricing.py`                       | Generates pricing.json from litellm |
 
 ## Periodic Maintenance Checklist
 
-- [ ] **Model pricing** — check that `_MODEL_PRICING` in `commands/metrics.py`
-      matches current Anthropic/OpenAI/Bedrock pricing pages. Look for the
-      `"pricing basis"` row in `mycelium metrics show` output showing
-      "unknown model" as a signal.
-- [ ] **Embedding pricing** — check that `_OPENAI_EMBEDDING_PRICE_PER_TOKEN` in
-      `fastapi-backend/app/services/metrics.py` matches OpenAI's current
-      `text-embedding-3-small` rate.
+- [ ] **Pricing update** — run `npm run update:pricing` from either package
+      to regenerate `pricing.json` from litellm. Do this when litellm is
+      updated or when provider pricing changes. The script prints a diff.
+- [ ] **New models** — if a new model isn't matched (the `"pricing basis"` row
+      says "unknown model"), add the substring pattern to `TRACKED_MODELS` in
+      `scripts/update-pricing.py` and re-run.
 - [ ] **New OpenClaw metrics** — if OpenClaw adds new OTLP metrics, add
       handling in `collector.py` `_process_metric` and display in
       `commands/metrics.py`.
