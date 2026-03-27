@@ -1136,6 +1136,16 @@ def _render_field_legend() -> None:
     console.print("[dim]  Workspace     — total file size in the agent's ~/.openclaw workspace dir[/dim]")
     console.print("[dim]  Cost Savings  — estimated savings from local embeddings vs cloud API[/dim]")
     console.print("[dim]  LLM Usage     — Mycelium backend's own LLM calls (synthesis, extraction)[/dim]")
+    data = _load_pricing()
+    gen_date = _pricing_generated_at()
+    litellm_ver = data.get("litellm_version", "")
+    if gen_date or litellm_ver:
+        source_parts = ["Pricing: litellm"]
+        if litellm_ver and litellm_ver != "unknown":
+            source_parts[0] += f" {litellm_ver}"
+        if gen_date:
+            source_parts.append(f"updated {gen_date}")
+        console.print(f"[dim]  {' · '.join(source_parts)}[/dim]")
     console.print()
 
 

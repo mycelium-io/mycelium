@@ -166,7 +166,7 @@ the backend (embedding cost avoidance baseline). It is **not hand-edited** —
 run the update script to regenerate it from litellm's `model_cost` map:
 
 ```bash
-npm run update:pricing          # from either mycelium-cli/ or fastapi-backend/
+pnpm run update:pricing          # from either mycelium-cli/ or fastapi-backend/
 ```
 
 The script (`scripts/update-pricing.py`) runs in the backend's `uv`
@@ -237,7 +237,7 @@ users can run `mycelium metrics reset` to start fresh.
 
 ## Periodic Maintenance Checklist
 
-- [ ] **Pricing update** — run `npm run update:pricing` from either package
+- [ ] **Pricing update** — run `pnpm run update:pricing` from either package
       to regenerate `pricing.json` from litellm. Do this when litellm is
       updated or when provider pricing changes. The script prints a diff.
 - [ ] **New models** — if a new model isn't matched (the `"pricing basis"` row
