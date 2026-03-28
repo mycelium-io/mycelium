@@ -20,8 +20,7 @@ import { execSync } from "child_process";
 import path from "path";
 import os from "os";
 
-const STATE_DIR =
-  process.env.OPENCLAW_STATE_DIR ?? path.join(os.homedir(), ".openclaw");
+const STATE_DIR = path.join(os.homedir(), ".openclaw");
 const LOG_FILE = path.join(STATE_DIR, "mycelium-knowledge-extract.log");
 const DELTA_STATE_DIR = path.join(STATE_DIR, "mycelium-extract-state");
 
