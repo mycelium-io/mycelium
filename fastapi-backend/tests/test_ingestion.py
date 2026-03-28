@@ -164,7 +164,7 @@ async def test_ingest_missing_required_fields(client: AsyncClient):
 async def test_ingest_with_mocked_llm(client: AsyncClient):
     """With a mocked litellm, extracted concepts/relations are stored."""
 
-    def _fake_litellm_call(system, user, tools, tool_name):
+    def _fake_litellm_call(system, user, tools, tool_name, *, operation=""):
         if tool_name == "record_concepts":
             return {
                 "concepts": [
