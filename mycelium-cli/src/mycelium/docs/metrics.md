@@ -235,6 +235,59 @@ users can run `mycelium metrics reset` to start fresh.
 | `fastapi-backend/app/main.py`                     | `GET /api/metrics` endpoint |
 | `scripts/update-pricing.py`                       | Generates pricing.json from litellm |
 
+## Metrics Roadmap
+
+The following areas have working code paths but are **not yet instrumented**.
+Prioritised by effort and value.
+
+### Tier 1 — Straightforward (Mycelium-only)
+
+- **Coordination / Negotiation** (`services/coordination.py`)
+  Runs, rounds, agreement rate, timeouts, failures, duration.
+  Highest value — shows coordination engine health.
+
+- **Session join / leave** (`routes/sessions.py`)
+  Simple activity counters: joins, leaves, active sessions.
+
+- **Knowledge graph CRUD** (`routes/knowledge.py`)
+  Store, query, delete counts and latency. Complements the existing
+  `record_knowledge_ingestion` which covers the LLM extraction side.
+
+### Tier 2 — Moderate effort (Mycelium-only)
+
+- **Cognition engine endpoints** (`routes/cognition_engine.py`)
+  Endpoint-level request count and duration for extraction and evidence
+  endpoints. The LLM calls inside are already tracked; this adds the
+  outer request envelope.
+
+- **CFN proxy** (`routes/cfn_proxy.py`)
+  Outbound memory-provider call latency, errors, and status codes.
+  Shows IoC integration health from Mycelium's perspective.
+
+- **Evidence gathering LLM calls** (`agents/evidence_gathering/llm_clients.py`)
+  Currently uses Azure OpenAI directly with its own counter but does
+  not feed into the metrics system. Bridge into `record_llm_call`.
+
+### Tier 3 — Requires IoC owner coordination
+
+- **IoC service health** — instrument Mycelium's outbound REST calls
+  to `:9000` and `:9002`. Track latency, errors, and availability.
+  For deeper metrics IoC owners would need to expose OTLP or a
+  `/metrics` endpoint.
+
+- **Management plane registration** — track startup registration
+  success/failure/retry when `--ioc` is enabled.
+
+### Not yet implementable (stubbed / planned)
+
+These exist in ARCHITECTURE.md or as stubs — metrics will follow once
+the features are wired up:
+
+- `/api/semantic-negotiation` endpoint (stub in `cognition_engine.py`)
+- `get_llm_provider()` in `agents/llm_provider.py` (defined but unused)
+- Memory + agent query strategies in `options_generation.py` (mocks)
+- Multi-device Matrix transport metrics
+
 ## Periodic Maintenance Checklist
 
 - [ ] **Pricing update** — run `pnpm run update:pricing` from either package
