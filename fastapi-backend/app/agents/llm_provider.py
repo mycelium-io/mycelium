@@ -39,8 +39,7 @@ def get_llm_provider() -> Callable[[str], str]:
             resp = litellm.completion(**kwargs)
         except litellm.AuthenticationError:
             logging.getLogger(__name__).warning(
-                "LLM authentication failed for model %s. "
-                "Check LLM_API_KEY in ~/.mycelium/.env",
+                "LLM authentication failed for model %s. Check LLM_API_KEY in ~/.mycelium/.env",
                 settings.LLM_MODEL,
             )
             raise RuntimeError(

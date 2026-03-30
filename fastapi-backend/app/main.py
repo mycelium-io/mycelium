@@ -219,7 +219,11 @@ def _check_embedding() -> dict:
     from app.services import embedding
 
     if embedding._STUB:
-        return {"status": "stub", "model": settings.EMBEDDING_MODEL, "message": "Stub mode (no real embeddings)"}
+        return {
+            "status": "stub",
+            "model": settings.EMBEDDING_MODEL,
+            "message": "Stub mode (no real embeddings)",
+        }
 
     model_loaded = embedding._model is not None
 
@@ -231,7 +235,11 @@ def _check_embedding() -> dict:
     if model_loaded:
         return {"status": "ok", "model": settings.EMBEDDING_MODEL, "message": "Model loaded"}
     if cache_exists:
-        return {"status": "ok", "model": settings.EMBEDDING_MODEL, "message": "Model cached (not yet loaded)"}
+        return {
+            "status": "ok",
+            "model": settings.EMBEDDING_MODEL,
+            "message": "Model cached (not yet loaded)",
+        }
     return {
         "status": "not_cached",
         "model": settings.EMBEDDING_MODEL,

@@ -173,9 +173,7 @@ async def probe_provider() -> LLMHealthResult:
     return result
 
 
-async def _probe_by_provider(
-    provider: str, model: str, config: LLMHealthResult
-) -> LLMHealthResult:
+async def _probe_by_provider(provider: str, model: str, config: LLMHealthResult) -> LLMHealthResult:
     """Dispatch to the appropriate provider-specific probe."""
     base = {
         "model": model,

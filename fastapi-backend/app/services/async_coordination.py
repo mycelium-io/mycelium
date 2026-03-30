@@ -272,8 +272,7 @@ async def _llm_synthesize(room_name: str, context: str, memory_count: int) -> st
 
     except litellm.AuthenticationError:
         logger.warning(
-            "LLM authentication failed for model %s. "
-            "Check LLM_API_KEY in ~/.mycelium/.env",
+            "LLM authentication failed for model %s. Check LLM_API_KEY in ~/.mycelium/.env",
             settings.LLM_MODEL,
         )
         raise RuntimeError(

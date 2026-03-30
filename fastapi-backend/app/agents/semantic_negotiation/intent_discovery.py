@@ -102,8 +102,7 @@ class IntentDiscovery:
             resp = litellm.completion(**kwargs)
         except litellm.AuthenticationError:
             logger.warning(
-                "LLM authentication failed for model %s. "
-                "Check LLM_API_KEY in ~/.mycelium/.env",
+                "LLM authentication failed for model %s. Check LLM_API_KEY in ~/.mycelium/.env",
                 settings.LLM_MODEL,
             )
             raise RuntimeError(
