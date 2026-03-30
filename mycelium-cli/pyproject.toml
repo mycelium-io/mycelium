@@ -74,6 +74,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 mycelium = [
     "py.typed",
+    "data/*.json",
     "docs/**/*.md",
     "adapters/openclaw/extensions/mycelium/**/*",
     "adapters/openclaw/hooks/mycelium-bootstrap/**/*",
