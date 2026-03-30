@@ -14,6 +14,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import httpx
 import typer
 
 from mycelium.config import MyceliumConfig, ServerConfig
@@ -271,13 +272,22 @@ def status(ctx: typer.Context) -> None:
         backend_room_count = 0
         health_data: dict = {}
 
+        backend_error: str | None = None
         with MyceliumHTTPClient(config=config) as client:
             try:
                 health_resp = client.get("/health", params={"check_llm": "true"})
                 health_data = health_resp.json()
                 backend_running = health_data.get("status") in ("ok", "degraded")
-            except Exception:
+            except Exception as exc:
                 backend_running = False
+                if isinstance(exc, httpx.ConnectError):
+                    backend_error = f"Cannot connect to {config.server.api_url}"
+                elif isinstance(exc, httpx.TimeoutException):
+                    backend_error = f"Timeout connecting to {config.server.api_url}"
+                elif isinstance(exc, httpx.HTTPStatusError):
+                    backend_error = f"Backend returned HTTP {exc.response.status_code}"
+                else:
+                    backend_error = str(exc)
 
             if backend_running:
                 try:
@@ -346,6 +356,8 @@ def status(ctx: typer.Context) -> None:
             typer.echo(f"{_INDENT}{config.server.api_url}")
             if backend_running and backend_room_count > 0:
                 typer.echo(f"{_INDENT}{backend_room_count} rooms")
+            elif not backend_running and backend_error:
+                typer.secho(f"{_INDENT}{backend_error}", fg=typer.colors.RED)
 
             db_info = health_data.get("database")
             if db_info:
