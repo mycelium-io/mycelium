@@ -17,7 +17,7 @@ dependencies = [
     "negmas>=0.10.0",
     "pgvector>=0.3.0",
     "alembic>=1.14.0,<2",
-    "sentence-transformers<3",
+    "sentence-transformers<6",
     "pip-system-certs>=5.3",
     "transformers<4.40",
     "watchdog>=6.0.0",
