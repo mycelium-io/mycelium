@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = "==3.12.*"
 resolution-markers = [
     "sys_platform == 'win32'",
@@ -1007,7 +1007,7 @@ requires-dist = [
     { name = "fastapi", extras = ["standard"], specifier = ">=0.115.0,<0.116" },
     { name = "greenlet", specifier = ">=3.0" },
     { name = "httpx", specifier = ">=0.28.1" },
-    { name = "litellm", specifier = ">=1.60.0" },
+    { name = "litellm", specifier = "==1.82.3" },
     { name = "negmas", specifier = ">=0.10.0" },
     { name = "pgvector", specifier = ">=0.3.0" },
     { name = "pip-system-certs", specifier = ">=5.3" },

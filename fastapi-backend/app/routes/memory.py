@@ -13,6 +13,7 @@ GET    /rooms/{room}/memory/subscriptions — list active subscriptions
 
 import asyncio
 import fnmatch
+import hashlib
 import json
 import logging
 from datetime import UTC, datetime
@@ -20,8 +21,9 @@ from urllib.parse import urlparse
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, text
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import Response
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bus import agent_channel, notify, room_channel
@@ -50,6 +52,17 @@ from app.services.filesystem import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/rooms/{room_name}/memory", tags=["memory"])
+
+
+def _etag_response(memories: list[MemoryRead], etag: str) -> Response:
+    """Return a JSON response with an ETag header."""
+    from fastapi.encoders import jsonable_encoder
+
+    return Response(
+        content=json.dumps(jsonable_encoder(memories)),
+        media_type="application/json",
+        headers={"ETag": etag},
+    )
 
 
 async def _get_room(room_name: str, db: AsyncSession) -> Room:
@@ -287,9 +300,10 @@ async def _check_async_trigger(room_name: str, new_count: int) -> None:
         logger.debug("Async trigger check skipped: %s", e)
 
 
-@router.get("", response_model=list[MemoryRead])
+@router.get("")
 async def list_memories(
     room_name: str,
+    request: Request,
     prefix: str | None = Query(None, description="Key prefix filter"),
     scope: str = Query("namespace", description="Memory scope: namespace or notebook"),
     handle: str | None = Query(None, description="Owner handle (required for notebook scope)"),
@@ -300,8 +314,21 @@ async def list_memories(
     """List memories in a room.
 
     Reads from the filesystem, falls back to DB index.
+    Supports ETag / If-None-Match for efficient sync — returns 304 if nothing changed.
     """
     await _get_room(room_name, db)
+
+    # Compute ETag from latest updated_at in the room
+    ts_result = await db.execute(
+        select(func.max(Memory.updated_at)).where(
+            Memory.room_name == room_name, Memory.scope == scope
+        )
+    )
+    latest_ts = ts_result.scalar_one_or_none()
+    etag = '"' + hashlib.md5(str(latest_ts).encode()).hexdigest() + '"' if latest_ts else '"empty"'
+
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={"ETag": etag})
 
     if scope == "notebook" and not handle:
         raise HTTPException(status_code=400, detail="handle is required for notebook scope")
@@ -351,7 +378,7 @@ async def list_memories(
                         file_path=f"rooms/{room_name}/{key}.md",
                     )
                 )
-        return result_list
+        return _etag_response(result_list, etag)
 
     # Fallback to DB for rooms that haven't been migrated yet
     query = select(Memory).where(Memory.room_name == room_name, Memory.scope == scope)
@@ -363,7 +390,7 @@ async def list_memories(
 
     result = await db.execute(query)
     memories = list(result.scalars().all())
-    return [MemoryRead.model_validate(m) for m in memories]
+    return _etag_response([MemoryRead.model_validate(m) for m in memories], etag)
 
 
 # ── Search & Subscriptions (must be BEFORE {key:path} catch-all) ──────────
