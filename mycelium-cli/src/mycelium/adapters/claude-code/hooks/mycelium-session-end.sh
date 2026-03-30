@@ -44,8 +44,6 @@ fi
 # Write session summary memory
 # ---------------------------------------------------------------------------
 if [[ -n "$MYCELIUM_ROOM" ]]; then
-    # Count tool invocations from the batch file (may already be flushed, so
-    # fall back to 0 if the file was truncated by flush)
     TOOL_COUNT=0
     if [[ -f "$BATCH_FILE" ]]; then
         TOOL_COUNT=$(wc -l < "$BATCH_FILE" 2>/dev/null | tr -d ' ')
@@ -66,12 +64,9 @@ ENDJSON
 fi
 
 # ---------------------------------------------------------------------------
-# Sync room files to git remote (if room is a git repo)
+# Sync room files from backend (fetch latest after session ends)
 # ---------------------------------------------------------------------------
-SYNC_SCRIPT="${SCRIPT_DIR}/mycelium-sync.sh"
-if [[ -x "$SYNC_SCRIPT" ]]; then
-    "$SYNC_SCRIPT" push-pull "mycelium: session ${SESSION_ID} ended (${MYCELIUM_AGENT_HANDLE})" 2>/dev/null &
-fi
+mycelium sync --no-reindex 2>/dev/null &
 
 # ---------------------------------------------------------------------------
 # Cleanup temp files
