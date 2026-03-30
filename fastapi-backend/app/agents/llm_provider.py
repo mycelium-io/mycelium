@@ -18,6 +18,8 @@ def get_llm_provider() -> Callable[[str], str]:
     """Return a prompt → response callable backed by LiteLLM."""
 
     def _call(prompt: str) -> str:
+        import logging
+
         import litellm
 
         from app.config import settings
@@ -33,7 +35,18 @@ def get_llm_provider() -> Callable[[str], str]:
         if settings.LLM_BASE_URL:
             kwargs["base_url"] = settings.LLM_BASE_URL
 
-        resp = litellm.completion(**kwargs)
+        try:
+            resp = litellm.completion(**kwargs)
+        except litellm.AuthenticationError:
+            logging.getLogger(__name__).warning(
+                "LLM authentication failed for model %s. "
+                "Check LLM_API_KEY in ~/.mycelium/.env",
+                settings.LLM_MODEL,
+            )
+            raise RuntimeError(
+                f"LLM authentication failed for {settings.LLM_MODEL}. "
+                "Check LLM_API_KEY in ~/.mycelium/.env"
+            )
         return resp.choices[0].message.content or ""
 
     return _call
