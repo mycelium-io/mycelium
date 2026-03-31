@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """Initial schema — users, rooms, messages, sessions, presences.
 
 Revision ID: 0001

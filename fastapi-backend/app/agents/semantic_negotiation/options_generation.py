@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """Options generation — component 2 of the semantic negotiation pipeline.
 
 Ported from ioc-cfn-cognitive-agents/semantic-negotiation-agent/app/agent/options_generation.py.

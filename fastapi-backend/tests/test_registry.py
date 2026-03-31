@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """Tests for workspace / MAS / agent CRUD endpoints."""
 
 import pytest

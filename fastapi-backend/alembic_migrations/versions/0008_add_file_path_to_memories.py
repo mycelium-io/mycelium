@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """Add file_path column to memories for filesystem-native storage.
 
 Revision ID: 0008

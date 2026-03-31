@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """LLM clients for evidence gathering (ported from ioc-cfn-cognitive-agents).
 
 Rewired: uses Azure OpenAI when AZURE_OPENAI_* env vars are set; graceful

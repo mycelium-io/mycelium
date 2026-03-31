@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """Knowledge graph API schemas — ported from ioc-knowledge-memory-svc."""
 
 from enum import Enum

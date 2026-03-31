@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """Agent CRUD — POST/GET/PATCH/DELETE /api/workspaces/{wid}/mas/{mid}/agents."""
 
 import logging

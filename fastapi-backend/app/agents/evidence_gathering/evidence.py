@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """Evidence gathering pipeline (ported from ioc-cfn-cognitive-agents).
 
 Rewired: uses local schemas; no external dependencies/config references.

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """Room utilities for Mycelium CLI."""
 
 from mycelium.config import MyceliumConfig

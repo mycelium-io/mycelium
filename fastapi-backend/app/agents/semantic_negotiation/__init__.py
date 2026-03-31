@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """Semantic negotiation agent package."""
 
 from .semantic_negotiation import (

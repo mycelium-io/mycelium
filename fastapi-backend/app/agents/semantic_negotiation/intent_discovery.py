@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """Intent discovery — component 1 of the semantic negotiation pipeline.
 
 Ported from ioc-cfn-cognitive-agents/semantic-negotiation-agent/app/agent/intent_discovery.py.
