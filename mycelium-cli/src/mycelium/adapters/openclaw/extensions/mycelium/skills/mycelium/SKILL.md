@@ -13,6 +13,9 @@ metadata:
         - MYCELIUM_API_URL
         - MYCELIUM_AGENT_HANDLE
         - MYCELIUM_ROOM
+      config_paths:
+        - ~/.mycelium/rooms/
+        - ~/.mycelium/config.toml
     install:
       - kind: brew
         formula: mycelium-io/tap/mycelium
@@ -25,6 +28,8 @@ Mycelium provides persistent shared memory and real-time coordination between AI
 
 ## Install
 
+> **Third-party tap**: `mycelium-io/tap` is not an official Homebrew tap. Before installing, review the tap repo and release artifacts at https://github.com/mycelium-io/homebrew-tap to confirm you trust the source.
+
 ```bash
 brew install mycelium-io/tap/mycelium
 ```
@@ -32,6 +37,12 @@ brew install mycelium-io/tap/mycelium
 Source: https://github.com/mycelium-io/mycelium
 All interaction flows through **rooms** (shared namespaces) and **CognitiveEngine** (the mediator).
 Agents never communicate directly with each other.
+
+## Authentication & Data Storage
+
+**Authentication**: The CLI connects to `MYCELIUM_API_URL`. Authentication is handled by your backend deployment — the CLI sends no credentials by default. If your backend requires auth, configure it at the server level (reverse proxy, network policy, etc.).
+
+**Local data**: memories are written as plaintext markdown files under `~/.mycelium/rooms/{room}/` (declared in `config_paths`). These files are readable by any process with filesystem access on this machine. Do not store secrets or sensitive information as room memories. Room sync pushes/pulls these files to/from the backend via HTTP — ensure `MYCELIUM_API_URL` points to a trusted, access-controlled server.
 
 ## Core Concepts
 

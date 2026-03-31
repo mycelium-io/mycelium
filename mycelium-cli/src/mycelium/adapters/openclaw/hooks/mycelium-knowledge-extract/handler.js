@@ -5,6 +5,10 @@
  * conversation turns, and ships them to the Mycelium knowledge ingest
  * endpoint (POST /api/knowledge/ingest).
  *
+ * Only new turns (since the last successful send) are included in each
+ * payload. A per-session state file tracks the last sent turn index so
+ * that repeated hook firings on command:new do not re-send prior turns.
+ *
  * Falls back to local log file if Mycelium is not configured.
  *
  * Hook events: agent:bootstrap, command:new
@@ -18,11 +22,18 @@ import os from "os";
 
 const STATE_DIR = path.join(os.homedir(), ".openclaw");
 const LOG_FILE = path.join(STATE_DIR, "mycelium-knowledge-extract.log");
+const DELTA_STATE_DIR = path.join(STATE_DIR, "mycelium-extract-state");
 
 // ── Session file resolution ──────────────────────────────────────────────────
 
 function resolveSessionFile(agentId, sessionId) {
-  return path.join(STATE_DIR, "agents", agentId, "sessions", `${sessionId}.jsonl`);
+  return path.join(
+    STATE_DIR,
+    "agents",
+    agentId,
+    "sessions",
+    `${sessionId}.jsonl`,
+  );
 }
 
 async function readSessionEntries(filePath) {
@@ -33,7 +44,11 @@ async function readSessionEntries(filePath) {
       .split("\n")
       .filter(Boolean)
       .flatMap((line) => {
-        try { return [JSON.parse(line)]; } catch { return []; }
+        try {
+          return [JSON.parse(line)];
+        } catch {
+          return [];
+        }
       });
   } catch {
     return [];
@@ -57,17 +72,17 @@ function extractTextFromContent(content) {
 function addUsage(acc, usage) {
   if (!usage) return acc;
   return {
-    input:       (acc.input       ?? 0) + (usage.input       ?? 0),
-    output:      (acc.output      ?? 0) + (usage.output      ?? 0),
-    cacheRead:   (acc.cacheRead   ?? 0) + (usage.cacheRead   ?? 0),
-    cacheWrite:  (acc.cacheWrite  ?? 0) + (usage.cacheWrite  ?? 0),
+    input: (acc.input ?? 0) + (usage.input ?? 0),
+    output: (acc.output ?? 0) + (usage.output ?? 0),
+    cacheRead: (acc.cacheRead ?? 0) + (usage.cacheRead ?? 0),
+    cacheWrite: (acc.cacheWrite ?? 0) + (usage.cacheWrite ?? 0),
     totalTokens: (acc.totalTokens ?? 0) + (usage.totalTokens ?? 0),
     cost: {
-      input:      (acc.cost?.input      ?? 0) + (usage.cost?.input      ?? 0),
-      output:     (acc.cost?.output     ?? 0) + (usage.cost?.output     ?? 0),
-      cacheRead:  (acc.cost?.cacheRead  ?? 0) + (usage.cost?.cacheRead  ?? 0),
+      input: (acc.cost?.input ?? 0) + (usage.cost?.input ?? 0),
+      output: (acc.cost?.output ?? 0) + (usage.cost?.output ?? 0),
+      cacheRead: (acc.cost?.cacheRead ?? 0) + (usage.cost?.cacheRead ?? 0),
       cacheWrite: (acc.cost?.cacheWrite ?? 0) + (usage.cost?.cacheWrite ?? 0),
-      total:      (acc.cost?.total      ?? 0) + (usage.cost?.total      ?? 0),
+      total: (acc.cost?.total ?? 0) + (usage.cost?.total ?? 0),
     },
   };
 }
@@ -94,11 +109,11 @@ function extractTurns(entries) {
         stopReason: null,
         usage: {},
       };
-
     } else if (role === "assistant" && current) {
       current.usage = addUsage(current.usage, entry.message.usage);
       if (entry.message.model) current.model = entry.message.model;
-      if (entry.message.stopReason) current.stopReason = entry.message.stopReason;
+      if (entry.message.stopReason)
+        current.stopReason = entry.message.stopReason;
 
       const blocks = Array.isArray(content) ? content : [];
       for (const block of blocks) {
@@ -125,7 +140,6 @@ function extractTurns(entries) {
             break;
         }
       }
-
     } else if (role === "toolResult" && current) {
       const id = entry.message.toolCallId ?? entry.message.toolUseId ?? null;
       const tc = id ? pendingToolCalls[id] : null;
@@ -170,7 +184,10 @@ function resolveSessionMeta(event, entries) {
 // ── Payload ───────────────────────────────────────────────────────────────────
 
 function buildPayload(sessionMeta, turns, entries) {
-  const totalCost = turns.reduce((sum, t) => sum + (t.usage?.cost?.total ?? 0), 0);
+  const totalCost = turns.reduce(
+    (sum, t) => sum + (t.usage?.cost?.total ?? 0),
+    0,
+  );
 
   return {
     schema: "openclaw-conversation-v1",
@@ -207,7 +224,10 @@ function buildPayload(sessionMeta, turns, entries) {
 
 function readMyceliumConfig() {
   try {
-    const raw = execSync("mycelium --json config show", { encoding: "utf-8", timeout: 5000 });
+    const raw = execSync("mycelium --json config show", {
+      encoding: "utf-8",
+      timeout: 5000,
+    });
     return JSON.parse(raw)?.server ?? {};
   } catch {
     return {};
@@ -215,28 +235,55 @@ function readMyceliumConfig() {
 }
 
 async function ingestToMycelium(payload) {
-  const cfg         = readMyceliumConfig();
-  const apiUrl      = process.env.MYCELIUM_API_URL      || cfg.api_url      || null;
-  const workspaceId = process.env.MYCELIUM_WORKSPACE_ID || cfg.workspace_id || null;
-  const masId       = process.env.MYCELIUM_MAS_ID       || cfg.mas_id       || null;
-  const agentId     = process.env.MYCELIUM_AGENT_ID     || process.env.MYCELIUM_AGENT_HANDLE || null;
+  const cfg = readMyceliumConfig();
+  const apiUrl = process.env.MYCELIUM_API_URL || cfg.api_url || null;
+  const workspaceId =
+    process.env.MYCELIUM_WORKSPACE_ID || cfg.workspace_id || null;
+  const masId = process.env.MYCELIUM_MAS_ID || cfg.mas_id || null;
+  const agentId =
+    process.env.MYCELIUM_AGENT_ID || process.env.MYCELIUM_AGENT_HANDLE || null;
 
   if (!apiUrl || !workspaceId || !masId) return false;
 
   const body = {
     workspace_id: workspaceId,
-    mas_id:       masId,
-    agent_id:     agentId,
-    records:      [payload],
+    mas_id: masId,
+    agent_id: agentId,
+    records: [payload],
   };
 
   const res = await fetch(`${apiUrl}/api/knowledge/ingest`, {
-    method:  "POST",
+    method: "POST",
     headers: { "Content-Type": "application/json" },
-    body:    JSON.stringify(body),
+    body: JSON.stringify(body),
   });
 
   return res.ok;
+}
+
+function deltaStatePath(agentId, sessionId) {
+  return path.join(DELTA_STATE_DIR, `${agentId}-${sessionId}.json`);
+}
+
+function readLastSentIndex(agentId, sessionId) {
+  try {
+    const raw = fs.readFileSync(deltaStatePath(agentId, sessionId), "utf-8");
+    return JSON.parse(raw)?.lastSentIndex ?? -1;
+  } catch {
+    return -1;
+  }
+}
+
+function writeLastSentIndex(agentId, sessionId, index) {
+  try {
+    fs.mkdirSync(DELTA_STATE_DIR, { recursive: true });
+    fs.writeFileSync(
+      deltaStatePath(agentId, sessionId),
+      JSON.stringify({ lastSentIndex: index }),
+    );
+  } catch {
+    // Non-fatal — worst case we re-send on next fire
+  }
 }
 
 // ── Local log fallback ────────────────────────────────────────────────────────
@@ -262,14 +309,31 @@ export default async function HookHandler(event) {
   const entries = await readSessionEntries(sessionFile);
   if (entries.length === 0) return;
 
-  const turns = extractTurns(entries);
-  if (turns.length === 0) return;
+  const allTurns = extractTurns(entries);
+  if (allTurns.length === 0) return;
+
+  // Only send turns that haven't been sent yet
+  const lastSentIndex = readLastSentIndex(agentId, sessionId);
+  const newTurns = allTurns.filter((t) => t.index > lastSentIndex);
+  if (newTurns.length === 0) return;
 
   const meta = resolveSessionMeta(event, entries);
-  const payload = buildPayload(meta, turns, entries);
+  const payload = buildPayload(meta, newTurns, entries);
+
+  const nextLastIndex = newTurns[newTurns.length - 1].index;
 
   // Fire-and-forget — don't block the hook response on LLM extraction
-  ingestToMycelium(payload).then((ok) => {
-    if (!ok) appendLog(LOG_FILE, payload);
-  }).catch(() => appendLog(LOG_FILE, payload));
+  ingestToMycelium(payload)
+    .then((ok) => {
+      if (ok) {
+        writeLastSentIndex(agentId, sessionId, nextLastIndex);
+      } else {
+        appendLog(LOG_FILE, payload);
+        writeLastSentIndex(agentId, sessionId, nextLastIndex);
+      }
+    })
+    .catch(() => {
+      appendLog(LOG_FILE, payload);
+      writeLastSentIndex(agentId, sessionId, nextLastIndex);
+    });
 }

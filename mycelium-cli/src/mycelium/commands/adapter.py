@@ -46,7 +46,6 @@ _CLAUDE_CODE_HOOKS = [
     "mycelium-post-tool-use.sh",
     "mycelium-pre-compact.sh",
     "mycelium-stop.sh",
-    "mycelium-sync.sh",
 ]
 
 

@@ -1,7 +1,7 @@
 #!/bin/bash
 # mycelium-session-start.sh
 # Claude Code hook: fires on session start.
-# Reads mycelium config and registers the session with the backend.
+# Registers the session with the backend and syncs room files.
 
 set -euo pipefail
 
@@ -16,7 +16,6 @@ CONFIG_FILE="${HOME}/.mycelium/config.toml"
 read_toml_value() {
     local key="$1"
     if [[ -f "$CONFIG_FILE" ]]; then
-        # Simple TOML value reader (handles key = "value" and key = value)
         sed -n "s/^[[:space:]]*${key}[[:space:]]*=[[:space:]]*\"\?\([^\"]*\)\"\?[[:space:]]*$/\1/p" "$CONFIG_FILE" | head -1
     fi
 }
@@ -55,12 +54,9 @@ ENDJSON
 fi
 
 # ---------------------------------------------------------------------------
-# Sync room files from git remote (pull latest before starting work)
+# Sync room files from backend (pull latest before starting work)
 # ---------------------------------------------------------------------------
-SYNC_SCRIPT="${SCRIPT_DIR}/mycelium-sync.sh"
-if [[ -x "$SYNC_SCRIPT" ]]; then
-    "$SYNC_SCRIPT" pull 2>/dev/null &
-fi
+mycelium sync --no-reindex 2>/dev/null &
 
 # Initialize the batch file for this session
 BATCH_FILE="/tmp/mycelium-batch-${SESSION_ID}.jsonl"
