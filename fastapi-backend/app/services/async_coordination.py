@@ -157,6 +157,12 @@ async def run_synthesis(room_name: str) -> dict | None:
             )
             return {"key": synthesis_key, "memory_count": len(memories)}
 
+        except RuntimeError:
+            await db.execute(
+                update(Room).where(Room.name == room_name).values(coordination_state="idle")
+            )
+            await db.commit()
+            raise
         except Exception as e:
             logger.exception("Synthesis failed for room %s: %s", room_name, e)
             await db.execute(
