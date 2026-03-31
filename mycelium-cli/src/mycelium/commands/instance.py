@@ -176,7 +176,9 @@ def start(
         cmd = ["docker", "compose", "-f", str(compose_path)]
         if env_path:
             cmd += ["--env-file", str(env_path)]
-        cmd += ["up", "-d"]
+        # --remove-orphans cleans up containers from previous runs that aren't
+        # in the current compose file (e.g., after changing project name or profiles)
+        cmd += ["up", "-d", "--remove-orphans"]
         if build:
             cmd.append("--build")
 
@@ -225,7 +227,8 @@ def stop(
         cmd = ["docker", "compose", "-f", str(compose_path)]
         if env_path:
             cmd += ["--env-file", str(env_path)]
-        cmd += ["down"]
+        # --remove-orphans cleans up containers from previous runs
+        cmd += ["down", "--remove-orphans"]
         if volumes:
             cmd.append("-v")
 
@@ -412,7 +415,7 @@ def status(ctx: typer.Context) -> None:
             if not backend_running:
                 typer.secho("Backend is down", fg=typer.colors.YELLOW)
                 typer.echo("\nTo start services:")
-                typer.echo("  mycelium start")
+                typer.echo("  mycelium up")
             elif overall_status == "degraded":
                 typer.secho("Backend running (degraded)", fg=typer.colors.YELLOW)
             else:
