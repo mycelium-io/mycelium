@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """sstp/negotiate.py — SSTPNegotiateMessage kind with NegMAS SAO semantic context."""
 
 from __future__ import annotations

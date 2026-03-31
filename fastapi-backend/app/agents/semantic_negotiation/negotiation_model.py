@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """Negotiation model — component 3 of the semantic negotiation pipeline.
 
 Takes issues (from component 1) and options per issue (from component 2) and

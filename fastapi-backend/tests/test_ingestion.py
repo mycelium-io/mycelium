@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """
 Tests for Phase 8 additions:
 - MEMORY_OPERATION audit type (schema change)

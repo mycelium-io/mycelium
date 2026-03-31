@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """Add persistent memory system and room mode extensions.
 
 Enables pgvector extension, creates memories and memory_subscriptions tables,

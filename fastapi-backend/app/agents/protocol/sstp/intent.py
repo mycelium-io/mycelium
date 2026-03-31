@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """sstp/intent.py — IntentMessage kind."""
 
 from __future__ import annotations
