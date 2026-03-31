@@ -52,7 +52,17 @@ def _litellm_call(system: str, user: str, tools: list[dict], tool_name: str) -> 
     if settings.LLM_BASE_URL:
         kwargs["base_url"] = settings.LLM_BASE_URL
 
-    resp = litellm.completion(**kwargs)
+    try:
+        resp = litellm.completion(**kwargs)
+    except litellm.AuthenticationError:
+        logger.warning(
+            "LLM authentication failed for model %s. Check LLM_API_KEY in ~/.mycelium/.env",
+            settings.LLM_MODEL,
+        )
+        raise RuntimeError(
+            f"LLM authentication failed for {settings.LLM_MODEL}. "
+            "Check LLM_API_KEY in ~/.mycelium/.env"
+        )
     for choice in resp.choices:
         msg = choice.message
         if msg.tool_calls:

@@ -17,7 +17,7 @@ import asyncpg
 from sqlalchemy import func, select, update
 
 from app.bus import agent_channel, notify
-from app.config import require_llm, settings
+from app.config import LLMUnavailableError, require_llm, settings
 from app.database import async_session_maker
 from app.models import Memory, Room
 from app.services.filesystem import get_room_dir, write_memory_file
@@ -157,6 +157,15 @@ async def run_synthesis(room_name: str) -> dict | None:
             )
             return {"key": synthesis_key, "memory_count": len(memories)}
 
+        except (LLMUnavailableError, RuntimeError) as e:
+            await db.execute(
+                update(Room).where(Room.name == room_name).values(coordination_state="idle")
+            )
+            await db.commit()
+            if isinstance(e, LLMUnavailableError) or "authentication failed" in str(e).lower():
+                raise
+            logger.exception("Synthesis failed for room %s: %s", room_name, e)
+            return None
         except Exception as e:
             logger.exception("Synthesis failed for room %s: %s", room_name, e)
             await db.execute(
@@ -270,6 +279,15 @@ async def _llm_synthesize(room_name: str, context: str, memory_count: int) -> st
         response = litellm.completion(**kwargs)
         return response.choices[0].message.content
 
+    except litellm.AuthenticationError:
+        logger.warning(
+            "LLM authentication failed for model %s. Check LLM_API_KEY in ~/.mycelium/.env",
+            settings.LLM_MODEL,
+        )
+        raise RuntimeError(
+            f"LLM authentication failed for {settings.LLM_MODEL}. "
+            "Check LLM_API_KEY in ~/.mycelium/.env"
+        )
     except Exception:
         logger.exception("LLM synthesis failed for room %s", room_name)
         raise

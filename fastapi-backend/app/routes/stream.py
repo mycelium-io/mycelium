@@ -36,9 +36,7 @@ async def _expand_slim(payload: dict) -> dict:
         return payload
     try:
         async for session in get_async_session():
-            result = await session.execute(
-                select(Message).where(Message.id == UUID(str(msg_id)))
-            )
+            result = await session.execute(select(Message).where(Message.id == UUID(str(msg_id))))
             msg = result.scalar_one_or_none()
             if msg:
                 return {

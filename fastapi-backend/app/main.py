@@ -23,9 +23,11 @@ from pathlib import Path
 os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.database import get_async_session
 from app.routes.agents import router as agents_router
 from app.routes.audit import router as audit_router
 from app.routes.cfn_proxy import router as cfn_proxy_router
@@ -161,6 +163,85 @@ app.include_router(knowledge_internal_router)
 
 @app.get("/", tags=["health"])
 @app.get("/health", tags=["health"])
-async def root():
-    """Health check."""
-    return {"status": "ok", "service": "mycelium-backend"}
+async def root(
+    check_llm: bool = False,
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Health check.
+
+    Pass ?check_llm=true to probe the LLM provider (zero-cost model-list call).
+    Without it, only local config status is included.
+    """
+    from app.services.llm_health import get_config_status, probe_provider
+
+    result: dict = {"status": "ok", "service": "mycelium-backend", "version": app.version}
+
+    # Database
+    result["database"] = await _check_database(session)
+
+    # Embedding model
+    result["embedding"] = _check_embedding()
+
+    # LLM
+    if check_llm:
+        llm = await probe_provider()
+    else:
+        llm = get_config_status()
+    result["llm"] = llm.to_dict()
+
+    overall_issues = []
+    if result["database"]["status"] != "ok":
+        overall_issues.append("database")
+    if result["llm"]["status"] not in ("ok", "unchecked"):
+        overall_issues.append("llm")
+    if overall_issues:
+        result["status"] = "degraded"
+
+    return result
+
+
+async def _check_database(session: AsyncSession) -> dict:
+    """Probe database connectivity with SELECT 1."""
+    from sqlalchemy import text
+
+    try:
+        await session.execute(text("SELECT 1"))
+        return {"status": "ok", "message": "Connected"}
+    except Exception as exc:
+        logger.warning("Database health check failed: %s", exc)
+        return {"status": "unreachable", "message": f"Cannot connect: {type(exc).__name__}"}
+
+
+def _check_embedding() -> dict:
+    """Report embedding model status (loaded, cache exists, or stub mode)."""
+    import os
+
+    from app.services import embedding
+
+    if embedding._STUB:
+        return {
+            "status": "stub",
+            "model": settings.EMBEDDING_MODEL,
+            "message": "Stub mode (no real embeddings)",
+        }
+
+    model_loaded = embedding._model is not None
+
+    hf_cache = os.path.expanduser("~/.cache/huggingface/hub")
+    model_slug = settings.EMBEDDING_MODEL.replace("/", "--")
+    snapshots_dir = os.path.join(hf_cache, f"models--{model_slug}", "snapshots")
+    cache_exists = os.path.isdir(snapshots_dir)
+
+    if model_loaded:
+        return {"status": "ok", "model": settings.EMBEDDING_MODEL, "message": "Model loaded"}
+    if cache_exists:
+        return {
+            "status": "ok",
+            "model": settings.EMBEDDING_MODEL,
+            "message": "Model cached (not yet loaded)",
+        }
+    return {
+        "status": "not_cached",
+        "model": settings.EMBEDDING_MODEL,
+        "message": "Model not in cache; will download on first use",
+    }

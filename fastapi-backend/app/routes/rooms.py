@@ -108,7 +108,14 @@ async def synthesize_room(
 
     from app.services.async_coordination import run_synthesis
 
-    result = await run_synthesis(room_name)
+    try:
+        result = await run_synthesis(room_name)
+    except LLMUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except RuntimeError as exc:
+        if "authentication failed" in str(exc).lower():
+            raise HTTPException(status_code=503, detail=str(exc))
+        raise
     if result is None:
         return {"status": "no_memories", "message": "No new memories to synthesize"}
     return {"status": "complete", **result}
