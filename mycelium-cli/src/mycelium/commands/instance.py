@@ -320,6 +320,9 @@ def stop(
         typer.echo("Stopping Mycelium services...")
         result = subprocess.run(base + down_args, check=False)
 
+        if result.returncode != 0:
+            raise typer.Exit(result.returncode)
+
         # Clean up containers that compose didn't catch (e.g., started with a
         # different project name or outside compose entirely).
         remaining = _find_managed_containers()
@@ -334,9 +337,6 @@ def stop(
                 check=False,
                 timeout=30,
             )
-
-        if result.returncode != 0 and not remaining:
-            raise typer.Exit(result.returncode)
 
         typer.secho("Services stopped.", fg=typer.colors.GREEN)
 
