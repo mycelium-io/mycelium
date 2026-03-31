@@ -615,6 +615,18 @@ def memory_sync(
         console.print("[dim]No memories to sync[/dim]")
         return
 
+    from datetime import datetime
+
+    def _parse_dt(val: str | None):
+        if not val:
+            return None
+        if isinstance(val, datetime):
+            return val
+        try:
+            return datetime.fromisoformat(val.replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            return None
+
     room_dir = get_room_dir(room_name)
     written = 0
     for mem in memories:
@@ -631,8 +643,8 @@ def memory_sync(
             updated_by=mem.get("updated_by"),
             version=mem.get("version", 1),
             tags=mem.get("tags"),
-            created_at=mem.get("created_at"),
-            updated_at=mem.get("updated_at"),
+            created_at=_parse_dt(mem.get("created_at")),
+            updated_at=_parse_dt(mem.get("updated_at")),
         )
         written += 1
 

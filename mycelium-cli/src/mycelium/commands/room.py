@@ -405,6 +405,16 @@ def clone_room(
             resp.raise_for_status()
             memories = resp.json()
 
+        from datetime import datetime
+
+        def _parse_dt(val):
+            if not val or isinstance(val, datetime):
+                return val
+            try:
+                return datetime.fromisoformat(str(val).replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                return None
+
         ensure_room_structure(target)
 
         written = 0
@@ -422,8 +432,8 @@ def clone_room(
                 updated_by=mem.get("updated_by"),
                 version=mem.get("version", 1),
                 tags=mem.get("tags"),
-                created_at=mem.get("created_at"),
-                updated_at=mem.get("updated_at"),
+                created_at=_parse_dt(mem.get("created_at")),
+                updated_at=_parse_dt(mem.get("updated_at")),
             )
             written += 1
 
