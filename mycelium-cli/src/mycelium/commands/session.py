@@ -261,6 +261,126 @@ def await_tick(
 
 
 @doc_ref(
+    usage="mycelium session watch [-r <room>]",
+    desc="Stream live messages from the active session in a room.",
+    group="session",
+)
+@app.command(name="watch")
+def watch_session(
+    ctx: typer.Context,
+    room: str | None = typer.Option(None, "--room", "-r", help="Room (overrides active room)"),
+    timeout: int = typer.Option(0, "--timeout", "-t", help="Timeout in seconds (0=no timeout)"),
+) -> None:
+    """Stream live coordination events from the active session in a room.
+
+    Auto-resolves the session room (e.g. home-sale:session:4e032137) so you
+    don't need to know the session ID.
+
+    Examples:
+        mycelium session watch -r home-sale
+        mycelium session watch  # uses active room
+    """
+    import httpx
+    from rich.console import Console
+
+    console = Console()
+
+    try:
+        config = MyceliumConfig.load()
+        room_name = _resolve_room(config, room)
+
+        # Find the active session room
+        resp = httpx.get(f"{config.server.api_url}/rooms?limit=200", timeout=10)
+        resp.raise_for_status()
+        all_rooms = resp.json()
+
+        prefix = f"{room_name}:session:"
+        session_rooms = [r["name"] for r in all_rooms if r["name"].startswith(prefix)]
+
+        if not session_rooms:
+            console.print(f"[yellow]No active session found in room '{room_name}'[/yellow]")
+            raise typer.Exit(1)
+
+        # Use the most recently created session
+        session_room = session_rooms[-1]
+        console.print(f"[dim]Watching session: {session_room}[/dim]\n")
+
+        url = f"{config.server.api_url}/rooms/{session_room}/stream"
+        import time
+        start = time.time()
+
+        with httpx.Client(timeout=None) as http, http.stream("GET", url) as response:
+            for line in response.iter_lines():
+                if timeout > 0 and (time.time() - start) >= timeout:
+                    break
+
+                line = line.strip()
+                if not line or line.startswith(":"):
+                    continue
+                if not line.startswith("data:"):
+                    continue
+
+                payload = line[5:].strip()
+                try:
+                    msg = json_module.loads(payload)
+                except json_module.JSONDecodeError:
+                    continue
+
+                mtype = msg.get("message_type", "")
+                sender = msg.get("sender_handle", "?")
+                recipient = msg.get("recipient_handle")
+
+                if mtype == "coordination_start":
+                    try:
+                        data = json_module.loads(msg.get("content", "{}"))
+                    except json_module.JSONDecodeError:
+                        data = {}
+                    console.print(f"[bold green]● Session started[/bold green]  {data.get('agent_count', '?')} agents  round {data.get('round', 0)}")
+
+                elif mtype == "coordination_tick":
+                    try:
+                        data = json_module.loads(msg.get("content", "{}"))
+                    except json_module.JSONDecodeError:
+                        data = {}
+                    target = data.get("participant_id", recipient or "?")
+                    action = data.get("action", "?")
+                    rnd = data.get("round", "?")
+                    console.print(f"[cyan]→ tick[/cyan]  round {rnd}  {action}  → [bold]{target}[/bold]")
+
+                elif mtype == "coordination_consensus":
+                    try:
+                        data = json_module.loads(msg.get("content", "{}"))
+                    except json_module.JSONDecodeError:
+                        data = {}
+                    broken = data.get("broken", False)
+                    label = "[red]✗ broken[/red]" if broken else "[bold green]✓ consensus[/bold green]"
+                    console.print(f"\n{label}")
+                    if data.get("plan"):
+                        console.print(f"  {data['plan']}")
+                    raise typer.Exit(0)
+
+                elif mtype in ("message", "propose", "response"):
+                    content = msg.get("content", "")
+                    try:
+                        parsed = json_module.loads(content)
+                        content = json_module.dumps(parsed)
+                    except (json_module.JSONDecodeError, TypeError):
+                        pass
+                    console.print(f"[bold]{sender}[/bold]  {content[:120]}")
+
+                else:
+                    console.print(f"[dim]{sender}  {mtype}[/dim]")
+
+    except KeyboardInterrupt:
+        pass
+    except typer.Exit:
+        raise
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+
+
+@doc_ref(
     usage="mycelium session ls [-r <room>]",
     desc="List active sessions in a room.",
     group="session",
