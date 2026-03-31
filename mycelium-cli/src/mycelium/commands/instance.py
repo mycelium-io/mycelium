@@ -183,9 +183,35 @@ def start(
             cmd.append("--build")
 
         typer.echo("Starting Mycelium...")
-        result = subprocess.run(cmd, check=False)
+        # Use --progress=plain so output is capturable (docker compose writes
+        # progress directly to TTY otherwise, bypassing stdout/stderr)
+        cmd_with_progress = cmd[:2] + ["--progress=plain"] + cmd[2:]
+        result = subprocess.run(cmd_with_progress, capture_output=True, text=True)
+
+        # Check for container name conflict and auto-retry with --force-recreate
         if result.returncode != 0:
-            raise typer.Exit(result.returncode)
+            output = (result.stdout or "") + (result.stderr or "")
+            if "is already in use by container" in output:
+                typer.secho(
+                    "Container conflict detected, forcing recreation...",
+                    fg=typer.colors.YELLOW,
+                )
+                cmd_retry = ["docker", "compose", "-f", str(compose_path)]
+                if env_path:
+                    cmd_retry += ["--env-file", str(env_path)]
+                cmd_retry += ["up", "-d", "--remove-orphans", "--force-recreate"]
+                if build:
+                    cmd_retry.append("--build")
+                result = subprocess.run(cmd_retry, check=False)
+                if result.returncode != 0:
+                    raise typer.Exit(result.returncode)
+            else:
+                # Print original output and exit
+                if result.stdout:
+                    typer.echo(result.stdout)
+                if result.stderr:
+                    typer.echo(result.stderr, err=True)
+                raise typer.Exit(result.returncode)
 
         typer.secho("Services started.", fg=typer.colors.GREEN)
         typer.echo("  mycelium-backend  → http://localhost:8000")
