@@ -519,9 +519,18 @@ def status(ctx: typer.Context) -> None:
             typer.echo("")
             overall_status = health_data.get("status", "down")
             if not backend_running:
-                typer.secho("Backend is down", fg=typer.colors.YELLOW)
-                typer.echo("\nTo start services:")
-                typer.echo("  mycelium up")
+                if backend_error:
+                    # Show specific error (HTTP 401, connection refused, etc.)
+                    typer.secho(f"Backend unreachable: {backend_error}", fg=typer.colors.RED)
+                    if "HTTP 401" in backend_error or "HTTP 403" in backend_error:
+                        typer.echo("\nCheck MYCELIUM_API_URL in ~/.mycelium/config.toml")
+                    elif "Cannot connect" in backend_error:
+                        typer.echo("\nTo start services:")
+                        typer.echo("  mycelium up")
+                else:
+                    typer.secho("Backend is down", fg=typer.colors.YELLOW)
+                    typer.echo("\nTo start services:")
+                    typer.echo("  mycelium up")
             elif overall_status == "degraded":
                 typer.secho("Backend running (degraded)", fg=typer.colors.YELLOW)
             else:
