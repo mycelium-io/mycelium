@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """
 sstp — Pydantic v2 models for the Semantic State Transfer Protocol (SSTP)
 ================================================================================

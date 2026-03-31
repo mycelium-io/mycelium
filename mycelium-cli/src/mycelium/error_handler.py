@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """Error handler for formatting exceptions into user-friendly CLI messages."""
 
 import httpx

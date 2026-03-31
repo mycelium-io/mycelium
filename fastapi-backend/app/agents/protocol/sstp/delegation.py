@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """sstp/delegation.py — DelegationMessage kind."""
 
 from __future__ import annotations

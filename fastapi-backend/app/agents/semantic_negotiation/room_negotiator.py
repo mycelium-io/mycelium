@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """RoomNegotiator — NegMAS SAO negotiator that routes decisions through Mycelium rooms.
 
 Routes decisions through room messages rather than HTTP callbacks.

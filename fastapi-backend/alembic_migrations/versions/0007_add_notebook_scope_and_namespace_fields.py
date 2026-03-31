@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """Add notebook scope to memories and namespace fields to rooms.
 
 Adds scope/owner_handle columns to memories for notebook (agent-private)

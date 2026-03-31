@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """
 Twinkling spore starfield animation for the Mycelium CLI.
 Call run_animation_with_output() or run_animation_live() to play.

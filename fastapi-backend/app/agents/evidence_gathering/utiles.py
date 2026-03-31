@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """Path utilities, GraphSession, and MMR selection (ported from ioc-cfn-cognitive-agents)."""
 
 from __future__ import annotations
