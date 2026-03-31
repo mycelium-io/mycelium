@@ -244,8 +244,8 @@ def start(
 
         typer.echo("Starting Mycelium...")
 
-        # Use --progress=plain so output is capturable (docker compose writes
-        # progress directly to TTY otherwise, bypassing stdout/stderr)
+        # First attempt: capture output so we can detect container conflicts
+        # Use --progress=plain so docker compose writes to stdout/stderr instead of TTY
         quiet_cmd = base[:2] + ["--progress=plain"] + base[2:] + up_args
         result = subprocess.run(quiet_cmd, capture_output=True, text=True)
 
@@ -263,11 +263,18 @@ def start(
                 if result.returncode != 0:
                     raise typer.Exit(result.returncode)
             else:
+                # Show captured output on failure
                 if result.stdout:
                     typer.echo(result.stdout)
                 if result.stderr:
                     typer.echo(result.stderr, err=True)
                 raise typer.Exit(result.returncode)
+        else:
+            # Show captured output on success too (warnings, pull info, etc.)
+            if result.stdout:
+                typer.echo(result.stdout)
+            if result.stderr:
+                typer.echo(result.stderr, err=True)
 
         typer.secho("Services started.", fg=typer.colors.GREEN)
         typer.echo("  mycelium-backend  → http://localhost:8000")
