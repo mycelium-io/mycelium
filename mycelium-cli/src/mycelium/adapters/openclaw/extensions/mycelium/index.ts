@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Julia Valenti
+
 import { readFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { homedir } from "node:os";
