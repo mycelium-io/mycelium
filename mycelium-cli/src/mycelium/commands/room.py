@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """
 Room management commands for Mycelium CLI.
 
@@ -756,6 +759,51 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
             padding=(0, 2),
         )
     )
+
+    # Replay recent history so events that fired before SSE connected are visible.
+    # coordination_join events are NOTIFY-only (not persisted), so we synthesize
+    # them from the sessions list to ensure all participants are shown.
+    try:
+        sess_resp = httpx.get(
+            f"{config.server.api_url}/rooms/{room_name}/sessions",
+            timeout=10,
+        )
+        if sess_resp.status_code == 200:
+            sess_body = sess_resp.json()
+            participants = sess_body.get("sessions", [])
+            for p in participants:
+                rendered = render(
+                    {
+                        "message_type": "coordination_join",
+                        "sender_handle": p.get("agent_handle", "?"),
+                        "content": json_module.dumps(
+                            {
+                                "handle": p.get("agent_handle"),
+                                "intent": p.get("intent"),
+                            }
+                        ),
+                    }
+                )
+                if rendered:
+                    console.print(rendered, highlight=False)
+    except Exception:
+        pass
+
+    try:
+        hist_resp = httpx.get(
+            f"{config.server.api_url}/rooms/{room_name}/messages",
+            params={"limit": 50},
+            timeout=10,
+        )
+        if hist_resp.status_code == 200:
+            body = hist_resp.json()
+            msgs = body.get("messages", body) if isinstance(body, dict) else body
+            for msg in reversed(msgs):
+                rendered = render(msg)
+                if rendered:
+                    console.print(rendered, highlight=False)
+    except Exception:
+        pass
 
     url = f"{config.server.api_url}/rooms/{room_name}/messages/stream"
     start = time.time()
