@@ -14,13 +14,45 @@ from urllib.parse import urlparse
 import asyncpg
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 
 from app.bus import agent_channel, room_channel
 from app.config import settings
+from app.database import get_async_session
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["stream"])
+
+
+async def _expand_slim(payload: dict) -> dict:
+    """Fetch the full message from DB if the NOTIFY payload was truncated."""
+    from uuid import UUID
+
+    from app.models import Message
+
+    msg_id = payload.get("id")
+    if not msg_id:
+        return payload
+    try:
+        async for session in get_async_session():
+            result = await session.execute(
+                select(Message).where(Message.id == UUID(str(msg_id)))
+            )
+            msg = result.scalar_one_or_none()
+            if msg:
+                return {
+                    "id": str(msg.id),
+                    "room_name": msg.room_name,
+                    "sender_handle": msg.sender_handle,
+                    "recipient_handle": msg.recipient_handle,
+                    "message_type": msg.message_type,
+                    "content": msg.content,
+                    "created_at": msg.created_at.isoformat(),
+                }
+    except Exception as e:
+        logger.warning("Failed to expand slim NOTIFY payload %s: %s", msg_id, e)
+    return payload
 
 
 @router.get("/rooms/{room_name}/messages/stream")
@@ -70,14 +102,14 @@ async def stream_room_messages(room_name: str, request: Request):
 
                 try:
                     payload = await asyncio.wait_for(queue.get(), timeout=15.0)
-                    # Validate JSON before forwarding
                     try:
-                        json.loads(payload)
+                        data = json.loads(payload)
                     except json.JSONDecodeError:
                         continue
-                    yield f"data: {payload}\n\n"
+                    if data.get("_slim"):
+                        data = await _expand_slim(data)
+                    yield f"data: {json.dumps(data)}\n\n"
                 except TimeoutError:
-                    # Send keep-alive comment
                     yield ": keep-alive\n\n"
 
         except asyncio.CancelledError:
