@@ -110,6 +110,8 @@ async def synthesize_room(
 
     try:
         result = await run_synthesis(room_name)
+    except LLMUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
     except RuntimeError as exc:
         if "authentication failed" in str(exc).lower():
             raise HTTPException(status_code=503, detail=str(exc))
