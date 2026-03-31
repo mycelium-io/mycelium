@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """
 Instance management commands for Mycelium CLI.
 
@@ -10,9 +13,11 @@ Commands for managing local Mycelium instances:
 - logs: View service logs
 """
 
+import shutil
 import subprocess
 from pathlib import Path
 
+import httpx
 import typer
 
 from mycelium.config import MyceliumConfig, ServerConfig
@@ -250,7 +255,8 @@ def status(ctx: typer.Context) -> None:
     """
     Show service health.
 
-    Checks if Mycelium backend is running and accessible.
+    Checks backend, database, LLM, embedding model, Docker containers,
+    disk space, and data directory status.
     """
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
@@ -262,33 +268,66 @@ def status(ctx: typer.Context) -> None:
 
         config = MyceliumConfig.load()
 
-        # Check backend health
+        from mycelium import __version__ as cli_version
+
+        # -- Backend health (includes DB, LLM, embedding, version) -----------
         backend_running = False
         backend_room_count = 0
+        health_data: dict = {}
+
+        backend_error: str | None = None
         with MyceliumHTTPClient(config=config) as client:
             try:
-                response = client.get("/rooms")
-                rooms = response.json()
-                backend_running = True
-                backend_room_count = len(rooms) if isinstance(rooms, list) else 0
-            except Exception:
+                health_resp = client.get("/health", params={"check_llm": "true"})
+                health_data = health_resp.json()
+                backend_running = health_data.get("status") in ("ok", "degraded")
+            except Exception as exc:
                 backend_running = False
+                if isinstance(exc, httpx.ConnectError):
+                    backend_error = f"Cannot connect to {config.server.api_url}"
+                elif isinstance(exc, httpx.TimeoutException):
+                    backend_error = f"Timeout connecting to {config.server.api_url}"
+                elif isinstance(exc, httpx.HTTPStatusError):
+                    backend_error = f"Backend returned HTTP {exc.response.status_code}"
+                else:
+                    backend_error = str(exc)
 
-        def status_str(running: bool) -> tuple[str, str]:
-            return ("Running", typer.colors.GREEN) if running else ("Not running", typer.colors.RED)
+            if backend_running:
+                try:
+                    response = client.get("/rooms")
+                    rooms = response.json()
+                    backend_room_count = len(rooms) if isinstance(rooms, list) else 0
+                except Exception:
+                    pass
 
-        backend_status, backend_color = status_str(backend_running)
+        # -- Client-side checks (no backend needed) --------------------------
+        docker_info = _check_docker_containers()
+        disk_info = _check_disk_space()
+        data_dir_info = _check_data_dir()
 
         if json_output:
             import json
 
-            output = {
+            output: dict = {
+                "versions": {
+                    "cli": cli_version,
+                    "backend": health_data.get("version"),
+                },
                 "services": {
                     "backend": {
                         "url": config.server.api_url,
+                        "status": health_data.get("status", "down"),
                         "running": backend_running,
                         "room_count": backend_room_count,
                     },
+                    "database": health_data.get("database"),
+                    "llm": health_data.get("llm"),
+                    "embedding": health_data.get("embedding"),
+                    "docker": docker_info,
+                },
+                "system": {
+                    "disk": disk_info,
+                    "data_dir": data_dir_info,
                 },
                 "config": {
                     "path": str(config_path),
@@ -300,27 +339,251 @@ def status(ctx: typer.Context) -> None:
         else:
             typer.secho("Mycelium Status", bold=True)
             typer.echo("")
+
+            # Versions
+            backend_version = health_data.get("version")
+            version_line = f"  CLI {cli_version}"
+            if backend_version:
+                version_line += f"  /  Backend {backend_version}"
+            typer.echo(version_line)
+            typer.echo("")
+
+            # Services
             typer.echo("Services:")
-            typer.secho(f"  Backend:   {backend_status}", fg=backend_color)
-            typer.echo(f"             {config.server.api_url}")
+
+            _print_status_line(
+                "Backend",
+                "Running" if backend_running else "Not running",
+                "ok" if backend_running else "error",
+            )
+            typer.echo(f"{_INDENT}{config.server.api_url}")
             if backend_running and backend_room_count > 0:
-                typer.echo(f"             {backend_room_count} rooms")
+                typer.echo(f"{_INDENT}{backend_room_count} rooms")
+            elif not backend_running and backend_error:
+                typer.secho(f"{_INDENT}{backend_error}", fg=typer.colors.RED)
+
+            db_info = health_data.get("database")
+            if db_info:
+                _print_status_line("Database", db_info.get("message", "Unknown"), db_info.get("status", "unknown"))
+
+            llm_info = health_data.get("llm")
+            if llm_info:
+                _print_llm_status(llm_info)
+
+            embed_info = health_data.get("embedding")
+            if embed_info:
+                _print_status_line(
+                    "Embedding",
+                    embed_info.get("message", "Unknown"),
+                    embed_info.get("status", "unknown"),
+                )
+                typer.echo(f"{_INDENT}{embed_info.get('model', '')}")
+
+            # Docker containers
+            typer.echo("")
+            typer.echo("Docker:")
+            if docker_info.get("available"):
+                for ctr in docker_info.get("containers", []):
+                    ctr_status = ctr.get("status", "unknown")
+                    health = ctr.get("health", "")
+                    label = ctr_status
+                    if health and health != "N/A":
+                        label += f" ({health})"
+                    is_ok = "running" in ctr_status.lower() and health.lower() not in ("unhealthy",)
+                    _print_status_line(ctr["name"], label, "ok" if is_ok else "warning")
+                if not docker_info.get("containers"):
+                    typer.secho("  No Mycelium containers found", fg=typer.colors.YELLOW)
+            else:
+                typer.secho(f"  {docker_info.get('message', 'Docker not available')}", fg=typer.colors.YELLOW)
+
+            # System
+            typer.echo("")
+            typer.echo("System:")
+            _print_status_line("Disk", disk_info["message"], disk_info["status"])
+            _print_status_line("Data Dir", data_dir_info["message"], data_dir_info["status"])
+
+            # Config
             typer.echo("")
             typer.echo("Configuration:")
             typer.echo(f"  Path:        {config_path}")
             if config.get_active_room():
                 typer.echo(f"  Active Room: {config.get_active_room()}")
+
+            # Overall verdict
             typer.echo("")
-            if backend_running:
-                typer.secho("Backend healthy", fg=typer.colors.GREEN)
-            else:
+            overall_status = health_data.get("status", "down")
+            if not backend_running:
                 typer.secho("Backend is down", fg=typer.colors.YELLOW)
                 typer.echo("\nTo start services:")
                 typer.echo("  mycelium start")
+            elif overall_status == "degraded":
+                typer.secho("Backend running (degraded)", fg=typer.colors.YELLOW)
+            else:
+                typer.secho("All systems operational", fg=typer.colors.GREEN)
 
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)
+
+
+# -- Helpers for status output ------------------------------------------------
+
+_STATUS_COLORS = {
+    "ok": typer.colors.GREEN,
+    "warning": typer.colors.YELLOW,
+    "error": typer.colors.RED,
+    "not_configured": typer.colors.YELLOW,
+    "unchecked": typer.colors.YELLOW,
+    "not_cached": typer.colors.YELLOW,
+    "stub": typer.colors.YELLOW,
+    "degraded": typer.colors.YELLOW,
+    "auth_error": typer.colors.RED,
+    "invalid_format": typer.colors.YELLOW,
+    "unreachable": typer.colors.RED,
+}
+
+
+_INDENT = " " * 25
+
+
+def _print_status_line(name: str, message: str, status: str) -> None:
+    """Print a single health-check line with color-coded status."""
+    color = _STATUS_COLORS.get(status, typer.colors.YELLOW)
+    label = name + ":"
+    typer.secho(f"  {label:<22s} {message}", fg=color)
+
+
+_LLM_STATUS_LABELS = {
+    "ok": "OK",
+    "not_configured": "Not configured",
+    "unchecked": "Unchecked",
+    "auth_error": "Auth error",
+    "invalid_format": "Invalid format",
+    "unreachable": "Unreachable",
+}
+
+
+def _print_llm_status(llm: dict) -> None:
+    """Render the LLM health section."""
+    llm_status = llm.get("status", "unknown")
+    label = _LLM_STATUS_LABELS.get(llm_status, llm_status.replace("_", " ").title())
+    _print_status_line("LLM", label, llm_status)
+
+    model = llm.get("model", "unknown")
+    key_hint = llm.get("key_hint")
+    if key_hint:
+        typer.echo(f"{_INDENT}{model}  ({key_hint})")
+    else:
+        typer.echo(f"{_INDENT}{model}")
+
+    message = llm.get("message")
+    if message and llm_status != "ok":
+        color = _STATUS_COLORS.get(llm_status, typer.colors.YELLOW)
+        typer.secho(f"{_INDENT}{message}", fg=color)
+
+
+# -- Client-side health checks -----------------------------------------------
+
+
+def _check_docker_containers() -> dict:
+    """Query Docker for Mycelium container status."""
+    try:
+        result = subprocess.run(
+            [
+                "docker", "ps", "-a",
+                "--filter", "name=mycelium",
+                "--format", "{{.Names}}\t{{.Status}}\t{{.State}}",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            return {"available": False, "message": "Docker command failed"}
+
+        containers = []
+        for line in result.stdout.strip().split("\n"):
+            if not line.strip():
+                continue
+            parts = line.split("\t")
+            name = parts[0] if len(parts) > 0 else "unknown"
+            status_text = parts[1] if len(parts) > 1 else "unknown"
+            state = parts[2] if len(parts) > 2 else "unknown"
+            health = "N/A"
+            if "(healthy)" in status_text.lower():
+                health = "healthy"
+            elif "(unhealthy)" in status_text.lower():
+                health = "unhealthy"
+            elif "(health: starting)" in status_text.lower():
+                health = "starting"
+            containers.append({"name": name, "status": state, "health": health})
+
+        return {"available": True, "containers": containers}
+    except FileNotFoundError:
+        return {"available": False, "message": "Docker not installed"}
+    except subprocess.TimeoutExpired:
+        return {"available": False, "message": "Docker command timed out"}
+    except Exception:
+        return {"available": False, "message": "Docker check failed"}
+
+
+def _check_disk_space(min_mb: int = 500) -> dict:
+    """Check available disk space on the home partition."""
+    try:
+        usage = shutil.disk_usage(Path.home())
+        free_mb = usage.free // (1024 * 1024)
+        total_gb = usage.total / (1024 * 1024 * 1024)
+        free_gb = usage.free / (1024 * 1024 * 1024)
+        if free_mb >= min_mb:
+            return {
+                "status": "ok",
+                "message": f"{free_gb:.1f} GB free of {total_gb:.1f} GB",
+                "free_mb": free_mb,
+            }
+        return {
+            "status": "warning",
+            "message": f"Low disk: {free_mb:,} MB free (< {min_mb} MB threshold)",
+            "free_mb": free_mb,
+        }
+    except Exception:
+        return {"status": "warning", "message": "Could not check disk space"}
+
+
+def _check_data_dir() -> dict:
+    """Check ~/.mycelium/ directory health."""
+    data_dir = Path.home() / ".mycelium"
+    issues = []
+
+    if not data_dir.exists():
+        return {"status": "error", "message": "~/.mycelium/ does not exist. Run: mycelium install", "path": str(data_dir)}
+
+    if not data_dir.is_dir():
+        return {"status": "error", "message": "~/.mycelium exists but is not a directory", "path": str(data_dir)}
+
+    env_file = data_dir / ".env"
+    config_file = data_dir / "config.toml"
+
+    if not env_file.exists():
+        issues.append("missing .env")
+    if not config_file.exists():
+        issues.append("missing config.toml")
+
+    try:
+        test_file = data_dir / ".write_test"
+        test_file.touch()
+        test_file.unlink(missing_ok=True)
+    except OSError:
+        issues.append("not writable")
+
+    if issues:
+        return {
+            "status": "warning",
+            "message": f"~/.mycelium/ ({', '.join(issues)})",
+            "path": str(data_dir),
+        }
+
+    return {"status": "ok", "message": "~/.mycelium/ OK", "path": str(data_dir)}
 
 
 @doc_ref(

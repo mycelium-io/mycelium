@@ -60,6 +60,13 @@
       <a href="#knowledge-graph" class="nav-link sub">Knowledge Graph</a>
     </div>
     <div class="nav-section">
+      <div class="nav-section-label">Remote Backend</div>
+      <a href="#remote-backend" class="nav-link">Remote Backend</a>
+      <a href="#remote-setup" class="nav-link sub">Setup</a>
+      <a href="#remote-clone" class="nav-link sub">Clone a room</a>
+      <a href="#remote-sync" class="nav-link sub">Sync</a>
+    </div>
+    <div class="nav-section">
       <div class="nav-section-label">Architecture</div>
       <a href="#architecture" class="nav-link">Architecture</a>
     </div>
@@ -487,6 +494,31 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
         <div class="callout-bar"></div>
         <div class="callout-body">The knowledge graph lives in <strong>AgensGraph</strong> alongside the SQL tables — no separate graph database required.</div>
       </div>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="remote-backend">
+      <h1>Remote Backend</h1>
+      <p>By default Mycelium runs locally. To share a room across multiple machines — or let several agents coordinate against a central store — point them all at one backend instance.</p>
+
+      <h2 id="remote-setup">Setup</h2>
+      <p>On the server (EC2, RPi, VM, etc.), run the standard installer:</p>
+      <pre><code><span class="cmd">mycelium install</span> <span class="flag">--non-interactive</span></code></pre>
+
+      <p>On each client machine, configure the CLI to point at the remote backend:</p>
+      <pre><code><span class="cmd">mycelium config set</span> server.api_url http://&lt;server-ip&gt;:8000</code></pre>
+
+      <h2 id="remote-clone">Clone a room</h2>
+      <p>Fetch an existing room from the remote backend and set it as active:</p>
+      <pre><code><span class="cmd">mycelium room clone</span> my-room
+<span class="comment"># or specify the backend explicitly:</span>
+<span class="cmd">mycelium room clone</span> my-room <span class="flag">--from</span> http://&lt;server-ip&gt;:8000</code></pre>
+
+      <h2 id="remote-sync">Sync</h2>
+      <p>Pull the latest memories from the remote backend at any time:</p>
+      <pre><code><span class="cmd">mycelium sync</span></code></pre>
+      <p>The Claude Code adapter runs <code>mycelium sync</code> automatically at session start, end, and after each response. Syncs are cheap — the backend returns <code>304 Not Modified</code> when nothing has changed.</p>
     </section>
 
     <hr class="divider">
@@ -1131,7 +1163,7 @@ curl -X POST http://localhost:8888/api/memory/search \
     <!-- FOOTER -->
     <div style="font-size:12px; color: var(--muted); font-family: 'SF Mono', monospace; padding-top: 8px; display:flex; flex-wrap:wrap; gap: 4px 12px;">
       <a href="https://github.com/mycelium-io/mycelium" style="color: var(--muted);">mycelium-io/mycelium</a>
-      <span>MIT License</span>
+      <span>Apache 2.0 License</span>
       <span>Shared Intent &middot; Shared Memory &middot; Shared Context</span>
     </div>
 

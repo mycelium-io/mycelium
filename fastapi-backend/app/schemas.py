@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """
 Minimal schemas for Mycelium's core models.
 """
@@ -151,6 +154,7 @@ class SessionRead(BaseModel):
     id: UUID
     room_name: str
     agent_handle: str
+    intent: str | None = None
     joined_at: datetime
     last_seen: datetime | None = None
 

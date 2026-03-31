@@ -1,0 +1,66 @@
+docker compose -f ./docker-compose.yml run --rm -e SYNAPSE_SERVER_NAME=local -e SYNAPSE_REPORT_STATS=no matrix generate 2>/dev/null
+
+sudo chmod 666 ./data/homeserver.yaml
+
+cat >> "./data/homeserver.yaml" << 'EOF'
+enable_registration: true
+enable_registration_without_verification: true
+registration_shared_secret: "poc-local-secret"
+
+# ── OpenClaw experiment additions ─────────────────────────────────────────────
+enable_registration: true
+enable_registration_without_verification: true
+registration_shared_secret: "poc-local-secret"
+
+# Disable rate limiting — agents retry aggressively and hammer the login endpoint
+rc_login:
+  address:    { per_second: 10000, burst_count: 10000 }
+  account:    { per_second: 10000, burst_count: 10000 }
+  failed_attempts: { per_second: 10000, burst_count: 10000 }
+rc_message_sending:
+  per_second: 10000
+  burst_count: 10000
+EOF
+
+
+docker compose -f ./docker-compose.yml up -d
+
+
+
+####  Add admin user
+
+docker exec -it openclaw-matrix register_new_matrix_user \
+  -u admin \
+  -p admin \
+  -c /data/homeserver.yaml \
+  http://localhost:8008
+
+
+
+
+
+
+
+
+docker exec -it openclaw-matrix register_new_matrix_user \
+  -u admin \
+  -p 'admin' \
+  -c /data/homeserver.yaml \
+  --admin \
+  http://localhost:8008
+
+
+docker exec -it openclaw-matrix register_new_matrix_user \
+  -u main \
+  -p 'main' \
+  -c /data/homeserver.yaml \
+  --no-admin \
+  http://localhost:8008
+
+docker exec -it openclaw-matrix register_new_matrix_user \
+  -u selina-agent \
+  -p 'selina-agent' \
+  -c /data/homeserver.yaml \
+  --no-admin \
+  http://localhost:8008
+

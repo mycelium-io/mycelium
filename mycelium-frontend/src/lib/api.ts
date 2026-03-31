@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Julia Valenti
+
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8888";
 
 export async function fetchRooms() {

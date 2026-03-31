@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """Add coordination fields to rooms and sessions.
 
 Revision ID: 0002

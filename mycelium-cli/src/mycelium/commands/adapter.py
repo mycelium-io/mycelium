@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """
 Adapter commands — connect agent frameworks to Mycelium.
 
@@ -47,7 +50,6 @@ _CLAUDE_CODE_HOOKS = [
     "mycelium-post-tool-use.sh",
     "mycelium-pre-compact.sh",
     "mycelium-stop.sh",
-    "mycelium-sync.sh",
 ]
 
 

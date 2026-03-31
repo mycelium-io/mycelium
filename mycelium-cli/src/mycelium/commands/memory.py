@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """
 Memory commands — persistent namespaced memory operations.
 
@@ -6,7 +9,6 @@ Search and subscribe use the backend API (pgvector/NOTIFY).
 """
 
 import json
-import subprocess
 from datetime import UTC, datetime
 
 import typer
@@ -181,6 +183,13 @@ def memory_set(
 
             # Write the file locally using the response metadata
             _write_local_copy(room_name, mem)
+
+            # Invalidate cached ETag — room has changed
+            from mycelium.filesystem import get_mycelium_dir
+
+            etag_file = get_mycelium_dir() / "rooms" / room_name / ".sync-etag"
+            if etag_file.exists():
+                etag_file.unlink()
 
             file_path = getattr(mem, "file_path", None)
             version_info = f"v{mem.version}" if hasattr(mem, "version") else ""
@@ -557,99 +566,99 @@ def memory_procedures(
 # ── Sync commands ────────────────────────────────────────────────────────────
 
 
-def _git(room_dir, *args: str) -> subprocess.CompletedProcess:
-    """Run a git command in the room directory."""
-    return subprocess.run(
-        ["git", *args],
-        cwd=room_dir,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-
-
 @doc_ref(
-    usage="mycelium sync [--push] [--no-reindex]",
-    desc="Sync the active room with its git remote — pull, reindex, and optionally push local changes.",
+    usage="mycelium sync [--no-reindex]",
+    desc="Sync the active room with the backend — fetch all memories from the API and write them locally.",
     group="other",
 )
 @app.command(name="sync")
 def memory_sync(
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
-    push: bool = typer.Option(False, "--push", help="Also commit and push local changes"),
-    no_reindex: bool = typer.Option(False, "--no-reindex", help="Skip re-indexing after pull"),
-    message: str = typer.Option("mycelium sync", "--message", "-m", help="Commit message for push"),
+    no_reindex: bool = typer.Option(False, "--no-reindex", help="Skip re-indexing after sync"),
 ) -> None:
-    """Sync room files with git remote — pull + reindex, optionally push.
+    """Sync room files from the backend API — fetches all memories and writes local copies.
 
-    Requires the room directory to be a git repo with a remote configured.
-    Use 'mycelium room init-git' to set up git for a room.
+    Use this to pull the latest room state from a remote backend instance.
+    Hooks call this on session start/end to keep local files current.
 
     Examples:
-        mycelium sync                    # pull + reindex
-        mycelium sync --push             # commit + push + pull + reindex
-        mycelium sync --push -m "update" # push with custom message
+        mycelium sync           # fetch all memories + reindex
+        mycelium sync --no-reindex
     """
+    import httpx
+
     room_name = _get_active_room(room)
-    room_dir = get_room_dir(room_name)
+    cfg = MyceliumConfig.load()
 
-    # Verify this is a git repo
-    result = _git(room_dir, "rev-parse", "--is-inside-work-tree")
-    if result.returncode != 0:
-        console.print(
-            f"[red]Error:[/red] {room_dir} is not a git repo. "
-            f"Run 'mycelium room init-git {room_name} --remote <url>' first."
-        )
-        raise typer.Exit(1)
+    from mycelium.filesystem import get_mycelium_dir
 
-    # Push local changes first if requested
-    if push:
-        # Stage all changes in the room directory
-        _git(room_dir, "add", "-A")
+    etag_file = get_mycelium_dir() / "rooms" / room_name / ".sync-etag"
+    headers = {}
+    if etag_file.exists():
+        headers["If-None-Match"] = etag_file.read_text().strip()
 
-        # Check if there's anything to commit
-        status = _git(room_dir, "status", "--porcelain")
-        if status.stdout.strip():
-            result = _git(room_dir, "commit", "-m", message)
-            if result.returncode != 0:
-                console.print(f"[red]Commit failed:[/red] {result.stderr.strip()}")
-                raise typer.Exit(1)
-            console.print("[green]Committed[/green] local changes")
+    console.print(f"[dim]Syncing {room_name} from {cfg.server.api_url}...[/dim]")
 
-        result = _git(room_dir, "push")
-        if result.returncode != 0:
-            console.print(f"[red]Push failed:[/red] {result.stderr.strip()}")
-            raise typer.Exit(1)
-        console.print("[green]Pushed[/green] to remote")
+    with httpx.Client(base_url=cfg.server.api_url, timeout=60) as client:
+        resp = client.get(f"/rooms/{room_name}/memory", params={"limit": 1000}, headers=headers)
 
-    # Pull from remote
-    result = _git(room_dir, "pull", "--ff-only")
-    if result.returncode != 0:
-        # Try regular pull if ff-only fails
-        result = _git(room_dir, "pull")
-        if result.returncode != 0:
-            console.print(f"[red]Pull failed:[/red] {result.stderr.strip()}")
-            raise typer.Exit(1)
-
-    if "Already up to date" in result.stdout:
+    if resp.status_code == 304:
         console.print("[dim]Already up to date[/dim]")
-    else:
-        console.print("[green]Pulled[/green] latest changes")
+        return
 
-    # Re-index the room's search index
+    resp.raise_for_status()
+    memories = resp.json()
+
+    # Persist ETag for next sync
+    if etag := resp.headers.get("etag"):
+        etag_file.parent.mkdir(parents=True, exist_ok=True)
+        etag_file.write_text(etag)
+
+    if not memories:
+        console.print("[dim]No memories to sync[/dim]")
+        return
+
+    from datetime import datetime
+
+    def _parse_dt(val: str | None):
+        if not val:
+            return None
+        if isinstance(val, datetime):
+            return val
+        try:
+            return datetime.fromisoformat(val.replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            return None
+
+    room_dir = get_room_dir(room_name)
+    written = 0
+    for mem in memories:
+        value = mem.get("value", "")
+        if isinstance(value, dict):
+            content = value.get("text", json.dumps(value))
+        else:
+            content = str(value)
+        write_memory(
+            room_dir,
+            mem["key"],
+            content,
+            created_by=mem.get("created_by"),
+            updated_by=mem.get("updated_by"),
+            version=mem.get("version", 1),
+            tags=mem.get("tags"),
+            created_at=_parse_dt(mem.get("created_at")),
+            updated_at=_parse_dt(mem.get("updated_at")),
+        )
+        written += 1
+
+    console.print(f"[green]Synced:[/green] {written} memories")
+
     if not no_reindex:
-        import httpx
-
-        cfg = MyceliumConfig.load()
         try:
             with httpx.Client(base_url=cfg.server.api_url, timeout=120) as client:
                 resp = client.post(f"/rooms/{room_name}/reindex")
                 resp.raise_for_status()
                 data = resp.json()
-            indexed = data.get("indexed", 0)
-            console.print(f"[green]Re-indexed:[/green] {indexed} memories")
+            console.print(f"[green]Re-indexed:[/green] {data.get('indexed', 0)} memories")
         except Exception as e:
             console.print(f"[yellow]Warning:[/yellow] reindex failed: {e}")
-            console.print(
-                "[dim]Search index may be stale. Run 'mycelium memory reindex' when the backend is available.[/dim]"
-            )

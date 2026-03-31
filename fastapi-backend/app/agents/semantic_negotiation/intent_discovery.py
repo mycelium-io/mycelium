@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """Intent discovery — component 1 of the semantic negotiation pipeline.
 
 Ported from ioc-cfn-cognitive-agents/semantic-negotiation-agent/app/agent/intent_discovery.py.
@@ -105,6 +108,16 @@ class IntentDiscovery:
         t0 = time.monotonic()
         try:
             resp = litellm.completion(**kwargs)
+        except litellm.AuthenticationError:
+            record_llm_call(operation="negotiation_intent", model=settings.LLM_MODEL, error=True)
+            logger.warning(
+                "LLM authentication failed for model %s. Check LLM_API_KEY in ~/.mycelium/.env",
+                settings.LLM_MODEL,
+            )
+            raise RuntimeError(
+                f"LLM authentication failed for {settings.LLM_MODEL}. "
+                "Check LLM_API_KEY in ~/.mycelium/.env"
+            )
         except Exception:
             record_llm_call(operation="negotiation_intent", model=settings.LLM_MODEL, error=True)
             raise

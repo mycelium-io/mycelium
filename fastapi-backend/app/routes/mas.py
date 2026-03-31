@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """MAS CRUD — POST/GET/DELETE /api/workspaces/{workspace_id}/mas."""
 
 import logging

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """Multi-entity evidence engine (ported from ioc-cfn-cognitive-agents).
 
 Rewired: imports use local package paths.

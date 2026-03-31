@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """
 Two-stage LLM extraction service for OpenClaw turns.
 
@@ -64,6 +67,16 @@ def _litellm_call(
     cost = 0.0
     try:
         resp = litellm.completion(**kwargs)
+    except litellm.AuthenticationError:
+        is_error = True
+        logger.warning(
+            "LLM authentication failed for model %s. Check LLM_API_KEY in ~/.mycelium/.env",
+            settings.LLM_MODEL,
+        )
+        raise RuntimeError(
+            f"LLM authentication failed for {settings.LLM_MODEL}. "
+            "Check LLM_API_KEY in ~/.mycelium/.env"
+        )
     except Exception:
         is_error = True
         raise

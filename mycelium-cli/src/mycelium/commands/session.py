@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """
 Session commands — breakout negotiation within rooms.
 
@@ -255,6 +258,77 @@ def await_tick(
         raise typer.Exit(1)
     except typer.Exit:
         raise
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+
+
+@doc_ref(
+    usage="mycelium session watch [-r <room>]",
+    desc="Stream live messages from all sessions in a room. Waits if no session exists yet.",
+    group="session",
+)
+@app.command(name="watch")
+def watch_session(
+    ctx: typer.Context,
+    room: str | None = typer.Option(None, "--room", "-r", help="Room (overrides active room)"),
+    timeout: int = typer.Option(0, "--timeout", "-t", help="Timeout in seconds (0=no timeout)"),
+) -> None:
+    """Stream live coordination events from all sessions in a room.
+
+    Waits for a session to appear if none exists yet. Watches all sessions
+    (existing and new) as they are created. Uses the same rich rendering as
+    'room watch'.
+
+    Examples:
+        mycelium session watch -r home-sale
+        mycelium session watch  # uses active room
+    """
+    import threading
+    import time
+
+    import httpx
+    from rich.console import Console
+
+    from mycelium.commands.room import _watch_room
+
+    console = Console()
+
+    try:
+        config = MyceliumConfig.load()
+        room_name = _resolve_room(config, room)
+        prefix = f"{room_name}:session:"
+        watched: set[str] = set()
+        start = time.time()
+
+        console.print(f"[dim]Watching {room_name} for sessions… (Ctrl+C to stop)[/dim]\n")
+
+        while True:
+            if timeout > 0 and (time.time() - start) >= timeout:
+                break
+
+            try:
+                resp = httpx.get(f"{config.server.api_url}/rooms?limit=200", timeout=10)
+                resp.raise_for_status()
+                all_rooms = resp.json()
+            except Exception:
+                time.sleep(2)
+                continue
+
+            session_rooms = [r["name"] for r in all_rooms if r["name"].startswith(prefix)]
+            for sr in session_rooms:
+                if sr not in watched:
+                    watched.add(sr)
+                    console.print(f"[dim]  + {sr}[/dim]")
+                    t = threading.Thread(
+                        target=_watch_room, args=(config, sr, timeout), daemon=True
+                    )
+                    t.start()
+
+            time.sleep(3)
+
+    except KeyboardInterrupt:
+        pass
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)

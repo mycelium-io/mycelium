@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """Evidence gathering request/response schemas (ported from ioc-cfn-cognitive-agents)."""
 
 from __future__ import annotations

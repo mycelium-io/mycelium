@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """
 Knowledge graph endpoints.
 
@@ -118,12 +121,20 @@ async def knowledge_ingest(
         model=settings.LLM_MODEL,
     )
 
-    result = await ingestion_svc.ingest(
-        records=data.records,
-        workspace_id=data.workspace_id,
-        mas_id=data.mas_id,
-        agent_id=data.agent_id,
-    )
+    try:
+        result = await ingestion_svc.ingest(
+            records=data.records,
+            workspace_id=data.workspace_id,
+            mas_id=data.mas_id,
+            agent_id=data.agent_id,
+        )
+    except RuntimeError as exc:
+        if "authentication failed" in str(exc).lower():
+            return JSONResponse(
+                status_code=503,
+                content={"detail": str(exc)},
+            )
+        raise
 
     # Emit audit event (fire-and-forget, non-fatal)
     try:

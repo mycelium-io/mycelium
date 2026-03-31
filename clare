@@ -1,0 +1,30 @@
+docker exec -it openclaw-matrix register_new_matrix_user s
+  -u claire-agent \
+  -p claire-agent  \
+  -c /data/homeserver.yaml \
+  --no-admin \
+  http://localhost:8008
+
+
+openclaw agents add claire-agent \
+ --agent-dir ~/.openclaw/agents/claire-agent/agent \
+ --workspace ~/.openclaw/workspace-claire-agent \
+ --model litellm/bedrock/global.anthropic.claude-haiku-4-5-20251001-v1:0 \
+
+TOKEN=$(curl -s -X POST http://10.0.50.89:8008/_matrix/client/v3/login \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"m.login.password","user":"claire-agent","password":"claire-agent"}' \
+  | jq -r '.access_token')
+
+ openclaw matrix account add \
+    --account claire-agent \
+    --homeserver http://10.0.50.89:8008 \
+    --user-id @claire-agent:local \
+    --access-token "${TOKEN}" \
+    --allow-private-network
+
+curl -s -H "Authorization: Bearer ${TOKEN}" \
+    -H "Content-Type: application/json" \
+    -X POST "http://10.0.50.89:8008/_matrix/client/v3/join/%23general%3Alocal" \
+     -d '{}' | python3 -m json.tool
+
