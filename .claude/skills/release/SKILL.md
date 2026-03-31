@@ -30,5 +30,11 @@ Commit latest changes (if any), tag, cut a GitHub release, and optionally notify
    Generate the release notes from `git log <prev-tag>..HEAD --oneline`.
 
 5. **Webex notification** — If `--with-webex` was passed, invoke `/webex` (no confirmation needed) to post a bullet-point changelog summary with the tag and release URL to:
-   - `Mycelium Release Notes` (ID: `Y2lzY29zcGFyazovL3VzL1JPT00vYjBlYTY0YjAtMjQ3OS0xMWYxLTk3OTEtZmJlMDUzOTQzYzBl`) — always
-   - `IoC::Mycelium Eng` (ID: `Y2lzY29zcGFyazovL3VzL1JPT00vZDgyOGQzYTAtYzU4Mi0xMWYwLThkNzMtM2ZhZTYyZTQ4ZjFj`) — only if `--with-webex=eng` was passed
+   - `Mycelium Release Notes` — always (room ID in `/webex` skill)
+   - `IoC::Mycelium Eng` — only if `--with-webex=eng` was passed (room ID in `/webex` skill)
+
+6. **Mycelium patch notes** — Write the same changelog summary to the active Mycelium room:
+   ```bash
+   mycelium memory set "releases/<tag>" "<same bullet-point summary as Webex>" --handle claude-code-agent
+   ```
+   This keeps a persistent record of what shipped and when, visible to all agents sharing the room.
