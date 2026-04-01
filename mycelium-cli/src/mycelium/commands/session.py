@@ -185,7 +185,83 @@ def await_tick(
 
     try:
         config = MyceliumConfig.load()
-        _resolve_room(config, room)  # validate room exists
+        resolved_room = _resolve_room(config, room)  # validate room exists
+
+        # Check for a missed tick before opening the SSE stream — the tick may
+        # have fired between join and await (race condition in CFN mode where
+        # all agents are ticked simultaneously).
+        if resolved_room:
+            with httpx.Client(timeout=10) as http:
+                try:
+                    # Ticks are posted to session sub-rooms (e.g. room:session:xxxx).
+                    # Find all session rooms under this namespace and scan them.
+                    rooms_resp = http.get(
+                        f"{config.server.api_url}/rooms",
+                        params={"limit": 200},
+                    )
+                    rooms_to_scan = [resolved_room]
+                    if rooms_resp.status_code == 200:
+                        prefix = f"{resolved_room}:session:"
+                        for r in rooms_resp.json():
+                            if r.get("name", "").startswith(prefix):
+                                rooms_to_scan.append(r["name"])
+
+                    for scan_room in rooms_to_scan:
+                        resp = http.get(
+                            f"{config.server.api_url}/rooms/{scan_room}/messages",
+                            params={"limit": 20},
+                        )
+                        if resp.status_code != 200:
+                            continue
+                        body = resp.json()
+                        msgs = body.get("messages", body) if isinstance(body, dict) else body
+                        # Messages come newest-first. Check for consensus before ticks.
+                        missed_tick: dict | None = None
+                        for msg in msgs:
+                            mtype = msg.get("message_type")
+                            if mtype == "coordination_consensus":
+                                try:
+                                    data = json_module.loads(msg.get("content", "{}"))
+                                except json_module.JSONDecodeError:
+                                    data = {}
+                                typer.echo(
+                                    json_module.dumps(
+                                        {
+                                            "type": "consensus",
+                                            "room": msg.get("room_name"),
+                                            "plan": data.get("plan"),
+                                            "assignments": data.get("assignments"),
+                                            "broken": data.get("broken", False),
+                                            "replayed": True,
+                                        }
+                                    )
+                                )
+                                return
+                            if mtype == "coordination_tick" and missed_tick is None:
+                                try:
+                                    data = json_module.loads(msg.get("content", "{}"))
+                                except json_module.JSONDecodeError:
+                                    continue
+                                if "payload" in data and isinstance(data["payload"], dict):
+                                    data = data["payload"]
+                                participant = data.get("participant_id")
+                                if participant == handle or participant is None:
+                                    missed_tick = {
+                                        "type": "tick",
+                                        "room": msg.get("room_name"),
+                                        "round": data.get("round"),
+                                        "action": data.get("action"),
+                                        "issue_options": data.get("issue_options", {}),
+                                        "current_offer": data.get("current_offer"),
+                                        "proposer_id": data.get("proposer_id"),
+                                        "history": data.get("history"),
+                                        "replayed": True,
+                                    }
+                        if missed_tick is not None:
+                            typer.echo(json_module.dumps(missed_tick))
+                            return
+                except Exception:
+                    pass  # fall through to SSE
 
         url = f"{config.server.api_url}/agents/{handle}/stream"
         start = time.time()
