@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 import asyncpg
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -135,6 +136,9 @@ async def join_room(
     await db.commit()
     await db.refresh(sess)
 
+    # Register agent handle in CFN mgmt plane (non-fatal, fire-and-forget)
+    asyncio.ensure_future(_register_agent_cfn(room, payload.agent_handle))
+
     # Post coordination_join notification
     asyncio.ensure_future(_notify_join(target_room.name, payload.agent_handle, payload.intent))
 
@@ -161,6 +165,19 @@ async def join_room(
             )
 
     return sess
+
+
+async def _register_agent_cfn(room: Room, handle: str) -> None:
+    """Register an agent handle in the CFN mgmt plane MAS. Non-fatal."""
+    if not settings.CFN_MGMT_URL or not room.mas_id or not room.workspace_id:
+        return
+    try:
+        url = f"{settings.CFN_MGMT_URL}/api/workspaces/{room.workspace_id}/cognitive-agents"
+        async with httpx.AsyncClient(timeout=10) as client:
+            await client.post(url, json={"cognitive_agent_name": handle})
+        logger.debug("CFN agent registered: %s in workspace %s", handle, room.workspace_id)
+    except Exception as exc:
+        logger.warning("CFN register agent failed for %s: %s", handle, exc)
 
 
 async def _notify_join(room_name: str, handle: str, intent: str | None) -> None:

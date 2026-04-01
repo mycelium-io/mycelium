@@ -158,6 +158,9 @@ class Room(Base):
     # For sessions spawned within a namespace, points to the parent room name.
     # No FK constraint — validated in application code to avoid AgensGraph create_all ordering issues.
     parent_namespace: Mapped[str | None] = mapped_column(String, nullable=True)
+    # CFN MAS sync — foreign IDs in the cfn_mgmt DB (not FK-constrained)
+    mas_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    workspace_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class Message(Base):

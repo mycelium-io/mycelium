@@ -129,7 +129,7 @@ def propose(
 # ── respond ───────────────────────────────────────────────────────────────────
 
 # Kept in sync with RespondReply.action Literal for the help text / error message.
-VALID_ACTIONS = {"accept", "reject", "end"}
+VALID_ACTIONS = {"accept", "reject", "end", "counter_offer"}
 
 
 @doc_ref(

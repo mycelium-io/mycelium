@@ -214,6 +214,11 @@ def _prompt_ioc() -> bool:
 def _write_env_file(env_path: Path, llm_config: dict[str, str]) -> None:
     import importlib.resources
 
+    # On re-install, preserve existing .env and only update/append changed keys.
+    if env_path.exists():
+        _patch_env_vars(env_path, llm_config)
+        return
+
     defaults_ref = importlib.resources.files("mycelium.docker") / "env.defaults"
     defaults_text = defaults_ref.read_text(encoding="utf-8")
 
@@ -232,6 +237,43 @@ def _write_env_file(env_path: Path, llm_config: dict[str, str]) -> None:
             lines.append(f"{key}={value}")
 
     env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _restart_backend(
+    compose_path: Path, env_path: Path, profiles: list[str] | None = None, api_url: str = "http://localhost:8000"
+) -> None:
+    """Restart only the backend container and wait for it to become healthy."""
+    args = [
+        "docker", "compose", "-p", "mycelium",
+        "-f", str(compose_path),
+        "--env-file", str(env_path),
+    ]
+    for p in profiles or []:
+        args += ["--profile", p]
+    args += ["up", "--no-build", "--force-recreate", "-d", "mycelium-backend"]
+    subprocess.run(args, capture_output=True)
+    _wait_for_health([f"{api_url}/health"], timeout=60)
+
+
+def _patch_env_vars(env_path: Path, updates: dict[str, str]) -> None:
+    """Update or append specific key=value entries in an existing .env file."""
+    if not env_path.exists():
+        return
+    text = env_path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    remaining = dict(updates)
+    new_lines = []
+    for line in lines:
+        if "=" in line and not line.lstrip().startswith("#"):
+            key = line.split("=")[0].strip()
+            if key in remaining:
+                new_lines.append(f"{key}={remaining.pop(key)}")
+                continue
+        new_lines.append(line)
+    # Append any keys not yet present
+    for key, value in remaining.items():
+        new_lines.append(f"{key}={value}")
+    env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
 
 
 # ── Docker compose ────────────────────────────────────────────────────────────
@@ -273,7 +315,8 @@ def _get_compose_path() -> Path:
     compose_ref = importlib.resources.files("mycelium.docker") / "compose.yml"
     dest = Path.home() / ".mycelium" / "docker" / "compose.yml"
     dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_bytes(compose_ref.read_bytes())
+    if not dest.exists():
+        dest.write_bytes(compose_ref.read_bytes())
     return dest
 
 
@@ -594,6 +637,7 @@ def install(
             compose_profiles: list[str] = []
             if ioc:
                 llm_config["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
+                llm_config["COGNITION_FABRIC_NODE_URL"] = "http://ioc-cognition-fabric-node-svc:9002"
                 compose_profiles.append("cfn")
 
             custom_ports = {"db": 5432, "backend": 8000}
@@ -629,6 +673,11 @@ def install(
             except Exception as exc:
                 typer.secho(f"  ⚠  Could not provision backend: {exc}", fg=typer.colors.YELLOW)
                 workspace_id, mas_id = "", ""
+
+            # Persist WORKSPACE_ID into .env and restart backend so it picks it up
+            if workspace_id:
+                _patch_env_vars(env_path, {"WORKSPACE_ID": workspace_id})
+                _restart_backend(compose_path, env_path, profiles, api_url)
 
             _run_migrations()
             _write_mycelium_config(api_url, workspace_id, mas_id)
@@ -776,6 +825,7 @@ def install(
         compose_profiles: list[str] = []
         if ioc_enabled:
             llm_config["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
+            llm_config["COGNITION_FABRIC_NODE_URL"] = "http://ioc-cognition-fabric-node-svc:9002"
             compose_profiles.append("cfn")
 
         # Port check — allow user to pick alternatives
@@ -849,6 +899,11 @@ def install(
             workspace_id, mas_id = "", ""
 
         # ── Phase 6: Migrate DB + write config ────────────────────────────
+        # Persist WORKSPACE_ID into .env and restart backend so it picks it up
+        if workspace_id:
+            _patch_env_vars(env_path, {"WORKSPACE_ID": workspace_id})
+            _restart_backend(compose_path, env_path, compose_profiles, api_url)
+
         _run_migrations()
         _write_mycelium_config(api_url, workspace_id, mas_id)
         typer.secho("  ✓ Config written to ~/.mycelium/config.toml", fg=typer.colors.GREEN)

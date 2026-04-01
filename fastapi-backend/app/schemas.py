@@ -77,6 +77,8 @@ class RoomCreate(BaseModel):
     description: str | None = Field(None, max_length=500)
     is_public: bool = True
     trigger_config: dict | None = None
+    mas_id: str | None = None
+    workspace_id: str | None = None
 
 
 class RoomRead(BaseModel):
@@ -93,6 +95,8 @@ class RoomRead(BaseModel):
     is_persistent: bool = False
     is_namespace: bool = False
     parent_namespace: str | None = None
+    mas_id: str | None = None
+    workspace_id: str | None = None
 
     model_config = {"from_attributes": True}
 
