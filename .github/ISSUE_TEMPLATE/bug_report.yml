@@ -7,6 +7,11 @@ body:
       value: |
         Thanks for taking the time to report a bug. Please fill out the sections below.
 
+        **Before filing**: If you're using an AI agent (Claude Code, Cursor, etc.), ask it to troubleshoot the issue first:
+        > "Use the troubleshooting skill to diagnose this mycelium error: [paste error]"
+
+        The agent can run `mycelium status` and check logs to identify common issues automatically.
+
   - type: input
     id: version
     attributes:
@@ -60,6 +65,15 @@ body:
         OS: macOS 15.3
         Python: 3.12.2
         Docker: 27.0
+
+  - type: checkboxes
+    id: troubleshooting
+    attributes:
+      label: Troubleshooting Attempted
+      options:
+        - label: I ran `mycelium status` and reviewed the output
+        - label: I checked the logs with `mycelium logs`
+        - label: I used the troubleshooting skill or reviewed the troubleshooting guide
 
   - type: markdown
     attributes:
