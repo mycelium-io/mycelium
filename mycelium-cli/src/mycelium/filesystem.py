@@ -175,6 +175,6 @@ def list_memories(
         except Exception:
             pass
 
-    # Sort by updated_at descending
-    results.sort(key=lambda x: x[1].get("updated_at", ""), reverse=True)
+    # Sort by updated_at descending (normalize to str to handle datetime objects from YAML)
+    results.sort(key=lambda x: str(x[1].get("updated_at", "")), reverse=True)
     return results[:limit]

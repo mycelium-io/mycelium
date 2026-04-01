@@ -25,3 +25,4 @@ node_modules/
 tsconfig.tsbuildinfo
 next-env.d.ts
 pnpm-lock.yaml
+.docker-dev/
