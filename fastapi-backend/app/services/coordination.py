@@ -107,9 +107,7 @@ async def _run_tick(room_name: str, tick: int) -> None:
         room_result = await db.execute(select(Room).where(Room.name == room_name))
         room = room_result.scalar_one_or_none()
         if room is not None and room.mas_id is None and room.parent_namespace:
-            ns_result = await db.execute(
-                select(Room).where(Room.name == room.parent_namespace)
-            )
+            ns_result = await db.execute(select(Room).where(Room.name == room.parent_namespace))
             ns_room = ns_result.scalar_one_or_none()
             if ns_room is not None and ns_room.mas_id:
                 room = ns_room

@@ -677,7 +677,7 @@ def install(
             # Persist WORKSPACE_ID into .env and restart backend so it picks it up
             if workspace_id:
                 _patch_env_vars(env_path, {"WORKSPACE_ID": workspace_id})
-                _restart_backend(compose_path, env_path, profiles, api_url)
+                _restart_backend(compose_path, env_path, compose_profiles, api_url)
 
             _run_migrations()
             _write_mycelium_config(api_url, workspace_id, mas_id)
