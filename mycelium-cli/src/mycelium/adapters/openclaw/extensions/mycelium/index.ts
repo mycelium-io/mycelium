@@ -1,16 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Julia Valenti
 
-import { readFileSync } from "node:fs";
-import { execSync } from "node:child_process";
-import { homedir } from "node:os";
-import { join } from "node:path";
-
 /**
  * mycelium — OpenClaw Plugin
  *
  * Bridges OpenClaw agents to the Mycelium coordination backend.
  * Uses prependSystemContext (cached) for static instructions and prependContext (per-turn) for dynamic coordination state.
+ *
+ * Env vs HTTP are split across `mycelium-env.ts` and `mycelium-http.ts` (OpenClaw install scan).
  *
  * Hook surface:
  *   gateway_start      — verify backend connectivity on startup
@@ -31,6 +28,24 @@ import { join } from "node:path";
  *   MYCELIUM_AGENT_HANDLE env var → fixed handle for all sessions (Docker Compose)
  *   Otherwise → OpenClaw agentId (single gateway, multiple agents)
  */
+
+import {
+  getAgentId,
+  getApiUrl,
+  getMasId,
+  getWorkspaceId,
+  loadMyceliumConfig,
+  readMemoryFileContent,
+  resolveHandle,
+} from "./mycelium-env.js";
+import {
+  apiGet,
+  apiPost,
+  fetchAgentEventStream,
+  fetchBackendHealth,
+  wakeAgent,
+} from "./mycelium-http.js";
+import type { SubagentRuntime } from "./mycelium-http.js";
 
 // ── Coordination instructions ─────────────────────────────────────────────────
 
@@ -87,41 +102,7 @@ Repeat steps 2–3 until you receive a \`[consensus]\` message containing your a
 - Default to silence.
 `;
 
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Config loaded from `mycelium --json config show` at gateway_start.
-// Falls back to env vars so Docker/CI overrides still work.
-let API_URL = (process.env.MYCELIUM_API_URL ?? "").replace(/\/$/, "");
-let WORKSPACE_ID = process.env.MYCELIUM_WORKSPACE_ID ?? "";
-let MAS_ID = process.env.MYCELIUM_MAS_ID ?? "";
-const AGENT_ID = process.env.MYCELIUM_AGENT_ID ?? "";
-
-function loadMyceliumConfig(): void {
-  try {
-    const raw = execSync("mycelium --json config show", { encoding: "utf-8", timeout: 5000 });
-    const cfg = JSON.parse(raw);
-    if (!process.env.MYCELIUM_API_URL && cfg?.server?.api_url) {
-      API_URL = cfg.server.api_url.replace(/\/$/, "");
-    }
-    if (!process.env.MYCELIUM_WORKSPACE_ID && cfg?.server?.workspace_id) {
-      WORKSPACE_ID = cfg.server.workspace_id;
-    }
-    if (!process.env.MYCELIUM_MAS_ID && cfg?.server?.mas_id) {
-      MAS_ID = cfg.server.mas_id;
-    }
-  } catch {
-    // mycelium CLI not installed or config unreadable — fall back to env vars
-  }
-}
-
-// Custom memory file — read fresh on every before_agent_start invocation
-const MEMORY_FILE = join(
-  homedir(),
-  ".openclaw/workspace/memory/mycelium-context.md"
-);
-
 // ── Per-session tracking ───────────────────────────────────────────────────
-// room is populated dynamically from the first SSE tick event
 
 type SessionEntry = {
   sessionKey: string;
@@ -129,75 +110,19 @@ type SessionEntry = {
   handle: string;
   room?: string;
 };
-const _sessions = new Map<string, SessionEntry>(); // agentId → entry
+const _sessions = new Map<string, SessionEntry>();
 
-// One SSE connection per handle (shared across sessions with the same handle)
-const _sseByHandle = new Map<string, AbortController>(); // handle → abort
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function resolveHandle(agentId?: string | null): string {
-  if (process.env.MYCELIUM_AGENT_HANDLE) {
-    return process.env.MYCELIUM_AGENT_HANDLE;
-  }
-  if (agentId?.trim()) {
-    return agentId.trim();
-  }
-  const matrixId = process.env.MATRIX_USER_ID ?? "";
-  if (matrixId.startsWith("@")) {
-    return matrixId.slice(1).split(":")[0];
-  }
-  return matrixId || "unknown-agent";
-}
-
-async function apiPost(
-  path: string,
-  body: unknown,
-  log: { warn: (s: string) => void }
-): Promise<boolean> {
-  try {
-    const res = await fetch(`${API_URL}${path}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      log.warn(`[mycelium] POST ${path} → ${res.status}`);
-      return false;
-    }
-    return true;
-  } catch (e) {
-    log.warn(`[mycelium] POST ${path} error: ${e}`);
-    return false;
-  }
-}
-
-async function apiGet(
-  path: string,
-  log: { warn: (s: string) => void }
-): Promise<unknown> {
-  try {
-    const res = await fetch(`${API_URL}${path}`);
-    if (!res.ok) return null;
-    return await res.json();
-  } catch (e) {
-    log.warn(`[mycelium] GET ${path} error: ${e}`);
-    return null;
-  }
-}
+const _sseByHandle = new Map<string, AbortController>();
 
 // ── Plugin ────────────────────────────────────────────────────────────────────
 
 export default function register(api: {
   logger: { info: (s: string) => void; warn: (s: string) => void };
   on: (event: string, handler: (...args: any[]) => any, opts?: object) => void;
+  runtime: { subagent: SubagentRuntime };
 }): void {
   const log = api.logger;
-
-  // ── SSE subscription helper ────────────────────────────────────────────────
-  // Opens a persistent SSE connection to /agents/{handle}/stream.
-  // On tick/consensus: stores room in session entries, wakes matching sessions.
-  // Reconnects automatically on error.
+  const subagent = api.runtime.subagent;
 
   function subscribeHandle(handle: string): void {
     if (_sseByHandle.has(handle)) return;
@@ -211,10 +136,7 @@ export default function register(api: {
     (async () => {
       while (!signal.aborted) {
         try {
-          const res = await fetch(`${API_URL}/agents/${encodeURIComponent(handle)}/stream`, {
-            headers: { Accept: "text/event-stream" },
-            signal,
-          });
+          const res = await fetchAgentEventStream(handle, signal);
 
           if (!res.ok || !res.body) {
             log.warn(`[mycelium] SSE connect failed for ${handle} (${res.status}) — retrying in 5s`);
@@ -282,7 +204,6 @@ export default function register(api: {
                 if (entry.handle !== handle) continue;
                 if (!isConsensus && addressed_to && !addressed_to.includes(handle)) continue;
 
-                // Store room for context fetching / message forwarding
                 if (room_name && !entry.room) {
                   entry.room = room_name;
                   _sessions.set(agentId, entry);
@@ -290,23 +211,16 @@ export default function register(api: {
                 }
 
                 log.info(`[mycelium] ${message_type} → waking ${handle} (sessionKey:${entry.sessionKey})`);
-                const agentParams = JSON.stringify({
-                  sessionKey: entry.sessionKey,
-                  message: wakeText,
-                  deliver: true,
-                  idempotencyKey: `mycelium:${message_type}:${handle}:${Date.now()}`,
-                });
-                void import("node:child_process").then(({ spawn }) => {
-                  const child = spawn(
-                    "openclaw",
-                    ["gateway", "call", "agent", "--params", agentParams, "--timeout", "10000"],
-                    { detached: true, stdio: "ignore" },
-                  );
-                  child.unref();
-                  log.info(`[mycelium] gateway call dispatched for ${handle} (pid ${child.pid})`);
-                }).catch((err: unknown) => {
-                  log.warn(`[mycelium] dispatch failed for ${handle}: ${err}`);
-                });
+                wakeAgent(
+                  {
+                    sessionKey: entry.sessionKey,
+                    message: wakeText,
+                    idempotencyKey: `mycelium:${message_type}:${handle}:${Date.now()}`,
+                  },
+                  subagent,
+                  log,
+                  handle
+                );
               }
             }
           }
@@ -328,27 +242,23 @@ export default function register(api: {
     }
   }
 
-  // ── gateway_start ──────────────────────────────────────────────────────────
-
   api.on("gateway_start", async () => {
     loadMyceliumConfig();
-    if (!API_URL) {
+    if (!getApiUrl()) {
       log.warn("[mycelium] No API URL found in config or env — plugin inactive");
       return;
     }
     try {
-      const res = await fetch(`${API_URL}/health`);
+      const res = await fetchBackendHealth();
       if (res.ok) {
-        log.info(`[mycelium] Ready | backend: ${API_URL}`);
+        log.info(`[mycelium] Ready | backend: ${getApiUrl()}`);
       } else {
         log.warn(`[mycelium] Backend unhealthy (${res.status}) — will retry per call`);
       }
     } catch {
-      log.warn(`[mycelium] Cannot reach ${API_URL} — will retry per call`);
+      log.warn(`[mycelium] Cannot reach ${getApiUrl()} — will retry per call`);
     }
   });
-
-  // ── gateway_stop ───────────────────────────────────────────────────────────
 
   api.on("gateway_stop", async () => {
     for (const abort of _sseByHandle.values()) abort.abort();
@@ -356,15 +266,11 @@ export default function register(api: {
     log.info("[mycelium] Gateway stopping — plugin shutdown");
   });
 
-  // ── session_start ──────────────────────────────────────────────────────────
-
   api.on("session_start", async (event: { sessionId: string; resumedFrom?: string }, ctx: any) => {
     const agentId: string | undefined = ctx?.agentId;
     const sessionKey: string | undefined = ctx?.sessionKey;
     const handle = resolveHandle(agentId);
 
-    // Store sessionId for any channel-originated session.
-    // CLI sessions end with ":main" — don't overwrite an existing channel sessionId with them.
     const isCliSession = sessionKey?.endsWith(":main");
     log.info(`[mycelium] session_start handle:${handle} sessionId:${event.sessionId} sessionKey:${sessionKey ?? "none"} isCliSession:${isCliSession}`);
     if (sessionKey) {
@@ -381,8 +287,6 @@ export default function register(api: {
       log.info(`[mycelium] Session started — ${handle} (${event.sessionId})`);
     }
   });
-
-  // ── session_end ────────────────────────────────────────────────────────────
 
   api.on("session_end", async (event: { sessionId: string; messageCount: number }, ctx: any) => {
     const agentId: string | undefined = ctx?.agentId;
@@ -405,15 +309,11 @@ export default function register(api: {
     unsubscribeHandle(handle);
   });
 
-  // ── before_agent_start ─────────────────────────────────────────────────────
-
   api.on("before_agent_start", async (_event: any, ctx: any): Promise<{ prependSystemContext?: string; prependContext?: string } | undefined> => {
     const agentId: string | undefined = ctx?.agentId;
     const sessionKey: string | undefined = ctx?.sessionKey;
     const handle = resolveHandle(agentId);
 
-    // Keep session map fresh; ensure SSE is subscribed even if session_start was missed.
-    // Don't overwrite a channel sessionId with a CLI one (CLI keys end with ":main").
     const sessionId: string | undefined = ctx?.sessionId;
     const isCliSession = sessionKey?.endsWith(":main");
     log.info(`[mycelium] before_agent_start handle:${handle} sessionKey:${sessionKey ?? "none"} isCliSession:${isCliSession}`);
@@ -428,13 +328,11 @@ export default function register(api: {
 
     subscribeHandle(handle);
 
-    // STATIC — cached in system prompt, cheap after turn 1
     const systemParts: string[] = [
       MYCELIUM_INSTRUCTIONS,
       `Your Mycelium handle for this session is: \`${handle}\`\nUse this exact value for \`--handle\` when joining a room.`,
     ];
 
-    // DYNAMIC — fresh each turn, injected into user prompt
     const contextParts: string[] = [];
 
     const room = existing?.room;
@@ -454,15 +352,10 @@ export default function register(api: {
       }
     }
 
-    // Read custom memory file (fresh each turn)
-    try {
-      const memory = readFileSync(MEMORY_FILE, "utf-8").trim();
-      if (memory) {
-        contextParts.push(`# Injected Memory (per-turn)\n\n${memory}`);
-        log.info(`[mycelium] Injected ${memory.length} bytes from ${MEMORY_FILE}`);
-      }
-    } catch {
-      // Memory file doesn't exist yet — skip
+    const memory = readMemoryFileContent();
+    if (memory) {
+      contextParts.push(`# Injected Memory (per-turn)\n\n${memory}`);
+      log.info(`[mycelium] Injected ${memory.length} bytes from memory file`);
     }
 
     log.info(`[mycelium] prependSystemContext: ${systemParts.join("\n\n").length} chars (cached), prependContext: ${contextParts.length ? contextParts.join("\n\n").length : 0} chars (dynamic)`);
@@ -472,8 +365,6 @@ export default function register(api: {
       prependContext: contextParts.length ? contextParts.join("\n\n") : undefined,
     };
   });
-
-  // ── message_sent ───────────────────────────────────────────────────────────
 
   api.on(
     "message_sent",
@@ -494,11 +385,13 @@ export default function register(api: {
         }, log);
       }
 
-      if (WORKSPACE_ID && MAS_ID) {
+      const ws = getWorkspaceId();
+      const ms = getMasId();
+      if (ws && ms) {
         apiPost("/api/knowledge/ingest", {
-          workspace_id: WORKSPACE_ID,
-          mas_id: MAS_ID,
-          agent_id: AGENT_ID || undefined,
+          workspace_id: ws,
+          mas_id: ms,
+          agent_id: getAgentId() || undefined,
           records: [{ response: event.content }],
         }, log).catch((err) => log.warn(`[mycelium] ingest failed: ${err}`));
       }

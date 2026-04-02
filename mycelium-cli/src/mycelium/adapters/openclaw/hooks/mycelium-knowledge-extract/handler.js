@@ -16,9 +16,11 @@
 
 import fs from "fs";
 import fsPromises from "fs/promises";
-import { execSync } from "child_process";
 import path from "path";
 import os from "os";
+
+import { getIngestTarget } from "./knowledge-env.js";
+import { postKnowledgeIngest } from "./knowledge-http.js";
 
 const STATE_DIR = path.join(os.homedir(), ".openclaw");
 const LOG_FILE = path.join(STATE_DIR, "mycelium-knowledge-extract.log");
@@ -222,43 +224,16 @@ function buildPayload(sessionMeta, turns, entries) {
 
 // ── Mycelium knowledge ingest ─────────────────────────────────────────────────
 
-function readMyceliumConfig() {
-  try {
-    const raw = execSync("mycelium --json config show", {
-      encoding: "utf-8",
-      timeout: 5000,
-    });
-    return JSON.parse(raw)?.server ?? {};
-  } catch {
-    return {};
-  }
-}
-
 async function ingestToMycelium(payload) {
-  const cfg = readMyceliumConfig();
-  const apiUrl = process.env.MYCELIUM_API_URL || cfg.api_url || null;
-  const workspaceId =
-    process.env.MYCELIUM_WORKSPACE_ID || cfg.workspace_id || null;
-  const masId = process.env.MYCELIUM_MAS_ID || cfg.mas_id || null;
-  const agentId =
-    process.env.MYCELIUM_AGENT_ID || process.env.MYCELIUM_AGENT_HANDLE || null;
-
+  const { apiUrl, workspaceId, masId, agentId } = getIngestTarget();
   if (!apiUrl || !workspaceId || !masId) return false;
 
-  const body = {
+  return postKnowledgeIngest(apiUrl, {
     workspace_id: workspaceId,
     mas_id: masId,
     agent_id: agentId,
     records: [payload],
-  };
-
-  const res = await fetch(`${apiUrl}/api/knowledge/ingest`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
   });
-
-  return res.ok;
 }
 
 function deltaStatePath(agentId, sessionId) {

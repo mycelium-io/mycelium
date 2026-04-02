@@ -427,15 +427,6 @@ def _install_openclaw(verbose: bool = False) -> None:
                 + (f": {stderr}" if stderr else "")
             )
 
-    # openclaw's static scanner flags env-var + network-call together as
-    # "possible credential harvesting". This is a false positive — the plugin
-    # reads MYCELIUM_* config vars and posts coordination data to our backend.
-    # The warning only fires during install; plugins.allow suppresses it after.
-    typer.secho(
-        "  Note: openclaw will warn about env-var + network access in the plugin.\n"
-        "  This is expected — it posts coordination data to your Mycelium backend.",
-        dim=True,
-    )
     plugin_src = _resolve_asset(f"extensions/{_OPENCLAW_PLUGIN_NAME}")
     _run(["openclaw", "plugins", "install", str(plugin_src)], allow_already_exists=True)
 
