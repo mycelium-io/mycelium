@@ -10,6 +10,7 @@ import {
   MATRIX_USER_ID,
   loadMyceliumConfig,
 } from "./config.ts";
+import { dispatchGatewayCall } from "./dispatch.ts";
 
 /**
  * mycelium — OpenClaw Plugin
@@ -282,17 +283,7 @@ export default function register(api: {
                   deliver: true,
                   idempotencyKey: `mycelium:${message_type}:${handle}:${Date.now()}`,
                 });
-                void import("node:child_process").then(({ spawn }) => {
-                  const child = spawn(
-                    "openclaw",
-                    ["gateway", "call", "agent", "--params", agentParams, "--timeout", "10000"],
-                    { detached: true, stdio: "ignore" },
-                  );
-                  child.unref();
-                  log.info(`[mycelium] gateway call dispatched for ${handle} (pid ${child.pid})`);
-                }).catch((err: unknown) => {
-                  log.warn(`[mycelium] dispatch failed for ${handle}: ${err}`);
-                });
+                dispatchGatewayCall(agentParams, handle, log);
               }
             }
           }
