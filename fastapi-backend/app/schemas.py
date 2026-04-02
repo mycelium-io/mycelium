@@ -10,65 +10,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-# ── Workspace ─────────────────────────────────────────────────────────────────
-
-
-class WorkspaceCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-
-
-class WorkspaceRead(BaseModel):
-    id: UUID
-    name: str
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-# ── MAS ───────────────────────────────────────────────────────────────────────
-
-
-class MASCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    config: dict | None = None
-
-
-class MASRead(BaseModel):
-    id: UUID
-    workspace_id: UUID
-    name: str
-    config: dict | None = None
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-# ── Agent ─────────────────────────────────────────────────────────────────────
-
-
-class AgentCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    memory_provider_url: str | None = None
-    memory_config: dict | None = None
-
-
-class AgentUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=255)
-    memory_provider_url: str | None = None
-    memory_config: dict | None = None
-
-
-class AgentRead(BaseModel):
-    id: UUID
-    mas_id: UUID
-    name: str
-    memory_provider_url: str | None = None
-    memory_config: dict | None = None
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
 # ── Room ──────────────────────────────────────────────────────────────────────
 
 

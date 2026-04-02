@@ -485,6 +485,23 @@ def _wait_for_health(urls: list[str], timeout: int = 120) -> bool:
 # ── Backend provisioning ──────────────────────────────────────────────────────
 
 
+def _get_cfn_workspace_id(cfn_mgmt_url: str) -> str | None:
+    """Fetch the first workspace ID from the CFN mgmt plane."""
+    import json
+    import urllib.request
+
+    try:
+        req = urllib.request.Request(
+            f"{cfn_mgmt_url}/api/workspaces", headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read())
+        workspaces = data.get("workspaces", [])
+        return workspaces[0]["id"] if workspaces else None
+    except Exception:
+        return None
+
+
 def _provision_backend(api_url: str, workspace_name: str = "default") -> tuple[str, str]:
     """
     Create a default workspace and MAS in the backend.
@@ -666,13 +683,22 @@ def install(
             health_timeout = 300 if needs_build else 120
             _wait_for_health([f"{api_url}/health"], timeout=health_timeout)
 
-            try:
-                workspace_id, mas_id = _provision_backend(api_url)
-                typer.echo(f"  ✓ Workspace  {workspace_id}")
-                typer.echo(f"  ✓ MAS        {mas_id}")
-            except Exception as exc:
-                typer.secho(f"  ⚠  Could not provision backend: {exc}", fg=typer.colors.YELLOW)
-                workspace_id, mas_id = "", ""
+            if ioc:
+                # Source WORKSPACE_ID from the CFN mgmt plane (the source of truth)
+                workspace_id = _get_cfn_workspace_id("http://localhost:9000") or ""
+                mas_id = ""
+                if workspace_id:
+                    typer.echo(f"  ✓ Workspace  {workspace_id}")
+                else:
+                    typer.secho("  ⚠  Could not fetch workspace from CFN mgmt plane", fg=typer.colors.YELLOW)
+            else:
+                try:
+                    workspace_id, mas_id = _provision_backend(api_url)
+                    typer.echo(f"  ✓ Workspace  {workspace_id}")
+                    typer.echo(f"  ✓ MAS        {mas_id}")
+                except Exception as exc:
+                    typer.secho(f"  ⚠  Could not provision backend: {exc}", fg=typer.colors.YELLOW)
+                    workspace_id, mas_id = "", ""
 
             # Persist WORKSPACE_ID into .env and restart backend so it picks it up
             if workspace_id:
@@ -889,14 +915,23 @@ def install(
         # ── Phase 5: Provision workspace + MAS ────────────────────────────
         print()
         typer.echo("  ── Provisioning backend ────────────────────────────────")
-        try:
-            workspace_id, mas_id = _provision_backend(api_url)
-            typer.echo(f"  ✓ Workspace created  {workspace_id}")
-            typer.echo(f"  ✓ MAS created        {mas_id}")
-        except Exception as exc:
-            typer.secho(f"  ⚠  Could not provision backend: {exc}", fg=typer.colors.YELLOW)
-            typer.echo("     Run manually: mycelium install --provision")
-            workspace_id, mas_id = "", ""
+        if ioc_enabled:
+            # Source WORKSPACE_ID from the CFN mgmt plane (the source of truth)
+            workspace_id = _get_cfn_workspace_id("http://localhost:9000") or ""
+            mas_id = ""
+            if workspace_id:
+                typer.echo(f"  ✓ Workspace  {workspace_id}")
+            else:
+                typer.secho("  ⚠  Could not fetch workspace from CFN mgmt plane", fg=typer.colors.YELLOW)
+        else:
+            try:
+                workspace_id, mas_id = _provision_backend(api_url)
+                typer.echo(f"  ✓ Workspace created  {workspace_id}")
+                typer.echo(f"  ✓ MAS created        {mas_id}")
+            except Exception as exc:
+                typer.secho(f"  ⚠  Could not provision backend: {exc}", fg=typer.colors.YELLOW)
+                typer.echo("     Run manually: mycelium install --provision")
+                workspace_id, mas_id = "", ""
 
         # ── Phase 6: Migrate DB + write config ────────────────────────────
         # Persist WORKSPACE_ID into .env and restart backend so it picks it up

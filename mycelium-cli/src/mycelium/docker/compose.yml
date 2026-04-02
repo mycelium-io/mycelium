@@ -118,14 +118,9 @@ services:
 
 
   ioc-cognition-fabric-node-svc:
-    build:
-      context: ${COGNITION_FABRIC_SVC_PATH:-../../ioc-cognition-fabric-node-svc}
-      dockerfile: Dockerfile
-      args:
-        ARTIFACTORY_USER: ${ARTIFACTORY_USER:-}
-        ARTIFACTORY_TOKEN: ${ARTIFACTORY_TOKEN:-}
-    image: ghcr.io/cisco-eti/ioc-cognition-fabric-node-svc:latest
+    image: ghcr.io/cisco-eti/ioc-cognition-fabric-node-svc:2026-04-02-8e9a0a1-litellm
     pull_policy: always
+    platform: linux/amd64
     container_name: ioc-cognition-fabric-node-svc
     restart: unless-stopped
     profiles: [cfn]
