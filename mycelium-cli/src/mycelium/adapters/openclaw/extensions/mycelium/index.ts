@@ -43,9 +43,9 @@ import {
   apiPost,
   fetchAgentEventStream,
   fetchBackendHealth,
-  wakeAgentWithSystemEvent,
+  wakeAgent,
 } from "./mycelium-http.js";
-import type { SystemRuntime } from "./mycelium-http.js";
+import type { SubagentRuntime } from "./mycelium-http.js";
 
 // ── Coordination instructions ─────────────────────────────────────────────────
 
@@ -119,10 +119,10 @@ const _sseByHandle = new Map<string, AbortController>();
 export default function register(api: {
   logger: { info: (s: string) => void; warn: (s: string) => void };
   on: (event: string, handler: (...args: any[]) => any, opts?: object) => void;
-  runtime: { system: SystemRuntime };
+  runtime: { subagent: SubagentRuntime };
 }): void {
   const log = api.logger;
-  const system = api.runtime.system;
+  const subagent = api.runtime.subagent;
 
   function subscribeHandle(handle: string): void {
     if (_sseByHandle.has(handle)) return;
@@ -211,12 +211,13 @@ export default function register(api: {
                 }
 
                 log.info(`[mycelium] ${message_type} → waking ${handle} (sessionKey:${entry.sessionKey})`);
-                wakeAgentWithSystemEvent(
+                wakeAgent(
                   {
                     sessionKey: entry.sessionKey,
                     message: wakeText,
+                    idempotencyKey: `mycelium:${message_type}:${handle}:${Date.now()}`,
                   },
-                  system,
+                  subagent,
                   log,
                   handle
                 );

@@ -7,9 +7,13 @@
 
 import { getApiUrl } from "./mycelium-env.js";
 
-export type SystemRuntime = {
-  enqueueSystemEvent: (text: string, opts: { sessionKey: string }) => void;
-  requestHeartbeatNow: (opts: { reason: string }) => void;
+export type SubagentRuntime = {
+  run: (params: {
+    sessionKey: string;
+    message: string;
+    deliver?: boolean;
+    idempotencyKey?: string;
+  }) => Promise<{ runId: string }>;
 };
 
 export async function apiPost(
@@ -66,20 +70,24 @@ export async function fetchAgentEventStream(
   });
 }
 
-export function wakeAgentWithSystemEvent(
+export function wakeAgent(
   params: {
     sessionKey: string;
     message: string;
+    idempotencyKey: string;
   },
-  system: SystemRuntime,
+  subagent: SubagentRuntime,
   log: { info: (s: string) => void; warn: (s: string) => void },
   handle: string
 ): void {
-  try {
-    system.enqueueSystemEvent(params.message, { sessionKey: params.sessionKey });
-    system.requestHeartbeatNow({ reason: "mycelium" });
-    log.info(`[mycelium] system event enqueued for ${handle}`);
-  } catch (err: unknown) {
-    log.warn(`[mycelium] dispatch failed for ${handle}: ${err}`);
-  }
+  void subagent.run({
+    sessionKey: params.sessionKey,
+    message: params.message,
+    deliver: true,
+    idempotencyKey: params.idempotencyKey,
+  }).then(() => {
+    log.info(`[mycelium] wake dispatched for ${handle}`);
+  }).catch((err: unknown) => {
+    log.warn(`[mycelium] wake failed for ${handle}: ${err}`);
+  });
 }
