@@ -2,9 +2,14 @@
 // Copyright 2026 Julia Valenti
 
 import { readFileSync } from "node:fs";
-import { execSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import {
+  AGENT_ID,
+  AGENT_HANDLE,
+  MATRIX_USER_ID,
+  loadMyceliumConfig,
+} from "./config.ts";
 
 /**
  * mycelium — OpenClaw Plugin
@@ -89,30 +94,12 @@ Repeat steps 2–3 until you receive a \`[consensus]\` message containing your a
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Config loaded from `mycelium --json config show` at gateway_start.
-// Falls back to env vars so Docker/CI overrides still work.
-let API_URL = (process.env.MYCELIUM_API_URL ?? "").replace(/\/$/, "");
-let WORKSPACE_ID = process.env.MYCELIUM_WORKSPACE_ID ?? "";
-let MAS_ID = process.env.MYCELIUM_MAS_ID ?? "";
-const AGENT_ID = process.env.MYCELIUM_AGENT_ID ?? "";
-
-function loadMyceliumConfig(): void {
-  try {
-    const raw = execSync("mycelium --json config show", { encoding: "utf-8", timeout: 5000 });
-    const cfg = JSON.parse(raw);
-    if (!process.env.MYCELIUM_API_URL && cfg?.server?.api_url) {
-      API_URL = cfg.server.api_url.replace(/\/$/, "");
-    }
-    if (!process.env.MYCELIUM_WORKSPACE_ID && cfg?.server?.workspace_id) {
-      WORKSPACE_ID = cfg.server.workspace_id;
-    }
-    if (!process.env.MYCELIUM_MAS_ID && cfg?.server?.mas_id) {
-      MAS_ID = cfg.server.mas_id;
-    }
-  } catch {
-    // mycelium CLI not installed or config unreadable — fall back to env vars
-  }
-}
+// Config resolved at gateway_start from ~/.mycelium/config.toml (see config.ts).
+// Env vars take precedence; these are set once and reused for the lifetime of
+// the gateway process. No process.env access in this file.
+let API_URL = "";
+let WORKSPACE_ID = "";
+let MAS_ID = "";
 
 // Custom memory file — read fresh on every before_agent_start invocation
 const MEMORY_FILE = join(
@@ -137,17 +124,16 @@ const _sseByHandle = new Map<string, AbortController>(); // handle → abort
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function resolveHandle(agentId?: string | null): string {
-  if (process.env.MYCELIUM_AGENT_HANDLE) {
-    return process.env.MYCELIUM_AGENT_HANDLE;
+  if (AGENT_HANDLE) {
+    return AGENT_HANDLE;
   }
   if (agentId?.trim()) {
     return agentId.trim();
   }
-  const matrixId = process.env.MATRIX_USER_ID ?? "";
-  if (matrixId.startsWith("@")) {
-    return matrixId.slice(1).split(":")[0];
+  if (MATRIX_USER_ID.startsWith("@")) {
+    return MATRIX_USER_ID.slice(1).split(":")[0];
   }
-  return matrixId || "unknown-agent";
+  return MATRIX_USER_ID || "unknown-agent";
 }
 
 async function apiPost(
@@ -331,7 +317,10 @@ export default function register(api: {
   // ── gateway_start ──────────────────────────────────────────────────────────
 
   api.on("gateway_start", async () => {
-    loadMyceliumConfig();
+    const cfg = loadMyceliumConfig();
+    API_URL = cfg.apiUrl;
+    WORKSPACE_ID = cfg.workspaceId;
+    MAS_ID = cfg.masId;
     if (!API_URL) {
       log.warn("[mycelium] No API URL found in config or env — plugin inactive");
       return;
