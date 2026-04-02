@@ -10,7 +10,6 @@ import {
   MATRIX_USER_ID,
   loadMyceliumConfig,
 } from "./config.ts";
-import { dispatchGatewayCall } from "./dispatch.ts";
 
 /**
  * mycelium — OpenClaw Plugin
@@ -178,6 +177,16 @@ async function apiGet(
 export default function register(api: {
   logger: { info: (s: string) => void; warn: (s: string) => void };
   on: (event: string, handler: (...args: any[]) => any, opts?: object) => void;
+  runtime: {
+    subagent: {
+      run: (params: {
+        sessionKey: string;
+        message: string;
+        deliver?: boolean;
+        idempotencyKey?: string;
+      }) => Promise<{ runId: string }>;
+    };
+  };
 }): void {
   const log = api.logger;
 
@@ -277,13 +286,16 @@ export default function register(api: {
                 }
 
                 log.info(`[mycelium] ${message_type} → waking ${handle} (sessionKey:${entry.sessionKey})`);
-                const agentParams = JSON.stringify({
+                void api.runtime.subagent.run({
                   sessionKey: entry.sessionKey,
                   message: wakeText,
                   deliver: true,
                   idempotencyKey: `mycelium:${message_type}:${handle}:${Date.now()}`,
+                }).then(() => {
+                  log.info(`[mycelium] wake dispatched for ${handle}`);
+                }).catch((err: unknown) => {
+                  log.warn(`[mycelium] wake failed for ${handle}: ${err}`);
                 });
-                dispatchGatewayCall(agentParams, handle, log);
               }
             }
           }
