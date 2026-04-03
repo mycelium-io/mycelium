@@ -20,6 +20,9 @@ logger = logging.getLogger(__name__)
 
 _API_PREFIX = "/api"
 
+# CFN may run LLM + persist agreement to shared memory; 60s is often too short.
+_CFN_HTTP_TIMEOUT = httpx.Timeout(300.0)
+
 
 async def start_negotiation(
     *,
@@ -48,7 +51,7 @@ async def start_negotiation(
         "n_steps": n_steps,
     }
     try:
-        async with httpx.AsyncClient(timeout=60) as client:
+        async with httpx.AsyncClient(timeout=_CFN_HTTP_TIMEOUT) as client:
             resp = await client.post(url, json=body)
             resp.raise_for_status()
             return resp.json()
@@ -80,10 +83,10 @@ async def decide_negotiation(
         "agent_replies": agent_replies,
     }
     try:
-        async with httpx.AsyncClient(timeout=60) as client:
+        async with httpx.AsyncClient(timeout=_CFN_HTTP_TIMEOUT) as client:
             resp = await client.post(url, json=body)
             resp.raise_for_status()
             return resp.json()
     except Exception as exc:
-        logger.warning("CFN decide_negotiation failed: %s", exc)
+        logger.warning("CFN decide_negotiation failed: %r", exc)
         return {}
