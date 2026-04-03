@@ -315,8 +315,7 @@ def _get_compose_path() -> Path:
     compose_ref = importlib.resources.files("mycelium.docker") / "compose.yml"
     dest = Path.home() / ".mycelium" / "docker" / "compose.yml"
     dest.parent.mkdir(parents=True, exist_ok=True)
-    if not dest.exists():
-        dest.write_bytes(compose_ref.read_bytes())
+    dest.write_bytes(compose_ref.read_bytes())
     return dest
 
 
