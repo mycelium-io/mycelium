@@ -9,7 +9,7 @@ metadata:
     requires:
       bins:
         - mycelium
-      config_paths:
+      config:
         - ~/.mycelium/rooms/
         - ~/.mycelium/config.toml
     install:
