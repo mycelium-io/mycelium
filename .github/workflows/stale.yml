@@ -11,7 +11,7 @@ jobs:
       issues: write
       pull-requests: write
     steps:
-      - uses: actions/stale@v9
+      - uses: actions/stale@v10
         with:
           stale-issue-message: 'This issue has been automatically marked as stale due to 60 days of inactivity. It will be closed in 7 days if no further activity occurs.'
           stale-pr-message: 'This pull request has been automatically marked as stale due to 60 days of inactivity. It will be closed in 7 days if no further activity occurs.'
