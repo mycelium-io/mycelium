@@ -118,7 +118,7 @@ services:
 
 
   ioc-cognition-fabric-node-svc:
-    image: ghcr.io/cisco-eti/ioc-cognition-fabric-node-svc:2026-04-02-8e9a0a1-litellm
+    image: ghcr.io/cisco-eti/ioc-cognition-fabric-node-svc:2026-04-03-dce867d
     pull_policy: always
     platform: linux/amd64
     container_name: ioc-cognition-fabric-node-svc
