@@ -145,13 +145,13 @@ jobs:
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       - name: Download linux binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: mycelium-linux-x86_64
           path: mycelium-cli/dist/binaries
 
       - name: Download darwin binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: mycelium-darwin-arm64
           path: mycelium-cli/dist/binaries
