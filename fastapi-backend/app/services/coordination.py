@@ -179,27 +179,21 @@ async def _run_cfn_negotiation(
     )
     _cfn_state[room_name] = state
 
-    messages = result.get("messages", [])
+    # /initiate response is SSTP-wrapped: first-round messages are in payload.messages
+    initiate_payload = result.get("payload", {})
+    messages = initiate_payload.get("messages", result.get("messages", []))
 
-    # The IOC's /start response contains a "server" initial-offer message.
-    # This is not addressed to any real agent — it is the IOC setting its
-    # standing offer before the first proposer's turn.  We must immediately
-    # call /decide with empty replies to advance the IOC's internal loop past
-    # this setup step and receive the first real per-agent tick.
-    real_agent_set = set(session_handles)
-    only_server_msgs = messages and all(
-        (msg.get("payload", msg)).get("participant_id") not in real_agent_set for msg in messages
-    )
-    if only_server_msgs:
-        logger.debug(
-            "CFN start returned only server/setup messages for %s — calling decide immediately",
-            room_name,
+    if not messages:
+        logger.error("CFN initiate returned no messages for %s", room_name)
+        await _finish_cfn(
+            room_name, plan="CFN initiate returned no messages", assignments={}, broken=True
         )
-        asyncio.ensure_future(_cfn_decide_round(room_name))
         return
 
-    # Real agent ticks — fan them out and start the per-round timeout
-    await _fan_out_cfn_messages(room_name, messages)
+    # Fan out first-round ticks; pending_replies tracks only who got a tick this round
+    addressed = await _fan_out_cfn_messages(room_name, messages, result.get("semantic_context", {}))
+    async with state.lock:
+        state.pending_replies = {h: None for h in addressed}
     _reset_round_timeout(room_name, state)
 
 
@@ -225,13 +219,32 @@ async def _round_timeout(room_name: str) -> None:
     await _cfn_decide_round(room_name)
 
 
-async def _fan_out_cfn_messages(room_name: str, messages: list[dict]) -> None:
-    """Post coordination_tick for each agent listed in CFN messages."""
+async def _fan_out_cfn_messages(
+    room_name: str,
+    messages: list[dict],
+    parent_semantic_context: dict | None = None,
+) -> list[str]:
+    """Post coordination_tick for each agent listed in CFN messages.
+
+    Each message is an SSTPNegotiateMessage dict.  The negotiation space
+    (issues / options_per_issue) lives in semantic_context, the per-round
+    decision request lives in payload.
+
+    Returns the list of participant_ids that received a tick this round.
+    """
+    addressed: list[str] = []
     for msg in messages:
         payload = msg.get("payload", msg)
         participant_id = payload.get("participant_id")
         if not participant_id:
             continue
+
+        # Negotiation space: prefer per-message semantic_context, fall back to
+        # the parent envelope's semantic_context (passed from /initiate response).
+        sc = msg.get("semantic_context") or parent_semantic_context or {}
+        issues = sc.get("issues") or payload.get("issues")
+        issue_options = sc.get("options_per_issue") or payload.get("options_per_issue")
+
         await _post_message(
             room_name,
             message_type="coordination_tick",
@@ -245,12 +258,14 @@ async def _fan_out_cfn_messages(room_name: str, messages: list[dict]) -> None:
                         "can_counter_offer": payload.get("can_counter_offer", False),
                         "current_offer": payload.get("current_offer"),
                         "proposer_id": payload.get("proposer_id"),
-                        "issue_options": payload.get("options_per_issue"),
-                        "issues": payload.get("issues"),
+                        "issue_options": issue_options,
+                        "issues": issues,
                     }
                 }
             ),
         )
+        addressed.append(participant_id)
+    return addressed
 
 
 async def _cfn_decide_round(room_name: str) -> None:
@@ -283,19 +298,14 @@ async def _cfn_decide_round(room_name: str) -> None:
         await _finish_cfn(room_name, plan="CFN decide failed", assignments={}, broken=True)
         return
 
-    # CFN returns a nested envelope: status lives in result["payload"]["status"]
-    # and the agreement in result["semantic_context"]["final_agreement"].
-    # Fall back to top-level keys for backward compatibility.
-    payload = result.get("payload", {})
-    status = payload.get("status", result.get("status", ""))
+    # /decide response is flat: {"session_id", "status", "round", "messages"|"final_result"}
+    status = result.get("status", "")
 
-    if status == "agreed":
-        final_agreement = (
-            result.get("semantic_context", {}).get("final_agreement")
-            or result.get("agreement")
-            or result.get("assignments")
-            or []
-        )
+    if status in ("agreed",):
+        final_result = result.get("final_result", {})
+        # final_result is an SSTPCommitMessage dict; agreement is in payload.agreement
+        final_payload = final_result.get("payload", {}) if isinstance(final_result, dict) else {}
+        final_agreement = final_payload.get("agreement") or final_result.get("agreement") or []
         if isinstance(final_agreement, list):
             agreement = {
                 item["issue_id"]: item.get("chosen_option", "")
@@ -313,23 +323,12 @@ async def _cfn_decide_round(room_name: str) -> None:
         )
         await _finish_cfn(room_name, plan=plan, assignments=agreement, broken=False)
 
-    elif status in ("ongoing", "initiated"):
-        # Reset replies for next round and fan out new messages
+    elif status == "ongoing":
+        messages = result.get("messages", [])
+        addressed = await _fan_out_cfn_messages(room_name, messages)
         async with state.lock:
-            state.pending_replies = {h: None for h in state.agents}
-        messages = payload.get("messages", result.get("messages", []))
-
-        # Check again for server-only messages (IOC may return another setup step)
-        real_agent_set = set(state.agents)
-        only_server_msgs = messages and all(
-            (msg.get("payload", msg)).get("participant_id") not in real_agent_set
-            for msg in messages
-        )
-        if only_server_msgs:
-            asyncio.ensure_future(_cfn_decide_round(room_name))
-        else:
-            await _fan_out_cfn_messages(room_name, messages)
-            _reset_round_timeout(room_name, state)
+            state.pending_replies = {h: None for h in addressed}
+        _reset_round_timeout(room_name, state)
 
     else:
         # Unknown / failed status
