@@ -40,6 +40,12 @@ logger = logging.getLogger(__name__)
 # ── CFN mode state ─────────────────────────────────────────────────────────────
 
 
+# How long to wait for agent replies before calling /decide with whatever we have.
+# The IOC's BatchCallbackRunner uses a 30s per-round timeout; we fire slightly earlier
+# so the backend stays in sync with the IOC's internal loop.
+_CFN_ROUND_TIMEOUT_SECS = 25
+
+
 @dataclass
 class _CfnRoundState:
     session_id: str
@@ -48,6 +54,7 @@ class _CfnRoundState:
     agents: list[str]  # agent handles expected each round
     pending_replies: dict[str, dict | None] = field(default_factory=dict)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    round_timeout_task: asyncio.Task | None = field(default=None)
 
 
 # {room_name: _CfnRoundState}
@@ -172,8 +179,50 @@ async def _run_cfn_negotiation(
     )
     _cfn_state[room_name] = state
 
-    # Fan out coordination_ticks to all agents from the CFN response
-    await _fan_out_cfn_messages(room_name, result.get("messages", []))
+    messages = result.get("messages", [])
+
+    # The IOC's /start response contains a "server" initial-offer message.
+    # This is not addressed to any real agent — it is the IOC setting its
+    # standing offer before the first proposer's turn.  We must immediately
+    # call /decide with empty replies to advance the IOC's internal loop past
+    # this setup step and receive the first real per-agent tick.
+    real_agent_set = set(session_handles)
+    only_server_msgs = messages and all(
+        (msg.get("payload", msg)).get("participant_id") not in real_agent_set for msg in messages
+    )
+    if only_server_msgs:
+        logger.debug(
+            "CFN start returned only server/setup messages for %s — calling decide immediately",
+            room_name,
+        )
+        asyncio.ensure_future(_cfn_decide_round(room_name))
+        return
+
+    # Real agent ticks — fan them out and start the per-round timeout
+    await _fan_out_cfn_messages(room_name, messages)
+    _reset_round_timeout(room_name, state)
+
+
+def _reset_round_timeout(room_name: str, state: "_CfnRoundState") -> None:
+    """Cancel any existing round timeout and start a new one."""
+    if state.round_timeout_task and not state.round_timeout_task.done():
+        state.round_timeout_task.cancel()
+    state.round_timeout_task = asyncio.ensure_future(_round_timeout(room_name))
+
+
+async def _round_timeout(room_name: str) -> None:
+    """Fire /decide with whatever replies exist after _CFN_ROUND_TIMEOUT_SECS.
+
+    The IOC's BatchCallbackRunner uses a 30s per-round timeout and auto-advances
+    when it fires.  We call /decide slightly earlier so the backend stays in sync
+    with the IOC's internal loop rather than waiting forever for all replies.
+    """
+    await asyncio.sleep(_CFN_ROUND_TIMEOUT_SECS)
+    state = _cfn_state.get(room_name)
+    if not state:
+        return
+    logger.debug("CFN round timeout fired for %s — calling decide with partial replies", room_name)
+    await _cfn_decide_round(room_name)
 
 
 async def _fan_out_cfn_messages(room_name: str, messages: list[dict]) -> None:
@@ -269,7 +318,18 @@ async def _cfn_decide_round(room_name: str) -> None:
         async with state.lock:
             state.pending_replies = {h: None for h in state.agents}
         messages = payload.get("messages", result.get("messages", []))
-        await _fan_out_cfn_messages(room_name, messages)
+
+        # Check again for server-only messages (IOC may return another setup step)
+        real_agent_set = set(state.agents)
+        only_server_msgs = messages and all(
+            (msg.get("payload", msg)).get("participant_id") not in real_agent_set
+            for msg in messages
+        )
+        if only_server_msgs:
+            asyncio.ensure_future(_cfn_decide_round(room_name))
+        else:
+            await _fan_out_cfn_messages(room_name, messages)
+            _reset_round_timeout(room_name, state)
 
     else:
         # Unknown / failed status
@@ -281,7 +341,9 @@ async def _cfn_decide_round(room_name: str) -> None:
 
 async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool) -> None:
     """Post consensus and clean up CFN state."""
-    _cfn_state.pop(room_name, None)
+    state = _cfn_state.pop(room_name, None)
+    if state and state.round_timeout_task and not state.round_timeout_task.done():
+        state.round_timeout_task.cancel()
     await _post_message(
         room_name,
         message_type="coordination_consensus",
@@ -327,6 +389,9 @@ async def on_agent_response(room_name: str, handle: str, content: str) -> None:
             if all_received:
                 should_decide = True
     if should_decide:
+        # All replies in — cancel the timeout so it doesn't double-fire
+        if cfn.round_timeout_task and not cfn.round_timeout_task.done():
+            cfn.round_timeout_task.cancel()
         asyncio.ensure_future(_cfn_decide_round(room_name))
 
 
