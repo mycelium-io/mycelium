@@ -179,9 +179,10 @@ async def _run_cfn_negotiation(
     )
     _cfn_state[room_name] = state
 
-    # /initiate response is SSTP-wrapped: first-round messages are in payload.messages
-    initiate_payload = result.get("payload", {})
-    messages = initiate_payload.get("messages", result.get("messages", []))
+    # /start returns a flat dict: {"status": "initiated", "messages": [...], "issues": [...], ...}
+    messages = result.get("messages", [])
+    issues = result.get("issues")
+    options_per_issue = result.get("options_per_issue")
 
     if not messages:
         logger.error("CFN initiate returned no messages for %s", room_name)
@@ -191,7 +192,13 @@ async def _run_cfn_negotiation(
         return
 
     # Fan out first-round ticks; pending_replies tracks only who got a tick this round
-    addressed = await _fan_out_cfn_messages(room_name, messages, result.get("semantic_context", {}))
+    addressed = await _fan_out_cfn_messages(
+        room_name,
+        messages,
+        all_agents=session_handles,
+        parent_issues=issues,
+        parent_options_per_issue=options_per_issue,
+    )
     async with state.lock:
         state.pending_replies = {h: None for h in addressed}
     _reset_round_timeout(room_name, state)
@@ -222,49 +229,81 @@ async def _round_timeout(room_name: str) -> None:
 async def _fan_out_cfn_messages(
     room_name: str,
     messages: list[dict],
-    parent_semantic_context: dict | None = None,
+    all_agents: list[str] | None = None,
+    parent_issues: list | None = None,
+    parent_options_per_issue: dict | None = None,
 ) -> list[str]:
     """Post coordination_tick for each agent listed in CFN messages.
 
-    Each message is an SSTPNegotiateMessage dict.  The negotiation space
-    (issues / options_per_issue) lives in semantic_context, the per-round
-    decision request lives in payload.
+    BatchCallbackRunner always emits a single broadcast message per round with
+    ``payload.participant_id == "server"``.  When a broadcast is detected, the
+    tick is sent to every agent in ``all_agents`` and each agent's individual
+    ``next_proposer_id`` eligibility is conveyed via ``can_counter_offer``.
 
-    Returns the list of participant_ids that received a tick this round.
+    Returns the list of agent handles that received a tick this round.
     """
     addressed: list[str] = []
     for msg in messages:
         payload = msg.get("payload", msg)
         participant_id = payload.get("participant_id")
-        if not participant_id:
-            continue
+
+        # BatchCallbackRunner uses participant_id="server" for broadcast rounds.
+        is_broadcast = participant_id in (None, "", "server", "broadcast")
 
         # Negotiation space: prefer per-message semantic_context, fall back to
-        # the parent envelope's semantic_context (passed from /initiate response).
-        sc = msg.get("semantic_context") or parent_semantic_context or {}
-        issues = sc.get("issues") or payload.get("issues")
-        issue_options = sc.get("options_per_issue") or payload.get("options_per_issue")
+        # the top-level issues/options passed from the /start response.
+        sc = msg.get("semantic_context") or {}
+        issues = sc.get("issues") or parent_issues
+        issue_options = sc.get("options_per_issue") or parent_options_per_issue
 
-        await _post_message(
-            room_name,
-            message_type="coordination_tick",
-            content=json.dumps(
-                {
-                    "payload": {
-                        "participant_id": participant_id,
-                        "round": payload.get("round"),
-                        "action": payload.get("action"),
-                        "allowed_actions": payload.get("allowed_actions", []),
-                        "can_counter_offer": payload.get("can_counter_offer", False),
-                        "current_offer": payload.get("current_offer"),
-                        "proposer_id": payload.get("proposer_id"),
-                        "issue_options": issue_options,
-                        "issues": issues,
+        next_proposer_id = payload.get("next_proposer_id")
+
+        if is_broadcast and all_agents:
+            # Fan out one tick per agent; mark who is authorised to counter_offer.
+            for handle in all_agents:
+                await _post_message(
+                    room_name,
+                    message_type="coordination_tick",
+                    content=json.dumps(
+                        {
+                            "payload": {
+                                "participant_id": handle,
+                                "round": payload.get("round"),
+                                "action": payload.get("action"),
+                                "allowed_actions": payload.get("allowed_actions", []),
+                                "can_counter_offer": handle == next_proposer_id,
+                                "current_offer": payload.get("current_offer"),
+                                "proposer_id": payload.get("proposer_id"),
+                                "next_proposer_id": next_proposer_id,
+                                "issue_options": issue_options,
+                                "issues": issues,
+                            }
+                        }
+                    ),
+                )
+            addressed.extend(all_agents)
+        elif not is_broadcast and participant_id:
+            await _post_message(
+                room_name,
+                message_type="coordination_tick",
+                content=json.dumps(
+                    {
+                        "payload": {
+                            "participant_id": participant_id,
+                            "round": payload.get("round"),
+                            "action": payload.get("action"),
+                            "allowed_actions": payload.get("allowed_actions", []),
+                            "can_counter_offer": participant_id == next_proposer_id,
+                            "current_offer": payload.get("current_offer"),
+                            "proposer_id": payload.get("proposer_id"),
+                            "next_proposer_id": next_proposer_id,
+                            "issue_options": issue_options,
+                            "issues": issues,
+                        }
                     }
-                }
-            ),
-        )
-        addressed.append(participant_id)
+                ),
+            )
+            addressed.append(participant_id)
     return addressed
 
 
@@ -303,29 +342,39 @@ async def _cfn_decide_round(room_name: str) -> None:
 
     if status in ("agreed",):
         final_result = result.get("final_result", {})
-        # final_result is an SSTPCommitMessage dict; agreement is in payload.agreement
-        final_payload = final_result.get("payload", {}) if isinstance(final_result, dict) else {}
-        final_agreement = final_payload.get("agreement") or final_result.get("agreement") or []
-        if isinstance(final_agreement, list):
+        # final_result is an SSTPCommitMessage dict.
+        # Agreement is in semantic_context.final_agreement (list of {issue_id, chosen_option}).
+        if isinstance(final_result, dict):
+            sc = final_result.get("semantic_context") or {}
+            raw_agreement = sc.get("final_agreement") or []
+            # Fallback: some versions embed it in payload.trace.final_agreement
+            if not raw_agreement:
+                trace = (final_result.get("payload") or {}).get("trace") or {}
+                raw_agreement = trace.get("final_agreement") or []
+        else:
+            raw_agreement = []
+        if isinstance(raw_agreement, list):
             agreement = {
                 item["issue_id"]: item.get("chosen_option", "")
-                for item in final_agreement
+                for item in raw_agreement
                 if isinstance(item, dict) and "issue_id" in item
             }
-        elif isinstance(final_agreement, dict):
-            agreement = final_agreement
         else:
             agreement = {}
         plan = (
             "; ".join(f"{k}={v}" for k, v in agreement.items())
             if agreement
-            else str(final_agreement)
+            else "agreed"
         )
         await _finish_cfn(room_name, plan=plan, assignments=agreement, broken=False)
 
     elif status == "ongoing":
         messages = result.get("messages", [])
-        addressed = await _fan_out_cfn_messages(room_name, messages)
+        addressed = await _fan_out_cfn_messages(
+            room_name,
+            messages,
+            all_agents=state.agents,
+        )
         async with state.lock:
             state.pending_replies = {h: None for h in addressed}
         _reset_round_timeout(room_name, state)
