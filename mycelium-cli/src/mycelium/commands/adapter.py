@@ -405,10 +405,6 @@ def _install_openclaw(verbose: bool = False) -> None:
     - Plugin (mycelium): handles session lifecycle + message forwarding
     - Hook (mycelium-inject): injects MYCELIUM_API_URL + MYCELIUM_ROOM_ID + coordination
       instructions into every agent bootstrap
-
-    Note: the mycelium skill (SKILL.md) is a Claude Code project skill, not an openclaw
-    skill. openclaw does not support installing custom skills — copy SKILL.md to your
-    project's .claude/skills/mycelium/ directory to make it available to agents.
     """
 
     def _run(cmd: list[str], allow_already_exists: bool = False) -> None:

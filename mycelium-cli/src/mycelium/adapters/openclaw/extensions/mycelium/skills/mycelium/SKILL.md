@@ -9,10 +9,6 @@ metadata:
     requires:
       bins:
         - mycelium
-      env:
-        - MYCELIUM_API_URL
-        - MYCELIUM_AGENT_HANDLE
-        - MYCELIUM_ROOM
       config_paths:
         - ~/.mycelium/rooms/
         - ~/.mycelium/config.toml
