@@ -389,5 +389,5 @@ async def reasoning_evidence(body: EvidenceRequest) -> EvidenceResponse:
 
 @router.post("/api/semantic-negotiation", response_model=NegotiationResponse)
 async def semantic_negotiation(body: NegotiationRequest) -> NegotiationResponse:
-    """Stub. TODO: wire to NegMAS SAO engine in app/agents/semantic_negotiation/."""
+    """Stub. TODO: wire to CFN semantic-negotiation endpoint."""
     return NegotiationResponse(header=body.header, response_id=body.request_id)
