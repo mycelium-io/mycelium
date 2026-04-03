@@ -65,9 +65,7 @@ class Agent(Base):
     id: Mapped[UUID_Type] = mapped_column(
         GenericUuid(as_uuid=True), primary_key=True, default=uuid4
     )
-    mas_id: Mapped[UUID_Type] = mapped_column(
-        GenericUuid(as_uuid=True), nullable=False, index=True
-    )
+    mas_id: Mapped[UUID_Type] = mapped_column(GenericUuid(as_uuid=True), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     memory_provider_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     memory_config: Mapped[dict | None] = mapped_column(

@@ -138,7 +138,6 @@ app.add_middleware(
 )
 
 
-
 # Core routes
 app.include_router(rooms_router)
 app.include_router(messages_router)
