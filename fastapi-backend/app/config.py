@@ -65,6 +65,12 @@ class Settings(BaseSettings):
     # IoC CFN management plane (optional — registration skipped if unset)
     CFN_MGMT_URL: str | None = None
 
+    # IoC CFN cognition fabric node svc (optional — inline NegMAS used if unset)
+    COGNITION_FABRIC_NODE_URL: str = ""
+
+    # Workspace ID in the CFN mgmt plane (set by mycelium install)
+    WORKSPACE_ID: str = ""
+
     model_config = SettingsConfigDict(
         env_file=tuple(_env_files), env_file_encoding="utf-8", extra="ignore"
     )

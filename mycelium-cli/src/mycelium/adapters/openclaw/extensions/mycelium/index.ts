@@ -72,7 +72,7 @@ Do nothing. CognitiveEngine will send you a message when it is your turn.
 
 The tick message will say either \`action: "propose"\` or \`action: "respond"\`.
 
-**If action is "propose"** — pick one value per issue from the options listed and run:
+**If action is "propose"** — you are being asked to make a counter-offer. Pick one value per issue from the options listed and run:
 \`\`\`
 mycelium message propose ISSUE=VALUE ISSUE=VALUE ... --room <room-name> --handle <your-agent-id>
 \`\`\`
@@ -81,11 +81,10 @@ Example:
 mycelium message propose budget=medium timeline=standard scope=standard quality=standard --room <room-name> --handle <your-agent-id>
 \`\`\`
 
-**If action is "respond"** — evaluate the offer and run one of:
+**If action is "respond"** — evaluate the current offer in \`current_offer\` and run one of:
 \`\`\`
 mycelium message respond accept --room <room-name> --handle <your-agent-id>
 mycelium message respond reject --room <room-name> --handle <your-agent-id>
-mycelium message respond end    --room <room-name> --handle <your-agent-id>
 \`\`\`
 
 Each command returns immediately. Wait for the next CognitiveEngine message.
@@ -182,12 +181,20 @@ export default function register(api: {
               const isConsensus = message_type === "coordination_consensus";
 
               let addressed_to: string[] | undefined;
+              let tickAction: string | undefined;
               if (!isConsensus) {
                 try {
                   const parsed = JSON.parse(content);
                   if (Array.isArray(parsed.addressed_to)) {
                     addressed_to = parsed.addressed_to;
                   }
+                  // Support both top-level participant_id (NegMAS) and payload.participant_id (CFN)
+                  const payload = parsed?.payload ?? parsed;
+                  const pid: string | undefined = payload?.participant_id;
+                  if (pid && !addressed_to) {
+                    addressed_to = [pid];
+                  }
+                  tickAction = payload?.action;
                 } catch { /* wake all on parse failure */ }
               }
 
@@ -196,8 +203,9 @@ export default function register(api: {
                 ? `${label} room:${room_name ?? "unknown"}\n\n${content}`
                 : `${label} room:${room_name ?? "unknown"}\n\n${content}\n\n` +
                   `**ACTION REQUIRED**: Respond immediately using the mycelium CLI.\n` +
-                  `- If the tick action is "propose": run \`mycelium message propose ISSUE=VALUE ... --room ${room_name ?? "unknown"} --handle ${handle}\`\n` +
-                  `- If the tick action is "respond": run \`mycelium message respond accept|reject|end --room ${room_name ?? "unknown"} --handle ${handle}\`\n` +
+                  (tickAction === "propose"
+                    ? `- Run \`mycelium message propose ISSUE=VALUE ... --room ${room_name ?? "unknown"} --handle ${handle}\`\n`
+                    : `- Run \`mycelium message respond accept|reject --room ${room_name ?? "unknown"} --handle ${handle}\`\n`) +
                   `Do NOT reply conversationally. Run the command now.`;
 
               for (const [agentId, entry] of _sessions) {

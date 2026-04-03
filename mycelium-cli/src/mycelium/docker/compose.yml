@@ -49,6 +49,8 @@ services:
       DATABASE_URL: postgresql+asyncpg://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium
       GRAPH_DB_URL: postgresql://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium
       CFN_MGMT_URL: ${CFN_MGMT_URL:-}
+      COGNITION_FABRIC_NODE_URL: ${COGNITION_FABRIC_NODE_URL:-}
+      WORKSPACE_ID: ${WORKSPACE_ID:-}
       API_BASE_URL: http://mycelium-backend:8000
       LLM_MODEL: ${LLM_MODEL:-anthropic/claude-sonnet-4-6}
       LLM_API_KEY: ${LLM_API_KEY:-}
@@ -115,15 +117,15 @@ services:
       start_period: 30s
 
 
-  ioc-cfn-svc:
-    image: ghcr.io/cisco-eti/ioc-cfn-svc:latest
-    container_name: ioc-cfn-svc
+  ioc-cognition-fabric-node-svc:
+    image: ghcr.io/cisco-eti/ioc-cognition-fabric-node-svc:2026-04-03-dce867d
+    pull_policy: always
+    platform: linux/amd64
+    container_name: ioc-cognition-fabric-node-svc
     restart: unless-stopped
     profiles: [cfn]
     depends_on:
       mycelium-db:
-        condition: service_healthy
-      mycelium-backend:
         condition: service_healthy
       ioc-cfn-mgmt-plane-svc:
         condition: service_healthy
@@ -131,8 +133,6 @@ services:
       - "9002:9002"
     environment:
       MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
-      KNOWLEDGE_MEMORY_SVC_URL: http://mycelium-backend:8000
-      COGNITION_ENGINE_SVC_URL: http://mycelium-backend:8000
       CFN_NAME: ${CFN_NAME:-mycelium-cfn}
       DB_HOST: mycelium-db
       DB_PORT: 5432
@@ -141,6 +141,9 @@ services:
       DB_PASSWORD: ${MYCELIUM_DB_PASSWORD:-password}
       DB_SSL_MODE: disable
       PORT: 9002
+      LLM_MODEL: ${LLM_MODEL:-anthropic/claude-sonnet-4-6}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
       HEARTBEAT_INTERVAL_SECONDS: ${HEARTBEAT_INTERVAL_SECONDS:-29}
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9002/api/internal/diagnostics/health || exit 1"]

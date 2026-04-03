@@ -4,7 +4,6 @@
 """
 Mycelium FastAPI backend.
 
-  - Workspace / MAS / Agent registry
   - Room CRUD
   - Messages (POST + Postgres NOTIFY)
   - Sessions (presence)
@@ -31,20 +30,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_async_session
-from app.routes.agents import router as agents_router
 from app.routes.audit import router as audit_router
 from app.routes.cfn_proxy import router as cfn_proxy_router
 from app.routes.cognition_engine import router as cognition_engine_router
 from app.routes.knowledge import internal_router as knowledge_internal_router
 from app.routes.knowledge import router as knowledge_router
-from app.routes.mas import router as mas_router
 from app.routes.memory import router as memory_router
 from app.routes.messages import router as messages_router
 from app.routes.notebook import router as notebook_router
 from app.routes.rooms import router as rooms_router
 from app.routes.sessions import router as sessions_router
 from app.routes.stream import router as stream_router
-from app.routes.workspaces import router as workspaces_router
 
 from .config import settings
 
@@ -141,10 +137,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Registry
-app.include_router(workspaces_router)
-app.include_router(mas_router)
-app.include_router(agents_router)
 
 # Core routes
 app.include_router(rooms_router)
