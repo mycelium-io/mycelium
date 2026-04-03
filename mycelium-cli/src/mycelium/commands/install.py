@@ -337,15 +337,19 @@ _KNOWN_CONTAINERS = [
 
 
 def _remove_orphan_containers() -> None:
-    """Remove stopped containers with known Mycelium names that aren't tracked
-    by the current compose project (leftovers from earlier installs)."""
+    """Remove containers with known Mycelium names that aren't tracked
+    by the current compose project (leftovers from earlier installs).
+
+    Handles running, stopped, and dead containers alike so that
+    ``compose up --force-recreate`` never hits a name conflict.
+    """
     for name in _KNOWN_CONTAINERS:
         r = subprocess.run(
             ["docker", "inspect", "--format", "{{.State.Status}}", name],
             capture_output=True,
             text=True,
         )
-        if r.returncode == 0 and r.stdout.strip() in ("exited", "created", "dead"):
+        if r.returncode == 0:
             subprocess.run(["docker", "rm", "-f", name], capture_output=True)
 
 
