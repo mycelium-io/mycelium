@@ -3,12 +3,12 @@
 
 """Tests for CFN proxy endpoints."""
 
+from uuid import uuid4
+
 import httpx
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from uuid import uuid4
 
 from app.models import Agent
 
