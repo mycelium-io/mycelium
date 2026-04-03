@@ -243,14 +243,33 @@ async def _cfn_decide_round(room_name: str) -> None:
         await _finish_cfn(room_name, plan="CFN decide failed", assignments={}, broken=True)
         return
 
-    status = result.get("status", "")
+    # CFN returns a nested envelope: status lives in result["payload"]["status"]
+    # and the agreement in result["semantic_context"]["final_agreement"].
+    # Fall back to top-level keys for backward compatibility.
+    payload = result.get("payload", {})
+    status = payload.get("status", result.get("status", ""))
 
     if status == "agreed":
-        agreement = result.get("agreement") or result.get("assignments") or {}
+        final_agreement = (
+            result.get("semantic_context", {}).get("final_agreement")
+            or result.get("agreement")
+            or result.get("assignments")
+            or []
+        )
+        if isinstance(final_agreement, list):
+            agreement = {
+                item["issue_id"]: item.get("chosen_option", "")
+                for item in final_agreement
+                if isinstance(item, dict) and "issue_id" in item
+            }
+        elif isinstance(final_agreement, dict):
+            agreement = final_agreement
+        else:
+            agreement = {}
         plan = (
             "; ".join(f"{k}={v}" for k, v in agreement.items())
-            if isinstance(agreement, dict)
-            else str(agreement)
+            if agreement
+            else str(final_agreement)
         )
         await _finish_cfn(room_name, plan=plan, assignments=agreement, broken=False)
 
@@ -258,7 +277,8 @@ async def _cfn_decide_round(room_name: str) -> None:
         # Reset replies for next round and fan out new messages
         async with state.lock:
             state.pending_replies = {h: None for h in state.agents}
-        await _fan_out_cfn_messages(room_name, result.get("messages", []))
+        messages = payload.get("messages", result.get("messages", []))
+        await _fan_out_cfn_messages(room_name, messages)
 
     else:
         # Unknown / failed status
