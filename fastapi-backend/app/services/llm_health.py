@@ -185,6 +185,11 @@ async def _probe_by_provider(provider: str, model: str, config: LLMHealthResult)
     if provider == "ollama" or (settings.LLM_BASE_URL and not settings.LLM_API_KEY):
         return await _probe_ollama(**base)
 
+    # LiteLLM and other OpenAI-compatible proxies: key is valid only at the proxy,
+    # not at api.anthropic.com — probe the custom base URL.
+    if settings.LLM_BASE_URL and settings.LLM_API_KEY:
+        return await _probe_openai_compatible_proxy(**base)
+
     endpoint = _MODEL_LIST_ENDPOINTS.get(provider)
     if endpoint:
         return await _probe_api_key(endpoint, provider, **base)
@@ -194,6 +199,44 @@ async def _probe_by_provider(provider: str, model: str, config: LLMHealthResult)
         message="Key validation not supported for this provider. Key is configured but could not be verified.",
         **base,
     )
+
+
+async def _probe_openai_compatible_proxy(**base) -> LLMHealthResult:
+    """Probe LLM_BASE_URL using OpenAI-compatible GET /v1/models (LiteLLM, etc.)."""
+    raw_base = settings.LLM_BASE_URL or ""
+    base_url = raw_base.rstrip("/")
+    models_url = f"{base_url}/v1/models"
+    headers = {"Authorization": f"Bearer {settings.LLM_API_KEY}"}
+
+    async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT) as client:
+        try:
+            resp = await client.get(models_url, headers=headers)
+        except httpx.ConnectError:
+            return LLMHealthResult(
+                status="unreachable",
+                message=f"Cannot connect to LLM proxy at {base_url}",
+                **base,
+            )
+        except httpx.TimeoutException:
+            return LLMHealthResult(
+                status="unreachable",
+                message=f"Timeout connecting to LLM proxy at {base_url}",
+                **base,
+            )
+
+        if resp.status_code == 200:
+            return LLMHealthResult(status="ok", message="API key is valid", **base)
+        if resp.status_code in (401, 403):
+            return LLMHealthResult(
+                status="auth_error",
+                message="API key is invalid or expired",
+                **base,
+            )
+        return LLMHealthResult(
+            status="unreachable",
+            message=f"LLM proxy returned unexpected status {resp.status_code}",
+            **base,
+        )
 
 
 async def _probe_api_key(endpoint: str, provider: str, **base) -> LLMHealthResult:
