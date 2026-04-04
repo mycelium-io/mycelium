@@ -370,11 +370,7 @@ async def _cfn_decide_round(room_name: str) -> None:
             }
         else:
             agreement = {}
-        plan = (
-            "; ".join(f"{k}={v}" for k, v in agreement.items())
-            if agreement
-            else "agreed"
-        )
+        plan = "; ".join(f"{k}={v}" for k, v in agreement.items()) if agreement else "agreed"
         await _finish_cfn(room_name, plan=plan, assignments=agreement, broken=False)
 
     elif status == "ongoing":

@@ -18,14 +18,12 @@ import pytest
 
 from app.services import coordination as coord
 from app.services.coordination import (
-    _CfnRoundState,
-    _cfn_state,
-    _fan_out_cfn_messages,
-    _finish_cfn,
     _cfn_decide_round,
+    _cfn_state,
+    _CfnRoundState,
+    _fan_out_cfn_messages,
     on_agent_response,
 )
-
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -69,7 +67,11 @@ def _patch_db():
     mock_session = AsyncMock()
     mock_session.__aenter__ = AsyncMock(return_value=mock_session)
     mock_session.__aexit__ = AsyncMock(return_value=False)
-    mock_session.execute = AsyncMock(return_value=MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))))
+    mock_session.execute = AsyncMock(
+        return_value=MagicMock(
+            scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))
+        )
+    )
     mock_session.add = MagicMock()
     mock_session.commit = AsyncMock()
     mock_session.refresh = AsyncMock()
@@ -77,7 +79,9 @@ def _patch_db():
     msg = MagicMock()
     msg.id = 1
     msg.created_at = MagicMock(isoformat=MagicMock(return_value="2026-01-01T00:00:00"))
-    mock_session.add.side_effect = lambda m: setattr(m, "id", 1) or setattr(m, "created_at", MagicMock(isoformat=lambda: "2026-01-01T00:00:00"))
+    mock_session.add.side_effect = lambda m: setattr(m, "id", 1) or setattr(
+        m, "created_at", MagicMock(isoformat=lambda: "2026-01-01T00:00:00")
+    )
 
     return patch("app.services.coordination.async_session_maker", return_value=mock_session)
 
@@ -115,7 +119,7 @@ async def test_fan_out_broadcast_sends_tick_to_all_agents():
     alice_tick = next(p[1] for p in posted if p[1]["payload"]["participant_id"] == "alice")
     bob_tick = next(p[1] for p in posted if p[1]["payload"]["participant_id"] == "bob")
 
-    assert alice_tick["payload"]["can_counter_offer"] is True   # alice is next_proposer
+    assert alice_tick["payload"]["can_counter_offer"] is True  # alice is next_proposer
     assert bob_tick["payload"]["can_counter_offer"] is False
     assert alice_tick["payload"]["round"] == 1
     assert alice_tick["payload"]["issues"] == ["price", "timeline"]
@@ -175,11 +179,19 @@ async def test_cfn_state_keyed_by_room_name_not_mas_id():
         "options_per_issue": {"price": ["low", "high"]},
     }
 
-    with patch("app.services.cfn_negotiation.start_negotiation", AsyncMock(return_value=start_response)), \
-         patch.object(coord, "_post_message", side_effect=fake_post), \
-         patch.object(coord, "async_session_maker"):
-        await coord._run_cfn_negotiation("ns:session:aaa", room1, ["alice", "bob"], ["buy house", "sell house"])
-        await coord._run_cfn_negotiation("ns:session:bbb", room2, ["carol", "dave"], ["buy car", "sell car"])
+    with (
+        patch(
+            "app.services.cfn_negotiation.start_negotiation", AsyncMock(return_value=start_response)
+        ),
+        patch.object(coord, "_post_message", side_effect=fake_post),
+        patch.object(coord, "async_session_maker"),
+    ):
+        await coord._run_cfn_negotiation(
+            "ns:session:aaa", room1, ["alice", "bob"], ["buy house", "sell house"]
+        )
+        await coord._run_cfn_negotiation(
+            "ns:session:bbb", room2, ["carol", "dave"], ["buy car", "sell car"]
+        )
 
     assert "ns:session:aaa" in _cfn_state
     assert "ns:session:bbb" in _cfn_state
@@ -232,8 +244,10 @@ async def test_decide_sets_deciding_false_after_ongoing_round():
         workspace_id="ws",
         mas_id="mas",
         agents=["alice", "bob"],
-        pending_replies={"alice": {"agent_id": "alice", "action": "reject"},
-                         "bob": {"agent_id": "bob", "action": "reject"}},
+        pending_replies={
+            "alice": {"agent_id": "alice", "action": "reject"},
+            "bob": {"agent_id": "bob", "action": "reject"},
+        },
     )
     _cfn_state["room-y"] = state
 
@@ -248,9 +262,14 @@ async def test_decide_sets_deciding_false_after_ongoing_round():
     async def fake_post(room_name, message_type, content):
         pass
 
-    with patch("app.services.cfn_negotiation.decide_negotiation", AsyncMock(return_value=decide_response)), \
-         patch.object(coord, "_post_message", AsyncMock(side_effect=fake_post)), \
-         patch.object(coord, "_reset_round_timeout"):
+    with (
+        patch(
+            "app.services.cfn_negotiation.decide_negotiation",
+            AsyncMock(return_value=decide_response),
+        ),
+        patch.object(coord, "_post_message", AsyncMock(side_effect=fake_post)),
+        patch.object(coord, "_reset_round_timeout"),
+    ):
         await _cfn_decide_round("room-y")
 
     assert _cfn_state.get("room-y") is not None
@@ -353,9 +372,14 @@ async def test_agreed_status_parses_semantic_context_final_agreement():
     async def fake_post(room_name, message_type, content):
         posted.append((message_type, json.loads(content)))
 
-    with patch("app.services.cfn_negotiation.decide_negotiation", AsyncMock(return_value=decide_response)), \
-         patch.object(coord, "_post_message", side_effect=fake_post), \
-         patch.object(coord, "async_session_maker"):
+    with (
+        patch(
+            "app.services.cfn_negotiation.decide_negotiation",
+            AsyncMock(return_value=decide_response),
+        ),
+        patch.object(coord, "_post_message", side_effect=fake_post),
+        patch.object(coord, "async_session_maker"),
+    ):
         await _cfn_decide_round("room-a")
 
     consensus = next((p[1] for p in posted if p[0] == "coordination_consensus"), None)
@@ -388,9 +412,14 @@ async def test_timeout_status_posts_broken_consensus():
     async def fake_post(room_name, message_type, content):
         posted.append((message_type, json.loads(content)))
 
-    with patch("app.services.cfn_negotiation.decide_negotiation", AsyncMock(return_value=decide_response)), \
-         patch.object(coord, "_post_message", side_effect=fake_post), \
-         patch.object(coord, "async_session_maker"):
+    with (
+        patch(
+            "app.services.cfn_negotiation.decide_negotiation",
+            AsyncMock(return_value=decide_response),
+        ),
+        patch.object(coord, "_post_message", side_effect=fake_post),
+        patch.object(coord, "async_session_maker"),
+    ):
         await _cfn_decide_round("room-b")
 
     consensus = next((p[1] for p in posted if p[0] == "coordination_consensus"), None)

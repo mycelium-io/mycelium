@@ -102,6 +102,56 @@ def _compose_base_cmd(compose_path: Path | None = None, env_path: Path | None = 
     return cmd
 
 
+def _cfn_enabled() -> bool:
+    """Return True if CFN_MGMT_URL is set in ~/.mycelium/.env."""
+    env_path = _get_env_path()
+    if not env_path or not env_path.exists():
+        return False
+    try:
+        from dotenv import dotenv_values
+
+        val = dotenv_values(env_path).get("CFN_MGMT_URL", "")
+        return bool(val and val.strip())
+    except Exception:
+        return False
+
+
+def _ensure_cfn_databases(db_container: str = "mycelium-db") -> None:
+    """Create cfn_mgmt and cfn_cp databases if they don't exist.
+
+    Mirrors install._ensure_cfn_databases — called here so that ``mycelium up``
+    also provisions them, not just ``mycelium install``.
+    """
+    for db in ("cfn_mgmt", "cfn_cp"):
+        sql = (
+            f"SELECT 'CREATE DATABASE {db}' "
+            f"WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '{db}')\\gexec"
+        )
+        subprocess.run(
+            ["docker", "exec", db_container, "psql", "-U", "postgres", "-c", sql],
+            capture_output=True,
+        )
+
+
+def _wait_for_db_container(compose_path: Path, db_service: str = "mycelium-db", timeout: int = 60) -> bool:
+    """Poll until the DB container shows 'healthy' in docker compose ps output."""
+    import time
+
+    env_path = _get_env_path()
+    args = ["docker", "compose", "-p", _COMPOSE_PROJECT, "-f", str(compose_path)]
+    if env_path:
+        args += ["--env-file", str(env_path)]
+    args += ["ps", "--format", "json", db_service]
+
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        result = subprocess.run(args, capture_output=True, text=True)
+        if result.returncode == 0 and "healthy" in result.stdout:
+            return True
+        time.sleep(2)
+    return False
+
+
 def _find_managed_containers(include_stopped: bool = False) -> list[str]:
     """Return names of managed containers that are still present."""
     try:
@@ -237,15 +287,32 @@ def start(
             typer.echo("Run 'mycelium install' first.")
             raise typer.Exit(1)
 
+        cfn = _cfn_enabled()
         base = _compose_base_cmd(compose_path)
+        if cfn:
+            base = base + ["--profile", "cfn"]
         up_args = ["up", "-d", "--remove-orphans"]
         if build:
             up_args.append("--build")
 
         typer.echo("Starting Mycelium...")
 
-        # First attempt: capture output so we can detect container conflicts
-        # Use --progress=plain so docker compose writes to stdout/stderr instead of TTY
+        if cfn:
+            # Phase 1: start DB first, then provision CFN databases before the
+            # CFN services come up and try to connect.
+            db_only_cmd = base[:2] + ["--progress=plain"] + base[2:] + ["up", "-d", "mycelium-db"]
+            r = subprocess.run(db_only_cmd, capture_output=True, text=True)
+            if r.returncode != 0:
+                if r.stdout:
+                    typer.echo(r.stdout)
+                if r.stderr:
+                    typer.echo(r.stderr, err=True)
+                raise typer.Exit(r.returncode)
+            _wait_for_db_container(compose_path)
+            _ensure_cfn_databases()
+            typer.secho("  ✓ CFN databases provisioned", fg=typer.colors.GREEN)
+
+        # Phase 2 (or only phase): bring everything up
         quiet_cmd = base[:2] + ["--progress=plain"] + base[2:] + up_args
         result = subprocess.run(quiet_cmd, capture_output=True, text=True)
 
