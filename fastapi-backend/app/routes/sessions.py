@@ -27,6 +27,7 @@ from app.bus import notify, room_channel
 from app.config import settings
 from app.database import get_async_session
 from app.models import Room, Session
+from app.routes.rooms import _sync_create_mas
 from app.schemas import SessionCreate, SessionListResponse, SessionRead
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,9 @@ async def _upsert_room(room_name: str, session: AsyncSession) -> Room:
                 raise HTTPException(status_code=500, detail="Failed to create room")
         else:
             await session.refresh(room)
+            # Register MAS with CFN mgmt plane so coordination can use CFN mode
+            if not room.mas_id:
+                await _sync_create_mas(room, session)
     return room
 
 

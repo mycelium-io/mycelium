@@ -7,23 +7,16 @@ Multi-agent coordination service.
 Manages the join-window → tick-based negotiation lifecycle for Mycelium rooms.
 State is in-memory (v1) — cleared on server restart.
 
-Two coordination modes:
+CFN mode (requires COGNITION_FABRIC_NODE_URL + room.mas_id + room.workspace_id):
+  1. First agent joins → start join timer
+  2. Timer fires → call CFN start, fan out coordination_ticks to ALL agents at once
+  3. Agents reply → replies collected in _cfn_state[room_name].pending_replies
+  4. Once ALL agents reply → call CFN decide
+  5. CFN returns "ongoing" → fan out next round; "agreed" → post coordination_consensus
+  6. Repeat until agreed or max steps exhausted
 
-  CFN mode (when COGNITION_FABRIC_NODE_URL + room.mas_id are set):
-    1. First agent joins → start join timer
-    2. Timer fires → call CFN start, fan out coordination_ticks to ALL agents at once
-    3. Agents reply → replies collected in _cfn_state[room_name].pending_replies
-    4. Once ALL agents reply → call CFN decide
-    5. CFN returns "ongoing" → fan out next round; "agreed" → post coordination_consensus
-    6. Repeat until agreed or max steps exhausted
-
-  Inline NegMAS mode (fallback when CFN not configured):
-    1. First agent joins → start 60s join timer
-    2. Timer fires → tick 0: run SemanticNegotiationPipeline (NegMAS SAO),
-       post coordination_tick per SAO round via RoomNegotiator (one agent at a time)
-    3. Agents respond → on_agent_response routes replies to the correct RoomNegotiator
-    4. NegMAS mechanism produces agreement → post coordination_consensus
-    5. Mark room complete
+If CFN is not configured on the room, coordination fails immediately with a
+coordination_error message and the room is set to "failed" state.
 """
 
 import asyncio
@@ -36,30 +29,21 @@ from urllib.parse import urlparse
 import asyncpg
 from sqlalchemy import select, update
 
-from app.agents.semantic_negotiation import (
-    NegotiationParticipant,
-    SemanticNegotiationPipeline,
-)
 from app.bus import agent_channel, notify, room_channel
-from app.config import require_llm, settings
+from app.config import settings
 from app.database import async_session_maker
 from app.models import Message, Room, Session
 
 logger = logging.getLogger(__name__)
 
-# In-memory per-room tick state (inline NegMAS mode)
-# {room_name: {tick, responses, expected, tick_timeout_task}}
-_state: dict[str, dict] = {}
-
-# Per-room lock to prevent duplicate _run_tick calls
-_locks: dict[str, asyncio.Lock] = {}
-
-# Active SemanticNegotiationPipeline per room (set after tick-0 launch)
-# Keyed by room_name; the pipeline exposes .negotiator_registry {participant_id: RoomNegotiator}
-_pipelines: dict[str, SemanticNegotiationPipeline] = {}
-
 
 # ── CFN mode state ─────────────────────────────────────────────────────────────
+
+
+# How long to wait for agent replies before calling /decide with whatever we have.
+# The IOC's BatchCallbackRunner uses a 30s per-round timeout; we fire slightly earlier
+# so the backend stays in sync with the IOC's internal loop.
+_CFN_ROUND_TIMEOUT_SECS = 25
 
 
 @dataclass
@@ -70,6 +54,8 @@ class _CfnRoundState:
     agents: list[str]  # agent handles expected each round
     pending_replies: dict[str, dict | None] = field(default_factory=dict)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    round_timeout_task: asyncio.Task | None = field(default=None)
+    deciding: bool = field(default=False)  # guard against double-decide
 
 
 # {room_name: _CfnRoundState}
@@ -132,7 +118,7 @@ async def start_join_timer(room_name: str, deadline: datetime) -> None:
 
 
 async def _run_tick(room_name: str, tick: int) -> None:
-    """Tick 0: launch negotiation. Mode selected by config + room.mas_id."""
+    """Tick 0: launch CFN negotiation. Errors if CFN not configured on the room."""
     async with async_session_maker() as db:
         result = await db.execute(
             select(Session).where(Session.room_name == room_name).order_by(Session.joined_at)
@@ -161,10 +147,8 @@ async def _run_tick(room_name: str, tick: int) -> None:
         await db.commit()
 
     if tick != 0:
-        # Subsequent ticks are handled by on_agent_response routing to the pipeline
         return
 
-    # Decide mode: CFN or inline NegMAS
     use_cfn = bool(
         settings.COGNITION_FABRIC_NODE_URL
         and room is not None
@@ -172,10 +156,27 @@ async def _run_tick(room_name: str, tick: int) -> None:
         and room.workspace_id
     )
 
-    if use_cfn:
-        await _run_cfn_negotiation(room_name, room, session_handles, intents)
-    else:
-        await _run_negmas_negotiation(room_name, session_handles, intents)
+    if not use_cfn:
+        logger.error(
+            "Coordination requested for %s but CFN not configured (no COGNITION_FABRIC_NODE_URL "
+            "or room.mas_id/workspace_id not set)",
+            room_name,
+        )
+        await _post_message(
+            room_name,
+            message_type="coordination_error",
+            content=json.dumps(
+                {"error": "CFN coordination required but not configured for this room"}
+            ),
+        )
+        async with async_session_maker() as db:
+            await db.execute(
+                update(Room).where(Room.name == room_name).values(coordination_state="failed")
+            )
+            await db.commit()
+        return
+
+    await _run_cfn_negotiation(room_name, room, session_handles, intents)
 
 
 async def _run_cfn_negotiation(
@@ -191,7 +192,9 @@ async def _run_cfn_negotiation(
         f"- {handle}: {intent}" for handle, intent in zip(session_handles, intents, strict=False)
     )
     agents = [{"id": h, "name": h} for h in session_handles]
-    session_id = room.mas_id  # use mas_id as the CFN session_id
+    # Use room_name as CFN session_id — it's unique per session room and stable.
+    # mas_id is shared across all sessions in the namespace so it can't be used here.
+    session_id = room_name
 
     await _post_message(
         room_name,
@@ -208,10 +211,8 @@ async def _run_cfn_negotiation(
     )
 
     if not result:
-        logger.error(
-            "CFN start_negotiation returned empty result for %s — falling back to NegMAS", room_name
-        )
-        await _run_negmas_negotiation(room_name, session_handles, intents)
+        logger.error("CFN start_negotiation returned empty result for %s", room_name)
+        await _finish_cfn(room_name, plan="CFN start failed", assignments={}, broken=True)
         return
 
     # Set up CFN round state
@@ -224,36 +225,132 @@ async def _run_cfn_negotiation(
     )
     _cfn_state[room_name] = state
 
-    # Fan out coordination_ticks to all agents from the CFN response
-    await _fan_out_cfn_messages(room_name, result.get("messages", []))
+    # /start returns a flat dict: {"status": "initiated", "messages": [...], "issues": [...], ...}
+    messages = result.get("messages", [])
+    issues = result.get("issues")
+    options_per_issue = result.get("options_per_issue")
+
+    if not messages:
+        logger.error("CFN initiate returned no messages for %s", room_name)
+        await _finish_cfn(
+            room_name, plan="CFN initiate returned no messages", assignments={}, broken=True
+        )
+        return
+
+    # Fan out first-round ticks; pending_replies tracks only who got a tick this round
+    addressed = await _fan_out_cfn_messages(
+        room_name,
+        messages,
+        all_agents=session_handles,
+        parent_issues=issues,
+        parent_options_per_issue=options_per_issue,
+    )
+    async with state.lock:
+        state.pending_replies = {h: None for h in addressed}
+    _reset_round_timeout(room_name, state)
 
 
-async def _fan_out_cfn_messages(room_name: str, messages: list[dict]) -> None:
-    """Post coordination_tick for each agent listed in CFN messages."""
+def _reset_round_timeout(room_name: str, state: "_CfnRoundState") -> None:
+    """Cancel any existing round timeout and start a new one."""
+    if state.round_timeout_task and not state.round_timeout_task.done():
+        state.round_timeout_task.cancel()
+    state.round_timeout_task = asyncio.ensure_future(_round_timeout(room_name))
+
+
+async def _round_timeout(room_name: str) -> None:
+    """Fire /decide with whatever replies exist after _CFN_ROUND_TIMEOUT_SECS.
+
+    The IOC's BatchCallbackRunner uses a 30s per-round timeout and auto-advances
+    when it fires.  We call /decide slightly earlier so the backend stays in sync
+    with the IOC's internal loop rather than waiting forever for all replies.
+    """
+    await asyncio.sleep(_CFN_ROUND_TIMEOUT_SECS)
+    state = _cfn_state.get(room_name)
+    if not state:
+        return
+    logger.debug("CFN round timeout fired for %s — calling decide with partial replies", room_name)
+    await _cfn_decide_round(room_name)
+
+
+async def _fan_out_cfn_messages(
+    room_name: str,
+    messages: list[dict],
+    all_agents: list[str] | None = None,
+    parent_issues: list | None = None,
+    parent_options_per_issue: dict | None = None,
+) -> list[str]:
+    """Post coordination_tick for each agent listed in CFN messages.
+
+    BatchCallbackRunner always emits a single broadcast message per round with
+    ``payload.participant_id == "server"``.  When a broadcast is detected, the
+    tick is sent to every agent in ``all_agents`` and each agent's individual
+    ``next_proposer_id`` eligibility is conveyed via ``can_counter_offer``.
+
+    Returns the list of agent handles that received a tick this round.
+    """
+    addressed: list[str] = []
     for msg in messages:
         payload = msg.get("payload", msg)
         participant_id = payload.get("participant_id")
-        if not participant_id:
-            continue
-        await _post_message(
-            room_name,
-            message_type="coordination_tick",
-            content=json.dumps(
-                {
-                    "payload": {
-                        "participant_id": participant_id,
-                        "round": payload.get("round"),
-                        "action": payload.get("action"),
-                        "allowed_actions": payload.get("allowed_actions", []),
-                        "can_counter_offer": payload.get("can_counter_offer", False),
-                        "current_offer": payload.get("current_offer"),
-                        "proposer_id": payload.get("proposer_id"),
-                        "issue_options": payload.get("options_per_issue"),
-                        "issues": payload.get("issues"),
+
+        # BatchCallbackRunner uses participant_id="server" for broadcast rounds.
+        is_broadcast = participant_id in (None, "", "server", "broadcast")
+
+        # Negotiation space: prefer per-message semantic_context, fall back to
+        # the top-level issues/options passed from the /start response.
+        sc = msg.get("semantic_context") or {}
+        issues = sc.get("issues") or parent_issues
+        issue_options = sc.get("options_per_issue") or parent_options_per_issue
+
+        next_proposer_id = payload.get("next_proposer_id")
+
+        if is_broadcast and all_agents:
+            # Fan out one tick per agent; mark who is authorised to counter_offer.
+            for handle in all_agents:
+                await _post_message(
+                    room_name,
+                    message_type="coordination_tick",
+                    content=json.dumps(
+                        {
+                            "payload": {
+                                "participant_id": handle,
+                                "round": payload.get("round"),
+                                "action": payload.get("action"),
+                                "allowed_actions": payload.get("allowed_actions", []),
+                                "can_counter_offer": handle == next_proposer_id,
+                                "current_offer": payload.get("current_offer"),
+                                "proposer_id": payload.get("proposer_id"),
+                                "next_proposer_id": next_proposer_id,
+                                "issue_options": issue_options,
+                                "issues": issues,
+                            }
+                        }
+                    ),
+                )
+            addressed.extend(all_agents)
+        elif not is_broadcast and participant_id:
+            await _post_message(
+                room_name,
+                message_type="coordination_tick",
+                content=json.dumps(
+                    {
+                        "payload": {
+                            "participant_id": participant_id,
+                            "round": payload.get("round"),
+                            "action": payload.get("action"),
+                            "allowed_actions": payload.get("allowed_actions", []),
+                            "can_counter_offer": participant_id == next_proposer_id,
+                            "current_offer": payload.get("current_offer"),
+                            "proposer_id": payload.get("proposer_id"),
+                            "next_proposer_id": next_proposer_id,
+                            "issue_options": issue_options,
+                            "issues": issues,
+                        }
                     }
-                }
-            ),
-        )
+                ),
+            )
+            addressed.append(participant_id)
+    return addressed
 
 
 async def _cfn_decide_round(room_name: str) -> None:
@@ -263,6 +360,12 @@ async def _cfn_decide_round(room_name: str) -> None:
     state = _cfn_state.get(room_name)
     if not state:
         return
+
+    # Guard against double-decide (timeout + agent-triggered firing concurrently).
+    async with state.lock:
+        if state.deciding:
+            return
+        state.deciding = True
 
     agent_replies = []
     for handle, reply_data in state.pending_replies.items():
@@ -294,36 +397,41 @@ async def _cfn_decide_round(room_name: str) -> None:
     payload = result.get("payload", {})
     status = payload.get("status", result.get("status", ""))
 
-    if status == "agreed":
-        final_agreement = (
-            result.get("semantic_context", {}).get("final_agreement")
-            or result.get("agreement")
-            or result.get("assignments")
-            or []
-        )
-        if isinstance(final_agreement, list):
+    if status in ("agreed",):
+        final_result = result.get("final_result", {})
+        # final_result is an SSTPCommitMessage dict.
+        # Agreement is in semantic_context.final_agreement (list of {issue_id, chosen_option}).
+        if isinstance(final_result, dict):
+            sc = final_result.get("semantic_context") or {}
+            raw_agreement = sc.get("final_agreement") or []
+            # Fallback: some versions embed it in payload.trace.final_agreement
+            if not raw_agreement:
+                trace = (final_result.get("payload") or {}).get("trace") or {}
+                raw_agreement = trace.get("final_agreement") or []
+        else:
+            raw_agreement = []
+        if isinstance(raw_agreement, list):
             agreement = {
                 item["issue_id"]: item.get("chosen_option", "")
-                for item in final_agreement
+                for item in raw_agreement
                 if isinstance(item, dict) and "issue_id" in item
             }
-        elif isinstance(final_agreement, dict):
-            agreement = final_agreement
         else:
             agreement = {}
-        plan = (
-            "; ".join(f"{k}={v}" for k, v in agreement.items())
-            if agreement
-            else str(final_agreement)
-        )
+        plan = "; ".join(f"{k}={v}" for k, v in agreement.items()) if agreement else "agreed"
         await _finish_cfn(room_name, plan=plan, assignments=agreement, broken=False)
 
-    elif status in ("ongoing", "initiated"):
-        # Reset replies for next round and fan out new messages
+    elif status == "ongoing":
+        messages = result.get("messages", [])
+        addressed = await _fan_out_cfn_messages(
+            room_name,
+            messages,
+            all_agents=state.agents,
+        )
         async with state.lock:
-            state.pending_replies = {h: None for h in state.agents}
-        messages = payload.get("messages", result.get("messages", []))
-        await _fan_out_cfn_messages(room_name, messages)
+            state.pending_replies = {h: None for h in addressed}
+            state.deciding = False
+        _reset_round_timeout(room_name, state)
 
     else:
         # Unknown / failed status
@@ -335,7 +443,9 @@ async def _cfn_decide_round(room_name: str) -> None:
 
 async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool) -> None:
     """Post consensus and clean up CFN state."""
-    _cfn_state.pop(room_name, None)
+    state = _cfn_state.pop(room_name, None)
+    if state and state.round_timeout_task and not state.round_timeout_task.done():
+        state.round_timeout_task.cancel()
     await _post_message(
         room_name,
         message_type="coordination_consensus",
@@ -356,175 +466,35 @@ async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool
         await db.commit()
 
 
-async def _run_negmas_negotiation(
-    room_name: str, session_handles: list[str], intents: list[str]
-) -> None:
-    """Inline NegMAS mode — original implementation."""
-    # Check LLM availability before starting negotiation
-    try:
-        require_llm()
-    except RuntimeError as exc:
-        logger.error("Cannot start negotiation for %s: %s", room_name, exc)
-        await _post_message(
-            room_name,
-            message_type="coordination_error",
-            content=json.dumps({"error": str(exc)}),
-        )
-        async with async_session_maker() as db:
-            await db.execute(
-                update(Room).where(Room.name == room_name).values(coordination_state="failed")
-            )
-            await db.commit()
-        return
-
-    # --- Tick 0: initialise state and launch pipeline ---
-    _state[room_name] = {
-        "tick": 0,
-        "responses": {},
-        "expected": len(session_handles),
-        "tick_timeout_task": None,
-    }
-
-    await _post_message(
-        room_name,
-        message_type="coordination_start",
-        content=json.dumps({"round": 0, "agent_count": len(session_handles)}),
-    )
-
-    participants = [NegotiationParticipant(id=handle, name=handle) for handle in session_handles]
-    joined_intents = "\n".join(
-        f"- {handle}: {intent}" for handle, intent in zip(session_handles, intents, strict=False)
-    )
-
-    loop = asyncio.get_event_loop()
-    pipeline = SemanticNegotiationPipeline(
-        participants=participants,
-        room_name=room_name,
-        loop=loop,
-        post_message_coro=_post_message,
-        reply_timeout=float(settings.COORDINATION_TICK_TIMEOUT_SECONDS),
-    )
-    _pipelines[room_name] = pipeline
-
-    # Run the blocking NegMAS mechanism in a thread so it doesn't stall the loop.
-    # The mechanism drives RoomNegotiators which post coordination_tick messages
-    # and block waiting for agent replies routed back via on_agent_response.
-    async def _run_pipeline() -> None:
-        try:
-            result = await asyncio.to_thread(pipeline.run, content_text=joined_intents)
-            if result.agreement:
-                assignments = {o.issue_id: o.chosen_option for o in result.agreement}
-                plan = "; ".join(f"{k}={v}" for k, v in assignments.items())
-            else:
-                assignments = {}
-                plan = "No agreement reached"
-            await _post_message(
-                room_name,
-                message_type="coordination_consensus",
-                content=json.dumps(
-                    {
-                        "round": result.steps,
-                        "plan": plan,
-                        "assignments": assignments,
-                        "timedout": result.timedout,
-                        "broken": result.broken,
-                    }
-                ),
-            )
-            async with async_session_maker() as db:
-                await db.execute(
-                    update(Room).where(Room.name == room_name).values(coordination_state="complete")
-                )
-                await db.commit()
-        except Exception as exc:
-            logger.error("Negotiation pipeline failed for room %s: %s", room_name, exc)
-            await _post_message(
-                room_name,
-                message_type="coordination_error",
-                content=json.dumps({"error": str(exc)}),
-            )
-            async with async_session_maker() as db:
-                await db.execute(
-                    update(Room).where(Room.name == room_name).values(coordination_state="failed")
-                )
-                await db.commit()
-        finally:
-            _state.pop(room_name, None)
-            _pipelines.pop(room_name, None)
-
-    asyncio.ensure_future(_run_pipeline())
-
-
 async def on_agent_response(room_name: str, handle: str, content: str) -> None:
     """Called by messages route when an agent posts in a negotiating room.
 
-    CFN mode: collects reply, triggers decide when all agents have replied.
-    NegMAS mode: routes reply to the matching RoomNegotiator.
+    CFN mode only: collects reply, triggers decide when all agents have replied.
     """
-    # CFN mode — collect replies and trigger decide when all have arrived
     cfn = _cfn_state.get(room_name)
-    if cfn is not None:
-        should_decide = False
-        async with cfn.lock:
-            if handle in cfn.pending_replies:
-                # Parse structured reply if possible; fall back to raw content
-                reply_data = _parse_agent_reply(handle, content)
-                cfn.pending_replies[handle] = reply_data
-                logger.debug(
-                    "CFN room %s: collected reply from %s (%d/%d)",
-                    room_name,
-                    handle,
-                    sum(1 for v in cfn.pending_replies.values() if v is not None),
-                    len(cfn.pending_replies),
-                )
-                all_received = all(v is not None for v in cfn.pending_replies.values())
-                if all_received:
-                    should_decide = True
-        if should_decide:
-            asyncio.ensure_future(_cfn_decide_round(room_name))
+    if cfn is None:
         return
 
-    # NegMAS mode — route to the active pipeline's negotiator registry
-    pipeline = _pipelines.get(room_name)
-    if pipeline is not None:
-        registry = getattr(pipeline, "negotiator_registry", {})
-        negotiator = registry.get(handle)
-        if negotiator is not None:
-            logger.debug("Room %s: routing reply from %s to RoomNegotiator", room_name, handle)
-            negotiator.on_agent_reply(content)
-            return
-
-    # Fallback: legacy tick-based state tracking (no pipeline active)
-    state = _state.get(room_name)
-    if not state:
-        return
-
-    if room_name not in _locks:
-        _locks[room_name] = asyncio.Lock()
-    lock = _locks[room_name]
-
-    should_advance = False
-    next_tick = 0
-
-    async with lock:
-        state["responses"][handle] = content
-        logger.debug(
-            "Room %s: %d/%d responses for tick %d",
-            room_name,
-            len(state["responses"]),
-            state.get("expected", "?"),
-            state.get("tick", "?"),
-        )
-
-        if len(state["responses"]) >= state.get("expected", 999):
-            task = state.get("tick_timeout_task")
-            if task and not task.done():
-                task.cancel()
-            next_tick = state["tick"] + 1
-            should_advance = True
-
-    if should_advance:
-        await _run_tick(room_name, next_tick)
+    should_decide = False
+    async with cfn.lock:
+        if handle in cfn.pending_replies:
+            reply_data = _parse_agent_reply(handle, content)
+            cfn.pending_replies[handle] = reply_data
+            logger.debug(
+                "CFN room %s: collected reply from %s (%d/%d)",
+                room_name,
+                handle,
+                sum(1 for v in cfn.pending_replies.values() if v is not None),
+                len(cfn.pending_replies),
+            )
+            all_received = all(v is not None for v in cfn.pending_replies.values())
+            if all_received:
+                should_decide = True
+    if should_decide:
+        # All replies in — cancel the timeout so it doesn't double-fire
+        if cfn.round_timeout_task and not cfn.round_timeout_task.done():
+            cfn.round_timeout_task.cancel()
+        asyncio.ensure_future(_cfn_decide_round(room_name))
 
 
 def _parse_agent_reply(handle: str, content: str) -> dict:
@@ -532,21 +502,19 @@ def _parse_agent_reply(handle: str, content: str) -> dict:
 
     Expected formats (in order of preference):
       1. JSON with "action" key: {"action": "accept"|"reject"|"counter_offer", "offer": {...}}
-      2. Plain text: treat as "reject" with the text stored in offer context
+      2. JSON with "offer" key only: treated as counter_offer
+      3. Plain text: treat as "reject"
 
     Always returns a dict with at least {"agent_id": handle, "action": ...}.
     """
     try:
         parsed = json.loads(content)
         if isinstance(parsed, dict):
-            # ProposeReply format: {"offer": {...}} — no action key
-            # Sent by `mycelium message propose KEY=VALUE`
             if "offer" in parsed and "action" not in parsed:
                 return {"agent_id": handle, "action": "counter_offer", "offer": parsed["offer"]}
 
             if "action" in parsed:
                 action = parsed["action"]
-                # Map "end" (old NegMAS action) to "reject" for CFN compat
                 if action not in ("accept", "reject", "counter_offer"):
                     action = "reject"
                 result: dict = {"agent_id": handle, "action": action}
@@ -556,7 +524,6 @@ def _parse_agent_reply(handle: str, content: str) -> dict:
     except (json.JSONDecodeError, TypeError):
         pass
 
-    # Plain text reply — treat as reject (agent is responding but not accepting)
     return {"agent_id": handle, "action": "reject"}
 
 
@@ -582,12 +549,6 @@ async def _post_message(room_name: str, message_type: str, content: str) -> None
             parsed = json.loads(content)
             agent_handles = parsed.get("addressed_to") or []
             if not agent_handles:
-                # Check top-level participant_id (NegMAS inline format)
-                pid = parsed.get("participant_id")
-                if pid:
-                    agent_handles = [pid]
-            if not agent_handles:
-                # Check nested payload.participant_id (CFN format)
                 pid = (parsed.get("payload") or {}).get("participant_id")
                 if pid:
                     agent_handles = [pid]
@@ -601,13 +562,13 @@ async def _post_message(room_name: str, message_type: str, content: str) -> None
             agent_handles = list(result.scalars().all())
 
     try:
-        parsed = urlparse(settings.DATABASE_URL)
+        parsed_url = urlparse(settings.DATABASE_URL)
         conn: asyncpg.Connection = await asyncpg.connect(
-            host=parsed.hostname,
-            port=parsed.port or 5432,
-            user=parsed.username,
-            password=parsed.password,
-            database=parsed.path.lstrip("/"),
+            host=parsed_url.hostname,
+            port=parsed_url.port or 5432,
+            user=parsed_url.username,
+            password=parsed_url.password,
+            database=parsed_url.path.lstrip("/"),
         )
         payload = {
             "id": msg_id,

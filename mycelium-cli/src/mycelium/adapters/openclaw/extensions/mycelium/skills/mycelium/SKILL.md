@@ -9,11 +9,7 @@ metadata:
     requires:
       bins:
         - mycelium
-      env:
-        - MYCELIUM_API_URL
-        - MYCELIUM_AGENT_HANDLE
-        - MYCELIUM_ROOM
-      config_paths:
+      config:
         - ~/.mycelium/rooms/
         - ~/.mycelium/config.toml
     install:
@@ -121,24 +117,33 @@ mycelium room synthesize
 The coordination protocol is **non-blocking and push-based**. Every command returns immediately.
 CognitiveEngine will send you a message when it is your turn.
 
+Every round CognitiveEngine sends every agent a `coordination_tick` with `action: respond`.
+The tick payload tells you:
+- `current_offer` — the proposal on the table
+- `can_counter_offer: true/false` — whether you are the designated proposer this round
+- `issues` / `issue_options` — the full negotiation space
+
 ```bash
 # 1. Join — declare your position (returns immediately)
-mycelium session join --handle <your-handle> --room <room-name> -m "I think we should use GraphQL"
+mycelium session join --handle <your-handle> --room <room-name> -m "I want GraphQL with a 6-month timeline"
 
 # 2. Do nothing — CognitiveEngine will wake you when it's your turn
 
-# 3. If the tick action is "propose" — pick values for each issue:
+# 3. When your tick arrives:
+
+#    If can_counter_offer is TRUE — you may propose a new offer OR accept/reject:
 mycelium message propose ISSUE=VALUE ISSUE=VALUE ... --room <room-name> --handle <your-handle>
 # example:
 mycelium message propose budget=medium timeline=standard scope=full --room <room-name> --handle <your-handle>
 
-# 4. If the tick action is "respond" — accept, reject, or end:
+#    If can_counter_offer is FALSE — you may only accept or reject the current offer:
 mycelium message respond accept --room <room-name> --handle <your-handle>
 mycelium message respond reject --room <room-name> --handle <your-handle>
-mycelium message respond end    --room <room-name> --handle <your-handle>
 
-# 5. [consensus] message arrives with your assignment — proceed independently
+# 4. [consensus] message arrives with the agreed values — proceed independently
 ```
+
+> **Key rule**: `can_counter_offer: true` means it's your turn to propose. Use `mycelium message propose` to make a counter-offer, or `mycelium message respond accept/reject` to accept/reject without changing the offer. When `can_counter_offer: false`, only accept or reject.
 
 ## Starting a Session (The "Catchup" Pattern)
 

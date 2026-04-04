@@ -315,8 +315,7 @@ def _get_compose_path() -> Path:
     compose_ref = importlib.resources.files("mycelium.docker") / "compose.yml"
     dest = Path.home() / ".mycelium" / "docker" / "compose.yml"
     dest.parent.mkdir(parents=True, exist_ok=True)
-    if not dest.exists():
-        dest.write_bytes(compose_ref.read_bytes())
+    dest.write_bytes(compose_ref.read_bytes())
     return dest
 
 
@@ -338,15 +337,19 @@ _KNOWN_CONTAINERS = [
 
 
 def _remove_orphan_containers() -> None:
-    """Remove stopped containers with known Mycelium names that aren't tracked
-    by the current compose project (leftovers from earlier installs)."""
+    """Remove containers with known Mycelium names that aren't tracked
+    by the current compose project (leftovers from earlier installs).
+
+    Handles running, stopped, and dead containers alike so that
+    ``compose up --force-recreate`` never hits a name conflict.
+    """
     for name in _KNOWN_CONTAINERS:
         r = subprocess.run(
             ["docker", "inspect", "--format", "{{.State.Status}}", name],
             capture_output=True,
             text=True,
         )
-        if r.returncode == 0 and r.stdout.strip() in ("exited", "created", "dead"):
+        if r.returncode == 0:
             subprocess.run(["docker", "rm", "-f", name], capture_output=True)
 
 
@@ -446,6 +449,64 @@ def _ensure_cfn_databases(db_container: str = "mycelium-db") -> None:
             ["docker", "exec", db_container, "psql", "-U", "postgres", "-c", sql],
             capture_output=True,
         )
+
+
+def _wait_for_db_container(
+    compose_path: Path,
+    env_path: Path,
+    db_service: str = "mycelium-db",
+    timeout: int = 60,
+) -> bool:
+    """Wait until the DB container reports healthy via docker compose ps."""
+    import time
+
+    deadline = time.time() + timeout
+    args = [
+        "docker",
+        "compose",
+        "-p",
+        "mycelium",
+        "-f",
+        str(compose_path),
+        "--env-file",
+        str(env_path),
+        "ps",
+        "--format",
+        "json",
+        db_service,
+    ]
+    while time.time() < deadline:
+        result = subprocess.run(args, capture_output=True, text=True)
+        if result.returncode == 0 and "healthy" in result.stdout:
+            return True
+        time.sleep(2)
+    return False
+
+
+def _compose_up_services(
+    compose_path: Path,
+    env_path: Path,
+    profiles: list[str] | None = None,
+    services: list[str] | None = None,
+) -> bool:
+    """Bring specific services (or all) up in detached mode. Returns success bool."""
+    args = [
+        "docker",
+        "compose",
+        "-p",
+        "mycelium",
+        "-f",
+        str(compose_path),
+        "--env-file",
+        str(env_path),
+    ]
+    for profile in profiles or []:
+        args += ["--profile", profile]
+    args += ["up", "-d"]
+    if services:
+        args += services
+    result = subprocess.run(args, text=True)
+    return result.returncode == 0
 
 
 def _wait_for_health(urls: list[str], timeout: int = 120) -> bool:
@@ -670,14 +731,21 @@ def install(
             compose_path = _get_compose_path()
             typer.echo(f"  ✓ Compose file → {compose_path}")
 
+            if ioc:
+                # Phase 1: bring up DB alone so we can provision CFN databases
+                # before the CFN services start and try to connect.
+                if not _compose_up_services(compose_path, env_path, services=["mycelium-db"]):
+                    typer.secho("\n  ✗ docker compose up failed (db)", fg=typer.colors.RED)
+                    raise typer.Exit(1) from None
+                _wait_for_db_container(compose_path, env_path)
+                _ensure_cfn_databases()
+                typer.echo("  ✓ CFN databases provisioned")
+
+            # Phase 2 (or only phase for non-ioc): bring up everything
             ok, needs_build = _compose_up(compose_path, env_path, profiles=compose_profiles)
             if not ok:
                 typer.secho("\n  ✗ docker compose up failed", fg=typer.colors.RED)
                 raise typer.Exit(1) from None
-
-            if ioc:
-                _ensure_cfn_databases()
-                typer.echo("  ✓ CFN databases provisioned")
 
             api_url = f"http://localhost:{custom_ports['backend']}"
             health_timeout = 300 if needs_build else 120
@@ -896,14 +964,21 @@ def install(
         compose_path = _get_compose_path()
         typer.echo(f"  ✓ Compose file → {compose_path}")
 
+        if ioc_enabled:
+            # Phase 1: bring up DB alone so we can provision CFN databases
+            # before the CFN services start and try to connect.
+            if not _compose_up_services(compose_path, env_path, services=["mycelium-db"]):
+                typer.secho("\n  ✗ docker compose up failed (db)", fg=typer.colors.RED)
+                raise typer.Exit(1) from None
+            _wait_for_db_container(compose_path, env_path)
+            _ensure_cfn_databases()
+            typer.echo("  ✓ CFN databases provisioned")
+
+        # Phase 2 (or only phase for non-ioc): bring up everything
         ok, needs_build = _compose_up(compose_path, env_path, profiles=compose_profiles)
         if not ok:
             typer.secho("\n  ✗ docker compose up failed", fg=typer.colors.RED)
             raise typer.Exit(1) from None
-
-        if ioc_enabled:
-            _ensure_cfn_databases()
-            typer.echo("  ✓ CFN databases provisioned")
 
         # ── Phase 4: Health checks ─────────────────────────────────────────
         # Allow extra time on first run when the backend image is being built.
