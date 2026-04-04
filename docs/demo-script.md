@@ -32,9 +32,10 @@ ls .mycelium/rooms/design-review/
 
 ```bash
 # Category keys (work/, decisions/, context/, status/) get auto-validated
-mycelium memory set decisions/database "Consolidated to single AgensGraph instance — SQL + graph + vector in one DB" -H julia-agent
-mycelium memory set decisions/llm-provider "litellm — 100+ providers, one interface" -H julia-agent
-mycelium memory set decisions/api-style "REST for now, generated OpenAPI client for type safety" -H julia-agent
+# CLI syntax: mycelium memory set KEY VALUE [--handle AGENT]
+mycelium memory set decisions/database "Consolidated to single AgensGraph instance — SQL + graph + vector in one DB" --handle julia-agent
+mycelium memory set decisions/llm-provider "litellm — 100+ providers, one interface" --handle julia-agent
+mycelium memory set decisions/api-style "REST for now, generated OpenAPI client for type safety" --handle julia-agent
 
 # These are just markdown files:
 cat .mycelium/rooms/design-review/decisions/database.md
@@ -71,15 +72,15 @@ EOF
 ### Agent 3: Kappa reports what didn't work
 
 ```bash
-mycelium memory set decisions/no-sqlite-tests "SQLite can't handle pgvector or JSONB — need real Postgres for integration tests" -H kappa-agent
-mycelium memory set decisions/no-qdrant "Considered Qdrant but AgensGraph+pgvector eliminates the need" -H kappa-agent
+mycelium memory set decisions/no-sqlite-tests "SQLite can't handle pgvector or JSONB — need real Postgres for integration tests" --handle kappa-agent
+mycelium memory set decisions/no-qdrant "Considered Qdrant but AgensGraph+pgvector eliminates the need" --handle kappa-agent
 ```
 
 ### Agent 4: Prometheus shares status
 
 ```bash
-mycelium memory set status/cfn-integration "Working on CFN integration — mapping mycelium agents to CFN objects" -H prometheus-agent
-mycelium memory set context/blocker "Need ioc-cfn-mgmt-plane-svc running to test agent registration flow" -H prometheus-agent
+mycelium memory set status/cfn-integration "Working on CFN integration — mapping mycelium agents to CFN objects" --handle prometheus-agent
+mycelium memory set context/blocker "Need ioc-cfn-mgmt-plane-svc running to test agent registration flow" --handle prometheus-agent
 ```
 
 ### Browse & Search
@@ -150,16 +151,18 @@ mycelium catchup
 
 ```bash
 mycelium room create friday-demo
-mycelium session create -r friday-demo
-mycelium session join --handle julia-agent -m "Prioritize CFN integration — need mgmt plane wired up before Friday demo" -r friday-demo
-mycelium session await --handle julia-agent -r friday-demo
+mycelium room use friday-demo
+mycelium session create
+mycelium session join --handle julia-agent --message "Prioritize CFN integration — need mgmt plane wired up before Friday demo"
+mycelium session await --handle julia-agent
 ```
 
 **Terminal 2 (or Claude Code instance 2) — selina-agent:**
 
 ```bash
-mycelium session join --handle selina-agent -m "Focus on demo UX — frontend polish, watch output, catchup display. Backend is solid enough." -r friday-demo
-mycelium session await --handle selina-agent -r friday-demo
+mycelium room use friday-demo
+mycelium session join --handle selina-agent --message "Focus on demo UX — frontend polish, watch output, catchup display. Backend is solid enough."
+mycelium session await --handle selina-agent
 ```
 
 **Terminal 3 (audience view):**
@@ -175,11 +178,11 @@ Or open `http://localhost:3000/room/friday-demo` in the browser.
 2. Timer fires → CognitiveEngine runs SemanticNegotiationPipeline
 3. `await` returns a tick with `action: propose` → agent proposes:
    ```bash
-   mycelium message propose budget=high timeline=standard scope=extended quality=standard -r friday-demo -H julia-agent
+   mycelium message propose budget=high timeline=standard scope=extended quality=standard --handle julia-agent
    ```
 4. Other agent gets a tick with `action: respond` → accepts or rejects:
    ```bash
-   mycelium message respond accept -r friday-demo -H selina-agent
+   mycelium message respond accept --handle selina-agent
    ```
 5. `await` returns `type: consensus` with the final plan
 
@@ -190,16 +193,17 @@ Give this to the second Claude Code instance:
 > You are participating in a Mycelium coordination room called `friday-demo`. You are `selina-agent`. Your position is: "We should focus on demo UX and frontend polish before Friday — the backend is solid enough."
 >
 > ```bash
-> mycelium session join --handle selina-agent -m "Focus on demo UX — frontend polish, watch output, catchup display." -r friday-demo
-> mycelium session await --handle selina-agent -r friday-demo
+> mycelium room use friday-demo
+> mycelium session join --handle selina-agent --message "Focus on demo UX — frontend polish, watch output, catchup display."
+> mycelium session await --handle selina-agent
 > ```
 >
 > When you get a tick, respond based on the action:
-> - `action=propose` → `mycelium message propose budget=medium timeline=express scope=standard quality=premium -r friday-demo -H selina-agent`
-> - `action=respond` → evaluate the offer, then `mycelium message respond accept -r friday-demo -H selina-agent`
+> - `action=propose` → `mycelium message propose budget=medium timeline=express scope=standard quality=premium --handle selina-agent`
+> - `action=respond` → evaluate the offer, then `mycelium message respond accept --handle selina-agent`
 > - `type=consensus` → done, read your assignment
 >
-> Keep calling `mycelium session await --handle selina-agent -r friday-demo` between each response until you get consensus.
+> Keep calling `mycelium session await --handle selina-agent` between each response until you get consensus.
 
 ---
 
