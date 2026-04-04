@@ -55,6 +55,7 @@ class _CfnRoundState:
     pending_replies: dict[str, dict | None] = field(default_factory=dict)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     round_timeout_task: asyncio.Task | None = field(default=None)
+    deciding: bool = field(default=False)  # guard against double-decide
 
 
 # {room_name: _CfnRoundState}
@@ -148,7 +149,9 @@ async def _run_cfn_negotiation(
         f"- {handle}: {intent}" for handle, intent in zip(session_handles, intents, strict=False)
     )
     agents = [{"id": h, "name": h} for h in session_handles]
-    session_id = room.mas_id  # use mas_id as the CFN session_id
+    # Use room_name as CFN session_id — it's unique per session room and stable.
+    # mas_id is shared across all sessions in the namespace so it can't be used here.
+    session_id = room_name
 
     await _post_message(
         room_name,
@@ -315,6 +318,12 @@ async def _cfn_decide_round(room_name: str) -> None:
     if not state:
         return
 
+    # Guard against double-decide (timeout + agent-triggered firing concurrently).
+    async with state.lock:
+        if state.deciding:
+            return
+        state.deciding = True
+
     agent_replies = []
     for handle, reply_data in state.pending_replies.items():
         if reply_data is None:
@@ -377,6 +386,7 @@ async def _cfn_decide_round(room_name: str) -> None:
         )
         async with state.lock:
             state.pending_replies = {h: None for h in addressed}
+            state.deciding = False
         _reset_round_timeout(room_name, state)
 
     else:
