@@ -29,6 +29,7 @@ def _mas_url(workspace_id: str, mas_id: str, endpoint: str) -> str:
         f"/semantic-negotiation/{endpoint}"
     )
 
+
 # CFN may run LLM + persist agreement to shared memory; 60s is often too short.
 _CFN_HTTP_TIMEOUT = httpx.Timeout(300.0)
 
