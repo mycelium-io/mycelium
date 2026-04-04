@@ -316,6 +316,22 @@ def _get_compose_path() -> Path:
     dest = Path.home() / ".mycelium" / "docker" / "compose.yml"
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(compose_ref.read_bytes())
+
+    # Also copy bundled initdb/ scripts so the Postgres initdb hook creates
+    # cfn_mgmt and cfn_cp on first DB init (compose mounts ./initdb as initdb.d).
+    try:
+        initdb_dest = dest.parent / "initdb"
+        initdb_dest.mkdir(exist_ok=True)
+        initdb_pkg = importlib.resources.files("mycelium.docker.initdb")
+        for item in importlib.resources.contents("mycelium.docker.initdb"):
+            if item.startswith("_"):
+                continue
+            script_path = initdb_dest / item
+            script_path.write_bytes((initdb_pkg / item).read_bytes())
+            script_path.chmod(0o755)
+    except Exception:
+        pass  # non-fatal: _ensure_cfn_databases() handles it at install time
+
     return dest
 
 
@@ -445,10 +461,16 @@ def _ensure_cfn_databases(db_container: str = "mycelium-db") -> None:
     """
     for db in ("cfn_mgmt", "cfn_cp"):
         sql = f"SELECT 'CREATE DATABASE {db}' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '{db}')\\gexec"
-        subprocess.run(
+        result = subprocess.run(
             ["docker", "exec", db_container, "psql", "-U", "postgres", "-c", sql],
             capture_output=True,
         )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"Failed to create database '{db}':\n{result.stderr.decode().strip()}\n"
+                "Tip: if Docker requires sudo on this system, add your user to the "
+                "docker group:  sudo usermod -aG docker $USER  (then re-login)."
+            )
 
 
 def _wait_for_db_container(
@@ -737,7 +759,9 @@ def install(
                 if not _compose_up_services(compose_path, env_path, services=["mycelium-db"]):
                     typer.secho("\n  ✗ docker compose up failed (db)", fg=typer.colors.RED)
                     raise typer.Exit(1) from None
-                _wait_for_db_container(compose_path, env_path)
+                if not _wait_for_db_container(compose_path, env_path):
+                    typer.secho("\n  ✗ Timed out waiting for mycelium-db to become healthy", fg=typer.colors.RED)
+                    raise typer.Exit(1) from None
                 _ensure_cfn_databases()
                 typer.echo("  ✓ CFN databases provisioned")
 
@@ -970,7 +994,9 @@ def install(
             if not _compose_up_services(compose_path, env_path, services=["mycelium-db"]):
                 typer.secho("\n  ✗ docker compose up failed (db)", fg=typer.colors.RED)
                 raise typer.Exit(1) from None
-            _wait_for_db_container(compose_path, env_path)
+            if not _wait_for_db_container(compose_path, env_path):
+                typer.secho("\n  ✗ Timed out waiting for mycelium-db to become healthy", fg=typer.colors.RED)
+                raise typer.Exit(1) from None
             _ensure_cfn_databases()
             typer.echo("  ✓ CFN databases provisioned")
 
