@@ -21,7 +21,7 @@ from sqlalchemy import select
 
 from app.bus import agent_channel, room_channel
 from app.config import settings
-from app.database import get_async_session
+from app.database import async_session_maker, get_async_session
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ async def _expand_slim(payload: dict) -> dict:
     if not msg_id:
         return payload
     try:
-        async for session in get_async_session():
+        async with async_session_maker() as session:
             result = await session.execute(select(Message).where(Message.id == UUID(str(msg_id))))
             msg = result.scalar_one_or_none()
             if msg:
