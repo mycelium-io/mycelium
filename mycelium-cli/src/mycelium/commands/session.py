@@ -77,6 +77,13 @@ def create(
         else:
             typer.secho(f"Session created: {data['session_room']}", fg=typer.colors.GREEN)
             typer.echo(f"  Room: {data['parent']}")
+            cfn = data.get("cfn", {})
+            if cfn.get("enabled"):
+                typer.secho(f"  CFN:  enabled (MAS {cfn['mas_id'][:8]}...)", fg=typer.colors.GREEN)
+            elif cfn.get("mas_id"):
+                typer.secho("  CFN:  MAS registered but fabric node not configured", fg=typer.colors.YELLOW)
+            else:
+                typer.secho("  CFN:  not configured (coordination will use local mode)", fg=typer.colors.YELLOW)
             typer.echo("")
             typer.echo(
                 "  Agents can now join with: mycelium session join -H <handle> -m <position>"

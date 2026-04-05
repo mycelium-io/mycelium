@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     MYCELIUM_DATA_DIR: str = str(Path.home() / ".mycelium")
 
     # Embedding (for persistent memory semantic search)
-    EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
+    EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"
     EMBEDDING_DIMENSIONS: int = 384
 
     # IoC CFN management plane (optional — registration skipped if unset)

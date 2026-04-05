@@ -114,7 +114,18 @@ async def spawn_session(
 
     session_room = await _spawn_session_room(room_name, db)
     await db.commit()
-    return {"session_room": session_room.name, "parent": room_name}
+
+    cfn_enabled = bool(settings.COGNITION_FABRIC_NODE_URL and room.mas_id and room.workspace_id)
+    result = {
+        "session_room": session_room.name,
+        "parent": room_name,
+        "cfn": {
+            "enabled": cfn_enabled,
+            "mas_id": str(room.mas_id) if room.mas_id else None,
+            "workspace_id": str(room.workspace_id) if room.workspace_id else None,
+        },
+    }
+    return result
 
 
 @router.post("", response_model=SessionRead, status_code=201)

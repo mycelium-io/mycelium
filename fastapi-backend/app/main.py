@@ -14,6 +14,7 @@ Mycelium FastAPI backend.
 No auth, no heartbeat, no Neo4j, no Yjs, no scheduler.
 """
 
+import asyncio
 import logging
 import os
 import sys
@@ -116,6 +117,14 @@ async def lifespan(app: FastAPI):
 
     await startup_scan()
     start_watcher()
+
+    # Pre-load embedding model so first request isn't slow
+    from app.services.embedding import warmup as warmup_embeddings
+    try:
+        await asyncio.to_thread(warmup_embeddings)
+    except Exception as exc:
+        logger.warning("Embedding warmup failed (non-fatal): %s", exc)
+
     yield
     stop_watcher()
     logger.info("Mycelium backend shutting down")
@@ -222,13 +231,14 @@ def _check_embedding() -> dict:
 
     model_loaded = embedding._model is not None
 
-    hf_cache = os.path.expanduser("~/.cache/huggingface/hub")
-    model_slug = settings.EMBEDDING_MODEL.replace("/", "--")
-    snapshots_dir = os.path.join(hf_cache, f"models--{model_slug}", "snapshots")
-    cache_exists = os.path.isdir(snapshots_dir)
-
     if model_loaded:
         return {"status": "ok", "model": settings.EMBEDDING_MODEL, "message": "Model loaded"}
+
+    # Check fastembed cache
+    cache_dir = embedding._FASTEMBED_CACHE
+    cache_exists = os.path.isdir(cache_dir) and any(
+        f.endswith(".onnx") for root, _, files in os.walk(cache_dir) for f in files
+    )
     if cache_exists:
         return {
             "status": "ok",

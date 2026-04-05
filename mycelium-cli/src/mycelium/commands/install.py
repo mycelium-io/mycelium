@@ -444,11 +444,29 @@ def _ensure_cfn_databases(db_container: str = "mycelium-db") -> None:
     existing volume the CFN databases won't be present. This is idempotent.
     """
     for db in ("cfn_mgmt", "cfn_cp"):
-        sql = f"SELECT 'CREATE DATABASE {db}' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '{db}')\\gexec"
-        subprocess.run(
-            ["docker", "exec", db_container, "psql", "-U", "postgres", "-c", sql],
+        # Check if DB exists, create if not. Can't use \gexec with psql -c.
+        check = subprocess.run(
+            ["docker", "exec", db_container, "psql", "-U", "postgres", "-tAc",
+             f"SELECT 1 FROM pg_database WHERE datname = '{db}'"],
             capture_output=True,
+            text=True,
         )
+        if check.returncode != 0:
+            typer.secho(f"  ✗ Could not check for database '{db}': {check.stderr.strip()}", fg=typer.colors.RED)
+            continue
+        if check.stdout.strip() == "1":
+            typer.echo(f"  ~ Database '{db}' already exists")
+            continue
+        create = subprocess.run(
+            ["docker", "exec", db_container, "psql", "-U", "postgres", "-c",
+             f"CREATE DATABASE {db}"],
+            capture_output=True,
+            text=True,
+        )
+        if create.returncode != 0:
+            typer.secho(f"  ✗ Failed to create database '{db}': {create.stderr.strip()}", fg=typer.colors.RED)
+        else:
+            typer.echo(f"  ✓ Created database '{db}'")
 
 
 def _wait_for_db_container(
@@ -663,6 +681,8 @@ def install(
     ),
     llm_base_url: str = typer.Option("", "--llm-base-url", help="LLM base URL (non-interactive)"),
     llm_api_key: str = typer.Option("", "--llm-api-key", help="LLM API key (non-interactive)"),
+    db_port: int = typer.Option(0, "--db-port", help="Host port for Postgres (0 = auto-detect, default 5432)"),
+    backend_port: int = typer.Option(0, "--backend-port", help="Host port for backend API (0 = auto-detect, default 8000)"),
     ioc: bool = typer.Option(True, "--ioc/--no-ioc", help="Enable IoC CFN stack (default: on)"),
 ) -> None:
     """
@@ -688,6 +708,8 @@ def install(
                       or openai/gpt-4o or ollama/llama3
       --llm-base-url  Custom base URL (required for ollama / local models)
       --llm-api-key   API key for the chosen LLM provider
+      --db-port       Host port for Postgres (default: 5432, auto-increments on conflict)
+      --backend-port  Host port for backend API (default: 8000, auto-increments on conflict)
       --no-ioc        Skip the IoC CFN management-plane stack (default: included)
     """
     try:
@@ -718,7 +740,23 @@ def install(
                 llm_config["COGNITION_FABRIC_NODE_URL"] = "http://ioc-cognition-fabric-node-svc:9002"
                 compose_profiles.append("cfn")
 
-            custom_ports = {"db": 5432, "backend": 8000}
+            # Resolve ports — use explicit flags, or auto-detect conflicts
+            default_ports = {"db": db_port or 5432, "backend": backend_port or 8000}
+            if not db_port or not backend_port:
+                busy = _check_ports(list(default_ports.values()))
+                for label, port in default_ports.items():
+                    if port in busy:
+                        new_port = port + 1
+                        while new_port in busy or new_port in default_ports.values():
+                            new_port += 1
+                        typer.secho(
+                            f"  ⚠  Port {port} ({label}) in use — using {new_port}",
+                            fg=typer.colors.YELLOW,
+                        )
+                        default_ports[label] = new_port
+            custom_ports = default_ports
+            llm_config["MYCELIUM_DB_PORT"] = str(custom_ports["db"])
+            llm_config["MYCELIUM_BACKEND_PORT"] = str(custom_ports["backend"])
             llm_config["MYCELIUM_DATA_DIR"] = str(Path.home() / ".mycelium")
 
             typer.secho("  ── Starting services ──────────────────────────────────", bold=True)
@@ -737,9 +775,10 @@ def install(
                 if not _compose_up_services(compose_path, env_path, services=["mycelium-db"]):
                     typer.secho("\n  ✗ docker compose up failed (db)", fg=typer.colors.RED)
                     raise typer.Exit(1) from None
-                _wait_for_db_container(compose_path, env_path)
+                if not _wait_for_db_container(compose_path, env_path):
+                    typer.secho("\n  ✗ mycelium-db failed to become healthy", fg=typer.colors.RED)
+                    raise typer.Exit(1) from None
                 _ensure_cfn_databases()
-                typer.echo("  ✓ CFN databases provisioned")
 
             # Phase 2 (or only phase for non-ioc): bring up everything
             ok, needs_build = _compose_up(compose_path, env_path, profiles=compose_profiles)
@@ -841,11 +880,20 @@ def install(
         _pull_platform = _os.getenv("DOCKER_DEFAULT_PLATFORM", "")
         if not _pull_platform:
             try:
-                _defaults = (_ir.files("mycelium.docker") / ".env.defaults").read_text()
+                _defaults = (_ir.files("mycelium.docker") / "env.defaults").read_text()
                 for _ln in _defaults.splitlines():
                     if _ln.startswith("DOCKER_DEFAULT_PLATFORM="):
                         _pull_platform = _ln.split("=", 1)[1].strip()
                         break
+            except Exception:
+                pass
+        # Services that need amd64 (AgensGraph, CFN node) pin platform in compose.
+        # For pre-pulling public images that are amd64-only, force the platform.
+        if not _pull_platform:
+            try:
+                import platform as _pf
+                if _pf.machine() == "arm64":
+                    _pull_platform = "linux/amd64"
             except Exception:
                 pass
 
@@ -975,9 +1023,10 @@ def install(
             if not _compose_up_services(compose_path, env_path, services=["mycelium-db"]):
                 typer.secho("\n  ✗ docker compose up failed (db)", fg=typer.colors.RED)
                 raise typer.Exit(1) from None
-            _wait_for_db_container(compose_path, env_path)
+            if not _wait_for_db_container(compose_path, env_path):
+                typer.secho("\n  ✗ mycelium-db failed to become healthy", fg=typer.colors.RED)
+                raise typer.Exit(1) from None
             _ensure_cfn_databases()
-            typer.echo("  ✓ CFN databases provisioned")
 
         # Phase 2 (or only phase for non-ioc): bring up everything
         ok, needs_build = _compose_up(compose_path, env_path, profiles=compose_profiles)
