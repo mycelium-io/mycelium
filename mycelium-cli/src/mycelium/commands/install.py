@@ -770,7 +770,11 @@ def install(
 
             # Persist WORKSPACE_ID into .env and restart backend so it picks it up
             if workspace_id:
-                _patch_env_vars(env_path, {"WORKSPACE_ID": workspace_id})
+                ws_patch: dict[str, str] = {"WORKSPACE_ID": workspace_id}
+                if ioc:
+                    ws_patch["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
+                    ws_patch["COGNITION_FABRIC_NODE_URL"] = "http://ioc-cognition-fabric-node-svc:9002"
+                _patch_env_vars(env_path, ws_patch)
                 _restart_backend(compose_path, env_path, compose_profiles, api_url)
 
             _run_migrations()
@@ -954,12 +958,13 @@ def install(
         env_dir.mkdir(parents=True, exist_ok=True)
         env_path = env_dir / ".env"
 
-        # Don't clobber existing .env — merge LLM config in
+        # Merge LLM + CFN keys into .env (create or patch — never skip merge when .env exists).
         if not env_path.exists():
-            _write_env_file(env_path, llm_config)
-            typer.echo(f"  ✓ Wrote {env_path}")
+            typer.echo(f"  ✓ Creating {env_path}")
         else:
-            typer.echo(f"  ~ Using existing {env_path}")
+            typer.echo(f"  ~ Updating existing {env_path}")
+        _write_env_file(env_path, llm_config)
+        typer.echo(f"  ✓ Wrote {env_path}")
 
         compose_path = _get_compose_path()
         typer.echo(f"  ✓ Compose file → {compose_path}")
@@ -1011,7 +1016,11 @@ def install(
         # ── Phase 6: Migrate DB + write config ────────────────────────────
         # Persist WORKSPACE_ID into .env and restart backend so it picks it up
         if workspace_id:
-            _patch_env_vars(env_path, {"WORKSPACE_ID": workspace_id})
+            ws_patch: dict[str, str] = {"WORKSPACE_ID": workspace_id}
+            if ioc_enabled:
+                ws_patch["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
+                ws_patch["COGNITION_FABRIC_NODE_URL"] = "http://ioc-cognition-fabric-node-svc:9002"
+            _patch_env_vars(env_path, ws_patch)
             _restart_backend(compose_path, env_path, compose_profiles, api_url)
 
         _run_migrations()

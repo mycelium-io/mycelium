@@ -72,7 +72,12 @@ class Settings(BaseSettings):
     WORKSPACE_ID: str = ""
 
     model_config = SettingsConfigDict(
-        env_file=tuple(_env_files), env_file_encoding="utf-8", extra="ignore"
+        env_file=tuple(_env_files),
+        env_file_encoding="utf-8",
+        extra="ignore",
+        # Compose sets LLM_API_KEY=${LLM_API_KEY:-}; without --env-file that becomes "" in
+        # the container env and would override ~/.mycelium/.env. Ignore empty env vars.
+        env_ignore_empty=True,
     )
 
 
