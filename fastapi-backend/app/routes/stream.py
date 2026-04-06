@@ -21,7 +21,7 @@ from sqlalchemy import select
 
 from app.bus import agent_channel, room_channel
 from app.config import settings
-from app.database import async_session_maker, get_async_session
+from app.database import async_session_maker
 
 logger = logging.getLogger(__name__)
 
