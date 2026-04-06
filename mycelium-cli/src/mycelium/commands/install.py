@@ -775,6 +775,7 @@ def install(
             llm_config["MYCELIUM_BACKEND_PORT"] = str(custom_ports["backend"])
             llm_config["MYCELIUM_DATA_DIR"] = str(Path.home() / ".mycelium")
 
+            typer.secho("  ⚠  Experimental software — please report issues at github.com/mycelium-io/mycelium/issues", fg=typer.colors.YELLOW)
             typer.secho("  ── Starting services ──────────────────────────────────", bold=True)
             env_dir = Path.home() / ".mycelium"
             env_dir.mkdir(parents=True, exist_ok=True)
@@ -873,6 +874,8 @@ def install(
         header_lines = [
             "",
             "  \x1b[1mInstalling Mycelium...\x1b[0m",
+            "",
+            "  \x1b[33m⚠  Experimental software — please report issues at github.com/mycelium-io/mycelium/issues\x1b[0m",
             "",
             f"    {ok if docker_ok else err} docker {docker_ver}",
             f"    {ok if compose_ok else err} docker compose {compose_ver}",

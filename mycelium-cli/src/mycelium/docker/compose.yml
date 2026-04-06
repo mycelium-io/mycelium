@@ -88,7 +88,7 @@ services:
   # ── CFN Stack (profile: cfn) ──────────────────────────────────────────────────
 
   ioc-cfn-mgmt-plane-svc:
-    image: ghcr.io/cisco-eti/ioc-cfn-mgmt-plane-svc:latest
+    image: ghcr.io/outshift-open/ioc-cfn-mgmt-plane-svc:0.1.0
     container_name: ioc-cfn-mgmt-plane-svc
     restart: unless-stopped
     profiles: [cfn]
@@ -118,7 +118,7 @@ services:
 
 
   ioc-cognition-fabric-node-svc:
-    image: ghcr.io/cisco-eti/ioc-cognition-fabric-node-svc:2026-04-03-dce867d
+    image: ghcr.io/outshift-open/ioc-cognition-fabric-node-svc:0.1.0
     pull_policy: always
     platform: linux/amd64
     container_name: ioc-cognition-fabric-node-svc

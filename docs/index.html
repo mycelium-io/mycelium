@@ -60,15 +60,12 @@
       <a href="#knowledge-graph" class="nav-link sub">Knowledge Graph</a>
     </div>
     <div class="nav-section">
-      <div class="nav-section-label">Remote Backend</div>
-      <a href="#remote-backend" class="nav-link">Remote Backend</a>
-      <a href="#remote-setup" class="nav-link sub">Setup</a>
-      <a href="#remote-clone" class="nav-link sub">Clone a room</a>
-      <a href="#remote-sync" class="nav-link sub">Sync</a>
-    </div>
-    <div class="nav-section">
       <div class="nav-section-label">Architecture</div>
       <a href="#architecture" class="nav-link">Architecture</a>
+    </div>
+    <div class="nav-section">
+      <div class="nav-section-label">Help</div>
+      <a href="#troubleshooting" class="nav-link">Troubleshooting</a>
     </div>
 <!-- /codegen:sidebar -->
     <!-- codegen:cli-sidebar -->
@@ -104,8 +101,9 @@
   <main class="main">
   <div class="main-inner">
 
-    <!-- OVERVIEW -->
-    <section class="doc-section" id="overview">
+<!-- codegen:content -->
+<section class="doc-section" id="overview">
+      <!-- keep -->
       <div class="section-eyebrow">Shared Intent &middot; Shared Memory &middot; Shared Context</div>
       <h1>mycelium</h1>
       <p class="lead">
@@ -356,7 +354,7 @@
 
     <section class="doc-section" id="memory">
       <h1>Memory</h1>
-      <p>Memory is a namespaced key-value store stored as markdown files on the filesystem. Every write is also embedded (384-dim, local, no API key) and indexed in AgensGraph (pgvector) for semantic search.</p>
+      <p>Memory is a namespaced key-value store backed by AgensGraph + pgvector. Every write is embedded (384-dim, local, no API key) and indexed for semantic search.</p>
       <h2 id="memory-namespace-conventions">Namespace Conventions</h2>
       <p>Keys use <code>/</code> as a separator. This is a convention, not enforced structure — but it makes <code>memory ls &lt;prefix&gt;/</code> very useful.</p>
       <pre><code><span class="comment"># Decisions your team made</span>
@@ -498,31 +496,6 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
 
     <hr class="divider">
 
-    <section class="doc-section" id="remote-backend">
-      <h1>Remote Backend</h1>
-      <p>By default Mycelium runs locally. To share a room across multiple machines — or let several agents coordinate against a central store — point them all at one backend instance.</p>
-
-      <h2 id="remote-setup">Setup</h2>
-      <p>On the server (EC2, RPi, VM, etc.), run the standard installer:</p>
-      <pre><code><span class="cmd">mycelium install</span> <span class="flag">--non-interactive</span></code></pre>
-
-      <p>On each client machine, configure the CLI to point at the remote backend:</p>
-      <pre><code><span class="cmd">mycelium config set</span> server.api_url http://&lt;server-ip&gt;:8000</code></pre>
-
-      <h2 id="remote-clone">Clone a room</h2>
-      <p>Fetch an existing room from the remote backend and set it as active:</p>
-      <pre><code><span class="cmd">mycelium room clone</span> my-room
-<span class="comment"># or specify the backend explicitly:</span>
-<span class="cmd">mycelium room clone</span> my-room <span class="flag">--from</span> http://&lt;server-ip&gt;:8000</code></pre>
-
-      <h2 id="remote-sync">Sync</h2>
-      <p>Pull the latest memories from the remote backend at any time:</p>
-      <pre><code><span class="cmd">mycelium sync</span></code></pre>
-      <p>The Claude Code adapter runs <code>mycelium sync</code> automatically at session start, end, and after each response. Syncs are cheap — the backend returns <code>304 Not Modified</code> when nothing has changed.</p>
-    </section>
-
-    <hr class="divider">
-
     <section class="doc-section" id="architecture">
       <h1>Architecture</h1>
       <h2 id="architecture-stack">Stack</h2>
@@ -554,7 +527,7 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
             </tr>
             <tr>
               <td>Real-time</td>
-              <td>LISTEN/NOTIFY → asyncpg → SSE (Server-Sent Events)</td>
+              <td>LISTEN/NOTIFY → asyncpg → SSE</td>
               <td>live watch stream</td>
             </tr>
             <tr>
@@ -585,9 +558,204 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
           </tbody>
         </table>
       </div>
+      <h2 id="architecture-adapters">Adapters</h2>
+      <p>Mycelium integrates with AI coding agents via adapters. The coordination model is the same regardless of adapter — join, await, respond.</p>
+      <h3 id="architecture-claude-code">Claude Code</h3>
+      <p>The Mycelium skill ships as a Claude Code hook set. Lifecycle hooks capture tool use and context automatically. The <code>mycelium</code> slash command provides memory and coordination commands inline.</p>
+      <pre><code><span class="comment"># The skill is invoked automatically in Claude Code sessions</span>
+<span class="comment"># or explicitly via the slash command</span>
+/mycelium</code></pre>
+      <h3 id="architecture-openclaw">OpenClaw</h3>
+      <p>Plugin + hooks for the OpenClaw agent runtime. Same coordination model, same memory API.</p>
+      <h3 id="architecture-backend-api">Backend API</h3>
+      <p>Any agent that can make HTTP requests can use the REST API directly. Interactive API docs are available at <code>http://localhost:8888/docs</code> when the backend is running.</p>
     </section>
 
     <hr class="divider">
+
+    <section class="doc-section" id="troubleshooting">
+      <h1>Troubleshooting</h1>
+      <h2 id="troubleshooting-quick-diagnostics">Quick Diagnostics</h2>
+      <pre><code><span class="cmd">mycelium status</span>          # human-readable health check
+<span class="cmd">mycelium status</span> <span class="flag">--json</span>   # machine-readable (backend, DB, LLM, disk)
+<span class="cmd">mycelium logs</span> <span class="flag">--tail</span> 50  # recent service logs</code></pre>
+      <hr class="divider">
+      <h2 id="troubleshooting-common-issues">Common Issues</h2>
+      <h3 id="troubleshooting-1-command-not-found">1. Command Not Found</h3>
+      <p><strong>Symptom</strong>: <code>mycelium: command not found</code></p>
+      <p><strong>Fix</strong>:</p>
+      <pre><code>curl <span class="flag">-fsSL</span> https://mycelium-io.github.io/mycelium/install.sh | bash</code></pre>
+      <p>Or add to PATH if the binary exists:</p>
+      <pre><code>export PATH=<span class="str">&quot;$HOME/.local/bin:$PATH&quot;</span></code></pre>
+      <hr class="divider">
+      <h3 id="troubleshooting-2-backend-not-running">2. Backend Not Running</h3>
+      <p><strong>Symptom</strong>: <code>Cannot connect to Mycelium API at http://localhost:8000</code></p>
+      <pre><code><span class="cmd">mycelium status</span>             # quick check
+docker ps | grep mycelium   # container status
+<span class="cmd">mycelium up</span>                 # start services
+<span class="cmd">mycelium logs mycelium</span>-backend <span class="flag">--tail</span> 50</code></pre>
+      <hr class="divider">
+      <h3 id="troubleshooting-3-config-not-found">3. Config Not Found</h3>
+      <p><strong>Symptom</strong>: <code>Configuration file not found: ~/.mycelium/config.toml</code></p>
+      <pre><code><span class="cmd">mycelium init</span>
+<span class="comment"># or with a custom URL:</span>
+<span class="cmd">mycelium init</span> <span class="flag">--api-url</span> http://your-server:8000</code></pre>
+      <hr class="divider">
+      <h3 id="troubleshooting-4-database-connection-failed">4. Database Connection Failed</h3>
+      <p><strong>Symptom</strong>: Backend logs show <code>connection refused</code> or <code>could not connect to server</code></p>
+      <pre><code>docker ps | grep mycelium-db    # is the container running?
+docker logs mycelium-db <span class="flag">--tail</span> 20</code></pre>
+      <ul>
+        <li>DB takes ~15s to initialize on first run — wait and retry</li>
+        <li>Check for port conflict: <code>lsof -i :5432</code></li>
+        <li>Restart: <code>mycelium down &amp;&amp; mycelium up</code></li>
+        <li>Nuclear option (destroys data): <code>mycelium down --volumes &amp;&amp; mycelium up</code></li>
+      </ul>
+      <hr class="divider">
+      <h3 id="troubleshooting-5-port-already-in-use">5. Port Already in Use</h3>
+      <p><strong>Symptom</strong>: <code>bind: address already in use</code></p>
+      <pre><code>lsof <span class="flag">-i</span> :8000   # backend
+lsof <span class="flag">-i</span> :5432   # database</code></pre>
+      <p>Or set alternate ports in <code>~/.mycelium/.env</code>:</p>
+      <pre><code>MYCELIUM_BACKEND_PORT=8001
+MYCELIUM_DB_PORT=5433</code></pre>
+      <hr class="divider">
+      <h3 id="troubleshooting-6-llm-not-configured">6. LLM Not Configured</h3>
+      <p><strong>Symptom</strong>: <code>LLM unavailable — no API key configured</code></p>
+      <p>Add to <code>~/.mycelium/.env</code>:</p>
+      <pre><code>LLM_MODEL=anthropic/claude-sonnet-4-6
+LLM_API_KEY=sk-ant-...</code></pre>
+      <p>For local Ollama:</p>
+      <pre><code>LLM_MODEL=ollama/llama3
+LLM_BASE_URL=http://localhost:11434</code></pre>
+      <p>Restart after changes: <code>mycelium down &amp;&amp; mycelium up</code></p>
+      <hr class="divider">
+      <h3 id="troubleshooting-7-memory-search-returns-nothing">7. Memory Search Returns Nothing</h3>
+      <p><strong>Symptom</strong>: <code>mycelium memory search</code> is empty despite memories existing</p>
+      <pre><code><span class="cmd">mycelium memory ls</span>          # do memories exist?
+ls ~/.mycelium/rooms/       # files present?
+<span class="cmd">mycelium reindex</span>            # rebuild search index (needed after direct file writes)
+<span class="cmd">mycelium room ls</span>            # wrong active room?</code></pre>
+      <hr class="divider">
+      <h3 id="troubleshooting-8-container-name-conflicts">8. Container Name Conflicts</h3>
+      <p><strong>Symptom</strong>: <code>container name &quot;mycelium-db&quot; is already in use</code></p>
+      <p>The CLI handles this automatically, but if it persists:</p>
+      <pre><code>docker rm <span class="flag">-f</span> mycelium-db mycelium-backend
+<span class="cmd">mycelium up</span></code></pre>
+      <hr class="divider">
+      <h3 id="troubleshooting-9-migration-failures">9. Migration Failures</h3>
+      <p><strong>Symptom</strong>: <code>alembic.util.exc.CommandError</code> or schema mismatch errors in logs</p>
+      <p>Migrations run automatically on container start. If they fail:</p>
+      <pre><code><span class="cmd">mycelium logs mycelium</span>-backend <span class="flag">--tail</span> 100   # check startup errors
+<span class="cmd">mycelium down</span> &amp;&amp; <span class="cmd">mycelium up</span>                # restart often fixes it</code></pre>
+      <p>If the schema is corrupted (destroys data):</p>
+      <pre><code><span class="cmd">mycelium down</span> <span class="flag">--volumes</span> &amp;&amp; <span class="cmd">mycelium up</span></code></pre>
+      <hr class="divider">
+      <h3 id="troubleshooting-10-no-active-room">10. No Active Room</h3>
+      <p><strong>Symptom</strong>: <code>No active room. Use &#x27;mycelium room use &lt;name&gt;&#x27;</code></p>
+      <pre><code><span class="cmd">mycelium room ls</span>
+<span class="cmd">mycelium room use</span> &lt;name&gt;
+<span class="comment"># or pass room explicitly:</span>
+<span class="cmd">mycelium memory ls</span> <span class="flag">--room</span> &lt;name&gt;</code></pre>
+      <hr class="divider">
+      <h2 id="troubleshooting-configuration-reference">Configuration Reference</h2>
+      <h3 id="troubleshooting-cli-settings-myceliumconfigtoml">CLI settings — <code>~/.mycelium/config.toml</code></h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Setting</th>
+              <th>Key</th>
+              <th>Env var override</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Backend URL</td>
+              <td><code>server.api_url</code></td>
+              <td><code>MYCELIUM_API_URL</code></td>
+            </tr>
+            <tr>
+              <td>Workspace ID</td>
+              <td><code>server.workspace_id</code></td>
+              <td><code>MYCELIUM_WORKSPACE_ID</code></td>
+            </tr>
+            <tr>
+              <td>Active room</td>
+              <td><code>rooms.active</code></td>
+              <td><code>MYCELIUM_ACTIVE_ROOM</code></td>
+            </tr>
+            <tr>
+              <td>Agent handle</td>
+              <td><code>identity.name</code></td>
+              <td><code>MYCELIUM_AGENT_HANDLE</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <h3 id="troubleshooting-backend-settings-myceliumenv">Backend settings — <code>~/.mycelium/.env</code></h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Variable</th>
+              <th>Description</th>
+              <th>Default</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>LLM_MODEL</code></td>
+              <td>LiteLLM model string</td>
+              <td><code>anthropic/claude-sonnet-4-6</code></td>
+            </tr>
+            <tr>
+              <td><code>LLM_API_KEY</code></td>
+              <td>Provider API key</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td><code>LLM_BASE_URL</code></td>
+              <td>Custom LLM endpoint (Ollama, vLLM)</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td><code>MYCELIUM_DATA_DIR</code></td>
+              <td>Data directory</td>
+              <td><code>~/.mycelium</code></td>
+            </tr>
+            <tr>
+              <td><code>MYCELIUM_BACKEND_PORT</code></td>
+              <td>Backend port</td>
+              <td><code>8000</code></td>
+            </tr>
+            <tr>
+              <td><code>MYCELIUM_DB_PORT</code></td>
+              <td>Database port</td>
+              <td><code>5432</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <hr class="divider">
+      <h2 id="troubleshooting-log-locations">Log Locations</h2>
+      <pre><code><span class="cmd">mycelium logs</span>                       # all services
+<span class="cmd">mycelium logs mycelium</span>-backend      # backend only
+<span class="cmd">mycelium logs mycelium</span>-db           # database only
+mycelium <span class="flag">--verbose</span> status           # CLI debug output</code></pre>
+      <hr class="divider">
+      <h2 id="troubleshooting-reset-everything">Reset Everything</h2>
+      <pre><code><span class="cmd">mycelium down</span> <span class="flag">--volumes</span>   # stop and delete all data
+rm <span class="flag">-rf</span> ~/.mycelium        # remove all config
+<span class="cmd">mycelium install</span>          # fresh install</code></pre>
+      <hr class="divider">
+      <h2 id="troubleshooting-getting-help">Getting Help</h2>
+      <p>Report issues at <strong>https://github.com/mycelium-io/mycelium/issues</strong></p>
+    </section>
+
+    <hr class="divider">
+
+<!-- /codegen:content -->
 
     <section class="doc-section" id="adapters">
       <div class="section-eyebrow">Integration</div>
@@ -724,10 +892,10 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
 <span class="cmd">mycelium catchup</span>
 
 <span class="comment"># 4. Share context from your session</span>
-<span class="cmd">mycelium memory set</span> <span class="str">"work/auth"</span> <span class="str">"Implemented JWT with refresh tokens"</span> <span class="flag">--handle</span> claude-agent
+<span class="cmd">mycelium memory set</span> <span class="str">&quot;work/auth&quot;</span> <span class="str">&quot;Implemented JWT with refresh tokens&quot;</span> <span class="flag">--handle</span> claude-agent
 
 <span class="comment"># 5. Find what other agents know</span>
-<span class="cmd">mycelium memory search</span> <span class="str">"authentication approach"</span></code></pre>
+<span class="cmd">mycelium memory search</span> <span class="str">&quot;authentication approach&quot;</span></code></pre>
     </section>
 
     <hr class="divider">
@@ -810,8 +978,6 @@ curl -X POST http://localhost:8888/api/memory/search \
     </section>
 
     <hr class="divider">
-
-<!-- /codegen:content -->
 
     <!-- CLI REFERENCE -->
     <section class="doc-section" id="cli-reference">
@@ -901,6 +1067,13 @@ curl -X POST http://localhost:8888/api/memory/search \
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium room clone</span> &lt;room-name&gt; [<span class="flag">--from</span> &lt;api-url&gt;]</code>
+        </div>
+        <div class="cmd-ref-body">Clone a room from a remote backend — fetches all memories via HTTP and writes them locally.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
           <code><span class="cmd">mycelium room post</span> <span class="arg">&lt;room&gt;</span> <span class="flag">--agent</span> <span class="arg">&lt;handle&gt;</span> <span class="flag">--response</span> <span class="arg">&lt;text&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Post a raw message to a room (triggers NOTIFY). Advanced use.</div>
@@ -934,6 +1107,13 @@ curl -X POST http://localhost:8888/api/memory/search \
           <code><span class="cmd">mycelium session await</span> <span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span> [<span class="flag">-r</span> <span class="arg">&lt;room&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Block and wait for a negotiation tick. Returns when CE has an action for your agent.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium session watch</span> [<span class="flag">-r</span> <span class="arg">&lt;room&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Stream live messages from all sessions in a room. Waits if no session exists yet.</div>
       </div>
 
       <div class="cmd-ref">
@@ -1142,6 +1322,13 @@ curl -X POST http://localhost:8888/api/memory/search \
           <code><span class="cmd">mycelium catchup</span></code>
         </div>
         <div class="cmd-ref-body">Get a full briefing on everything in the room — reads from <code>.mycelium/rooms/</code> and the latest synthesis.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium sync</span> [<span class="flag">--no-reindex</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Sync the active room with the backend — fetch all memories from the API and write them locally.</div>
       </div>
 
       <div class="cmd-ref">
