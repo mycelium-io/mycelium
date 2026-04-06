@@ -13,6 +13,7 @@ Built-in reference for the Mycelium multi-agent coordination system.
 - **knowledge-graph** — LLM-extracted concept graph
 - **cli-reference** — All CLI commands (generated from source)
 - **architecture** — Stack, adapters, and integrations
+- **troubleshooting** — Common issues, config reference, reset guide
 
 ## Usage
 

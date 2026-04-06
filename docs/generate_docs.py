@@ -33,6 +33,7 @@ SECTION_CONFIG: list[tuple[str, str, str, str]] = [
     ("knowledge-graph.md", "knowledge-graph", "Concepts", "Knowledge Graph"),
     # cli-reference is handled separately by generate_cli_reference
     ("architecture.md", "architecture", "Architecture", "Architecture"),
+    ("troubleshooting.md", "troubleshooting", "Help", "Troubleshooting"),
 ]
 
 DOCS_DIR = Path(__file__).parent.parent / "mycelium-cli" / "src" / "mycelium" / "docs"
