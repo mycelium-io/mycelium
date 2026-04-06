@@ -120,6 +120,7 @@ async def lifespan(app: FastAPI):
 
     # Pre-load embedding model so first request isn't slow
     from app.services.embedding import warmup as warmup_embeddings
+
     try:
         await asyncio.to_thread(warmup_embeddings)
     except Exception as exc:
