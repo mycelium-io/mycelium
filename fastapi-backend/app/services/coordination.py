@@ -27,7 +27,7 @@ from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 import asyncpg
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 
 from app.bus import agent_channel, notify, room_channel
 from app.config import settings
@@ -463,6 +463,9 @@ async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool
             .where(Room.name == room_name)
             .values(coordination_state="complete" if not broken else "failed")
         )
+        # Clean up agent Session rows so a subsequent session in the same
+        # namespace doesn't see stale participants and cause CFN to fail.
+        await db.execute(delete(Session).where(Session.room_name == room_name))
         await db.commit()
 
 

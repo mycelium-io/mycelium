@@ -74,7 +74,7 @@ async def _spawn_session_room(parent_name: str, db: AsyncSession) -> Room:
     result = await db.execute(
         select(Room).where(
             Room.parent_namespace == parent_name,
-            Room.coordination_state.in_(["idle", "waiting"]),
+            Room.coordination_state.in_(["idle", "waiting", "negotiating"]),
         )
     )
     existing = result.scalar_one_or_none()
