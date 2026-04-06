@@ -30,6 +30,10 @@ def _mas_url(workspace_id: str, mas_id: str, endpoint: str) -> str:
     )
 
 
+# CFN may run LLM + persist agreement to shared memory; 60s is often too short.
+_CFN_HTTP_TIMEOUT = httpx.Timeout(300.0)
+
+
 async def start_negotiation(
     *,
     session_id: str,
@@ -86,5 +90,5 @@ async def decide_negotiation(
             resp.raise_for_status()
             return resp.json()
     except Exception as exc:
-        logger.warning("CFN decide_negotiation failed: %s", exc)
+        logger.warning("CFN decide_negotiation failed: %r", exc)
         return {}

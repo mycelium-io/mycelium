@@ -66,6 +66,49 @@ def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
+def _normalize_cfn_decide_response(result: dict) -> dict:
+    """Normalize CFN ``/semantic-negotiation/decide`` JSON so we can read status + agreement.
+
+    The IOC node returns ``SemanticNegotiationPipeline.execute()`` output:
+
+    - **Terminal:** top-level ``status``, ``session_id``, ``round``, and ``final_result``
+      where ``final_result`` is the SSTP commit (``semantic_context.final_agreement``, etc.).
+    - Some responses embed the commit only under ``messages[]``.
+
+    Without flattening ``final_result``, agreement lives only inside the nested commit and
+    top-level ``semantic_context`` is missing — :meth:`_cfn_decide_round` would see empty
+    assignments.
+    """
+    if not isinstance(result, dict):
+        return result
+
+    # 1) Commit envelope only in messages[] (e.g. alternate CFN serialization)
+    raw_messages = result.get("messages")
+    if isinstance(raw_messages, list):
+        for m in raw_messages:
+            if not isinstance(m, dict):
+                continue
+            sc = m.get("semantic_context")
+            if isinstance(sc, dict) and sc.get("final_agreement") is not None:
+                return m
+            if m.get("kind") == "commit":
+                return m
+
+    # 2) Standard execute() terminal: merge commit envelope up for stable parsing
+    fr = result.get("final_result")
+    if isinstance(fr, dict) and (
+        fr.get("semantic_context") is not None or fr.get("kind") == "commit"
+    ):
+        merged = {**result, **fr}
+        if isinstance(fr.get("semantic_context"), dict):
+            merged["semantic_context"] = fr["semantic_context"]
+        if isinstance(fr.get("payload"), dict):
+            merged["payload"] = fr["payload"]
+        return merged
+
+    return result
+
+
 async def start_join_timer(room_name: str, deadline: datetime) -> None:
     """Sleep until join window closes, then run tick 0."""
     sleep_secs = (deadline - _utcnow()).total_seconds()
@@ -346,8 +389,13 @@ async def _cfn_decide_round(room_name: str) -> None:
         await _finish_cfn(room_name, plan="CFN decide failed", assignments={}, broken=True)
         return
 
-    # /decide response is flat: {"session_id", "status", "round", "messages"|"final_result"}
-    status = result.get("status", "")
+    result = _normalize_cfn_decide_response(result)
+
+    # CFN returns a nested envelope: status lives in result["payload"]["status"]
+    # and the agreement in result["semantic_context"]["final_agreement"].
+    # Fall back to top-level keys for backward compatibility.
+    payload = result.get("payload", {})
+    status = payload.get("status", result.get("status", ""))
 
     if status in ("agreed",):
         final_result = result.get("final_result", {})
