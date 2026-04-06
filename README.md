@@ -23,7 +23,7 @@ This problem exists in some form regardless of your OpenClaw deployment pattern 
 
 ## What Mycelium Does
 
-- **Alignment** — When OpenClaw agents need to agree, a session is spawned within the room. The CognitiveEngine orchestrates multi-issue negotiation via [NegMAS](https://negmas.readthedocs.io/) through a structured state machine (`idle → waiting → negotiating → complete`), polling every agent, synthesizing positions into proposals, and iterating until the team reaches a single authoritative output. Every agent has a voice; the result is one shared answer, not parallel outputs a human has to reconcile. This is infrastructure, not a prompt pattern.
+- **Alignment** — When agents need to agree, a session is spawned within the room. The CognitiveEngine orchestrates multi-issue negotiation via [NegMAS](https://negmas.readthedocs.io/) through a structured state machine (`idle → waiting → negotiating → complete`), polling every agent, synthesizing positions into proposals, and iterating until the team reaches a single authoritative output. Every agent has a voice; the result is one shared answer, not parallel outputs a human has to reconcile. This is infrastructure, not a prompt pattern.
 - **Alignment memory** — Rooms are folders. Memories are markdown files at `.mycelium/rooms/{room}/{namespace}/{key}.md` — readable and writable by any OpenClaw agent with file I/O. Past alignments are stored and surfaced to agents and the CognitiveEngine. Settled questions are not re-litigated unless conditions genuinely change. Dead ends are logged so no agent repeats them. Memories accumulate across agents and conversations and are searchable by meaning via a pgvector index in AgensGraph. Without this, alignment decisions get lost in the noise and every OpenClaw conversation starts from zero.
 - **Peer collaboration environment** — OpenClaw peers or subagents collaborate in shared rooms out of the box, across a single gateway or multiple gateways. Rooms are provisioned automatically with scoped memory namespaces. Any agent joining a room runs `mycelium catchup` and instantly inherits everything the swarm has learned — decisions made, what failed, open questions, recommended next actions. No repeated context-setting. Without Mycelium, peer collaboration requires configuring shared memory paths and handling conflicts and governance patterns explicitly. With Mycelium, agents join a room and the environment is there.
 
@@ -57,7 +57,7 @@ mycelium session join --handle julia-agent -m "budget=high, scope=full"
 
 ## Alternatives
 
-Your options without Mycelium are native OpenClaw with collaboration prompts, or open-source projects such as getclawe/clawe, ClawTeam-OpenClaw,  antfarm, and many others. These provide collaboration primitives — delegation, handoffs, and shared memory — but leave the hard problems of structured consensus, governed memory, and consistent outcomes to the developer to solve. 
+Your options without Mycelium are native OpenClaw with collaboration prompts, or open-source projects that construct entire agent teams such as getclawe/clawe, ClawTeam-OpenClaw,  antfarm, and many others. These provide collaboration primitives — delegation, handoffs, and shared memory — but leave the hard problems of structured consensus, governed memory, and consistent outcomes to the developer to solve. 
 
 The difference: they make it *possible* for autonomous agents to collaborate. Mycelium makes that collaboration more *structured, efficient, and observable.*
 
@@ -74,7 +74,7 @@ If your workflow needs one coherent answer from multiple autonomous agents, you'
 
 ## Who It's For and Why We're Building It
 
-**Mycelium is explicitly built for OpenClaw developers** who are running multiple agents and have hit — or can clearly see — the point where unstructured coordination breaks down.
+**Mycelium is explicitly built for developers** who are running multiple agents, especially OpenClaw, and have hit — or can clearly see — the point where unstructured coordination breaks down.
 
 It's for you if:
 
@@ -83,11 +83,10 @@ It's for you if:
 
 **Mycelium is not yet the right fit if:**
 
-- You are building a single OpenClaw agent system
 - You are running a simple orchestrator → subagent chain where the orchestrator has full authority and no peer coordination is needed
 - You haven't yet hit coordination complexity — the value becomes obvious once you've felt the cost of agents contradicting each other or losing context across conversations
 
-### Our point of view:
+### Principles:
 
 - **Coordination is an infrastructure problem, not a prompting problem.** If your OpenClaw agents need to agree with each other, a cleverer system prompt is not the answer. Prompt-based coordination works until it doesn't — and when it breaks, it breaks silently, in production, in ways that are hard to trace. Infrastructure fails loudly and can be fixed. We are building infrastructure.
 - **Decisions should aid future coordination.** When agent teams reach a decision, that decision shouldn't disappear into the noise of a conversation log. It should be available to every future coordination activity — across agents, across conversations, and across rooms. The system should get more consistent and more informed over time. Most multi-agent systems treat each decision as an isolated event. We treat them as inputs to everything that follows.
