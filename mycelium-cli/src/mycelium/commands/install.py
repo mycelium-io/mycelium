@@ -316,6 +316,22 @@ def _get_compose_path() -> Path:
     dest = Path.home() / ".mycelium" / "docker" / "compose.yml"
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(compose_ref.read_bytes())
+
+    # Copy bundled initdb/ scripts so Postgres entrypoint creates CFN databases
+    # on first volume init (compose mounts ./initdb as /docker-entrypoint-initdb.d).
+    try:
+        initdb_dest = dest.parent / "initdb"
+        initdb_dest.mkdir(exist_ok=True)
+        initdb_pkg = importlib.resources.files("mycelium.docker") / "initdb"
+        for item in initdb_pkg.iterdir():
+            if item.name.startswith("_"):
+                continue
+            script_path = initdb_dest / item.name
+            script_path.write_bytes(item.read_bytes())
+            script_path.chmod(0o755)
+    except Exception:
+        pass  # non-fatal: _ensure_cfn_databases() handles it at runtime
+
     return dest
 
 
