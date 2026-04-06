@@ -39,6 +39,19 @@ and coordination commands inline.
 Plugin + hooks for the OpenClaw agent runtime. Same coordination model,
 same memory API.
 
+```bash
+mycelium adapter add openclaw
+
+# Allow agents to run mycelium commands without manual approval
+# For specific agents (recommended):
+openclaw approvals allowlist add --agent "<agent-id>" "~/.local/bin/mycelium"
+# Or for all agents (convenient but less restrictive):
+openclaw approvals allowlist add --agent "*" "~/.local/bin/mycelium"
+
+# Restart the gateway to pick up the plugin
+openclaw gateway restart
+```
+
 ### Backend API
 
 Any agent that can make HTTP requests can use the REST API directly.

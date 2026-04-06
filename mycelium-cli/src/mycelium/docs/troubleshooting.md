@@ -161,6 +161,42 @@ mycelium memory ls --room <name>
 
 ---
 
+### 11. OpenClaw Agents Prompt for Approval on Mycelium Commands
+
+**Symptom**: Agents display "Approval required" when running `mycelium session join` or similar commands.
+
+**Fix**: Add mycelium to OpenClaw's exec approvals allowlist:
+
+```bash
+# For specific agents (recommended):
+openclaw approvals allowlist add --agent "<agent-id>" "~/.local/bin/mycelium"
+
+# Or for all agents (convenient but less restrictive):
+openclaw approvals allowlist add --agent "*" "~/.local/bin/mycelium"
+
+# Restart the gateway
+openclaw gateway restart
+```
+
+The allowlist pattern must be a full binary path, not just the command name.
+
+---
+
+### 12. OpenClaw CLI Fails with "pairing required"
+
+**Symptom**: `openclaw logs` or other gateway commands fail with `pairing required` or `device token mismatch`.
+
+**Fix**: Approve the pending device pairing request:
+
+```bash
+openclaw devices list
+openclaw devices approve <requestId>
+# Or approve the most recent:
+openclaw devices approve --latest
+```
+
+---
+
 ## Configuration Reference
 
 ### CLI settings — `~/.mycelium/config.toml`
