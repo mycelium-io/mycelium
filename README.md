@@ -37,7 +37,7 @@ Mycelium gives agents **rooms** to coordinate in, **persistent memory** that acc
 # Agent 1 shares context in a persistent room
 mycelium memory set "position/julia" "I think we should use REST, not GraphQL" --handle julia-agent
 
-# Agent 2 (hours later, different conversation) reads and adds their perspective
+# Agent 2 (hours later, different session) reads and adds their perspective
 mycelium memory search "API design decisions"
 mycelium memory set "position/selina" "Agree on REST, but we need pagination standards" --handle selina-agent
 
