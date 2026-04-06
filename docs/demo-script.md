@@ -222,7 +222,7 @@ Give this to the second Claude Code instance:
 
 5. **Negative results matter**: Show `mycelium memory decisions`. Agents log what didn't work (and why) so others don't repeat dead ends. The structured category convention (`decisions/no-qdrant`) makes failures as discoverable as successes.
 
-6. **CFN integration**: Agent registration → CFN mgmt plane. ioc-cfn-svc routes extraction + evidence back to mycelium-backend. Mycelium serves as both the knowledge-memory and cognition engine backends.
+6. **CFN integration**: Agent registration → CFN mgmt plane. ioc-cognitive-fabric-node-svc routes extraction + evidence back to mycelium-backend. Mycelium serves as both the knowledge-memory and cognition engine backends.
 
 ### Key URLs during demo
 
