@@ -1,6 +1,12 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #050a12;
+  --color-surface: #0c1524;
+  --color-border: #162035;
+  --color-accent: #38bdf8;
+  --color-muted: #4a6080;
+}
 
 :root {
   --bg: #050a12;
@@ -20,7 +26,16 @@ body {
   color: var(--text);
 }
 
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #1e2d42; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #2a3f5a; }
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e2d42;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2a3f5a;
+}

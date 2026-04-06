@@ -31,7 +31,7 @@ jobs:
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push mycelium-db
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: fastapi-backend
           file: fastapi-backend/docker/Dockerfile.agensgraph
@@ -44,7 +44,7 @@ jobs:
           cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-db:cache,mode=max
 
       - name: Build and push mycelium-backend
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: fastapi-backend
           file: fastapi-backend/Dockerfile
@@ -72,7 +72,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v7
 
       - name: Set up Python
         run: uv python install 3.12
@@ -111,7 +111,7 @@ jobs:
           mv dist/mycelium dist/mycelium-${{ matrix.platform }}
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mycelium-${{ matrix.platform }}
           path: mycelium-cli/dist/mycelium-${{ matrix.platform }}
@@ -125,7 +125,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v7
 
       - name: Set up Python
         run: uv python install 3.12
@@ -145,13 +145,13 @@ jobs:
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       - name: Download linux binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: mycelium-linux-x86_64
           path: mycelium-cli/dist/binaries
 
       - name: Download darwin binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: mycelium-darwin-arm64
           path: mycelium-cli/dist/binaries
