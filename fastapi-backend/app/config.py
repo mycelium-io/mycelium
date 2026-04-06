@@ -59,14 +59,25 @@ class Settings(BaseSettings):
     MYCELIUM_DATA_DIR: str = str(Path.home() / ".mycelium")
 
     # Embedding (for persistent memory semantic search)
-    EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
+    EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"
     EMBEDDING_DIMENSIONS: int = 384
 
     # IoC CFN management plane (optional — registration skipped if unset)
     CFN_MGMT_URL: str | None = None
 
+    # IoC CFN cognition fabric node svc (optional — inline NegMAS used if unset)
+    COGNITION_FABRIC_NODE_URL: str = ""
+
+    # Workspace ID in the CFN mgmt plane (set by mycelium install)
+    WORKSPACE_ID: str = ""
+
     model_config = SettingsConfigDict(
-        env_file=tuple(_env_files), env_file_encoding="utf-8", extra="ignore"
+        env_file=tuple(_env_files),
+        env_file_encoding="utf-8",
+        extra="ignore",
+        # Compose sets LLM_API_KEY=${LLM_API_KEY:-}; without --env-file that becomes "" in
+        # the container env and would override ~/.mycelium/.env. Ignore empty env vars.
+        env_ignore_empty=True,
     )
 
 

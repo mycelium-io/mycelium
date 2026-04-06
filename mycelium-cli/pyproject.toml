@@ -73,6 +73,7 @@ where = ["src"]
 mycelium = [
     "py.typed",
     "docs/**/*.md",
+    "adapters/claude-code/**/*",
     "adapters/openclaw/extensions/mycelium/**/*",
     "adapters/openclaw/hooks/mycelium-bootstrap/**/*",
     "adapters/openclaw/hooks/mycelium-knowledge-extract/**/*",

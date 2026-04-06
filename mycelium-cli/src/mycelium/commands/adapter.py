@@ -405,10 +405,6 @@ def _install_openclaw(verbose: bool = False) -> None:
     - Plugin (mycelium): handles session lifecycle + message forwarding
     - Hook (mycelium-inject): injects MYCELIUM_API_URL + MYCELIUM_ROOM_ID + coordination
       instructions into every agent bootstrap
-
-    Note: the mycelium skill (SKILL.md) is a Claude Code project skill, not an openclaw
-    skill. openclaw does not support installing custom skills — copy SKILL.md to your
-    project's .claude/skills/mycelium/ directory to make it available to agents.
     """
 
     def _run(cmd: list[str], allow_already_exists: bool = False) -> None:
@@ -443,15 +439,54 @@ def _install_openclaw(verbose: bool = False) -> None:
     _install_openclaw_skill()
 
 
+def _resolve_agent_workspaces() -> list[Path]:
+    """Return the workspace directories for all configured openclaw agents."""
+    import json
+
+    config_path = Path.home() / ".openclaw" / "openclaw.json"
+    if not config_path.exists():
+        return [Path.home() / ".openclaw" / "workspace"]
+
+    try:
+        cfg = json.loads(config_path.read_text())
+    except Exception:
+        return [Path.home() / ".openclaw" / "workspace"]
+
+    state_dir = Path.home() / ".openclaw"
+    default_workspace = Path(
+        cfg.get("agents", {}).get("defaults", {}).get("workspace", "").strip()
+        or str(state_dir / "workspace")
+    )
+
+    agents = cfg.get("agents", {}).get("list", [])
+    workspaces: set[Path] = set()
+
+    for agent in agents:
+        agent_id = agent.get("id", "").strip()
+        if not agent_id:
+            continue
+        explicit = agent.get("workspace", "").strip()
+        if explicit:
+            workspaces.add(Path(explicit.replace("~", str(Path.home()))))
+        elif agent_id == "main":
+            workspaces.add(default_workspace)
+        else:
+            workspaces.add(state_dir / f"workspace-{agent_id}")
+
+    workspaces.add(default_workspace)
+    return list(workspaces)
+
+
 def _install_openclaw_skill() -> None:
-    """Copy the mycelium SKILL.md to ~/.openclaw/workspace/skills/mycelium/."""
+    """Copy mycelium SKILL.md to skills/ under every configured agent workspace."""
     skill_src_dir = _resolve_asset(
         f"extensions/{_OPENCLAW_PLUGIN_NAME}/skills/{_OPENCLAW_SKILL_NAME}"
     )
-    dest_dir = Path.home() / ".openclaw" / "workspace" / "skills" / _OPENCLAW_SKILL_NAME
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    for f in skill_src_dir.iterdir():
-        (dest_dir / f.name).write_bytes(f.read_bytes())
+    for workspace in _resolve_agent_workspaces():
+        dest_dir = workspace / "skills" / _OPENCLAW_SKILL_NAME
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        for f in skill_src_dir.iterdir():
+            (dest_dir / f.name).write_bytes(f.read_bytes())
 
 
 def _install_claude_code(verbose: bool = False) -> None:

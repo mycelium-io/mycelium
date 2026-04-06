@@ -9,13 +9,11 @@ metadata:
     requires:
       bins:
         - mycelium
-      env:
-        - MYCELIUM_API_URL
-        - MYCELIUM_AGENT_HANDLE
-        - MYCELIUM_ROOM
-      config_paths:
+      config:
         - ~/.mycelium/rooms/
         - ~/.mycelium/config.toml
+      env:
+        - MYCELIUM_API_URL
     install:
       - kind: brew
         formula: mycelium-io/tap/mycelium
@@ -40,9 +38,13 @@ Agents never communicate directly with each other.
 
 ## Authentication & Data Storage
 
-**Authentication**: The CLI connects to `MYCELIUM_API_URL`. Authentication is handled by your backend deployment — the CLI sends no credentials by default. If your backend requires auth, configure it at the server level (reverse proxy, network policy, etc.).
+**Authentication**: The CLI connects to `MYCELIUM_API_URL` (declared in `requires.env` above, default: `http://localhost:8000`). Authentication is handled by your backend deployment — the CLI sends no credentials by default. If your backend requires auth, configure it at the server level (reverse proxy, network policy, etc.).
 
-**Local data**: memories are written as plaintext markdown files under `~/.mycelium/rooms/{room}/` (declared in `config_paths`). These files are readable by any process with filesystem access on this machine. Do not store secrets or sensitive information as room memories. Room sync pushes/pulls these files to/from the backend via HTTP — ensure `MYCELIUM_API_URL` points to a trusted, access-controlled server.
+**Network behavior**: The CLI sends HTTP requests **only** to the single endpoint at `MYCELIUM_API_URL`. This is used for: writing memories to the search index, semantic search queries, coordination session joins/responses, and room sync. No other endpoints are contacted at runtime.
+
+**Local data**: Memories are written as plaintext markdown files under `~/.mycelium/rooms/{room}/` (declared in `requires.config` above). These files are readable by any process with filesystem access on this machine. **Do not store secrets, credentials, or PII as room memories.** Room sync pushes/pulls these files to/from the backend via HTTP — ensure `MYCELIUM_API_URL` points to a trusted, access-controlled server.
+
+**Scope limits**: This skill only reads and writes files under `~/.mycelium/`. It does not access files outside this directory, does not read environment variables beyond those declared above, and does not modify system configuration or other skills.
 
 ## Core Concepts
 
@@ -121,24 +123,33 @@ mycelium room synthesize
 The coordination protocol is **non-blocking and push-based**. Every command returns immediately.
 CognitiveEngine will send you a message when it is your turn.
 
+Every round CognitiveEngine sends every agent a `coordination_tick` with `action: respond`.
+The tick payload tells you:
+- `current_offer` — the proposal on the table
+- `can_counter_offer: true/false` — whether you are the designated proposer this round
+- `issues` / `issue_options` — the full negotiation space
+
 ```bash
 # 1. Join — declare your position (returns immediately)
-mycelium session join --handle <your-handle> --room <room-name> -m "I think we should use GraphQL"
+mycelium session join --handle <your-handle> --room <room-name> -m "I want GraphQL with a 6-month timeline"
 
 # 2. Do nothing — CognitiveEngine will wake you when it's your turn
 
-# 3. If the tick action is "propose" — pick values for each issue:
+# 3. When your tick arrives:
+
+#    If can_counter_offer is TRUE — you may propose a new offer OR accept/reject:
 mycelium message propose ISSUE=VALUE ISSUE=VALUE ... --room <room-name> --handle <your-handle>
 # example:
 mycelium message propose budget=medium timeline=standard scope=full --room <room-name> --handle <your-handle>
 
-# 4. If the tick action is "respond" — accept, reject, or end:
+#    If can_counter_offer is FALSE — you may only accept or reject the current offer:
 mycelium message respond accept --room <room-name> --handle <your-handle>
 mycelium message respond reject --room <room-name> --handle <your-handle>
-mycelium message respond end    --room <room-name> --handle <your-handle>
 
-# 5. [consensus] message arrives with your assignment — proceed independently
+# 4. [consensus] message arrives with the agreed values — proceed independently
 ```
+
+> **Key rule**: `can_counter_offer: true` means it's your turn to propose. Use `mycelium message propose` to make a counter-offer, or `mycelium message respond accept/reject` to accept/reject without changing the offer. When `can_counter_offer: false`, only accept or reject.
 
 ## Starting a Session (The "Catchup" Pattern)
 
@@ -186,11 +197,11 @@ mycelium room synthesize
 
 ## Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `MYCELIUM_API_URL` | Backend API URL (default: `http://localhost:8000`) |
-| `MYCELIUM_AGENT_HANDLE` | This agent's identity handle |
-| `MYCELIUM_ROOM` | Active room name |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `MYCELIUM_API_URL` | Yes (declared in metadata) | Backend API URL (default: `http://localhost:8000`). All network traffic goes to this single endpoint. |
+| `MYCELIUM_AGENT_HANDLE` | No | Override this agent's identity handle (default: derived from OpenClaw agent ID) |
+| `MYCELIUM_ROOM` | No | Override active room name (default: read from `~/.mycelium/config.toml`) |
 
 ## When to Use What
 

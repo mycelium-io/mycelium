@@ -4,7 +4,7 @@
 """
 Async CognitiveEngine — synthesis for namespace rooms.
 
-Unlike sync coordination (NegMAS tick loop), async coordination:
+Unlike sync coordination (CFN tick loop), async coordination:
   - Triggers on configurable conditions (threshold, schedule, explicit)
   - Reads accumulated memories instead of live messages
   - Produces synthesis summaries written back as memories

@@ -33,6 +33,37 @@ app = typer.Typer(
 # ── Shared helpers ────────────────────────────────────────────────────────────
 
 
+def _resolve_active_session_room(config: "MyceliumConfig", room_name: str) -> str:
+    """If room_name is a namespace room with an active negotiating session sub-room,
+    return the session room so agent replies route to the coordination service."""
+    import httpx
+
+    try:
+        resp = httpx.get(
+            f"{config.server.api_url}/rooms",
+            params={"limit": 200},
+            timeout=5,
+        )
+        if resp.status_code != 200:
+            return room_name
+        prefix = f"{room_name}:session:"
+        session_rooms = [r["name"] for r in resp.json() if r.get("name", "").startswith(prefix)]
+        if not session_rooms:
+            return room_name
+        # Pick the most-recently-created session room (last in list by created_at)
+        # If there are multiple, prefer the one in 'negotiating' state
+        for sr in reversed(session_rooms):
+            try:
+                r = httpx.get(f"{config.server.api_url}/rooms/{sr}", timeout=5)
+                if r.status_code == 200 and r.json().get("coordination_state") == "negotiating":
+                    return sr
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return room_name
+
+
 def _post(ctx: typer.Context, room: str | None, handle: str | None, content: str) -> None:
     from mycelium.commands.room import _resolve_room
     from mycelium_backend_client import Client
@@ -45,6 +76,9 @@ def _post(ctx: typer.Context, room: str | None, handle: str | None, content: str
 
     config = MyceliumConfig.load()
     room_name = _resolve_room(config, room)
+    # If this is a namespace room, route the reply to the active session sub-room
+    # so coordination.on_agent_response sees it.
+    room_name = _resolve_active_session_room(config, room_name)
     handle = handle or config.get_current_identity()
 
     client = Client(base_url=config.server.api_url, raise_on_unexpected_status=True)
@@ -129,7 +163,7 @@ def propose(
 # ── respond ───────────────────────────────────────────────────────────────────
 
 # Kept in sync with RespondReply.action Literal for the help text / error message.
-VALID_ACTIONS = {"accept", "reject", "end"}
+VALID_ACTIONS = {"accept", "reject", "end", "counter_offer"}
 
 
 @doc_ref(

@@ -4,7 +4,7 @@
 """
 Mycelium data models.
 
-Workspace, MAS, Agent, Room, Message, Session, AuditEvent, Memory, MemorySubscription.
+Agent, Room, Message, Session, AuditEvent, Memory, MemorySubscription.
 """
 
 from datetime import datetime
@@ -56,42 +56,7 @@ class Base(DeclarativeBase):
     pass
 
 
-# ── Registry ──────────────────────────────────────────────────────────────────
-
-
-class Workspace(Base):
-    __tablename__ = "workspaces"
-
-    id: Mapped[UUID_Type] = mapped_column(
-        GenericUuid(as_uuid=True), primary_key=True, default=uuid4
-    )
-    name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-
-
-class MAS(Base):
-    """Multi-Agentic System — a named group of agents within a workspace."""
-
-    __tablename__ = "mas"
-
-    id: Mapped[UUID_Type] = mapped_column(
-        GenericUuid(as_uuid=True), primary_key=True, default=uuid4
-    )
-    workspace_id: Mapped[UUID_Type] = mapped_column(
-        GenericUuid(as_uuid=True),
-        ForeignKey("workspaces.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    config: Mapped[dict | None] = mapped_column(
-        JSONB().with_variant(JSON(), "sqlite"), nullable=True
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
+# ── Agent (registered by CFN mgmt plane, memory_provider_url stored here) ─────
 
 
 class Agent(Base):
@@ -100,12 +65,7 @@ class Agent(Base):
     id: Mapped[UUID_Type] = mapped_column(
         GenericUuid(as_uuid=True), primary_key=True, default=uuid4
     )
-    mas_id: Mapped[UUID_Type] = mapped_column(
-        GenericUuid(as_uuid=True),
-        ForeignKey("mas.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
+    mas_id: Mapped[UUID_Type] = mapped_column(GenericUuid(as_uuid=True), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     memory_provider_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     memory_config: Mapped[dict | None] = mapped_column(
@@ -158,6 +118,9 @@ class Room(Base):
     # For sessions spawned within a namespace, points to the parent room name.
     # No FK constraint — validated in application code to avoid AgensGraph create_all ordering issues.
     parent_namespace: Mapped[str | None] = mapped_column(String, nullable=True)
+    # CFN MAS sync — foreign IDs in the cfn_mgmt DB (not FK-constrained)
+    mas_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    workspace_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class Message(Base):

@@ -31,6 +31,16 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
+_COMPOSE_PROJECT = "mycelium"
+
+_MANAGED_CONTAINERS = [
+    "mycelium-db",
+    "mycelium-backend",
+    "mycelium-graph-viewer",
+    "ioc-cfn-mgmt-plane-svc",
+    "ioc-cfn-svc",
+]
+
 
 def _get_compose_path() -> Path:
     """
@@ -78,6 +88,108 @@ def _get_compose_path() -> Path:
 def _get_env_path() -> Path | None:
     env_path = Path.home() / ".mycelium" / ".env"
     return env_path if env_path.exists() else None
+
+
+def _compose_base_cmd(compose_path: Path | None = None, env_path: Path | None = None) -> list[str]:
+    """Build the docker compose prefix with consistent project name."""
+    if compose_path is None:
+        compose_path = _get_compose_path()
+    if env_path is None:
+        env_path = _get_env_path()
+    cmd = ["docker", "compose", "-p", _COMPOSE_PROJECT, "-f", str(compose_path)]
+    if env_path:
+        cmd += ["--env-file", str(env_path)]
+    return cmd
+
+
+def _cfn_enabled() -> bool:
+    """Return True if CFN_MGMT_URL is set in ~/.mycelium/.env."""
+    env_path = _get_env_path()
+    if not env_path or not env_path.exists():
+        return False
+    try:
+        from dotenv import dotenv_values
+
+        val = dotenv_values(env_path).get("CFN_MGMT_URL", "")
+        return bool(val and val.strip())
+    except Exception:
+        return False
+
+
+def _ensure_cfn_databases(db_container: str = "mycelium-db") -> None:
+    """Create cfn_mgmt and cfn_cp databases if they don't exist.
+
+    Mirrors install._ensure_cfn_databases — called here so that ``mycelium up``
+    also provisions them, not just ``mycelium install``.
+    """
+    for db in ("cfn_mgmt", "cfn_cp"):
+        sql = (
+            f"SELECT 'CREATE DATABASE {db}' "
+            f"WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '{db}')\\gexec"
+        )
+        subprocess.run(
+            ["docker", "exec", db_container, "psql", "-U", "postgres", "-c", sql],
+            capture_output=True,
+        )
+
+
+def _wait_for_db_container(compose_path: Path, db_service: str = "mycelium-db", timeout: int = 60) -> bool:
+    """Poll until the DB container shows 'healthy' in docker compose ps output."""
+    import time
+
+    env_path = _get_env_path()
+    args = ["docker", "compose", "-p", _COMPOSE_PROJECT, "-f", str(compose_path)]
+    if env_path:
+        args += ["--env-file", str(env_path)]
+    args += ["ps", "--format", "json", db_service]
+
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        result = subprocess.run(args, capture_output=True, text=True)
+        if result.returncode == 0 and "healthy" in result.stdout:
+            return True
+        time.sleep(2)
+    return False
+
+
+def _find_managed_containers(include_stopped: bool = False) -> list[str]:
+    """Return names of managed containers that are still present."""
+    try:
+        cmd = ["docker", "ps", "--format", "{{.Names}}"]
+        if include_stopped:
+            cmd.insert(2, "-a")
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return []
+        managed = set(_MANAGED_CONTAINERS)
+        return [
+            name.strip() for name in result.stdout.strip().split("\n") if name.strip() in managed
+        ]
+    except Exception:
+        return []
+
+
+def _remove_managed_containers() -> list[str]:
+    """Force-remove all managed containers (running or stopped).
+
+    Returns names of containers that were removed.
+    """
+    containers = _find_managed_containers(include_stopped=True)
+    if not containers:
+        return []
+    subprocess.run(
+        ["docker", "rm", "-f", *containers],
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    return containers
 
 
 @doc_ref(
@@ -169,24 +281,67 @@ def start(
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
         compose_path = _get_compose_path()
-        env_path = _get_env_path()
 
         if not compose_path.exists():
             typer.secho(f"Compose file not found at {compose_path}", fg=typer.colors.RED)
             typer.echo("Run 'mycelium install' first.")
             raise typer.Exit(1)
 
-        cmd = ["docker", "compose", "-f", str(compose_path)]
-        if env_path:
-            cmd += ["--env-file", str(env_path)]
-        cmd += ["up", "-d"]
+        cfn = _cfn_enabled()
+        base = _compose_base_cmd(compose_path)
+        if cfn:
+            base = base + ["--profile", "cfn"]
+        up_args = ["up", "-d", "--remove-orphans"]
         if build:
-            cmd.append("--build")
+            up_args.append("--build")
 
         typer.echo("Starting Mycelium...")
-        result = subprocess.run(cmd, check=False)
+
+        if cfn:
+            # Phase 1: start DB first, then provision CFN databases before the
+            # CFN services come up and try to connect.
+            db_only_cmd = base[:2] + ["--progress=plain"] + base[2:] + ["up", "-d", "mycelium-db"]
+            r = subprocess.run(db_only_cmd, capture_output=True, text=True)
+            if r.returncode != 0:
+                if r.stdout:
+                    typer.echo(r.stdout)
+                if r.stderr:
+                    typer.echo(r.stderr, err=True)
+                raise typer.Exit(r.returncode)
+            _wait_for_db_container(compose_path)
+            _ensure_cfn_databases()
+            typer.secho("  ✓ CFN databases provisioned", fg=typer.colors.GREEN)
+
+        # Phase 2 (or only phase): bring everything up
+        quiet_cmd = base[:2] + ["--progress=plain"] + base[2:] + up_args
+        result = subprocess.run(quiet_cmd, capture_output=True, text=True)
+
         if result.returncode != 0:
-            raise typer.Exit(result.returncode)
+            output = (result.stdout or "") + (result.stderr or "")
+            if "is already in use by container" in output:
+                # Containers exist from a previous run (possibly a different
+                # compose project). Remove them and retry.
+                typer.secho(
+                    "Existing containers detected from a previous run, recreating...",
+                    fg=typer.colors.YELLOW,
+                )
+                _remove_managed_containers()
+                result = subprocess.run(base + up_args, check=False)
+                if result.returncode != 0:
+                    raise typer.Exit(result.returncode)
+            else:
+                # Show captured output on failure
+                if result.stdout:
+                    typer.echo(result.stdout)
+                if result.stderr:
+                    typer.echo(result.stderr, err=True)
+                raise typer.Exit(result.returncode)
+        else:
+            # Show captured output on success too (warnings, pull info, etc.)
+            if result.stdout:
+                typer.echo(result.stdout)
+            if result.stderr:
+                typer.echo(result.stderr, err=True)
 
         typer.secho("Services started.", fg=typer.colors.GREEN)
         typer.echo("  mycelium-backend  → http://localhost:8000")
@@ -219,23 +374,36 @@ def stop(
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
         compose_path = _get_compose_path()
-        env_path = _get_env_path()
 
         if not compose_path.exists():
             typer.secho(f"Compose file not found at {compose_path}", fg=typer.colors.RED)
             raise typer.Exit(1)
 
-        cmd = ["docker", "compose", "-f", str(compose_path)]
-        if env_path:
-            cmd += ["--env-file", str(env_path)]
-        cmd += ["down"]
+        base = _compose_base_cmd(compose_path)
+        down_args = ["down", "--remove-orphans"]
         if volumes:
-            cmd.append("-v")
+            down_args.append("-v")
 
         typer.echo("Stopping Mycelium services...")
-        result = subprocess.run(cmd, check=False)
+        result = subprocess.run(base + down_args, check=False)
+
         if result.returncode != 0:
             raise typer.Exit(result.returncode)
+
+        # Clean up containers that compose didn't catch (e.g., started with a
+        # different project name or outside compose entirely).
+        remaining = _find_managed_containers()
+        if remaining:
+            typer.secho(
+                f"Cleaning up orphaned containers: {', '.join(remaining)}",
+                fg=typer.colors.YELLOW,
+            )
+            subprocess.run(
+                ["docker", "rm", "-f", *remaining],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
 
         typer.secho("Services stopped.", fg=typer.colors.GREEN)
 
@@ -364,7 +532,9 @@ def status(ctx: typer.Context) -> None:
 
             db_info = health_data.get("database")
             if db_info:
-                _print_status_line("Database", db_info.get("message", "Unknown"), db_info.get("status", "unknown"))
+                _print_status_line(
+                    "Database", db_info.get("message", "Unknown"), db_info.get("status", "unknown")
+                )
 
             llm_info = health_data.get("llm")
             if llm_info:
@@ -394,7 +564,10 @@ def status(ctx: typer.Context) -> None:
                 if not docker_info.get("containers"):
                     typer.secho("  No Mycelium containers found", fg=typer.colors.YELLOW)
             else:
-                typer.secho(f"  {docker_info.get('message', 'Docker not available')}", fg=typer.colors.YELLOW)
+                typer.secho(
+                    f"  {docker_info.get('message', 'Docker not available')}",
+                    fg=typer.colors.YELLOW,
+                )
 
             # System
             typer.echo("")
@@ -413,9 +586,18 @@ def status(ctx: typer.Context) -> None:
             typer.echo("")
             overall_status = health_data.get("status", "down")
             if not backend_running:
-                typer.secho("Backend is down", fg=typer.colors.YELLOW)
-                typer.echo("\nTo start services:")
-                typer.echo("  mycelium start")
+                if backend_error:
+                    # Show specific error (HTTP 401, connection refused, etc.)
+                    typer.secho(f"Backend unreachable: {backend_error}", fg=typer.colors.RED)
+                    if "HTTP 401" in backend_error or "HTTP 403" in backend_error:
+                        typer.echo("\nCheck the backend URL (MYCELIUM_API_URL env var or server.api_url in ~/.mycelium/config.toml)")
+                    elif "Cannot connect" in backend_error:
+                        typer.echo("\nTo start services:")
+                        typer.echo("  mycelium up")
+                else:
+                    typer.secho("Backend is down", fg=typer.colors.YELLOW)
+                    typer.echo("\nTo start services:")
+                    typer.echo("  mycelium up")
             elif overall_status == "degraded":
                 typer.secho("Backend running (degraded)", fg=typer.colors.YELLOW)
             else:
@@ -490,9 +672,13 @@ def _check_docker_containers() -> dict:
     try:
         result = subprocess.run(
             [
-                "docker", "ps", "-a",
-                "--filter", "name=mycelium",
-                "--format", "{{.Names}}\t{{.Status}}\t{{.State}}",
+                "docker",
+                "ps",
+                "-a",
+                "--filter",
+                "name=mycelium",
+                "--format",
+                "{{.Names}}\t{{.Status}}\t{{.State}}",
             ],
             capture_output=True,
             text=True,
@@ -556,10 +742,18 @@ def _check_data_dir() -> dict:
     issues = []
 
     if not data_dir.exists():
-        return {"status": "error", "message": "~/.mycelium/ does not exist. Run: mycelium install", "path": str(data_dir)}
+        return {
+            "status": "error",
+            "message": "~/.mycelium/ does not exist. Run: mycelium install",
+            "path": str(data_dir),
+        }
 
     if not data_dir.is_dir():
-        return {"status": "error", "message": "~/.mycelium exists but is not a directory", "path": str(data_dir)}
+        return {
+            "status": "error",
+            "message": "~/.mycelium exists but is not a directory",
+            "path": str(data_dir),
+        }
 
     env_file = data_dir / ".env"
     config_file = data_dir / "config.toml"
@@ -602,12 +796,8 @@ def logs(
     """View service logs via docker compose."""
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
-        compose_path = _get_compose_path()
-        env_path = _get_env_path()
 
-        cmd = ["docker", "compose", "-f", str(compose_path)]
-        if env_path:
-            cmd += ["--env-file", str(env_path)]
+        cmd = _compose_base_cmd()
         cmd += ["logs"]
         if follow:
             cmd.append("-f")
