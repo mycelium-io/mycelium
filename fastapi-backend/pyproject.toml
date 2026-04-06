@@ -14,12 +14,10 @@ dependencies = [
     "greenlet>=3.0",
     "agensgraph-python==1.0.2",
     "psycopg2-binary>=2.9.0",
-    "negmas>=0.10.0",
     "pgvector>=0.3.0",
     "alembic>=1.14.0,<2",
-    "sentence-transformers<6",
+    "fastembed>=0.4.0",
     "pip-system-certs>=5.3",
-    "transformers<5.5",
     "watchdog>=6.0.0",
 ]
 
