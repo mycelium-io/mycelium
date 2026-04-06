@@ -658,6 +658,27 @@ ls ~/.mycelium/rooms/       # files present?
 <span class="comment"># or pass room explicitly:</span>
 <span class="cmd">mycelium memory ls</span> <span class="flag">--room</span> &lt;name&gt;</code></pre>
       <hr class="divider">
+      <h3 id="troubleshooting-11-openclaw-approval-prompts">11. OpenClaw Agents Prompt for Approval on Mycelium Commands</h3>
+      <p><strong>Symptom</strong>: Agents display "Approval required" when running <code>mycelium session join</code> or similar commands.</p>
+      <p><strong>Fix</strong>: Add mycelium to OpenClaw's exec approvals allowlist:</p>
+      <pre><code><span class="comment"># For specific agents (recommended):</span>
+openclaw approvals allowlist add <span class="flag">--agent</span> <span class="arg">"&lt;agent-id&gt;"</span> "~/.local/bin/mycelium"
+
+<span class="comment"># Or for all agents (convenient but less restrictive):</span>
+openclaw approvals allowlist add <span class="flag">--agent</span> <span class="arg">"*"</span> "~/.local/bin/mycelium"
+
+<span class="comment"># Restart the gateway</span>
+openclaw gateway restart</code></pre>
+      <p>The allowlist pattern must be a full binary path, not just the command name.</p>
+      <hr class="divider">
+      <h3 id="troubleshooting-12-openclaw-pairing-required">12. OpenClaw CLI Fails with "pairing required"</h3>
+      <p><strong>Symptom</strong>: <code>openclaw logs</code> or other gateway commands fail with <code>pairing required</code> or <code>device token mismatch</code>.</p>
+      <p><strong>Fix</strong>: Approve the pending device pairing request:</p>
+      <pre><code>openclaw devices list
+openclaw devices approve &lt;requestId&gt;
+<span class="comment"># Or approve the most recent:</span>
+openclaw devices approve <span class="flag">--latest</span></code></pre>
+      <hr class="divider">
       <h2 id="troubleshooting-configuration-reference">Configuration Reference</h2>
       <h3 id="troubleshooting-cli-settings-myceliumconfigtoml">CLI settings — <code>~/.mycelium/config.toml</code></h3>
       <div class="table-wrap">
@@ -928,7 +949,13 @@ rm <span class="flag">-rf</span> ~/.mycelium        # remove all config
       </div>
 
       <h2 id="oc-after-install">After install</h2>
-      <pre><code><span class="comment"># Restart the OpenClaw gateway to pick up the plugin</span>
+      <pre><code><span class="comment"># Allow agents to run mycelium commands without manual approval</span>
+<span class="comment"># For specific agents (recommended):</span>
+openclaw approvals allowlist add <span class="flag">--agent</span> <span class="arg">"&lt;agent-id&gt;"</span> "~/.local/bin/mycelium"
+<span class="comment"># Or for all agents (convenient but less restrictive):</span>
+openclaw approvals allowlist add <span class="flag">--agent</span> <span class="arg">"*"</span> "~/.local/bin/mycelium"
+
+<span class="comment"># Restart the OpenClaw gateway to pick up the plugin</span>
 openclaw gateway restart
 
 <span class="comment"># For Docker-based experiment agents, get required env vars</span>

@@ -231,7 +231,21 @@ def add(
             typer.echo("")
             typer.secho("  Next steps:", bold=True)
             typer.echo("")
-            typer.echo("  Restart the openclaw gateway to pick up the updated plugin:")
+            typer.echo("  1. Allow mycelium CLI execution (required for agents to run mycelium commands):")
+            typer.echo("")
+            typer.echo("     For specific agents (recommended):")
+            typer.secho(
+                "       $ openclaw approvals allowlist add --agent \"<agent-id>\" \"~/.local/bin/mycelium\"",
+                fg=typer.colors.CYAN,
+            )
+            typer.echo("")
+            typer.echo("     Or for all agents (convenient but less restrictive):")
+            typer.secho(
+                "       $ openclaw approvals allowlist add --agent \"*\" \"~/.local/bin/mycelium\"",
+                fg=typer.colors.CYAN,
+            )
+            typer.echo("")
+            typer.echo("  2. Restart the openclaw gateway to pick up the updated plugin:")
             typer.secho("    $ openclaw gateway restart", fg=typer.colors.CYAN)
             typer.echo("")
             typer.echo("  For Docker-based experiment agents, get required env vars:")
