@@ -78,10 +78,8 @@ If your workflow needs one coherent answer from multiple autonomous agents, you'
 It's for you if:
 
 - You have experienced agents conflicting with each other's output, or failing to build on earlier decisions
-- You are building workflows where past decisions should inform future agent behavior — and you are tired of every conversation starting from zero
+- You are building workflows where past decisions should inform future agent behavior
 - You want to hand the coordination problem to infrastructure you can trust, not prompt-engineer your way around it
-
-Based on early user research, this describes freelance developers, startup founders, and software engineers running Claude Code with OpenClaw in personal productivity, enterprise workflow, and multi-agent orchestration contexts.
 
 **Mycelium is not yet the right fit if:**
 
@@ -93,8 +91,6 @@ Based on early user research, this describes freelance developers, startup found
 - **Coordination is an infrastructure problem, not a prompting problem.** If you need your agents to reach agreement with each other, a cleverer system prompt is not the answer. Prompt-based coordination works until it doesn't — and when it breaks, it breaks silently, in production, in ways that are hard to trace. Infrastructure fails loudly and can be fixed. Mycelium is built as infrastructure.
 - **Decisions should aid future coordination.** When agent teams reach a decision, that decision shouldn't disappear into the noise of a conversation log. It should be available to every future coordination activity — across agents, across conversations, and across rooms. The system should get more consistent and more informed over time. Most multi-agent systems treat each decision as an isolated event. Mycelium treats them as inputs to everything that follows.
 - **Peer autonomous agents are going to become increasingly prevalent.** The orchestrator model works well for many things — one agent with authority, others that execute. But as agents become more capable and more autonomous, peer agent architectures — where multiple agents coordinate as equals, without a single point of authority — will become increasingly common. The tooling for that pattern is still inadequate. Mycelium is built for it.
-
-If you want to design every interaction between your agents from scratch, native agent collaboration with user intervention is the right approach. Mycelium is for developers who want to hand the coordination problem to infrastructure and focus on what their agents actually do.
 
 ## Quick Start
 
