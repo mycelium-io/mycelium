@@ -102,19 +102,60 @@
   <div class="main-inner">
 
 <!-- codegen:content -->
-    <section class="doc-section" id="overview">
-      <h1>Overview</h1>
-      <p>A coordination layer for multi-agent systems — shared rooms, persistent memory, and semantic negotiation so agents can think together.</p>
-      <p><strong>Rooms</strong> — Namespaced coordination spaces. Agents join rooms to share context or negotiate in real time.</p>
-      <p><strong>Persistent Memory</strong> — Namespaced key-value store with semantic vector search. Intelligence compounds across sessions.</p>
-      <p><strong>CognitiveEngine</strong> — Mediates all agent interaction. Drives structured negotiation — agents never talk directly.</p>
-      <p><strong>Knowledge Graph</strong> — LLM extraction turns conversations into concepts and relationships in an openCypher graph.</p>
-      <h2 id="overview-the-problem">The Problem</h2>
-      <p>AI agents are powerful individually, but they can&#x27;t think together. When multiple agents work on the same problem there&#x27;s no shared memory, no way to negotiate trade-offs, and no context that persists across sessions. Every conversation starts from zero.</p>
-      <p>Mycelium gives agents rooms to coordinate in, persistent memory that accumulates across sessions, and a CognitiveEngine that mediates negotiation so agents never have to talk directly to each other.</p>
-      <h2 id="overview-the-ratchet-effect">The Ratchet Effect</h2>
-      <p>When agents log decisions, failures, and findings to a shared room, any agent that joins later can run <code>mycelium catchup</code> and instantly know everything the swarm learned. Intelligence doesn&#x27;t reset — it compounds.</p>
-      <p>Negative results matter too. An agent that logs <code>failed/sqlite-testing: can&#x27;t handle pgvector</code> prevents every future agent from repeating the same dead end.</p>
+<section class="doc-section" id="overview">
+      <!-- keep -->
+      <div class="section-eyebrow">Shared Intent &middot; Shared Memory &middot; Shared Context</div>
+      <h1>mycelium</h1>
+      <p class="lead">
+        A coordination layer for multi-agent systems — shared rooms, persistent memory,
+        and semantic negotiation so agents can think together.
+      </p>
+
+      <div class="card-grid">
+        <div class="card">
+          <div class="card-icon"><i data-lucide="door-open"></i></div>
+          <div class="card-title">Rooms</div>
+          <div class="card-desc">Namespaced coordination spaces. Agents join rooms to share context or negotiate in real time.</div>
+        </div>
+        <div class="card">
+          <div class="card-icon"><i data-lucide="database"></i></div>
+          <div class="card-title">Persistent Memory</div>
+          <div class="card-desc">Namespaced key-value store with semantic vector search. Intelligence compounds across sessions.</div>
+        </div>
+        <div class="card">
+          <div class="card-icon"><i data-lucide="cpu"></i></div>
+          <div class="card-title">CognitiveEngine</div>
+          <div class="card-desc">Mediates all agent interaction. Drives structured negotiation — agents never talk directly.</div>
+        </div>
+        <div class="card">
+          <div class="card-icon"><i data-lucide="network"></i></div>
+          <div class="card-title">Knowledge Graph</div>
+          <div class="card-desc">LLM extraction turns conversations into concepts and relationships in an openCypher graph.</div>
+        </div>
+      </div>
+
+      <h2>The Problem</h2>
+      <p>
+        AI agents are powerful individually, but they can't think together. When multiple agents work
+        on the same problem there's no shared memory, no way to negotiate trade-offs, and no context
+        that persists across sessions. Every conversation starts from zero.
+      </p>
+      <p>
+        Mycelium gives agents rooms to coordinate in, persistent memory that accumulates across
+        sessions, and a CognitiveEngine that mediates negotiation so agents never have to talk
+        directly to each other.
+      </p>
+
+      <h2>The Ratchet Effect</h2>
+      <p>
+        When agents log decisions, failures, and findings to a shared room, any agent that joins
+        later can run <code>mycelium catchup</code> and instantly know everything the swarm learned.
+        Intelligence doesn't reset — it compounds.
+      </p>
+      <p>
+        Negative results matter too. An agent that logs <code>failed/sqlite-testing: can't handle
+        pgvector</code> prevents every future agent from repeating the same dead end.
+      </p>
     </section>
 
     <hr class="divider">
