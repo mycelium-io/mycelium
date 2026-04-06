@@ -194,6 +194,55 @@ mycelium logs mycelium-backend --tail 100   # check startup errors
 - Pull explicitly: `docker pull ghcr.io/mycelium-io/mycelium-backend:latest`
 - Build from source: `mycelium up --build`
 
+### 13. OpenClaw Agents Prompt for Approval on Mycelium Commands
+
+**Symptom**: Agents display "Approval required" messages when trying to run mycelium commands like `mycelium session join`, or you see "You are not authorized to approve exec requests on Matrix" in chat.
+
+**Cause**: OpenClaw's exec approval system blocks shell commands by default. The mycelium binary must be explicitly allowlisted.
+
+**Fix**: Add mycelium to the exec approvals allowlist:
+
+```bash
+# For specific agents (recommended)
+openclaw approvals allowlist add --agent "agent-alpha" "~/.local/bin/mycelium"
+openclaw approvals allowlist add --agent "agent-beta" "~/.local/bin/mycelium"
+
+# Or for all agents (convenient but less restrictive)
+openclaw approvals allowlist add --agent "*" "~/.local/bin/mycelium"
+```
+
+Then restart the gateway:
+```bash
+openclaw gateway restart
+# or: systemctl --user restart openclaw-gateway
+```
+
+**Verify**: Check `~/.openclaw/exec-approvals.json` contains the mycelium pattern in the allowlist.
+
+**Note**: The allowlist pattern must be a full binary path (e.g., `~/.local/bin/mycelium`), not just the command name (`mycelium`).
+
+### 14. OpenClaw CLI Commands Fail with "pairing required" or "device token mismatch"
+
+**Symptom**: Running `openclaw logs`, `openclaw devices list`, or other gateway commands fails with errors like:
+- `gateway connect failed: GatewayClientRequestError: pairing required`
+- `unauthorized: device token mismatch (rotate/reissue device token)`
+
+**Cause**: OpenClaw's gateway requires device authentication. The CLI needs to be "paired" (approved) before it can communicate with the gateway for operator-level commands.
+
+**Fix**: 
+
+1. List pending device pairing requests:
+   ```bash
+   openclaw devices list
+   ```
+
+2. Approve the pending request:
+   ```bash
+   openclaw devices approve <requestId>
+   # Or approve the most recent request:
+   openclaw devices approve --latest
+   ```
+
 ## Configuration
 
 Mycelium has two config systems: **config.toml** for CLI settings and **.env** for backend/Docker settings.

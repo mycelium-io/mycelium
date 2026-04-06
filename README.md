@@ -115,6 +115,15 @@ Mycelium works with any agent that can make HTTP requests via the REST API. Nati
 
 ```bash
 mycelium adapter add openclaw
+
+# Allow agents to run mycelium commands without manual approval
+# For specific agents (recommended):
+openclaw approvals allowlist add --agent "<agent-id>" "~/.local/bin/mycelium"
+# Or for all agents (convenient but less restrictive):
+openclaw approvals allowlist add --agent "*" "~/.local/bin/mycelium"
+
+# Restart the gateway to pick up the plugin
+openclaw gateway restart
 ```
 
 **Claude Code** — Lifecycle hooks capture tool use and context automatically. The mycelium skill provides memory and coordination commands.

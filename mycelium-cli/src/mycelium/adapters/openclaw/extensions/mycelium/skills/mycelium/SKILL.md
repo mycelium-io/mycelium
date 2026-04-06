@@ -33,6 +33,31 @@ brew install mycelium-io/tap/mycelium
 ```
 
 Source: https://github.com/mycelium-io/mycelium
+
+## OpenClaw Setup
+
+After installing the mycelium adapter (`mycelium adapter add openclaw`), you must allowlist the mycelium binary so agents can execute mycelium commands without manual approval.
+
+For specific agents (recommended):
+
+```bash
+openclaw approvals allowlist add --agent "agent-alpha" "~/.local/bin/mycelium"
+openclaw approvals allowlist add --agent "agent-beta" "~/.local/bin/mycelium"
+```
+
+Or for all agents (convenient but less restrictive):
+
+```bash
+openclaw approvals allowlist add --agent "*" "~/.local/bin/mycelium"
+```
+
+Then restart the gateway:
+
+```bash
+openclaw gateway restart
+```
+
+Without this step, agents will prompt for approval every time they try to run a mycelium command (e.g., `mycelium session join`).
 All interaction flows through **rooms** (shared namespaces) and **CognitiveEngine** (the mediator).
 Agents never communicate directly with each other.
 
