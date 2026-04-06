@@ -19,7 +19,7 @@
 
 ## The Problem
 
-AI agents are powerful individually, but they can't think together. When multiple agents work on the same problem, there's no shared memory, no way to negotiate trade-offs, and no context that persists across sessions. Every conversation starts from zero.
+AI agents are powerful individually, but they can't think together. When multiple agents work on the same problem, there's no shared memory, no way to negotiate trade-offs, and no context that persists across sessions. Every conversation starts from zero. Past decisions get re-litigated because no one remembers they were already made. Dead ends get re-explored because the agent that hit them is long gone.
 
 ## What Mycelium Does
 
@@ -44,9 +44,11 @@ mycelium session join --handle julia-agent -m "budget=high, scope=full"
 # CognitiveEngine drives propose/respond rounds until consensus
 ```
 
+> **Note:** Mycelium uses "session" to mean a structured negotiation round within a room — not an agent conversation turn.
+
 ## How It Works
 
-**1. Shared Intent** — When agents need to agree, a session is spawned within the room. CognitiveEngine orchestrates multi-issue negotiation via NegMAS through a structured state machine (`idle → waiting → negotiating → complete`). Agents respond to structured proposals and reach a single consensus — every agent has a voice, and the result is one shared answer.
+**1. Shared Intent** — When agents need to agree, a session is spawned within the room. CognitiveEngine orchestrates multi-issue negotiation through a structured state machine (`idle → waiting → negotiating → complete`), powered by the [Internet of Cognition](https://outshift.cisco.com/internet-of-cognition) Cognition Fabric. Agents respond to structured proposals and reach a single consensus — every agent has a voice, and the result is one shared answer, not parallel outputs a human has to reconcile.
 
 **2. Shared Memory** — Rooms are folders. Memories are markdown files at `.mycelium/rooms/{room}/{namespace}/{key}.md`. Any agent with file I/O can read and write room memory directly — the CLI is sugar. Memories accumulate across agents and sessions, and are searchable by meaning via a pgvector index in AgensGraph.
 
@@ -107,18 +109,18 @@ mycelium-client/      Generated typed OpenAPI client
 
 ## Adapters
 
-Mycelium integrates with AI coding agents via adapters:
+Mycelium works with any agent that can make HTTP requests via the REST API. Native adapters are available for:
+
+**OpenClaw** — Plugin + hooks for the OpenClaw agent runtime. SSE-based coordination ticks wake agents automatically when it's their turn.
+
+```bash
+mycelium adapter add openclaw
+```
 
 **Claude Code** — Lifecycle hooks capture tool use and context automatically. The mycelium skill provides memory and coordination commands.
 
 ```bash
 mycelium adapter add claude-code
-```
-
-**OpenClaw** — Plugin + hooks for the OpenClaw agent runtime. Same coordination protocol, same memory API.
-
-```bash
-mycelium adapter add openclaw
 ```
 
 ## Development
@@ -137,6 +139,6 @@ Interactive API docs at `http://localhost:8000/docs` when the backend is running
 Mycelium builds on OSS projects we found invaluable in this space:
 
 - [ioc-cfn-mgmt-plane](https://outshift.cisco.com) + [ioc-cfn-svc](https://outshift.cisco.com) — Agent registration and fabric orchestration, from Outshift by Cisco [Internet of Cognition](https://outshift.cisco.com/internet-of-cognition) concepts
-- [NegMAS](https://negmas.readthedocs.io/) — Multi-issue negotiation
+- [NegMAS](https://negmas.readthedocs.io/) — Multi-issue negotiation (inside the Cognition Fabric)
 - [AgensGraph](https://github.com/skaiworldwide-oss/agensgraph) — Multi-model graph database
-- [FastAPI](https://fastapi.tiangolo.com/) + [pgvector](https://github.com/pgvector/pgvector) + [sentence-transformers](https://www.sbert.net/)
+- [FastAPI](https://fastapi.tiangolo.com/) + [pgvector](https://github.com/pgvector/pgvector) + [fastembed](https://github.com/qdrant/fastembed)
