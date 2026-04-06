@@ -88,7 +88,7 @@ It's for you if:
 
 ### Principles:
 
-- **Coordination is an infrastructure problem, not a prompting problem.** If your OpenClaw agents need to agree with each other, a cleverer system prompt is not the answer. Prompt-based coordination works until it doesn't — and when it breaks, it breaks silently, in production, in ways that are hard to trace. Infrastructure fails loudly and can be fixed. We are building infrastructure.
+- **Coordination is an infrastructure problem, not a prompting problem.** If you need your agents to reach agreement with each other, a cleverer system prompt is not the answer. Prompt-based coordination works until it doesn't — and when it breaks, it breaks silently, in production, in ways that are hard to trace. Infrastructure fails loudly and can be fixed. Mycelium is built as infrastructure.
 - **Decisions should aid future coordination.** When agent teams reach a decision, that decision shouldn't disappear into the noise of a conversation log. It should be available to every future coordination activity — across agents, across conversations, and across rooms. The system should get more consistent and more informed over time. Most multi-agent systems treat each decision as an isolated event. We treat them as inputs to everything that follows.
 - **Peer autonomous agents are going to bec ome increasingly more prevalent.** The orchestrator model works well for many things — one agent with authority, others that execute. But as agents become more capable and more autonomous, peer agent architectures — where multiple autonomous agents coordinate as equals, without a single point of authority — will become increasingly common. The tooling for that pattern is still inadequate. Mycelium is built for it.
 
