@@ -579,7 +579,7 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
       <pre><code><span class="cmd">mycelium status</span>          # human-readable health check
 <span class="cmd">mycelium status</span> <span class="flag">--json</span>   # machine-readable (backend, DB, LLM, disk)
 <span class="cmd">mycelium logs</span> <span class="flag">--tail</span> 50  # recent service logs</code></pre>
-      <p>---</p>
+      <hr class="divider">
       <h2 id="troubleshooting-common-issues">Common Issues</h2>
       <h3 id="troubleshooting-1-command-not-found">1. Command Not Found</h3>
       <p><strong>Symptom</strong>: <code>mycelium: command not found</code></p>
@@ -587,20 +587,20 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
       <pre><code>curl <span class="flag">-fsSL</span> https://mycelium-io.github.io/mycelium/install.sh | bash</code></pre>
       <p>Or add to PATH if the binary exists:</p>
       <pre><code>export PATH=<span class="str">&quot;$HOME/.local/bin:$PATH&quot;</span></code></pre>
-      <p>---</p>
+      <hr class="divider">
       <h3 id="troubleshooting-2-backend-not-running">2. Backend Not Running</h3>
       <p><strong>Symptom</strong>: <code>Cannot connect to Mycelium API at http://localhost:8000</code></p>
       <pre><code><span class="cmd">mycelium status</span>             # quick check
 docker ps | grep mycelium   # container status
 <span class="cmd">mycelium up</span>                 # start services
 <span class="cmd">mycelium logs mycelium</span>-backend <span class="flag">--tail</span> 50</code></pre>
-      <p>---</p>
+      <hr class="divider">
       <h3 id="troubleshooting-3-config-not-found">3. Config Not Found</h3>
       <p><strong>Symptom</strong>: <code>Configuration file not found: ~/.mycelium/config.toml</code></p>
       <pre><code><span class="cmd">mycelium init</span>
 <span class="comment"># or with a custom URL:</span>
 <span class="cmd">mycelium init</span> <span class="flag">--api-url</span> http://your-server:8000</code></pre>
-      <p>---</p>
+      <hr class="divider">
       <h3 id="troubleshooting-4-database-connection-failed">4. Database Connection Failed</h3>
       <p><strong>Symptom</strong>: Backend logs show <code>connection refused</code> or <code>could not connect to server</code></p>
       <pre><code>docker ps | grep mycelium-db    # is the container running?
@@ -611,7 +611,7 @@ docker logs mycelium-db <span class="flag">--tail</span> 20</code></pre>
         <li>Restart: <code>mycelium down &amp;&amp; mycelium up</code></li>
         <li>Nuclear option (destroys data): <code>mycelium down --volumes &amp;&amp; mycelium up</code></li>
       </ul>
-      <p>---</p>
+      <hr class="divider">
       <h3 id="troubleshooting-5-port-already-in-use">5. Port Already in Use</h3>
       <p><strong>Symptom</strong>: <code>bind: address already in use</code></p>
       <pre><code>lsof <span class="flag">-i</span> :8000   # backend
@@ -619,7 +619,7 @@ lsof <span class="flag">-i</span> :5432   # database</code></pre>
       <p>Or set alternate ports in <code>~/.mycelium/.env</code>:</p>
       <pre><code>MYCELIUM_BACKEND_PORT=8001
 MYCELIUM_DB_PORT=5433</code></pre>
-      <p>---</p>
+      <hr class="divider">
       <h3 id="troubleshooting-6-llm-not-configured">6. LLM Not Configured</h3>
       <p><strong>Symptom</strong>: <code>LLM unavailable — no API key configured</code></p>
       <p>Add to <code>~/.mycelium/.env</code>:</p>
@@ -629,20 +629,20 @@ LLM_API_KEY=sk-ant-...</code></pre>
       <pre><code>LLM_MODEL=ollama/llama3
 LLM_BASE_URL=http://localhost:11434</code></pre>
       <p>Restart after changes: <code>mycelium down &amp;&amp; mycelium up</code></p>
-      <p>---</p>
+      <hr class="divider">
       <h3 id="troubleshooting-7-memory-search-returns-nothing">7. Memory Search Returns Nothing</h3>
       <p><strong>Symptom</strong>: <code>mycelium memory search</code> is empty despite memories existing</p>
       <pre><code><span class="cmd">mycelium memory ls</span>          # do memories exist?
 ls ~/.mycelium/rooms/       # files present?
 <span class="cmd">mycelium reindex</span>            # rebuild search index (needed after direct file writes)
 <span class="cmd">mycelium room ls</span>            # wrong active room?</code></pre>
-      <p>---</p>
+      <hr class="divider">
       <h3 id="troubleshooting-8-container-name-conflicts">8. Container Name Conflicts</h3>
       <p><strong>Symptom</strong>: <code>container name &quot;mycelium-db&quot; is already in use</code></p>
       <p>The CLI handles this automatically, but if it persists:</p>
       <pre><code>docker rm <span class="flag">-f</span> mycelium-db mycelium-backend
 <span class="cmd">mycelium up</span></code></pre>
-      <p>---</p>
+      <hr class="divider">
       <h3 id="troubleshooting-9-migration-failures">9. Migration Failures</h3>
       <p><strong>Symptom</strong>: <code>alembic.util.exc.CommandError</code> or schema mismatch errors in logs</p>
       <p>Migrations run automatically on container start. If they fail:</p>
@@ -650,14 +650,14 @@ ls ~/.mycelium/rooms/       # files present?
 <span class="cmd">mycelium down</span> &amp;&amp; <span class="cmd">mycelium up</span>                # restart often fixes it</code></pre>
       <p>If the schema is corrupted (destroys data):</p>
       <pre><code><span class="cmd">mycelium down</span> <span class="flag">--volumes</span> &amp;&amp; <span class="cmd">mycelium up</span></code></pre>
-      <p>---</p>
+      <hr class="divider">
       <h3 id="troubleshooting-10-no-active-room">10. No Active Room</h3>
       <p><strong>Symptom</strong>: <code>No active room. Use &#x27;mycelium room use &lt;name&gt;&#x27;</code></p>
       <pre><code><span class="cmd">mycelium room ls</span>
 <span class="cmd">mycelium room use</span> &lt;name&gt;
 <span class="comment"># or pass room explicitly:</span>
 <span class="cmd">mycelium memory ls</span> <span class="flag">--room</span> &lt;name&gt;</code></pre>
-      <p>---</p>
+      <hr class="divider">
       <h2 id="troubleshooting-configuration-reference">Configuration Reference</h2>
       <h3 id="troubleshooting-cli-settings-myceliumconfigtoml">CLI settings — <code>~/.mycelium/config.toml</code></h3>
       <div class="table-wrap">
@@ -737,18 +737,18 @@ ls ~/.mycelium/rooms/       # files present?
           </tbody>
         </table>
       </div>
-      <p>---</p>
+      <hr class="divider">
       <h2 id="troubleshooting-log-locations">Log Locations</h2>
       <pre><code><span class="cmd">mycelium logs</span>                       # all services
 <span class="cmd">mycelium logs mycelium</span>-backend      # backend only
 <span class="cmd">mycelium logs mycelium</span>-db           # database only
 mycelium <span class="flag">--verbose</span> status           # CLI debug output</code></pre>
-      <p>---</p>
+      <hr class="divider">
       <h2 id="troubleshooting-reset-everything">Reset Everything</h2>
       <pre><code><span class="cmd">mycelium down</span> <span class="flag">--volumes</span>   # stop and delete all data
 rm <span class="flag">-rf</span> ~/.mycelium        # remove all config
 <span class="cmd">mycelium install</span>          # fresh install</code></pre>
-      <p>---</p>
+      <hr class="divider">
       <h2 id="troubleshooting-getting-help">Getting Help</h2>
       <p>Report issues at <strong>https://github.com/mycelium-io/mycelium/issues</strong></p>
     </section>

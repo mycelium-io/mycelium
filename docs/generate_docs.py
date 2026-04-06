@@ -56,6 +56,12 @@ def _md_to_html(md: str, section_id: str) -> str:
     while i < len(lines):
         line = lines[i]
 
+        # Horizontal rule
+        if line.strip() == "---":
+            out.append('      <hr class="divider">')
+            i += 1
+            continue
+
         # Fenced code block
         if line.startswith("```"):
             lang = line[3:].strip()
