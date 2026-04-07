@@ -118,7 +118,7 @@ services:
 
 
   ioc-cognition-fabric-node-svc:
-    image: ghcr.io/outshift-open/ioc-cognition-fabric-node-svc:0.1.0
+    image: ghcr.io/outshift-open/ioc-cognition-fabric-node-svc:0.1.1
     pull_policy: always
     platform: linux/amd64
     container_name: ioc-cognition-fabric-node-svc
