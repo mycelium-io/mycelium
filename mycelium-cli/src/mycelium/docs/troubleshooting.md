@@ -197,6 +197,24 @@ openclaw devices approve --latest
 
 ---
 
+### 13. Synthesize Returns "No Memories" but Catchup Shows Memories
+
+**Symptom**: `mycelium synthesize` says "No new memories" but `mycelium catchup` shows memories exist.
+
+**Cause**: The filesystem and search index are out of sync. This happens when:
+- Files were written directly to `.mycelium/rooms/` (e.g., via `cat >` or git pull)
+- A previous API write partially failed
+
+**Fix**: Re-index the room to sync filesystem → database:
+
+```bash
+mycelium reindex <room-name>
+```
+
+Then run `mycelium synthesize` again.
+
+---
+
 ## Configuration Reference
 
 ### CLI settings — `~/.mycelium/config.toml`

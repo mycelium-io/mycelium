@@ -102,7 +102,7 @@ def memory_set(
     room: str | None = typer.Option(
         None, "--room", "-r", help="Room name (defaults to active room)"
     ),
-    handle: str = typer.Option("cli-user", "--handle", "-H", help="Agent handle"),
+    handle: str = typer.Option("cli-user", "--handle", "-H", help="Agent handle (sets created_by attribution)"),
     no_embed: bool = typer.Option(False, "--no-embed", help="Skip vector embedding"),
     tags: str | None = typer.Option(None, "--tags", "-t", help="Comma-separated tags"),
 ) -> None:
