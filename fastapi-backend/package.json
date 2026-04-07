@@ -6,7 +6,7 @@
     "dev":      "uv run fastapi dev app/main.py",
     "build":    "uv sync --frozen",
     "test":     "uv run pytest tests/ -v",
-    "lint":     "uv run ruff check app/routes/cfn_proxy.py app/routes/knowledge.py app/knowledge/prompts.py app/knowledge/ingestion.py app/schemas.py tests/",
+    "lint":     "uv run ruff check . && uv run ruff format --check .",
     "lint:fix": "uv run ruff check . --fix",
     "migrate":  "uv run alembic upgrade head",
     "openapi":  "uv run python -c \"from app.main import app; import json; print(json.dumps(app.openapi(), indent=2))\" > ../docs/openapi.json",
