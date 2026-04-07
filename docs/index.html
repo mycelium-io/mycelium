@@ -567,6 +567,16 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
 /mycelium</code></pre>
       <h3 id="architecture-openclaw">OpenClaw</h3>
       <p>Plugin + hooks for the OpenClaw agent runtime. Same coordination model, same memory API.</p>
+      <pre><code><span class="cmd">mycelium adapter add</span> openclaw
+
+<span class="comment"># Allow agents to run mycelium commands without manual approval</span>
+<span class="comment"># For specific agents (recommended):</span>
+openclaw approvals allowlist add <span class="flag">--agent</span> &quot;&lt;agent-id&gt;<span class="str">&quot; &quot;</span>~/.local/bin/mycelium&quot;
+<span class="comment"># Or for all agents (convenient but less restrictive):</span>
+openclaw approvals allowlist add <span class="flag">--agent</span> <span class="str">&quot;*&quot;</span> <span class="str">&quot;~/.local/bin/mycelium&quot;</span>
+
+<span class="comment"># Restart the gateway to pick up the plugin</span>
+openclaw gateway restart</code></pre>
       <h3 id="architecture-backend-api">Backend API</h3>
       <p>Any agent that can make HTTP requests can use the REST API directly. Interactive API docs are available at <code>http://localhost:8888/docs</code> when the backend is running.</p>
     </section>
@@ -658,20 +668,20 @@ ls ~/.mycelium/rooms/       # files present?
 <span class="comment"># or pass room explicitly:</span>
 <span class="cmd">mycelium memory ls</span> <span class="flag">--room</span> &lt;name&gt;</code></pre>
       <hr class="divider">
-      <h3 id="troubleshooting-11-openclaw-approval-prompts">11. OpenClaw Agents Prompt for Approval on Mycelium Commands</h3>
-      <p><strong>Symptom</strong>: Agents display "Approval required" when running <code>mycelium session join</code> or similar commands.</p>
-      <p><strong>Fix</strong>: Add mycelium to OpenClaw's exec approvals allowlist:</p>
+      <h3 id="troubleshooting-11-openclaw-agents-prompt-for-approval-on-mycelium-commands">11. OpenClaw Agents Prompt for Approval on Mycelium Commands</h3>
+      <p><strong>Symptom</strong>: Agents display &quot;Approval required&quot; when running <code>mycelium session join</code> or similar commands.</p>
+      <p><strong>Fix</strong>: Add mycelium to OpenClaw&#x27;s exec approvals allowlist:</p>
       <pre><code><span class="comment"># For specific agents (recommended):</span>
-openclaw approvals allowlist add <span class="flag">--agent</span> <span class="arg">"&lt;agent-id&gt;"</span> "~/.local/bin/mycelium"
+openclaw approvals allowlist add <span class="flag">--agent</span> &quot;&lt;agent-id&gt;<span class="str">&quot; &quot;</span>~/.local/bin/mycelium&quot;
 
 <span class="comment"># Or for all agents (convenient but less restrictive):</span>
-openclaw approvals allowlist add <span class="flag">--agent</span> <span class="arg">"*"</span> "~/.local/bin/mycelium"
+openclaw approvals allowlist add <span class="flag">--agent</span> <span class="str">&quot;*&quot;</span> <span class="str">&quot;~/.local/bin/mycelium&quot;</span>
 
 <span class="comment"># Restart the gateway</span>
 openclaw gateway restart</code></pre>
       <p>The allowlist pattern must be a full binary path, not just the command name.</p>
       <hr class="divider">
-      <h3 id="troubleshooting-12-openclaw-pairing-required">12. OpenClaw CLI Fails with "pairing required"</h3>
+      <h3 id="troubleshooting-12-openclaw-cli-fails-with-pairing-required">12. OpenClaw CLI Fails with &quot;pairing required&quot;</h3>
       <p><strong>Symptom</strong>: <code>openclaw logs</code> or other gateway commands fail with <code>pairing required</code> or <code>device token mismatch</code>.</p>
       <p><strong>Fix</strong>: Approve the pending device pairing request:</p>
       <pre><code>openclaw devices list
@@ -1293,7 +1303,7 @@ curl -X POST http://localhost:8888/api/memory/search \
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium adapter add</span> <span class="arg">&lt;type&gt;</span> [<span class="flag">--dry-run</span>] [<span class="flag">--force</span>]</code>
+          <code><span class="cmd">mycelium adapter add</span> <span class="arg">&lt;type&gt;</span> [<span class="flag">--openclaw-profile</span> <span class="arg">NAME</span>] [<span class="flag">--dry-run</span>] [<span class="flag">--force</span>]</code>
         </div>
         <div class="cmd-ref-body">Install an agent framework adapter (openclaw, claude-code).</div>
       </div>
