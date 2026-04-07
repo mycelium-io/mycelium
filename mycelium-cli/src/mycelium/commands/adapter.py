@@ -61,6 +61,21 @@ _OPENCLAW_STEPS = {
     "docker-env": "show env vars for Docker-based experiment agents",
 }
 
+
+def _openclaw_state_dir(profile: str | None) -> Path:
+    """Return ~/.openclaw-<profile>/ or ~/.openclaw/ for default."""
+    if profile and profile.lower() != "default":
+        return Path.home() / f".openclaw-{profile}"
+    return Path.home() / ".openclaw"
+
+
+def _openclaw_cmd(args: list[str], profile: str | None) -> list[str]:
+    """Prefix openclaw subcommand with --profile <name> when non-default."""
+    if profile and profile.lower() != "default":
+        return ["openclaw", "--profile", profile, *args[1:]]
+    return args
+
+
 # Assets that go into each agent's ~/.openclaw/ directory
 _OPENCLAW_SCAFFOLD_ASSETS = [
     # (source subpath in mycelium package, dest subpath in target .openclaw dir)
@@ -72,7 +87,7 @@ _OPENCLAW_SCAFFOLD_ASSETS = [
 
 
 @doc_ref(
-    usage="mycelium adapter add <type> [--dry-run] [--force]",
+    usage="mycelium adapter add <type> [--openclaw-profile NAME] [--dry-run] [--force]",
     desc="Install an agent framework adapter (openclaw, claude-code).",
     group="adapter",
 )
@@ -97,6 +112,11 @@ def add(
     force: bool = typer.Option(
         False, "--force", "-f", help="Overwrite existing assets when using --scaffold-only"
     ),
+    openclaw_profile: str | None = typer.Option(
+        None,
+        "--openclaw-profile",
+        help="Target a named OpenClaw profile (e.g. 'work' → ~/.openclaw-work/). Omit for default gateway.",
+    ),
 ) -> None:
     """
     Register and install an agent framework adapter, then optionally wire it into your environment.
@@ -104,6 +124,7 @@ def add(
     Examples:
         mycelium adapter add openclaw
         mycelium adapter add openclaw --reinstall
+        mycelium adapter add openclaw --openclaw-profile work
         mycelium adapter add openclaw --step=local-gateway
         mycelium adapter add openclaw --step=docker-env
     """
@@ -180,13 +201,19 @@ def add(
             else:
                 plugin_src = _resolve_asset(f"extensions/{_OPENCLAW_PLUGIN_NAME}")
                 hook_src = _resolve_asset(f"hooks/{_OPENCLAW_HOOK_NAME}")
-                typer.echo(f"  openclaw plugins install {plugin_src}")
-                typer.echo(f"  openclaw hooks install   {hook_src}")
+                prefix = (
+                    f"openclaw --profile {openclaw_profile}"
+                    if openclaw_profile and openclaw_profile.lower() != "default"
+                    else "openclaw"
+                )
+                typer.echo(f"  {prefix} plugins install {plugin_src}")
+                typer.echo(f"  {prefix} hooks install   {hook_src}")
+                typer.echo(f"  state dir: {_openclaw_state_dir(openclaw_profile)}")
             typer.echo(f"  api_url: {config.server.api_url}")
             return
 
         if adapter_type == "openclaw":
-            _install_openclaw(verbose=verbose)
+            _install_openclaw(verbose=verbose, profile=openclaw_profile)
         elif adapter_type == "claude-code":
             _install_claude_code(verbose=verbose)
         else:
@@ -202,6 +229,8 @@ def add(
                 "installed_at": datetime.now(UTC).isoformat(),
                 "api_url": config.server.api_url,
             }
+            if openclaw_profile:
+                adapter_record["openclaw_profile"] = openclaw_profile
             config.adapters[adapter_type] = adapter_record
             config.save()
 
@@ -231,17 +260,19 @@ def add(
             typer.echo("")
             typer.secho("  Next steps:", bold=True)
             typer.echo("")
-            typer.echo("  1. Allow mycelium CLI execution (required for agents to run mycelium commands):")
+            typer.echo(
+                "  1. Allow mycelium CLI execution (required for agents to run mycelium commands):"
+            )
             typer.echo("")
             typer.echo("     For specific agents (recommended):")
             typer.secho(
-                "       $ openclaw approvals allowlist add --agent \"<agent-id>\" \"~/.local/bin/mycelium\"",
+                '       $ openclaw approvals allowlist add --agent "<agent-id>" "~/.local/bin/mycelium"',
                 fg=typer.colors.CYAN,
             )
             typer.echo("")
             typer.echo("     Or for all agents (convenient but less restrictive):")
             typer.secho(
-                "       $ openclaw approvals allowlist add --agent \"*\" \"~/.local/bin/mycelium\"",
+                '       $ openclaw approvals allowlist add --agent "*" "~/.local/bin/mycelium"',
                 fg=typer.colors.CYAN,
             )
             typer.echo("")
@@ -287,7 +318,10 @@ def remove(
                 raise typer.Exit(0)
 
         if adapter_type == "openclaw":
-            _uninstall_openclaw(config.adapters[adapter_type])
+            _uninstall_openclaw(
+                config.adapters[adapter_type],
+                profile=config.adapters[adapter_type].get("openclaw_profile"),
+            )
 
         del config.adapters[adapter_type]
         config.save()
@@ -412,7 +446,7 @@ def _resolve_asset(subpath: str, adapter: str = "openclaw") -> Path:
     return dst
 
 
-def _install_openclaw(verbose: bool = False) -> None:
+def _install_openclaw(verbose: bool = False, profile: str | None = None) -> None:
     """
     Install the bundled openclaw plugin and hook.
 
@@ -422,6 +456,7 @@ def _install_openclaw(verbose: bool = False) -> None:
     """
 
     def _run(cmd: list[str], allow_already_exists: bool = False) -> None:
+        cmd = _openclaw_cmd(cmd, profile)
         if verbose:
             typer.echo(f"  running: {' '.join(cmd)}")
         result = subprocess.run(cmd, text=True, capture_output=not verbose)
@@ -441,7 +476,7 @@ def _install_openclaw(verbose: bool = False) -> None:
     _run(["openclaw", "plugins", "install", str(plugin_src)], allow_already_exists=True)
 
     # Add plugin to plugins.allow so openclaw doesn't warn on every command
-    _allow_plugin(_OPENCLAW_PLUGIN_NAME)
+    _allow_plugin(_OPENCLAW_PLUGIN_NAME, profile=profile)
 
     hook_src = _resolve_asset(f"hooks/{_OPENCLAW_HOOK_NAME}")
     _run(["openclaw", "hooks", "install", str(hook_src)], allow_already_exists=True)
@@ -450,23 +485,23 @@ def _install_openclaw(verbose: bool = False) -> None:
     _run(["openclaw", "hooks", "install", str(extractor_src)], allow_already_exists=True)
 
     # Install skill into the openclaw workspace skills directory
-    _install_openclaw_skill()
+    _install_openclaw_skill(profile=profile)
 
 
-def _resolve_agent_workspaces() -> list[Path]:
+def _resolve_agent_workspaces(profile: str | None = None) -> list[Path]:
     """Return the workspace directories for all configured openclaw agents."""
     import json
 
-    config_path = Path.home() / ".openclaw" / "openclaw.json"
+    state_dir = _openclaw_state_dir(profile)
+    config_path = state_dir / "openclaw.json"
     if not config_path.exists():
-        return [Path.home() / ".openclaw" / "workspace"]
+        return [state_dir / "workspace"]
 
     try:
         cfg = json.loads(config_path.read_text())
     except Exception:
-        return [Path.home() / ".openclaw" / "workspace"]
+        return [state_dir / "workspace"]
 
-    state_dir = Path.home() / ".openclaw"
     default_workspace = Path(
         cfg.get("agents", {}).get("defaults", {}).get("workspace", "").strip()
         or str(state_dir / "workspace")
@@ -491,12 +526,12 @@ def _resolve_agent_workspaces() -> list[Path]:
     return list(workspaces)
 
 
-def _install_openclaw_skill() -> None:
+def _install_openclaw_skill(profile: str | None = None) -> None:
     """Copy mycelium SKILL.md to skills/ under every configured agent workspace."""
     skill_src_dir = _resolve_asset(
         f"extensions/{_OPENCLAW_PLUGIN_NAME}/skills/{_OPENCLAW_SKILL_NAME}"
     )
-    for workspace in _resolve_agent_workspaces():
+    for workspace in _resolve_agent_workspaces(profile=profile):
         dest_dir = workspace / "skills" / _OPENCLAW_SKILL_NAME
         dest_dir.mkdir(parents=True, exist_ok=True)
         for f in skill_src_dir.iterdir():
@@ -601,9 +636,10 @@ def _register_claude_code_stop_hook(claude_dir: Path, verbose: bool = False) -> 
             typer.echo(f"  warning: could not register Stop hook: {e}")
 
 
-def _allow_plugin(plugin_id: str) -> None:
+def _allow_plugin(plugin_id: str, profile: str | None = None) -> None:
     """Register plugin_id in openclaw.json: allow list, load path, and entries."""
-    config_path = Path.home() / ".openclaw" / "openclaw.json"
+    state_dir = _openclaw_state_dir(profile)
+    config_path = state_dir / "openclaw.json"
     if not config_path.exists():
         return
     try:
@@ -618,7 +654,7 @@ def _allow_plugin(plugin_id: str) -> None:
             allow_list.append(plugin_id)
 
         # Load path — tells openclaw where to find the extension
-        ext_path = str(Path.home() / ".openclaw" / "extensions" / plugin_id)
+        ext_path = str(state_dir / "extensions" / plugin_id)
         load_section = plugins_section.setdefault("load", {})
         paths: list = load_section.setdefault("paths", [])
         if ext_path not in paths:
@@ -634,12 +670,16 @@ def _allow_plugin(plugin_id: str) -> None:
         pass  # Non-fatal; install succeeds even if openclaw.json can't be updated
 
 
-def _uninstall_openclaw(adapter_record: dict) -> None:
+def _uninstall_openclaw(adapter_record: dict, profile: str | None = None) -> None:
     """Uninstall the mycelium plugin and hook (non-interactively)."""
     for cmd in [
-        ["openclaw", "plugins", "uninstall", _OPENCLAW_PLUGIN_NAME, "--force"],
-        ["openclaw", "hooks", "uninstall", _OPENCLAW_HOOK_NAME, "--force"],
-        ["openclaw", "hooks", "uninstall", _OPENCLAW_EXTRACTOR_HOOK_NAME, "--force"],
+        _openclaw_cmd(
+            ["openclaw", "plugins", "uninstall", _OPENCLAW_PLUGIN_NAME, "--force"], profile
+        ),
+        _openclaw_cmd(["openclaw", "hooks", "uninstall", _OPENCLAW_HOOK_NAME, "--force"], profile),
+        _openclaw_cmd(
+            ["openclaw", "hooks", "uninstall", _OPENCLAW_EXTRACTOR_HOOK_NAME, "--force"], profile
+        ),
     ]:
         result = subprocess.run(cmd, text=True, capture_output=True)
         # Non-zero is acceptable if already removed manually
@@ -648,15 +688,16 @@ def _uninstall_openclaw(adapter_record: dict) -> None:
                 f"  warning: {' '.join(cmd[:3])} exited {result.returncode}",
                 fg=typer.colors.YELLOW,
             )
-    _allow_plugin_remove(_OPENCLAW_PLUGIN_NAME)
-    skill_dir = Path.home() / ".openclaw" / "workspace" / "skills" / _OPENCLAW_SKILL_NAME
+    _allow_plugin_remove(_OPENCLAW_PLUGIN_NAME, profile=profile)
+    skill_dir = _openclaw_state_dir(profile) / "workspace" / "skills" / _OPENCLAW_SKILL_NAME
     if skill_dir.exists():
         shutil.rmtree(skill_dir, ignore_errors=True)
 
 
-def _allow_plugin_remove(plugin_id: str) -> None:
+def _allow_plugin_remove(plugin_id: str, profile: str | None = None) -> None:
     """Remove plugin_id from plugins.allow, load.paths, and entries in openclaw.json."""
-    config_path = Path.home() / ".openclaw" / "openclaw.json"
+    state_dir = _openclaw_state_dir(profile)
+    config_path = state_dir / "openclaw.json"
     if not config_path.exists():
         return
     try:
@@ -669,7 +710,7 @@ def _allow_plugin_remove(plugin_id: str) -> None:
         if plugin_id in allow_list:
             allow_list.remove(plugin_id)
 
-        ext_path = str(Path.home() / ".openclaw" / "extensions" / plugin_id)
+        ext_path = str(state_dir / "extensions" / plugin_id)
         paths: list = plugins_section.get("load", {}).get("paths", [])
         if ext_path in paths:
             paths.remove(ext_path)
@@ -724,28 +765,35 @@ def _check_adapter_status(name: str, info: dict) -> dict:
                 ok = False
 
     elif name == "openclaw":
+        profile = info.get("openclaw_profile")
+        state_dir = _openclaw_state_dir(profile)
+
         # Check skill via filesystem (openclaw has no skills install/list CLI)
-        skill_dir = Path.home() / ".openclaw" / "workspace" / "skills" / _OPENCLAW_SKILL_NAME
+        skill_dir = state_dir / "workspace" / "skills" / _OPENCLAW_SKILL_NAME
         skill_ok = (skill_dir / "SKILL.md").exists()
         details.append(f"  {'✓' if skill_ok else '✗'} skill:{_OPENCLAW_SKILL_NAME}")
         if not skill_ok:
             ok = False
 
         # Check hook via filesystem (list output truncates long names)
-        hook_dir = Path.home() / ".openclaw" / "hooks" / _OPENCLAW_HOOK_NAME
+        hook_dir = state_dir / "hooks" / _OPENCLAW_HOOK_NAME
         hook_ok = (hook_dir / "HOOK.md").exists()
         details.append(f"  {'✓' if hook_ok else '✗'} hook:{_OPENCLAW_HOOK_NAME}")
         if not hook_ok:
             ok = False
 
-        extractor_dir = Path.home() / ".openclaw" / "hooks" / _OPENCLAW_EXTRACTOR_HOOK_NAME
+        extractor_dir = state_dir / "hooks" / _OPENCLAW_EXTRACTOR_HOOK_NAME
         extractor_ok = (extractor_dir / "HOOK.md").exists()
         details.append(f"  {'✓' if extractor_ok else '✗'} hook:{_OPENCLAW_EXTRACTOR_HOOK_NAME}")
         if not extractor_ok:
             ok = False
 
         # Check plugin via openclaw plugins list (names don't truncate)
-        result = subprocess.run(["openclaw", "plugins", "list"], text=True, capture_output=True)
+        result = subprocess.run(
+            _openclaw_cmd(["openclaw", "plugins", "list"], profile),
+            text=True,
+            capture_output=True,
+        )
         plugin_ok = result.returncode == 0 and _OPENCLAW_PLUGIN_NAME in (result.stdout or "")
         details.append(f"  {'✓' if plugin_ok else '✗'} plugin:{_OPENCLAW_PLUGIN_NAME}")
         if not plugin_ok:
