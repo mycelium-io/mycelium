@@ -69,11 +69,59 @@ def _openclaw_state_dir(profile: str | None) -> Path:
     return Path.home() / ".openclaw"
 
 
-def _openclaw_cmd(args: list[str], profile: str | None) -> list[str]:
-    """Prefix openclaw subcommand with --profile <name> when non-default."""
+def _openclaw_cmd(args: list[str], profile: str | None, container: str | None = None) -> list[str]:
+    """Prefix openclaw subcommand with --profile and/or --container flags."""
+    extra: list[str] = []
     if profile and profile.lower() != "default":
-        return ["openclaw", "--profile", profile, *args[1:]]
+        extra += ["--profile", profile]
+    if container:
+        extra += ["--container", container]
+    if extra:
+        return ["openclaw", *extra, *args[1:]]
     return args
+
+
+def _openclaw_container_home(container: str) -> str:
+    """Return the $HOME path inside the container (defaults to /root)."""
+    result = subprocess.run(
+        ["docker", "exec", container, "sh", "-c", "echo $HOME"],
+        text=True,
+        capture_output=True,
+    )
+    home = result.stdout.strip()
+    return home if home else "/root"
+
+
+def _stage_assets_in_container(container: str, src: Path, container_dest: str) -> None:
+    """
+    docker cp src into container at container_dest, then chown to root (UID 0).
+
+    OpenClaw rejects plugins owned by non-root UIDs when running containerized,
+    so the chown is required for the plugin to load cleanly.
+    """
+    # Ensure the parent directory exists inside the container
+    parent = container_dest.rsplit("/", 1)[0]
+    subprocess.run(
+        ["docker", "exec", container, "mkdir", "-p", parent],
+        text=True,
+        capture_output=True,
+    )
+    result = subprocess.run(
+        ["docker", "cp", str(src), f"{container}:{container_dest}"],
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"docker cp to {container}:{container_dest} failed: {result.stderr.strip()}"
+        )
+    result = subprocess.run(
+        ["docker", "exec", "-u", "0", container, "chown", "-R", "0:0", container_dest],
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"chown in container {container} failed: {result.stderr.strip()}")
 
 
 # Assets that go into each agent's ~/.openclaw/ directory
@@ -87,7 +135,7 @@ _OPENCLAW_SCAFFOLD_ASSETS = [
 
 
 @doc_ref(
-    usage="mycelium adapter add <type> [--openclaw-profile NAME] [--dry-run] [--force]",
+    usage="mycelium adapter add <type> [--openclaw-profile NAME] [--openclaw-container NAME] [--dry-run] [--force]",
     desc="Install an agent framework adapter (openclaw, claude-code).",
     group="adapter",
 )
@@ -117,6 +165,12 @@ def add(
         "--openclaw-profile",
         help="Target a named OpenClaw profile (e.g. 'work' → ~/.openclaw-work/). Omit for default gateway.",
     ),
+    openclaw_container: str | None = typer.Option(
+        None,
+        "--openclaw-container",
+        help="OpenClaw gateway container name (e.g. 'openclaw'). Use when the gateway runs in Docker. Auto-read from OPENCLAW_CONTAINER env var.",
+        envvar="OPENCLAW_CONTAINER",
+    ),
 ) -> None:
     """
     Register and install an agent framework adapter, then optionally wire it into your environment.
@@ -125,6 +179,7 @@ def add(
         mycelium adapter add openclaw
         mycelium adapter add openclaw --reinstall
         mycelium adapter add openclaw --openclaw-profile work
+        mycelium adapter add openclaw --openclaw-container openclaw
         mycelium adapter add openclaw --step=local-gateway
         mycelium adapter add openclaw --step=docker-env
     """
@@ -201,19 +256,24 @@ def add(
             else:
                 plugin_src = _resolve_asset(f"extensions/{_OPENCLAW_PLUGIN_NAME}")
                 hook_src = _resolve_asset(f"hooks/{_OPENCLAW_HOOK_NAME}")
-                prefix = (
-                    f"openclaw --profile {openclaw_profile}"
-                    if openclaw_profile and openclaw_profile.lower() != "default"
-                    else "openclaw"
-                )
+                parts: list[str] = ["openclaw"]
+                if openclaw_profile and openclaw_profile.lower() != "default":
+                    parts += ["--profile", openclaw_profile]
+                if openclaw_container:
+                    parts += ["--container", openclaw_container]
+                prefix = " ".join(parts)
                 typer.echo(f"  {prefix} plugins install {plugin_src}")
                 typer.echo(f"  {prefix} hooks install   {hook_src}")
                 typer.echo(f"  state dir: {_openclaw_state_dir(openclaw_profile)}")
+                if openclaw_container:
+                    typer.echo(f"  container: {openclaw_container} (assets staged via docker cp)")
             typer.echo(f"  api_url: {config.server.api_url}")
             return
 
         if adapter_type == "openclaw":
-            _install_openclaw(verbose=verbose, profile=openclaw_profile)
+            _install_openclaw(
+                verbose=verbose, profile=openclaw_profile, container=openclaw_container
+            )
         elif adapter_type == "claude-code":
             _install_claude_code(verbose=verbose)
         else:
@@ -231,6 +291,8 @@ def add(
             }
             if openclaw_profile:
                 adapter_record["openclaw_profile"] = openclaw_profile
+            if openclaw_container:
+                adapter_record["openclaw_container"] = openclaw_container
             config.adapters[adapter_type] = adapter_record
             config.save()
 
@@ -321,6 +383,7 @@ def remove(
             _uninstall_openclaw(
                 config.adapters[adapter_type],
                 profile=config.adapters[adapter_type].get("openclaw_profile"),
+                container=config.adapters[adapter_type].get("openclaw_container"),
             )
 
         del config.adapters[adapter_type]
@@ -446,17 +509,23 @@ def _resolve_asset(subpath: str, adapter: str = "openclaw") -> Path:
     return dst
 
 
-def _install_openclaw(verbose: bool = False, profile: str | None = None) -> None:
+def _install_openclaw(
+    verbose: bool = False, profile: str | None = None, container: str | None = None
+) -> None:
     """
     Install the bundled openclaw plugin and hook.
 
     - Plugin (mycelium): handles session lifecycle + message forwarding
     - Hook (mycelium-inject): injects MYCELIUM_API_URL + MYCELIUM_ROOM_ID + coordination
       instructions into every agent bootstrap
+
+    When `container` is set, assets are staged inside the container via docker cp
+    (with root ownership) before install, so OpenClaw's container-side filesystem
+    resolver finds them correctly.
     """
 
     def _run(cmd: list[str], allow_already_exists: bool = False) -> None:
-        cmd = _openclaw_cmd(cmd, profile)
+        cmd = _openclaw_cmd(cmd, profile, container)
         if verbose:
             typer.echo(f"  running: {' '.join(cmd)}")
         result = subprocess.run(cmd, text=True, capture_output=not verbose)
@@ -472,6 +541,45 @@ def _install_openclaw(verbose: bool = False, profile: str | None = None) -> None
                 + (f": {stderr}" if stderr else "")
             )
 
+    if container:
+        # Gateway is containerized: stage assets inside the container so install
+        # paths resolve from the container filesystem, not the host-only uv path.
+        container_home = _openclaw_container_home(container)
+        state_suffix = f"-{profile}" if profile and profile.lower() != "default" else ""
+        container_state_dir = f"{container_home}/.openclaw{state_suffix}"
+
+        plugin_src = _resolve_asset(f"extensions/{_OPENCLAW_PLUGIN_NAME}")
+        container_plugin_path = f"/tmp/mycelium-stage/extensions/{_OPENCLAW_PLUGIN_NAME}"
+        if verbose:
+            typer.echo(f"  staging {plugin_src} → {container}:{container_plugin_path}")
+        _stage_assets_in_container(container, plugin_src, container_plugin_path)
+        _run(["openclaw", "plugins", "install", container_plugin_path], allow_already_exists=True)
+
+        hook_src = _resolve_asset(f"hooks/{_OPENCLAW_HOOK_NAME}")
+        container_hook_path = f"/tmp/mycelium-stage/hooks/{_OPENCLAW_HOOK_NAME}"
+        if verbose:
+            typer.echo(f"  staging {hook_src} → {container}:{container_hook_path}")
+        _stage_assets_in_container(container, hook_src, container_hook_path)
+        _run(["openclaw", "hooks", "install", container_hook_path], allow_already_exists=True)
+
+        extractor_src = _resolve_asset(f"hooks/{_OPENCLAW_EXTRACTOR_HOOK_NAME}")
+        container_extractor_path = f"/tmp/mycelium-stage/hooks/{_OPENCLAW_EXTRACTOR_HOOK_NAME}"
+        if verbose:
+            typer.echo(f"  staging {extractor_src} → {container}:{container_extractor_path}")
+        _stage_assets_in_container(container, extractor_src, container_extractor_path)
+        _run(["openclaw", "hooks", "install", container_extractor_path], allow_already_exists=True)
+
+        # Write container-side extension path into openclaw.json so the load path
+        # resolves from the container filesystem (not the host uv package path).
+        _allow_plugin(
+            _OPENCLAW_PLUGIN_NAME,
+            profile=profile,
+            extensions_base=Path(container_state_dir) / "extensions",
+        )
+        _install_openclaw_skill(profile=profile)
+        return
+
+    # ── Host-native install ───────────────────────────────────────────────────
     plugin_src = _resolve_asset(f"extensions/{_OPENCLAW_PLUGIN_NAME}")
     _run(["openclaw", "plugins", "install", str(plugin_src)], allow_already_exists=True)
 
@@ -636,8 +744,18 @@ def _register_claude_code_stop_hook(claude_dir: Path, verbose: bool = False) -> 
             typer.echo(f"  warning: could not register Stop hook: {e}")
 
 
-def _allow_plugin(plugin_id: str, profile: str | None = None) -> None:
-    """Register plugin_id in openclaw.json: allow list, load path, and entries."""
+def _allow_plugin(
+    plugin_id: str,
+    profile: str | None = None,
+    extensions_base: Path | None = None,
+) -> None:
+    """
+    Register plugin_id in openclaw.json: allow list, load path, and entries.
+
+    extensions_base overrides the default extensions directory — used when the
+    gateway runs in a container so the load path resolves from the container
+    filesystem rather than the host uv package path.
+    """
     state_dir = _openclaw_state_dir(profile)
     config_path = state_dir / "openclaw.json"
     if not config_path.exists():
@@ -654,7 +772,8 @@ def _allow_plugin(plugin_id: str, profile: str | None = None) -> None:
             allow_list.append(plugin_id)
 
         # Load path — tells openclaw where to find the extension
-        ext_path = str(state_dir / "extensions" / plugin_id)
+        ext_base = extensions_base if extensions_base is not None else (state_dir / "extensions")
+        ext_path = str(ext_base / plugin_id)
         load_section = plugins_section.setdefault("load", {})
         paths: list = load_section.setdefault("paths", [])
         if ext_path not in paths:
@@ -670,15 +789,23 @@ def _allow_plugin(plugin_id: str, profile: str | None = None) -> None:
         pass  # Non-fatal; install succeeds even if openclaw.json can't be updated
 
 
-def _uninstall_openclaw(adapter_record: dict, profile: str | None = None) -> None:
+def _uninstall_openclaw(
+    adapter_record: dict, profile: str | None = None, container: str | None = None
+) -> None:
     """Uninstall the mycelium plugin and hook (non-interactively)."""
     for cmd in [
         _openclaw_cmd(
-            ["openclaw", "plugins", "uninstall", _OPENCLAW_PLUGIN_NAME, "--force"], profile
+            ["openclaw", "plugins", "uninstall", _OPENCLAW_PLUGIN_NAME, "--force"],
+            profile,
+            container,
         ),
-        _openclaw_cmd(["openclaw", "hooks", "uninstall", _OPENCLAW_HOOK_NAME, "--force"], profile),
         _openclaw_cmd(
-            ["openclaw", "hooks", "uninstall", _OPENCLAW_EXTRACTOR_HOOK_NAME, "--force"], profile
+            ["openclaw", "hooks", "uninstall", _OPENCLAW_HOOK_NAME, "--force"], profile, container
+        ),
+        _openclaw_cmd(
+            ["openclaw", "hooks", "uninstall", _OPENCLAW_EXTRACTOR_HOOK_NAME, "--force"],
+            profile,
+            container,
         ),
     ]:
         result = subprocess.run(cmd, text=True, capture_output=True)
@@ -766,6 +893,7 @@ def _check_adapter_status(name: str, info: dict) -> dict:
 
     elif name == "openclaw":
         profile = info.get("openclaw_profile")
+        container = info.get("openclaw_container")
         state_dir = _openclaw_state_dir(profile)
 
         # Check skill via filesystem (openclaw has no skills install/list CLI)
@@ -790,7 +918,7 @@ def _check_adapter_status(name: str, info: dict) -> dict:
 
         # Check plugin via openclaw plugins list (names don't truncate)
         result = subprocess.run(
-            _openclaw_cmd(["openclaw", "plugins", "list"], profile),
+            _openclaw_cmd(["openclaw", "plugins", "list"], profile, container),
             text=True,
             capture_output=True,
         )
