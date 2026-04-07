@@ -171,6 +171,13 @@ async def synthesize_room(
         raise
     if result is None:
         return {"status": "no_memories", "message": "No new memories to synthesize"}
+    if result.get("status") == "needs_reindex":
+        return {
+            "status": "needs_reindex",
+            "message": f"Found {result['files_on_disk']} files on disk but none in search index. "
+            f"Run 'mycelium reindex {room_name}' to sync.",
+            "files_on_disk": result["files_on_disk"],
+        }
     return {"status": "complete", **result}
 
 

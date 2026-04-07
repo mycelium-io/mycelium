@@ -689,6 +689,13 @@ openclaw devices approve &lt;requestId&gt;
 <span class="comment"># Or approve the most recent:</span>
 openclaw devices approve <span class="flag">--latest</span></code></pre>
       <hr class="divider">
+      <h3 id="troubleshooting-13-synthesize-catchup-mismatch">13. Synthesize Returns "No Memories" but Catchup Shows Memories</h3>
+      <p><strong>Symptom</strong>: <code>mycelium synthesize</code> says "No new memories" but <code>mycelium catchup</code> shows memories exist.</p>
+      <p><strong>Cause</strong>: The filesystem and search index are out of sync. This happens when files were written directly to <code>.mycelium/rooms/</code> (e.g., via <code>cat &gt;</code> or git pull) or a previous API write partially failed.</p>
+      <p><strong>Fix</strong>: Re-index the room:</p>
+      <pre><code><span class="cmd">mycelium reindex</span> &lt;room-name&gt;</code></pre>
+      <p>Then run <code>mycelium synthesize</code> again.</p>
+      <hr class="divider">
       <h2 id="troubleshooting-configuration-reference">Configuration Reference</h2>
       <h3 id="troubleshooting-cli-settings-myceliumconfigtoml">CLI settings — <code>~/.mycelium/config.toml</code></h3>
       <div class="table-wrap">
