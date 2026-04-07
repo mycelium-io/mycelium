@@ -133,7 +133,9 @@ def _ensure_cfn_databases(db_container: str = "mycelium-db") -> None:
         )
 
 
-def _wait_for_db_container(compose_path: Path, db_service: str = "mycelium-db", timeout: int = 60) -> bool:
+def _wait_for_db_container(
+    compose_path: Path, db_service: str = "mycelium-db", timeout: int = 60
+) -> bool:
     """Poll until the DB container shows 'healthy' in docker compose ps output."""
     import time
 
@@ -590,7 +592,9 @@ def status(ctx: typer.Context) -> None:
                     # Show specific error (HTTP 401, connection refused, etc.)
                     typer.secho(f"Backend unreachable: {backend_error}", fg=typer.colors.RED)
                     if "HTTP 401" in backend_error or "HTTP 403" in backend_error:
-                        typer.echo("\nCheck the backend URL (MYCELIUM_API_URL env var or server.api_url in ~/.mycelium/config.toml)")
+                        typer.echo(
+                            "\nCheck the backend URL (MYCELIUM_API_URL env var or server.api_url in ~/.mycelium/config.toml)"
+                        )
                     elif "Cannot connect" in backend_error:
                         typer.echo("\nTo start services:")
                         typer.echo("  mycelium up")

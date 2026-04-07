@@ -240,13 +240,21 @@ def _write_env_file(env_path: Path, llm_config: dict[str, str]) -> None:
 
 
 def _restart_backend(
-    compose_path: Path, env_path: Path, profiles: list[str] | None = None, api_url: str = "http://localhost:8000"
+    compose_path: Path,
+    env_path: Path,
+    profiles: list[str] | None = None,
+    api_url: str = "http://localhost:8000",
 ) -> None:
     """Restart only the backend container and wait for it to become healthy."""
     args = [
-        "docker", "compose", "-p", "mycelium",
-        "-f", str(compose_path),
-        "--env-file", str(env_path),
+        "docker",
+        "compose",
+        "-p",
+        "mycelium",
+        "-f",
+        str(compose_path),
+        "--env-file",
+        str(env_path),
     ]
     for p in profiles or []:
         args += ["--profile", p]
@@ -462,25 +470,47 @@ def _ensure_cfn_databases(db_container: str = "mycelium-db") -> None:
     for db in ("cfn_mgmt", "cfn_cp"):
         # Check if DB exists, create if not. Can't use \gexec with psql -c.
         check = subprocess.run(
-            ["docker", "exec", db_container, "psql", "-U", "postgres", "-tAc",
-             f"SELECT 1 FROM pg_database WHERE datname = '{db}'"],
+            [
+                "docker",
+                "exec",
+                db_container,
+                "psql",
+                "-U",
+                "postgres",
+                "-tAc",
+                f"SELECT 1 FROM pg_database WHERE datname = '{db}'",
+            ],
             capture_output=True,
             text=True,
         )
         if check.returncode != 0:
-            typer.secho(f"  ✗ Could not check for database '{db}': {check.stderr.strip()}", fg=typer.colors.RED)
+            typer.secho(
+                f"  ✗ Could not check for database '{db}': {check.stderr.strip()}",
+                fg=typer.colors.RED,
+            )
             continue
         if check.stdout.strip() == "1":
             typer.echo(f"  ~ Database '{db}' already exists")
             continue
         create = subprocess.run(
-            ["docker", "exec", db_container, "psql", "-U", "postgres", "-c",
-             f"CREATE DATABASE {db}"],
+            [
+                "docker",
+                "exec",
+                db_container,
+                "psql",
+                "-U",
+                "postgres",
+                "-c",
+                f"CREATE DATABASE {db}",
+            ],
             capture_output=True,
             text=True,
         )
         if create.returncode != 0:
-            typer.secho(f"  ✗ Failed to create database '{db}': {create.stderr.strip()}", fg=typer.colors.RED)
+            typer.secho(
+                f"  ✗ Failed to create database '{db}': {create.stderr.strip()}",
+                fg=typer.colors.RED,
+            )
         else:
             typer.echo(f"  ✓ Created database '{db}'")
 
@@ -697,8 +727,12 @@ def install(
     ),
     llm_base_url: str = typer.Option("", "--llm-base-url", help="LLM base URL (non-interactive)"),
     llm_api_key: str = typer.Option("", "--llm-api-key", help="LLM API key (non-interactive)"),
-    db_port: int = typer.Option(0, "--db-port", help="Host port for Postgres (0 = auto-detect, default 5432)"),
-    backend_port: int = typer.Option(0, "--backend-port", help="Host port for backend API (0 = auto-detect, default 8000)"),
+    db_port: int = typer.Option(
+        0, "--db-port", help="Host port for Postgres (0 = auto-detect, default 5432)"
+    ),
+    backend_port: int = typer.Option(
+        0, "--backend-port", help="Host port for backend API (0 = auto-detect, default 8000)"
+    ),
     ioc: bool = typer.Option(True, "--ioc/--no-ioc", help="Enable IoC CFN stack (default: on)"),
 ) -> None:
     """
@@ -753,7 +787,9 @@ def install(
             compose_profiles: list[str] = []
             if ioc:
                 llm_config["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
-                llm_config["COGNITION_FABRIC_NODE_URL"] = "http://ioc-cognition-fabric-node-svc:9002"
+                llm_config["COGNITION_FABRIC_NODE_URL"] = (
+                    "http://ioc-cognition-fabric-node-svc:9002"
+                )
                 compose_profiles.append("cfn")
 
             # Resolve ports — use explicit flags, or auto-detect conflicts
@@ -775,7 +811,10 @@ def install(
             llm_config["MYCELIUM_BACKEND_PORT"] = str(custom_ports["backend"])
             llm_config["MYCELIUM_DATA_DIR"] = str(Path.home() / ".mycelium")
 
-            typer.secho("  ⚠  Experimental software — please report issues at github.com/mycelium-io/mycelium/issues", fg=typer.colors.YELLOW)
+            typer.secho(
+                "  ⚠  Experimental software — please report issues at github.com/mycelium-io/mycelium/issues",
+                fg=typer.colors.YELLOW,
+            )
             typer.secho("  ── Starting services ──────────────────────────────────", bold=True)
             env_dir = Path.home() / ".mycelium"
             env_dir.mkdir(parents=True, exist_ok=True)
@@ -814,7 +853,9 @@ def install(
                 if workspace_id:
                     typer.echo(f"  ✓ Workspace  {workspace_id}")
                 else:
-                    typer.secho("  ⚠  Could not fetch workspace from CFN mgmt plane", fg=typer.colors.YELLOW)
+                    typer.secho(
+                        "  ⚠  Could not fetch workspace from CFN mgmt plane", fg=typer.colors.YELLOW
+                    )
             else:
                 try:
                     workspace_id, mas_id = _provision_backend(api_url)
@@ -829,7 +870,9 @@ def install(
                 ws_patch: dict[str, str] = {"WORKSPACE_ID": workspace_id}
                 if ioc:
                     ws_patch["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
-                    ws_patch["COGNITION_FABRIC_NODE_URL"] = "http://ioc-cognition-fabric-node-svc:9002"
+                    ws_patch["COGNITION_FABRIC_NODE_URL"] = (
+                        "http://ioc-cognition-fabric-node-svc:9002"
+                    )
                 _patch_env_vars(env_path, ws_patch)
                 _restart_backend(compose_path, env_path, compose_profiles, api_url)
 
@@ -911,6 +954,7 @@ def install(
         if not _pull_platform:
             try:
                 import platform as _pf
+
                 if _pf.machine() == "arm64":
                     _pull_platform = "linux/amd64"
             except Exception:
@@ -1070,7 +1114,9 @@ def install(
             if workspace_id:
                 typer.echo(f"  ✓ Workspace  {workspace_id}")
             else:
-                typer.secho("  ⚠  Could not fetch workspace from CFN mgmt plane", fg=typer.colors.YELLOW)
+                typer.secho(
+                    "  ⚠  Could not fetch workspace from CFN mgmt plane", fg=typer.colors.YELLOW
+                )
         else:
             try:
                 workspace_id, mas_id = _provision_backend(api_url)
