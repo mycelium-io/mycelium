@@ -70,14 +70,25 @@ def _openclaw_state_dir(profile: str | None) -> Path:
 
 
 def _openclaw_cmd(args: list[str], profile: str | None, container: str | None = None) -> list[str]:
-    """Prefix openclaw subcommand with --profile and/or --container flags."""
-    extra: list[str] = []
+    """Build an openclaw command, routing through `docker exec` when containerized.
+
+    When `container` is set we bypass OpenClaw's own `--container` flag (which
+    uses `docker inspect` name resolution that fails for many Compose-generated
+    names) and shell out via `docker exec` directly — the same strategy already
+    used by `_stage_assets_in_container`.
+    """
+    profile_args: list[str] = []
     if profile and profile.lower() != "default":
-        extra += ["--profile", profile]
+        profile_args = ["--profile", profile]
+
+    # Strip the leading "openclaw" from args so we can rebuild cleanly
+    subcmd = args[1:] if args and args[0] == "openclaw" else args
+
     if container:
-        extra += ["--container", container]
-    if extra:
-        return ["openclaw", *extra, *args[1:]]
+        return ["docker", "exec", container, "openclaw", *profile_args, *subcmd]
+
+    if profile_args:
+        return ["openclaw", *profile_args, *subcmd]
     return args
 
 

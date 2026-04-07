@@ -52,6 +52,23 @@ openclaw approvals allowlist add --agent "*" "~/.local/bin/mycelium"
 openclaw gateway restart
 ```
 
+### Containerized gateway
+
+If OpenClaw runs inside Docker (VPS, self-hosted, Docker Compose), pass the
+container name so Mycelium stages assets and runs install commands inside the
+container via `docker exec`:
+
+```bash
+mycelium adapter add openclaw --openclaw-container openclaw-gateway-1
+
+# Or set via env var
+export OPENCLAW_CONTAINER=openclaw-gateway-1
+mycelium adapter add openclaw
+```
+
+This handles path resolution, file ownership (root UID), and `openclaw.json`
+load-path configuration automatically.
+
 ### Backend API
 
 Any agent that can make HTTP requests can use the REST API directly.

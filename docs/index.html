@@ -577,6 +577,14 @@ openclaw approvals allowlist add <span class="flag">--agent</span> <span class="
 
 <span class="comment"># Restart the gateway to pick up the plugin</span>
 openclaw gateway restart</code></pre>
+      <h3 id="architecture-containerized-gateway">Containerized gateway</h3>
+      <p>If OpenClaw runs inside Docker (VPS, self-hosted, Docker Compose), pass the container name so Mycelium stages assets and runs install commands inside the container via <code>docker exec</code>:</p>
+      <pre><code><span class="cmd">mycelium adapter add</span> openclaw <span class="flag">--openclaw-container</span> openclaw-gateway-1
+
+<span class="comment"># Or set via env var</span>
+export OPENCLAW_CONTAINER=openclaw-gateway-1
+<span class="cmd">mycelium adapter add</span> openclaw</code></pre>
+      <p>This handles path resolution, file ownership (root UID), and <code>openclaw.json</code> load-path configuration automatically.</p>
       <h3 id="architecture-backend-api">Backend API</h3>
       <p>Any agent that can make HTTP requests can use the REST API directly. Interactive API docs are available at <code>http://localhost:8888/docs</code> when the backend is running.</p>
     </section>
@@ -689,10 +697,30 @@ openclaw devices approve &lt;requestId&gt;
 <span class="comment"># Or approve the most recent:</span>
 openclaw devices approve <span class="flag">--latest</span></code></pre>
       <hr class="divider">
-      <h3 id="troubleshooting-13-synthesize-catchup-mismatch">13. Synthesize Returns "No Memories" but Catchup Shows Memories</h3>
-      <p><strong>Symptom</strong>: <code>mycelium synthesize</code> says "No new memories" but <code>mycelium catchup</code> shows memories exist.</p>
-      <p><strong>Cause</strong>: The filesystem and search index are out of sync. This happens when files were written directly to <code>.mycelium/rooms/</code> (e.g., via <code>cat &gt;</code> or git pull) or a previous API write partially failed.</p>
-      <p><strong>Fix</strong>: Re-index the room:</p>
+      <h3 id="troubleshooting-13-openclaw-adapter-fails-on-containerized-gateway">13. OpenClaw Adapter Fails on Containerized Gateway</h3>
+      <p><strong>Symptom</strong>: <code>mycelium adapter add openclaw --openclaw-container &lt;name&gt;</code> fails with <code>No running container matched &quot;&lt;name&gt;&quot; under podman or docker</code>, even though <code>docker exec &lt;name&gt; openclaw status</code> works fine.</p>
+      <p><strong>Cause</strong>: Mycelium routes install commands through <code>docker exec</code> to avoid OpenClaw&#x27;s <code>--container</code> flag, which uses <code>docker inspect</code> for container-name resolution. If you see this error, you may be running an older version of the CLI that still uses <code>openclaw --container</code>.</p>
+      <p><strong>Fix</strong>: Upgrade to the latest Mycelium CLI:</p>
+      <pre><code>curl <span class="flag">-fsSL</span> https://mycelium-io.github.io/mycelium/install.sh | bash</code></pre>
+      <p>Verify the container is reachable:</p>
+      <pre><code><span class="comment"># Get the exact container name</span>
+docker ps <span class="flag">--format</span> <span class="str">&quot;{{.Names}}&quot;</span> | grep <span class="flag">-i</span> openclaw
+
+<span class="comment"># Verify connectivity</span>
+docker exec &lt;container-name&gt; openclaw status
+
+<span class="comment"># Install with container flag</span>
+<span class="cmd">mycelium adapter add</span> openclaw <span class="flag">--openclaw-container</span> &lt;container-name&gt;</code></pre>
+      <p>You can also set <code>OPENCLAW_CONTAINER</code> as an environment variable instead of passing <code>--openclaw-container</code> every time.</p>
+      <hr class="divider">
+      <h3 id="troubleshooting-14-synthesize-returns-no-memories-but-catchup-shows-memories">14. Synthesize Returns &quot;No Memories&quot; but Catchup Shows Memories</h3>
+      <p><strong>Symptom</strong>: <code>mycelium synthesize</code> says &quot;No new memories&quot; but <code>mycelium catchup</code> shows memories exist.</p>
+      <p><strong>Cause</strong>: The filesystem and search index are out of sync. This happens when:</p>
+      <ul>
+        <li>Files were written directly to <code>.mycelium/rooms/</code> (e.g., via <code>cat &gt;</code> or git pull)</li>
+        <li>A previous API write partially failed</li>
+      </ul>
+      <p><strong>Fix</strong>: Re-index the room to sync filesystem → database:</p>
       <pre><code><span class="cmd">mycelium reindex</span> &lt;room-name&gt;</code></pre>
       <p>Then run <code>mycelium synthesize</code> again.</p>
       <hr class="divider">
@@ -991,6 +1019,45 @@ openclaw gateway restart
           <code>plugins.allow</code> to suppress the warning.
         </div>
       </div>
+
+      <h2 id="oc-containerized">Containerized OpenClaw gateway</h2>
+      <p>
+        If your OpenClaw gateway runs inside Docker (common on VPS and self-hosted
+        setups), pass <code>--openclaw-container</code> with the container name:
+      </p>
+      <pre><code><span class="cmd">mycelium adapter add</span> openclaw <span class="flag">--openclaw-container</span> <span class="arg">openclaw-gateway-1</span></code></pre>
+      <p>This changes the install behavior in three ways:</p>
+      <ol>
+        <li><strong>Assets are staged inside the container</strong> via <code>docker cp</code>, so
+            install paths resolve from the container filesystem (not your host-only
+            <code>uv</code> package path).</li>
+        <li><strong>File ownership is fixed</strong> &mdash; files are <code>chown</code>ed to root
+            (UID&nbsp;0) inside the container, which OpenClaw requires for non-bundled
+            plugins.</li>
+        <li><strong>All <code>openclaw</code> CLI commands run via <code>docker exec</code></strong>
+            rather than the host <code>openclaw</code> binary, avoiding container-name
+            resolution issues in OpenClaw's <code>--container</code> flag.</li>
+      </ol>
+      <p>You can also set the container name via environment variable:</p>
+      <pre><code><span class="comment"># Set once, use everywhere</span>
+export OPENCLAW_CONTAINER=openclaw-gateway-1
+<span class="cmd">mycelium adapter add</span> openclaw</code></pre>
+
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body">
+          <strong>Named profiles + containers:</strong> If your containerized gateway
+          uses a non-default profile, combine both flags:
+          <code>mycelium adapter add openclaw --openclaw-container openclaw-gateway-1 --openclaw-profile work</code>
+        </div>
+      </div>
+
+      <h3>Finding your container name</h3>
+      <pre><code><span class="comment"># List running containers</span>
+docker ps --format "{{.Names}}" | grep -i openclaw
+
+<span class="comment"># Verify the gateway is healthy inside the container</span>
+docker exec <span class="arg">&lt;container-name&gt;</span> openclaw status</code></pre>
     </section>
 
     <hr class="divider">

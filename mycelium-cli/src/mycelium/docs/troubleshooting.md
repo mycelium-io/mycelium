@@ -197,7 +197,42 @@ openclaw devices approve --latest
 
 ---
 
-### 13. Synthesize Returns "No Memories" but Catchup Shows Memories
+### 13. OpenClaw Adapter Fails on Containerized Gateway
+
+**Symptom**: `mycelium adapter add openclaw --openclaw-container <name>` fails with
+`No running container matched "<name>" under podman or docker`, even though
+`docker exec <name> openclaw status` works fine.
+
+**Cause**: Mycelium routes install commands through `docker exec` to avoid OpenClaw's
+`--container` flag, which uses `docker inspect` for container-name resolution. If you
+see this error, you may be running an older version of the CLI that still uses
+`openclaw --container`.
+
+**Fix**: Upgrade to the latest Mycelium CLI:
+
+```bash
+curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
+```
+
+Verify the container is reachable:
+
+```bash
+# Get the exact container name
+docker ps --format "{{.Names}}" | grep -i openclaw
+
+# Verify connectivity
+docker exec <container-name> openclaw status
+
+# Install with container flag
+mycelium adapter add openclaw --openclaw-container <container-name>
+```
+
+You can also set `OPENCLAW_CONTAINER` as an environment variable instead of passing
+`--openclaw-container` every time.
+
+---
+
+### 14. Synthesize Returns "No Memories" but Catchup Shows Memories
 
 **Symptom**: `mycelium synthesize` says "No new memories" but `mycelium catchup` shows memories exist.
 
