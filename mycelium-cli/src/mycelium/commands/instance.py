@@ -920,3 +920,133 @@ def migrate(
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)
+
+
+# ── Pull command ─────────────────────────────────────────────────────────────
+
+
+@doc_ref(
+    usage="mycelium pull [--no-restart]",
+    desc="Pull latest Docker images and restart services.",
+    group="setup",
+)
+def pull(
+    ctx: typer.Context,
+    no_restart: bool = typer.Option(
+        False, "--no-restart", help="Pull images but don't restart services"
+    ),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmations"),  # noqa: ARG001
+) -> None:
+    """
+    Pull latest Docker images and restart services.
+
+    Fetches the newest versions of all Mycelium container images, then
+    restarts the stack so the updated images take effect. Also runs
+    database migrations.
+
+    \b
+    Examples:
+        mycelium pull              # pull + restart + migrate
+        mycelium pull --no-restart # pull only, restart later with mycelium up
+    """
+    try:
+        compose_path = _get_compose_path()
+
+        if not compose_path.exists():
+            typer.secho(f"Compose file not found at {compose_path}", fg=typer.colors.RED)
+            typer.echo("Run 'mycelium install' first.")
+            raise typer.Exit(1)
+
+        env_path = _get_env_path()
+        cfn = _cfn_enabled()
+
+        base = _compose_base_cmd(compose_path, env_path)
+        if cfn:
+            base = base + ["--profile", "cfn"]
+
+        # Pull
+        typer.secho("Pulling latest images...", bold=True)
+        pull_result = subprocess.run(base + ["pull"], text=True)
+        if pull_result.returncode != 0:
+            typer.secho("Pull failed.", fg=typer.colors.RED)
+            raise typer.Exit(pull_result.returncode)
+        typer.secho("✓ Images pulled", fg=typer.colors.GREEN)
+
+        if no_restart:
+            typer.echo("")
+            typer.echo("Images updated. Run 'mycelium up' to restart with new images.")
+            return
+
+        # Restart
+        typer.echo("")
+        typer.secho("Restarting services...", bold=True)
+
+        if cfn:
+            # Start DB first, provision CFN databases, then bring up everything
+            db_cmd = base[:2] + ["--progress=plain"] + base[2:] + ["up", "-d", "mycelium-db"]
+            subprocess.run(db_cmd, capture_output=True, text=True)
+            _wait_for_db_container(compose_path)
+            _ensure_cfn_databases()
+
+        up_args = ["up", "-d", "--force-recreate", "--remove-orphans"]
+        up_cmd = base[:2] + ["--progress=plain"] + base[2:] + up_args
+        result = subprocess.run(up_cmd, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            output = (result.stdout or "") + (result.stderr or "")
+            if "is already in use by container" in output:
+                _remove_managed_containers()
+                result = subprocess.run(base + up_args, check=False)
+                if result.returncode != 0:
+                    raise typer.Exit(result.returncode)
+            else:
+                if result.stdout:
+                    typer.echo(result.stdout)
+                if result.stderr:
+                    typer.echo(result.stderr, err=True)
+                raise typer.Exit(result.returncode)
+
+        typer.secho("✓ Services restarted", fg=typer.colors.GREEN)
+
+        # Health check
+        import time
+
+        api_url = "http://localhost:8000"
+        if env_path and env_path.exists():
+            from dotenv import dotenv_values
+
+            vals = dotenv_values(env_path)
+            port = vals.get("MYCELIUM_BACKEND_PORT", "8000")
+            api_url = f"http://localhost:{port}"
+
+        typer.echo("  Waiting for health...")
+        deadline = time.time() + 60
+        healthy = False
+        while time.time() < deadline:
+            try:
+                r = httpx.get(f"{api_url}/health", timeout=3)
+                if r.status_code < 500:
+                    healthy = True
+                    break
+            except Exception:
+                pass
+            time.sleep(3)
+
+        if healthy:
+            typer.secho("✓ Backend healthy", fg=typer.colors.GREEN)
+        else:
+            typer.secho("⚠  Backend health check timed out", fg=typer.colors.YELLOW)
+
+        # Migrations
+        from mycelium.commands.install import _run_migrations
+
+        _run_migrations()
+
+        typer.echo("")
+        typer.secho("Done.", fg=typer.colors.GREEN, bold=True)
+
+    except typer.Exit:
+        raise
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)

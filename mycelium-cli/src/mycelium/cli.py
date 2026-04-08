@@ -15,6 +15,7 @@ from mycelium.commands import (
     adapter,
     config,
     docs,
+    doctor,
     install,
     instance,
     memory,
@@ -86,6 +87,9 @@ def skill() -> None:
 # Top-level instance commands
 app.command(name="init")(instance.init)
 app.command(name="install")(install.install)
+app.command(name="upgrade")(install.upgrade)
+app.command(name="pull")(instance.pull)
+app.command(name="doctor")(doctor.doctor)
 app.command(name="up")(instance.start)
 app.command(name="down")(instance.stop)
 app.command(name="status")(instance.status)
