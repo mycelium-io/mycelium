@@ -669,17 +669,23 @@ def _install_openclaw(
         return
 
     # ── Host-native install ───────────────────────────────────────────────────
+    # When a profile is set, openclaw may report "already exists" if the plugin
+    # is installed on the default profile — but it still needs to be installed
+    # on the target profile.  Only tolerate "already exists" for the default
+    # profile where a prior install is genuinely a no-op.
+    tolerate_exists = not (profile and profile.lower() != "default")
+
     plugin_src = _resolve_asset(f"extensions/{_OPENCLAW_PLUGIN_NAME}")
-    _run(["openclaw", "plugins", "install", str(plugin_src)], allow_already_exists=True)
+    _run(["openclaw", "plugins", "install", str(plugin_src)], allow_already_exists=tolerate_exists)
 
     # Add plugin to plugins.allow so openclaw doesn't warn on every command
     _allow_plugin(_OPENCLAW_PLUGIN_NAME, profile=profile)
 
     hook_src = _resolve_asset(f"hooks/{_OPENCLAW_HOOK_NAME}")
-    _run(["openclaw", "hooks", "install", str(hook_src)], allow_already_exists=True)
+    _run(["openclaw", "hooks", "install", str(hook_src)], allow_already_exists=tolerate_exists)
 
     extractor_src = _resolve_asset(f"hooks/{_OPENCLAW_EXTRACTOR_HOOK_NAME}")
-    _run(["openclaw", "hooks", "install", str(extractor_src)], allow_already_exists=True)
+    _run(["openclaw", "hooks", "install", str(extractor_src)], allow_already_exists=tolerate_exists)
 
     # Install skill into the openclaw workspace skills directory
     _install_openclaw_skill(profile=profile)
@@ -840,14 +846,20 @@ def _allow_plugin(
     container: str | None = None,
 ) -> None:
     """
-    Register plugin_id in openclaw.json: allow list, load path, and entries.
+    Register plugin_id in openclaw.json: allow list, and (container only) load path and entries.
+
+    On host-native installs, ``openclaw plugins install`` already writes the
+    install record, load path, and entries — we only add the ``plugins.allow``
+    entry to suppress the security warning.
+
+    When *container* is set, ``openclaw plugins install`` runs inside the
+    container but doesn't always write the allow list or load path correctly,
+    so we write all three (allow, load.paths, entries) into the container's
+    openclaw.json.
 
     extensions_base overrides the default extensions directory — used when the
     gateway runs in a container so the load path resolves from the container
     filesystem rather than the host uv package path.
-
-    When *container* is set the config is read from / written to the container's
-    openclaw.json so provenance is visible to the containerized OpenClaw process.
     """
     try:
         import json as _json
@@ -867,28 +879,30 @@ def _allow_plugin(
 
         plugins_section = cfg.setdefault("plugins", {})
 
+        # Allow list — suppresses security warning on all paths
         allow_list: list = plugins_section.setdefault("allow", [])
         if plugin_id not in allow_list:
             allow_list.append(plugin_id)
 
-        ext_base = (
-            extensions_base
-            if extensions_base is not None
-            else (
-                Path(cfg_path).parent / "extensions"
-                if container
-                else _openclaw_state_dir(profile) / "extensions"
+        # Load path and entries — only for container installs where openclaw
+        # plugins install doesn't reliably write these itself.  On host-native
+        # installs, openclaw manages these and writing our own guess can create
+        # stale entries that block all subsequent openclaw commands.
+        if container:
+            ext_base = (
+                extensions_base
+                if extensions_base is not None
+                else Path(cfg_path).parent / "extensions"
             )
-        )
-        ext_path = str(ext_base / plugin_id)
-        load_section = plugins_section.setdefault("load", {})
-        paths: list = load_section.setdefault("paths", [])
-        if ext_path not in paths:
-            paths.append(ext_path)
+            ext_path = str(ext_base / plugin_id)
+            load_section = plugins_section.setdefault("load", {})
+            paths: list = load_section.setdefault("paths", [])
+            if ext_path not in paths:
+                paths.append(ext_path)
 
-        entries: dict = plugins_section.setdefault("entries", {})
-        if plugin_id not in entries:
-            entries[plugin_id] = {"enabled": True}
+            entries: dict = plugins_section.setdefault("entries", {})
+            if plugin_id not in entries:
+                entries[plugin_id] = {"enabled": True}
 
         if container:
             _write_container_json(container, cfg_path, cfg)
@@ -940,7 +954,10 @@ def _allow_plugin_remove(
     profile: str | None = None,
     container: str | None = None,
 ) -> None:
-    """Remove plugin_id from plugins.allow, load.paths, and entries in openclaw.json.
+    """Remove plugin_id from plugins.allow (and, for containers, load.paths and entries).
+
+    On host-native installs, ``openclaw plugins uninstall`` manages load.paths
+    and entries — we only touch the allow list.
 
     When *container* is set, operates on the container's config instead of the host's.
     """
@@ -966,16 +983,15 @@ def _allow_plugin_remove(
         if plugin_id in allow_list:
             allow_list.remove(plugin_id)
 
+        # Load path and entries — only for container installs (see _allow_plugin)
         if container:
             ext_dir = str(Path(cfg_path).parent / "extensions" / plugin_id)
-        else:
-            ext_dir = str(_openclaw_state_dir(profile) / "extensions" / plugin_id)
-        paths: list = plugins_section.get("load", {}).get("paths", [])
-        if ext_dir in paths:
-            paths.remove(ext_dir)
+            paths: list = plugins_section.get("load", {}).get("paths", [])
+            if ext_dir in paths:
+                paths.remove(ext_dir)
 
-        entries: dict = plugins_section.get("entries", {})
-        entries.pop(plugin_id, None)
+            entries: dict = plugins_section.get("entries", {})
+            entries.pop(plugin_id, None)
 
         if container:
             _write_container_json(container, cfg_path, cfg)
