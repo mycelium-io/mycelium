@@ -17,6 +17,7 @@ import json as json_module
 import shutil
 import subprocess
 import tempfile
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlparse
@@ -134,6 +135,28 @@ def _stage_assets_in_container(container: str, src: Path, container_dest: str) -
     )
     if result.returncode != 0:
         raise RuntimeError(f"chown in container {container} failed: {result.stderr.strip()}")
+
+
+def _wait_container_healthy(container: str, timeout: int = 30) -> None:
+    """Block until a container is running after a gateway restart.
+
+    ``openclaw plugins/hooks install`` writes to ``openclaw.json`` which
+    triggers an async gateway restart.  Any ``docker exec`` issued while the
+    restart is in-flight is killed (exit 137).  This helper polls until the
+    container is back and accepting exec calls.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        result = subprocess.run(
+            ["docker", "exec", container, "true"],
+            capture_output=True,
+        )
+        if result.returncode == 0:
+            return
+        time.sleep(1)
+    raise RuntimeError(
+        f"Container {container} did not become healthy within {timeout}s"
+    )
 
 
 def _container_config_path(container: str, profile: str | None) -> str:
@@ -414,6 +437,12 @@ def remove(
     ctx: typer.Context,
     adapter_type: str = typer.Argument(..., help="Adapter type to remove"),
     force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
+    openclaw_container: str | None = typer.Option(
+        None,
+        "--openclaw-container",
+        envvar="OPENCLAW_CONTAINER",
+        help="Docker container name running the OpenClaw gateway (overrides saved config)",
+    ),
 ) -> None:
     """Unregister and uninstall an adapter."""
     try:
@@ -430,10 +459,13 @@ def remove(
                 raise typer.Exit(0)
 
         if adapter_type == "openclaw":
+            container = openclaw_container or config.adapters[adapter_type].get(
+                "openclaw_container"
+            )
             _uninstall_openclaw(
                 config.adapters[adapter_type],
                 profile=config.adapters[adapter_type].get("openclaw_profile"),
-                container=config.adapters[adapter_type].get("openclaw_container"),
+                container=container,
             )
 
         del config.adapters[adapter_type]
@@ -586,6 +618,11 @@ def _install_openclaw(
                 if verbose:
                     typer.echo("  (already installed, skipping)")
                 return
+            # Exit 137 (SIGKILL) in container mode means the gateway restarted
+            # after a config change — the install command completed but the
+            # docker exec process was killed by the container restart.
+            if container and result.returncode == 137:
+                return
             raise RuntimeError(
                 f"`{' '.join(cmd[:3])}` failed (exit {result.returncode})"
                 + (f": {stderr}" if stderr else "")
@@ -604,6 +641,7 @@ def _install_openclaw(
             typer.echo(f"  staging {plugin_src} → {container}:{container_plugin_path}")
         _stage_assets_in_container(container, plugin_src, container_plugin_path)
         _run(["openclaw", "plugins", "install", container_plugin_path], allow_already_exists=True)
+        _wait_container_healthy(container)
 
         hook_src = _resolve_asset(f"hooks/{_OPENCLAW_HOOK_NAME}")
         container_hook_path = f"/tmp/mycelium-stage/hooks/{_OPENCLAW_HOOK_NAME}"
@@ -611,6 +649,7 @@ def _install_openclaw(
             typer.echo(f"  staging {hook_src} → {container}:{container_hook_path}")
         _stage_assets_in_container(container, hook_src, container_hook_path)
         _run(["openclaw", "hooks", "install", container_hook_path], allow_already_exists=True)
+        _wait_container_healthy(container)
 
         extractor_src = _resolve_asset(f"hooks/{_OPENCLAW_EXTRACTOR_HOOK_NAME}")
         container_extractor_path = f"/tmp/mycelium-stage/hooks/{_OPENCLAW_EXTRACTOR_HOOK_NAME}"
@@ -618,6 +657,7 @@ def _install_openclaw(
             typer.echo(f"  staging {extractor_src} → {container}:{container_extractor_path}")
         _stage_assets_in_container(container, extractor_src, container_extractor_path)
         _run(["openclaw", "hooks", "install", container_extractor_path], allow_already_exists=True)
+        _wait_container_healthy(container)
 
         # Write allow list, load path, and entries into the *container's*
         # openclaw.json so OpenClaw's provenance check passes at runtime.
@@ -880,12 +920,17 @@ def _uninstall_openclaw(
         ),
     ]:
         result = subprocess.run(cmd, text=True, capture_output=True)
-        # Non-zero is acceptable if already removed manually
-        if result.returncode != 0 and "not found" not in (result.stderr or "").lower():
+        # Non-zero is acceptable if already removed manually; 137 means the
+        # gateway restarted after the config change (expected in container mode).
+        if result.returncode == 137 and container:
+            pass
+        elif result.returncode != 0 and "not found" not in (result.stderr or "").lower():
             typer.secho(
                 f"  warning: {' '.join(cmd[:3])} exited {result.returncode}",
                 fg=typer.colors.YELLOW,
             )
+        if container:
+            _wait_container_healthy(container)
     _allow_plugin_remove(_OPENCLAW_PLUGIN_NAME, profile=profile, container=container)
     skill_dir = _openclaw_state_dir(profile) / "workspace" / "skills" / _OPENCLAW_SKILL_NAME
     if skill_dir.exists():
