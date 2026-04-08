@@ -19,6 +19,7 @@ import subprocess
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 import typer
 
@@ -941,14 +942,30 @@ def _allow_plugin_remove(
         pass
 
 
+def _docker_api_url(config: "MyceliumConfig") -> str:
+    """Derive a Docker-friendly MYCELIUM_API_URL from the configured api_url.
+
+    Rewrites localhost/127.0.0.1 to host.docker.internal so containers can
+    reach the backend running on the host.
+    """
+    parsed = urlparse(config.server.api_url)
+    hostname = parsed.hostname or "localhost"
+    port = parsed.port or 8000
+    if hostname in ("localhost", "127.0.0.1", "0.0.0.0"):
+        hostname = "host.docker.internal"
+    scheme = parsed.scheme or "http"
+    return f"{scheme}://{hostname}:{port}"
+
+
 def _step_docker_env(config: "MyceliumConfig") -> None:
     """Print env vars needed for Docker-based experiment agent containers."""
+    docker_url = _docker_api_url(config)
     typer.secho("Docker agent env vars", bold=True)
     typer.echo("")
     typer.echo("  Add to your docker-compose environment block or experiment .env:")
     typer.echo("")
     typer.secho("  # .env", dim=True)
-    typer.echo("  MYCELIUM_API_URL=http://host.docker.internal:8000")
+    typer.echo(f"  MYCELIUM_API_URL={docker_url}")
     if config.server.workspace_id:
         typer.echo(f"  MYCELIUM_WORKSPACE_ID={config.server.workspace_id}")
     if config.server.mas_id:
