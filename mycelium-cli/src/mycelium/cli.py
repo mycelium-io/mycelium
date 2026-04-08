@@ -65,18 +65,37 @@ def main(
 
 
 @app.command(name="skill")
-def skill() -> None:
-    """Print the Mycelium SKILL.md (Claude Code adapter skill definition)."""
+def skill(
+    claude_code: bool = typer.Option(
+        False,
+        "--claude-code",
+        help="Print the Claude Code adapter SKILL.md instead of the OpenClaw one.",
+    ),
+) -> None:
+    """Print the Mycelium SKILL.md (OpenClaw adapter skill definition).
+
+    Use --claude-code to print the Claude Code adapter skill instead.
+    """
+    if claude_code:
+        rel = "adapters/claude-code/skills/mycelium/SKILL.md"
+        fallback_parts = ("adapters", "claude-code", "skills", "mycelium", "SKILL.md")
+    else:
+        rel = "adapters/openclaw/extensions/mycelium/skills/mycelium/SKILL.md"
+        fallback_parts = (
+            "adapters",
+            "openclaw",
+            "extensions",
+            "mycelium",
+            "skills",
+            "mycelium",
+            "SKILL.md",
+        )
+
     try:
-        with resources.as_file(
-            resources.files("mycelium").joinpath("adapters/claude-code/skills/mycelium/SKILL.md")
-        ) as p:
+        with resources.as_file(resources.files("mycelium").joinpath(rel)) as p:
             typer.echo(p.read_text())
     except (TypeError, FileNotFoundError):
-        # Fallback for editable installs
-        fallback = (
-            Path(__file__).parent / "adapters" / "claude-code" / "skills" / "mycelium" / "SKILL.md"
-        )
+        fallback = Path(__file__).parent.joinpath(*fallback_parts)
         if fallback.exists():
             typer.echo(fallback.read_text())
         else:
