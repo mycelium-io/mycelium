@@ -11,6 +11,7 @@ Checks:
   4. Backend API reachable
   5. Workspace ID in sync (CFN mgmt plane vs .env vs config.toml)
   6. .env ↔ config.toml drift (api_url / port)
+  7. Room MAS IDs present (CFN-enabled installs)
 """
 
 import subprocess
@@ -432,6 +433,57 @@ def _check_config_drift() -> CheckResult:
     )
 
 
+def _check_room_mas_ids() -> CheckResult:
+    """Check that all rooms have a MAS ID (CFN-enabled installs only)."""
+    env_path = Path.home() / ".mycelium" / ".env"
+    if not env_path.exists():
+        return CheckResult(name="Room MAS IDs", status="ok", message="Skipped (no .env)")
+
+    from dotenv import dotenv_values
+
+    vals = dotenv_values(env_path)
+    if not vals.get("CFN_MGMT_URL"):
+        return CheckResult(name="Room MAS IDs", status="ok", message="Skipped (CFN not enabled)")
+
+    from mycelium.config import MyceliumConfig
+
+    try:
+        cfg = MyceliumConfig.load()
+        api_url = cfg.server.api_url or "http://localhost:8000"
+    except Exception:
+        api_url = "http://localhost:8000"
+
+    try:
+        import httpx
+
+        with httpx.Client(base_url=api_url, timeout=5) as client:
+            resp = client.get("/rooms")
+            resp.raise_for_status()
+            rooms = resp.json()
+    except Exception:
+        return CheckResult(
+            name="Room MAS IDs", status="ok", message="Skipped (backend unreachable)"
+        )
+
+    # Session sub-rooms (name contains ":session:") don't need MAS IDs
+    top_level = [r for r in rooms if ":session:" not in r["name"]]
+    missing = [r["name"] for r in top_level if not r.get("mas_id")]
+    if not missing:
+        return CheckResult(
+            name="Room MAS IDs",
+            status="ok",
+            message=f"All {len(top_level)} room(s) have MAS IDs",
+        )
+
+    return CheckResult(
+        name="Room MAS IDs",
+        status="warning",
+        message=f"{len(missing)} room(s) missing MAS ID",
+        details=[f"  {name}" for name in missing]
+        + ["Fix: run 'mycelium doctor --fix' after workspace ID is synced"],
+    )
+
+
 # ── Main doctor command ──────────────────────────────────────────────────────
 
 
@@ -468,6 +520,7 @@ def doctor(
             _check_backend_reachable(),
             _check_workspace_id(),
             _check_config_drift(),
+            _check_room_mas_ids(),
         ]
 
         if json_output:

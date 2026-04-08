@@ -774,7 +774,6 @@ def install(
         # ── Detect existing install and redirect ──────────────────────────
         _existing_env = Path.home() / ".mycelium" / ".env"
         _existing_cfg = Path.home() / ".mycelium" / "config.toml"
-
         if not force and _existing_env.exists() and _existing_cfg.exists():
             typer.secho("\n  Mycelium is already installed.", fg=typer.colors.CYAN, bold=True)
             typer.echo("")

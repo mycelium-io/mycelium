@@ -301,6 +301,7 @@ def _generate_cli_reference() -> tuple[str, str]:
     # Force-import all command modules so decorators run
     import mycelium.commands.adapter  # noqa: F401
     import mycelium.commands.config  # noqa: F401
+    import mycelium.commands.doctor  # noqa: F401
     import mycelium.commands.instance  # noqa: F401
     import mycelium.commands.install  # noqa: F401
     import mycelium.commands.memory  # noqa: F401

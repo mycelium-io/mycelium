@@ -63,7 +63,7 @@ mycelium memory ls
 # Expect: 4 memories listed
 
 # List by prefix
-mycelium memory decisions
+mycelium memory ls decisions/
 # Expect: 2 decisions shown in table
 
 # Semantic search
@@ -111,13 +111,19 @@ curl -s http://localhost:8000/rooms/e2e-test-room | python3 -c "import sys,json;
 mycelium session await --handle agent-alpha -r e2e-test-room
 # Expect: JSON with type=tick, round>=1, action=respond, issue_options present
 
-# Both accept repeatedly until consensus
-# Loop: check state, respond accept, sleep 15
-# Accept for both agent-alpha and agent-beta each round
+# Accept loop — repeat until consensus is returned
+# Use `mycelium message respond accept` (NOT `mycelium session respond` — that doesn't exist)
+# Both agents must accept each round before CFN advances
+mycelium message respond accept --room e2e-test-room --handle agent-alpha
+mycelium message respond accept --room e2e-test-room --handle agent-beta
+mycelium session await --handle agent-alpha -r e2e-test-room
+# Repeat above 3 lines until type=consensus
+
+# To propose a counter-offer instead of accepting:
+#   mycelium message propose ISSUE=VALUE ISSUE=VALUE --room e2e-test-room --handle agent-alpha
 
 # Verify consensus
-# Expect: coordination_state=complete
-# Expect: coordination_consensus message with assignments dict, broken=false
+# Expect: type=consensus, assignments dict populated, broken=false
 ```
 
 **Fail criteria**:
@@ -145,6 +151,66 @@ mycelium session join --handle agent-delta -m "Ship safe" -r e2e-test-room
 **Fail criteria**:
 - `session create` returns the old completed session → `_spawn_session_room` not filtering completed state
 - CFN start fails → stale Session rows not cleaned up (check `_finish_cfn`)
+
+## Phase 5.5: Knowledge Extraction Hook (PENDING — not yet tested)
+
+Test that the `mycelium-knowledge-extract` OpenClaw hook correctly ships conversation turns to the backend and that the backend's two-stage LLM extraction writes memories into the room.
+
+**Prerequisites**: OpenClaw running with the `mycelium-knowledge-extract` hook installed, an agent session that has completed at least one turn, `~/.mycelium/config.toml` with valid `workspace_id` and `mas_id`.
+
+```bash
+# 1. Verify hook is installed
+ls ~/.openclaw/hooks/mycelium-knowledge-extract/handler.js
+
+# 2. Check hook state dir (delta tracking)
+ls ~/.openclaw/mycelium-extract-state/
+
+# 3. Manually fire the endpoint with a minimal synthetic payload
+curl -sf -X POST http://localhost:8001/api/knowledge/ingest \
+  -H "Content-Type: application/json" \
+  -d '{
+    "workspace_id": "<WORKSPACE_ID from ~/.mycelium/.env>",
+    "mas_id": "<MAS_ID from room>",
+    "agent_id": "e2e-agent",
+    "records": [{
+      "schema": "openclaw-conversation-v1",
+      "extractedAt": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'",
+      "session": {"agentId": "e2e-agent", "sessionId": "e2e-test-1", "channel": "default", "cwd": "/tmp"},
+      "stats": {"totalEntries": 2, "turns": 1, "toolCallCount": 0, "thinkingTurnCount": 0, "totalCost": 0},
+      "turns": [{
+        "index": 0,
+        "timestamp": null,
+        "model": "claude-sonnet-4-6",
+        "stopReason": "end_turn",
+        "usage": null,
+        "userMessage": "What is the best way to cache database queries?",
+        "thinking": null,
+        "toolCalls": [],
+        "response": "Use Redis with a TTL — set keys per query hash, expire after 5 minutes."
+      }]
+    }]
+  }' | python3 -m json.tool
+# Expect: 200 with extraction results
+
+# 4. Verify memories appeared in the room (LLM extraction writes to room namespace)
+mycelium memory ls
+# Expect: new entries from knowledge extraction (key pattern TBD — check what ingestion_svc writes)
+
+# 5. End-to-end via real OpenClaw agent
+# Run an agent session in a room, wait for hook to fire on command:new
+# Check ~/.openclaw/mycelium-knowledge-extract.log for fallback entries (means ingest failed)
+# Check room memory for extracted knowledge
+```
+
+**Fail criteria**:
+- 503 from `/api/knowledge/ingest` → LLM auth failure (check `LLM_MODEL` and key in `.env`)
+- 200 but no memories written → `IngestionService.ingest` extraction returned empty results; check backend logs
+- Hook fires but logs fallback entries → `getIngestTarget()` can't resolve `apiUrl`/`workspaceId`/`masId`; check `~/.mycelium/config.toml`
+- Hook never fires → check OpenClaw hook registration (`openclaw hooks list`)
+
+**TODO**: Determine what memory keys `IngestionService` writes and add assertions above.
+
+---
 
 ## Phase 5: OpenClaw Integration
 
