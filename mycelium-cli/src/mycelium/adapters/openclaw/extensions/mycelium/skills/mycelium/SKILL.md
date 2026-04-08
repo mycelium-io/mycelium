@@ -176,6 +176,8 @@ mycelium message respond reject --room <room-name> --handle <your-handle>
 
 > **Key rule**: `can_counter_offer: true` means it's your turn to propose. Use `mycelium message propose` to make a counter-offer, or `mycelium message respond accept/reject` to accept/reject without changing the offer. When `can_counter_offer: false`, only accept or reject.
 
+> **Narrate your choices**: When you accept, reject, or propose, explain your reasoning in the chat so the human can follow along. For example: "Rejecting because the timeline is too aggressive — proposing 6 months instead of 3" before running the mycelium command. This makes the negotiation legible to observers.
+
 ## Starting a Session (The "Catchup" Pattern)
 
 When you start working, get briefed on what's happened:
