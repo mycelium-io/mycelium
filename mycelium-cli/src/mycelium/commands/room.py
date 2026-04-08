@@ -212,6 +212,8 @@ def create(
             typer.echo(f"  ID:      {room_data.get('id')}")
             typer.echo(f"  Created: {str(room_data.get('created_at', ''))[:10]}")
             typer.echo(f"  Path:    {room_dir}")
+            if room_data.get("mas_id"):
+                typer.echo(f"  MAS ID:  {room_data.get('mas_id')}")
             typer.echo("")
             typer.echo(f"  Run 'mycelium room use {name}' to make it your active room")
 

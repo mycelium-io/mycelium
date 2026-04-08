@@ -104,6 +104,30 @@ def _ask(prompt: str, default: str = "") -> str:
 def _prompt_llm() -> dict[str, str]:
     from beaupy import select
 
+    # Offer to reuse existing LLM config if present
+    env_path = Path.home() / ".mycelium" / ".env"
+    if env_path.exists():
+        from dotenv import dotenv_values
+
+        existing = dotenv_values(env_path)
+        model = existing.get("LLM_MODEL", "")
+        key = existing.get("LLM_API_KEY", "")
+        if model:
+            print()
+            keep = _ask(
+                f"  LLM is currently \x1b[1m{model}\x1b[0m — keep existing config? [Y/n] ",
+                default="y",
+            )
+            if keep.lower() in ("y", "yes", ""):
+                result: dict[str, str] = {"LLM_MODEL": model}
+                if key:
+                    result["LLM_API_KEY"] = key
+                base = existing.get("LLM_BASE_URL", "")
+                if base:
+                    result["LLM_BASE_URL"] = base
+                print(f"  \x1b[32m✓\x1b[0m Keeping {model}")
+                return result
+
     print()
     print("  \x1b[1;36m? LLM for CognitiveEngine\x1b[0m")
     print()
@@ -681,7 +705,7 @@ def _write_mycelium_config(api_url: str, workspace_id: str, mas_id: str) -> None
 
 
 @doc_ref(
-    usage="mycelium install [--yes] [--non-interactive]",
+    usage="mycelium install [--yes] [--non-interactive] [--force]",
     desc="Interactive installer — Docker check, LLM config, <code>docker compose up</code>, provision workspace.",
     group="setup",
 )
@@ -708,6 +732,9 @@ def install(
         0, "--backend-port", help="Host port for backend API (0 = auto-detect, default 8000)"
     ),
     ioc: bool = typer.Option(True, "--ioc/--no-ioc", help="Enable IoC CFN stack (default: on)"),
+    force: bool = typer.Option(
+        False, "--force", help="Force full reinstall even if already installed"
+    ),
 ) -> None:
     """
     Install a Mycelium instance.
@@ -715,6 +742,10 @@ def install(
     By default this runs interactively — it plays an intro animation, prompts
     for LLM configuration, and walks you through bringing up all services via
     Docker Compose.
+
+    If Mycelium is already installed, this command will suggest using
+    ``mycelium upgrade``, ``mycelium pull``, or ``mycelium doctor`` instead.
+    Pass --force to reinstall from scratch.
 
     \b
     NON-INTERACTIVE MODE
@@ -735,10 +766,25 @@ def install(
       --db-port       Host port for Postgres (default: 5432, auto-increments on conflict)
       --backend-port  Host port for backend API (default: 8000, auto-increments on conflict)
       --no-ioc        Skip the IoC CFN management-plane stack (default: included)
+      --force         Force full reinstall (ignore existing configuration)
     """
     import sys
 
     try:
+        # ── Detect existing install and redirect ──────────────────────────
+        _existing_env = Path.home() / ".mycelium" / ".env"
+        _existing_cfg = Path.home() / ".mycelium" / "config.toml"
+        if not force and _existing_env.exists() and _existing_cfg.exists():
+            typer.secho("\n  Mycelium is already installed.", fg=typer.colors.CYAN, bold=True)
+            typer.echo("")
+            typer.echo("  To update:")
+            typer.echo("    mycelium upgrade    — fetch latest CLI")
+            typer.echo("    mycelium pull       — pull latest containers and restart")
+            typer.echo("    mycelium doctor     — diagnose and fix issues")
+            typer.echo("")
+            typer.echo("  Pass --force to reinstall from scratch.")
+            raise typer.Exit(0)
+
         if non_interactive:
             # ── Non-interactive path ───────────────────────────────────────
             docker_ok, docker_ver = _check_docker()
@@ -1134,6 +1180,146 @@ def install(
         sys.stdout.flush()
         typer.secho("  Cancelled.", fg=typer.colors.YELLOW)
         raise typer.Exit(0) from None
+    except typer.Exit:
+        raise
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+        raise typer.Exit(1) from None
+
+
+# ── Upgrade command ──────────────────────────────────────────────────────────
+
+_GITHUB_REPO = "mycelium-io/mycelium"
+
+
+def _get_latest_release_tag() -> str | None:
+    """Follow GitHub /releases/latest redirect to get the version tag."""
+    import urllib.request
+
+    url = f"https://github.com/{_GITHUB_REPO}/releases/latest"
+    try:
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+            # Redirected URL ends with /tag/v0.2.0
+            final_url = resp.url
+        tag = final_url.rsplit("/", 1)[-1]
+        return tag if tag.startswith("v") else None
+    except Exception:
+        return None
+
+
+def _parse_version(tag: str) -> tuple[int, ...]:
+    """Parse a version tag like 'v0.2.0' or '0.2.0' into a comparable tuple."""
+    clean = tag.lstrip("v")
+    parts = []
+    for p in clean.split("."):
+        try:
+            parts.append(int(p))
+        except ValueError:
+            parts.append(0)
+    return tuple(parts)
+
+
+@doc_ref(
+    usage="mycelium upgrade [--check]",
+    desc="Upgrade the Mycelium CLI to the latest release.",
+    group="setup",
+)
+def upgrade(
+    ctx: typer.Context,
+    check: bool = typer.Option(False, "--check", help="Just check for updates, don't install"),
+) -> None:
+    """
+    Upgrade the Mycelium CLI to the latest release.
+
+    Fetches the latest version from GitHub releases and installs it via
+    ``uv tool install``. After upgrading the CLI, reminds you to run
+    ``mycelium pull`` if containers also need updating.
+
+    \b
+    Examples:
+        mycelium upgrade          # upgrade CLI to latest
+        mycelium upgrade --check  # just check, don't install
+    """
+    try:
+        from mycelium import __version__
+
+        typer.echo(f"  Current CLI version: v{__version__}")
+        typer.echo("")
+
+        typer.echo("  Checking for updates...")
+        latest_tag = _get_latest_release_tag()
+
+        if not latest_tag:
+            typer.secho("  ⚠  Could not fetch latest release from GitHub", fg=typer.colors.YELLOW)
+            typer.echo(f"    Check manually: https://github.com/{_GITHUB_REPO}/releases")
+            raise typer.Exit(1)
+
+        latest_version = latest_tag.lstrip("v")
+        current_tuple = _parse_version(__version__)
+        latest_tuple = _parse_version(latest_version)
+
+        if current_tuple >= latest_tuple:
+            typer.secho(f"  ✓ CLI is up to date (v{__version__})", fg=typer.colors.GREEN)
+            raise typer.Exit(0)
+
+        typer.echo(f"  New version available: v{__version__} → {latest_tag}")
+        typer.echo("")
+
+        if check:
+            typer.echo(f"  Run 'mycelium upgrade' to install {latest_tag}")
+            raise typer.Exit(1)  # exit 1 = outdated (useful for scripts)
+
+        # Try wheel from GitHub first, fall back to PyPI
+        typer.echo("  Upgrading CLI...")
+
+        wheel_name = f"mycelium_cli-{latest_version}-py3-none-any.whl"
+        wheel_url = f"https://github.com/{_GITHUB_REPO}/releases/download/{latest_tag}/{wheel_name}"
+        wheel_tmp = Path(f"/tmp/{wheel_name}")  # noqa: S108
+
+        installed = False
+
+        # Try GitHub wheel
+        try:
+            import urllib.request
+
+            urllib.request.urlretrieve(wheel_url, str(wheel_tmp))  # noqa: S310
+            result = subprocess.run(
+                ["uv", "tool", "install", str(wheel_tmp), "--force"],
+                capture_output=True,
+                text=True,
+            )
+            wheel_tmp.unlink(missing_ok=True)
+            if result.returncode == 0:
+                installed = True
+        except Exception:
+            wheel_tmp.unlink(missing_ok=True)
+
+        # Fall back to PyPI
+        if not installed:
+            typer.echo("    (GitHub wheel unavailable, trying PyPI...)")
+            result = subprocess.run(
+                ["uv", "tool", "install", f"mycelium-cli=={latest_version}", "--force"],
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode == 0:
+                installed = True
+
+        if not installed:
+            typer.secho("  ✗ Upgrade failed", fg=typer.colors.RED)
+            if result.stderr:
+                typer.echo(f"    {result.stderr.strip()}")
+            raise typer.Exit(1)
+
+        typer.secho(f"  ✓ CLI updated to {latest_tag}", fg=typer.colors.GREEN)
+
+        # Remind about containers
+        typer.echo("")
+        typer.echo("  Containers may also need updating.")
+        typer.echo("  Run: mycelium pull")
+
     except typer.Exit:
         raise
     except Exception as e:

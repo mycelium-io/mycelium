@@ -27,6 +27,14 @@ workspace automatically. No manual backend setup required.
 mycelium install
 ```
 
+Already installed? Use these commands instead:
+
+```bash
+mycelium upgrade   # update the CLI binary
+mycelium pull      # pull latest images and restart services
+mycelium doctor    # diagnose and fix configuration issues
+```
+
 ## First Room
 
 Create a persistent room and start sharing context:
