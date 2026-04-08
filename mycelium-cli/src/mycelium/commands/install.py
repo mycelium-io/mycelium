@@ -182,32 +182,6 @@ def _prompt_llm() -> dict[str, str]:
     return {}
 
 
-def _prompt_ioc() -> bool:
-    from beaupy import select
-
-    print()
-    print("  \x1b[1;36m? IoC integration (Cisco Internet of Cognition)\x1b[0m")
-    print("  \x1b[2mAdds the CFN management plane — workspace registry, MAS registry,\x1b[0m")
-    print("  \x1b[2mmemory provider registry. Mycelium registers itself on startup.\x1b[0m")
-    print()
-
-    options = [
-        "Yes  — install with IoC CFN management plane (default)",
-        "No   — Mycelium only",
-    ]
-
-    choice = select(options, cursor="  ▸ ", cursor_style="cyan")
-    if choice is None:
-        raise KeyboardInterrupt
-
-    enabled = choice.startswith("Yes")
-    if enabled:
-        print("  \x1b[32m✓\x1b[0m IoC CFN stack enabled")
-    else:
-        print("  \x1b[2m~\x1b[0m IoC skipped")
-    return enabled
-
-
 # ── Env file ─────────────────────────────────────────────────────────────────
 
 
@@ -1030,7 +1004,7 @@ def install(
         # ── Phase 2: Interactive prompts ──────────────────────────────────
         llm_config = _prompt_llm()
 
-        ioc_enabled = _prompt_ioc()
+        ioc_enabled = True  # IoC is always enabled; use --no-ioc in non-interactive mode to skip
         compose_profiles: list[str] = []
         if ioc_enabled:
             llm_config["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"

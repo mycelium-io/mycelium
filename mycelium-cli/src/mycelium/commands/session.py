@@ -86,8 +86,8 @@ def create(
                 )
             else:
                 typer.secho(
-                    "  CFN:  not configured (coordination will use local mode)",
-                    fg=typer.colors.YELLOW,
+                    "  CFN:  not configured (negotiation sessions require IoC — run mycelium install with IoC enabled)",
+                    fg=typer.colors.RED,
                 )
             typer.echo("")
             typer.echo(
