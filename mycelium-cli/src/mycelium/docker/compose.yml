@@ -15,6 +15,9 @@ services:
     platform: linux/amd64
     container_name: mycelium-db
     restart: unless-stopped
+    env_file:
+      - path: ../.env
+        required: false
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${MYCELIUM_DB_PASSWORD:-password}
@@ -38,6 +41,9 @@ services:
     pull_policy: always
     container_name: mycelium-backend
     restart: unless-stopped
+    env_file:
+      - path: ../.env
+        required: false
     depends_on:
       mycelium-db:
         condition: service_healthy
@@ -48,13 +54,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium
       GRAPH_DB_URL: postgresql://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium
-      CFN_MGMT_URL: ${CFN_MGMT_URL:-}
-      COGNITION_FABRIC_NODE_URL: ${COGNITION_FABRIC_NODE_URL:-}
-      WORKSPACE_ID: ${WORKSPACE_ID:-}
       API_BASE_URL: http://mycelium-backend:8000
-      LLM_MODEL: ${LLM_MODEL:-anthropic/claude-sonnet-4-6}
-      LLM_API_KEY: ${LLM_API_KEY:-}
-      LLM_BASE_URL: ${LLM_BASE_URL:-}
       COORDINATION_TICK_TIMEOUT_SECONDS: ${COORDINATION_TICK_TIMEOUT_SECONDS:-30}
     volumes:
       - ${MYCELIUM_DATA_DIR:-~/.mycelium}:/root/.mycelium
@@ -74,6 +74,9 @@ services:
     container_name: mycelium-graph-viewer
     restart: unless-stopped
     profiles: [dev]
+    env_file:
+      - path: ../.env
+        required: false
     environment:
       DB_HOST: mycelium-db
       DB_PORT: 5432
@@ -92,6 +95,9 @@ services:
     container_name: ioc-cfn-mgmt-plane-svc
     restart: unless-stopped
     profiles: [cfn]
+    env_file:
+      - path: ../.env
+        required: false
     depends_on:
       mycelium-db:
         condition: service_healthy
@@ -124,6 +130,9 @@ services:
     container_name: ioc-cognition-fabric-node-svc
     restart: unless-stopped
     profiles: [cfn]
+    env_file:
+      - path: ../.env
+        required: false
     depends_on:
       mycelium-db:
         condition: service_healthy
@@ -141,9 +150,6 @@ services:
       DB_PASSWORD: ${MYCELIUM_DB_PASSWORD:-password}
       DB_SSL_MODE: disable
       PORT: 9002
-      LLM_MODEL: ${LLM_MODEL:-anthropic/claude-sonnet-4-6}
-      LLM_API_KEY: ${LLM_API_KEY:-}
-      LLM_BASE_URL: ${LLM_BASE_URL:-}
       HEARTBEAT_INTERVAL_SECONDS: ${HEARTBEAT_INTERVAL_SECONDS:-29}
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:9002/api/internal/diagnostics/health')\" || exit 1"]
