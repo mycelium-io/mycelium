@@ -17,8 +17,10 @@ import json as json_module
 import shutil
 import subprocess
 import tempfile
+import time
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 import typer
 
@@ -133,6 +135,66 @@ def _stage_assets_in_container(container: str, src: Path, container_dest: str) -
     )
     if result.returncode != 0:
         raise RuntimeError(f"chown in container {container} failed: {result.stderr.strip()}")
+
+
+def _wait_container_healthy(container: str, timeout: int = 30) -> None:
+    """Block until a container is running after a gateway restart.
+
+    ``openclaw plugins/hooks install`` writes to ``openclaw.json`` which
+    triggers an async gateway restart.  Any ``docker exec`` issued while the
+    restart is in-flight is killed (exit 137).  This helper polls until the
+    container is back and accepting exec calls.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        result = subprocess.run(
+            ["docker", "exec", container, "true"],
+            capture_output=True,
+        )
+        if result.returncode == 0:
+            return
+        time.sleep(1)
+    raise RuntimeError(
+        f"Container {container} did not become healthy within {timeout}s"
+    )
+
+
+def _container_config_path(container: str, profile: str | None) -> str:
+    """Return the openclaw.json path inside a container."""
+    home = _openclaw_container_home(container)
+    suffix = f"-{profile}" if profile and profile.lower() != "default" else ""
+    return f"{home}/.openclaw{suffix}/openclaw.json"
+
+
+def _read_container_json(container: str, path: str) -> dict | None:
+    """Read and parse a JSON file inside a container, or None if missing."""
+    result = subprocess.run(
+        ["docker", "exec", container, "cat", path],
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        return None
+    try:
+        import json as _json
+
+        return _json.loads(result.stdout)
+    except Exception:
+        return None
+
+
+def _write_container_json(container: str, path: str, data: dict) -> None:
+    """Write a dict as JSON to a file inside a container."""
+    import json as _json
+
+    payload = _json.dumps(data, indent=2)
+    subprocess.run(
+        ["docker", "exec", "-i", container, "tee", path],
+        input=payload,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
 
 
 # Assets that go into each agent's ~/.openclaw/ directory
@@ -375,6 +437,12 @@ def remove(
     ctx: typer.Context,
     adapter_type: str = typer.Argument(..., help="Adapter type to remove"),
     force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
+    openclaw_container: str | None = typer.Option(
+        None,
+        "--openclaw-container",
+        envvar="OPENCLAW_CONTAINER",
+        help="Docker container name running the OpenClaw gateway (overrides saved config)",
+    ),
 ) -> None:
     """Unregister and uninstall an adapter."""
     try:
@@ -391,10 +459,13 @@ def remove(
                 raise typer.Exit(0)
 
         if adapter_type == "openclaw":
+            container = openclaw_container or config.adapters[adapter_type].get(
+                "openclaw_container"
+            )
             _uninstall_openclaw(
                 config.adapters[adapter_type],
                 profile=config.adapters[adapter_type].get("openclaw_profile"),
-                container=config.adapters[adapter_type].get("openclaw_container"),
+                container=container,
             )
 
         del config.adapters[adapter_type]
@@ -547,6 +618,11 @@ def _install_openclaw(
                 if verbose:
                     typer.echo("  (already installed, skipping)")
                 return
+            # Exit 137 (SIGKILL) in container mode means the gateway restarted
+            # after a config change — the install command completed but the
+            # docker exec process was killed by the container restart.
+            if container and result.returncode == 137:
+                return
             raise RuntimeError(
                 f"`{' '.join(cmd[:3])}` failed (exit {result.returncode})"
                 + (f": {stderr}" if stderr else "")
@@ -565,6 +641,7 @@ def _install_openclaw(
             typer.echo(f"  staging {plugin_src} → {container}:{container_plugin_path}")
         _stage_assets_in_container(container, plugin_src, container_plugin_path)
         _run(["openclaw", "plugins", "install", container_plugin_path], allow_already_exists=True)
+        _wait_container_healthy(container)
 
         hook_src = _resolve_asset(f"hooks/{_OPENCLAW_HOOK_NAME}")
         container_hook_path = f"/tmp/mycelium-stage/hooks/{_OPENCLAW_HOOK_NAME}"
@@ -572,6 +649,7 @@ def _install_openclaw(
             typer.echo(f"  staging {hook_src} → {container}:{container_hook_path}")
         _stage_assets_in_container(container, hook_src, container_hook_path)
         _run(["openclaw", "hooks", "install", container_hook_path], allow_already_exists=True)
+        _wait_container_healthy(container)
 
         extractor_src = _resolve_asset(f"hooks/{_OPENCLAW_EXTRACTOR_HOOK_NAME}")
         container_extractor_path = f"/tmp/mycelium-stage/hooks/{_OPENCLAW_EXTRACTOR_HOOK_NAME}"
@@ -579,13 +657,15 @@ def _install_openclaw(
             typer.echo(f"  staging {extractor_src} → {container}:{container_extractor_path}")
         _stage_assets_in_container(container, extractor_src, container_extractor_path)
         _run(["openclaw", "hooks", "install", container_extractor_path], allow_already_exists=True)
+        _wait_container_healthy(container)
 
-        # Write container-side extension path into openclaw.json so the load path
-        # resolves from the container filesystem (not the host uv package path).
+        # Write allow list, load path, and entries into the *container's*
+        # openclaw.json so OpenClaw's provenance check passes at runtime.
         _allow_plugin(
             _OPENCLAW_PLUGIN_NAME,
             profile=profile,
             extensions_base=Path(container_state_dir) / "extensions",
+            container=container,
         )
         _install_openclaw_skill(profile=profile)
         return
@@ -759,6 +839,7 @@ def _allow_plugin(
     plugin_id: str,
     profile: str | None = None,
     extensions_base: Path | None = None,
+    container: str | None = None,
 ) -> None:
     """
     Register plugin_id in openclaw.json: allow list, load path, and entries.
@@ -766,36 +847,55 @@ def _allow_plugin(
     extensions_base overrides the default extensions directory — used when the
     gateway runs in a container so the load path resolves from the container
     filesystem rather than the host uv package path.
+
+    When *container* is set the config is read from / written to the container's
+    openclaw.json so provenance is visible to the containerized OpenClaw process.
     """
-    state_dir = _openclaw_state_dir(profile)
-    config_path = state_dir / "openclaw.json"
-    if not config_path.exists():
-        return
     try:
         import json as _json
 
-        cfg = _json.loads(config_path.read_text())
+        if container:
+            cfg_path = _container_config_path(container, profile)
+            cfg = _read_container_json(container, cfg_path)
+            if cfg is None:
+                return
+        else:
+            state_dir = _openclaw_state_dir(profile)
+            cfg_path = str(state_dir / "openclaw.json")
+            local_path = Path(cfg_path)
+            if not local_path.exists():
+                return
+            cfg = _json.loads(local_path.read_text())
+
         plugins_section = cfg.setdefault("plugins", {})
 
-        # Allow list (suppresses security warning)
         allow_list: list = plugins_section.setdefault("allow", [])
         if plugin_id not in allow_list:
             allow_list.append(plugin_id)
 
-        # Load path — tells openclaw where to find the extension
-        ext_base = extensions_base if extensions_base is not None else (state_dir / "extensions")
+        ext_base = (
+            extensions_base
+            if extensions_base is not None
+            else (
+                Path(cfg_path).parent / "extensions"
+                if container
+                else _openclaw_state_dir(profile) / "extensions"
+            )
+        )
         ext_path = str(ext_base / plugin_id)
         load_section = plugins_section.setdefault("load", {})
         paths: list = load_section.setdefault("paths", [])
         if ext_path not in paths:
             paths.append(ext_path)
 
-        # Entries — enables the plugin
         entries: dict = plugins_section.setdefault("entries", {})
         if plugin_id not in entries:
             entries[plugin_id] = {"enabled": True}
 
-        config_path.write_text(_json.dumps(cfg, indent=2))
+        if container:
+            _write_container_json(container, cfg_path, cfg)
+        else:
+            Path(cfg_path).write_text(_json.dumps(cfg, indent=2))
     except Exception:
         pass  # Non-fatal; install succeeds even if openclaw.json can't be updated
 
@@ -820,55 +920,97 @@ def _uninstall_openclaw(
         ),
     ]:
         result = subprocess.run(cmd, text=True, capture_output=True)
-        # Non-zero is acceptable if already removed manually
-        if result.returncode != 0 and "not found" not in (result.stderr or "").lower():
+        # Non-zero is acceptable if already removed manually; 137 means the
+        # gateway restarted after the config change (expected in container mode).
+        if result.returncode == 137 and container:
+            pass
+        elif result.returncode != 0 and "not found" not in (result.stderr or "").lower():
             typer.secho(
                 f"  warning: {' '.join(cmd[:3])} exited {result.returncode}",
                 fg=typer.colors.YELLOW,
             )
-    _allow_plugin_remove(_OPENCLAW_PLUGIN_NAME, profile=profile)
+        if container:
+            _wait_container_healthy(container)
+    _allow_plugin_remove(_OPENCLAW_PLUGIN_NAME, profile=profile, container=container)
     skill_dir = _openclaw_state_dir(profile) / "workspace" / "skills" / _OPENCLAW_SKILL_NAME
     if skill_dir.exists():
         shutil.rmtree(skill_dir, ignore_errors=True)
 
 
-def _allow_plugin_remove(plugin_id: str, profile: str | None = None) -> None:
-    """Remove plugin_id from plugins.allow, load.paths, and entries in openclaw.json."""
-    state_dir = _openclaw_state_dir(profile)
-    config_path = state_dir / "openclaw.json"
-    if not config_path.exists():
-        return
+def _allow_plugin_remove(
+    plugin_id: str,
+    profile: str | None = None,
+    container: str | None = None,
+) -> None:
+    """Remove plugin_id from plugins.allow, load.paths, and entries in openclaw.json.
+
+    When *container* is set, operates on the container's config instead of the host's.
+    """
     try:
         import json as _json
 
-        cfg = _json.loads(config_path.read_text())
+        if container:
+            cfg_path = _container_config_path(container, profile)
+            cfg = _read_container_json(container, cfg_path)
+            if cfg is None:
+                return
+        else:
+            state_dir = _openclaw_state_dir(profile)
+            cfg_path = str(state_dir / "openclaw.json")
+            local_path = Path(cfg_path)
+            if not local_path.exists():
+                return
+            cfg = _json.loads(local_path.read_text())
+
         plugins_section = cfg.get("plugins", {})
 
         allow_list: list = plugins_section.get("allow", [])
         if plugin_id in allow_list:
             allow_list.remove(plugin_id)
 
-        ext_path = str(state_dir / "extensions" / plugin_id)
+        if container:
+            ext_dir = str(Path(cfg_path).parent / "extensions" / plugin_id)
+        else:
+            ext_dir = str(_openclaw_state_dir(profile) / "extensions" / plugin_id)
         paths: list = plugins_section.get("load", {}).get("paths", [])
-        if ext_path in paths:
-            paths.remove(ext_path)
+        if ext_dir in paths:
+            paths.remove(ext_dir)
 
         entries: dict = plugins_section.get("entries", {})
         entries.pop(plugin_id, None)
 
-        config_path.write_text(_json.dumps(cfg, indent=2))
+        if container:
+            _write_container_json(container, cfg_path, cfg)
+        else:
+            Path(cfg_path).write_text(_json.dumps(cfg, indent=2))
     except Exception:
         pass
 
 
+def _docker_api_url(config: "MyceliumConfig") -> str:
+    """Derive a Docker-friendly MYCELIUM_API_URL from the configured api_url.
+
+    Rewrites localhost/127.0.0.1 to host.docker.internal so containers can
+    reach the backend running on the host.
+    """
+    parsed = urlparse(config.server.api_url)
+    hostname = parsed.hostname or "localhost"
+    port = parsed.port or 8000
+    if hostname in ("localhost", "127.0.0.1", "0.0.0.0"):
+        hostname = "host.docker.internal"
+    scheme = parsed.scheme or "http"
+    return f"{scheme}://{hostname}:{port}"
+
+
 def _step_docker_env(config: "MyceliumConfig") -> None:
     """Print env vars needed for Docker-based experiment agent containers."""
+    docker_url = _docker_api_url(config)
     typer.secho("Docker agent env vars", bold=True)
     typer.echo("")
     typer.echo("  Add to your docker-compose environment block or experiment .env:")
     typer.echo("")
     typer.secho("  # .env", dim=True)
-    typer.echo("  MYCELIUM_API_URL=http://host.docker.internal:8000")
+    typer.echo(f"  MYCELIUM_API_URL={docker_url}")
     if config.server.workspace_id:
         typer.echo(f"  MYCELIUM_WORKSPACE_ID={config.server.workspace_id}")
     if config.server.mas_id:
