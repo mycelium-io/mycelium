@@ -95,10 +95,9 @@ Repeat steps 2–3 until you receive a \`[consensus]\` message containing your a
 
 ## Room discipline
 
-- Speak only when directly addressed by CognitiveEngine.
-- Do not echo, acknowledge, or confirm receipt of messages.
-- Do not call \`message propose\` or \`message respond\` unless CognitiveEngine has just addressed you.
-- Default to silence.
+- Only run \`message propose\` or \`message respond\` when CognitiveEngine has just addressed you.
+- Before each command, briefly narrate your reasoning in chat so the human can follow along (e.g., "Rejecting — the timeline is too aggressive. Proposing 6 months instead.").
+- Do not echo or confirm receipt of CognitiveEngine messages — just explain your choice and act.
 `;
 
 // ── Per-session tracking ───────────────────────────────────────────────────
