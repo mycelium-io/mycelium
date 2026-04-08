@@ -736,9 +736,9 @@ def install(
       --backend-port  Host port for backend API (default: 8000, auto-increments on conflict)
       --no-ioc        Skip the IoC CFN management-plane stack (default: included)
     """
-    try:
-        import sys
+    import sys
 
+    try:
         if non_interactive:
             # ── Non-interactive path ───────────────────────────────────────
             docker_ok, docker_ver = _check_docker()
@@ -862,8 +862,8 @@ def install(
             )
             import click
 
-            ctx = click.get_current_context()
-            typer.echo(ctx.get_help())
+            click_ctx = click.get_current_context()
+            typer.echo(click_ctx.get_help())
             raise typer.Exit(1) from None
 
         from mycelium.animations import run_animation_live
