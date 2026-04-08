@@ -154,9 +154,7 @@ def _wait_container_healthy(container: str, timeout: int = 30) -> None:
         if result.returncode == 0:
             return
         time.sleep(1)
-    raise RuntimeError(
-        f"Container {container} did not become healthy within {timeout}s"
-    )
+    raise RuntimeError(f"Container {container} did not become healthy within {timeout}s")
 
 
 def _container_config_path(container: str, profile: str | None) -> str:
