@@ -508,26 +508,39 @@ def _parse_agent_reply(handle: str, content: str) -> dict:
       2. JSON with "offer" key only: treated as counter_offer
       3. Plain text: treat as "reject"
 
-    Always returns a dict with at least {"agent_id": handle, "action": ...}.
+    Always returns a dict with at least {"agent_id": handle, "participant_id": handle, "action": ...}.
+
+    ``participant_id`` is required by the CE's BatchCallbackRunner which keys
+    reply lookup on that field.  Without it, all replies map to "" and the
+    proposer's counter-offer is never found — the standing offer never updates.
     """
     try:
         parsed = json.loads(content)
         if isinstance(parsed, dict):
             if "offer" in parsed and "action" not in parsed:
-                return {"agent_id": handle, "action": "counter_offer", "offer": parsed["offer"]}
+                return {
+                    "agent_id": handle,
+                    "participant_id": handle,
+                    "action": "counter_offer",
+                    "offer": parsed["offer"],
+                }
 
             if "action" in parsed:
                 action = parsed["action"]
                 if action not in ("accept", "reject", "counter_offer"):
                     action = "reject"
-                result: dict = {"agent_id": handle, "action": action}
+                result: dict = {
+                    "agent_id": handle,
+                    "participant_id": handle,
+                    "action": action,
+                }
                 if parsed.get("offer"):
                     result["offer"] = parsed["offer"]
                 return result
     except (json.JSONDecodeError, TypeError):
         pass
 
-    return {"agent_id": handle, "action": "reject"}
+    return {"agent_id": handle, "participant_id": handle, "action": "reject"}
 
 
 async def _post_message(room_name: str, message_type: str, content: str) -> None:
