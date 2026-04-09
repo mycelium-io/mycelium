@@ -152,6 +152,51 @@ mycelium session join --handle agent-delta -m "Ship safe" -r e2e-test-room
 - `session create` returns the old completed session → `_spawn_session_room` not filtering completed state
 - CFN start fails → stale Session rows not cleaned up (check `_finish_cfn`)
 
+## Phase 5: OpenClaw Integration
+
+Test that OpenClaw agents get woken by coordination ticks and respond autonomously.
+
+**Prerequisites**: OpenClaw gateway running, mycelium adapter installed, agents configured with sandbox=off.
+
+```bash
+# Verify gateway + plugin
+openclaw gateway status  # should show loaded
+grep "mycelium.*Ready" /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log | tail -1
+
+# Create room + session
+mycelium room create e2e-openclaw-test
+mycelium session create -r e2e-openclaw-test
+
+# Launch both agents
+openclaw agent --agent julia-agent --session-id e2e-oc-1 \
+  -m "Run: mycelium session join --handle julia-agent --room e2e-openclaw-test -m 'Position A'" \
+  --timeout 60 &
+
+openclaw agent --agent selina-agent --session-id e2e-oc-2 \
+  -m "Run: mycelium session join --handle selina-agent --room e2e-openclaw-test -m 'Position B'" \
+  --timeout 60 &
+
+# Wait for joins + negotiation start
+sleep 50
+
+# Check gateway logs for wake events
+grep "mycelium.*wake dispatched\|mycelium.*wake completed" /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log | tail -10
+# Expect: wake dispatched + wake completed for both agents
+
+# Check session messages for agent responses
+curl -s "http://localhost:8000/rooms/e2e-openclaw-test:session:*/messages?limit=50"
+# Expect: coordination_tick messages AND direct messages from agents (accept/reject/counter_offer)
+
+# Poll for consensus (up to 5 min for complex negotiations)
+# Expect: coordination_state=complete eventually
+```
+
+**Fail criteria**:
+- `wake dispatched` but no `wake completed` → openclaw CLI not on PATH or agent auth broken
+- `wake completed` but no agent messages in session → agent ran but didn't execute mycelium command (check agent model/skill)
+- `Plugin runtime subagent methods are only available during a gateway request` → old plugin installed, needs `mycelium adapter add openclaw --reinstall`
+- SSE errors with `Failed to parse URL` → `getApiUrl()` returning empty, check `~/.mycelium/config.toml`
+
 ## Phase 5.5: Knowledge Extraction Hook (PENDING — not yet tested)
 
 Test that the `mycelium-knowledge-extract` OpenClaw hook correctly ships conversation turns to the backend and that the backend's two-stage LLM extraction writes memories into the room.
@@ -211,51 +256,6 @@ mycelium memory ls
 **TODO**: Determine what memory keys `IngestionService` writes and add assertions above.
 
 ---
-
-## Phase 5: OpenClaw Integration
-
-Test that OpenClaw agents get woken by coordination ticks and respond autonomously.
-
-**Prerequisites**: OpenClaw gateway running, mycelium adapter installed, agents configured with sandbox=off.
-
-```bash
-# Verify gateway + plugin
-openclaw gateway status  # should show loaded
-grep "mycelium.*Ready" /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log | tail -1
-
-# Create room + session
-mycelium room create e2e-openclaw-test
-mycelium session create -r e2e-openclaw-test
-
-# Launch both agents
-openclaw agent --agent julia-agent --session-id e2e-oc-1 \
-  -m "Run: mycelium session join --handle julia-agent --room e2e-openclaw-test -m 'Position A'" \
-  --timeout 60 &
-
-openclaw agent --agent selina-agent --session-id e2e-oc-2 \
-  -m "Run: mycelium session join --handle selina-agent --room e2e-openclaw-test -m 'Position B'" \
-  --timeout 60 &
-
-# Wait for joins + negotiation start
-sleep 50
-
-# Check gateway logs for wake events
-grep "mycelium.*wake dispatched\|mycelium.*wake completed" /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log | tail -10
-# Expect: wake dispatched + wake completed for both agents
-
-# Check session messages for agent responses
-curl -s "http://localhost:8000/rooms/e2e-openclaw-test:session:*/messages?limit=50"
-# Expect: coordination_tick messages AND direct messages from agents (accept/reject/counter_offer)
-
-# Poll for consensus (up to 5 min for complex negotiations)
-# Expect: coordination_state=complete eventually
-```
-
-**Fail criteria**:
-- `wake dispatched` but no `wake completed` → openclaw CLI not on PATH or agent auth broken
-- `wake completed` but no agent messages in session → agent ran but didn't execute mycelium command (check agent model/skill)
-- `Plugin runtime subagent methods are only available during a gateway request` → old plugin installed, needs `mycelium adapter add openclaw --reinstall`
-- SSE errors with `Failed to parse URL` → `getApiUrl()` returning empty, check `~/.mycelium/config.toml`
 
 ## Cleanup
 
