@@ -192,6 +192,38 @@ async def test_probe_openai_unreachable():
         assert result.status == "unreachable"
 
 
+@respx.mock
+async def test_probe_litellm_proxy_with_base_url_ok():
+    """When LLM_BASE_URL + key are set, validate against the proxy, not Anthropic."""
+    with patch("app.services.llm_health.settings") as mock_settings:
+        mock_settings.LLM_API_KEY = "sk-litellm-key-1234567890"
+        mock_settings.LLM_BASE_URL = "https://litellm.example.com"
+        mock_settings.LLM_MODEL = "anthropic/claude-sonnet-4-6"
+
+        respx.get("https://litellm.example.com/v1/models").mock(
+            return_value=httpx.Response(200, json={"data": []})
+        )
+
+        result = await probe_provider()
+        assert result.status == "ok"
+        assert result.message == "API key is valid"
+
+
+@respx.mock
+async def test_probe_litellm_proxy_auth_error():
+    with patch("app.services.llm_health.settings") as mock_settings:
+        mock_settings.LLM_API_KEY = "sk-bad-key"
+        mock_settings.LLM_BASE_URL = "https://litellm.example.com"
+        mock_settings.LLM_MODEL = "anthropic/claude-sonnet-4-6"
+
+        respx.get("https://litellm.example.com/v1/models").mock(
+            return_value=httpx.Response(401, json={"error": "unauthorized"})
+        )
+
+        result = await probe_provider()
+        assert result.status == "auth_error"
+
+
 async def test_probe_unknown_provider():
     with patch("app.services.llm_health.settings") as mock_settings:
         mock_settings.LLM_API_KEY = "some-key-1234567890"

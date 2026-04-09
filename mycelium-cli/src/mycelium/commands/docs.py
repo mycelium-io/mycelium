@@ -33,6 +33,7 @@ SECTIONS: list[tuple[str, str]] = [
     ("knowledge-graph", "Knowledge Graph"),
     ("cli-reference", "CLI Reference"),
     ("architecture", "Architecture"),
+    ("troubleshooting", "Troubleshooting"),
 ]
 
 # Legacy section dirs still searched for backward compat

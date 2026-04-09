@@ -19,7 +19,7 @@
 
 ## The Problem
 
-AI agents are powerful individually, but they can't think together. When multiple agents work on the same problem, there's no shared memory, no way to negotiate trade-offs, and no context that persists across sessions. Every conversation starts from zero.
+AI agents are powerful individually, but they can't think together. When multiple agents work on the same problem, there's no shared memory, no way to negotiate trade-offs, and no context that persists across sessions. Every conversation starts from zero. Past decisions get re-litigated because no one remembers they were already made. Dead ends get re-explored because the agent that hit them is long gone.
 
 ## What Mycelium Does
 
@@ -44,13 +44,15 @@ mycelium session join --handle julia-agent -m "budget=high, scope=full"
 # CognitiveEngine drives propose/respond rounds until consensus
 ```
 
+> **Note:** Mycelium uses "session" to mean a structured negotiation round within a room — not an agent conversation turn.
+
 ## How It Works
 
-**1. Shared Intent** — When agents need to agree, a session is spawned within the room. CognitiveEngine orchestrates multi-issue negotiation via NegMAS through a structured state machine (`idle → waiting → negotiating → complete`). Agents respond to structured proposals and reach a single consensus — every agent has a voice, and the result is one shared answer.
+**1. Alignment** — When agents need to agree, a session is spawned within the room. CognitiveEngine orchestrates multi-issue negotiation through a structured state machine (`idle → waiting → negotiating → complete`). Agents respond to structured proposals and reach a single consensus — every agent has a voice, and the result is one shared answer, not parallel outputs a human has to reconcile. The outcome is written to room memory as alignment memory — a persistent record of what was agreed and why.
 
-**2. Shared Memory** — Rooms are folders. Memories are markdown files at `.mycelium/rooms/{room}/{namespace}/{key}.md`. Any agent with file I/O can read and write room memory directly — the CLI is sugar. Memories accumulate across agents and sessions, and are searchable by meaning via a pgvector index in AgensGraph.
+**2. Room Memory** — Rooms are folders. Memories are markdown files at `.mycelium/rooms/{room}/{namespace}/{key}.md`. Any agent with file I/O can read and write room memory directly — the CLI is sugar. Memories accumulate across agents and sessions, and are searchable by meaning via a pgvector index in AgensGraph.
 
-**3. Shared Context** — Any agent joining a room runs `mycelium catchup` and instantly inherits everything the swarm has learned — decisions made, what failed, open questions, recommended next actions. No repeated context-setting. Intelligence compounds instead of resetting.
+**3. Peer Collaboration Environment** — Any agent joining a room runs `mycelium catchup` and instantly inherits everything the swarm has learned — decisions made, what failed, open questions, recommended next actions. No repeated context-setting. Intelligence compounds instead of resetting.
 
 ## Quick Start
 
@@ -107,86 +109,28 @@ mycelium-client/      Generated typed OpenAPI client
 
 ## Adapters
 
-Mycelium integrates with AI coding agents via adapters:
+Mycelium works with any agent that can make HTTP requests via the REST API. Native adapters are available for:
+
+**OpenClaw** — Plugin + hooks for the OpenClaw agent runtime. SSE-based coordination ticks wake agents automatically when it's their turn.
+
+```bash
+mycelium adapter add openclaw
+
+# Allow agents to run mycelium commands without manual approval
+# For specific agents (recommended):
+openclaw approvals allowlist add --agent "<agent-id>" "~/.local/bin/mycelium"
+# Or for all agents (convenient but less restrictive):
+openclaw approvals allowlist add --agent "*" "~/.local/bin/mycelium"
+
+# Restart the gateway to pick up the plugin
+openclaw gateway restart
+```
 
 **Claude Code** — Lifecycle hooks capture tool use and context automatically. The mycelium skill provides memory and coordination commands.
 
 ```bash
 mycelium adapter add claude-code
 ```
-
-**OpenClaw** — Plugin + hooks for the OpenClaw agent runtime. Same coordination protocol, same memory API.
-
-```bash
-mycelium adapter add openclaw
-```
-
-## Metrics
-
-Mycelium includes a lightweight metrics collector that receives OpenTelemetry data from OpenClaw's `diagnostics-otel` plugin and displays it in rich terminal tables.
-
-### Quick Start
-
-```bash
-# Install the CLI (metrics dependencies are included)
-cd mycelium-cli && pnpm run build
-
-# Configure OpenClaw to export telemetry
-mycelium adapter add openclaw --step=otel
-
-# Start the OTLP collector (background by default)
-mycelium metrics collect
-
-# View metrics
-mycelium metrics show
-mycelium metrics show --workspace   # include per-file workspace breakdown
-mycelium metrics show --json        # raw JSON output
-```
-
-### What It Shows
-
-**Overall Summary** — cumulative token usage, cost, message counts, run durations, and queue health.
-
-**Per-Agent Breakdown** — tokens, cost, session counts, and workspace file sizes for each agent.
-
-**Recent Sessions** — per-session detail including model, token counts, LLM round-trip count (turns), and timestamps.
-
-**Workspace Files** — file-by-file size breakdown of each agent's `~/.openclaw` workspace directory (with `--workspace`).
-
-### Field Reference
-
-| Field | Description | Source |
-|-------|-------------|--------|
-| Total tokens | Cumulative LLM tokens across all agents | OTLP counter |
-| &nbsp;&nbsp;input | Tokens sent to the model (prompts + context) | OTLP counter |
-| &nbsp;&nbsp;output | Tokens generated by the model | OTLP counter |
-| &nbsp;&nbsp;cache read | Tokens served from prompt cache (reduced cost) | OTLP counter |
-| &nbsp;&nbsp;cache write | Tokens written to prompt cache | OTLP counter |
-| Cost (openclaw) | Estimated cost as reported by OpenClaw | OTLP counter (unverified) |
-| Messages | Total messages processed by the gateway | OTLP counter |
-| Run duration | Agent run duration: avg/min/max in seconds | OTLP histogram |
-| Msg duration | Message processing duration: avg/min/max in seconds | OTLP histogram |
-| Queue depth | Pending messages in queue: avg/min/max | OTLP histogram |
-| Queue wait | Time messages wait in queue: avg/min/max in seconds | OTLP histogram |
-| Total turns | Total LLM round-trips across all sessions | OTLP trace spans |
-| Turns | LLM round-trips per agent (how many API calls tasks took) | OTLP trace spans |
-| Avg Run | Per-agent mean run duration in seconds | OTLP histogram |
-| Queue | Per-agent queue depth: avg/max | OTLP histogram |
-| Workspace | Total file size in the agent's workspace directory | Filesystem |
-| Gateway | Current gateway status | `openclaw status` |
-
-### Commands
-
-| Command | Description |
-|---------|-------------|
-| `mycelium metrics collect` | Start the OTLP receiver (background) |
-| `mycelium metrics collect --fg` | Start the OTLP receiver in the foreground |
-| `mycelium metrics status` | Show pipeline health (collector, config, data) |
-| `mycelium metrics stop` | Stop the background collector |
-| `mycelium metrics show` | Display metrics tables |
-| `mycelium metrics reset` | Delete collected metrics data |
-
-The collector listens on port 4318 (OTLP standard). Override with `--port` or `MYCELIUM_METRICS_PORT`.
 
 ## Development
 
@@ -203,7 +147,7 @@ Interactive API docs at `http://localhost:8000/docs` when the backend is running
 
 Mycelium builds on OSS projects we found invaluable in this space:
 
-- [ioc-cfn-mgmt-plane](https://outshift.cisco.com) + [ioc-cfn-svc](https://outshift.cisco.com) — Agent registration and fabric orchestration, from Outshift by Cisco [Internet of Cognition](https://outshift.cisco.com/internet-of-cognition) concepts
-- [NegMAS](https://negmas.readthedocs.io/) — Multi-issue negotiation
+- [ioc-cfn-mgmt-plane](https://outshift.cisco.com) + [ioc-cognitive-fabric-node-svc](https://outshift.cisco.com) — Agent registration and fabric orchestration, from Outshift by Cisco
+- [NegMAS](https://negmas.readthedocs.io/) — Multi-issue negotiation (inside the Cognition Fabric)
 - [AgensGraph](https://github.com/skaiworldwide-oss/agensgraph) — Multi-model graph database
-- [FastAPI](https://fastapi.tiangolo.com/) + [pgvector](https://github.com/pgvector/pgvector) + [sentence-transformers](https://www.sbert.net/)
+- [FastAPI](https://fastapi.tiangolo.com/) + [pgvector](https://github.com/pgvector/pgvector) + [fastembed](https://github.com/qdrant/fastembed)

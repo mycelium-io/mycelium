@@ -35,7 +35,7 @@ from app.knowledge.schemas import (
     KnowledgeGraphStoreRequest,
     ResponseStatus,
 )
-from app.models import MAS, Agent, AuditEvent, Workspace
+from app.models import Agent, AuditEvent
 
 logger = logging.getLogger(__name__)
 
@@ -67,22 +67,12 @@ async def _emit_audit(
 
 
 async def _resolve_memory_provider_url(
-    workspace_id: UUID,
-    mas_id: UUID,
     agent_id: UUID,
     db: AsyncSession,
 ) -> str:
     """Look up agent.memory_provider_url from DB; raise 404 if not found."""
-    workspace = await db.get(Workspace, workspace_id)
-    if workspace is None:
-        raise HTTPException(status_code=404, detail=f"workspace {workspace_id!s} not found")
-
-    mas = await db.get(MAS, mas_id)
-    if mas is None or mas.workspace_id != workspace_id:
-        raise HTTPException(status_code=404, detail=f"MAS {mas_id!s} not found")
-
     agent = await db.get(Agent, agent_id)
-    if agent is None or agent.mas_id != mas_id:
+    if agent is None:
         raise HTTPException(status_code=404, detail=f"agent {agent_id!s} not found")
 
     if not agent.memory_provider_url:
@@ -178,7 +168,7 @@ async def memory_operations(
     if not method:
         raise HTTPException(status_code=400, detail="http-request-type is required")
 
-    base_url = await _resolve_memory_provider_url(workspace_id, mas_id, agent_id, db)
+    base_url = await _resolve_memory_provider_url(agent_id, db)
 
     path = payload.get("http-url", "")
     target = base_url + ("/" + path.lstrip("/") if path else "")

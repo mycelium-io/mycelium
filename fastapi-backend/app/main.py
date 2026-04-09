@@ -4,7 +4,6 @@
 """
 Mycelium FastAPI backend.
 
-  - Workspace / MAS / Agent registry
   - Room CRUD
   - Messages (POST + Postgres NOTIFY)
   - Sessions (presence)
@@ -15,6 +14,7 @@ Mycelium FastAPI backend.
 No auth, no heartbeat, no Neo4j, no Yjs, no scheduler.
 """
 
+import asyncio
 import logging
 import os
 import sys
@@ -31,20 +31,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_async_session
-from app.routes.agents import router as agents_router
 from app.routes.audit import router as audit_router
 from app.routes.cfn_proxy import router as cfn_proxy_router
 from app.routes.cognition_engine import router as cognition_engine_router
 from app.routes.knowledge import internal_router as knowledge_internal_router
 from app.routes.knowledge import router as knowledge_router
-from app.routes.mas import router as mas_router
 from app.routes.memory import router as memory_router
 from app.routes.messages import router as messages_router
 from app.routes.notebook import router as notebook_router
 from app.routes.rooms import router as rooms_router
 from app.routes.sessions import router as sessions_router
 from app.routes.stream import router as stream_router
-from app.routes.workspaces import router as workspaces_router
 
 from .config import settings
 
@@ -120,6 +117,15 @@ async def lifespan(app: FastAPI):
 
     await startup_scan()
     start_watcher()
+
+    # Pre-load embedding model so first request isn't slow
+    from app.services.embedding import warmup as warmup_embeddings
+
+    try:
+        await asyncio.to_thread(warmup_embeddings)
+    except Exception as exc:
+        logger.warning("Embedding warmup failed (non-fatal): %s", exc)
+
     yield
     stop_watcher()
     logger.info("Mycelium backend shutting down")
@@ -141,10 +147,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Registry
-app.include_router(workspaces_router)
-app.include_router(mas_router)
-app.include_router(agents_router)
 
 # Core routes
 app.include_router(rooms_router)
@@ -238,13 +240,14 @@ def _check_embedding() -> dict:
 
     model_loaded = embedding._model is not None
 
-    hf_cache = os.path.expanduser("~/.cache/huggingface/hub")
-    model_slug = settings.EMBEDDING_MODEL.replace("/", "--")
-    snapshots_dir = os.path.join(hf_cache, f"models--{model_slug}", "snapshots")
-    cache_exists = os.path.isdir(snapshots_dir)
-
     if model_loaded:
         return {"status": "ok", "model": settings.EMBEDDING_MODEL, "message": "Model loaded"}
+
+    # Check fastembed cache
+    cache_dir = embedding._FASTEMBED_CACHE
+    cache_exists = os.path.isdir(cache_dir) and any(
+        f.endswith(".onnx") for root, _, files in os.walk(cache_dir) for f in files
+    )
     if cache_exists:
         return {
             "status": "ok",

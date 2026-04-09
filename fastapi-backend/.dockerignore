@@ -1,0 +1,16 @@
+# Local venv — image installs deps from pyproject.toml / uv.lock
+.venv
+venv
+__pycache__
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.pyc
+.git
+.gitignore
+.env
+.env.*
+*.md
+htmlcov
+.coverage
+logs

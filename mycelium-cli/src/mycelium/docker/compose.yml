@@ -15,6 +15,9 @@ services:
     platform: linux/amd64
     container_name: mycelium-db
     restart: unless-stopped
+    env_file:
+      - path: ../.env
+        required: false
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${MYCELIUM_DB_PASSWORD:-password}
@@ -38,6 +41,9 @@ services:
     pull_policy: always
     container_name: mycelium-backend
     restart: unless-stopped
+    env_file:
+      - path: ../.env
+        required: false
     depends_on:
       mycelium-db:
         condition: service_healthy
@@ -48,11 +54,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium
       GRAPH_DB_URL: postgresql://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium
-      CFN_MGMT_URL: ${CFN_MGMT_URL:-}
       API_BASE_URL: http://mycelium-backend:8000
-      LLM_MODEL: ${LLM_MODEL:-anthropic/claude-sonnet-4-6}
-      LLM_API_KEY: ${LLM_API_KEY:-}
-      LLM_BASE_URL: ${LLM_BASE_URL:-}
       COORDINATION_TICK_TIMEOUT_SECONDS: ${COORDINATION_TICK_TIMEOUT_SECONDS:-30}
     volumes:
       - ${MYCELIUM_DATA_DIR:-~/.mycelium}:/root/.mycelium
@@ -72,6 +74,9 @@ services:
     container_name: mycelium-graph-viewer
     restart: unless-stopped
     profiles: [dev]
+    env_file:
+      - path: ../.env
+        required: false
     environment:
       DB_HOST: mycelium-db
       DB_PORT: 5432
@@ -86,10 +91,13 @@ services:
   # ── CFN Stack (profile: cfn) ──────────────────────────────────────────────────
 
   ioc-cfn-mgmt-plane-svc:
-    image: ghcr.io/cisco-eti/ioc-cfn-mgmt-plane-svc:latest
+    image: ghcr.io/outshift-open/ioc-cfn-mgmt-plane-svc:0.1.0
     container_name: ioc-cfn-mgmt-plane-svc
     restart: unless-stopped
     profiles: [cfn]
+    env_file:
+      - path: ../.env
+        required: false
     depends_on:
       mycelium-db:
         condition: service_healthy
@@ -115,15 +123,18 @@ services:
       start_period: 30s
 
 
-  ioc-cfn-svc:
-    image: ghcr.io/cisco-eti/ioc-cfn-svc:latest
-    container_name: ioc-cfn-svc
+  ioc-cognition-fabric-node-svc:
+    image: ghcr.io/outshift-open/ioc-cognition-fabric-node-svc:0.1.1
+    pull_policy: always
+    platform: linux/amd64
+    container_name: ioc-cognition-fabric-node-svc
     restart: unless-stopped
     profiles: [cfn]
+    env_file:
+      - path: ../.env
+        required: false
     depends_on:
       mycelium-db:
-        condition: service_healthy
-      mycelium-backend:
         condition: service_healthy
       ioc-cfn-mgmt-plane-svc:
         condition: service_healthy
@@ -131,8 +142,6 @@ services:
       - "9002:9002"
     environment:
       MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
-      KNOWLEDGE_MEMORY_SVC_URL: http://mycelium-backend:8000
-      COGNITION_ENGINE_SVC_URL: http://mycelium-backend:8000
       CFN_NAME: ${CFN_NAME:-mycelium-cfn}
       DB_HOST: mycelium-db
       DB_PORT: 5432
@@ -143,7 +152,7 @@ services:
       PORT: 9002
       HEARTBEAT_INTERVAL_SECONDS: ${HEARTBEAT_INTERVAL_SECONDS:-29}
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:9002/api/internal/diagnostics/health || exit 1"]
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:9002/api/internal/diagnostics/health')\" || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 6

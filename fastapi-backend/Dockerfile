@@ -18,9 +18,11 @@ RUN python3 -c 'import tomllib; deps=tomllib.load(open("pyproject.toml","rb"))["
 
 COPY . .
 
-# Pre-download embedding model weights so the container starts without any
-# network dependency. Non-fatal — if deps conflict, model downloads on first use.
-RUN python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')" || true
+# Pre-download ONNX embedding model so the container starts without any
+# network dependency. fastembed uses BAAI/bge-small-en-v1.5 (384-dim, ONNX, ~50MB).
+# Cache to /opt/fastembed so it's not shadowed by volume mounts on /root.
+ENV FASTEMBED_CACHE_PATH=/opt/fastembed
+RUN python3 -c "from fastembed import TextEmbedding; TextEmbedding(model_name='BAAI/bge-small-en-v1.5', cache_dir='/opt/fastembed')" || true
 
 RUN chmod +x start.sh
 

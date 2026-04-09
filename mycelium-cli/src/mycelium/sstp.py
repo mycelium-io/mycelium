@@ -51,9 +51,13 @@ class ProposeReply(BaseModel):
 
 
 class RespondReply(BaseModel):
-    """Agent → Server reply to a 'respond' coordination tick."""
+    """Agent → Server reply to a 'respond' coordination tick.
 
-    action: Literal["accept", "reject", "end"]
+    CFN mode: action is "accept" or "reject".
+    Inline NegMAS mode: "end" is also accepted (mapped to "reject" by backend).
+    """
+
+    action: Literal["accept", "reject", "end", "counter_offer"]
 
 
 class NegotiatePayload(BaseModel):

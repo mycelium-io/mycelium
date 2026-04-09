@@ -212,6 +212,8 @@ def create(
             typer.echo(f"  ID:      {room_data.get('id')}")
             typer.echo(f"  Created: {str(room_data.get('created_at', ''))[:10]}")
             typer.echo(f"  Path:    {room_dir}")
+            if room_data.get("mas_id"):
+                typer.echo(f"  MAS ID:  {room_data.get('mas_id')}")
             typer.echo("")
             typer.echo(f"  Run 'mycelium room use {name}' to make it your active room")
 
@@ -264,6 +266,12 @@ def synthesize(
             if status == "complete":
                 console.print(f"[bold green]Synthesis complete:[/] {data.get('key', '')}")
                 console.print(f"  Memories synthesized: {data.get('memory_count', '?')}")
+            elif status == "needs_reindex":
+                console.print("[yellow]Index out of sync with filesystem[/yellow]")
+                console.print(
+                    f"  Found {data.get('files_on_disk', '?')} files on disk but none in search index."
+                )
+                console.print(f"  Run: [cyan]mycelium reindex {room_name}[/cyan]")
             else:
                 console.print(f"  {data.get('message', 'No new memories to synthesize')}")
 

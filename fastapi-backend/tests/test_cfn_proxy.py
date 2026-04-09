@@ -3,38 +3,33 @@
 
 """Tests for CFN proxy endpoints."""
 
+from uuid import uuid4
+
 import httpx
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import MAS, Agent, Workspace
+from app.models import Agent
 
 pytestmark = pytest.mark.asyncio
+
+_FAKE_WS_ID = "00000000-0000-0000-0000-000000000001"
+_FAKE_MAS_ID = "00000000-0000-0000-0000-000000000002"
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 
-async def _create_workspace_mas_agent(
+async def _create_agent(
     db: AsyncSession,
     mem_url: str = "http://mem-provider",
-) -> tuple[Workspace, MAS, Agent]:
-    workspace = Workspace(name="ws1")
-    db.add(workspace)
-    await db.flush()
-
-    mas = MAS(workspace_id=workspace.id, name="mas1")
-    db.add(mas)
-    await db.flush()
-
-    agent = Agent(mas_id=mas.id, name="agent1", memory_provider_url=mem_url)
+) -> Agent:
+    agent = Agent(mas_id=uuid4(), name="agent1", memory_provider_url=mem_url)
     db.add(agent)
     await db.commit()
-    await db.refresh(workspace)
-    await db.refresh(mas)
     await db.refresh(agent)
-    return workspace, mas, agent
+    return agent
 
 
 # ── shared-memories upsert ────────────────────────────────────────────────────
@@ -95,13 +90,13 @@ async def test_fetch_shared_memories_routes_to_local_service(client: AsyncClient
 async def test_memory_operations_forwards_request(
     client: AsyncClient, db_session: AsyncSession, respx_mock
 ):
-    workspace, mas, agent = await _create_workspace_mas_agent(db_session)
+    agent = await _create_agent(db_session)
     respx_mock.post("http://mem-provider/v1/memories").mock(
         return_value=httpx.Response(200, json={"id": "mem-123"})
     )
 
     resp = await client.post(
-        f"/api/workspaces/{workspace.id}/multi-agentic-systems/{mas.id}/agents/{agent.id}/memory-operations",
+        f"/api/workspaces/{_FAKE_WS_ID}/multi-agentic-systems/{_FAKE_MAS_ID}/agents/{agent.id}/memory-operations",
         json={
             "payload": {
                 "http-request-type": "POST",
@@ -118,9 +113,9 @@ async def test_memory_operations_forwards_request(
 
 
 async def test_memory_operations_missing_method(client: AsyncClient, db_session: AsyncSession):
-    workspace, mas, agent = await _create_workspace_mas_agent(db_session)
+    agent = await _create_agent(db_session)
     resp = await client.post(
-        f"/api/workspaces/{workspace.id}/multi-agentic-systems/{mas.id}/agents/{agent.id}/memory-operations",
+        f"/api/workspaces/{_FAKE_WS_ID}/multi-agentic-systems/{_FAKE_MAS_ID}/agents/{agent.id}/memory-operations",
         json={"payload": {"http-url": "/v1/memories"}},
     )
     assert resp.status_code == 400
@@ -138,13 +133,13 @@ async def test_memory_operations_agent_not_found(client: AsyncClient):
 async def test_memory_operations_get_request(
     client: AsyncClient, db_session: AsyncSession, respx_mock
 ):
-    workspace, mas, agent = await _create_workspace_mas_agent(db_session)
+    agent = await _create_agent(db_session)
     respx_mock.get("http://mem-provider/v1/memories").mock(
         return_value=httpx.Response(200, json={"memories": []})
     )
 
     resp = await client.post(
-        f"/api/workspaces/{workspace.id}/multi-agentic-systems/{mas.id}/agents/{agent.id}/memory-operations",
+        f"/api/workspaces/{_FAKE_WS_ID}/multi-agentic-systems/{_FAKE_MAS_ID}/agents/{agent.id}/memory-operations",
         json={
             "payload": {
                 "http-request-type": "GET",

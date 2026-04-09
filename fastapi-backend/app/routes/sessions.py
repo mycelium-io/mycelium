@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 import asyncpg
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +27,7 @@ from app.bus import notify, room_channel
 from app.config import settings
 from app.database import get_async_session
 from app.models import Room, Session
+from app.routes.rooms import _sync_create_mas
 from app.schemas import SessionCreate, SessionListResponse, SessionRead
 
 logger = logging.getLogger(__name__)
@@ -56,6 +58,9 @@ async def _upsert_room(room_name: str, session: AsyncSession) -> Room:
                 raise HTTPException(status_code=500, detail="Failed to create room")
         else:
             await session.refresh(room)
+            # Register MAS with CFN mgmt plane so coordination can use CFN mode
+            if not room.mas_id:
+                await _sync_create_mas(room, session)
     return room
 
 
@@ -69,7 +74,7 @@ async def _spawn_session_room(parent_name: str, db: AsyncSession) -> Room:
     result = await db.execute(
         select(Room).where(
             Room.parent_namespace == parent_name,
-            Room.coordination_state.in_(["idle", "waiting"]),
+            Room.coordination_state.in_(["idle", "waiting", "negotiating"]),
         )
     )
     existing = result.scalar_one_or_none()
@@ -109,7 +114,18 @@ async def spawn_session(
 
     session_room = await _spawn_session_room(room_name, db)
     await db.commit()
-    return {"session_room": session_room.name, "parent": room_name}
+
+    cfn_enabled = bool(settings.COGNITION_FABRIC_NODE_URL and room.mas_id and room.workspace_id)
+    result = {
+        "session_room": session_room.name,
+        "parent": room_name,
+        "cfn": {
+            "enabled": cfn_enabled,
+            "mas_id": str(room.mas_id) if room.mas_id else None,
+            "workspace_id": str(room.workspace_id) if room.workspace_id else None,
+        },
+    }
+    return result
 
 
 @router.post("", response_model=SessionRead, status_code=201)
@@ -134,6 +150,9 @@ async def join_room(
     db.add(sess)
     await db.commit()
     await db.refresh(sess)
+
+    # Register agent handle in CFN mgmt plane (non-fatal, fire-and-forget)
+    asyncio.ensure_future(_register_agent_cfn(room, payload.agent_handle))
 
     # Post coordination_join notification
     asyncio.ensure_future(_notify_join(target_room.name, payload.agent_handle, payload.intent))
@@ -161,6 +180,19 @@ async def join_room(
             )
 
     return sess
+
+
+async def _register_agent_cfn(room: Room, handle: str) -> None:
+    """Register an agent handle in the CFN mgmt plane MAS. Non-fatal."""
+    if not settings.CFN_MGMT_URL or not room.mas_id or not room.workspace_id:
+        return
+    try:
+        url = f"{settings.CFN_MGMT_URL}/api/workspaces/{room.workspace_id}/cognitive-agents"
+        async with httpx.AsyncClient(timeout=10) as client:
+            await client.post(url, json={"cognitive_agent_name": handle})
+        logger.debug("CFN agent registered: %s in workspace %s", handle, room.workspace_id)
+    except Exception as exc:
+        logger.warning("CFN register agent failed for %s: %s", handle, exc)
 
 
 async def _notify_join(room_name: str, handle: str, intent: str | None) -> None:

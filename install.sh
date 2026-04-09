@@ -38,22 +38,39 @@ echo ""
 # ── Check prerequisites ───────────────────────────────────────────────────────
 step "Checking prerequisites..."
 
-if ! command -v python3 &>/dev/null; then
-  die "python3 is required. Install Python 3.12+ from https://python.org"
-fi
+# Find a Python 3.12+ binary.  Check versioned binaries first, then fall back
+# to the unversioned python3.  This handles Ubuntu/Debian systems where
+# python3 points to the system 3.10 but python3.12 is installed via
+# deadsnakes or similar (see #86).
+PYTHON_CMD=""
+PYTHON_VERSION=""
+for candidate in python3.13 python3.12 python3; do
+  if command -v "$candidate" &>/dev/null; then
+    ver=$("$candidate" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+    major=$(echo "$ver" | cut -d. -f1)
+    minor=$(echo "$ver" | cut -d. -f2)
+    if [ "$major" -ge 3 ] && [ "$minor" -ge 12 ]; then
+      PYTHON_CMD="$candidate"
+      PYTHON_VERSION="$ver"
+      break
+    fi
+  fi
+done
 
-PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
-PYTHON_MAJOR=$(echo "$PYTHON_VERSION" | cut -d. -f1)
-PYTHON_MINOR=$(echo "$PYTHON_VERSION" | cut -d. -f2)
-if [ "$PYTHON_MAJOR" -lt 3 ] || { [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 12 ]; }; then
-  die "Python 3.12+ required (found $PYTHON_VERSION). Install from https://python.org"
+if [ -z "$PYTHON_CMD" ]; then
+  if command -v python3 &>/dev/null; then
+    found=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+    die "Python 3.12+ required (found $found as python3). Install from https://python.org"
+  else
+    die "python3 is required. Install Python 3.12+ from https://python.org"
+  fi
 fi
 
 if ! command -v curl &>/dev/null; then
   die "curl is required"
 fi
 
-ok "Prerequisites OK (Python $PYTHON_VERSION)"
+ok "Prerequisites OK (Python $PYTHON_VERSION via $PYTHON_CMD)"
 
 # ── Check Docker ──────────────────────────────────────────────────────────────
 step "Checking Docker..."

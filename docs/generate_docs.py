@@ -33,6 +33,7 @@ SECTION_CONFIG: list[tuple[str, str, str, str]] = [
     ("knowledge-graph.md", "knowledge-graph", "Concepts", "Knowledge Graph"),
     # cli-reference is handled separately by generate_cli_reference
     ("architecture.md", "architecture", "Architecture", "Architecture"),
+    ("troubleshooting.md", "troubleshooting", "Help", "Troubleshooting"),
 ]
 
 DOCS_DIR = Path(__file__).parent.parent / "mycelium-cli" / "src" / "mycelium" / "docs"
@@ -54,6 +55,12 @@ def _md_to_html(md: str, section_id: str) -> str:
 
     while i < len(lines):
         line = lines[i]
+
+        # Horizontal rule
+        if line.strip() == "---":
+            out.append('      <hr class="divider">')
+            i += 1
+            continue
 
         # Fenced code block
         if line.startswith("```"):
@@ -294,6 +301,7 @@ def _generate_cli_reference() -> tuple[str, str]:
     # Force-import all command modules so decorators run
     import mycelium.commands.adapter  # noqa: F401
     import mycelium.commands.config  # noqa: F401
+    import mycelium.commands.doctor  # noqa: F401
     import mycelium.commands.instance  # noqa: F401
     import mycelium.commands.install  # noqa: F401
     import mycelium.commands.memory  # noqa: F401

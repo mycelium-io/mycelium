@@ -5,10 +5,12 @@
 
 import logging
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_async_session
 from app.models import Room
 from app.schemas import RoomCreate, RoomRead
@@ -20,6 +22,48 @@ router = APIRouter(prefix="/rooms", tags=["rooms"])
 
 # Reserved room names — used by system internals, cannot be created/deleted by users.
 RESERVED_ROOMS = frozenset({"_notebooks"})
+
+
+async def _sync_create_mas(db_room: Room, session: AsyncSession) -> None:
+    """Create a MAS in CFN mgmt plane and store mas_id on the room. Non-fatal."""
+    if not settings.CFN_MGMT_URL or not settings.WORKSPACE_ID:
+        return
+    try:
+        url = (
+            f"{settings.CFN_MGMT_URL}/api/workspaces/{settings.WORKSPACE_ID}/multi-agentic-systems"
+        )
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(url, json={"name": db_room.name})
+            resp.raise_for_status()
+            data = resp.json()
+        mas_id = data.get("id") or data.get("mas_id")
+        if mas_id:
+            await session.execute(
+                update(Room)
+                .where(Room.name == db_room.name)
+                .values(mas_id=str(mas_id), workspace_id=settings.WORKSPACE_ID)
+            )
+            await session.commit()
+            await session.refresh(db_room)
+            logger.info("CFN MAS created for room %s: %s", db_room.name, mas_id)
+    except Exception as exc:
+        logger.warning("CFN create MAS failed for room %s: %s", db_room.name, exc)
+
+
+async def _sync_delete_mas(room: Room) -> None:
+    """Delete MAS from CFN mgmt plane. Non-fatal."""
+    if not settings.CFN_MGMT_URL or not room.mas_id or not room.workspace_id:
+        return
+    try:
+        url = (
+            f"{settings.CFN_MGMT_URL}/api/workspaces/{room.workspace_id}"
+            f"/multi-agentic-systems/{room.mas_id}"
+        )
+        async with httpx.AsyncClient(timeout=10) as client:
+            await client.delete(url)
+        logger.info("CFN MAS deleted for room %s: %s", room.name, room.mas_id)
+    except Exception as exc:
+        logger.warning("CFN delete MAS failed for room %s: %s", room.name, exc)
 
 
 @router.post("", response_model=RoomRead, status_code=201)
@@ -43,6 +87,8 @@ async def create_room(
         is_persistent=True,
         namespace=room.name,
         is_namespace=True,
+        mas_id=room.mas_id,
+        workspace_id=room.workspace_id,
     )
     session.add(db_room)
     await session.commit()
@@ -52,6 +98,10 @@ async def create_room(
     room_dir = get_room_dir(room.name)
     ensure_room_structure(room_dir)
     logger.info("Created room directory: %s", room_dir)
+
+    # Sync MAS with CFN mgmt plane (non-fatal)
+    if not db_room.mas_id:
+        await _sync_create_mas(db_room, session)
 
     return db_room
 
@@ -121,6 +171,13 @@ async def synthesize_room(
         raise
     if result is None:
         return {"status": "no_memories", "message": "No new memories to synthesize"}
+    if result.get("status") == "needs_reindex":
+        return {
+            "status": "needs_reindex",
+            "message": f"Found {result['files_on_disk']} files on disk but none in search index. "
+            f"Run 'mycelium reindex {room_name}' to sync.",
+            "files_on_disk": result["files_on_disk"],
+        }
     return {"status": "complete", **result}
 
 
@@ -221,6 +278,9 @@ async def delete_room(
     room = result.scalar_one_or_none()
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
+
+    # Delete MAS from CFN mgmt plane (non-fatal)
+    await _sync_delete_mas(room)
 
     await session.delete(room)
     await session.commit()

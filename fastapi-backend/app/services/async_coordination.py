@@ -4,7 +4,7 @@
 """
 Async CognitiveEngine — synthesis for namespace rooms.
 
-Unlike sync coordination (NegMAS tick loop), async coordination:
+Unlike sync coordination (CFN tick loop), async coordination:
   - Triggers on configurable conditions (threshold, schedule, explicit)
   - Reads accumulated memories instead of live messages
   - Produces synthesis summaries written back as memories
@@ -105,6 +105,23 @@ async def run_synthesis(room_name: str) -> dict | None:
                     update(Room).where(Room.name == room_name).values(coordination_state="idle")
                 )
                 await db.commit()
+
+                # Check if filesystem has files that aren't indexed
+                from app.services.filesystem import list_memory_files
+
+                room_dir = get_room_dir(room_name)
+                fs_entries = list_memory_files(room_dir, limit=100)
+                fs_count = len([k for k, _, _ in fs_entries if not k.startswith("_synthesis/")])
+                if fs_count > 0:
+                    logger.warning(
+                        "Room %s has %d files on disk but none in search index. "
+                        "Run 'mycelium reindex %s' to sync.",
+                        room_name,
+                        fs_count,
+                        room_name,
+                    )
+                    return {"status": "needs_reindex", "files_on_disk": fs_count}
+
                 return None
 
             # Check LLM availability before doing work
