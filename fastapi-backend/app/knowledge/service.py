@@ -74,11 +74,18 @@ def query_graph_store(data: KnowledgeGraphQueryRequest) -> KnowledgeGraphQueryRe
 
     request_id = data.request_id
     _query_t0 = _time.monotonic()
+    qt = data.query_criteria.query_type if data.query_criteria else QUERY_TYPE_NEIGHBOUR
     try:
         ag = adapter.get_graph_name(data.model_dump())
         nodes = adapter.convert_query_to_models(data.model_dump())
 
         if not graph_db.get_graph(ag):
+            record_knowledge_query(
+                query_type=qt,
+                nodes_queried=0,
+                results_returned=0,
+                duration_ms=(_time.monotonic() - _query_t0) * 1000,
+            )
             return KnowledgeGraphQueryResponse(
                 request_id=request_id,
                 status=ResponseStatus.NOT_FOUND,
@@ -87,13 +94,18 @@ def query_graph_store(data: KnowledgeGraphQueryRequest) -> KnowledgeGraphQueryRe
 
         not_found = [n.id for n in nodes if not graph_db.get_node(ag, n)]
         if not_found:
+            record_knowledge_query(
+                query_type=qt,
+                nodes_queried=len(nodes),
+                results_returned=0,
+                duration_ms=(_time.monotonic() - _query_t0) * 1000,
+            )
             return KnowledgeGraphQueryResponse(
                 request_id=request_id,
                 status=ResponseStatus.NOT_FOUND,
                 message=f"Nodes do not exist: {', '.join(not_found)}",
             )
 
-        qt = data.query_criteria.query_type if data.query_criteria else QUERY_TYPE_NEIGHBOUR
         depth = data.query_criteria.depth if data.query_criteria else None
         use_dir = data.query_criteria.use_direction if data.query_criteria else True
 
@@ -134,6 +146,12 @@ def query_graph_store(data: KnowledgeGraphQueryRequest) -> KnowledgeGraphQueryRe
         )
 
     except Exception as exc:
+        record_knowledge_query(
+            query_type=qt,
+            nodes_queried=0,
+            results_returned=0,
+            duration_ms=(_time.monotonic() - _query_t0) * 1000,
+        )
         return KnowledgeGraphQueryResponse(
             request_id=request_id, status=ResponseStatus.FAILURE, message=f"Failed to query: {exc}"
         )

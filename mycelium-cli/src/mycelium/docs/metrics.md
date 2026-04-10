@@ -260,7 +260,7 @@ Prioritised by effort and value.
   and `_finish_cfn`.
 
 - **Knowledge graph queries** (`knowledge/service.py`) ✓
-  Query counts by type (neighbor, path, concept), hit/miss rates, results
+  Query counts by type (neighbour, path, concept), hit/miss rates, results
   returned, and latency. Instrumented in `query_graph_store`.
 
 - **Synthesis data reuse** (`routes/rooms.py`) ✓

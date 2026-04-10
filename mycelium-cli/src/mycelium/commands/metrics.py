@@ -36,14 +36,38 @@ console = Console()
 
 def _resolve_port(cli_port: int | None) -> int:
     if cli_port is not None:
+        if not 1 <= cli_port <= 65535:
+            typer.secho(f"✗ Invalid port {cli_port} (must be 1–65535)", fg=typer.colors.RED)
+            raise typer.Exit(1)
         return cli_port
     env = os.environ.get(_ENV_PORT)
     if env:
         try:
-            return int(env)
+            p = int(env)
+            if 1 <= p <= 65535:
+                return p
         except ValueError:
             pass
     return _DEFAULT_PORT
+
+
+def _read_pid_file() -> tuple[int | None, int]:
+    """Read the PID and port from the collector PID file.
+
+    Returns (pid, port).  ``pid`` is None when the file is missing or
+    unparsable; ``port`` falls back to ``_DEFAULT_PORT``.
+    """
+    if not _PID_FILE.exists():
+        return None, _DEFAULT_PORT
+    try:
+        lines = _PID_FILE.read_text().strip().splitlines()
+        if not lines:
+            return None, _DEFAULT_PORT
+        pid = int(lines[0])
+        port = int(lines[1]) if len(lines) >= 2 else _DEFAULT_PORT
+        return pid, port
+    except (OSError, ValueError, IndexError):
+        return None, _DEFAULT_PORT
 
 
 @app.command("install")
@@ -89,17 +113,12 @@ def status() -> None:
 
     # ── Collector process ────────────────────────────────────────────────
     collector_alive = False
-    collector_pid: int | None = None
-    collector_port = _DEFAULT_PORT
-    if _PID_FILE.exists():
+    collector_pid, collector_port = _read_pid_file()
+    if collector_pid is not None:
         try:
-            lines = _PID_FILE.read_text().strip().splitlines()
-            collector_pid = int(lines[0])
-            if len(lines) >= 2:
-                collector_port = int(lines[1])
             os.kill(collector_pid, 0)
             collector_alive = True
-        except (OSError, ValueError):
+        except OSError:
             collector_alive = False
     if collector_alive:
         console.print(f"[green]✓[/green] Collector running  PID {collector_pid}  port {collector_port}")
@@ -172,7 +191,7 @@ def status() -> None:
         try:
             from urllib.parse import urlparse
             parsed = urlparse(otel_endpoint)
-            ep_port = parsed.port or 80
+            ep_port = parsed.port or (443 if parsed.scheme == "https" else 80)
             if collector_alive and ep_port != collector_port:
                 console.print(
                     f"  [red]✗ Port mismatch:[/red] plugin sends to :{ep_port} but collector listens on :{collector_port}"
@@ -209,16 +228,16 @@ def collect(
     if not fg:
         _MYCELIUM_DIR.mkdir(parents=True, exist_ok=True)
 
-        if _PID_FILE.exists():
+        old_pid, old_port = _read_pid_file()
+        if old_pid is not None:
             try:
-                old_pid = int(_PID_FILE.read_text().strip().splitlines()[0])
                 os.kill(old_pid, 0)
                 typer.secho(
-                    f"Collector already running (PID {old_pid}) on port {_get_port()}",
+                    f"Collector already running (PID {old_pid}) on port {old_port}",
                     fg=typer.colors.YELLOW,
                 )
                 return
-            except (OSError, ValueError):
+            except OSError:
                 _PID_FILE.unlink(missing_ok=True)
 
         log_file = _MYCELIUM_DIR / "collector.log"
@@ -236,6 +255,17 @@ def collect(
 
         _PID_FILE.write_text(f"{proc.pid}\n{resolved_port}\n")
 
+        import time as _time
+        _time.sleep(0.5)
+        exit_code = proc.poll()
+        if exit_code is not None:
+            _PID_FILE.unlink(missing_ok=True)
+            typer.secho(
+                f"✗ Collector exited immediately (code {exit_code}). Check {log_file}",
+                fg=typer.colors.RED,
+            )
+            raise typer.Exit(1)
+
         typer.secho(f"✓ Collector started (PID {proc.pid})", fg=typer.colors.GREEN)
         typer.echo(f"  OTLP receiver on port {resolved_port}")
         typer.echo(f"  Metrics file: {_METRICS_JSON}")
@@ -251,15 +281,15 @@ def collect(
                 f"✗ Port {resolved_port} is already in use.",
                 fg=typer.colors.RED,
             )
-            if _PID_FILE.exists():
+            bg_pid, _ = _read_pid_file()
+            if bg_pid is not None:
                 try:
-                    bg_pid = int(_PID_FILE.read_text().strip().splitlines()[0])
                     os.kill(bg_pid, 0)
                     typer.echo(
                         f"  A background collector is running (PID {bg_pid}).\n"
                         f"  Stop it first:  mycelium metrics stop"
                     )
-                except (OSError, ValueError):
+                except OSError:
                     typer.echo("  Another process is using this port.")
             else:
                 typer.echo("  Another process is using this port.")
@@ -285,14 +315,41 @@ def stop() -> None:
         typer.secho("No collector running (PID file not found).", fg=typer.colors.YELLOW)
         raise typer.Exit(0)
 
-    try:
-        pid = int(_PID_FILE.read_text().strip().splitlines()[0])
-        os.kill(pid, signal.SIGTERM)
-        typer.secho(f"✓ Collector stopped (PID {pid})", fg=typer.colors.GREEN)
-    except (OSError, ValueError) as exc:
-        typer.secho(f"Could not stop collector: {exc}", fg=typer.colors.RED)
-    finally:
+    pid, _ = _read_pid_file()
+    if pid is None:
+        typer.secho("Could not read collector PID.", fg=typer.colors.RED)
         _PID_FILE.unlink(missing_ok=True)
+        return
+
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        typer.secho(f"Collector (PID {pid}) already exited.", fg=typer.colors.YELLOW)
+        _PID_FILE.unlink(missing_ok=True)
+        return
+    except OSError as exc:
+        typer.secho(f"Could not stop collector (PID {pid}): {exc}", fg=typer.colors.RED)
+        return
+
+    import time as _time
+    stopped = False
+    for _ in range(20):
+        _time.sleep(0.1)
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            stopped = True
+            break
+
+    if stopped:
+        typer.secho(f"✓ Collector stopped (PID {pid})", fg=typer.colors.GREEN)
+        _PID_FILE.unlink(missing_ok=True)
+    else:
+        typer.secho(
+            f"⚠ Collector (PID {pid}) still running after SIGTERM. "
+            "It may need to be killed manually.",
+            fg=typer.colors.YELLOW,
+        )
 
 
 @app.command("reset")
@@ -438,14 +495,8 @@ def _extract_oc_cost(oc: dict | None) -> dict | None:
 
 def _get_port() -> int:
     """Read actual port from PID file (line 2)."""
-    if _PID_FILE.exists():
-        try:
-            lines = _PID_FILE.read_text().strip().splitlines()
-            if len(lines) >= 2:
-                return int(lines[1])
-        except (ValueError, OSError):
-            pass
-    return _DEFAULT_PORT
+    _, port = _read_pid_file()
+    return port
 
 
 def _fmt_num(n: int | float | None) -> str:
@@ -491,10 +542,10 @@ def _fmt_val_s(v: float) -> str:
 
 def _fmt_histogram_s(h: dict) -> str:
     """Format a millisecond histogram as seconds with fixed-width aligned sparkline."""
-    count = h["count"]
+    count = h.get("count", 0)
     if count == 0:
         return "—"
-    avg = h["sum"] / count / 1000
+    avg = h.get("sum", 0) / count / 1000
     min_v = h.get("min")
     max_v = h.get("max")
     _W = 6  # width for each value column (e.g. " 1.9s" or " 0.0s")
@@ -518,10 +569,10 @@ def _fmt_histogram_s(h: dict) -> str:
 
 def _fmt_histogram_raw(h: dict) -> str:
     """Format a unitless histogram with fixed-width aligned sparkline."""
-    count = h["count"]
+    count = h.get("count", 0)
     if count == 0:
         return "—"
-    avg = h["sum"] / count
+    avg = h.get("sum", 0) / count
     min_v = h.get("min")
     max_v = h.get("max")
     _W = 6  # match _fmt_histogram_s field width
@@ -1209,14 +1260,14 @@ def _render_data_reuse_table(backend: dict | None) -> None:
             table.add_row("  total results returned", _fmt_num(results))
 
         # Query type breakdown
-        neighbor = knowledge.get("queries.neighbor", 0)
+        neighbor = knowledge.get("queries.neighbour", 0)
         path = knowledge.get("queries.path", 0)
         concept = knowledge.get("queries.concept", 0)
         if neighbor + path + concept > 0:
             table.add_section()
             table.add_row("[dim]By query type:[/dim]", "")
             if neighbor:
-                table.add_row("  neighbor", _fmt_num(neighbor))
+                table.add_row("  neighbour", _fmt_num(neighbor))
             if path:
                 table.add_row("  path", _fmt_num(path))
             if concept:

@@ -22,6 +22,9 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    if not 1 <= args.port <= 65535:
+        parser.error(f"Invalid port {args.port} (must be 1–65535)")
+
     from mycelium.collector import run
 
     run(args.port, Path(args.output), backend_api_url=args.backend_url)

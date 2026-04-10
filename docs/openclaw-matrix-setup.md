@@ -302,10 +302,10 @@ Register catalog **`id`** values that match what OpenClaw resolves at runtime (o
 Install Mycelium following the [Quick Start](../README.md#quick-start) in the repo README, then add the OpenClaw adapter and enable OTLP metrics:
 
 ```bash
-mycelium adapter add openclaw --step=local-gateway --step=otel
+mycelium adapter add openclaw --step=otel
 ```
 
-`--step=local-gateway` writes Mycelium env vars (`MYCELIUM_API_URL`, etc.) into the openclaw-gateway systemd service. `--step=otel` configures the `diagnostics-otel` plugin to export telemetry to the Mycelium OTLP receiver. If the adapter was never installed, this command **installs** the plugin/hooks first, then applies both steps. This does not replace the Matrix setup above.
+`--step=otel` configures the `diagnostics-otel` plugin to export telemetry to the Mycelium OTLP receiver. If the adapter was never installed, this command **installs** the plugin/hooks first, then applies the step. This does not replace the Matrix setup above.
 
 ---
 

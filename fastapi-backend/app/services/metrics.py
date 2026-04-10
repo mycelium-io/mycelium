@@ -5,26 +5,35 @@ Tracks embedding, LLM, indexing, memory, and synthesis operations with
 counters, histograms, and cost-avoidance estimates. Exposed via
 GET /api/metrics and consumed by `mycelium metrics show`.
 
-Thread-safe (asyncio.to_thread calls) via a threading lock.
+Thread-safe via a threading lock; all public ``record_*`` functions
+are guarded so they never raise — metrics failures are logged and
+swallowed to avoid disrupting application codepaths.
 """
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
+import os
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
 _log = logging.getLogger(__name__)
 
-_PRICING_JSON = (
-    Path(__file__).resolve().parent.parent.parent.parent
-    / "mycelium-cli"
-    / "src"
-    / "mycelium"
-    / "data"
-    / "pricing.json"
+_PRICING_JSON = Path(
+    os.environ.get(
+        "MYCELIUM_PRICING_JSON",
+        str(
+            Path(__file__).resolve().parent.parent.parent.parent
+            / "mycelium-cli"
+            / "src"
+            / "mycelium"
+            / "data"
+            / "pricing.json"
+        ),
+    )
 )
 
 
@@ -75,6 +84,20 @@ def _record_histogram(name: str, value: float) -> None:
 # ── Public API ───────────────────────────────────────────────────────────
 
 
+def _safe(fn):
+    """Wrap a metrics function so it never raises."""
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except Exception:
+            _log.debug("metrics.%s failed", fn.__name__, exc_info=True)
+
+    return wrapper
+
+
+@_safe
 def record_embedding(source: str = "unknown", text_length: int = 0) -> None:
     """Record a single local embedding computation."""
     _inc("embeddings", "computed")
@@ -88,6 +111,7 @@ def record_embedding(source: str = "unknown", text_length: int = 0) -> None:
     )
 
 
+@_safe
 def record_embedding_batch(source: str, count: int, total_text_length: int = 0) -> None:
     _inc("embeddings", "computed", count)
     _inc("embeddings", f"by_source.{source}", count)
@@ -100,10 +124,12 @@ def record_embedding_batch(source: str, count: int, total_text_length: int = 0) 
     )
 
 
+@_safe
 def record_embedding_latency(duration_ms: float) -> None:
     _record_histogram("embeddings.latency_ms", duration_ms)
 
 
+@_safe
 def record_llm_call(
     *,
     operation: str,
@@ -129,6 +155,7 @@ def record_llm_call(
         _record_histogram(f"llm.latency_ms.{operation}", duration_ms)
 
 
+@_safe
 def record_index_run(
     *,
     target: str = "room",
@@ -149,6 +176,7 @@ def record_index_run(
         _record_histogram("indexer.duration_ms", duration_ms)
 
 
+@_safe
 def record_memory_write(scope: str = "namespace", embedded: bool = True) -> None:
     _inc("memory", "writes")
     _inc("memory", f"writes.{scope}")
@@ -156,13 +184,14 @@ def record_memory_write(scope: str = "namespace", embedded: bool = True) -> None
         _inc("memory", "writes_embedded")
 
 
+@_safe
 def record_memory_search(
     duration_ms: float = 0.0,
     *,
     results_returned: int = 0,
 ) -> None:
     """Record a memory search operation.
-    
+
     Args:
         duration_ms: Search latency
         results_returned: Number of results returned (data reuse indicator)
@@ -177,7 +206,8 @@ def record_memory_search(
         _record_histogram("memory.search_latency_ms", duration_ms)
 
 
-def record_synthesis(room: str = "", duration_ms: float = 0.0, *, error: bool = False) -> None:
+@_safe
+def record_synthesis(duration_ms: float = 0.0, *, error: bool = False) -> None:
     _inc("synthesis", "runs")
     if error:
         _inc("synthesis", "errors")
@@ -185,9 +215,10 @@ def record_synthesis(room: str = "", duration_ms: float = 0.0, *, error: bool = 
         _record_histogram("synthesis.duration_ms", duration_ms)
 
 
+@_safe
 def record_synthesis_reuse(*, had_cached: bool = False, memories_since: int = 0) -> None:
     """Record when a briefing reuses cached synthesis.
-    
+
     Args:
         had_cached: Whether a cached synthesis was available
         memories_since: Number of memories added since last synthesis
@@ -201,6 +232,7 @@ def record_synthesis_reuse(*, had_cached: bool = False, memories_since: int = 0)
         _record_histogram("synthesis.memories_since_last", float(memories_since))
 
 
+@_safe
 def record_knowledge_ingestion(
     *,
     concepts: int = 0,
@@ -217,18 +249,19 @@ def record_knowledge_ingestion(
         _record_histogram("knowledge.ingestion_duration_ms", duration_ms)
 
 
+@_safe
 def record_knowledge_query(
     *,
-    query_type: str = "neighbor",
+    query_type: str = "neighbour",
     nodes_queried: int = 0,
     results_returned: int = 0,
     duration_ms: float = 0.0,
     cache_hit: bool = False,
 ) -> None:
     """Record a knowledge graph query operation.
-    
+
     Args:
-        query_type: Type of query (neighbor, path, concept)
+        query_type: Type of query (neighbour, path, concept)
         nodes_queried: Number of nodes in the query
         results_returned: Number of results (edges/paths) returned
         duration_ms: Query latency
@@ -247,9 +280,9 @@ def record_knowledge_query(
         _record_histogram("knowledge.query_latency_ms", duration_ms)
 
 
+@_safe
 def record_coordination_start(
     *,
-    room: str = "",
     participants: int = 0,
 ) -> None:
     """Record the start of a coordination session."""
@@ -258,6 +291,7 @@ def record_coordination_start(
         _record_histogram("coordination.session_participants", float(participants))
 
 
+@_safe
 def record_coordination_round(
     *,
     room: str = "",
@@ -275,6 +309,7 @@ def record_coordination_round(
         _record_histogram("coordination.round_duration_ms", duration_ms)
 
 
+@_safe
 def record_consensus(
     *,
     room: str = "",

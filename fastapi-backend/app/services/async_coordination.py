@@ -175,7 +175,6 @@ async def run_synthesis(room_name: str) -> dict | None:
             await _notify_synthesis_complete(room_name, synthesis_key)
 
             record_synthesis(
-                room=room_name,
                 duration_ms=(_time.monotonic() - _synth_t0) * 1000,
             )
             logger.info(
@@ -187,6 +186,10 @@ async def run_synthesis(room_name: str) -> dict | None:
             return {"key": synthesis_key, "memory_count": len(memories)}
 
         except (LLMUnavailableError, RuntimeError) as e:
+            record_synthesis(
+                duration_ms=(_time.monotonic() - _synth_t0) * 1000,
+                error=True,
+            )
             await db.execute(
                 update(Room).where(Room.name == room_name).values(coordination_state="idle")
             )
@@ -197,7 +200,6 @@ async def run_synthesis(room_name: str) -> dict | None:
             return None
         except Exception as e:
             record_synthesis(
-                room=room_name,
                 duration_ms=(_time.monotonic() - _synth_t0) * 1000,
                 error=True,
             )
@@ -336,6 +338,7 @@ async def _llm_synthesize(room_name: str, context: str, memory_count: int) -> st
         return response.choices[0].message.content
 
     except litellm.AuthenticationError:
+        record_llm_call(operation="synthesis", model=settings.LLM_MODEL, error=True)
         logger.warning(
             "LLM authentication failed for model %s. Check LLM_API_KEY in ~/.mycelium/.env",
             settings.LLM_MODEL,

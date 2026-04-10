@@ -207,7 +207,7 @@ async def _run_cfn_negotiation(
     session_id = room_name
 
     session_start_time = time.monotonic()
-    record_coordination_start(room=room_name, participants=len(session_handles))
+    record_coordination_start(participants=len(session_handles))
 
     await _post_message(
         room_name,
@@ -391,81 +391,85 @@ async def _cfn_decide_round(room_name: str) -> None:
         else:
             agent_replies.append(reply_data)
 
-    result = await decide_negotiation(
-        session_id=state.session_id,
-        agent_replies=agent_replies,
-        workspace_id=state.workspace_id,
-        mas_id=state.mas_id,
-    )
-
-    # Record round completion metrics
-    round_duration_ms = (time.monotonic() - state.round_start_time) * 1000
-    record_coordination_round(
-        room=room_name,
-        round_num=state.round_num,
-        participants=len(state.agents),
-        duration_ms=round_duration_ms,
-    )
-
-    if not result:
-        logger.error(
-            "CFN decide returned empty result for %s — posting failed consensus", room_name
+    try:
+        result = await decide_negotiation(
+            session_id=state.session_id,
+            agent_replies=agent_replies,
+            workspace_id=state.workspace_id,
+            mas_id=state.mas_id,
         )
-        await _finish_cfn(room_name, plan="CFN decide failed", assignments={}, broken=True)
-        return
 
-    result = _normalize_cfn_decide_response(result)
+        # Record round completion metrics
+        round_duration_ms = (time.monotonic() - state.round_start_time) * 1000
+        record_coordination_round(
+            room=room_name,
+            round_num=state.round_num,
+            participants=len(state.agents),
+            duration_ms=round_duration_ms,
+        )
 
-    # CFN returns a nested envelope: status lives in result["payload"]["status"]
-    # and the agreement in result["semantic_context"]["final_agreement"].
-    # Fall back to top-level keys for backward compatibility.
-    payload = result.get("payload", {})
-    status = payload.get("status", result.get("status", ""))
+        if not result:
+            logger.error(
+                "CFN decide returned empty result for %s — posting failed consensus", room_name
+            )
+            await _finish_cfn(room_name, plan="CFN decide failed", assignments={}, broken=True)
+            return
 
-    if status in ("agreed",):
-        final_result = result.get("final_result", {})
-        # final_result is an SSTPCommitMessage dict.
-        # Agreement is in semantic_context.final_agreement (list of {issue_id, chosen_option}).
-        if isinstance(final_result, dict):
-            sc = final_result.get("semantic_context") or {}
-            raw_agreement = sc.get("final_agreement") or []
-            # Fallback: some versions embed it in payload.trace.final_agreement
-            if not raw_agreement:
-                trace = (final_result.get("payload") or {}).get("trace") or {}
-                raw_agreement = trace.get("final_agreement") or []
+        result = _normalize_cfn_decide_response(result)
+
+        # CFN returns a nested envelope: status lives in result["payload"]["status"]
+        # and the agreement in result["semantic_context"]["final_agreement"].
+        # Fall back to top-level keys for backward compatibility.
+        payload = result.get("payload", {})
+        status = payload.get("status", result.get("status", ""))
+
+        if status in ("agreed",):
+            final_result = result.get("final_result", {})
+            # final_result is an SSTPCommitMessage dict.
+            # Agreement is in semantic_context.final_agreement (list of {issue_id, chosen_option}).
+            if isinstance(final_result, dict):
+                sc = final_result.get("semantic_context") or {}
+                raw_agreement = sc.get("final_agreement") or []
+                # Fallback: some versions embed it in payload.trace.final_agreement
+                if not raw_agreement:
+                    trace = (final_result.get("payload") or {}).get("trace") or {}
+                    raw_agreement = trace.get("final_agreement") or []
+            else:
+                raw_agreement = []
+            if isinstance(raw_agreement, list):
+                agreement = {
+                    item["issue_id"]: item.get("chosen_option", "")
+                    for item in raw_agreement
+                    if isinstance(item, dict) and "issue_id" in item
+                }
+            else:
+                agreement = {}
+            plan = "; ".join(f"{k}={v}" for k, v in agreement.items()) if agreement else "agreed"
+            await _finish_cfn(room_name, plan=plan, assignments=agreement, broken=False)
+
+        elif status == "ongoing":
+            messages = result.get("messages", [])
+            addressed = await _fan_out_cfn_messages(
+                room_name,
+                messages,
+                all_agents=state.agents,
+            )
+            async with state.lock:
+                state.pending_replies = {h: None for h in addressed}
+                state.deciding = False
+                state.round_num += 1
+                state.round_start_time = time.monotonic()
+            _reset_round_timeout(room_name, state)
+
         else:
-            raw_agreement = []
-        if isinstance(raw_agreement, list):
-            agreement = {
-                item["issue_id"]: item.get("chosen_option", "")
-                for item in raw_agreement
-                if isinstance(item, dict) and "issue_id" in item
-            }
-        else:
-            agreement = {}
-        plan = "; ".join(f"{k}={v}" for k, v in agreement.items()) if agreement else "agreed"
-        await _finish_cfn(room_name, plan=plan, assignments=agreement, broken=False)
-
-    elif status == "ongoing":
-        messages = result.get("messages", [])
-        addressed = await _fan_out_cfn_messages(
-            room_name,
-            messages,
-            all_agents=state.agents,
-        )
-        async with state.lock:
-            state.pending_replies = {h: None for h in addressed}
-            state.deciding = False
-            state.round_num += 1
-            state.round_start_time = time.monotonic()
-        _reset_round_timeout(room_name, state)
-
-    else:
-        # Unknown / failed status
-        logger.warning("CFN decide returned status=%s for %s", status, room_name)
-        await _finish_cfn(
-            room_name, plan=f"Negotiation ended: {status}", assignments={}, broken=True
-        )
+            # Unknown / failed status
+            logger.warning("CFN decide returned status=%s for %s", status, room_name)
+            await _finish_cfn(
+                room_name, plan=f"Negotiation ended: {status}", assignments={}, broken=True
+            )
+    except Exception:
+        logger.exception("CFN decide failed for %s", room_name)
+        await _finish_cfn(room_name, plan="CFN decide error", assignments={}, broken=True)
 
 
 async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool) -> None:

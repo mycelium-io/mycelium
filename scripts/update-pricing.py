@@ -110,8 +110,8 @@ def main() -> None:
         input_price = entry.get("input_cost_per_token", 0)
         cache_read = entry.get("cache_read_input_token_cost")
 
-        if input_price and cache_read:
-            cache_discount = round(1.0 - (cache_read / input_price), 2)
+        if input_price and cache_read is not None and cache_read >= 0:
+            cache_discount = round(max(0.0, min(1.0, 1.0 - (cache_read / input_price))), 2)
         else:
             cache_discount = DEFAULT_CACHE_DISCOUNT
             if not cache_read:

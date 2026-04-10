@@ -1,7 +1,7 @@
 """
 Lightweight OTLP HTTP receiver for OpenClaw telemetry.
 
-Accepts protobuf-encoded OTLP data on /v1/traces, /v1/metrics, and /v1/logs,
+Accepts protobuf-encoded OTLP data on /v1/traces and /v1/metrics,
 aggregates counters/histograms/sessions in memory, and persists to a JSON file.
 
 Designed to be run as a background process via `mycelium metrics collect`.
@@ -9,6 +9,7 @@ Designed to be run as a background process via `mycelium metrics collect`.
 
 from __future__ import annotations
 
+import copy
 import gzip
 import json
 import logging
@@ -20,6 +21,7 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 _MAX_SESSIONS = 200
+_MAX_BODY_BYTES = 10 * 1024 * 1024  # 10 MiB guard against oversized payloads
 
 
 class MetricsStore:
@@ -63,12 +65,12 @@ class MetricsStore:
             )[:_MAX_SESSIONS]
             result = {
                 "updated_at": datetime.now(UTC).isoformat(),
-                "counters": self._counters,
-                "histograms": self._histograms,
-                "sessions": sessions,
+                "counters": copy.deepcopy(self._counters),
+                "histograms": copy.deepcopy(self._histograms),
+                "sessions": copy.deepcopy(sessions),
             }
             if self._backend_metrics:
-                result["backend"] = self._backend_metrics
+                result["backend"] = copy.deepcopy(self._backend_metrics)
             return result
 
     def ingest_metrics(self, request_bytes: bytes) -> None:
@@ -222,11 +224,11 @@ class MetricsStore:
             "model": attrs.get("openclaw.model", ""),
             "provider": attrs.get("openclaw.provider", ""),
             "tokens": {
-                "input": int(attrs.get("openclaw.tokens.input", 0)),
-                "output": int(attrs.get("openclaw.tokens.output", 0)),
-                "cache_read": int(attrs.get("openclaw.tokens.cache_read", 0)),
-                "cache_write": int(attrs.get("openclaw.tokens.cache_write", 0)),
-                "total": int(attrs.get("openclaw.tokens.total", 0)),
+                "input": _safe_int(attrs.get("openclaw.tokens.input", 0)),
+                "output": _safe_int(attrs.get("openclaw.tokens.output", 0)),
+                "cache_read": _safe_int(attrs.get("openclaw.tokens.cache_read", 0)),
+                "cache_write": _safe_int(attrs.get("openclaw.tokens.cache_write", 0)),
+                "total": _safe_int(attrs.get("openclaw.tokens.total", 0)),
             },
             "duration_ms": round(duration_ms, 1),
             "timestamp": ts,
@@ -262,6 +264,14 @@ def _agent_from_session_key(session_key: str) -> str:
         if len(parts) >= 2:
             return parts[1]
     return ""
+
+
+def _safe_int(value: object) -> int:
+    """Convert a value to int, returning 0 on failure."""
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (ValueError, TypeError):
+        return 0
 
 
 def _zero_tokens() -> dict:
@@ -318,46 +328,80 @@ class OTLPHandler(BaseHTTPRequestHandler):
     backend_api_url: str
 
     def do_POST(self) -> None:
-        cl_header = self.headers.get("Content-Length")
-        if cl_header is not None:
-            content_length = int(cl_header)
-            body = self.rfile.read(content_length) if content_length > 0 else b""
-        elif self.headers.get("Transfer-Encoding", "").lower() == "chunked":
-            chunks = []
-            while True:
-                size_line = self.rfile.readline().strip()
-                chunk_size = int(size_line, 16)
-                if chunk_size == 0:
+        try:
+            cl_header = self.headers.get("Content-Length")
+            if cl_header is not None:
+                try:
+                    content_length = int(cl_header)
+                except ValueError:
+                    self.send_response(400)
+                    self.end_headers()
+                    return
+                if content_length < 0 or content_length > _MAX_BODY_BYTES:
+                    self.send_response(413)
+                    self.end_headers()
+                    return
+                body = self.rfile.read(content_length) if content_length > 0 else b""
+            elif self.headers.get("Transfer-Encoding", "").lower() == "chunked":
+                chunks: list[bytes] = []
+                total = 0
+                while True:
+                    size_line = self.rfile.readline().strip()
+                    try:
+                        chunk_size = int(size_line, 16)
+                    except ValueError:
+                        self.send_response(400)
+                        self.end_headers()
+                        return
+                    if chunk_size == 0:
+                        self.rfile.readline()
+                        break
+                    total += chunk_size
+                    if total > _MAX_BODY_BYTES:
+                        self.send_response(413)
+                        self.end_headers()
+                        return
+                    chunks.append(self.rfile.read(chunk_size))
                     self.rfile.readline()
-                    break
-                chunks.append(self.rfile.read(chunk_size))
-                self.rfile.readline()
-            body = b"".join(chunks)
-        else:
-            # No Content-Length and not chunked — treat as empty body to avoid blocking
-            log.warning("POST %s: no Content-Length or chunked encoding, assuming empty body", self.path)
-            body = b""
+                body = b"".join(chunks)
+            else:
+                log.warning("POST %s: no Content-Length or chunked encoding, assuming empty body", self.path)
+                body = b""
+        except Exception:
+            log.warning("Failed to read request body for %s", self.path)
+            self.send_response(400)
+            self.end_headers()
+            return
 
         if self.headers.get("Content-Encoding", "").lower() == "gzip":
             try:
-                body = gzip.decompress(body)
+                dec = gzip.decompress(body)
             except Exception:
                 log.warning("gzip decompress failed for %s", self.path)
                 self.send_response(400)
                 self.end_headers()
                 return
+            if len(dec) > _MAX_BODY_BYTES:
+                log.warning("Decompressed body exceeds %d bytes for %s", _MAX_BODY_BYTES, self.path)
+                self.send_response(413)
+                self.end_headers()
+                return
+            body = dec
 
         log.debug("POST %s  %d bytes", self.path, len(body))
 
-        try:
-            if self.path == "/v1/metrics":
-                self.store.ingest_metrics(body)
+        if self.path in ("/v1/metrics", "/v1/traces"):
+            try:
+                if self.path == "/v1/metrics":
+                    self.store.ingest_metrics(body)
+                else:
+                    self.store.ingest_traces(body)
                 self._flush()
-            elif self.path == "/v1/traces":
-                self.store.ingest_traces(body)
-                self._flush()
-        except Exception:
-            log.exception("Failed to process %s", self.path)
+            except Exception:
+                log.exception("Failed to process %s", self.path)
+                self.send_response(500)
+                self.end_headers()
+                return
 
         self.send_response(200)
         self.send_header("Content-Type", "application/x-protobuf")
@@ -422,5 +466,7 @@ def run(port: int, output_path: Path, *, backend_api_url: str = "http://localhos
         server.server_close()
         _fetch_backend_metrics(store, backend_api_url)
         data = store.to_dict()
-        output_path.write_text(json.dumps(data, indent=2, default=str))
+        tmp = output_path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data, indent=2, default=str))
+        tmp.replace(output_path)
         log.info("Final state saved to %s", output_path)

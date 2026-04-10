@@ -389,7 +389,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.8.0" },
     { name = "numpy", specifier = ">=1.26.0" },
-    { name = "opentelemetry-proto" },
+    { name = "opentelemetry-proto", specifier = ">=1.20.0,<2" },
     { name = "protobuf", specifier = ">=4.21.0" },
     { name = "pydantic", extras = ["email"], specifier = ">=2.6.0" },
     { name = "pydantic-settings", specifier = ">=2.1.0" },

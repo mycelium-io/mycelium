@@ -575,7 +575,8 @@ def _wait_for_health(urls: list[str], timeout: int = 120) -> bool:
     try:
         import httpx
     except ImportError:
-        return True  # skip if httpx not available
+        typer.echo("  ⚠ httpx not installed — skipping health check")
+        return False
 
     deadline = time.time() + timeout
     pending = list(urls)
@@ -659,7 +660,15 @@ def _provision_backend(api_url: str, workspace_name: str = "default") -> tuple[s
     except urllib.error.HTTPError as e:
         if e.code in (400, 409):
             workspaces = _get("/api/workspaces")
-            ws = next((w for w in workspaces if w.get("name") == workspace_name), workspaces[0])
+            ws = next(
+                (w for w in workspaces if w.get("name") == workspace_name),
+                workspaces[0] if workspaces else None,
+            )
+            if ws is None:
+                raise RuntimeError(
+                    f"Workspace '{workspace_name}' creation returned {e.code} "
+                    "but no workspaces exist on the backend"
+                )
         else:
             raise
     workspace_id: str = ws["id"]
@@ -1144,7 +1153,7 @@ def install(
                 typer.echo(f"  ✓ MAS created        {mas_id}")
             except Exception as exc:
                 typer.secho(f"  ⚠  Could not provision backend: {exc}", fg=typer.colors.YELLOW)
-                typer.echo("     Run manually: mycelium install --provision")
+                typer.echo("     Re-run install or check the backend logs.")
                 workspace_id, mas_id = "", ""
 
         # ── Phase 6: Migrate DB + write config ────────────────────────────

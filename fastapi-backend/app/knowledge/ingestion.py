@@ -269,6 +269,11 @@ class IngestionService:
         graph_name = "graph_" + mas_id.replace("-", "_")
 
         if not compact_payload or not settings.LLM_API_KEY:
+            record_knowledge_ingestion(
+                concepts=0,
+                relations=0,
+                duration_ms=(time.monotonic() - t0) * 1000,
+            )
             return {"graph_name": graph_name, "concepts_extracted": 0, "relations_extracted": 0}
 
         # Run sync LLM calls in thread to avoid blocking the event loop
