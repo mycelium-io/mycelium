@@ -114,9 +114,10 @@ The backend maintains its own in-process metrics store
 | `embeddings` | `computed`, `by_source.*`, `estimated_tokens`, `estimated_cost_avoided_usd` |
 | `llm`        | `calls`, `by_operation.*`, `by_model.*`, `input_tokens`, `output_tokens`, `cost_usd`, `errors` |
 | `indexer`    | `runs`, `files_indexed`, `files_skipped`, `files_pruned`, `errors`, `by_target.*` |
-| `memory`     | `writes`, `writes.*`, `writes_embedded`, `searches`              |
-| `synthesis`  | `runs`, `errors`                                                 |
-| `knowledge`  | `ingestions`, `concepts_extracted`, `relations_extracted`, `errors` |
+| `memory`     | `writes`, `writes.*`, `writes_embedded`, `searches`, `search_hits`, `search_misses`, `results_returned` |
+| `synthesis`  | `runs`, `errors`, `briefings`, `cache_hits`, `cache_misses`      |
+| `knowledge`  | `ingestions`, `concepts_extracted`, `relations_extracted`, `errors`, `queries`, `query_hits`, `query_misses`, `results_returned`, `queries.*` (by type) |
+| `coordination` | `sessions`, `rounds`, `consensus_reached`, `consensus_failed`, `timeouts` |
 
 #### Backend Histograms
 
@@ -128,29 +129,40 @@ The backend maintains its own in-process metrics store
 | `indexer.duration_ms`               | ms   |
 | `memory.search_latency_ms`          | ms   |
 | `synthesis.duration_ms`             | ms   |
+| `synthesis.memories_since_last`     | count |
 | `knowledge.ingestion_duration_ms`   | ms   |
+| `knowledge.query_latency_ms`        | ms   |
+| `coordination.round_duration_ms`    | ms   |
+| `coordination.session_duration_ms`  | ms   |
 
 ## Display Panels
 
 `mycelium metrics show` renders the following Rich tables:
 
-1. **Overall** — token totals, cost, message count, histograms (run/msg
-   duration, queue depth/wait, context window), webhook and stuck-session
-   stats, by-model breakdowns.
+1. **OpenClaw Agent Activity** — token totals, cost, message count, histograms
+   (run/msg duration, queue depth/wait, context window), webhook and
+   stuck-session stats, by-model breakdowns.
 
-2. **Cost Savings** — local embedding counts and estimated API cost avoided,
-   indexer file stats, prompt cache hit ratio, and estimated cache savings.
+2. **Cost Savings (OpenClaw + Mycelium)** — local embedding counts and estimated
+   API cost avoided, indexer file stats, prompt cache hit ratio, and estimated
+   cache savings.
 
 3. **Mycelium LLM Usage (backend)** — backend LLM calls, tokens, cost, latency
    by operation and model; knowledge graph, synthesis, and memory stats.
 
-4. **Agents** — per-agent token breakdown, session/turn counts, cost, average
-   run duration, and workspace size.
+4. **Mycelium Data Reuse** — memory search hit/miss rates and results returned,
+   synthesis briefing cache stats, knowledge graph query stats by type.
 
-5. **Recent Sessions** — last 20 OTLP session spans with agent, model, turns,
-   tokens, and timestamp.
+5. **IOC/CFN Coordination** — negotiation session counts, rounds, consensus
+   success/failure rates, timeouts, and timing histograms.
 
-6. **Workspace Files** (opt-in via `--workspace`) — per-file size breakdown of
+6. **OpenClaw Agents** — per-agent token breakdown, session/turn counts, cost,
+   average run duration, and workspace size.
+
+7. **OpenClaw Recent Sessions** — last 20 OTLP session spans with agent, model,
+   turns, tokens, and timestamp.
+
+8. **Workspace Files** (opt-in via `--workspace`) — per-file size breakdown of
    each agent's `~/.openclaw` workspace directory.
 
 ## Pricing Data
@@ -240,18 +252,29 @@ users can run `mycelium metrics reset` to start fresh.
 The following areas have working code paths but are **not yet instrumented**.
 Prioritised by effort and value.
 
-### Tier 1 — Straightforward (Mycelium-only)
+### Recently Implemented
 
-- **Coordination / Negotiation** (`services/coordination.py`)
-  Runs, rounds, agreement rate, timeouts, failures, duration.
-  Highest value — shows coordination engine health.
+- **Coordination / Negotiation** (`services/coordination.py`) ✓
+  Sessions, rounds, consensus success/failure, timeouts, round and session
+  duration histograms. Instrumented in `_run_cfn_negotiation`, `_cfn_decide_round`,
+  and `_finish_cfn`.
+
+- **Knowledge graph queries** (`knowledge/service.py`) ✓
+  Query counts by type (neighbor, path, concept), hit/miss rates, results
+  returned, and latency. Instrumented in `query_graph_store`.
+
+- **Synthesis data reuse** (`routes/rooms.py`) ✓
+  Briefing requests, cache hits/misses, and memories-since-last-synthesis
+  histogram. Instrumented in the briefing endpoint.
+
+- **Memory search reuse** (`routes/memory.py`) ✓
+  Search hit/miss rates and total results returned. Instrumented in
+  `search_memories`.
+
+### Tier 1 — Straightforward (Mycelium-only)
 
 - **Session join / leave** (`routes/sessions.py`)
   Simple activity counters: joins, leaves, active sessions.
-
-- **Knowledge graph CRUD** (`routes/knowledge.py`)
-  Store, query, delete counts and latency. Complements the existing
-  `record_knowledge_ingestion` which covers the LLM extraction side.
 
 ### Tier 2 — Moderate effort (Mycelium-only)
 

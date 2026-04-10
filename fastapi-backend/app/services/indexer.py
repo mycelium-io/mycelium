@@ -260,8 +260,7 @@ async def _index_single_memory(
     import asyncio
 
     content_text = content or key
-    embed_source = "indexer_notebook" if scope == "notebook" else "indexer_room"
-    embedding = await asyncio.to_thread(embed_text, content_text, source=embed_source)
+    embedding = await asyncio.to_thread(embed_text, content_text)
     value = {"text": content} if content else {}
 
     now = datetime.now(UTC)

@@ -68,7 +68,12 @@ def delete_graph_store_internal(data: KnowledgeGraphDeleteRequest) -> KnowledgeG
 
 
 def query_graph_store(data: KnowledgeGraphQueryRequest) -> KnowledgeGraphQueryResponse:
+    import time as _time
+
+    from app.services.metrics import record_knowledge_query
+
     request_id = data.request_id
+    _query_t0 = _time.monotonic()
     try:
         ag = adapter.get_graph_name(data.model_dump())
         nodes = adapter.convert_query_to_models(data.model_dump())
@@ -101,14 +106,29 @@ def query_graph_store(data: KnowledgeGraphQueryRequest) -> KnowledgeGraphQueryRe
         else:  # neighbour or default
             ok, results, msg = graph_db.query_type_neighbor(ag, nodes)
 
+        duration_ms = (_time.monotonic() - _query_t0) * 1000
+
         if ok:
             records = adapter.convert_models_to_query_response_records(results)
+            record_knowledge_query(
+                query_type=qt,
+                nodes_queried=len(nodes),
+                results_returned=len(records) if records else 0,
+                duration_ms=duration_ms,
+            )
             return KnowledgeGraphQueryResponse(
                 request_id=request_id,
                 status=ResponseStatus.SUCCESS,
                 message=msg,
                 records=records or None,
             )
+
+        record_knowledge_query(
+            query_type=qt,
+            nodes_queried=len(nodes),
+            results_returned=0,
+            duration_ms=duration_ms,
+        )
         return KnowledgeGraphQueryResponse(
             request_id=request_id, status=ResponseStatus.FAILURE, message=msg
         )

@@ -351,7 +351,9 @@ def show(
 
     _render_summary_table(otel_data, oc_status, oc_cost)
     _render_cost_savings_table(otel_data, backend_data)
+    _render_data_reuse_table(backend_data)
     _render_mycelium_llm_table(backend_data)
+    _render_coordination_table(backend_data)
     _render_agent_table(otel_data, agents_meta)
 
     if otel_data and otel_data.get("sessions"):
@@ -552,7 +554,13 @@ def _render_summary_table(
     oc: dict | None,
     oc_cost: dict | None,
 ) -> None:
-    table = Table(title="Overall", title_style="bold cyan", title_justify="left", show_header=False, border_style="dim")
+    table = Table(
+        title="OpenClaw Agent Activity",
+        title_style="bold cyan",
+        title_justify="left",
+        show_header=False,
+        border_style="dim",
+    )
     table.add_column("Metric", style="bold")
     table.add_column("Value", justify="right")
 
@@ -571,7 +579,7 @@ def _render_summary_table(
     cost = counters.get("cost_usd", {}).get("total", 0.0)
     if oc_cost and oc_cost.get("total") is not None:
         cost = oc_cost["total"]
-    table.add_row("Cost (openclaw)", _fmt_cost(cost))
+    table.add_row("Estimated cost", _fmt_cost(cost))
 
     table.add_row("Messages", _fmt_num(messages.get("processed", 0)))
 
@@ -686,7 +694,7 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
         for n in agent_names
     )
 
-    table = Table(title="Agents", title_style="bold cyan", title_justify="left", border_style="dim")
+    table = Table(title="OpenClaw Agents", title_style="bold cyan", title_justify="left", border_style="dim")
     table.add_column("Agent", style="bold")
     table.add_column("Input", justify="right")
     table.add_column("Output", justify="right")
@@ -784,7 +792,7 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
 
 
 def _render_session_table(sessions: list[dict]) -> None:
-    table = Table(title="Recent Sessions", title_style="bold cyan", title_justify="left", border_style="dim")
+    table = Table(title="OpenClaw Recent Sessions", title_style="bold cyan", title_justify="left", border_style="dim")
     table.add_column("ID", style="dim")
     table.add_column("Agent", style="bold")
     table.add_column("Model")
@@ -937,7 +945,7 @@ def _render_cost_savings_table(otel: dict | None, backend: dict | None) -> None:
         return
 
     table = Table(
-        title="Cost Savings",
+        title="Cost Savings (OpenClaw + Mycelium)",
         title_style="bold green",
         title_justify="left",
         show_header=False,
@@ -947,7 +955,7 @@ def _render_cost_savings_table(otel: dict | None, backend: dict | None) -> None:
     table.add_column("Value", justify="right")
 
     if embed_count > 0:
-        table.add_row("Local embeddings computed", _fmt_num(embed_count))
+        table.add_row("[dim]Mycelium:[/dim] Local embeddings", _fmt_num(embed_count))
         table.add_row(
             "  estimated API cost avoided",
             f"[green]{_fmt_cost(cost_avoided)}[/green]",
@@ -990,7 +998,9 @@ def _render_cost_savings_table(otel: dict | None, backend: dict | None) -> None:
         input_price = pricing["input"]
         cache_discount = pricing["cache_discount"]
 
-        table.add_row("Prompt cache hit ratio", f"[green]{cache_ratio:.1f}%[/green]")
+        if embed_count > 0 or files_indexed > 0:
+            table.add_section()
+        table.add_row("[dim]OpenClaw:[/dim] Prompt cache hit", f"[green]{cache_ratio:.1f}%[/green]")
         table.add_row("  cache read tokens", _fmt_num(cache_read))
 
         estimated_saving = cache_read * input_price * cache_discount
@@ -1023,7 +1033,7 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
         return
 
     table = Table(
-        title="Mycelium LLM Usage (backend)",
+        title="Mycelium Backend LLM Usage",
         title_style="bold magenta",
         title_justify="left",
         show_header=False,
@@ -1114,28 +1124,190 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
     console.print()
 
 
+def _render_data_reuse_table(backend: dict | None) -> None:
+    """Render a panel showing data reuse metrics from IOC/Mycelium databases."""
+    if not backend:
+        return
+
+    be_counters = backend.get("counters", {})
+    be_histograms = backend.get("histograms", {})
+    memory = be_counters.get("memory", {})
+    synthesis = be_counters.get("synthesis", {})
+    knowledge = be_counters.get("knowledge", {})
+
+    # Check if we have any data reuse metrics
+    has_memory_reuse = memory.get("search_hits", 0) > 0 or memory.get("search_misses", 0) > 0
+    has_synthesis_reuse = synthesis.get("briefings", 0) > 0
+    has_knowledge_reuse = knowledge.get("queries", 0) > 0
+
+    if not (has_memory_reuse or has_synthesis_reuse or has_knowledge_reuse):
+        return
+
+    table = Table(
+        title="Mycelium Data Reuse",
+        title_style="bold magenta",
+        title_justify="left",
+        show_header=False,
+        border_style="dim",
+    )
+    table.add_column("Metric", style="bold")
+    table.add_column("Value", justify="right")
+
+    # Memory search reuse
+    if has_memory_reuse:
+        searches = memory.get("searches", 0)
+        hits = memory.get("search_hits", 0)
+        misses = memory.get("search_misses", 0)
+        results = memory.get("results_returned", 0)
+
+        table.add_row("Memory searches", _fmt_num(searches))
+        if searches > 0:
+            hit_rate = hits / searches * 100
+            table.add_row("  returned results", f"[green]{_fmt_num(hits)}[/green] ({hit_rate:.0f}%)")
+            table.add_row("  no results", _fmt_num(misses))
+            table.add_row("  total results returned", _fmt_num(results))
+
+    # Synthesis reuse
+    if has_synthesis_reuse:
+        if has_memory_reuse:
+            table.add_section()
+        briefings = synthesis.get("briefings", 0)
+        cache_hits = synthesis.get("cache_hits", 0)
+        cache_misses = synthesis.get("cache_misses", 0)
+
+        table.add_row("Briefing requests", _fmt_num(briefings))
+        if briefings > 0:
+            hit_rate = cache_hits / briefings * 100
+            table.add_row(
+                "  used cached synthesis",
+                f"[green]{_fmt_num(cache_hits)}[/green] ({hit_rate:.0f}%)",
+            )
+            table.add_row("  no cached synthesis", _fmt_num(cache_misses))
+
+        mem_since = be_histograms.get("synthesis.memories_since_last", {})
+        if mem_since.get("count", 0) > 0:
+            avg = mem_since["sum"] / mem_since["count"]
+            table.add_row("  avg memories since synthesis", f"{avg:.1f}")
+
+    # Knowledge graph reuse
+    if has_knowledge_reuse:
+        if has_memory_reuse or has_synthesis_reuse:
+            table.add_section()
+        queries = knowledge.get("queries", 0)
+        query_hits = knowledge.get("query_hits", 0)
+        query_misses = knowledge.get("query_misses", 0)
+        results = knowledge.get("results_returned", 0)
+
+        table.add_row("Knowledge graph queries", _fmt_num(queries))
+        if queries > 0:
+            hit_rate = query_hits / queries * 100
+            table.add_row(
+                "  returned results",
+                f"[green]{_fmt_num(query_hits)}[/green] ({hit_rate:.0f}%)",
+            )
+            table.add_row("  no results", _fmt_num(query_misses))
+            table.add_row("  total results returned", _fmt_num(results))
+
+        # Query type breakdown
+        neighbor = knowledge.get("queries.neighbor", 0)
+        path = knowledge.get("queries.path", 0)
+        concept = knowledge.get("queries.concept", 0)
+        if neighbor + path + concept > 0:
+            table.add_section()
+            table.add_row("[dim]By query type:[/dim]", "")
+            if neighbor:
+                table.add_row("  neighbor", _fmt_num(neighbor))
+            if path:
+                table.add_row("  path", _fmt_num(path))
+            if concept:
+                table.add_row("  concept", _fmt_num(concept))
+
+        query_lat = be_histograms.get("knowledge.query_latency_ms", {})
+        if query_lat.get("count", 0) > 0:
+            table.add_row("Query latency", _fmt_histogram_s(query_lat))
+
+    console.print(table)
+    console.print()
+
+
+def _render_coordination_table(backend: dict | None) -> None:
+    """Render a panel showing Mycelium coordination/negotiation metrics."""
+    if not backend:
+        return
+
+    be_counters = backend.get("counters", {})
+    coord = be_counters.get("coordination", {})
+
+    if coord.get("sessions_started", 0) == 0 and coord.get("rounds", 0) == 0:
+        return
+
+    table = Table(
+        title="IOC/CFN Coordination",
+        title_style="bold blue",
+        title_justify="left",
+        show_header=False,
+        border_style="dim",
+    )
+    table.add_column("Metric", style="bold")
+    table.add_column("Value", justify="right")
+
+    table.add_row("Sessions started", _fmt_num(coord.get("sessions_started", 0)))
+    table.add_row("Sessions completed", _fmt_num(coord.get("sessions_completed", 0)))
+
+    success = coord.get("outcome.success", 0)
+    failure = coord.get("outcome.failure", 0)
+
+    if success + failure > 0:
+        table.add_section()
+        if success > 0:
+            table.add_row("  consensus reached", f"[green]{_fmt_num(success)}[/green]")
+        if failure > 0:
+            table.add_row("  failed", f"[red]{_fmt_num(failure)}[/red]")
+
+    table.add_section()
+    table.add_row("Total rounds", _fmt_num(coord.get("rounds", 0)))
+
+    be_histograms = backend.get("histograms", {})
+
+    rounds_to_consensus = be_histograms.get("coordination.rounds_to_consensus", {})
+    if rounds_to_consensus.get("count", 0) > 0:
+        avg = rounds_to_consensus["sum"] / rounds_to_consensus["count"]
+        min_r = rounds_to_consensus.get("min", avg)
+        max_r = rounds_to_consensus.get("max", avg)
+        table.add_row("Rounds to consensus", f"{avg:.1f} (min {min_r:.0f}, max {max_r:.0f})")
+
+    time_to_consensus = be_histograms.get("coordination.time_to_consensus_ms", {})
+    if time_to_consensus.get("count", 0) > 0:
+        table.add_row("Time to consensus", _fmt_histogram_s(time_to_consensus))
+
+    round_duration = be_histograms.get("coordination.round_duration_ms", {})
+    if round_duration.get("count", 0) > 0:
+        table.add_row("Round duration", _fmt_histogram_s(round_duration))
+
+    participants = be_histograms.get("coordination.session_participants", {})
+    if participants.get("count", 0) > 0:
+        avg = participants["sum"] / participants["count"]
+        table.add_row("Avg participants/session", f"{avg:.1f}")
+
+    by_room_keys = sorted(k for k in coord if k.startswith("by_room."))
+    if by_room_keys:
+        table.add_section()
+        table.add_row("[dim]By room:[/dim]", "")
+        for key in by_room_keys[:5]:
+            label = key.replace("by_room.", "")
+            table.add_row(f"  {label}", _fmt_num(coord[key]))
+        if len(by_room_keys) > 5:
+            table.add_row(f"  [dim]...and {len(by_room_keys) - 5} more[/dim]", "")
+
+    console.print(table)
+    console.print()
+
+
 def _render_field_legend() -> None:
-    console.print("[dim]Field reference:[/dim]")
-    console.print("[dim]  Total tokens   — cumulative LLM tokens across all agents (OTLP)[/dim]")
-    console.print("[dim]    input        — tokens sent to the model (prompts + context)[/dim]")
-    console.print("[dim]    output       — tokens generated by the model[/dim]")
-    console.print("[dim]    cache read   — tokens served from prompt cache (reduced cost)[/dim]")
-    console.print("[dim]    cache write  — tokens written to prompt cache[/dim]")
-    console.print("[dim]  Cost (openclaw)— estimated cost reported by OpenClaw (unverified)[/dim]")
-    console.print("[dim]  Cost by model  — per-model cost breakdown (OTLP counters)[/dim]")
-    console.print("[dim]  Messages      — total messages processed by the gateway (OTLP)[/dim]")
-    console.print("[dim]  Run duration  — agent run duration: avg/min/max in seconds (OTLP histogram)[/dim]")
-    console.print("[dim]  Msg duration  — message processing duration: avg/min/max (OTLP histogram)[/dim]")
-    console.print("[dim]  Queue depth   — pending messages in queue: avg/min/max (OTLP histogram)[/dim]")
-    console.print("[dim]  Queue wait    — time messages wait in queue: avg/min/max (OTLP histogram)[/dim]")
-    console.print("[dim]  Context window— context token utilization: avg/min/max (OTLP histogram)[/dim]")
-    console.print("[dim]  Webhooks      — webhook requests received and errors (OTLP counter)[/dim]")
-    console.print("[dim]  Turns         — LLM round-trips per session (span count from OTLP traces)[/dim]")
-    console.print("[dim]  Avg Run       — per-agent mean run duration in seconds (OTLP histogram)[/dim]")
-    console.print("[dim]  Cost          — per-agent cost estimate (OTLP counter)[/dim]")
-    console.print("[dim]  Workspace     — total file size in the agent's ~/.openclaw workspace dir[/dim]")
-    console.print("[dim]  Cost Savings  — estimated savings from local embeddings vs cloud API[/dim]")
-    console.print("[dim]  LLM Usage     — Mycelium backend's own LLM calls (synthesis, extraction)[/dim]")
+    console.print("[dim]Data sources:[/dim]")
+    console.print("[dim]  [cyan]OpenClaw[/cyan]  — Agent activity via OTLP telemetry (tokens, costs, sessions)[/dim]")
+    console.print("[dim]  [magenta]Mycelium[/magenta]  — Backend API metrics (embeddings, memory, LLM calls)[/dim]")
+    console.print("[dim]  [cyan]IOC/CFN[/cyan]   — Cognition Fabric Node (coordination, negotiation)[/dim]")
     data = _load_pricing()
     gen_date = _pricing_generated_at()
     litellm_ver = data.get("litellm_version", "")

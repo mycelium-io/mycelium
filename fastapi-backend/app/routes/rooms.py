@@ -225,6 +225,14 @@ async def catchup_room(
     # Gather contributors
     contributors = list({m.get("created_by", "unknown") for _, m, _ in non_synthesis})
 
+    # Track synthesis reuse metrics
+    from app.services.metrics import record_synthesis_reuse
+
+    record_synthesis_reuse(
+        had_cached=latest_synthesis_data is not None,
+        memories_since=len(recent_entries),
+    )
+
     return {
         "room": room_name,
         "mode": room.mode,

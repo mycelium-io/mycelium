@@ -22,6 +22,7 @@ coordination_error message and the room is set to "failed" state.
 import asyncio
 import json
 import logging
+import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from urllib.parse import urlparse
@@ -33,6 +34,11 @@ from app.bus import agent_channel, notify, room_channel
 from app.config import settings
 from app.database import async_session_maker
 from app.models import Message, Room, Session
+from app.services.metrics import (
+    record_consensus,
+    record_coordination_round,
+    record_coordination_start,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +62,10 @@ class _CfnRoundState:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     round_timeout_task: asyncio.Task | None = field(default=None)
     deciding: bool = field(default=False)  # guard against double-decide
+    # Metrics tracking
+    round_num: int = field(default=0)
+    round_start_time: float = field(default=0.0)
+    session_start_time: float = field(default=0.0)
 
 
 # {room_name: _CfnRoundState}
@@ -196,6 +206,9 @@ async def _run_cfn_negotiation(
     # mas_id is shared across all sessions in the namespace so it can't be used here.
     session_id = room_name
 
+    session_start_time = time.monotonic()
+    record_coordination_start(room=room_name, participants=len(session_handles))
+
     await _post_message(
         room_name,
         message_type="coordination_start",
@@ -222,6 +235,9 @@ async def _run_cfn_negotiation(
         mas_id=room.mas_id,
         agents=session_handles[:],
         pending_replies={h: None for h in session_handles},
+        round_num=1,
+        round_start_time=time.monotonic(),
+        session_start_time=session_start_time,
     )
     _cfn_state[room_name] = state
 
@@ -382,6 +398,15 @@ async def _cfn_decide_round(room_name: str) -> None:
         mas_id=state.mas_id,
     )
 
+    # Record round completion metrics
+    round_duration_ms = (time.monotonic() - state.round_start_time) * 1000
+    record_coordination_round(
+        room=room_name,
+        round_num=state.round_num,
+        participants=len(state.agents),
+        duration_ms=round_duration_ms,
+    )
+
     if not result:
         logger.error(
             "CFN decide returned empty result for %s — posting failed consensus", room_name
@@ -431,6 +456,8 @@ async def _cfn_decide_round(room_name: str) -> None:
         async with state.lock:
             state.pending_replies = {h: None for h in addressed}
             state.deciding = False
+            state.round_num += 1
+            state.round_start_time = time.monotonic()
         _reset_round_timeout(room_name, state)
 
     else:
@@ -446,6 +473,18 @@ async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool
     state = _cfn_state.pop(room_name, None)
     if state and state.round_timeout_task and not state.round_timeout_task.done():
         state.round_timeout_task.cancel()
+
+    # Record consensus metrics
+    if state:
+        total_duration_ms = (time.monotonic() - state.session_start_time) * 1000
+        record_consensus(
+            room=room_name,
+            total_rounds=state.round_num,
+            total_duration_ms=total_duration_ms,
+            participants=len(state.agents),
+            outcome="success" if not broken else "failure",
+        )
+
     await _post_message(
         room_name,
         message_type="coordination_consensus",
