@@ -1176,7 +1176,7 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
 
 
 def _render_data_reuse_table(backend: dict | None) -> None:
-    """Render a panel showing data reuse metrics from IOC/Mycelium databases."""
+    """Render a panel showing data reuse metrics from Mycelium databases."""
     if not backend:
         return
 
@@ -1293,7 +1293,7 @@ def _render_coordination_table(backend: dict | None) -> None:
         return
 
     table = Table(
-        title="IOC/CFN Coordination",
+        title="CFN Coordination",
         title_style="bold blue",
         title_justify="left",
         show_header=False,
@@ -1358,7 +1358,7 @@ def _render_field_legend() -> None:
     console.print("[dim]Data sources:[/dim]")
     console.print("[dim]  [cyan]OpenClaw[/cyan]  — Agent activity via OTLP telemetry (tokens, costs, sessions)[/dim]")
     console.print("[dim]  [magenta]Mycelium[/magenta]  — Backend API metrics (embeddings, memory, LLM calls)[/dim]")
-    console.print("[dim]  [cyan]IOC/CFN[/cyan]   — Cognition Fabric Node (coordination, negotiation)[/dim]")
+    console.print("[dim]  [cyan]CFN[/cyan]   — Cognition Fabric Node (coordination, negotiation)[/dim]")
     data = _load_pricing()
     gen_date = _pricing_generated_at()
     litellm_ver = data.get("litellm_version", "")
