@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { readMyceliumServerFromToml } from "./read-mycelium-config.js";
+import { readMyceliumConfig } from "./read-mycelium-config.js";
 
 export const MEMORY_FILE = join(
   homedir(),
@@ -21,15 +21,16 @@ let workspaceId = process.env.MYCELIUM_WORKSPACE_ID ?? "";
 let masId = process.env.MYCELIUM_MAS_ID ?? "";
 
 export function loadMyceliumConfig(): void {
-  const cfg = readMyceliumServerFromToml();
-  if (!process.env.MYCELIUM_API_URL && cfg.api_url) {
-    apiUrl = cfg.api_url.replace(/\/$/, "");
+  const cfg = readMyceliumConfig();
+  const server = cfg.server ?? {};
+  if (!process.env.MYCELIUM_API_URL && server.api_url) {
+    apiUrl = server.api_url.replace(/\/$/, "");
   }
-  if (!process.env.MYCELIUM_WORKSPACE_ID && cfg.workspace_id) {
-    workspaceId = cfg.workspace_id;
+  if (!process.env.MYCELIUM_WORKSPACE_ID && server.workspace_id) {
+    workspaceId = server.workspace_id;
   }
-  if (!process.env.MYCELIUM_MAS_ID && cfg.mas_id) {
-    masId = cfg.mas_id;
+  if (!process.env.MYCELIUM_MAS_ID && server.mas_id) {
+    masId = server.mas_id;
   }
 }
 
