@@ -294,11 +294,7 @@ def _remove_env_var(env_path: Path, key: str) -> None:
     new_lines = [
         ln
         for ln in lines
-        if not (
-            "=" in ln
-            and not ln.lstrip().startswith("#")
-            and ln.split("=")[0].strip() == key
-        )
+        if not ("=" in ln and not ln.lstrip().startswith("#") and ln.split("=")[0].strip() == key)
     ]
     env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
 
