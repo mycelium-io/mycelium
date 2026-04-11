@@ -4,6 +4,8 @@
 """Config commands for Mycelium CLI."""
 
 import json as json_module
+import subprocess
+from pathlib import Path
 
 import typer
 
@@ -38,15 +40,7 @@ def show(ctx: typer.Context) -> None:
         if json_output:
             typer.echo(
                 json_module.dumps(
-                    {
-                        "server": {
-                            "api_url": config.server.api_url,
-                            "workspace_id": config.server.workspace_id,
-                            "mas_id": config.server.mas_id,
-                        },
-                        "identity": {"name": config.identity.name},
-                        "room": {"active": config.rooms.active},
-                    },
+                    config.model_dump(mode="json", exclude_none=True),
                     indent=2,
                 )
             )
@@ -61,6 +55,15 @@ def show(ctx: typer.Context) -> None:
                 typer.echo(f"  Identity:     {config.identity.name}")
             if config.rooms.active:
                 typer.echo(f"  Active Room:  {config.rooms.active}")
+            if config.llm.model:
+                typer.echo(f"  LLM Model:    {config.llm.model}")
+            if config.llm.base_url:
+                typer.echo(f"  LLM Base URL: {config.llm.base_url}")
+            if config.llm.api_key:
+                masked = config.llm.api_key[:8] + "..." if len(config.llm.api_key) > 8 else "***"
+                typer.echo(f"  LLM API Key:  {masked}")
+            typer.echo(f"  DB Port:      {config.runtime.db_port}")
+            typer.echo(f"  Backend Port: {config.runtime.backend_port}")
 
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
@@ -160,3 +163,102 @@ def get_config(
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)
         raise typer.Exit(1) from None
+
+
+@doc_ref(
+    usage="mycelium config apply [--restart]",
+    desc="Regenerate .env from config.toml and optionally restart containers.",
+    group="config",
+)
+@app.command("apply")
+def apply_config(
+    ctx: typer.Context,
+    restart: bool = typer.Option(
+        False, "--restart", "-r", help="Restart Docker containers after applying"
+    ),
+) -> None:
+    """
+    Regenerate ~/.mycelium/.env from config.toml.
+
+    config.toml is the single source of truth. This command derives the
+    Docker .env file from it so that ``docker compose`` picks up any
+    changes you made via ``mycelium config set``.
+
+    Examples:
+        mycelium config apply              # regenerate .env
+        mycelium config apply --restart    # regenerate .env and restart containers
+    """
+    try:
+        config = MyceliumConfig.load()
+
+        from mycelium.docker_utils import write_env_file
+
+        env_path = write_env_file(config)
+        typer.secho(f"  ✓ Wrote {env_path}", fg=typer.colors.GREEN)
+
+        if restart:
+            typer.echo("  Restarting containers...")
+            compose_path = _find_compose_path()
+            if not compose_path:
+                typer.secho("  ✗ Could not find compose.yml", fg=typer.colors.RED)
+                raise typer.Exit(1)
+
+            result = subprocess.run(
+                [
+                    "docker",
+                    "compose",
+                    "-p",
+                    "mycelium",
+                    "-f",
+                    str(compose_path),
+                    "--env-file",
+                    str(env_path),
+                    "up",
+                    "--force-recreate",
+                    "-d",
+                ],
+                text=True,
+            )
+            if result.returncode == 0:
+                typer.secho("  ✓ Containers restarted", fg=typer.colors.GREEN)
+            else:
+                typer.secho("  ✗ Restart failed", fg=typer.colors.RED)
+                raise typer.Exit(1)
+
+    except typer.Exit:
+        raise
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+        raise typer.Exit(1) from None
+
+
+def _find_compose_path() -> Path | None:
+    """Find the compose file — same logic as install.py but simplified."""
+    import importlib.resources
+
+    bundled = Path.home() / ".mycelium" / "docker" / "compose.yml"
+    if bundled.exists():
+        return bundled
+
+    cwd_candidate = Path.cwd() / "services" / "docker-compose.yml"
+    if cwd_candidate.exists():
+        return cwd_candidate
+
+    try:
+        pkg_path = Path(str(importlib.resources.files("mycelium")))
+        for depth in range(2, 7):
+            candidate = pkg_path.parents[depth] / "services" / "docker-compose.yml"
+            if candidate.exists():
+                return candidate
+    except Exception:
+        pass
+
+    try:
+        ref = importlib.resources.files("mycelium.docker") / "compose.yml"
+        dest = Path.home() / ".mycelium" / "docker" / "compose.yml"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(ref.read_bytes())
+        return dest
+    except Exception:
+        return None

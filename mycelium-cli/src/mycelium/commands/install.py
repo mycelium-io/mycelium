@@ -701,8 +701,16 @@ def _provision_backend(api_url: str, workspace_name: str = "default") -> tuple[s
 # ── Config write ─────────────────────────────────────────────────────────────
 
 
-def _write_mycelium_config(api_url: str, workspace_id: str, mas_id: str) -> None:
-    from mycelium.config import MyceliumConfig, ServerConfig
+def _write_mycelium_config(
+    api_url: str,
+    workspace_id: str,
+    mas_id: str,
+    llm_config: dict[str, str] | None = None,
+    custom_ports: dict[str, int] | None = None,
+    ioc_enabled: bool = False,
+) -> None:
+    from mycelium.config import LLMConfig, MyceliumConfig, RuntimeConfig, ServerConfig
+    from mycelium.docker_utils import write_env_file
 
     config_path = MyceliumConfig.get_global_config_path()
     try:
@@ -715,8 +723,35 @@ def _write_mycelium_config(api_url: str, workspace_id: str, mas_id: str) -> None
         workspace_id=workspace_id,
         mas_id=mas_id,
     )
+
+    # Persist LLM settings into [llm] section
+    if llm_config:
+        config.llm = LLMConfig(
+            model=llm_config.get("LLM_MODEL") or config.llm.model,
+            api_key=llm_config.get("LLM_API_KEY") or config.llm.api_key,
+            base_url=llm_config.get("LLM_BASE_URL") or config.llm.base_url,
+        )
+
+    # Persist runtime settings into [runtime] section
+    runtime_kwargs: dict[str, object] = {
+        "data_dir": str(Path.home() / ".mycelium"),
+    }
+    if custom_ports:
+        runtime_kwargs["db_port"] = custom_ports.get("db", 5432)
+        runtime_kwargs["backend_port"] = custom_ports.get("backend", 8000)
+    if ioc_enabled:
+        runtime_kwargs["cfn_mgmt_url"] = "http://ioc-cfn-mgmt-plane-svc:9000"
+        runtime_kwargs["cognition_fabric_node_url"] = "http://ioc-cognition-fabric-node-svc:9002"
+    if workspace_id:
+        runtime_kwargs["workspace_id"] = workspace_id
+    config.runtime = RuntimeConfig(**runtime_kwargs)
+
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config.save(config_path)
+
+    # Derive .env from the canonical config.toml
+    env_path = write_env_file(config)
+    typer.echo(f"  ✓ Regenerated {env_path} from config.toml")
 
 
 # ── Animation helper ──────────────────────────────────────────────────────────
@@ -918,7 +953,14 @@ def install(
                 _restart_backend(compose_path, env_path, compose_profiles, api_url)
 
             _run_migrations()
-            _write_mycelium_config(api_url, workspace_id, mas_id)
+            _write_mycelium_config(
+                api_url,
+                workspace_id,
+                mas_id,
+                llm_config=llm_config,
+                custom_ports=custom_ports,
+                ioc_enabled=ioc,
+            )
             typer.secho("  ✓ Done.", fg=typer.colors.GREEN, bold=True)
             return
 
@@ -1179,7 +1221,14 @@ def install(
             _restart_backend(compose_path, env_path, compose_profiles, api_url)
 
         _run_migrations()
-        _write_mycelium_config(api_url, workspace_id, mas_id)
+        _write_mycelium_config(
+            api_url,
+            workspace_id,
+            mas_id,
+            llm_config=llm_config,
+            custom_ports=custom_ports,
+            ioc_enabled=ioc_enabled,
+        )
         typer.secho("  ✓ Config written to ~/.mycelium/config.toml", fg=typer.colors.GREEN)
 
         # ── Done ───────────────────────────────────────────────────────────
