@@ -1,13 +1,23 @@
 /**
- * mycelium-channel — OpenClaw Channel Plugin (experimental)
+ * mycelium-channel — OpenClaw Channel Plugin
  *
- * Lets agents communicate through Mycelium rooms instead of Discord/Slack.
+ * Lets multiple OpenClaw agents communicate through a shared Mycelium room.
  *
- * Inbound: SSE from mycelium room → spawn `openclaw agent --local` → agent processes message
- * Outbound: llm_output hook → POST agent reply back to mycelium room
+ * Inbound: SSE from room → dispatch to all agents except the sender
+ * Outbound: capture agent stdout → POST reply back to room
  *
- * This is a plugin (not a full channel adapter) — it hooks into the gateway
- * event system rather than implementing the full ChannelPlugin interface.
+ * Config (in openclaw.json):
+ *   channels: {
+ *     "mycelium-room": {
+ *       enabled: true,
+ *       backendUrl: "http://localhost:8001",
+ *       room: "test-room",
+ *       agents: ["julia-agent", "selina-agent"]  // openclaw agent IDs
+ *     }
+ *   }
+ *
+ * Single-agent shorthand still works:
+ *   channels: { "mycelium-room": { backendUrl: "...", room: "...", handle: "main" } }
  */
 
 import { readFileSync } from "node:fs";
@@ -19,7 +29,7 @@ const CHANNEL_ID = "mycelium-room";
 type ChannelConfig = {
   backendUrl: string;
   room: string;
-  handle: string;
+  agents: string[];  // openclaw agent IDs participating in this room
 };
 
 function readChannelConfig(): ChannelConfig | null {
@@ -28,10 +38,21 @@ function readChannelConfig(): ChannelConfig | null {
     const raw = JSON.parse(readFileSync(configPath, "utf-8"));
     const cfg = raw?.channels?.[CHANNEL_ID];
     if (!cfg?.backendUrl || !cfg?.room) return null;
+
+    // Support both "agents" array and legacy "handle" string
+    let agents: string[];
+    if (Array.isArray(cfg.agents) && cfg.agents.length > 0) {
+      agents = cfg.agents.map(String);
+    } else if (cfg.handle) {
+      agents = [String(cfg.handle)];
+    } else {
+      agents = ["main"];
+    }
+
     return {
       backendUrl: String(cfg.backendUrl).replace(/\/$/, ""),
       room: String(cfg.room),
-      handle: String(cfg.handle ?? "main"),
+      agents,
     };
   } catch {
     return null;
@@ -40,8 +61,11 @@ function readChannelConfig(): ChannelConfig | null {
 
 let _abort: AbortController | null = null;
 
-// Track message IDs we posted ourselves to prevent echo loops
+// Track message IDs we posted to prevent echo loops
 const _ownMessageIds = new Set<string>();
+
+// Track agents currently processing a message to prevent overlap
+const _busyAgents = new Set<string>();
 
 async function postToRoom(cfg: ChannelConfig, senderHandle: string, content: string): Promise<boolean> {
   const url = `${cfg.backendUrl}/rooms/${encodeURIComponent(cfg.room)}/messages`;
@@ -56,16 +80,70 @@ async function postToRoom(cfg: ChannelConfig, senderHandle: string, content: str
       }),
     });
     if (res.ok) {
-      // Track the message ID so SSE listener skips it (loop prevention)
       try {
         const body = await res.json();
         if (body?.id) _ownMessageIds.add(body.id);
-      } catch { /* response parse failure is non-fatal */ }
+      } catch { /* non-fatal */ }
     }
     return res.ok;
   } catch {
     return false;
   }
+}
+
+function dispatchToAgent(
+  cfg: ChannelConfig,
+  agentId: string,
+  sender: string,
+  content: string,
+  log: { info: (s: string) => void; warn: (s: string) => void },
+) {
+  if (_busyAgents.has(agentId)) {
+    log.info(`[${CHANNEL_ID}] ${agentId} busy — skipping message from ${sender}`);
+    return;
+  }
+  _busyAgents.add(agentId);
+  // Safety: auto-clear busy state after 90s in case process hangs or gets killed
+  setTimeout(() => _busyAgents.delete(agentId), 90_000);
+
+  const { spawn } = require("node:child_process");
+  const envelope = `[Message from ${sender} in room ${cfg.room}]: ${content}`;
+  const child = spawn("openclaw", [
+    "agent",
+    "--agent", agentId,
+    "--session-id", `${CHANNEL_ID}-${cfg.room}`,
+    "-m", envelope,
+    "--timeout", "30",
+  ], {
+    detached: true,
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  child.unref();
+  log.info(`[${CHANNEL_ID}] dispatched to ${agentId} (pid=${child.pid})`);
+
+  let agentOutput = "";
+  child.stdout.on("data", (chunk: Buffer) => {
+    agentOutput += chunk.toString();
+  });
+  child.on("close", async () => {
+    _busyAgents.delete(agentId);
+
+    // Strip ANSI codes and plugin log lines
+    const reply = agentOutput
+      .replace(/\x1b\[[0-9;]*m/g, "")
+      .split("\n")
+      .filter((l: string) => !l.startsWith("[plugins]") && !l.startsWith("[") && l.trim())
+      .join("\n")
+      .trim();
+    if (!reply) return;
+
+    const ok = await postToRoom(cfg, agentId, reply);
+    if (ok) {
+      log.info(`[${CHANNEL_ID}] → ${agentId}: ${reply.slice(0, 80)}${reply.length > 80 ? "…" : ""}`);
+    } else {
+      log.warn(`[${CHANNEL_ID}] outbound POST failed for ${agentId}`);
+    }
+  });
 }
 
 function startRoomSSE(
@@ -76,6 +154,7 @@ function startRoomSSE(
   _abort = new AbortController();
   const signal = _abort.signal;
   const sseUrl = `${cfg.backendUrl}/rooms/${encodeURIComponent(cfg.room)}/messages/stream`;
+  const agentSet = new Set(cfg.agents);
 
   (async () => {
     while (!signal.aborted) {
@@ -90,7 +169,7 @@ function startRoomSSE(
           continue;
         }
 
-        log.info(`[${CHANNEL_ID}] SSE connected: ${cfg.room}`);
+        log.info(`[${CHANNEL_ID}] SSE connected: ${cfg.room} (agents: ${cfg.agents.join(", ")})`);
         const reader = (res.body as any).getReader();
         const decoder = new TextDecoder();
         let buffer = "";
@@ -112,12 +191,11 @@ function startRoomSSE(
             let msg: any;
             try { msg = JSON.parse(raw); } catch { continue; }
 
-            // Skip own messages (by tracked ID or by handle match)
+            // Skip messages we posted (loop prevention)
             if (msg.id && _ownMessageIds.has(msg.id)) {
-              _ownMessageIds.delete(msg.id);  // clean up
+              _ownMessageIds.delete(msg.id);
               continue;
             }
-            if (msg.sender_handle === cfg.handle) continue;
             // Skip coordination system messages
             if (msg.message_type?.startsWith("coordination_")) continue;
             if (msg.message_type === "announce") continue;
@@ -128,46 +206,11 @@ function startRoomSSE(
 
             log.info(`[${CHANNEL_ID}] ← ${sender}: ${content.slice(0, 80)}${content.length > 80 ? "…" : ""}`);
 
-            // Deliver to agent via openclaw CLI and capture response
-            const { spawn } = require("node:child_process");
-            const envelope = `[Message from ${sender} in room ${cfg.room}]: ${content}`;
-            const child = spawn("openclaw", [
-              "agent",
-              "--agent", cfg.handle,
-              "--session-id", `${CHANNEL_ID}-${cfg.room}`,
-              "--local",
-              "-m", envelope,
-              "--timeout", "120",
-            ], {
-              detached: true,
-              stdio: ["ignore", "pipe", "ignore"],
-            });
-            child.unref();
-            log.info(`[${CHANNEL_ID}] dispatched to ${cfg.handle} (pid=${child.pid})`);
-
-            // Capture stdout and post agent's reply back to room
-            let agentOutput = "";
-            child.stdout.on("data", (chunk: Buffer) => {
-              agentOutput += chunk.toString();
-            });
-            child.on("close", async () => {
-              // Strip ANSI codes and plugin log lines, extract the actual reply
-              const lines = agentOutput
-                .replace(/\x1b\[[0-9;]*m/g, "")
-                .split("\n")
-                .filter((l: string) => !l.startsWith("[plugins]") && !l.startsWith("[") && l.trim())
-                .join("\n")
-                .trim();
-              if (!lines) return;
-
-              const handle = cfg.handle;
-              const ok = await postToRoom(cfg, handle, lines);
-              if (ok) {
-                log.info(`[${CHANNEL_ID}] → ${handle}: ${lines.slice(0, 80)}${lines.length > 80 ? "…" : ""}`);
-              } else {
-                log.warn(`[${CHANNEL_ID}] outbound POST failed for ${handle}`);
-              }
-            });
+            // Dispatch to all agents EXCEPT the sender
+            for (const agentId of cfg.agents) {
+              if (agentId === sender) continue;  // don't echo back to sender
+              dispatchToAgent(cfg, agentId, sender, content, log);
+            }
           }
         }
       } catch (err: any) {
@@ -182,7 +225,7 @@ function startRoomSSE(
 const plugin = {
   id: "mycelium-channel",
   name: "Mycelium Channel",
-  description: "Room-based agent coordination via Mycelium rooms",
+  description: "Room-based multi-agent coordination via Mycelium rooms",
   register(api: any) {
     const log = api.logger;
     const cfg = readChannelConfig();
@@ -192,29 +235,14 @@ const plugin = {
       return;
     }
 
-    log.info(`[${CHANNEL_ID}] configured — room: ${cfg.room}, backend: ${cfg.backendUrl}`);
+    log.info(`[${CHANNEL_ID}] configured — room: ${cfg.room}, agents: [${cfg.agents.join(", ")}], backend: ${cfg.backendUrl}`);
 
-    // Outbound: when the LLM responds in a mycelium-channel session,
-    // post the reply back to the room so other agents can see it
-    api.on("llm_output", async (event: any, ctx: any) => {
-      const sessionKey: string = ctx?.sessionKey ?? "";
-      if (!sessionKey.includes(CHANNEL_ID)) return;
-
-      const texts: string[] = event?.assistantTexts ?? [];
-      const reply = texts.join("\n").trim();
-      if (!reply) return;
-
-      const handle = ctx?.agentId ?? cfg.handle;
-      const ok = await postToRoom(cfg, handle, reply);
-      if (ok) {
-        log.info(`[${CHANNEL_ID}] → ${handle}: ${reply.slice(0, 80)}${reply.length > 80 ? "…" : ""}`);
-      } else {
-        log.warn(`[${CHANNEL_ID}] outbound POST failed for ${handle}`);
-      }
-    });
-
-    // Start SSE on gateway start
     api.on("gateway_start", async () => {
+      // Don't start SSE in one-shot child processes spawned by the channel plugin itself
+      if (process.env.MYCELIUM_CHANNEL_ONESHOT === "1") {
+        log.info(`[${CHANNEL_ID}] oneshot mode — skipping SSE`);
+        return;
+      }
       log.info(`[${CHANNEL_ID}] gateway started — starting SSE for ${cfg.room}`);
       startRoomSSE(cfg, log);
     });

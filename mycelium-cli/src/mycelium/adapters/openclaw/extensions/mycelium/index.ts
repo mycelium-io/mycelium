@@ -292,7 +292,13 @@ export default function register(api: {
       _sessions.set(agentId ?? "default", { sessionKey, sessionId, handle, room: existing?.room });
     }
 
-    subscribeHandle(handle);
+    // Only subscribe SSE for gateway-resident sessions, not one-shot CLI runs.
+    // CLI sessions (sessionKey ends with ":main") and channel-dispatched one-shots
+    // (MYCELIUM_CHANNEL_ONESHOT=1) exit after one turn — SSE would hold the process open.
+    const isOneshot = isCliSession || process.env.MYCELIUM_CHANNEL_ONESHOT === "1";
+    if (!isOneshot) {
+      subscribeHandle(handle);
+    }
 
     if (event.resumedFrom) {
       log.info(`[mycelium] Session resumed (${event.sessionId})`);
