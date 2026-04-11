@@ -3,8 +3,8 @@
  *
  * Lets agents communicate through Mycelium rooms instead of Discord/Slack.
  *
- * Inbound: SSE from mycelium room → callGateway("chat.send") → agent session
- * Outbound: agent hook (after_agent_reply) → POST to mycelium room
+ * Inbound: SSE from mycelium room → spawn `openclaw agent --local` → agent processes message
+ * Outbound: llm_output hook → POST agent reply back to mycelium room
  *
  * This is a plugin (not a full channel adapter) — it hooks into the gateway
  * event system rather than implementing the full ChannelPlugin interface.
@@ -40,6 +40,9 @@ function readChannelConfig(): ChannelConfig | null {
 
 let _abort: AbortController | null = null;
 
+// Track message IDs we posted ourselves to prevent echo loops
+const _ownMessageIds = new Set<string>();
+
 async function postToRoom(cfg: ChannelConfig, senderHandle: string, content: string): Promise<boolean> {
   const url = `${cfg.backendUrl}/rooms/${encodeURIComponent(cfg.room)}/messages`;
   try {
@@ -52,6 +55,13 @@ async function postToRoom(cfg: ChannelConfig, senderHandle: string, content: str
         sender_handle: senderHandle,
       }),
     });
+    if (res.ok) {
+      // Track the message ID so SSE listener skips it (loop prevention)
+      try {
+        const body = await res.json();
+        if (body?.id) _ownMessageIds.add(body.id);
+      } catch { /* response parse failure is non-fatal */ }
+    }
     return res.ok;
   } catch {
     return false;
@@ -102,8 +112,13 @@ function startRoomSSE(
             let msg: any;
             try { msg = JSON.parse(raw); } catch { continue; }
 
-            // Skip own messages and coordination system messages
+            // Skip own messages (by tracked ID or by handle match)
+            if (msg.id && _ownMessageIds.has(msg.id)) {
+              _ownMessageIds.delete(msg.id);  // clean up
+              continue;
+            }
             if (msg.sender_handle === cfg.handle) continue;
+            // Skip coordination system messages
             if (msg.message_type?.startsWith("coordination_")) continue;
             if (msg.message_type === "announce") continue;
 
@@ -113,7 +128,7 @@ function startRoomSSE(
 
             log.info(`[${CHANNEL_ID}] ← ${sender}: ${content.slice(0, 80)}${content.length > 80 ? "…" : ""}`);
 
-            // Deliver to agent via openclaw CLI — same pattern as wakeAgent in mycelium plugin
+            // Deliver to agent via openclaw CLI and capture response
             const { spawn } = require("node:child_process");
             const envelope = `[Message from ${sender} in room ${cfg.room}]: ${content}`;
             const child = spawn("openclaw", [
@@ -125,10 +140,34 @@ function startRoomSSE(
               "--timeout", "120",
             ], {
               detached: true,
-              stdio: "ignore",
+              stdio: ["ignore", "pipe", "ignore"],
             });
             child.unref();
             log.info(`[${CHANNEL_ID}] dispatched to ${cfg.handle} (pid=${child.pid})`);
+
+            // Capture stdout and post agent's reply back to room
+            let agentOutput = "";
+            child.stdout.on("data", (chunk: Buffer) => {
+              agentOutput += chunk.toString();
+            });
+            child.on("close", async () => {
+              // Strip ANSI codes and plugin log lines, extract the actual reply
+              const lines = agentOutput
+                .replace(/\x1b\[[0-9;]*m/g, "")
+                .split("\n")
+                .filter((l: string) => !l.startsWith("[plugins]") && !l.startsWith("[") && l.trim())
+                .join("\n")
+                .trim();
+              if (!lines) return;
+
+              const handle = cfg.handle;
+              const ok = await postToRoom(cfg, handle, lines);
+              if (ok) {
+                log.info(`[${CHANNEL_ID}] → ${handle}: ${lines.slice(0, 80)}${lines.length > 80 ? "…" : ""}`);
+              } else {
+                log.warn(`[${CHANNEL_ID}] outbound POST failed for ${handle}`);
+              }
+            });
           }
         }
       } catch (err: any) {
@@ -155,17 +194,23 @@ const plugin = {
 
     log.info(`[${CHANNEL_ID}] configured — room: ${cfg.room}, backend: ${cfg.backendUrl}`);
 
-    // No callGateway needed — we spawn openclaw CLI for inbound delivery
-
-    // Hook: when an agent session ends, check if it was a mycelium channel session
-    // and post the reply back to the room
-    api.on("session_end", async (event: any, ctx: any) => {
-      const sessionKey = ctx?.sessionKey ?? event?.sessionKey ?? "";
+    // Outbound: when the LLM responds in a mycelium-channel session,
+    // post the reply back to the room so other agents can see it
+    api.on("llm_output", async (event: any, ctx: any) => {
+      const sessionKey: string = ctx?.sessionKey ?? "";
       if (!sessionKey.includes(CHANNEL_ID)) return;
 
-      // Read the last assistant reply from the session
-      // TODO: find a way to get the actual reply text from session_end event
-      log.info(`[${CHANNEL_ID}] session_end for channel session: ${sessionKey}`);
+      const texts: string[] = event?.assistantTexts ?? [];
+      const reply = texts.join("\n").trim();
+      if (!reply) return;
+
+      const handle = ctx?.agentId ?? cfg.handle;
+      const ok = await postToRoom(cfg, handle, reply);
+      if (ok) {
+        log.info(`[${CHANNEL_ID}] → ${handle}: ${reply.slice(0, 80)}${reply.length > 80 ? "…" : ""}`);
+      } else {
+        log.warn(`[${CHANNEL_ID}] outbound POST failed for ${handle}`);
+      }
     });
 
     // Start SSE on gateway start
