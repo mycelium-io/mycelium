@@ -343,7 +343,10 @@ def add(
 
         if adapter_type == "openclaw":
             _install_openclaw(
-                verbose=verbose, profile=openclaw_profile, container=openclaw_container
+                verbose=verbose,
+                profile=openclaw_profile,
+                container=openclaw_container,
+                config=config,
             )
         elif adapter_type == "claude-code":
             _install_claude_code(verbose=verbose)
@@ -590,7 +593,10 @@ def _resolve_asset(subpath: str, adapter: str = "openclaw") -> Path:
 
 
 def _install_openclaw(
-    verbose: bool = False, profile: str | None = None, container: str | None = None
+    verbose: bool = False,
+    profile: str | None = None,
+    container: str | None = None,
+    config: "MyceliumConfig | None" = None,
 ) -> None:
     """
     Install the bundled openclaw plugin and hook.
@@ -601,7 +607,9 @@ def _install_openclaw(
 
     When `container` is set, assets are staged inside the container via docker cp
     (with root ownership) before install, so OpenClaw's container-side filesystem
-    resolver finds them correctly.
+    resolver finds them correctly.  A config.json snapshot is also written into the
+    container's ~/.mycelium/ with the Docker-friendly API URL (host.docker.internal
+    + published port) so the bootstrap hook and plugin resolve the correct backend.
     """
 
     def _run(cmd: list[str], allow_already_exists: bool = False) -> None:
@@ -666,6 +674,63 @@ def _install_openclaw(
             container=container,
         )
         _install_openclaw_skill(profile=profile)
+
+        # ── Write Docker-friendly config.json into the container ─────────
+        # The bootstrap hook and plugin read ~/.mycelium/config.json to
+        # resolve MYCELIUM_API_URL.  Without this, they fall back to
+        # config.toml which contains localhost:<port> — unreachable from
+        # inside the container.  We rewrite to host.docker.internal:<port>
+        # using the published port from the host's config.toml.
+        if config is not None:
+            try:
+                docker_url = _docker_api_url(config)
+                snapshot = config.model_dump(mode="json", exclude_none=True)
+                snapshot.setdefault("server", {})["api_url"] = docker_url
+                container_config_dir = f"{container_home}/.mycelium"
+                container_config_path = f"{container_config_dir}/config.json"
+                with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
+                    json_module.dump(snapshot, tmp, indent=2)
+                    tmp.write("\n")
+                    tmp_path = tmp.name
+                try:
+                    subprocess.run(
+                        ["docker", "exec", container, "mkdir", "-p", container_config_dir],
+                        text=True,
+                        capture_output=True,
+                    )
+                    result = subprocess.run(
+                        ["docker", "cp", tmp_path, f"{container}:{container_config_path}"],
+                        text=True,
+                        capture_output=True,
+                    )
+                    if result.returncode != 0:
+                        raise RuntimeError(result.stderr.strip())
+                    subprocess.run(
+                        [
+                            "docker",
+                            "exec",
+                            "-u",
+                            "0",
+                            container,
+                            "chown",
+                            "0:0",
+                            container_config_path,
+                        ],
+                        text=True,
+                        capture_output=True,
+                    )
+                    if verbose:
+                        typer.echo(
+                            f"  wrote {container}:{container_config_path} (api_url={docker_url})"
+                        )
+                finally:
+                    Path(tmp_path).unlink(missing_ok=True)
+            except Exception as exc:
+                typer.secho(
+                    f"  warning: could not write config.json to container: {exc}",
+                    fg=typer.colors.YELLOW,
+                )
+
         return
 
     # ── Host-native install ───────────────────────────────────────────────────
@@ -1009,7 +1074,13 @@ def _docker_api_url(config: "MyceliumConfig") -> str:
     """
     parsed = urlparse(config.server.api_url)
     hostname = parsed.hostname or "localhost"
-    port = parsed.port or 8000
+    port = parsed.port
+    if not port:
+        raise ValueError(
+            f"No port found in api_url '{config.server.api_url}'. "
+            "Please set a full URL including port in config.toml "
+            '(e.g. api_url = "http://localhost:8001").'
+        )
     if hostname in ("localhost", "127.0.0.1", "0.0.0.0"):
         hostname = "host.docker.internal"
     scheme = parsed.scheme or "http"

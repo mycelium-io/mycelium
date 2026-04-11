@@ -405,17 +405,23 @@ def _check_config_drift() -> CheckResult:
 
     # Check port consistency
     env_port = vals.get("MYCELIUM_BACKEND_PORT", "8000")
-    config_url = cfg.server.api_url or "http://localhost:8000"
+    config_url = cfg.server.api_url
     # Extract port from config URL
     try:
         from urllib.parse import urlparse
 
         parsed = urlparse(config_url)
-        config_port = str(parsed.port or 8000)
+        config_port = str(parsed.port) if parsed.port else None
     except Exception:
-        config_port = "8000"
+        config_port = None
 
-    if env_port != config_port:
+    if config_port is None:
+        issues.append(
+            f"No port found in config.toml api_url '{config_url}' — "
+            "expected a full URL including port (e.g. http://localhost:8001)"
+        )
+
+    if config_port is not None and env_port != config_port:
         issues.append(f"Backend port: .env={env_port}, config.toml URL implies {config_port}")
 
     if issues:
