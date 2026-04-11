@@ -146,6 +146,174 @@ function dispatchToAgent(
   });
 }
 
+// Track session sub-rooms we're already subscribed to
+const _subscribedSessions = new Set<string>();
+
+function startSessionSSE(
+  cfg: ChannelConfig,
+  sessionRoom: string,
+  log: { info: (s: string) => void; warn: (s: string) => void },
+) {
+  if (_subscribedSessions.has(sessionRoom)) return;
+  _subscribedSessions.add(sessionRoom);
+
+  const signal = _abort?.signal;
+  if (!signal) return;
+
+  const sseUrl = `${cfg.backendUrl}/rooms/${encodeURIComponent(sessionRoom)}/messages/stream`;
+  log.info(`[${CHANNEL_ID}] subscribing to session room: ${sessionRoom}`);
+
+  (async () => {
+    while (signal && !signal.aborted) {
+      try {
+        const res = await fetch(sseUrl, { headers: { Accept: "text/event-stream" }, signal });
+        if (!res.ok || !res.body) {
+          log.warn(`[${CHANNEL_ID}] session SSE ${res.status} for ${sessionRoom} — retry 5s`);
+          await new Promise((r) => setTimeout(r, 5000));
+          continue;
+        }
+
+        log.info(`[${CHANNEL_ID}] session SSE connected: ${sessionRoom}`);
+        const reader = (res.body as any).getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (!signal.aborted) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const blocks = buffer.split("\n\n");
+          buffer = blocks.pop() ?? "";
+
+          for (const block of blocks) {
+            const dataLine = block.split("\n").find((l: string) => l.startsWith("data: "));
+            if (!dataLine) continue;
+            const raw = dataLine.slice(6).trim();
+            if (!raw || raw === "{}") continue;
+            let msg: any;
+            try { msg = JSON.parse(raw); } catch { continue; }
+
+            // Route coordination ticks and consensus from session room
+            handleMessage(cfg, msg, log);
+          }
+        }
+      } catch (err: any) {
+        if (signal.aborted) return;
+        log.warn(`[${CHANNEL_ID}] session SSE error: ${err?.message} — retry 5s`);
+        await new Promise((r) => setTimeout(r, 5000));
+      }
+    }
+  })();
+}
+
+function handleMessage(
+  cfg: ChannelConfig,
+  msg: any,
+  log: { info: (s: string) => void; warn: (s: string) => void },
+) {
+  // Skip messages we posted (loop prevention)
+  if (msg.id && _ownMessageIds.has(msg.id)) {
+    _ownMessageIds.delete(msg.id);
+    return;
+  }
+  if (msg.message_type === "announce") return;
+
+  // ── Coordination ticks: CognitiveEngine addressing a specific agent ──
+  if (msg.message_type === "coordination_tick") {
+    try {
+      const tickData = typeof msg.content === "string" ? JSON.parse(msg.content) : msg.content;
+      const payload = tickData?.payload ?? tickData;
+      const targetAgent = payload?.participant_id;
+      if (!targetAgent || !cfg.agents.includes(targetAgent)) return;
+
+      const action = payload?.action ?? "respond";
+      const canCounter = payload?.can_counter_offer === true;
+      const currentOffer = payload?.current_offer ?? {};
+      const round = payload?.round ?? "?";
+      const roomName = msg.room_name ?? cfg.room;
+
+      const offerSummary = Object.entries(currentOffer)
+        .map(([k, v]) => `  ${k}: ${v}`)
+        .join("\n");
+
+      const instruction = [
+        `[CognitiveEngine — Round ${round}]`,
+        `You are in a structured negotiation in room ${roomName}.`,
+        `Action required: ${action}`,
+        canCounter ? "You CAN propose a counter-offer." : "You can only accept or reject.",
+        "",
+        "Current offer on the table:",
+        offerSummary,
+        "",
+        canCounter
+          ? "To counter-propose, run: mycelium message propose ISSUE=VALUE ISSUE=VALUE ... --room " + roomName + " --handle " + targetAgent
+          : "",
+        "To accept: mycelium message respond accept --room " + roomName + " --handle " + targetAgent,
+        "To reject: mycelium message respond reject --room " + roomName + " --handle " + targetAgent,
+        "",
+        "Explain your reasoning before running the command.",
+      ].filter(Boolean).join("\n");
+
+      log.info(`[${CHANNEL_ID}] 🎯 tick r${round} → ${targetAgent} (${action}, counter=${canCounter})`);
+      dispatchToAgent(cfg, targetAgent, "CognitiveEngine", instruction, log);
+    } catch (err: any) {
+      log.warn(`[${CHANNEL_ID}] tick parse error: ${err?.message}`);
+    }
+    return;
+  }
+
+  // ── Coordination consensus ──
+  if (msg.message_type === "coordination_consensus") {
+    try {
+      const consensusData = typeof msg.content === "string" ? JSON.parse(msg.content) : msg.content;
+      const plan = consensusData?.plan ?? "No plan details";
+      const assignments = consensusData?.assignments ?? {};
+      const broken = consensusData?.broken === true;
+
+      const summary = broken
+        ? `[CognitiveEngine — Negotiation FAILED]\n${plan}`
+        : [
+            "[CognitiveEngine — Consensus Reached!]",
+            "",
+            typeof plan === "string" ? plan : JSON.stringify(plan, null, 2),
+            "",
+            "Assignments:",
+            ...Object.entries(assignments).map(([agent, task]) => `  ${agent}: ${task}`),
+          ].join("\n");
+
+      log.info(`[${CHANNEL_ID}] 🤝 consensus ${broken ? "BROKEN" : "reached"}`);
+
+      for (const agentId of cfg.agents) {
+        dispatchToAgent(cfg, agentId, "CognitiveEngine", summary, log);
+      }
+    } catch (err: any) {
+      log.warn(`[${CHANNEL_ID}] consensus parse error: ${err?.message}`);
+    }
+    return;
+  }
+
+  // ── Coordination join: detect session sub-room and subscribe ──
+  if (msg.message_type === "coordination_join" || msg.message_type === "coordination_start") {
+    const roomName = msg.room_name;
+    if (roomName && roomName.includes(":session:")) {
+      startSessionSSE(cfg, roomName, log);
+    }
+    return;
+  }
+
+  // ── Regular messages ──
+  const sender = msg.sender_handle ?? "unknown";
+  const content = msg.content ?? "";
+  if (!content.trim()) return;
+
+  log.info(`[${CHANNEL_ID}] ← ${sender}: ${content.slice(0, 80)}${content.length > 80 ? "…" : ""}`);
+
+  for (const agentId of cfg.agents) {
+    if (agentId === sender) continue;
+    dispatchToAgent(cfg, agentId, sender, content, log);
+  }
+}
+
 function startRoomSSE(
   cfg: ChannelConfig,
   log: { info: (s: string) => void; warn: (s: string) => void },
@@ -154,7 +322,6 @@ function startRoomSSE(
   _abort = new AbortController();
   const signal = _abort.signal;
   const sseUrl = `${cfg.backendUrl}/rooms/${encodeURIComponent(cfg.room)}/messages/stream`;
-  const agentSet = new Set(cfg.agents);
 
   (async () => {
     while (!signal.aborted) {
@@ -191,26 +358,7 @@ function startRoomSSE(
             let msg: any;
             try { msg = JSON.parse(raw); } catch { continue; }
 
-            // Skip messages we posted (loop prevention)
-            if (msg.id && _ownMessageIds.has(msg.id)) {
-              _ownMessageIds.delete(msg.id);
-              continue;
-            }
-            // Skip coordination system messages
-            if (msg.message_type?.startsWith("coordination_")) continue;
-            if (msg.message_type === "announce") continue;
-
-            const sender = msg.sender_handle ?? "unknown";
-            const content = msg.content ?? "";
-            if (!content.trim()) continue;
-
-            log.info(`[${CHANNEL_ID}] ← ${sender}: ${content.slice(0, 80)}${content.length > 80 ? "…" : ""}`);
-
-            // Dispatch to all agents EXCEPT the sender
-            for (const agentId of cfg.agents) {
-              if (agentId === sender) continue;  // don't echo back to sender
-              dispatchToAgent(cfg, agentId, sender, content, log);
-            }
+            handleMessage(cfg, msg, log);
           }
         }
       } catch (err: any) {
@@ -238,13 +386,32 @@ const plugin = {
     log.info(`[${CHANNEL_ID}] configured — room: ${cfg.room}, agents: [${cfg.agents.join(", ")}], backend: ${cfg.backendUrl}`);
 
     api.on("gateway_start", async () => {
-      // Don't start SSE in one-shot child processes spawned by the channel plugin itself
       if (process.env.MYCELIUM_CHANNEL_ONESHOT === "1") {
         log.info(`[${CHANNEL_ID}] oneshot mode — skipping SSE`);
         return;
       }
       log.info(`[${CHANNEL_ID}] gateway started — starting SSE for ${cfg.room}`);
       startRoomSSE(cfg, log);
+
+      // Poll for session sub-rooms and subscribe to their SSE
+      const pollInterval = setInterval(async () => {
+        try {
+          const res = await fetch(`${cfg.backendUrl}/rooms`);
+          if (!res.ok) return;
+          const rooms: any[] = await res.json();
+          for (const room of rooms) {
+            if (
+              room.name?.startsWith(cfg.room + ":session:") &&
+              (room.coordination_state === "waiting" || room.coordination_state === "negotiating")
+            ) {
+              startSessionSSE(cfg, room.name, log);
+            }
+          }
+        } catch { /* polling failure is non-fatal */ }
+      }, 5000);  // poll every 5s
+
+      // Clean up on abort
+      _abort?.signal.addEventListener("abort", () => clearInterval(pollInterval));
     });
   },
 };
