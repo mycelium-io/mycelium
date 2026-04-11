@@ -294,7 +294,7 @@ async def _llm_synthesize(room_name: str, context: str, memory_count: int) -> st
         if settings.LLM_API_KEY:
             kwargs["api_key"] = settings.LLM_API_KEY
         if settings.LLM_BASE_URL:
-            kwargs["api_base"] = settings.LLM_BASE_URL
+            kwargs["base_url"] = settings.LLM_BASE_URL
 
         response = litellm.completion(**kwargs)
         return response.choices[0].message.content
