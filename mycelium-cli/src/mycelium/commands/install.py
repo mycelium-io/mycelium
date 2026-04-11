@@ -213,8 +213,12 @@ def _write_env_file(env_path: Path, llm_config: dict[str, str]) -> None:
     import importlib.resources
 
     # On re-install, preserve existing .env and only update/append changed keys.
+    # Remove LLM_BASE_URL when the new config doesn't include it — avoids
+    # leaving a stale empty value that breaks litellm (see #97).
     if env_path.exists():
         _patch_env_vars(env_path, llm_config)
+        if "LLM_BASE_URL" not in llm_config:
+            _remove_env_var(env_path, "LLM_BASE_URL")
         return
 
     defaults_ref = importlib.resources.files("mycelium.docker") / "env.defaults"
@@ -279,6 +283,23 @@ def _patch_env_vars(env_path: Path, updates: dict[str, str]) -> None:
     # Append any keys not yet present
     for key, value in remaining.items():
         new_lines.append(f"{key}={value}")
+    env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+
+
+def _remove_env_var(env_path: Path, key: str) -> None:
+    """Remove a key from an existing .env file (no-op if absent)."""
+    if not env_path.exists():
+        return
+    lines = env_path.read_text(encoding="utf-8").splitlines()
+    new_lines = [
+        ln
+        for ln in lines
+        if not (
+            "=" in ln
+            and not ln.lstrip().startswith("#")
+            and ln.split("=")[0].strip() == key
+        )
+    ]
     env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
 
 

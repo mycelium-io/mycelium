@@ -46,6 +46,15 @@ class Settings(BaseSettings):
     # during a negotiation round before falling back to the safe default.
     COORDINATION_TICK_TIMEOUT_SECONDS: int = 30
 
+    @field_validator("LLM_BASE_URL", mode="before")
+    @classmethod
+    def _coerce_base_url(cls, v: object) -> object:
+        """Treat empty string as unset — litellm and the OpenAI SDK both pass
+        "" through to httpx which rejects it as UnsupportedProtocol."""
+        if isinstance(v, str) and v.strip() == "":
+            return None
+        return v
+
     @field_validator("COORDINATION_TICK_TIMEOUT_SECONDS", mode="before")
     @classmethod
     def _coerce_tick_timeout(cls, v: object) -> object:
