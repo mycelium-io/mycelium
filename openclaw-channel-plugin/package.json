@@ -1,0 +1,21 @@
+{
+  "name": "@mycelium-io/openclaw-channel",
+  "version": "0.1.0",
+  "description": "OpenClaw channel plugin for Mycelium — agents communicate through rooms instead of Discord/Slack",
+  "type": "module",
+  "dependencies": {},
+  "devDependencies": {
+    "openclaw": "file:../../openclaw",
+    "typescript": "^5.7.3"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "channel": {
+      "id": "mycelium",
+      "label": "Mycelium",
+      "selectionLabel": "Mycelium (room-based coordination)"
+    }
+  }
+}
