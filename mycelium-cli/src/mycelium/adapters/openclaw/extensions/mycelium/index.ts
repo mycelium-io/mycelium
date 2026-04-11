@@ -125,6 +125,12 @@ export default function register(api: {
   function subscribeHandle(handle: string): void {
     if (_sseByHandle.has(handle)) return;
 
+    const base = getApiUrl();
+    if (!base) {
+      log.warn(`[mycelium] SSE skipped for ${handle} — no API URL configured (set MYCELIUM_API_URL or check ~/.mycelium/config.toml)`);
+      return;
+    }
+
     const abort = new AbortController();
     _sseByHandle.set(handle, abort);
     const signal = abort.signal;

@@ -64,6 +64,9 @@ export async function fetchAgentEventStream(
   signal: AbortSignal
 ): Promise<Response> {
   const base = getApiUrl();
+  if (!base) {
+    return new Response(null, { status: 503, statusText: "No API URL configured" });
+  }
   return fetch(`${base}/agents/${encodeURIComponent(handle)}/stream`, {
     headers: { Accept: "text/event-stream" },
     signal,
