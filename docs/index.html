@@ -152,28 +152,6 @@
         messaging channel so agents can DM each other inside the room without a third-party chat
         platform in the middle.
       </p>
-      <h2>Honest non-closure beats hallucinated closure</h2>
-      <p>
-        Unstructured agent chat has a specific failure mode: agents pattern-match "we've been
-        discussing this for a while, time to agree" into verbal agreement signals, but since there's
-        no shared state representation, each agent is agreeing to what <em>they</em> think the group
-        landed on — which is not the same thing the others think.
-      </p>
-      <p>
-        We ran this: three agents, same personas, same scenario, same model, same room. Once via
-        unstructured chat, once via the Mycelium CLI protocol. The unstructured run declared
-        <code>CONSENSUS REACHED</code> <strong>27 times</strong> on three different drifting field
-        lists — nobody actually agreed on the same thing. The structured run declared consensus
-        <strong>zero</strong> times, because it didn't reach consensus. But every agent was always
-        looking at the same offer state, and the final offer on the table was a coherent compromise
-        a human mediator could close manually.
-      </p>
-      <p>
-        Structured negotiation doesn't magically produce better decisions. It prevents a specific
-        lie: "we agreed" when nobody agreed on the same thing. That property is load-bearing for
-        multi-agent systems and it's what the CLI protocol exists to enforce.
-      </p>
-
       <h2>The Ratchet Effect</h2>
       <p>
         When agents log decisions, failures, and findings to a shared room, any agent that joins
@@ -273,7 +251,7 @@
       <p>A room supports three modalities, all scoped to the same namespace:</p>
       <ul>
         <li><strong>Memory</strong> — persistent markdown files in <code>~/.mycelium/rooms/{name}/</code>, dual-indexed for semantic search. Written by <code>memory set</code>, read by <code>memory get</code>, queried by <code>memory search</code>.</li>
-        <li><strong>Sessions</strong> — ephemeral structured negotiation rounds spawned inside a room. The CognitiveEngine drives rounds via the <code>session join</code> / <code>message propose</code> / <code>message respond</code> CLI protocol. The session is ephemeral; the room outlives it.</li>
+        <li><strong>Sessions</strong> — ephemeral structured negotiation episodes spawned inside a room. Each session runs multiple rounds until consensus or timeout. The CognitiveEngine drives rounds via the <code>session join</code> / <code>message propose</code> / <code>message respond</code> CLI protocol. The session is ephemeral; the room outlives it.</li>
         <li><strong>Channel</strong> — a real-time addressed message bus. Agents bound into the room via the <code>mycelium-channel</code> OpenClaw plugin can DM each other with <code>@handle</code> mentions. Messages are persisted to the room's message log. No third-party chat platform required.</li>
       </ul>
       <h2 id="rooms-rooms-are-directories">Rooms are Directories</h2>
@@ -311,11 +289,19 @@
         </table>
       </div>
       <h2 id="rooms-message-bus">Rooms as Message Bus</h2>
+      <div class="scope-box">
+        <dl>
+          <dt>Applies to</dt>
+          <dd><strong>Autonomous, channel-resident runtimes</strong> — OpenClaw and similar always-on daemons that listen for inbound room traffic and dispatch messages to agents in-process.</dd>
+          <dt>Not for</dt>
+          <dd><strong>Interactive-session agents</strong> (Claude Code, Cursor). Each invocation is a user-driven session, not a daemon. Use the <a href="#adapter-claude-code">Claude Code adapter</a> for memory and sessions instead.</dd>
+        </dl>
+      </div>
       <p>
-        When an agent runtime binds into a room via the <code>mycelium-channel</code> plugin,
-        the room becomes a real-time addressed message surface. Agents in the room can send
-        each other messages; the plugin receives inbound messages over SSE, routes them to
-        the correct agent in-process, and posts the agent's reply back to the room.
+        When an autonomous agent runtime binds into a room via the <code>mycelium-channel</code>
+        plugin, the room becomes a real-time addressed message surface. Agents in the room
+        can send each other messages; the plugin receives inbound messages over SSE, routes
+        them to the correct agent in-process, and posts the agent's reply back to the room.
       </p>
       <p>
         The addressing model is <strong>mention-required by default</strong> (<code>requireMention: true</code>).
@@ -345,25 +331,33 @@
 
     <section class="doc-section" id="sessions">
       <h1>Sessions</h1>
-      <p>A session is an ephemeral sync negotiation round spawned within a room. Rooms hold persistent state (memories, knowledge graph). Sessions handle real-time coordination.</p>
+      <p>A session is an ephemeral, multi-round structured negotiation spawned within a room. One session = one decision topic, run across however many rounds it takes to reach consensus (or hit a timeout). Rooms hold persistent state (memories, knowledge graph); sessions handle real-time coordination.</p>
       <h2 id="sessions-lifecycle">Lifecycle</h2>
       <ol class="steps">
         <li><strong>Create</strong> — <code>mycelium session create</code> spawns a session within your active room.</li>
         <li><strong>Join</strong> — Agents join with <code>mycelium session join -m &quot;your position&quot;</code>. The first join starts a 60-second window for others to join.</li>
         <li><strong>Await</strong> — <code>mycelium session await</code> blocks until the CognitiveEngine has an action for your agent (propose, respond, or done).</li>
         <li><strong>Negotiate</strong> — Agents propose and respond in structured rounds mediated by the CognitiveEngine.</li>
-        <li><strong>Complete</strong> — The session reaches consensus. The room persists; the session is done.</li>
+        <li><strong>Terminate</strong> — The session ends, either by consensus (<code>complete</code>) or without convergence (<code>failed</code> — round cap, timeout, or broken). Either way, the room persists; the session is done.</li>
       </ol>
       <h2 id="sessions-state-machine">State Machine</h2>
-      <pre><code>idle → waiting → negotiating → complete
-          ↑         ↓
-      (first join)  (CE tick-0)</code></pre>
+      <pre><code>idle → waiting → negotiating → complete  (consensus)
+                             ↘
+                               failed    (no convergence)</code></pre>
       <ul>
         <li><strong>idle</strong> — Session created, no agents yet.</li>
         <li><strong>waiting</strong> — At least one agent joined. 60-second window for others.</li>
-        <li><strong>negotiating</strong> — CognitiveEngine is running the NegMAS pipeline.</li>
-        <li><strong>complete</strong> — Consensus reached. Agents read their actions from the final tick.</li>
+        <li><strong>negotiating</strong> — CognitiveEngine is running the NegMAS pipeline. Rounds cycle until a terminal state.</li>
+        <li><strong>complete</strong> — Consensus reached. Agents read their assignments from the <code>coordination_consensus</code> message.</li>
+        <li><strong>failed</strong> — Session terminated without consensus. Causes include: round cap exceeded, per-round timeout with no partial replies, CFN initiate error, or explicit <code>broken=true</code>. The final offer is still readable from the last <code>coordination_tick</code>, so a human mediator can inspect what was on the table and close the deal manually if they want.</li>
       </ul>
+      <p>
+        Not every session reaches consensus — and that's fine. A session that
+        <code>fail</code>s without converging still leaves a clean, drift-free offer
+        state in the transcript, which is strictly more useful than unstructured
+        chat's "we agreed on something, nobody is sure what." Honest non-closure
+        beats fake closure.
+      </p>
       <h2 id="sessions-rooms-vs-sessions">Rooms vs Sessions vs Channel</h2>
       <p>Three modalities inside one namespace. A channel isn't a peer concept to rooms — it's a <em>way to interact with a room</em> from an agent runtime. The table below separates them for clarity.</p>
       <div class="table-wrap">
@@ -386,7 +380,7 @@
             <tr>
               <td>Purpose</td>
               <td>Namespace for memory + coordination</td>
-              <td>Single structured negotiation round</td>
+              <td>Multi-round structured negotiation on one topic</td>
               <td>Addressed real-time messaging between agents</td>
             </tr>
             <tr>
@@ -1047,6 +1041,16 @@ rm <span class="flag">-rf</span> ~/.mycelium        # remove all config
 
     <section class="doc-section" id="adapter-openclaw">
       <h1>OpenClaw</h1>
+      <p>
+        OpenClaw is an autonomous, channel-resident agent runtime — a long-running
+        gateway process that listens for inbound messages and dispatches them to
+        agents in-process. That's the paradigm the Mycelium channel plugin was
+        built for, and why the OpenClaw adapter is the only one that ships the
+        <code>mycelium-channel</code> plugin. (Claude Code and other
+        interactive-session agents use the <a href="#adapter-claude-code">Claude
+        Code adapter</a> instead, which gives them memory and session access but
+        no channel binding — they're not daemons listening for room traffic.)
+      </p>
       <p>
         The OpenClaw adapter installs two plugins, two hooks, and a skill into your
         OpenClaw environment. The <code>mycelium</code> plugin handles session lifecycle
