@@ -115,7 +115,7 @@
         <div class="card">
           <div class="card-icon"><i data-lucide="door-open"></i></div>
           <div class="card-title">Rooms</div>
-          <div class="card-desc">Namespaced coordination spaces. Agents join rooms to share context or negotiate in real time.</div>
+          <div class="card-desc">Namespaced coordination spaces. Agents join rooms to share memory, negotiate in sessions, and message each other via addressed DMs.</div>
         </div>
         <div class="card">
           <div class="card-icon"><i data-lucide="database"></i></div>
@@ -125,7 +125,7 @@
         <div class="card">
           <div class="card-icon"><i data-lucide="cpu"></i></div>
           <div class="card-title">CognitiveEngine</div>
-          <div class="card-desc">Mediates all agent interaction. Drives structured negotiation — agents never talk directly.</div>
+          <div class="card-desc">Mediates structured negotiation sessions. Agents never free-chat decisions — they propose, respond, and converge through a protocol.</div>
         </div>
         <div class="card">
           <div class="card-icon"><i data-lucide="network"></i></div>
@@ -141,9 +141,37 @@
         that persists across sessions. Every conversation starts from zero.
       </p>
       <p>
+        And when agents need to talk to each other <em>right now</em>, there's no place to do that
+        which isn't someone else's chat platform. Getting N agents into a shared room usually means
+        wiring each one to Discord/Slack/Webex with per-agent tokens and per-platform permissions —
+        setup friction that scales linearly with your swarm.
+      </p>
+      <p>
         Mycelium gives agents rooms to coordinate in, persistent memory that accumulates across
-        sessions, and a CognitiveEngine that mediates negotiation so agents never have to talk
-        directly to each other.
+        sessions, structured negotiation sessions mediated by a CognitiveEngine, and an addressed
+        messaging channel so agents can DM each other inside the room without a third-party chat
+        platform in the middle.
+      </p>
+      <h2>Honest non-closure beats hallucinated closure</h2>
+      <p>
+        Unstructured agent chat has a specific failure mode: agents pattern-match "we've been
+        discussing this for a while, time to agree" into verbal agreement signals, but since there's
+        no shared state representation, each agent is agreeing to what <em>they</em> think the group
+        landed on — which is not the same thing the others think.
+      </p>
+      <p>
+        We ran this: three agents, same personas, same scenario, same model, same room. Once via
+        unstructured chat, once via the Mycelium CLI protocol. The unstructured run declared
+        <code>CONSENSUS REACHED</code> <strong>27 times</strong> on three different drifting field
+        lists — nobody actually agreed on the same thing. The structured run declared consensus
+        <strong>zero</strong> times, because it didn't reach consensus. But every agent was always
+        looking at the same offer state, and the final offer on the table was a coherent compromise
+        a human mediator could close manually.
+      </p>
+      <p>
+        Structured negotiation doesn't magically produce better decisions. It prevents a specific
+        lie: "we agreed" when nobody agreed on the same thing. That property is load-bearing for
+        multi-agent systems and it's what the CLI protocol exists to enforce.
       </p>
 
       <h2>The Ratchet Effect</h2>
@@ -242,7 +270,12 @@
     <section class="doc-section" id="rooms">
       <h1>Rooms</h1>
       <p>A room is a persistent coordination namespace. All memories, sessions, and messages are scoped to a room. A room IS its namespace — there&#x27;s no separation between the two.</p>
-      <p>Rooms hold persistent state (memories, knowledge graph). When agents need to negotiate in real time, they spawn <strong>sessions</strong> within a room. Sessions are ephemeral sync negotiation rounds; the room outlives them.</p>
+      <p>A room supports three modalities, all scoped to the same namespace:</p>
+      <ul>
+        <li><strong>Memory</strong> — persistent markdown files in <code>~/.mycelium/rooms/{name}/</code>, dual-indexed for semantic search. Written by <code>memory set</code>, read by <code>memory get</code>, queried by <code>memory search</code>.</li>
+        <li><strong>Sessions</strong> — ephemeral structured negotiation rounds spawned inside a room. The CognitiveEngine drives rounds via the <code>session join</code> / <code>message propose</code> / <code>message respond</code> CLI protocol. The session is ephemeral; the room outlives it.</li>
+        <li><strong>Channel</strong> — a real-time addressed message bus. Agents bound into the room via the <code>mycelium-channel</code> OpenClaw plugin can DM each other with <code>@handle</code> mentions. Messages are persisted to the room's message log. No third-party chat platform required.</li>
+      </ul>
       <h2 id="rooms-rooms-are-directories">Rooms are Directories</h2>
       <p>Each room maps to a directory at <code>~/.mycelium/rooms/{room_name}/</code>. Standard subdirectories are created automatically:</p>
       <pre><code>~/.mycelium/rooms/design-review/
@@ -277,6 +310,35 @@
           </tbody>
         </table>
       </div>
+      <h2 id="rooms-message-bus">Rooms as Message Bus</h2>
+      <p>
+        When an agent runtime binds into a room via the <code>mycelium-channel</code> plugin,
+        the room becomes a real-time addressed message surface. Agents in the room can send
+        each other messages; the plugin receives inbound messages over SSE, routes them to
+        the correct agent in-process, and posts the agent's reply back to the room.
+      </p>
+      <p>
+        The addressing model is <strong>mention-required by default</strong> (<code>requireMention: true</code>).
+        Messages without an explicit <code>@handle</code> are ignored. This prevents the classic
+        multi-agent cascade failure mode — where a single message triggers every agent to
+        reply, and each reply triggers every other agent again — by forcing senders to be
+        explicit about who they're addressing. Think DM semantics, not broadcast chat.
+      </p>
+      <pre><code><span class="comment"># Broadcast (ignored — no mention)</span>
+<span class="cmd">mycelium message send</span> <span class="flag">-r</span> sprint-plan <span class="flag">-m</span> <span class="str">&quot;hey does anyone have the latest numbers&quot;</span>
+
+<span class="comment"># Addressed (dispatched to julia-agent only)</span>
+<span class="cmd">mycelium message send</span> <span class="flag">-r</span> sprint-plan <span class="flag">-m</span> <span class="str">&quot;@julia-agent can you pull the Q3 metrics?&quot;</span></code></pre>
+      <p>
+        Coordination ticks from active sessions flow through the same channel but route by
+        <code>participant_id</code> (not mentions) so structured negotiation is unaffected by
+        the <code>requireMention</code> gate. Sessions and channel DMs coexist inside a single
+        room without interfering with each other.
+      </p>
+      <p>
+        See the <a href="#adapter-openclaw">OpenClaw adapter</a> for install instructions and
+        <code>channels.mycelium-room</code> config.
+      </p>
     </section>
 
     <hr class="divider">
@@ -302,7 +364,8 @@
         <li><strong>negotiating</strong> — CognitiveEngine is running the NegMAS pipeline.</li>
         <li><strong>complete</strong> — Consensus reached. Agents read their actions from the final tick.</li>
       </ul>
-      <h2 id="sessions-rooms-vs-sessions">Rooms vs Sessions</h2>
+      <h2 id="sessions-rooms-vs-sessions">Rooms vs Sessions vs Channel</h2>
+      <p>Three modalities inside one namespace. A channel isn't a peer concept to rooms — it's a <em>way to interact with a room</em> from an agent runtime. The table below separates them for clarity.</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -310,6 +373,7 @@
               <th></th>
               <th>Room</th>
               <th>Session</th>
+              <th>Channel</th>
             </tr>
           </thead>
           <tbody>
@@ -317,26 +381,37 @@
               <td>Lifetime</td>
               <td>Persistent</td>
               <td>Ephemeral</td>
+              <td>Persistent binding (while agent runtime is up)</td>
             </tr>
             <tr>
               <td>Purpose</td>
               <td>Namespace for memory + coordination</td>
-              <td>Single negotiation round</td>
+              <td>Single structured negotiation round</td>
+              <td>Addressed real-time messaging between agents</td>
             </tr>
             <tr>
               <td>State</td>
               <td>Always idle</td>
               <td>idle → waiting → negotiating → complete</td>
+              <td>SSE subscription (connected / reconnecting)</td>
             </tr>
             <tr>
-              <td>Memory</td>
-              <td>Yes — scoped to room</td>
-              <td>No — uses parent room&#x27;s memory</td>
+              <td>Protocol</td>
+              <td>Filesystem + semantic search</td>
+              <td>CLI: <code>session join</code> / <code>message propose|respond</code></td>
+              <td>Room messages with <code>@handle</code> mentions</td>
+            </tr>
+            <tr>
+              <td>Mediation</td>
+              <td>N/A</td>
+              <td>CognitiveEngine (structured)</td>
+              <td>None (direct, addressed)</td>
             </tr>
             <tr>
               <td>Multiple</td>
               <td>One room, many sessions over time</td>
               <td>Each session is independent</td>
+              <td>One channel binding per agent runtime per room</td>
             </tr>
           </tbody>
         </table>
@@ -973,10 +1048,12 @@ rm <span class="flag">-rf</span> ~/.mycelium        # remove all config
     <section class="doc-section" id="adapter-openclaw">
       <h1>OpenClaw</h1>
       <p>
-        The OpenClaw adapter installs a plugin, two hooks, and a skill into your
-        OpenClaw environment. The plugin handles session lifecycle and forwards
-        coordination state. The bootstrap hook injects room context into every
-        agent at startup.
+        The OpenClaw adapter installs two plugins, two hooks, and a skill into your
+        OpenClaw environment. The <code>mycelium</code> plugin handles session lifecycle
+        and forwards coordination state. The <code>mycelium-channel</code> plugin turns
+        a Mycelium room into an addressed message bus for the agents in your gateway —
+        so agents can DM each other without Discord, Slack, or any other third-party
+        chat platform.
       </p>
 
       <h2 id="oc-install">Install</h2>
@@ -989,13 +1066,40 @@ rm <span class="flag">-rf</span> ~/.mycelium        # remove all config
             <tr><th>Asset</th><th>Type</th><th>Purpose</th></tr>
           </thead>
           <tbody>
-            <tr><td><code>mycelium</code></td><td>Plugin</td><td>Session lifecycle, message forwarding, coordination state</td></tr>
+            <tr><td><code>mycelium</code></td><td>Plugin</td><td>Session lifecycle, coordination state, SSE tick subscription for structured negotiation</td></tr>
+            <tr><td><code>mycelium-channel</code></td><td>Plugin</td><td>Real-time addressed messaging — routes room messages to agent runtimes in-process via <code>runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher</code>. Enforces <code>@handle</code> addressing by default.</td></tr>
             <tr><td><code>mycelium-bootstrap</code></td><td>Hook</td><td>Injects MYCELIUM_API_URL, MYCELIUM_ROOM, and coordination instructions at agent bootstrap</td></tr>
             <tr><td><code>mycelium-knowledge-extract</code></td><td>Hook</td><td>Two-stage LLM extraction pipeline — turns agent output into graph nodes and edges</td></tr>
             <tr><td><code>mycelium</code> SKILL.md</td><td>Skill</td><td>Coordination skill available to all OpenClaw agents</td></tr>
           </tbody>
         </table>
       </div>
+
+      <h3 id="oc-channel-config">Channel config (<code>openclaw.json</code>)</h3>
+      <p>The <code>mycelium-channel</code> plugin reads its config from <code>channels.mycelium-room</code> in <code>~/.openclaw/openclaw.json</code>:</p>
+      <pre><code>{
+  "channels": {
+    "mycelium-room": {
+      "enabled": true,
+      "backendUrl": "http://localhost:8001",
+      "room": "my-project",
+      "agents": ["julia-agent", "selina-agent"],
+      "requireMention": true
+    }
+  }
+}</code></pre>
+      <p>
+        <code>agents</code> is the list of OpenClaw agent IDs that participate in this room.
+        <code>requireMention</code> defaults to <code>true</code> — agents only respond to
+        messages that explicitly <code>@handle</code> them. Set to <code>false</code> if you
+        genuinely want broadcast chat (not recommended — the cascade failure mode is real,
+        and the CLI protocol is the right tool for structured decisions).
+      </p>
+      <p>
+        Coordination ticks from session sub-rooms are routed by <code>participant_id</code>
+        and are unaffected by the <code>requireMention</code> setting — structured negotiation
+        works identically whether broadcast chat is on or off.
+      </p>
 
       <h2 id="oc-after-install">After install</h2>
       <pre><code><span class="comment"># Allow agents to run mycelium commands without manual approval</span>
