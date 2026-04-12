@@ -586,15 +586,23 @@ done
 
 If anything lights up, either redact or skip the gist. **Always ask the user before uploading** — even a private gist is a URL someone could share, and experiment transcripts may contain persona content or internal scenario details that weren't meant to leave the machine.
 
-Once clean, create a secret gist (URL-only, not listed on your profile):
+Once clean, create a secret gist (URL-only, not listed on your profile).
+
+**Watch out for filename collisions.** `gh gist create` uses the file's basename, so `~/.mycelium/rooms/${EXP_ID}-before/transcript.md` and `~/.mycelium/rooms/${EXP_ID}-after/transcript.md` both become `transcript.md` and the second one silently overwrites the first. Stage the files under unique names in a temp directory first:
 
 ```bash
+STAGE=$(mktemp -d)
+cp ~/.mycelium/rooms/${EXP_ID}/evaluation.md            "$STAGE/evaluation.md"
+cp ~/.mycelium/rooms/${EXP_ID}-before/transcript.md     "$STAGE/before-transcript.md"
+cp ~/.mycelium/rooms/${EXP_ID}-after/transcript.md      "$STAGE/after-transcript.md"
+cp ~/.mycelium/rooms/${EXP_ID}-after/session-transcript.md "$STAGE/after-session-transcript.md"
+
 gh gist create \
   -d "${EXP_ID}: ${SCENARIO_NAME} — before-and-after" \
-  ~/.mycelium/rooms/${EXP_ID}/evaluation.md \
-  ~/.mycelium/rooms/${EXP_ID}-before/transcript.md \
-  ~/.mycelium/rooms/${EXP_ID}-after/transcript.md \
-  ~/.mycelium/rooms/${EXP_ID}-after/session-transcript.md
+  "$STAGE/evaluation.md" \
+  "$STAGE/before-transcript.md" \
+  "$STAGE/after-transcript.md" \
+  "$STAGE/after-session-transcript.md"
 ```
 
 The command prints the gist URL. Use it in a PR comment (`gh pr comment <N> --body "..."`) or Slack message with a short summary and the link — keep the comment body concise and put the full artifacts behind the gist link. Example PR comment body:
