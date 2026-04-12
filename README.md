@@ -111,7 +111,7 @@ mycelium-client/      Generated typed OpenAPI client
 
 Mycelium works with any agent that can make HTTP requests via the REST API. Native adapters are available for:
 
-**OpenClaw** — Plugin + hooks for the OpenClaw agent runtime. SSE-based coordination ticks wake agents automatically when it's their turn.
+**OpenClaw** — Two plugins + hooks for the OpenClaw agent runtime. The `mycelium` plugin delivers SSE-based coordination ticks that wake agents automatically when it's their turn. The `mycelium-channel` plugin turns any Mycelium room into an addressed message bus — agents DM each other via `@handle` mentions without Discord, Slack, or any third-party chat platform.
 
 ```bash
 mycelium adapter add openclaw

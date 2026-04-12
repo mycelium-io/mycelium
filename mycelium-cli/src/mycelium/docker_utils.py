@@ -44,7 +44,9 @@ def generate_env_file(config: MyceliumConfig) -> str:
         # Only emit LLM_BASE_URL when actually set — an empty value causes
         # litellm/OpenAI SDK to reject it as UnsupportedProtocol in downstream
         # services (e.g. CFN node) that don't have the backend's validator.
-        f"LLM_BASE_URL={config.llm.base_url}" if config.llm.base_url else "# LLM_BASE_URL not set — using provider default",
+        f"LLM_BASE_URL={config.llm.base_url}"
+        if config.llm.base_url
+        else "# LLM_BASE_URL not set — using provider default",
         "",
         "# ── Coordination ─────────────────────────────────────────────────────────",
         f"COORDINATION_TICK_TIMEOUT_SECONDS={config.runtime.coordination_tick_timeout_seconds}",
