@@ -3,8 +3,18 @@
  *
  * Lets multiple OpenClaw agents communicate through a shared Mycelium room.
  *
- * Inbound: SSE from room → dispatch to all agents except the sender
- * Outbound: capture agent stdout → POST reply back to room
+ * Architecture: uses OpenClaw's in-process dispatch via
+ *   `runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher`.
+ * No subprocess spawning, no stdout parsing. The agent runs inside the gateway
+ * and its clean reply payload is POSTed back to the Mycelium room from the
+ * `deliver` callback.
+ *
+ * Inbound flow:
+ *   1. SSE from Mycelium room (+ session sub-rooms for coordination ticks)
+ *   2. For each agent in cfg.agents (minus sender), build a MsgContext and
+ *      call dispatchReplyWithBufferedBlockDispatcher.
+ *   3. The `deliver` callback captures the agent's normalized ReplyPayload
+ *      and POSTs the text back to the room.
  *
  * Config (in openclaw.json):
  *   channels: {
@@ -12,51 +22,74 @@
  *       enabled: true,
  *       backendUrl: "http://localhost:8001",
  *       room: "test-room",
- *       agents: ["julia-agent", "selina-agent"]  // openclaw agent IDs
+ *       agents: ["julia-agent", "selina-agent"]
  *     }
  *   }
- *
- * Single-agent shorthand still works:
- *   channels: { "mycelium-room": { backendUrl: "...", room: "...", handle: "main" } }
  */
 
-import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import type {
+  OpenClawPluginApi,
+  ReplyPayload,
+} from "openclaw/plugin-sdk";
 
 const CHANNEL_ID = "mycelium-room";
 
 type ChannelConfig = {
   backendUrl: string;
   room: string;
-  agents: string[];  // openclaw agent IDs participating in this room
+  agents: string[];
+  /**
+   * When true (default), agents only respond to messages that explicitly @-mention them.
+   * This prevents cascade chatter (agent A replies → triggers agent B → triggers agent A).
+   * Coordination ticks always dispatch to their participant_id regardless of this flag.
+   * Set to false only if you genuinely want broadcast chat (not recommended — use the CLI
+   * for structured negotiation instead).
+   */
+  requireMention: boolean;
 };
 
-function readChannelConfig(): ChannelConfig | null {
-  try {
-    const configPath = join(homedir(), ".openclaw", "openclaw.json");
-    const raw = JSON.parse(readFileSync(configPath, "utf-8"));
-    const cfg = raw?.channels?.[CHANNEL_ID];
-    if (!cfg?.backendUrl || !cfg?.room) return null;
+function readChannelConfig(cfg: any): ChannelConfig | null {
+  const entry = cfg?.channels?.[CHANNEL_ID];
+  if (!entry?.backendUrl || !entry?.room) return null;
 
-    // Support both "agents" array and legacy "handle" string
-    let agents: string[];
-    if (Array.isArray(cfg.agents) && cfg.agents.length > 0) {
-      agents = cfg.agents.map(String);
-    } else if (cfg.handle) {
-      agents = [String(cfg.handle)];
-    } else {
-      agents = ["main"];
-    }
-
-    return {
-      backendUrl: String(cfg.backendUrl).replace(/\/$/, ""),
-      room: String(cfg.room),
-      agents,
-    };
-  } catch {
-    return null;
+  let agents: string[];
+  if (Array.isArray(entry.agents) && entry.agents.length > 0) {
+    agents = entry.agents.map(String);
+  } else if (entry.handle) {
+    agents = [String(entry.handle)];
+  } else {
+    agents = ["main"];
   }
+
+  return {
+    backendUrl: String(entry.backendUrl).replace(/\/$/, ""),
+    room: String(entry.room),
+    agents,
+    requireMention: entry.requireMention !== false,  // default true
+  };
+}
+
+/**
+ * Return the subset of `agents` that are @-mentioned in `content`.
+ * Matches `@agent-id` as a word (case-insensitive). `@julia-agent` matches,
+ * bare `julia-agent` does not — must use the `@` prefix to be a mention.
+ */
+function resolveMentions(content: string, agents: string[]): string[] {
+  const lower = content.toLowerCase();
+  return agents.filter((agentId) => {
+    const needle = `@${agentId.toLowerCase()}`;
+    const idx = lower.indexOf(needle);
+    if (idx === -1) return false;
+    // Require a word boundary after the handle so `@julia-agent-bot` doesn't match `@julia-agent`.
+    const nextChar = lower[idx + needle.length];
+    return !nextChar || !/[a-z0-9_-]/.test(nextChar);
+  });
+}
+
+// Build a sessionKey matching buildAgentPeerSessionKey format (group peer).
+// See openclaw src/routing/session-key.ts:buildAgentPeerSessionKey.
+function buildSessionKey(agentId: string, room: string): string {
+  return `agent:${agentId.toLowerCase()}:${CHANNEL_ID}:group:${room.toLowerCase()}`;
 }
 
 let _abort: AbortController | null = null;
@@ -64,10 +97,14 @@ let _abort: AbortController | null = null;
 // Track message IDs we posted to prevent echo loops
 const _ownMessageIds = new Set<string>();
 
-// Track agents currently processing a message to prevent overlap
-const _busyAgents = new Set<string>();
+// Track session sub-rooms we're already subscribed to
+const _subscribedSessions = new Set<string>();
 
-async function postToRoom(cfg: ChannelConfig, senderHandle: string, content: string): Promise<boolean> {
+async function postToRoom(
+  cfg: ChannelConfig,
+  senderHandle: string,
+  content: string,
+): Promise<boolean> {
   const url = `${cfg.backendUrl}/rooms/${encodeURIComponent(cfg.room)}/messages`;
   try {
     const res = await fetch(url, {
@@ -91,65 +128,71 @@ async function postToRoom(cfg: ChannelConfig, senderHandle: string, content: str
   }
 }
 
-function dispatchToAgent(
+async function dispatchToAgent(
+  runtime: any,
   cfg: ChannelConfig,
   agentId: string,
   sender: string,
   content: string,
+  messageId: string | undefined,
   log: { info: (s: string) => void; warn: (s: string) => void },
-) {
-  if (_busyAgents.has(agentId)) {
-    log.info(`[${CHANNEL_ID}] ${agentId} busy — skipping message from ${sender}`);
-    return;
+): Promise<void> {
+  const openclawConfig = runtime.config.loadConfig();
+  const sessionKey = buildSessionKey(agentId, cfg.room);
+
+  const envelopeBody = `[${sender} in ${cfg.room}]: ${content}`;
+
+  const ctx = runtime.channel.reply.finalizeInboundContext({
+    Body: envelopeBody,
+    BodyForAgent: content,
+    RawBody: content,
+    CommandBody: content,
+    From: `${CHANNEL_ID}:${sender}`,
+    To: `${CHANNEL_ID}:${cfg.room}`,
+    SessionKey: sessionKey,
+    AccountId: "default",
+    ChatType: "group",
+    ConversationLabel: cfg.room,
+    SenderName: sender,
+    SenderId: sender,
+    GroupSubject: cfg.room,
+    Provider: CHANNEL_ID,
+    Surface: CHANNEL_ID,
+    MessageSid: messageId ?? `${CHANNEL_ID}-${Date.now()}`,
+    Timestamp: Date.now(),
+    OriginatingChannel: CHANNEL_ID,
+    OriginatingTo: `${CHANNEL_ID}:${cfg.room}`,
+  });
+
+  log.info(`[${CHANNEL_ID}] → dispatching to ${agentId} (sessionKey=${sessionKey})`);
+
+  try {
+    await runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
+      ctx,
+      cfg: openclawConfig,
+      dispatcherOptions: {
+        deliver: async (payload: ReplyPayload) => {
+          const text = payload.text?.trim();
+          if (!text) return;
+          const ok = await postToRoom(cfg, agentId, text);
+          if (ok) {
+            log.info(`[${CHANNEL_ID}] ← ${agentId}: ${text.slice(0, 80)}${text.length > 80 ? "…" : ""}`);
+          } else {
+            log.warn(`[${CHANNEL_ID}] outbound POST failed for ${agentId}`);
+          }
+        },
+        onError: (err: unknown, info: { kind: string }) => {
+          log.warn(`[${CHANNEL_ID}] ${info.kind} reply failed for ${agentId}: ${String(err)}`);
+        },
+      },
+    });
+  } catch (err: any) {
+    log.warn(`[${CHANNEL_ID}] dispatch failed for ${agentId}: ${err?.message ?? err}`);
   }
-  _busyAgents.add(agentId);
-  // Safety: auto-clear busy state after 90s in case process hangs or gets killed
-  setTimeout(() => _busyAgents.delete(agentId), 90_000);
-
-  const { spawn } = require("node:child_process");
-  const envelope = `[Message from ${sender} in room ${cfg.room}]: ${content}`;
-  const child = spawn("openclaw", [
-    "agent",
-    "--agent", agentId,
-    "--session-id", `${CHANNEL_ID}-${cfg.room}`,
-    "-m", envelope,
-    "--timeout", "30",
-  ], {
-    detached: true,
-    stdio: ["ignore", "pipe", "ignore"],
-  });
-  child.unref();
-  log.info(`[${CHANNEL_ID}] dispatched to ${agentId} (pid=${child.pid})`);
-
-  let agentOutput = "";
-  child.stdout.on("data", (chunk: Buffer) => {
-    agentOutput += chunk.toString();
-  });
-  child.on("close", async () => {
-    _busyAgents.delete(agentId);
-
-    // Strip ANSI codes and plugin log lines
-    const reply = agentOutput
-      .replace(/\x1b\[[0-9;]*m/g, "")
-      .split("\n")
-      .filter((l: string) => !l.startsWith("[plugins]") && !l.startsWith("[") && l.trim())
-      .join("\n")
-      .trim();
-    if (!reply) return;
-
-    const ok = await postToRoom(cfg, agentId, reply);
-    if (ok) {
-      log.info(`[${CHANNEL_ID}] → ${agentId}: ${reply.slice(0, 80)}${reply.length > 80 ? "…" : ""}`);
-    } else {
-      log.warn(`[${CHANNEL_ID}] outbound POST failed for ${agentId}`);
-    }
-  });
 }
 
-// Track session sub-rooms we're already subscribed to
-const _subscribedSessions = new Set<string>();
-
 function startSessionSSE(
+  runtime: any,
   cfg: ChannelConfig,
   sessionRoom: string,
   log: { info: (s: string) => void; warn: (s: string) => void },
@@ -193,8 +236,7 @@ function startSessionSSE(
             let msg: any;
             try { msg = JSON.parse(raw); } catch { continue; }
 
-            // Route coordination ticks and consensus from session room
-            handleMessage(cfg, msg, log);
+            handleMessage(runtime, cfg, msg, log);
           }
         }
       } catch (err: any) {
@@ -207,6 +249,7 @@ function startSessionSSE(
 }
 
 function handleMessage(
+  runtime: any,
   cfg: ChannelConfig,
   msg: any,
   log: { info: (s: string) => void; warn: (s: string) => void },
@@ -255,7 +298,7 @@ function handleMessage(
       ].filter(Boolean).join("\n");
 
       log.info(`[${CHANNEL_ID}] 🎯 tick r${round} → ${targetAgent} (${action}, counter=${canCounter})`);
-      dispatchToAgent(cfg, targetAgent, "CognitiveEngine", instruction, log);
+      void dispatchToAgent(runtime, cfg, targetAgent, "CognitiveEngine", instruction, msg.id, log);
     } catch (err: any) {
       log.warn(`[${CHANNEL_ID}] tick parse error: ${err?.message}`);
     }
@@ -284,7 +327,7 @@ function handleMessage(
       log.info(`[${CHANNEL_ID}] 🤝 consensus ${broken ? "BROKEN" : "reached"}`);
 
       for (const agentId of cfg.agents) {
-        dispatchToAgent(cfg, agentId, "CognitiveEngine", summary, log);
+        void dispatchToAgent(runtime, cfg, agentId, "CognitiveEngine", summary, msg.id, log);
       }
     } catch (err: any) {
       log.warn(`[${CHANNEL_ID}] consensus parse error: ${err?.message}`);
@@ -296,7 +339,7 @@ function handleMessage(
   if (msg.message_type === "coordination_join" || msg.message_type === "coordination_start") {
     const roomName = msg.room_name;
     if (roomName && roomName.includes(":session:")) {
-      startSessionSSE(cfg, roomName, log);
+      startSessionSSE(runtime, cfg, roomName, log);
     }
     return;
   }
@@ -308,13 +351,29 @@ function handleMessage(
 
   log.info(`[${CHANNEL_ID}] ← ${sender}: ${content.slice(0, 80)}${content.length > 80 ? "…" : ""}`);
 
-  for (const agentId of cfg.agents) {
-    if (agentId === sender) continue;
-    dispatchToAgent(cfg, agentId, sender, content, log);
+  // Build the recipient list based on requireMention policy.
+  let recipients: string[];
+  if (cfg.requireMention) {
+    // Addressed-only: only agents explicitly @-mentioned (excluding sender).
+    const mentioned = resolveMentions(content, cfg.agents);
+    recipients = mentioned.filter((agentId) => agentId !== sender);
+    if (recipients.length === 0) {
+      log.info(`[${CHANNEL_ID}] no addressed recipients — ignoring (requireMention=true)`);
+      return;
+    }
+    log.info(`[${CHANNEL_ID}] addressed to: ${recipients.join(", ")}`);
+  } else {
+    // Broadcast mode: everyone except sender (legacy behavior, not recommended).
+    recipients = cfg.agents.filter((agentId) => agentId !== sender);
+  }
+
+  for (const agentId of recipients) {
+    void dispatchToAgent(runtime, cfg, agentId, sender, content, msg.id, log);
   }
 }
 
 function startRoomSSE(
+  runtime: any,
   cfg: ChannelConfig,
   log: { info: (s: string) => void; warn: (s: string) => void },
 ) {
@@ -358,7 +417,7 @@ function startRoomSSE(
             let msg: any;
             try { msg = JSON.parse(raw); } catch { continue; }
 
-            handleMessage(cfg, msg, log);
+            handleMessage(runtime, cfg, msg, log);
           }
         }
       } catch (err: any) {
@@ -374,24 +433,21 @@ const plugin = {
   id: "mycelium-channel",
   name: "Mycelium Channel",
   description: "Room-based multi-agent coordination via Mycelium rooms",
-  register(api: any) {
+  register(api: OpenClawPluginApi) {
     const log = api.logger;
-    const cfg = readChannelConfig();
+    const runtime = api.runtime;
+    const cfg = readChannelConfig(api.config);
 
     if (!cfg) {
       log.warn(`[${CHANNEL_ID}] not configured (set channels.mycelium-room in openclaw.json)`);
       return;
     }
 
-    log.info(`[${CHANNEL_ID}] configured — room: ${cfg.room}, agents: [${cfg.agents.join(", ")}], backend: ${cfg.backendUrl}`);
+    log.info(`[${CHANNEL_ID}] configured — room: ${cfg.room}, agents: [${cfg.agents.join(", ")}], backend: ${cfg.backendUrl}, requireMention: ${cfg.requireMention}`);
 
     api.on("gateway_start", async () => {
-      if (process.env.MYCELIUM_CHANNEL_ONESHOT === "1") {
-        log.info(`[${CHANNEL_ID}] oneshot mode — skipping SSE`);
-        return;
-      }
       log.info(`[${CHANNEL_ID}] gateway started — starting SSE for ${cfg.room}`);
-      startRoomSSE(cfg, log);
+      startRoomSSE(runtime, cfg, log);
 
       // Poll for session sub-rooms and subscribe to their SSE
       const pollInterval = setInterval(async () => {
@@ -404,14 +460,20 @@ const plugin = {
               room.name?.startsWith(cfg.room + ":session:") &&
               (room.coordination_state === "waiting" || room.coordination_state === "negotiating")
             ) {
-              startSessionSSE(cfg, room.name, log);
+              startSessionSSE(runtime, cfg, room.name, log);
             }
           }
         } catch { /* polling failure is non-fatal */ }
-      }, 5000);  // poll every 5s
+      }, 5000);
 
-      // Clean up on abort
       _abort?.signal.addEventListener("abort", () => clearInterval(pollInterval));
+    });
+
+    api.on("gateway_stop", async () => {
+      _abort?.abort();
+      _abort = null;
+      _subscribedSessions.clear();
+      log.info(`[${CHANNEL_ID}] gateway stopping — SSE closed`);
     });
   },
 };
