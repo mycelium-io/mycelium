@@ -128,10 +128,10 @@ export function formatTickInstruction(
     offerSummary,
     "",
     canCounter
-      ? `To counter-propose, run: mycelium message propose ISSUE=VALUE ISSUE=VALUE ... --room ${roomName} --handle ${targetAgent}`
+      ? `To counter-propose, run: mycelium negotiate propose ISSUE=VALUE ISSUE=VALUE ... --room ${roomName} --handle ${targetAgent}`
       : "",
-    `To accept: mycelium message respond accept --room ${roomName} --handle ${targetAgent}`,
-    `To reject: mycelium message respond reject --room ${roomName} --handle ${targetAgent}`,
+    `To accept: mycelium negotiate respond accept --room ${roomName} --handle ${targetAgent}`,
+    `To reject: mycelium negotiate respond reject --room ${roomName} --handle ${targetAgent}`,
     "",
     "Explain your reasoning before running the command.",
   ]

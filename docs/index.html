@@ -31,7 +31,7 @@
       <div class="resources-menu" id="resources-menu">
         <a href="stories.html">User Stories</a>
         <a href="mycelium-dataflow.html" target="_blank">Interactive Overview</a>
-        <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/adapters/openclaw/extensions/mycelium/skills/mycelium/SKILL.md" target="_blank">SKILL.md ↗</a>
+        <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/adapters/openclaw/mycelium/plugin/skills/mycelium/SKILL.md" target="_blank">SKILL.md ↗</a>
       </div>
     </div>
     <button class="copy-docs-btn" onclick="copyDocsCmd()"><i data-lucide="terminal" style="width:13px;height:13px;stroke:currentColor;vertical-align:-2px;margin-right:6px;"></i>copy docs cmd</button>
@@ -76,7 +76,7 @@
       <a href="#cli-session" class="nav-link sub">session</a>
       <a href="#cli-memory" class="nav-link sub">memory</a>
       <a href="#cli-notebook" class="nav-link sub">notebook</a>
-      <a href="#cli-message" class="nav-link sub">message</a>
+      <a href="#cli-negotiate" class="nav-link sub">negotiate</a>
       <a href="#cli-adapter" class="nav-link sub">adapter</a>
       <a href="#cli-config" class="nav-link sub">config</a>
       <a href="#cli-other" class="nav-link sub">synthesize / catchup / watch</a>
@@ -93,7 +93,7 @@
       <div class="nav-section-label">More</div>
       <a href="stories.html" class="nav-link">User Stories</a>
       <a href="mycelium-dataflow.html" class="nav-link">Interactive Overview</a>
-      <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/adapters/openclaw/extensions/mycelium/skills/mycelium/SKILL.md" class="nav-link" target="_blank">SKILL.md ↗</a>
+      <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/adapters/openclaw/mycelium/plugin/skills/mycelium/SKILL.md" class="nav-link" target="_blank">SKILL.md ↗</a>
     </div>
   </nav>
 
@@ -248,12 +248,7 @@
     <section class="doc-section" id="rooms">
       <h1>Rooms</h1>
       <p>A room is a persistent coordination namespace. All memories, sessions, and messages are scoped to a room. A room IS its namespace — there&#x27;s no separation between the two.</p>
-      <p>A room supports three modalities, all scoped to the same namespace:</p>
-      <ul>
-        <li><strong>Memory</strong> — persistent markdown files in <code>~/.mycelium/rooms/{name}/</code>, dual-indexed for semantic search. Written by <code>memory set</code>, read by <code>memory get</code>, queried by <code>memory search</code>.</li>
-        <li><strong>Sessions</strong> — ephemeral structured negotiation episodes spawned inside a room. Each session runs multiple rounds until consensus or timeout. The CognitiveEngine drives rounds via the <code>session join</code> / <code>message propose</code> / <code>message respond</code> CLI protocol. The session is ephemeral; the room outlives it.</li>
-        <li><strong>Channel</strong> — a real-time addressed message bus. Agents bound into the room via the <code>mycelium-channel</code> OpenClaw plugin can DM each other with <code>@handle</code> mentions. Messages are persisted to the room's message log. No third-party chat platform required.</li>
-      </ul>
+      <p>Rooms hold persistent state (memories, knowledge graph). When agents need to negotiate in real time, they spawn <strong>sessions</strong> within a room. Sessions are ephemeral sync negotiation rounds; the room outlives them.</p>
       <h2 id="rooms-rooms-are-directories">Rooms are Directories</h2>
       <p>Each room maps to a directory at <code>~/.mycelium/rooms/{room_name}/</code>. Standard subdirectories are created automatically:</p>
       <pre><code>~/.mycelium/rooms/design-review/
@@ -288,78 +283,32 @@
           </tbody>
         </table>
       </div>
-      <h2 id="rooms-message-bus">Rooms as Message Bus</h2>
-      <div class="scope-box">
-        <dl>
-          <dt>Applies to</dt>
-          <dd><strong>Autonomous, channel-resident runtimes</strong> — OpenClaw and similar always-on daemons that listen for inbound room traffic and dispatch messages to agents in-process.</dd>
-          <dt>Not for</dt>
-          <dd><strong>Interactive-session agents</strong> (Claude Code, Cursor). Each invocation is a user-driven session, not a daemon. Use the <a href="#adapter-claude-code">Claude Code adapter</a> for memory and sessions instead.</dd>
-        </dl>
-      </div>
-      <p>
-        When an autonomous agent runtime binds into a room via the <code>mycelium-channel</code>
-        plugin, the room becomes a real-time addressed message surface. Agents in the room
-        can send each other messages; the plugin receives inbound messages over SSE, routes
-        them to the correct agent in-process, and posts the agent's reply back to the room.
-      </p>
-      <p>
-        The addressing model is <strong>mention-required by default</strong> (<code>requireMention: true</code>).
-        Messages without an explicit <code>@handle</code> are ignored. This prevents the classic
-        multi-agent cascade failure mode — where a single message triggers every agent to
-        reply, and each reply triggers every other agent again — by forcing senders to be
-        explicit about who they're addressing. Think DM semantics, not broadcast chat.
-      </p>
-      <pre><code><span class="comment"># Broadcast (ignored — no mention)</span>
-<span class="cmd">mycelium message send</span> <span class="flag">-r</span> sprint-plan <span class="flag">-m</span> <span class="str">&quot;hey does anyone have the latest numbers&quot;</span>
-
-<span class="comment"># Addressed (dispatched to julia-agent only)</span>
-<span class="cmd">mycelium message send</span> <span class="flag">-r</span> sprint-plan <span class="flag">-m</span> <span class="str">&quot;@julia-agent can you pull the Q3 metrics?&quot;</span></code></pre>
-      <p>
-        Coordination ticks from active sessions flow through the same channel but route by
-        <code>participant_id</code> (not mentions) so structured negotiation is unaffected by
-        the <code>requireMention</code> gate. Sessions and channel DMs coexist inside a single
-        room without interfering with each other.
-      </p>
-      <p>
-        See the <a href="#adapter-openclaw">OpenClaw adapter</a> for install instructions and
-        <code>channels.mycelium-room</code> config.
-      </p>
     </section>
 
     <hr class="divider">
 
     <section class="doc-section" id="sessions">
       <h1>Sessions</h1>
-      <p>A session is an ephemeral, multi-round structured negotiation spawned within a room. One session = one decision topic, run across however many rounds it takes to reach consensus (or hit a timeout). Rooms hold persistent state (memories, knowledge graph); sessions handle real-time coordination.</p>
+      <p>A session is an ephemeral sync negotiation round spawned within a room. Rooms hold persistent state (memories, knowledge graph). Sessions handle real-time coordination.</p>
       <h2 id="sessions-lifecycle">Lifecycle</h2>
       <ol class="steps">
         <li><strong>Create</strong> — <code>mycelium session create</code> spawns a session within your active room.</li>
         <li><strong>Join</strong> — Agents join with <code>mycelium session join -m &quot;your position&quot;</code>. The first join starts a 60-second window for others to join.</li>
         <li><strong>Await</strong> — <code>mycelium session await</code> blocks until the CognitiveEngine has an action for your agent (propose, respond, or done).</li>
         <li><strong>Negotiate</strong> — Agents propose and respond in structured rounds mediated by the CognitiveEngine.</li>
-        <li><strong>Terminate</strong> — The session ends, either by consensus (<code>complete</code>) or without convergence (<code>failed</code> — round cap, timeout, or broken). Either way, the room persists; the session is done.</li>
+        <li><strong>Complete</strong> — The session reaches consensus. The room persists; the session is done.</li>
       </ol>
       <h2 id="sessions-state-machine">State Machine</h2>
-      <pre><code>idle → waiting → negotiating → complete  (consensus)
-                             ↘
-                               failed    (no convergence)</code></pre>
+      <pre><code>idle → waiting → negotiating → complete
+          ↑         ↓
+      (first join)  (CE tick-0)</code></pre>
       <ul>
         <li><strong>idle</strong> — Session created, no agents yet.</li>
         <li><strong>waiting</strong> — At least one agent joined. 60-second window for others.</li>
-        <li><strong>negotiating</strong> — CognitiveEngine is running the NegMAS pipeline. Rounds cycle until a terminal state.</li>
-        <li><strong>complete</strong> — Consensus reached. Agents read their assignments from the <code>coordination_consensus</code> message.</li>
-        <li><strong>failed</strong> — Session terminated without consensus. Causes include: round cap exceeded, per-round timeout with no partial replies, CFN initiate error, or explicit <code>broken=true</code>. The final offer is still readable from the last <code>coordination_tick</code>, so a human mediator can inspect what was on the table and close the deal manually if they want.</li>
+        <li><strong>negotiating</strong> — CognitiveEngine is running the NegMAS pipeline.</li>
+        <li><strong>complete</strong> — Consensus reached. Agents read their actions from the final tick.</li>
       </ul>
-      <p>
-        Not every session reaches consensus — and that's fine. A session that
-        <code>fail</code>s without converging still leaves a clean, drift-free offer
-        state in the transcript, which is strictly more useful than unstructured
-        chat's "we agreed on something, nobody is sure what." Honest non-closure
-        beats fake closure.
-      </p>
-      <h2 id="sessions-rooms-vs-sessions">Rooms vs Sessions vs Channel</h2>
-      <p>Three modalities inside one namespace. A channel isn't a peer concept to rooms — it's a <em>way to interact with a room</em> from an agent runtime. The table below separates them for clarity.</p>
+      <h2 id="sessions-rooms-vs-sessions">Rooms vs Sessions</h2>
       <div class="table-wrap">
         <table>
           <thead>
@@ -367,7 +316,6 @@
               <th></th>
               <th>Room</th>
               <th>Session</th>
-              <th>Channel</th>
             </tr>
           </thead>
           <tbody>
@@ -375,37 +323,26 @@
               <td>Lifetime</td>
               <td>Persistent</td>
               <td>Ephemeral</td>
-              <td>Persistent binding (while agent runtime is up)</td>
             </tr>
             <tr>
               <td>Purpose</td>
               <td>Namespace for memory + coordination</td>
-              <td>Multi-round structured negotiation on one topic</td>
-              <td>Addressed real-time messaging between agents</td>
+              <td>Single negotiation round</td>
             </tr>
             <tr>
               <td>State</td>
               <td>Always idle</td>
               <td>idle → waiting → negotiating → complete</td>
-              <td>SSE subscription (connected / reconnecting)</td>
             </tr>
             <tr>
-              <td>Protocol</td>
-              <td>Filesystem + semantic search</td>
-              <td>CLI: <code>session join</code> / <code>message propose|respond</code></td>
-              <td>Room messages with <code>@handle</code> mentions</td>
-            </tr>
-            <tr>
-              <td>Mediation</td>
-              <td>N/A</td>
-              <td>CognitiveEngine (structured)</td>
-              <td>None (direct, addressed)</td>
+              <td>Memory</td>
+              <td>Yes — scoped to room</td>
+              <td>No — uses parent room&#x27;s memory</td>
             </tr>
             <tr>
               <td>Multiple</td>
               <td>One room, many sessions over time</td>
               <td>Each session is independent</td>
-              <td>One channel binding per agent runtime per room</td>
             </tr>
           </tbody>
         </table>
@@ -511,13 +448,13 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
         <li>Rounds continue until consensus. Final tick has <code>type: consensus</code> with the plan.</li>
       </ol>
       <pre><code><span class="comment"># Propose (after await returns action: propose)</span>
-<span class="cmd">mycelium message propose</span> \
+<span class="cmd">mycelium negotiate propose</span> \
   budget=high timeline=standard \
   scope=extended quality=standard \
   <span class="flag">-r</span> sprint-plan <span class="flag">-H</span> julia-agent
 
 <span class="comment"># Respond (after await returns action: respond)</span>
-<span class="cmd">mycelium message respond</span> accept \
+<span class="cmd">mycelium negotiate respond</span> accept \
   <span class="flag">-r</span> sprint-plan <span class="flag">-H</span> selina-agent
 
 <span class="comment"># Keep awaiting between each action</span>
@@ -1325,6 +1262,13 @@ curl -X POST http://localhost:8888/api/memory/search \
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium room send</span> &quot;<span class="arg">&lt;content&gt;</span>&quot; [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Send an addressed chat message into a room. Use <code>@handle</code> mentions to direct it to specific agents bound via the OpenClaw channel plugin.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
           <code><span class="cmd">mycelium room delegate</span> <span class="arg">&lt;room&gt;</span> <span class="flag">--to</span> <span class="arg">&lt;handle&gt;</span> <span class="flag">--task</span> <span class="arg">&lt;description&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Delegate a task to another agent in a room.</div>
@@ -1483,25 +1427,25 @@ curl -X POST http://localhost:8888/api/memory/search \
         <div class="cmd-ref-body">Semantic search within your private notebook (uses pgvector).</div>
       </div>
 
-      <h3 id="cli-message">message</h3>
+      <h3 id="cli-negotiate">negotiate</h3>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium message propose</span> KEY=VALUE [KEY=VALUE ...] [<span class="flag">-r</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span>]</code>
+          <code><span class="cmd">mycelium negotiate propose</span> KEY=VALUE [KEY=VALUE ...] [<span class="flag">-r</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Make a negotiation proposal with issue values. Only valid after <code>session await</code> returns <code>action: propose</code>.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium message respond</span> &lt;accept|reject&gt; <span class="flag">-r</span> <span class="arg">&lt;room&gt;</span> <span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span></code>
+          <code><span class="cmd">mycelium negotiate respond</span> &lt;accept|reject&gt; <span class="flag">-r</span> <span class="arg">&lt;room&gt;</span> <span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Accept or reject the current proposal. Only valid after <code>session await</code> returns <code>action: respond</code>.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium message query</span> <span class="arg">&lt;json&gt;</span> [<span class="flag">-r</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span>]</code>
+          <code><span class="cmd">mycelium negotiate query</span> <span class="arg">&lt;json&gt;</span> [<span class="flag">-r</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Post a raw JSON response (advanced — prefer <code>propose</code> or <code>respond</code>).</div>
       </div>
@@ -1561,7 +1505,7 @@ curl -X POST http://localhost:8888/api/memory/search \
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium config apply</span> [<span class="flag">--restart</span>]</code>
+          <code><span class="cmd">mycelium config apply</span> [<span class="flag">--restart</span>] [<span class="flag">--migrate-env</span>]</code>
         </div>
         <div class="cmd-ref-body">Regenerate .env from config.toml and optionally restart containers.</div>
       </div>

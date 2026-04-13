@@ -195,13 +195,24 @@ def _write_container_json(container: str, path: str, data: dict) -> None:
     )
 
 
+# Source tree lives at mycelium-cli/src/mycelium/adapters/openclaw/mycelium/
+# (the "mycelium" umbrella directory grouping plugin + hooks + skills as one
+# logical package). OpenClaw still expects each concern in its canonical
+# runtime location under ~/.openclaw/, so the scaffold tuples map source →
+# runtime path.
+_MYCELIUM_ASSET_ROOT = "mycelium"  # matches the subdir under adapters/openclaw/
+_MYCELIUM_PLUGIN_SRC = f"{_MYCELIUM_ASSET_ROOT}/plugin"
+_MYCELIUM_BOOTSTRAP_HOOK_SRC = f"{_MYCELIUM_ASSET_ROOT}/hooks/{_OPENCLAW_HOOK_NAME}"
+_MYCELIUM_EXTRACTOR_HOOK_SRC = f"{_MYCELIUM_ASSET_ROOT}/hooks/{_OPENCLAW_EXTRACTOR_HOOK_NAME}"
+_MYCELIUM_SKILL_SRC = f"{_MYCELIUM_PLUGIN_SRC}/skills/{_OPENCLAW_SKILL_NAME}"
+
 # Assets that go into each agent's ~/.openclaw/ directory
 _OPENCLAW_SCAFFOLD_ASSETS = [
     # (source subpath in mycelium package, dest subpath in target .openclaw dir)
-    (f"extensions/{_OPENCLAW_PLUGIN_NAME}", f"extensions/{_OPENCLAW_PLUGIN_NAME}"),
-    (f"hooks/{_OPENCLAW_HOOK_NAME}", f"hooks/{_OPENCLAW_HOOK_NAME}"),
-    (f"hooks/{_OPENCLAW_EXTRACTOR_HOOK_NAME}", f"hooks/{_OPENCLAW_EXTRACTOR_HOOK_NAME}"),
-    (f"skills/{_OPENCLAW_SKILL_NAME}", f"workspace/skills/{_OPENCLAW_SKILL_NAME}"),
+    (_MYCELIUM_PLUGIN_SRC, f"extensions/{_OPENCLAW_PLUGIN_NAME}"),
+    (_MYCELIUM_BOOTSTRAP_HOOK_SRC, f"hooks/{_OPENCLAW_HOOK_NAME}"),
+    (_MYCELIUM_EXTRACTOR_HOOK_SRC, f"hooks/{_OPENCLAW_EXTRACTOR_HOOK_NAME}"),
+    (_MYCELIUM_SKILL_SRC, f"workspace/skills/{_OPENCLAW_SKILL_NAME}"),
 ]
 
 
@@ -230,6 +241,9 @@ def add(
     ),
     force: bool = typer.Option(
         False, "--force", "-f", help="Overwrite existing assets when using --scaffold-only"
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="Skip confirmation prompts (e.g. reinstall overwrite warning)"
     ),
     openclaw_profile: str | None = typer.Option(
         None,
@@ -317,6 +331,38 @@ def add(
             )
             raise typer.Exit(0)
 
+        # Confirm before a destructive reinstall. `openclaw plugins install` will
+        # overwrite the existing files in ~/.openclaw/extensions/mycelium/ with
+        # the bundled source tree — any local edits get wiped, and any stale files
+        # not in the new tree may linger (OpenClaw doesn't prune). Ask the user to
+        # confirm unless -y was passed or this is a dry run.
+        if reinstall and not dry_run and not yes:
+            targets: list[str] = []
+            if adapter_type == "openclaw":
+                state_dir = _openclaw_state_dir(openclaw_profile)
+                targets.append(f"  • {state_dir}/extensions/{_OPENCLAW_PLUGIN_NAME}")
+                targets.append(f"  • {state_dir}/hooks/{_OPENCLAW_HOOK_NAME}")
+                targets.append(f"  • {state_dir}/hooks/{_OPENCLAW_EXTRACTOR_HOOK_NAME}")
+                targets.append(f"  • <agent workspaces>/skills/{_OPENCLAW_SKILL_NAME}")
+            elif adapter_type == "claude-code":
+                claude_dir = Path.home() / ".claude"
+                targets.append(f"  • {claude_dir}/skills/{_CLAUDE_CODE_SKILL_NAME}")
+                for hook in _CLAUDE_CODE_HOOKS:
+                    targets.append(f"  • {claude_dir}/hooks/{hook}")
+
+            typer.secho(
+                f"\n  Reinstalling the '{adapter_type}' adapter will overwrite:",
+                fg=typer.colors.YELLOW,
+            )
+            for target in targets:
+                typer.echo(target)
+            typer.echo(
+                "\n  Any local edits to these files will be lost. Pass --yes/-y to skip this prompt.\n"
+            )
+            if not typer.confirm("  Continue with reinstall?", default=False):
+                typer.secho("  Aborted.", fg=typer.colors.YELLOW)
+                raise typer.Exit(0)
+
         if dry_run:
             typer.secho(f"[dry-run] Would install adapter: {adapter_type}", fg=typer.colors.CYAN)
             if adapter_type == "claude-code":
@@ -325,8 +371,8 @@ def add(
                 for hook in _CLAUDE_CODE_HOOKS:
                     typer.echo(f"  hook  → {claude_dir}/hooks/{hook}")
             else:
-                plugin_src = _resolve_asset(f"extensions/{_OPENCLAW_PLUGIN_NAME}")
-                hook_src = _resolve_asset(f"hooks/{_OPENCLAW_HOOK_NAME}")
+                plugin_src = _resolve_asset(_MYCELIUM_PLUGIN_SRC)
+                hook_src = _resolve_asset(_MYCELIUM_BOOTSTRAP_HOOK_SRC)
                 parts: list[str] = ["openclaw"]
                 if openclaw_profile and openclaw_profile.lower() != "default":
                     parts += ["--profile", openclaw_profile]
@@ -641,7 +687,7 @@ def _install_openclaw(
         state_suffix = f"-{profile}" if profile and profile.lower() != "default" else ""
         container_state_dir = f"{container_home}/.openclaw{state_suffix}"
 
-        plugin_src = _resolve_asset(f"extensions/{_OPENCLAW_PLUGIN_NAME}")
+        plugin_src = _resolve_asset(_MYCELIUM_PLUGIN_SRC)
         container_plugin_path = f"/tmp/mycelium-stage/extensions/{_OPENCLAW_PLUGIN_NAME}"
         if verbose:
             typer.echo(f"  staging {plugin_src} → {container}:{container_plugin_path}")
@@ -649,7 +695,7 @@ def _install_openclaw(
         _run(["openclaw", "plugins", "install", container_plugin_path], allow_already_exists=True)
         _wait_container_healthy(container)
 
-        hook_src = _resolve_asset(f"hooks/{_OPENCLAW_HOOK_NAME}")
+        hook_src = _resolve_asset(_MYCELIUM_BOOTSTRAP_HOOK_SRC)
         container_hook_path = f"/tmp/mycelium-stage/hooks/{_OPENCLAW_HOOK_NAME}"
         if verbose:
             typer.echo(f"  staging {hook_src} → {container}:{container_hook_path}")
@@ -657,7 +703,7 @@ def _install_openclaw(
         _run(["openclaw", "hooks", "install", container_hook_path], allow_already_exists=True)
         _wait_container_healthy(container)
 
-        extractor_src = _resolve_asset(f"hooks/{_OPENCLAW_EXTRACTOR_HOOK_NAME}")
+        extractor_src = _resolve_asset(_MYCELIUM_EXTRACTOR_HOOK_SRC)
         container_extractor_path = f"/tmp/mycelium-stage/hooks/{_OPENCLAW_EXTRACTOR_HOOK_NAME}"
         if verbose:
             typer.echo(f"  staging {extractor_src} → {container}:{container_extractor_path}")
@@ -740,16 +786,16 @@ def _install_openclaw(
     # profile where a prior install is genuinely a no-op.
     tolerate_exists = not (profile and profile.lower() != "default")
 
-    plugin_src = _resolve_asset(f"extensions/{_OPENCLAW_PLUGIN_NAME}")
+    plugin_src = _resolve_asset(_MYCELIUM_PLUGIN_SRC)
     _run(["openclaw", "plugins", "install", str(plugin_src)], allow_already_exists=tolerate_exists)
 
     # Add plugin to plugins.allow so openclaw doesn't warn on every command
     _allow_plugin(_OPENCLAW_PLUGIN_NAME, profile=profile)
 
-    hook_src = _resolve_asset(f"hooks/{_OPENCLAW_HOOK_NAME}")
+    hook_src = _resolve_asset(_MYCELIUM_BOOTSTRAP_HOOK_SRC)
     _run(["openclaw", "hooks", "install", str(hook_src)], allow_already_exists=tolerate_exists)
 
-    extractor_src = _resolve_asset(f"hooks/{_OPENCLAW_EXTRACTOR_HOOK_NAME}")
+    extractor_src = _resolve_asset(_MYCELIUM_EXTRACTOR_HOOK_SRC)
     _run(["openclaw", "hooks", "install", str(extractor_src)], allow_already_exists=tolerate_exists)
 
     # Install skill into the openclaw workspace skills directory
@@ -796,9 +842,7 @@ def _resolve_agent_workspaces(profile: str | None = None) -> list[Path]:
 
 def _install_openclaw_skill(profile: str | None = None) -> None:
     """Copy mycelium SKILL.md to skills/ under every configured agent workspace."""
-    skill_src_dir = _resolve_asset(
-        f"extensions/{_OPENCLAW_PLUGIN_NAME}/skills/{_OPENCLAW_SKILL_NAME}"
-    )
+    skill_src_dir = _resolve_asset(_MYCELIUM_SKILL_SRC)
     for workspace in _resolve_agent_workspaces(profile=profile):
         dest_dir = workspace / "skills" / _OPENCLAW_SKILL_NAME
         dest_dir.mkdir(parents=True, exist_ok=True)

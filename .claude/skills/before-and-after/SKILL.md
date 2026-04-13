@@ -40,9 +40,9 @@ openclaw --version
 openclaw channels status
 # Should show "Gateway reachable" in the output. If not: openclaw gateway start
 
-# 6. Mycelium repo path (for the channel plugin source)
+# 6. Mycelium repo path (for the bundled plugin source)
 MYCELIUM_REPO=$(pwd)  # assumes running from the mycelium repo
-ls "$MYCELIUM_REPO/openclaw-channel-plugin/src/channel-plugin.ts" 2>/dev/null \
+ls "$MYCELIUM_REPO/mycelium-cli/src/mycelium/adapters/openclaw/mycelium/plugin/index.ts" 2>/dev/null \
   && echo "Repo found: $MYCELIUM_REPO" \
   || echo "ERROR: not in the mycelium repo — cd to it first"
 ```
@@ -116,7 +116,7 @@ For 3+ agent scenarios, create additional agents the same way.
 
 **Never hardcode a model in this skill.** Always use `$EXP_MODEL`. The user picked it in Phase 0.5 for cost reasons — overriding it silently defeats the whole point of asking.
 
-**Disable sandbox mode for experiment agents.** Newly-created agents inherit `agents.defaults.sandbox.mode` from `openclaw.json`, which is typically `"all"` (full sandboxing). Sandboxed agents cannot execute `mycelium session join`, `mycelium message propose`, or `mycelium message respond` because the mycelium CLI binary isn't visible inside the sandbox. The after case will fail silently: agents will dutifully reason about the negotiation in chat, then report "the mycelium CLI isn't available in this environment" — which makes the after case look worse than the before case purely because of a config gotcha.
+**Disable sandbox mode for experiment agents.** Newly-created agents inherit `agents.defaults.sandbox.mode` from `openclaw.json`, which is typically `"all"` (full sandboxing). Sandboxed agents cannot execute `mycelium session join`, `mycelium negotiate propose`, or `mycelium negotiate respond` because the mycelium CLI binary isn't visible inside the sandbox. The after case will fail silently: agents will dutifully reason about the negotiation in chat, then report "the mycelium CLI isn't available in this environment" — which makes the after case look worse than the before case purely because of a config gotcha.
 
 Patch the sandbox setting for each experiment agent after creation:
 
@@ -155,52 +155,26 @@ Good personas include:
 - Specific data points ("60% reduction in integration time", not "it was faster")
 - Clear priorities and red lines ("won't compromise on caching", not "prefers performance")
 
-### 1c. Install the mycelium-channel plugin
+### 1c. Install the mycelium plugin
 
-Check if already installed:
+The plugin ships with the `mycelium adapter add openclaw` command. There's
+no separate `mycelium-channel` to install — session lifecycle, coordination
+ticks, and addressed messaging are all concerns of a single unified plugin.
+
+Check if installed:
 
 ```bash
-ls ~/.openclaw/extensions/mycelium-channel/openclaw.plugin.json 2>/dev/null \
-  && echo "Channel plugin already installed" \
-  || echo "Channel plugin needs installation"
+ls ~/.openclaw/extensions/mycelium/openclaw.plugin.json 2>/dev/null \
+  && echo "Mycelium plugin already installed" \
+  || { echo "Installing..."; mycelium adapter add openclaw; }
 ```
 
-If not installed:
+If `mycelium adapter add openclaw` hasn't been run, do it now. It installs
+the plugin, the bootstrap + knowledge-extract hooks, and the skill — all in
+one command. Restart the gateway after install to pick up the plugin:
 
 ```bash
-mkdir -p ~/.openclaw/extensions/mycelium-channel
-
-# Copy plugin source from the mycelium repo
-cp "$MYCELIUM_REPO/openclaw-channel-plugin/src/channel-plugin.ts" \
-   ~/.openclaw/extensions/mycelium-channel/index.ts
-
-cat > ~/.openclaw/extensions/mycelium-channel/package.json << 'EOF'
-{
-  "name": "mycelium-channel",
-  "version": "0.1.0",
-  "type": "module",
-  "openclaw": {
-    "extensions": ["./index.ts"],
-    "channel": {
-      "id": "mycelium-room",
-      "label": "Mycelium Room",
-      "selectionLabel": "Mycelium Room (shared coordination channel)"
-    }
-  }
-}
-EOF
-
-cat > ~/.openclaw/extensions/mycelium-channel/openclaw.plugin.json << 'EOF'
-{
-  "id": "mycelium-channel",
-  "name": "Mycelium Channel",
-  "description": "Room-based agent coordination via Mycelium",
-  "version": "0.1.0",
-  "kind": "channel",
-  "channels": ["mycelium-room"],
-  "configSchema": {}
-}
-EOF
+openclaw gateway restart
 ```
 
 ### 1d. Configure openclaw.json
@@ -442,9 +416,9 @@ Use Mycelium structured negotiation to reach consensus. Do NOT discuss this in c
 2. Wait for CognitiveEngine to address you. It will send a tick message telling you your turn, the current offer, and whether to 'propose' or 'respond'.
 
 3. Respond via the CLI:
-     mycelium message propose ISSUE=VALUE ISSUE=VALUE ... --room ${EXP_ID}-after --handle <your-handle>
-     mycelium message respond accept --room ${EXP_ID}-after --handle <your-handle>
-     mycelium message respond reject --room ${EXP_ID}-after --handle <your-handle>
+     mycelium negotiate propose ISSUE=VALUE ISSUE=VALUE ... --room ${EXP_ID}-after --handle <your-handle>
+     mycelium negotiate respond accept --room ${EXP_ID}-after --handle <your-handle>
+     mycelium negotiate respond reject --room ${EXP_ID}-after --handle <your-handle>
 
 Explain your reasoning briefly in chat before each CLI command so the human can follow along. Repeat until you receive a consensus message."
 
@@ -460,7 +434,7 @@ The automated sequence:
 2. Join window closes → CFN fires (~30s after first join)
 3. Channel plugin polls, detects session sub-room → subscribes SSE (~5s)
 4. CognitiveEngine posts ticks → plugin formats and dispatches to agents
-5. Agents receive ticks, reason about the offer, execute `mycelium message propose/respond`
+5. Agents receive ticks, reason about the offer, execute `mycelium negotiate propose/respond`
 6. Backend collects responses → calls CFN `/decide` → next round
 7. Repeat until consensus or timeout (max ~20 rounds)
 

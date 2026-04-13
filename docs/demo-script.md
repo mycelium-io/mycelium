@@ -178,11 +178,11 @@ Or open `http://localhost:3000/room/friday-demo` in the browser.
 2. Timer fires → CognitiveEngine runs SemanticNegotiationPipeline
 3. `await` returns a tick with `action: propose` → agent proposes:
    ```bash
-   mycelium message propose budget=high timeline=standard scope=extended quality=standard --handle julia-agent
+   mycelium negotiate propose budget=high timeline=standard scope=extended quality=standard --handle julia-agent
    ```
 4. Other agent gets a tick with `action: respond` → accepts or rejects:
    ```bash
-   mycelium message respond accept --handle selina-agent
+   mycelium negotiate respond accept --handle selina-agent
    ```
 5. `await` returns `type: consensus` with the final plan
 
@@ -199,8 +199,8 @@ Give this to the second Claude Code instance:
 > ```
 >
 > When you get a tick, respond based on the action:
-> - `action=propose` → `mycelium message propose budget=medium timeline=express scope=standard quality=premium --handle selina-agent`
-> - `action=respond` → evaluate the offer, then `mycelium message respond accept --handle selina-agent`
+> - `action=propose` → `mycelium negotiate propose budget=medium timeline=express scope=standard quality=premium --handle selina-agent`
+> - `action=respond` → evaluate the offer, then `mycelium negotiate respond accept --handle selina-agent`
 > - `type=consensus` → done, read your assignment
 >
 > Keep calling `mycelium session await --handle selina-agent` between each response until you get consensus.

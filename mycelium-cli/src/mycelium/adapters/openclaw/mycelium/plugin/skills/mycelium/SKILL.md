@@ -10,15 +10,13 @@ metadata:
       bins:
         - mycelium
       config:
-        - ~/.mycelium/rooms/
         - ~/.mycelium/config.toml
-      env:
-        - MYCELIUM_API_URL
     install:
       - kind: brew
         formula: mycelium-io/tap/mycelium
         bins: [mycelium]
 ---
+
 
 # Mycelium Coordination
 
@@ -64,11 +62,11 @@ For unstructured messaging, agents can DM each other via `@handle` mentions in t
 
 ## Authentication & Data Storage
 
-**Authentication**: The CLI connects to `MYCELIUM_API_URL` (declared in `requires.env` above, default: `http://localhost:8000`). Authentication is handled by your backend deployment — the CLI sends no credentials by default. If your backend requires auth, configure it at the server level (reverse proxy, network policy, etc.).
+**Authentication**: The CLI connects to the Mycelium backend at the URL configured in `~/.mycelium/config.toml` (under `[server] api_url`, default `http://localhost:8000`). Authentication is handled by your backend deployment — the CLI sends no credentials by default. If your backend requires auth, configure it at the server level (reverse proxy, network policy, etc.).
 
-**Network behavior**: The CLI sends HTTP requests **only** to the single endpoint at `MYCELIUM_API_URL`. This is used for: writing memories to the search index, semantic search queries, coordination session joins/responses, and room sync. No other endpoints are contacted at runtime.
+**Network behavior**: The CLI sends HTTP requests **only** to the single backend endpoint from `~/.mycelium/config.toml`. This is used for: writing memories to the search index, semantic search queries, coordination session joins/responses, and room sync. No other endpoints are contacted at runtime.
 
-**Local data**: Memories are written as plaintext markdown files under `~/.mycelium/rooms/{room}/` (declared in `requires.config` above). These files are readable by any process with filesystem access on this machine. **Do not store secrets, credentials, or PII as room memories.** Room sync pushes/pulls these files to/from the backend via HTTP — ensure `MYCELIUM_API_URL` points to a trusted, access-controlled server.
+**Local data**: Memories are written as plaintext markdown files under `~/.mycelium/rooms/{room}/`. These files are readable by any process with filesystem access on this machine. **Do not store secrets, credentials, or PII as room memories.** Room sync pushes/pulls these files to/from the backend via HTTP — ensure your configured backend URL points to a trusted, access-controlled server.
 
 **Scope limits**: This skill only reads and writes files under `~/.mycelium/`. It does not access files outside this directory, does not read environment variables beyond those declared above, and does not modify system configuration or other skills.
 
@@ -164,18 +162,18 @@ mycelium session join --handle <your-handle> --room <room-name> -m "I want Graph
 # 3. When your tick arrives:
 
 #    If can_counter_offer is TRUE — you may propose a new offer OR accept/reject:
-mycelium message propose ISSUE=VALUE ISSUE=VALUE ... --room <room-name> --handle <your-handle>
+mycelium negotiate propose ISSUE=VALUE ISSUE=VALUE ... --room <room-name> --handle <your-handle>
 # example:
-mycelium message propose budget=medium timeline=standard scope=full --room <room-name> --handle <your-handle>
+mycelium negotiate propose budget=medium timeline=standard scope=full --room <room-name> --handle <your-handle>
 
 #    If can_counter_offer is FALSE — you may only accept or reject the current offer:
-mycelium message respond accept --room <room-name> --handle <your-handle>
-mycelium message respond reject --room <room-name> --handle <your-handle>
+mycelium negotiate respond accept --room <room-name> --handle <your-handle>
+mycelium negotiate respond reject --room <room-name> --handle <your-handle>
 
 # 4. [consensus] message arrives with the agreed values — proceed independently
 ```
 
-> **Key rule**: `can_counter_offer: true` means it's your turn to propose. Use `mycelium message propose` to make a counter-offer, or `mycelium message respond accept/reject` to accept/reject without changing the offer. When `can_counter_offer: false`, only accept or reject.
+> **Key rule**: `can_counter_offer: true` means it's your turn to propose. Use `mycelium negotiate propose` to make a counter-offer, or `mycelium negotiate respond accept/reject` to accept/reject without changing the offer. When `can_counter_offer: false`, only accept or reject.
 
 > **Narrate your choices**: When you accept, reject, or propose, explain your reasoning in the chat so the human can follow along. For example: "Rejecting because the timeline is too aggressive — proposing 6 months instead of 3" before running the mycelium command. This makes the negotiation legible to observers.
 
@@ -232,28 +230,27 @@ What OpenClaw does for you here:
 Use `timeoutSeconds: 0` for fire-and-forget (returns `runId` immediately,
 fetch history later with `sessions_history`).
 
-**2. Channel broadcast — addressed to everyone in the room**
+**2. Channel broadcast — `mycelium room send` or just reply in-room**
 
-If you're already running in a mycelium-room session (your current channel
-IS mycelium-room), just write output normally with an `@mention` — the
-plugin forwards it to the addressed agents via the channel dispatch path.
-No tool call required.
+If your current session is already a mycelium-room session (the plugin
+woke you because another agent or a human addressed you there), just
+write output normally with one or more `@mention`s — the plugin forwards
+it to the addressed agents via the channel dispatch path. No tool call
+required.
 
-If you're running in a different channel and want to drop a message into
-the room without waiting for a reply:
+If you need to drop a message into a mycelium room from a different
+session (Discord, Claude Code, a cron, etc.), use the CLI directly:
 
 ```bash
-curl -X POST "$MYCELIUM_API_URL/rooms/<room>/messages" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "sender_handle": "<your-handle>",
-    "message_type": "broadcast",
-    "content": "@julia-agent @selina-agent heads up: I found a redis eviction bug in the staging cluster — details in `~/.mycelium/rooms/infra/failed/redis-eviction.md`"
-  }'
+mycelium room send \
+  --room <room-name> \
+  --handle <your-handle> \
+  "@julia-agent heads up: found a redis eviction bug in staging — see ~/.mycelium/rooms/infra/failed/redis-eviction.md"
 ```
 
-Addressed agents will receive it in their mycelium-room session. The sender
-gets no reply loop — this is a one-way notification.
+This is a one-way notification — addressed agents will receive the
+message in their mycelium-room session but there's no reply loop. If you
+need a reply, use `sessions_send` (option 1 above) instead.
 
 **3. Memory — durable, async, discoverable by future agents**
 
@@ -338,14 +335,6 @@ mycelium room synthesize
 
 **Log failures too.** When something doesn't work, write it as a memory so other agents don't repeat the same dead end. Negative results are as valuable as positive ones.
 
-## Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `MYCELIUM_API_URL` | Yes (declared in metadata) | Backend API URL (default: `http://localhost:8000`). All network traffic goes to this single endpoint. |
-| `MYCELIUM_AGENT_HANDLE` | No | Override this agent's identity handle (default: derived from OpenClaw agent ID) |
-| `MYCELIUM_ROOM` | No | Override active room name (default: read from `~/.mycelium/config.toml`) |
-
 ## When to Use What
 
 | Situation | Action |
@@ -357,5 +346,5 @@ mycelium room synthesize
 | Need agents to agree on something right now | Spawn session + coordination protocol |
 | Accumulate context then decide later | Room + `mycelium room synthesize` |
 | Ask a specific other agent a direct question | `sessions_send` to their mycelium-room sessionKey |
-| Notify everyone in the room of something | `@mention` broadcast (see Channel Messaging) |
+| Drop a notification into a room from outside | `mycelium room send --room X "@handle ..."` |
 | Watch the room in real time | `mycelium watch` |

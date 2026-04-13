@@ -493,6 +493,195 @@ def _check_room_mas_ids() -> CheckResult:
 # ── Main doctor command ──────────────────────────────────────────────────────
 
 
+def _check_openclaw_mycelium_plugin() -> CheckResult:
+    """Verify the unified `mycelium` plugin is installed at ~/.openclaw/extensions/mycelium/."""
+    plugin_dir = Path.home() / ".openclaw" / "extensions" / "mycelium"
+    manifest = plugin_dir / "openclaw.plugin.json"
+    index = plugin_dir / "index.ts"
+
+    if not manifest.exists():
+        # No OpenClaw install at all — not a failure, just skip
+        openclaw_dir = Path.home() / ".openclaw"
+        if not openclaw_dir.exists():
+            return CheckResult(
+                name="openclaw plugin",
+                status="ok",
+                message="no OpenClaw install detected — skipped",
+            )
+        return CheckResult(
+            name="openclaw plugin",
+            status="warning",
+            message="not installed",
+            details=[
+                f"expected: {plugin_dir}",
+                "fix: run `mycelium adapter add openclaw`",
+            ],
+        )
+
+    if not index.exists():
+        return CheckResult(
+            name="openclaw plugin",
+            status="error",
+            message="manifest present but index.ts missing — corrupt install",
+            details=[
+                "fix: run `mycelium adapter add openclaw --reinstall`",
+            ],
+        )
+
+    return CheckResult(
+        name="openclaw plugin",
+        status="ok",
+        message=f"installed at {plugin_dir}",
+    )
+
+
+def _check_openclaw_channel_config() -> CheckResult:
+    """Verify channels.mycelium-room is configured correctly in openclaw.json."""
+    import json
+
+    openclaw_json = Path.home() / ".openclaw" / "openclaw.json"
+    if not openclaw_json.exists():
+        return CheckResult(
+            name="channel config",
+            status="ok",
+            message="no OpenClaw install detected — skipped",
+        )
+
+    try:
+        with openclaw_json.open() as f:
+            oc = json.load(f)
+    except Exception as exc:
+        return CheckResult(
+            name="channel config",
+            status="error",
+            message=f"could not parse openclaw.json: {exc}",
+        )
+
+    channel = (oc.get("channels") or {}).get("mycelium-room")
+    if not channel:
+        return CheckResult(
+            name="channel config",
+            status="warning",
+            message="channels.mycelium-room not configured",
+            details=[
+                "the plugin will run in session-only mode (no addressed messaging)",
+                "fix: add channels.mycelium-room with backendUrl, room, agents, requireMention",
+            ],
+        )
+
+    if channel.get("enabled") is False:
+        return CheckResult(
+            name="channel config",
+            status="warning",
+            message="channels.mycelium-room present but disabled",
+        )
+
+    missing = [k for k in ("backendUrl", "room", "agents") if not channel.get(k)]
+    if missing:
+        return CheckResult(
+            name="channel config",
+            status="error",
+            message=f"missing required fields: {', '.join(missing)}",
+            details=["fix: set backendUrl, room, and agents in channels.mycelium-room"],
+        )
+
+    # Check backendUrl matches mycelium config.toml's server.api_url
+    try:
+        import tomllib
+
+        mycelium_toml = Path.home() / ".mycelium" / "config.toml"
+        if mycelium_toml.exists():
+            with mycelium_toml.open("rb") as f:
+                mcfg = tomllib.load(f)
+            expected = (mcfg.get("server") or {}).get("api_url", "").rstrip("/")
+            actual = str(channel.get("backendUrl", "")).rstrip("/")
+            if expected and actual and expected != actual:
+                return CheckResult(
+                    name="channel config",
+                    status="error",
+                    message="backendUrl doesn't match mycelium config.toml",
+                    details=[
+                        f"openclaw.json:     {actual}",
+                        f"mycelium/config:   {expected}",
+                        "fix: update channels.mycelium-room.backendUrl to match",
+                    ],
+                )
+    except Exception:
+        pass  # non-fatal
+
+    agents = channel.get("agents") or []
+    require_mention = channel.get("requireMention", True)
+    return CheckResult(
+        name="channel config",
+        status="ok",
+        message=f"room={channel.get('room')} agents={len(agents)} requireMention={require_mention}",
+    )
+
+
+def _check_openclaw_agent_sandbox() -> CheckResult:
+    """Warn about agents whose sandbox mode blocks the mycelium CLI."""
+    import json
+
+    openclaw_json = Path.home() / ".openclaw" / "openclaw.json"
+    if not openclaw_json.exists():
+        return CheckResult(
+            name="agent sandbox",
+            status="ok",
+            message="no OpenClaw install detected — skipped",
+        )
+
+    try:
+        with openclaw_json.open() as f:
+            oc = json.load(f)
+    except Exception as exc:
+        return CheckResult(
+            name="agent sandbox",
+            status="error",
+            message=f"could not parse openclaw.json: {exc}",
+        )
+
+    channel = (oc.get("channels") or {}).get("mycelium-room") or {}
+    channel_agents = set(channel.get("agents") or [])
+    if not channel_agents:
+        return CheckResult(
+            name="agent sandbox",
+            status="ok",
+            message="no channel agents configured — skipped",
+        )
+
+    default_sandbox = (((oc.get("agents") or {}).get("defaults") or {}).get("sandbox") or {}).get(
+        "mode", "all"
+    )
+
+    sandboxed: list[str] = []
+    for agent in (oc.get("agents") or {}).get("list", []):
+        agent_id = agent.get("id", "")
+        if agent_id not in channel_agents:
+            continue
+        mode = (agent.get("sandbox") or {}).get("mode") or default_sandbox
+        if mode != "off":
+            sandboxed.append(f"{agent_id} (mode={mode})")
+
+    if sandboxed:
+        return CheckResult(
+            name="agent sandbox",
+            status="warning",
+            message=f"{len(sandboxed)} channel agent(s) are sandboxed — mycelium CLI invisible",
+            details=[
+                *sandboxed,
+                "sandboxed agents cannot execute `mycelium session join`, `message propose`,",
+                "or `message respond` because the mycelium binary isn't in their sandbox PATH.",
+                "fix: set sandbox.mode = 'off' in openclaw.json for each agent, restart gateway",
+            ],
+        )
+
+    return CheckResult(
+        name="agent sandbox",
+        status="ok",
+        message=f"all {len(channel_agents)} channel agent(s) have sandbox=off",
+    )
+
+
 @doc_ref(
     usage="mycelium doctor [--fix] [--json]",
     desc="Diagnose and fix common configuration issues (workspace sync, LLM, containers).",
@@ -527,6 +716,9 @@ def doctor(
             _check_workspace_id(),
             _check_config_drift(),
             _check_room_mas_ids(),
+            _check_openclaw_mycelium_plugin(),
+            _check_openclaw_channel_config(),
+            _check_openclaw_agent_sandbox(),
         ]
 
         if json_output:

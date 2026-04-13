@@ -577,7 +577,7 @@ def _render_coordination_event(msg: dict, current_identity: str) -> tuple[str | 
                 }
                 lines.append("")
                 kv = " ".join(f"{k}={v}" for k, v in example.items())
-                lines.append(f"        Reply: mycelium message propose {kv}")
+                lines.append(f"        Reply: mycelium negotiate propose {kv}")
                 return "\n".join(lines), True
 
             if action == "respond":
@@ -589,7 +589,7 @@ def _render_coordination_event(msg: dict, current_identity: str) -> tuple[str | 
                 for k, v in current_offer.items():
                     lines.append(f"        {k}: {v}")
                 lines.append("")
-                lines.append("        Accept/reject/end: mycelium message respond accept")
+                lines.append("        Accept/reject/end: mycelium negotiate respond accept")
                 return "\n".join(lines), True
 
             return f"  ⟫  CognitiveEngine [round {round_num}] — {action} ({participant_id})", True
@@ -909,6 +909,85 @@ def post(
             typer.secho("Message sent", fg=typer.colors.GREEN)
             typer.echo(f"  {agent}: {response_text[:80]}")
 
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+
+
+@doc_ref(
+    usage='mycelium room send "<content>" [--room <room>] [--handle <handle>]',
+    desc="Send an addressed chat message into a room. Use <code>@handle</code> mentions to direct it to specific agents bound via the OpenClaw channel plugin.",
+    group="room",
+)
+@app.command("send")
+def send(
+    ctx: typer.Context,
+    content: str = typer.Argument(
+        ...,
+        help='Message content. Use @handle mentions to address specific agents, e.g. "@julia-agent ping".',
+    ),
+    room: str | None = typer.Option(
+        None, "--room", "-r", help="Room to post into (defaults to active room)"
+    ),
+    handle: str | None = typer.Option(
+        None,
+        "--handle",
+        "-H",
+        help="Your sender handle (defaults to identity config)",
+    ),
+) -> None:
+    """
+    Send an addressed chat message into a room (cross-agent DM).
+
+    Drops a broadcast message into the room's message stream. Agents bound
+    to the room via the OpenClaw channel plugin will receive it if the
+    content @-mentions them (when `requireMention` is enabled, default true).
+
+    Use this for:
+      - Addressed DMs between agents in the same room
+      - Seeding a scenario for a group of agents (facilitator posts, agents respond)
+      - One-way notifications without expecting a reply loop
+
+    For structured negotiation (propose/accept/reject), use `mycelium negotiate
+    propose|respond` instead. For agent-to-agent requests with a built-in
+    reply loop, use OpenClaw's `sessions_send` tool.
+
+    Examples:
+        mycelium room send "@julia-agent please review the cache config"
+        mycelium room send --room design-review --handle arnold "@selina-agent thoughts on the API proposal?"
+        mycelium room send "@julia-agent @selina-agent sync at 3pm re: sprint priorities"
+    """
+    try:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
+        json_output = ctx.obj.get("json", False) if ctx.obj else False
+
+        config = MyceliumConfig.load()
+        room_name = _resolve_room(config, room)
+        sender_handle = handle or config.get_current_identity()
+
+        from mycelium_backend_client.api.messages import (
+            send_message_rooms_room_name_messages_post as send_api,
+        )
+        from mycelium_backend_client.models import MessageCreate
+
+        with _typed_client(config) as client:
+            body = MessageCreate(
+                sender_handle=sender_handle,
+                message_type="broadcast",
+                content=content,
+            )
+            result = send_api.sync(room_name=room_name, client=client, body=body)
+
+        if json_output and result:
+            msg_dict = result.to_dict() if hasattr(result, "to_dict") else str(result)
+            typer.echo(json_module.dumps(msg_dict, indent=2, default=str))
+            return
+
+        preview = content[:80] + ("…" if len(content) > 80 else "")
+        typer.echo(f"  ↑  {sender_handle} → {room_name}: {preview}")
+
+    except (typer.Exit, typer.Abort):
+        raise
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)

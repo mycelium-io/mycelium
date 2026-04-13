@@ -2,15 +2,21 @@
 # Copyright 2026 Julia Valenti
 
 """
-Message coordination commands for Mycelium CLI.
+Structured negotiation commands for Mycelium CLI.
 
 Commands:
 - propose: Submit an offer for the current negotiate/propose tick
 - respond: Accept, reject, or end the current negotiate/respond tick
 - query:   Post a raw response (advanced / non-negotiate scenarios)
 
-Uses the generated OpenAPI client for type-safe API access.
-Outgoing payloads are validated against SSTP wire-format models (mycelium.sstp)
+All three are reply-to-tick commands — you run them after CognitiveEngine
+addressed you in an active session. They route through the session sub-room
+so `coordination.on_agent_response` sees the reply.
+
+For cross-agent chat messages (not negotiation), use `mycelium room send`.
+
+Uses the generated OpenAPI client for type-safe API access. Outgoing
+payloads are validated against SSTP wire-format models (mycelium.sstp)
 before posting, so the CLI is statically forced to adhere to the protocol.
 """
 
@@ -25,7 +31,7 @@ from mycelium.error_handler import print_error
 from mycelium.sstp import ProposeReply, RespondReply
 
 app = typer.Typer(
-    help="Respond to CognitiveEngine during sync negotiation. Propose offers, accept/reject, or send raw JSON.",
+    help="Respond to CognitiveEngine during structured negotiation (propose/respond/query).",
     no_args_is_help=True,
 )
 
@@ -103,9 +109,9 @@ def _post(ctx: typer.Context, room: str | None, handle: str | None, content: str
 
 
 @doc_ref(
-    usage="mycelium message propose KEY=VALUE [KEY=VALUE ...] [-r <room>] [-H <handle>]",
+    usage="mycelium negotiate propose KEY=VALUE [KEY=VALUE ...] [-r <room>] [-H <handle>]",
     desc="Make a negotiation proposal with issue values. Only valid after <code>session await</code> returns <code>action: propose</code>.",
-    group="message",
+    group="negotiate",
 )
 @app.command("propose")
 def propose(
@@ -128,8 +134,8 @@ def propose(
     correct wire format so you never have to write JSON by hand.
 
     Examples:
-        mycelium message propose budget=medium timeline=standard scope=standard quality=standard
-        mycelium message propose budget=high scope=full --room my-room --handle julia-agent
+        mycelium negotiate propose budget=medium timeline=standard scope=standard quality=standard
+        mycelium negotiate propose budget=high scope=full --room my-room --handle julia-agent
     """
     try:
         offer: dict[str, str] = {}
@@ -167,9 +173,9 @@ VALID_ACTIONS = {"accept", "reject", "end", "counter_offer"}
 
 
 @doc_ref(
-    usage="mycelium message respond <accept|reject> -r <room> -H <handle>",
+    usage="mycelium negotiate respond <accept|reject> -r <room> -H <handle>",
     desc="Accept or reject the current proposal. Only valid after <code>session await</code> returns <code>action: respond</code>.",
-    group="message",
+    group="negotiate",
 )
 @app.command("respond")
 def respond(
@@ -189,9 +195,9 @@ def respond(
     Accept, reject, or end the negotiation for the current respond tick.
 
     Examples:
-        mycelium message respond accept
-        mycelium message respond reject --room my-room
-        mycelium message respond end    --handle julia-agent
+        mycelium negotiate respond accept
+        mycelium negotiate respond reject --room my-room
+        mycelium negotiate respond end    --handle julia-agent
     """
     try:
         action = action.strip().lower()
@@ -219,9 +225,9 @@ def respond(
 
 
 @doc_ref(
-    usage="mycelium message query <json> [-r <room>] [-H <handle>]",
+    usage="mycelium negotiate query <json> [-r <room>] [-H <handle>]",
     desc="Post a raw JSON response (advanced — prefer <code>propose</code> or <code>respond</code>).",
-    group="message",
+    group="negotiate",
 )
 @app.command("query")
 def query(
@@ -238,8 +244,8 @@ def query(
     Post a raw JSON response (advanced use — prefer 'propose' or 'respond' for negotiate ticks).
 
     Examples:
-        mycelium message query '{"offer": {"budget": "high", "scope": "extended"}}'
-        mycelium message query '{"action": "accept"}' --room my-experiment
+        mycelium negotiate query '{"offer": {"budget": "high", "scope": "extended"}}'
+        mycelium negotiate query '{"action": "accept"}' --room my-experiment
     """
     try:
         _post(ctx, room, handle, text)

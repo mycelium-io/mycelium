@@ -32,17 +32,17 @@ The tick message will say either \`action: "propose"\` or \`action: "respond"\`.
 
 **If action is "propose"** — you are being asked to make a counter-offer. Pick one value per issue from the options listed and run:
 \`\`\`
-mycelium message propose ISSUE=VALUE ISSUE=VALUE ... --room <room-name> --handle <your-agent-id>
+mycelium negotiate propose ISSUE=VALUE ISSUE=VALUE ... --room <room-name> --handle <your-agent-id>
 \`\`\`
 Example:
 \`\`\`
-mycelium message propose budget=medium timeline=standard scope=standard quality=standard --room <room-name> --handle <your-agent-id>
+mycelium negotiate propose budget=medium timeline=standard scope=standard quality=standard --room <room-name> --handle <your-agent-id>
 \`\`\`
 
 **If action is "respond"** — evaluate the current offer in \`current_offer\` and run one of:
 \`\`\`
-mycelium message respond accept --room <room-name> --handle <your-agent-id>
-mycelium message respond reject --room <room-name> --handle <your-agent-id>
+mycelium negotiate respond accept --room <room-name> --handle <your-agent-id>
+mycelium negotiate respond reject --room <room-name> --handle <your-agent-id>
 \`\`\`
 
 Each command returns immediately. Wait for the next CognitiveEngine message.

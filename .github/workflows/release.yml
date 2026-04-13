@@ -256,4 +256,4 @@ jobs:
           curl -fsSL -X POST https://clawhub.ai/api/v1/skills \
             -H "Authorization: Bearer ${{ secrets.CLAWHUB_TOKEN }}" \
             -F "payload={\"slug\":\"mycelium-io\",\"displayName\":\"Mycelium\",\"version\":\"${{ steps.version.outputs.version }}\",\"changelog\":\"See https://github.com/mycelium-io/mycelium/releases/tag/${{ github.ref_name }}\",\"acceptLicenseTerms\":true,\"tags\":[\"latest\"]}" \
-            -F "files=@mycelium-cli/src/mycelium/adapters/openclaw/extensions/mycelium/skills/mycelium/SKILL.md;type=text/markdown;filename=SKILL.md"
+            -F "files=@mycelium-cli/src/mycelium/adapters/openclaw/mycelium/plugin/skills/mycelium/SKILL.md;type=text/markdown;filename=SKILL.md"

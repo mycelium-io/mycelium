@@ -444,7 +444,7 @@ describe("formatTickInstruction", () => {
       "r",
       "a",
     );
-    expect(instruction).toContain("mycelium message propose");
+    expect(instruction).toContain("mycelium negotiate propose");
   });
 
   it("omits the propose command when can_counter_offer is false", () => {
@@ -453,7 +453,7 @@ describe("formatTickInstruction", () => {
       "r",
       "a",
     );
-    expect(instruction).not.toContain("mycelium message propose");
+    expect(instruction).not.toContain("mycelium negotiate propose");
   });
 
   it("lists current offer fields in the body", () => {
