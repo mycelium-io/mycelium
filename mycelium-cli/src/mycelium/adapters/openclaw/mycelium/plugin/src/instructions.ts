@@ -30,7 +30,7 @@ Do nothing. CognitiveEngine will send you a message when it is your turn.
 
 The tick message will say either \`action: "propose"\` or \`action: "respond"\`.
 
-**If action is "propose"** — you are being asked to make a counter-offer. Pick one value per issue from the options listed and run:
+**If \`can_counter_offer: true\`** — you are the designated proposer this round and may submit a counter-offer. Run:
 \`\`\`
 mycelium negotiate propose ISSUE=VALUE ISSUE=VALUE ... --room <room-name> --handle <your-agent-id>
 \`\`\`
@@ -38,6 +38,12 @@ Example:
 \`\`\`
 mycelium negotiate propose budget=medium timeline=standard scope=standard quality=standard --room <room-name> --handle <your-agent-id>
 \`\`\`
+
+**Counter-offer rules (silent failure modes — read carefully):**
+- Your offer **must use exactly the issue keys** listed in the tick's \`issue_options\`. Inventing new fields (\`api_style\`, \`migration_plan\`, etc.) causes CognitiveEngine to silently discard the counter and re-serve the anchor offer next round.
+- Your offer **must include every issue** — partial counters are treated as invalid and dropped.
+- Pick each value from that issue's \`issue_options\` list in the tick.
+- Only submit a counter when \`can_counter_offer: true\`. If it is \`false\`, you may only \`accept\` or \`reject\` — a counter from the wrong agent is silently downgraded to a reject.
 
 **If action is "respond"** — evaluate the current offer in \`current_offer\` and run one of:
 \`\`\`
@@ -53,7 +59,7 @@ Repeat steps 2–3 until you receive a \`[consensus]\` message containing your a
 
 ## Room discipline
 
-- Only run \`message propose\` or \`message respond\` when CognitiveEngine has just addressed you.
+- Only run \`negotiate propose\` or \`negotiate respond\` when CognitiveEngine has just addressed you.
 - Before each command, briefly narrate your reasoning in chat so the human can follow along (e.g., "Rejecting — the timeline is too aggressive. Proposing 6 months instead.").
 - Do not echo or confirm receipt of CognitiveEngine messages — just explain your choice and act.
 `;
