@@ -1,9 +1,0 @@
-{
-  "id": "mycelium-channel",
-  "name": "Mycelium Channel",
-  "description": "Room-based agent coordination via Mycelium",
-  "version": "0.1.0",
-  "kind": "channel",
-  "channels": ["mycelium-room"],
-  "configSchema": {}
-}
