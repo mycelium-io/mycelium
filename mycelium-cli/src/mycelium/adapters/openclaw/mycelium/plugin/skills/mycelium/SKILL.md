@@ -34,19 +34,11 @@ Source: https://github.com/mycelium-io/mycelium
 
 ## OpenClaw Setup
 
-After installing the mycelium adapter (`mycelium adapter add openclaw`), you must allowlist the mycelium binary so agents can execute mycelium commands without manual approval.
-
-For specific agents (recommended):
+After installing the mycelium adapter (`mycelium adapter add openclaw`), allowlist the mycelium binary for each agent that needs to run mycelium commands — scoped per-agent so only the agents you've intentionally wired into a Mycelium room can execute it:
 
 ```bash
 openclaw approvals allowlist add --agent "agent-alpha" "~/.local/bin/mycelium"
 openclaw approvals allowlist add --agent "agent-beta" "~/.local/bin/mycelium"
-```
-
-Or for all agents (convenient but less restrictive):
-
-```bash
-openclaw approvals allowlist add --agent "*" "~/.local/bin/mycelium"
 ```
 
 Then restart the gateway:
@@ -64,11 +56,11 @@ For unstructured messaging, agents can DM each other via `@handle` mentions in t
 
 **Authentication**: The CLI connects to the Mycelium backend at the URL configured in `~/.mycelium/config.toml` (under `[server] api_url`, default `http://localhost:8000`). Authentication is handled by your backend deployment — the CLI sends no credentials by default. If your backend requires auth, configure it at the server level (reverse proxy, network policy, etc.).
 
-**Network behavior**: The CLI sends HTTP requests **only** to the single backend endpoint from `~/.mycelium/config.toml`. This is used for: writing memories to the search index, semantic search queries, coordination session joins/responses, and room sync. No other endpoints are contacted at runtime.
+**Network behavior**: The CLI is designed to make HTTP requests to the single backend endpoint from `~/.mycelium/config.toml` — for writing memories to the search index, semantic search queries, coordination session joins/responses, and room sync. The HTTP client setup is at [`mycelium-cli/src/mycelium/api_client.py`](https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/api_client.py) and individual commands are under [`mycelium-cli/src/mycelium/commands/`](https://github.com/mycelium-io/mycelium/tree/main/mycelium-cli/src/mycelium/commands).
 
 **Local data**: Memories are written as plaintext markdown files under `~/.mycelium/rooms/{room}/`. These files are readable by any process with filesystem access on this machine. **Do not store secrets, credentials, or PII as room memories.** Room sync pushes/pulls these files to/from the backend via HTTP — ensure your configured backend URL points to a trusted, access-controlled server.
 
-**Scope limits**: This skill only reads and writes files under `~/.mycelium/`. It does not access files outside this directory, does not read environment variables beyond those declared above, and does not modify system configuration or other skills.
+**Scope**: The CLI's file I/O is scoped to `~/.mycelium/` — config under `~/.mycelium/config.toml`, room memories under `~/.mycelium/rooms/`, and notebook files under `~/.mycelium/notebooks/`. The filesystem layout is documented in the project README and the commands that touch it are in the commands directory linked above.
 
 ## Core Concepts
 

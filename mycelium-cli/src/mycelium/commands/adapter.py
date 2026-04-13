@@ -446,18 +446,13 @@ def add(
             typer.secho("  Next steps:", bold=True)
             typer.echo("")
             typer.echo(
-                "  1. Allow mycelium CLI execution (required for agents to run mycelium commands):"
+                "  1. Allow mycelium CLI execution for each agent that should run mycelium commands"
             )
-            typer.echo("")
-            typer.echo("     For specific agents (recommended):")
+            typer.echo(
+                "     (scope per-agent so only the agents wired into a Mycelium room can exec it):"
+            )
             typer.secho(
                 '       $ openclaw approvals allowlist add --agent "<agent-id>" "~/.local/bin/mycelium"',
-                fg=typer.colors.CYAN,
-            )
-            typer.echo("")
-            typer.echo("     Or for all agents (convenient but less restrictive):")
-            typer.secho(
-                '       $ openclaw approvals allowlist add --agent "*" "~/.local/bin/mycelium"',
                 fg=typer.colors.CYAN,
             )
             typer.echo("")
