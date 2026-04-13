@@ -5,25 +5,25 @@ description = "Mycelium FastAPI backend — async room coordination via Postgres
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi[standard]>=0.115.0,<0.136",
-    "asyncpg>=0.29.0,<0.32",
+    "asyncpg>=0.31.0,<0.32",
     "pydantic-settings>=2.5.2,<3",
     "httpx>=0.28.1",
     "python-multipart>=0.0.9",
     "anthropic>=0.40.0",
-    "litellm==1.82.6",  # 1.82.7 and 1.82.8 are compromised (supply chain attack)
+    "litellm==1.83.4",  # 1.82.7 and 1.82.8 are compromised (supply chain attack)
     "greenlet>=3.0",
     "agensgraph-python==1.0.2",
-    "psycopg2-binary>=2.9.0",
+    "psycopg2-binary>=2.9.11",
     "pgvector>=0.3.0",
     "alembic>=1.14.0,<2",
-    "fastembed>=0.4.0",
+    "fastembed>=0.8.0",
     "pip-system-certs>=5.3",
     "watchdog>=6.0.0",
 ]
 
 [dependency-groups]
 dev = [
-    "pre-commit>=3.4.0,<5",
+    "pre-commit>=4.5.1,<5",
     "ruff>=0.11.0,<0.16",
     "ty>=0.0.1a8",
     "watchdog>=6.0.0,<7",
