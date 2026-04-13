@@ -1288,25 +1288,37 @@ def _parse_version(tag: str) -> tuple[int, ...]:
 
 
 @doc_ref(
-    usage="mycelium upgrade [--check]",
-    desc="Upgrade the Mycelium CLI to the latest release.",
+    usage="mycelium upgrade [--check] [--version <version>]",
+    desc="Upgrade (or pin) the Mycelium CLI. Pass --version to install a specific release.",
     group="setup",
 )
 def upgrade(
     ctx: typer.Context,
     check: bool = typer.Option(False, "--check", help="Just check for updates, don't install"),
+    target_version: str | None = typer.Option(
+        None,
+        "--version",
+        help="Install a specific version (e.g. 0.1.83 or v0.1.83) instead of latest. "
+        "Useful for pinning, rollback, or reproducing a specific release.",
+    ),
 ) -> None:
     """
-    Upgrade the Mycelium CLI to the latest release.
+    Upgrade the Mycelium CLI to the latest release, or install a specific version.
 
-    Fetches the latest version from GitHub releases and installs it via
+    Fetches the target version from GitHub releases and installs it via
     ``uv tool install``. After upgrading the CLI, reminds you to run
     ``mycelium pull`` if containers also need updating.
 
+    With ``--version``, the resolved version is installed directly without
+    any "is this newer?" gate — so the same flag works for upgrade,
+    downgrade, or pinning to the current release.
+
     \b
     Examples:
-        mycelium upgrade          # upgrade CLI to latest
-        mycelium upgrade --check  # just check, don't install
+        mycelium upgrade                    # upgrade CLI to latest
+        mycelium upgrade --check            # just check, don't install
+        mycelium upgrade --version 0.1.83   # install a specific version
+        mycelium upgrade --version v0.1.83  # leading v is fine too
     """
     try:
         from mycelium import __version__
@@ -1314,32 +1326,44 @@ def upgrade(
         typer.echo(f"  Current CLI version: v{__version__}")
         typer.echo("")
 
-        typer.echo("  Checking for updates...")
-        latest_tag = _get_latest_release_tag()
+        # --version pins directly; skip the latest-release fetch and the
+        # is-this-newer gate entirely.  This is how you downgrade or pin.
+        if target_version is not None:
+            latest_version = target_version.lstrip("v")
+            latest_tag = f"v{latest_version}"
+            if check:
+                typer.echo(f"  --check ignored with --version; would install {latest_tag}")
+                raise typer.Exit(0)
+            typer.echo(f"  Installing {latest_tag}...")
+        else:
+            typer.echo("  Checking for updates...")
+            latest_tag = _get_latest_release_tag()
 
-        if not latest_tag:
-            typer.secho("  ⚠  Could not fetch latest release from GitHub", fg=typer.colors.YELLOW)
-            typer.echo(f"    Check manually: https://github.com/{_GITHUB_REPO}/releases")
-            raise typer.Exit(1)
+            if not latest_tag:
+                typer.secho(
+                    "  ⚠  Could not fetch latest release from GitHub", fg=typer.colors.YELLOW
+                )
+                typer.echo(f"    Check manually: https://github.com/{_GITHUB_REPO}/releases")
+                raise typer.Exit(1)
 
-        latest_version = latest_tag.lstrip("v")
-        current_tuple = _parse_version(__version__)
-        latest_tuple = _parse_version(latest_version)
+            latest_version = latest_tag.lstrip("v")
+            current_tuple = _parse_version(__version__)
+            latest_tuple = _parse_version(latest_version)
 
-        if current_tuple >= latest_tuple:
-            typer.secho(f"  ✓ CLI is up to date (v{__version__})", fg=typer.colors.GREEN)
-            raise typer.Exit(0)
+            if current_tuple >= latest_tuple:
+                typer.secho(f"  ✓ CLI is up to date (v{__version__})", fg=typer.colors.GREEN)
+                raise typer.Exit(0)
 
-        typer.echo(f"  New version available: v{__version__} → {latest_tag}")
-        typer.echo("")
+            typer.echo(f"  New version available: v{__version__} → {latest_tag}")
+            typer.echo("")
 
-        if check:
-            typer.echo(f"  Run 'mycelium upgrade' to install {latest_tag}")
-            raise typer.Exit(1)  # exit 1 = outdated (useful for scripts)
+            if check:
+                typer.echo(f"  Run 'mycelium upgrade' to install {latest_tag}")
+                raise typer.Exit(1)  # exit 1 = outdated (useful for scripts)
+
+            typer.echo("  Upgrading CLI...")
 
         # Try wheel from GitHub first, fall back to PyPI
-        typer.echo("  Upgrading CLI...")
-
         wheel_name = f"mycelium_cli-{latest_version}-py3-none-any.whl"
         wheel_url = f"https://github.com/{_GITHUB_REPO}/releases/download/{latest_tag}/{wheel_name}"
         wheel_tmp = Path(f"/tmp/{wheel_name}")  # noqa: S108

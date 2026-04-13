@@ -464,9 +464,7 @@ def add(
                 oc_json = _openclaw_state_dir(openclaw_profile) / "openclaw.json"
                 if oc_json.exists():
                     oc_cfg = json_module.loads(oc_json.read_text())
-                    channel_configured = bool(
-                        (oc_cfg.get("channels") or {}).get("mycelium-room")
-                    )
+                    channel_configured = bool((oc_cfg.get("channels") or {}).get("mycelium-room"))
             except Exception:
                 channel_configured = False
 
