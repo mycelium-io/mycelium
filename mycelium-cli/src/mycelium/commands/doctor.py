@@ -490,7 +490,26 @@ def _check_room_mas_ids() -> CheckResult:
     )
 
 
-# ── Main doctor command ──────────────────────────────────────────────────────
+# ── OpenClaw adapter checks ───────────────────────────────────────────────────
+#
+# All three openclaw checks are gated on whether the user has opted into the
+# mycelium OpenClaw adapter (by running `mycelium adapter add openclaw`).  We
+# read that from config.adapters in ~/.mycelium/config.toml.  A fresh mycelium
+# install that has never touched OpenClaw, and a user who happens to have
+# OpenClaw installed for unrelated reasons, should both see all three checks
+# cleanly skipped — doctor should only nag about adapter health once the user
+# has explicitly asked for the adapter.
+
+
+def _openclaw_adapter_registered() -> bool:
+    """True if the user has run `mycelium adapter add openclaw` at least once."""
+    from mycelium.config import MyceliumConfig
+
+    try:
+        cfg = MyceliumConfig.load()
+    except Exception:
+        return False
+    return "openclaw" in (cfg.adapters or {})
 
 
 def _check_openclaw_mycelium_plugin() -> CheckResult:
@@ -510,6 +529,13 @@ def _check_openclaw_mycelium_plugin() -> CheckResult:
     """
     import json
 
+    if not _openclaw_adapter_registered():
+        return CheckResult(
+            name="openclaw plugin",
+            status="ok",
+            message="openclaw adapter not registered — skipped",
+        )
+
     plugin_dir = Path.home() / ".openclaw" / "extensions" / "mycelium"
     manifest = plugin_dir / "openclaw.plugin.json"
     index = plugin_dir / "index.ts"
@@ -517,21 +543,13 @@ def _check_openclaw_mycelium_plugin() -> CheckResult:
     instructions_file = plugin_dir / "src" / "instructions.ts"
 
     if not manifest.exists():
-        # No OpenClaw install at all — not a failure, just skip
-        openclaw_dir = Path.home() / ".openclaw"
-        if not openclaw_dir.exists():
-            return CheckResult(
-                name="openclaw plugin",
-                status="ok",
-                message="no OpenClaw install detected — skipped",
-            )
         return CheckResult(
             name="openclaw plugin",
             status="warning",
-            message="not installed",
+            message="adapter registered but plugin not found",
             details=[
                 f"expected: {plugin_dir}",
-                "fix: run `mycelium adapter add openclaw`",
+                "fix: run `mycelium adapter add openclaw --reinstall`",
             ],
         )
 
@@ -609,12 +627,19 @@ def _check_openclaw_channel_config() -> CheckResult:
     """Verify channels.mycelium-room is configured correctly in openclaw.json."""
     import json
 
+    if not _openclaw_adapter_registered():
+        return CheckResult(
+            name="channel config",
+            status="ok",
+            message="openclaw adapter not registered — skipped",
+        )
+
     openclaw_json = Path.home() / ".openclaw" / "openclaw.json"
     if not openclaw_json.exists():
         return CheckResult(
             name="channel config",
             status="ok",
-            message="no OpenClaw install detected — skipped",
+            message="openclaw.json not found — skipped",
         )
 
     try:
@@ -692,12 +717,19 @@ def _check_openclaw_agent_sandbox() -> CheckResult:
     """Warn about agents whose sandbox mode blocks the mycelium CLI."""
     import json
 
+    if not _openclaw_adapter_registered():
+        return CheckResult(
+            name="agent sandbox",
+            status="ok",
+            message="openclaw adapter not registered — skipped",
+        )
+
     openclaw_json = Path.home() / ".openclaw" / "openclaw.json"
     if not openclaw_json.exists():
         return CheckResult(
             name="agent sandbox",
             status="ok",
-            message="no OpenClaw install detected — skipped",
+            message="openclaw.json not found — skipped",
         )
 
     try:
