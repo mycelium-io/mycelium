@@ -375,9 +375,7 @@ async def _cfn_decide_round(room_name: str) -> None:
             # lookup on that field, and a missing value makes the whole batch
             # mismatch, dropping any other agent's counter-offer in the same
             # round (same failure mode as #105, different code path).
-            agent_replies.append(
-                {"agent_id": handle, "participant_id": handle, "action": "reject"}
-            )
+            agent_replies.append({"agent_id": handle, "participant_id": handle, "action": "reject"})
         else:
             agent_replies.append(reply_data)
 
