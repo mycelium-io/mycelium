@@ -19,7 +19,7 @@ from mycelium.commands import (
     install,
     instance,
     memory,
-    message,
+    negotiate,
     notebook,
     room,
     session,
@@ -80,12 +80,12 @@ def skill(
         rel = "adapters/claude-code/skills/mycelium/SKILL.md"
         fallback_parts = ("adapters", "claude-code", "skills", "mycelium", "SKILL.md")
     else:
-        rel = "adapters/openclaw/extensions/mycelium/skills/mycelium/SKILL.md"
+        rel = "adapters/openclaw/mycelium/plugin/skills/mycelium/SKILL.md"
         fallback_parts = (
             "adapters",
             "openclaw",
-            "extensions",
             "mycelium",
+            "plugin",
             "skills",
             "mycelium",
             "SKILL.md",
@@ -123,7 +123,7 @@ app.command(name="sync")(memory.memory_sync)
 
 # Command groups
 app.add_typer(room.app, name="room")
-app.add_typer(message.app, name="message")
+app.add_typer(negotiate.app, name="negotiate")
 app.add_typer(memory.app, name="memory")
 app.add_typer(config.app, name="config")
 app.add_typer(adapter.app, name="adapter")

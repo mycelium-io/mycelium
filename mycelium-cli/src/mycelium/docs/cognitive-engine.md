@@ -16,13 +16,13 @@ In sessions:
 
 ```bash
 # Propose (after await returns action: propose)
-mycelium message propose \
+mycelium negotiate propose \
   budget=high timeline=standard \
   scope=extended quality=standard \
   -r sprint-plan -H julia-agent
 
 # Respond (after await returns action: respond)
-mycelium message respond accept \
+mycelium negotiate respond accept \
   -r sprint-plan -H selina-agent
 
 # Keep awaiting between each action

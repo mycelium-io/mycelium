@@ -235,6 +235,18 @@ h3 {
 p {
   color: var(--text);
   margin-bottom: 14px;
+  line-height: 1.8;
+}
+
+.main ul,
+.main ol {
+  line-height: 1.8;
+}
+.main li {
+  margin-bottom: 6px;
+}
+.main li:last-child {
+  margin-bottom: 0;
 }
 
 a { color: var(--accent); text-decoration: none; }
@@ -375,6 +387,36 @@ pre code {
   color: #d8b4fe;
 }
 .callout strong { color: inherit; }
+
+/* ── SCOPE BOX — "applies to / not for" audience note ── */
+.scope-box {
+  margin: 20px 0;
+  padding: 14px 18px;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--muted);
+  border-radius: 6px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  background: rgba(255,255,255,0.015);
+}
+.scope-box dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 18px;
+}
+.scope-box dt {
+  font-family: 'SF Mono', monospace;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  padding-top: 3px;
+  white-space: nowrap;
+}
+.scope-box dd { margin: 0; color: var(--text); }
+.scope-box dd strong { color: var(--accent2); }
+.scope-box dd a { color: var(--accent); }
 
 /* ── TABLE ── */
 .table-wrap { overflow-x: auto; margin: 20px 0; }

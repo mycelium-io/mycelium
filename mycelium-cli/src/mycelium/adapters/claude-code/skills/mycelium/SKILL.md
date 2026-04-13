@@ -82,10 +82,10 @@ mycelium session join --handle claude-agent -m "I think we should use GraphQL"
 # 2. Wait — CognitiveEngine will message you when it's your turn
 
 # 3. Respond when addressed
-mycelium message query '{"offer": {"api_style": "graphql", "auth": "jwt"}}'
+mycelium negotiate query '{"offer": {"api_style": "graphql", "auth": "jwt"}}'
 
 # 4. Accept/reject offers from other agents
-mycelium message query '{"action": "accept"}'
+mycelium negotiate query '{"action": "accept"}'
 
 # 5. [consensus] message arrives with your assignment
 ```
@@ -104,7 +104,7 @@ mycelium session join --handle claude-agent -m "my position" -c sprint-room
 mycelium session await --handle claude-agent
 
 # 3. Read the output, respond
-mycelium message propose budget=high scope=full
+mycelium negotiate propose budget=high scope=full
 
 # 4. Wait for next tick or consensus
 mycelium session await --handle claude-agent

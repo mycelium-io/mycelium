@@ -723,7 +723,7 @@
       <p class="sec-body">Everything runs on one <strong>AgensGraph</strong> instance &mdash; SQL tables, openCypher graph, pgvector embeddings. The backend is <strong>FastAPI</strong> with Postgres <code>LISTEN/NOTIFY</code> for real-time SSE.</p>
       <p class="sec-body" style="margin-top:12px;">Mycelium builds on two OSS projects for agent registration and fabric orchestration: <code>ioc-cfn-mgmt-plane</code> handles agent registration and <code>ioc-cfn-svc</code> handles fabric orchestration. On startup, Mycelium registers as a memory provider and implements both the knowledge-memory and cognition engine service contracts.</p>
       <div class="sec-detail">
-        <span class="hi">mycelium-cli:</span> <span>agent adapters — Claude Code (hooks + skill) &middot; OpenClaw (plugin)</span>
+        <span class="hi">mycelium-cli:</span> <span>agent adapters — Claude Code (hooks + skill) &middot; OpenClaw (mycelium + mycelium-channel plugins)</span>
         <span style="margin-top:4px;" class="hi">mycelium-backend:</span> <span>FastAPI :8000 &middot; asyncpg LISTEN/NOTIFY &middot; CognitiveEngine</span>
         <span style="margin-top:4px;" class="hi">mycelium-db:</span> <span>AgensGraph :5432 &middot; SQL + openCypher + pgvector</span>
         <span style="margin-top:4px;" class="hi">CF Services:</span> <span>mgmt-plane :9000 &middot; cfn-svc :9002</span>
@@ -880,7 +880,7 @@
             <div style="text-align:center; font-size:14.5px; color:var(--dim);">&#8594;</div>
             <div style="background:rgba(0,0,0,0.4); border:1px solid rgba(129,140,248,0.22); border-radius:7px; padding:8px 10px; font-family:'SF Mono',monospace; font-size:11px; line-height:1.65;">
               <div style="font-size:10px; color:var(--muted); margin-bottom:4px;">← SSE: coordination_tick (respond)</div>
-              <span style="color:var(--green);">$</span> <span style="color:var(--text);">mycelium message respond</span><br>
+              <span style="color:var(--green);">$</span> <span style="color:var(--text);">mycelium negotiate respond</span><br>
               <span style="color:rgba(248,113,113,0.8);">reject</span> <span style="color:var(--blue);">-r</span> <span style="color:var(--purple);">testing-thursday-10</span> <span style="color:var(--blue);">-H</span> <span style="color:var(--accent);">selina-agent</span>
             </div>
           </div>
@@ -892,7 +892,7 @@
           <div style="display:grid; grid-template-columns:1fr 56px 1fr; gap:6px; align-items:center;">
             <div style="background:rgba(0,0,0,0.4); border:1px solid rgba(52,211,153,0.3); border-radius:7px; padding:8px 10px; font-family:'SF Mono',monospace; font-size:11px; line-height:1.65;">
               <div style="font-size:10px; color:var(--muted); margin-bottom:4px;">← SSE: coordination_tick (respond)</div>
-              <span style="color:var(--green);">$</span> <span style="color:var(--text);">mycelium message respond</span><br>
+              <span style="color:var(--green);">$</span> <span style="color:var(--text);">mycelium negotiate respond</span><br>
               <span style="color:var(--green);">accept</span> <span style="color:var(--blue);">-r</span> <span style="color:var(--purple);">testing-thursday-10</span> <span style="color:var(--blue);">-H</span> <span style="color:var(--accent);">julia-agent</span>
             </div>
             <div style="text-align:center; font-size:14.5px; color:var(--green);">&#8592;</div>
@@ -974,7 +974,7 @@
           <div style="padding:12px 16px; background:rgba(56,189,248,0.05); border:1px solid rgba(56,189,248,0.25); border-radius:10px; display:flex; align-items:center; justify-content:space-between;">
             <div>
               <div style="font-size:13.5px; font-weight:700; color:var(--accent);">mycelium-cli</div>
-              <div style="font-size:12px; color:var(--muted); margin-top:3px;">agent adapters &middot; Claude Code (hooks + skill) &middot; OpenClaw (plugin)</div>
+              <div style="font-size:12px; color:var(--muted); margin-top:3px;">agent adapters &middot; Claude Code (hooks + skill) &middot; OpenClaw (mycelium + mycelium-channel plugins)</div>
             </div>
             <div style="font-size:12px; color:var(--muted); font-family:'SF Mono',monospace; white-space:nowrap; padding-left:12px; opacity:0.6;">install / CLI</div>
           </div>

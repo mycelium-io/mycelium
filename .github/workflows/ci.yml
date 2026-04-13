@@ -90,3 +90,22 @@ jobs:
       - name: Lint
         working-directory: mycelium-cli
         run: uv run ruff check src/
+
+  test-openclaw-plugin:
+    name: OpenClaw plugin tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install plugin dev dependencies
+        working-directory: mycelium-cli/src/mycelium/adapters/openclaw/mycelium/plugin
+        run: npm install --no-audit --no-fund --silent
+
+      - name: Run unit tests
+        working-directory: mycelium-cli/src/mycelium/adapters/openclaw/mycelium/plugin
+        run: npm test

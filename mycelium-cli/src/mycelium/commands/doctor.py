@@ -490,7 +490,298 @@ def _check_room_mas_ids() -> CheckResult:
     )
 
 
-# ── Main doctor command ──────────────────────────────────────────────────────
+# ── OpenClaw adapter checks ───────────────────────────────────────────────────
+#
+# All three openclaw checks are gated on whether the user has opted into the
+# mycelium OpenClaw adapter (by running `mycelium adapter add openclaw`).  We
+# read that from config.adapters in ~/.mycelium/config.toml.  A fresh mycelium
+# install that has never touched OpenClaw, and a user who happens to have
+# OpenClaw installed for unrelated reasons, should both see all three checks
+# cleanly skipped — doctor should only nag about adapter health once the user
+# has explicitly asked for the adapter.
+
+
+def _openclaw_adapter_registered() -> bool:
+    """True if the user has run `mycelium adapter add openclaw` at least once."""
+    from mycelium.config import MyceliumConfig
+
+    try:
+        cfg = MyceliumConfig.load()
+    except Exception:
+        return False
+    return "openclaw" in (cfg.adapters or {})
+
+
+def _check_openclaw_mycelium_plugin() -> CheckResult:
+    """Verify the `mycelium` plugin is installed, registers the mycelium-room channel,
+    and has the post-refactor source layout.  Catches three real failure modes
+    previously only surfaced at gateway startup or at first message routing:
+
+    1. Manifest missing ``kind: channel`` / ``channels: [mycelium-room]`` — gateway
+       refuses to start with "unknown channel id: mycelium-room" on any config
+       referencing the channel.
+    2. Pre-refactor layout (no ``src/channel/route.ts``) — a user who installed
+       before the channel logic was extracted still has the monolithic file and
+       will miss the unit-tested routing path entirely.
+    3. Stale ``instructions.ts`` from before the ``message`` → ``negotiate`` rename —
+       agents read the stale text on every turn and try to run commands that no
+       longer exist.
+    """
+    import json
+
+    if not _openclaw_adapter_registered():
+        return CheckResult(
+            name="openclaw plugin",
+            status="ok",
+            message="openclaw adapter not registered — skipped",
+        )
+
+    plugin_dir = Path.home() / ".openclaw" / "extensions" / "mycelium"
+    manifest = plugin_dir / "openclaw.plugin.json"
+    index = plugin_dir / "index.ts"
+    route_file = plugin_dir / "src" / "channel" / "route.ts"
+    instructions_file = plugin_dir / "src" / "instructions.ts"
+
+    if not manifest.exists():
+        return CheckResult(
+            name="openclaw plugin",
+            status="warning",
+            message="adapter registered but plugin not found",
+            details=[
+                f"expected: {plugin_dir}",
+                "fix: run `mycelium adapter add openclaw --reinstall`",
+            ],
+        )
+
+    if not index.exists():
+        return CheckResult(
+            name="openclaw plugin",
+            status="error",
+            message="manifest present but index.ts missing — corrupt install",
+            details=["fix: run `mycelium adapter add openclaw --reinstall`"],
+        )
+
+    # 1. Channel registration in manifest
+    try:
+        manifest_data = json.loads(manifest.read_text())
+    except Exception as exc:
+        return CheckResult(
+            name="openclaw plugin",
+            status="error",
+            message=f"manifest is not valid JSON: {exc}",
+            details=["fix: run `mycelium adapter add openclaw --reinstall`"],
+        )
+
+    channels = manifest_data.get("channels") or []
+    if manifest_data.get("kind") != "channel" or "mycelium-room" not in channels:
+        return CheckResult(
+            name="openclaw plugin",
+            status="error",
+            message="manifest does not register the mycelium-room channel",
+            details=[
+                f"found kind={manifest_data.get('kind')!r} channels={channels}",
+                'expected kind="channel" channels=["mycelium-room"]',
+                "symptom: gateway refuses to start with 'unknown channel id: mycelium-room'",
+                "fix: run `mycelium adapter add openclaw --reinstall`",
+            ],
+        )
+
+    # 2. Post-refactor layout
+    if not route_file.exists():
+        return CheckResult(
+            name="openclaw plugin",
+            status="warning",
+            message="pre-refactor plugin layout — missing src/channel/route.ts",
+            details=[
+                "the channel routing logic was extracted into a dedicated module",
+                "fix: run `mycelium adapter add openclaw --reinstall`",
+            ],
+        )
+
+    # 3. Staleness from the message → negotiate rename
+    if instructions_file.exists():
+        try:
+            instructions_text = instructions_file.read_text()
+        except Exception:
+            instructions_text = ""
+        if "mycelium message " in instructions_text:
+            return CheckResult(
+                name="openclaw plugin",
+                status="warning",
+                message="installed instructions.ts references `mycelium message` (stale)",
+                details=[
+                    "the `message` command group was renamed to `negotiate`",
+                    "agents reading this on wake will try commands that no longer exist",
+                    "fix: run `mycelium adapter add openclaw --reinstall`",
+                ],
+            )
+
+    return CheckResult(
+        name="openclaw plugin",
+        status="ok",
+        message=f"installed at {plugin_dir} (channel registered, layout current)",
+    )
+
+
+def _check_openclaw_channel_config() -> CheckResult:
+    """Verify channels.mycelium-room is configured correctly in openclaw.json."""
+    import json
+
+    if not _openclaw_adapter_registered():
+        return CheckResult(
+            name="channel config",
+            status="ok",
+            message="openclaw adapter not registered — skipped",
+        )
+
+    openclaw_json = Path.home() / ".openclaw" / "openclaw.json"
+    if not openclaw_json.exists():
+        return CheckResult(
+            name="channel config",
+            status="ok",
+            message="openclaw.json not found — skipped",
+        )
+
+    try:
+        with openclaw_json.open() as f:
+            oc = json.load(f)
+    except Exception as exc:
+        return CheckResult(
+            name="channel config",
+            status="error",
+            message=f"could not parse openclaw.json: {exc}",
+        )
+
+    channel = (oc.get("channels") or {}).get("mycelium-room")
+    if not channel:
+        return CheckResult(
+            name="channel config",
+            status="warning",
+            message="channels.mycelium-room not configured",
+            details=[
+                "the plugin will run in session-only mode (no addressed messaging)",
+                "fix: add channels.mycelium-room with backendUrl, room, agents, requireMention",
+            ],
+        )
+
+    if channel.get("enabled") is False:
+        return CheckResult(
+            name="channel config",
+            status="warning",
+            message="channels.mycelium-room present but disabled",
+        )
+
+    missing = [k for k in ("backendUrl", "room", "agents") if not channel.get(k)]
+    if missing:
+        return CheckResult(
+            name="channel config",
+            status="error",
+            message=f"missing required fields: {', '.join(missing)}",
+            details=["fix: set backendUrl, room, and agents in channels.mycelium-room"],
+        )
+
+    # Check backendUrl matches mycelium config.toml's server.api_url
+    try:
+        import tomllib
+
+        mycelium_toml = Path.home() / ".mycelium" / "config.toml"
+        if mycelium_toml.exists():
+            with mycelium_toml.open("rb") as f:
+                mcfg = tomllib.load(f)
+            expected = (mcfg.get("server") or {}).get("api_url", "").rstrip("/")
+            actual = str(channel.get("backendUrl", "")).rstrip("/")
+            if expected and actual and expected != actual:
+                return CheckResult(
+                    name="channel config",
+                    status="error",
+                    message="backendUrl doesn't match mycelium config.toml",
+                    details=[
+                        f"openclaw.json:     {actual}",
+                        f"mycelium/config:   {expected}",
+                        "fix: update channels.mycelium-room.backendUrl to match",
+                    ],
+                )
+    except Exception:
+        pass  # non-fatal
+
+    agents = channel.get("agents") or []
+    require_mention = channel.get("requireMention", True)
+    return CheckResult(
+        name="channel config",
+        status="ok",
+        message=f"room={channel.get('room')} agents={len(agents)} requireMention={require_mention}",
+    )
+
+
+def _check_openclaw_agent_sandbox() -> CheckResult:
+    """Warn about agents whose sandbox mode blocks the mycelium CLI."""
+    import json
+
+    if not _openclaw_adapter_registered():
+        return CheckResult(
+            name="agent sandbox",
+            status="ok",
+            message="openclaw adapter not registered — skipped",
+        )
+
+    openclaw_json = Path.home() / ".openclaw" / "openclaw.json"
+    if not openclaw_json.exists():
+        return CheckResult(
+            name="agent sandbox",
+            status="ok",
+            message="openclaw.json not found — skipped",
+        )
+
+    try:
+        with openclaw_json.open() as f:
+            oc = json.load(f)
+    except Exception as exc:
+        return CheckResult(
+            name="agent sandbox",
+            status="error",
+            message=f"could not parse openclaw.json: {exc}",
+        )
+
+    channel = (oc.get("channels") or {}).get("mycelium-room") or {}
+    channel_agents = set(channel.get("agents") or [])
+    if not channel_agents:
+        return CheckResult(
+            name="agent sandbox",
+            status="ok",
+            message="no channel agents configured — skipped",
+        )
+
+    default_sandbox = (((oc.get("agents") or {}).get("defaults") or {}).get("sandbox") or {}).get(
+        "mode", "all"
+    )
+
+    sandboxed: list[str] = []
+    for agent in (oc.get("agents") or {}).get("list", []):
+        agent_id = agent.get("id", "")
+        if agent_id not in channel_agents:
+            continue
+        mode = (agent.get("sandbox") or {}).get("mode") or default_sandbox
+        if mode != "off":
+            sandboxed.append(f"{agent_id} (mode={mode})")
+
+    if sandboxed:
+        return CheckResult(
+            name="agent sandbox",
+            status="warning",
+            message=f"{len(sandboxed)} channel agent(s) are sandboxed — mycelium CLI invisible",
+            details=[
+                *sandboxed,
+                "sandboxed agents cannot execute `mycelium session join`, `message propose`,",
+                "or `message respond` because the mycelium binary isn't in their sandbox PATH.",
+                "fix: set sandbox.mode = 'off' in openclaw.json for each agent, restart gateway",
+            ],
+        )
+
+    return CheckResult(
+        name="agent sandbox",
+        status="ok",
+        message=f"all {len(channel_agents)} channel agent(s) have sandbox=off",
+    )
 
 
 @doc_ref(
@@ -527,6 +818,9 @@ def doctor(
             _check_workspace_id(),
             _check_config_drift(),
             _check_room_mas_ids(),
+            _check_openclaw_mycelium_plugin(),
+            _check_openclaw_channel_config(),
+            _check_openclaw_agent_sandbox(),
         ]
 
         if json_output:

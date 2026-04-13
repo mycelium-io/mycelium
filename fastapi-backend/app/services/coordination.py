@@ -370,8 +370,12 @@ async def _cfn_decide_round(room_name: str) -> None:
     agent_replies = []
     for handle, reply_data in state.pending_replies.items():
         if reply_data is None:
-            # Agent timed out / no structured reply — default to reject
-            agent_replies.append({"agent_id": handle, "action": "reject"})
+            # Agent timed out / no structured reply — default to reject.
+            # participant_id is required: CFN's BatchCallbackRunner keys reply
+            # lookup on that field, and a missing value makes the whole batch
+            # mismatch, dropping any other agent's counter-offer in the same
+            # round (same failure mode as #105, different code path).
+            agent_replies.append({"agent_id": handle, "participant_id": handle, "action": "reject"})
         else:
             agent_replies.append(reply_data)
 
