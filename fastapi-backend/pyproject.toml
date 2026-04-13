@@ -16,7 +16,7 @@ dependencies = [
     "psycopg2-binary>=2.9.0",
     "pgvector>=0.3.0",
     "alembic>=1.14.0,<2",
-    "fastembed>=0.4.0",
+    "fastembed>=0.8.0",
     "pip-system-certs>=5.3",
     "watchdog>=6.0.0",
 ]
