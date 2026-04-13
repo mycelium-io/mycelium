@@ -331,10 +331,12 @@ def add(
             )
             raise typer.Exit(0)
 
-        # Confirm before a destructive reinstall. `openclaw plugins install` will
-        # overwrite the existing files in ~/.openclaw/extensions/mycelium/ with
-        # the bundled source tree — any local edits get wiped, and any stale files
-        # not in the new tree may linger (OpenClaw doesn't prune). Ask the user to
+        # Confirm before a destructive reinstall.  `openclaw plugins install`
+        # and `openclaw hooks install` skip files that already exist at the
+        # destination, so on reinstall we rmtree the plugin/hook directories
+        # ourselves first (see _install_openclaw) before asking openclaw to
+        # copy the bundled source in fresh.  Any local edits or stale files
+        # from a prior version of the plugin get wiped.  Ask the user to
         # confirm unless -y was passed or this is a dry run.
         if reinstall and not dry_run and not yes:
             targets: list[str] = []
@@ -393,6 +395,7 @@ def add(
                 profile=openclaw_profile,
                 container=openclaw_container,
                 config=config,
+                reinstall=reinstall,
             )
         elif adapter_type == "claude-code":
             _install_claude_code(verbose=verbose)
@@ -643,6 +646,7 @@ def _install_openclaw(
     profile: str | None = None,
     container: str | None = None,
     config: "MyceliumConfig | None" = None,
+    reinstall: bool = False,
 ) -> None:
     """
     Install the bundled openclaw plugin and hook.
@@ -785,6 +789,23 @@ def _install_openclaw(
     # on the target profile.  Only tolerate "already exists" for the default
     # profile where a prior install is genuinely a no-op.
     tolerate_exists = not (profile and profile.lower() != "default")
+
+    # `openclaw plugins install` / `hooks install` skip files that already exist
+    # at the destination — so on reinstall, a stale tree from a prior version
+    # stays stale even though the command reports success.  When reinstall=True,
+    # wipe the target dirs first so openclaw copies the bundled source fresh.
+    # The caller already confirmed the destructive prompt before getting here.
+    if reinstall:
+        state_dir = _openclaw_state_dir(profile)
+        for target in (
+            state_dir / "extensions" / _OPENCLAW_PLUGIN_NAME,
+            state_dir / "hooks" / _OPENCLAW_HOOK_NAME,
+            state_dir / "hooks" / _OPENCLAW_EXTRACTOR_HOOK_NAME,
+        ):
+            if target.exists():
+                if verbose:
+                    typer.echo(f"  clearing stale {target}")
+                shutil.rmtree(target, ignore_errors=True)
 
     plugin_src = _resolve_asset(_MYCELIUM_PLUGIN_SRC)
     _run(["openclaw", "plugins", "install", str(plugin_src)], allow_already_exists=tolerate_exists)
