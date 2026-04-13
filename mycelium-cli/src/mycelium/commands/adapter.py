@@ -461,8 +461,52 @@ def add(
                 fg=typer.colors.CYAN,
             )
             typer.echo("")
-            typer.echo("  2. Restart the openclaw gateway to pick up the updated plugin:")
-            typer.secho("    $ openclaw gateway restart", fg=typer.colors.CYAN)
+            # Step 2: channel config guidance — only if not already configured.
+            # The channel block lives under `channels.mycelium-room` in openclaw.json
+            # and is how agents use Mycelium rooms as an addressed chat surface.
+            channel_configured = False
+            try:
+                oc_json = _openclaw_state_dir(openclaw_profile) / "openclaw.json"
+                if oc_json.exists():
+                    oc_cfg = json_module.loads(oc_json.read_text())
+                    channel_configured = bool(
+                        (oc_cfg.get("channels") or {}).get("mycelium-room")
+                    )
+            except Exception:
+                channel_configured = False
+
+            if not channel_configured:
+                typer.echo(
+                    "  2. (Optional) Enable the mycelium-room channel so agents can "
+                    "coordinate through a Mycelium room."
+                )
+                typer.echo(
+                    f"     Add this block to {_openclaw_state_dir(openclaw_profile)}/openclaw.json:"
+                )
+                typer.echo("")
+                typer.secho(
+                    '       "channels": {\n'
+                    '         "mycelium-room": {\n'
+                    '           "enabled": true,\n'
+                    f'           "backendUrl": "{config.server.api_url}",\n'
+                    '           "room": "<room-name>",\n'
+                    '           "agents": ["<agent-id-1>", "<agent-id-2>"],\n'
+                    '           "requireMention": true\n'
+                    "         }\n"
+                    "       }",
+                    fg=typer.colors.CYAN,
+                )
+                typer.echo("")
+                typer.echo(
+                    "     Skip this if you only want the `mycelium` skill + hooks "
+                    "(no channel messaging)."
+                )
+                typer.echo("")
+                typer.echo("  3. Restart the openclaw gateway to pick up the updated plugin:")
+                typer.secho("    $ openclaw gateway restart", fg=typer.colors.CYAN)
+            else:
+                typer.echo("  2. Restart the openclaw gateway to pick up the updated plugin:")
+                typer.secho("    $ openclaw gateway restart", fg=typer.colors.CYAN)
             typer.echo("")
             typer.echo("  For Docker-based experiment agents, get required env vars:")
             typer.secho(
@@ -791,21 +835,40 @@ def _install_openclaw(
     tolerate_exists = not (profile and profile.lower() != "default")
 
     # `openclaw plugins install` / `hooks install` skip files that already exist
-    # at the destination — so on reinstall, a stale tree from a prior version
-    # stays stale even though the command reports success.  When reinstall=True,
-    # wipe the target dirs first so openclaw copies the bundled source fresh.
-    # The caller already confirmed the destructive prompt before getting here.
+    # at the destination, so on reinstall a stale tree from a prior version would
+    # linger even though the command reports success.  On --reinstall, wipe each
+    # target dir and then copy the fresh source over it *before* shelling out to
+    # openclaw — openclaw validates the running config at startup and would error
+    # out ("unknown channel id: mycelium-room") if the plugin providing the
+    # channel is absent when a user already has `channels.mycelium-room` set.
+    # Copying into place first keeps validation happy; openclaw's own install
+    # step becomes a no-op on matching files.
+    def _plugin_ignore(_src: str, names: list[str]) -> list[str]:
+        return [n for n in names if n in ("node_modules", "test", "package-lock.json")]
+
     if reinstall:
         state_dir = _openclaw_state_dir(profile)
-        for target in (
-            state_dir / "extensions" / _OPENCLAW_PLUGIN_NAME,
-            state_dir / "hooks" / _OPENCLAW_HOOK_NAME,
-            state_dir / "hooks" / _OPENCLAW_EXTRACTOR_HOOK_NAME,
-        ):
-            if target.exists():
+        targets: list[tuple[Path, Path]] = [
+            (
+                _resolve_asset(_MYCELIUM_PLUGIN_SRC),
+                state_dir / "extensions" / _OPENCLAW_PLUGIN_NAME,
+            ),
+            (
+                _resolve_asset(_MYCELIUM_BOOTSTRAP_HOOK_SRC),
+                state_dir / "hooks" / _OPENCLAW_HOOK_NAME,
+            ),
+            (
+                _resolve_asset(_MYCELIUM_EXTRACTOR_HOOK_SRC),
+                state_dir / "hooks" / _OPENCLAW_EXTRACTOR_HOOK_NAME,
+            ),
+        ]
+        for src, dst in targets:
+            if dst.exists():
                 if verbose:
-                    typer.echo(f"  clearing stale {target}")
-                shutil.rmtree(target, ignore_errors=True)
+                    typer.echo(f"  refreshing {dst}")
+                shutil.rmtree(dst, ignore_errors=True)
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(str(src), str(dst), ignore=_plugin_ignore)
 
     plugin_src = _resolve_asset(_MYCELIUM_PLUGIN_SRC)
     _run(["openclaw", "plugins", "install", str(plugin_src)], allow_already_exists=tolerate_exists)
