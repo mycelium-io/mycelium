@@ -50,4 +50,12 @@ Run all quality checks on the mycelium codebase. Auto-fix issues where possible.
    - `mycelium-cli/src/mycelium/docs/` — built-in CLI docs
    - Adapter skills (`mycelium-cli/src/mycelium/adapters/*/skills/`)
 
-8. **Report** — Summarize what was fixed and any remaining issues.
+8. **Doctor sanity check** — If any file under `mycelium-cli/src/mycelium/commands/doctor.py`, `mycelium-cli/src/mycelium/commands/adapter.py`, or `mycelium-cli/src/mycelium/adapters/openclaw/` was changed, run `mycelium doctor` to verify every check still passes against the current install:
+   ```bash
+   mycelium doctor
+   ```
+   All checks should be green (`✓`). If any come back as warnings (`~`) or errors (`✗`), act on them before committing — doctor is the fastest way to catch adapter-install regressions (stale manifests, drift between installed vs packaged plugin, channel config issues).
+
+   If you added new failure modes that doctor should catch, add a new check function to `doctor.py` following the `_check_*() -> CheckResult` pattern and register it in `_run_all_checks()`. Doctor is the user's first debugging tool — new silent-failure classes should land here alongside their fix.
+
+9. **Report** — Summarize what was fixed and any remaining issues.

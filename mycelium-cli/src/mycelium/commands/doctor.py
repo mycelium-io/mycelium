@@ -494,10 +494,27 @@ def _check_room_mas_ids() -> CheckResult:
 
 
 def _check_openclaw_mycelium_plugin() -> CheckResult:
-    """Verify the unified `mycelium` plugin is installed at ~/.openclaw/extensions/mycelium/."""
+    """Verify the `mycelium` plugin is installed, registers the mycelium-room channel,
+    and has the post-refactor source layout.  Catches three real failure modes
+    previously only surfaced at gateway startup or at first message routing:
+
+    1. Manifest missing ``kind: channel`` / ``channels: [mycelium-room]`` — gateway
+       refuses to start with "unknown channel id: mycelium-room" on any config
+       referencing the channel.
+    2. Pre-refactor layout (no ``src/channel/route.ts``) — a user who installed
+       before the channel logic was extracted still has the monolithic file and
+       will miss the unit-tested routing path entirely.
+    3. Stale ``instructions.ts`` from before the ``message`` → ``negotiate`` rename —
+       agents read the stale text on every turn and try to run commands that no
+       longer exist.
+    """
+    import json
+
     plugin_dir = Path.home() / ".openclaw" / "extensions" / "mycelium"
     manifest = plugin_dir / "openclaw.plugin.json"
     index = plugin_dir / "index.ts"
+    route_file = plugin_dir / "src" / "channel" / "route.ts"
+    instructions_file = plugin_dir / "src" / "instructions.ts"
 
     if not manifest.exists():
         # No OpenClaw install at all — not a failure, just skip
@@ -523,15 +540,68 @@ def _check_openclaw_mycelium_plugin() -> CheckResult:
             name="openclaw plugin",
             status="error",
             message="manifest present but index.ts missing — corrupt install",
+            details=["fix: run `mycelium adapter add openclaw --reinstall`"],
+        )
+
+    # 1. Channel registration in manifest
+    try:
+        manifest_data = json.loads(manifest.read_text())
+    except Exception as exc:
+        return CheckResult(
+            name="openclaw plugin",
+            status="error",
+            message=f"manifest is not valid JSON: {exc}",
+            details=["fix: run `mycelium adapter add openclaw --reinstall`"],
+        )
+
+    channels = manifest_data.get("channels") or []
+    if manifest_data.get("kind") != "channel" or "mycelium-room" not in channels:
+        return CheckResult(
+            name="openclaw plugin",
+            status="error",
+            message="manifest does not register the mycelium-room channel",
             details=[
+                f"found kind={manifest_data.get('kind')!r} channels={channels}",
+                'expected kind="channel" channels=["mycelium-room"]',
+                "symptom: gateway refuses to start with 'unknown channel id: mycelium-room'",
                 "fix: run `mycelium adapter add openclaw --reinstall`",
             ],
         )
 
+    # 2. Post-refactor layout
+    if not route_file.exists():
+        return CheckResult(
+            name="openclaw plugin",
+            status="warning",
+            message="pre-refactor plugin layout — missing src/channel/route.ts",
+            details=[
+                "the channel routing logic was extracted into a dedicated module",
+                "fix: run `mycelium adapter add openclaw --reinstall`",
+            ],
+        )
+
+    # 3. Staleness from the message → negotiate rename
+    if instructions_file.exists():
+        try:
+            instructions_text = instructions_file.read_text()
+        except Exception:
+            instructions_text = ""
+        if "mycelium message " in instructions_text:
+            return CheckResult(
+                name="openclaw plugin",
+                status="warning",
+                message="installed instructions.ts references `mycelium message` (stale)",
+                details=[
+                    "the `message` command group was renamed to `negotiate`",
+                    "agents reading this on wake will try commands that no longer exist",
+                    "fix: run `mycelium adapter add openclaw --reinstall`",
+                ],
+            )
+
     return CheckResult(
         name="openclaw plugin",
         status="ok",
-        message=f"installed at {plugin_dir}",
+        message=f"installed at {plugin_dir} (channel registered, layout current)",
     )
 
 
