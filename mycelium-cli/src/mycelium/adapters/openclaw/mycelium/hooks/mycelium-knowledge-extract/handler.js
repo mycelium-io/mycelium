@@ -1,17 +1,16 @@
 /**
  * mycelium-knowledge-extract
  *
- * Reads the session JSONL at agent bootstrap time, extracts structured
- * conversation turns, and ships them to the Mycelium knowledge ingest
- * endpoint (POST /api/knowledge/ingest).
+ * Reads the session JSONL and ships structured conversation turns to
+ * mycelium-backend (POST /api/knowledge/ingest), which forwards them to
+ * CFN's shared-memories endpoint. A per-session state file tracks the
+ * last-sent turn index so only new turns travel each time.
  *
- * Only new turns (since the last successful send) are included in each
- * payload. A per-session state file tracks the last sent turn index so
- * that repeated hook firings on command:new do not re-send prior turns.
+ * Configuration lives in ~/.mycelium/config.toml under [knowledge_ingest]
+ * and is read via getIngestConfig() in knowledge-env.js. Every knob is
+ * also overridable via MYCELIUM_INGEST_* env vars for ephemeral changes.
  *
- * Falls back to local log file if Mycelium is not configured.
- *
- * Hook events: agent:bootstrap, command:new
+ * Falls back to a local log file if Mycelium is not configured.
  */
 
 import fs from "fs";
@@ -19,7 +18,7 @@ import fsPromises from "fs/promises";
 import path from "path";
 import os from "os";
 
-import { getIngestTarget } from "./knowledge-env.js";
+import { getIngestConfig, getIngestTarget } from "./knowledge-env.js";
 import { postKnowledgeIngest } from "./knowledge-http.js";
 
 const STATE_DIR = path.join(os.homedir(), ".openclaw");
@@ -185,13 +184,54 @@ function resolveSessionMeta(event, entries) {
 
 // ── Payload ───────────────────────────────────────────────────────────────────
 
-function buildPayload(sessionMeta, turns, entries) {
+/**
+ * Truncate a tool-call input/result to maxBytes UTF-8, replacing the tail
+ * with a count marker. Objects are JSON-serialized before measurement.
+ * maxBytes <= 0 disables truncation.
+ *
+ * The extractor on CFN's side pulls concepts and relationships, not
+ * verbatim text, so losing the tail of a 200KB Read output costs nothing
+ * on extraction quality and a lot on LLM input spend.
+ */
+function truncateToolContent(value, maxBytes) {
+  if (maxBytes <= 0 || value == null) return value;
+  if (typeof value === "string") {
+    const bytes = Buffer.byteLength(value, "utf-8");
+    if (bytes <= maxBytes) return value;
+    return `${value.slice(0, maxBytes)}...[truncated ${bytes - maxBytes} bytes]`;
+  }
+  if (typeof value === "object") {
+    const serialized = JSON.stringify(value);
+    const bytes = Buffer.byteLength(serialized, "utf-8");
+    if (bytes <= maxBytes) return value;
+    return `${serialized.slice(0, maxBytes)}...[truncated ${bytes - maxBytes} bytes of JSON]`;
+  }
+  return value;
+}
+
+function buildPayload(sessionMeta, turns, entries, maxToolContentBytes) {
   const totalCost = turns.reduce(
     (sum, t) => sum + (t.usage?.cost?.total ?? 0),
     0,
   );
 
-  return {
+  let truncatedBytes = 0;
+  const measureAndTruncate = (value) => {
+    if (maxToolContentBytes <= 0) return value;
+    const before = Buffer.byteLength(
+      typeof value === "string" ? value : JSON.stringify(value ?? ""),
+      "utf-8",
+    );
+    const truncated = truncateToolContent(value, maxToolContentBytes);
+    const after = Buffer.byteLength(
+      typeof truncated === "string" ? truncated : JSON.stringify(truncated ?? ""),
+      "utf-8",
+    );
+    if (after < before) truncatedBytes += before - after;
+    return truncated;
+  };
+
+  const payload = {
     schema: "openclaw-conversation-v1",
     extractedAt: new Date().toISOString(),
     session: sessionMeta,
@@ -213,13 +253,18 @@ function buildPayload(sessionMeta, turns, entries) {
       toolCalls: t.toolCalls.map((tc) => ({
         id: tc.id,
         name: tc.name,
-        input: tc.input,
-        result: tc.result,
+        input: measureAndTruncate(tc.input),
+        result: measureAndTruncate(tc.result),
         isError: tc.isError,
       })),
       response: t.response || null,
     })),
   };
+
+  if (truncatedBytes > 0) {
+    payload.stats.truncatedBytes = truncatedBytes;
+  }
+  return payload;
 }
 
 // ── Mycelium knowledge ingest ─────────────────────────────────────────────────
@@ -269,16 +314,30 @@ function appendLog(filePath, data) {
 
 // ── Handler ───────────────────────────────────────────────────────────────────
 
-export default async function HookHandler(event) {
-  const isBootstrap = event.type === "agent" && event.action === "bootstrap";
-  const isCommandNew = event.type === "command" && event.action === "new";
+// Module-level set, shared across all handler invocations in the gateway
+// process. Keyed on `${agentId}:${sessionId}`. A fire that finds its key
+// already present returns immediately — backend dedupe (via content hash)
+// covers any re-sends that slip through a restart.
+const pendingSessions = new Set();
 
-  if (!isBootstrap && !isCommandNew) return;
+export default async function HookHandler(event) {
+  const cfg = getIngestConfig();
+
+  // Master kill switch — zero I/O when disabled.
+  if (!cfg.enabled) return;
+
+  // Event allowlist — config-driven so users can drop agent:bootstrap
+  // without a code change if they still see restart amplification.
+  const eventKey = `${event.type}:${event.action}`;
+  if (!cfg.events.includes(eventKey)) return;
 
   const ctx = event.context ?? {};
   const agentId = ctx.agentId ?? null;
   const sessionId = ctx.sessionId ?? null;
   if (!agentId || !sessionId) return;
+
+  const sessionKey = `${agentId}:${sessionId}`;
+  if (pendingSessions.has(sessionKey)) return;
 
   const sessionFile = resolveSessionFile(agentId, sessionId);
   const entries = await readSessionEntries(sessionFile);
@@ -287,28 +346,40 @@ export default async function HookHandler(event) {
   const allTurns = extractTurns(entries);
   if (allTurns.length === 0) return;
 
-  // Only send turns that haven't been sent yet
+  // Skip the last turn when it's potentially mid-execution (tool results
+  // may still be arriving). This prevents the "I sent turn N early and
+  // its result landed later" re-send class. Caller opt-out via
+  // skip_in_progress_turn=false.
+  const eligible = cfg.skipInProgressTurn ? allTurns.slice(0, -1) : allTurns;
+
   const lastSentIndex = readLastSentIndex(agentId, sessionId);
-  const newTurns = allTurns.filter((t) => t.index > lastSentIndex);
+  const newTurns = eligible.filter((t) => t.index > lastSentIndex);
   if (newTurns.length === 0) return;
 
   const meta = resolveSessionMeta(event, entries);
-  const payload = buildPayload(meta, newTurns, entries);
+  const payload = buildPayload(meta, newTurns, entries, cfg.maxToolContentBytes);
 
   const nextLastIndex = newTurns[newTurns.length - 1].index;
 
-  // Fire-and-forget — don't block the hook response on LLM extraction
+  // Optimistic write: advance the baseline BEFORE the POST so concurrent
+  // fires compute their diff against the correct state. Trade-off is
+  // at-least-once semantics on POST failure — the backend dedupe cache
+  // absorbs any duplicates, and a failed POST drops those turns from the
+  // CFN graph but preserves audit_events (the durable record).
+  writeLastSentIndex(agentId, sessionId, nextLastIndex);
+  pendingSessions.add(sessionKey);
+
   ingestToMycelium(payload)
     .then((ok) => {
-      if (ok) {
-        writeLastSentIndex(agentId, sessionId, nextLastIndex);
-      } else {
-        appendLog(LOG_FILE, payload);
-        writeLastSentIndex(agentId, sessionId, nextLastIndex);
-      }
+      if (!ok) appendLog(LOG_FILE, payload);
     })
-    .catch(() => {
-      appendLog(LOG_FILE, payload);
-      writeLastSentIndex(agentId, sessionId, nextLastIndex);
+    .catch((err) => {
+      appendLog(LOG_FILE, {
+        error: err?.message ?? String(err),
+        payload,
+      });
+    })
+    .finally(() => {
+      pendingSessions.delete(sessionKey);
     });
 }
