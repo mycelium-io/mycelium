@@ -4,11 +4,10 @@
 """
 Knowledge graph endpoints.
 
-POST   /api/knowledge/graphs        — store concepts/relations (legacy, C7 removes)
-DELETE /api/knowledge/graphs        — delete concepts (legacy, C7 removes)
-POST   /api/knowledge/graphs/query  — query graph (legacy, C7 removes)
-POST   /api/knowledge/ingest        — forward openclaw turns to CFN shared-memories
-DELETE /api/internal/knowledge/graphs — drop whole graph (legacy, C7 removes)
+POST /api/knowledge/ingest forwards openclaw turns to CFN's shared-memories
+endpoint with user-configurable gates (enabled / token circuit breaker /
+content-hash dedupe) and records each attempt in an in-memory observability
+buffer surfaced via GET /log and GET /stats.
 """
 
 import json
