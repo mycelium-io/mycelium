@@ -64,13 +64,22 @@ def _relative(ts_iso: str) -> str:
     return f"{secs // 86400}d ago"
 
 
-def _status_cell(event: dict[str, Any]) -> str:
-    if event.get("error"):
-        code = event.get("cfn_status")
-        label = f"err {code}" if code else "unreachable"
-        return f"[red]{label}[/red]"
-    code = event.get("cfn_status", 201)
-    return f"[green]{code}[/green]"
+_STATE_STYLES: dict[str, str] = {
+    "ok": "green",
+    "deduped": "dim cyan",
+    "truncated": "yellow",
+    "refused": "bold red",
+    "disabled": "dim",
+    "error": "red",
+}
+
+_VALID_STATES = tuple(_STATE_STYLES.keys())
+
+
+def _state_cell(event: dict[str, Any]) -> str:
+    state = event.get("state") or "ok"
+    style = _STATE_STYLES.get(state, "white")
+    return f"[{style}]{state}[/{style}]"
 
 
 def _fmt_tokens(n: int) -> str:
@@ -82,23 +91,49 @@ def _fmt_tokens(n: int) -> str:
 
 
 @doc_ref(
-    usage="mycelium cfn log [--limit N] [--json] [--verbose]",
+    usage="mycelium cfn log [--limit N] [--state <s>] [--json] [--verbose]",
     desc=(
         "Tail the mycelium-backend in-memory log of CFN shared-memories forwards. "
-        "Captures both successes and failures; token counts are cl100k_base estimates."
+        "Captures every attempt (ok, deduped, truncated, refused, disabled, error); "
+        "token counts are cl100k_base estimates."
     ),
     group="cfn",
 )
 @app.command(name="log")
 def cfn_log(
     limit: int = typer.Option(20, "--limit", "-n", min=1, max=500, help="Max events to show"),
+    state: str | None = typer.Option(
+        None,
+        "--state",
+        "-s",
+        help=(
+            "Filter by event state: ok, deduped, truncated, refused, disabled, error. "
+            "Repeat with comma-separated values to match multiple."
+        ),
+    ),
     json_output: bool = typer.Option(False, "--json", help="Print raw JSON response"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show full event record including request_id and CFN message"),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Show request_id, reason, and CFN message columns",
+    ),
 ) -> None:
-    """Tail the recent CFN shared-memories forwards from mycelium-backend.
+    """Tail recent CFN shared-memories forwards from mycelium-backend.
 
     Newest first. Resets on backend restart.
     """
+    state_filter: set[str] | None = None
+    if state:
+        state_filter = {s.strip() for s in state.split(",") if s.strip()}
+        unknown = state_filter - set(_VALID_STATES)
+        if unknown:
+            console.print(
+                f"[red]Unknown state(s):[/red] {', '.join(sorted(unknown))}. "
+                f"Valid: {', '.join(_VALID_STATES)}",
+            )
+            raise typer.Exit(2)
+
     try:
         with httpx.Client(base_url=_api_url(), timeout=10) as client:
             resp = client.get("/api/knowledge/ingest/log", params={"limit": limit})
@@ -108,32 +143,43 @@ def cfn_log(
         console.print(f"[red]Failed to reach mycelium-backend:[/red] {exc}")
         raise typer.Exit(1) from exc
 
-    if json_output:
-        console.print_json(data=data)
-        return
-
     events = data.get("events", [])
     total = data.get("total_events", 0)
 
+    if state_filter is not None:
+        events = [e for e in events if (e.get("state") or "ok") in state_filter]
+
+    if json_output:
+        if state_filter is not None:
+            data = {**data, "events": events, "filtered_by_state": sorted(state_filter)}
+        console.print_json(data=data)
+        return
+
     if not events:
-        console.print("[dim]No CFN ingest events in the buffer yet.[/dim]")
+        if state_filter is not None:
+            console.print(
+                f"[dim]No events matching state=[{','.join(sorted(state_filter))}].[/dim]",
+            )
+        else:
+            console.print("[dim]No CFN ingest events in the buffer yet.[/dim]")
         console.print(f"[dim]Buffer started at {data.get('buffer_started_at', '?')}.[/dim]")
         return
 
-    table = Table(
-        title=f"CFN ingest log — {len(events)} shown of {total} in buffer",
-        title_style="bold",
-    )
+    title = f"CFN ingest log — {len(events)} shown of {total} in buffer"
+    if state_filter is not None:
+        title += f" (state={','.join(sorted(state_filter))})"
+
+    table = Table(title=title, title_style="bold")
     table.add_column("Time", style="dim")
     table.add_column("MAS")
     table.add_column("Agent")
     table.add_column("Records", justify="right")
     table.add_column("Tokens", justify="right")
     table.add_column("Latency", justify="right")
-    table.add_column("Status")
+    table.add_column("State")
     if verbose:
         table.add_column("Request ID", style="dim")
-        table.add_column("Message", style="dim", overflow="fold")
+        table.add_column("Reason / CFN message", style="dim", overflow="fold")
 
     for e in events:
         row = [
@@ -143,16 +189,22 @@ def cfn_log(
             str(e.get("record_count", 0)),
             _fmt_tokens(e.get("estimated_cfn_knowledge_input_tokens", 0)),
             f"{e.get('latency_ms', 0):.0f}ms",
-            _status_cell(e),
+            _state_cell(e),
         ]
         if verbose:
             rid = e.get("request_id", "")
             row.append(rid[:8] if rid else "-")
-            row.append(e.get("error") or e.get("cfn_message") or "-")
+            row.append(e.get("reason") or e.get("cfn_message") or "-")
         table.add_row(*row)
 
     console.print(table)
     console.print(_TOKEN_CAVEAT)
+    console.print(
+        "[dim]States: [green]ok[/green] forwarded · [dim cyan]deduped[/dim cyan] "
+        "hash match · [yellow]truncated[/yellow] content capped · "
+        "[bold red]refused[/bold red] circuit breaker · [dim]disabled[/dim] "
+        "kill switch · [red]error[/red] CFN unreachable / non-2xx[/dim]",
+    )
 
 
 @doc_ref(
