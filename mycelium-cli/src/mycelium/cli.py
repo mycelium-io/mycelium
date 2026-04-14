@@ -13,6 +13,7 @@ import typer
 from mycelium import __version__
 from mycelium.commands import (
     adapter,
+    cfn,
     config,
     docs,
     doctor,
@@ -130,6 +131,7 @@ app.add_typer(adapter.app, name="adapter")
 app.add_typer(docs.app, name="docs")
 app.add_typer(notebook.app, name="notebook")
 app.add_typer(session.app, name="session")
+app.add_typer(cfn.app, name="cfn")
 
 
 if __name__ == "__main__":
