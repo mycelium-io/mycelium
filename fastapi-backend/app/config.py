@@ -80,6 +80,12 @@ class Settings(BaseSettings):
     # Workspace ID in the CFN mgmt plane (set by mycelium install)
     WORKSPACE_ID: str = ""
 
+    # Knowledge ingest control surface — see KnowledgeIngestConfig in the CLI
+    # for the authoritative descriptions. Defaults here match CLI defaults.
+    MYCELIUM_INGEST_ENABLED: bool = True
+    MYCELIUM_INGEST_MAX_INPUT_TOKENS: int = 50_000
+    MYCELIUM_INGEST_DEDUPE_TTL_SECONDS: int = 300
+
     model_config = SettingsConfigDict(
         env_file=tuple(_env_files),
         env_file_encoding="utf-8",

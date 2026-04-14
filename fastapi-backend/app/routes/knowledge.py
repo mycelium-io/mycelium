@@ -25,6 +25,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status
 
+from app.config import settings
 from app.database import get_async_session
 from app.knowledge import service
 from app.knowledge.schemas import (
@@ -39,7 +40,8 @@ from app.services.cfn_knowledge import (
     create_or_update_shared_memories,
     estimate_cfn_knowledge_input_tokens,
 )
-from app.services.ingest_log_buffer import IngestEvent, get_buffer
+from app.services.ingest_dedupe import get_cache
+from app.services.ingest_log_buffer import IngestEvent, IngestState, get_buffer
 
 logger = logging.getLogger(__name__)
 
@@ -117,56 +119,19 @@ def internal_delete_graph(data: KnowledgeGraphDeleteRequest) -> JSONResponse:
 # ── Ingest ─────────────────────────────────────────────────────────────────────
 
 
-@router.post("/api/knowledge/ingest", status_code=200)
-async def knowledge_ingest(
+def _log_ingest_event(
+    *,
     data: KnowledgeIngestRequest,
-    db: Annotated[AsyncSession, Depends(get_async_session)],
-) -> KnowledgeIngestResponse:
-    """Forward openclaw turns to CFN's shared-memories endpoint.
-
-    CFN runs concept + relationship extraction, embeddings, and KG writes
-    inside its handler. We keep the durable ``KNOWLEDGE_INGESTION`` audit
-    event and append a non-durable :class:`IngestEvent` to the in-memory
-    buffer so ``mycelium cfn log`` / ``stats`` can surface cost and success
-    signal without tailing backend logs.
-    """
-    buffer = get_buffer()
-    request_id = str(uuid_mod.uuid4())
-    est_tokens = estimate_cfn_knowledge_input_tokens(data.records)
-    payload_bytes = len(json.dumps(data.records))
-    started = time.perf_counter()
-
-    try:
-        cfn_resp = await create_or_update_shared_memories(
-            workspace_id=data.workspace_id,
-            mas_id=data.mas_id,
-            records=data.records,
-            agent_id=data.agent_id,
-            request_id=request_id,
-        )
-    except CfnKnowledgeError as exc:
-        latency_ms = (time.perf_counter() - started) * 1000
-        buffer.append(
-            IngestEvent(
-                timestamp=datetime.now(UTC),
-                workspace_id=data.workspace_id,
-                mas_id=data.mas_id,
-                agent_id=data.agent_id,
-                request_id=request_id,
-                record_count=len(data.records),
-                payload_bytes=payload_bytes,
-                estimated_cfn_knowledge_input_tokens=est_tokens,
-                latency_ms=latency_ms,
-                cfn_status=exc.status_code,
-                error=str(exc),
-            ),
-        )
-        code = exc.status_code or status.HTTP_502_BAD_GATEWAY
-        raise HTTPException(status_code=code, detail=str(exc)) from exc
-
-    latency_ms = (time.perf_counter() - started) * 1000
-    cfn_message = cfn_resp.get("message")
-    buffer.append(
+    request_id: str,
+    est_tokens: int,
+    payload_bytes: int,
+    latency_ms: float,
+    state: IngestState,
+    reason: str | None = None,
+    cfn_status: int | None = None,
+    cfn_message: str | None = None,
+) -> None:
+    get_buffer().append(
         IngestEvent(
             timestamp=datetime.now(UTC),
             workspace_id=data.workspace_id,
@@ -177,31 +142,194 @@ async def knowledge_ingest(
             payload_bytes=payload_bytes,
             estimated_cfn_knowledge_input_tokens=est_tokens,
             latency_ms=latency_ms,
-            cfn_status=status.HTTP_201_CREATED,
+            state=state,
+            reason=reason,
+            cfn_status=cfn_status,
             cfn_message=cfn_message,
         ),
     )
 
-    try:
-        nil_uuid = uuid_mod.UUID(int=0)
-        now = datetime.now(UTC)
-        event = AuditEvent(
+
+def _write_audit_event(db: AsyncSession, mas_id: str) -> "datetime":
+    """Emit the durable KNOWLEDGE_INGESTION audit event. Caller must await commit."""
+    now = datetime.now(UTC)
+    nil_uuid = uuid_mod.UUID(int=0)
+    db.add(
+        AuditEvent(
             resource_type="MAS",
-            resource_identifier=data.mas_id,
+            resource_identifier=mas_id,
             audit_type="KNOWLEDGE_INGESTION",
-            audit_resource_identifier=data.mas_id,
+            audit_resource_identifier=mas_id,
             created_by=nil_uuid,
             created_on=now,
             last_modified_by=nil_uuid,
             last_modified_on=now,
+        ),
+    )
+    return now
+
+
+@router.post("/api/knowledge/ingest", status_code=200)
+async def knowledge_ingest(
+    data: KnowledgeIngestRequest,
+    db: Annotated[AsyncSession, Depends(get_async_session)],
+) -> KnowledgeIngestResponse:
+    """Forward openclaw turns to CFN's shared-memories endpoint.
+
+    Enforces user-configured gates before hitting CFN:
+
+    1. ``MYCELIUM_INGEST_ENABLED`` master switch — accept+discard when false.
+    2. ``MYCELIUM_INGEST_MAX_INPUT_TOKENS`` circuit breaker — refuse with
+       HTTP 413 when the estimated input exceeds the threshold.
+    3. Content-hash dedupe cache — short-circuit duplicate payloads within
+       ``MYCELIUM_INGEST_DEDUPE_TTL_SECONDS`` and return the cached
+       ``response_id`` without re-hitting CFN.
+
+    Every outcome is appended to the in-memory ingest log buffer so
+    ``mycelium cfn log`` / ``stats`` can surface cost and success signal.
+    The durable ``KNOWLEDGE_INGESTION`` audit event is still emitted for
+    every accepted attempt (ok, deduped, disabled) — it stays as the
+    tamper-evident record and is unaffected by the in-memory buffer.
+    """
+    request_id = str(uuid_mod.uuid4())
+    est_tokens = estimate_cfn_knowledge_input_tokens(data.records)
+    payload_bytes = len(json.dumps(data.records))
+    started = time.perf_counter()
+
+    # ── Gate 1: master kill switch ────────────────────────────────────────────
+    if not settings.MYCELIUM_INGEST_ENABLED:
+        _log_ingest_event(
+            data=data,
+            request_id=request_id,
+            est_tokens=est_tokens,
+            payload_bytes=payload_bytes,
+            latency_ms=(time.perf_counter() - started) * 1000,
+            state="disabled",
+            reason="MYCELIUM_INGEST_ENABLED=false",
         )
-        db.add(event)
+        _write_audit_event(db, data.mas_id)
+        try:
+            await db.commit()
+        except SQLAlchemyError as exc:
+            logger.warning("ingest: audit event failed: %s", exc)
+        return KnowledgeIngestResponse(
+            cfn_response_id=request_id,
+            cfn_message="ingest disabled via MYCELIUM_INGEST_ENABLED=false",
+            ingested_at=datetime.now(UTC),
+            estimated_cfn_knowledge_input_tokens=est_tokens,
+        )
+
+    # ── Gate 2: token circuit breaker ─────────────────────────────────────────
+    max_tokens = settings.MYCELIUM_INGEST_MAX_INPUT_TOKENS
+    if max_tokens > 0 and est_tokens > max_tokens:
+        reason = (
+            f"payload exceeded {max_tokens} estimated input tokens "
+            f"(actual: {est_tokens})"
+        )
+        _log_ingest_event(
+            data=data,
+            request_id=request_id,
+            est_tokens=est_tokens,
+            payload_bytes=payload_bytes,
+            latency_ms=(time.perf_counter() - started) * 1000,
+            state="refused",
+            reason=reason,
+        )
+        logger.warning(
+            "ingest refused | mas=%s agent=%s request_id=%s reason=%s",
+            data.mas_id,
+            data.agent_id,
+            request_id,
+            reason,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=reason,
+        )
+
+    # ── Gate 3: content-hash dedupe ───────────────────────────────────────────
+    cache = get_cache()
+    ttl = settings.MYCELIUM_INGEST_DEDUPE_TTL_SECONDS
+    content_hash = cache.hash_records(data.records) if ttl > 0 else ""
+    cached = cache.lookup(content_hash) if content_hash else None
+    if cached is not None:
+        _log_ingest_event(
+            data=data,
+            request_id=request_id,
+            est_tokens=est_tokens,
+            payload_bytes=payload_bytes,
+            latency_ms=(time.perf_counter() - started) * 1000,
+            state="deduped",
+            reason=f"hash match within {ttl}s TTL",
+            cfn_message=cached.message,
+        )
+        # Durable audit — deduped still represents a "we accepted this" event.
+        _write_audit_event(db, data.mas_id)
+        try:
+            await db.commit()
+        except SQLAlchemyError as exc:
+            logger.warning("ingest: audit event failed: %s", exc)
+        return KnowledgeIngestResponse(
+            cfn_response_id=cached.response_id,
+            cfn_message=cached.message,
+            ingested_at=datetime.now(UTC),
+            estimated_cfn_knowledge_input_tokens=est_tokens,
+        )
+
+    # ── Forward to CFN ────────────────────────────────────────────────────────
+    try:
+        cfn_resp = await create_or_update_shared_memories(
+            workspace_id=data.workspace_id,
+            mas_id=data.mas_id,
+            records=data.records,
+            agent_id=data.agent_id,
+            request_id=request_id,
+        )
+    except CfnKnowledgeError as exc:
+        _log_ingest_event(
+            data=data,
+            request_id=request_id,
+            est_tokens=est_tokens,
+            payload_bytes=payload_bytes,
+            latency_ms=(time.perf_counter() - started) * 1000,
+            state="error",
+            reason=str(exc),
+            cfn_status=exc.status_code,
+        )
+        code = exc.status_code or status.HTTP_502_BAD_GATEWAY
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
+
+    latency_ms = (time.perf_counter() - started) * 1000
+    cfn_message = cfn_resp.get("message")
+    cfn_response_id = cfn_resp.get("response_id", request_id)
+
+    if content_hash:
+        cache.store(
+            content_hash,
+            response_id=cfn_response_id,
+            message=cfn_message,
+            ttl_seconds=ttl,
+        )
+
+    _log_ingest_event(
+        data=data,
+        request_id=request_id,
+        est_tokens=est_tokens,
+        payload_bytes=payload_bytes,
+        latency_ms=latency_ms,
+        state="ok",
+        cfn_status=status.HTTP_201_CREATED,
+        cfn_message=cfn_message,
+    )
+
+    _write_audit_event(db, data.mas_id)
+    try:
         await db.commit()
     except SQLAlchemyError as exc:
         logger.warning("ingest: audit event failed: %s", exc)
 
     return KnowledgeIngestResponse(
-        cfn_response_id=cfn_resp.get("response_id", request_id),
+        cfn_response_id=cfn_response_id,
         cfn_message=cfn_message,
         ingested_at=datetime.now(UTC),
         estimated_cfn_knowledge_input_tokens=est_tokens,

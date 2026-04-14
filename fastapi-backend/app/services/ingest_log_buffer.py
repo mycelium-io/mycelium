@@ -14,14 +14,32 @@ from __future__ import annotations
 import threading
 from collections import deque
 from datetime import UTC, datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
 _DEFAULT_MAXLEN = 500
 
+IngestState = Literal[
+    "ok",
+    "deduped",
+    "truncated",
+    "refused",
+    "disabled",
+    "error",
+]
+
 
 class IngestEvent(BaseModel):
-    """A single CFN shared-memories forward attempt (success or failure)."""
+    """A single CFN shared-memories forward attempt, one of:
+
+    - ``ok``        — forwarded to CFN successfully
+    - ``deduped``   — hash matched in-process cache, returned prior response_id
+    - ``truncated`` — forwarded OK, but the hook capped tool-call content
+    - ``refused``   — refused locally (circuit breaker above max_input_tokens)
+    - ``disabled``  — master switch off, accepted and discarded
+    - ``error``     — CFN returned non-2xx or was unreachable
+    """
 
     timestamp: datetime
     workspace_id: str
@@ -32,9 +50,10 @@ class IngestEvent(BaseModel):
     payload_bytes: int
     estimated_cfn_knowledge_input_tokens: int
     latency_ms: float
+    state: IngestState = "ok"
+    reason: str | None = None
     cfn_status: int | None = None
     cfn_message: str | None = None
-    error: str | None = None
 
 
 class IngestLogBuffer:

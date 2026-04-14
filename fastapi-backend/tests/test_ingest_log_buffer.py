@@ -21,7 +21,8 @@ def _event(
     payload_bytes: int = 100,
     request_id: str = "req-1",
     cfn_status: int | None = 201,
-    error: str | None = None,
+    state: str = "ok",
+    reason: str | None = None,
     timestamp: datetime | None = None,
 ) -> IngestEvent:
     return IngestEvent(
@@ -34,8 +35,9 @@ def _event(
         payload_bytes=payload_bytes,
         estimated_cfn_knowledge_input_tokens=tokens,
         latency_ms=12.3,
+        state=state,  # type: ignore[arg-type]
+        reason=reason,
         cfn_status=cfn_status,
-        error=error,
     )
 
 

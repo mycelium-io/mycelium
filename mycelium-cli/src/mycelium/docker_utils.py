@@ -59,6 +59,11 @@ def generate_env_file(config: MyceliumConfig) -> str:
         f"ADMIN_USER_PASSWORD={config.runtime.admin_user_password}",
         f"CFN_DEV_MODE={'true' if config.runtime.cfn_dev_mode else 'false'}",
         "",
+        "# ── Knowledge ingest control (CFN shared-memories hook) ─────────────────",
+        f"MYCELIUM_INGEST_ENABLED={'true' if config.knowledge_ingest.enabled else 'false'}",
+        f"MYCELIUM_INGEST_MAX_INPUT_TOKENS={config.knowledge_ingest.max_input_tokens}",
+        f"MYCELIUM_INGEST_DEDUPE_TTL_SECONDS={config.knowledge_ingest.dedupe_ttl_seconds}",
+        "",
     ]
     return "\n".join(lines) + "\n"
 
