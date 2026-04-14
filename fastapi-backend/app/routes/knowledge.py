@@ -4,11 +4,11 @@
 """
 Knowledge graph endpoints.
 
-POST   /api/knowledge/graphs        — store concepts/relations
-DELETE /api/knowledge/graphs        — delete concepts (nodes)
-POST   /api/knowledge/graphs/query  — query graph
-POST   /api/knowledge/ingest        — ingest openclaw turns (two-stage LLM extraction)
-DELETE /api/internal/knowledge/graphs — drop whole graph (internal)
+POST   /api/knowledge/graphs        — store concepts/relations (legacy, C7 removes)
+DELETE /api/knowledge/graphs        — delete concepts (legacy, C7 removes)
+POST   /api/knowledge/graphs/query  — query graph (legacy, C7 removes)
+POST   /api/knowledge/ingest        — forward openclaw turns to CFN shared-memories
+DELETE /api/internal/knowledge/graphs — drop whole graph (legacy, C7 removes)
 """
 
 import logging
@@ -16,17 +16,15 @@ import uuid as uuid_mod
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status
 
-from app.config import settings
 from app.database import get_async_session
 from app.knowledge import service
-from app.knowledge.ingestion import IngestionService
 from app.knowledge.schemas import (
     KnowledgeGraphDeleteRequest,
     KnowledgeGraphQueryRequest,
@@ -34,6 +32,11 @@ from app.knowledge.schemas import (
     ResponseStatus,
 )
 from app.models import AuditEvent
+from app.services.cfn_knowledge import (
+    CfnKnowledgeError,
+    create_or_update_shared_memories,
+    estimate_cfn_knowledge_input_tokens,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,9 +55,10 @@ class KnowledgeIngestRequest(BaseModel):
 
 
 class KnowledgeIngestResponse(BaseModel):
-    graph_name: str
-    concepts_extracted: int
-    relations_extracted: int
+    cfn_response_id: str
+    cfn_message: str | None = None
+    ingested_at: datetime
+    estimated_cfn_knowledge_input_tokens: int
 
 
 @router.post("/api/knowledge/graphs")
@@ -115,28 +119,26 @@ async def knowledge_ingest(
     data: KnowledgeIngestRequest,
     db: Annotated[AsyncSession, Depends(get_async_session)],
 ) -> KnowledgeIngestResponse:
-    """Ingest openclaw turns: two-stage LLM extraction → AgensGraph storage."""
-    ingestion_svc = IngestionService(
-        api_key=settings.LLM_API_KEY,
-        model=settings.LLM_MODEL,
-    )
+    """Forward openclaw turns to CFN's shared-memories endpoint.
+
+    CFN runs concept + relationship extraction, embeddings, and KG writes
+    inside its handler. We keep the durable ``KNOWLEDGE_INGESTION`` audit
+    event and return the CFN response_id plus an input-side token estimate
+    so ``mycelium cfn log`` / ``stats`` can surface cost to the user.
+    """
+    est_tokens = estimate_cfn_knowledge_input_tokens(data.records)
 
     try:
-        result = await ingestion_svc.ingest(
-            records=data.records,
+        cfn_resp = await create_or_update_shared_memories(
             workspace_id=data.workspace_id,
             mas_id=data.mas_id,
+            records=data.records,
             agent_id=data.agent_id,
         )
-    except RuntimeError as exc:
-        if "authentication failed" in str(exc).lower():
-            return JSONResponse(
-                status_code=503,
-                content={"detail": str(exc)},
-            )
-        raise
+    except CfnKnowledgeError as exc:
+        code = exc.status_code or status.HTTP_502_BAD_GATEWAY
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
 
-    # Emit audit event (fire-and-forget, non-fatal)
     try:
         nil_uuid = uuid_mod.UUID(int=0)
         now = datetime.now(UTC)
@@ -155,4 +157,9 @@ async def knowledge_ingest(
     except SQLAlchemyError as exc:
         logger.warning("ingest: audit event failed: %s", exc)
 
-    return KnowledgeIngestResponse(**result)
+    return KnowledgeIngestResponse(
+        cfn_response_id=cfn_resp.get("response_id", ""),
+        cfn_message=cfn_resp.get("message"),
+        ingested_at=datetime.now(UTC),
+        estimated_cfn_knowledge_input_tokens=est_tokens,
+    )
