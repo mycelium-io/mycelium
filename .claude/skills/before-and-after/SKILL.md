@@ -51,6 +51,66 @@ If any prerequisite fails, fix it before proceeding.
 
 **Throughout this skill, use `$MYCELIUM_API_URL` for all backend requests. Never hardcode a port.**
 
+### 0b. Verify server.mas_id is set
+
+The `mycelium-knowledge-extract` hook reads `server.mas_id` from
+`~/.mycelium/config.toml` to know which MAS to ingest into. If it's empty,
+every ingest attempt silently falls back to the local log file and nothing
+reaches CFN's knowledge graph.
+
+```bash
+python3 -c "
+import toml, os
+cfg = toml.load(os.path.expanduser('~/.mycelium/config.toml'))
+mas_id = cfg.get('server', {}).get('mas_id', '')
+print(f'mas_id = \"{mas_id}\"')
+if not mas_id:
+    print('WARNING: mas_id is empty — knowledge ingest will silently fail')
+"
+```
+
+If `mas_id` is empty, fetch the default MAS for the workspace and set it:
+
+```bash
+# List MASes for the configured workspace
+WORKSPACE_ID=$(python3 -c "
+import toml, os
+cfg = toml.load(os.path.expanduser('~/.mycelium/config.toml'))
+print(cfg.get('server', {}).get('workspace_id', ''))
+")
+echo "workspace_id = $WORKSPACE_ID"
+
+# Option A: get mas_id from the active room (if a room is already set)
+ACTIVE_ROOM=$(python3 -c "
+import toml, os
+cfg = toml.load(os.path.expanduser('~/.mycelium/config.toml'))
+print(cfg.get('rooms', {}).get('active', ''))
+")
+if [ -n "$ACTIVE_ROOM" ]; then
+    MAS_ID=$(curl -sf "$MYCELIUM_API_URL/rooms/$ACTIVE_ROOM" | python3 -c "
+import sys, json
+r = json.load(sys.stdin)
+print(r.get('mas_id') or '')
+")
+    echo "Room mas_id: $MAS_ID"
+fi
+
+# Option B: use mycelium config set
+mycelium config set server.mas_id "$MAS_ID"
+```
+
+Verify:
+
+```bash
+python3 -c "
+import toml, os
+cfg = toml.load(os.path.expanduser('~/.mycelium/config.toml'))
+print('mas_id:', cfg['server']['mas_id'])
+"
+```
+
+A non-empty `mas_id` here is required for knowledge ingest to work in Phase 3.
+
 ## Phase 0.5: Choose experiment LLM & API key
 
 Experiment runs get expensive fast. Each scenario fires 10–40+ LLM calls across multi-turn chatter (before case) and negotiation rounds (after case). **Default to haiku** unless the user explicitly wants sonnet — the quality difference for "pick REST vs GraphQL" is indistinguishable, but the cost difference is ~12×.
@@ -155,96 +215,52 @@ Good personas include:
 - Specific data points ("60% reduction in integration time", not "it was faster")
 - Clear priorities and red lines ("won't compromise on caching", not "prefers performance")
 
-### 1c. Install the mycelium plugin
+### 1c. Do NOT install the mycelium plugin yet
 
-The plugin ships with the `mycelium adapter add openclaw` command. There's
-no separate `mycelium-channel` to install — session lifecycle, coordination
-ticks, and addressed messaging are all concerns of a single unified plugin.
+**The mycelium plugin must be absent during the before case.** Installing it
+now would contaminate the before run: the `mycelium-bootstrap` hook injects
+`MYCELIUM_ROOM_ID` and `MYCELIUM_API_URL` into every agent's environment at
+bootstrap, which causes agents to spontaneously use `mycelium session join`
+and `mycelium negotiate` even when the seed says to just chat. The plugin
+also injects Mycelium-specific instructions via `prependSystemContext`.
 
-Check if installed:
+The before case must run with zero Mycelium plugin surface — no bootstrap
+hook, no channel, no system-context injection. The plugin is installed in
+Phase 3 immediately before the after run.
 
-```bash
-ls ~/.openclaw/extensions/mycelium/openclaw.plugin.json 2>/dev/null \
-  && echo "Mycelium plugin already installed" \
-  || { echo "Installing..."; mycelium adapter add openclaw; }
-```
-
-If `mycelium adapter add openclaw` hasn't been run, do it now. It installs
-the plugin, the bootstrap + knowledge-extract hooks, and the skill — all in
-one command. Restart the gateway after install to pick up the plugin:
+If the plugin is currently installed, **uninstall it first**:
 
 ```bash
+python3 -c "
+import json, os
+oc_path = os.path.expanduser('~/.openclaw/openclaw.json')
+with open(oc_path) as f:
+    oc = json.load(f)
+# Remove plugin entries
+oc.get('plugins', {}).get('entries', {}).pop('mycelium', None)
+oc.get('plugins', {}).get('entries', {}).pop('mycelium-channel', None)
+# Remove from allow list
+allow = oc.get('plugins', {}).get('allow', [])
+oc['plugins']['allow'] = [p for p in allow if p not in ('mycelium', 'mycelium-channel')]
+# Remove load path
+paths = oc.get('plugins', {}).get('load', {}).get('paths', [])
+oc['plugins']['load']['paths'] = [p for p in paths if 'mycelium' not in p]
+# Remove channel config entirely
+oc.get('channels', {}).pop('mycelium-room', None)
+with open(oc_path, 'w') as f:
+    json.dump(oc, f, indent=2)
+print('Mycelium plugin removed from openclaw.json')
+"
 openclaw gateway restart
 ```
 
-### 1d. Configure openclaw.json
-
-Use Python to safely edit the JSON. This ensures the plugin is registered, allowed, and the channel is configured with the correct backend URL and agent list:
-
-```python
-python3 << 'PYEOF'
-import json, os, toml
-
-# Read mycelium backend URL
-mycelium_cfg = toml.load(os.path.expanduser("~/.mycelium/config.toml"))
-backend_url = mycelium_cfg.get("server", {}).get("api_url", "http://localhost:8000")
-
-# Read current openclaw config
-oc_path = os.path.expanduser("~/.openclaw/openclaw.json")
-with open(oc_path) as f:
-    oc = json.load(f)
-
-# Experiment config — replace EXP_ID and ROOM_NAME before running
-exp_agents = [os.environ.get("EXP_AGENT_A", "FIXME"), os.environ.get("EXP_AGENT_B", "FIXME")]
-room_name = os.environ.get("EXP_ROOM", "FIXME")
-
-# Ensure plugin entries
-oc.setdefault("plugins", {}).setdefault("entries", {})["mycelium-channel"] = {"enabled": True}
-
-# Ensure plugin allow list
-allow = oc["plugins"].setdefault("allow", [])
-if "mycelium-channel" not in allow:
-    allow.append("mycelium-channel")
-
-# Ensure plugin load path
-ext_path = os.path.expanduser("~/.openclaw/extensions/mycelium-channel")
-load_paths = oc["plugins"].setdefault("load", {}).setdefault("paths", [])
-if ext_path not in load_paths:
-    load_paths.append(ext_path)
-
-# Set channel config.
-# requireMention=True for BOTH before and after — we are not A/B testing channel
-# settings. The variable under test is "with or without the CLI coordination
-# protocol". Agents in both rooms use the same channel, address each other with
-# @handle mentions, and only differ in whether they coordinate via freeform chat
-# (before) or via `mycelium session join` + structured negotiation (after).
-oc.setdefault("channels", {})["mycelium-room"] = {
-    "enabled": True,
-    "backendUrl": backend_url,
-    "room": room_name,
-    "agents": exp_agents,
-    "requireMention": True,
-}
-
-with open(oc_path, "w") as f:
-    json.dump(oc, f, indent=2)
-
-print(f"Config updated: room={room_name}, agents={exp_agents}, backend={backend_url}")
-PYEOF
-```
-
-Call it with environment variables:
+Verify the plugin is gone:
 
 ```bash
-EXP_AGENT_A="${EXP_ID}-agent-a" \
-EXP_AGENT_B="${EXP_ID}-agent-b" \
-EXP_ROOM="${EXP_ID}-before" \
-python3 << 'PYEOF'
-# ... (the script above)
-PYEOF
+openclaw plugins list 2>&1 | grep -i mycelium && echo "ERROR: plugin still loaded" || echo "OK — no mycelium plugin"
 ```
 
-### 1e. Create experiment rooms
+### 1d. Create experiment rooms
 
 Use the experiment prefix to avoid collisions:
 
@@ -253,61 +269,79 @@ mycelium room create "${EXP_ID}-before"
 mycelium room create "${EXP_ID}-after"
 ```
 
-### 1f. Restart gateway and verify
+### 1e. Restart gateway and verify clean state
 
 ```bash
 openclaw gateway restart
 ```
 
-Verify:
+Verify no Mycelium channel is active:
 
 ```bash
-# Check gateway log for SSE connection to the room
-grep "mycelium-room.*SSE connected" /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log | tail -1
-# Should show: SSE connected: {EXP_ID}-before (agents: {EXP_ID}-agent-a, {EXP_ID}-agent-b)
+# Should NOT show any mycelium-room SSE connection
+grep "mycelium-room.*SSE connected" /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log | tail -3
+# Expected: no output (or only lines from before this experiment)
 ```
 
-## Phase 2: Run "Before" (Unstructured Channel)
+## Phase 2: Run "Before" (Unstructured — no Mycelium plugin)
 
-The channel should already be pointing at the "before" room from Phase 1d.
+The before case runs with the Mycelium plugin completely absent. Agents
+communicate only through OpenClaw's native dispatch — no Mycelium room
+channel, no bootstrap hook, no CLI context injected. This is the true
+baseline: what does unstructured agent collaboration look like without
+Mycelium's coordination layer?
+
+Seeding is done via a direct HTTP POST to the Mycelium backend (to write the
+scenario into the room for logging purposes), but agents are addressed via
+OpenClaw's own messaging — not via the Mycelium channel plugin.
 
 ### 2a. Seed the conversation
 
-The seed must **explicitly @-mention both agents** (the channel is `requireMention: true`, so unaddressed messages are ignored) AND tell the agents how to continue the conversation by @-mentioning each other. Build the seed content so it:
-
-1. Tags every participating agent by handle
-2. States the scenario and asks for a decision
-3. Instructs them to reply by @-mentioning the other agent(s) whenever they want a response
+Send the scenario directly to each agent via OpenClaw's native agent
+messaging (not the Mycelium channel):
 
 ```bash
-# Build the mention list (space-separated @handles)
-MENTIONS=$(printf '@%s ' "${EXP_ID}-agent-a" "${EXP_ID}-agent-b")
+# Build the agent handles
+AGENT_A="${EXP_ID}-agent-a"
+AGENT_B="${EXP_ID}-agent-b"
 
-SEED_BODY="${MENTIONS}
+SEED_BODY="${SCENARIO_PROMPT}
 
-${SCENARIO_PROMPT}
+Discuss this with the other agent and reach a shared decision. Reply to them
+directly. Keep each message to 2–3 paragraphs. When you both agree, state the
+final decision explicitly.
 
-How to work together in this room:
-- Reply by @-mentioning the other agent(s) whenever you want them to read and respond. Messages without an @mention are ignored by the channel.
-- Keep each message to 2–3 paragraphs.
-- Aim for consensus. When you think you've agreed, @-mention the other agent and explicitly say 'I agree' with the final decision."
+Do NOT use any mycelium CLI commands (mycelium session join, mycelium
+negotiate, etc.) — coordinate only by talking directly."
 
-curl -sf "$MYCELIUM_API_URL/rooms/${EXP_ID}-before/messages" \
-  -H "Content-Type: application/json" \
-  -d "$(python3 -c "import json,sys; print(json.dumps({'sender_handle':'facilitator','message_type':'broadcast','content':sys.argv[1]}))" "$SEED_BODY")"
+# Address each agent individually via OpenClaw native messaging
+openclaw agents message "$AGENT_A" "$SEED_BODY" 2>/dev/null \
+  || curl -sf "$MYCELIUM_API_URL/rooms/${EXP_ID}-before/messages" \
+       -H "Content-Type: application/json" \
+       -d "$(python3 -c "import json,sys; print(json.dumps({'sender_handle':'facilitator','message_type':'broadcast','content':sys.argv[1]}))" "@${AGENT_A} @${AGENT_B} ${SEED_BODY}")"
 ```
 
-The `$SCENARIO_PROMPT` is the actual question/decision the agents need to resolve (e.g. "Should we build a REST or GraphQL API for our public developer platform?"). Keep it focused — agents work better when the scope is clear.
+Also write the seed to the before room for logging:
+
+```bash
+curl -sf "$MYCELIUM_API_URL/rooms/${EXP_ID}-before/messages" \
+  -H "Content-Type: application/json" \
+  -d "$(python3 -c "import json,sys; print(json.dumps({'sender_handle':'facilitator','message_type':'broadcast','content':sys.argv[1]}))" "[SEED] ${SCENARIO_PROMPT}")"
+```
+
+The `$SCENARIO_PROMPT` is the actual question/decision the agents need to resolve. Keep it focused — agents work better when the scope is clear.
 
 ### 2b. Monitor the conversation
 
-Watch gateway logs for inbound/outbound:
+Since there is no channel plugin active, agents communicate through OpenClaw's
+native dispatch only. Poll room messages (written via direct HTTP) to monitor:
 
 ```bash
 grep "mycelium-room.*←\|mycelium-room.*→" /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log | tail -20
+# Note: expect little/no output here — no mycelium channel is active
 ```
 
-Or poll room messages:
+Poll room messages:
 
 ```bash
 curl -sf "$MYCELIUM_API_URL/rooms/${EXP_ID}-before/messages?limit=20" | python3 -c "
@@ -385,31 +419,67 @@ the run, `mycelium cfn log --state=refused,error` is the fast signal on
 
 ## Phase 3: Run "After" (Mycelium Negotiation)
 
-### 3a. Switch channel to the "after" room
+### 3a. Install the Mycelium plugin and configure the channel
 
-Same channel settings as the before case — the only thing that changes is the room name. Everything else (agents, `requireMention`, backend URL) stays identical. The variable under test is the coordination protocol, not the channel config.
+The plugin was intentionally absent during Phase 2. Install it now, then
+configure the channel to point at the after room. This is the only moment
+the plugin enters the picture — so the variable under test is cleanly
+"with plugin" vs "without plugin."
 
 ```bash
-python3 -c "
-import json, os
-oc_path = os.path.expanduser('~/.openclaw/openclaw.json')
+# Install the plugin (hooks, skill, channel)
+mycelium adapter add openclaw
+```
+
+Configure the channel in `openclaw.json`:
+
+```bash
+python3 << 'PYEOF'
+import json, os, toml
+
+mycelium_cfg = toml.load(os.path.expanduser("~/.mycelium/config.toml"))
+backend_url = mycelium_cfg.get("server", {}).get("api_url", "http://localhost:8000")
+
+oc_path = os.path.expanduser("~/.openclaw/openclaw.json")
 with open(oc_path) as f:
     oc = json.load(f)
-oc['channels']['mycelium-room']['room'] = '${EXP_ID}-after'
-with open(oc_path, 'w') as f:
+
+exp_agents = [os.environ["EXP_AGENT_A"], os.environ["EXP_AGENT_B"]]
+room_name = os.environ["EXP_ROOM"]
+
+oc.setdefault("channels", {})["mycelium-room"] = {
+    "enabled": True,
+    "backendUrl": backend_url,
+    "room": room_name,
+    "agents": exp_agents,
+    "requireMention": True,
+}
+
+with open(oc_path, "w") as f:
     json.dump(oc, f, indent=2)
-print('Switched to ${EXP_ID}-after')
-"
+
+print(f"Channel configured: room={room_name}, agents={exp_agents}, backend={backend_url}")
+PYEOF
 ```
+
+Call it:
+
+```bash
+EXP_AGENT_A="${EXP_ID}-agent-a" \
+EXP_AGENT_B="${EXP_ID}-agent-b" \
+EXP_ROOM="${EXP_ID}-after" \
+python3 << 'PYEOF'
+# ... (script above)
+PYEOF
+```
+
+Restart and verify SSE connected:
 
 ```bash
 openclaw gateway restart
-```
-
-Verify SSE connected to the new room:
-
-```bash
+sleep 4
 grep "SSE connected.*${EXP_ID}-after" /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log | tail -1
+# Should show: [mycelium-room] SSE connected: {EXP_ID}-after (agents: ...)
 ```
 
 ### 3b. Seed with negotiation instruction
@@ -677,21 +747,29 @@ Notes:
 
 ## Phase 5: Cleanup
 
-Remove temporary agents and experiment rooms:
+Remove temporary agents, experiment rooms, and the Mycelium plugin:
 
 ```bash
-# Remove temporary agents from openclaw config
+# Remove temp agents, channel config, and uninstall Mycelium plugin from openclaw.json
 python3 -c "
 import json, os
 oc_path = os.path.expanduser('~/.openclaw/openclaw.json')
 with open(oc_path) as f:
     oc = json.load(f)
+# Remove experiment agents
 oc['agents']['list'] = [a for a in oc.get('agents', {}).get('list', []) if not a.get('id', '').startswith('${EXP_ID}')]
-# Remove channel config (or restore to previous room)
+# Remove channel config
 oc.get('channels', {}).pop('mycelium-room', None)
+# Remove Mycelium plugin entries
+oc.get('plugins', {}).get('entries', {}).pop('mycelium', None)
+oc.get('plugins', {}).get('entries', {}).pop('mycelium-channel', None)
+allow = oc.get('plugins', {}).get('allow', [])
+oc['plugins']['allow'] = [p for p in allow if p not in ('mycelium', 'mycelium-channel')]
+paths = oc.get('plugins', {}).get('load', {}).get('paths', [])
+oc['plugins']['load']['paths'] = [p for p in paths if 'mycelium' not in p]
 with open(oc_path, 'w') as f:
     json.dump(oc, f, indent=2)
-print('Agents and channel config removed')
+print('Agents, channel config, and Mycelium plugin removed')
 "
 
 # Delete agent workspaces
@@ -705,6 +783,10 @@ curl -sf -X DELETE "$MYCELIUM_API_URL/rooms/${EXP_ID}-after"
 # Restart gateway to pick up config changes
 openclaw gateway restart
 ```
+
+If you want to keep the plugin installed for regular use after the experiment,
+omit the plugin removal block above or re-run `mycelium adapter add openclaw`
+to reinstall it.
 
 ## Input
 
