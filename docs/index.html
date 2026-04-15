@@ -1621,7 +1621,8 @@ curl -X POST http://localhost:8888/api/memory/search \
     const text = document.querySelector('.main').innerText;
     navigator.clipboard.writeText(text).then(() => {
       const btn = document.querySelector('.copy-page-btn');
-      btn.innerHTML = '<i data-lucide="check" style="width:13px;height:13px;stroke:currentColor;vertical-align:-2px;margin-right:6px;"></i>copied!';
+      const tokens = Math.round(text.length / 4).toLocaleString();
+      btn.innerHTML = '<i data-lucide="check" style="width:13px;height:13px;stroke:currentColor;vertical-align:-2px;margin-right:6px;"></i>copied! (~' + tokens + ' tokens)';
       btn.classList.add('copied');
       lucide.createIcons();
       setTimeout(() => {
