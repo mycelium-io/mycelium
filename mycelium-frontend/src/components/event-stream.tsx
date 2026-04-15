@@ -3,21 +3,26 @@
 
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { getSSEUrl, fetchMessages } from "@/lib/api";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { getSSEUrl, fetchMessages, fetchChildRooms } from "@/lib/api";
+import { SessionsView } from "./sessions-view";
 
 interface Event {
   id: string;
   type: string;
   content: string;
   sender: string;
+  recipient: string | null;
   time: string;
   raw: Record<string, unknown>;
 }
 
+const CHAT_TYPES = new Set(["broadcast", "direct", "announce", "delegate"]);
+
 function parseEvent(msg: Record<string, unknown>): Event {
   const mtype = (msg.message_type as string) || (msg.type as string) || "unknown";
   const sender = (msg.sender_handle as string) || (msg.updated_by as string) || "?";
+  const recipient = (msg.recipient_handle as string) || null;
   const created = (msg.created_at as string) || new Date().toISOString();
   const time = created.slice(11, 19);
 
@@ -26,17 +31,29 @@ function parseEvent(msg: Record<string, unknown>): Event {
 
   try {
     if (typeof msg.content === "string") {
-      raw = JSON.parse(msg.content);
+      // Chat messages carry a plain string in content; coordination events
+      // carry a JSON blob. Try to parse, fall back to the raw string.
+      if (CHAT_TYPES.has(mtype)) {
+        raw = { text: msg.content };
+      } else {
+        raw = JSON.parse(msg.content);
+      }
     } else if (msg.content) {
       raw = msg.content as Record<string, unknown>;
     } else {
       raw = msg;
     }
   } catch {
-    raw = msg;
+    raw = CHAT_TYPES.has(mtype) ? { text: msg.content } : msg;
   }
 
   switch (mtype) {
+    case "broadcast":
+    case "direct":
+    case "announce":
+    case "delegate":
+      content = (raw.text as string) || (msg.content as string) || "";
+      break;
     case "coordination_join": {
       const handle = (raw.handle as string) || sender;
       const intent = raw.intent as string;
@@ -47,11 +64,13 @@ function parseEvent(msg: Record<string, unknown>): Event {
       content = `Session started — ${raw.agent_count || "?"} agents`;
       break;
     case "coordination_tick": {
-      const round = raw.round || "?";
-      const action = raw.action || "tick";
-      const participant = raw.participant_id || "?";
+      // Ticks wrap their fields under .payload
+      const tick = (raw.payload as Record<string, unknown>) || raw;
+      const round = tick.round ?? "?";
+      const action = tick.action ?? "tick";
+      const participant = tick.participant_id ?? "?";
       content = `Round ${round}: ${participant} → ${action}`;
-      if (raw.current_offer) content += ` ${JSON.stringify(raw.current_offer)}`;
+      if (tick.current_offer) content += ` ${JSON.stringify(tick.current_offer)}`;
       break;
     }
     case "coordination_consensus": {
@@ -75,10 +94,22 @@ function parseEvent(msg: Record<string, unknown>): Event {
       content = (msg.content as string) || JSON.stringify(msg).slice(0, 100);
   }
 
-  return { id: `${Date.now()}-${Math.random()}`, type: mtype, content, sender, time, raw };
+  return {
+    id: `${Date.now()}-${Math.random()}`,
+    type: mtype,
+    content,
+    sender,
+    recipient,
+    time,
+    raw,
+  };
 }
 
 const typeStyles: Record<string, { border: string; badge: string; badgeText: string }> = {
+  broadcast:              { border: "border-l-sky-400",     badge: "bg-sky-500/10 text-sky-300",      badgeText: "broadcast" },
+  direct:                 { border: "border-l-sky-400",     badge: "bg-sky-500/15 text-sky-200",      badgeText: "direct" },
+  announce:               { border: "border-l-sky-300",     badge: "bg-sky-500/10 text-sky-200",      badgeText: "announce" },
+  delegate:               { border: "border-l-fuchsia-400", badge: "bg-fuchsia-500/10 text-fuchsia-300", badgeText: "delegate" },
   coordination_join:      { border: "border-l-cyan-400",    badge: "bg-cyan-500/10 text-cyan-400",    badgeText: "join" },
   coordination_start:     { border: "border-l-cyan-400",    badge: "bg-cyan-500/15 text-cyan-300",    badgeText: "start" },
   coordination_tick:      { border: "border-l-indigo-400",  badge: "bg-indigo-500/10 text-indigo-400", badgeText: "tick" },
@@ -89,6 +120,23 @@ const typeStyles: Record<string, { border: string; badge: string; badgeText: str
 
 const defaultStyle = { border: "border-l-muted", badge: "bg-muted/10 text-muted", badgeText: "msg" };
 
+const MENTION_RE = /(@[\w-]+)/g;
+
+function renderWithMentions(text: string): React.ReactNode {
+  // split() with a capturing group returns alternating [non-match, match, ...].
+  // Odd indices are the @handles; this avoids the stateful .test() gotcha.
+  const parts = text.split(MENTION_RE);
+  return parts.map((part, i) =>
+    i % 2 === 1 ? (
+      <span key={i} className="text-accent font-semibold">{part}</span>
+    ) : (
+      <span key={i}>{part}</span>
+    ),
+  );
+}
+
+type View = "channel" | "events" | "sessions";
+
 interface Props {
   roomName: string;
   onMemoryChanged?: () => void;
@@ -97,7 +145,23 @@ interface Props {
 export function EventStream({ roomName, onMemoryChanged }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
   const [connected, setConnected] = useState(false);
+  const [view, setView] = useState<View>("channel");
+  const [sessionCount, setSessionCount] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Poll child sessions for the tab count
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const rooms = await fetchChildRooms(roomName);
+        if (!cancelled) setSessionCount(rooms.length);
+      } catch {}
+    };
+    load();
+    const id = setInterval(load, 5000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [roomName]);
 
   // Load initial messages
   useEffect(() => {
@@ -135,37 +199,106 @@ export function EventStream({ roomName, onMemoryChanged }: Props) {
     return () => { es?.close(); clearTimeout(retryTimeout); };
   }, [roomName, onMemoryChanged]);
 
-  // Auto-scroll
+  const visible = useMemo(
+    () => (view === "channel" ? events.filter(e => CHAT_TYPES.has(e.type)) : events),
+    [events, view],
+  );
+
+  // Auto-scroll when new events arrive
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [events]);
+  }, [visible]);
+
+  const channelCount = useMemo(
+    () => events.filter(e => CHAT_TYPES.has(e.type)).length,
+    [events],
+  );
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+      <div className="flex items-center gap-3 px-4 py-2 border-b border-border shrink-0">
         <span className={`w-2 h-2 rounded-full ${connected ? "bg-emerald-400 animate-pulse" : "bg-red-400"}`} />
         <span className="text-xs text-muted font-mono">{connected ? "connected" : "reconnecting..."}</span>
-        <span className="ml-auto text-xs text-muted/50">{events.length} events</span>
+        <div className="ml-auto flex gap-1">
+          <button
+            onClick={() => setView("channel")}
+            className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded transition-colors ${
+              view === "channel"
+                ? "bg-sky-500/15 text-sky-300"
+                : "text-muted/60 hover:text-white"
+            }`}
+          >
+            Channel <span className="text-muted/50">({channelCount})</span>
+          </button>
+          <button
+            onClick={() => setView("events")}
+            className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded transition-colors ${
+              view === "events"
+                ? "bg-accent/15 text-accent"
+                : "text-muted/60 hover:text-white"
+            }`}
+          >
+            Events <span className="text-muted/50">({events.length})</span>
+          </button>
+          <button
+            onClick={() => setView("sessions")}
+            className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded transition-colors ${
+              view === "sessions"
+                ? "bg-indigo-500/15 text-indigo-300"
+                : "text-muted/60 hover:text-white"
+            }`}
+          >
+            Sessions <span className="text-muted/50">({sessionCount})</span>
+          </button>
+        </div>
       </div>
+      {view === "sessions" ? (
+        <div className="flex-1 overflow-hidden">
+          <SessionsView roomName={roomName} />
+        </div>
+      ) : (
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
-        {events.length === 0 && (
-          <div className="text-center text-muted/50 py-20 text-sm">Waiting for events...</div>
+        {visible.length === 0 && (
+          <div className="text-center text-muted/50 py-20 text-sm">
+            {view === "channel" ? "No channel messages yet" : "Waiting for events..."}
+          </div>
         )}
-        {events.map(ev => {
-          const style = typeStyles[ev.type] || defaultStyle;
-          return (
-            <div key={ev.id} className={`border-l-2 ${style.border} pl-3 py-2 group`}>
-              <div className="flex items-center gap-2">
-                <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${style.badge}`}>
-                  {style.badgeText}
-                </span>
-                <span className="flex-1 text-sm">{ev.content}</span>
-                <span className="text-xs text-muted/40 font-mono">{ev.time}</span>
+        {view === "channel"
+          ? visible.map(ev => (
+              <div key={ev.id} className="py-2 border-b border-border/20 last:border-b-0">
+                <div className="flex items-baseline gap-2 mb-1">
+                  <span className="font-mono text-sm text-sky-300 font-semibold">{ev.sender}</span>
+                  {ev.recipient && (
+                    <span className="text-[10px] text-muted">→ {ev.recipient}</span>
+                  )}
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-300/70 font-bold uppercase tracking-wider">
+                    {ev.type}
+                  </span>
+                  <span className="ml-auto text-[10px] text-muted/40 font-mono">{ev.time}</span>
+                </div>
+                <p className="text-sm text-white/90 whitespace-pre-wrap leading-relaxed">
+                  {renderWithMentions(ev.content)}
+                </p>
               </div>
-            </div>
-          );
-        })}
+            ))
+          : visible.map(ev => {
+              const style = typeStyles[ev.type] || defaultStyle;
+              return (
+                <div key={ev.id} className={`border-l-2 ${style.border} pl-3 py-2 group`}>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${style.badge}`}>
+                      {style.badgeText}
+                    </span>
+                    <span className="flex-1 text-sm">
+                      {CHAT_TYPES.has(ev.type) ? renderWithMentions(ev.content) : ev.content}
+                    </span>
+                    <span className="text-xs text-muted/40 font-mono">{ev.time}</span>
+                  </div>
+                </div>
+              );
+            })}
       </div>
+      )}
     </div>
   );
 }
