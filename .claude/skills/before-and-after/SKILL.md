@@ -368,6 +368,21 @@ if isinstance(msgs, list):
 " > ~/.mycelium/rooms/${EXP_ID}-before/transcript.md
 ```
 
+### 2e. Capture CFN ingest log for the before window
+
+Every time the `mycelium-knowledge-extract` hook fires during the before run
+it appends an event to the in-memory buffer on mycelium-backend. Capture the
+full buffer to disk so the experiment artifact has a per-event cost trail.
+
+```bash
+mycelium cfn log --limit 500 --json > ~/.mycelium/rooms/${EXP_ID}-before/ingest-log.json
+mycelium cfn stats --json > ~/.mycelium/rooms/${EXP_ID}-before/ingest-stats.json
+```
+
+The `.json` snapshots are what goes into the gist. For human review during
+the run, `mycelium cfn log --state=refused,error` is the fast signal on
+"did anything blow up here."
+
 ## Phase 3: Run "After" (Mycelium Negotiation)
 
 ### 3a. Switch channel to the "after" room
@@ -494,6 +509,22 @@ if isinstance(msgs, list):
 " > ~/.mycelium/rooms/${EXP_ID}-after/session-transcript.md
 ```
 
+### 3e. Capture CFN ingest log for the after window
+
+Mirrors Phase 2e. Snapshot the full buffer + stats for the after run so the
+gist carries both-case cost evidence.
+
+```bash
+mycelium cfn log --limit 500 --json > ~/.mycelium/rooms/${EXP_ID}-after/ingest-log.json
+mycelium cfn stats --json > ~/.mycelium/rooms/${EXP_ID}-after/ingest-stats.json
+```
+
+**Important**: the in-memory buffer is shared across both runs and resets
+only on backend restart. If you don't snapshot after Phase 2 (before) and
+again after Phase 3 (after), you'll lose the separation. Phase 2e + 3e
+ordering matters — each snapshot captures everything seen so far, and you
+diff them in Phase 4 to get the per-run cost.
+
 ## Phase 4: Evaluate
 
 Compare both transcripts against the success criteria. Score each criterion 1-5:
@@ -520,6 +551,37 @@ Write the comparison report to `~/.mycelium/rooms/${EXP_ID}/evaluation.md`:
 | Issues resolved | ... | ... |
 | Specific assignments made | ... | ... |
 | Overall score | X/5 | X/5 |
+
+### CFN ingest activity (per-run cost delta)
+
+Diff `ingest-stats.json` between the two runs and render the delta. Use
+this block to catch cost regressions: if the `after` case ingests 10x the
+tokens of `before` for the same scenario, something's wrong upstream of
+the dedupe + circuit breaker.
+
+```bash
+python3 - <<'PY'
+import json, pathlib
+exp = "${EXP_ID}"
+for label in ("before", "after"):
+    p = pathlib.Path(f"~/.mycelium/rooms/{exp}-{label}/ingest-stats.json").expanduser()
+    if not p.exists():
+        print(f"{label}: (missing)"); continue
+    d = json.loads(p.read_text())
+    t = d.get("total", {})
+    print(f"{label}: events={t.get('events',0)} "
+          f"tokens≈{t.get('estimated_cfn_knowledge_input_tokens',0):,} "
+          f"bytes={t.get('payload_bytes',0):,}")
+PY
+```
+
+| Metric | Before | After | Delta |
+|---|---|---|---|
+| Ingest events | ... | ... | +/-N |
+| Est. input tokens | ~... | ~... | +/-N% |
+| Refused (circuit breaker) | ... | ... | ... |
+| Deduped (hash hit) | ... | ... | ... |
+| Errors | ... | ... | ... |
 
 ### Success Criteria
 | Criterion | Before | After | Delta |
@@ -552,11 +614,21 @@ Experiment artifacts (the evaluation report, both transcripts, and the session s
 for f in ~/.mycelium/rooms/${EXP_ID}/evaluation.md \
          ~/.mycelium/rooms/${EXP_ID}-before/transcript.md \
          ~/.mycelium/rooms/${EXP_ID}-after/transcript.md \
-         ~/.mycelium/rooms/${EXP_ID}-after/session-transcript.md; do
+         ~/.mycelium/rooms/${EXP_ID}-after/session-transcript.md \
+         ~/.mycelium/rooms/${EXP_ID}-before/ingest-log.json \
+         ~/.mycelium/rooms/${EXP_ID}-after/ingest-log.json \
+         ~/.mycelium/rooms/${EXP_ID}-before/ingest-stats.json \
+         ~/.mycelium/rooms/${EXP_ID}-after/ingest-stats.json; do
+  [ -f "$f" ] || continue
   echo "=== $f ==="
   grep -inE 'sk-[a-z0-9]|ghp_|gho_|bearer [a-z0-9]|api[_-]?key.*[=:]|password.*[=:]|/Users/|/home/' "$f" | head -5 || echo "  (clean)"
 done
 ```
+
+The ingest-log JSON files are particularly worth scanning — they include
+the full payload content that was forwarded to CFN, which for agent turns
+may include filesystem paths, shell output, or tool results. Err on the
+side of redacting.
 
 If anything lights up, either redact or skip the gist. **Always ask the user before uploading** — even a private gist is a URL someone could share, and experiment transcripts may contain persona content or internal scenario details that weren't meant to leave the machine.
 
@@ -566,17 +638,19 @@ Once clean, create a secret gist (URL-only, not listed on your profile).
 
 ```bash
 STAGE=$(mktemp -d)
-cp ~/.mycelium/rooms/${EXP_ID}/evaluation.md            "$STAGE/evaluation.md"
-cp ~/.mycelium/rooms/${EXP_ID}-before/transcript.md     "$STAGE/before-transcript.md"
-cp ~/.mycelium/rooms/${EXP_ID}-after/transcript.md      "$STAGE/after-transcript.md"
+cp ~/.mycelium/rooms/${EXP_ID}/evaluation.md               "$STAGE/evaluation.md"
+cp ~/.mycelium/rooms/${EXP_ID}-before/transcript.md        "$STAGE/before-transcript.md"
+cp ~/.mycelium/rooms/${EXP_ID}-after/transcript.md         "$STAGE/after-transcript.md"
 cp ~/.mycelium/rooms/${EXP_ID}-after/session-transcript.md "$STAGE/after-session-transcript.md"
+# Ingest logs — skip silently if a snapshot is missing (e.g. ran --before-only)
+cp ~/.mycelium/rooms/${EXP_ID}-before/ingest-log.json      "$STAGE/before-ingest-log.json" 2>/dev/null || true
+cp ~/.mycelium/rooms/${EXP_ID}-before/ingest-stats.json    "$STAGE/before-ingest-stats.json" 2>/dev/null || true
+cp ~/.mycelium/rooms/${EXP_ID}-after/ingest-log.json       "$STAGE/after-ingest-log.json" 2>/dev/null || true
+cp ~/.mycelium/rooms/${EXP_ID}-after/ingest-stats.json     "$STAGE/after-ingest-stats.json" 2>/dev/null || true
 
 gh gist create \
   -d "${EXP_ID}: ${SCENARIO_NAME} — before-and-after" \
-  "$STAGE/evaluation.md" \
-  "$STAGE/before-transcript.md" \
-  "$STAGE/after-transcript.md" \
-  "$STAGE/after-session-transcript.md"
+  "$STAGE"/*
 ```
 
 The command prints the gist URL. Use it in a PR comment (`gh pr comment <N> --body "..."`) or Slack message with a short summary and the link — keep the comment body concise and put the full artifacts behind the gist link. Example PR comment body:
@@ -681,10 +755,12 @@ For batch runs, provide a JSON file with an `experiments` array. Schema is loose
 
 ## Future
 
-- **Knowledge extraction**: Evaluate memories generated via `mycelium-knowledge-extract` hook
 - **Automated room switching**: Avoid gateway restart between before/after runs
 - **Statistical rigor**: Run same scenario multiple times to control for LLM variance
 - **3+ agent scenarios**: Test with larger groups
+- **CFN graph diff**: Render a concept-level diff between pre-run and post-run
+  `mycelium cfn ls` snapshots so reviewers can see exactly which concepts
+  CFN extracted as a result of the experiment
 
 ## Tips
 
