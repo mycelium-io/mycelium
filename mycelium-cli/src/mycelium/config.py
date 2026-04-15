@@ -156,10 +156,14 @@ class KnowledgeIngestConfig(BaseModel):
         ),
     )
     events: list[str] = Field(
-        default_factory=lambda: ["command:new", "agent:bootstrap"],
+        default_factory=lambda: ["message:sent", "agent:bootstrap"],
         description=(
-            "OpenClaw event types that fire the knowledge-extract hook. Drop "
-            "'agent:bootstrap' to eliminate restart amplification."
+            "OpenClaw event types that fire the knowledge-extract hook. "
+            "'message:sent' fires after the agent's response is delivered "
+            "(one finalized turn available per fire). 'agent:bootstrap' "
+            "fires on session boot for catch-up. Avoid 'command:new' — "
+            "that's the /new slash command (session reset), not a new "
+            "agent turn."
         ),
     )
     max_tool_content_bytes: int = Field(

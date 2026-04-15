@@ -37,6 +37,42 @@ function resolveSessionFile(agentId, sessionId) {
   );
 }
 
+function resolveSessionsIndexPath(agentId) {
+  return path.join(STATE_DIR, "agents", agentId, "sessions", "sessions.json");
+}
+
+/**
+ * Resolve {agentId, sessionId} from a hook event. agent:bootstrap supplies
+ * both in ctx. message:sent / message:received only carry sessionKey, so
+ * we parse agentId from there and look up the active agent session UUID
+ * in ~/.openclaw/agents/<agentId>/sessions/sessions.json.
+ *
+ * Returns null when anything needed is missing — callers treat null as
+ * "skip this fire silently."
+ */
+function resolveAgentSession(event) {
+  const ctx = event.context ?? {};
+  if (ctx.agentId && ctx.sessionId) {
+    return { agentId: ctx.agentId, sessionId: ctx.sessionId };
+  }
+
+  const sessionKey = event.sessionKey ?? ctx.sessionKey ?? "";
+  const parts = sessionKey.split(":");
+  if (parts[0] !== "agent" || !parts[1]) return null;
+  const agentId = parts[1];
+
+  try {
+    const indexPath = resolveSessionsIndexPath(agentId);
+    const raw = fs.readFileSync(indexPath, "utf-8");
+    const index = JSON.parse(raw);
+    const sessionId = index?.[sessionKey]?.sessionId;
+    if (sessionId) return { agentId, sessionId };
+  } catch {
+    // sessions.json missing or malformed — nothing we can do
+  }
+  return null;
+}
+
 async function readSessionEntries(filePath) {
   try {
     const raw = await fsPromises.readFile(filePath, "utf-8");
@@ -331,10 +367,9 @@ export default async function HookHandler(event) {
   const eventKey = `${event.type}:${event.action}`;
   if (!cfg.events.includes(eventKey)) return;
 
-  const ctx = event.context ?? {};
-  const agentId = ctx.agentId ?? null;
-  const sessionId = ctx.sessionId ?? null;
-  if (!agentId || !sessionId) return;
+  const resolved = resolveAgentSession(event);
+  if (!resolved) return;
+  const { agentId, sessionId } = resolved;
 
   const sessionKey = `${agentId}:${sessionId}`;
   if (pendingSessions.has(sessionKey)) return;
@@ -346,11 +381,13 @@ export default async function HookHandler(event) {
   const allTurns = extractTurns(entries);
   if (allTurns.length === 0) return;
 
-  // Skip the last turn when it's potentially mid-execution (tool results
-  // may still be arriving). This prevents the "I sent turn N early and
-  // its result landed later" re-send class. Caller opt-out via
-  // skip_in_progress_turn=false.
-  const eligible = cfg.skipInProgressTurn ? allTurns.slice(0, -1) : allTurns;
+  // skip_in_progress_turn only applies to catch-up fires (agent:bootstrap)
+  // where the agent may genuinely be mid-turn. For message:sent the last
+  // turn is the one that just finalized — slicing it off would silently
+  // drop the only thing we came here to extract.
+  const shouldSkipInProgress =
+    cfg.skipInProgressTurn && eventKey === "agent:bootstrap";
+  const eligible = shouldSkipInProgress ? allTurns.slice(0, -1) : allTurns;
 
   const lastSentIndex = readLastSentIndex(agentId, sessionId);
   const newTurns = eligible.filter((t) => t.index > lastSentIndex);

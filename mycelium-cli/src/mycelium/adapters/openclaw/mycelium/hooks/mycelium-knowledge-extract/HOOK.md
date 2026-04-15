@@ -5,8 +5,8 @@ metadata:
   openclaw:
     emoji: "🔍"
     events:
+      - message:sent
       - agent:bootstrap
-      - command:new
 ---
 
 # Conversation Extractor

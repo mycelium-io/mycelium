@@ -21,7 +21,7 @@ export function getIngestTarget() {
 
 const DEFAULT_CONFIG = {
   enabled: true,
-  events: ["command:new", "agent:bootstrap"],
+  events: ["message:sent", "agent:bootstrap"],
   maxToolContentBytes: 4096,
   skipInProgressTurn: true,
 };
