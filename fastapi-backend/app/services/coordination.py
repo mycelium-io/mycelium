@@ -186,7 +186,7 @@ async def _run_cfn_negotiation(
     intents: list[str],
 ) -> None:
     """CFN mode: call start, fan out ticks to ALL agents, collect all replies, call decide."""
-    from app.services.cfn_negotiation import start_negotiation
+    from app.services.cfn_negotiation import CfnNegotiationError, start_negotiation
 
     joined_intents = "\n".join(
         f"- {handle}: {intent}" for handle, intent in zip(session_handles, intents, strict=False)
@@ -202,17 +202,19 @@ async def _run_cfn_negotiation(
         content=json.dumps({"round": 0, "agent_count": len(session_handles)}),
     )
 
-    result = await start_negotiation(
-        session_id=session_id,
-        content_text=joined_intents,
-        agents=agents,
-        workspace_id=room.workspace_id,
-        mas_id=room.mas_id,
-    )
-
-    if not result:
-        logger.error("CFN start_negotiation returned empty result for %s", room_name)
-        await _finish_cfn(room_name, plan="CFN start failed", assignments={}, broken=True)
+    try:
+        result = await start_negotiation(
+            session_id=session_id,
+            content_text=joined_intents,
+            agents=agents,
+            workspace_id=room.workspace_id,
+            mas_id=room.mas_id,
+        )
+    except CfnNegotiationError as exc:
+        logger.error("CFN start_negotiation failed for %s: %s", room_name, exc)
+        await _finish_cfn(
+            room_name, plan=f"CFN start failed — {exc}", assignments={}, broken=True
+        )
         return
 
     # Set up CFN round state
@@ -355,7 +357,7 @@ async def _fan_out_cfn_messages(
 
 async def _cfn_decide_round(room_name: str) -> None:
     """Called when all expected agents have replied. Calls CFN decide and processes response."""
-    from app.services.cfn_negotiation import decide_negotiation
+    from app.services.cfn_negotiation import CfnNegotiationError, decide_negotiation
 
     state = _cfn_state.get(room_name)
     if not state:
@@ -379,18 +381,18 @@ async def _cfn_decide_round(room_name: str) -> None:
         else:
             agent_replies.append(reply_data)
 
-    result = await decide_negotiation(
-        session_id=state.session_id,
-        agent_replies=agent_replies,
-        workspace_id=state.workspace_id,
-        mas_id=state.mas_id,
-    )
-
-    if not result:
-        logger.error(
-            "CFN decide returned empty result for %s — posting failed consensus", room_name
+    try:
+        result = await decide_negotiation(
+            session_id=state.session_id,
+            agent_replies=agent_replies,
+            workspace_id=state.workspace_id,
+            mas_id=state.mas_id,
         )
-        await _finish_cfn(room_name, plan="CFN decide failed", assignments={}, broken=True)
+    except CfnNegotiationError as exc:
+        logger.error("CFN decide_negotiation failed for %s: %s", room_name, exc)
+        await _finish_cfn(
+            room_name, plan=f"CFN decide failed — {exc}", assignments={}, broken=True
+        )
         return
 
     result = _normalize_cfn_decide_response(result)
