@@ -1,12 +1,15 @@
 #!/bin/bash
 # mycelium-session-start.sh
 # Claude Code hook: fires on session start.
-# Registers the session with the backend and syncs room files.
+# Pulls latest room files from the backend and initializes the tool-activity
+# batch file for this session.
+#
+# Note: this hook does not call /rooms/{room}/sessions to explicitly register
+# the session. Agents register themselves by running `mycelium session join`
+# when they want to participate in structured negotiation — the hook just
+# prepares the local filesystem so the agent starts with fresh context.
 
 set -euo pipefail
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-API_SCRIPT="${SCRIPT_DIR}/../scripts/mycelium-api.sh"
 
 # ---------------------------------------------------------------------------
 # Config resolution: env vars > ~/.mycelium/config.toml > defaults
@@ -35,23 +38,6 @@ SESSION_ID="${CLAUDE_CODE_SESSION_ID:-$(uuidgen 2>/dev/null || cat /proc/sys/ker
 export MYCELIUM_SESSION_ID="$SESSION_ID"
 
 TIMESTAMP="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-
-# ---------------------------------------------------------------------------
-# Register session start with the mycelium backend
-# ---------------------------------------------------------------------------
-if [[ -n "$MYCELIUM_ROOM" ]]; then
-    BODY=$(cat <<ENDJSON
-{
-    "session_id": "${SESSION_ID}",
-    "agent_handle": "${MYCELIUM_AGENT_HANDLE}",
-    "event": "session_start",
-    "timestamp": "${TIMESTAMP}",
-    "room": "${MYCELIUM_ROOM}"
-}
-ENDJSON
-)
-    "$API_SCRIPT" POST "sessions/${SESSION_ID}/start" "$BODY" 2>/dev/null || true
-fi
 
 # ---------------------------------------------------------------------------
 # Sync room files from backend (pull latest before starting work)
