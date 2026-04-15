@@ -6,10 +6,7 @@ from typing import Any, TypeVar
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
-T = TypeVar(
-    "T",
-    bound="SpawnSessionRoomsRoomNameSessionsSpawnPostResponseSpawnSessionRoomsRoomNameSessionsSpawnPost",
-)
+T = TypeVar("T", bound="SpawnSessionRoomsRoomNameSessionsSpawnPostResponseSpawnSessionRoomsRoomNameSessionsSpawnPost")
 
 
 @_attrs_define
@@ -19,7 +16,6 @@ class SpawnSessionRoomsRoomNameSessionsSpawnPostResponseSpawnSessionRoomsRoomNam
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
 
@@ -28,10 +24,14 @@ class SpawnSessionRoomsRoomNameSessionsSpawnPostResponseSpawnSessionRoomsRoomNam
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        spawn_session_rooms_room_name_sessions_spawn_post_response_spawn_session_rooms_room_name_sessions_spawn_post = cls()
+        spawn_session_rooms_room_name_sessions_spawn_post_response_spawn_session_rooms_room_name_sessions_spawn_post = (
+            cls()
+        )
 
         spawn_session_rooms_room_name_sessions_spawn_post_response_spawn_session_rooms_room_name_sessions_spawn_post.additional_properties = d
-        return spawn_session_rooms_room_name_sessions_spawn_post_response_spawn_session_rooms_room_name_sessions_spawn_post
+        return (
+            spawn_session_rooms_room_name_sessions_spawn_post_response_spawn_session_rooms_room_name_sessions_spawn_post
+        )
 
     @property
     def additional_keys(self) -> list[str]:

@@ -14,7 +14,6 @@ def _get_kwargs(
     handle: str,
     key: str,
 ) -> dict[str, Any]:
-
     _kwargs: dict[str, Any] = {
         "method": "delete",
         "url": "/notebook/{handle}/memory/{key}".format(
@@ -63,7 +62,9 @@ def sync_detailed(
 ) -> Response[Any | HTTPValidationError]:
     """Delete Notebook Memory
 
-     Delete a notebook memory. Removes both file and DB index.
+     Delete a notebook memory. Removes file and DB index.
+
+    Either the file or the DB entry (or both) must exist — 404 only if neither is found.
 
     Args:
         handle (str):
@@ -97,7 +98,9 @@ def sync(
 ) -> Any | HTTPValidationError | None:
     """Delete Notebook Memory
 
-     Delete a notebook memory. Removes both file and DB index.
+     Delete a notebook memory. Removes file and DB index.
+
+    Either the file or the DB entry (or both) must exist — 404 only if neither is found.
 
     Args:
         handle (str):
@@ -126,7 +129,9 @@ async def asyncio_detailed(
 ) -> Response[Any | HTTPValidationError]:
     """Delete Notebook Memory
 
-     Delete a notebook memory. Removes both file and DB index.
+     Delete a notebook memory. Removes file and DB index.
+
+    Either the file or the DB entry (or both) must exist — 404 only if neither is found.
 
     Args:
         handle (str):
@@ -158,7 +163,9 @@ async def asyncio(
 ) -> Any | HTTPValidationError | None:
     """Delete Notebook Memory
 
-     Delete a notebook memory. Removes both file and DB index.
+     Delete a notebook memory. Removes file and DB index.
+
+    Either the file or the DB entry (or both) must exist — 404 only if neither is found.
 
     Args:
         handle (str):

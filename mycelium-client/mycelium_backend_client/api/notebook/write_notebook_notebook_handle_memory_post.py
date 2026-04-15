@@ -79,8 +79,6 @@ def sync_detailed(
 
      Write memories to an agent's private notebook.
 
-    Writes markdown files to .mycelium/notebooks/{handle}/ and indexes in DB.
-
     Args:
         handle (str):
         body (MemoryBatchCreate):
@@ -115,8 +113,6 @@ def sync(
 
      Write memories to an agent's private notebook.
 
-    Writes markdown files to .mycelium/notebooks/{handle}/ and indexes in DB.
-
     Args:
         handle (str):
         body (MemoryBatchCreate):
@@ -145,8 +141,6 @@ async def asyncio_detailed(
     """Write Notebook
 
      Write memories to an agent's private notebook.
-
-    Writes markdown files to .mycelium/notebooks/{handle}/ and indexes in DB.
 
     Args:
         handle (str):
@@ -179,8 +173,6 @@ async def asyncio(
     """Write Notebook
 
      Write memories to an agent's private notebook.
-
-    Writes markdown files to .mycelium/notebooks/{handle}/ and indexes in DB.
 
     Args:
         handle (str):
