@@ -50,7 +50,7 @@ function resolveSessionsIndexPath(agentId) {
  * Returns null when anything needed is missing — callers treat null as
  * "skip this fire silently."
  */
-function resolveAgentSession(event) {
+export function resolveAgentSession(event) {
   const ctx = event.context ?? {};
   if (ctx.agentId && ctx.sessionId) {
     return { agentId: ctx.agentId, sessionId: ctx.sessionId };
@@ -202,15 +202,22 @@ function finalizeTurn(turn) {
 
 // ── Session metadata ──────────────────────────────────────────────────────────
 
-function resolveSessionMeta(event, entries) {
+/**
+ * Build session metadata for the payload. Prefers the caller-supplied
+ * ``resolved`` (which has the sessionKey fallback for channel-dispatched
+ * turns) over ``event.context``; the hook otherwise loses agent attribution
+ * on every turn the agent didn't dispatch from its own CLI session.
+ */
+export function resolveSessionMeta(event, entries, resolved) {
   const ctx = event.context ?? {};
-  const agentId = ctx.agentId ?? null;
-  const sessionId = ctx.sessionId ?? null;
-  const sessionKey = event.sessionKey ?? null;
+  const agentId = resolved?.agentId ?? ctx.agentId ?? null;
+  const sessionId = resolved?.sessionId ?? ctx.sessionId ?? null;
+  const sessionKey = event.sessionKey ?? ctx.sessionKey ?? null;
 
-  const channelFromKey = sessionKey
-    ? sessionKey.replace(`agent:${agentId}:`, "").split(":")[0]
-    : null;
+  const channelFromKey =
+    sessionKey && agentId
+      ? sessionKey.replace(`agent:${agentId}:`, "").split(":")[0]
+      : null;
 
   const sessionEntry = entries.find((e) => e.type === "session");
   const cwd = sessionEntry?.cwd ?? null;
@@ -305,16 +312,33 @@ function buildPayload(sessionMeta, turns, entries, maxToolContentBytes) {
 
 // ── Mycelium knowledge ingest ─────────────────────────────────────────────────
 
-async function ingestToMycelium(payload) {
-  const { apiUrl, workspaceId, masId, agentId } = getIngestTarget();
-  if (!apiUrl || !workspaceId || !masId) return false;
-
-  return postKnowledgeIngest(apiUrl, {
-    workspace_id: workspaceId,
-    mas_id: masId,
-    agent_id: agentId,
+/**
+ * Build the POST body for /api/knowledge/ingest. Pure function so the
+ * agent_id precedence (resolved > env > null) is trivially testable.
+ *
+ * ``resolvedAgentId`` comes from ``resolveAgentSession`` in the handler,
+ * which parses the agent handle out of the sessionKey for channel-dispatched
+ * turns where ``event.context.agentId`` is absent. Without this fallback,
+ * every ingest from a mycelium-room turn lands under agent ``(none)`` in
+ * ``mycelium cfn stats`` (issue #144).
+ */
+export function buildIngestBody(target, resolvedAgentId, payload) {
+  return {
+    workspace_id: target.workspaceId,
+    mas_id: target.masId,
+    agent_id: resolvedAgentId ?? target.agentId ?? null,
     records: [payload],
-  });
+  };
+}
+
+async function ingestToMycelium(payload, resolvedAgentId) {
+  const target = getIngestTarget();
+  if (!target.apiUrl || !target.workspaceId || !target.masId) return false;
+
+  return postKnowledgeIngest(
+    target.apiUrl,
+    buildIngestBody(target, resolvedAgentId, payload),
+  );
 }
 
 function deltaStatePath(agentId, sessionId) {
@@ -393,7 +417,7 @@ export default async function HookHandler(event) {
   const newTurns = eligible.filter((t) => t.index > lastSentIndex);
   if (newTurns.length === 0) return;
 
-  const meta = resolveSessionMeta(event, entries);
+  const meta = resolveSessionMeta(event, entries, { agentId, sessionId });
   const payload = buildPayload(meta, newTurns, entries, cfg.maxToolContentBytes);
 
   const nextLastIndex = newTurns[newTurns.length - 1].index;
@@ -406,7 +430,7 @@ export default async function HookHandler(event) {
   writeLastSentIndex(agentId, sessionId, nextLastIndex);
   pendingSessions.add(sessionKey);
 
-  ingestToMycelium(payload)
+  ingestToMycelium(payload, agentId)
     .then((ok) => {
       if (!ok) appendLog(LOG_FILE, payload);
     })
