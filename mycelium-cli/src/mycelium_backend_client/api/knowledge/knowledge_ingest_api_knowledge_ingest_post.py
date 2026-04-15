@@ -67,7 +67,22 @@ def sync_detailed(
 ) -> Response[HTTPValidationError | KnowledgeIngestResponse]:
     """Knowledge Ingest
 
-     Ingest openclaw turns: two-stage LLM extraction → AgensGraph storage.
+     Forward openclaw turns to CFN's shared-memories endpoint.
+
+    Enforces user-configured gates before hitting CFN:
+
+    1. ``MYCELIUM_INGEST_ENABLED`` master switch — accept+discard when false.
+    2. ``MYCELIUM_INGEST_MAX_INPUT_TOKENS`` circuit breaker — refuse with
+       HTTP 413 when the estimated input exceeds the threshold.
+    3. Content-hash dedupe cache — short-circuit duplicate payloads within
+       ``MYCELIUM_INGEST_DEDUPE_TTL_SECONDS`` and return the cached
+       ``response_id`` without re-hitting CFN.
+
+    Every outcome is appended to the in-memory ingest log buffer so
+    ``mycelium cfn log`` / ``stats`` can surface cost and success signal.
+    The durable ``KNOWLEDGE_INGESTION`` audit event is still emitted for
+    every accepted attempt (ok, deduped, disabled) — it stays as the
+    tamper-evident record and is unaffected by the in-memory buffer.
 
     Args:
         body (KnowledgeIngestRequest):
@@ -98,7 +113,22 @@ def sync(
 ) -> HTTPValidationError | KnowledgeIngestResponse | None:
     """Knowledge Ingest
 
-     Ingest openclaw turns: two-stage LLM extraction → AgensGraph storage.
+     Forward openclaw turns to CFN's shared-memories endpoint.
+
+    Enforces user-configured gates before hitting CFN:
+
+    1. ``MYCELIUM_INGEST_ENABLED`` master switch — accept+discard when false.
+    2. ``MYCELIUM_INGEST_MAX_INPUT_TOKENS`` circuit breaker — refuse with
+       HTTP 413 when the estimated input exceeds the threshold.
+    3. Content-hash dedupe cache — short-circuit duplicate payloads within
+       ``MYCELIUM_INGEST_DEDUPE_TTL_SECONDS`` and return the cached
+       ``response_id`` without re-hitting CFN.
+
+    Every outcome is appended to the in-memory ingest log buffer so
+    ``mycelium cfn log`` / ``stats`` can surface cost and success signal.
+    The durable ``KNOWLEDGE_INGESTION`` audit event is still emitted for
+    every accepted attempt (ok, deduped, disabled) — it stays as the
+    tamper-evident record and is unaffected by the in-memory buffer.
 
     Args:
         body (KnowledgeIngestRequest):
@@ -124,7 +154,22 @@ async def asyncio_detailed(
 ) -> Response[HTTPValidationError | KnowledgeIngestResponse]:
     """Knowledge Ingest
 
-     Ingest openclaw turns: two-stage LLM extraction → AgensGraph storage.
+     Forward openclaw turns to CFN's shared-memories endpoint.
+
+    Enforces user-configured gates before hitting CFN:
+
+    1. ``MYCELIUM_INGEST_ENABLED`` master switch — accept+discard when false.
+    2. ``MYCELIUM_INGEST_MAX_INPUT_TOKENS`` circuit breaker — refuse with
+       HTTP 413 when the estimated input exceeds the threshold.
+    3. Content-hash dedupe cache — short-circuit duplicate payloads within
+       ``MYCELIUM_INGEST_DEDUPE_TTL_SECONDS`` and return the cached
+       ``response_id`` without re-hitting CFN.
+
+    Every outcome is appended to the in-memory ingest log buffer so
+    ``mycelium cfn log`` / ``stats`` can surface cost and success signal.
+    The durable ``KNOWLEDGE_INGESTION`` audit event is still emitted for
+    every accepted attempt (ok, deduped, disabled) — it stays as the
+    tamper-evident record and is unaffected by the in-memory buffer.
 
     Args:
         body (KnowledgeIngestRequest):
@@ -153,7 +198,22 @@ async def asyncio(
 ) -> HTTPValidationError | KnowledgeIngestResponse | None:
     """Knowledge Ingest
 
-     Ingest openclaw turns: two-stage LLM extraction → AgensGraph storage.
+     Forward openclaw turns to CFN's shared-memories endpoint.
+
+    Enforces user-configured gates before hitting CFN:
+
+    1. ``MYCELIUM_INGEST_ENABLED`` master switch — accept+discard when false.
+    2. ``MYCELIUM_INGEST_MAX_INPUT_TOKENS`` circuit breaker — refuse with
+       HTTP 413 when the estimated input exceeds the threshold.
+    3. Content-hash dedupe cache — short-circuit duplicate payloads within
+       ``MYCELIUM_INGEST_DEDUPE_TTL_SECONDS`` and return the cached
+       ``response_id`` without re-hitting CFN.
+
+    Every outcome is appended to the in-memory ingest log buffer so
+    ``mycelium cfn log`` / ``stats`` can surface cost and success signal.
+    The durable ``KNOWLEDGE_INGESTION`` audit event is still emitted for
+    every accepted attempt (ok, deduped, disabled) — it stays as the
+    tamper-evident record and is unaffected by the in-memory buffer.
 
     Args:
         body (KnowledgeIngestRequest):

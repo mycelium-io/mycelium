@@ -7,7 +7,6 @@ import httpx
 from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.http_validation_error import HTTPValidationError
-from ...models.memory_read import MemoryRead
 from ...types import UNSET, Response, Unset
 
 
@@ -20,7 +19,6 @@ def _get_kwargs(
     limit: int | Unset = 100,
     offset: int | Unset = 0,
 ) -> dict[str, Any]:
-
     params: dict[str, Any] = {}
 
     json_prefix: None | str | Unset
@@ -58,15 +56,9 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> HTTPValidationError | list[MemoryRead] | None:
+) -> Any | HTTPValidationError | None:
     if response.status_code == 200:
-        response_200 = []
-        _response_200 = response.json()
-        for response_200_item_data in _response_200:
-            response_200_item = MemoryRead.from_dict(response_200_item_data)
-
-            response_200.append(response_200_item)
-
+        response_200 = response.json()
         return response_200
 
     if response.status_code == 422:
@@ -82,7 +74,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[HTTPValidationError | list[MemoryRead]]:
+) -> Response[Any | HTTPValidationError]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -100,12 +92,13 @@ def sync_detailed(
     handle: None | str | Unset = UNSET,
     limit: int | Unset = 100,
     offset: int | Unset = 0,
-) -> Response[HTTPValidationError | list[MemoryRead]]:
+) -> Response[Any | HTTPValidationError]:
     """List Memories
 
      List memories in a room.
 
-    Reads from the filesystem as source of truth, falls back to DB index.
+    Reads from the filesystem, falls back to DB index.
+    Supports ETag / If-None-Match for efficient sync — returns 304 if nothing changed.
 
     Args:
         room_name (str):
@@ -120,7 +113,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | list[MemoryRead]]
+        Response[Any | HTTPValidationError]
     """
 
     kwargs = _get_kwargs(
@@ -148,12 +141,13 @@ def sync(
     handle: None | str | Unset = UNSET,
     limit: int | Unset = 100,
     offset: int | Unset = 0,
-) -> HTTPValidationError | list[MemoryRead] | None:
+) -> Any | HTTPValidationError | None:
     """List Memories
 
      List memories in a room.
 
-    Reads from the filesystem as source of truth, falls back to DB index.
+    Reads from the filesystem, falls back to DB index.
+    Supports ETag / If-None-Match for efficient sync — returns 304 if nothing changed.
 
     Args:
         room_name (str):
@@ -168,7 +162,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | list[MemoryRead]
+        Any | HTTPValidationError
     """
 
     return sync_detailed(
@@ -191,12 +185,13 @@ async def asyncio_detailed(
     handle: None | str | Unset = UNSET,
     limit: int | Unset = 100,
     offset: int | Unset = 0,
-) -> Response[HTTPValidationError | list[MemoryRead]]:
+) -> Response[Any | HTTPValidationError]:
     """List Memories
 
      List memories in a room.
 
-    Reads from the filesystem as source of truth, falls back to DB index.
+    Reads from the filesystem, falls back to DB index.
+    Supports ETag / If-None-Match for efficient sync — returns 304 if nothing changed.
 
     Args:
         room_name (str):
@@ -211,7 +206,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | list[MemoryRead]]
+        Response[Any | HTTPValidationError]
     """
 
     kwargs = _get_kwargs(
@@ -237,12 +232,13 @@ async def asyncio(
     handle: None | str | Unset = UNSET,
     limit: int | Unset = 100,
     offset: int | Unset = 0,
-) -> HTTPValidationError | list[MemoryRead] | None:
+) -> Any | HTTPValidationError | None:
     """List Memories
 
      List memories in a room.
 
-    Reads from the filesystem as source of truth, falls back to DB index.
+    Reads from the filesystem, falls back to DB index.
+    Supports ETag / If-None-Match for efficient sync — returns 304 if nothing changed.
 
     Args:
         room_name (str):
@@ -257,7 +253,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | list[MemoryRead]
+        Any | HTTPValidationError
     """
 
     return (

@@ -139,6 +139,66 @@ class RoomConfig(BaseModel):
     )
 
 
+class KnowledgeIngestConfig(BaseModel):
+    """Control surface for the mycelium-knowledge-extract hook → CFN path.
+
+    Every knob in this section is user-facing and exposed via
+    ``mycelium config set knowledge_ingest.<key> <value>``. Values are also
+    overridable via ``MYCELIUM_INGEST_*`` env vars for ephemeral changes.
+    """
+
+    enabled: bool = Field(
+        default=True,
+        description=(
+            "Master kill switch for the knowledge-extract hook. False stops "
+            "the hook on entry (no session reads, no POSTs, no CFN spend) and "
+            "causes the backend to return 200 with a disabled marker."
+        ),
+    )
+    events: list[str] = Field(
+        default_factory=lambda: ["message:sent", "agent:bootstrap"],
+        description=(
+            "OpenClaw event types that fire the knowledge-extract hook. "
+            "'message:sent' fires after the agent's response is delivered "
+            "(one finalized turn available per fire). 'agent:bootstrap' "
+            "fires on session boot for catch-up. Avoid 'command:new' — "
+            "that's the /new slash command (session reset), not a new "
+            "agent turn."
+        ),
+    )
+    max_tool_content_bytes: int = Field(
+        default=4096,
+        description=(
+            "Per-tool-call truncation threshold for tc.input and tc.result in "
+            "the hook payload. 0 disables truncation. The extractor does not "
+            "need full file dumps to pull concepts."
+        ),
+    )
+    skip_in_progress_turn: bool = Field(
+        default=True,
+        description=(
+            "Hook skips the last un-finalized turn to avoid re-sending when "
+            "tool results land after the initial POST. Final session turn is "
+            "only sent when the next turn arrives or the session closes."
+        ),
+    )
+    max_input_tokens: int = Field(
+        default=50_000,
+        description=(
+            "Backend circuit breaker — payloads above this estimated input "
+            "token count are refused with 413. Set to 0 to disable."
+        ),
+    )
+    dedupe_ttl_seconds: int = Field(
+        default=300,
+        description=(
+            "Backend content-hash dedupe window. Identical payloads posted "
+            "within this many seconds return the cached response_id without "
+            "hitting CFN. Set to 0 to disable dedupe entirely."
+        ),
+    )
+
+
 class MyceliumConfig(BaseModel):
     """Complete Mycelium CLI configuration."""
 
@@ -147,6 +207,7 @@ class MyceliumConfig(BaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     rooms: RoomConfig = Field(default_factory=RoomConfig)
+    knowledge_ingest: KnowledgeIngestConfig = Field(default_factory=KnowledgeIngestConfig)
     adapters: dict[str, Any] = Field(
         default_factory=dict,
         description="Registered agent framework adapters (openclaw, cursor, claude-code, …)",
@@ -248,7 +309,13 @@ class MyceliumConfig(BaseModel):
     @classmethod
     def _load_from_env(cls) -> dict[str, Any]:
         """Load configuration overrides from environment variables."""
-        env_config: dict[str, Any] = {"server": {}, "rooms": {}, "llm": {}, "runtime": {}}
+        env_config: dict[str, Any] = {
+            "server": {},
+            "rooms": {},
+            "llm": {},
+            "runtime": {},
+            "knowledge_ingest": {},
+        }
 
         if api_url := os.getenv("MYCELIUM_API_URL"):
             env_config["server"]["api_url"] = api_url
@@ -266,6 +333,30 @@ class MyceliumConfig(BaseModel):
             env_config["llm"]["api_key"] = llm_api_key
         if llm_base_url := os.getenv("LLM_BASE_URL"):
             env_config["llm"]["base_url"] = llm_base_url
+
+        # Knowledge-ingest overrides — ephemeral escape hatches
+        if (v := os.getenv("MYCELIUM_INGEST_ENABLED")) is not None:
+            env_config["knowledge_ingest"]["enabled"] = v.lower() not in (
+                "0",
+                "false",
+                "no",
+                "off",
+            )
+        if (v := os.getenv("MYCELIUM_INGEST_MAX_INPUT_TOKENS")) is not None:
+            try:
+                env_config["knowledge_ingest"]["max_input_tokens"] = int(v)
+            except ValueError:
+                pass
+        if (v := os.getenv("MYCELIUM_INGEST_DEDUPE_TTL_SECONDS")) is not None:
+            try:
+                env_config["knowledge_ingest"]["dedupe_ttl_seconds"] = int(v)
+            except ValueError:
+                pass
+        if (v := os.getenv("MYCELIUM_INGEST_MAX_TOOL_CONTENT_BYTES")) is not None:
+            try:
+                env_config["knowledge_ingest"]["max_tool_content_bytes"] = int(v)
+            except ValueError:
+                pass
 
         return env_config
 
@@ -294,8 +385,15 @@ class MyceliumConfig(BaseModel):
         global_path = self._global_config_path or self.get_global_config_path()
         global_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Global sections: identity, server, llm, runtime, adapters
-        _global_sections = ("identity", "server", "llm", "runtime", "adapters")
+        # Global sections: identity, server, llm, runtime, knowledge_ingest, adapters
+        _global_sections = (
+            "identity",
+            "server",
+            "llm",
+            "runtime",
+            "knowledge_ingest",
+            "adapters",
+        )
 
         if self._project_config_path:
             global_dict = {k: v for k, v in config_dict.items() if k in _global_sections}

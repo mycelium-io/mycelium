@@ -34,6 +34,8 @@ class RoomRead:
         is_persistent (bool | Unset):  Default: False.
         is_namespace (bool | Unset):  Default: False.
         parent_namespace (None | str | Unset):
+        mas_id (None | str | Unset):
+        workspace_id (None | str | Unset):
     """
 
     id: int
@@ -49,6 +51,8 @@ class RoomRead:
     is_persistent: bool | Unset = False
     is_namespace: bool | Unset = False
     parent_namespace: None | str | Unset = UNSET
+    mas_id: None | str | Unset = UNSET
+    workspace_id: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -106,6 +110,18 @@ class RoomRead:
         else:
             parent_namespace = self.parent_namespace
 
+        mas_id: None | str | Unset
+        if isinstance(self.mas_id, Unset):
+            mas_id = UNSET
+        else:
+            mas_id = self.mas_id
+
+        workspace_id: None | str | Unset
+        if isinstance(self.workspace_id, Unset):
+            workspace_id = UNSET
+        else:
+            workspace_id = self.workspace_id
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
@@ -134,6 +150,10 @@ class RoomRead:
             field_dict["is_namespace"] = is_namespace
         if parent_namespace is not UNSET:
             field_dict["parent_namespace"] = parent_namespace
+        if mas_id is not UNSET:
+            field_dict["mas_id"] = mas_id
+        if workspace_id is not UNSET:
+            field_dict["workspace_id"] = workspace_id
 
         return field_dict
 
@@ -227,6 +247,24 @@ class RoomRead:
 
         parent_namespace = _parse_parent_namespace(d.pop("parent_namespace", UNSET))
 
+        def _parse_mas_id(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        mas_id = _parse_mas_id(d.pop("mas_id", UNSET))
+
+        def _parse_workspace_id(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        workspace_id = _parse_workspace_id(d.pop("workspace_id", UNSET))
+
         room_read = cls(
             id=id,
             name=name,
@@ -241,6 +279,8 @@ class RoomRead:
             is_persistent=is_persistent,
             is_namespace=is_namespace,
             parent_namespace=parent_namespace,
+            mas_id=mas_id,
+            workspace_id=workspace_id,
         )
 
         room_read.additional_properties = d

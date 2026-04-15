@@ -38,6 +38,13 @@ async def test_create_audit_event_invalid_audit_type(client: AsyncClient):
     assert "audit_type" in resp.json()["detail"]
 
 
+async def test_create_audit_event_memory_operation_accepted(client: AsyncClient):
+    """MEMORY_OPERATION is a valid audit type and must be accepted."""
+    payload = {**VALID_PAYLOAD, "audit_type": "MEMORY_OPERATION"}
+    resp = await client.post("/api/internal/audit-events", json=payload)
+    assert resp.status_code == 200
+
+
 async def test_list_audit_events_empty(client: AsyncClient):
     resp = await client.get("/api/internal/audit-events")
     assert resp.status_code == 200

@@ -1,17 +1,16 @@
 /**
  * mycelium-knowledge-extract
  *
- * Reads the session JSONL at agent bootstrap time, extracts structured
- * conversation turns, and ships them to the Mycelium knowledge ingest
- * endpoint (POST /api/knowledge/ingest).
+ * Reads the session JSONL and ships structured conversation turns to
+ * mycelium-backend (POST /api/knowledge/ingest), which forwards them to
+ * CFN's shared-memories endpoint. A per-session state file tracks the
+ * last-sent turn index so only new turns travel each time.
  *
- * Only new turns (since the last successful send) are included in each
- * payload. A per-session state file tracks the last sent turn index so
- * that repeated hook firings on command:new do not re-send prior turns.
+ * Configuration lives in ~/.mycelium/config.toml under [knowledge_ingest]
+ * and is read via getIngestConfig() in knowledge-env.js. Every knob is
+ * also overridable via MYCELIUM_INGEST_* env vars for ephemeral changes.
  *
- * Falls back to local log file if Mycelium is not configured.
- *
- * Hook events: agent:bootstrap, command:new
+ * Falls back to a local log file if Mycelium is not configured.
  */
 
 import fs from "fs";
@@ -19,7 +18,7 @@ import fsPromises from "fs/promises";
 import path from "path";
 import os from "os";
 
-import { getIngestTarget } from "./knowledge-env.js";
+import { getIngestConfig, getIngestTarget } from "./knowledge-env.js";
 import { postKnowledgeIngest } from "./knowledge-http.js";
 
 const STATE_DIR = path.join(os.homedir(), ".openclaw");
@@ -36,6 +35,42 @@ function resolveSessionFile(agentId, sessionId) {
     "sessions",
     `${sessionId}.jsonl`,
   );
+}
+
+function resolveSessionsIndexPath(agentId) {
+  return path.join(STATE_DIR, "agents", agentId, "sessions", "sessions.json");
+}
+
+/**
+ * Resolve {agentId, sessionId} from a hook event. agent:bootstrap supplies
+ * both in ctx. message:sent / message:received only carry sessionKey, so
+ * we parse agentId from there and look up the active agent session UUID
+ * in ~/.openclaw/agents/<agentId>/sessions/sessions.json.
+ *
+ * Returns null when anything needed is missing — callers treat null as
+ * "skip this fire silently."
+ */
+function resolveAgentSession(event) {
+  const ctx = event.context ?? {};
+  if (ctx.agentId && ctx.sessionId) {
+    return { agentId: ctx.agentId, sessionId: ctx.sessionId };
+  }
+
+  const sessionKey = event.sessionKey ?? ctx.sessionKey ?? "";
+  const parts = sessionKey.split(":");
+  if (parts[0] !== "agent" || !parts[1]) return null;
+  const agentId = parts[1];
+
+  try {
+    const indexPath = resolveSessionsIndexPath(agentId);
+    const raw = fs.readFileSync(indexPath, "utf-8");
+    const index = JSON.parse(raw);
+    const sessionId = index?.[sessionKey]?.sessionId;
+    if (sessionId) return { agentId, sessionId };
+  } catch {
+    // sessions.json missing or malformed — nothing we can do
+  }
+  return null;
 }
 
 async function readSessionEntries(filePath) {
@@ -185,13 +220,54 @@ function resolveSessionMeta(event, entries) {
 
 // ── Payload ───────────────────────────────────────────────────────────────────
 
-function buildPayload(sessionMeta, turns, entries) {
+/**
+ * Truncate a tool-call input/result to maxBytes UTF-8, replacing the tail
+ * with a count marker. Objects are JSON-serialized before measurement.
+ * maxBytes <= 0 disables truncation.
+ *
+ * The extractor on CFN's side pulls concepts and relationships, not
+ * verbatim text, so losing the tail of a 200KB Read output costs nothing
+ * on extraction quality and a lot on LLM input spend.
+ */
+function truncateToolContent(value, maxBytes) {
+  if (maxBytes <= 0 || value == null) return value;
+  if (typeof value === "string") {
+    const bytes = Buffer.byteLength(value, "utf-8");
+    if (bytes <= maxBytes) return value;
+    return `${value.slice(0, maxBytes)}...[truncated ${bytes - maxBytes} bytes]`;
+  }
+  if (typeof value === "object") {
+    const serialized = JSON.stringify(value);
+    const bytes = Buffer.byteLength(serialized, "utf-8");
+    if (bytes <= maxBytes) return value;
+    return `${serialized.slice(0, maxBytes)}...[truncated ${bytes - maxBytes} bytes of JSON]`;
+  }
+  return value;
+}
+
+function buildPayload(sessionMeta, turns, entries, maxToolContentBytes) {
   const totalCost = turns.reduce(
     (sum, t) => sum + (t.usage?.cost?.total ?? 0),
     0,
   );
 
-  return {
+  let truncatedBytes = 0;
+  const measureAndTruncate = (value) => {
+    if (maxToolContentBytes <= 0) return value;
+    const before = Buffer.byteLength(
+      typeof value === "string" ? value : JSON.stringify(value ?? ""),
+      "utf-8",
+    );
+    const truncated = truncateToolContent(value, maxToolContentBytes);
+    const after = Buffer.byteLength(
+      typeof truncated === "string" ? truncated : JSON.stringify(truncated ?? ""),
+      "utf-8",
+    );
+    if (after < before) truncatedBytes += before - after;
+    return truncated;
+  };
+
+  const payload = {
     schema: "openclaw-conversation-v1",
     extractedAt: new Date().toISOString(),
     session: sessionMeta,
@@ -213,13 +289,18 @@ function buildPayload(sessionMeta, turns, entries) {
       toolCalls: t.toolCalls.map((tc) => ({
         id: tc.id,
         name: tc.name,
-        input: tc.input,
-        result: tc.result,
+        input: measureAndTruncate(tc.input),
+        result: measureAndTruncate(tc.result),
         isError: tc.isError,
       })),
       response: t.response || null,
     })),
   };
+
+  if (truncatedBytes > 0) {
+    payload.stats.truncatedBytes = truncatedBytes;
+  }
+  return payload;
 }
 
 // ── Mycelium knowledge ingest ─────────────────────────────────────────────────
@@ -269,16 +350,29 @@ function appendLog(filePath, data) {
 
 // ── Handler ───────────────────────────────────────────────────────────────────
 
+// Module-level set, shared across all handler invocations in the gateway
+// process. Keyed on `${agentId}:${sessionId}`. A fire that finds its key
+// already present returns immediately — backend dedupe (via content hash)
+// covers any re-sends that slip through a restart.
+const pendingSessions = new Set();
+
 export default async function HookHandler(event) {
-  const isBootstrap = event.type === "agent" && event.action === "bootstrap";
-  const isCommandNew = event.type === "command" && event.action === "new";
+  const cfg = getIngestConfig();
 
-  if (!isBootstrap && !isCommandNew) return;
+  // Master kill switch — zero I/O when disabled.
+  if (!cfg.enabled) return;
 
-  const ctx = event.context ?? {};
-  const agentId = ctx.agentId ?? null;
-  const sessionId = ctx.sessionId ?? null;
-  if (!agentId || !sessionId) return;
+  // Event allowlist — config-driven so users can drop agent:bootstrap
+  // without a code change if they still see restart amplification.
+  const eventKey = `${event.type}:${event.action}`;
+  if (!cfg.events.includes(eventKey)) return;
+
+  const resolved = resolveAgentSession(event);
+  if (!resolved) return;
+  const { agentId, sessionId } = resolved;
+
+  const sessionKey = `${agentId}:${sessionId}`;
+  if (pendingSessions.has(sessionKey)) return;
 
   const sessionFile = resolveSessionFile(agentId, sessionId);
   const entries = await readSessionEntries(sessionFile);
@@ -287,28 +381,42 @@ export default async function HookHandler(event) {
   const allTurns = extractTurns(entries);
   if (allTurns.length === 0) return;
 
-  // Only send turns that haven't been sent yet
+  // skip_in_progress_turn only applies to catch-up fires (agent:bootstrap)
+  // where the agent may genuinely be mid-turn. For message:sent the last
+  // turn is the one that just finalized — slicing it off would silently
+  // drop the only thing we came here to extract.
+  const shouldSkipInProgress =
+    cfg.skipInProgressTurn && eventKey === "agent:bootstrap";
+  const eligible = shouldSkipInProgress ? allTurns.slice(0, -1) : allTurns;
+
   const lastSentIndex = readLastSentIndex(agentId, sessionId);
-  const newTurns = allTurns.filter((t) => t.index > lastSentIndex);
+  const newTurns = eligible.filter((t) => t.index > lastSentIndex);
   if (newTurns.length === 0) return;
 
   const meta = resolveSessionMeta(event, entries);
-  const payload = buildPayload(meta, newTurns, entries);
+  const payload = buildPayload(meta, newTurns, entries, cfg.maxToolContentBytes);
 
   const nextLastIndex = newTurns[newTurns.length - 1].index;
 
-  // Fire-and-forget — don't block the hook response on LLM extraction
+  // Optimistic write: advance the baseline BEFORE the POST so concurrent
+  // fires compute their diff against the correct state. Trade-off is
+  // at-least-once semantics on POST failure — the backend dedupe cache
+  // absorbs any duplicates, and a failed POST drops those turns from the
+  // CFN graph but preserves audit_events (the durable record).
+  writeLastSentIndex(agentId, sessionId, nextLastIndex);
+  pendingSessions.add(sessionKey);
+
   ingestToMycelium(payload)
     .then((ok) => {
-      if (ok) {
-        writeLastSentIndex(agentId, sessionId, nextLastIndex);
-      } else {
-        appendLog(LOG_FILE, payload);
-        writeLastSentIndex(agentId, sessionId, nextLastIndex);
-      }
+      if (!ok) appendLog(LOG_FILE, payload);
     })
-    .catch(() => {
-      appendLog(LOG_FILE, payload);
-      writeLastSentIndex(agentId, sessionId, nextLastIndex);
+    .catch((err) => {
+      appendLog(LOG_FILE, {
+        error: err?.message ?? String(err),
+        payload,
+      });
+    })
+    .finally(() => {
+      pendingSessions.delete(sessionKey);
     });
 }

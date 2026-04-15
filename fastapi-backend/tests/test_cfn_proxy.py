@@ -1,7 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Julia Valenti
 
-"""Tests for CFN proxy endpoints."""
+"""Tests for the per-agent memory-operations CFN proxy.
+
+CFN shared-memories read-surface tests live in test_cfn_read_surface.py.
+"""
 
 from uuid import uuid4
 
@@ -18,9 +21,6 @@ _FAKE_WS_ID = "00000000-0000-0000-0000-000000000001"
 _FAKE_MAS_ID = "00000000-0000-0000-0000-000000000002"
 
 
-# ── helpers ───────────────────────────────────────────────────────────────────
-
-
 async def _create_agent(
     db: AsyncSession,
     mem_url: str = "http://mem-provider",
@@ -30,58 +30,6 @@ async def _create_agent(
     await db.commit()
     await db.refresh(agent)
     return agent
-
-
-# ── shared-memories upsert ────────────────────────────────────────────────────
-# shared-memories now calls the local knowledge graph service (no upstream HTTP)
-
-
-async def test_upsert_shared_memories_success(client: AsyncClient):
-    """Empty concepts/relations store succeeds — graph is created, nothing written."""
-    resp = await client.post(
-        "/api/workspaces/00000000-0000-0000-0000-000000000001/multi-agentic-systems/00000000-0000-0000-0000-000000000002/shared-memories",
-        json={"records": {"concepts": [], "relations": []}},
-    )
-    # The AgensGraph engine is not available in tests (no live DB), so the service
-    # returns FAILURE; we just care that the endpoint parses the request and routes it
-    # without crashing (any 2xx or 5xx is fine — not 422 validation error)
-    assert resp.status_code in (201, 500)
-
-
-async def test_upsert_shared_memories_validation_error(client: AsyncClient):
-    """Missing mas_id/wksp_id (not injected) — 400."""
-    # Sending body with explicit empty mas_id and wksp_id overrides the URL injection
-    resp = await client.post(
-        "/api/workspaces/00000000-0000-0000-0000-000000000001/multi-agentic-systems/00000000-0000-0000-0000-000000000002/shared-memories",
-        json={"mas_id": "", "wksp_id": ""},
-    )
-    assert resp.status_code == 400
-
-
-# ── shared-memories query ─────────────────────────────────────────────────────
-
-
-async def test_fetch_shared_memories_invalid_query_type(client: AsyncClient):
-    """Invalid query_type → 400 from Pydantic validation."""
-    resp = await client.post(
-        "/api/workspaces/00000000-0000-0000-0000-000000000001/multi-agentic-systems/00000000-0000-0000-0000-000000000002/shared-memories/query",
-        # path query requires 2 concepts; sending 3 triggers the validator
-        json={
-            "records": {"concepts": [{"id": "a"}]},
-            "query_criteria": {"query_type": "path"},
-        },
-    )
-    assert resp.status_code == 400
-
-
-async def test_fetch_shared_memories_routes_to_local_service(client: AsyncClient):
-    """Valid query request is parsed and routed to local service (no HTTP proxy)."""
-    resp = await client.post(
-        "/api/workspaces/00000000-0000-0000-0000-000000000001/multi-agentic-systems/00000000-0000-0000-0000-000000000002/shared-memories/query",
-        json={"records": {"concepts": [{"id": "a"}]}},
-    )
-    # AgensGraph not available in tests → NOT_FOUND or FAILURE, but not 422
-    assert resp.status_code in (200, 404, 500)
 
 
 # ── memory-operations proxy ───────────────────────────────────────────────────

@@ -22,6 +22,7 @@ class SessionRead:
         room_name (str):
         agent_handle (str):
         joined_at (datetime.datetime):
+        intent (None | str | Unset):
         last_seen (datetime.datetime | None | Unset):
     """
 
@@ -29,6 +30,7 @@ class SessionRead:
     room_name: str
     agent_handle: str
     joined_at: datetime.datetime
+    intent: None | str | Unset = UNSET
     last_seen: datetime.datetime | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -40,6 +42,12 @@ class SessionRead:
         agent_handle = self.agent_handle
 
         joined_at = self.joined_at.isoformat()
+
+        intent: None | str | Unset
+        if isinstance(self.intent, Unset):
+            intent = UNSET
+        else:
+            intent = self.intent
 
         last_seen: None | str | Unset
         if isinstance(self.last_seen, Unset):
@@ -59,6 +67,8 @@ class SessionRead:
                 "joined_at": joined_at,
             }
         )
+        if intent is not UNSET:
+            field_dict["intent"] = intent
         if last_seen is not UNSET:
             field_dict["last_seen"] = last_seen
 
@@ -74,6 +84,15 @@ class SessionRead:
         agent_handle = d.pop("agent_handle")
 
         joined_at = isoparse(d.pop("joined_at"))
+
+        def _parse_intent(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        intent = _parse_intent(d.pop("intent", UNSET))
 
         def _parse_last_seen(data: object) -> datetime.datetime | None | Unset:
             if data is None:
@@ -97,6 +116,7 @@ class SessionRead:
             room_name=room_name,
             agent_handle=agent_handle,
             joined_at=joined_at,
+            intent=intent,
             last_seen=last_seen,
         )
 

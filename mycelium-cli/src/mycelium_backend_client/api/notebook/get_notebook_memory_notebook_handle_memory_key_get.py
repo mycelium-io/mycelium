@@ -15,7 +15,6 @@ def _get_kwargs(
     handle: str,
     key: str,
 ) -> dict[str, Any]:
-
     _kwargs: dict[str, Any] = {
         "method": "get",
         "url": "/notebook/{handle}/memory/{key}".format(

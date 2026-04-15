@@ -10,7 +10,7 @@ dependencies = [
     "httpx>=0.28.1",
     "python-multipart>=0.0.9",
     "anthropic>=0.40.0",
-    "litellm==1.83.4",  # 1.82.7 and 1.82.8 are compromised (supply chain attack)
+    "litellm==1.83.4", # 1.82.7 and 1.82.8 are compromised (supply chain attack)
     "greenlet>=3.0",
     "agensgraph-python==1.0.2",
     "psycopg2-binary>=2.9.11",
@@ -19,6 +19,7 @@ dependencies = [
     "fastembed>=0.8.0",
     "pip-system-certs>=5.3",
     "watchdog>=6.0.0",
+    "tiktoken>=0.12.0",
 ]
 
 [dependency-groups]

@@ -23,12 +23,16 @@ class RoomCreate:
         description (None | str | Unset):
         is_public (bool | Unset):  Default: True.
         trigger_config (None | RoomCreateTriggerConfigType0 | Unset):
+        mas_id (None | str | Unset):
+        workspace_id (None | str | Unset):
     """
 
     name: str
     description: None | str | Unset = UNSET
     is_public: bool | Unset = True
     trigger_config: None | RoomCreateTriggerConfigType0 | Unset = UNSET
+    mas_id: None | str | Unset = UNSET
+    workspace_id: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -52,6 +56,18 @@ class RoomCreate:
         else:
             trigger_config = self.trigger_config
 
+        mas_id: None | str | Unset
+        if isinstance(self.mas_id, Unset):
+            mas_id = UNSET
+        else:
+            mas_id = self.mas_id
+
+        workspace_id: None | str | Unset
+        if isinstance(self.workspace_id, Unset):
+            workspace_id = UNSET
+        else:
+            workspace_id = self.workspace_id
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
@@ -65,6 +81,10 @@ class RoomCreate:
             field_dict["is_public"] = is_public
         if trigger_config is not UNSET:
             field_dict["trigger_config"] = trigger_config
+        if mas_id is not UNSET:
+            field_dict["mas_id"] = mas_id
+        if workspace_id is not UNSET:
+            field_dict["workspace_id"] = workspace_id
 
         return field_dict
 
@@ -103,11 +123,31 @@ class RoomCreate:
 
         trigger_config = _parse_trigger_config(d.pop("trigger_config", UNSET))
 
+        def _parse_mas_id(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        mas_id = _parse_mas_id(d.pop("mas_id", UNSET))
+
+        def _parse_workspace_id(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        workspace_id = _parse_workspace_id(d.pop("workspace_id", UNSET))
+
         room_create = cls(
             name=name,
             description=description,
             is_public=is_public,
             trigger_config=trigger_config,
+            mas_id=mas_id,
+            workspace_id=workspace_id,
         )
 
         room_create.additional_properties = d
