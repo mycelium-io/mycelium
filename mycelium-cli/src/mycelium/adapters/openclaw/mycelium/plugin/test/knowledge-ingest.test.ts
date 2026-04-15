@@ -5,12 +5,12 @@
  * Tests for the in-process knowledge ingest plugin shim (src/knowledge/ingest.ts).
  *
  * Regression coverage for issue #144: the plugin previously read the agent_id
- * via `getAgentId()`, which only returns `process.env.MYCELIUM_AGENT_ID`. For
- * channel-dispatched turns (where the gateway process owns the env and the
- * agentId lives on the OpenClaw context instead), the env var is empty, so
- * every ingest POST went out with `agent_id: undefined` and landed under
- * `(none)` in `mycelium cfn stats`. The fix prefers `ctx.agentId` and only
- * falls back to the env var.
+ * from a module that only inspects the gateway process environment. For
+ * channel-dispatched turns (where the gateway owns that environment and the
+ * real agentId lives on the OpenClaw context instead), the env-only lookup
+ * returned empty, so every ingest POST went out with `agent_id: undefined`
+ * and landed under `(none)` in `mycelium cfn stats`. The fix prefers
+ * `ctx.agentId` and only falls back to the env-based helper.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
