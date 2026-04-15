@@ -7,11 +7,12 @@ Doctor command — diagnose and fix common Mycelium configuration issues.
 Checks:
   1. Config files exist (~/.mycelium/.env, config.toml)
   2. LLM configuration (model + API key set)
-  3. Docker containers running and healthy
-  4. Backend API reachable
-  5. Workspace ID in sync (CFN mgmt plane vs .env vs config.toml)
-  6. .env ↔ config.toml drift (api_url / port)
-  7. Room MAS IDs present (CFN-enabled installs)
+  3. LLM connectivity (real completion probe via backend)
+  4. Docker containers running and healthy
+  5. Backend API reachable
+  6. Workspace ID in sync (CFN mgmt plane vs .env vs config.toml)
+  7. .env ↔ config.toml drift (api_url / port)
+  8. Room MAS IDs present (CFN-enabled installs)
 """
 
 import subprocess
@@ -128,6 +129,147 @@ def _check_llm_config() -> CheckResult:
         name="LLM configuration",
         status="ok",
         message=f"{model} {key_hint}",
+    )
+
+
+def _check_llm_connectivity() -> CheckResult:
+    """Probe the backend's LLM with a real ``litellm.completion(max_tokens=1)`` call.
+
+    Exercises the same code path as inference and surfaces problems that only
+    show up at first use — missing provider SDK extras (e.g. boto3 for Bedrock),
+    bad model strings, and auth failures at the actual endpoint (not just the
+    free model-list endpoint).
+
+    Runs via ``GET /health?check_llm=true&llm_probe=completion`` so the probe
+    executes inside the backend container, which is where LLM calls will
+    actually run in production.
+    """
+    # Skip entirely if the LLM isn't configured at all — _check_llm_config
+    # already reported that and running the probe would be redundant noise.
+    env_path = Path.home() / ".mycelium" / ".env"
+    if env_path.exists():
+        from dotenv import dotenv_values
+
+        vals = dotenv_values(env_path)
+        if not vals.get("LLM_MODEL"):
+            return CheckResult(
+                name="LLM connectivity",
+                status="ok",
+                message="Skipped (LLM_MODEL not set)",
+            )
+
+    from mycelium.config import MyceliumConfig
+
+    try:
+        config = MyceliumConfig.load()
+        api_url = config.server.api_url
+    except Exception:
+        return CheckResult(
+            name="LLM connectivity",
+            status="warning",
+            message="Skipped (cannot load config)",
+        )
+
+    try:
+        import httpx
+
+        resp = httpx.get(
+            f"{api_url}/health",
+            params={"check_llm": "true", "llm_probe": "completion"},
+            timeout=30,
+        )
+    except Exception as exc:
+        return CheckResult(
+            name="LLM connectivity",
+            status="warning",
+            message="Skipped (backend unreachable)",
+            details=[str(exc), "Start the backend: mycelium up"],
+        )
+
+    if resp.status_code >= 500:
+        return CheckResult(
+            name="LLM connectivity",
+            status="warning",
+            message=f"Backend /health returned HTTP {resp.status_code}",
+        )
+
+    try:
+        llm = resp.json().get("llm", {}) or {}
+    except Exception:
+        return CheckResult(
+            name="LLM connectivity",
+            status="warning",
+            message="Backend returned non-JSON response",
+        )
+
+    status = llm.get("status", "unknown")
+    model = llm.get("model", "") or "<unset>"
+    message = llm.get("message", "") or ""
+    remediation = llm.get("remediation") or ""
+
+    details: list[str] = []
+    if message:
+        details.append(message)
+    if remediation:
+        details.append(f"fix: {remediation}")
+
+    # Map backend status → doctor status.  Missing provider SDKs and bad model
+    # strings are hard failures; auth + network are warnings (transient or
+    # user-fixable without a reinstall).
+    if status == "ok":
+        return CheckResult(
+            name="LLM connectivity",
+            status="ok",
+            message=f"{model} — completion probe succeeded",
+        )
+    if status == "not_configured":
+        return CheckResult(
+            name="LLM connectivity",
+            status="warning",
+            message="Not configured",
+            details=["Run: mycelium install --force"],
+        )
+    if status == "missing_extras":
+        return CheckResult(
+            name="LLM connectivity",
+            status="error",
+            message=f"{model} — missing provider SDK in backend",
+            details=details,
+        )
+    if status == "bad_model":
+        return CheckResult(
+            name="LLM connectivity",
+            status="error",
+            message=f"{model} — invalid model string",
+            details=details,
+        )
+    if status == "auth_error":
+        return CheckResult(
+            name="LLM connectivity",
+            status="warning",
+            message=f"{model} — authentication failed",
+            details=details,
+        )
+    if status == "unreachable":
+        return CheckResult(
+            name="LLM connectivity",
+            status="warning",
+            message=f"{model} — provider unreachable",
+            details=details,
+        )
+    if status == "unchecked":
+        return CheckResult(
+            name="LLM connectivity",
+            status="ok",
+            message=f"{model} — probe unsupported for this provider",
+            details=details,
+        )
+    # error | unknown
+    return CheckResult(
+        name="LLM connectivity",
+        status="error",
+        message=f"{model} — {status}",
+        details=details,
     )
 
 
@@ -809,12 +951,15 @@ def doctor(
 
         typer.secho("\n  Mycelium Doctor\n", bold=True)
 
-        # Run all checks
+        # Run all checks.  LLM connectivity runs AFTER the backend-reachable
+        # check because it reuses the same /health endpoint — no point probing
+        # LLM if the backend is down.
         results = [
             _check_config_files(),
             _check_llm_config(),
             _check_docker_containers(),
             _check_backend_reachable(),
+            _check_llm_connectivity(),
             _check_workspace_id(),
             _check_config_drift(),
             _check_room_mas_ids(),

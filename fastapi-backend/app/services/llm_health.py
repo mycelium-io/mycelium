@@ -34,12 +34,15 @@ _CACHE_TTL_SECONDS = 60
 
 @dataclass
 class LLMHealthResult:
-    status: str  # ok | auth_error | unreachable | not_configured | unchecked
+    # ok | auth_error | unreachable | not_configured | unchecked
+    # | missing_extras | bad_model | error
+    status: str
     model: str
     configured: bool
     key_hint: str | None
     key_required: bool
     message: str
+    remediation: str | None = None
     checked_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     def to_dict(self) -> dict:
@@ -50,6 +53,7 @@ class LLMHealthResult:
             "key_hint": self.key_hint,
             "key_required": self.key_required,
             "message": self.message,
+            "remediation": self.remediation,
             "checked_at": self.checked_at,
         }
 
@@ -311,6 +315,215 @@ async def _probe_ollama(**base) -> LLMHealthResult:
 
 def invalidate_cache() -> None:
     """Clear the probe cache (useful after config changes)."""
-    global _cached_result, _cached_at
+    global _cached_result, _cached_at, _cached_completion, _cached_completion_at
     _cached_result = None
     _cached_at = 0.0
+    _cached_completion = None
+    _cached_completion_at = 0.0
+
+
+# ── Completion probe ─────────────────────────────────────────────────────────
+#
+# probe_provider() uses provider-specific model-list endpoints (free, zero-token)
+# but only knows about openai/anthropic/ollama/openai-compatible proxies. It
+# reports "unchecked" for everything else — which means a user with a broken
+# Bedrock or Vertex config sees a green tick until their first real inference.
+#
+# probe_completion() actually calls litellm.acompletion(max_tokens=1) so it
+# exercises the real code path and surfaces problems that only show up on the
+# first inference: missing provider SDKs (boto3 for Bedrock, google-cloud-aiplatform
+# for Vertex, etc.), bad model strings, and auth errors at the true endpoint.
+
+
+# Map the provider prefix used in litellm model strings to the package the user
+# needs to install.  Used only for remediation hints when we detect a missing SDK.
+_PROVIDER_EXTRAS: dict[str, str] = {
+    "bedrock": "boto3",
+    "sagemaker": "boto3",
+    "vertex_ai": "google-cloud-aiplatform",
+    "vertex": "google-cloud-aiplatform",
+    "gemini": "google-generativeai",
+    "azure": "openai",
+    "cohere": "cohere",
+    "watsonx": "ibm-watsonx-ai",
+}
+
+
+_cached_completion: LLMHealthResult | None = None
+_cached_completion_at: float = 0.0
+
+
+def _missing_sdk_remediation(provider: str, raw_message: str) -> str:
+    """Build an actionable install hint for a missing provider SDK."""
+    pkg = _PROVIDER_EXTRAS.get(provider)
+    if pkg:
+        return f"Install the provider SDK in the backend container: pip install {pkg}"
+    # Fall back to surfacing the underlying import error — litellm often embeds
+    # the correct pip command in its own message.
+    return f"Install the provider SDK: {raw_message}"
+
+
+async def probe_completion() -> LLMHealthResult:
+    """Level C: real completion probe via ``litellm.acompletion(max_tokens=1)``.
+
+    Surfaces three failure modes that ``probe_provider()`` cannot:
+
+    1. Missing provider SDK extras (e.g. boto3 for Bedrock) — reported as
+       ``missing_extras`` with an actionable ``pip install`` hint.
+    2. Bad model strings — reported as ``bad_model``.
+    3. Auth failures at the actual inference endpoint (not just the model-list
+       endpoint) — reported as ``auth_error``.
+
+    Cached for 60s to avoid hammering the provider on repeated doctor runs.
+    """
+    global _cached_completion, _cached_completion_at
+
+    now = time.monotonic()
+    if _cached_completion is not None and (now - _cached_completion_at) < _CACHE_TTL_SECONDS:
+        return _cached_completion
+
+    config_result = get_config_status()
+    if config_result.status == "not_configured":
+        _cached_completion = config_result
+        _cached_completion_at = now
+        return config_result
+
+    provider = _detect_provider()
+    model = settings.LLM_MODEL
+
+    base = {
+        "model": model,
+        "configured": True,
+        "key_hint": config_result.key_hint,
+        "key_required": config_result.key_required,
+    }
+
+    # Lazy import: litellm is a heavy dep, only pull it in when we actually probe.
+    try:
+        import litellm
+    except ImportError as exc:
+        result = LLMHealthResult(
+            status="error",
+            message=f"litellm not available in backend: {exc}",
+            remediation="Reinstall backend dependencies: uv sync",
+            **base,
+        )
+        _cached_completion = result
+        _cached_completion_at = now
+        return result
+
+    kwargs: dict = {
+        "model": model,
+        "messages": [{"role": "user", "content": "ping"}],
+        "max_tokens": 1,
+        "temperature": 0,
+        "timeout": _PROBE_TIMEOUT,
+    }
+    if settings.LLM_API_KEY:
+        kwargs["api_key"] = settings.LLM_API_KEY
+    if settings.LLM_BASE_URL:
+        kwargs["base_url"] = settings.LLM_BASE_URL
+
+    try:
+        await litellm.acompletion(**kwargs)
+        result = LLMHealthResult(
+            status="ok",
+            message="Completion probe succeeded",
+            **base,
+        )
+    except ModuleNotFoundError as exc:
+        # Missing provider SDK extras (boto3, google-cloud-aiplatform, ...).
+        result = LLMHealthResult(
+            status="missing_extras",
+            message=f"Missing provider SDK for {provider}: {exc}",
+            remediation=_missing_sdk_remediation(provider, str(exc)),
+            **base,
+        )
+    except ImportError as exc:
+        # litellm raises plain ImportError for some provider deps (e.g. bedrock
+        # when boto3 is missing from its runtime). Treat the same as ModuleNotFoundError.
+        result = LLMHealthResult(
+            status="missing_extras",
+            message=f"Missing provider SDK for {provider}: {exc}",
+            remediation=_missing_sdk_remediation(provider, str(exc)),
+            **base,
+        )
+    except Exception as exc:
+        result = _classify_litellm_error(litellm, exc, provider, base)
+
+    _cached_completion = result
+    _cached_completion_at = now
+    return result
+
+
+def _classify_litellm_error(
+    litellm_module,
+    exc: Exception,
+    provider: str,
+    base: dict,
+) -> LLMHealthResult:
+    """Map a litellm exception to an LLMHealthResult status + remediation."""
+    exc_name = type(exc).__name__
+    exc_msg = str(exc)
+
+    # litellm wraps provider SDK ImportErrors inside its own exceptions — the
+    # underlying ModuleNotFoundError is often stringified inside the message.
+    lower = exc_msg.lower()
+    if ("no module named" in lower) or ("install" in lower and "pip install" in lower):
+        return LLMHealthResult(
+            status="missing_extras",
+            message=f"Missing provider SDK for {provider}: {exc_msg}",
+            remediation=_missing_sdk_remediation(provider, exc_msg),
+            **base,
+        )
+
+    # Walk the known litellm exception hierarchy if available.
+    auth_cls = getattr(litellm_module, "AuthenticationError", None)
+    if auth_cls and isinstance(exc, auth_cls):
+        return LLMHealthResult(
+            status="auth_error",
+            message=f"Authentication failed for {provider}: {exc_msg}",
+            remediation="Check LLM_API_KEY in ~/.mycelium/.env",
+            **base,
+        )
+
+    bad_req_cls = getattr(litellm_module, "BadRequestError", None)
+    if bad_req_cls and isinstance(exc, bad_req_cls):
+        return LLMHealthResult(
+            status="bad_model",
+            message=f"Bad request (likely invalid model string): {exc_msg}",
+            remediation=(f"Check LLM_MODEL — expected litellm format like '{provider}/<model-id>'"),
+            **base,
+        )
+
+    not_found_cls = getattr(litellm_module, "NotFoundError", None)
+    if not_found_cls and isinstance(exc, not_found_cls):
+        return LLMHealthResult(
+            status="bad_model",
+            message=f"Model not found: {exc_msg}",
+            remediation="Verify LLM_MODEL exists for this provider",
+            **base,
+        )
+
+    timeout_cls = getattr(litellm_module, "Timeout", None)
+    if timeout_cls and isinstance(exc, timeout_cls):
+        return LLMHealthResult(
+            status="unreachable",
+            message=f"Timeout probing {provider}",
+            remediation="Check network connectivity from the backend container",
+            **base,
+        )
+
+    conn_cls = getattr(litellm_module, "APIConnectionError", None)
+    if conn_cls and isinstance(exc, conn_cls):
+        return LLMHealthResult(
+            status="unreachable",
+            message=f"Cannot connect to {provider}: {exc_msg}",
+            **base,
+        )
+
+    return LLMHealthResult(
+        status="error",
+        message=f"{exc_name}: {exc_msg}",
+        **base,
+    )
