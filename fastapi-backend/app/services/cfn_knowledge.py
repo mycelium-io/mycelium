@@ -96,7 +96,38 @@ async def create_or_update_shared_memories(
     }
     if agent_id:
         body["header"] = {"agent_id": agent_id}
+    return await _cfn_post(url, body)
 
+
+# ── Read surface ─────────────────────────────────────────────────────────────
+#
+# CFN's shared-memories read endpoints. These power the `mycelium cfn query /
+# concepts / neighbors / paths` CLI subcommands. The graph/* endpoints are
+# flagged include_in_schema=False upstream, so their shapes may drift — treat
+# them as best-effort and catch ValidationError on response shape if we ever
+# parse them structurally.
+
+
+async def _cfn_get(url: str) -> dict[str, Any]:
+    try:
+        async with httpx.AsyncClient(timeout=_CFN_HTTP_TIMEOUT) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            return resp.json()
+    except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code
+        snippet = exc.response.text[:300]
+        logger.warning("CFN GET failed | url=%s status=%d body=%r", url, status, snippet)
+        raise CfnKnowledgeError(
+            f"CFN GET {url} returned {status}: {snippet[:200]}",
+            status_code=status,
+        ) from exc
+    except (httpx.TimeoutException, httpx.TransportError) as exc:
+        logger.exception("CFN GET unreachable | url=%s", url)
+        raise CfnKnowledgeError(f"CFN unreachable: {exc}") from exc
+
+
+async def _cfn_post(url: str, body: dict[str, Any]) -> dict[str, Any]:
     try:
         async with httpx.AsyncClient(timeout=_CFN_HTTP_TIMEOUT) as client:
             resp = await client.post(url, json=body)
@@ -105,25 +136,93 @@ async def create_or_update_shared_memories(
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
         snippet = exc.response.text[:300]
-        logger.warning(
-            "CFN shared-memories create/update failed "
-            "| status=%d workspace=%s mas=%s request_id=%s body=%r",
-            status,
-            workspace_id,
-            mas_id,
-            rid,
-            snippet,
-        )
+        logger.warning("CFN POST failed | url=%s status=%d body=%r", url, status, snippet)
         raise CfnKnowledgeError(
-            f"CFN returned {status}: {snippet[:200]}",
+            f"CFN POST {url} returned {status}: {snippet[:200]}",
             status_code=status,
         ) from exc
     except (httpx.TimeoutException, httpx.TransportError) as exc:
-        logger.exception(
-            "CFN shared-memories create/update unreachable "
-            "| workspace=%s mas=%s request_id=%s",
-            workspace_id,
-            mas_id,
-            rid,
-        )
+        logger.exception("CFN POST unreachable | url=%s", url)
         raise CfnKnowledgeError(f"CFN unreachable: {exc}") from exc
+
+
+async def query_shared_memories(
+    *,
+    workspace_id: str,
+    mas_id: str,
+    intent: str,
+    agent_id: str | None = None,
+    search_strategy: str = "semantic_graph_traversal",
+    additional_context: dict[str, Any] | None = None,
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """POST to CFN's ``shared-memories/query`` endpoint.
+
+    Returns CFN's QueryResponse dict: ``{"response_id": str, "message": str}``.
+    Note that ``message`` is a natural-language answer synthesized by CFN's
+    evidence agent, NOT a structured list of records.
+    """
+    url = f"{_mas_base(workspace_id, mas_id)}/shared-memories/query"
+    body: dict[str, Any] = {
+        "request_id": request_id or str(uuid.uuid4()),
+        "intent": intent,
+        "search_strategy": search_strategy,
+    }
+    if agent_id:
+        body["header"] = {"agent_id": agent_id}
+    if additional_context:
+        body["additional_context"] = additional_context
+    return await _cfn_post(url, body)
+
+
+async def get_concepts_by_ids(
+    *,
+    workspace_id: str,
+    mas_id: str,
+    ids: list[str],
+) -> dict[str, Any]:
+    """POST to CFN's ``graph/concepts/by_ids`` endpoint.
+
+    Returns CFN's ConceptsByIdsResponse dict with a ``records`` list.
+    """
+    url = f"{_mas_base(workspace_id, mas_id)}/graph/concepts/by_ids"
+    return await _cfn_post(url, {"ids": ids})
+
+
+async def get_concept_neighbors(
+    *,
+    workspace_id: str,
+    mas_id: str,
+    concept_id: str,
+) -> dict[str, Any]:
+    """GET CFN's ``graph/neighbors/{concept_id}`` endpoint.
+
+    Returns CFN's NeighborsResponse dict with a ``records`` list.
+    """
+    url = f"{_mas_base(workspace_id, mas_id)}/graph/neighbors/{concept_id}"
+    return await _cfn_get(url)
+
+
+async def get_graph_paths(
+    *,
+    workspace_id: str,
+    mas_id: str,
+    source_id: str,
+    target_id: str,
+    max_depth: int | None = None,
+    relations: list[str] | None = None,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    """POST to CFN's ``graph/paths`` endpoint.
+
+    Returns CFN's GraphPathsResponse dict with a ``paths`` list.
+    """
+    url = f"{_mas_base(workspace_id, mas_id)}/graph/paths"
+    body: dict[str, Any] = {"source_id": source_id, "target_id": target_id}
+    if max_depth is not None:
+        body["max_depth"] = max_depth
+    if relations:
+        body["relations"] = relations
+    if limit is not None:
+        body["limit"] = limit
+    return await _cfn_post(url, body)
