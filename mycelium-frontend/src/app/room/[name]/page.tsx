@@ -9,7 +9,6 @@ import Image from "next/image";
 import { fetchRoom } from "@/lib/api";
 import { EventStream } from "@/components/event-stream";
 import { MemoryPanel } from "@/components/memory-panel";
-import { SessionsPanel } from "@/components/sessions-panel";
 
 export default function RoomPage() {
   const params = useParams();
@@ -44,27 +43,18 @@ export default function RoomPage() {
 
       {/* Split layout */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left: Event stream */}
-        <div className="w-[60%] border-r border-border flex flex-col">
-          <div className="px-4 py-2 border-b border-border">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Live Events</span>
-          </div>
-          <div className="flex-1 overflow-hidden">
-            <EventStream roomName={roomName} onMemoryChanged={handleMemoryChanged} />
-          </div>
+        {/* Left: Channel + event stream */}
+        <div className="w-[60%] border-r border-border flex flex-col overflow-hidden">
+          <EventStream roomName={roomName} onMemoryChanged={handleMemoryChanged} />
         </div>
 
-        {/* Right: Sessions + Memory */}
-        <div className="w-[40%] flex flex-col">
-          <div className="border-b border-border">
-            <div className="px-4 py-2 border-b border-border">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Sessions</span>
-            </div>
-            <SessionsPanel roomName={roomName} />
-          </div>
-          <div className="flex-1 overflow-hidden flex flex-col">
-            <MemoryPanel roomName={roomName} refreshTrigger={memoryRefresh} />
-          </div>
+        {/* Right: Memory / Synthesis / Knowledge */}
+        <div className="w-[40%] flex flex-col overflow-hidden">
+          <MemoryPanel
+            roomName={roomName}
+            masId={room?.mas_id ?? null}
+            refreshTrigger={memoryRefresh}
+          />
         </div>
       </div>
     </div>
