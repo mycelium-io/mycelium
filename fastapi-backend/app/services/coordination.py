@@ -212,9 +212,7 @@ async def _run_cfn_negotiation(
         )
     except CfnNegotiationError as exc:
         logger.error("CFN start_negotiation failed for %s: %s", room_name, exc)
-        await _finish_cfn(
-            room_name, plan=f"CFN start failed — {exc}", assignments={}, broken=True
-        )
+        await _finish_cfn(room_name, plan=f"CFN start failed — {exc}", assignments={}, broken=True)
         return
 
     # Set up CFN round state
@@ -390,9 +388,7 @@ async def _cfn_decide_round(room_name: str) -> None:
         )
     except CfnNegotiationError as exc:
         logger.error("CFN decide_negotiation failed for %s: %s", room_name, exc)
-        await _finish_cfn(
-            room_name, plan=f"CFN decide failed — {exc}", assignments={}, broken=True
-        )
+        await _finish_cfn(room_name, plan=f"CFN decide failed — {exc}", assignments={}, broken=True)
         return
 
     result = _normalize_cfn_decide_response(result)
