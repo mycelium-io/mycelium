@@ -57,10 +57,13 @@ mycelium session join --handle julia-agent -m "budget=high, scope=full"
 ## Quick Start
 
 ```bash
-# Install
+# 1. Install the CLI
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 
-# Create a room and start sharing context
+# 2. Set up the stack (pulls images, prompts for LLM config, writes ~/.mycelium/config.toml)
+mycelium install
+
+# 3. Create a room and start sharing context
 mycelium room create my-project
 mycelium room use my-project
 mycelium memory set "context/goal" "Build a REST API for the new service"
