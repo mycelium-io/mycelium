@@ -111,6 +111,14 @@ print('mas_id:', cfg['server']['mas_id'])
 
 A non-empty `mas_id` here is required for knowledge ingest to work in Phase 3.
 
+**If you just set `mas_id`, restart the gateway now.** The hook process holds
+module-level state that isn't flushed on config hot-reload — only a full
+restart picks up the new value:
+
+```bash
+openclaw gateway restart
+```
+
 ## Phase 0.5: Choose experiment LLM & API key
 
 Experiment runs get expensive fast. Each scenario fires 10–40+ LLM calls across multi-turn chatter (before case) and negotiation rounds (after case). **Default to haiku** unless the user explicitly wants sonnet — the quality difference for "pick REST vs GraphQL" is indistinguishable, but the cost difference is ~12×.
