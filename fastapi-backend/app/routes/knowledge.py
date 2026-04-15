@@ -18,7 +18,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,13 +25,6 @@ from starlette import status
 
 from app.config import settings
 from app.database import get_async_session
-from app.knowledge import service
-from app.knowledge.schemas import (
-    KnowledgeGraphDeleteRequest,
-    KnowledgeGraphQueryRequest,
-    KnowledgeGraphStoreRequest,
-    ResponseStatus,
-)
 from app.models import AuditEvent
 from app.services.cfn_knowledge import (
     CfnKnowledgeError,
@@ -45,7 +37,6 @@ from app.services.ingest_log_buffer import IngestEvent, IngestState, get_buffer
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["knowledge"])
-internal_router = APIRouter(tags=["knowledge-internal"])
 
 
 # ── Ingest schemas ─────────────────────────────────────────────────────────────
@@ -63,56 +54,6 @@ class KnowledgeIngestResponse(BaseModel):
     cfn_message: str | None = None
     ingested_at: datetime
     estimated_cfn_knowledge_input_tokens: int
-
-
-@router.post("/api/knowledge/graphs")
-def create_graph_store(data: KnowledgeGraphStoreRequest) -> JSONResponse:
-    response = service.create_graph_store(data)
-    if response.status == ResponseStatus.SUCCESS:
-        code = status.HTTP_201_CREATED
-    elif response.status == ResponseStatus.VALIDATION_ERROR:
-        code = status.HTTP_400_BAD_REQUEST
-    else:
-        code = status.HTTP_500_INTERNAL_SERVER_ERROR
-    return JSONResponse(content=response.model_dump(), status_code=code)
-
-
-@router.delete("/api/knowledge/graphs")
-def delete_graph_store(data: KnowledgeGraphDeleteRequest) -> JSONResponse:
-    response = service.delete_graph_store(data)
-    if response.status == ResponseStatus.SUCCESS:
-        code = status.HTTP_200_OK
-    elif response.status == ResponseStatus.VALIDATION_ERROR:
-        code = status.HTTP_400_BAD_REQUEST
-    else:
-        code = status.HTTP_500_INTERNAL_SERVER_ERROR
-    return JSONResponse(content=response.model_dump(), status_code=code)
-
-
-@router.post("/api/knowledge/graphs/query")
-def query_graph_store(data: KnowledgeGraphQueryRequest) -> JSONResponse:
-    response = service.query_graph_store(data)
-    if response.status == ResponseStatus.SUCCESS:
-        code = status.HTTP_200_OK
-    elif response.status == ResponseStatus.VALIDATION_ERROR:
-        code = status.HTTP_400_BAD_REQUEST
-    elif response.status == ResponseStatus.NOT_FOUND:
-        code = status.HTTP_404_NOT_FOUND
-    else:
-        code = status.HTTP_500_INTERNAL_SERVER_ERROR
-    return JSONResponse(content=response.model_dump(), status_code=code)
-
-
-@internal_router.delete("/api/internal/knowledge/graphs")
-def internal_delete_graph(data: KnowledgeGraphDeleteRequest) -> JSONResponse:
-    response = service.delete_graph_store_internal(data)
-    if response.status == ResponseStatus.SUCCESS:
-        code = status.HTTP_200_OK
-    elif response.status == ResponseStatus.VALIDATION_ERROR:
-        code = status.HTTP_400_BAD_REQUEST
-    else:
-        code = status.HTTP_500_INTERNAL_SERVER_ERROR
-    return JSONResponse(content=response.model_dump(), status_code=code)
 
 
 # ── Ingest ─────────────────────────────────────────────────────────────────────

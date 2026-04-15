@@ -34,8 +34,6 @@ from app.database import get_async_session
 from app.routes.audit import router as audit_router
 from app.routes.cfn_proxy import cfn_read_router
 from app.routes.cfn_proxy import router as cfn_proxy_router
-from app.routes.cognition_engine import router as cognition_engine_router
-from app.routes.knowledge import internal_router as knowledge_internal_router
 from app.routes.knowledge import router as knowledge_router
 from app.routes.memory import router as memory_router
 from app.routes.messages import router as messages_router
@@ -161,11 +159,9 @@ app.include_router(notebook_router)
 app.include_router(audit_router)
 app.include_router(cfn_proxy_router)
 app.include_router(cfn_read_router)
-app.include_router(cognition_engine_router)
 
-# Knowledge graph
+# Knowledge graph — forwards openclaw turns to CFN shared-memories + observability
 app.include_router(knowledge_router)
-app.include_router(knowledge_internal_router)
 
 
 @app.get("/", tags=["health"])
