@@ -113,15 +113,17 @@ describe("resolveSessionMeta — resolved fallback", () => {
     expect(meta.channel).toBe("mycelium-room");
   });
 
-  it("prefers ctx values when both ctx and resolved are supplied (matches pre-fix direct path)", () => {
+  it("returns the short-circuit value on the direct-path (ctx and resolved agree)", () => {
+    // When resolveAgentSession short-circuits on a present ctx, the handler
+    // passes `resolved = { ...ctx }`. This test documents that shape — it
+    // does NOT verify precedence because both inputs carry the same value.
+    // The `resolved-wins-over-ctx` test below is the real precedence check.
     const event = {
       type: "message",
       action: "sent",
       context: { agentId: "ctx-agent", sessionId: "ctx-sess" },
       sessionKey: "agent:ctx-agent:direct:main",
     };
-    // Handler always passes `resolved`, but ctx wins when the handler's
-    // resolver short-circuited on ctx.
     const meta = resolveSessionMeta(event, [], {
       agentId: "ctx-agent",
       sessionId: "ctx-sess",
@@ -129,6 +131,25 @@ describe("resolveSessionMeta — resolved fallback", () => {
     expect(meta.agentId).toBe("ctx-agent");
     expect(meta.sessionId).toBe("ctx-sess");
     expect(meta.channel).toBe("direct");
+  });
+
+  it("resolved wins over ctx when they disagree", () => {
+    // The core precedence rule: `resolved?.agentId ?? ctx.agentId`. If a
+    // future refactor flips this, this test should break — the previous
+    // tests all used agreeing values and would keep passing.
+    const event = {
+      type: "message",
+      action: "sent",
+      context: { agentId: "ctx-agent", sessionId: "ctx-sess" },
+      sessionKey: "agent:resolved-agent:mycelium-room:group:r",
+    };
+    const meta = resolveSessionMeta(event, [], {
+      agentId: "resolved-agent",
+      sessionId: "resolved-sess",
+    });
+    expect(meta.agentId).toBe("resolved-agent");
+    expect(meta.sessionId).toBe("resolved-sess");
+    expect(meta.channel).toBe("mycelium-room");
   });
 
   it("falls through to ctx when resolved is omitted entirely", () => {
