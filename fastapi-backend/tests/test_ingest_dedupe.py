@@ -50,8 +50,8 @@ def test_expired_entry_is_lazily_evicted():
     h = IngestDedupeCache.hash_records([{"a": 1}])
     cache.store(h, response_id="r-1", message=None, ttl_seconds=60)
     # Fast-forward: manually expire by rewriting the entry's expires_at.
-    with cache._lock:  # noqa: SLF001  (deliberate test-only access)
-        cache._entries[h].expires_at = time.monotonic() - 1  # noqa: SLF001
+    with cache._lock:
+        cache._entries[h].expires_at = time.monotonic() - 1
     assert cache.lookup(h) is None
     assert cache.size() == 0
 
