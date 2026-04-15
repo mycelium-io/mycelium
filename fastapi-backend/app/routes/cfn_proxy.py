@@ -36,6 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import get_async_session
 from app.models import Agent, AuditEvent
+from app.services.cfn_graph_read import CfnGraphUnavailable, list_concepts
 from app.services.cfn_knowledge import (
     CfnKnowledgeError,
     get_concept_neighbors,
@@ -282,3 +283,21 @@ async def cfn_graph_paths(data: GraphPathsRequest) -> dict[str, Any]:
     except CfnKnowledgeError as exc:
         _raise_from_cfn_error(exc)
         raise
+
+
+@cfn_read_router.get("/list")
+def cfn_list(mas_id: str, limit: int = 50) -> dict[str, Any]:
+    """Enumerate nodes in CFN's AgensGraph for a given MAS.
+
+    **Not a CFN API**. Goes around CFN's HTTP surface and queries the
+    underlying AgensGraph directly, because CFN doesn't expose a list
+    endpoint. Coupled to CFN's graph-naming convention
+    (``graph_<mas_id_with_hyphens_underscored>``).
+    """
+    if limit < 1 or limit > 500:
+        raise HTTPException(status_code=422, detail="limit must be 1..500")
+    try:
+        nodes = list_concepts(mas_id=mas_id, limit=limit)
+    except CfnGraphUnavailable as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"mas_id": mas_id, "limit": limit, "count": len(nodes), "nodes": nodes}

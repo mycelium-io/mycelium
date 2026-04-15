@@ -324,3 +324,312 @@ def cfn_stats(
         console.print(agent_table)
 
     console.print(_TOKEN_CAVEAT)
+
+
+# ── CFN shared-memories read surface ──────────────────────────────────────────
+#
+# These four subcommands hit the cfn_read_router backend routes from C5,
+# which proxy to CFN's shared-memories/query and graph/{concepts,neighbors,paths}.
+# The graph routes are flagged include_in_schema=False upstream, so their
+# response shapes may drift — print raw dict fields when rendering.
+
+
+def _default_workspace() -> str | None:
+    cfg = MyceliumConfig.load()
+    return cfg.server.workspace_id or cfg.runtime.workspace_id or None
+
+
+def _cfn_request(method: str, path: str, **kwargs) -> dict:
+    """Hit a mycelium-backend route, exit(1) with a clear error on failure."""
+    try:
+        with httpx.Client(base_url=_api_url(), timeout=300) as client:
+            resp = client.request(method, path, **kwargs)
+            resp.raise_for_status()
+            return resp.json()
+    except httpx.HTTPStatusError as exc:
+        detail = ""
+        try:
+            detail = exc.response.json().get("detail", "")
+        except Exception:  # noqa: BLE001
+            detail = exc.response.text[:300]
+        console.print(f"[red]backend returned {exc.response.status_code}:[/red] {detail}")
+        raise typer.Exit(1) from exc
+    except httpx.HTTPError as exc:
+        console.print(f"[red]Failed to reach mycelium-backend:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+
+@doc_ref(
+    usage="mycelium cfn query <intent> --mas <mas-id> [--workspace <ws>]",
+    desc=(
+        "Ask CFN's evidence agent a natural-language question about the "
+        "shared knowledge graph. Returns a synthesized answer, not a record list."
+    ),
+    group="cfn",
+)
+@app.command(name="query")
+def cfn_query(
+    intent: str = typer.Argument(..., help="Natural-language question to ask CFN"),
+    mas_id: str = typer.Option(..., "--mas", "-m", help="Multi-agentic system ID"),
+    workspace: str | None = typer.Option(
+        None, "--workspace", "-w", help="Workspace ID (defaults to config)",
+    ),
+    agent_id: str | None = typer.Option(
+        None, "--agent", "-a", help="Optional agent handle for request attribution",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Print raw JSON response"),
+) -> None:
+    """Semantic-graph query against CFN's shared memory.
+
+    Note: CFN's evidence agent returns HTTP 404 when it can't synthesize an
+    answer from the graph (their convention for "insufficient evidence", not
+    "graph missing"). This command renders that as a "no evidence" message,
+    not a hard error.
+    """
+    body: dict = {"mas_id": mas_id, "intent": intent}
+    if workspace or _default_workspace():
+        body["workspace_id"] = workspace or _default_workspace()
+    if agent_id:
+        body["agent_id"] = agent_id
+
+    # Catch 404 directly so we can render "insufficient evidence" as an
+    # empty-but-OK outcome rather than an error. Any other non-2xx still
+    # goes through _cfn_request's error handler.
+    try:
+        with httpx.Client(base_url=_api_url(), timeout=300) as client:
+            resp = client.post("/api/cfn/knowledge/query", json=body)
+    except httpx.HTTPError as exc:
+        console.print(f"[red]Failed to reach mycelium-backend:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    if resp.status_code == 404:
+        detail = ""
+        try:
+            detail = resp.json().get("detail", "")
+        except Exception:  # noqa: BLE001
+            detail = resp.text[:300]
+        if json_output:
+            console.print_json(data={"response_id": None, "message": None, "status": "no_evidence", "detail": detail})
+            return
+        console.print(
+            "[yellow]no evidence[/yellow] [dim]— CFN couldn't synthesize an "
+            "answer from the graph for this intent[/dim]",
+        )
+        if detail:
+            console.print(f"[dim]{detail}[/dim]")
+        return
+
+    if resp.status_code >= 400:
+        detail = ""
+        try:
+            detail = resp.json().get("detail", "")
+        except Exception:  # noqa: BLE001
+            detail = resp.text[:300]
+        console.print(f"[red]backend returned {resp.status_code}:[/red] {detail}")
+        raise typer.Exit(1)
+
+    data = resp.json()
+    if json_output:
+        console.print_json(data=data)
+        return
+
+    message = data.get("message") or "(no message)"
+    rid = data.get("response_id", "")
+    console.print(f"[bold]CFN:[/bold] {message}")
+    if rid:
+        console.print(f"[dim]response_id: {rid}[/dim]")
+
+
+@doc_ref(
+    usage="mycelium cfn concepts <id>[,<id>,...] --mas <mas-id>",
+    desc="Fetch specific CFN concept records by ID.",
+    group="cfn",
+)
+@app.command(name="concepts")
+def cfn_concepts(
+    ids: str = typer.Argument(..., help="Comma-separated concept IDs"),
+    mas_id: str = typer.Option(..., "--mas", "-m", help="Multi-agentic system ID"),
+    workspace: str | None = typer.Option(
+        None, "--workspace", "-w", help="Workspace ID (defaults to config)",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Print raw JSON response"),
+) -> None:
+    """Fetch CFN concept records by ID."""
+    id_list = [s.strip() for s in ids.split(",") if s.strip()]
+    if not id_list:
+        console.print("[red]no concept IDs provided[/red]")
+        raise typer.Exit(2)
+
+    body: dict = {"mas_id": mas_id, "ids": id_list}
+    if workspace or _default_workspace():
+        body["workspace_id"] = workspace or _default_workspace()
+
+    data = _cfn_request("POST", "/api/cfn/knowledge/concepts", json=body)
+
+    if json_output:
+        console.print_json(data=data)
+        return
+
+    records = data.get("records", []) or []
+    if not records:
+        console.print("[dim]no matching concepts[/dim]")
+        return
+
+    for i, rec in enumerate(records):
+        concepts = rec.get("concepts", []) or []
+        rels = rec.get("relationships", []) or []
+        console.print(f"[bold]record {i}[/bold]: {len(concepts)} concepts, {len(rels)} relations")
+        for c in concepts:
+            cid = c.get("id", "?")
+            name = c.get("name", "")
+            console.print(f"  • [cyan]{cid[:12]}[/cyan]  {name}")
+
+
+@doc_ref(
+    usage="mycelium cfn neighbors <concept-id> --mas <mas-id>",
+    desc="Show CFN graph neighbors for a concept.",
+    group="cfn",
+)
+@app.command(name="neighbors")
+def cfn_neighbors(
+    concept_id: str = typer.Argument(..., help="Concept ID to look up neighbors for"),
+    mas_id: str = typer.Option(..., "--mas", "-m", help="Multi-agentic system ID"),
+    workspace: str | None = typer.Option(
+        None, "--workspace", "-w", help="Workspace ID (defaults to config)",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Print raw JSON response"),
+) -> None:
+    """Show CFN graph neighbors for a concept."""
+    params: dict = {"mas_id": mas_id}
+    if workspace or _default_workspace():
+        params["workspace_id"] = workspace or _default_workspace()
+
+    data = _cfn_request(
+        "GET",
+        f"/api/cfn/knowledge/concepts/{concept_id}/neighbors",
+        params=params,
+    )
+
+    if json_output:
+        console.print_json(data=data)
+        return
+
+    records = data.get("records", []) or []
+    console.print(f"[bold]{len(records)} neighbor record(s) for {concept_id[:12]}[/bold]")
+    for i, rec in enumerate(records):
+        concepts = rec.get("concepts", []) or []
+        rels = rec.get("relationships", []) or []
+        for c in concepts:
+            cid = c.get("id", "?")
+            name = c.get("name", "")
+            console.print(f"  {i:>3}  [cyan]{cid[:12]}[/cyan]  {name}")
+        for r in rels:
+            rel = r.get("relation") or r.get("type", "?")
+            nodes = r.get("node_ids", [])
+            console.print(f"       [dim]↳ {rel}: {' → '.join(nodes)}[/dim]")
+
+
+@doc_ref(
+    usage="mycelium cfn ls --mas <mas-id> [--limit N] [--json]",
+    desc=(
+        "Enumerate nodes in CFN's knowledge graph by reading AgensGraph "
+        "directly. NOT a CFN-supported API — couples to CFN's internal "
+        "graph-naming convention (graph_<mas_id>)."
+    ),
+    group="cfn",
+)
+@app.command(name="ls")
+def cfn_ls(
+    mas_id: str = typer.Option(..., "--mas", "-m", help="Multi-agentic system ID"),
+    limit: int = typer.Option(
+        50,
+        "--limit",
+        "-l",
+        min=1,
+        max=500,
+        help="Max nodes to return",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Print raw JSON response"),
+) -> None:
+    """List nodes in CFN's knowledge graph for a MAS.
+
+    Goes around CFN's HTTP API and queries AgensGraph directly because CFN
+    does not expose an enumeration endpoint. Returns empty or 404 if the
+    graph doesn't exist (nothing has been ingested yet for that MAS).
+    """
+    data = _cfn_request(
+        "GET",
+        "/api/cfn/knowledge/list",
+        params={"mas_id": mas_id, "limit": limit},
+    )
+
+    if json_output:
+        console.print_json(data=data)
+        return
+
+    nodes = data.get("nodes", []) or []
+    count = data.get("count", len(nodes))
+
+    if not nodes:
+        console.print(f"[dim]no nodes in graph for mas={mas_id}[/dim]")
+        return
+
+    console.print(f"[bold]{count} node(s) in graph for mas={mas_id}[/bold]")
+    for n in nodes:
+        label = n.get("label") or "node"
+        nid = n.get("id") or ""
+        name = n.get("name") or ""
+        props = n.get("properties") or {}
+        # Extract a short description from common property keys
+        desc = props.get("description") or props.get("text") or ""
+        short_id = nid[:12] if nid else "?"
+        line = f"  [cyan]{short_id}[/cyan]  [magenta]{label:<12}[/magenta]  {name}"
+        if desc:
+            line += f"  [dim]— {desc[:80]}[/dim]"
+        console.print(line, soft_wrap=True)
+
+
+@doc_ref(
+    usage="mycelium cfn paths <source-id> <target-id> --mas <mas-id> [--max-depth N] [--limit N]",
+    desc="Show CFN graph paths between two concepts.",
+    group="cfn",
+)
+@app.command(name="paths")
+def cfn_paths(
+    source_id: str = typer.Argument(..., help="Source concept ID"),
+    target_id: str = typer.Argument(..., help="Target concept ID"),
+    mas_id: str = typer.Option(..., "--mas", "-m", help="Multi-agentic system ID"),
+    workspace: str | None = typer.Option(
+        None, "--workspace", "-w", help="Workspace ID (defaults to config)",
+    ),
+    max_depth: int | None = typer.Option(
+        None, "--max-depth", "-d", help="Max path depth to explore",
+    ),
+    limit: int | None = typer.Option(
+        None, "--limit", "-l", help="Max number of paths to return",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Print raw JSON response"),
+) -> None:
+    """Show CFN graph paths between two concepts."""
+    body: dict = {"mas_id": mas_id, "source_id": source_id, "target_id": target_id}
+    if workspace or _default_workspace():
+        body["workspace_id"] = workspace or _default_workspace()
+    if max_depth is not None:
+        body["max_depth"] = max_depth
+    if limit is not None:
+        body["limit"] = limit
+
+    data = _cfn_request("POST", "/api/cfn/knowledge/paths", json=body)
+
+    if json_output:
+        console.print_json(data=data)
+        return
+
+    paths = data.get("paths", []) or []
+    if not paths:
+        console.print("[dim]no paths found[/dim]")
+        return
+
+    console.print(f"[bold]{len(paths)} path(s)[/bold]")
+    for i, p in enumerate(paths):
+        console.print(f"  {i:>3}  {p}")
