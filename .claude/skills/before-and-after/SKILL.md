@@ -673,6 +673,53 @@ Once clean, create a secret gist (URL-only, not listed on your profile).
 
 **Watch out for filename collisions.** `gh gist create` uses the file's basename, so `~/.mycelium/rooms/${EXP_ID}-before/transcript.md` and `~/.mycelium/rooms/${EXP_ID}-after/transcript.md` both become `transcript.md` and the second one silently overwrites the first. Stage the files under unique names in a temp directory first:
 
+Also fetch the knowledge graph and run a few semantic queries while you're
+here — this is the most interesting artifact to show teammates:
+
+```bash
+# Get the MAS ID from config
+MAS=$(python3 -c "
+import toml, os
+cfg = toml.load(os.path.expanduser('~/.mycelium/config.toml'))
+print(cfg['server']['mas_id'])
+")
+
+# Dump all nodes with a summary grouped by type
+mycelium cfn ls --mas "$MAS" --limit 500 --json 2>/dev/null | python3 -c "
+import sys, json
+nodes = json.load(sys.stdin).get('nodes', [])
+print(f'## Knowledge Graph ({len(nodes)} nodes)\n')
+
+# Group by type
+by_type = {}
+for n in nodes:
+    t = n.get('node_type', 'unknown')
+    by_type.setdefault(t, []).append(n)
+
+for t, ns in sorted(by_type.items(), key=lambda x: -len(x[1])):
+    print(f'### {t} ({len(ns)})')
+    for n in ns[:20]:
+        label = n.get('label') or n.get('name') or n.get('id', '')[:12]
+        desc = (n.get('description') or n.get('summary') or '')[:100]
+        print(f'- **{label}**: {desc}')
+    if len(ns) > 20:
+        print(f'  ... and {len(ns)-20} more')
+    print()
+" > /tmp/cfn-knowledge-graph.md
+
+# Run 2-3 semantic queries relevant to the scenario
+mycelium cfn query "What were the key decisions and agreements reached?" \
+  --mas "$MAS" > /tmp/cfn-query-decisions.txt 2>&1
+
+mycelium cfn query "What were the main points of disagreement and how were they resolved?" \
+  --mas "$MAS" > /tmp/cfn-query-disagreements.txt 2>&1
+
+echo "Knowledge graph: $(wc -l < /tmp/cfn-knowledge-graph.md) lines"
+echo "Query results written"
+```
+
+Now stage everything including the knowledge graph artifacts:
+
 ```bash
 STAGE=$(mktemp -d)
 cp ~/.mycelium/rooms/${EXP_ID}/evaluation.md               "$STAGE/evaluation.md"
@@ -684,6 +731,10 @@ cp ~/.mycelium/rooms/${EXP_ID}-before/ingest-log.json      "$STAGE/before-ingest
 cp ~/.mycelium/rooms/${EXP_ID}-before/ingest-stats.json    "$STAGE/before-ingest-stats.json" 2>/dev/null || true
 cp ~/.mycelium/rooms/${EXP_ID}-after/ingest-log.json       "$STAGE/after-ingest-log.json" 2>/dev/null || true
 cp ~/.mycelium/rooms/${EXP_ID}-after/ingest-stats.json     "$STAGE/after-ingest-stats.json" 2>/dev/null || true
+# Knowledge graph
+cp /tmp/cfn-knowledge-graph.md                             "$STAGE/cfn-knowledge-graph.md" 2>/dev/null || true
+cp /tmp/cfn-query-decisions.txt                            "$STAGE/cfn-query-decisions.txt" 2>/dev/null || true
+cp /tmp/cfn-query-disagreements.txt                        "$STAGE/cfn-query-disagreements.txt" 2>/dev/null || true
 
 gh gist create \
   -d "${EXP_ID}: ${SCENARIO_NAME} — before-and-after" \
