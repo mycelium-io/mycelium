@@ -180,10 +180,7 @@ def cfn_log(
         "reason": "REASON / MESSAGE",
     }
 
-    widths = {
-        key: max(len(headers[key]), *(len(r[key]) for r in rows))
-        for key in headers
-    }
+    widths = {key: max(len(headers[key]), *(len(r[key]) for r in rows)) for key in headers}
 
     def _fmt_row(values: dict[str, str], *, header: bool = False) -> str:
         state_name = values["state"]
@@ -213,9 +210,7 @@ def cfn_log(
     for r in rows:
         console.print(_fmt_row(r), soft_wrap=True)
 
-    filter_note = (
-        f" (state={','.join(sorted(state_filter))})" if state_filter is not None else ""
-    )
+    filter_note = f" (state={','.join(sorted(state_filter))})" if state_filter is not None else ""
     console.print(
         f"[dim]{len(events)} shown of {total} in buffer{filter_note} · "
         "~ tokens are cl100k_base estimates of the JSON sent to CFN, "
@@ -372,10 +367,16 @@ def cfn_query(
     intent: str = typer.Argument(..., help="Natural-language question to ask CFN"),
     mas_id: str = typer.Option(..., "--mas", "-m", help="Multi-agentic system ID"),
     workspace: str | None = typer.Option(
-        None, "--workspace", "-w", help="Workspace ID (defaults to config)",
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace ID (defaults to config)",
     ),
     agent_id: str | None = typer.Option(
-        None, "--agent", "-a", help="Optional agent handle for request attribution",
+        None,
+        "--agent",
+        "-a",
+        help="Optional agent handle for request attribution",
     ),
     json_output: bool = typer.Option(False, "--json", help="Print raw JSON response"),
 ) -> None:
@@ -409,7 +410,14 @@ def cfn_query(
         except Exception:  # noqa: BLE001
             detail = resp.text[:300]
         if json_output:
-            console.print_json(data={"response_id": None, "message": None, "status": "no_evidence", "detail": detail})
+            console.print_json(
+                data={
+                    "response_id": None,
+                    "message": None,
+                    "status": "no_evidence",
+                    "detail": detail,
+                }
+            )
             return
         console.print(
             "[yellow]no evidence[/yellow] [dim]— CFN couldn't synthesize an "
@@ -450,7 +458,10 @@ def cfn_concepts(
     ids: str = typer.Argument(..., help="Comma-separated concept IDs"),
     mas_id: str = typer.Option(..., "--mas", "-m", help="Multi-agentic system ID"),
     workspace: str | None = typer.Option(
-        None, "--workspace", "-w", help="Workspace ID (defaults to config)",
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace ID (defaults to config)",
     ),
     json_output: bool = typer.Option(False, "--json", help="Print raw JSON response"),
 ) -> None:
@@ -495,7 +506,10 @@ def cfn_neighbors(
     concept_id: str = typer.Argument(..., help="Concept ID to look up neighbors for"),
     mas_id: str = typer.Option(..., "--mas", "-m", help="Multi-agentic system ID"),
     workspace: str | None = typer.Option(
-        None, "--workspace", "-w", help="Workspace ID (defaults to config)",
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace ID (defaults to config)",
     ),
     json_output: bool = typer.Option(False, "--json", help="Print raw JSON response"),
 ) -> None:
@@ -600,13 +614,22 @@ def cfn_paths(
     target_id: str = typer.Argument(..., help="Target concept ID"),
     mas_id: str = typer.Option(..., "--mas", "-m", help="Multi-agentic system ID"),
     workspace: str | None = typer.Option(
-        None, "--workspace", "-w", help="Workspace ID (defaults to config)",
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace ID (defaults to config)",
     ),
     max_depth: int | None = typer.Option(
-        None, "--max-depth", "-d", help="Max path depth to explore",
+        None,
+        "--max-depth",
+        "-d",
+        help="Max path depth to explore",
     ),
     limit: int | None = typer.Option(
-        None, "--limit", "-l", help="Max number of paths to return",
+        None,
+        "--limit",
+        "-l",
+        help="Max number of paths to return",
     ),
     json_output: bool = typer.Option(False, "--json", help="Print raw JSON response"),
 ) -> None:

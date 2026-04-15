@@ -45,6 +45,7 @@ def estimate_cfn_knowledge_input_tokens(records: list[dict[str, Any]]) -> int:
     """
     return len(_CL100K.encode(json.dumps(records)))
 
+
 # CFN shared-memories runs concept + relationship LLM extraction plus
 # embeddings. Match cfn_negotiation.py's 300s ceiling.
 _CFN_HTTP_TIMEOUT = httpx.Timeout(300.0)

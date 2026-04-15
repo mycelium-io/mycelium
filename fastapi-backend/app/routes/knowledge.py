@@ -162,10 +162,7 @@ async def knowledge_ingest(
     # ── Gate 2: token circuit breaker ─────────────────────────────────────────
     max_tokens = settings.MYCELIUM_INGEST_MAX_INPUT_TOKENS
     if max_tokens > 0 and est_tokens > max_tokens:
-        reason = (
-            f"payload exceeded {max_tokens} estimated input tokens "
-            f"(actual: {est_tokens})"
-        )
+        reason = f"payload exceeded {max_tokens} estimated input tokens (actual: {est_tokens})"
         _log_ingest_event(
             data=data,
             request_id=request_id,
@@ -329,9 +326,7 @@ def _fresh_aggregate() -> dict[str, Any]:
 
 def _accumulate(agg: dict[str, Any], event: IngestEvent) -> None:
     agg["events"] += 1
-    agg["estimated_cfn_knowledge_input_tokens"] += (
-        event.estimated_cfn_knowledge_input_tokens
-    )
+    agg["estimated_cfn_knowledge_input_tokens"] += event.estimated_cfn_knowledge_input_tokens
     agg["payload_bytes"] += event.payload_bytes
 
 

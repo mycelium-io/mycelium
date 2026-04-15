@@ -77,6 +77,7 @@
       <a href="#cli-memory" class="nav-link sub">memory</a>
       <a href="#cli-notebook" class="nav-link sub">notebook</a>
       <a href="#cli-negotiate" class="nav-link sub">negotiate</a>
+      <a href="#cli-cfn" class="nav-link sub">cfn</a>
       <a href="#cli-adapter" class="nav-link sub">adapter</a>
       <a href="#cli-config" class="nav-link sub">config</a>
       <a href="#cli-other" class="nav-link sub">synthesize / catchup / watch</a>
@@ -1010,7 +1011,7 @@ rm <span class="flag">-rf</span> ~/.mycelium        # remove all config
             <tr><td><code>mycelium</code></td><td>Plugin</td><td>Session lifecycle, coordination state, SSE tick subscription for structured negotiation</td></tr>
             <tr><td><code>mycelium-channel</code></td><td>Plugin</td><td>Real-time addressed messaging — routes room messages to agent runtimes in-process via <code>runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher</code>. Enforces <code>@handle</code> addressing by default.</td></tr>
             <tr><td><code>mycelium-bootstrap</code></td><td>Hook</td><td>Injects MYCELIUM_API_URL, MYCELIUM_ROOM, and coordination instructions at agent bootstrap</td></tr>
-            <tr><td><code>mycelium-knowledge-extract</code></td><td>Hook</td><td>Two-stage LLM extraction pipeline — turns agent output into graph nodes and edges</td></tr>
+            <tr><td><code>mycelium-knowledge-extract</code></td><td>Hook</td><td>On each <code>message:sent</code>, forwards finalized turns to mycelium-backend, which relays them to CFN's <code>shared-memories</code> endpoint for concept + relationship extraction. User-configurable gates (<code>knowledge_ingest.enabled</code> / <code>max_input_tokens</code> / <code>dedupe_ttl_seconds</code>) bound cost. Observability via <code>mycelium cfn log</code> / <code>cfn stats</code> / <code>cfn ls</code>.</td></tr>
             <tr><td><code>mycelium</code> SKILL.md</td><td>Skill</td><td>Coordination skill available to all OpenClaw agents</td></tr>
           </tbody>
         </table>
@@ -1448,6 +1449,57 @@ curl -X POST http://localhost:8888/api/memory/search \
           <code><span class="cmd">mycelium negotiate query</span> <span class="arg">&lt;json&gt;</span> [<span class="flag">-r</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Post a raw JSON response (advanced — prefer <code>propose</code> or <code>respond</code>).</div>
+      </div>
+
+      <h3 id="cli-cfn">cfn</h3>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium cfn log</span> [<span class="flag">--limit</span> N] [<span class="flag">--state</span> <span class="arg">&lt;s&gt;</span>] [<span class="flag">--json</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Tail the mycelium-backend in-memory log of CFN shared-memories forwards. Plain columnar output, one line per event, newest first. Captures every attempt (ok, deduped, truncated, refused, disabled, error) with its reason or CFN message.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium cfn stats</span> [<span class="flag">--json</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Aggregate CFN shared-memories forwards grouped by MAS and agent, with rolling last-hour window.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium cfn query</span> <span class="arg">&lt;intent&gt;</span> <span class="flag">--mas</span> &lt;mas-id&gt; [<span class="flag">--workspace</span> <span class="arg">&lt;ws&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Ask CFN's evidence agent a natural-language question about the shared knowledge graph. Returns a synthesized answer, not a record list.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium cfn concepts</span> <span class="arg">&lt;id&gt;</span>[,<span class="arg">&lt;id&gt;</span>,...] <span class="flag">--mas</span> &lt;mas-id&gt;</code>
+        </div>
+        <div class="cmd-ref-body">Fetch specific CFN concept records by ID.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium cfn neighbors</span> &lt;concept-id&gt; <span class="flag">--mas</span> &lt;mas-id&gt;</code>
+        </div>
+        <div class="cmd-ref-body">Show CFN graph neighbors for a concept.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium cfn ls</span> <span class="flag">--mas</span> &lt;mas-id&gt; [<span class="flag">--limit</span> N] [<span class="flag">--json</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Enumerate nodes in CFN's knowledge graph by reading AgensGraph directly. NOT a CFN-supported API — couples to CFN's internal graph-naming convention (graph_<mas_id>).</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium cfn paths</span> &lt;source-id&gt; &lt;target-id&gt; <span class="flag">--mas</span> &lt;mas-id&gt; [<span class="flag">--max-depth</span> N] [<span class="flag">--limit</span> N]</code>
+        </div>
+        <div class="cmd-ref-body">Show CFN graph paths between two concepts.</div>
       </div>
 
       <h3 id="cli-adapter">adapter</h3>
