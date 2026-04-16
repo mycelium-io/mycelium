@@ -1532,14 +1532,28 @@ def _render_cfn_transport_table(backend: dict | None) -> None:
             label = key.replace("calls.", "")
             table.add_row(f"  {label}", _fmt_num(cfn[key]))
 
-    # Status code breakdown
+    # Status code breakdown: aggregate 2xx, suppress 409 (expected for
+    # idempotent re-registrations), show remaining codes individually.
     status_keys = sorted(k for k in cfn if k.startswith("status."))
     if status_keys:
+        ok_total = 0
+        other_rows: list[tuple[str, int]] = []
+        for key in status_keys:
+            code = int(key.replace("status.", ""))
+            count = cfn[key]
+            if 200 <= code < 300:
+                ok_total += count
+            elif code == 409:
+                ok_total += count
+            else:
+                other_rows.append((str(code), count))
         table.add_section()
         table.add_row("[dim]By status code:[/dim]", "")
-        for key in status_keys:
-            code = key.replace("status.", "")
-            table.add_row(f"  HTTP {code}", _fmt_num(cfn[key]))
+        if ok_total:
+            table.add_row("  OK (2xx)", _fmt_num(ok_total))
+        for code, count in other_rows:
+            style = "red" if int(code) >= 500 else "yellow"
+            table.add_row(f"  HTTP {code}", f"[{style}]{_fmt_num(count)}[/{style}]")
 
     console.print(table)
     console.print()
