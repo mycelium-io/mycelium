@@ -5,6 +5,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { fetchMemories, searchMemories, fetchCatchup } from "@/lib/api";
+import { KnowledgePanel } from "./knowledge-panel";
 
 interface Memory {
   key: string;
@@ -26,23 +27,26 @@ interface CatchupData {
   mode: string;
   total_memories: number;
   contributors: string[];
-  latest_synthesis: { key: string; content: string | Record<string, unknown>; created_at: string } | null;
+  latest_synthesis: { key: string; content: string; created_at: string } | null;
   recent_activity: { key: string; created_by: string; content_text: string; created_at: string }[];
   memories_since_synthesis: number;
 }
 
 interface Props {
   roomName: string;
+  masId?: string | null;
   refreshTrigger: number;
 }
 
-export function MemoryPanel({ roomName, refreshTrigger }: Props) {
+type Tab = "memories" | "synthesis" | "knowledge";
+
+export function MemoryPanel({ roomName, masId, refreshTrigger }: Props) {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [catchup, setCatchup] = useState<CatchupData | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
   const [searching, setSearching] = useState(false);
-  const [tab, setTab] = useState<"memories" | "synthesis">("memories");
+  const [tab, setTab] = useState<Tab>("memories");
 
   const loadData = useCallback(async () => {
     try {
@@ -78,12 +82,7 @@ export function MemoryPanel({ roomName, refreshTrigger }: Props) {
     return String(v);
   };
 
-  const synthContent = catchup?.latest_synthesis?.content;
-  const synthText = typeof synthContent === "string"
-    ? synthContent
-    : typeof synthContent === "object" && synthContent
-      ? (synthContent as Record<string, unknown>).synthesis as string || JSON.stringify(synthContent)
-      : null;
+  const synthText = catchup?.latest_synthesis?.content ?? null;
 
   return (
     <div className="flex flex-col h-full">
@@ -124,6 +123,14 @@ export function MemoryPanel({ roomName, refreshTrigger }: Props) {
           }`}
         >
           Synthesis
+        </button>
+        <button
+          onClick={() => setTab("knowledge")}
+          className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider transition-colors ${
+            tab === "knowledge" ? "text-fuchsia-400 border-b-2 border-fuchsia-400" : "text-muted hover:text-white"
+          }`}
+        >
+          Knowledge
         </button>
       </div>
 
@@ -217,6 +224,12 @@ export function MemoryPanel({ roomName, refreshTrigger }: Props) {
               <span className="text-xs">Run <code className="bg-surface px-1 rounded">mycelium synthesize</code></span>
             </div>
           )}
+        </div>
+      )}
+
+      {tab === "knowledge" && (
+        <div className="flex-1 overflow-hidden">
+          <KnowledgePanel masId={masId} />
         </div>
       )}
     </div>
