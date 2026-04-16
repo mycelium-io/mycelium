@@ -29,7 +29,7 @@ Commit latest changes (if any), tag, cut a GitHub release, and optionally notify
    ```
    Generate the release notes from `git log <prev-tag>..HEAD --oneline`.
 
-5. **Webex notification** — If `--with-webex` was passed, invoke `/webex` (no confirmation needed) to post a bullet-point changelog summary with the tag and release URL, followed by upgrade instructions on a single line each:
+5. **Webex notification** — If `--with-webex` was passed, invoke `/webex` (no confirmation needed) to post a bullet-point changelog summary with the tag and release URL. Each bullet should include the PR link if one exists (e.g. `- feat: description ([#123](https://github.com/mycelium-io/mycelium/pull/123))`). Follow with upgrade instructions using triple-backtick code blocks so they're copyable:
    ```
    To upgrade:
    mycelium upgrade && mycelium pull
