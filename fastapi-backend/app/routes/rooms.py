@@ -220,6 +220,7 @@ async def catchup_room(
     else:
         recent_entries = non_synthesis
 
+    memories_since_count = len(recent_entries)
     recent_entries = recent_entries[:50]
 
     # Gather contributors
@@ -230,7 +231,7 @@ async def catchup_room(
 
     record_synthesis_reuse(
         had_cached=latest_synthesis_data is not None,
-        memories_since=len(recent_entries),
+        memories_since=memories_since_count,
     )
 
     return {

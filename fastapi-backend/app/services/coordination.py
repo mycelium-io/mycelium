@@ -416,14 +416,18 @@ async def _cfn_decide_round(room_name: str) -> None:
         duration_ms=round_duration_ms,
     )
 
-    try:
-        if not result:
-            logger.error(
-                "CFN decide returned empty result for %s — posting failed consensus", room_name
-            )
-            await _finish_cfn(room_name, plan="CFN decide failed", assignments={}, broken=True)
-            return
+    if not result:
+        logger.error(
+            "CFN decide returned empty result for %s — posting failed consensus", room_name
+        )
+        await _finish_cfn(room_name, plan="CFN decide failed", assignments={}, broken=True)
+        return
 
+    # Parse the CFN response inside a try/except so that _finish_cfn is
+    # never called from within the same try block — preventing double-calls
+    # if _finish_cfn itself raises.
+    finish_args: dict | None = None
+    try:
         result = _normalize_cfn_decide_response(result)
 
         # CFN returns a nested envelope: status lives in result["payload"]["status"]
@@ -454,7 +458,7 @@ async def _cfn_decide_round(room_name: str) -> None:
             else:
                 agreement = {}
             plan = "; ".join(f"{k}={v}" for k, v in agreement.items()) if agreement else "agreed"
-            await _finish_cfn(room_name, plan=plan, assignments=agreement, broken=False)
+            finish_args = dict(plan=plan, assignments=agreement, broken=False)
 
         elif status == "ongoing":
             messages = result.get("messages", [])
@@ -473,14 +477,17 @@ async def _cfn_decide_round(room_name: str) -> None:
         else:
             # Unknown / failed status
             logger.warning("CFN decide returned status=%s for %s", status, room_name)
-            await _finish_cfn(
-                room_name, plan=f"Negotiation ended: {status}", assignments={}, broken=True
+            finish_args = dict(
+                plan=f"Negotiation ended: {status}", assignments={}, broken=True
             )
     except Exception:
         logger.exception("Unexpected error processing decide result for %s", room_name)
-        await _finish_cfn(
-            room_name, plan="Internal error processing negotiation", assignments={}, broken=True
+        finish_args = dict(
+            plan="Internal error processing negotiation", assignments={}, broken=True
         )
+
+    if finish_args is not None:
+        await _finish_cfn(room_name, **finish_args)
 
 
 async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool) -> None:
