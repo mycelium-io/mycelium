@@ -420,6 +420,7 @@ def show(
     _render_data_reuse_table(backend_data)
     _render_mycelium_llm_table(backend_data)
     _render_coordination_table(backend_data)
+    _render_cfn_transport_table(backend_data)
     _render_agent_table(otel_data, agents_meta)
 
     if otel_data and otel_data.get("sessions"):
@@ -1146,6 +1147,9 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
         table.add_row("Knowledge ingestions", _fmt_num(knowledge["ingestions"]))
         table.add_row("  concepts extracted", _fmt_num(knowledge.get("concepts_extracted", 0)))
         table.add_row("  relations extracted", _fmt_num(knowledge.get("relations_extracted", 0)))
+        est_tokens = knowledge.get("estimated_input_tokens", 0)
+        if est_tokens:
+            table.add_row("  est. input tokens", _fmt_num(est_tokens))
         kg_errors = knowledge.get("errors", 0)
         if kg_errors:
             table.add_row("  graph store errors", f"[red]{_fmt_num(kg_errors)}[/red]")
@@ -1364,6 +1368,89 @@ def _render_coordination_table(backend: dict | None) -> None:
             table.add_row(f"  {label}", _fmt_num(coord[key]))
         if len(by_room_keys) > 5:
             table.add_row(f"  [dim]...and {len(by_room_keys) - 5} more[/dim]", "")
+
+    console.print(table)
+    console.print()
+
+
+def _render_cfn_transport_table(backend: dict | None) -> None:
+    """Render a panel showing outbound CFN HTTP call health."""
+    if not backend:
+        return
+
+    be_counters = backend.get("counters", {})
+    cfn = be_counters.get("cfn", {})
+
+    total = cfn.get("calls", 0)
+    if total == 0:
+        return
+
+    table = Table(
+        title="CFN Transport Health",
+        title_style="bold blue",
+        title_justify="left",
+        show_header=False,
+        border_style="dim",
+    )
+    table.add_column("Metric", style="bold")
+    table.add_column("Value", justify="right")
+
+    table.add_row("Total outbound calls", _fmt_num(total))
+
+    node_calls = cfn.get("calls.node", 0)
+    mgmt_calls = cfn.get("calls.mgmt", 0)
+    if node_calls or mgmt_calls:
+        if node_calls:
+            table.add_row("  CFN node", _fmt_num(node_calls))
+        if mgmt_calls:
+            table.add_row("  CFN mgmt", _fmt_num(mgmt_calls))
+
+    errors = cfn.get("errors", 0)
+    if errors:
+        rate = (errors / total * 100) if total else 0
+        table.add_row("Errors", f"[red]{_fmt_num(errors)}[/red] ({rate:.1f}%)")
+        node_err = cfn.get("errors.node", 0)
+        mgmt_err = cfn.get("errors.mgmt", 0)
+        if node_err:
+            table.add_row("  node errors", f"[red]{_fmt_num(node_err)}[/red]")
+        if mgmt_err:
+            table.add_row("  mgmt errors", f"[red]{_fmt_num(mgmt_err)}[/red]")
+
+    be_histograms = backend.get("histograms", {})
+
+    cfn_lat = be_histograms.get("cfn.latency_ms", {})
+    if cfn_lat.get("count", 0) > 0:
+        table.add_section()
+        table.add_row("Latency (all)", _fmt_histogram_s(cfn_lat))
+
+    node_lat = be_histograms.get("cfn.latency_ms.node", {})
+    if node_lat.get("count", 0) > 0:
+        table.add_row("  node", _fmt_histogram_s(node_lat))
+
+    mgmt_lat = be_histograms.get("cfn.latency_ms.mgmt", {})
+    if mgmt_lat.get("count", 0) > 0:
+        table.add_row("  mgmt", _fmt_histogram_s(mgmt_lat))
+
+    # Per-operation breakdown
+    op_keys = sorted(
+        k for k in cfn
+        if k.startswith("calls.node.") or k.startswith("calls.mgmt.")
+    )
+    if op_keys:
+        table.add_section()
+        table.add_row("[dim]By operation:[/dim]", "")
+        for key in op_keys:
+            label = key.replace("calls.", "")
+            table.add_row(f"  {label}", _fmt_num(cfn[key]))
+
+    # Status code breakdown
+    status_keys = sorted(k for k in cfn if k.startswith("status."))
+    if status_keys:
+        table.add_section()
+        table.add_row("[dim]By status code:[/dim]", "")
+        for key in status_keys:
+            code = key.replace("status.", "")
+            table.add_row(f"  HTTP {code}", _fmt_num(cfn[key]))
 
     console.print(table)
     console.print()

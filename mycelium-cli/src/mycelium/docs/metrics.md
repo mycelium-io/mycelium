@@ -122,8 +122,9 @@ The collector polls `GET /api/metrics` on the FastAPI backend every 30 seconds
 | `indexer`    | `runs`, `files_indexed`, `files_skipped`, `files_pruned`, `errors`, `by_target.*` |
 | `memory`     | `writes`, `writes.*`, `writes_embedded`, `searches`, `search_hits`, `search_misses`, `results_returned` |
 | `synthesis`  | `runs`, `errors`, `briefings`, `cache_hits`, `cache_misses`      |
-| `knowledge`  | `ingestions`, `concepts_extracted`, `relations_extracted`, `errors`, `queries`, `queries.*` (by type: neighbour, path, concept, semantic), `query_hits`, `query_misses`, `query_errors`, `results_returned`, `cache_hits` |
+| `knowledge`  | `ingestions`, `concepts_extracted`, `relations_extracted`, `estimated_input_tokens`, `errors`, `queries`, `queries.*` (by type: neighbour, path, concept, semantic), `query_hits`, `query_misses`, `query_errors`, `results_returned`, `cache_hits` |
 | `coordination` | `sessions_started`, `sessions_completed`, `rounds`, `by_room.*`, `consensus_reached`, `outcome.*` (success, failure) |
+| `cfn`        | `calls`, `calls.<service>`, `calls.<service>.<operation>`, `errors`, `errors.<service>`, `status.<code>` |
 
 #### Backend Histograms
 
@@ -137,6 +138,7 @@ The collector polls `GET /api/metrics` on the FastAPI backend every 30 seconds
 | `synthesis.duration_ms`             | ms   |
 | `synthesis.memories_since_last`     | count |
 | `knowledge.ingestion_duration_ms`   | ms   |
+| `knowledge.estimated_input_tokens`  | count |
 | `knowledge.query_latency_ms`        | ms   |
 | `coordination.round_duration_ms`    | ms   |
 | `coordination.session_participants` | count |
@@ -145,6 +147,8 @@ The collector polls `GET /api/metrics` on the FastAPI backend every 30 seconds
 | `coordination.time_to_completion_ms`| ms   |
 | `coordination.rounds_to_consensus`  | count |
 | `coordination.time_to_consensus_ms` | ms   |
+| `cfn.latency_ms`                    | ms   |
+| `cfn.latency_ms.<service>`          | ms   |
 
 ## Display Panels
 
@@ -167,13 +171,17 @@ The collector polls `GET /api/metrics` on the FastAPI backend every 30 seconds
 5. **CFN Coordination** — negotiation session counts, rounds, consensus
    success/failure rates, timeouts, and timing histograms.
 
-6. **OpenClaw Agents** — per-agent token breakdown, session/turn counts, cost,
+6. **CFN Transport Health** — outbound HTTP call counts to CFN node and mgmt
+   plane, error rates, latency histograms, per-operation and per-status-code
+   breakdowns.
+
+7. **OpenClaw Agents** — per-agent token breakdown, session/turn counts, cost,
    average run duration, and workspace size.
 
-7. **OpenClaw Recent Sessions** — last 20 OTLP session spans with agent, model,
+8. **OpenClaw Recent Sessions** — last 20 OTLP session spans with agent, model,
    turns, tokens, and timestamp.
 
-8. **Workspace Files** (opt-in via `--workspace`) — per-file size breakdown of
+9. **Workspace Files** (opt-in via `--workspace`) — per-file size breakdown of
    each agent's `~/.openclaw` workspace directory.
 
 ## Pricing Data
@@ -289,6 +297,12 @@ Prioritised by effort and value.
   Search hit/miss rates and total results returned. Instrumented in
   `search_memories`.
 
+- **CFN outbound call health** (`services/cfn_knowledge.py`, `services/cfn_negotiation.py`, `routes/rooms.py`, `routes/sessions.py`, `main.py`) ✓
+  Transport-level metrics for all outbound HTTP calls to CFN node (:9002)
+  and mgmt plane (:9000). Tracks call counts, error rates, status codes,
+  and latency histograms per service and operation. Estimated input tokens
+  (cl100k_base) recorded for knowledge ingestion payloads.
+
 ### Tier 1 — Straightforward (Mycelium-only)
 
 - **Session join / leave** (`routes/sessions.py`)
@@ -311,13 +325,12 @@ Prioritised by effort and value.
 
 ### Tier 3 — Requires IoC owner coordination
 
-- **IoC service health** — instrument Mycelium's outbound REST calls
-  to `:9000` and `:9002`. Track latency, errors, and availability.
-  For deeper metrics IoC owners would need to expose OTLP or a
-  `/metrics` endpoint.
-
-- **Management plane registration** — track startup registration
-  success/failure/retry when `--ioc` is enabled.
+- **Deep CFN token usage** — CFN's cognition engines consume LLM tokens
+  internally (two-pass extraction, embeddings) but the `CreateOrUpdateResponse`
+  schema only returns `{response_id, message}`. Actual token counts would
+  require upstream changes to propagate `litellm.completion` usage through
+  the CFN node's response body. Currently tracked via client-side
+  `estimated_input_tokens` (cl100k_base estimate of outbound payload).
 
 ### Not yet implementable (stubbed / planned)
 

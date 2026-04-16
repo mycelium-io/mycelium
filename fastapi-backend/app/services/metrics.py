@@ -239,6 +239,7 @@ def record_knowledge_ingestion(
     relations: int = 0,
     duration_ms: float = 0.0,
     error: bool = False,
+    estimated_input_tokens: int = 0,
 ) -> None:
     _inc("knowledge", "ingestions")
     _inc("knowledge", "concepts_extracted", concepts)
@@ -247,6 +248,9 @@ def record_knowledge_ingestion(
         _inc("knowledge", "errors")
     if duration_ms > 0:
         _record_histogram("knowledge.ingestion_duration_ms", duration_ms)
+    if estimated_input_tokens > 0:
+        _inc("knowledge", "estimated_input_tokens", estimated_input_tokens)
+        _record_histogram("knowledge.estimated_input_tokens", float(estimated_input_tokens))
 
 
 @_safe
@@ -334,6 +338,37 @@ def record_consensus(
         _record_histogram("coordination.rounds_to_consensus", float(total_rounds))
         if total_duration_ms > 0:
             _record_histogram("coordination.time_to_consensus_ms", total_duration_ms)
+
+
+@_safe
+def record_cfn_call(
+    *,
+    service: str,
+    operation: str,
+    duration_ms: float = 0.0,
+    status_code: int = 0,
+    error: bool = False,
+) -> None:
+    """Record an outbound HTTP call to a CFN service.
+
+    Args:
+        service: Target service — ``"node"`` or ``"mgmt"``.
+        operation: Logical operation name, e.g. ``"shared_memories_query"``.
+        duration_ms: Round-trip latency of the HTTP call.
+        status_code: HTTP response status (0 if no response received).
+        error: Whether the call failed (non-2xx, timeout, transport error).
+    """
+    _inc("cfn", "calls")
+    _inc("cfn", f"calls.{service}")
+    _inc("cfn", f"calls.{service}.{operation}")
+    if error:
+        _inc("cfn", "errors")
+        _inc("cfn", f"errors.{service}")
+    if status_code > 0:
+        _inc("cfn", f"status.{status_code}")
+    if duration_ms > 0:
+        _record_histogram("cfn.latency_ms", duration_ms)
+        _record_histogram(f"cfn.latency_ms.{service}", duration_ms)
 
 
 def snapshot() -> dict:

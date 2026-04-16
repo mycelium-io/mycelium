@@ -29,7 +29,7 @@ import httpx
 import tiktoken
 
 from app.config import settings
-from app.services.metrics import record_knowledge_query
+from app.services.metrics import record_cfn_call, record_knowledge_query
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +99,7 @@ async def create_or_update_shared_memories(
     }
     if agent_id:
         body["header"] = {"agent_id": agent_id}
-    return await _cfn_post(url, body)
+    return await _cfn_post(url, body, operation="shared_memories")
 
 
 # ── Read surface ─────────────────────────────────────────────────────────────
@@ -111,41 +111,73 @@ async def create_or_update_shared_memories(
 # parse them structurally.
 
 
-async def _cfn_get(url: str) -> dict[str, Any]:
+async def _cfn_get(url: str, *, operation: str) -> dict[str, Any]:
+    t0 = time.monotonic()
     try:
         async with httpx.AsyncClient(timeout=_CFN_HTTP_TIMEOUT) as client:
             resp = await client.get(url)
             resp.raise_for_status()
+            record_cfn_call(
+                service="node", operation=operation,
+                duration_ms=(time.monotonic() - t0) * 1000,
+                status_code=resp.status_code,
+            )
             return resp.json()
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
         snippet = exc.response.text[:300]
         logger.warning("CFN GET failed | url=%s status=%d body=%r", url, status, snippet)
+        record_cfn_call(
+            service="node", operation=operation,
+            duration_ms=(time.monotonic() - t0) * 1000,
+            status_code=status, error=True,
+        )
         raise CfnKnowledgeError(
             f"CFN GET {url} returned {status}: {snippet[:200]}",
             status_code=status,
         ) from exc
     except (httpx.TimeoutException, httpx.TransportError) as exc:
         logger.exception("CFN GET unreachable | url=%s", url)
+        record_cfn_call(
+            service="node", operation=operation,
+            duration_ms=(time.monotonic() - t0) * 1000,
+            error=True,
+        )
         raise CfnKnowledgeError(f"CFN unreachable: {exc}") from exc
 
 
-async def _cfn_post(url: str, body: dict[str, Any]) -> dict[str, Any]:
+async def _cfn_post(url: str, body: dict[str, Any], *, operation: str) -> dict[str, Any]:
+    t0 = time.monotonic()
     try:
         async with httpx.AsyncClient(timeout=_CFN_HTTP_TIMEOUT) as client:
             resp = await client.post(url, json=body)
             resp.raise_for_status()
+            record_cfn_call(
+                service="node", operation=operation,
+                duration_ms=(time.monotonic() - t0) * 1000,
+                status_code=resp.status_code,
+            )
             return resp.json()
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
         snippet = exc.response.text[:300]
         logger.warning("CFN POST failed | url=%s status=%d body=%r", url, status, snippet)
+        record_cfn_call(
+            service="node", operation=operation,
+            duration_ms=(time.monotonic() - t0) * 1000,
+            status_code=status, error=True,
+        )
         raise CfnKnowledgeError(
             f"CFN POST {url} returned {status}: {snippet[:200]}",
             status_code=status,
         ) from exc
     except (httpx.TimeoutException, httpx.TransportError) as exc:
         logger.exception("CFN POST unreachable | url=%s", url)
+        record_cfn_call(
+            service="node", operation=operation,
+            duration_ms=(time.monotonic() - t0) * 1000,
+            error=True,
+        )
         raise CfnKnowledgeError(f"CFN unreachable: {exc}") from exc
 
 
@@ -177,7 +209,7 @@ async def query_shared_memories(
         body["additional_context"] = additional_context
     t0 = time.monotonic()
     try:
-        result = await _cfn_post(url, body)
+        result = await _cfn_post(url, body, operation="shared_memories_query")
     except CfnKnowledgeError:
         record_knowledge_query(
             query_type="semantic",
@@ -206,7 +238,7 @@ async def get_concepts_by_ids(
     url = f"{_mas_base(workspace_id, mas_id)}/graph/concepts/by_ids"
     t0 = time.monotonic()
     try:
-        result = await _cfn_post(url, {"ids": ids})
+        result = await _cfn_post(url, {"ids": ids}, operation="concepts_by_ids")
     except CfnKnowledgeError:
         record_knowledge_query(
             query_type="concept",
@@ -238,7 +270,7 @@ async def get_concept_neighbors(
     url = f"{_mas_base(workspace_id, mas_id)}/graph/neighbors/{concept_id}"
     t0 = time.monotonic()
     try:
-        result = await _cfn_get(url)
+        result = await _cfn_get(url, operation="neighbors")
     except CfnKnowledgeError:
         record_knowledge_query(
             query_type="neighbour",
@@ -281,7 +313,7 @@ async def get_graph_paths(
         body["limit"] = limit
     t0 = time.monotonic()
     try:
-        result = await _cfn_post(url, body)
+        result = await _cfn_post(url, body, operation="graph_paths")
     except CfnKnowledgeError:
         record_knowledge_query(
             query_type="path",

@@ -235,7 +235,10 @@ async def knowledge_ingest(
             reason=str(exc),
             cfn_status=exc.status_code,
         )
-        record_knowledge_ingestion(duration_ms=cfn_latency, error=True)
+        record_knowledge_ingestion(
+            duration_ms=cfn_latency, error=True,
+            estimated_input_tokens=est_tokens,
+        )
         code = exc.status_code or status.HTTP_502_BAD_GATEWAY
         raise HTTPException(status_code=code, detail=str(exc)) from exc
 
@@ -262,7 +265,9 @@ async def knowledge_ingest(
         cfn_message=cfn_message,
     )
 
-    record_knowledge_ingestion(duration_ms=latency_ms)
+    record_knowledge_ingestion(
+        duration_ms=latency_ms, estimated_input_tokens=est_tokens,
+    )
 
     _write_audit_event(db, data.mas_id)
     try:
