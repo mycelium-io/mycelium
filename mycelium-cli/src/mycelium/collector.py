@@ -307,8 +307,11 @@ def _deep_merge(base: dict, override: dict) -> None:
             base[key] = value
 
 
-def _fetch_backend_metrics(store: MetricsStore, api_url: str) -> None:
-    """Poll the Mycelium backend /api/metrics endpoint (best-effort)."""
+def _fetch_backend_metrics(store: MetricsStore, api_url: str, output_path: Path | None = None) -> None:
+    """Poll the Mycelium backend /api/metrics endpoint (best-effort).
+    
+    If output_path is provided, persist the updated metrics to disk.
+    """
     import urllib.request
 
     try:
@@ -316,6 +319,16 @@ def _fetch_backend_metrics(store: MetricsStore, api_url: str) -> None:
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read())
             store.set_backend_metrics(data)
+            
+            # Persist to disk if output path provided
+            if output_path is not None:
+                try:
+                    full_data = store.to_dict()
+                    tmp = output_path.with_suffix(".tmp")
+                    tmp.write_text(json.dumps(full_data, indent=2, default=str))
+                    tmp.replace(output_path)
+                except Exception as write_exc:
+                    log.debug("Failed to persist metrics: %s", write_exc)
     except Exception as exc:
         log.debug("Backend metrics poll failed (%s): %s", api_url, exc)
 
@@ -449,11 +462,11 @@ def run(port: int, output_path: Path, *, backend_api_url: str = "http://localhos
 
     def _backend_poller() -> None:
         while not _stop_event.wait(30):
-            _fetch_backend_metrics(store, backend_api_url)
+            _fetch_backend_metrics(store, backend_api_url, output_path)
 
     poller = threading.Thread(target=_backend_poller, daemon=True)
     poller.start()
-    _fetch_backend_metrics(store, backend_api_url)
+    _fetch_backend_metrics(store, backend_api_url, output_path)
 
     server = HTTPServer(("127.0.0.1", port), handler)
     log.info("OTLP receiver listening on :%d", port)
@@ -464,7 +477,7 @@ def run(port: int, output_path: Path, *, backend_api_url: str = "http://localhos
     finally:
         _stop_event.set()
         server.server_close()
-        _fetch_backend_metrics(store, backend_api_url)
+        _fetch_backend_metrics(store, backend_api_url, output_path)
         data = store.to_dict()
         tmp = output_path.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, indent=2, default=str))

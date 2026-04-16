@@ -164,7 +164,7 @@ The collector polls `GET /api/metrics` on the FastAPI backend every 30 seconds
 4. **Mycelium Data Reuse** — memory search hit/miss rates and results returned,
    synthesis briefing cache stats, knowledge graph query stats by type.
 
-5. **IOC/CFN Coordination** — negotiation session counts, rounds, consensus
+5. **CFN Coordination** — negotiation session counts, rounds, consensus
    success/failure rates, timeouts, and timing histograms.
 
 6. **OpenClaw Agents** — per-agent token breakdown, session/turn counts, cost,
