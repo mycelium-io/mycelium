@@ -112,11 +112,18 @@ def set_config(
         config = MyceliumConfig.load()
         parts = key.split(".")
 
+        # Try to coerce JSON arrays/bools/numbers so list fields round-trip correctly
+        parsed_value: object = value
+        try:
+            parsed_value = json_module.loads(value)
+        except (json_module.JSONDecodeError, ValueError):
+            pass
+
         if len(parts) == 2:
             section = getattr(config, parts[0])
-            setattr(section, parts[1], value)
+            setattr(section, parts[1], parsed_value)
         elif len(parts) == 1:
-            setattr(config, parts[0], value)
+            setattr(config, parts[0], parsed_value)
         else:
             raise ValueError(f"Unsupported key format: {key}")
 
