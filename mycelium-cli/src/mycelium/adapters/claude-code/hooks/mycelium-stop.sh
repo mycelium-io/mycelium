@@ -1,33 +1,32 @@
 #!/bin/bash
 # mycelium-stop.sh
-# Claude Code hook: fires when Claude finishes responding.
+# Claude Code hook registered for the Stop event.
 #
-# Two jobs:
-#   1. Sync room files from the backend. With ETag caching this is a cheap
-#      no-op (304) when nothing has changed on the remote.
-#   2. Extract new conversation turns from the session transcript and ship
-#      them to mycelium-backend's /api/knowledge/ingest — which forwards to
-#      CFN's shared-memories knowledge graph. Only runs when knowledge_ingest
-#      is enabled AND workspace_id / mas_id are configured.
+# Forwards the hook's stdin JSON to mycelium-knowledge-extract.py as a
+# background process so session teardown isn't blocked on the HTTP
+# round-trip. The extractor self-gates on both [knowledge_ingest].enabled
+# AND [adapters.claude-code].knowledge_extract — if either is false, this
+# is a silent no-op. See mycelium-knowledge-extract.py for the full gate
+# model.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EXTRACT_SCRIPT="${SCRIPT_DIR}/mycelium-knowledge-extract.py"
 
-# Claude Code passes hook input JSON on stdin. Read it once so we can feed
-# it to the knowledge-extract hook without losing it.
-HOOK_INPUT=""
-if [[ ! -t 0 ]]; then
-    HOOK_INPUT=$(cat || true)
+if [[ ! -f "$EXTRACT_SCRIPT" ]]; then
+    exit 0
 fi
 
-# 1. Background room sync (fire-and-forget)
-mycelium sync --no-reindex 2>/dev/null &
-
-# 2. Background knowledge extract (fire-and-forget, stdin re-piped)
-if [[ -n "$HOOK_INPUT" ]] && [[ -f "$EXTRACT_SCRIPT" ]]; then
-    printf '%s' "$HOOK_INPUT" | python3 "$EXTRACT_SCRIPT" >/dev/null 2>&1 &
+if [[ -t 0 ]]; then
+    exit 0
 fi
+
+HOOK_INPUT=$(cat || true)
+if [[ -z "$HOOK_INPUT" ]]; then
+    exit 0
+fi
+
+printf '%s' "$HOOK_INPUT" | python3 "$EXTRACT_SCRIPT" >/dev/null 2>&1 &
 
 exit 0

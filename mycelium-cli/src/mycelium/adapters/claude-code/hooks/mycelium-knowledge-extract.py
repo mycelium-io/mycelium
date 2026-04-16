@@ -5,16 +5,28 @@
 """
 mycelium-knowledge-extract (Claude Code)
 
-Claude Code hook: reads the current session transcript JSONL, extracts new
-conversation turns since the last send, and POSTs them to mycelium-backend's
-``/api/knowledge/ingest`` endpoint — which forwards to CFN's shared-memories
-knowledge graph.
+Claude Code hook: reads the current session transcript JSONL, extracts the
+most recent *completed conversation turn* (one user prompt → all assistant
+thinking / tool calls / response until the next user prompt), and POSTs it
+to mycelium-backend's ``/api/knowledge/ingest`` endpoint — which forwards
+to CFN's shared-memories knowledge graph.
 
-Mirrors the OpenClaw ``mycelium-knowledge-extract`` hook but parses Claude
-Code's transcript JSONL shape. Delta state lives at
-``~/.mycelium/extract-state/claude-code-<session-id>.json`` so only new turns
-travel each fire. Falls back to a local log file if mycelium-backend is
-unreachable or not configured.
+Design: last-turn-only, no delta state. Each fire ships exactly one turn —
+the most recent complete one. If a Stop event doesn't fire (crash, kill),
+that turn is lost; we accept that because this is an observability /
+knowledge-graph-enrichment hook, not an at-least-once delivery system.
+Keeping each fire bounded (~1 turn, a few KB) is the whole point.
+
+**Opt-in by default, behind two gates.** Silently no-ops unless ALL of:
+
+  1. ``[knowledge_ingest] enabled = true`` — global kill switch across
+     every adapter (also honored by openclaw).
+  2. ``[adapters.claude-code] knowledge_extract = true`` — per-adapter
+     switch so Claude Code can be on while openclaw is off (or vice versa).
+  3. Both ``[server] workspace_id`` and ``[server] mas_id`` are set.
+
+CFN ingest costs real tokens per record, so we don't turn this on for
+people automatically. All three gates default to off/unset.
 
 Hook input (stdin JSON, from Claude Code):
   {
@@ -31,9 +43,12 @@ Config (``~/.mycelium/config.toml``):
   mas_id       = "<uuid>"
 
   [knowledge_ingest]
-  enabled               = true
-  max_tool_content_bytes = 4096
-  skip_in_progress_turn = true
+  enabled                = false     # global — must be explicitly true
+  max_tool_content_bytes = 4096      # per tool_call input/result
+  max_text_bytes         = 8192      # per thinking/response block
+
+  [adapters.claude-code]
+  knowledge_extract = false          # per-adapter — must be explicitly true
 
 Env overrides (ephemeral; take precedence over config):
   MYCELIUM_API_URL
@@ -42,6 +57,7 @@ Env overrides (ephemeral; take precedence over config):
   MYCELIUM_AGENT_HANDLE
   MYCELIUM_INGEST_ENABLED
   MYCELIUM_INGEST_MAX_TOOL_CONTENT_BYTES
+  MYCELIUM_INGEST_MAX_TEXT_BYTES
 
 All errors are swallowed — this hook must not break the Stop chain.
 """
@@ -62,7 +78,6 @@ from typing import Any
 
 HOME = Path.home()
 CONFIG_PATH = HOME / ".mycelium" / "config.toml"
-STATE_DIR = HOME / ".mycelium" / "extract-state"
 LOG_FILE = HOME / ".mycelium" / "logs" / "claude-code-knowledge-extract.log"
 
 
@@ -146,25 +161,33 @@ def _resolve_target(config: dict[str, Any]) -> dict[str, Any]:
 
 
 def _resolve_ingest_config(config: dict[str, Any]) -> dict[str, Any]:
+    # Opt-in by default. CFN ingest costs real tokens, so the hook must be
+    # explicitly enabled — either via config.toml or MYCELIUM_INGEST_ENABLED=1.
     ki = config.get("knowledge_ingest", {}) or {}
-    enabled = ki.get("enabled", True)
+    enabled = ki.get("enabled", False)
     if "MYCELIUM_INGEST_ENABLED" in os.environ:
-        enabled = _env_bool("MYCELIUM_INGEST_ENABLED", True)
+        enabled = _env_bool("MYCELIUM_INGEST_ENABLED", False)
 
-    max_bytes = ki.get("max_tool_content_bytes", 4096)
-    env_max = os.environ.get("MYCELIUM_INGEST_MAX_TOOL_CONTENT_BYTES")
-    if env_max is not None:
+    max_tool_bytes = ki.get("max_tool_content_bytes", 4096)
+    env_tool = os.environ.get("MYCELIUM_INGEST_MAX_TOOL_CONTENT_BYTES")
+    if env_tool is not None:
         try:
-            max_bytes = int(env_max)
+            max_tool_bytes = int(env_tool)
         except ValueError:
             pass
 
-    skip_in_progress = ki.get("skip_in_progress_turn", True)
+    max_text_bytes = ki.get("max_text_bytes", 8192)
+    env_text = os.environ.get("MYCELIUM_INGEST_MAX_TEXT_BYTES")
+    if env_text is not None:
+        try:
+            max_text_bytes = int(env_text)
+        except ValueError:
+            pass
 
     return {
         "enabled": bool(enabled),
-        "max_tool_content_bytes": int(max_bytes),
-        "skip_in_progress_turn": bool(skip_in_progress),
+        "max_tool_content_bytes": int(max_tool_bytes),
+        "max_text_bytes": int(max_text_bytes),
     }
 
 
@@ -345,31 +368,6 @@ def _finalize_turn(turn: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-# ── Delta state ───────────────────────────────────────────────────────────────
-
-
-def _state_path(session_id: str) -> Path:
-    return STATE_DIR / f"claude-code-{session_id}.json"
-
-
-def _read_last_index(session_id: str) -> int:
-    try:
-        data = json.loads(_state_path(session_id).read_text())
-        return int(data.get("last_sent_index", -1))
-    except (OSError, ValueError, TypeError):
-        return -1
-
-
-def _write_last_index(session_id: str, index: int) -> None:
-    try:
-        STATE_DIR.mkdir(parents=True, exist_ok=True)
-        _state_path(session_id).write_text(
-            json.dumps({"last_sent_index": index, "updated_at": _now_iso()})
-        )
-    except OSError:
-        pass
-
-
 # ── Payload / POST ────────────────────────────────────────────────────────────
 
 
@@ -381,29 +379,33 @@ def _build_payload(
     turns: list[dict[str, Any]],
     stats_total_entries: int,
     max_tool_bytes: int,
+    max_text_bytes: int,
 ) -> dict[str, Any]:
     truncated_bytes = 0
 
-    def _truncate_and_track(value: Any) -> Any:
+    def _track(before: Any, after: Any) -> None:
         nonlocal truncated_bytes
-        if max_tool_bytes <= 0:
-            return value
         before_size = len(
-            (value if isinstance(value, str) else json.dumps(value, default=str)).encode("utf-8")
+            (before if isinstance(before, str) else json.dumps(before, default=str)).encode("utf-8")
         )
-        result = _truncate(value, max_tool_bytes)
         after_size = len(
-            (result if isinstance(result, str) else json.dumps(result, default=str)).encode("utf-8")
+            (after if isinstance(after, str) else json.dumps(after, default=str)).encode("utf-8")
         )
         if after_size < before_size:
             truncated_bytes += before_size - after_size
+
+    def _cap(value: Any, max_bytes: int) -> Any:
+        if max_bytes <= 0:
+            return value
+        result = _truncate(value, max_bytes)
+        _track(value, result)
         return result
 
     payload_turns = []
     tool_call_count = 0
     thinking_turn_count = 0
     for t in turns:
-        thinking = t.get("thinking")
+        thinking = _cap(t.get("thinking"), max_text_bytes) if t.get("thinking") else None
         if thinking:
             thinking_turn_count += 1
         tool_calls = []
@@ -413,8 +415,8 @@ def _build_payload(
                 {
                     "id": tc["id"],
                     "name": tc["name"],
-                    "input": _truncate_and_track(tc["input"]),
-                    "result": _truncate_and_track(tc["result"]),
+                    "input": _cap(tc["input"], max_tool_bytes),
+                    "result": _cap(tc["result"], max_tool_bytes),
                     "is_error": tc["is_error"],
                 }
             )
@@ -425,10 +427,10 @@ def _build_payload(
                 "model": t["model"],
                 "stop_reason": t["stop_reason"],
                 "usage": t["usage"],
-                "user_message": t["user_message"],
+                "user_message": _cap(t["user_message"], max_text_bytes),
                 "thinking": thinking,
                 "tool_calls": tool_calls,
-                "response": t["response"] or None,
+                "response": _cap(t["response"], max_text_bytes) if t["response"] else None,
             }
         )
 
@@ -524,11 +526,18 @@ def main() -> int:
     session_id = hook_input.get("session_id") or "unknown"
     transcript_path = hook_input.get("transcript_path") or ""
     cwd = hook_input.get("cwd")
-    hook_event = hook_input.get("hook_event_name", "Stop")
 
     config = _load_config()
     ingest_cfg = _resolve_ingest_config(config)
     if not ingest_cfg["enabled"]:
+        # Global kill switch is off. Silent.
+        return 0
+
+    # Per-adapter gate: requires [adapters.claude-code].knowledge_extract = true.
+    # Two independent gates so openclaw and claude-code can be toggled
+    # separately without flipping the global switch.
+    adapter_cfg = (config.get("adapters") or {}).get("claude-code") or {}
+    if not adapter_cfg.get("knowledge_extract", False):
         return 0
 
     target = _resolve_target(config)
@@ -546,35 +555,21 @@ def main() -> int:
     if not all_turns:
         return 0
 
-    # Skip an in-progress turn on non-terminal events (catch-up / pre-compact)
-    # where the final turn may still be mid-flight. On Stop / SessionEnd the
-    # most recent turn has just finalized — sending it is the whole point.
-    skip_last = ingest_cfg["skip_in_progress_turn"] and hook_event not in (
-        "Stop",
-        "SessionEnd",
-    )
-    eligible = all_turns[:-1] if skip_last and len(all_turns) >= 1 else all_turns
-
-    last_sent = _read_last_index(session_id)
-    new_turns = [t for t in eligible if t["index"] > last_sent]
-    if not new_turns:
-        return 0
-
+    # Ship only the most recent complete turn. One user prompt → all assistant
+    # thinking / tool calls / response until the next user prompt. Bounded by
+    # design: a single turn is typically a few KB, well under the circuit
+    # breaker. If this Stop doesn't fire (crash), the turn is lost — accepted
+    # tradeoff for an observability hook, not an at-least-once delivery system.
     payload = _build_payload(
         session_id=session_id,
         transcript_path=transcript_path,
         cwd=cwd,
         agent_handle=target["agent_handle"],
-        turns=new_turns,
+        turns=all_turns[-1:],
         stats_total_entries=len(entries),
         max_tool_bytes=ingest_cfg["max_tool_content_bytes"],
+        max_text_bytes=ingest_cfg["max_text_bytes"],
     )
-
-    # Optimistic write: advance baseline before the POST so any concurrent
-    # fire computes its delta from the right index. Backend content-hash
-    # dedupe absorbs replays on retry.
-    next_last = new_turns[-1]["index"]
-    _write_last_index(session_id, next_last)
 
     ok = _post_ingest(
         api_url=target["api_url"],

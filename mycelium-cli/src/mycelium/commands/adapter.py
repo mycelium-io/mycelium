@@ -46,13 +46,22 @@ _OPENCLAW_SKILL_NAME = "mycelium"
 
 _CLAUDE_CODE_SKILL_NAME = "mycelium"
 _CLAUDE_CODE_HOOKS = [
-    "mycelium-session-start.sh",
-    "mycelium-session-end.sh",
-    "mycelium-post-tool-use.sh",
-    "mycelium-pre-compact.sh",
     "mycelium-stop.sh",
+    "mycelium-session-end.sh",
     "mycelium-knowledge-extract.py",
 ]
+
+# Hook filenames + settings.json events that earlier versions of this adapter
+# wired up but no longer does. On reinstall we remove the file + settings.json
+# entry so upgraders aren't left with broken wiring pointing at files that no
+# longer exist. Append here when retiring a hook; never remove entries, or
+# upgraders who skipped a version will keep the stale state.
+_CLAUDE_CODE_STALE_HOOKS: list[tuple[str, str]] = [
+    ("mycelium-session-start.sh", "SessionStart"),
+    ("mycelium-post-tool-use.sh", "PostToolUse"),
+    ("mycelium-pre-compact.sh", "PreCompact"),
+]
+_CLAUDE_CODE_STALE_SCRIPTS = ["flush-batch.sh", "mycelium-api.sh"]
 
 
 @app.callback()
@@ -417,8 +426,23 @@ def add(
                 adapter_record["openclaw_profile"] = openclaw_profile
             if openclaw_container:
                 adapter_record["openclaw_container"] = openclaw_container
+            # Per-adapter knowledge-extract gate. Default false — CFN ingest
+            # costs real tokens, so users must opt in explicitly. The
+            # knowledge-extract hook additionally requires
+            # [knowledge_ingest].enabled = true.
+            if adapter_type == "claude-code":
+                adapter_record["knowledge_extract"] = False
             config.adapters[adapter_type] = adapter_record
             config.save()
+        elif adapter_type == "claude-code":
+            # Reinstall path: preserve existing record but make sure the
+            # knowledge_extract key is present so users can see it in
+            # config.toml without overwriting a value they may have flipped.
+            existing = config.adapters.get(adapter_type, {})
+            if "knowledge_extract" not in existing:
+                existing["knowledge_extract"] = False
+                config.adapters[adapter_type] = existing
+                config.save()
 
         if json_output:
             typer.echo(json_module.dumps(config.adapters.get(adapter_type, {}), indent=2))
@@ -436,6 +460,16 @@ def add(
             typer.echo("")
             typer.echo("  Invoke the skill from within a session:")
             typer.secho("    /mycelium", fg=typer.colors.CYAN)
+            typer.echo("")
+            typer.secho("  Knowledge ingest is OFF by default.", fg=typer.colors.YELLOW)
+            typer.echo("  To ship Claude Code session turns to your CFN knowledge graph,")
+            typer.echo("  flip BOTH gates in ~/.mycelium/config.toml:")
+            typer.secho(
+                "    [knowledge_ingest]\n    enabled = true\n\n"
+                "    [adapters.claude-code]\n    knowledge_extract = true",
+                fg=typer.colors.CYAN,
+            )
+            typer.echo("  and confirm [server].mas_id is set. CFN ingest costs tokens.")
         else:
             verb = "reinstalled" if reinstall else "installed"
             typer.secho(f"Adapter '{adapter_type}' {verb}.", fg=typer.colors.GREEN)
@@ -932,14 +966,24 @@ def _install_claude_code(verbose: bool = False) -> None:
     """
     Install the bundled Claude Code adapter assets into ~/.claude/.
 
-    - Skill (SKILL.md): copied to ~/.claude/skills/mycelium/
-    - Hooks (*.sh): copied to ~/.claude/hooks/  (made executable)
-    - Scripts (*.sh): copied to ~/.claude/scripts/ (support files for hooks)
-    - settings.json: registers Stop hook for git sync
+    Installs three files total — the adapter is deliberately minimal:
+
+    - ``skills/mycelium/SKILL.md`` — the mycelium skill the agent invokes
+      via ``/mycelium``.
+    - ``hooks/mycelium-stop.sh`` + ``hooks/mycelium-session-end.sh`` — thin
+      shell wrappers that pipe hook stdin into the knowledge extractor as a
+      background process.
+    - ``hooks/mycelium-knowledge-extract.py`` — the actual work: reads the
+      Claude Code transcript, ships the last turn to the backend if
+      (and only if) both opt-in gates are on.
+
+    Also rewrites ``settings.json`` to register Stop + SessionEnd, and
+    *removes* any wiring + hook files from earlier adapter versions that
+    this release no longer installs (see ``_CLAUDE_CODE_STALE_*``).
     """
     claude_dir = Path.home() / ".claude"
 
-    # Install skill
+    # Skill
     skill_src = _resolve_asset(f"skills/{_CLAUDE_CODE_SKILL_NAME}", adapter="claude-code")
     skill_dst = claude_dir / "skills" / _CLAUDE_CODE_SKILL_NAME
     skill_dst.mkdir(parents=True, exist_ok=True)
@@ -949,7 +993,7 @@ def _install_claude_code(verbose: bool = False) -> None:
         if verbose:
             typer.echo(f"  skill: {dest}")
 
-    # Install hooks
+    # Hooks
     hooks_src = _resolve_asset("hooks", adapter="claude-code")
     hooks_dst = claude_dir / "hooks"
     hooks_dst.mkdir(parents=True, exist_ok=True)
@@ -965,27 +1009,40 @@ def _install_claude_code(verbose: bool = False) -> None:
         if verbose:
             typer.echo(f"  hook: {dst_file}")
 
-    # Install scripts (support files used by hooks)
-    scripts_src = _resolve_asset("scripts", adapter="claude-code")
-    scripts_dst = claude_dir / "scripts"
-    scripts_dst.mkdir(parents=True, exist_ok=True)
-    if scripts_src.exists():
-        for f in scripts_src.iterdir():
-            if f.is_file():
-                dest = scripts_dst / f.name
-                dest.write_bytes(f.read_bytes())
-                dest.chmod(0o755)
-                if verbose:
-                    typer.echo(f"  script: {dest}")
+    # Snapshot the user's settings.json before any mutation. Incrementally
+    # numbered so prior backups are never overwritten. We tell the user
+    # exactly where it lives so a bad install can be rolled back with cp.
+    backup_path = _backup_claude_settings(claude_dir)
+    if backup_path is not None:
+        typer.secho(f"  settings.json backup: {backup_path}", fg=typer.colors.CYAN)
 
-    # Register Stop hook in settings.json for git sync
-    _register_claude_code_stop_hook(claude_dir, verbose=verbose)
+    # Clean up hooks + scripts + settings.json entries from earlier versions
+    # before rewriting the live wiring.
+    _cleanup_stale_claude_code_assets(claude_dir, verbose=verbose)
+
+    # Register lifecycle hooks in settings.json so Claude Code actually fires them.
+    _register_claude_code_hooks(claude_dir, verbose=verbose)
 
 
-def _register_claude_code_stop_hook(claude_dir: Path, verbose: bool = False) -> None:
-    """Add mycelium-stop.sh to the Stop hooks in Claude Code settings.json."""
+# Maps hook script name → Claude Code hook event name. The knowledge-extract
+# python script is NOT registered directly: it's invoked by the stop /
+# session-end shell hooks which forward stdin to it.
+_CLAUDE_CODE_HOOK_EVENTS: list[tuple[str, str]] = [
+    ("mycelium-stop.sh", "Stop"),
+    ("mycelium-session-end.sh", "SessionEnd"),
+]
+
+
+def _register_claude_code_hooks(claude_dir: Path, verbose: bool = False) -> None:
+    """Wire the mycelium lifecycle hooks into Claude Code's settings.json.
+
+    Claude Code only invokes hooks that are registered under the matching
+    event key in ``~/.claude/settings.json``. Dropping the scripts into
+    ``~/.claude/hooks/`` isn't enough — without this registration the
+    events never fire and the whole adapter is dead weight. Idempotent:
+    skips events that already point at the same command.
+    """
     settings_path = claude_dir / "settings.json"
-    hook_command = str(claude_dir / "hooks" / "mycelium-stop.sh")
 
     try:
         if settings_path.exists():
@@ -994,36 +1051,164 @@ def _register_claude_code_stop_hook(claude_dir: Path, verbose: bool = False) -> 
             settings = {}
 
         hooks = settings.setdefault("hooks", {})
-        stop_hooks = hooks.setdefault("Stop", [])
+        registered: list[str] = []
+        already: list[str] = []
 
-        # Check if already registered
-        for entry in stop_hooks:
-            for h in entry.get("hooks", []):
-                if h.get("command", "") == hook_command:
-                    if verbose:
-                        typer.echo("  Stop hook already registered")
-                    return
+        for script_name, event in _CLAUDE_CODE_HOOK_EVENTS:
+            hook_command = str(claude_dir / "hooks" / script_name)
+            event_entries = hooks.setdefault(event, [])
 
-        # Add the hook
-        stop_hooks.append(
-            {
-                "matcher": "",
-                "hooks": [
-                    {
-                        "type": "command",
-                        "command": hook_command,
-                        "timeout": 15,
-                    }
-                ],
-            }
-        )
+            duplicate = any(
+                h.get("command", "") == hook_command
+                for entry in event_entries
+                for h in entry.get("hooks", [])
+            )
+            if duplicate:
+                already.append(event)
+                continue
+
+            event_entries.append(
+                {
+                    "matcher": "",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": hook_command,
+                            "timeout": 15,
+                        }
+                    ],
+                }
+            )
+            registered.append(event)
 
         settings_path.write_text(json_module.dumps(settings, indent=2) + "\n")
         if verbose:
-            typer.echo(f"  registered Stop hook: {hook_command}")
+            for event in registered:
+                typer.echo(f"  registered {event} hook")
+            for event in already:
+                typer.echo(f"  {event} hook already registered")
     except Exception as e:
         if verbose:
-            typer.echo(f"  warning: could not register Stop hook: {e}")
+            typer.echo(f"  warning: could not register hooks: {e}")
+
+
+def _backup_claude_settings(claude_dir: Path) -> Path | None:
+    """Snapshot ``~/.claude/settings.json`` to an incrementally-numbered backup.
+
+    Written adjacent to the original so users find it easily —
+    ``~/.claude/settings.json.mycelium-backup.<N>``. ``N`` starts at 1 and
+    increments until we find an unused slot; we never overwrite an
+    existing backup. Returns the backup path, or ``None`` if there was
+    nothing to back up or the write failed. Safe to call on every install
+    — if settings.json didn't change since the last backup, the newest
+    backup is still an exact duplicate, which is the safest failure mode.
+    """
+    settings_path = claude_dir / "settings.json"
+    if not settings_path.exists():
+        return None
+    n = 1
+    while True:
+        candidate = claude_dir / f"settings.json.mycelium-backup.{n}"
+        if not candidate.exists():
+            break
+        n += 1
+    try:
+        candidate.write_bytes(settings_path.read_bytes())
+        return candidate
+    except OSError:
+        return None
+
+
+def _cleanup_stale_claude_code_assets(claude_dir: Path, verbose: bool = False) -> None:
+    """Remove hook files, scripts, and settings.json entries from earlier adapter versions.
+
+    Earlier versions of the claude-code adapter wired up session-start /
+    post-tool-use / pre-compact hooks plus a shell-script batch-flush
+    pipeline. Those are no longer installed. If we don't actively clean
+    them up, upgraders end up with stale hook files on disk and stale
+    settings.json entries pointing at scripts that still exist but no
+    longer match the current design — at best confusing, at worst they
+    keep running old behavior the user doesn't want.
+
+    Safe to run repeatedly — missing files / entries are ignored.
+    """
+    # 1) Stale hook files under ~/.claude/hooks/
+    hooks_dir = claude_dir / "hooks"
+    for script_name, _event in _CLAUDE_CODE_STALE_HOOKS:
+        p = hooks_dir / script_name
+        if p.exists():
+            try:
+                p.unlink()
+                if verbose:
+                    typer.echo(f"  removed stale hook: {p}")
+            except OSError as e:
+                if verbose:
+                    typer.echo(f"  warning: could not remove {p}: {e}")
+
+    # 2) Stale support scripts under ~/.claude/scripts/
+    scripts_dir = claude_dir / "scripts"
+    if scripts_dir.exists():
+        for script_name in _CLAUDE_CODE_STALE_SCRIPTS:
+            p = scripts_dir / script_name
+            if p.exists():
+                try:
+                    p.unlink()
+                    if verbose:
+                        typer.echo(f"  removed stale script: {p}")
+                except OSError as e:
+                    if verbose:
+                        typer.echo(f"  warning: could not remove {p}: {e}")
+        # Remove the scripts dir if it's now empty so we don't leave a
+        # dangling directory behind.
+        try:
+            if not any(scripts_dir.iterdir()):
+                scripts_dir.rmdir()
+        except OSError:
+            pass
+
+    # 3) Stale settings.json event registrations
+    settings_path = claude_dir / "settings.json"
+    if not settings_path.exists():
+        return
+    try:
+        settings = json_module.loads(settings_path.read_text())
+    except (OSError, json_module.JSONDecodeError):
+        return
+    hooks = settings.get("hooks") or {}
+    changed = False
+    for script_name, event in _CLAUDE_CODE_STALE_HOOKS:
+        stale_command = str(hooks_dir / script_name)
+        entries = hooks.get(event)
+        if not entries:
+            continue
+        kept = []
+        for entry in entries:
+            inner = entry.get("hooks") or []
+            filtered = [h for h in inner if h.get("command", "") != stale_command]
+            if not filtered:
+                # Entry had only the stale command — drop the whole entry.
+                changed = True
+                continue
+            if len(filtered) != len(inner):
+                changed = True
+                entry = {**entry, "hooks": filtered}
+            kept.append(entry)
+        if kept:
+            hooks[event] = kept
+        else:
+            # No entries remain for this event — drop the key so we don't
+            # leave a dangling empty array in settings.json.
+            hooks.pop(event, None)
+            changed = True
+    if changed:
+        settings["hooks"] = hooks
+        try:
+            settings_path.write_text(json_module.dumps(settings, indent=2) + "\n")
+            if verbose:
+                typer.echo("  pruned stale settings.json entries")
+        except OSError as e:
+            if verbose:
+                typer.echo(f"  warning: could not rewrite settings.json: {e}")
 
 
 def _allow_plugin(

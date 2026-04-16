@@ -179,32 +179,53 @@ structured multi-issue decisions use the **Structured Negotiation Protocol**
 above. For durable knowledge that outlives the session, write it to room
 memory instead.
 
-## Knowledge Ingest (CFN Graph) — Optional
+## What the Claude Code adapter actually installs
 
-When your claude-code instance is running under a CFN-registered
-**workspace + MAS**, the `mycelium-stop.sh` hook automatically ships your
-finalized conversation turns (thinking chains, tool calls + results, token
-usage) to `POST /api/knowledge/ingest`, which forwards them to CFN's
-`shared-memories` knowledge graph. Delta state is tracked per-session so
-only new turns travel each fire.
+`mycelium adapter add claude-code` is deliberately minimal. It drops three files into `~/.claude/` and wires two events into `settings.json`. That's it.
 
-This wiring is **opt-in** — it requires `workspace_id` and `mas_id` to be
-configured. Without them, the extract hook silently no-ops. To enable:
+| Path | Purpose |
+|------|---------|
+| `~/.claude/skills/mycelium/SKILL.md` | This file. The skill Claude Code loads when you say `/mycelium`. |
+| `~/.claude/hooks/mycelium-stop.sh` | Registered for the `Stop` event. Reads hook stdin and background-invokes the extractor. |
+| `~/.claude/hooks/mycelium-session-end.sh` | Registered for the `SessionEnd` event. Same shape — runs once more in case the last turn's `Stop` was never delivered. |
+| `~/.claude/hooks/mycelium-knowledge-extract.py` | The actual work. Parses the Claude Code transcript JSONL, ships the last turn to `POST /api/knowledge/ingest`. **Silent no-op unless both opt-in gates are true.** |
 
-```bash
-export MYCELIUM_WORKSPACE_ID=<uuid>
-export MYCELIUM_MAS_ID=<uuid>
-# or persist via mycelium config set server.workspace_id <uuid>
+Before editing `~/.claude/settings.json`, the installer snapshots it to `~/.claude/settings.json.mycelium-backup.<N>` (incremental, never overwrites). Restore with a copy if anything goes sideways.
+
+## Knowledge Ingest (CFN Graph) — Optional, OFF by default
+
+When enabled, `mycelium-stop.sh` and `mycelium-session-end.sh` ship your **most recent completed conversation turn** (one user prompt → all assistant thinking, tool calls, and response until the next prompt) to `POST /api/knowledge/ingest`, which forwards to CFN's `shared-memories` knowledge graph. One turn per fire — typically a few KB, bounded by design.
+
+**This is off by default.** Three gates must line up before anything ships:
+
+1. `[knowledge_ingest] enabled = true` — global kill switch (applies to every adapter — openclaw too).
+2. `[adapters.claude-code] knowledge_extract = true` — per-adapter switch. Lets you keep extraction on for openclaw while off for Claude Code (or vice versa).
+3. Both `[server] workspace_id` and `[server] mas_id` set.
+
+To enable, edit `~/.mycelium/config.toml`:
+
+```toml
+[server]
+workspace_id = "<uuid>"
+mas_id       = "<uuid>"
+
+[knowledge_ingest]
+enabled = true
+
+[adapters.claude-code]
+knowledge_extract = true
 ```
 
-The extract hook runs on the `Stop`, `SessionEnd`, and `PreCompact` events.
-Cost-control knobs live under `[knowledge_ingest]` in `~/.mycelium/config.toml`
-and are also env-overridable via `MYCELIUM_INGEST_*` (see **Environment
-Variables** below). Observability: every forward attempt (ok, deduped,
-refused, disabled, error) surfaces via `mycelium cfn log` / `mycelium cfn
-stats`.
+Each fire ships exactly one turn. If a fire misses (crash), that turn is lost — acceptable for an observability hook, not a delivery system.
 
-Quickest panic button: `export MYCELIUM_INGEST_ENABLED=0`.
+Cost-control knobs under `[knowledge_ingest]` (also env-overridable via `MYCELIUM_INGEST_*` — see **Environment Variables** below): `max_tool_content_bytes` caps each tool call input/result; `max_text_bytes` caps thinking and response text. Backend adds a token circuit breaker and content-hash dedupe as additional safety nets.
+
+Observability: every forward attempt (ok, deduped, refused, disabled, error) surfaces via `mycelium cfn log` / `mycelium cfn stats`. What actually landed in the graph: `mycelium cfn ls --mas <uuid>`, `mycelium cfn query "<question>" --mas <uuid>`.
+
+Quickest panic buttons (any one kills ingest instantly):
+- `export MYCELIUM_INGEST_ENABLED=0`
+- Flip `[knowledge_ingest] enabled = false` in config.toml
+- Flip `[adapters.claude-code] knowledge_extract = false` in config.toml
 
 ## Sync (Multi-Machine / Centralized Backend)
 
@@ -218,9 +239,7 @@ mycelium room clone my-project --from http://ec2-host:8000
 mycelium sync
 ```
 
-**Auto-sync via hooks**: The Claude Code adapter automatically syncs at session start and end. This means your agent always starts with the latest context. No manual sync needed for typical workflows.
-
-For manual sync, use `mycelium sync` directly.
+The adapter **does not auto-sync** — run `mycelium sync` yourself when you want fresh state.
 
 ## Starting a Session (The "Catchup" Pattern)
 
@@ -283,8 +302,9 @@ below has a matching env var for ephemeral changes (no config edit needed).
 
 | Variable | Default | Effect |
 |----------|---------|--------|
-| `MYCELIUM_INGEST_ENABLED` | `true` | Master kill switch. `0`/`false` stops the hook on entry (no transcript reads, no POSTs, no CFN spend). |
-| `MYCELIUM_INGEST_MAX_TOOL_CONTENT_BYTES` | `4096` | Per-tool-call truncation threshold. `0` disables truncation. The CFN extractor pulls concepts, not verbatim text, so losing the tail of a 200KB Read output costs nothing on extraction quality. |
+| `MYCELIUM_INGEST_ENABLED` | `false` | Master kill switch. Must be `1`/`true` to ship anything. `0`/`false` stops the hook on entry (no transcript reads, no POSTs, no CFN spend). |
+| `MYCELIUM_INGEST_MAX_TOOL_CONTENT_BYTES` | `4096` | Per-tool-call input/result truncation threshold. `0` disables truncation. The CFN extractor pulls concepts, not verbatim text, so losing the tail of a 200KB Read output costs nothing on extraction quality. |
+| `MYCELIUM_INGEST_MAX_TEXT_BYTES` | `8192` | Per-message truncation threshold for user messages, assistant thinking, and assistant response text. `0` disables truncation. |
 | `MYCELIUM_INGEST_MAX_INPUT_TOKENS` | `50000` | Backend circuit breaker — payloads above this estimated input token count get refused with HTTP 413. `0` disables. |
 | `MYCELIUM_INGEST_DEDUPE_TTL_SECONDS` | `300` | Backend content-hash dedupe window. Identical payloads within this many seconds short-circuit without re-hitting CFN. `0` disables dedupe. |
 
