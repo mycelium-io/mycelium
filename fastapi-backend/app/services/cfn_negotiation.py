@@ -65,12 +65,13 @@ async def _cfn_post(url: str, body: dict[str, Any], endpoint: str) -> dict[str, 
         async with httpx.AsyncClient(timeout=_CFN_HTTP_TIMEOUT) as client:
             resp = await client.post(url, json=body)
             resp.raise_for_status()
+            data = resp.json()
             record_cfn_call(
                 service="node", operation=endpoint,
                 duration_ms=(time.monotonic() - t0) * 1000,
                 status_code=resp.status_code,
             )
-            return resp.json()
+            return data
     except httpx.HTTPStatusError as exc:
         reason = _describe_exc(exc)
         logger.warning(

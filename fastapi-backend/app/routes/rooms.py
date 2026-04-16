@@ -82,6 +82,7 @@ async def _sync_delete_mas(room: Room) -> None:
             service="mgmt", operation="delete_mas",
             duration_ms=(time.monotonic() - t0) * 1000,
             status_code=resp.status_code,
+            error=resp.status_code >= 400,
         )
         logger.info("CFN MAS deleted for room %s: %s", room.name, room.mas_id)
     except Exception as exc:

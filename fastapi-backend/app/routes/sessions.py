@@ -199,6 +199,7 @@ async def _register_agent_cfn(room: Room, handle: str) -> None:
             service="mgmt", operation="register_agent",
             duration_ms=(time.monotonic() - t0) * 1000,
             status_code=resp.status_code,
+            error=resp.status_code >= 400,
         )
         logger.debug("CFN agent registered: %s in workspace %s", handle, room.workspace_id)
     except Exception as exc:

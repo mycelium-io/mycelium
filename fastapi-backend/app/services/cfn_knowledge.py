@@ -117,12 +117,13 @@ async def _cfn_get(url: str, *, operation: str) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=_CFN_HTTP_TIMEOUT) as client:
             resp = await client.get(url)
             resp.raise_for_status()
+            data = resp.json()
             record_cfn_call(
                 service="node", operation=operation,
                 duration_ms=(time.monotonic() - t0) * 1000,
                 status_code=resp.status_code,
             )
-            return resp.json()
+            return data
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
         snippet = exc.response.text[:300]
@@ -152,12 +153,13 @@ async def _cfn_post(url: str, body: dict[str, Any], *, operation: str) -> dict[s
         async with httpx.AsyncClient(timeout=_CFN_HTTP_TIMEOUT) as client:
             resp = await client.post(url, json=body)
             resp.raise_for_status()
+            data = resp.json()
             record_cfn_call(
                 service="node", operation=operation,
                 duration_ms=(time.monotonic() - t0) * 1000,
                 status_code=resp.status_code,
             )
-            return resp.json()
+            return data
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
         snippet = exc.response.text[:300]

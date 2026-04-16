@@ -726,9 +726,9 @@ def _render_summary_table(
 
 def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
     counters = (otel or {}).get("counters", {})
-    by_agent_cost = counters.get("cost_usd", {}).get("by_agent", {})
-    by_agent_histograms = (otel or {}).get("histograms", {}).get("by_agent", {})
-    by_agent_tokens = counters.get("tokens", {}).get("by_agent", {})
+    by_channel_cost = counters.get("cost_usd", {}).get("by_agent", {})
+    by_channel_histograms = (otel or {}).get("histograms", {}).get("by_agent", {})
+    by_channel_tokens = counters.get("tokens", {}).get("by_agent", {})
     otel_sessions = (otel or {}).get("sessions", [])
 
     session_tokens_by_agent: dict[str, dict[str, int]] = {}
@@ -743,15 +743,16 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
         for k in ("input", "output", "cache_read", "cache_write", "total"):
             bucket[k] += st.get(k, 0)
 
-    agent_names: set[str] = set(by_agent_tokens.keys()) | set(session_tokens_by_agent.keys())
-    for a in agents_meta:
-        agent_names.add(a.get("name", ""))
-    _FILTERED_CHANNELS = {"matrix", "slack", "discord", "cli", ""}
-    agent_names -= _FILTERED_CHANNELS
+    known_agents = {a.get("name", "") for a in agents_meta} - {""}
+    agent_names: set[str] = set()
+    for name in set(by_channel_tokens.keys()) | set(session_tokens_by_agent.keys()):
+        if name in known_agents:
+            agent_names.add(name)
+    agent_names |= known_agents
 
-    has_cost = any(by_agent_cost.get(n) for n in agent_names)
+    has_cost = any(by_channel_cost.get(n) for n in agent_names)
     has_hist = any(
-        by_agent_histograms.get(n, {}).get("run_duration_ms", {}).get("count", 0) > 0
+        by_channel_histograms.get(n, {}).get("run_duration_ms", {}).get("count", 0) > 0
         for n in agent_names
     )
 
@@ -776,9 +777,7 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
     }
 
     for name in sorted(agent_names):
-        if not name:
-            continue
-        tok = by_agent_tokens.get(name, session_tokens_by_agent.get(name, {}))
+        tok = by_channel_tokens.get(name, session_tokens_by_agent.get(name, {}))
         agent_sessions = [s for s in otel_sessions if s.get("agent") == name]
         sess_count = len(agent_sessions)
         total_turns = sum(s.get("turns", 1) for s in agent_sessions)
@@ -791,7 +790,7 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
         totals["sessions"] += sess_count
         totals["turns"] += total_turns
 
-        agent_cost = by_agent_cost.get(name, 0.0)
+        agent_cost = by_channel_cost.get(name, 0.0)
         totals["cost"] += agent_cost
 
         ws_size = "—"
@@ -803,7 +802,7 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
                 break
 
         avg_run = "—"
-        agent_h = by_agent_histograms.get(name, {})
+        agent_h = by_channel_histograms.get(name, {})
         rd = agent_h.get("run_duration_ms", {})
         if rd.get("count", 0) > 0:
             avg_s = rd["sum"] / rd["count"] / 1000
@@ -847,6 +846,96 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
     if not agent_names:
         placeholder_cols = 8 + (1 if has_cost else 0) + (1 if has_hist else 0)
         table.add_row("(none)", *["—"] * placeholder_cols)
+
+    console.print(table)
+    console.print()
+
+    _render_channel_table(by_channel_tokens, by_channel_cost, by_channel_histograms, known_agents)
+
+
+def _render_channel_table(
+    by_channel_tokens: dict,
+    by_channel_cost: dict,
+    by_channel_histograms: dict,
+    known_agents: set[str],
+) -> None:
+    """Show token usage by openclaw.channel for non-agent channels."""
+    channel_names = {c for c in by_channel_tokens if c and c not in known_agents}
+    if not channel_names:
+        return
+
+    has_cost = any(by_channel_cost.get(c) for c in channel_names)
+    has_hist = any(
+        by_channel_histograms.get(c, {}).get("run_duration_ms", {}).get("count", 0) > 0
+        for c in channel_names
+    )
+
+    table = Table(
+        title="Tokens by Channel", title_style="bold cyan",
+        title_justify="left", border_style="dim",
+    )
+    table.add_column("Channel", style="bold")
+    table.add_column("Input", justify="right")
+    table.add_column("Output", justify="right")
+    table.add_column("Cache R", justify="right", style="dim")
+    table.add_column("Cache W", justify="right", style="dim")
+    table.add_column("Total", justify="right")
+    if has_cost:
+        table.add_column("Cost", justify="right")
+    if has_hist:
+        table.add_column("Avg Run", justify="right")
+
+    totals: dict[str, int | float] = {
+        "input": 0, "output": 0, "cache_read": 0, "cache_write": 0,
+        "total": 0, "cost": 0.0,
+    }
+
+    for name in sorted(channel_names):
+        tok = by_channel_tokens.get(name, {})
+        totals["input"] += tok.get("input", 0)
+        totals["output"] += tok.get("output", 0)
+        totals["cache_read"] += tok.get("cache_read", 0)
+        totals["cache_write"] += tok.get("cache_write", 0)
+        totals["total"] += tok.get("total", 0)
+
+        ch_cost = by_channel_cost.get(name, 0.0)
+        totals["cost"] += ch_cost
+
+        avg_run = "—"
+        ch_h = by_channel_histograms.get(name, {})
+        rd = ch_h.get("run_duration_ms", {})
+        if rd.get("count", 0) > 0:
+            avg_s = rd["sum"] / rd["count"] / 1000
+            avg_run = f"{avg_s:.1f}s"
+
+        row: list[str] = [
+            name,
+            _fmt_num(tok.get("input", 0)),
+            _fmt_num(tok.get("output", 0)),
+            _fmt_num(tok.get("cache_read", 0)),
+            _fmt_num(tok.get("cache_write", 0)),
+            _fmt_num(tok.get("total", 0)),
+        ]
+        if has_cost:
+            row.append(_fmt_cost(ch_cost) if ch_cost else "—")
+        if has_hist:
+            row.append(avg_run)
+        table.add_row(*row)
+
+    if len(channel_names) > 1:
+        total_row: list[str] = [
+            "[bold]Total[/bold]",
+            f"[bold]{_fmt_num(totals['input'])}[/bold]",
+            f"[bold]{_fmt_num(totals['output'])}[/bold]",
+            f"[bold]{_fmt_num(totals['cache_read'])}[/bold]",
+            f"[bold]{_fmt_num(totals['cache_write'])}[/bold]",
+            f"[bold]{_fmt_num(totals['total'])}[/bold]",
+        ]
+        if has_cost:
+            total_row.append(f"[bold]{_fmt_cost(totals['cost'])}[/bold]")
+        if has_hist:
+            total_row.append("—")
+        table.add_row(*total_row)
 
     console.print(table)
     console.print()
