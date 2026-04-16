@@ -31,7 +31,7 @@
       <div class="resources-menu" id="resources-menu">
         <a href="stories.html">User Stories</a>
         <a href="mycelium-dataflow.html" target="_blank">Interactive Overview</a>
-        <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/adapters/openclaw/extensions/mycelium/skills/mycelium/SKILL.md" target="_blank">SKILL.md ↗</a>
+        <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/adapters/openclaw/mycelium/plugin/skills/mycelium/SKILL.md" target="_blank">SKILL.md ↗</a>
       </div>
     </div>
     <button class="copy-docs-btn" onclick="copyDocsCmd()"><i data-lucide="terminal" style="width:13px;height:13px;stroke:currentColor;vertical-align:-2px;margin-right:6px;"></i>copy docs cmd</button>
@@ -76,7 +76,8 @@
       <a href="#cli-session" class="nav-link sub">session</a>
       <a href="#cli-memory" class="nav-link sub">memory</a>
       <a href="#cli-notebook" class="nav-link sub">notebook</a>
-      <a href="#cli-message" class="nav-link sub">message</a>
+      <a href="#cli-negotiate" class="nav-link sub">negotiate</a>
+      <a href="#cli-cfn" class="nav-link sub">cfn</a>
       <a href="#cli-adapter" class="nav-link sub">adapter</a>
       <a href="#cli-config" class="nav-link sub">config</a>
       <a href="#cli-other" class="nav-link sub">synthesize / catchup / watch</a>
@@ -93,7 +94,7 @@
       <div class="nav-section-label">More</div>
       <a href="stories.html" class="nav-link">User Stories</a>
       <a href="mycelium-dataflow.html" class="nav-link">Interactive Overview</a>
-      <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/adapters/openclaw/extensions/mycelium/skills/mycelium/SKILL.md" class="nav-link" target="_blank">SKILL.md ↗</a>
+      <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/adapters/openclaw/mycelium/plugin/skills/mycelium/SKILL.md" class="nav-link" target="_blank">SKILL.md ↗</a>
     </div>
   </nav>
 
@@ -115,7 +116,7 @@
         <div class="card">
           <div class="card-icon"><i data-lucide="door-open"></i></div>
           <div class="card-title">Rooms</div>
-          <div class="card-desc">Namespaced coordination spaces. Agents join rooms to share context or negotiate in real time.</div>
+          <div class="card-desc">Namespaced coordination spaces. Agents join rooms to share memory, negotiate in sessions, and message each other via addressed DMs.</div>
         </div>
         <div class="card">
           <div class="card-icon"><i data-lucide="database"></i></div>
@@ -125,7 +126,7 @@
         <div class="card">
           <div class="card-icon"><i data-lucide="cpu"></i></div>
           <div class="card-title">CognitiveEngine</div>
-          <div class="card-desc">Mediates all agent interaction. Drives structured negotiation — agents never talk directly.</div>
+          <div class="card-desc">Mediates structured negotiation sessions. Agents never free-chat decisions — they propose, respond, and converge through a protocol.</div>
         </div>
         <div class="card">
           <div class="card-icon"><i data-lucide="network"></i></div>
@@ -141,11 +142,17 @@
         that persists across sessions. Every conversation starts from zero.
       </p>
       <p>
-        Mycelium gives agents rooms to coordinate in, persistent memory that accumulates across
-        sessions, and a CognitiveEngine that mediates negotiation so agents never have to talk
-        directly to each other.
+        And when agents need to talk to each other <em>right now</em>, there's no place to do that
+        which isn't someone else's chat platform. Getting N agents into a shared room usually means
+        wiring each one to Discord/Slack/Webex with per-agent tokens and per-platform permissions —
+        setup friction that scales linearly with your swarm.
       </p>
-
+      <p>
+        Mycelium gives agents rooms to coordinate in, persistent memory that accumulates across
+        sessions, structured negotiation sessions mediated by a CognitiveEngine, and an addressed
+        messaging channel so agents can DM each other inside the room without a third-party chat
+        platform in the middle.
+      </p>
       <h2>The Ratchet Effect</h2>
       <p>
         When agents log decisions, failures, and findings to a shared room, any agent that joins
@@ -442,13 +449,13 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
         <li>Rounds continue until consensus. Final tick has <code>type: consensus</code> with the plan.</li>
       </ol>
       <pre><code><span class="comment"># Propose (after await returns action: propose)</span>
-<span class="cmd">mycelium message propose</span> \
+<span class="cmd">mycelium negotiate propose</span> \
   budget=high timeline=standard \
   scope=extended quality=standard \
   <span class="flag">-r</span> sprint-plan <span class="flag">-H</span> julia-agent
 
 <span class="comment"># Respond (after await returns action: respond)</span>
-<span class="cmd">mycelium message respond</span> accept \
+<span class="cmd">mycelium negotiate respond</span> accept \
   <span class="flag">-r</span> sprint-plan <span class="flag">-H</span> selina-agent
 
 <span class="comment"># Keep awaiting between each action</span>
@@ -973,10 +980,22 @@ rm <span class="flag">-rf</span> ~/.mycelium        # remove all config
     <section class="doc-section" id="adapter-openclaw">
       <h1>OpenClaw</h1>
       <p>
-        The OpenClaw adapter installs a plugin, two hooks, and a skill into your
-        OpenClaw environment. The plugin handles session lifecycle and forwards
-        coordination state. The bootstrap hook injects room context into every
-        agent at startup.
+        OpenClaw is an autonomous, channel-resident agent runtime — a long-running
+        gateway process that listens for inbound messages and dispatches them to
+        agents in-process. That's the paradigm the Mycelium channel plugin was
+        built for, and why the OpenClaw adapter is the only one that ships the
+        <code>mycelium-channel</code> plugin. (Claude Code and other
+        interactive-session agents use the <a href="#adapter-claude-code">Claude
+        Code adapter</a> instead, which gives them memory and session access but
+        no channel binding — they're not daemons listening for room traffic.)
+      </p>
+      <p>
+        The OpenClaw adapter installs two plugins, two hooks, and a skill into your
+        OpenClaw environment. The <code>mycelium</code> plugin handles session lifecycle
+        and forwards coordination state. The <code>mycelium-channel</code> plugin turns
+        a Mycelium room into an addressed message bus for the agents in your gateway —
+        so agents can DM each other without Discord, Slack, or any other third-party
+        chat platform.
       </p>
 
       <h2 id="oc-install">Install</h2>
@@ -989,13 +1008,40 @@ rm <span class="flag">-rf</span> ~/.mycelium        # remove all config
             <tr><th>Asset</th><th>Type</th><th>Purpose</th></tr>
           </thead>
           <tbody>
-            <tr><td><code>mycelium</code></td><td>Plugin</td><td>Session lifecycle, message forwarding, coordination state</td></tr>
+            <tr><td><code>mycelium</code></td><td>Plugin</td><td>Session lifecycle, coordination state, SSE tick subscription for structured negotiation</td></tr>
+            <tr><td><code>mycelium-channel</code></td><td>Plugin</td><td>Real-time addressed messaging — routes room messages to agent runtimes in-process via <code>runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher</code>. Enforces <code>@handle</code> addressing by default.</td></tr>
             <tr><td><code>mycelium-bootstrap</code></td><td>Hook</td><td>Injects MYCELIUM_API_URL, MYCELIUM_ROOM, and coordination instructions at agent bootstrap</td></tr>
-            <tr><td><code>mycelium-knowledge-extract</code></td><td>Hook</td><td>Two-stage LLM extraction pipeline — turns agent output into graph nodes and edges</td></tr>
+            <tr><td><code>mycelium-knowledge-extract</code></td><td>Hook</td><td>On each <code>message:sent</code>, forwards finalized turns to mycelium-backend, which relays them to CFN's <code>shared-memories</code> endpoint for concept + relationship extraction. User-configurable gates (<code>knowledge_ingest.enabled</code> / <code>max_input_tokens</code> / <code>dedupe_ttl_seconds</code>) bound cost. Observability via <code>mycelium cfn log</code> / <code>cfn stats</code> / <code>cfn ls</code>.</td></tr>
             <tr><td><code>mycelium</code> SKILL.md</td><td>Skill</td><td>Coordination skill available to all OpenClaw agents</td></tr>
           </tbody>
         </table>
       </div>
+
+      <h3 id="oc-channel-config">Channel config (<code>openclaw.json</code>)</h3>
+      <p>The <code>mycelium-channel</code> plugin reads its config from <code>channels.mycelium-room</code> in <code>~/.openclaw/openclaw.json</code>:</p>
+      <pre><code>{
+  "channels": {
+    "mycelium-room": {
+      "enabled": true,
+      "backendUrl": "http://localhost:8001",
+      "room": "my-project",
+      "agents": ["julia-agent", "selina-agent"],
+      "requireMention": true
+    }
+  }
+}</code></pre>
+      <p>
+        <code>agents</code> is the list of OpenClaw agent IDs that participate in this room.
+        <code>requireMention</code> defaults to <code>true</code> — agents only respond to
+        messages that explicitly <code>@handle</code> them. Set to <code>false</code> if you
+        genuinely want broadcast chat (not recommended — the cascade failure mode is real,
+        and the CLI protocol is the right tool for structured decisions).
+      </p>
+      <p>
+        Coordination ticks from session sub-rooms are routed by <code>participant_id</code>
+        and are unaffected by the <code>requireMention</code> setting — structured negotiation
+        works identically whether broadcast chat is on or off.
+      </p>
 
       <h2 id="oc-after-install">After install</h2>
       <pre><code><span class="comment"># Allow agents to run mycelium commands without manual approval</span>
@@ -1166,9 +1212,9 @@ curl -X POST http://localhost:8888/api/memory/search \
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium upgrade</span> [<span class="flag">--check</span>]</code>
+          <code><span class="cmd">mycelium upgrade</span> [<span class="flag">--check</span>] [<span class="flag">--version</span> <span class="arg">&lt;version&gt;</span>]</code>
         </div>
-        <div class="cmd-ref-body">Upgrade the Mycelium CLI to the latest release.</div>
+        <div class="cmd-ref-body">Upgrade (or pin) the Mycelium CLI. Pass --version to install a specific release.</div>
       </div>
 
       <h3 id="cli-room">room</h3>
@@ -1213,6 +1259,13 @@ curl -X POST http://localhost:8888/api/memory/search \
           <code><span class="cmd">mycelium room post</span> <span class="arg">&lt;room&gt;</span> <span class="flag">--agent</span> <span class="arg">&lt;handle&gt;</span> <span class="flag">--response</span> <span class="arg">&lt;text&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Post a raw message to a room (triggers NOTIFY). Advanced use.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium room send</span> &quot;<span class="arg">&lt;content&gt;</span>&quot; [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Send an addressed chat message into a room. Use <code>@handle</code> mentions to direct it to specific agents bound via the OpenClaw channel plugin.</div>
       </div>
 
       <div class="cmd-ref">
@@ -1375,27 +1428,78 @@ curl -X POST http://localhost:8888/api/memory/search \
         <div class="cmd-ref-body">Semantic search within your private notebook (uses pgvector).</div>
       </div>
 
-      <h3 id="cli-message">message</h3>
+      <h3 id="cli-negotiate">negotiate</h3>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium message propose</span> KEY=VALUE [KEY=VALUE ...] [<span class="flag">-r</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span>]</code>
+          <code><span class="cmd">mycelium negotiate propose</span> KEY=VALUE [KEY=VALUE ...] [<span class="flag">-r</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Make a negotiation proposal with issue values. Only valid after <code>session await</code> returns <code>action: propose</code>.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium message respond</span> &lt;accept|reject&gt; <span class="flag">-r</span> <span class="arg">&lt;room&gt;</span> <span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span></code>
+          <code><span class="cmd">mycelium negotiate respond</span> &lt;accept|reject&gt; <span class="flag">-r</span> <span class="arg">&lt;room&gt;</span> <span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Accept or reject the current proposal. Only valid after <code>session await</code> returns <code>action: respond</code>.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium message query</span> <span class="arg">&lt;json&gt;</span> [<span class="flag">-r</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span>]</code>
+          <code><span class="cmd">mycelium negotiate query</span> <span class="arg">&lt;json&gt;</span> [<span class="flag">-r</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Post a raw JSON response (advanced — prefer <code>propose</code> or <code>respond</code>).</div>
+      </div>
+
+      <h3 id="cli-cfn">cfn</h3>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium cfn log</span> [<span class="flag">--limit</span> N] [<span class="flag">--state</span> <span class="arg">&lt;s&gt;</span>] [<span class="flag">--json</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Tail the mycelium-backend in-memory log of CFN shared-memories forwards. Plain columnar output, one line per event, newest first. Captures every attempt (ok, deduped, truncated, refused, disabled, error) with its reason or CFN message.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium cfn stats</span> [<span class="flag">--json</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Aggregate CFN shared-memories forwards grouped by MAS and agent, with rolling last-hour window.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium cfn query</span> <span class="arg">&lt;intent&gt;</span> <span class="flag">--mas</span> &lt;mas-id&gt; [<span class="flag">--workspace</span> <span class="arg">&lt;ws&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Ask CFN's evidence agent a natural-language question about the shared knowledge graph. Returns a synthesized answer, not a record list.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium cfn concepts</span> <span class="arg">&lt;id&gt;</span>[,<span class="arg">&lt;id&gt;</span>,...] <span class="flag">--mas</span> &lt;mas-id&gt;</code>
+        </div>
+        <div class="cmd-ref-body">Fetch specific CFN concept records by ID.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium cfn neighbors</span> &lt;concept-id&gt; <span class="flag">--mas</span> &lt;mas-id&gt;</code>
+        </div>
+        <div class="cmd-ref-body">Show CFN graph neighbors for a concept.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium cfn ls</span> <span class="flag">--mas</span> &lt;mas-id&gt; [<span class="flag">--limit</span> N] [<span class="flag">--json</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Enumerate nodes in CFN's knowledge graph by reading AgensGraph directly. NOT a CFN-supported API — couples to CFN's internal graph-naming convention (graph_<mas_id>).</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium cfn paths</span> &lt;source-id&gt; &lt;target-id&gt; <span class="flag">--mas</span> &lt;mas-id&gt; [<span class="flag">--max-depth</span> N] [<span class="flag">--limit</span> N]</code>
+        </div>
+        <div class="cmd-ref-body">Show CFN graph paths between two concepts.</div>
       </div>
 
       <h3 id="cli-adapter">adapter</h3>
@@ -1449,6 +1553,13 @@ curl -X POST http://localhost:8888/api/memory/search \
           <code><span class="cmd">mycelium config get</span> <span class="arg">&lt;key&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Read a configuration value.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium config apply</span> [<span class="flag">--restart</span>] [<span class="flag">--migrate-env</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Regenerate .env from config.toml and optionally restart containers.</div>
       </div>
 
       <h3 id="cli-other">synthesize / catchup / watch</h3>
@@ -1510,7 +1621,8 @@ curl -X POST http://localhost:8888/api/memory/search \
     const text = document.querySelector('.main').innerText;
     navigator.clipboard.writeText(text).then(() => {
       const btn = document.querySelector('.copy-page-btn');
-      btn.innerHTML = '<i data-lucide="check" style="width:13px;height:13px;stroke:currentColor;vertical-align:-2px;margin-right:6px;"></i>copied!';
+      const tokens = Math.round(text.length / 4).toLocaleString();
+      btn.innerHTML = '<i data-lucide="check" style="width:13px;height:13px;stroke:currentColor;vertical-align:-2px;margin-right:6px;"></i>copied! (~' + tokens + ' tokens)';
       btn.classList.add('copied');
       lucide.createIcons();
       setTimeout(() => {

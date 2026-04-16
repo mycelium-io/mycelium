@@ -13,14 +13,15 @@ import typer
 from mycelium import __version__
 from mycelium.commands import (
     adapter,
+    cfn,
     config,
     docs,
     doctor,
     install,
     instance,
     memory,
-    message,
     metrics,
+    negotiate,
     notebook,
     room,
     session,
@@ -81,12 +82,12 @@ def skill(
         rel = "adapters/claude-code/skills/mycelium/SKILL.md"
         fallback_parts = ("adapters", "claude-code", "skills", "mycelium", "SKILL.md")
     else:
-        rel = "adapters/openclaw/extensions/mycelium/skills/mycelium/SKILL.md"
+        rel = "adapters/openclaw/mycelium/plugin/skills/mycelium/SKILL.md"
         fallback_parts = (
             "adapters",
             "openclaw",
-            "extensions",
             "mycelium",
+            "plugin",
             "skills",
             "mycelium",
             "SKILL.md",
@@ -124,7 +125,7 @@ app.command(name="sync")(memory.memory_sync)
 
 # Command groups
 app.add_typer(room.app, name="room")
-app.add_typer(message.app, name="message")
+app.add_typer(negotiate.app, name="negotiate")
 app.add_typer(memory.app, name="memory")
 app.add_typer(config.app, name="config")
 app.add_typer(adapter.app, name="adapter")
@@ -132,6 +133,7 @@ app.add_typer(docs.app, name="docs")
 app.add_typer(metrics.app, name="metrics")
 app.add_typer(notebook.app, name="notebook")
 app.add_typer(session.app, name="session")
+app.add_typer(cfn.app, name="cfn")
 
 
 if __name__ == "__main__":

@@ -287,7 +287,8 @@ GROUP_CONFIG: list[tuple[str, str, str]] = [
     ("session", "session", "session"),
     ("memory", "memory", "memory"),
     ("notebook", "notebook", "notebook"),
-    ("message", "message", "message"),
+    ("negotiate", "negotiate", "negotiate"),
+    ("cfn", "cfn", "cfn"),
     ("adapter", "adapter", "adapter"),
     ("config", "config", "config"),
     ("other", "synthesize / catchup / watch", "synthesize / catchup / watch"),
@@ -300,12 +301,13 @@ def _generate_cli_reference() -> tuple[str, str]:
 
     # Force-import all command modules so decorators run
     import mycelium.commands.adapter  # noqa: F401
+    import mycelium.commands.cfn  # noqa: F401
     import mycelium.commands.config  # noqa: F401
     import mycelium.commands.doctor  # noqa: F401
     import mycelium.commands.instance  # noqa: F401
     import mycelium.commands.install  # noqa: F401
     import mycelium.commands.memory  # noqa: F401
-    import mycelium.commands.message  # noqa: F401
+    import mycelium.commands.negotiate  # noqa: F401
     import mycelium.commands.notebook  # noqa: F401
     import mycelium.commands.room  # noqa: F401
     import mycelium.commands.session  # noqa: F401

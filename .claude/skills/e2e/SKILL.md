@@ -112,15 +112,15 @@ mycelium session await --handle agent-alpha -r e2e-test-room
 # Expect: JSON with type=tick, round>=1, action=respond, issue_options present
 
 # Accept loop — repeat until consensus is returned
-# Use `mycelium message respond accept` (NOT `mycelium session respond` — that doesn't exist)
+# Use `mycelium negotiate respond accept` (NOT `mycelium session respond` — that doesn't exist)
 # Both agents must accept each round before CFN advances
-mycelium message respond accept --room e2e-test-room --handle agent-alpha
-mycelium message respond accept --room e2e-test-room --handle agent-beta
+mycelium negotiate respond accept --room e2e-test-room --handle agent-alpha
+mycelium negotiate respond accept --room e2e-test-room --handle agent-beta
 mycelium session await --handle agent-alpha -r e2e-test-room
 # Repeat above 3 lines until type=consensus
 
 # To propose a counter-offer instead of accepting:
-#   mycelium message propose ISSUE=VALUE ISSUE=VALUE --room e2e-test-room --handle agent-alpha
+#   mycelium negotiate propose ISSUE=VALUE ISSUE=VALUE --room e2e-test-room --handle agent-alpha
 
 # Verify consensus
 # Expect: type=consensus, assignments dict populated, broken=false

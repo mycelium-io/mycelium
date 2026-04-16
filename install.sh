@@ -2,11 +2,58 @@
 # Mycelium CLI installer
 # Usage: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 #    or: curl -fsSL https://raw.githubusercontent.com/mycelium-io/mycelium/main/install.sh | bash
+#
+# Pin a specific version:
+#   MYCELIUM_VERSION=0.1.83 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
+#   curl -fsSL .../install.sh | bash -s -- --version 0.1.83
 set -euo pipefail
 
 REPO="mycelium-io/mycelium"
 PACKAGE_NAME="mycelium-cli"
 BINARY_NAME="mycelium"
+PINNED_VERSION="${MYCELIUM_VERSION:-}"
+
+# Parse CLI args (curl | bash -s -- --version X)
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --version)
+      PINNED_VERSION="${2:-}"
+      shift 2
+      ;;
+    --version=*)
+      PINNED_VERSION="${1#--version=}"
+      shift
+      ;;
+    -h|--help)
+      cat <<'HELP'
+Mycelium CLI installer
+
+Usage:
+  install.sh [--version <version>]
+
+Options:
+  --version <version>   Install a specific release (e.g. 0.1.83).
+                        Defaults to latest. Also settable via MYCELIUM_VERSION env var.
+
+Examples:
+  curl -fsSL .../install.sh | bash
+  curl -fsSL .../install.sh | bash -s -- --version 0.1.83
+  MYCELIUM_VERSION=0.1.83 curl -fsSL .../install.sh | bash
+HELP
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      echo "Run with --help for usage." >&2
+      exit 1
+      ;;
+  esac
+done
+
+# Normalize: strip a leading v if the user passed --version v0.1.83
+if [ -n "$PINNED_VERSION" ]; then
+  PINNED_VERSION="${PINNED_VERSION#v}"
+fi
 
 # ── Colors ────────────────────────────────────────────────────────────────────
 # Note: curl | bash pipes through a non-TTY stdin but stdout may still be a TTY.
@@ -117,22 +164,29 @@ else
   ok "uv found ($(uv --version 2>/dev/null | head -1))"
 fi
 
-# ── Fetch latest release version ─────────────────────────────────────────────
-step "Fetching latest release..."
+# ── Resolve release version ──────────────────────────────────────────────────
+if [ -n "$PINNED_VERSION" ]; then
+  step "Using pinned version v$PINNED_VERSION..."
+  LATEST="v$PINNED_VERSION"
+  WHEEL_VERSION="$PINNED_VERSION"
+  ok "Pinned version: $LATEST"
+else
+  step "Fetching latest release..."
 
-# Follow GitHub's /releases/latest redirect to get the version — no API token needed
-LATEST=$(curl -fsSL -o /dev/null -w "%{url_effective}" \
-  "https://github.com/${REPO}/releases/latest" 2>/dev/null \
-  | grep -oE 'tag/[^/]+' | cut -d/ -f2 || true)
+  # Follow GitHub's /releases/latest redirect to get the version — no API token needed
+  LATEST=$(curl -fsSL -o /dev/null -w "%{url_effective}" \
+    "https://github.com/${REPO}/releases/latest" 2>/dev/null \
+    | grep -oE 'tag/[^/]+' | cut -d/ -f2 || true)
 
-if [ -z "$LATEST" ]; then
-  die "Could not determine latest version. Check https://github.com/${REPO}/releases"
+  if [ -z "$LATEST" ]; then
+    die "Could not determine latest version. Check https://github.com/${REPO}/releases"
+  fi
+
+  WHEEL_VERSION="${LATEST#v}"
+  ok "Latest version: $LATEST"
 fi
 
-WHEEL_VERSION="${LATEST#v}"
 INSTALL_FROM="github"
-
-ok "Latest version: $LATEST"
 
 # ── Install ───────────────────────────────────────────────────────────────────
 step "Installing mycelium CLI..."

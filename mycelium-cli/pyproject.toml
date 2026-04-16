@@ -25,11 +25,11 @@ dependencies = [
     "typer>=0.12.0",
     "rich>=13.7.0",
     "httpx>=0.27.0",
-    "pydantic[email]>=2.6.0",
-    "pydantic-settings>=2.1.0",
+    "pydantic[email]>=2.13.0",
+    "pydantic-settings>=2.13.1",
     "python-dotenv>=1.0.0",
     "toml>=0.10.2",
-    "numpy>=1.26.0",
+    "numpy>=2.4.4",
     "pyfiglet>=1.0.2",
     "beaupy>=3.5.0",
     "attrs>=22.2.0",
@@ -42,10 +42,10 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
-    "pytest-asyncio>=0.23.0",
+    "pytest-asyncio>=1.3.0",
     "pytest-cov>=4.1.0",
     "pytest-mock>=3.12.0",
-    "ruff>=0.3.0",
+    "ruff>=0.15.10",
     "mypy>=1.8.0",
     "types-toml>=0.10.8",
 ]
@@ -53,10 +53,10 @@ dev = [
 [dependency-groups]
 dev = [
     "pytest>=8.0.0",
-    "pytest-asyncio>=0.23.0",
+    "pytest-asyncio>=1.3.0",
     "pytest-cov>=4.1.0",
     "pytest-mock>=3.12.0",
-    "ruff>=0.3.0",
+    "ruff>=0.15.10",
     "mypy>=1.8.0",
     "types-toml>=0.10.8",
 ]
@@ -77,12 +77,21 @@ mycelium = [
     "data/*.json",
     "docs/**/*.md",
     "adapters/claude-code/**/*",
-    "adapters/openclaw/extensions/mycelium/**/*",
-    "adapters/openclaw/hooks/mycelium-bootstrap/**/*",
-    "adapters/openclaw/hooks/mycelium-knowledge-extract/**/*",
+    "adapters/openclaw/mycelium/**/*",
     "docker/*",
     "docker/initdb/*",
     "docker/env.defaults",
+]
+
+[tool.setuptools.exclude-package-data]
+# Dev-only files inside the openclaw plugin source tree. node_modules ships
+# test deps (vitest) that pyinstaller/setuptools would otherwise sweep into
+# the wheel, bloating it by tens of MB. test/ is unit test source that has
+# no runtime purpose on an end user's machine.
+mycelium = [
+    "adapters/openclaw/mycelium/plugin/node_modules/**/*",
+    "adapters/openclaw/mycelium/plugin/test/**/*",
+    "adapters/openclaw/mycelium/plugin/package-lock.json",
 ]
 
 [tool.pytest.ini_options]

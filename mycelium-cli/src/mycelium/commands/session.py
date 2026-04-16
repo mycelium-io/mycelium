@@ -188,7 +188,7 @@ def await_tick(
         1. mycelium session join -H my-agent -m "my position"
         2. mycelium session await -H my-agent        # blocks
            → prints tick JSON when CE addresses you
-        3. mycelium message propose budget=high       # respond
+        3. mycelium negotiate propose budget=high       # respond
         4. mycelium session await -H my-agent        # wait for next tick
     """
     import time

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Julia Valenti
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8888";
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
 export async function fetchRooms() {
   const res = await fetch(`${API}/rooms`, { cache: "no-store" });
@@ -68,4 +68,45 @@ export async function fetchChildRooms(parentName: string) {
 
 export function getSSEUrl(roomName: string) {
   return `${API}/rooms/${roomName}/messages/stream`;
+}
+
+// ── CFN knowledge graph ──────────────────────────────────────────────────────
+// Backs the `mycelium cfn` CLI; see fastapi-backend/app/routes/cfn_proxy.py.
+
+export interface CfnConcept {
+  label?: string | null;
+  vid?: string | null;
+  id: string;
+  name?: string | null;
+  properties?: Record<string, unknown>;
+}
+
+export interface CfnConceptListResponse {
+  mas_id: string;
+  limit: number;
+  count: number;
+  nodes: CfnConcept[];
+}
+
+export interface CfnNeighborsResponse {
+  concept_id?: string;
+  neighbors?: Array<Record<string, unknown>>;
+  [key: string]: unknown;
+}
+
+export async function fetchCfnConcepts(masId: string, limit = 50): Promise<CfnConceptListResponse | null> {
+  const params = new URLSearchParams({ mas_id: masId, limit: String(limit) });
+  const res = await fetch(`${API}/api/cfn/knowledge/list?${params}`, { cache: "no-store" });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function fetchCfnNeighbors(masId: string, conceptId: string): Promise<CfnNeighborsResponse | null> {
+  const params = new URLSearchParams({ mas_id: masId });
+  const res = await fetch(
+    `${API}/api/cfn/knowledge/concepts/${encodeURIComponent(conceptId)}/neighbors?${params}`,
+    { cache: "no-store" },
+  );
+  if (!res.ok) return null;
+  return res.json();
 }

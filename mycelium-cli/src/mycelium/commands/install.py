@@ -213,8 +213,12 @@ def _write_env_file(env_path: Path, llm_config: dict[str, str]) -> None:
     import importlib.resources
 
     # On re-install, preserve existing .env and only update/append changed keys.
+    # Remove LLM_BASE_URL when the new config doesn't include it — avoids
+    # leaving a stale empty value that breaks litellm (see #97).
     if env_path.exists():
         _patch_env_vars(env_path, llm_config)
+        if "LLM_BASE_URL" not in llm_config:
+            _remove_env_var(env_path, "LLM_BASE_URL")
         return
 
     defaults_ref = importlib.resources.files("mycelium.docker") / "env.defaults"
@@ -279,6 +283,19 @@ def _patch_env_vars(env_path: Path, updates: dict[str, str]) -> None:
     # Append any keys not yet present
     for key, value in remaining.items():
         new_lines.append(f"{key}={value}")
+    env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+
+
+def _remove_env_var(env_path: Path, key: str) -> None:
+    """Remove a key from an existing .env file (no-op if absent)."""
+    if not env_path.exists():
+        return
+    lines = env_path.read_text(encoding="utf-8").splitlines()
+    new_lines = [
+        ln
+        for ln in lines
+        if not ("=" in ln and not ln.lstrip().startswith("#") and ln.split("=")[0].strip() == key)
+    ]
     env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
 
 
@@ -689,8 +706,16 @@ def _provision_backend(api_url: str, workspace_name: str = "default") -> tuple[s
 # ── Config write ─────────────────────────────────────────────────────────────
 
 
-def _write_mycelium_config(api_url: str, workspace_id: str, mas_id: str) -> None:
-    from mycelium.config import MyceliumConfig, ServerConfig
+def _write_mycelium_config(
+    api_url: str,
+    workspace_id: str,
+    mas_id: str,
+    llm_config: dict[str, str] | None = None,
+    custom_ports: dict[str, int] | None = None,
+    ioc_enabled: bool = False,
+) -> None:
+    from mycelium.config import LLMConfig, MyceliumConfig, RuntimeConfig, ServerConfig
+    from mycelium.docker_utils import write_env_file
 
     config_path = MyceliumConfig.get_global_config_path()
     try:
@@ -703,8 +728,35 @@ def _write_mycelium_config(api_url: str, workspace_id: str, mas_id: str) -> None
         workspace_id=workspace_id,
         mas_id=mas_id,
     )
+
+    # Persist LLM settings into [llm] section
+    if llm_config:
+        config.llm = LLMConfig(
+            model=llm_config.get("LLM_MODEL") or config.llm.model,
+            api_key=llm_config.get("LLM_API_KEY") or config.llm.api_key,
+            base_url=llm_config.get("LLM_BASE_URL") or config.llm.base_url,
+        )
+
+    # Persist runtime settings into [runtime] section
+    runtime_kwargs: dict[str, object] = {
+        "data_dir": str(Path.home() / ".mycelium"),
+    }
+    if custom_ports:
+        runtime_kwargs["db_port"] = custom_ports.get("db", 5432)
+        runtime_kwargs["backend_port"] = custom_ports.get("backend", 8000)
+    if ioc_enabled:
+        runtime_kwargs["cfn_mgmt_url"] = "http://ioc-cfn-mgmt-plane-svc:9000"
+        runtime_kwargs["cognition_fabric_node_url"] = "http://ioc-cognition-fabric-node-svc:9002"
+    if workspace_id:
+        runtime_kwargs["workspace_id"] = workspace_id
+    config.runtime = RuntimeConfig(**runtime_kwargs)
+
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config.save(config_path)
+
+    # Derive .env from the canonical config.toml
+    env_path = write_env_file(config)
+    typer.echo(f"  ✓ Regenerated {env_path} from config.toml")
 
 
 # ── Animation helper ──────────────────────────────────────────────────────────
@@ -906,7 +958,14 @@ def install(
                 _restart_backend(compose_path, env_path, compose_profiles, api_url)
 
             _run_migrations()
-            _write_mycelium_config(api_url, workspace_id, mas_id)
+            _write_mycelium_config(
+                api_url,
+                workspace_id,
+                mas_id,
+                llm_config=llm_config,
+                custom_ports=custom_ports,
+                ioc_enabled=ioc,
+            )
             typer.secho("  ✓ Done.", fg=typer.colors.GREEN, bold=True)
             return
 
@@ -1167,7 +1226,14 @@ def install(
             _restart_backend(compose_path, env_path, compose_profiles, api_url)
 
         _run_migrations()
-        _write_mycelium_config(api_url, workspace_id, mas_id)
+        _write_mycelium_config(
+            api_url,
+            workspace_id,
+            mas_id,
+            llm_config=llm_config,
+            custom_ports=custom_ports,
+            ioc_enabled=ioc_enabled,
+        )
         typer.secho("  ✓ Config written to ~/.mycelium/config.toml", fg=typer.colors.GREEN)
 
         # ── Done ───────────────────────────────────────────────────────────
@@ -1231,25 +1297,37 @@ def _parse_version(tag: str) -> tuple[int, ...]:
 
 
 @doc_ref(
-    usage="mycelium upgrade [--check]",
-    desc="Upgrade the Mycelium CLI to the latest release.",
+    usage="mycelium upgrade [--check] [--version <version>]",
+    desc="Upgrade (or pin) the Mycelium CLI. Pass --version to install a specific release.",
     group="setup",
 )
 def upgrade(
     ctx: typer.Context,
     check: bool = typer.Option(False, "--check", help="Just check for updates, don't install"),
+    target_version: str | None = typer.Option(
+        None,
+        "--version",
+        help="Install a specific version (e.g. 0.1.83 or v0.1.83) instead of latest. "
+        "Useful for pinning, rollback, or reproducing a specific release.",
+    ),
 ) -> None:
     """
-    Upgrade the Mycelium CLI to the latest release.
+    Upgrade the Mycelium CLI to the latest release, or install a specific version.
 
-    Fetches the latest version from GitHub releases and installs it via
+    Fetches the target version from GitHub releases and installs it via
     ``uv tool install``. After upgrading the CLI, reminds you to run
     ``mycelium pull`` if containers also need updating.
 
+    With ``--version``, the resolved version is installed directly without
+    any "is this newer?" gate — so the same flag works for upgrade,
+    downgrade, or pinning to the current release.
+
     \b
     Examples:
-        mycelium upgrade          # upgrade CLI to latest
-        mycelium upgrade --check  # just check, don't install
+        mycelium upgrade                    # upgrade CLI to latest
+        mycelium upgrade --check            # just check, don't install
+        mycelium upgrade --version 0.1.83   # install a specific version
+        mycelium upgrade --version v0.1.83  # leading v is fine too
     """
     try:
         from mycelium import __version__
@@ -1257,32 +1335,44 @@ def upgrade(
         typer.echo(f"  Current CLI version: v{__version__}")
         typer.echo("")
 
-        typer.echo("  Checking for updates...")
-        latest_tag = _get_latest_release_tag()
+        # --version pins directly; skip the latest-release fetch and the
+        # is-this-newer gate entirely.  This is how you downgrade or pin.
+        if target_version is not None:
+            latest_version = target_version.lstrip("v")
+            latest_tag = f"v{latest_version}"
+            if check:
+                typer.echo(f"  --check ignored with --version; would install {latest_tag}")
+                raise typer.Exit(0)
+            typer.echo(f"  Installing {latest_tag}...")
+        else:
+            typer.echo("  Checking for updates...")
+            latest_tag = _get_latest_release_tag()
 
-        if not latest_tag:
-            typer.secho("  ⚠  Could not fetch latest release from GitHub", fg=typer.colors.YELLOW)
-            typer.echo(f"    Check manually: https://github.com/{_GITHUB_REPO}/releases")
-            raise typer.Exit(1)
+            if not latest_tag:
+                typer.secho(
+                    "  ⚠  Could not fetch latest release from GitHub", fg=typer.colors.YELLOW
+                )
+                typer.echo(f"    Check manually: https://github.com/{_GITHUB_REPO}/releases")
+                raise typer.Exit(1)
 
-        latest_version = latest_tag.lstrip("v")
-        current_tuple = _parse_version(__version__)
-        latest_tuple = _parse_version(latest_version)
+            latest_version = latest_tag.lstrip("v")
+            current_tuple = _parse_version(__version__)
+            latest_tuple = _parse_version(latest_version)
 
-        if current_tuple >= latest_tuple:
-            typer.secho(f"  ✓ CLI is up to date (v{__version__})", fg=typer.colors.GREEN)
-            raise typer.Exit(0)
+            if current_tuple >= latest_tuple:
+                typer.secho(f"  ✓ CLI is up to date (v{__version__})", fg=typer.colors.GREEN)
+                raise typer.Exit(0)
 
-        typer.echo(f"  New version available: v{__version__} → {latest_tag}")
-        typer.echo("")
+            typer.echo(f"  New version available: v{__version__} → {latest_tag}")
+            typer.echo("")
 
-        if check:
-            typer.echo(f"  Run 'mycelium upgrade' to install {latest_tag}")
-            raise typer.Exit(1)  # exit 1 = outdated (useful for scripts)
+            if check:
+                typer.echo(f"  Run 'mycelium upgrade' to install {latest_tag}")
+                raise typer.Exit(1)  # exit 1 = outdated (useful for scripts)
+
+            typer.echo("  Upgrading CLI...")
 
         # Try wheel from GitHub first, fall back to PyPI
-        typer.echo("  Upgrading CLI...")
-
         wheel_name = f"mycelium_cli-{latest_version}-py3-none-any.whl"
         wheel_url = f"https://github.com/{_GITHUB_REPO}/releases/download/{latest_tag}/{wheel_name}"
         wheel_tmp = Path(f"/tmp/{wheel_name}")  # noqa: S108

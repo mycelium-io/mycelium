@@ -19,7 +19,6 @@ def _get_kwargs(
     mas_id: UUID,
     agent_id: UUID,
 ) -> dict[str, Any]:
-
     _kwargs: dict[str, Any] = {
         "method": "post",
         "url": "/api/workspaces/{workspace_id}/multi-agentic-systems/{mas_id}/agents/{agent_id}/memory-operations".format(
@@ -86,8 +85,8 @@ def sync_detailed(
      Proxy an arbitrary HTTP request to an agent's memory provider.
 
     Request envelope:
-        {\"payload\": {\"http-request-type\": \"POST\", \"http-url\": \"/v1/memories\", \"http-request-
-    body\": {...}, \"http-headers\": {...}}}
+        {\"payload\": {\"http-request-type\": \"POST\", \"http-url\": \"/v1/memories\",
+                     \"http-request-body\": {...}, \"http-headers\": {...}}}
 
     Response envelope:
         {\"http-status\": 200, \"http-headers\": {...}, \"http-response-body\": {...}}
@@ -134,8 +133,8 @@ def sync(
      Proxy an arbitrary HTTP request to an agent's memory provider.
 
     Request envelope:
-        {\"payload\": {\"http-request-type\": \"POST\", \"http-url\": \"/v1/memories\", \"http-request-
-    body\": {...}, \"http-headers\": {...}}}
+        {\"payload\": {\"http-request-type\": \"POST\", \"http-url\": \"/v1/memories\",
+                     \"http-request-body\": {...}, \"http-headers\": {...}}}
 
     Response envelope:
         {\"http-status\": 200, \"http-headers\": {...}, \"http-response-body\": {...}}
@@ -176,8 +175,8 @@ async def asyncio_detailed(
      Proxy an arbitrary HTTP request to an agent's memory provider.
 
     Request envelope:
-        {\"payload\": {\"http-request-type\": \"POST\", \"http-url\": \"/v1/memories\", \"http-request-
-    body\": {...}, \"http-headers\": {...}}}
+        {\"payload\": {\"http-request-type\": \"POST\", \"http-url\": \"/v1/memories\",
+                     \"http-request-body\": {...}, \"http-headers\": {...}}}
 
     Response envelope:
         {\"http-status\": 200, \"http-headers\": {...}, \"http-response-body\": {...}}
@@ -222,8 +221,8 @@ async def asyncio(
      Proxy an arbitrary HTTP request to an agent's memory provider.
 
     Request envelope:
-        {\"payload\": {\"http-request-type\": \"POST\", \"http-url\": \"/v1/memories\", \"http-request-
-    body\": {...}, \"http-headers\": {...}}}
+        {\"payload\": {\"http-request-type\": \"POST\", \"http-url\": \"/v1/memories\",
+                     \"http-request-body\": {...}, \"http-headers\": {...}}}
 
     Response envelope:
         {\"http-status\": 200, \"http-headers\": {...}, \"http-response-body\": {...}}

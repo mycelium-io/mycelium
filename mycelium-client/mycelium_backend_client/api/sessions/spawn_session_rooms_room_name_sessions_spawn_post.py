@@ -16,7 +16,6 @@ from ...types import Response
 def _get_kwargs(
     room_name: str,
 ) -> dict[str, Any]:
-
     _kwargs: dict[str, Any] = {
         "method": "post",
         "url": "/rooms/{room_name}/sessions/spawn".format(

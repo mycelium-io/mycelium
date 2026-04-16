@@ -57,10 +57,13 @@ mycelium session join --handle julia-agent -m "budget=high, scope=full"
 ## Quick Start
 
 ```bash
-# Install
+# 1. Install the CLI
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 
-# Create a room and start sharing context
+# 2. Set up the stack (pulls images, prompts for LLM config, writes ~/.mycelium/config.toml)
+mycelium install
+
+# 3. Create a room and start sharing context
 mycelium room create my-project
 mycelium room use my-project
 mycelium memory set "context/goal" "Build a REST API for the new service"
@@ -111,7 +114,7 @@ mycelium-client/      Generated typed OpenAPI client
 
 Mycelium works with any agent that can make HTTP requests via the REST API. Native adapters are available for:
 
-**OpenClaw** — Plugin + hooks for the OpenClaw agent runtime. SSE-based coordination ticks wake agents automatically when it's their turn.
+**OpenClaw** — Two plugins + hooks for the OpenClaw agent runtime. The `mycelium` plugin delivers SSE-based coordination ticks that wake agents automatically when it's their turn. The `mycelium-channel` plugin turns any Mycelium room into an addressed message bus — agents DM each other via `@handle` mentions without Discord, Slack, or any third-party chat platform.
 
 ```bash
 mycelium adapter add openclaw

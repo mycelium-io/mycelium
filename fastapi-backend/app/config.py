@@ -46,6 +46,15 @@ class Settings(BaseSettings):
     # during a negotiation round before falling back to the safe default.
     COORDINATION_TICK_TIMEOUT_SECONDS: int = 30
 
+    @field_validator("LLM_BASE_URL", mode="before")
+    @classmethod
+    def _coerce_base_url(cls, v: object) -> object:
+        """Treat empty string as unset — litellm and the OpenAI SDK both pass
+        "" through to httpx which rejects it as UnsupportedProtocol."""
+        if isinstance(v, str) and v.strip() == "":
+            return None
+        return v
+
     @field_validator("COORDINATION_TICK_TIMEOUT_SECONDS", mode="before")
     @classmethod
     def _coerce_tick_timeout(cls, v: object) -> object:
@@ -70,6 +79,12 @@ class Settings(BaseSettings):
 
     # Workspace ID in the CFN mgmt plane (set by mycelium install)
     WORKSPACE_ID: str = ""
+
+    # Knowledge ingest control surface — see KnowledgeIngestConfig in the CLI
+    # for the authoritative descriptions. Defaults here match CLI defaults.
+    MYCELIUM_INGEST_ENABLED: bool = True
+    MYCELIUM_INGEST_MAX_INPUT_TOKENS: int = 50_000
+    MYCELIUM_INGEST_DEDUPE_TTL_SECONDS: int = 300
 
     model_config = SettingsConfigDict(
         env_file=tuple(_env_files),

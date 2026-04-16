@@ -15,7 +15,6 @@ def _get_kwargs(
     room_name: str,
     session_id: UUID,
 ) -> dict[str, Any]:
-
     _kwargs: dict[str, Any] = {
         "method": "delete",
         "url": "/rooms/{room_name}/sessions/{session_id}".format(
