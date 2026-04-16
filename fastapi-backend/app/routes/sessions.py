@@ -196,7 +196,8 @@ async def _register_agent_cfn(room: Room, handle: str) -> None:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(url, json={"cognitive_agent_name": handle})
         record_cfn_call(
-            service="mgmt", operation="register_agent",
+            service="mgmt",
+            operation="register_agent",
             duration_ms=(time.monotonic() - t0) * 1000,
             status_code=resp.status_code,
             error=resp.status_code >= 400,
@@ -204,7 +205,8 @@ async def _register_agent_cfn(room: Room, handle: str) -> None:
         logger.debug("CFN agent registered: %s in workspace %s", handle, room.workspace_id)
     except Exception as exc:
         record_cfn_call(
-            service="mgmt", operation="register_agent",
+            service="mgmt",
+            operation="register_agent",
             duration_ms=(time.monotonic() - t0) * 1000,
             error=True,
         )

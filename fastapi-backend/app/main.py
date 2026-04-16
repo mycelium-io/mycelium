@@ -96,7 +96,8 @@ def _register_memory_provider() -> None:
             timeout=10,
         )
         record_cfn_call(
-            service="mgmt", operation="register_memory_provider",
+            service="mgmt",
+            operation="register_memory_provider",
             duration_ms=(time.monotonic() - t0) * 1000,
             status_code=resp.status_code,
             error=resp.status_code not in (201, 409),
@@ -111,7 +112,8 @@ def _register_memory_provider() -> None:
             )
     except Exception as exc:
         record_cfn_call(
-            service="mgmt", operation="register_memory_provider",
+            service="mgmt",
+            operation="register_memory_provider",
             duration_ms=(time.monotonic() - t0) * 1000,
             error=True,
         )

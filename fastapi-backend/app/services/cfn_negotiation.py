@@ -67,7 +67,8 @@ async def _cfn_post(url: str, body: dict[str, Any], endpoint: str) -> dict[str, 
             resp.raise_for_status()
             data = resp.json()
             record_cfn_call(
-                service="node", operation=endpoint,
+                service="node",
+                operation=endpoint,
                 duration_ms=(time.monotonic() - t0) * 1000,
                 status_code=resp.status_code,
             )
@@ -82,16 +83,19 @@ async def _cfn_post(url: str, body: dict[str, Any], endpoint: str) -> dict[str, 
             exc.response.text[:500],
         )
         record_cfn_call(
-            service="node", operation=endpoint,
+            service="node",
+            operation=endpoint,
             duration_ms=(time.monotonic() - t0) * 1000,
-            status_code=exc.response.status_code, error=True,
+            status_code=exc.response.status_code,
+            error=True,
         )
         raise CfnNegotiationError(reason) from exc
     except Exception as exc:
         reason = _describe_exc(exc)
         logger.exception("CFN %s failed | url=%s reason=%s", endpoint, url, reason)
         record_cfn_call(
-            service="node", operation=endpoint,
+            service="node",
+            operation=endpoint,
             duration_ms=(time.monotonic() - t0) * 1000,
             error=True,
         )

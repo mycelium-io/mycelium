@@ -119,7 +119,8 @@ async def _cfn_get(url: str, *, operation: str) -> dict[str, Any]:
             resp.raise_for_status()
             data = resp.json()
             record_cfn_call(
-                service="node", operation=operation,
+                service="node",
+                operation=operation,
                 duration_ms=(time.monotonic() - t0) * 1000,
                 status_code=resp.status_code,
             )
@@ -129,9 +130,11 @@ async def _cfn_get(url: str, *, operation: str) -> dict[str, Any]:
         snippet = exc.response.text[:300]
         logger.warning("CFN GET failed | url=%s status=%d body=%r", url, status, snippet)
         record_cfn_call(
-            service="node", operation=operation,
+            service="node",
+            operation=operation,
             duration_ms=(time.monotonic() - t0) * 1000,
-            status_code=status, error=True,
+            status_code=status,
+            error=True,
         )
         raise CfnKnowledgeError(
             f"CFN GET {url} returned {status}: {snippet[:200]}",
@@ -140,7 +143,8 @@ async def _cfn_get(url: str, *, operation: str) -> dict[str, Any]:
     except (httpx.TimeoutException, httpx.TransportError) as exc:
         logger.exception("CFN GET unreachable | url=%s", url)
         record_cfn_call(
-            service="node", operation=operation,
+            service="node",
+            operation=operation,
             duration_ms=(time.monotonic() - t0) * 1000,
             error=True,
         )
@@ -155,7 +159,8 @@ async def _cfn_post(url: str, body: dict[str, Any], *, operation: str) -> dict[s
             resp.raise_for_status()
             data = resp.json()
             record_cfn_call(
-                service="node", operation=operation,
+                service="node",
+                operation=operation,
                 duration_ms=(time.monotonic() - t0) * 1000,
                 status_code=resp.status_code,
             )
@@ -165,9 +170,11 @@ async def _cfn_post(url: str, body: dict[str, Any], *, operation: str) -> dict[s
         snippet = exc.response.text[:300]
         logger.warning("CFN POST failed | url=%s status=%d body=%r", url, status, snippet)
         record_cfn_call(
-            service="node", operation=operation,
+            service="node",
+            operation=operation,
             duration_ms=(time.monotonic() - t0) * 1000,
-            status_code=status, error=True,
+            status_code=status,
+            error=True,
         )
         raise CfnKnowledgeError(
             f"CFN POST {url} returned {status}: {snippet[:200]}",
@@ -176,7 +183,8 @@ async def _cfn_post(url: str, body: dict[str, Any], *, operation: str) -> dict[s
     except (httpx.TimeoutException, httpx.TransportError) as exc:
         logger.exception("CFN POST unreachable | url=%s", url)
         record_cfn_call(
-            service="node", operation=operation,
+            service="node",
+            operation=operation,
             duration_ms=(time.monotonic() - t0) * 1000,
             error=True,
         )

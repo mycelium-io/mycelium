@@ -477,9 +477,7 @@ async def _cfn_decide_round(room_name: str) -> None:
         else:
             # Unknown / failed status
             logger.warning("CFN decide returned status=%s for %s", status, room_name)
-            finish_args = dict(
-                plan=f"Negotiation ended: {status}", assignments={}, broken=True
-            )
+            finish_args = dict(plan=f"Negotiation ended: {status}", assignments={}, broken=True)
     except Exception:
         logger.exception("Unexpected error processing decide result for %s", room_name)
         finish_args = dict(
@@ -496,7 +494,6 @@ async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool
     if state and state.round_timeout_task and not state.round_timeout_task.done():
         state.round_timeout_task.cancel()
 
-    # Record consensus metrics
     if state:
         total_duration_ms = (time.monotonic() - state.session_start_time) * 1000
         record_consensus(
@@ -505,6 +502,12 @@ async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool
             total_duration_ms=total_duration_ms,
             participants=len(state.agents),
             outcome="success" if not broken else "failure",
+        )
+    else:
+        record_consensus(
+            room=room_name,
+            total_rounds=0,
+            outcome="failure",
         )
 
     await _post_message(

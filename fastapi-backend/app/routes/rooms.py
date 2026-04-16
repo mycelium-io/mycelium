@@ -41,7 +41,8 @@ async def _sync_create_mas(db_room: Room, session: AsyncSession) -> None:
             resp.raise_for_status()
             data = resp.json()
         record_cfn_call(
-            service="mgmt", operation="create_mas",
+            service="mgmt",
+            operation="create_mas",
             duration_ms=(time.monotonic() - t0) * 1000,
             status_code=resp.status_code,
         )
@@ -57,7 +58,8 @@ async def _sync_create_mas(db_room: Room, session: AsyncSession) -> None:
             logger.info("CFN MAS created for room %s: %s", db_room.name, mas_id)
     except Exception as exc:
         record_cfn_call(
-            service="mgmt", operation="create_mas",
+            service="mgmt",
+            operation="create_mas",
             duration_ms=(time.monotonic() - t0) * 1000,
             error=True,
         )
@@ -79,7 +81,8 @@ async def _sync_delete_mas(room: Room) -> None:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.delete(url)
         record_cfn_call(
-            service="mgmt", operation="delete_mas",
+            service="mgmt",
+            operation="delete_mas",
             duration_ms=(time.monotonic() - t0) * 1000,
             status_code=resp.status_code,
             error=resp.status_code >= 400,
@@ -87,7 +90,8 @@ async def _sync_delete_mas(room: Room) -> None:
         logger.info("CFN MAS deleted for room %s: %s", room.name, room.mas_id)
     except Exception as exc:
         record_cfn_call(
-            service="mgmt", operation="delete_mas",
+            service="mgmt",
+            operation="delete_mas",
             duration_ms=(time.monotonic() - t0) * 1000,
             error=True,
         )
