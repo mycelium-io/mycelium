@@ -220,10 +220,18 @@ def status() -> None:
 @app.command("collect")
 def collect(
     port: int | None = typer.Option(None, "--port", "-p", help=f"OTLP receiver port (default: {_DEFAULT_PORT})"),
+    backend_url: str | None = typer.Option(
+        None, "--backend-url", "-b",
+        help="Mycelium backend URL for polling /api/metrics (default: server.api_url from config)",
+    ),
     fg: bool = typer.Option(False, "--fg", help="Run collector in the foreground (default: background)"),
 ) -> None:
     """Start the OTLP HTTP receiver to collect OpenClaw telemetry."""
+    from mycelium.config import MyceliumConfig
+
     resolved_port = _resolve_port(port)
+    if backend_url is None:
+        backend_url = MyceliumConfig.load().server.api_url
 
     if not fg:
         _MYCELIUM_DIR.mkdir(parents=True, exist_ok=True)
@@ -247,6 +255,7 @@ def collect(
             [
                 sys.executable, "-m", "mycelium.collector_main",
                 "--port", str(resolved_port),
+                "--backend-url", backend_url,
             ],
             stdout=log_fh,
             stderr=log_fh,
@@ -305,7 +314,7 @@ def collect(
 
         from mycelium.collector import run as run_collector
 
-        run_collector(resolved_port, _METRICS_JSON)
+        run_collector(resolved_port, _METRICS_JSON, backend_api_url=backend_url)
 
 
 @app.command("stop")
@@ -1247,6 +1256,7 @@ def _render_data_reuse_table(backend: dict | None) -> None:
         queries = knowledge.get("queries", 0)
         query_hits = knowledge.get("query_hits", 0)
         query_misses = knowledge.get("query_misses", 0)
+        query_errors = knowledge.get("query_errors", 0)
         results = knowledge.get("results_returned", 0)
 
         table.add_row("Knowledge graph queries", _fmt_num(queries))
@@ -1257,13 +1267,16 @@ def _render_data_reuse_table(backend: dict | None) -> None:
                 f"[green]{_fmt_num(query_hits)}[/green] ({hit_rate:.0f}%)",
             )
             table.add_row("  no results", _fmt_num(query_misses))
+            if query_errors:
+                table.add_row("  errors", f"[red]{_fmt_num(query_errors)}[/red]")
             table.add_row("  total results returned", _fmt_num(results))
 
         # Query type breakdown
         neighbor = knowledge.get("queries.neighbour", 0)
         path = knowledge.get("queries.path", 0)
         concept = knowledge.get("queries.concept", 0)
-        if neighbor + path + concept > 0:
+        semantic = knowledge.get("queries.semantic", 0)
+        if neighbor + path + concept + semantic > 0:
             table.add_section()
             table.add_row("[dim]By query type:[/dim]", "")
             if neighbor:
@@ -1272,6 +1285,8 @@ def _render_data_reuse_table(backend: dict | None) -> None:
                 table.add_row("  path", _fmt_num(path))
             if concept:
                 table.add_row("  concept", _fmt_num(concept))
+            if semantic:
+                table.add_row("  semantic", _fmt_num(semantic))
 
         query_lat = be_histograms.get("knowledge.query_latency_ms", {})
         if query_lat.get("count", 0) > 0:

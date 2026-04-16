@@ -257,19 +257,23 @@ def record_knowledge_query(
     results_returned: int = 0,
     duration_ms: float = 0.0,
     cache_hit: bool = False,
+    error: bool = False,
 ) -> None:
     """Record a knowledge graph query operation.
 
     Args:
-        query_type: Type of query (neighbour, path, concept)
+        query_type: Type of query (neighbour, path, concept, semantic)
         nodes_queried: Number of nodes in the query
         results_returned: Number of results (edges/paths) returned
         duration_ms: Query latency
         cache_hit: Whether results came from cache
+        error: Whether the query failed (CFN transport/HTTP error)
     """
     _inc("knowledge", "queries")
     _inc("knowledge", f"queries.{query_type}")
-    if results_returned > 0:
+    if error:
+        _inc("knowledge", "query_errors")
+    elif results_returned > 0:
         _inc("knowledge", "query_hits")
         _inc("knowledge", "results_returned", results_returned)
     else:

@@ -27,13 +27,18 @@ HTTP polling) — and writes it to a single JSON file for the CLI to render.
                                          └──────────────────┘
 ```
 
+The backend URL for polling defaults to `server.api_url` from the Mycelium
+config (typically `http://localhost:8000`). Override with `--backend-url`
+on `mycelium metrics collect` or via the `MYCELIUM_API_URL` environment
+variable.
+
 ## CLI Commands
 
 | Command                   | Description                                      |
 | ------------------------- | ------------------------------------------------ |
 | `mycelium metrics install`| Install optional deps (`opentelemetry-proto`, `protobuf`) |
 | `mycelium metrics status` | Health check: collector process, data file, OTEL config   |
-| `mycelium metrics collect`| Start the OTLP receiver (background by default; `--fg` for foreground) |
+| `mycelium metrics collect`| Start the OTLP receiver (background by default; `--fg` for foreground, `--backend-url` to override backend) |
 | `mycelium metrics stop`   | Stop the background collector                    |
 | `mycelium metrics reset`  | Delete `~/.mycelium/metrics.json`                |
 | `mycelium metrics show`   | Render collected data as Rich tables              |
@@ -103,8 +108,9 @@ Up to 200 sessions are retained (oldest evicted).
 
 ### Source 2: Mycelium Backend Metrics
 
-The collector polls `GET /api/metrics` on the FastAPI backend every 30 seconds.
-The backend maintains its own in-process metrics store
+The collector polls `GET /api/metrics` on the FastAPI backend every 30 seconds
+(URL resolved from `server.api_url` in the Mycelium config, overridable with
+`--backend-url`). The backend maintains its own in-process metrics store
 (`fastapi-backend/app/services/metrics.py`).
 
 #### Backend Counters
@@ -116,8 +122,8 @@ The backend maintains its own in-process metrics store
 | `indexer`    | `runs`, `files_indexed`, `files_skipped`, `files_pruned`, `errors`, `by_target.*` |
 | `memory`     | `writes`, `writes.*`, `writes_embedded`, `searches`, `search_hits`, `search_misses`, `results_returned` |
 | `synthesis`  | `runs`, `errors`, `briefings`, `cache_hits`, `cache_misses`      |
-| `knowledge`  | `ingestions`, `concepts_extracted`, `relations_extracted`, `errors`, `queries`, `query_hits`, `query_misses`, `results_returned`, `queries.*` (by type) |
-| `coordination` | `sessions`, `rounds`, `consensus_reached`, `consensus_failed`, `timeouts` |
+| `knowledge`  | `ingestions`, `concepts_extracted`, `relations_extracted`, `errors`, `queries`, `queries.*` (by type: neighbour, path, concept, semantic), `query_hits`, `query_misses`, `query_errors`, `results_returned`, `cache_hits` |
+| `coordination` | `sessions_started`, `sessions_completed`, `rounds`, `by_room.*`, `consensus_reached`, `outcome.*` (success, failure) |
 
 #### Backend Histograms
 
@@ -133,7 +139,12 @@ The backend maintains its own in-process metrics store
 | `knowledge.ingestion_duration_ms`   | ms   |
 | `knowledge.query_latency_ms`        | ms   |
 | `coordination.round_duration_ms`    | ms   |
-| `coordination.session_duration_ms`  | ms   |
+| `coordination.session_participants` | count |
+| `coordination.participants`         | count |
+| `coordination.rounds_to_completion` | count |
+| `coordination.time_to_completion_ms`| ms   |
+| `coordination.rounds_to_consensus`  | count |
+| `coordination.time_to_consensus_ms` | ms   |
 
 ## Display Panels
 
@@ -255,13 +266,20 @@ Prioritised by effort and value.
 ### Recently Implemented
 
 - **Coordination / Negotiation** (`services/coordination.py`) ✓
-  Sessions, rounds, consensus success/failure, timeouts, round and session
-  duration histograms. Instrumented in `_run_cfn_negotiation`, `_cfn_decide_round`,
-  and `_finish_cfn`.
+  Sessions started/completed, rounds, consensus outcome (success/failure),
+  per-room breakdowns, round duration, time-to-completion and
+  time-to-consensus histograms. Instrumented in `_run_cfn_negotiation`,
+  `_cfn_decide_round`, and `_finish_cfn`.
 
-- **Knowledge graph queries** (`knowledge/service.py`) ✓
-  Query counts by type (neighbour, path, concept), hit/miss rates, results
-  returned, and latency. Instrumented in `query_graph_store`.
+- **Knowledge graph queries** (`services/cfn_knowledge.py`) ✓
+  Query counts by type (neighbour, path, concept, semantic), hit/miss/error
+  rates, results returned, and latency. Instrumented in
+  `query_shared_memories`, `get_concepts_by_ids`, `get_concept_neighbors`,
+  and `get_graph_paths`.
+
+- **Knowledge ingestion** (`routes/knowledge.py`) ✓
+  Ingestion counts, duration, and error tracking for the CFN-proxied
+  knowledge extraction pipeline.
 
 - **Synthesis data reuse** (`routes/rooms.py`) ✓
   Briefing requests, cache hits/misses, and memories-since-last-synthesis
@@ -306,9 +324,7 @@ Prioritised by effort and value.
 These exist in ARCHITECTURE.md or as stubs — metrics will follow once
 the features are wired up:
 
-- `/api/semantic-negotiation` endpoint (stub in `cognition_engine.py`)
 - `get_llm_provider()` in `agents/llm_provider.py` (defined but unused)
-- Memory + agent query strategies in `options_generation.py` (mocks)
 - Multi-device Matrix transport metrics
 
 ## Periodic Maintenance Checklist

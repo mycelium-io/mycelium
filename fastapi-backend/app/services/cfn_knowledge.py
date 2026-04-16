@@ -182,6 +182,7 @@ async def query_shared_memories(
         record_knowledge_query(
             query_type="semantic",
             duration_ms=(time.monotonic() - t0) * 1000,
+            error=True,
         )
         raise
     record_knowledge_query(
@@ -211,6 +212,7 @@ async def get_concepts_by_ids(
             query_type="concept",
             nodes_queried=len(ids),
             duration_ms=(time.monotonic() - t0) * 1000,
+            error=True,
         )
         raise
     records = result.get("records", [])
@@ -242,6 +244,7 @@ async def get_concept_neighbors(
             query_type="neighbour",
             nodes_queried=1,
             duration_ms=(time.monotonic() - t0) * 1000,
+            error=True,
         )
         raise
     records = result.get("records", [])
@@ -284,6 +287,7 @@ async def get_graph_paths(
             query_type="path",
             nodes_queried=2,
             duration_ms=(time.monotonic() - t0) * 1000,
+            error=True,
         )
         raise
     paths = result.get("paths", [])
