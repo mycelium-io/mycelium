@@ -6,58 +6,31 @@ Doctor command — diagnose and fix common Mycelium configuration issues.
 
 Checks:
   1. Config files exist (~/.mycelium/.env, config.toml)
-  2. LLM configuration (model + API key set)
-  3. Docker containers running and healthy
-  4. Backend API reachable
-  5. Workspace ID in sync (CFN mgmt plane vs .env vs config.toml)
-  6. .env ↔ config.toml drift (api_url / port)
-  7. Room MAS IDs present (CFN-enabled installs)
+  2. Config file drift — every shared key aligned between .env and config.toml
+  3. Runtime config drift — backend container env matches .env on disk
+  4. Docker containers running and healthy
+  5. Backend API reachable
+  6. LLM connectivity (real completion probe via backend)
+  7. Workspace ID in sync (CFN mgmt plane vs .env vs config.toml)
+  8. Room MAS IDs present (CFN-enabled installs)
+  9. OpenClaw adapter health (plugin, channel config, agent sandbox)
 """
 
 import subprocess
 from collections.abc import Callable
-from dataclasses import dataclass, field
 from pathlib import Path
 
 import typer
 
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
-
-# ── Check result model ───────────────────────────────────────────────────────
-
-
-@dataclass
-class CheckResult:
-    name: str
-    status: str  # "ok" | "warning" | "error"
-    message: str
-    details: list[str] = field(default_factory=list)
-    fix_label: str = ""
-    fix_fn: Callable[[], None] | None = None
-
-
-# ── Status display ───────────────────────────────────────────────────────────
-
-_STATUS_ICONS = {
-    "ok": "\x1b[32m✓\x1b[0m",
-    "warning": "\x1b[33m~\x1b[0m",
-    "error": "\x1b[31m✗\x1b[0m",
-}
-_STATUS_COLORS = {
-    "ok": typer.colors.GREEN,
-    "warning": typer.colors.YELLOW,
-    "error": typer.colors.RED,
-}
-
-
-def _print_check(result: CheckResult) -> None:
-    icon = _STATUS_ICONS.get(result.status, "?")
-    color = _STATUS_COLORS.get(result.status, typer.colors.WHITE)
-    typer.secho(f"  {icon} {result.name:<22s} {result.message}", fg=color)
-    for detail in result.details:
-        typer.echo(f"  {' ' * 24}{detail}")
-
+from mycelium.ui_status import (
+    CheckResult,
+    print_check,
+    print_section,
+    print_title,
+    print_verdict,
+)
 
 # ── Individual checks ────────────────────────────────────────────────────────
 
@@ -87,47 +60,144 @@ def _check_config_files() -> CheckResult:
     )
 
 
-def _check_llm_config() -> CheckResult:
-    """Check that LLM model and API key are configured in .env."""
+def _check_llm_connectivity() -> CheckResult:
+    """Probe the backend's LLM with a real ``litellm.completion(max_tokens=1)`` call.
+
+    Exercises the same code path as inference and surfaces problems that only
+    show up at first use — missing provider SDK extras (e.g. boto3 for Bedrock),
+    bad model strings, and auth failures at the actual endpoint (not just the
+    free model-list endpoint).
+
+    Runs via ``GET /health?check_llm=true&llm_probe=completion`` so the probe
+    executes inside the backend container, which is where LLM calls will
+    actually run in production.
+    """
+    # Skip entirely if the LLM isn't configured at all — _check_llm_config
+    # already reported that and running the probe would be redundant noise.
     env_path = Path.home() / ".mycelium" / ".env"
-    if not env_path.exists():
+    if env_path.exists():
+        from dotenv import dotenv_values
+
+        vals = dotenv_values(env_path)
+        if not vals.get("LLM_MODEL"):
+            return CheckResult(
+                name="LLM connectivity",
+                status="ok",
+                message="Skipped (LLM_MODEL not set)",
+            )
+
+    from mycelium.config import MyceliumConfig
+
+    try:
+        config = MyceliumConfig.load()
+        api_url = config.server.api_url
+    except Exception:
         return CheckResult(
-            name="LLM configuration",
-            status="error",
-            message="No .env file",
+            name="LLM connectivity",
+            status="warning",
+            message="Skipped (cannot load config)",
         )
 
-    from dotenv import dotenv_values
+    try:
+        import httpx
 
-    vals = dotenv_values(env_path)
-    model = vals.get("LLM_MODEL", "")
-    key = vals.get("LLM_API_KEY", "")
-
-    if not model:
+        resp = httpx.get(
+            f"{api_url}/health",
+            params={"check_llm": "true", "llm_probe": "completion"},
+            timeout=30,
+        )
+    except Exception as exc:
         return CheckResult(
-            name="LLM configuration",
+            name="LLM connectivity",
             status="warning",
-            message="LLM_MODEL not set",
+            message="Skipped (backend unreachable)",
+            details=[str(exc), "Start the backend: mycelium up"],
+        )
+
+    if resp.status_code >= 500:
+        return CheckResult(
+            name="LLM connectivity",
+            status="warning",
+            message=f"Backend /health returned HTTP {resp.status_code}",
+        )
+
+    try:
+        llm = resp.json().get("llm", {}) or {}
+    except Exception:
+        return CheckResult(
+            name="LLM connectivity",
+            status="warning",
+            message="Backend returned non-JSON response",
+        )
+
+    status = llm.get("status", "unknown")
+    model = llm.get("model", "") or "<unset>"
+    message = llm.get("message", "") or ""
+    remediation = llm.get("remediation") or ""
+
+    details: list[str] = []
+    if message:
+        details.append(message)
+    if remediation:
+        details.append(f"fix: {remediation}")
+
+    # Map backend status → doctor status.  Missing provider SDKs and bad model
+    # strings are hard failures; auth + network are warnings (transient or
+    # user-fixable without a reinstall).
+    if status == "ok":
+        return CheckResult(
+            name="LLM connectivity",
+            status="ok",
+            message=f"{model} — completion probe succeeded",
+        )
+    if status == "not_configured":
+        return CheckResult(
+            name="LLM connectivity",
+            status="warning",
+            message="Not configured",
             details=["Run: mycelium install --force"],
         )
-
-    key_hint = (
-        f"(key: ...{key[-4:]})" if key and len(key) > 4 else "(no key)" if not key else "(key set)"
-    )
-
-    # Ollama and some local providers don't need API keys
-    if not key and not model.startswith("ollama/"):
+    if status == "missing_extras":
         return CheckResult(
-            name="LLM configuration",
-            status="warning",
-            message=f"{model} {key_hint}",
-            details=["LLM_API_KEY not set — run: mycelium install --force"],
+            name="LLM connectivity",
+            status="error",
+            message=f"{model} — missing provider SDK in backend",
+            details=details,
         )
-
+    if status == "bad_model":
+        return CheckResult(
+            name="LLM connectivity",
+            status="error",
+            message=f"{model} — invalid model string",
+            details=details,
+        )
+    if status == "auth_error":
+        return CheckResult(
+            name="LLM connectivity",
+            status="warning",
+            message=f"{model} — authentication failed",
+            details=details,
+        )
+    if status == "unreachable":
+        return CheckResult(
+            name="LLM connectivity",
+            status="warning",
+            message=f"{model} — provider unreachable",
+            details=details,
+        )
+    if status == "unchecked":
+        return CheckResult(
+            name="LLM connectivity",
+            status="ok",
+            message=f"{model} — probe unsupported for this provider",
+            details=details,
+        )
+    # error | unknown
     return CheckResult(
-        name="LLM configuration",
-        status="ok",
-        message=f"{model} {key_hint}",
+        name="LLM connectivity",
+        status="error",
+        message=f"{model} — {status}",
+        details=details,
     )
 
 
@@ -374,14 +444,30 @@ def _make_workspace_fix(
     return _fix
 
 
-def _check_config_drift() -> CheckResult:
-    """Check for drift between .env and config.toml (api_url / port)."""
+# Keys that should match between ~/.mycelium/.env and config.toml. Each entry
+# is (env_key, config_accessor) — config_accessor pulls the equivalent value
+# out of a loaded MyceliumConfig. `mycelium config apply` regenerates .env
+# from config.toml, so config.toml is the source of truth on drift.
+_SHARED_CONFIG_KEYS: list[tuple[str, Callable[..., str]]] = [
+    ("LLM_MODEL", lambda cfg: (cfg.llm.model or "") if getattr(cfg, "llm", None) else ""),
+    ("WORKSPACE_ID", lambda cfg: cfg.server.workspace_id or ""),
+    ("MAS_ID", lambda cfg: cfg.server.mas_id or ""),
+]
+
+
+def _check_config_file_drift() -> CheckResult:
+    """Compare every shared key between ``~/.mycelium/.env`` and ``config.toml``.
+
+    Catches the common "I edited one file and forgot the other" failure mode.
+    The sibling runtime-drift check covers "I edited both files but forgot
+    to restart the container" — this one only looks at disk, not runtime.
+    """
     env_path = Path.home() / ".mycelium" / ".env"
     config_path = Path.home() / ".mycelium" / "config.toml"
 
     if not env_path.exists() or not config_path.exists():
         return CheckResult(
-            name="Config consistency",
+            name="Config file drift",
             status="ok",
             message="Skipped (missing files)",
         )
@@ -396,46 +482,153 @@ def _check_config_drift() -> CheckResult:
         cfg = MyceliumConfig.load(config_path)
     except Exception:
         return CheckResult(
-            name="Config consistency",
+            name="Config file drift",
             status="warning",
             message="Cannot parse config.toml",
         )
 
-    issues: list[str] = []
+    mismatches: list[str] = []
 
-    # Check port consistency
-    env_port = vals.get("MYCELIUM_BACKEND_PORT", "8000")
-    config_url = cfg.server.api_url
-    # Extract port from config URL
+    # Text keys — only flag when both sides have a value. A missing value on
+    # one side isn't drift, it's an opt-out.
+    for env_key, get_toml in _SHARED_CONFIG_KEYS:
+        try:
+            toml_val = get_toml(cfg)
+        except Exception:
+            toml_val = ""
+        env_val = vals.get(env_key, "") or ""
+        if env_val and toml_val and env_val != toml_val:
+            mismatches.append(f"{env_key}")
+            mismatches.append(f"  .env:         {env_val}")
+            mismatches.append(f"  config.toml:  {toml_val}")
+
+    # Port special case — compare .env port to the port parsed from config URL.
+    env_port = vals.get("MYCELIUM_BACKEND_PORT", "")
     try:
         from urllib.parse import urlparse
 
-        parsed = urlparse(config_url)
-        config_port = str(parsed.port) if parsed.port else None
+        parsed = urlparse(cfg.server.api_url or "")
+        config_port = str(parsed.port) if parsed.port else ""
     except Exception:
-        config_port = None
+        config_port = ""
 
-    if config_port is None:
-        issues.append(
-            f"No port found in config.toml api_url '{config_url}' — "
-            "expected a full URL including port (e.g. http://localhost:8001)"
-        )
+    if env_port and config_port and env_port != config_port:
+        mismatches.append("Backend port")
+        mismatches.append(f"  .env:         MYCELIUM_BACKEND_PORT={env_port}")
+        mismatches.append(f"  config.toml:  api_url port={config_port}")
 
-    if config_port is not None and env_port != config_port:
-        issues.append(f"Backend port: .env={env_port}, config.toml URL implies {config_port}")
-
-    if issues:
+    if mismatches:
         return CheckResult(
-            name="Config consistency",
+            name="Config file drift",
             status="warning",
-            message="Drift detected",
-            details=issues,
+            message="Values differ between .env and config.toml",
+            details=mismatches + ["fix: mycelium config apply  (overwrites .env from config.toml)"],
         )
 
     return CheckResult(
-        name="Config consistency",
+        name="Config file drift",
         status="ok",
-        message=".env and config.toml are consistent",
+        message=".env and config.toml aligned",
+    )
+
+
+def _check_runtime_config_drift() -> CheckResult:
+    """Compare backend runtime values against the on-disk ``.env``.
+
+    Catches "I edited the files but didn't restart the backend" — in that
+    state ``mycelium doctor`` may happily green-light LLM connectivity
+    because the container is still running the old-but-working config, so
+    the user never notices their config changes took no effect.
+
+    Runtime values come from ``/health?check_llm=true``. Key hints are
+    compared by last 4 characters (the format the backend returns).
+    """
+    env_path = Path.home() / ".mycelium" / ".env"
+    if not env_path.exists():
+        return CheckResult(
+            name="Runtime config drift",
+            status="ok",
+            message="Skipped (no .env)",
+        )
+
+    from dotenv import dotenv_values
+
+    vals = dotenv_values(env_path)
+    env_model = (vals.get("LLM_MODEL", "") or "").strip()
+    env_key = (vals.get("LLM_API_KEY", "") or "").strip()
+    env_key_tail = env_key[-4:] if len(env_key) >= 4 else ""
+
+    from mycelium.config import MyceliumConfig
+
+    try:
+        cfg = MyceliumConfig.load()
+        api_url = cfg.server.api_url or "http://localhost:8000"
+    except Exception:
+        return CheckResult(
+            name="Runtime config drift",
+            status="ok",
+            message="Skipped (cannot load config)",
+        )
+
+    try:
+        import httpx
+
+        resp = httpx.get(
+            f"{api_url}/health",
+            params={"check_llm": "true"},
+            timeout=5,
+        )
+    except Exception:
+        return CheckResult(
+            name="Runtime config drift",
+            status="ok",
+            message="Skipped (backend unreachable)",
+        )
+
+    if resp.status_code >= 500:
+        return CheckResult(
+            name="Runtime config drift",
+            status="ok",
+            message=f"Skipped (backend HTTP {resp.status_code})",
+        )
+
+    try:
+        llm = resp.json().get("llm") or {}
+    except Exception:
+        return CheckResult(
+            name="Runtime config drift",
+            status="ok",
+            message="Skipped (backend returned non-JSON)",
+        )
+
+    runtime_model = (llm.get("model", "") or "").strip()
+    runtime_key_hint = (llm.get("key_hint", "") or "").strip()
+    runtime_key_tail = runtime_key_hint[-4:] if len(runtime_key_hint) >= 4 else ""
+
+    mismatches: list[str] = []
+    if env_model and runtime_model and env_model != runtime_model:
+        mismatches.append("LLM_MODEL")
+        mismatches.append(f"  .env:      {env_model}")
+        mismatches.append(f"  backend:   {runtime_model}")
+
+    if env_key_tail and runtime_key_tail and env_key_tail != runtime_key_tail:
+        mismatches.append("LLM_API_KEY")
+        mismatches.append(f"  .env ends …{env_key_tail}")
+        mismatches.append(f"  backend ends …{runtime_key_tail}")
+
+    if mismatches:
+        return CheckResult(
+            name="Runtime config drift",
+            status="warning",
+            message="Backend running with stale env",
+            details=mismatches
+            + ["fix: mycelium up  (recreate the backend container with current .env)"],
+        )
+
+    return CheckResult(
+        name="Runtime config drift",
+        status="ok",
+        message="Backend env matches .env",
     )
 
 
@@ -807,21 +1000,45 @@ def doctor(
     try:
         json_output = ctx.obj.get("json", False) if ctx.obj else False
 
-        typer.secho("\n  Mycelium Doctor\n", bold=True)
-
-        # Run all checks
-        results = [
-            _check_config_files(),
-            _check_llm_config(),
-            _check_docker_containers(),
-            _check_backend_reachable(),
-            _check_workspace_id(),
-            _check_config_drift(),
-            _check_room_mas_ids(),
-            _check_openclaw_mycelium_plugin(),
-            _check_openclaw_channel_config(),
-            _check_openclaw_agent_sandbox(),
+        # Run all checks. LLM connectivity runs AFTER backend-reachable
+        # because both reuse the same /health endpoint — no point probing
+        # LLM if the backend is down. Checks are grouped into sections for
+        # display but we collect them once so the JSON output and verdict
+        # have a single source of truth.
+        sections: list[tuple[str, list[CheckResult]]] = [
+            (
+                "Configuration",
+                [
+                    _check_config_files(),
+                    _check_config_file_drift(),
+                    _check_runtime_config_drift(),
+                ],
+            ),
+            (
+                "Services",
+                [
+                    _check_docker_containers(),
+                    _check_backend_reachable(),
+                    _check_llm_connectivity(),
+                ],
+            ),
+            (
+                "CFN",
+                [
+                    _check_workspace_id(),
+                    _check_room_mas_ids(),
+                ],
+            ),
+            (
+                "Adapters",
+                [
+                    _check_openclaw_mycelium_plugin(),
+                    _check_openclaw_channel_config(),
+                    _check_openclaw_agent_sandbox(),
+                ],
+            ),
         ]
+        results = [r for _, checks in sections for r in checks]
 
         if json_output:
             import json
@@ -839,24 +1056,30 @@ def doctor(
             typer.echo(json.dumps(output, indent=2))
             return
 
-        # Display results
-        for result in results:
-            _print_check(result)
+        print_title("Mycelium Doctor")
+        for title, checks in sections:
+            print_section(title)
+            for result in checks:
+                print_check(result)
 
         # Summary
-        issues = [r for r in results if r.status in ("warning", "error")]
+        issues = [r for r in results if r.status not in ("ok", "info")]
         fixable = [r for r in issues if r.fix_fn is not None]
+        errors = [
+            r
+            for r in results
+            if r.status == "error" or r.status in ("missing_extras", "bad_model", "unreachable")
+        ]
 
-        typer.echo("")
+        # Warnings verdict as yellow ~, errors as red ✗. A lone warning
+        # shouldn't render as a hard failure.
         if not issues:
-            typer.secho("  All checks passed.", fg=typer.colors.GREEN, bold=True)
-            return
-
-        typer.echo(
-            f"  {len(issues)} issue(s) found"
-            + (f", {len(fixable)} auto-fixable" if fixable else "")
-            + "."
-        )
+            print_verdict("ok", "All checks passed.")
+        else:
+            summary = f"{len(issues)} issue(s) found" + (
+                f", {len(fixable)} auto-fixable." if fixable else "."
+            )
+            print_verdict("error" if errors else "warning", summary)
 
         # Offer to fix
         if fixable:
@@ -878,8 +1101,9 @@ def doctor(
                     else:
                         typer.echo("  Skipped.")
 
-        # Exit code
-        errors = [r for r in results if r.status == "error"]
+        # Exit code: hard errors (and backend-classified hard failures) are
+        # fatal so CI/scripts can rely on a non-zero exit. Warnings don't
+        # flip the exit code — they're nudges, not failures.
         if errors:
             raise typer.Exit(1)
 

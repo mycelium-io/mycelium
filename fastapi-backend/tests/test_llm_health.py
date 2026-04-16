@@ -14,6 +14,7 @@ from app.services.llm_health import (
     get_config_status,
     invalidate_cache,
     mask_key,
+    probe_completion,
     probe_provider,
     validate_key_format,
 )
@@ -267,6 +268,118 @@ async def test_probe_ollama_unreachable():
         assert "Ollama" in result.message
 
 
+# ── probe_completion ─────────────────────────────────────────────────────────
+
+
+async def test_probe_completion_not_configured():
+    with patch("app.services.llm_health.settings") as mock_settings:
+        mock_settings.LLM_API_KEY = None
+        mock_settings.LLM_BASE_URL = None
+        mock_settings.LLM_MODEL = "bedrock/anthropic.claude-3-sonnet"
+
+        result = await probe_completion()
+        assert result.status == "not_configured"
+
+
+async def test_probe_completion_ok():
+    """A clean litellm.acompletion call surfaces as ok."""
+    with patch("app.services.llm_health.settings") as mock_settings:
+        mock_settings.LLM_API_KEY = "sk-ant-test1234abcdef"
+        mock_settings.LLM_BASE_URL = None
+        mock_settings.LLM_MODEL = "anthropic/claude-sonnet-4-6"
+
+        async def _fake_acompletion(**kwargs):
+            return {"choices": [{"message": {"content": "p"}}]}
+
+        with patch("litellm.acompletion", side_effect=_fake_acompletion):
+            result = await probe_completion()
+
+        assert result.status == "ok"
+        assert "succeeded" in result.message.lower()
+
+
+async def test_probe_completion_missing_provider_sdk():
+    """A ModuleNotFoundError raised by litellm becomes `missing_extras` with a hint."""
+    with patch("app.services.llm_health.settings") as mock_settings:
+        mock_settings.LLM_API_KEY = ""
+        mock_settings.LLM_BASE_URL = None
+        mock_settings.LLM_MODEL = "bedrock/anthropic.claude-3-sonnet"
+
+        async def _raise(**kwargs):
+            raise ModuleNotFoundError("No module named 'boto3'")
+
+        with patch("litellm.acompletion", side_effect=_raise):
+            # Override config not_configured by pretending a key is set.
+            mock_settings.LLM_API_KEY = "aws-access-key-id"
+            result = await probe_completion()
+
+        assert result.status == "missing_extras"
+        assert "bedrock" in result.message.lower() or "boto3" in result.message.lower()
+        assert result.remediation is not None
+        assert "boto3" in result.remediation
+
+
+async def test_probe_completion_wrapped_import_error_in_message():
+    """litellm sometimes wraps missing-SDK errors in a generic Exception whose
+    message embeds 'No module named X' — we should still classify as
+    missing_extras."""
+    with patch("app.services.llm_health.settings") as mock_settings:
+        mock_settings.LLM_API_KEY = "aws-key"
+        mock_settings.LLM_BASE_URL = None
+        mock_settings.LLM_MODEL = "bedrock/anthropic.claude-3-sonnet"
+
+        async def _raise(**kwargs):
+            raise Exception("No module named 'boto3' — pip install boto3")
+
+        with patch("litellm.acompletion", side_effect=_raise):
+            result = await probe_completion()
+
+        assert result.status == "missing_extras"
+        assert result.remediation is not None
+
+
+async def test_probe_completion_auth_error():
+    """litellm.AuthenticationError maps to auth_error with a remediation."""
+    import litellm
+
+    with patch("app.services.llm_health.settings") as mock_settings:
+        mock_settings.LLM_API_KEY = "sk-ant-bad"
+        mock_settings.LLM_BASE_URL = None
+        mock_settings.LLM_MODEL = "anthropic/claude-sonnet-4-6"
+
+        async def _raise(**kwargs):
+            raise litellm.AuthenticationError(
+                message="invalid key", llm_provider="anthropic", model="claude-sonnet-4-6"
+            )
+
+        with patch("litellm.acompletion", side_effect=_raise):
+            result = await probe_completion()
+
+        assert result.status == "auth_error"
+        assert result.remediation is not None
+        assert "LLM_API_KEY" in result.remediation
+
+
+async def test_probe_completion_bad_model():
+    """litellm.BadRequestError on an unknown model surfaces as bad_model."""
+    import litellm
+
+    with patch("app.services.llm_health.settings") as mock_settings:
+        mock_settings.LLM_API_KEY = "sk-test"
+        mock_settings.LLM_BASE_URL = None
+        mock_settings.LLM_MODEL = "anthropic/claude-imaginary-model"
+
+        async def _raise(**kwargs):
+            raise litellm.BadRequestError(
+                message="unknown model", llm_provider="anthropic", model="claude-imaginary"
+            )
+
+        with patch("litellm.acompletion", side_effect=_raise):
+            result = await probe_completion()
+
+        assert result.status == "bad_model"
+
+
 # ── /health endpoint ─────────────────────────────────────────────────────────
 
 
@@ -294,6 +407,30 @@ async def test_health_check_llm_probe(client: AsyncClient):
         "unreachable",
         "unchecked",
     )
+
+
+async def test_health_check_llm_completion_probe(client: AsyncClient):
+    """/health?check_llm=true&llm_probe=completion triggers the completion probe."""
+    resp = await client.get(
+        "/health",
+        params={"check_llm": "true", "llm_probe": "completion"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "llm" in data
+    llm = data["llm"]
+    assert llm["status"] in (
+        "ok",
+        "not_configured",
+        "auth_error",
+        "unreachable",
+        "unchecked",
+        "missing_extras",
+        "bad_model",
+        "error",
+    )
+    # remediation is part of the new schema
+    assert "remediation" in llm
 
 
 # ── /health: database ────────────────────────────────────────────────────────

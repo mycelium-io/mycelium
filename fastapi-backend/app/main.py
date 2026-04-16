@@ -168,14 +168,24 @@ app.include_router(knowledge_router)
 @app.get("/health", tags=["health"])
 async def root(
     check_llm: bool = False,
+    llm_probe: str = "provider",
     session: AsyncSession = Depends(get_async_session),
 ):
     """Health check.
 
-    Pass ?check_llm=true to probe the LLM provider (zero-cost model-list call).
-    Without it, only local config status is included.
+    Pass ``?check_llm=true`` to probe the LLM provider.  Without it, only local
+    config status is included.
+
+    Probe mode is selected by ``llm_probe`` (only relevant when check_llm=true):
+
+    * ``provider`` (default) — zero-cost model-list call.  Free but only validates
+      openai/anthropic/ollama; returns "unchecked" for bedrock/vertex/etc.
+    * ``completion`` — real ``litellm.acompletion(max_tokens=1)`` call.  Exercises
+      the same code path as inference and surfaces missing provider SDK extras
+      (e.g. boto3 for Bedrock), bad model strings, and endpoint-level auth
+      failures.  Costs a single token.
     """
-    from app.services.llm_health import get_config_status, probe_provider
+    from app.services.llm_health import get_config_status, probe_completion, probe_provider
 
     result: dict = {"status": "ok", "service": "mycelium-backend", "version": app.version}
 
@@ -187,7 +197,10 @@ async def root(
 
     # LLM
     if check_llm:
-        llm = await probe_provider()
+        if llm_probe == "completion":
+            llm = await probe_completion()
+        else:
+            llm = await probe_provider()
     else:
         llm = get_config_status()
     result["llm"] = llm.to_dict()
