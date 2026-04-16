@@ -647,7 +647,7 @@ def status(ctx: typer.Context) -> None:
                     if backend_error
                     else "Backend is down — run: mycelium up"
                 )
-                print_verdict(ok=False, ok_message="", fail_message=fail_msg)
+                print_verdict("error", fail_msg)
                 if backend_error and ("HTTP 401" in backend_error or "HTTP 403" in backend_error):
                     typer.echo(
                         "  Check the backend URL (MYCELIUM_API_URL env var or server.api_url in ~/.mycelium/config.toml)"
@@ -655,13 +655,9 @@ def status(ctx: typer.Context) -> None:
                 elif backend_error and "Cannot connect" in backend_error:
                     typer.echo("  To start services: mycelium up")
             elif overall_status == "degraded":
-                print_verdict(ok=False, ok_message="", fail_message="Backend running (degraded)")
+                print_verdict("warning", "Backend running (degraded)")
             else:
-                print_verdict(
-                    ok=True,
-                    ok_message="All systems operational",
-                    fail_message="",
-                )
+                print_verdict("ok", "All systems operational")
 
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False

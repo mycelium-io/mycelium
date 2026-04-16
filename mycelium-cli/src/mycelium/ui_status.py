@@ -114,10 +114,16 @@ def print_kv(key: str, value: str, name_width: int = NAME_WIDTH) -> None:
     typer.echo(f"{INDENT}  {key:<{name_width}s}{value}")
 
 
-def print_verdict(ok: bool, ok_message: str, fail_message: str) -> None:
-    """Final one-line summary with icon. Blank line above for separation."""
+def print_verdict(status: str, message: str) -> None:
+    """Final one-line summary with icon + color. Blank line above for separation.
+
+    ``status`` is any string accepted by ``print_check`` — "ok", "warning",
+    "error", or a backend alias ("auth_error", "missing_extras", etc).
+    Warning-only doctor runs should verdict with "warning" (yellow ~),
+    not "error" (red ✗), to avoid over-claiming severity.
+    """
+    bucket = _bucket(status)
+    icon = _STATUS_ICON[bucket]
+    color = _STATUS_COLOR[bucket]
     typer.echo("")
-    if ok:
-        typer.secho(f"{INDENT}{_STATUS_ICON['ok']} {ok_message}", fg=_STATUS_COLOR["ok"])
-    else:
-        typer.secho(f"{INDENT}{_STATUS_ICON['error']} {fail_message}", fg=_STATUS_COLOR["error"])
+    typer.secho(f"{INDENT}{icon} {message}", fg=color)

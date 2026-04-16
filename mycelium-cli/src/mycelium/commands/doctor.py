@@ -6,13 +6,14 @@ Doctor command — diagnose and fix common Mycelium configuration issues.
 
 Checks:
   1. Config files exist (~/.mycelium/.env, config.toml)
-  2. LLM configuration (model + API key set)
-  3. LLM connectivity (real completion probe via backend)
+  2. Config file drift — every shared key aligned between .env and config.toml
+  3. Runtime config drift — backend container env matches .env on disk
   4. Docker containers running and healthy
   5. Backend API reachable
-  6. Workspace ID in sync (CFN mgmt plane vs .env vs config.toml)
-  7. .env ↔ config.toml drift (api_url / port)
+  6. LLM connectivity (real completion probe via backend)
+  7. Workspace ID in sync (CFN mgmt plane vs .env vs config.toml)
   8. Room MAS IDs present (CFN-enabled installs)
+  9. OpenClaw adapter health (plugin, channel config, agent sandbox)
 """
 
 import subprocess
@@ -443,14 +444,30 @@ def _make_workspace_fix(
     return _fix
 
 
-def _check_config_drift() -> CheckResult:
-    """Check for drift between .env and config.toml (api_url / port)."""
+# Keys that should match between ~/.mycelium/.env and config.toml. Each entry
+# is (env_key, config_accessor) — config_accessor pulls the equivalent value
+# out of a loaded MyceliumConfig. `mycelium config apply` regenerates .env
+# from config.toml, so config.toml is the source of truth on drift.
+_SHARED_CONFIG_KEYS: list[tuple[str, Callable[..., str]]] = [
+    ("LLM_MODEL", lambda cfg: (cfg.llm.model or "") if getattr(cfg, "llm", None) else ""),
+    ("WORKSPACE_ID", lambda cfg: cfg.server.workspace_id or ""),
+    ("MAS_ID", lambda cfg: cfg.server.mas_id or ""),
+]
+
+
+def _check_config_file_drift() -> CheckResult:
+    """Compare every shared key between ``~/.mycelium/.env`` and ``config.toml``.
+
+    Catches the common "I edited one file and forgot the other" failure mode.
+    The sibling runtime-drift check covers "I edited both files but forgot
+    to restart the container" — this one only looks at disk, not runtime.
+    """
     env_path = Path.home() / ".mycelium" / ".env"
     config_path = Path.home() / ".mycelium" / "config.toml"
 
     if not env_path.exists() or not config_path.exists():
         return CheckResult(
-            name="Config consistency",
+            name="Config file drift",
             status="ok",
             message="Skipped (missing files)",
         )
@@ -465,46 +482,153 @@ def _check_config_drift() -> CheckResult:
         cfg = MyceliumConfig.load(config_path)
     except Exception:
         return CheckResult(
-            name="Config consistency",
+            name="Config file drift",
             status="warning",
             message="Cannot parse config.toml",
         )
 
-    issues: list[str] = []
+    mismatches: list[str] = []
 
-    # Check port consistency
-    env_port = vals.get("MYCELIUM_BACKEND_PORT", "8000")
-    config_url = cfg.server.api_url
-    # Extract port from config URL
+    # Text keys — only flag when both sides have a value. A missing value on
+    # one side isn't drift, it's an opt-out.
+    for env_key, get_toml in _SHARED_CONFIG_KEYS:
+        try:
+            toml_val = get_toml(cfg)
+        except Exception:
+            toml_val = ""
+        env_val = vals.get(env_key, "") or ""
+        if env_val and toml_val and env_val != toml_val:
+            mismatches.append(f"{env_key}")
+            mismatches.append(f"  .env:         {env_val}")
+            mismatches.append(f"  config.toml:  {toml_val}")
+
+    # Port special case — compare .env port to the port parsed from config URL.
+    env_port = vals.get("MYCELIUM_BACKEND_PORT", "")
     try:
         from urllib.parse import urlparse
 
-        parsed = urlparse(config_url)
-        config_port = str(parsed.port) if parsed.port else None
+        parsed = urlparse(cfg.server.api_url or "")
+        config_port = str(parsed.port) if parsed.port else ""
     except Exception:
-        config_port = None
+        config_port = ""
 
-    if config_port is None:
-        issues.append(
-            f"No port found in config.toml api_url '{config_url}' — "
-            "expected a full URL including port (e.g. http://localhost:8001)"
-        )
+    if env_port and config_port and env_port != config_port:
+        mismatches.append("Backend port")
+        mismatches.append(f"  .env:         MYCELIUM_BACKEND_PORT={env_port}")
+        mismatches.append(f"  config.toml:  api_url port={config_port}")
 
-    if config_port is not None and env_port != config_port:
-        issues.append(f"Backend port: .env={env_port}, config.toml URL implies {config_port}")
-
-    if issues:
+    if mismatches:
         return CheckResult(
-            name="Config consistency",
+            name="Config file drift",
             status="warning",
-            message="Drift detected",
-            details=issues,
+            message="Values differ between .env and config.toml",
+            details=mismatches + ["fix: mycelium config apply  (overwrites .env from config.toml)"],
         )
 
     return CheckResult(
-        name="Config consistency",
+        name="Config file drift",
         status="ok",
-        message=".env and config.toml are consistent",
+        message=".env and config.toml aligned",
+    )
+
+
+def _check_runtime_config_drift() -> CheckResult:
+    """Compare backend runtime values against the on-disk ``.env``.
+
+    Catches "I edited the files but didn't restart the backend" — in that
+    state ``mycelium doctor`` may happily green-light LLM connectivity
+    because the container is still running the old-but-working config, so
+    the user never notices their config changes took no effect.
+
+    Runtime values come from ``/health?check_llm=true``. Key hints are
+    compared by last 4 characters (the format the backend returns).
+    """
+    env_path = Path.home() / ".mycelium" / ".env"
+    if not env_path.exists():
+        return CheckResult(
+            name="Runtime config drift",
+            status="ok",
+            message="Skipped (no .env)",
+        )
+
+    from dotenv import dotenv_values
+
+    vals = dotenv_values(env_path)
+    env_model = (vals.get("LLM_MODEL", "") or "").strip()
+    env_key = (vals.get("LLM_API_KEY", "") or "").strip()
+    env_key_tail = env_key[-4:] if len(env_key) >= 4 else ""
+
+    from mycelium.config import MyceliumConfig
+
+    try:
+        cfg = MyceliumConfig.load()
+        api_url = cfg.server.api_url or "http://localhost:8000"
+    except Exception:
+        return CheckResult(
+            name="Runtime config drift",
+            status="ok",
+            message="Skipped (cannot load config)",
+        )
+
+    try:
+        import httpx
+
+        resp = httpx.get(
+            f"{api_url}/health",
+            params={"check_llm": "true"},
+            timeout=5,
+        )
+    except Exception:
+        return CheckResult(
+            name="Runtime config drift",
+            status="ok",
+            message="Skipped (backend unreachable)",
+        )
+
+    if resp.status_code >= 500:
+        return CheckResult(
+            name="Runtime config drift",
+            status="ok",
+            message=f"Skipped (backend HTTP {resp.status_code})",
+        )
+
+    try:
+        llm = resp.json().get("llm") or {}
+    except Exception:
+        return CheckResult(
+            name="Runtime config drift",
+            status="ok",
+            message="Skipped (backend returned non-JSON)",
+        )
+
+    runtime_model = (llm.get("model", "") or "").strip()
+    runtime_key_hint = (llm.get("key_hint", "") or "").strip()
+    runtime_key_tail = runtime_key_hint[-4:] if len(runtime_key_hint) >= 4 else ""
+
+    mismatches: list[str] = []
+    if env_model and runtime_model and env_model != runtime_model:
+        mismatches.append("LLM_MODEL")
+        mismatches.append(f"  .env:      {env_model}")
+        mismatches.append(f"  backend:   {runtime_model}")
+
+    if env_key_tail and runtime_key_tail and env_key_tail != runtime_key_tail:
+        mismatches.append("LLM_API_KEY")
+        mismatches.append(f"  .env ends …{env_key_tail}")
+        mismatches.append(f"  backend ends …{runtime_key_tail}")
+
+    if mismatches:
+        return CheckResult(
+            name="Runtime config drift",
+            status="warning",
+            message="Backend running with stale env",
+            details=mismatches
+            + ["fix: mycelium up  (recreate the backend container with current .env)"],
+        )
+
+    return CheckResult(
+        name="Runtime config drift",
+        status="ok",
+        message="Backend env matches .env",
     )
 
 
@@ -886,7 +1010,8 @@ def doctor(
                 "Configuration",
                 [
                     _check_config_files(),
-                    _check_config_drift(),
+                    _check_config_file_drift(),
+                    _check_runtime_config_drift(),
                 ],
             ),
             (
@@ -946,15 +1071,15 @@ def doctor(
             if r.status == "error" or r.status in ("missing_extras", "bad_model", "unreachable")
         ]
 
-        print_verdict(
-            ok=not issues,
-            ok_message="All checks passed.",
-            fail_message=(
-                f"{len(issues)} issue(s) found"
-                + (f", {len(fixable)} auto-fixable" if fixable else "")
-                + "."
-            ),
-        )
+        # Warnings verdict as yellow ~, errors as red ✗. A lone warning
+        # shouldn't render as a hard failure.
+        if not issues:
+            print_verdict("ok", "All checks passed.")
+        else:
+            summary = f"{len(issues)} issue(s) found" + (
+                f", {len(fixable)} auto-fixable." if fixable else "."
+            )
+            print_verdict("error" if errors else "warning", summary)
 
         # Offer to fix
         if fixable:

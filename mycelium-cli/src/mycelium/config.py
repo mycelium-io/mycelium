@@ -23,6 +23,20 @@ from typing import Any
 import toml
 from pydantic import BaseModel, Field, field_validator
 
+# Header key prepended to every ~/.mycelium/config.json write. Strict JSON
+# has no comment syntax; ``"//"`` is the long-standing npm/package.json
+# convention for documentation keys and is ignored by every consumer of this
+# file (they look up known sections by name: server / llm / knowledge_ingest /
+# etc). The key leads so it's the first thing a user sees on `cat`. Long
+# term we plan to delete this file entirely and have JS hooks parse
+# config.toml directly — see #146 — so this is interim.
+_JSON_HEADER_KEY = "//"
+_JSON_HEADER_VALUE = (
+    "DO NOT EDIT — auto-generated from ~/.mycelium/config.toml on every save. "
+    "Edit config.toml instead, or use `mycelium config set`. "
+    "Any edits here are silently overwritten on the next save."
+)
+
 
 class IdentityConfig(BaseModel):
     """Agent identity configuration."""
@@ -410,16 +424,23 @@ class MyceliumConfig(BaseModel):
     def _write_json_snapshot(self, config_dir: Path) -> None:
         """Write a config.json snapshot for JS/TS consumers.
 
-        This avoids JS hooks needing a TOML parser — they read the JSON snapshot
-        which is regenerated every time config is saved.
+        Regenerated from config.toml on every save — edits to config.json are
+        silently discarded. We prepend a ``"//"`` header key (the npm/
+        package.json convention for in-JSON comments) so anyone opening the
+        file sees the warning at the top. See _JSON_HEADER_* for why this
+        key name is safe across consumers.
         """
         import json
 
-        # Export the subset that JS hooks need: server, llm, identity
-        snapshot = self.model_dump(mode="json", exclude_none=True)
+        snapshot = {
+            _JSON_HEADER_KEY: _JSON_HEADER_VALUE,
+            **self.model_dump(mode="json", exclude_none=True),
+        }
         json_path = config_dir / "config.json"
-        with open(json_path, "w") as f:
-            json.dump(snapshot, f, indent=2)
+        with open(json_path, "w", encoding="utf-8") as f:
+            # ensure_ascii=False so the header's em-dashes stay readable on `cat`
+            # rather than showing as `\u2014`.
+            json.dump(snapshot, f, indent=2, ensure_ascii=False)
             f.write("\n")
 
     def get_data_dir(self) -> Path:
