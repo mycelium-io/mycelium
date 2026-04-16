@@ -17,48 +17,19 @@ Checks:
 
 import subprocess
 from collections.abc import Callable
-from dataclasses import dataclass, field
 from pathlib import Path
 
 import typer
 
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
-
-# ── Check result model ───────────────────────────────────────────────────────
-
-
-@dataclass
-class CheckResult:
-    name: str
-    status: str  # "ok" | "warning" | "error"
-    message: str
-    details: list[str] = field(default_factory=list)
-    fix_label: str = ""
-    fix_fn: Callable[[], None] | None = None
-
-
-# ── Status display ───────────────────────────────────────────────────────────
-
-_STATUS_ICONS = {
-    "ok": "\x1b[32m✓\x1b[0m",
-    "warning": "\x1b[33m~\x1b[0m",
-    "error": "\x1b[31m✗\x1b[0m",
-}
-_STATUS_COLORS = {
-    "ok": typer.colors.GREEN,
-    "warning": typer.colors.YELLOW,
-    "error": typer.colors.RED,
-}
-
-
-def _print_check(result: CheckResult) -> None:
-    icon = _STATUS_ICONS.get(result.status, "?")
-    color = _STATUS_COLORS.get(result.status, typer.colors.WHITE)
-    typer.secho(f"  {icon} {result.name:<22s} {result.message}", fg=color)
-    for detail in result.details:
-        typer.echo(f"  {' ' * 24}{detail}")
-
+from mycelium.ui_status import (
+    CheckResult,
+    print_check,
+    print_section,
+    print_title,
+    print_verdict,
+)
 
 # ── Individual checks ────────────────────────────────────────────────────────
 
@@ -85,50 +56,6 @@ def _check_config_files() -> CheckResult:
         name="Config files",
         status="ok",
         message="~/.mycelium/.env and config.toml present",
-    )
-
-
-def _check_llm_config() -> CheckResult:
-    """Check that LLM model and API key are configured in .env."""
-    env_path = Path.home() / ".mycelium" / ".env"
-    if not env_path.exists():
-        return CheckResult(
-            name="LLM configuration",
-            status="error",
-            message="No .env file",
-        )
-
-    from dotenv import dotenv_values
-
-    vals = dotenv_values(env_path)
-    model = vals.get("LLM_MODEL", "")
-    key = vals.get("LLM_API_KEY", "")
-
-    if not model:
-        return CheckResult(
-            name="LLM configuration",
-            status="warning",
-            message="LLM_MODEL not set",
-            details=["Run: mycelium install --force"],
-        )
-
-    key_hint = (
-        f"(key: ...{key[-4:]})" if key and len(key) > 4 else "(no key)" if not key else "(key set)"
-    )
-
-    # Ollama and some local providers don't need API keys
-    if not key and not model.startswith("ollama/"):
-        return CheckResult(
-            name="LLM configuration",
-            status="warning",
-            message=f"{model} {key_hint}",
-            details=["LLM_API_KEY not set — run: mycelium install --force"],
-        )
-
-    return CheckResult(
-        name="LLM configuration",
-        status="ok",
-        message=f"{model} {key_hint}",
     )
 
 
@@ -949,24 +876,44 @@ def doctor(
     try:
         json_output = ctx.obj.get("json", False) if ctx.obj else False
 
-        typer.secho("\n  Mycelium Doctor\n", bold=True)
-
-        # Run all checks.  LLM connectivity runs AFTER the backend-reachable
-        # check because it reuses the same /health endpoint — no point probing
-        # LLM if the backend is down.
-        results = [
-            _check_config_files(),
-            _check_llm_config(),
-            _check_docker_containers(),
-            _check_backend_reachable(),
-            _check_llm_connectivity(),
-            _check_workspace_id(),
-            _check_config_drift(),
-            _check_room_mas_ids(),
-            _check_openclaw_mycelium_plugin(),
-            _check_openclaw_channel_config(),
-            _check_openclaw_agent_sandbox(),
+        # Run all checks. LLM connectivity runs AFTER backend-reachable
+        # because both reuse the same /health endpoint — no point probing
+        # LLM if the backend is down. Checks are grouped into sections for
+        # display but we collect them once so the JSON output and verdict
+        # have a single source of truth.
+        sections: list[tuple[str, list[CheckResult]]] = [
+            (
+                "Configuration",
+                [
+                    _check_config_files(),
+                    _check_config_drift(),
+                ],
+            ),
+            (
+                "Services",
+                [
+                    _check_docker_containers(),
+                    _check_backend_reachable(),
+                    _check_llm_connectivity(),
+                ],
+            ),
+            (
+                "CFN",
+                [
+                    _check_workspace_id(),
+                    _check_room_mas_ids(),
+                ],
+            ),
+            (
+                "Adapters",
+                [
+                    _check_openclaw_mycelium_plugin(),
+                    _check_openclaw_channel_config(),
+                    _check_openclaw_agent_sandbox(),
+                ],
+            ),
         ]
+        results = [r for _, checks in sections for r in checks]
 
         if json_output:
             import json
@@ -984,23 +931,29 @@ def doctor(
             typer.echo(json.dumps(output, indent=2))
             return
 
-        # Display results
-        for result in results:
-            _print_check(result)
+        print_title("Mycelium Doctor")
+        for title, checks in sections:
+            print_section(title)
+            for result in checks:
+                print_check(result)
 
         # Summary
-        issues = [r for r in results if r.status in ("warning", "error")]
+        issues = [r for r in results if r.status not in ("ok", "info")]
         fixable = [r for r in issues if r.fix_fn is not None]
+        errors = [
+            r
+            for r in results
+            if r.status == "error" or r.status in ("missing_extras", "bad_model", "unreachable")
+        ]
 
-        typer.echo("")
-        if not issues:
-            typer.secho("  All checks passed.", fg=typer.colors.GREEN, bold=True)
-            return
-
-        typer.echo(
-            f"  {len(issues)} issue(s) found"
-            + (f", {len(fixable)} auto-fixable" if fixable else "")
-            + "."
+        print_verdict(
+            ok=not issues,
+            ok_message="All checks passed.",
+            fail_message=(
+                f"{len(issues)} issue(s) found"
+                + (f", {len(fixable)} auto-fixable" if fixable else "")
+                + "."
+            ),
         )
 
         # Offer to fix
@@ -1023,8 +976,9 @@ def doctor(
                     else:
                         typer.echo("  Skipped.")
 
-        # Exit code
-        errors = [r for r in results if r.status == "error"]
+        # Exit code: hard errors (and backend-classified hard failures) are
+        # fatal so CI/scripts can rely on a non-zero exit. Warnings don't
+        # flip the exit code — they're nudges, not failures.
         if errors:
             raise typer.Exit(1)
 
