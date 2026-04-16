@@ -36,6 +36,10 @@ curl -sf "$MYCELIUM_API_URL/health" | python3 -m json.tool
 openclaw --version
 # If missing: npm install -g openclaw (or see https://docs.openclaw.ai)
 
+# 4b. Mycelium health check
+mycelium doctor
+# All checks should be green. Fix any errors before proceeding.
+
 # 5. OpenClaw gateway running
 openclaw channels status
 # Should show "Gateway reachable" in the output. If not: openclaw gateway start
