@@ -1052,9 +1052,11 @@ def install(
                     typer.secho(f"  ⚠  Could not provision backend: {exc}", fg=typer.colors.YELLOW)
                     workspace_id, mas_id = "", ""
 
-            # Persist WORKSPACE_ID into .env and restart backend so it picks it up
+            # Persist WORKSPACE_ID and MAS_ID into .env and restart backend so it picks them up
             if workspace_id:
                 ws_patch: dict[str, str] = {"WORKSPACE_ID": workspace_id}
+                if mas_id:
+                    ws_patch["MAS_ID"] = mas_id
                 if ioc:
                     ws_patch["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
                     ws_patch["COGNITION_FABRIC_NODE_URL"] = (
@@ -1330,9 +1332,11 @@ def install(
                 workspace_id, mas_id = "", ""
 
         # ── Phase 6: Migrate DB + write config ────────────────────────────
-        # Persist WORKSPACE_ID into .env and restart backend so it picks it up
+        # Persist WORKSPACE_ID and MAS_ID into .env and restart backend so it picks them up
         if workspace_id:
             ws_patch: dict[str, str] = {"WORKSPACE_ID": workspace_id}
+            if mas_id:
+                ws_patch["MAS_ID"] = mas_id
             if ioc_enabled:
                 ws_patch["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
                 ws_patch["COGNITION_FABRIC_NODE_URL"] = "http://ioc-cognition-fabric-node-svc:9002"

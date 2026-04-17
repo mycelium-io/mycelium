@@ -31,6 +31,7 @@ from app.services.cfn_knowledge import (
     create_or_update_shared_memories,
     estimate_cfn_knowledge_input_tokens,
 )
+from app.services.cfn_resolve import resolve_mas_id, resolve_workspace_id
 from app.services.ingest_dedupe import get_cache
 from app.services.ingest_log_buffer import IngestEvent, IngestState, get_buffer
 
@@ -43,10 +44,11 @@ router = APIRouter(tags=["knowledge"])
 
 
 class KnowledgeIngestRequest(BaseModel):
-    workspace_id: str
-    mas_id: str
-    agent_id: str | None = None
     records: list[dict]
+    agent_id: str | None = None
+    room_name: str | None = None
+    workspace_id: str | None = None
+    mas_id: str | None = None
 
 
 class KnowledgeIngestResponse(BaseModel):
@@ -61,6 +63,8 @@ class KnowledgeIngestResponse(BaseModel):
 
 def _log_ingest_event(
     *,
+    workspace_id: str,
+    mas_id: str,
     data: KnowledgeIngestRequest,
     request_id: str,
     est_tokens: int,
@@ -74,8 +78,8 @@ def _log_ingest_event(
     get_buffer().append(
         IngestEvent(
             timestamp=datetime.now(UTC),
-            workspace_id=data.workspace_id,
-            mas_id=data.mas_id,
+            workspace_id=workspace_id,
+            mas_id=mas_id,
             agent_id=data.agent_id,
             request_id=request_id,
             record_count=len(data.records),
@@ -136,9 +140,15 @@ async def knowledge_ingest(
     payload_bytes = len(json.dumps(data.records))
     started = time.perf_counter()
 
+    # ── Resolve CFN routing IDs ───────────────────────────────────────────────
+    workspace_id = resolve_workspace_id(data.workspace_id)
+    mas_id = await resolve_mas_id(data.mas_id, data.room_name, db)
+
     # ── Gate 1: master kill switch ────────────────────────────────────────────
     if not settings.MYCELIUM_INGEST_ENABLED:
         _log_ingest_event(
+            workspace_id=workspace_id,
+            mas_id=mas_id,
             data=data,
             request_id=request_id,
             est_tokens=est_tokens,
@@ -147,7 +157,7 @@ async def knowledge_ingest(
             state="disabled",
             reason="MYCELIUM_INGEST_ENABLED=false",
         )
-        _write_audit_event(db, data.mas_id)
+        _write_audit_event(db, mas_id)
         try:
             await db.commit()
         except SQLAlchemyError as exc:
@@ -164,6 +174,8 @@ async def knowledge_ingest(
     if max_tokens > 0 and est_tokens > max_tokens:
         reason = f"payload exceeded {max_tokens} estimated input tokens (actual: {est_tokens})"
         _log_ingest_event(
+            workspace_id=workspace_id,
+            mas_id=mas_id,
             data=data,
             request_id=request_id,
             est_tokens=est_tokens,
@@ -174,7 +186,7 @@ async def knowledge_ingest(
         )
         logger.warning(
             "ingest refused | mas=%s agent=%s request_id=%s reason=%s",
-            data.mas_id,
+            mas_id,
             data.agent_id,
             request_id,
             reason,
@@ -191,6 +203,8 @@ async def knowledge_ingest(
     cached = cache.lookup(content_hash) if content_hash else None
     if cached is not None:
         _log_ingest_event(
+            workspace_id=workspace_id,
+            mas_id=mas_id,
             data=data,
             request_id=request_id,
             est_tokens=est_tokens,
@@ -200,8 +214,7 @@ async def knowledge_ingest(
             reason=f"hash match within {ttl}s TTL",
             cfn_message=cached.message,
         )
-        # Durable audit — deduped still represents a "we accepted this" event.
-        _write_audit_event(db, data.mas_id)
+        _write_audit_event(db, mas_id)
         try:
             await db.commit()
         except SQLAlchemyError as exc:
@@ -216,14 +229,16 @@ async def knowledge_ingest(
     # ── Forward to CFN ────────────────────────────────────────────────────────
     try:
         cfn_resp = await create_or_update_shared_memories(
-            workspace_id=data.workspace_id,
-            mas_id=data.mas_id,
+            workspace_id=workspace_id,
+            mas_id=mas_id,
             records=data.records,
             agent_id=data.agent_id,
             request_id=request_id,
         )
     except CfnKnowledgeError as exc:
         _log_ingest_event(
+            workspace_id=workspace_id,
+            mas_id=mas_id,
             data=data,
             request_id=request_id,
             est_tokens=est_tokens,
@@ -249,6 +264,8 @@ async def knowledge_ingest(
         )
 
     _log_ingest_event(
+        workspace_id=workspace_id,
+        mas_id=mas_id,
         data=data,
         request_id=request_id,
         est_tokens=est_tokens,
@@ -259,7 +276,7 @@ async def knowledge_ingest(
         cfn_message=cfn_message,
     )
 
-    _write_audit_event(db, data.mas_id)
+    _write_audit_event(db, mas_id)
     try:
         await db.commit()
     except SQLAlchemyError as exc:

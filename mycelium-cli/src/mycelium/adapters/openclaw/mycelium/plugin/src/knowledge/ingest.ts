@@ -58,26 +58,24 @@ export function installKnowledgeIngest(
         );
       }
 
+      // Prefer the per-turn agentId from the OpenClaw context — it's
+      // present for channel-dispatched turns, where the process env
+      // (which getAgentId reads) belongs to the gateway, not the agent.
+      // Falling back to getAgentId() keeps direct `openclaw agent --agent`
+      // invocations attributed. See issue #144.
+      const ingestAgentId = agentId?.trim() || getAgentId() || undefined;
       const ws = getWorkspaceId();
       const ms = getMasId();
-      if (ws && ms) {
-        // Prefer the per-turn agentId from the OpenClaw context — it's
-        // present for channel-dispatched turns, where the process env
-        // (which getAgentId reads) belongs to the gateway, not the agent.
-        // Falling back to getAgentId() keeps direct `openclaw agent --agent`
-        // invocations attributed. See issue #144.
-        const ingestAgentId = agentId?.trim() || getAgentId() || undefined;
-        apiPost(
-          "/api/knowledge/ingest",
-          {
-            workspace_id: ws,
-            mas_id: ms,
-            agent_id: ingestAgentId,
-            records: [{ response: event.content }],
-          },
-          log,
-        ).catch((err) => log.warn(`[mycelium] ingest failed: ${err}`));
-      }
+      const ingestBody: Record<string, unknown> = {
+        room_name: channelCfg?.room || undefined,
+        agent_id: ingestAgentId,
+        records: [{ response: event.content }],
+      };
+      if (ws) ingestBody.workspace_id = ws;
+      if (ms) ingestBody.mas_id = ms;
+      apiPost("/api/knowledge/ingest", ingestBody, log).catch((err) =>
+        log.warn(`[mycelium] ingest failed: ${err}`),
+      );
     },
   );
 }

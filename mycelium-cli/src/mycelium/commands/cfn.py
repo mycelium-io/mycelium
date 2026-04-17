@@ -334,6 +334,11 @@ def _default_workspace() -> str | None:
     return cfg.server.workspace_id or cfg.runtime.workspace_id or None
 
 
+def _default_mas() -> str | None:
+    cfg = MyceliumConfig.load()
+    return cfg.server.mas_id or None
+
+
 def _cfn_request(method: str, path: str, **kwargs) -> dict:
     """Hit a mycelium-backend route, exit(1) with a clear error on failure."""
     try:
@@ -355,7 +360,7 @@ def _cfn_request(method: str, path: str, **kwargs) -> dict:
 
 
 @doc_ref(
-    usage="mycelium cfn query <intent> --mas <mas-id> [--workspace <ws>]",
+    usage="mycelium cfn query <intent> [--mas <mas-id>] [--workspace <ws>]",
     desc=(
         "Ask CFN's evidence agent a natural-language question about the "
         "shared knowledge graph. Returns a synthesized answer, not a record list."
@@ -365,7 +370,7 @@ def _cfn_request(method: str, path: str, **kwargs) -> dict:
 @app.command(name="query")
 def cfn_query(
     intent: str = typer.Argument(..., help="Natural-language question to ask CFN"),
-    mas_id: str = typer.Option(..., "--mas", "-m", help="Multi-agentic system ID"),
+    mas_id: str | None = typer.Option(None, "--mas", "-m", help="MAS ID (defaults to config)"),
     workspace: str | None = typer.Option(
         None,
         "--workspace",
@@ -387,7 +392,10 @@ def cfn_query(
     "graph missing"). This command renders that as a "no evidence" message,
     not a hard error.
     """
-    body: dict = {"mas_id": mas_id, "intent": intent}
+    resolved_mas = mas_id or _default_mas()
+    body: dict = {"intent": intent}
+    if resolved_mas:
+        body["mas_id"] = resolved_mas
     if workspace or _default_workspace():
         body["workspace_id"] = workspace or _default_workspace()
     if agent_id:
@@ -449,14 +457,14 @@ def cfn_query(
 
 
 @doc_ref(
-    usage="mycelium cfn concepts <id>[,<id>,...] --mas <mas-id>",
+    usage="mycelium cfn concepts <id>[,<id>,...] [--mas <mas-id>]",
     desc="Fetch specific CFN concept records by ID.",
     group="cfn",
 )
 @app.command(name="concepts")
 def cfn_concepts(
     ids: str = typer.Argument(..., help="Comma-separated concept IDs"),
-    mas_id: str = typer.Option(..., "--mas", "-m", help="Multi-agentic system ID"),
+    mas_id: str | None = typer.Option(None, "--mas", "-m", help="MAS ID (defaults to config)"),
     workspace: str | None = typer.Option(
         None,
         "--workspace",
@@ -471,7 +479,10 @@ def cfn_concepts(
         console.print("[red]no concept IDs provided[/red]")
         raise typer.Exit(2)
 
-    body: dict = {"mas_id": mas_id, "ids": id_list}
+    resolved_mas = mas_id or _default_mas()
+    body: dict = {"ids": id_list}
+    if resolved_mas:
+        body["mas_id"] = resolved_mas
     if workspace or _default_workspace():
         body["workspace_id"] = workspace or _default_workspace()
 
@@ -497,14 +508,14 @@ def cfn_concepts(
 
 
 @doc_ref(
-    usage="mycelium cfn neighbors <concept-id> --mas <mas-id>",
+    usage="mycelium cfn neighbors <concept-id> [--mas <mas-id>]",
     desc="Show CFN graph neighbors for a concept.",
     group="cfn",
 )
 @app.command(name="neighbors")
 def cfn_neighbors(
     concept_id: str = typer.Argument(..., help="Concept ID to look up neighbors for"),
-    mas_id: str = typer.Option(..., "--mas", "-m", help="Multi-agentic system ID"),
+    mas_id: str | None = typer.Option(None, "--mas", "-m", help="MAS ID (defaults to config)"),
     workspace: str | None = typer.Option(
         None,
         "--workspace",
@@ -514,7 +525,10 @@ def cfn_neighbors(
     json_output: bool = typer.Option(False, "--json", help="Print raw JSON response"),
 ) -> None:
     """Show CFN graph neighbors for a concept."""
-    params: dict = {"mas_id": mas_id}
+    resolved_mas = mas_id or _default_mas()
+    params: dict = {}
+    if resolved_mas:
+        params["mas_id"] = resolved_mas
     if workspace or _default_workspace():
         params["workspace_id"] = workspace or _default_workspace()
 
@@ -544,7 +558,7 @@ def cfn_neighbors(
 
 
 @doc_ref(
-    usage="mycelium cfn ls --mas <mas-id> [--limit N] [--json]",
+    usage="mycelium cfn ls [--mas <mas-id>] [--limit N] [--json]",
     desc=(
         "Enumerate nodes in CFN's knowledge graph by reading AgensGraph "
         "directly. NOT a CFN-supported API — couples to CFN's internal "
@@ -554,7 +568,7 @@ def cfn_neighbors(
 )
 @app.command(name="ls")
 def cfn_ls(
-    mas_id: str = typer.Option(..., "--mas", "-m", help="Multi-agentic system ID"),
+    mas_id: str | None = typer.Option(None, "--mas", "-m", help="MAS ID (defaults to config)"),
     limit: int = typer.Option(
         50,
         "--limit",
@@ -571,10 +585,14 @@ def cfn_ls(
     does not expose an enumeration endpoint. Returns empty or 404 if the
     graph doesn't exist (nothing has been ingested yet for that MAS).
     """
+    resolved_mas = mas_id or _default_mas()
+    params: dict = {"limit": limit}
+    if resolved_mas:
+        params["mas_id"] = resolved_mas
     data = _cfn_request(
         "GET",
         "/api/cfn/knowledge/list",
-        params={"mas_id": mas_id, "limit": limit},
+        params=params,
     )
 
     if json_output:
@@ -604,7 +622,7 @@ def cfn_ls(
 
 
 @doc_ref(
-    usage="mycelium cfn paths <source-id> <target-id> --mas <mas-id> [--max-depth N] [--limit N]",
+    usage="mycelium cfn paths <source-id> <target-id> [--mas <mas-id>] [--max-depth N] [--limit N]",
     desc="Show CFN graph paths between two concepts.",
     group="cfn",
 )
@@ -612,7 +630,7 @@ def cfn_ls(
 def cfn_paths(
     source_id: str = typer.Argument(..., help="Source concept ID"),
     target_id: str = typer.Argument(..., help="Target concept ID"),
-    mas_id: str = typer.Option(..., "--mas", "-m", help="Multi-agentic system ID"),
+    mas_id: str | None = typer.Option(None, "--mas", "-m", help="MAS ID (defaults to config)"),
     workspace: str | None = typer.Option(
         None,
         "--workspace",
@@ -634,7 +652,10 @@ def cfn_paths(
     json_output: bool = typer.Option(False, "--json", help="Print raw JSON response"),
 ) -> None:
     """Show CFN graph paths between two concepts."""
-    body: dict = {"mas_id": mas_id, "source_id": source_id, "target_id": target_id}
+    resolved_mas = mas_id or _default_mas()
+    body: dict = {"source_id": source_id, "target_id": target_id}
+    if resolved_mas:
+        body["mas_id"] = resolved_mas
     if workspace or _default_workspace():
         body["workspace_id"] = workspace or _default_workspace()
     if max_depth is not None:
