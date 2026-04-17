@@ -24,9 +24,8 @@ Keeping each fire bounded (~1 turn, a few KB) is the whole point.
   2. ``[adapters.claude-code] knowledge_extract = true`` — per-adapter
      switch so Claude Code can be on while openclaw is off (or vice versa).
 
-``workspace_id``, ``mas_id``, and ``room_name`` are sent when available
-but are no longer required — the backend resolves them from its own config
-and room database when omitted (see issue #139).
+Leaf nodes only send ``room_name`` — the backend resolves ``workspace_id``
+and ``mas_id`` from the room's DB record or its own settings (see #139).
 
 CFN ingest costs real tokens per record, so we don't turn this on for
 people automatically. Both gates default to off/unset.
@@ -41,9 +40,10 @@ Hook input (stdin JSON, from Claude Code):
 
 Config (``~/.mycelium/config.toml``):
   [server]
-  api_url      = "http://localhost:8000"
-  workspace_id = "<uuid>"
-  mas_id       = "<uuid>"
+  api_url = "http://localhost:8000"
+
+  [rooms]
+  active = "my-room"   # optional — routes ingest to per-room MAS
 
   [knowledge_ingest]
   enabled                = false     # global — must be explicitly true
@@ -55,8 +55,7 @@ Config (``~/.mycelium/config.toml``):
 
 Env overrides (ephemeral; take precedence over config):
   MYCELIUM_API_URL
-  MYCELIUM_WORKSPACE_ID
-  MYCELIUM_MAS_ID
+  MYCELIUM_ACTIVE_ROOM
   MYCELIUM_AGENT_HANDLE
   MYCELIUM_INGEST_ENABLED
   MYCELIUM_INGEST_MAX_TOOL_CONTENT_BYTES
@@ -149,6 +148,11 @@ def _env_bool(name: str, default: bool) -> bool:
 
 
 def _resolve_target(config: dict[str, Any]) -> dict[str, Any]:
+    """Resolve target API and identity for ingest.
+
+    Leaf nodes only send room_name — the backend resolves workspace_id and
+    mas_id from the room's DB record or its own settings (#139).
+    """
     server = config.get("server", {}) or {}
     identity = config.get("identity", {}) or {}
     rooms = config.get("rooms", {}) or {}
@@ -156,8 +160,6 @@ def _resolve_target(config: dict[str, Any]) -> dict[str, Any]:
         "api_url": os.environ.get("MYCELIUM_API_URL")
         or server.get("api_url")
         or "http://localhost:8000",
-        "workspace_id": os.environ.get("MYCELIUM_WORKSPACE_ID") or server.get("workspace_id"),
-        "mas_id": os.environ.get("MYCELIUM_MAS_ID") or server.get("mas_id"),
         "room_name": os.environ.get("MYCELIUM_ACTIVE_ROOM") or rooms.get("active"),
         "agent_handle": os.environ.get("MYCELIUM_AGENT_HANDLE")
         or identity.get("name")
@@ -468,20 +470,19 @@ def _post_ingest(
     agent_handle: str,
     payload: dict[str, Any],
     *,
-    workspace_id: str | None = None,
-    mas_id: str | None = None,
     room_name: str | None = None,
 ) -> bool:
+    """POST knowledge to the backend ingest endpoint.
+
+    Leaf nodes only send room_name — the backend resolves workspace_id and
+    mas_id from the room's DB record or its own settings (#139).
+    """
     body: dict[str, Any] = {
         "agent_id": agent_handle,
         "records": [payload],
     }
     if room_name:
         body["room_name"] = room_name
-    if workspace_id:
-        body["workspace_id"] = workspace_id
-    if mas_id:
-        body["mas_id"] = mas_id
     url = api_url.rstrip("/") + "/api/knowledge/ingest"
     data = json.dumps(body).encode("utf-8")
     req = urllib.request.Request(
@@ -583,8 +584,6 @@ def main() -> int:
         api_url=target["api_url"],
         agent_handle=target["agent_handle"],
         payload=payload,
-        workspace_id=target.get("workspace_id"),
-        mas_id=target.get("mas_id"),
         room_name=target.get("room_name"),
     )
     if not ok:

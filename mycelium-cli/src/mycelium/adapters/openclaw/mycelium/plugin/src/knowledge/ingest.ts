@@ -20,8 +20,6 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import {
   type ChannelConfig,
   getAgentId,
-  getMasId,
-  getWorkspaceId,
   resolveHandle,
 } from "../config.js";
 import { apiPost } from "../http.js";
@@ -63,19 +61,19 @@ export function installKnowledgeIngest(
       // (which getAgentId reads) belongs to the gateway, not the agent.
       // Falling back to getAgentId() keeps direct `openclaw agent --agent`
       // invocations attributed. See issue #144.
+      //
+      // Leaf nodes only send room_name — the backend resolves workspace_id
+      // and mas_id from the room's DB record or its own settings (#139).
       const ingestAgentId = agentId?.trim() || getAgentId() || undefined;
-      const ws = getWorkspaceId();
-      const ms = getMasId();
-      const ingestBody: Record<string, unknown> = {
-        room_name: channelCfg?.room || undefined,
-        agent_id: ingestAgentId,
-        records: [{ response: event.content }],
-      };
-      if (ws) ingestBody.workspace_id = ws;
-      if (ms) ingestBody.mas_id = ms;
-      apiPost("/api/knowledge/ingest", ingestBody, log).catch((err) =>
-        log.warn(`[mycelium] ingest failed: ${err}`),
-      );
+      apiPost(
+        "/api/knowledge/ingest",
+        {
+          room_name: channelCfg?.room || undefined,
+          agent_id: ingestAgentId,
+          records: [{ response: event.content }],
+        },
+        log,
+      ).catch((err) => log.warn(`[mycelium] ingest failed: ${err}`));
     },
   );
 }
