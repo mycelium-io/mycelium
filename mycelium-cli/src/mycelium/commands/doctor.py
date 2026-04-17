@@ -360,6 +360,12 @@ def _check_workspace_id(*, local_backend: bool = True) -> CheckResult:
             pass
 
     if not env_ws and not config_ws:
+        if not local_backend:
+            return CheckResult(
+                name="Workspace ID",
+                status="ok",
+                message="Not set (optional for leaf nodes)",
+            )
         return CheckResult(
             name="Workspace ID",
             status="warning",
