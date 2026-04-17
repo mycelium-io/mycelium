@@ -40,7 +40,6 @@ from mycelium.ui_status import (
     print_verdict,
 )
 
-
 # ── Topology detection ────────────────────────────────────────────────────────
 
 
