@@ -602,11 +602,12 @@ def cfn_ls(
     nodes = data.get("nodes", []) or []
     count = data.get("count", len(nodes))
 
+    display_mas = resolved_mas or data.get("mas_id", "?")
     if not nodes:
-        console.print(f"[dim]no nodes in graph for mas={mas_id}[/dim]")
+        console.print(f"[dim]no nodes in graph for mas={display_mas}[/dim]")
         return
 
-    console.print(f"[bold]{count} node(s) in graph for mas={mas_id}[/bold]")
+    console.print(f"[bold]{count} node(s) in graph for mas={display_mas}[/bold]")
     for n in nodes:
         label = n.get("label") or "node"
         nid = n.get("id") or ""
