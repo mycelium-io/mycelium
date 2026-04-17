@@ -1,0 +1,99 @@
+{
+  "generated_at": "2026-04-16T19:42:36.218723+00:00",
+  "litellm_version": "unknown",
+  "models": [
+    {
+      "pattern": "claude-sonnet-4",
+      "input_per_token": 3e-06,
+      "cache_discount": 0.9,
+      "litellm_key": "claude-sonnet-4-5"
+    },
+    {
+      "pattern": "claude-3-7-sonnet",
+      "input_per_token": 3e-06,
+      "cache_discount": 0.9,
+      "litellm_key": "claude-3-7-sonnet-20250219"
+    },
+    {
+      "pattern": "claude-3-5-sonnet",
+      "input_per_token": 3e-06,
+      "cache_discount": 0.9,
+      "litellm_key": "anthropic.claude-3-5-sonnet-20240620-v1:0"
+    },
+    {
+      "pattern": "claude-3-5-haiku",
+      "input_per_token": 8e-07,
+      "cache_discount": 0.9,
+      "litellm_key": "anthropic.claude-3-5-haiku-20241022-v1:0"
+    },
+    {
+      "pattern": "claude-haiku-4",
+      "input_per_token": 1e-06,
+      "cache_discount": 0.9,
+      "litellm_key": "claude-haiku-4-5"
+    },
+    {
+      "pattern": "claude-3-haiku",
+      "input_per_token": 2.5e-07,
+      "cache_discount": 0.88,
+      "litellm_key": "claude-3-haiku-20240307"
+    },
+    {
+      "pattern": "claude-3-opus",
+      "input_per_token": 1.5e-05,
+      "cache_discount": 0.9,
+      "litellm_key": "claude-3-opus-20240229"
+    },
+    {
+      "pattern": "claude-opus-4",
+      "input_per_token": 1.5e-05,
+      "cache_discount": 0.9,
+      "litellm_key": "claude-opus-4-1"
+    },
+    {
+      "pattern": "gpt-4o-mini",
+      "input_per_token": 1.5e-07,
+      "cache_discount": 0.5,
+      "litellm_key": "gpt-4o-mini"
+    },
+    {
+      "pattern": "gpt-4o",
+      "input_per_token": 2.5e-06,
+      "cache_discount": 0.5,
+      "litellm_key": "gpt-4o"
+    },
+    {
+      "pattern": "gpt-4-turbo",
+      "input_per_token": 1e-05,
+      "cache_discount": 0.9,
+      "litellm_key": "gpt-4-turbo"
+    },
+    {
+      "pattern": "o3-mini",
+      "input_per_token": 1.1e-06,
+      "cache_discount": 0.5,
+      "litellm_key": "o3-mini"
+    },
+    {
+      "pattern": "o3",
+      "input_per_token": 2e-06,
+      "cache_discount": 0.75,
+      "litellm_key": "o3"
+    },
+    {
+      "pattern": "o4-mini",
+      "input_per_token": 1.1e-06,
+      "cache_discount": 0.75,
+      "litellm_key": "o4-mini"
+    }
+  ],
+  "default": {
+    "input_per_token": 8e-07,
+    "cache_discount": 0.9,
+    "label": "unknown model"
+  },
+  "embedding_baseline": {
+    "model": "text-embedding-3-small",
+    "input_per_token": 2e-08
+  }
+}

@@ -20,6 +20,7 @@ from mycelium.commands import (
     install,
     instance,
     memory,
+    metrics,
     negotiate,
     notebook,
     room,
@@ -129,6 +130,7 @@ app.add_typer(memory.app, name="memory")
 app.add_typer(config.app, name="config")
 app.add_typer(adapter.app, name="adapter")
 app.add_typer(docs.app, name="docs")
+app.add_typer(metrics.app, name="metrics")
 app.add_typer(notebook.app, name="notebook")
 app.add_typer(session.app, name="session")
 app.add_typer(cfn.app, name="cfn")

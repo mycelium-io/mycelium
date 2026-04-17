@@ -3,11 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build":    "uv sync --frozen",
-    "dev":      "echo \"CLI has no dev server\"",
-    "lint":     "uv run ruff check .",
-    "lint:fix": "uv run ruff check . --fix",
-    "test":     "uv run pytest",
-    "clean":    "rm -rf __pycache__ .pytest_cache"
+    "build":         "uv sync --frozen",
+    "build:dev":     "uv sync --frozen --extra dev",
+    "dev":           "echo \"CLI has no dev server\"",
+    "lint":          "uv run ruff check .",
+    "lint:fix":      "uv run ruff check . --fix",
+    "test":          "uv run pytest",
+    "clean":         "rm -rf __pycache__ .pytest_cache",
+    "update:pricing": "cd ../fastapi-backend && uv run python ../scripts/update-pricing.py"
   }
 }

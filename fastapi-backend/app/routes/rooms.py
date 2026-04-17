@@ -4,6 +4,7 @@
 """Room CRUD endpoints."""
 
 import logging
+import time
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -26,8 +27,11 @@ RESERVED_ROOMS = frozenset({"_notebooks"})
 
 async def _sync_create_mas(db_room: Room, session: AsyncSession) -> None:
     """Create a MAS in CFN mgmt plane and store mas_id on the room. Non-fatal."""
+    from app.services.metrics import record_cfn_call
+
     if not settings.CFN_MGMT_URL or not settings.WORKSPACE_ID:
         return
+    t0 = time.monotonic()
     try:
         url = (
             f"{settings.CFN_MGMT_URL}/api/workspaces/{settings.WORKSPACE_ID}/multi-agentic-systems"
@@ -36,6 +40,12 @@ async def _sync_create_mas(db_room: Room, session: AsyncSession) -> None:
             resp = await client.post(url, json={"name": db_room.name})
             resp.raise_for_status()
             data = resp.json()
+        record_cfn_call(
+            service="mgmt",
+            operation="create_mas",
+            duration_ms=(time.monotonic() - t0) * 1000,
+            status_code=resp.status_code,
+        )
         mas_id = data.get("id") or data.get("mas_id")
         if mas_id:
             await session.execute(
@@ -47,22 +57,44 @@ async def _sync_create_mas(db_room: Room, session: AsyncSession) -> None:
             await session.refresh(db_room)
             logger.info("CFN MAS created for room %s: %s", db_room.name, mas_id)
     except Exception as exc:
+        record_cfn_call(
+            service="mgmt",
+            operation="create_mas",
+            duration_ms=(time.monotonic() - t0) * 1000,
+            error=True,
+        )
         logger.warning("CFN create MAS failed for room %s: %s", db_room.name, exc)
 
 
 async def _sync_delete_mas(room: Room) -> None:
     """Delete MAS from CFN mgmt plane. Non-fatal."""
+    from app.services.metrics import record_cfn_call
+
     if not settings.CFN_MGMT_URL or not room.mas_id or not room.workspace_id:
         return
+    t0 = time.monotonic()
     try:
         url = (
             f"{settings.CFN_MGMT_URL}/api/workspaces/{room.workspace_id}"
             f"/multi-agentic-systems/{room.mas_id}"
         )
         async with httpx.AsyncClient(timeout=10) as client:
-            await client.delete(url)
+            resp = await client.delete(url)
+        record_cfn_call(
+            service="mgmt",
+            operation="delete_mas",
+            duration_ms=(time.monotonic() - t0) * 1000,
+            status_code=resp.status_code,
+            error=resp.status_code >= 400,
+        )
         logger.info("CFN MAS deleted for room %s: %s", room.name, room.mas_id)
     except Exception as exc:
+        record_cfn_call(
+            service="mgmt",
+            operation="delete_mas",
+            duration_ms=(time.monotonic() - t0) * 1000,
+            error=True,
+        )
         logger.warning("CFN delete MAS failed for room %s: %s", room.name, exc)
 
 
@@ -220,10 +252,19 @@ async def catchup_room(
     else:
         recent_entries = non_synthesis
 
+    memories_since_count = len(recent_entries)
     recent_entries = recent_entries[:50]
 
     # Gather contributors
     contributors = list({m.get("created_by", "unknown") for _, m, _ in non_synthesis})
+
+    # Track synthesis reuse metrics
+    from app.services.metrics import record_synthesis_reuse
+
+    record_synthesis_reuse(
+        had_cached=latest_synthesis_data is not None,
+        memories_since=memories_since_count,
+    )
 
     return {
         "room": room_name,
