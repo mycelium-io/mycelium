@@ -7,7 +7,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models import Room
 from app.services.cfn_knowledge import CfnKnowledgeError
 from app.services.ingest_dedupe import get_cache
 from app.services.ingest_log_buffer import get_buffer
@@ -186,3 +188,35 @@ async def test_ingest_cfn_http_status_error_preserves_code(
 
     resp = await client.post("/api/knowledge/ingest", json=INGEST_BODY)
     assert resp.status_code == 503
+
+
+# ── Leaf-node ingest (room_name only, no workspace_id/mas_id) ─────────────────
+
+
+async def test_ingest_leaf_node_resolves_ids_from_room(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    mock_cfn,
+    monkeypatch,
+):
+    """Leaf nodes send only room_name; backend resolves workspace_id and mas_id."""
+    monkeypatch.setattr("app.config.settings.WORKSPACE_ID", "settings-ws")
+
+    room = Room(name="leaf-room", mas_id="room-mas", workspace_id="room-ws")
+    db_session.add(room)
+    await db_session.commit()
+
+    resp = await client.post(
+        "/api/knowledge/ingest",
+        json={
+            "room_name": "leaf-room",
+            "agent_id": "leaf-agent",
+            "records": [{"response": "hello from leaf"}],
+        },
+    )
+    assert resp.status_code == 200
+    assert mock_cfn.await_count == 1
+
+    call_kwargs = mock_cfn.await_args.kwargs
+    assert call_kwargs["workspace_id"] == "settings-ws"
+    assert call_kwargs["mas_id"] == "room-mas"
