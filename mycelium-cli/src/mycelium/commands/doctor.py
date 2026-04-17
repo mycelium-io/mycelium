@@ -14,11 +14,19 @@ Checks:
   7. Workspace ID in sync (CFN mgmt plane vs .env vs config.toml)
   8. Room MAS IDs present (CFN-enabled installs)
   9. OpenClaw adapter health (plugin, channel config, agent sandbox)
+
+In a hub-and-spoke topology, leaf nodes connect to a remote backend and
+don't run local Docker containers.  When ``server.api_url`` points at a
+non-local host the doctor auto-detects **leaf mode** and skips checks
+that only apply to the hub (Docker containers, runtime config drift,
+.env port vs Docker port, localhost CFN mgmt plane).  An explicit
+``--mode hub|leaf`` flag overrides the auto-detection.
 """
 
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
+from urllib.parse import urlparse
 
 import typer
 
@@ -31,6 +39,14 @@ from mycelium.ui_status import (
     print_title,
     print_verdict,
 )
+
+# ── Topology detection ────────────────────────────────────────────────────────
+
+
+def _is_local_backend(api_url: str) -> bool:
+    """Return True when *api_url* targets this machine (hub / all-in-one)."""
+    host = (urlparse(api_url).hostname or "").lower()
+    return host in ("localhost", "127.0.0.1", "::1", "0.0.0.0")
 
 # ── Individual checks ────────────────────────────────────────────────────────
 
@@ -266,7 +282,7 @@ def _check_docker_containers() -> CheckResult:
     )
 
 
-def _check_backend_reachable() -> CheckResult:
+def _check_backend_reachable(*, local_backend: bool = True) -> CheckResult:
     """Check that the backend API responds to /health."""
     from mycelium.config import MyceliumConfig
 
@@ -303,16 +319,21 @@ def _check_backend_reachable() -> CheckResult:
             message=f"{api_url} returned HTTP {resp.status_code}",
         )
     except Exception as exc:
+        hint = "Run: mycelium up" if local_backend else f"Check the remote backend at {api_url}"
         return CheckResult(
             name="Backend reachable",
             status="error",
             message=f"Cannot connect to {api_url}",
-            details=[str(exc), "Run: mycelium up"],
+            details=[str(exc), hint],
         )
 
 
-def _check_workspace_id() -> CheckResult:
-    """Check workspace_id consistency between .env, config.toml, and CFN mgmt plane."""
+def _check_workspace_id(*, local_backend: bool = True) -> CheckResult:
+    """Check workspace_id consistency between .env, config.toml, and CFN mgmt plane.
+
+    When *local_backend* is False (leaf mode) the localhost CFN management
+    plane check is skipped — the mgmt plane runs on the hub, not here.
+    """
     env_path = Path.home() / ".mycelium" / ".env"
     config_path = Path.home() / ".mycelium" / "config.toml"
 
@@ -338,6 +359,12 @@ def _check_workspace_id() -> CheckResult:
             pass
 
     if not env_ws and not config_ws:
+        if not local_backend:
+            return CheckResult(
+                name="Workspace ID",
+                status="ok",
+                message="Not set (optional for leaf nodes)",
+            )
         return CheckResult(
             name="Workspace ID",
             status="warning",
@@ -345,9 +372,10 @@ def _check_workspace_id() -> CheckResult:
             details=["Run: mycelium install --force"],
         )
 
-    # If CFN is enabled, check against the mgmt plane
+    # If CFN is enabled *and* we're on the hub, check against the local
+    # mgmt plane.  Leaf nodes don't run the mgmt plane locally.
     cfn_ws = None
-    if cfn_enabled:
+    if cfn_enabled and local_backend:
         from mycelium.commands.install import _get_cfn_workspace_id
 
         cfn_ws = _get_cfn_workspace_id("http://localhost:9000")
@@ -365,7 +393,7 @@ def _check_workspace_id() -> CheckResult:
         details.append(f"CFN mgmt plane: {cfn_ws}")
         if cfn_ws != env_ws:
             mismatches.append("CFN mgmt plane")
-    elif cfn_enabled:
+    elif cfn_enabled and local_backend:
         details.append("CFN mgmt plane: unreachable")
 
     if mismatches:
@@ -455,12 +483,15 @@ _SHARED_CONFIG_KEYS: list[tuple[str, Callable[..., str]]] = [
 ]
 
 
-def _check_config_file_drift() -> CheckResult:
+def _check_config_file_drift(*, local_backend: bool = True) -> CheckResult:
     """Compare every shared key between ``~/.mycelium/.env`` and ``config.toml``.
 
     Catches the common "I edited one file and forgot the other" failure mode.
     The sibling runtime-drift check covers "I edited both files but forgot
     to restart the container" — this one only looks at disk, not runtime.
+
+    When *local_backend* is False (leaf mode) the Docker-port comparison is
+    skipped because there is no local container to map the port for.
     """
     env_path = Path.home() / ".mycelium" / ".env"
     config_path = Path.home() / ".mycelium" / "config.toml"
@@ -502,20 +533,20 @@ def _check_config_file_drift() -> CheckResult:
             mismatches.append(f"  .env:         {env_val}")
             mismatches.append(f"  config.toml:  {toml_val}")
 
-    # Port special case — compare .env port to the port parsed from config URL.
-    env_port = vals.get("MYCELIUM_BACKEND_PORT", "")
-    try:
-        from urllib.parse import urlparse
+    # Port special case — compare .env port to the port parsed from config
+    # URL.  Only meaningful on hub nodes where Docker maps the port locally.
+    if local_backend:
+        env_port = vals.get("MYCELIUM_BACKEND_PORT", "")
+        try:
+            parsed = urlparse(cfg.server.api_url or "")
+            config_port = str(parsed.port) if parsed.port else ""
+        except Exception:
+            config_port = ""
 
-        parsed = urlparse(cfg.server.api_url or "")
-        config_port = str(parsed.port) if parsed.port else ""
-    except Exception:
-        config_port = ""
-
-    if env_port and config_port and env_port != config_port:
-        mismatches.append("Backend port")
-        mismatches.append(f"  .env:         MYCELIUM_BACKEND_PORT={env_port}")
-        mismatches.append(f"  config.toml:  api_url port={config_port}")
+        if env_port and config_port and env_port != config_port:
+            mismatches.append("Backend port")
+            mismatches.append(f"  .env:         MYCELIUM_BACKEND_PORT={env_port}")
+            mismatches.append(f"  config.toml:  api_url port={config_port}")
 
     if mismatches:
         return CheckResult(
@@ -978,13 +1009,18 @@ def _check_openclaw_agent_sandbox() -> CheckResult:
 
 
 @doc_ref(
-    usage="mycelium doctor [--fix] [--json]",
+    usage="mycelium doctor [--fix] [--json] [--mode auto|hub|leaf]",
     desc="Diagnose and fix common configuration issues (workspace sync, LLM, containers).",
     group="setup",
 )
 def doctor(
     ctx: typer.Context,
     fix: bool = typer.Option(False, "--fix", help="Auto-fix all fixable issues without prompting"),
+    mode: str = typer.Option(
+        "auto",
+        "--mode",
+        help="Check scope: auto (detect from api_url), hub (all checks), or leaf (skip local-only checks)",
+    ),
 ) -> None:
     """
     Diagnose and fix common Mycelium configuration issues.
@@ -992,40 +1028,69 @@ def doctor(
     Checks config files, LLM setup, Docker containers, backend connectivity,
     workspace ID sync, and config consistency. Offers to fix issues it finds.
 
+    In a hub-and-spoke topology, leaf nodes talk to a remote backend and
+    don't run Docker containers locally. When --mode is 'auto' (the default),
+    doctor detects leaf mode from server.api_url — if it points to a
+    non-local host the Docker, runtime-drift, and port-drift checks are
+    skipped automatically.
+
     \b
     Examples:
-        mycelium doctor          # interactive — asks before fixing
-        mycelium doctor --fix    # auto-fix all fixable issues
+        mycelium doctor              # interactive — auto-detects hub vs leaf
+        mycelium doctor --fix        # auto-fix all fixable issues
+        mycelium doctor --mode leaf  # force leaf mode (skip local-only checks)
+        mycelium doctor --mode hub   # force hub mode (run all checks)
     """
     try:
         json_output = ctx.obj.get("json", False) if ctx.obj else False
 
-        # Run all checks. LLM connectivity runs AFTER backend-reachable
-        # because both reuse the same /health endpoint — no point probing
-        # LLM if the backend is down. Checks are grouped into sections for
-        # display but we collect them once so the JSON output and verdict
-        # have a single source of truth.
+        # ── Topology detection ────────────────────────────────────────
+        from mycelium.config import MyceliumConfig
+
+        try:
+            config = MyceliumConfig.load()
+            api_url = config.server.api_url
+        except Exception:
+            api_url = "http://localhost:8000"
+
+        if mode == "auto":
+            local = _is_local_backend(api_url)
+        elif mode == "hub":
+            local = True
+        elif mode == "leaf":
+            local = False
+        else:
+            typer.secho(f"Unknown --mode '{mode}'. Use auto, hub, or leaf.", fg=typer.colors.RED)
+            raise typer.Exit(1)
+
+        detected_mode = "hub" if local else "leaf"
+
+        # ── Build check list ──────────────────────────────────────────
+        # Checks are grouped into sections for display but we collect
+        # them once so the JSON output and verdict have a single source
+        # of truth.  Leaf nodes skip checks that only apply when the
+        # backend runs locally (Docker containers, runtime config drift,
+        # .env port vs Docker port).
+        config_checks: list[CheckResult] = [
+            _check_config_files(),
+            _check_config_file_drift(local_backend=local),
+        ]
+        if local:
+            config_checks.append(_check_runtime_config_drift())
+
+        service_checks: list[CheckResult] = []
+        if local:
+            service_checks.append(_check_docker_containers())
+        service_checks.append(_check_backend_reachable(local_backend=local))
+        service_checks.append(_check_llm_connectivity())
+
         sections: list[tuple[str, list[CheckResult]]] = [
-            (
-                "Configuration",
-                [
-                    _check_config_files(),
-                    _check_config_file_drift(),
-                    _check_runtime_config_drift(),
-                ],
-            ),
-            (
-                "Services",
-                [
-                    _check_docker_containers(),
-                    _check_backend_reachable(),
-                    _check_llm_connectivity(),
-                ],
-            ),
+            ("Configuration", config_checks),
+            ("Services", service_checks),
             (
                 "CFN",
                 [
-                    _check_workspace_id(),
+                    _check_workspace_id(local_backend=local),
                     _check_room_mas_ids(),
                 ],
             ),
@@ -1043,20 +1108,28 @@ def doctor(
         if json_output:
             import json
 
-            output = [
-                {
-                    "name": r.name,
-                    "status": r.status,
-                    "message": r.message,
-                    "details": r.details,
-                    "fixable": r.fix_fn is not None,
-                }
-                for r in results
-            ]
+            output = {
+                "mode": detected_mode,
+                "api_url": api_url,
+                "checks": [
+                    {
+                        "name": r.name,
+                        "status": r.status,
+                        "message": r.message,
+                        "details": r.details,
+                        "fixable": r.fix_fn is not None,
+                    }
+                    for r in results
+                ],
+            }
             typer.echo(json.dumps(output, indent=2))
             return
 
-        print_title("Mycelium Doctor")
+        parsed_host = urlparse(api_url).hostname or api_url
+        parsed_port = urlparse(api_url).port
+        backend_label = f"{parsed_host}:{parsed_port}" if parsed_port else parsed_host
+        subtitle = f"{detected_mode} — backend at {backend_label}" if not local else None
+        print_title("Mycelium Doctor", subtitle=subtitle)
         for title, checks in sections:
             print_section(title)
             for result in checks:
