@@ -36,9 +36,13 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> CfnListApiCfnKnowledgeListGetResponseCfnListApiCfnKnowledgeListGet | HTTPValidationError | None:
+) -> (
+    CfnListApiCfnKnowledgeListGetResponseCfnListApiCfnKnowledgeListGet | HTTPValidationError | None
+):
     if response.status_code == 200:
-        response_200 = CfnListApiCfnKnowledgeListGetResponseCfnListApiCfnKnowledgeListGet.from_dict(response.json())
+        response_200 = CfnListApiCfnKnowledgeListGetResponseCfnListApiCfnKnowledgeListGet.from_dict(
+            response.json()
+        )
 
         return response_200
 
@@ -55,7 +59,9 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[CfnListApiCfnKnowledgeListGetResponseCfnListApiCfnKnowledgeListGet | HTTPValidationError]:
+) -> Response[
+    CfnListApiCfnKnowledgeListGetResponseCfnListApiCfnKnowledgeListGet | HTTPValidationError
+]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -69,7 +75,9 @@ def sync_detailed(
     client: AuthenticatedClient | Client,
     mas_id: str,
     limit: int | Unset = 50,
-) -> Response[CfnListApiCfnKnowledgeListGetResponseCfnListApiCfnKnowledgeListGet | HTTPValidationError]:
+) -> Response[
+    CfnListApiCfnKnowledgeListGetResponseCfnListApiCfnKnowledgeListGet | HTTPValidationError
+]:
     """Cfn List
 
      Enumerate nodes in CFN's AgensGraph for a given MAS.
@@ -108,7 +116,9 @@ def sync(
     client: AuthenticatedClient | Client,
     mas_id: str,
     limit: int | Unset = 50,
-) -> CfnListApiCfnKnowledgeListGetResponseCfnListApiCfnKnowledgeListGet | HTTPValidationError | None:
+) -> (
+    CfnListApiCfnKnowledgeListGetResponseCfnListApiCfnKnowledgeListGet | HTTPValidationError | None
+):
     """Cfn List
 
      Enumerate nodes in CFN's AgensGraph for a given MAS.
@@ -142,7 +152,9 @@ async def asyncio_detailed(
     client: AuthenticatedClient | Client,
     mas_id: str,
     limit: int | Unset = 50,
-) -> Response[CfnListApiCfnKnowledgeListGetResponseCfnListApiCfnKnowledgeListGet | HTTPValidationError]:
+) -> Response[
+    CfnListApiCfnKnowledgeListGetResponseCfnListApiCfnKnowledgeListGet | HTTPValidationError
+]:
     """Cfn List
 
      Enumerate nodes in CFN's AgensGraph for a given MAS.
@@ -179,7 +191,9 @@ async def asyncio(
     client: AuthenticatedClient | Client,
     mas_id: str,
     limit: int | Unset = 50,
-) -> CfnListApiCfnKnowledgeListGetResponseCfnListApiCfnKnowledgeListGet | HTTPValidationError | None:
+) -> (
+    CfnListApiCfnKnowledgeListGetResponseCfnListApiCfnKnowledgeListGet | HTTPValidationError | None
+):
     """Cfn List
 
      Enumerate nodes in CFN's AgensGraph for a given MAS.

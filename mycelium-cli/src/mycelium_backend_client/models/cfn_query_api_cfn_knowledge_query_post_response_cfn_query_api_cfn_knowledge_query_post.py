@@ -24,10 +24,14 @@ class CfnQueryApiCfnKnowledgeQueryPostResponseCfnQueryApiCfnKnowledgeQueryPost:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        cfn_query_api_cfn_knowledge_query_post_response_cfn_query_api_cfn_knowledge_query_post = cls()
+        cfn_query_api_cfn_knowledge_query_post_response_cfn_query_api_cfn_knowledge_query_post = (
+            cls()
+        )
 
         cfn_query_api_cfn_knowledge_query_post_response_cfn_query_api_cfn_knowledge_query_post.additional_properties = d
-        return cfn_query_api_cfn_knowledge_query_post_response_cfn_query_api_cfn_knowledge_query_post
+        return (
+            cfn_query_api_cfn_knowledge_query_post_response_cfn_query_api_cfn_knowledge_query_post
+        )
 
     @property
     def additional_keys(self) -> list[str]:

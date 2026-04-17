@@ -80,6 +80,9 @@ class Settings(BaseSettings):
     # Workspace ID in the CFN mgmt plane (set by mycelium install)
     WORKSPACE_ID: str = ""
 
+    # Default MAS ID — fallback when ingest requests omit mas_id and room_name
+    MAS_ID: str = ""
+
     # Knowledge ingest control surface — see KnowledgeIngestConfig in the CLI
     # for the authoritative descriptions. Defaults here match CLI defaults.
     MYCELIUM_INGEST_ENABLED: bool = True

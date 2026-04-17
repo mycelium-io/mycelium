@@ -16,7 +16,7 @@ Commit latest changes (if any), tag, cut a GitHub release, and optionally notify
 
 1. **Commit staged changes** — Run `git status`. If there are uncommitted changes, run /precommit checks then commit directly to main (admin push, no PR needed). Use a conventional commit message.
 
-2. **Determine next tag** — Run `git tag --sort=-v:refname | head -5` to find the latest `vX.Y.Z` tag. Increment the patch version (e.g. `v0.1.30` → `v0.1.31`).
+2. **Determine next tag** — Run `gh release list --limit 5` to find the current "Latest" release tag. Increment the patch version (e.g. `v1.0.0` → `v1.0.1`).
 
 3. **Tag and push** — Run:
    ```
@@ -29,7 +29,15 @@ Commit latest changes (if any), tag, cut a GitHub release, and optionally notify
    ```
    Generate the release notes from `git log <prev-tag>..HEAD --oneline`.
 
-5. **Webex notification** — If `--with-webex` was passed, invoke `/webex` (no confirmation needed) to post a bullet-point changelog summary with the tag and release URL to:
+5. **Webex notification** — If `--with-webex` was passed, invoke `/webex` (no confirmation needed) to post a bullet-point changelog summary with the tag and release URL. Each bullet should include the PR link if one exists (e.g. `- feat: description ([#123](https://github.com/mycelium-io/mycelium/pull/123))`). Follow with upgrade instructions using triple-backtick code blocks so they're copyable:
+   ```
+   To upgrade:
+   mycelium upgrade && mycelium pull
+   mycelium adapter add openclaw --reinstall   # if using openclaw
+   mycelium adapter add claude-code --reinstall  # if using claude-code
+   mycelium doctor  # to check health of services
+   ```
+   Post to:
    - `Mycelium Release Notes` — always (room ID in `/webex` skill)
    - `IoC::Mycelium Eng` — only if `--with-webex=eng` was passed (room ID in `/webex` skill)
 

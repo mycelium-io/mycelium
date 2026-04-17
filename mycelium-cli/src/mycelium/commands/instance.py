@@ -25,6 +25,14 @@ from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
 from mycelium.exceptions import ConfigNotFoundError
 from mycelium.http_client import MyceliumHTTPClient  # kept for health check
+from mycelium.ui_status import (
+    CheckResult,
+    print_check,
+    print_kv,
+    print_section,
+    print_title,
+    print_verdict,
+)
 
 app = typer.Typer(
     help="Docker lifecycle for the Mycelium stack (database, backend, graph viewer).",
@@ -507,165 +515,156 @@ def status(ctx: typer.Context) -> None:
             }
             typer.echo(json.dumps(output, indent=2))
         else:
-            typer.secho("Mycelium Status", bold=True)
-            typer.echo("")
-
-            # Versions
             backend_version = health_data.get("version")
-            version_line = f"  CLI {cli_version}"
+            version_line = f"CLI {cli_version}"
             if backend_version:
                 version_line += f"  /  Backend {backend_version}"
-            typer.echo(version_line)
-            typer.echo("")
+            print_title("Mycelium Status", subtitle=version_line)
 
-            # Services
-            typer.echo("Services:")
+            # ── Services ──────────────────────────────────────────────
+            services: list[CheckResult] = []
 
-            _print_status_line(
-                "Backend",
-                "Running" if backend_running else "Not running",
-                "ok" if backend_running else "error",
-            )
-            typer.echo(f"{_INDENT}{config.server.api_url}")
-            if backend_running and backend_room_count > 0:
-                typer.echo(f"{_INDENT}{backend_room_count} rooms")
-            elif not backend_running and backend_error:
-                typer.secho(f"{_INDENT}{backend_error}", fg=typer.colors.RED)
+            if backend_running:
+                msg = f"Running at {config.server.api_url}"
+                if backend_room_count > 0:
+                    msg += f" ({backend_room_count} rooms)"
+                services.append(CheckResult(name="Backend", status="ok", message=msg))
+            else:
+                services.append(
+                    CheckResult(
+                        name="Backend",
+                        status="error",
+                        message="Not running",
+                        details=[backend_error] if backend_error else [config.server.api_url],
+                    )
+                )
 
-            db_info = health_data.get("database")
+            db_info = health_data.get("database") or {}
             if db_info:
-                _print_status_line(
-                    "Database", db_info.get("message", "Unknown"), db_info.get("status", "unknown")
+                services.append(
+                    CheckResult(
+                        name="Database",
+                        status=db_info.get("status", "unknown"),
+                        message=db_info.get("message", "Unknown"),
+                    )
                 )
 
-            llm_info = health_data.get("llm")
+            llm_info = health_data.get("llm") or {}
             if llm_info:
-                _print_llm_status(llm_info)
-
-            embed_info = health_data.get("embedding")
-            if embed_info:
-                _print_status_line(
-                    "Embedding",
-                    embed_info.get("message", "Unknown"),
-                    embed_info.get("status", "unknown"),
+                llm_status = llm_info.get("status", "unknown")
+                model = llm_info.get("model", "") or "<unset>"
+                key_hint = llm_info.get("key_hint") or ""
+                if llm_status == "ok":
+                    msg = f"{model}" + (f" ({key_hint})" if key_hint else "")
+                else:
+                    label = llm_status.replace("_", " ").title()
+                    msg = f"{label} — {model}" + (f" ({key_hint})" if key_hint else "")
+                llm_details = []
+                if llm_info.get("message") and llm_status != "ok":
+                    llm_details.append(llm_info["message"])
+                services.append(
+                    CheckResult(name="LLM", status=llm_status, message=msg, details=llm_details)
                 )
-                typer.echo(f"{_INDENT}{embed_info.get('model', '')}")
 
-            # Docker containers
-            typer.echo("")
-            typer.echo("Docker:")
+            embed_info = health_data.get("embedding") or {}
+            if embed_info:
+                model = embed_info.get("model", "") or "<unset>"
+                msg_text = embed_info.get("message", "")
+                msg = f"{model}" + (
+                    f" ({msg_text})" if msg_text and msg_text != "Model loaded" else " (loaded)"
+                )
+                services.append(
+                    CheckResult(
+                        name="Embedding", status=embed_info.get("status", "unknown"), message=msg
+                    )
+                )
+
+            print_section("Services")
+            for r in services:
+                print_check(r)
+
+            # ── Docker ────────────────────────────────────────────────
+            print_section("Docker")
             if docker_info.get("available"):
-                for ctr in docker_info.get("containers", []):
+                containers = docker_info.get("containers") or []
+                if not containers:
+                    print_check(
+                        CheckResult(
+                            name="(none)",
+                            status="warning",
+                            message="No Mycelium containers found",
+                        )
+                    )
+                for ctr in containers:
                     ctr_status = ctr.get("status", "unknown")
-                    health = ctr.get("health", "")
+                    health = ctr.get("health", "") or ""
                     label = ctr_status
                     if health and health != "N/A":
                         label += f" ({health})"
-                    is_ok = "running" in ctr_status.lower() and health.lower() not in ("unhealthy",)
-                    _print_status_line(ctr["name"], label, "ok" if is_ok else "warning")
-                if not docker_info.get("containers"):
-                    typer.secho("  No Mycelium containers found", fg=typer.colors.YELLOW)
+                    is_ok = "running" in ctr_status.lower() and health.lower() != "unhealthy"
+                    print_check(
+                        CheckResult(
+                            name=ctr["name"],
+                            status="ok" if is_ok else "warning",
+                            message=label,
+                        )
+                    )
             else:
-                typer.secho(
-                    f"  {docker_info.get('message', 'Docker not available')}",
-                    fg=typer.colors.YELLOW,
+                print_check(
+                    CheckResult(
+                        name="docker",
+                        status="warning",
+                        message=docker_info.get("message", "Docker not available"),
+                    )
                 )
 
-            # System
-            typer.echo("")
-            typer.echo("System:")
-            _print_status_line("Disk", disk_info["message"], disk_info["status"])
-            _print_status_line("Data Dir", data_dir_info["message"], data_dir_info["status"])
+            # ── System ────────────────────────────────────────────────
+            print_section("System")
+            print_check(
+                CheckResult(name="Disk", status=disk_info["status"], message=disk_info["message"])
+            )
+            print_check(
+                CheckResult(
+                    name="Data Dir",
+                    status=data_dir_info["status"],
+                    message=data_dir_info["message"],
+                )
+            )
 
-            # Config
-            typer.echo("")
-            typer.echo("Configuration:")
-            typer.echo(f"  Path:        {config_path}")
-            if config.get_active_room():
-                typer.echo(f"  Active Room: {config.get_active_room()}")
+            # ── Configuration ─────────────────────────────────────────
+            # Informational block (no checks) — path + active room.
+            print_section("Configuration")
+            print_kv("Path", str(config_path))
+            active_room = config.get_active_room()
+            if active_room:
+                print_kv("Active Room", active_room)
 
-            # Overall verdict
-            typer.echo("")
+            # ── Verdict ───────────────────────────────────────────────
             overall_status = health_data.get("status", "down")
             if not backend_running:
-                if backend_error:
-                    # Show specific error (HTTP 401, connection refused, etc.)
-                    typer.secho(f"Backend unreachable: {backend_error}", fg=typer.colors.RED)
-                    if "HTTP 401" in backend_error or "HTTP 403" in backend_error:
-                        typer.echo(
-                            "\nCheck the backend URL (MYCELIUM_API_URL env var or server.api_url in ~/.mycelium/config.toml)"
-                        )
-                    elif "Cannot connect" in backend_error:
-                        typer.echo("\nTo start services:")
-                        typer.echo("  mycelium up")
-                else:
-                    typer.secho("Backend is down", fg=typer.colors.YELLOW)
-                    typer.echo("\nTo start services:")
-                    typer.echo("  mycelium up")
+                fail_msg = (
+                    f"Backend unreachable: {backend_error}"
+                    if backend_error
+                    else "Backend is down — run: mycelium up"
+                )
+                print_verdict("error", fail_msg)
+                if backend_error and ("HTTP 401" in backend_error or "HTTP 403" in backend_error):
+                    typer.echo(
+                        "  Check the backend URL (MYCELIUM_API_URL env var or server.api_url in ~/.mycelium/config.toml)"
+                    )
+                elif backend_error and "Cannot connect" in backend_error:
+                    typer.echo("  To start services: mycelium up")
             elif overall_status == "degraded":
-                typer.secho("Backend running (degraded)", fg=typer.colors.YELLOW)
+                print_verdict("warning", "Backend running (degraded)")
             else:
-                typer.secho("All systems operational", fg=typer.colors.GREEN)
+                print_verdict("ok", "All systems operational")
 
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)
 
 
-# -- Helpers for status output ------------------------------------------------
-
-_STATUS_COLORS = {
-    "ok": typer.colors.GREEN,
-    "warning": typer.colors.YELLOW,
-    "error": typer.colors.RED,
-    "not_configured": typer.colors.YELLOW,
-    "unchecked": typer.colors.YELLOW,
-    "not_cached": typer.colors.YELLOW,
-    "stub": typer.colors.YELLOW,
-    "degraded": typer.colors.YELLOW,
-    "auth_error": typer.colors.RED,
-    "invalid_format": typer.colors.YELLOW,
-    "unreachable": typer.colors.RED,
-}
-
-
-_INDENT = " " * 25
-
-
-def _print_status_line(name: str, message: str, status: str) -> None:
-    """Print a single health-check line with color-coded status."""
-    color = _STATUS_COLORS.get(status, typer.colors.YELLOW)
-    label = name + ":"
-    typer.secho(f"  {label:<22s} {message}", fg=color)
-
-
-_LLM_STATUS_LABELS = {
-    "ok": "OK",
-    "not_configured": "Not configured",
-    "unchecked": "Unchecked",
-    "auth_error": "Auth error",
-    "invalid_format": "Invalid format",
-    "unreachable": "Unreachable",
-}
-
-
-def _print_llm_status(llm: dict) -> None:
-    """Render the LLM health section."""
-    llm_status = llm.get("status", "unknown")
-    label = _LLM_STATUS_LABELS.get(llm_status, llm_status.replace("_", " ").title())
-    _print_status_line("LLM", label, llm_status)
-
-    model = llm.get("model", "unknown")
-    key_hint = llm.get("key_hint")
-    if key_hint:
-        typer.echo(f"{_INDENT}{model}  ({key_hint})")
-    else:
-        typer.echo(f"{_INDENT}{model}")
-
-    message = llm.get("message")
-    if message and llm_status != "ok":
-        color = _STATUS_COLORS.get(llm_status, typer.colors.YELLOW)
-        typer.secho(f"{_INDENT}{message}", fg=color)
+# -- End of status helpers — see mycelium.ui_status for shared presentation -----
 
 
 # -- Client-side health checks -----------------------------------------------

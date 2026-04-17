@@ -1541,9 +1541,7 @@ def _render_cfn_transport_table(backend: dict | None) -> None:
         for key in status_keys:
             code = int(key.replace("status.", ""))
             count = cfn[key]
-            if 200 <= code < 300:
-                ok_total += count
-            elif code == 409:
+            if 200 <= code < 300 or code == 409:
                 ok_total += count
             else:
                 other_rows.append((str(code), count))

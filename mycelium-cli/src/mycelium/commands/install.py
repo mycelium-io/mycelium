@@ -623,6 +623,121 @@ def _wait_for_health(urls: list[str], timeout: int = 120) -> bool:
     return True
 
 
+def _probe_llm_via_backend(api_url: str) -> tuple[str, str, str, str]:
+    """Probe the configured LLM via the backend's /health endpoint.
+
+    Uses ``check_llm=true&llm_probe=completion`` so the backend runs a real
+    ``litellm.acompletion(max_tokens=1)`` call.  This catches missing provider
+    SDK extras (boto3 for Bedrock, etc.), bad model strings, and auth errors —
+    all of which would otherwise only surface at first inference.
+
+    Returns ``(status, model, message, remediation)``.  Status is one of the
+    LLMHealthResult states (ok | auth_error | missing_extras | bad_model |
+    unreachable | not_configured | unchecked | error) or the special value
+    ``"backend_down"`` when the backend itself isn't reachable.
+    """
+    try:
+        import httpx
+    except ImportError:
+        return ("backend_down", "", "httpx not installed", "")
+
+    try:
+        resp = httpx.get(
+            f"{api_url}/health",
+            params={"check_llm": "true", "llm_probe": "completion"},
+            timeout=30,
+        )
+    except Exception as exc:
+        return ("backend_down", "", f"cannot reach backend: {exc}", "")
+
+    if resp.status_code >= 500:
+        return ("backend_down", "", f"backend returned HTTP {resp.status_code}", "")
+
+    try:
+        llm = resp.json().get("llm", {}) or {}
+    except Exception:
+        return ("backend_down", "", "backend returned non-JSON response", "")
+
+    return (
+        llm.get("status", "unknown") or "unknown",
+        llm.get("model", "") or "",
+        llm.get("message", "") or "",
+        llm.get("remediation") or "",
+    )
+
+
+def _report_llm_probe_result(
+    status: str,
+    model: str,
+    message: str,
+    remediation: str,
+    *,
+    interactive: bool,
+) -> bool:
+    """Pretty-print an install-time LLM probe result.
+
+    Returns True if the user should be allowed to continue, False if the caller
+    should abort.  We never hard-fail the install on a probe failure — the user
+    may legitimately want to fix things after install, or be running in an
+    environment where the probe is wrong (e.g. proxy, network blocked during
+    install).
+    """
+    if status == "ok":
+        typer.secho(f"  ✓ LLM probe succeeded  {model}", fg=typer.colors.GREEN)
+        return True
+
+    if status == "unchecked":
+        # We couldn't verify — don't nag the user about it.
+        typer.secho(
+            f"  ~ LLM configured  {model}  (probe unsupported for this provider)",
+            fg=typer.colors.YELLOW,
+        )
+        return True
+
+    if status == "not_configured":
+        typer.secho(
+            "  ~ LLM not configured — synthesis will use stub responses",
+            fg=typer.colors.YELLOW,
+        )
+        return True
+
+    # All other statuses are failures: print a coloured header + the backend's
+    # own message and remediation hint, then let the caller decide what to do.
+    headers = {
+        "missing_extras": ("✗", "LLM provider SDK missing in backend", typer.colors.RED),
+        "bad_model": ("✗", "LLM model string is invalid", typer.colors.RED),
+        "auth_error": ("⚠", "LLM authentication failed", typer.colors.YELLOW),
+        "unreachable": ("⚠", "LLM provider unreachable from backend", typer.colors.YELLOW),
+        "error": ("✗", "LLM probe failed", typer.colors.RED),
+        "backend_down": ("~", "LLM probe skipped — backend not reachable", typer.colors.YELLOW),
+    }
+    icon, header, color = headers.get(status, ("✗", f"LLM probe: {status}", typer.colors.RED))
+
+    typer.secho(f"  {icon} {header}", fg=color)
+    if model:
+        typer.echo(f"      model: {model}")
+    if message:
+        typer.echo(f"      {message}")
+    if remediation:
+        typer.secho(f"      fix: {remediation}", fg=typer.colors.CYAN)
+    typer.echo("      Run `mycelium doctor` any time to re-check.")
+
+    # backend_down is not a hard LLM failure — the probe just couldn't run.
+    # The user probably already knows the backend is having trouble.
+    if status == "backend_down":
+        return True
+
+    if not interactive:
+        # In non-interactive mode we surface the warning and keep going.
+        return True
+
+    try:
+        answer = input("  Continue install anyway? [Y/n] ").strip()
+    except (EOFError, KeyboardInterrupt):
+        return True
+    return answer.lower() in ("y", "yes", "")
+
+
 # ── Backend provisioning ──────────────────────────────────────────────────────
 
 
@@ -946,9 +1061,11 @@ def install(
                     typer.secho(f"  ⚠  Could not provision backend: {exc}", fg=typer.colors.YELLOW)
                     workspace_id, mas_id = "", ""
 
-            # Persist WORKSPACE_ID into .env and restart backend so it picks it up
+            # Persist WORKSPACE_ID and MAS_ID into .env and restart backend so it picks them up
             if workspace_id:
                 ws_patch: dict[str, str] = {"WORKSPACE_ID": workspace_id}
+                if mas_id:
+                    ws_patch["MAS_ID"] = mas_id
                 if ioc:
                     ws_patch["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
                     ws_patch["COGNITION_FABRIC_NODE_URL"] = (
@@ -966,6 +1083,14 @@ def install(
                 custom_ports=custom_ports,
                 ioc_enabled=ioc,
             )
+
+            # LLM probe — real completion call inside the backend container.
+            # Non-interactive mode only warns; it never blocks the install.
+            if llm_config.get("LLM_MODEL"):
+                typer.echo("  Probing LLM...")
+                status, model, msg, remediation = _probe_llm_via_backend(api_url)
+                _report_llm_probe_result(status, model, msg, remediation, interactive=False)
+
             typer.secho("  ✓ Done.", fg=typer.colors.GREEN, bold=True)
             return
 
@@ -1216,9 +1341,11 @@ def install(
                 workspace_id, mas_id = "", ""
 
         # ── Phase 6: Migrate DB + write config ────────────────────────────
-        # Persist WORKSPACE_ID into .env and restart backend so it picks it up
+        # Persist WORKSPACE_ID and MAS_ID into .env and restart backend so it picks them up
         if workspace_id:
             ws_patch: dict[str, str] = {"WORKSPACE_ID": workspace_id}
+            if mas_id:
+                ws_patch["MAS_ID"] = mas_id
             if ioc_enabled:
                 ws_patch["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
                 ws_patch["COGNITION_FABRIC_NODE_URL"] = "http://ioc-cognition-fabric-node-svc:9002"
@@ -1235,6 +1362,26 @@ def install(
             ioc_enabled=ioc_enabled,
         )
         typer.secho("  ✓ Config written to ~/.mycelium/config.toml", fg=typer.colors.GREEN)
+
+        # ── Phase 7: LLM connectivity probe ─────────────────────────────────
+        # Real litellm.completion(max_tokens=1) call inside the backend. Catches
+        # missing provider SDKs (e.g. boto3 for Bedrock), bad model strings,
+        # and auth errors that would otherwise only surface at first inference.
+        # On failure we ask the user whether to continue — never hard-fail,
+        # since the user may be installing with a known-bad LLM config on purpose.
+        if llm_config.get("LLM_MODEL"):
+            print()
+            typer.secho("  ── Probing LLM ─────────────────────────────────────────", bold=True)
+            status, probed_model, msg, remediation = _probe_llm_via_backend(api_url)
+            keep_going = _report_llm_probe_result(
+                status, probed_model, msg, remediation, interactive=True
+            )
+            if not keep_going:
+                typer.secho(
+                    "  Install cancelled. Re-run after fixing the LLM config.",
+                    fg=typer.colors.YELLOW,
+                )
+                raise typer.Exit(1) from None
 
         # ── Done ───────────────────────────────────────────────────────────
         print()

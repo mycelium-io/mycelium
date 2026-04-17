@@ -309,7 +309,7 @@ def _deep_merge(base: dict, override: dict) -> None:
 
 def _fetch_backend_metrics(store: MetricsStore, api_url: str, output_path: Path | None = None) -> None:
     """Poll the Mycelium backend /api/metrics endpoint (best-effort).
-    
+
     If output_path is provided, persist the updated metrics to disk.
     """
     import urllib.request
@@ -319,7 +319,7 @@ def _fetch_backend_metrics(store: MetricsStore, api_url: str, output_path: Path 
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read())
             store.set_backend_metrics(data)
-            
+
             # Persist to disk if output path provided
             if output_path is not None:
                 try:

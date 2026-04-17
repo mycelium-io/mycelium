@@ -36,7 +36,9 @@ class QueryRequest:
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.query_request_additional_context_type_0 import QueryRequestAdditionalContextType0
+        from ..models.query_request_additional_context_type_0 import (
+            QueryRequestAdditionalContextType0,
+        )
 
         mas_id = self.mas_id
 
@@ -85,7 +87,9 @@ class QueryRequest:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.query_request_additional_context_type_0 import QueryRequestAdditionalContextType0
+        from ..models.query_request_additional_context_type_0 import (
+            QueryRequestAdditionalContextType0,
+        )
 
         d = dict(src_dict)
         mas_id = d.pop("mas_id")
@@ -112,7 +116,9 @@ class QueryRequest:
 
         search_strategy = d.pop("search_strategy", UNSET)
 
-        def _parse_additional_context(data: object) -> None | QueryRequestAdditionalContextType0 | Unset:
+        def _parse_additional_context(
+            data: object,
+        ) -> None | QueryRequestAdditionalContextType0 | Unset:
             if data is None:
                 return data
             if isinstance(data, Unset):

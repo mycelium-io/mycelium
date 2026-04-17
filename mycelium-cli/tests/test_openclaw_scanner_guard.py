@@ -45,9 +45,11 @@ PLUGIN_ROOT = (
 
 # Files that are ALLOWED to read the environment. These must stay
 # network-free — enforced by the symmetric test below.
-ENV_ONLY_ALLOWLIST: frozenset[str] = frozenset({
-    "src/config.ts",
-})
+ENV_ONLY_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        "src/config.ts",
+    }
+)
 
 # Assembled at runtime to avoid putting the literal token `process.env`
 # into this file's source (keeps the test self-consistent if a future
@@ -72,11 +74,7 @@ NETWORK_PATTERNS: tuple[re.Pattern[str], ...] = (
 
 def _walk_ts(root: Path) -> list[Path]:
     skip_dirs = {"node_modules", "dist", ".git"}
-    return [
-        p
-        for p in root.rglob("*.ts")
-        if not any(part in skip_dirs for part in p.parts)
-    ]
+    return [p for p in root.rglob("*.ts") if not any(part in skip_dirs for part in p.parts)]
 
 
 def _find_network_hit(content: str) -> str | None:

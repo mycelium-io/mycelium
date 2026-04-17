@@ -416,16 +416,13 @@ async def _cfn_decide_round(room_name: str) -> None:
         duration_ms=round_duration_ms,
     )
 
-    if not result:
-        logger.error(
-            "CFN decide returned empty result for %s — posting failed consensus", room_name
+    if not isinstance(result, dict):
+        logger.error("CFN decide returned non-dict for %s: %s", room_name, type(result))
+        await _finish_cfn(
+            room_name, plan="CFN decide returned invalid response", assignments={}, broken=True
         )
-        await _finish_cfn(room_name, plan="CFN decide failed", assignments={}, broken=True)
         return
 
-    # Parse the CFN response inside a try/except so that _finish_cfn is
-    # never called from within the same try block — preventing double-calls
-    # if _finish_cfn itself raises.
     finish_args: dict | None = None
     try:
         result = _normalize_cfn_decide_response(result)
@@ -478,10 +475,10 @@ async def _cfn_decide_round(room_name: str) -> None:
             # Unknown / failed status
             logger.warning("CFN decide returned status=%s for %s", status, room_name)
             finish_args = dict(plan=f"Negotiation ended: {status}", assignments={}, broken=True)
-    except Exception:
+    except Exception as exc:
         logger.exception("Unexpected error processing decide result for %s", room_name)
         finish_args = dict(
-            plan="Internal error processing negotiation", assignments={}, broken=True
+            plan=f"CFN response processing failed — {exc}", assignments={}, broken=True
         )
 
     if finish_args is not None:
