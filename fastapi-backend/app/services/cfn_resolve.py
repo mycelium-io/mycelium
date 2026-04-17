@@ -67,6 +67,16 @@ async def resolve_mas_id(
             if parent and parent.mas_id:
                 return parent.mas_id
         logger.warning("room '%s' exists but has no mas_id (and no parent with one)", room_name)
+        if not settings.MAS_ID:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Room '{room_name}' exists but has no mas_id configured "
+                    f"(and no parent namespace with one). Either create the room "
+                    f"via `mycelium room create` (which provisions a MAS), or set "
+                    f"MAS_ID in your backend .env as a fallback."
+                ),
+            )
 
     if settings.MAS_ID:
         return settings.MAS_ID
@@ -74,8 +84,9 @@ async def resolve_mas_id(
     raise HTTPException(
         status_code=400,
         detail=(
-            "mas_id not provided, no room_name supplied, and MAS_ID is unset. "
-            "Run `mycelium install` or set MAS_ID in your .env, or pass room_name "
-            "so the backend can resolve the room's mas_id."
+            "Cannot resolve mas_id: none provided, no room_name supplied, "
+            "and MAS_ID is unset. Run `mycelium install` or set MAS_ID in "
+            "your .env, or pass room_name so the backend can look up the "
+            "room's mas_id."
         ),
     )
