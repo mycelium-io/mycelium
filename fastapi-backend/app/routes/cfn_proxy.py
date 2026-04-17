@@ -20,6 +20,7 @@ Two concerns live here:
    in ``app/services/cfn_knowledge.py``.
 """
 
+import asyncio
 import json
 import logging
 import uuid as uuid_mod
@@ -301,7 +302,7 @@ async def cfn_list(
     if limit < 1 or limit > 500:
         raise HTTPException(status_code=422, detail="limit must be 1..500")
     try:
-        nodes = list_concepts(mas_id=resolved_mas, limit=limit)
+        nodes = await asyncio.to_thread(list_concepts, mas_id=resolved_mas, limit=limit)
     except CfnGraphUnavailable as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"mas_id": resolved_mas, "limit": limit, "count": len(nodes), "nodes": nodes}
