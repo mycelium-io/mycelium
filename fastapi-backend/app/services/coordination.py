@@ -391,55 +391,68 @@ async def _cfn_decide_round(room_name: str) -> None:
         await _finish_cfn(room_name, plan=f"CFN decide failed — {exc}", assignments={}, broken=True)
         return
 
-    result = _normalize_cfn_decide_response(result)
+    try:
+        if not isinstance(result, dict):
+            logger.error("CFN decide returned non-dict for %s: %s", room_name, type(result))
+            await _finish_cfn(
+                room_name, plan="CFN decide returned invalid response", assignments={}, broken=True
+            )
+            return
 
-    # CFN returns a nested envelope: status lives in result["payload"]["status"]
-    # and the agreement in result["semantic_context"]["final_agreement"].
-    # Fall back to top-level keys for backward compatibility.
-    payload = result.get("payload", {})
-    status = payload.get("status", result.get("status", ""))
+        result = _normalize_cfn_decide_response(result)
 
-    if status in ("agreed",):
-        final_result = result.get("final_result", {})
-        # final_result is an SSTPCommitMessage dict.
-        # Agreement is in semantic_context.final_agreement (list of {issue_id, chosen_option}).
-        if isinstance(final_result, dict):
-            sc = final_result.get("semantic_context") or {}
-            raw_agreement = sc.get("final_agreement") or []
-            # Fallback: some versions embed it in payload.trace.final_agreement
-            if not raw_agreement:
-                trace = (final_result.get("payload") or {}).get("trace") or {}
-                raw_agreement = trace.get("final_agreement") or []
+        # CFN returns a nested envelope: status lives in result["payload"]["status"]
+        # and the agreement in result["semantic_context"]["final_agreement"].
+        # Fall back to top-level keys for backward compatibility.
+        payload = result.get("payload", {})
+        status = payload.get("status", result.get("status", ""))
+
+        if status in ("agreed",):
+            final_result = result.get("final_result", {})
+            # final_result is an SSTPCommitMessage dict.
+            # Agreement is in semantic_context.final_agreement (list of {issue_id, chosen_option}).
+            if isinstance(final_result, dict):
+                sc = final_result.get("semantic_context") or {}
+                raw_agreement = sc.get("final_agreement") or []
+                # Fallback: some versions embed it in payload.trace.final_agreement
+                if not raw_agreement:
+                    trace = (final_result.get("payload") or {}).get("trace") or {}
+                    raw_agreement = trace.get("final_agreement") or []
+            else:
+                raw_agreement = []
+            if isinstance(raw_agreement, list):
+                agreement = {
+                    item["issue_id"]: item.get("chosen_option", "")
+                    for item in raw_agreement
+                    if isinstance(item, dict) and "issue_id" in item
+                }
+            else:
+                agreement = {}
+            plan = "; ".join(f"{k}={v}" for k, v in agreement.items()) if agreement else "agreed"
+            await _finish_cfn(room_name, plan=plan, assignments=agreement, broken=False)
+
+        elif status == "ongoing":
+            messages = result.get("messages", [])
+            addressed = await _fan_out_cfn_messages(
+                room_name,
+                messages,
+                all_agents=state.agents,
+            )
+            async with state.lock:
+                state.pending_replies = {h: None for h in addressed}
+                state.deciding = False
+            _reset_round_timeout(room_name, state)
+
         else:
-            raw_agreement = []
-        if isinstance(raw_agreement, list):
-            agreement = {
-                item["issue_id"]: item.get("chosen_option", "")
-                for item in raw_agreement
-                if isinstance(item, dict) and "issue_id" in item
-            }
-        else:
-            agreement = {}
-        plan = "; ".join(f"{k}={v}" for k, v in agreement.items()) if agreement else "agreed"
-        await _finish_cfn(room_name, plan=plan, assignments=agreement, broken=False)
-
-    elif status == "ongoing":
-        messages = result.get("messages", [])
-        addressed = await _fan_out_cfn_messages(
-            room_name,
-            messages,
-            all_agents=state.agents,
-        )
-        async with state.lock:
-            state.pending_replies = {h: None for h in addressed}
-            state.deciding = False
-        _reset_round_timeout(room_name, state)
-
-    else:
-        # Unknown / failed status
-        logger.warning("CFN decide returned status=%s for %s", status, room_name)
+            # Unknown / failed status
+            logger.warning("CFN decide returned status=%s for %s", status, room_name)
+            await _finish_cfn(
+                room_name, plan=f"Negotiation ended: {status}", assignments={}, broken=True
+            )
+    except Exception as exc:
+        logger.exception("Unhandled error processing CFN decide response for %s", room_name)
         await _finish_cfn(
-            room_name, plan=f"Negotiation ended: {status}", assignments={}, broken=True
+            room_name, plan=f"CFN response processing failed — {exc}", assignments={}, broken=True
         )
 
 
