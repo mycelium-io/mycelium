@@ -44,6 +44,7 @@ variable.
 | `mycelium metrics show`   | Render collected data as Rich tables              |
 | `mycelium metrics show --json` | Dump raw JSON for scripting                  |
 | `mycelium metrics show --workspace` | Include per-file workspace breakdowns   |
+| `mycelium metrics show --include-heartbeat` | Include OpenClaw `heartbeat` channel tokens in totals (excluded by default) |
 
 ## Files Created
 
@@ -152,37 +153,63 @@ The collector polls `GET /api/metrics` on the FastAPI backend every 30 seconds
 
 ## Display Panels
 
-`mycelium metrics show` renders the following Rich tables:
+`mycelium metrics show` renders panels grouped by data source, in this order:
+OpenClaw → Mycelium backend → CFN → opt-in.
 
-1. **OpenClaw Agent Activity** — token totals, cost, message count, histograms
+### OpenClaw (OTLP)
+
+1. **OpenClaw Agent Activity** — token totals (excluding the `heartbeat`
+   background channel by default), cost, message count, histograms
    (run/msg duration, queue depth/wait, context window), webhook and
-   stuck-session stats, by-model breakdowns.
+   stuck-session stats, by-model breakdowns. The heartbeat share of total
+   tokens is shown as a separate dimmed row so its contribution is visible
+   without dominating the headline number. Pass `--include-heartbeat` to
+   fold it back into all OpenClaw totals.
 
-2. **Cost Savings (OpenClaw + Mycelium)** — local embedding counts and estimated
-   API cost avoided, indexer file stats, prompt cache hit ratio, and estimated
-   cache savings.
+2. **OpenClaw Cache Efficiency** — diagnostic-only panel showing the LLM
+   provider's prompt cache behaviour: hit rate, read/write/uncached input
+   token volumes, and a "reads per write" ratio (higher = more reuse before
+   the cache entry is rewritten). Intentionally has no dollar figure: prompt
+   caching is a feature of the LLM provider (e.g. Anthropic), not Mycelium,
+   so attributing the saving to us would be misleading.
 
-3. **Mycelium LLM Usage (backend)** — backend LLM calls, tokens, cost, latency
+3. **OpenClaw Agents** — per-agent token breakdown, session/turn counts, cost,
+   average run duration, and workspace size. Plus a "Tokens by Channel"
+   sub-table that breaks tokens out by `openclaw.channel` (heartbeat,
+   matrix, webhook, etc.) — so heartbeat traffic is always visible here
+   even when excluded from headline panels.
+
+4. **OpenClaw Recent Sessions** — last 20 OTLP session spans with agent, model,
+   turns, tokens, and timestamp.
+
+### Mycelium backend (polled)
+
+5. **Mycelium Cost Avoidance** — directly-measurable savings from work done
+   locally by Mycelium: local embedding counts (vs paying a cloud embedding
+   API) with estimated cost avoided, and indexer skip-unchanged file stats.
+   Prompt cache "savings" are deliberately excluded (see panel 2), and
+   CFN-side LLM usage isn't visible to us yet (see Tier 3 in the roadmap
+   below).
+
+6. **Mycelium Backend LLM Usage** — backend LLM calls, tokens, cost, latency
    by operation and model; knowledge graph, synthesis, and memory stats.
 
-4. **Mycelium Data Reuse** — memory search hit/miss rates and results returned,
+7. **Mycelium Data Reuse** — memory search hit/miss rates and results returned,
    synthesis briefing cache stats, knowledge graph query stats by type.
 
-5. **CFN Coordination** — negotiation session counts, rounds, consensus
+### CFN (via backend)
+
+8. **CFN Coordination** — negotiation session counts, rounds, consensus
    success/failure rates, timeouts, and timing histograms.
 
-6. **CFN Transport Health** — outbound HTTP call counts to CFN node and mgmt
+9. **CFN Transport Health** — outbound HTTP call counts to CFN node and mgmt
    plane, error rates, latency histograms, per-operation and per-status-code
    breakdowns.
 
-7. **OpenClaw Agents** — per-agent token breakdown, session/turn counts, cost,
-   average run duration, and workspace size.
+### Opt-in
 
-8. **OpenClaw Recent Sessions** — last 20 OTLP session spans with agent, model,
-   turns, tokens, and timestamp.
-
-9. **Workspace Files** (opt-in via `--workspace`) — per-file size breakdown of
-   each agent's `~/.openclaw` workspace directory.
+10. **Workspace Files** (via `--workspace`) — per-file size breakdown of
+    each agent's `~/.openclaw` workspace directory.
 
 ## Pricing Data
 
@@ -210,22 +237,31 @@ environment (where litellm is installed) and:
 3. Extracts the `text-embedding-3-small` price for the embedding baseline
 4. Writes `pricing.json` and prints a diff of any changes
 
-### Prompt Cache Savings
+### Prompt Cache Pricing (reference only)
 
-The **Cost Savings** panel estimates how much money prompt caching saved:
+`pricing.json` carries three numbers per model that describe how the LLM
+provider charges for prompt caching:
 
-```
-savings = cache_read_tokens × input_price_per_token × cache_discount
-```
+| Field                  | Meaning                                                                 |
+| ---------------------- | ----------------------------------------------------------------------- |
+| `input_per_token`      | Raw input price per token                                               |
+| `cache_discount`       | Fraction off `input_per_token` for cache reads (e.g. 0.90 = 90% off)    |
+| `cache_write_premium`  | Fraction more than `input_per_token` for cache writes (e.g. 0.25 = 1.25×) |
+
+**Note**: Earlier versions of this CLI computed and displayed a "prompt cache
+savings" dollar figure here. We removed it because (a) the saving is created
+by the LLM provider's caching feature, not by Mycelium, and (b) the original
+calculation ignored the cost of `cache_write` tokens, inflating the number.
+The Cache Efficiency panel now shows hit rate and read/write volumes only.
 
 The model is auto-detected from OTLP `tokens.by_model` data (whichever model
 has the most total tokens). Pricing is matched by substring against the
 `models` array in `pricing.json`.
 
 **Fallback**: if no model matches, a conservative Haiku-class estimate is used
-($0.80/MTok input, 90% cache discount). The `"pricing basis"` row in the CLI
-output shows "unknown model" when the fallback is used — add the new pattern
-to `TRACKED_MODELS` in `scripts/update-pricing.py` and re-run.
+($0.80/MTok input, 90% cache discount, 25% write premium). Add the new
+substring pattern to `TRACKED_MODELS` in `scripts/update-pricing.py` and
+re-run if you want better-attributed numbers in the cache panel.
 
 ### Local Embedding Cost Avoidance
 
@@ -331,6 +367,13 @@ Prioritised by effort and value.
   require upstream changes to propagate `litellm.completion` usage through
   the CFN node's response body. Currently tracked via client-side
   `estimated_input_tokens` (cl100k_base estimate of outbound payload).
+
+  **Why this matters for the Cost Avoidance panel**: without CFN-side token
+  telemetry we only know what we *sent* to CFN, not what CFN actually spent
+  handling it. The Cost Avoidance panel therefore shows only savings we can
+  directly measure on the Mycelium side (local embeddings, indexer
+  skip-unchanged). Once CFN exposes per-request token usage upstream, we
+  can add a CFN-attributable row alongside.
 
 ### Not yet implementable (stubbed / planned)
 

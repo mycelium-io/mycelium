@@ -109,6 +109,7 @@ def main() -> None:
         key, entry = match
         input_price = entry.get("input_cost_per_token", 0)
         cache_read = entry.get("cache_read_input_token_cost")
+        cache_write = entry.get("cache_creation_input_token_cost")
 
         if input_price and cache_read is not None and cache_read >= 0:
             cache_discount = round(max(0.0, min(1.0, 1.0 - (cache_read / input_price))), 2)
@@ -120,10 +121,25 @@ def main() -> None:
                     f"using default {DEFAULT_CACHE_DISCOUNT:.0%} discount"
                 )
 
+        # Cache write premium: how much MORE than raw input a cache write costs.
+        # Anthropic 5min cache: writes cost 1.25x input  -> premium = 0.25
+        # Anthropic 1h cache:   writes cost 2.0x input   -> premium = 1.00
+        # OpenAI cached input:  no separate write charge -> premium = 0.0
+        # Provider-specific default if litellm doesn't report it.
+        if input_price and cache_write is not None and cache_write > 0:
+            cache_write_premium = round(max(0.0, (cache_write / input_price) - 1.0), 4)
+        else:
+            provider = spec.get("provider", "").lower()
+            if provider == "anthropic":
+                cache_write_premium = 0.25  # 5min cache default
+            else:
+                cache_write_premium = 0.0
+
         models.append({
             "pattern": pattern,
             "input_per_token": input_price,
             "cache_discount": cache_discount,
+            "cache_write_premium": cache_write_premium,
             "litellm_key": key,
         })
 
@@ -138,6 +154,7 @@ def main() -> None:
         "default": {
             "input_per_token": 8e-07,
             "cache_discount": DEFAULT_CACHE_DISCOUNT,
+            "cache_write_premium": 0.25,
             "label": "unknown model",
         },
         "embedding_baseline": {

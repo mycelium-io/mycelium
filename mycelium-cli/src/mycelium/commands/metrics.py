@@ -375,6 +375,11 @@ def reset() -> None:
 def show(
     json_output: bool = typer.Option(False, "--json", help="Output raw JSON"),
     workspace: bool = typer.Option(False, "--workspace", help="Show per-file workspace breakdown"),
+    include_heartbeat: bool = typer.Option(
+        False,
+        "--include-heartbeat",
+        help="Include OpenClaw 'heartbeat' channel tokens in totals (excluded by default).",
+    ),
 ) -> None:
     """
     Display collected metrics with agent metadata and workspace sizes.
@@ -415,17 +420,25 @@ def show(
         console.print_json(json.dumps(combined, default=str))
         return
 
-    _render_summary_table(otel_data, oc_status, oc_cost)
-    _render_cost_savings_table(otel_data, backend_data)
-    _render_data_reuse_table(backend_data)
-    _render_mycelium_llm_table(backend_data)
-    _render_coordination_table(backend_data)
-    _render_cfn_transport_table(backend_data)
+    # ── OpenClaw panels ──────────────────────────────────────────────
+    _render_summary_table(
+        otel_data, oc_status, oc_cost, include_background=include_heartbeat,
+    )
+    _render_cache_efficiency_table(otel_data, include_background=include_heartbeat)
     _render_agent_table(otel_data, agents_meta)
-
     if otel_data and otel_data.get("sessions"):
         _render_session_table(otel_data["sessions"])
 
+    # ── Mycelium backend panels ──────────────────────────────────────
+    _render_cost_avoidance_table(backend_data)
+    _render_mycelium_llm_table(backend_data)
+    _render_data_reuse_table(backend_data)
+
+    # ── CFN panels (via backend) ─────────────────────────────────────
+    _render_coordination_table(backend_data)
+    _render_cfn_transport_table(backend_data)
+
+    # ── Opt-in / always-last ─────────────────────────────────────────
     if workspace:
         _render_workspace_tables(agents_meta)
 
@@ -614,6 +627,8 @@ def _render_summary_table(
     otel: dict | None,
     oc: dict | None,
     oc_cost: dict | None,
+    *,
+    include_background: bool = False,
 ) -> None:
     table = Table(
         title="OpenClaw Agent Activity",
@@ -630,12 +645,25 @@ def _render_summary_table(
     messages = counters.get("messages", {})
     otel_sessions = (otel or {}).get("sessions", [])
 
-    tokens = counters.get("tokens", {}).get("total", {})
-    table.add_row("Total tokens", _fmt_num(tokens.get("total", 0)))
-    table.add_row("  input", _fmt_num(tokens.get("input", 0)))
-    table.add_row("  output", _fmt_num(tokens.get("output", 0)))
-    table.add_row("  cache read", _fmt_num(tokens.get("cache_read", 0)))
-    table.add_row("  cache write", _fmt_num(tokens.get("cache_write", 0)))
+    fg_tokens, bg_tokens = _oc_token_totals(otel, include_background=include_background)
+    bg_total = bg_tokens.get("total", 0)
+
+    title_suffix = "" if include_background else " (excl. heartbeat)"
+    table.add_row(
+        f"Total tokens{title_suffix}",
+        _fmt_num(fg_tokens.get("total", 0)),
+    )
+    table.add_row("  input", _fmt_num(fg_tokens.get("input", 0)))
+    table.add_row("  output", _fmt_num(fg_tokens.get("output", 0)))
+    table.add_row("  cache read", _fmt_num(fg_tokens.get("cache_read", 0)))
+    table.add_row("  cache write", _fmt_num(fg_tokens.get("cache_write", 0)))
+    if not include_background and bg_total > 0:
+        grand = bg_total + fg_tokens.get("total", 0)
+        bg_pct = bg_total / grand * 100 if grand else 0
+        table.add_row(
+            "  [dim]heartbeat (background)[/dim]",
+            f"[dim]{_fmt_num(bg_total)} ({bg_pct:.0f}%)[/dim]",
+        )
 
     cost = counters.get("cost_usd", {}).get("total", 0.0)
     if oc_cost and oc_cost.get("total") is not None:
@@ -1023,6 +1051,54 @@ def _detect_model(otel: dict | None) -> str:
     return max(by_model, key=lambda m: by_model[m].get("total", 0))
 
 
+# OpenClaw "channels" that represent background/idle traffic rather than agent work.
+# These tend to dominate token counts on long-running gateways because the prompt
+# prefix gets re-cached on every tick. Excluded from headline numbers by default;
+# pass --include-heartbeat to fold them back in.
+_BACKGROUND_CHANNELS: set[str] = {"heartbeat"}
+
+
+def _oc_token_totals(
+    otel: dict | None,
+    *,
+    include_background: bool = False,
+) -> tuple[dict[str, int], dict[str, int]]:
+    """Compute OpenClaw token totals split into (foreground, background) buckets.
+
+    ``foreground`` is the sum across non-background channels (real agent work).
+    ``background`` is the sum across channels in ``_BACKGROUND_CHANNELS``.
+
+    When ``include_background`` is True, foreground includes background channels
+    so callers can pass a single total back to the existing display code.
+
+    Falls back to ``counters.tokens.total`` if no per-channel breakdown exists
+    (older metrics.json files).
+    """
+    counters = (otel or {}).get("counters", {})
+    by_channel = counters.get("tokens", {}).get("by_agent", {}) or {}
+    keys = ("input", "output", "cache_read", "cache_write", "total")
+    fg: dict[str, int] = dict.fromkeys(keys, 0)
+    bg: dict[str, int] = dict.fromkeys(keys, 0)
+
+    if not by_channel:
+        total = counters.get("tokens", {}).get("total", {})
+        for k in keys:
+            fg[k] = int(total.get(k, 0) or 0)
+        return fg, bg
+
+    for channel, tok in by_channel.items():
+        bucket = bg if channel in _BACKGROUND_CHANNELS else fg
+        for k in keys:
+            bucket[k] += int(tok.get(k, 0) or 0)
+
+    if include_background:
+        for k in keys:
+            fg[k] += bg[k]
+        bg = dict.fromkeys(keys, 0)
+
+    return fg, bg
+
+
 _PRICING_JSON = Path(__file__).resolve().parent.parent / "data" / "pricing.json"
 _pricing_data: dict | None = None
 
@@ -1045,12 +1121,20 @@ def _load_pricing() -> dict:
 
 def _get_model_pricing(model_name: str) -> tuple[dict, str]:
     """Match a model string (e.g. 'bedrock/global.anthropic.claude-haiku-4-5-…')
-    against known pricing.  Returns (pricing_dict, short_label)."""
+    against known pricing.  Returns (pricing_dict, short_label).
+
+    The pricing dict contains:
+      - input:                $/token for raw input
+      - cache_discount:       fraction off input price for cache reads (e.g. 0.90)
+      - cache_write_premium:  fraction MORE than input price for cache writes
+                              (e.g. 0.25 means writes cost 1.25x input)
+    """
     data = _load_pricing()
     default = data.get("default", {})
     default_pricing = {
         "input": default.get("input_per_token", 8e-07),
         "cache_discount": default.get("cache_discount", 0.90),
+        "cache_write_premium": default.get("cache_write_premium", 0.25),
     }
 
     lower = model_name.lower()
@@ -1059,6 +1143,7 @@ def _get_model_pricing(model_name: str) -> tuple[dict, str]:
             return {
                 "input": entry["input_per_token"],
                 "cache_discount": entry["cache_discount"],
+                "cache_write_premium": entry.get("cache_write_premium", 0.25),
             }, entry["pattern"]
 
     return default_pricing, default.get("label", "unknown model")
@@ -1073,29 +1158,99 @@ def _pricing_generated_at() -> str:
     return ts
 
 
-def _render_cost_savings_table(otel: dict | None, backend: dict | None) -> None:
-    """Render a Cost Savings panel showing local embedding savings and cache efficiency."""
-    counters = (otel or {}).get("counters", {})
-    tokens = counters.get("tokens", {}).get("total", {})
-    cache_read = tokens.get("cache_read", 0)
-    input_tokens = tokens.get("input", 0)
+def _render_cache_efficiency_table(
+    otel: dict | None,
+    *,
+    include_background: bool = False,
+) -> None:
+    """Diagnostic panel for OpenClaw's prompt cache behaviour.
 
-    be_counters = (backend or {}).get("counters", {}) if backend else {}
+    Intentionally does NOT show dollar "savings". The cache is operated by the
+    LLM provider (e.g. Anthropic), not by Mycelium, so attributing the saving
+    to us would be misleading. We show the operational signal instead:
+    hit rate, read/write/input volumes, and reads-per-write (cache reuse).
+    """
+    fg_tokens, bg_tokens = _oc_token_totals(otel, include_background=include_background)
+    cache_read = fg_tokens.get("cache_read", 0)
+    cache_write = fg_tokens.get("cache_write", 0)
+    input_tokens = fg_tokens.get("input", 0)
+    bg_total = bg_tokens.get("total", 0)
+
+    denom = cache_read + cache_write + input_tokens
+    if cache_read == 0 or denom == 0:
+        return
+
+    table = Table(
+        title="OpenClaw Cache Efficiency",
+        title_style="bold cyan",
+        title_justify="left",
+        show_header=False,
+        border_style="dim",
+    )
+    table.add_column("Metric", style="bold")
+    table.add_column("Value", justify="right")
+
+    scope_suffix = "" if include_background else " (excl. heartbeat)"
+
+    cache_ratio = cache_read / denom * 100
+    table.add_row(
+        f"Prompt cache hit rate{scope_suffix}",
+        f"[green]{cache_ratio:.1f}%[/green]",
+    )
+    table.add_row("  cache read tokens", _fmt_num(cache_read))
+    table.add_row("  cache write tokens", _fmt_num(cache_write))
+    table.add_row("  uncached input tokens", _fmt_num(input_tokens))
+
+    if cache_write > 0:
+        reuse = cache_read / cache_write
+        table.add_row(
+            "  reads per write",
+            f"{reuse:.1f}× [dim](higher = more reuse before re-cache)[/dim]",
+        )
+
+    if not include_background and bg_total > 0:
+        grand = bg_total + fg_tokens.get("total", 0)
+        if grand > 0:
+            bg_pct = bg_total / grand * 100
+            table.add_section()
+            table.add_row(
+                "[dim]heartbeat tokens excluded[/dim]",
+                f"[dim]{_fmt_num(bg_total)} ({bg_pct:.0f}% of OpenClaw total)[/dim]",
+            )
+
+    console.print(table)
+    console.print()
+
+
+def _render_cost_avoidance_table(backend: dict | None) -> None:
+    """Directly-measurable cost avoidance on the Mycelium side.
+
+    Covers things Mycelium does in place of a cloud API call — currently
+    local embeddings and the indexer's skip-unchanged behaviour.
+
+    NOTE: We deliberately do NOT show dollar figures for OpenClaw prompt
+    cache "savings" here — that's an LLM-provider feature (e.g. Anthropic's
+    prompt caching). We also can't yet measure CFN-side LLM token savings,
+    since the CFN node service doesn't propagate token counts in its
+    responses (see metrics.md, Tier 3).
+    """
+    if not backend:
+        return
+
+    be_counters = backend.get("counters", {})
+    be_histograms = backend.get("histograms", {})
     embeddings = be_counters.get("embeddings", {})
     indexer = be_counters.get("indexer", {})
 
     embed_count = embeddings.get("computed", 0)
-    cost_avoided = embeddings.get("estimated_cost_avoided_usd", 0.0)
     files_indexed = indexer.get("files_indexed", 0)
     files_skipped = indexer.get("files_skipped", 0)
 
-    has_data = embed_count > 0 or cache_read > 0 or files_indexed > 0
-
-    if not has_data:
+    if embed_count == 0 and files_indexed == 0 and files_skipped == 0:
         return
 
     table = Table(
-        title="Cost Savings (OpenClaw + Mycelium)",
+        title="Mycelium Cost Avoidance",
         title_style="bold green",
         title_justify="left",
         show_header=False,
@@ -1105,9 +1260,10 @@ def _render_cost_savings_table(otel: dict | None, backend: dict | None) -> None:
     table.add_column("Value", justify="right")
 
     if embed_count > 0:
-        table.add_row("[dim]Mycelium:[/dim] Local embeddings", _fmt_num(embed_count))
+        cost_avoided = embeddings.get("estimated_cost_avoided_usd", 0.0)
+        table.add_row("Local embeddings computed", _fmt_num(embed_count))
         table.add_row(
-            "  estimated API cost avoided",
+            "  estimated cloud API cost avoided",
             f"[green]{_fmt_cost(cost_avoided)}[/green]",
         )
         est_tokens = embeddings.get("estimated_tokens", 0)
@@ -1119,13 +1275,14 @@ def _render_cost_savings_table(otel: dict | None, backend: dict | None) -> None:
             label = key.replace("by_source.", "  ")
             table.add_row(label, _fmt_num(embeddings[key]))
 
-    be_histograms = (backend or {}).get("histograms", {}) if backend else {}
     embed_lat = be_histograms.get("embeddings.latency_ms", {})
     if embed_lat.get("count", 0) > 0:
         table.add_row("Embedding latency (local)", _fmt_histogram_s(embed_lat))
 
     total_index_files = files_indexed + files_skipped
     if total_index_files > 0:
+        if embed_count > 0:
+            table.add_section()
         skip_pct = files_skipped / total_index_files * 100
         table.add_row("Indexer files processed", _fmt_num(total_index_files))
         table.add_row(
@@ -1140,32 +1297,6 @@ def _render_cost_savings_table(otel: dict | None, backend: dict | None) -> None:
     idx_lat = be_histograms.get("indexer.duration_ms", {})
     if idx_lat.get("count", 0) > 0:
         table.add_row("Index run duration", _fmt_histogram_s(idx_lat))
-
-    if cache_read > 0 and (input_tokens + cache_read) > 0:
-        cache_ratio = cache_read / (input_tokens + cache_read) * 100
-        model_name = _detect_model(otel)
-        pricing, pricing_label = _get_model_pricing(model_name)
-        input_price = pricing["input"]
-        cache_discount = pricing["cache_discount"]
-
-        if embed_count > 0 or files_indexed > 0:
-            table.add_section()
-        table.add_row("[dim]OpenClaw:[/dim] Prompt cache hit", f"[green]{cache_ratio:.1f}%[/green]")
-        table.add_row("  cache read tokens", _fmt_num(cache_read))
-
-        estimated_saving = cache_read * input_price * cache_discount
-        if estimated_saving > 0.0001:
-            table.add_row(
-                "  estimated cache savings",
-                f"[green]~{_fmt_cost(estimated_saving)}[/green]",
-            )
-            gen_date = _pricing_generated_at()
-            date_suffix = f", updated {gen_date}" if gen_date else ""
-            table.add_row(
-                "  pricing basis",
-                f"[dim]{pricing_label} @ ${input_price * 1e6:.2f}/MTok, "
-                f"{cache_discount:.0%} cache discount{date_suffix}[/dim]",
-            )
 
     console.print(table)
     console.print()
