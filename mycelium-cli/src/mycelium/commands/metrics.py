@@ -314,7 +314,13 @@ def collect(
 
         from mycelium.collector import run as run_collector
 
-        run_collector(resolved_port, _METRICS_JSON, backend_api_url=backend_url)
+        scrape_targets = MyceliumConfig.load().resolve_scrape_targets()
+        run_collector(
+            resolved_port,
+            _METRICS_JSON,
+            backend_api_url=backend_url,
+            scrape_targets=scrape_targets,
+        )
 
 
 @app.command("stop")
@@ -437,6 +443,7 @@ def show(
     # ── CFN panels (via backend) ─────────────────────────────────────
     _render_coordination_table(backend_data)
     _render_cfn_transport_table(backend_data)
+    _render_cfn_scrape_table((otel_data or {}).get("scrape"))
 
     # ── Opt-in / always-last ─────────────────────────────────────────
     if workspace:
@@ -563,8 +570,26 @@ def _fmt_val_s(v: float) -> str:
     return f"{v:.1f}s"
 
 
-def _fmt_histogram_s(h: dict) -> str:
-    """Format a millisecond histogram as seconds with fixed-width aligned sparkline."""
+def _max_n_width(*hists: dict) -> int:
+    """Width of the largest ``count`` (comma-formatted) across histograms.
+
+    Pass every histogram that will share a column in the same panel; each
+    panel computes this once and feeds it to ``_fmt_histogram_s`` /
+    ``_fmt_prom_latency`` so their ``avg`` columns line up vertically
+    regardless of count magnitude.
+    """
+    widths = [len(f"{h.get('count', 0):,}") for h in hists if h.get("count", 0) > 0]
+    return max(widths) if widths else 0
+
+
+def _fmt_histogram_s(h: dict, n_width: int) -> str:
+    """Format a millisecond histogram as seconds with fixed-width aligned sparkline.
+
+    ``n_width`` is the rendered width of the largest ``n=`` in the
+    caller's group (so every row's ``avg`` column lines up vertically).
+    Callers compute it once per panel — see ``_render_cfn_coord_table``
+    and ``_render_cfn_transport_table``.
+    """
     count = h.get("count", 0)
     if count == 0:
         return "—"
@@ -573,21 +598,110 @@ def _fmt_histogram_s(h: dict) -> str:
     max_v = h.get("max")
     _W = 6  # width for each value column (e.g. " 1.9s" or " 0.0s")
 
+    n_field = f"n={count:,}".rjust(2 + n_width)
+
     if min_v is not None and max_v is not None:
         min_s = min_v / 1000
         max_s = max_v / 1000
         if abs(max_s - min_s) > 0.05:
             bar = _sparkline(min_s, avg, max_s)
             return (
-                f"{_fmt_val_s(min_s):>{_W}} {bar} {_fmt_val_s(max_s):<{_W}}  "
-                f"[dim]avg {_fmt_val_s(avg):>{_W}}  n={count}[/dim]"
+                f"{_fmt_val_s(min_s):>{_W}} {bar} {_fmt_val_s(max_s):<{_W}} "
+                f"[dim]avg {_fmt_val_s(avg):>{_W}} {n_field}[/dim]"
             )
 
-    bar = "━" * 8
-    return (
-        f"{_fmt_val_s(avg):>{_W}} {bar} {'':<{_W}}  "
-        f"[dim]avg {_fmt_val_s(avg):>{_W}}  n={count}[/dim]"
+    # Degenerate case: no min/max info or essentially zero spread. Drop
+    # the empty-bar slot entirely — saves ~16 chars and still shows the
+    # value, the avg (which equals the only datum), and the count.
+    return f"{_fmt_val_s(avg):>{_W}} [dim]avg {_fmt_val_s(avg):>{_W}} {n_field}[/dim]"
+
+
+def _fmt_prom_latency(lat: dict, n_width: int) -> str:
+    """Format a Prometheus-bucket latency dict for the CFN scrape panel.
+
+    Visual grammar mirrors ``_fmt_histogram_s`` (used by CFN Transport
+    Health) so both CFN panels read with the same rhythm — fixed-width
+    numeric columns, label-then-value, dim ``n=`` suffix:
+
+        avg  614µs  p50   —      p99   —       n=17,968
+        avg 49.0ms  p50   —      p99   —       n=2
+
+    Differences from ``_fmt_histogram_s``: no min/max sparkline (Prometheus
+    histograms can't give us those), p50/p99 columns instead, and a unit-
+    aware value formatter so sub-millisecond /health latencies don't read
+    as ``0.0s``.
+
+    ``avg`` is always shown (computed from exact ``_sum / _count``, the
+    only truly precise number Prometheus histograms give us). p50/p99 are
+    *suppressed with ``—``* — keeping the column in place — when the
+    bucket layout has insufficient resolution (no observations cross a
+    bucket boundary). Today CFN's mgmt-plane uses ``[100, 500, 1000]ms``
+    buckets and every observation lands in the first one; once
+    cfn_component_metrics_reconciliation.md item #6 ships finer buckets,
+    real p50/p99 numbers will appear with no code change.
+    """
+    count = lat.get("count", 0)
+    if count == 0:
+        return "—"
+
+    from mycelium.prom_scrape import histogram_quantile
+
+    buckets = lat.get("buckets") or []
+    avg_ms = lat.get("sum", 0.0) / count if count else 0.0
+
+    # "Useful" buckets = at least one cross-bucket transition exists.
+    finite = [
+        (b, c) for b, c in buckets
+        if not (isinstance(b, float) and b == float("inf"))
+    ]
+    crossings = sum(
+        1 for i in range(1, len(finite)) if finite[i][1] > finite[i - 1][1]
     )
+    p50_ms = histogram_quantile(0.50, buckets) if crossings >= 1 else None
+    p99_ms = histogram_quantile(0.99, buckets) if crossings >= 1 else None
+
+    # Fixed value-column width chosen to fit ``999.9ms`` and ``99.99s`` —
+    # the two longest realistic values from _fmt_ms. Right-aligned so the
+    # decimal points stack cleanly when scanning a column of routes.
+    _W = 7
+
+    def _slot(v_ms: float) -> str:
+        return f"{_fmt_ms(v_ms):>{_W}}"
+
+    # Conditional rendering keeps the row on a single line in the common
+    # CFN-today case (coarse buckets → no percentiles) and saves ~16 chars
+    # per row that Rich would otherwise wrap. When buckets get finer (see
+    # cfn_component_metrics_reconciliation.md item #6), the p50/p99
+    # columns reappear automatically.
+    parts = [f"avg {_slot(avg_ms)}"]
+    if p50_ms is not None:
+        parts.append(f"p50 {_slot(p50_ms)}")
+    if p99_ms is not None:
+        parts.append(f"p99 {_slot(p99_ms)}")
+    # Pad ``n=`` to the caller-supplied width so the ``avg`` column lines
+    # up across rows even when counts differ by orders of magnitude
+    # (e.g. /health at n=18,001 next to /api/...register at n=2). Width
+    # is the *rendered* width of the largest count's comma-formatted
+    # string in this group; falls back to natural width if unspecified.
+    n_field = f"n={count:,}".rjust(2 + n_width)
+    parts.append(f"[dim]{n_field}[/dim]")
+    return "  ".join(parts)
+
+
+def _fmt_ms(ms: float | None) -> str:
+    """Format a millisecond value with a sensibly chosen unit.
+
+    Sub-millisecond → µs (so ``/health`` stops reading as ``0.0s``).
+    Sub-second     → ms.
+    Anything else  → seconds with two decimals.
+    """
+    if ms is None:
+        return "—"
+    if ms < 1.0:
+        return f"{ms * 1000:.0f}µs"
+    if ms < 1000.0:
+        return f"{ms:.1f}ms"
+    return f"{ms / 1000:.2f}s"
 
 
 def _fmt_histogram_raw(h: dict) -> str:
@@ -673,14 +787,17 @@ def _render_summary_table(
     table.add_row("Messages", _fmt_num(messages.get("processed", 0)))
 
     run_dur = histograms.get("run_duration_ms", {})
+    msg_dur = histograms.get("message_duration_ms", {})
+    qwait = histograms.get("queue_wait_ms", {})
+    oc_durations_n = _max_n_width(run_dur, msg_dur, qwait)
+
     if run_dur.get("count", 0) > 0:
-        table.add_row("Run duration", _fmt_histogram_s(run_dur))
+        table.add_row("Run duration", _fmt_histogram_s(run_dur, oc_durations_n))
     else:
         table.add_row("Run duration", "—")
 
-    msg_dur = histograms.get("message_duration_ms", {})
     if msg_dur.get("count", 0) > 0:
-        table.add_row("Msg duration", _fmt_histogram_s(msg_dur))
+        table.add_row("Msg duration", _fmt_histogram_s(msg_dur, oc_durations_n))
     else:
         table.add_row("Msg duration", "—")
 
@@ -690,9 +807,8 @@ def _render_summary_table(
     else:
         table.add_row("Queue depth", "—")
 
-    qwait = histograms.get("queue_wait_ms", {})
     if qwait.get("count", 0) > 0:
-        table.add_row("Queue wait", _fmt_histogram_s(qwait))
+        table.add_row("Queue wait", _fmt_histogram_s(qwait, oc_durations_n))
     else:
         table.add_row("Queue wait", "—")
 
@@ -716,7 +832,7 @@ def _render_summary_table(
         table.add_row("Webhooks", wh_str)
         wh_dur = histograms.get("webhook_duration_ms", {})
         if wh_dur.get("count", 0) > 0:
-            table.add_row("Webhook latency", _fmt_histogram_s(wh_dur))
+            table.add_row("Webhook latency", _fmt_histogram_s(wh_dur, _max_n_width(wh_dur)))
 
     # Session state and stuck (newly captured)
     stuck = counters.get("sessions_stuck", 0)
@@ -724,7 +840,7 @@ def _render_summary_table(
         table.add_row("Sessions stuck", f"[red]{_fmt_num(stuck)}[/red]")
         stuck_age = histograms.get("session_stuck_age_ms", {})
         if stuck_age.get("count", 0) > 0:
-            table.add_row("Stuck age", _fmt_histogram_s(stuck_age))
+            table.add_row("Stuck age", _fmt_histogram_s(stuck_age, _max_n_width(stuck_age)))
 
     # Run attempts (newly captured)
     run_attempts = counters.get("run_attempts", 0)
@@ -1276,8 +1392,10 @@ def _render_cost_avoidance_table(backend: dict | None) -> None:
             table.add_row(label, _fmt_num(embeddings[key]))
 
     embed_lat = be_histograms.get("embeddings.latency_ms", {})
+    idx_lat = be_histograms.get("indexer.duration_ms", {})
+    embed_idx_n = _max_n_width(embed_lat, idx_lat)
     if embed_lat.get("count", 0) > 0:
-        table.add_row("Embedding latency (local)", _fmt_histogram_s(embed_lat))
+        table.add_row("Embedding latency (local)", _fmt_histogram_s(embed_lat, embed_idx_n))
 
     total_index_files = files_indexed + files_skipped
     if total_index_files > 0:
@@ -1294,9 +1412,8 @@ def _render_cost_avoidance_table(backend: dict | None) -> None:
         if pruned:
             table.add_row("  pruned (deleted)", _fmt_num(pruned))
 
-    idx_lat = be_histograms.get("indexer.duration_ms", {})
     if idx_lat.get("count", 0) > 0:
-        table.add_row("Index run duration", _fmt_histogram_s(idx_lat))
+        table.add_row("Index run duration", _fmt_histogram_s(idx_lat, embed_idx_n))
 
     console.print(table)
     console.print()
@@ -1349,16 +1466,21 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
 
     be_histograms = backend.get("histograms", {})
     llm_lat = be_histograms.get("llm.latency_ms", {})
+    llm_sub = [
+        be_histograms[k] for k in be_histograms
+        if k.startswith("llm.latency_ms.") and k != "llm.latency_ms"
+    ]
+    llm_n = _max_n_width(llm_lat, *llm_sub)
     if llm_lat.get("count", 0) > 0:
         table.add_section()
-        table.add_row("LLM latency (all)", _fmt_histogram_s(llm_lat))
+        table.add_row("LLM latency (all)", _fmt_histogram_s(llm_lat, llm_n))
 
     for key in sorted(be_histograms):
         if key.startswith("llm.latency_ms.") and key != "llm.latency_ms":
             h = be_histograms[key]
             if h.get("count", 0) > 0:
                 label = key.replace("llm.latency_ms.", "  ")
-                table.add_row(label, _fmt_histogram_s(h))
+                table.add_row(label, _fmt_histogram_s(h, llm_n))
 
     # Knowledge graph stats
     knowledge = be_counters.get("knowledge", {})
@@ -1375,7 +1497,7 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
             table.add_row("  graph store errors", f"[red]{_fmt_num(kg_errors)}[/red]")
         kg_lat = be_histograms.get("knowledge.ingestion_duration_ms", {})
         if kg_lat.get("count", 0) > 0:
-            table.add_row("  ingestion duration", _fmt_histogram_s(kg_lat))
+            table.add_row("  ingestion duration", _fmt_histogram_s(kg_lat, _max_n_width(kg_lat)))
 
     # Synthesis stats
     synthesis = be_counters.get("synthesis", {})
@@ -1387,7 +1509,7 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
             table.add_row("  errors", f"[red]{_fmt_num(synth_errors)}[/red]")
         synth_lat = be_histograms.get("synthesis.duration_ms", {})
         if synth_lat.get("count", 0) > 0:
-            table.add_row("  synthesis duration", _fmt_histogram_s(synth_lat))
+            table.add_row("  synthesis duration", _fmt_histogram_s(synth_lat, _max_n_width(synth_lat)))
 
     # Memory stats
     memory = be_counters.get("memory", {})
@@ -1402,7 +1524,7 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
             table.add_row("Semantic searches", _fmt_num(memory["searches"]))
             search_lat = be_histograms.get("memory.search_latency_ms", {})
             if search_lat.get("count", 0) > 0:
-                table.add_row("  search latency", _fmt_histogram_s(search_lat))
+                table.add_row("  search latency", _fmt_histogram_s(search_lat, _max_n_width(search_lat)))
 
     console.print(table)
     console.print()
@@ -1514,7 +1636,7 @@ def _render_data_reuse_table(backend: dict | None) -> None:
 
         query_lat = be_histograms.get("knowledge.query_latency_ms", {})
         if query_lat.get("count", 0) > 0:
-            table.add_row("Query latency", _fmt_histogram_s(query_lat))
+            table.add_row("Query latency", _fmt_histogram_s(query_lat, _max_n_width(query_lat)))
 
     console.print(table)
     console.print()
@@ -1566,13 +1688,27 @@ def _render_coordination_table(backend: dict | None) -> None:
         max_r = rounds_to_consensus.get("max", avg)
         table.add_row("Rounds to consensus", f"{avg:.1f} (min {min_r:.0f}, max {max_r:.0f})")
 
+    # Pad ``n=`` across the histogram rows so the ``avg`` column lines up
+    # vertically even when counts span orders of magnitude
+    # (e.g. n=14 sessions vs n=334 rounds).
     time_to_consensus = be_histograms.get("coordination.time_to_consensus_ms", {})
-    if time_to_consensus.get("count", 0) > 0:
-        table.add_row("Time to consensus", _fmt_histogram_s(time_to_consensus))
-
     round_duration = be_histograms.get("coordination.round_duration_ms", {})
+    coord_n_width = max(
+        (len(f"{h.get('count', 0):,}")
+         for h in (time_to_consensus, round_duration)
+         if h.get("count", 0) > 0),
+        default=0,
+    )
+    if time_to_consensus.get("count", 0) > 0:
+        table.add_row(
+            "Time to consensus",
+            _fmt_histogram_s(time_to_consensus, n_width=coord_n_width),
+        )
     if round_duration.get("count", 0) > 0:
-        table.add_row("Round duration", _fmt_histogram_s(round_duration))
+        table.add_row(
+            "Round duration",
+            _fmt_histogram_s(round_duration, n_width=coord_n_width),
+        )
 
     participants = be_histograms.get("coordination.session_participants", {})
     if participants.get("count", 0) > 0:
@@ -1585,6 +1721,12 @@ def _render_coordination_table(backend: dict | None) -> None:
         table.add_row("[dim]By room:[/dim]", "")
         for key in by_room_keys[:5]:
             label = key.replace("by_room.", "")
+            # Strip ``:session:<uuid>`` suffix — the session id is high-
+            # cardinality noise that bloats the column on 80-col
+            # terminals and forces every histogram row to wrap. The room
+            # name (e.g. ``dist-e2e-18e8b583``) is the meaningful key.
+            if ":session:" in label:
+                label = label.split(":session:", 1)[0]
             table.add_row(f"  {label}", _fmt_num(coord[key]))
         if len(by_room_keys) > 5:
             table.add_row(f"  [dim]...and {len(by_room_keys) - 5} more[/dim]", "")
@@ -1639,17 +1781,26 @@ def _render_cfn_transport_table(backend: dict | None) -> None:
     be_histograms = backend.get("histograms", {})
 
     cfn_lat = be_histograms.get("cfn.latency_ms", {})
+    node_lat = be_histograms.get("cfn.latency_ms.node", {})
+    mgmt_lat = be_histograms.get("cfn.latency_ms.mgmt", {})
+    # Same n-width trick as the Coordination panel — keeps avg columns
+    # aligned across all/node/mgmt rows when call volumes differ.
+    transport_n_width = max(
+        (len(f"{h.get('count', 0):,}")
+         for h in (cfn_lat, node_lat, mgmt_lat)
+         if h.get("count", 0) > 0),
+        default=0,
+    )
     if cfn_lat.get("count", 0) > 0:
         table.add_section()
-        table.add_row("Latency (all)", _fmt_histogram_s(cfn_lat))
-
-    node_lat = be_histograms.get("cfn.latency_ms.node", {})
+        table.add_row(
+            "Latency (all)",
+            _fmt_histogram_s(cfn_lat, n_width=transport_n_width),
+        )
     if node_lat.get("count", 0) > 0:
-        table.add_row("  node", _fmt_histogram_s(node_lat))
-
-    mgmt_lat = be_histograms.get("cfn.latency_ms.mgmt", {})
+        table.add_row("  node", _fmt_histogram_s(node_lat, n_width=transport_n_width))
     if mgmt_lat.get("count", 0) > 0:
-        table.add_row("  mgmt", _fmt_histogram_s(mgmt_lat))
+        table.add_row("  mgmt", _fmt_histogram_s(mgmt_lat, n_width=transport_n_width))
 
     # Per-operation breakdown
     op_keys = sorted(
@@ -1688,11 +1839,118 @@ def _render_cfn_transport_table(backend: dict | None) -> None:
     console.print()
 
 
+def _render_cfn_scrape_table(scrape: dict | None) -> None:
+    """Render Prometheus scrape data from configured CFN/IoC targets.
+
+    ``scrape`` is the top-level ``"scrape"`` dict in metrics.json — keyed by
+    target name, each value is ``{"data": <rolled-up dict | None>,
+    "scraped_at": <iso8601>}``. Targets unreachable on the last poll are
+    shown with a "[degraded]" marker rather than dropped, so users can
+    distinguish "I forgot to start the service" from "I never configured
+    the scrape target".
+
+    Scope: this is the *outbound* measurement of CFN's HTTP surface, which
+    is independent of (and complementary to) the inbound Mycelium-backend
+    counters surfaced by `_render_cfn_transport_table`. We expect CFN to
+    grow domain-specific Prometheus series (`cfn_llm_tokens_total`,
+    `cfn_llm_latency_seconds`, …); when they do, the panel below will
+    automatically pick them up only after the rollup function in
+    ``mycelium.prom_scrape`` learns to recognise them. Until then, all we
+    can show is HTTP-level RED.
+    """
+    if not scrape:
+        return
+
+    # Filter out targets that have never produced data (i.e. data is None
+    # *and* always has been). If even one scrape succeeded we render the
+    # row so the user sees the degraded state.
+    visible = {
+        name: payload
+        for name, payload in scrape.items()
+        if payload and (payload.get("data") is not None or payload.get("scraped_at"))
+    }
+    if not visible:
+        return
+
+    table = Table(
+        title="CFN /metrics Scrape",
+        title_style="bold blue",
+        title_justify="left",
+        show_header=False,
+        border_style="dim",
+    )
+    table.add_column("Metric", style="bold")
+    table.add_column("Value", justify="right")
+
+    first = True
+    for name, payload in sorted(visible.items()):
+        if not first:
+            table.add_section()
+        first = False
+
+        scraped_at = payload.get("scraped_at", "")
+        data = payload.get("data")
+
+        if data is None:
+            table.add_row(
+                f"[blue]{name}[/blue]",
+                f"[yellow][degraded — last attempt {scraped_at}][/yellow]",
+            )
+            continue
+
+        total_calls = data.get("calls", 0)
+        total_errors = data.get("errors", 0)
+        by_route = data.get("by_route", {})
+        if total_calls == 0 and not by_route:
+            # Endpoint reachable but produced no http_requests_total — likely
+            # a stock instrumentator that hasn't seen any traffic yet, OR a
+            # non-fastapi-instrumentator surface (raw prometheus_client).
+            table.add_row(
+                f"[blue]{name}[/blue]",
+                f"[dim](no HTTP RED samples yet — last poll {scraped_at})[/dim]",
+            )
+            continue
+
+        table.add_row(f"[blue]{name}[/blue]", "")
+        table.add_row("  Total requests", _fmt_num(total_calls))
+        if total_errors:
+            rate = (total_errors / total_calls * 100) if total_calls else 0
+            table.add_row(
+                "  Errors (4xx≠404 + 5xx)",
+                f"[red]{_fmt_num(total_errors)}[/red] ({rate:.1f}%)",
+            )
+
+        # Top routes by request volume — keep it short, the panel is
+        # already three steps removed from the user's primary concern.
+        top_routes = sorted(
+            by_route.items(),
+            key=lambda kv: kv[1].get("calls", 0),
+            reverse=True,
+        )[:6]
+        if top_routes:
+            table.add_row("  [dim]Top routes:[/dim]", "")
+            # Width of the largest n= field in this group, so every row's
+            # avg/p50/p99 columns align vertically regardless of traffic skew.
+            max_n_width = max(
+                len(f"{r.get('latency_ms', {}).get('count', 0):,}")
+                for _, r in top_routes
+            )
+            for route_name, route_data in top_routes:
+                lat = route_data.get("latency_ms", {})
+                table.add_row(
+                    f"    {route_name}",
+                    _fmt_prom_latency(lat, n_width=max_n_width),
+                )
+
+    console.print(table)
+    console.print()
+
+
 def _render_field_legend() -> None:
     console.print("[dim]Data sources:[/dim]")
     console.print("[dim]  [cyan]OpenClaw[/cyan]  — Agent activity via OTLP telemetry (tokens, costs, sessions)[/dim]")
     console.print("[dim]  [magenta]Mycelium[/magenta]  — Backend API metrics (embeddings, memory, LLM calls)[/dim]")
-    console.print("[dim]  [cyan]CFN[/cyan]   — Cognition Fabric Node (coordination, negotiation)[/dim]")
+    console.print("[dim]  [blue]CFN[/blue]   — Cognition Fabric Node (coordination, negotiation)[/dim]")
     data = _load_pricing()
     gen_date = _pricing_generated_at()
     litellm_ver = data.get("litellm_version", "")

@@ -26,8 +26,23 @@ def main() -> None:
         parser.error(f"Invalid port {args.port} (must be 1–65535)")
 
     from mycelium.collector import run
+    from mycelium.config import MyceliumConfig
 
-    run(args.port, Path(args.output), backend_api_url=args.backend_url)
+    # Resolve scrape targets (auto-derived from runtime.cfn_* URLs, plus any
+    # explicit [[metrics.scrape]] entries). Best-effort: failures here must
+    # not prevent the OTLP receiver from starting.
+    scrape_targets: list[dict] = []
+    try:
+        scrape_targets = MyceliumConfig.load().resolve_scrape_targets()
+    except Exception as exc:  # noqa: BLE001
+        logging.warning("Could not resolve scrape targets: %s", exc)
+
+    run(
+        args.port,
+        Path(args.output),
+        backend_api_url=args.backend_url,
+        scrape_targets=scrape_targets,
+    )
 
 
 if __name__ == "__main__":

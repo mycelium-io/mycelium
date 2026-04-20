@@ -168,7 +168,23 @@ async def _cfn_post(url: str, body: dict[str, Any], *, operation: str) -> dict[s
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
         snippet = exc.response.text[:300]
-        logger.warning("CFN POST failed | url=%s status=%d body=%r", url, status, snippet)
+        # Identify the known Apache AGE concurrent-writer race (surfaces as
+        # ``unrecognized heap_update status: 4`` from inside a Cypher
+        # ``MATCH ... DETACH DELETE`` during shared-memory upsert). It's an
+        # upstream bug in ioc-knowledge-memory's agensgraph layer, not a
+        # Mycelium fault, but the write *did* fail so we still record it as
+        # an error — just tag the log so it's grep-able and doesn't get
+        # confused with timeouts or auth issues. See node.py:119 in
+        # ioc-knowledge-memory.
+        if "heap_update status" in snippet:
+            logger.warning(
+                "CFN POST failed | url=%s status=%d cause=age-concurrent-writer-race "
+                "(upstream ioc-knowledge-memory AGE bug, see "
+                "cfn_component_metrics_reconciliation.md)",
+                url, status,
+            )
+        else:
+            logger.warning("CFN POST failed | url=%s status=%d body=%r", url, status, snippet)
         record_cfn_call(
             service="node",
             operation=operation,

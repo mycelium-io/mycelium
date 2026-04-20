@@ -206,6 +206,40 @@ OpenClaw → Mycelium backend → CFN → opt-in.
    plane, error rates, latency histograms, per-operation and per-status-code
    breakdowns.
 
+10. **CFN /metrics Scrape** — opt-in. Direct HTTP-RED rollup
+    (requests, errors, latency) of any CFN service that exposes a Prometheus
+    `/metrics` endpoint via `prometheus-fastapi-instrumentator`. Today that's
+    `ioc-cfn-mgmt-backend-svc` (port 9000) and `ioc-knowledge-memory`;
+    `ioc-cognition-fabric-node-svc` does **not** expose metrics yet (see
+    `cfn_component_metrics_reconciliation.md` for the planned work).
+
+    Configured under `[[metrics.scrape]]` in `~/.mycelium/config.toml`:
+
+    ```toml
+    [[metrics.scrape]]
+    name = "cfn-mgmt"
+    url  = "http://localhost:9000/metrics"
+    kind = "http_red"
+
+    [[metrics.scrape]]
+    name = "knowledge-memory"
+    url  = "http://localhost:9001/metrics"
+    kind = "http_red"
+    ```
+
+    Targets are polled on the same 30-second cadence as the backend `/api/metrics`
+    poll, results are stored under the top-level `scrape` key in
+    `~/.mycelium/metrics.json`, and unreachable targets are surfaced as
+    `[degraded]` rather than dropped silently. Restart `mycelium metrics
+    collect` after editing config so the new targets are picked up.
+
+    The complementary panel is #9 (CFN Transport Health), which measures
+    *outbound* CFN calls *as observed by the Mycelium backend*. Panel #10
+    measures the *inbound* HTTP surface of the CFN service itself. The two
+    will not generally agree (different vantage points; #10 sees calls from
+    every client, not just Mycelium) but large divergence is itself a useful
+    signal.
+
 ### Opt-in
 
 10. **Workspace Files** (via `--workspace`) — per-file size breakdown of

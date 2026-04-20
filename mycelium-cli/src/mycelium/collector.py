@@ -51,10 +51,28 @@ class MetricsStore:
         }
         self._sessions: dict[str, dict] = {}
         self._backend_metrics: dict | None = None
+        # Per-target Prometheus scrape state, keyed by config-supplied name.
+        # Populated by `_fetch_scrape_targets` in the collector poller thread.
+        self._scrape_targets: dict[str, dict] = {}
 
     def set_backend_metrics(self, data: dict | None) -> None:
         with self.lock:
             self._backend_metrics = data
+
+    def set_scrape_target(self, name: str, data: dict | None) -> None:
+        """Record the latest scrape result for a Prometheus target by name.
+
+        ``data`` is the rolled-up dict from
+        ``prom_scrape.aggregate_http_red(...)`` — see that helper for shape.
+        Passing None records that the target was unreachable on the last
+        attempt; this is preserved (rather than dropped) so the panel can
+        surface "target degraded" rather than silently disappear.
+        """
+        with self.lock:
+            self._scrape_targets[name] = {
+                "data": data,
+                "scraped_at": datetime.now(UTC).isoformat(),
+            }
 
     def to_dict(self) -> dict:
         with self.lock:
@@ -71,6 +89,8 @@ class MetricsStore:
             }
             if self._backend_metrics:
                 result["backend"] = copy.deepcopy(self._backend_metrics)
+            if self._scrape_targets:
+                result["scrape"] = copy.deepcopy(self._scrape_targets)
             return result
 
     def ingest_metrics(self, request_bytes: bytes) -> None:
@@ -333,6 +353,54 @@ def _fetch_backend_metrics(store: MetricsStore, api_url: str, output_path: Path 
         log.debug("Backend metrics poll failed (%s): %s", api_url, exc)
 
 
+def _fetch_scrape_targets(
+    store: MetricsStore,
+    targets: list[dict],
+    output_path: Path | None = None,
+) -> None:
+    """Scrape each configured Prometheus target and roll it up.
+
+    ``targets`` is a list of ``{"name": str, "url": str, "kind": str}``
+    dicts (kind defaults to "http_red" for stock fastapi-instrumentator
+    output). On any per-target failure we record the failure into the store
+    so the panel can show "degraded" rather than the user wondering why a
+    target dropped silently.
+    """
+    if not targets:
+        return
+
+    # Imported lazily so unit tests on this module don't pull in prom_scrape
+    # unless they exercise this path.
+    from mycelium import prom_scrape
+
+    for t in targets:
+        name = t.get("name") or t.get("url", "<unnamed>")
+        url = t.get("url")
+        if not url:
+            continue
+        kind = t.get("kind", "http_red")
+
+        samples = prom_scrape.scrape(url, timeout=5.0)
+        if samples is None:
+            store.set_scrape_target(name, None)
+            continue
+        if kind == "http_red":
+            rolled = prom_scrape.aggregate_http_red(samples)
+        else:
+            # Unknown kind — preserve raw samples so we don't lose data.
+            rolled = {"raw_sample_count": len(samples)}
+        store.set_scrape_target(name, rolled)
+
+    if output_path is not None:
+        try:
+            full_data = store.to_dict()
+            tmp = output_path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(full_data, indent=2, default=str))
+            tmp.replace(output_path)
+        except Exception as write_exc:
+            log.debug("Failed to persist scrape data: %s", write_exc)
+
+
 class OTLPHandler(BaseHTTPRequestHandler):
     """HTTP handler for OTLP protobuf endpoints."""
 
@@ -430,9 +498,21 @@ class OTLPHandler(BaseHTTPRequestHandler):
         log.debug(format, *args)
 
 
-def run(port: int, output_path: Path, *, backend_api_url: str = "http://localhost:8000") -> None:
-    """Start the OTLP HTTP receiver. Blocks until interrupted."""
+def run(
+    port: int,
+    output_path: Path,
+    *,
+    backend_api_url: str = "http://localhost:8000",
+    scrape_targets: list[dict] | None = None,
+) -> None:
+    """Start the OTLP HTTP receiver. Blocks until interrupted.
+
+    ``scrape_targets`` is a list of ``{"name": str, "url": str, "kind": str}``
+    dicts loaded from ``[[metrics.scrape]]`` in ``~/.mycelium/config.toml``.
+    Targets are polled on the same 30-second interval as the backend.
+    """
     store = MetricsStore()
+    scrape_targets = list(scrape_targets or [])
 
     if output_path.exists():
         try:
@@ -445,6 +525,11 @@ def run(port: int, output_path: Path, *, backend_api_url: str = "http://localhos
                     store._sessions[sid] = s
             if existing.get("backend"):
                 store.set_backend_metrics(existing["backend"])
+            # Preserve last-known scrape state across restarts so panels
+            # don't blank out for the first poll interval after `mycelium
+            # metrics collect` is restarted.
+            for name, payload in (existing.get("scrape") or {}).items():
+                store._scrape_targets[name] = payload
             log.info("Loaded existing data from %s", output_path)
         except Exception:
             log.warning("Could not load existing %s, starting fresh", output_path)
@@ -457,16 +542,25 @@ def run(port: int, output_path: Path, *, backend_api_url: str = "http://localhos
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Periodically poll backend metrics in a background thread
+    # Periodically poll backend metrics + Prometheus scrape targets in
+    # one background thread; both share the same 30-second cadence.
     _stop_event = threading.Event()
 
     def _backend_poller() -> None:
         while not _stop_event.wait(30):
             _fetch_backend_metrics(store, backend_api_url, output_path)
+            _fetch_scrape_targets(store, scrape_targets, output_path)
 
     poller = threading.Thread(target=_backend_poller, daemon=True)
     poller.start()
     _fetch_backend_metrics(store, backend_api_url, output_path)
+    _fetch_scrape_targets(store, scrape_targets, output_path)
+    if scrape_targets:
+        log.info(
+            "Configured %d Prometheus scrape target(s): %s",
+            len(scrape_targets),
+            ", ".join(t.get("name", t.get("url", "?")) for t in scrape_targets),
+        )
 
     server = HTTPServer(("127.0.0.1", port), handler)
     log.info("OTLP receiver listening on :%d", port)
