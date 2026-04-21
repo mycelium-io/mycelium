@@ -10,11 +10,13 @@ The cognitive agents service (ioc-cognition-fabric-node-svc, port 9002) exposes:
 """
 
 import logging
+import time
 from typing import Any
 
 import httpx
 
 from app.config import settings
+from app.services.metrics import record_cfn_call
 
 logger = logging.getLogger(__name__)
 
@@ -58,11 +60,19 @@ def _describe_exc(exc: Exception) -> str:
 
 async def _cfn_post(url: str, body: dict[str, Any], endpoint: str) -> dict[str, Any]:
     """POST to CFN and raise ``CfnNegotiationError`` with a descriptive reason on any failure."""
+    t0 = time.monotonic()
     try:
         async with httpx.AsyncClient(timeout=_CFN_HTTP_TIMEOUT) as client:
             resp = await client.post(url, json=body)
             resp.raise_for_status()
-            return resp.json()
+            data = resp.json()
+            record_cfn_call(
+                service="node",
+                operation=endpoint,
+                duration_ms=(time.monotonic() - t0) * 1000,
+                status_code=resp.status_code,
+            )
+            return data
     except httpx.HTTPStatusError as exc:
         reason = _describe_exc(exc)
         logger.warning(
@@ -72,10 +82,23 @@ async def _cfn_post(url: str, body: dict[str, Any], endpoint: str) -> dict[str, 
             exc.response.status_code,
             exc.response.text[:500],
         )
+        record_cfn_call(
+            service="node",
+            operation=endpoint,
+            duration_ms=(time.monotonic() - t0) * 1000,
+            status_code=exc.response.status_code,
+            error=True,
+        )
         raise CfnNegotiationError(reason) from exc
     except Exception as exc:
         reason = _describe_exc(exc)
         logger.exception("CFN %s failed | url=%s reason=%s", endpoint, url, reason)
+        record_cfn_call(
+            service="node",
+            operation=endpoint,
+            duration_ms=(time.monotonic() - t0) * 1000,
+            error=True,
+        )
         raise CfnNegotiationError(reason) from exc
 
 

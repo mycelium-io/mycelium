@@ -21,6 +21,7 @@ translating failures to client-facing HTTP statuses.
 
 import json
 import logging
+import time
 import uuid
 from typing import Any
 
@@ -28,6 +29,7 @@ import httpx
 import tiktoken
 
 from app.config import settings
+from app.services.metrics import record_cfn_call, record_knowledge_query
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +99,7 @@ async def create_or_update_shared_memories(
     }
     if agent_id:
         body["header"] = {"agent_id": agent_id}
-    return await _cfn_post(url, body)
+    return await _cfn_post(url, body, operation="shared_memories")
 
 
 # ── Read surface ─────────────────────────────────────────────────────────────
@@ -109,41 +111,99 @@ async def create_or_update_shared_memories(
 # parse them structurally.
 
 
-async def _cfn_get(url: str) -> dict[str, Any]:
+async def _cfn_get(url: str, *, operation: str) -> dict[str, Any]:
+    t0 = time.monotonic()
     try:
         async with httpx.AsyncClient(timeout=_CFN_HTTP_TIMEOUT) as client:
             resp = await client.get(url)
             resp.raise_for_status()
-            return resp.json()
+            data = resp.json()
+            record_cfn_call(
+                service="node",
+                operation=operation,
+                duration_ms=(time.monotonic() - t0) * 1000,
+                status_code=resp.status_code,
+            )
+            return data
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
         snippet = exc.response.text[:300]
         logger.warning("CFN GET failed | url=%s status=%d body=%r", url, status, snippet)
+        record_cfn_call(
+            service="node",
+            operation=operation,
+            duration_ms=(time.monotonic() - t0) * 1000,
+            status_code=status,
+            error=True,
+        )
         raise CfnKnowledgeError(
             f"CFN GET {url} returned {status}: {snippet[:200]}",
             status_code=status,
         ) from exc
     except (httpx.TimeoutException, httpx.TransportError) as exc:
         logger.exception("CFN GET unreachable | url=%s", url)
+        record_cfn_call(
+            service="node",
+            operation=operation,
+            duration_ms=(time.monotonic() - t0) * 1000,
+            error=True,
+        )
         raise CfnKnowledgeError(f"CFN unreachable: {exc}") from exc
 
 
-async def _cfn_post(url: str, body: dict[str, Any]) -> dict[str, Any]:
+async def _cfn_post(url: str, body: dict[str, Any], *, operation: str) -> dict[str, Any]:
+    t0 = time.monotonic()
     try:
         async with httpx.AsyncClient(timeout=_CFN_HTTP_TIMEOUT) as client:
             resp = await client.post(url, json=body)
             resp.raise_for_status()
-            return resp.json()
+            data = resp.json()
+            record_cfn_call(
+                service="node",
+                operation=operation,
+                duration_ms=(time.monotonic() - t0) * 1000,
+                status_code=resp.status_code,
+            )
+            return data
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
         snippet = exc.response.text[:300]
-        logger.warning("CFN POST failed | url=%s status=%d body=%r", url, status, snippet)
+        # Identify the known Apache AGE concurrent-writer race (surfaces as
+        # ``unrecognized heap_update status: 4`` from inside a Cypher
+        # ``MATCH ... DETACH DELETE`` during shared-memory upsert). It's an
+        # upstream bug in ioc-knowledge-memory's agensgraph layer, not a
+        # Mycelium fault, but the write *did* fail so we still record it as
+        # an error — just tag the log so it's grep-able and doesn't get
+        # confused with timeouts or auth issues. See node.py:119 in
+        # ioc-knowledge-memory.
+        if "heap_update status" in snippet:
+            logger.warning(
+                "CFN POST failed | url=%s status=%d cause=age-concurrent-writer-race "
+                "(upstream ioc-knowledge-memory AGE bug, see "
+                "cfn_component_metrics_reconciliation.md)",
+                url, status,
+            )
+        else:
+            logger.warning("CFN POST failed | url=%s status=%d body=%r", url, status, snippet)
+        record_cfn_call(
+            service="node",
+            operation=operation,
+            duration_ms=(time.monotonic() - t0) * 1000,
+            status_code=status,
+            error=True,
+        )
         raise CfnKnowledgeError(
             f"CFN POST {url} returned {status}: {snippet[:200]}",
             status_code=status,
         ) from exc
     except (httpx.TimeoutException, httpx.TransportError) as exc:
         logger.exception("CFN POST unreachable | url=%s", url)
+        record_cfn_call(
+            service="node",
+            operation=operation,
+            duration_ms=(time.monotonic() - t0) * 1000,
+            error=True,
+        )
         raise CfnKnowledgeError(f"CFN unreachable: {exc}") from exc
 
 
@@ -173,7 +233,22 @@ async def query_shared_memories(
         body["header"] = {"agent_id": agent_id}
     if additional_context:
         body["additional_context"] = additional_context
-    return await _cfn_post(url, body)
+    t0 = time.monotonic()
+    try:
+        result = await _cfn_post(url, body, operation="shared_memories_query")
+    except CfnKnowledgeError:
+        record_knowledge_query(
+            query_type="semantic",
+            duration_ms=(time.monotonic() - t0) * 1000,
+            error=True,
+        )
+        raise
+    record_knowledge_query(
+        query_type="semantic",
+        results_returned=1 if result.get("message") else 0,
+        duration_ms=(time.monotonic() - t0) * 1000,
+    )
+    return result
 
 
 async def get_concepts_by_ids(
@@ -187,7 +262,25 @@ async def get_concepts_by_ids(
     Returns CFN's ConceptsByIdsResponse dict with a ``records`` list.
     """
     url = f"{_mas_base(workspace_id, mas_id)}/graph/concepts/by_ids"
-    return await _cfn_post(url, {"ids": ids})
+    t0 = time.monotonic()
+    try:
+        result = await _cfn_post(url, {"ids": ids}, operation="concepts_by_ids")
+    except CfnKnowledgeError:
+        record_knowledge_query(
+            query_type="concept",
+            nodes_queried=len(ids),
+            duration_ms=(time.monotonic() - t0) * 1000,
+            error=True,
+        )
+        raise
+    records = result.get("records", [])
+    record_knowledge_query(
+        query_type="concept",
+        nodes_queried=len(ids),
+        results_returned=len(records) if isinstance(records, list) else 0,
+        duration_ms=(time.monotonic() - t0) * 1000,
+    )
+    return result
 
 
 async def get_concept_neighbors(
@@ -201,7 +294,25 @@ async def get_concept_neighbors(
     Returns CFN's NeighborsResponse dict with a ``records`` list.
     """
     url = f"{_mas_base(workspace_id, mas_id)}/graph/neighbors/{concept_id}"
-    return await _cfn_get(url)
+    t0 = time.monotonic()
+    try:
+        result = await _cfn_get(url, operation="neighbors")
+    except CfnKnowledgeError:
+        record_knowledge_query(
+            query_type="neighbour",
+            nodes_queried=1,
+            duration_ms=(time.monotonic() - t0) * 1000,
+            error=True,
+        )
+        raise
+    records = result.get("records", [])
+    record_knowledge_query(
+        query_type="neighbour",
+        nodes_queried=1,
+        results_returned=len(records) if isinstance(records, list) else 0,
+        duration_ms=(time.monotonic() - t0) * 1000,
+    )
+    return result
 
 
 async def get_graph_paths(
@@ -226,4 +337,22 @@ async def get_graph_paths(
         body["relations"] = relations
     if limit is not None:
         body["limit"] = limit
-    return await _cfn_post(url, body)
+    t0 = time.monotonic()
+    try:
+        result = await _cfn_post(url, body, operation="graph_paths")
+    except CfnKnowledgeError:
+        record_knowledge_query(
+            query_type="path",
+            nodes_queried=2,
+            duration_ms=(time.monotonic() - t0) * 1000,
+            error=True,
+        )
+        raise
+    paths = result.get("paths", [])
+    record_knowledge_query(
+        query_type="path",
+        nodes_queried=2,
+        results_returned=len(paths) if isinstance(paths, list) else 0,
+        duration_ms=(time.monotonic() - t0) * 1000,
+    )
+    return result

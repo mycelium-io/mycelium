@@ -184,14 +184,48 @@ async def join_room(
 
 async def _register_agent_cfn(room: Room, handle: str) -> None:
     """Register an agent handle in the CFN mgmt plane MAS. Non-fatal."""
+    import time
+
+    from app.services.metrics import record_cfn_call
+
     if not settings.CFN_MGMT_URL or not room.mas_id or not room.workspace_id:
         return
+    t0 = time.monotonic()
     try:
         url = f"{settings.CFN_MGMT_URL}/api/workspaces/{room.workspace_id}/cognitive-agents"
         async with httpx.AsyncClient(timeout=10) as client:
-            await client.post(url, json={"cognitive_agent_name": handle})
-        logger.debug("CFN agent registered: %s in workspace %s", handle, room.workspace_id)
+            resp = await client.post(url, json={"cognitive_agent_name": handle})
+        # 409 here means "this cognitive agent is already registered in
+        # the MAS" — entirely benign, since `_register_agent_cfn` is fire-
+        # and-forget on every `session join` and the same handle (e.g.
+        # alpha/beta in distributed E2E) joins many sessions per workspace.
+        # Treat it the same as `register_memory_provider` does in
+        # main.py:103 to avoid skewing the CFN Transport Health error
+        # rate (we've seen 80/80 mgmt errors all turn out to be 409s).
+        record_cfn_call(
+            service="mgmt",
+            operation="register_agent",
+            duration_ms=(time.monotonic() - t0) * 1000,
+            status_code=resp.status_code,
+            error=resp.status_code >= 400 and resp.status_code != 409,
+        )
+        if resp.status_code == 409:
+            logger.debug(
+                "CFN agent %s already registered in workspace %s",
+                handle, room.workspace_id,
+            )
+        else:
+            logger.debug(
+                "CFN agent registered: %s in workspace %s",
+                handle, room.workspace_id,
+            )
     except Exception as exc:
+        record_cfn_call(
+            service="mgmt",
+            operation="register_agent",
+            duration_ms=(time.monotonic() - t0) * 1000,
+            error=True,
+        )
         logger.warning("CFN register agent failed for %s: %s", handle, exc)
 
 

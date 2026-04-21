@@ -43,6 +43,9 @@ async def index_room(room_name: str, db: AsyncSession, *, force: bool = False) -
 
     Returns stats: {"indexed": N, "skipped": N, "pruned": N, "errors": N}
     """
+    import time
+
+    t0 = time.monotonic()
     data_dir = get_data_dir()
     room_dir = data_dir / "rooms" / room_name
     if not room_dir.exists():
@@ -92,11 +95,27 @@ async def index_room(room_name: str, db: AsyncSession, *, force: bool = False) -
             stats["pruned"] += 1
 
     await db.commit()
+
+    from app.services.metrics import record_index_run
+
+    elapsed_ms = (time.monotonic() - t0) * 1000
+    record_index_run(
+        target="room",
+        indexed=stats["indexed"],
+        skipped=stats["skipped"],
+        pruned=stats["pruned"],
+        errors=stats["errors"],
+        duration_ms=elapsed_ms,
+    )
+
     return stats
 
 
 async def index_notebook(handle: str, db: AsyncSession, *, force: bool = False) -> dict:
     """Scan an agent's notebook directory and upsert embeddings."""
+    import time
+
+    t0 = time.monotonic()
     data_dir = get_data_dir()
     notebook_dir = data_dir / "notebooks" / handle
     if not notebook_dir.exists():
@@ -130,6 +149,18 @@ async def index_notebook(handle: str, db: AsyncSession, *, force: bool = False) 
             stats["errors"] += 1
 
     await db.commit()
+
+    from app.services.metrics import record_index_run
+
+    elapsed_ms = (time.monotonic() - t0) * 1000
+    record_index_run(
+        target="notebook",
+        indexed=stats["indexed"],
+        skipped=stats["skipped"],
+        errors=stats["errors"],
+        duration_ms=elapsed_ms,
+    )
+
     return stats
 
 

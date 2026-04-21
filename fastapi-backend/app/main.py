@@ -66,7 +66,11 @@ def _register_memory_provider() -> None:
     Non-fatal — if CFN_MGMT_URL is unset or the call fails, startup continues.
     Mirrors the registration contract used by ioc-knowledge-memory-svc.
     """
+    import time
+
     import requests
+
+    from app.services.metrics import record_cfn_call
 
     url = settings.CFN_MGMT_URL
     if not url:
@@ -84,11 +88,19 @@ def _register_memory_provider() -> None:
             "shared": "True",
         },
     }
+    t0 = time.monotonic()
     try:
         resp = requests.post(
             f"{url.rstrip('/')}/api/memory-providers",
             json=payload,
             timeout=10,
+        )
+        record_cfn_call(
+            service="mgmt",
+            operation="register_memory_provider",
+            duration_ms=(time.monotonic() - t0) * 1000,
+            status_code=resp.status_code,
+            error=resp.status_code not in (201, 409),
         )
         if resp.status_code == 201:
             logger.info("Registered as memory provider with CFN mgmt plane")
@@ -99,6 +111,12 @@ def _register_memory_provider() -> None:
                 "CFN memory provider registration returned %s: %s", resp.status_code, resp.text
             )
     except Exception as exc:
+        record_cfn_call(
+            service="mgmt",
+            operation="register_memory_provider",
+            duration_ms=(time.monotonic() - t0) * 1000,
+            error=True,
+        )
         logger.warning("CFN memory provider registration failed (non-fatal): %s", exc)
 
 
@@ -214,6 +232,14 @@ async def root(
         result["status"] = "degraded"
 
     return result
+
+
+@app.get("/api/metrics", tags=["metrics"])
+async def get_metrics():
+    """Return a snapshot of backend-collected metrics (embeddings, LLM, indexer, etc.)."""
+    from app.services.metrics import snapshot
+
+    return snapshot()
 
 
 async def _check_database(session: AsyncSession) -> dict:

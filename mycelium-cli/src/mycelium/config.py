@@ -213,6 +213,59 @@ class KnowledgeIngestConfig(BaseModel):
     )
 
 
+class ScrapeTarget(BaseModel):
+    """A Prometheus ``/metrics`` endpoint for the collector to poll.
+
+    Configured under ``[[metrics.scrape]]`` in ``config.toml``::
+
+        [[metrics.scrape]]
+        name = "cfn-mgmt"
+        url  = "http://localhost:9000/metrics"
+        kind = "http_red"   # default; rolls up prometheus-fastapi-instrumentator series
+
+    The collector polls every target on the same 30s cadence as the backend
+    and stores results under the top-level ``scrape`` key in
+    ``~/.mycelium/metrics.json``. Targets unreachable at scrape time are
+    preserved with ``data: null`` so the display panel can show "degraded"
+    rather than silently dropping them.
+    """
+
+    name: str = Field(
+        ...,
+        description="Stable, short identifier — used as the dict key in metrics.json and as the panel label.",
+        min_length=1,
+        max_length=64,
+    )
+    url: str = Field(
+        ...,
+        description="Full URL of the Prometheus exposition endpoint (typically ending in /metrics).",
+    )
+    kind: str = Field(
+        default="http_red",
+        description="Roll-up strategy. Currently only 'http_red' is supported (HTTP rate/error/duration).",
+    )
+
+
+class MetricsConfig(BaseModel):
+    """Configuration for the metrics collector + display.
+
+    For the common case (scraping stock CFN services whose URLs are
+    already in ``runtime.cfn_mgmt_url`` / ``runtime.cognition_fabric_node_url``)
+    you don't need to touch this section at all — the collector auto-derives
+    scrape targets from those runtime URLs. Use ``[[metrics.scrape]]`` only
+    to add *additional* targets (e.g. a user's own Prometheus-instrumented
+    service) or to override an auto-derived target by matching its ``name``.
+    """
+
+    scrape: list[ScrapeTarget] = Field(
+        default_factory=list,
+        description=(
+            "Explicit Prometheus /metrics endpoints to scrape. Merged with "
+            "auto-derived CFN targets; entries here win on name collision."
+        ),
+    )
+
+
 class MyceliumConfig(BaseModel):
     """Complete Mycelium CLI configuration."""
 
@@ -222,6 +275,7 @@ class MyceliumConfig(BaseModel):
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     rooms: RoomConfig = Field(default_factory=RoomConfig)
     knowledge_ingest: KnowledgeIngestConfig = Field(default_factory=KnowledgeIngestConfig)
+    metrics: MetricsConfig = Field(default_factory=MetricsConfig)
     adapters: dict[str, Any] = Field(
         default_factory=dict,
         description="Registered agent framework adapters (openclaw, cursor, claude-code, …)",
@@ -385,6 +439,53 @@ class MyceliumConfig(BaseModel):
                 result[key] = value
         return result
 
+    def resolve_scrape_targets(self) -> list[dict]:
+        """Return the full list of Prometheus scrape targets for the collector.
+
+        Mirrors how OTLP ingestion works (no config needed — OpenClaw knows
+        where to push) by auto-deriving CFN scrape targets from the already-
+        installed ``runtime.cfn_mgmt_url`` / ``runtime.cognition_fabric_node_url``
+        values. That way the common case needs zero new configuration, while
+        ``[[metrics.scrape]]`` remains an escape hatch for non-CFN targets
+        and for overriding an auto-derived entry (match by ``name``).
+
+        Merge rules:
+          1. Start from auto-derived CFN targets (below).
+          2. Layer explicit ``metrics.scrape`` entries on top, keyed by
+             ``name`` — an explicit entry with the same name replaces the
+             auto-derived one, so users can change URL/kind without losing
+             the rest of the auto set.
+
+        We only emit a target for ``cognition_fabric_node_url`` when the
+        service actually exposes ``/metrics`` — today it does not (see
+        cfn_component_metrics_reconciliation.md), so we leave it out to
+        avoid a permanently "degraded" row. Flip ``_NODE_HAS_METRICS`` below
+        once that ships.
+        """
+        # Keep the URL of record in runtime.*; here we just append the
+        # Prometheus convention path. If a site runs CFN on a non-default
+        # path they can still declare an explicit [[metrics.scrape]].
+        _NODE_HAS_METRICS = False
+
+        derived: dict[str, dict] = {}
+        if self.runtime.cfn_mgmt_url:
+            derived["cfn-mgmt"] = {
+                "name": "cfn-mgmt",
+                "url": self.runtime.cfn_mgmt_url.rstrip("/") + "/metrics",
+                "kind": "http_red",
+            }
+        if _NODE_HAS_METRICS and self.runtime.cognition_fabric_node_url:
+            derived["cfn-node"] = {
+                "name": "cfn-node",
+                "url": self.runtime.cognition_fabric_node_url.rstrip("/") + "/metrics",
+                "kind": "http_red",
+            }
+
+        for explicit in self.metrics.scrape:
+            derived[explicit.name] = explicit.model_dump()
+
+        return list(derived.values())
+
     def save(self, config_path: Path | None = None) -> None:
         """Save configuration to appropriate files and write JSON snapshot for JS consumers."""
         config_dict = self.model_dump(mode="json", exclude_none=True)
@@ -399,13 +500,14 @@ class MyceliumConfig(BaseModel):
         global_path = self._global_config_path or self.get_global_config_path()
         global_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Global sections: identity, server, llm, runtime, knowledge_ingest, adapters
+        # Global sections: identity, server, llm, runtime, knowledge_ingest, metrics, adapters
         _global_sections = (
             "identity",
             "server",
             "llm",
             "runtime",
             "knowledge_ingest",
+            "metrics",
             "adapters",
         )
 

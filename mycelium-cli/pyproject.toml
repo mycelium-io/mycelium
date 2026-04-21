@@ -35,6 +35,8 @@ dependencies = [
     "attrs>=22.2.0",
     "python-dateutil>=2.8.0",
     "pyyaml>=6.0.3",
+    "opentelemetry-proto>=1.20.0,<2",
+    "protobuf>=4.21.0",
 ]
 
 [project.optional-dependencies]
@@ -72,6 +74,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 mycelium = [
     "py.typed",
+    "data/*.json",
     "docs/**/*.md",
     "adapters/claude-code/**/*",
     "adapters/openclaw/mycelium/**/*",

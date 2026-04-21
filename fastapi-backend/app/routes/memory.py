@@ -173,7 +173,10 @@ async def create_memories(
     await _get_room(room_name, db)
     room_dir = get_room_dir(room_name)
 
+    from app.services.metrics import record_memory_write
+
     results = []
+    _write_metrics: list[tuple[str, bool]] = []
     for item in payload.items:
         # Normalize value to dict
         value = item.value if isinstance(item.value, dict) else {"text": item.value}
@@ -183,6 +186,7 @@ async def create_memories(
         embedding = None
         if item.embed:
             embedding = await asyncio.to_thread(embed_text, content_text)
+        _write_metrics.append((item.scope or "namespace", item.embed))
 
         # Resolve scope and owner
         scope = item.scope or "namespace"
@@ -286,6 +290,9 @@ async def create_memories(
             asyncio.ensure_future(_notify_subscribers(room_name, item.key, item.created_by, 1))
 
     await db.commit()
+
+    for _scope, _embedded in _write_metrics:
+        record_memory_write(scope=_scope, embedded=_embedded)
 
     # Check async trigger after writes
     asyncio.ensure_future(_check_async_trigger(room_name, len(payload.items)))
@@ -409,6 +416,11 @@ async def search_memories(
 
     Search uses the pgvector index.
     """
+    import time as _time
+
+    from app.services.metrics import record_memory_search
+
+    _search_t0 = _time.monotonic()
     await _get_room(room_name, db)
 
     query_embedding = await asyncio.to_thread(embed_text, payload.query)
@@ -456,6 +468,10 @@ async def search_memories(
         )
         results.append(MemorySearchResult(memory=memory_read, similarity=similarity))
 
+    record_memory_search(
+        duration_ms=(_time.monotonic() - _search_t0) * 1000,
+        results_returned=len(results),
+    )
     return MemorySearchResponse(results=results, total=len(results))
 
 

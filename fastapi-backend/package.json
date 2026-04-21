@@ -10,6 +10,7 @@
     "lint:fix": "uv run ruff check . --fix",
     "migrate":  "uv run alembic upgrade head",
     "openapi":  "uv run python -c \"from app.main import app; import json; print(json.dumps(app.openapi(), indent=2))\" > ../docs/openapi.json",
-    "clean":    "rm -rf __pycache__ .pytest_cache logs"
+    "clean":    "rm -rf __pycache__ .pytest_cache logs",
+    "update:pricing": "uv run python ../scripts/update-pricing.py"
   }
 }

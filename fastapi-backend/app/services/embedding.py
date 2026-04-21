@@ -67,17 +67,40 @@ def _stub_vector(seed: str) -> list[float]:
 
 def embed_text(text: str) -> list[float]:
     """Generate embedding for a single text string."""
+    import time as _time
+
+    from app.services.metrics import record_embedding, record_embedding_latency
+
+    t0 = _time.monotonic()
     if _STUB:
-        return _stub_vector(text)
-    # fastembed.embed() returns a generator of numpy arrays;
-    # .tolist() converts np.float32 → Python float for pgvector compatibility.
-    return next(iter(_get_model().embed([text]))).tolist()
+        result = _stub_vector(text)
+    else:
+        # fastembed.embed() returns a generator of numpy arrays;
+        # .tolist() converts np.float32 → Python float for pgvector compatibility.
+        result = next(iter(_get_model().embed([text]))).tolist()
+    elapsed_ms = (_time.monotonic() - t0) * 1000
+    record_embedding(source="local", text_length=len(text))
+    record_embedding_latency(elapsed_ms)
+    return result
 
 
 def embed_batch(texts: list[str]) -> list[list[float]]:
     """Generate embeddings for multiple texts."""
     if not texts:
         return []
+
+    import time as _time
+
+    from app.services.metrics import record_embedding_batch, record_embedding_latency
+
+    t0 = _time.monotonic()
     if _STUB:
-        return [_stub_vector(t) for t in texts]
-    return [e.tolist() for e in _get_model().embed(texts)]
+        result = [_stub_vector(t) for t in texts]
+    else:
+        result = [e.tolist() for e in _get_model().embed(texts)]
+    elapsed_ms = (_time.monotonic() - t0) * 1000
+    record_embedding_batch(
+        source="local", count=len(texts), total_text_length=sum(len(t) for t in texts)
+    )
+    record_embedding_latency(elapsed_ms)
+    return result
