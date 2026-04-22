@@ -7,13 +7,14 @@ import logging
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_async_session
-from app.models import Room
+from app.models import Room, Session
 from app.schemas import RoomCreate, RoomRead
+from app.services import coordination
 from app.services.filesystem import ensure_room_structure, get_room_dir, remove_room_dir
 
 logger = logging.getLogger(__name__)
@@ -270,7 +271,25 @@ async def delete_room(
     room_name: str,
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Delete a room by name."""
+    """Delete a room and cascade to its child session rooms.
+
+    Cleanup order is important to avoid stale state firing against
+    already-deleted rows:
+
+      1. Enumerate child session rooms (``parent_namespace == room_name``).
+      2. Tear down all in-memory CFN coordination state for the namespace
+         and its children (cancels pending join timers and active round
+         timeouts, posts ``coordination_consensus broken=True`` to any
+         SSE subscribers).
+      3. Delete child ``Session`` rows, then child ``Room`` rows.
+      4. Mark any active child rooms as ``coordination_state="failed"``
+         (defensive — if step 3 didn't catch them due to a race, the
+         state still reflects reality).
+      5. Delete the parent ``Room`` row.
+      6. Remove the filesystem directory.
+      7. Delete the MAS in the CFN mgmt plane (non-fatal, last so a CFN
+         error doesn't block the local cleanup).
+    """
     if room_name in RESERVED_ROOMS:
         raise HTTPException(status_code=400, detail=f"'{room_name}' is a reserved system room")
 
@@ -279,12 +298,54 @@ async def delete_room(
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
 
-    # Delete MAS from CFN mgmt plane (non-fatal)
-    await _sync_delete_mas(room)
+    # 1. Enumerate child session rooms.
+    child_result = await session.execute(
+        select(Room.name).where(Room.parent_namespace == room_name)
+    )
+    child_room_names = [r for r in child_result.scalars().all()]
 
+    # 2. Tear down in-memory coordination state for namespace + all children.
+    # Do this BEFORE the DB deletes so any in-flight `_run_tick` that resolves
+    # against the DB sees the row gone and bails, rather than firing ticks
+    # against a half-deleted state.
+    try:
+        await coordination.teardown_for_namespace(room_name, child_room_names)
+    except Exception as exc:
+        # Teardown is best-effort cleanup; log but don't block the delete.
+        logger.warning(
+            "coordination.teardown_for_namespace failed for %s: %s", room_name, exc
+        )
+
+    # 3. Delete child Session rows for every child room (and the parent, in
+    #    case anyone joined it directly), then the child Room rows.
+    if child_room_names:
+        await session.execute(
+            delete(Session).where(Session.room_name.in_(child_room_names))
+        )
+    await session.execute(delete(Session).where(Session.room_name == room_name))
+
+    # 4. Defensive: mark any still-existing child rooms as failed before delete
+    #    so any concurrent reader sees a consistent state.
+    if child_room_names:
+        await session.execute(
+            update(Room)
+            .where(Room.name.in_(child_room_names))
+            .values(coordination_state="failed")
+        )
+        await session.execute(delete(Room).where(Room.name.in_(child_room_names)))
+
+    # 5. Delete the parent room row.
     await session.delete(room)
     await session.commit()
 
-    # Remove filesystem directory
+    # 6. Remove filesystem directory for the parent (children share the parent
+    #    namespace's filesystem layout — no separate per-session directory).
     remove_room_dir(room_name)
-    logger.info("Removed room directory for: %s", room_name)
+    logger.info(
+        "Removed room %s and %d child session room(s)",
+        room_name,
+        len(child_room_names),
+    )
+
+    # 7. Delete MAS from CFN mgmt plane (non-fatal, last).
+    await _sync_delete_mas(room)

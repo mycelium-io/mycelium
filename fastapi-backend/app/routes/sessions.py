@@ -172,7 +172,7 @@ async def join_room(
         if claimed is not None:
             from app.services import coordination
 
-            asyncio.ensure_future(coordination.start_join_timer(target_room.name, deadline))
+            coordination.schedule_join_timer(target_room.name, deadline)
             logger.info(
                 "Coordination join timer started for session %s (deadline=%s)",
                 target_room.name,

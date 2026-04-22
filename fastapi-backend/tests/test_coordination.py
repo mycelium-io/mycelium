@@ -427,3 +427,111 @@ async def test_timeout_status_posts_broken_consensus():
     assert consensus["broken"] is True
 
     _cfn_state.clear()
+
+
+# ── teardown_for_namespace ───────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_teardown_cancels_pending_join_timer():
+    """A pending start_join_timer task should be cancelled, not allowed to run."""
+    from datetime import timedelta
+
+    fired = asyncio.Event()
+
+    async def slow_run_tick(_room: str, tick: int) -> None:  # noqa: ARG001
+        fired.set()
+
+    with patch.object(coord, "_run_tick", new=AsyncMock(side_effect=slow_run_tick)):
+        deadline = coord._utcnow() + timedelta(seconds=10)
+        task = coord.schedule_join_timer("ns-a", deadline)
+        assert "ns-a" in coord._join_timer_tasks
+
+        # Tear down before the timer fires.
+        await coord.teardown_for_namespace("ns-a", [])
+
+        # Task should be cancelled and removed from registry.
+        await asyncio.sleep(0.05)
+        assert task.cancelled() or task.done()
+        assert "ns-a" not in coord._join_timer_tasks
+        assert not fired.is_set()
+
+
+@pytest.mark.asyncio
+async def test_teardown_cancels_round_timeout_and_pops_state():
+    """Active CFN round state must be removed and its watchdog cancelled."""
+    # Build a never-ending round_timeout_task to simulate an in-flight round.
+    async def never() -> None:
+        await asyncio.sleep(3600)
+
+    timeout_task = asyncio.ensure_future(never())
+    state = _CfnRoundState(
+        session_id="sess",
+        workspace_id="ws",
+        mas_id="mas",
+        agents=["alice", "bob"],
+        pending_replies={"alice": None, "bob": None},
+    )
+    state.round_timeout_task = timeout_task
+    _cfn_state["ns-b:session:1"] = state
+
+    with patch.object(coord, "_post_message", new=AsyncMock()) as post:
+        await coord.teardown_for_namespace("ns-b", ["ns-b:session:1"])
+
+    assert "ns-b:session:1" not in _cfn_state
+    await asyncio.sleep(0)
+    assert timeout_task.cancelled()
+
+    # An abort consensus message should have been posted to the child room
+    # (the only room that had active CFN state).
+    assert post.call_count == 1
+    call = post.call_args_list[0]
+    assert call.args[0] == "ns-b:session:1"
+    assert call.kwargs["message_type"] == "coordination_consensus"
+    body = json.loads(call.kwargs["content"])
+    assert body["broken"] is True
+    assert body["assignments"] == {}
+
+
+@pytest.mark.asyncio
+async def test_teardown_skips_post_for_rooms_without_cfn_state():
+    """Rooms that never started negotiating should NOT receive an abort consensus."""
+    # No state for this namespace at all.
+    with patch.object(coord, "_post_message", new=AsyncMock()) as post:
+        await coord.teardown_for_namespace("ns-c", ["ns-c:session:x"])
+
+    assert post.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_teardown_handles_post_message_exceptions_gracefully():
+    """A broken _post_message call must not propagate; teardown still completes."""
+    state = _CfnRoundState(
+        session_id="sess",
+        workspace_id="ws",
+        mas_id="mas",
+        agents=["alice"],
+        pending_replies={"alice": None},
+    )
+    _cfn_state["ns-d"] = state
+
+    async def boom(*_args, **_kwargs):
+        raise RuntimeError("simulated post failure")
+
+    with patch.object(coord, "_post_message", new=AsyncMock(side_effect=boom)):
+        # Must not raise.
+        await coord.teardown_for_namespace("ns-d", [])
+
+    assert "ns-d" not in _cfn_state
+
+
+@pytest.mark.asyncio
+async def test_schedule_join_timer_clears_registry_on_completion():
+    """When the timer task completes naturally, the registry slot is cleared."""
+    with patch.object(coord, "_run_tick", new=AsyncMock()):
+        deadline = coord._utcnow()  # already passed → run_tick fires immediately
+        task = coord.schedule_join_timer("ns-e", deadline)
+        await task
+        # Allow the done-callback to run.
+        await asyncio.sleep(0)
+        assert "ns-e" not in coord._join_timer_tasks

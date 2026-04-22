@@ -61,6 +61,11 @@ class _CfnRoundState:
 # {room_name: _CfnRoundState}
 _cfn_state: dict[str, _CfnRoundState] = {}
 
+# {room_name: asyncio.Task}
+# Tracks in-flight `start_join_timer` tasks so room deletion can cancel them
+# before the join window fires `_run_tick` for an already-deleted room.
+_join_timer_tasks: dict[str, asyncio.Task] = {}
+
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
@@ -115,6 +120,26 @@ async def start_join_timer(room_name: str, deadline: datetime) -> None:
     if sleep_secs > 0:
         await asyncio.sleep(sleep_secs)
     await _run_tick(room_name, tick=0)
+
+
+def schedule_join_timer(room_name: str, deadline: datetime) -> asyncio.Task:
+    """Schedule ``start_join_timer`` and register the task for later cancellation.
+
+    Callers should prefer this over a bare ``asyncio.ensure_future(start_join_timer(...))``
+    so :func:`teardown_for_namespace` can cancel a still-pending join window
+    when the room is deleted.
+    """
+    task = asyncio.ensure_future(start_join_timer(room_name, deadline))
+    _join_timer_tasks[room_name] = task
+
+    def _clear(t: asyncio.Task, _name: str = room_name) -> None:
+        # Remove only if this exact task is still the registered one — guards
+        # against a re-scheduled timer for the same room replacing us.
+        if _join_timer_tasks.get(_name) is t:
+            _join_timer_tasks.pop(_name, None)
+
+    task.add_done_callback(_clear)
+    return task
 
 
 async def _run_tick(room_name: str, tick: int) -> None:
@@ -453,6 +478,78 @@ async def _cfn_decide_round(room_name: str) -> None:
         logger.exception("Unhandled error processing CFN decide response for %s", room_name)
         await _finish_cfn(
             room_name, plan=f"CFN response processing failed — {exc}", assignments={}, broken=True
+        )
+
+
+async def teardown_for_namespace(
+    namespace_name: str, child_room_names: list[str]
+) -> None:
+    """Tear down all in-memory CFN state for a namespace and its child sessions.
+
+    Called from ``DELETE /rooms/{room_name}`` to prevent cross-test (and
+    cross-deletion) interference: without this, a deleted room's
+    ``_cfn_state`` entry keeps its ``round_timeout_task`` alive and continues
+    posting ``coordination_tick`` messages to the (recreated) room, and a
+    pending ``start_join_timer`` will fire ``_run_tick`` against a now-empty
+    DB which produces a stream of confused log entries.
+
+    For every active room (the namespace itself plus every child session
+    room provided), this:
+
+      1. Cancels the pending ``start_join_timer`` task, if any.
+      2. Cancels the active CFN ``round_timeout_task`` and pops the
+         ``_cfn_state`` entry.
+      3. Posts a ``coordination_consensus`` message with ``broken=True`` so
+         any SSE subscribers (agents waiting on a tick) are notified the
+         negotiation has been aborted.
+
+    The caller is responsible for the actual DB row deletes.
+    """
+    affected = [namespace_name, *child_room_names]
+    for room_name in affected:
+        # 1. Cancel any pending join timer.
+        join_task = _join_timer_tasks.pop(room_name, None)
+        if join_task is not None and not join_task.done():
+            join_task.cancel()
+
+        # 2. Cancel any active CFN round and drop the in-memory state.
+        state = _cfn_state.pop(room_name, None)
+        had_active_cfn = False
+        if state is not None:
+            had_active_cfn = True
+            if state.round_timeout_task and not state.round_timeout_task.done():
+                state.round_timeout_task.cancel()
+
+        # 3. Notify any SSE subscribers that the negotiation was aborted.
+        # We only send this for rooms that had active CFN state — there is no
+        # point waking subscribers on rooms that never started negotiating.
+        if had_active_cfn:
+            try:
+                await _post_message(
+                    room_name,
+                    message_type="coordination_consensus",
+                    content=json.dumps(
+                        {
+                            "plan": "Coordination aborted — room deleted",
+                            "assignments": {},
+                            "broken": True,
+                        }
+                    ),
+                )
+            except Exception as exc:
+                # Posting to a room that's mid-delete can race with the row
+                # being removed; that's fine, just log and continue.
+                logger.warning(
+                    "teardown_for_namespace: failed to post abort notice for %s: %s",
+                    room_name,
+                    exc,
+                )
+
+    if affected:
+        logger.info(
+            "Coordination teardown complete for namespace %s (cleared %d rooms)",
+            namespace_name,
+            len(affected),
         )
 
 
