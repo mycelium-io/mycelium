@@ -481,9 +481,7 @@ async def _cfn_decide_round(room_name: str) -> None:
         )
 
 
-async def teardown_for_namespace(
-    namespace_name: str, child_room_names: list[str]
-) -> None:
+async def teardown_for_namespace(namespace_name: str, child_room_names: list[str]) -> None:
     """Tear down all in-memory CFN state for a namespace and its child sessions.
 
     Called from ``DELETE /rooms/{room_name}`` to prevent cross-test (and

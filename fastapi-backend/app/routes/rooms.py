@@ -312,25 +312,19 @@ async def delete_room(
         await coordination.teardown_for_namespace(room_name, child_room_names)
     except Exception as exc:
         # Teardown is best-effort cleanup; log but don't block the delete.
-        logger.warning(
-            "coordination.teardown_for_namespace failed for %s: %s", room_name, exc
-        )
+        logger.warning("coordination.teardown_for_namespace failed for %s: %s", room_name, exc)
 
     # 3. Delete child Session rows for every child room (and the parent, in
     #    case anyone joined it directly), then the child Room rows.
     if child_room_names:
-        await session.execute(
-            delete(Session).where(Session.room_name.in_(child_room_names))
-        )
+        await session.execute(delete(Session).where(Session.room_name.in_(child_room_names)))
     await session.execute(delete(Session).where(Session.room_name == room_name))
 
     # 4. Defensive: mark any still-existing child rooms as failed before delete
     #    so any concurrent reader sees a consistent state.
     if child_room_names:
         await session.execute(
-            update(Room)
-            .where(Room.name.in_(child_room_names))
-            .values(coordination_state="failed")
+            update(Room).where(Room.name.in_(child_room_names)).values(coordination_state="failed")
         )
         await session.execute(delete(Room).where(Room.name.in_(child_room_names)))
 

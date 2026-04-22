@@ -460,6 +460,7 @@ async def test_teardown_cancels_pending_join_timer():
 @pytest.mark.asyncio
 async def test_teardown_cancels_round_timeout_and_pops_state():
     """Active CFN round state must be removed and its watchdog cancelled."""
+
     # Build a never-ending round_timeout_task to simulate an in-flight round.
     async def never() -> None:
         await asyncio.sleep(3600)
