@@ -91,6 +91,10 @@ jobs:
         working-directory: mycelium-cli
         run: uv run ruff check src/
 
+      - name: Format check
+        working-directory: mycelium-cli
+        run: uv run ruff format --check src/
+
   test-openclaw-plugin:
     name: OpenClaw plugin tests
     runs-on: ubuntu-latest
