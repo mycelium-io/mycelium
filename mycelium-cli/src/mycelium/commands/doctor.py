@@ -48,6 +48,7 @@ def _is_local_backend(api_url: str) -> bool:
     host = (urlparse(api_url).hostname or "").lower()
     return host in ("localhost", "127.0.0.1", "::1", "0.0.0.0")
 
+
 # ── Individual checks ────────────────────────────────────────────────────────
 
 
