@@ -387,7 +387,10 @@ async def _fan_out_cfn_messages(
         if is_broadcast and all_agents:
             logger.info(
                 "CFN_TRACE fanout_broadcast room=%s round=%s next_proposer=%s agents=%s",
-                room_name, payload.get("round"), next_proposer_id, all_agents,
+                room_name,
+                payload.get("round"),
+                next_proposer_id,
+                all_agents,
             )
             # Fan out one tick per agent; mark who is authorised to counter_offer.
             for handle in all_agents:
@@ -498,7 +501,9 @@ async def _cfn_decide_round(room_name: str) -> None:
 
         logger.info(
             "CFN_TRACE decide_result room=%s status=%s round=%s",
-            room_name, status, payload.get("round"),
+            room_name,
+            status,
+            payload.get("round"),
         )
 
         if status in ("agreed",):
@@ -593,7 +598,9 @@ async def on_agent_response(room_name: str, handle: str, content: str) -> None:
         if handle not in cfn.pending_replies:
             logger.info(
                 "CFN_TRACE reply_unexpected room=%s handle=%s (not in pending=%s)",
-                room_name, handle, list(cfn.pending_replies.keys()),
+                room_name,
+                handle,
+                list(cfn.pending_replies.keys()),
             )
         if handle in cfn.pending_replies:
             # Only a previously-empty slot counts as a "new" reply for extension
@@ -604,8 +611,12 @@ async def on_agent_response(room_name: str, handle: str, content: str) -> None:
             received = sum(1 for v in cfn.pending_replies.values() if v is not None)
             logger.info(
                 "CFN_TRACE reply_collected room=%s handle=%s action=%s received=%d/%d new=%s",
-                room_name, handle, reply_data.get("action"),
-                received, len(cfn.pending_replies), is_new_reply,
+                room_name,
+                handle,
+                reply_data.get("action"),
+                received,
+                len(cfn.pending_replies),
+                is_new_reply,
             )
             all_received = all(v is not None for v in cfn.pending_replies.values())
             if all_received:

@@ -100,8 +100,11 @@ async def send_message(
         content_preview = msg.content[:120].replace("\n", "\\n")
         logger.info(
             "CFN_TRACE msg_in room=%s sender=%s type=%s recipient=%s content=%r",
-            room_name, msg.sender_handle, msg.message_type,
-            msg.recipient_handle, content_preview,
+            room_name,
+            msg.sender_handle,
+            msg.message_type,
+            msg.recipient_handle,
+            content_preview,
         )
         asyncio.ensure_future(
             coordination.on_agent_response(room_name, msg.sender_handle, msg.content)
