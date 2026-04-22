@@ -42,9 +42,21 @@ class Settings(BaseSettings):
     # How long to wait for additional agents to join after the first agent joins
     # a session before CognitiveEngine fires tick-0 (starts negotiation).
     COORDINATION_JOIN_WINDOW_SECONDS: int = 30
-    # Per-round timeout: how long CognitiveEngine waits for an agent to reply
-    # during a negotiation round before falling back to the safe default.
-    COORDINATION_TICK_TIMEOUT_SECONDS: int = 30
+    # Per-agent base budget for the per-round watchdog. The initial deadline
+    # for a round is BASE * N + STARTUP. Set high enough to cover a typical
+    # LLM agent's read-tick → narrate → run-CLI cycle (15-60s).
+    COORDINATION_TICK_TIMEOUT_SECONDS: int = 45
+    # Constant added on top of BASE * N for the initial round deadline. Covers
+    # gateway routing, model cold start, and the first network leg.
+    COORDINATION_ROUND_STARTUP_SECONDS: int = 30
+    # When a new (real, non-synthesised) reply arrives mid-round, extend the
+    # watchdog by EXTENSION * remaining_handles, but never less than FLOOR.
+    # Bounded above by COORDINATION_ROUND_MAX_SECONDS.
+    COORDINATION_ROUND_EXTENSION_PER_REMAINING_SECONDS: int = 30
+    COORDINATION_ROUND_EXTENSION_FLOOR_SECONDS: int = 20
+    # Hard cap on total wall time per round, regardless of activity. Prevents
+    # one wedged agent from blocking the negotiation indefinitely.
+    COORDINATION_ROUND_MAX_SECONDS: int = 300
 
     @field_validator("LLM_BASE_URL", mode="before")
     @classmethod
@@ -59,7 +71,27 @@ class Settings(BaseSettings):
     @classmethod
     def _coerce_tick_timeout(cls, v: object) -> object:
         if v == "" or v is None:
-            return 30
+            return 45
+        return v
+
+    _ROUND_TIMER_DEFAULTS = {
+        "COORDINATION_ROUND_STARTUP_SECONDS": 30,
+        "COORDINATION_ROUND_EXTENSION_PER_REMAINING_SECONDS": 30,
+        "COORDINATION_ROUND_EXTENSION_FLOOR_SECONDS": 20,
+        "COORDINATION_ROUND_MAX_SECONDS": 300,
+    }
+
+    @field_validator(
+        "COORDINATION_ROUND_STARTUP_SECONDS",
+        "COORDINATION_ROUND_EXTENSION_PER_REMAINING_SECONDS",
+        "COORDINATION_ROUND_EXTENSION_FLOOR_SECONDS",
+        "COORDINATION_ROUND_MAX_SECONDS",
+        mode="before",
+    )
+    @classmethod
+    def _coerce_round_timer_int(cls, v: object, info) -> object:  # type: ignore[no-untyped-def]
+        if v == "" or v is None:
+            return cls._ROUND_TIMER_DEFAULTS[info.field_name]
         return v
 
     # Filesystem-native memory storage

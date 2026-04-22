@@ -40,10 +40,20 @@ logger = logging.getLogger(__name__)
 # ── CFN mode state ─────────────────────────────────────────────────────────────
 
 
-# How long to wait for agent replies before calling /decide with whatever we have.
-# The IOC's BatchCallbackRunner uses a 30s per-round timeout; we fire slightly earlier
-# so the backend stays in sync with the IOC's internal loop.
-_CFN_ROUND_TIMEOUT_SECS = 25
+# Adaptive per-round watchdog (see _round_watchdog / _extend_round_timeout).
+#
+# History: this used to be a single fixed 25s asyncio.sleep that fired
+# unconditionally after every round opened, regardless of whether real replies
+# were still landing. With slow LLM agents (15-60s typical turn) that timer
+# always pre-empted the natural "all replies received" path, leaving N-1
+# pending_replies as None — which _cfn_decide_round then synthesised as
+# "reject" before shipping to CFN. CFN's consensus rule (all N must accept)
+# then never fired for 3+-agent LLM rooms; see issue #162.
+#
+# The watchdog now opens with a generous initial deadline scaled by N, then
+# *extends* every time a new real reply arrives — fast rounds still finish
+# fast, slow rounds finish when all real replies are in, and only a hard cap
+# (COORDINATION_ROUND_MAX_SECONDS) bounds total wall time.
 
 
 @dataclass
@@ -56,6 +66,10 @@ class _CfnRoundState:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     round_timeout_task: asyncio.Task | None = field(default=None)
     deciding: bool = field(default=False)  # guard against double-decide
+    # Wall-clock when the current round opened (set by _reset_round_timeout).
+    # Used by _extend_round_timeout to enforce COORDINATION_ROUND_MAX_SECONDS
+    # across multiple extension cycles.
+    round_started_monotonic: float = field(default=0.0)
 
 
 # {room_name: _CfnRoundState}
@@ -250,25 +264,91 @@ async def _run_cfn_negotiation(
     _reset_round_timeout(room_name, state)
 
 
+def _initial_round_budget_seconds(n_agents: int) -> float:
+    """Return the initial wall-clock budget for a round opened with N agents."""
+    base = max(1, settings.COORDINATION_TICK_TIMEOUT_SECONDS)
+    startup = max(0, settings.COORDINATION_ROUND_STARTUP_SECONDS)
+    cap = max(base, settings.COORDINATION_ROUND_MAX_SECONDS)
+    return min(float(cap), float(startup + base * max(1, n_agents)))
+
+
+def _extension_seconds(remaining: int) -> float:
+    """Return the extension applied each time a new real reply lands mid-round."""
+    per = max(0, settings.COORDINATION_ROUND_EXTENSION_PER_REMAINING_SECONDS)
+    floor = max(1, settings.COORDINATION_ROUND_EXTENSION_FLOOR_SECONDS)
+    return float(max(floor, per * max(1, remaining)))
+
+
 def _reset_round_timeout(room_name: str, state: "_CfnRoundState") -> None:
-    """Cancel any existing round timeout and start a new one."""
+    """Cancel any existing round timeout and open a fresh adaptive watchdog.
+
+    Called on round-open (after _fan_out_cfn_messages) and after _cfn_decide_round
+    transitions to "ongoing" with a new set of pending_replies.
+    """
     if state.round_timeout_task and not state.round_timeout_task.done():
         state.round_timeout_task.cancel()
-    state.round_timeout_task = asyncio.ensure_future(_round_timeout(room_name))
+    n = len(state.pending_replies) or len(state.agents) or 1
+    state.round_started_monotonic = asyncio.get_event_loop().time()
+    delay = _initial_round_budget_seconds(n)
+    state.round_timeout_task = asyncio.ensure_future(_round_watchdog(room_name, delay))
 
 
-async def _round_timeout(room_name: str) -> None:
-    """Fire /decide with whatever replies exist after _CFN_ROUND_TIMEOUT_SECS.
+def _extend_round_timeout(room_name: str, state: "_CfnRoundState") -> None:
+    """Restart the watchdog with a shorter extension after a new real reply.
 
-    The IOC's BatchCallbackRunner uses a 30s per-round timeout and auto-advances
-    when it fires.  We call /decide slightly earlier so the backend stays in sync
-    with the IOC's internal loop rather than waiting forever for all replies.
+    Fast rounds (all replies in quickly) never see this — on_agent_response cancels
+    the watchdog directly when the last reply lands and triggers _cfn_decide_round.
+    Slow rounds get extra time per outstanding handle, capped by
+    COORDINATION_ROUND_MAX_SECONDS measured from round-open.
     """
-    await asyncio.sleep(_CFN_ROUND_TIMEOUT_SECS)
+    if state.round_timeout_task and state.round_timeout_task.done():
+        # Watchdog already fired — nothing to extend; _cfn_decide_round is in flight.
+        return
+    remaining = sum(1 for v in state.pending_replies.values() if v is None)
+    if remaining <= 0:
+        return
+    elapsed = asyncio.get_event_loop().time() - state.round_started_monotonic
+    cap = max(1, settings.COORDINATION_ROUND_MAX_SECONDS)
+    budget_left = cap - elapsed
+    if budget_left <= 0:
+        # Hard cap already exceeded; let the existing watchdog fire on schedule.
+        return
+    extension = min(_extension_seconds(remaining), budget_left)
+    if state.round_timeout_task and not state.round_timeout_task.done():
+        state.round_timeout_task.cancel()
+    state.round_timeout_task = asyncio.ensure_future(_round_watchdog(room_name, extension))
+
+
+async def _round_watchdog(room_name: str, delay: float) -> None:
+    """Sleep `delay` seconds, then fire /decide with whatever replies exist.
+
+    On firing, log the synthesised handles explicitly so operators can see *why*
+    a consensus failure happened (per the bug report's "defensive instrumentation"
+    recommendation in issue #162).
+    """
+    try:
+        await asyncio.sleep(delay)
+    except asyncio.CancelledError:
+        return
     state = _cfn_state.get(room_name)
     if not state:
         return
-    logger.debug("CFN round timeout fired for %s — calling decide with partial replies", room_name)
+    synthesised = [h for h, v in state.pending_replies.items() if v is None]
+    if synthesised:
+        logger.warning(
+            "CFN round watchdog fired for %s after %.1fs — synthesising reject for %d/%d handles: %s",
+            room_name,
+            delay,
+            len(synthesised),
+            len(state.pending_replies),
+            synthesised,
+        )
+    else:
+        logger.debug(
+            "CFN round watchdog fired for %s after %.1fs — all replies present, calling decide",
+            room_name,
+            delay,
+        )
     await _cfn_decide_round(room_name)
 
 
@@ -305,6 +385,10 @@ async def _fan_out_cfn_messages(
         next_proposer_id = payload.get("next_proposer_id")
 
         if is_broadcast and all_agents:
+            logger.info(
+                "CFN_TRACE fanout_broadcast room=%s round=%s next_proposer=%s agents=%s",
+                room_name, payload.get("round"), next_proposer_id, all_agents,
+            )
             # Fan out one tick per agent; mark who is authorised to counter_offer.
             for handle in all_agents:
                 await _post_message(
@@ -379,6 +463,11 @@ async def _cfn_decide_round(room_name: str) -> None:
         else:
             agent_replies.append(reply_data)
 
+    logger.info(
+        "CFN_TRACE decide_call room=%s replies=%s",
+        room_name,
+        [(r.get("agent_id"), r.get("action")) for r in agent_replies],
+    )
     try:
         result = await decide_negotiation(
             session_id=state.session_id,
@@ -406,6 +495,11 @@ async def _cfn_decide_round(room_name: str) -> None:
         # Fall back to top-level keys for backward compatibility.
         payload = result.get("payload", {})
         status = payload.get("status", result.get("status", ""))
+
+        logger.info(
+            "CFN_TRACE decide_result room=%s status=%s round=%s",
+            room_name, status, payload.get("round"),
+        )
 
         if status in ("agreed",):
             final_result = result.get("final_result", {})
@@ -494,20 +588,32 @@ async def on_agent_response(room_name: str, handle: str, content: str) -> None:
         return
 
     should_decide = False
+    is_new_reply = False
     async with cfn.lock:
+        if handle not in cfn.pending_replies:
+            logger.info(
+                "CFN_TRACE reply_unexpected room=%s handle=%s (not in pending=%s)",
+                room_name, handle, list(cfn.pending_replies.keys()),
+            )
         if handle in cfn.pending_replies:
+            # Only a previously-empty slot counts as a "new" reply for extension
+            # purposes; agents that resubmit shouldn't keep stretching the round.
+            is_new_reply = cfn.pending_replies[handle] is None
             reply_data = _parse_agent_reply(handle, content)
             cfn.pending_replies[handle] = reply_data
-            logger.debug(
-                "CFN room %s: collected reply from %s (%d/%d)",
-                room_name,
-                handle,
-                sum(1 for v in cfn.pending_replies.values() if v is not None),
-                len(cfn.pending_replies),
+            received = sum(1 for v in cfn.pending_replies.values() if v is not None)
+            logger.info(
+                "CFN_TRACE reply_collected room=%s handle=%s action=%s received=%d/%d new=%s",
+                room_name, handle, reply_data.get("action"),
+                received, len(cfn.pending_replies), is_new_reply,
             )
             all_received = all(v is not None for v in cfn.pending_replies.values())
             if all_received:
                 should_decide = True
+            elif is_new_reply:
+                # Real reply landed but more outstanding — extend the watchdog
+                # under the lock so we don't race a parallel reply.
+                _extend_round_timeout(room_name, cfn)
     if should_decide:
         # All replies in — cancel the timeout so it doesn't double-fire
         if cfn.round_timeout_task and not cfn.round_timeout_task.done():
