@@ -439,7 +439,7 @@ async def test_teardown_cancels_pending_join_timer():
 
     fired = asyncio.Event()
 
-    async def slow_run_tick(_room: str, tick: int) -> None:  # noqa: ARG001
+    async def slow_run_tick(_room: str, tick: int) -> None:
         fired.set()
 
     with patch.object(coord, "_run_tick", new=AsyncMock(side_effect=slow_run_tick)):
