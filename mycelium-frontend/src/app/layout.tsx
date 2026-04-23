@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Copyright 2026 Julia Valenti
+// Copyright 2026 Cisco Systems, Inc. and its affiliates
 
 import type { Metadata } from "next";
 import "./globals.css";
