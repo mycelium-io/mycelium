@@ -56,6 +56,114 @@ async def _expand_slim(payload: dict) -> dict:
     return payload
 
 
+async def _open_listen_conn() -> asyncpg.Connection:
+    """Open a raw asyncpg connection for LISTEN/NOTIFY use.
+
+    Each SSE stream gets its own dedicated connection because asyncpg's
+    LISTEN occupies the connection for the lifetime of the subscription.
+    Caller is responsible for closing the connection — see _close_listen_conn.
+    """
+    parsed = urlparse(settings.DATABASE_URL)
+    return await asyncpg.connect(
+        host=parsed.hostname,
+        port=parsed.port or 5432,
+        user=parsed.username,
+        password=parsed.password,
+        database=parsed.path.lstrip("/"),
+    )
+
+
+async def _close_listen_conn(
+    conn: asyncpg.Connection | None,
+    channel: str,
+    callback,
+) -> None:
+    """Best-effort UNLISTEN + remove_listener + close. Never raises."""
+    if conn is None:
+        return
+    # Each step is independently guarded so a failure in one (e.g. the
+    # connection is already half-closed) doesn't block the others.
+    try:
+        if not conn.is_closed():
+            await conn.execute(f'UNLISTEN "{channel}"')
+    except Exception as e:
+        logger.debug(f"SSE cleanup: UNLISTEN {channel} failed: {e}")
+    try:
+        conn.remove_listener(channel, callback)
+    except Exception as e:
+        logger.debug(f"SSE cleanup: remove_listener {channel} failed: {e}")
+    try:
+        if not conn.is_closed():
+            await conn.close()
+    except Exception as e:
+        logger.debug(f"SSE cleanup: close failed for {channel}: {e}")
+
+
+async def _stream_with_disconnect_watcher(
+    request: Request,
+    queue: asyncio.Queue,
+    transform,
+):
+    """SSE generator that races queue.get() against client-disconnect.
+
+    The original implementation only checked `request.is_disconnected()` once
+    every 15 seconds (between blocking queue gets), so a hung-up client could
+    leave the LISTEN connection pinned to Postgres for arbitrary durations.
+    The connection leak compounded across tests because each leaked LISTEN
+    holds a dedicated connection; we hit max_connections after a few dozen
+    test rooms.
+
+    The fix: spawn a watcher task that resolves when the client disconnects,
+    and `wait(..., FIRST_COMPLETED)` between it and the queue. The first one
+    to finish wakes us up; if it's the watcher, we exit and the surrounding
+    generator's `finally` runs cleanup immediately.
+    """
+
+    async def _watch_disconnect():
+        # Poll roughly twice per second — Starlette's receive channel is the
+        # only signal we have. is_disconnected() is cheap.
+        while True:
+            if await request.is_disconnected():
+                return
+            await asyncio.sleep(0.5)
+
+    yield "event: ping\ndata: {}\n\n"
+
+    disconnect_task = asyncio.create_task(_watch_disconnect())
+    try:
+        while True:
+            get_task = asyncio.create_task(queue.get())
+            try:
+                done, _ = await asyncio.wait(
+                    {get_task, disconnect_task},
+                    timeout=15.0,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+            except asyncio.CancelledError:
+                get_task.cancel()
+                raise
+
+            if disconnect_task in done:
+                get_task.cancel()
+                break
+
+            if not done:
+                # Timeout — emit keep-alive and loop. The keep-alive write is
+                # also our other disconnect signal: if the client is gone the
+                # write will fail and StreamingResponse will cancel us.
+                get_task.cancel()
+                yield ": keep-alive\n\n"
+                continue
+
+            # queue.get() completed
+            payload = get_task.result()
+            line = await transform(payload)
+            if line is not None:
+                yield line
+    finally:
+        disconnect_task.cancel()
+
+
 @router.get("/rooms/{room_name}/messages/stream")
 async def stream_room_messages(room_name: str, request: Request):
     """
@@ -64,16 +172,8 @@ async def stream_room_messages(room_name: str, request: Request):
     Yields SSE events as messages arrive via Postgres NOTIFY.
     Connect with: curl -N http://localhost:8000/rooms/{room}/messages/stream
     """
-    parsed = urlparse(settings.DATABASE_URL)
-
     try:
-        conn: asyncpg.Connection = await asyncpg.connect(
-            host=parsed.hostname,
-            port=parsed.port or 5432,
-            user=parsed.username,
-            password=parsed.password,
-            database=parsed.path.lstrip("/"),
-        )
+        conn: asyncpg.Connection = await _open_listen_conn()
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Database unavailable: {e}") from e
 
@@ -88,40 +188,36 @@ async def stream_room_messages(room_name: str, request: Request):
     ) -> None:
         queue.put_nowait(payload)
 
-    await conn.add_listener(channel, _on_notify)
-    await conn.execute(f'LISTEN "{channel}"')
+    listener_added = False
+    try:
+        await conn.add_listener(channel, _on_notify)
+        listener_added = True
+        await conn.execute(f'LISTEN "{channel}"')
+    except Exception as e:
+        # If subscription setup fails, release the connection immediately —
+        # otherwise it leaks for the lifetime of the process.
+        await _close_listen_conn(conn, channel, _on_notify if listener_added else None)
+        raise HTTPException(status_code=503, detail=f"LISTEN setup failed: {e}") from e
+
     logger.debug(f"SSE stream opened for room: {room_name}")
+
+    async def _transform(payload: str) -> str | None:
+        try:
+            data = json.loads(payload)
+        except json.JSONDecodeError:
+            return None
+        if data.get("_slim"):
+            data = await _expand_slim(data)
+        return f"data: {json.dumps(data)}\n\n"
 
     async def event_generator():
         try:
-            # Send an initial ping so the client knows the stream is live
-            yield "event: ping\ndata: {}\n\n"
-
-            while True:
-                if await request.is_disconnected():
-                    break
-
-                try:
-                    payload = await asyncio.wait_for(queue.get(), timeout=15.0)
-                    try:
-                        data = json.loads(payload)
-                    except json.JSONDecodeError:
-                        continue
-                    if data.get("_slim"):
-                        data = await _expand_slim(data)
-                    yield f"data: {json.dumps(data)}\n\n"
-                except TimeoutError:
-                    yield ": keep-alive\n\n"
-
+            async for chunk in _stream_with_disconnect_watcher(request, queue, _transform):
+                yield chunk
         except asyncio.CancelledError:
             pass
         finally:
-            try:
-                await conn.execute(f'UNLISTEN "{channel}"')
-                await conn.remove_listener(channel, _on_notify)
-                await conn.close()
-            except Exception:
-                pass
+            await _close_listen_conn(conn, channel, _on_notify)
             logger.debug(f"SSE stream closed for room: {room_name}")
 
     return StreamingResponse(
@@ -143,16 +239,8 @@ async def stream_agent_events(handle: str, request: Request):
     this agent across all rooms — no room configuration required on the client.
     Connect with: curl -N http://localhost:8000/agents/{handle}/stream
     """
-    parsed = urlparse(settings.DATABASE_URL)
-
     try:
-        conn: asyncpg.Connection = await asyncpg.connect(
-            host=parsed.hostname,
-            port=parsed.port or 5432,
-            user=parsed.username,
-            password=parsed.password,
-            database=parsed.path.lstrip("/"),
-        )
+        conn: asyncpg.Connection = await _open_listen_conn()
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Database unavailable: {e}") from e
 
@@ -167,37 +255,32 @@ async def stream_agent_events(handle: str, request: Request):
     ) -> None:
         queue.put_nowait(payload)
 
-    await conn.add_listener(channel, _on_notify)
-    await conn.execute(f'LISTEN "{channel}"')
+    listener_added = False
+    try:
+        await conn.add_listener(channel, _on_notify)
+        listener_added = True
+        await conn.execute(f'LISTEN "{channel}"')
+    except Exception as e:
+        await _close_listen_conn(conn, channel, _on_notify if listener_added else None)
+        raise HTTPException(status_code=503, detail=f"LISTEN setup failed: {e}") from e
+
     logger.debug(f"SSE agent stream opened for: {handle}")
+
+    async def _transform(payload: str) -> str | None:
+        try:
+            json.loads(payload)
+        except json.JSONDecodeError:
+            return None
+        return f"data: {payload}\n\n"
 
     async def event_generator():
         try:
-            yield "event: ping\ndata: {}\n\n"
-
-            while True:
-                if await request.is_disconnected():
-                    break
-
-                try:
-                    payload = await asyncio.wait_for(queue.get(), timeout=15.0)
-                    try:
-                        json.loads(payload)
-                    except json.JSONDecodeError:
-                        continue
-                    yield f"data: {payload}\n\n"
-                except TimeoutError:
-                    yield ": keep-alive\n\n"
-
+            async for chunk in _stream_with_disconnect_watcher(request, queue, _transform):
+                yield chunk
         except asyncio.CancelledError:
             pass
         finally:
-            try:
-                await conn.execute(f'UNLISTEN "{channel}"')
-                await conn.remove_listener(channel, _on_notify)
-                await conn.close()
-            except Exception:
-                pass
+            await _close_listen_conn(conn, channel, _on_notify)
             logger.debug(f"SSE agent stream closed for: {handle}")
 
     return StreamingResponse(
