@@ -89,6 +89,8 @@ No external message broker, no separate vector DB, no Redis. One database.
 
 **Rooms are git-friendly** — commit `.mycelium/rooms/` to share context across machines. Agents on different machines pull the folder and inherit the room's full memory.
 
+**Hub-and-spoke deployments** — one machine runs the backend (the **hub**); other machines run only the CLI + agents (**spokes**) and connect to the hub over HTTPS/SSE. `mycelium doctor` auto-detects which role a node is playing based on `server.api_url`; pass `--mode hub` or `--mode spoke` to override. See [`docs/architecture.md`](mycelium-cli/src/mycelium/docs/architecture.md#topology) for details.
+
 Room folders use standard namespaces:
 
 ```

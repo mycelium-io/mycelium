@@ -1,5 +1,31 @@
 # Architecture
 
+## Topology
+
+Mycelium deployments follow a **hub-and-spoke** model:
+
+| Role  | What runs locally | When to use |
+|-------|-------------------|-------------|
+| **Hub**   | Full backend stack — FastAPI + AgensGraph (Postgres 16) + (optionally) the CFN management plane and cognition fabric node services. | Single-machine setups, the team's shared coordination server, or any node that owns the source-of-truth database. |
+| **Spoke** | CLI + agents only. Talks to a remote hub via HTTPS / SSE. No Docker containers, no local database. | Developer laptops, CI runners, edge agents — anywhere that should *participate* in coordination without hosting it. |
+
+Detection is automatic: if `server.api_url` in `~/.mycelium/config.toml`
+points to `localhost`/`127.0.0.1`, the node is a **hub**; otherwise it's a
+**spoke**. `mycelium doctor` uses this to skip checks that don't apply
+(Docker containers, runtime config drift, local CFN mgmt plane). Override
+the auto-detection with:
+
+```bash
+mycelium doctor --mode hub     # force hub checks
+mycelium doctor --mode spoke   # force spoke checks (skip local-only)
+mycelium doctor --mode auto    # default — detect from api_url
+```
+
+> **Terminology note.** Earlier releases used "leaf" instead of "spoke".
+> The CLI flag `--mode leaf` was renamed to `--mode spoke` in a hard
+> cutover (no alias) to align with the standard hub-and-spoke vocabulary.
+> If you have scripts that pass `--mode leaf`, update them to `--mode spoke`.
+
 ## Stack
 
 Everything runs on a single **AgensGraph** instance — a PostgreSQL 16 fork

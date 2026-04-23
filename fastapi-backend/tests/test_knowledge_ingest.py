@@ -190,28 +190,28 @@ async def test_ingest_cfn_http_status_error_preserves_code(
     assert resp.status_code == 503
 
 
-# ── Leaf-node ingest (room_name only, no workspace_id/mas_id) ─────────────────
+# ── Spoke-node ingest (room_name only, no workspace_id/mas_id) ────────────────
 
 
-async def test_ingest_leaf_node_resolves_ids_from_room(
+async def test_ingest_spoke_node_resolves_ids_from_room(
     client: AsyncClient,
     db_session: AsyncSession,
     mock_cfn,
     monkeypatch,
 ):
-    """Leaf nodes send only room_name; backend resolves workspace_id and mas_id."""
+    """Spoke nodes send only room_name; backend resolves workspace_id and mas_id."""
     monkeypatch.setattr("app.config.settings.WORKSPACE_ID", "settings-ws")
 
-    room = Room(name="leaf-room", mas_id="room-mas", workspace_id="room-ws")
+    room = Room(name="spoke-room", mas_id="room-mas", workspace_id="room-ws")
     db_session.add(room)
     await db_session.commit()
 
     resp = await client.post(
         "/api/knowledge/ingest",
         json={
-            "room_name": "leaf-room",
-            "agent_id": "leaf-agent",
-            "records": [{"response": "hello from leaf"}],
+            "room_name": "spoke-room",
+            "agent_id": "spoke-agent",
+            "records": [{"response": "hello from spoke"}],
         },
     )
     assert resp.status_code == 200
