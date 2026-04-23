@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Copyright 2026 Julia Valenti
+// Copyright 2026 Cisco Systems, Inc. and its affiliates
 
 /**
  * System-prompt text injected into every agent turn via before_agent_start.

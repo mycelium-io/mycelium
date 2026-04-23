@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Cisco Systems, Inc. and its affiliates
 """
 Tests for health checking: LLM key validation, database connectivity,
 embedding model status, version info, and the /health endpoint.

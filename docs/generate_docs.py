@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2026 Julia Valenti
+# Copyright 2026 Cisco Systems, Inc. and its affiliates
 
 """
 Generate docs/index.html from markdown source files + CLI @doc_ref decorators.

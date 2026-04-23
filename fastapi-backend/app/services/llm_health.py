@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Cisco Systems, Inc. and its affiliates
 """
 LLM health checking: key format validation, masked key hints, and
 zero-cost provider probes using read-only model-list endpoints.

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2026 Julia Valenti
+# Copyright 2026 Cisco Systems, Inc. and its affiliates
 
 """Path utilities, GraphSession, and MMR selection (ported from ioc-cfn-cognitive-agents)."""
 

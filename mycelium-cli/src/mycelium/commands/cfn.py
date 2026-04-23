@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2026 Julia Valenti
+# Copyright 2026 Cisco Systems, Inc. and its affiliates
 
 """
 CFN observability commands — see what mycelium-backend is forwarding to
