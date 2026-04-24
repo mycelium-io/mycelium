@@ -169,9 +169,13 @@ def propose(
                 if current_offer:
                     bad_keys = sorted(set(offer) - set(current_offer))
                     if bad_keys:
-                        typer.echo("  Error: counter-offer contains unrecognised issue keys:", err=True)
+                        typer.echo(
+                            "  Error: counter-offer contains unrecognised issue keys:", err=True
+                        )
                         for bk in bad_keys:
-                            matches = difflib.get_close_matches(bk, current_offer.keys(), n=1, cutoff=0.6)
+                            matches = difflib.get_close_matches(
+                                bk, current_offer.keys(), n=1, cutoff=0.6
+                            )
                             suggestion = matches[0] if matches else None
                             hint = f'  →  did you mean "{suggestion}"?' if suggestion else ""
                             typer.echo(f'    "{bk}"{hint}', err=True)
