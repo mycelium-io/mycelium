@@ -138,6 +138,8 @@ def propose(
         mycelium negotiate propose budget=medium timeline=standard scope=standard quality=standard
         mycelium negotiate propose budget=high scope=full --room my-room --handle julia-agent
     """
+    from mycelium.commands.room import _resolve_room
+
     try:
         offer: dict[str, str] = {}
         for pair in assignments:
@@ -150,6 +152,39 @@ def propose(
         if not offer:
             typer.echo("  Error: at least one KEY=VALUE assignment is required.", err=True)
             raise typer.Exit(1)
+
+        # Validate keys against live negotiation state before posting.
+        config = MyceliumConfig.load()
+        room_name = _resolve_room(config, room)
+        session_room = _resolve_active_session_room(config, room_name)
+        try:
+            resp = httpx.get(
+                f"{config.server.api_url}/rooms/{session_room}/negotiation",
+                timeout=5,
+            )
+            if resp.status_code == 200:
+                neg = resp.json()
+                current_offer = neg.get("current_offer") or {}
+                if current_offer:
+                    bad_keys = sorted(set(offer) - set(current_offer))
+                    if bad_keys:
+                        typer.echo("  Error: counter-offer contains unrecognised issue keys:", err=True)
+                        for bk in bad_keys:
+                            # fuzzy suggestion: case-insensitive match
+                            suggestion = next(
+                                (v for v in current_offer if v.lower() == bk.lower()), None
+                            )
+                            hint = f'  →  did you mean "{suggestion}"?' if suggestion else ""
+                            typer.echo(f'    "{bk}"{hint}', err=True)
+                        typer.echo("", err=True)
+                        typer.echo("  Valid keys for this session:", err=True)
+                        for vk in sorted(current_offer):
+                            typer.echo(f'    "{vk}"', err=True)
+                        raise typer.Exit(1)
+        except (httpx.RequestError, typer.Exit):
+            raise
+        except Exception:
+            pass  # validation is best-effort; backend enforces authoritatively
 
         try:
             reply = ProposeReply(offer=offer)
