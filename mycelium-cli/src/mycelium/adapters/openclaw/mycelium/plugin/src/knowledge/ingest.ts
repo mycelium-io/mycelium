@@ -62,7 +62,7 @@ export function installKnowledgeIngest(
       // Falling back to getAgentId() keeps direct `openclaw agent --agent`
       // invocations attributed. See issue #144.
       //
-      // Leaf nodes only send room_name — the backend resolves workspace_id
+      // Spoke nodes only send room_name — the backend resolves workspace_id
       // and mas_id from the room's DB record or its own settings (#139).
       const ingestAgentId = agentId?.trim() || getAgentId() || undefined;
       apiPost(

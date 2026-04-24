@@ -65,7 +65,7 @@ async def test_query_resolves_mas_id_from_settings_when_omitted(
     client: AsyncClient,
     monkeypatch,
 ):
-    """Leaf nodes can omit mas_id; backend resolves from settings.MAS_ID."""
+    """Spoke nodes can omit mas_id; backend resolves from settings.MAS_ID."""
     mock = AsyncMock(return_value={"response_id": "r", "message": "ok"})
     monkeypatch.setattr("app.routes.cfn_proxy.query_shared_memories", mock)
 

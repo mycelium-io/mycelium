@@ -24,7 +24,7 @@ Keeping each fire bounded (~1 turn, a few KB) is the whole point.
   2. ``[adapters.claude-code] knowledge_extract = true`` — per-adapter
      switch so Claude Code can be on while openclaw is off (or vice versa).
 
-Leaf nodes only send ``room_name`` — the backend resolves ``workspace_id``
+Spoke nodes only send ``room_name`` — the backend resolves ``workspace_id``
 and ``mas_id`` from the room's DB record or its own settings (see #139).
 
 CFN ingest costs real tokens per record, so we don't turn this on for
@@ -150,7 +150,7 @@ def _env_bool(name: str, default: bool) -> bool:
 def _resolve_target(config: dict[str, Any]) -> dict[str, Any]:
     """Resolve target API and identity for ingest.
 
-    Leaf nodes only send room_name — the backend resolves workspace_id and
+    Spoke nodes only send room_name — the backend resolves workspace_id and
     mas_id from the room's DB record or its own settings (#139).
     """
     server = config.get("server", {}) or {}
@@ -474,7 +474,7 @@ def _post_ingest(
 ) -> bool:
     """POST knowledge to the backend ingest endpoint.
 
-    Leaf nodes only send room_name — the backend resolves workspace_id and
+    Spoke nodes only send room_name — the backend resolves workspace_id and
     mas_id from the room's DB record or its own settings (#139).
     """
     body: dict[str, Any] = {
