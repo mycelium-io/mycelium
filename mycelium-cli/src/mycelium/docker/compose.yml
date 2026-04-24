@@ -15,6 +15,7 @@ services:
     platform: linux/amd64
     container_name: mycelium-db
     restart: unless-stopped
+    command: postgres -c max_locks_per_transaction=256
     env_file:
       - path: ../.env
         required: false
