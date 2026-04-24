@@ -4,7 +4,6 @@
 from collections.abc import AsyncGenerator
 from urllib.parse import urlparse
 
-from sqlalchemy import NullPool
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from .config import settings
@@ -18,8 +17,13 @@ async_db_connection_url = (
     f"{parsed_db_url.path}"
 )
 
-# Disable connection pooling for serverless-friendly operation
-engine = create_async_engine(async_db_connection_url, poolclass=NullPool)
+engine = create_async_engine(
+    async_db_connection_url,
+    pool_size=5,
+    max_overflow=10,
+    pool_timeout=30,
+    pool_recycle=1800,
+)
 
 
 async_session_maker = async_sessionmaker(engine, expire_on_commit=settings.EXPIRE_ON_COMMIT)
