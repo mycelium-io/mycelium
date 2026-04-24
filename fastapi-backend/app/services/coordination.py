@@ -131,8 +131,8 @@ class _RoundTrace:
 # ``GET /api/coordination/round-traces``.  Bounded to keep memory predictable
 # under long-running deployments; defaults to 1024 rounds (plenty for a Phase 2
 # matrix run, which we expect to scrape between cells).
-_ROUND_TRACE_BUFFER_SIZE = 1024
-_completed_round_traces: deque[dict] = deque(maxlen=_ROUND_TRACE_BUFFER_SIZE)
+ROUND_TRACE_BUFFER_SIZE = 1024
+_completed_round_traces: deque[dict] = deque(maxlen=ROUND_TRACE_BUFFER_SIZE)
 
 
 def get_round_traces(limit: int | None = None) -> list[dict]:
@@ -392,7 +392,14 @@ async def _run_cfn_negotiation(
 def _open_round_trace(state: "_CfnRoundState", room_name: str, addressed: list[str]) -> None:
     """Initialise the trace for a freshly-opened round.
 
-    Caller MUST hold ``state.lock``.  Idempotent per round.
+    ``state.round_n`` is the round index *within this negotiation* — it resets
+    to 0 each time ``_run_cfn_negotiation`` creates a new ``_CfnRoundState``,
+    not across the room's lifetime.
+
+    Lock contract: caller MUST hold ``state.lock`` so the trace open and the
+    matching ``state.pending_replies = {...}`` reset happen atomically — a
+    reply arriving between the two would otherwise land on a stale trace.
+    Idempotent per round.
     """
     state.current_trace = _RoundTrace(
         room_name=room_name,
@@ -415,6 +422,12 @@ def _close_round_trace(
     Safe to call from any code path that closes a round (agreed, ongoing,
     error, abort).  Idempotent: no-op if there is no current trace, and
     clears ``state.current_trace`` after emit so a second call is silent.
+
+    Lock contract: caller must hold ``state.lock`` *only* on paths that
+    keep the state alive afterwards (i.e. ``ongoing``, where the next round
+    opens immediately).  On terminal paths (``agreed``, ``error``, abort)
+    the state is popped from ``_cfn_state`` right after, so no other
+    coroutine can race on ``current_trace`` and the lock isn't needed.
     """
     trace = state.current_trace
     if trace is None:

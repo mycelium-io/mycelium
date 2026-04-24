@@ -32,11 +32,10 @@ async def list_round_traces(
     limit: int | None = Query(
         None,
         ge=0,
-        le=coordination_service._ROUND_TRACE_BUFFER_SIZE,
         description=(
             "Return at most the most-recent N traces.  Omit to return all "
-            "traces currently in the buffer (capped at "
-            f"{coordination_service._ROUND_TRACE_BUFFER_SIZE})."
+            "traces currently in the buffer.  Values larger than the buffer "
+            "capacity simply return the whole buffer."
         ),
     ),
 ) -> dict:
@@ -44,13 +43,15 @@ async def list_round_traces(
 
     Each trace is one round of a CFN negotiation: who replied, when, whether
     any replies were synthesised because the watchdog fired, and how the
-    round closed.  Used by the Phase 2 test matrix in issue #162 to produce
-    real distributions of agent latency and synthesis rates.
+    round closed.  ``round_n`` is per-negotiation (resets to 0 when a new
+    negotiation starts in the same room), not per-room-lifetime.  Used by
+    the Phase 2 test matrix in issue #162 to produce real distributions of
+    agent latency and synthesis rates.
     """
     traces = coordination_service.get_round_traces(limit=limit)
     return {
         "count": len(traces),
-        "buffer_capacity": coordination_service._ROUND_TRACE_BUFFER_SIZE,
+        "buffer_capacity": coordination_service.ROUND_TRACE_BUFFER_SIZE,
         "traces": traces,
     }
 

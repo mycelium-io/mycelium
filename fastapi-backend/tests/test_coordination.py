@@ -548,7 +548,7 @@ async def test_schedule_join_timer_clears_registry_on_completion():
 
 
 @pytest.fixture(autouse=False)
-def _clean_trace_buffer():
+def clean_trace_buffer():
     """Snapshot/restore the trace buffer so trace tests don't leak into each other."""
     coord.clear_round_traces()
     yield
@@ -562,7 +562,7 @@ def _attach_trace(state: _CfnRoundState, room_name: str, addressed: list[str]) -
 
 
 @pytest.mark.asyncio
-async def test_round_trace_records_first_response_timing(_clean_trace_buffer):
+async def test_round_trace_records_first_response_timing(clean_trace_buffer):
     """on_agent_response stamps first_response_ms + reply_action on the trace."""
     _cfn_state.clear()
     state = _CfnRoundState(
@@ -592,7 +592,7 @@ async def test_round_trace_records_first_response_timing(_clean_trace_buffer):
 
 
 @pytest.mark.asyncio
-async def test_round_trace_first_reply_wins_for_resubmits(_clean_trace_buffer):
+async def test_round_trace_first_reply_wins_for_resubmits(clean_trace_buffer):
     """A second reply from the same handle does NOT overwrite first_response_ms.
 
     This matters because we want to measure how long the agent took to reach us
@@ -626,7 +626,7 @@ async def test_round_trace_first_reply_wins_for_resubmits(_clean_trace_buffer):
 
 
 @pytest.mark.asyncio
-async def test_round_trace_marks_synthesised_replies_on_watchdog_fire(_clean_trace_buffer):
+async def test_round_trace_marks_synthesised_replies_on_watchdog_fire(clean_trace_buffer):
     """When _cfn_decide_round runs with missing replies, the trace records which
     handles got synthesised reject replies.  This is the data point that
     motivated #162 — Phase 2 will measure how often it actually happens."""
@@ -679,7 +679,7 @@ async def test_round_trace_marks_synthesised_replies_on_watchdog_fire(_clean_tra
 
 
 @pytest.mark.asyncio
-async def test_round_trace_emitted_on_agreed_outcome(_clean_trace_buffer):
+async def test_round_trace_emitted_on_agreed_outcome(clean_trace_buffer):
     """Agreed terminal status closes and emits the trace before _finish_cfn."""
     _cfn_state.clear()
     state = _CfnRoundState(
@@ -726,7 +726,7 @@ async def test_round_trace_emitted_on_agreed_outcome(_clean_trace_buffer):
 
 
 @pytest.mark.asyncio
-async def test_round_trace_emitted_when_namespace_torn_down(_clean_trace_buffer):
+async def test_round_trace_emitted_when_namespace_torn_down(clean_trace_buffer):
     """Aborting an in-flight round (room delete) flushes its trace as 'aborted'."""
     _cfn_state.clear()
     state = _CfnRoundState(
@@ -756,9 +756,9 @@ async def test_round_trace_emitted_when_namespace_torn_down(_clean_trace_buffer)
     _cfn_state.clear()
 
 
-def test_round_trace_buffer_is_bounded(_clean_trace_buffer):
+def test_round_trace_buffer_is_bounded(clean_trace_buffer):
     """The trace ring buffer truncates to its capacity, oldest-out."""
-    cap = coord._ROUND_TRACE_BUFFER_SIZE
+    cap = coord.ROUND_TRACE_BUFFER_SIZE
     # Push cap + 5 traces directly via the emit helper.
     for i in range(cap + 5):
         trace = coord._RoundTrace(
@@ -781,7 +781,7 @@ def test_round_trace_buffer_is_bounded(_clean_trace_buffer):
     assert traces[-1]["room"] == f"room-{cap + 4}"
 
 
-def test_get_round_traces_respects_limit(_clean_trace_buffer):
+def test_get_round_traces_respects_limit(clean_trace_buffer):
     """get_round_traces(limit=N) returns the most-recent N entries."""
     for i in range(10):
         trace = coord._RoundTrace(
@@ -803,7 +803,7 @@ def test_get_round_traces_respects_limit(_clean_trace_buffer):
     assert len(coord.get_round_traces()) == 10
 
 
-def test_round_trace_to_json_shape(_clean_trace_buffer):
+def test_round_trace_to_json_shape(clean_trace_buffer):
     """The serialised trace has the documented schema fields and types."""
     trace = coord._RoundTrace(
         room_name="room-shape",

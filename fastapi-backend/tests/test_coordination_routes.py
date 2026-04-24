@@ -46,7 +46,7 @@ async def test_list_round_traces_returns_buffer_contents(client: AsyncClient):
     assert resp.status_code == 200
     body = resp.json()
     assert body["count"] == 2
-    assert body["buffer_capacity"] == coord._ROUND_TRACE_BUFFER_SIZE
+    assert body["buffer_capacity"] == coord.ROUND_TRACE_BUFFER_SIZE
     rooms = [t["room"] for t in body["traces"]]
     assert rooms == ["room-a", "room-b"]
     assert body["traces"][1]["synthesised_count"] == 1
