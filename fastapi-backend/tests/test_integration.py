@@ -37,6 +37,8 @@ async def integration_client():
     """Client wired to real database — creates and drops tables per test."""
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+    import app.database as _db_module
+    import app.services.coordination as _coord_module
     from app.database import get_async_session
     from app.main import app
     from app.models import Base
@@ -49,6 +51,13 @@ async def integration_client():
 
     session_maker = async_sessionmaker(engine, expire_on_commit=False)
 
+    # Override both the HTTP-layer DI session and the module-level session_maker
+    # used directly by coordination.py background tasks, so all DB ops share
+    # one engine and avoid concurrent-operation errors on pooled connections.
+    _orig_session_maker = _db_module.async_session_maker
+    _db_module.async_session_maker = session_maker
+    _coord_module.async_session_maker = session_maker
+
     async def _override_db():
         async with session_maker() as session:
             yield session
@@ -57,6 +66,9 @@ async def integration_client():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
     app.dependency_overrides.clear()
+
+    _db_module.async_session_maker = _orig_session_maker
+    _coord_module.async_session_maker = _orig_session_maker
 
     # Clean up tables after test
     async with engine.begin() as conn:
