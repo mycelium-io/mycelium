@@ -592,17 +592,26 @@ async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool
     state = _cfn_state.pop(room_name, None)
     if state and state.round_timeout_task and not state.round_timeout_task.done():
         state.round_timeout_task.cancel()
-    await _post_message(
-        room_name,
-        message_type="coordination_consensus",
-        content=json.dumps(
-            {
-                "plan": plan,
-                "assignments": assignments,
-                "broken": broken,
-            }
-        ),
-    )
+    try:
+        await _post_message(
+            room_name,
+            message_type="coordination_consensus",
+            content=json.dumps(
+                {
+                    "plan": plan,
+                    "assignments": assignments,
+                    "broken": broken,
+                }
+            ),
+        )
+    except Exception as exc:
+        # FK violation means the room was deleted before consensus could be written.
+        # Log clearly so it's visible in traces rather than silently dropped.
+        logger.error(
+            "_finish_cfn: failed to write coordination_consensus for %s: %s",
+            room_name,
+            exc,
+        )
     async with async_session_maker() as db:
         await db.execute(
             update(Room)
