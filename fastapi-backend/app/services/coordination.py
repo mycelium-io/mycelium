@@ -40,10 +40,11 @@ logger = logging.getLogger(__name__)
 # ── CFN mode state ─────────────────────────────────────────────────────────────
 
 
-# How long to wait for agent replies before calling /decide with whatever we have.
-# The IOC's BatchCallbackRunner uses a 30s per-round timeout; we fire slightly earlier
-# so the backend stays in sync with the IOC's internal loop.
-_CFN_ROUND_TIMEOUT_SECS = 25
+# How long to wait for agent replies before aborting the session.
+# We wait indefinitely for replies within a round; this only fires when agents
+# go completely silent (disconnected / crashed).  Using /decide with partial
+# rejects caused a double-decide race that silently dropped valid counter-offers.
+_CFN_ROUND_TIMEOUT_SECS = 300
 
 
 @dataclass
@@ -60,6 +61,7 @@ class _CfnRoundState:
     current_offer: dict | None = None
     issues: list[str] | None = None
     issue_options: dict[str, list[str]] | None = None
+    next_proposer_id: str | None = None
 
 
 # {room_name: _CfnRoundState}
@@ -287,18 +289,20 @@ def _reset_round_timeout(room_name: str, state: "_CfnRoundState") -> None:
 
 
 async def _round_timeout(room_name: str) -> None:
-    """Fire /decide with whatever replies exist after _CFN_ROUND_TIMEOUT_SECS.
+    """Abort the session if agents go silent for _CFN_ROUND_TIMEOUT_SECS.
 
-    The IOC's BatchCallbackRunner uses a 30s per-round timeout and auto-advances
-    when it fires.  We call /decide slightly earlier so the backend stays in sync
-    with the IOC's internal loop rather than waiting forever for all replies.
+    We wait for all agents to reply within a round.  Calling /decide with
+    partial reject placeholders caused a double-decide race: the timeout fired,
+    reset pending_replies, and then the real replies landed in the new round's
+    slot — triggering a second /decide on an already-consumed SAO step, which
+    CFN silently dropped.  Instead, a long silence means the session is dead.
     """
     await asyncio.sleep(_CFN_ROUND_TIMEOUT_SECS)
     state = _cfn_state.get(room_name)
     if not state:
         return
-    logger.debug("CFN round timeout fired for %s — calling decide with partial replies", room_name)
-    await _cfn_decide_round(room_name)
+    logger.warning("CFN round timeout fired for %s — agents silent for %ds, aborting session", room_name, _CFN_ROUND_TIMEOUT_SECS)
+    await _finish_cfn(room_name, plan="Negotiation timed out — agents did not respond", assignments={}, broken=True)
 
 
 async def _fan_out_cfn_messages(
@@ -394,6 +398,9 @@ async def _fan_out_cfn_messages(
         current_offer = last_payload.get("current_offer")
         if current_offer is not None:
             state.current_offer = current_offer
+        next_proposer_id = last_payload.get("next_proposer_id")
+        if next_proposer_id is not None:
+            state.next_proposer_id = next_proposer_id
 
     return addressed
 
@@ -610,10 +617,14 @@ async def on_agent_response(room_name: str, handle: str, content: str) -> None:
 
     should_decide = False
     corrective: dict | None = None
+    out_of_turn: bool = False
     async with cfn.lock:
         if handle in cfn.pending_replies:
             reply_data = _parse_agent_reply(handle, content, cfn.current_offer, cfn.issue_options)
-            if reply_data.get("action") == "invalid_keys":
+            if reply_data.get("action") == "counter_offer" and cfn.next_proposer_id and handle != cfn.next_proposer_id:
+                out_of_turn = True
+                # Leave pending_replies[handle] as None — round waits for a corrected reply.
+            elif reply_data.get("action") == "invalid_keys":
                 corrective = reply_data
                 # Leave pending_replies[handle] as None — round waits for a corrected reply.
             else:
@@ -628,6 +639,27 @@ async def on_agent_response(room_name: str, handle: str, content: str) -> None:
                 all_received = all(v is not None for v in cfn.pending_replies.values())
                 if all_received:
                     should_decide = True
+
+    if out_of_turn:
+        logger.warning(
+            "CFN room %s: agent %s submitted counter_offer but next_proposer_id=%s — rejecting",
+            room_name,
+            handle,
+            cfn.next_proposer_id,
+        )
+        await _post_message(
+            room_name,
+            message_type="coordination_tick",
+            content=json.dumps({
+                "error": "counter_offer_not_your_turn",
+                "instruction": (
+                    f"It is not your turn to propose. Only '{cfn.next_proposer_id}' may counter-offer "
+                    "this round. Use 'accept' or 'reject' instead."
+                ),
+                "payload": {"participant_id": handle},
+            }),
+        )
+        return
 
     if corrective:
         logger.warning(

@@ -58,9 +58,18 @@ def _describe_exc(exc: Exception) -> str:
 
 async def _cfn_post(url: str, body: dict[str, Any], endpoint: str) -> dict[str, Any]:
     """POST to CFN and raise ``CfnNegotiationError`` with a descriptive reason on any failure."""
+    import json as _json
+
+    logger.info("CFN %s → %s | body=%s", endpoint, url, _json.dumps(body))
     try:
         async with httpx.AsyncClient(timeout=_CFN_HTTP_TIMEOUT) as client:
             resp = await client.post(url, json=body)
+            logger.info(
+                "CFN %s ← status=%d | body=%s",
+                endpoint,
+                resp.status_code,
+                resp.text[:2000],
+            )
             resp.raise_for_status()
             return resp.json()
     except httpx.HTTPStatusError as exc:
