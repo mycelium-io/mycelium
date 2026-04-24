@@ -254,6 +254,16 @@ def await_tick(
                                     data = json_module.loads(msg.get("content", "{}"))
                                 except json_module.JSONDecodeError:
                                     continue
+                                if "error" in data:
+                                    participant = (data.get("payload") or {}).get("participant_id")
+                                    if participant == handle or participant is None:
+                                        missed_tick = {
+                                            "type": "error",
+                                            "error": data["error"],
+                                            "instruction": data.get("instruction"),
+                                            "replayed": True,
+                                        }
+                                    continue
                                 if "payload" in data and isinstance(data["payload"], dict):
                                     data = data["payload"]
                                 participant = data.get("participant_id")
@@ -266,6 +276,7 @@ def await_tick(
                                         "issue_options": data.get("issue_options", {}),
                                         "current_offer": data.get("current_offer"),
                                         "proposer_id": data.get("proposer_id"),
+                                        "can_counter_offer": data.get("can_counter_offer", False),
                                         "history": data.get("history"),
                                         "replayed": True,
                                     }
@@ -303,6 +314,22 @@ def await_tick(
                         data = json_module.loads(msg.get("content", "{}"))
                     except json_module.JSONDecodeError:
                         data = {}
+                    # Error ticks (e.g. out-of-turn counter-offer) have an "error" key
+                    # and no round/action. Surface them directly and return.
+                    if "error" in data:
+                        participant = (data.get("payload") or {}).get("participant_id")
+                        if participant == handle or participant is None:
+                            typer.echo(
+                                json_module.dumps(
+                                    {
+                                        "type": "error",
+                                        "error": data["error"],
+                                        "instruction": data.get("instruction"),
+                                    }
+                                )
+                            )
+                            return
+                        continue
                     if "payload" in data and isinstance(data["payload"], dict):
                         data = data["payload"]
                     participant = data.get("participant_id")
@@ -317,6 +344,7 @@ def await_tick(
                                     "issue_options": data.get("issue_options", {}),
                                     "current_offer": data.get("current_offer"),
                                     "proposer_id": data.get("proposer_id"),
+                                    "can_counter_offer": data.get("can_counter_offer", False),
                                     "history": data.get("history"),
                                 }
                             )

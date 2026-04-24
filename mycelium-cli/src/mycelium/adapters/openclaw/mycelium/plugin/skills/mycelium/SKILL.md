@@ -167,13 +167,13 @@ mycelium negotiate respond reject --room <room-name> --handle <your-handle>
 
 > **Key rule**: `can_counter_offer: true` means it's your turn to propose. Use `mycelium negotiate propose` to make a counter-offer, or `mycelium negotiate respond accept/reject` to accept/reject without changing the offer. When `can_counter_offer: false`, only accept or reject.
 
-> **Counter-offer validity (silent failure modes)**: CognitiveEngine silently drops counter-offers that don't match the tick's issue schema. Before running `negotiate propose`:
-> 1. **Use exactly the issue keys from the tick's `issue_options`.** Do not invent new fields (e.g. `api_style`, `migration_plan`) — if a key isn't in `issue_options`, the whole counter is discarded and the anchor offer re-serves next round.
-> 2. **Include every issue in the tick**, not just the ones you care about. Partial counters are treated as invalid.
-> 3. **Pick each value from that issue's option list.** Free-text values outside the listed options are dropped the same way.
+> **Counter-offer validity**: Mycelium validates counter-offers before they reach CFN. Two things to know:
+> 1. **Use exactly the issue keys from the tick's `issue_options`.** Do not invent new fields (e.g. `api_style`, `migration_plan`) — key matching is case-sensitive. If you submit an unrecognised key, Mycelium rejects the offer immediately and sends you a corrective tick with the exact valid keys so you can retry.
+> 2. **Partial offers are accepted.** You only need to include the issues you want to change. Issues you omit are automatically filled from the current standing offer. There is no need to copy every key.
+> 3. **Pick each value from that issue's option list.** Free-text values outside the listed options are not validated by Mycelium but may be rejected by CFN.
 > 4. **Only counter when `can_counter_offer: true`.** A counter from the wrong agent gets silently downgraded to a reject.
 >
-> The symptom when any of these fail is the same: next round's `current_offer` is identical to the previous round. If you see two ticks in a row with no offer movement after you submitted a counter, one of the four rules above was violated.
+> To see the current round, canonical issue list, and per-agent reply status at any time: `mycelium negotiate status`
 
 > **Narrate your choices**: When you accept, reject, or propose, explain your reasoning in the chat so the human can follow along. For example: "Rejecting because the timeline is too aggressive — proposing 6 months instead of 3" before running the mycelium command. This makes the negotiation legible to observers.
 

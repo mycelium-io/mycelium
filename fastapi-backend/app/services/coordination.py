@@ -40,10 +40,11 @@ logger = logging.getLogger(__name__)
 # ── CFN mode state ─────────────────────────────────────────────────────────────
 
 
-# How long to wait for agent replies before calling /decide with whatever we have.
-# The IOC's BatchCallbackRunner uses a 30s per-round timeout; we fire slightly earlier
-# so the backend stays in sync with the IOC's internal loop.
-_CFN_ROUND_TIMEOUT_SECS = 25
+# How long to wait for agent replies before aborting the session.
+# We wait indefinitely for replies within a round; this only fires when agents
+# go completely silent (disconnected / crashed).  Using /decide with partial
+# rejects caused a double-decide race that silently dropped valid counter-offers.
+_CFN_ROUND_TIMEOUT_SECS = 300
 
 
 @dataclass
@@ -56,6 +57,11 @@ class _CfnRoundState:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     round_timeout_task: asyncio.Task | None = field(default=None)
     deciding: bool = field(default=False)  # guard against double-decide
+    current_round: int = 0
+    current_offer: dict | None = None
+    issues: list[str] | None = None
+    issue_options: dict[str, list[str]] | None = None
+    next_proposer_id: str | None = None
 
 
 # {room_name: _CfnRoundState}
@@ -283,18 +289,29 @@ def _reset_round_timeout(room_name: str, state: "_CfnRoundState") -> None:
 
 
 async def _round_timeout(room_name: str) -> None:
-    """Fire /decide with whatever replies exist after _CFN_ROUND_TIMEOUT_SECS.
+    """Abort the session if agents go silent for _CFN_ROUND_TIMEOUT_SECS.
 
-    The IOC's BatchCallbackRunner uses a 30s per-round timeout and auto-advances
-    when it fires.  We call /decide slightly earlier so the backend stays in sync
-    with the IOC's internal loop rather than waiting forever for all replies.
+    We wait for all agents to reply within a round.  Calling /decide with
+    partial reject placeholders caused a double-decide race: the timeout fired,
+    reset pending_replies, and then the real replies landed in the new round's
+    slot — triggering a second /decide on an already-consumed SAO step, which
+    CFN silently dropped.  Instead, a long silence means the session is dead.
     """
     await asyncio.sleep(_CFN_ROUND_TIMEOUT_SECS)
     state = _cfn_state.get(room_name)
     if not state:
         return
-    logger.debug("CFN round timeout fired for %s — calling decide with partial replies", room_name)
-    await _cfn_decide_round(room_name)
+    logger.warning(
+        "CFN round timeout fired for %s — agents silent for %ds, aborting session",
+        room_name,
+        _CFN_ROUND_TIMEOUT_SECS,
+    )
+    await _finish_cfn(
+        room_name,
+        plan="Negotiation timed out — agents did not respond",
+        assignments={},
+        broken=True,
+    )
 
 
 async def _fan_out_cfn_messages(
@@ -375,6 +392,25 @@ async def _fan_out_cfn_messages(
                 ),
             )
             addressed.append(participant_id)
+
+    # Update round state so validation and the status endpoint can read it.
+    state = _cfn_state.get(room_name)
+    if state and messages:
+        last_payload = messages[-1].get("payload", messages[-1])
+        if issues:
+            state.issues = issues
+        if issue_options:
+            state.issue_options = issue_options
+        round_num = last_payload.get("round")
+        if round_num is not None:
+            state.current_round = round_num
+        current_offer = last_payload.get("current_offer")
+        if current_offer is not None:
+            state.current_offer = current_offer
+        next_proposer_id = last_payload.get("next_proposer_id")
+        if next_proposer_id is not None:
+            state.next_proposer_id = next_proposer_id
+
     return addressed
 
 
@@ -589,20 +625,82 @@ async def on_agent_response(room_name: str, handle: str, content: str) -> None:
         return
 
     should_decide = False
+    corrective: dict | None = None
+    out_of_turn: bool = False
     async with cfn.lock:
         if handle in cfn.pending_replies:
-            reply_data = _parse_agent_reply(handle, content)
-            cfn.pending_replies[handle] = reply_data
-            logger.debug(
-                "CFN room %s: collected reply from %s (%d/%d)",
-                room_name,
-                handle,
-                sum(1 for v in cfn.pending_replies.values() if v is not None),
-                len(cfn.pending_replies),
-            )
-            all_received = all(v is not None for v in cfn.pending_replies.values())
-            if all_received:
-                should_decide = True
+            reply_data = _parse_agent_reply(handle, content, cfn.current_offer, cfn.issue_options)
+            if (
+                reply_data.get("action") == "counter_offer"
+                and cfn.next_proposer_id
+                and handle != cfn.next_proposer_id
+            ):
+                out_of_turn = True
+                # Leave pending_replies[handle] as None — round waits for a corrected reply.
+            elif reply_data.get("action") == "invalid_keys":
+                corrective = reply_data
+                # Leave pending_replies[handle] as None — round waits for a corrected reply.
+            else:
+                cfn.pending_replies[handle] = reply_data
+                logger.debug(
+                    "CFN room %s: collected reply from %s (%d/%d)",
+                    room_name,
+                    handle,
+                    sum(1 for v in cfn.pending_replies.values() if v is not None),
+                    len(cfn.pending_replies),
+                )
+                all_received = all(v is not None for v in cfn.pending_replies.values())
+                if all_received:
+                    should_decide = True
+
+    if out_of_turn:
+        logger.warning(
+            "CFN room %s: agent %s submitted counter_offer but next_proposer_id=%s — rejecting",
+            room_name,
+            handle,
+            cfn.next_proposer_id,
+        )
+        await _post_message(
+            room_name,
+            message_type="coordination_tick",
+            content=json.dumps(
+                {
+                    "error": "counter_offer_not_your_turn",
+                    "instruction": (
+                        f"It is not your turn to propose. Only '{cfn.next_proposer_id}' may counter-offer "
+                        "this round. Use 'accept' or 'reject' instead."
+                    ),
+                    "payload": {"participant_id": handle},
+                }
+            ),
+        )
+        return
+
+    if corrective:
+        logger.warning(
+            "CFN room %s: agent %s counter_offer rejected — bad keys %s (valid: %s)",
+            room_name,
+            handle,
+            corrective["bad_keys"],
+            corrective["valid_keys"],
+        )
+        await _post_message(
+            room_name,
+            message_type="coordination_tick",
+            content=json.dumps(
+                {
+                    "error": "counter_offer_invalid_keys",
+                    "bad_keys": corrective["bad_keys"],
+                    "valid_keys": corrective["valid_keys"],
+                    "instruction": (
+                        "Re-submit your counter_offer using only the exact keys listed in valid_keys."
+                    ),
+                    "payload": {"participant_id": handle},
+                }
+            ),
+        )
+        return
+
     if should_decide:
         # All replies in — cancel the timeout so it doesn't double-fire
         if cfn.round_timeout_task and not cfn.round_timeout_task.done():
@@ -610,13 +708,56 @@ async def on_agent_response(room_name: str, handle: str, content: str) -> None:
         asyncio.ensure_future(_cfn_decide_round(room_name))
 
 
-def _parse_agent_reply(handle: str, content: str) -> dict:
+def _validate_and_fill_offer(handle: str, result: dict, current_offer: dict | None) -> dict:
+    """Validate counter_offer keys and silently fill partial offers from the anchor.
+
+    Returns the (possibly mutated) result dict, or an ``invalid_keys`` sentinel if
+    the offer contains keys not present in ``current_offer``.
+    """
+    if not current_offer or not result.get("offer"):
+        return result
+
+    offer = result["offer"]
+    bad_keys = set(offer) - set(current_offer)
+    if bad_keys:
+        return {
+            "agent_id": handle,
+            "participant_id": handle,
+            "action": "invalid_keys",
+            "bad_keys": sorted(bad_keys),
+            "valid_keys": sorted(current_offer),
+        }
+
+    # Partial offer: fill missing keys from the anchor so CFN sees a complete offer.
+    if set(offer) < set(current_offer):
+        logger.debug(
+            "Agent %s submitted partial offer (%d/%d keys); filling from anchor",
+            handle,
+            len(offer),
+            len(current_offer),
+        )
+        result["offer"] = {**current_offer, **offer}
+
+    return result
+
+
+def _parse_agent_reply(
+    handle: str,
+    content: str,
+    current_offer: dict | None = None,
+    issue_options: dict | None = None,
+) -> dict:
     """Try to parse agent reply content as a CFN AgentReply dict.
 
     Expected formats (in order of preference):
       1. JSON with "action" key: {"action": "accept"|"reject"|"counter_offer", "offer": {...}}
       2. JSON with "offer" key only: treated as counter_offer
       3. Plain text: treat as "reject"
+
+    When ``current_offer`` is provided, counter_offer replies are validated:
+    - Keys not present in ``current_offer`` → returns ``invalid_keys`` sentinel so
+      ``on_agent_response`` can post a corrective tick without advancing the round.
+    - Valid but partial offers → silently filled from ``current_offer`` (agent values win).
 
     Always returns a dict with at least {"agent_id": handle, "participant_id": handle, "action": ...}.
 
@@ -628,24 +769,27 @@ def _parse_agent_reply(handle: str, content: str) -> dict:
         parsed = json.loads(content)
         if isinstance(parsed, dict):
             if "offer" in parsed and "action" not in parsed:
-                return {
+                result: dict = {
                     "agent_id": handle,
                     "participant_id": handle,
                     "action": "counter_offer",
                     "offer": parsed["offer"],
                 }
+                return _validate_and_fill_offer(handle, result, current_offer)
 
             if "action" in parsed:
                 action = parsed["action"]
                 if action not in ("accept", "reject", "counter_offer"):
                     action = "reject"
-                result: dict = {
+                result = {
                     "agent_id": handle,
                     "participant_id": handle,
                     "action": action,
                 }
                 if parsed.get("offer"):
                     result["offer"] = parsed["offer"]
+                if action == "counter_offer":
+                    return _validate_and_fill_offer(handle, result, current_offer)
                 return result
     except (json.JSONDecodeError, TypeError):
         pass
