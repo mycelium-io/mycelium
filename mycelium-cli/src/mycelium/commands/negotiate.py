@@ -22,6 +22,7 @@ before posting, so the CLI is statically forced to adhere to the protocol.
 
 import json as json_module
 
+import httpx
 import typer
 from pydantic import ValidationError
 
@@ -249,6 +250,82 @@ def query(
     """
     try:
         _post(ctx, room, handle, text)
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+
+
+# ── status ────────────────────────────────────────────────────────────────────
+
+
+@doc_ref(
+    usage="mycelium negotiate status [-r <room>]",
+    desc="Show the current negotiation state: round, issues, current offer, and per-agent reply status.",
+    group="negotiate",
+)
+@app.command("status")
+def status(
+    ctx: typer.Context,
+    room: str | None = typer.Option(
+        None, "--room", "-r", help="Room to check (overrides MYCELIUM_ROOM_ID)"
+    ),
+) -> None:
+    """
+    Show live negotiation state for the active session in a room.
+
+    Displays the current round, canonical issue list, standing offer, and which
+    agents have submitted replies this round.
+
+    Examples:
+        mycelium negotiate status
+        mycelium negotiate status --room sprint-plan
+    """
+    from mycelium.commands.room import _resolve_room
+
+    json_output = ctx.obj.get("json", False) if ctx.obj else False
+
+    try:
+        config = MyceliumConfig.load()
+        room_name = _resolve_room(config, room)
+        room_name = _resolve_active_session_room(config, room_name)
+
+        resp = httpx.get(
+            f"{config.server.api_url}/rooms/{room_name}/negotiation",
+            timeout=5,
+        )
+        if resp.status_code == 404:
+            typer.echo("  Room not found.", err=True)
+            raise typer.Exit(1)
+        resp.raise_for_status()
+        data = resp.json()
+
+        if json_output:
+            typer.echo(json_module.dumps(data, indent=2))
+            return
+
+        if not data.get("active"):
+            typer.echo("  No active negotiation.")
+            return
+
+        typer.echo(f"  Round {data['round']}  —  {room_name}")
+        typer.echo("")
+        issues = data.get("issues") or []
+        issue_options = data.get("issue_options") or {}
+        current_offer = data.get("current_offer") or {}
+        for issue in issues:
+            opts = ", ".join(issue_options.get(issue, []))
+            current = current_offer.get(issue, "—")
+            typer.echo(f"  {issue}")
+            typer.echo(f"    current: {current}")
+            if opts:
+                typer.echo(f"    options: {opts}")
+        typer.echo("")
+        for agent_handle, reply_status in (data.get("pending_replies") or {}).items():
+            icon = "+" if reply_status == "received" else "."
+            typer.echo(f"  [{icon}] {agent_handle}")
+
+    except (typer.Exit, typer.Abort):
+        raise
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)

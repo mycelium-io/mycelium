@@ -343,3 +343,37 @@ async def delete_room(
 
     # 7. Delete MAS from CFN mgmt plane (non-fatal, last).
     await _sync_delete_mas(room)
+
+
+@router.get("/{room_name}/negotiation")
+async def get_negotiation_status(
+    room_name: str,
+    session: AsyncSession = Depends(get_async_session),
+) -> dict:
+    """Return live negotiation state for an active session room.
+
+    Returns ``{"active": false}`` when no negotiation is in progress.
+    ``pending_replies`` values are ``"received"`` or ``"waiting"``.
+    """
+    from app.services.coordination import _cfn_state
+
+    result = await session.execute(select(Room).where(Room.name == room_name))
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    state = _cfn_state.get(room_name)
+    if not state:
+        return {"active": False}
+
+    return {
+        "active": True,
+        "session_id": state.session_id,
+        "round": state.current_round,
+        "issues": state.issues,
+        "issue_options": state.issue_options,
+        "current_offer": state.current_offer,
+        "pending_replies": {
+            h: "received" if v is not None else "waiting"
+            for h, v in state.pending_replies.items()
+        },
+    }

@@ -22,6 +22,8 @@ from app.services.coordination import (
     _cfn_state,
     _CfnRoundState,
     _fan_out_cfn_messages,
+    _parse_agent_reply,
+    _validate_and_fill_offer,
     on_agent_response,
 )
 
@@ -536,3 +538,172 @@ async def test_schedule_join_timer_clears_registry_on_completion():
         # Allow the done-callback to run.
         await asyncio.sleep(0)
         assert "ns-e" not in coord._join_timer_tasks
+
+
+# ── Tests: _validate_and_fill_offer / _parse_agent_reply ─────────────────────
+
+
+def test_validate_and_fill_offer_bad_key_returns_invalid_keys():
+    """Keys not in current_offer return the invalid_keys sentinel."""
+    current_offer = {"price": "mid", "timeline": "12mo"}
+    result = {"agent_id": "alice", "participant_id": "alice", "action": "counter_offer",
+              "offer": {"price": "high", "scope": "full"}}
+    out = _validate_and_fill_offer("alice", result, current_offer)
+    assert out["action"] == "invalid_keys"
+    assert out["bad_keys"] == ["scope"]
+    assert set(out["valid_keys"]) == {"price", "timeline"}
+
+
+def test_validate_and_fill_offer_case_sensitive():
+    """Key matching is case-sensitive — wrong casing produces invalid_keys."""
+    current_offer = {"Demo is non-negotiable": "yes"}
+    result = {"agent_id": "alice", "participant_id": "alice", "action": "counter_offer",
+              "offer": {"demo is non-negotiable": "yes"}}
+    out = _validate_and_fill_offer("alice", result, current_offer)
+    assert out["action"] == "invalid_keys"
+    assert out["bad_keys"] == ["demo is non-negotiable"]
+
+
+def test_validate_and_fill_offer_partial_fill():
+    """Valid but partial offer gets silently filled from anchor; agent values win."""
+    current_offer = {"price": "mid", "timeline": "12mo", "scope": "standard"}
+    result = {"agent_id": "alice", "participant_id": "alice", "action": "counter_offer",
+              "offer": {"price": "high"}}
+    out = _validate_and_fill_offer("alice", result, current_offer)
+    assert out["action"] == "counter_offer"
+    assert out["offer"] == {"price": "high", "timeline": "12mo", "scope": "standard"}
+
+
+def test_validate_and_fill_offer_no_current_offer_passthrough():
+    """When current_offer is None, the offer is returned unchanged."""
+    result = {"agent_id": "alice", "participant_id": "alice", "action": "counter_offer",
+              "offer": {"anything": "goes"}}
+    out = _validate_and_fill_offer("alice", result, None)
+    assert out["action"] == "counter_offer"
+    assert out["offer"] == {"anything": "goes"}
+
+
+def test_parse_agent_reply_counter_offer_invalid_key():
+    """_parse_agent_reply returns invalid_keys when offer has unrecognised keys."""
+    content = json.dumps({"action": "counter_offer", "offer": {"bad_key": "val"}})
+    out = _parse_agent_reply("alice", content, current_offer={"price": "mid"})
+    assert out["action"] == "invalid_keys"
+    assert "bad_key" in out["bad_keys"]
+
+
+def test_parse_agent_reply_offer_only_format_validates():
+    """offer-only JSON also goes through validation."""
+    content = json.dumps({"offer": {"wrong": "x"}})
+    out = _parse_agent_reply("bob", content, current_offer={"price": "mid"})
+    assert out["action"] == "invalid_keys"
+
+
+# ── Tests: on_agent_response — invalid keys ───────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_on_agent_response_invalid_key_posts_corrective_tick():
+    """Bad counter-offer key: corrective tick posted, pending_replies stays None."""
+    _cfn_state.clear()
+
+    state = _CfnRoundState(
+        session_id="room-v",
+        workspace_id="ws",
+        mas_id="mas",
+        agents=["alice", "bob"],
+        pending_replies={"alice": None, "bob": None},
+        current_offer={"price": "mid", "timeline": "12mo"},
+        issue_options={"price": ["low", "mid", "high"], "timeline": ["6mo", "12mo"]},
+    )
+    _cfn_state["room-v"] = state
+
+    posted = []
+
+    async def fake_post(room_name, message_type, content):
+        posted.append((message_type, json.loads(content)))
+
+    with patch.object(coord, "_post_message", side_effect=fake_post):
+        await on_agent_response(
+            "room-v", "alice", json.dumps({"action": "counter_offer", "offer": {"typo_key": "x"}})
+        )
+
+    # Pending reply must still be None — round is not advanced
+    assert _cfn_state["room-v"].pending_replies["alice"] is None
+
+    # Exactly one corrective tick posted
+    assert len(posted) == 1
+    msg_type, content = posted[0]
+    assert msg_type == "coordination_tick"
+    assert content["error"] == "counter_offer_invalid_keys"
+    assert "typo_key" in content["bad_keys"]
+    assert content["payload"]["participant_id"] == "alice"
+
+    _cfn_state.clear()
+
+
+@pytest.mark.asyncio
+async def test_on_agent_response_partial_offer_stored_as_merged():
+    """Partial counter-offer is filled from anchor and stored in pending_replies."""
+    _cfn_state.clear()
+
+    state = _CfnRoundState(
+        session_id="room-p",
+        workspace_id="ws",
+        mas_id="mas",
+        agents=["alice"],
+        pending_replies={"alice": None},
+        current_offer={"price": "mid", "timeline": "12mo"},
+        issue_options={"price": ["low", "mid", "high"], "timeline": ["6mo", "12mo"]},
+    )
+    _cfn_state["room-p"] = state
+
+    decide_called = []
+
+    async def fake_decide(room_name):
+        decide_called.append(room_name)
+
+    with patch.object(coord, "_cfn_decide_round", side_effect=fake_decide):
+        await on_agent_response(
+            "room-p", "alice", json.dumps({"action": "counter_offer", "offer": {"price": "high"}})
+        )
+        await asyncio.sleep(0)
+
+    stored = _cfn_state["room-p"].pending_replies["alice"]
+    assert stored is not None
+    assert stored["offer"]["price"] == "high"
+    assert stored["offer"]["timeline"] == "12mo"  # filled from anchor
+    assert decide_called == ["room-p"]
+
+    _cfn_state.clear()
+
+
+# ── Tests: fan_out updates _cfn_state ────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_fan_out_populates_cfn_state_fields():
+    """After fan-out, _cfn_state reflects current_offer, issues, issue_options, round."""
+    _cfn_state.clear()
+
+    state = _CfnRoundState(
+        session_id="room-fo",
+        workspace_id="ws",
+        mas_id="mas",
+        agents=["alice"],
+        pending_replies={"alice": None},
+    )
+    _cfn_state["room-fo"] = state
+
+    async def fake_post(room_name, message_type, content):
+        pass
+
+    msg = _make_broadcast_msg(round_num=2, next_proposer="alice")
+    with patch.object(coord, "_post_message", side_effect=fake_post):
+        await _fan_out_cfn_messages("room-fo", [msg], all_agents=["alice"])
+
+    assert state.current_round == 2
+    assert state.current_offer == {"price": "mid", "timeline": "12mo"}
+    assert state.issues == ["price", "timeline"]
+    assert state.issue_options == {"price": ["low", "mid", "high"], "timeline": ["6mo", "12mo"]}
+
+    _cfn_state.clear()
