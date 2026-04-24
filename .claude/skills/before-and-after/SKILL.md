@@ -544,7 +544,7 @@ if isinstance(msgs, list):
     for m in msgs:
         mt = m['message_type']
         sh = m.get('sender_handle', '')
-        c = str(m['content'])[:200]
+        c = json.dumps(m['content']) if isinstance(m['content'], (dict, list)) else str(m['content'])
         print(f'[{mt}] {sh}: {c}')
         print()
 " > ~/.mycelium/rooms/${EXP_ID}-after/session-transcript.md
