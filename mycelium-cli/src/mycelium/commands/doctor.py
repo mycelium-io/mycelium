@@ -15,12 +15,14 @@ Checks:
   8. Room MAS IDs present (CFN-enabled installs)
   9. OpenClaw adapter health (plugin, channel config, agent sandbox)
 
-In a hub-and-spoke topology, spoke nodes connect to a remote backend and
-don't run local Docker containers.  When ``server.api_url`` points at a
-non-local host the doctor auto-detects **spoke mode** and skips checks
-that only apply to the hub (Docker containers, runtime config drift,
-.env port vs Docker port, localhost CFN mgmt plane).  An explicit
-``--mode hub|spoke`` flag overrides the auto-detection.
+Single-device installs (the default) run the backend locally and exercise
+all checks. In the optional hub-and-spoke deployment mode, spoke nodes
+connect to a remote backend and don't run local Docker containers. When
+``server.api_url`` points at a non-local host the doctor auto-detects
+**spoke mode** and skips checks that only apply when the backend is
+local (Docker containers, runtime config drift, .env port vs Docker
+port, localhost CFN mgmt plane).  An explicit ``--mode hub|spoke`` flag
+overrides the auto-detection.
 """
 
 import subprocess
@@ -1029,11 +1031,12 @@ def doctor(
     Checks config files, LLM setup, Docker containers, backend connectivity,
     workspace ID sync, and config consistency. Offers to fix issues it finds.
 
-    In a hub-and-spoke topology, spoke nodes talk to a remote backend and
-    don't run Docker containers locally. When --mode is 'auto' (the default),
-    doctor detects spoke mode from server.api_url — if it points to a
-    non-local host the Docker, runtime-drift, and port-drift checks are
-    skipped automatically.
+    Single-device installs (the default) run the backend locally and
+    exercise all checks. In the optional hub-and-spoke deployment mode
+    spoke nodes talk to a remote backend and don't run Docker containers
+    locally. When --mode is 'auto' (the default), doctor detects spoke
+    mode from server.api_url — if it points to a non-local host the
+    Docker, runtime-drift, and port-drift checks are skipped automatically.
 
     \b
     Examples:
