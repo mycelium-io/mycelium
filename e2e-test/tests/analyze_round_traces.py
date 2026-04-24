@@ -177,10 +177,11 @@ def print_per_round_table(runs: list[TestRun]) -> None:
     print("=" * 100)
     hdr = (
         f"{'run':<4}{'r':<3}{'path':<14}{'outcome':<10}"
-        f"{'elapsed':>10}{'collect':>10}{'decide':>10}  agents (first_response_ms)"
+        f"{'elapsed':>10}{'collect':>10}{'decide':>10}"
+        f"{'msgs':>5}{'resp_kb':>8}  agents (first_response_ms)"
     )
     print(hdr)
-    print("-" * 110)
+    print("-" * 125)
     for i, run in enumerate(runs, 1):
         for r in run.rounds:
             collection, decide = round_decomposition(r)
@@ -191,13 +192,18 @@ def print_per_round_table(runs: list[TestRun]) -> None:
                 + ("*" if a.get("was_synthesised") else "")
                 for h, a in per_agent.items()
             )
+            msgs = r.get("cfn_messages_count")
+            resp_b = r.get("cfn_response_bytes")
             print(
                 f"{i:<4}{r['round_n']:<3}{r['decision_path']:<14}{(r.get('outcome') or '-'):<10}"
                 f"{_fmt_ms(r.get('elapsed_ms'), 10)}{_fmt_ms(collection, 10)}{_fmt_ms(decide, 10)}"
+                f"{(str(msgs) if msgs is not None else '-'):>5}"
+                f"{(f'{resp_b/1024:.1f}' if resp_b is not None else '-'):>8}"
                 f"  {agents_str}"
             )
     print()
     print("  '*' after an agent timing means the reply was synthesised (timed out)")
+    print("  msgs = mediator messages CFN returned;  resp_kb = CFN response size")
 
 
 def print_aggregate(runs: list[TestRun]) -> None:
@@ -244,6 +250,24 @@ def print_aggregate(runs: list[TestRun]) -> None:
     line("collection (agents reply)", collections)
     line("decide (CFN /decide)", decides)
 
+    # CFN response shape — what kept /decide busy when it was slow.
+    msg_counts = [r["cfn_messages_count"] for r in rounds if r.get("cfn_messages_count") is not None]
+    resp_bytes = [r["cfn_response_bytes"] for r in rounds if r.get("cfn_response_bytes") is not None]
+    cfn_status_mix: dict[str, int] = {}
+    for r in rounds:
+        s = r.get("cfn_status")
+        if s:
+            cfn_status_mix[s] = cfn_status_mix.get(s, 0) + 1
+    if msg_counts or resp_bytes or cfn_status_mix:
+        print("\nCFN response shape:")
+        if cfn_status_mix:
+            mix = ", ".join(f"{s}={c}" for s, c in sorted(cfn_status_mix.items(), key=lambda x: -x[1]))
+            print(f"  cfn_status mix                  {mix}")
+        if msg_counts:
+            line("cfn_messages_count (ongoing)", [float(x) for x in msg_counts])
+        if resp_bytes:
+            line("cfn_response_kb", [x / 1024.0 for x in resp_bytes])
+
     frts: list[float] = []
     synthesised = 0
     total_slots = 0
@@ -277,7 +301,10 @@ def print_aggregate(runs: list[TestRun]) -> None:
     long_rounds = [r for r in rounds if (r.get("elapsed_ms") or 0) > 10000]
     if long_rounds:
         print(f"\nLong rounds (>10s elapsed):  {len(long_rounds)}/{n}")
-        print(f"  {'#':<4}{'r':<3}{'elapsed':>10}{'collect':>10}{'decide':>10}  dominant")
+        print(
+            f"  {'#':<4}{'r':<3}{'elapsed':>10}{'collect':>10}{'decide':>10}"
+            f"{'msgs':>5}{'resp_kb':>8}  dominant  cfn_status"
+        )
         for j, r in enumerate(long_rounds, 1):
             c, d = round_decomposition(r)
             dominant = (
@@ -285,9 +312,14 @@ def print_aggregate(runs: list[TestRun]) -> None:
                 else "agents" if c is not None and d is not None
                 else "?"
             )
+            msgs = r.get("cfn_messages_count")
+            resp_b = r.get("cfn_response_bytes")
             print(
                 f"  {j:<4}{r['round_n']:<3}{_fmt_ms(r.get('elapsed_ms'), 10)}"
-                f"{_fmt_ms(c, 10)}{_fmt_ms(d, 10)}  {dominant}"
+                f"{_fmt_ms(c, 10)}{_fmt_ms(d, 10)}"
+                f"{(str(msgs) if msgs is not None else '-'):>5}"
+                f"{(f'{resp_b/1024:.1f}' if resp_b is not None else '-'):>8}"
+                f"  {dominant:<8}  {r.get('cfn_status') or '-'}"
             )
 
 
