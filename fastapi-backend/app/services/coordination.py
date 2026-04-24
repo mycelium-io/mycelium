@@ -22,8 +22,11 @@ coordination_error message and the room is set to "failed" state.
 import asyncio
 import json
 import logging
+import time
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Literal
 from urllib.parse import urlparse
 
 import asyncpg
@@ -46,6 +49,114 @@ logger = logging.getLogger(__name__)
 _CFN_ROUND_TIMEOUT_SECS = 25
 
 
+# ── Round trace instrumentation (Phase 1 of #162) ──────────────────────────────
+#
+# Per-round, per-agent telemetry that records *what actually happened* during a
+# CFN negotiation round: when each agent's first response arrived (or didn't),
+# whether a reply was synthesised because the watchdog fired, and which decision
+# path closed the round.  Used by the Phase 2 test matrix to produce real
+# distributions instead of guessing.  Pure observability — no behaviour change.
+
+DecisionPath = Literal["all_replied", "watchdog_fired", "hard_cap", "aborted"]
+
+
+@dataclass
+class _PerAgentTrace:
+    """Per-agent record within a single round."""
+
+    handle: str
+    first_response_ms: float | None = None  # wall time agent->backend, ms
+    reply_action: str | None = None  # "accept" | "reject" | "counter_offer" | None
+    was_synthesised: bool = False
+    adapter: str = "unknown"  # placeholder until #173 lands a shared contract
+
+
+@dataclass
+class _RoundTrace:
+    """Trace for one round of negotiation."""
+
+    room_name: str
+    session_id: str
+    mas_id: str
+    workspace_id: str
+    round_n: int
+    n_agents: int
+    started_at: float = field(default_factory=time.monotonic)  # for latency math
+    started_at_wall: datetime = field(default_factory=lambda: datetime.now(UTC))
+    budget_seconds: float = float(_CFN_ROUND_TIMEOUT_SECS)
+    extension_count: int = 0  # always 0 in Phase 1; reserved for adaptive work
+    per_agent: dict[str, _PerAgentTrace] = field(default_factory=dict)
+    decision_path: DecisionPath | None = None
+    closed_at: float | None = None  # monotonic
+    outcome: str | None = None  # "agreed" | "ongoing" | "timeout" | "aborted" | "error"
+
+    def to_json(self) -> dict:
+        """Serialise for structured logging / API."""
+        elapsed_ms = (
+            round((self.closed_at - self.started_at) * 1000, 1)
+            if self.closed_at is not None
+            else None
+        )
+        synthesised = sorted(h for h, t in self.per_agent.items() if t.was_synthesised)
+        return {
+            "room": self.room_name,
+            "session_id": self.session_id,
+            "mas_id": self.mas_id,
+            "workspace_id": self.workspace_id,
+            "round_n": self.round_n,
+            "n_agents": self.n_agents,
+            "started_at": self.started_at_wall.isoformat(),
+            "elapsed_ms": elapsed_ms,
+            "budget_seconds": self.budget_seconds,
+            "extension_count": self.extension_count,
+            "decision_path": self.decision_path,
+            "outcome": self.outcome,
+            "synthesised_count": len(synthesised),
+            "synthesised_handles": synthesised,
+            "per_agent": {
+                h: {
+                    "first_response_ms": (
+                        round(t.first_response_ms, 1) if t.first_response_ms is not None else None
+                    ),
+                    "reply_action": t.reply_action,
+                    "was_synthesised": t.was_synthesised,
+                    "adapter": t.adapter,
+                }
+                for h, t in self.per_agent.items()
+            },
+        }
+
+
+# Ring buffer of completed round traces, exposed via
+# ``GET /api/coordination/round-traces``.  Bounded to keep memory predictable
+# under long-running deployments; defaults to 1024 rounds (plenty for a Phase 2
+# matrix run, which we expect to scrape between cells).
+_ROUND_TRACE_BUFFER_SIZE = 1024
+_completed_round_traces: deque[dict] = deque(maxlen=_ROUND_TRACE_BUFFER_SIZE)
+
+
+def get_round_traces(limit: int | None = None) -> list[dict]:
+    """Return completed round traces, oldest-first.  Used by the trace API."""
+    items = list(_completed_round_traces)
+    if limit is not None and limit >= 0:
+        # Note: items[-0:] == items[:] (returns everything), so handle 0 explicitly.
+        items = items[-limit:] if limit > 0 else []
+    return items
+
+
+def clear_round_traces() -> None:
+    """Empty the round trace buffer.  Used by the trace API and tests."""
+    _completed_round_traces.clear()
+
+
+def _emit_round_trace(trace: _RoundTrace) -> None:
+    """Push a closed round trace into the ring buffer and structured log."""
+    record = trace.to_json()
+    _completed_round_traces.append(record)
+    # Single-line JSON so log aggregators / `jq` can ingest directly.
+    logger.info("CFN_ROUND_TRACE %s", json.dumps(record, sort_keys=True))
+
+
 @dataclass
 class _CfnRoundState:
     session_id: str
@@ -56,6 +167,8 @@ class _CfnRoundState:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     round_timeout_task: asyncio.Task | None = field(default=None)
     deciding: bool = field(default=False)  # guard against double-decide
+    round_n: int = 0  # current round index (0-based)
+    current_trace: _RoundTrace | None = None
 
 
 # {room_name: _CfnRoundState}
@@ -272,7 +385,45 @@ async def _run_cfn_negotiation(
     )
     async with state.lock:
         state.pending_replies = {h: None for h in addressed}
+        _open_round_trace(state, room_name, addressed)
     _reset_round_timeout(room_name, state)
+
+
+def _open_round_trace(state: "_CfnRoundState", room_name: str, addressed: list[str]) -> None:
+    """Initialise the trace for a freshly-opened round.
+
+    Caller MUST hold ``state.lock``.  Idempotent per round.
+    """
+    state.current_trace = _RoundTrace(
+        room_name=room_name,
+        session_id=state.session_id,
+        mas_id=state.mas_id,
+        workspace_id=state.workspace_id,
+        round_n=state.round_n,
+        n_agents=len(addressed),
+        per_agent={h: _PerAgentTrace(handle=h) for h in addressed},
+    )
+
+
+def _close_round_trace(
+    state: "_CfnRoundState",
+    decision_path: DecisionPath,
+    outcome: str,
+) -> None:
+    """Stamp closing fields on the current trace and emit it.
+
+    Safe to call from any code path that closes a round (agreed, ongoing,
+    error, abort).  Idempotent: no-op if there is no current trace, and
+    clears ``state.current_trace`` after emit so a second call is silent.
+    """
+    trace = state.current_trace
+    if trace is None:
+        return
+    trace.decision_path = decision_path
+    trace.outcome = outcome
+    trace.closed_at = time.monotonic()
+    _emit_round_trace(trace)
+    state.current_trace = None
 
 
 def _reset_round_timeout(room_name: str, state: "_CfnRoundState") -> None:
@@ -294,7 +445,7 @@ async def _round_timeout(room_name: str) -> None:
     if not state:
         return
     logger.debug("CFN round timeout fired for %s — calling decide with partial replies", room_name)
-    await _cfn_decide_round(room_name)
+    await _cfn_decide_round(room_name, decision_path="watchdog_fired")
 
 
 async def _fan_out_cfn_messages(
@@ -378,8 +529,16 @@ async def _fan_out_cfn_messages(
     return addressed
 
 
-async def _cfn_decide_round(room_name: str) -> None:
-    """Called when all expected agents have replied. Calls CFN decide and processes response."""
+async def _cfn_decide_round(
+    room_name: str,
+    decision_path: DecisionPath = "all_replied",
+) -> None:
+    """Called when all expected agents have replied (or the watchdog fired).
+
+    ``decision_path`` records *why* this round is closing — used by the trace
+    instrumentation to distinguish watchdog-fired rounds (where we synthesise
+    rejects, the failure mode from #162) from the happy "all_replied" path.
+    """
     from app.services.cfn_negotiation import CfnNegotiationError, decide_negotiation
 
     state = _cfn_state.get(room_name)
@@ -401,6 +560,10 @@ async def _cfn_decide_round(room_name: str) -> None:
             # mismatch, dropping any other agent's counter-offer in the same
             # round (same failure mode as #105, different code path).
             agent_replies.append({"agent_id": handle, "participant_id": handle, "action": "reject"})
+            # Record synthesis in the round trace so the Phase 2 matrix can
+            # measure how often this happens in practice.
+            if state.current_trace and handle in state.current_trace.per_agent:
+                state.current_trace.per_agent[handle].was_synthesised = True
         else:
             agent_replies.append(reply_data)
 
@@ -413,12 +576,14 @@ async def _cfn_decide_round(room_name: str) -> None:
         )
     except CfnNegotiationError as exc:
         logger.error("CFN decide_negotiation failed for %s: %s", room_name, exc)
+        _close_round_trace(state, decision_path=decision_path, outcome="error")
         await _finish_cfn(room_name, plan=f"CFN decide failed — {exc}", assignments={}, broken=True)
         return
 
     try:
         if not isinstance(result, dict):
             logger.error("CFN decide returned non-dict for %s: %s", room_name, type(result))
+            _close_round_trace(state, decision_path=decision_path, outcome="error")
             await _finish_cfn(
                 room_name, plan="CFN decide returned invalid response", assignments={}, broken=True
             )
@@ -454,6 +619,7 @@ async def _cfn_decide_round(room_name: str) -> None:
             else:
                 agreement = {}
             plan = "; ".join(f"{k}={v}" for k, v in agreement.items()) if agreement else "agreed"
+            _close_round_trace(state, decision_path=decision_path, outcome="agreed")
             await _finish_cfn(room_name, plan=plan, assignments=agreement, broken=False)
 
         elif status == "ongoing":
@@ -463,19 +629,27 @@ async def _cfn_decide_round(room_name: str) -> None:
                 messages,
                 all_agents=state.agents,
             )
+            # Close the just-finished round and open the next one atomically
+            # under the state lock so on_agent_response can't slip a reply
+            # into the wrong round trace.
             async with state.lock:
+                _close_round_trace(state, decision_path=decision_path, outcome="ongoing")
+                state.round_n += 1
                 state.pending_replies = {h: None for h in addressed}
                 state.deciding = False
+                _open_round_trace(state, room_name, addressed)
             _reset_round_timeout(room_name, state)
 
         else:
             # Unknown / failed status
             logger.warning("CFN decide returned status=%s for %s", status, room_name)
+            _close_round_trace(state, decision_path=decision_path, outcome=status or "timeout")
             await _finish_cfn(
                 room_name, plan=f"Negotiation ended: {status}", assignments={}, broken=True
             )
     except Exception as exc:
         logger.exception("Unhandled error processing CFN decide response for %s", room_name)
+        _close_round_trace(state, decision_path=decision_path, outcome="error")
         await _finish_cfn(
             room_name, plan=f"CFN response processing failed — {exc}", assignments={}, broken=True
         )
@@ -517,6 +691,9 @@ async def teardown_for_namespace(namespace_name: str, child_room_names: list[str
             had_active_cfn = True
             if state.round_timeout_task and not state.round_timeout_task.done():
                 state.round_timeout_task.cancel()
+            # Flush any in-flight round trace so we don't lose visibility into
+            # the last round of an aborted negotiation (most interesting case).
+            _close_round_trace(state, decision_path="aborted", outcome="aborted")
 
         # 3. Notify any SSE subscribers that the negotiation was aborted.
         # We only send this for rooms that had active CFN state — there is no
@@ -556,6 +733,10 @@ async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool
     state = _cfn_state.pop(room_name, None)
     if state and state.round_timeout_task and not state.round_timeout_task.done():
         state.round_timeout_task.cancel()
+    # Defensive flush for the rare case _cfn_decide_round didn't get to it
+    # (e.g. _run_cfn_negotiation called _finish_cfn directly on a startup error).
+    if state and state.current_trace is not None:
+        _close_round_trace(state, decision_path="aborted", outcome="error" if broken else "agreed")
     await _post_message(
         room_name,
         message_type="coordination_consensus",
@@ -592,6 +773,7 @@ async def on_agent_response(room_name: str, handle: str, content: str) -> None:
     async with cfn.lock:
         if handle in cfn.pending_replies:
             reply_data = _parse_agent_reply(handle, content)
+            is_first_for_round = cfn.pending_replies[handle] is None
             cfn.pending_replies[handle] = reply_data
             logger.debug(
                 "CFN room %s: collected reply from %s (%d/%d)",
@@ -600,6 +782,15 @@ async def on_agent_response(room_name: str, handle: str, content: str) -> None:
                 sum(1 for v in cfn.pending_replies.values() if v is not None),
                 len(cfn.pending_replies),
             )
+            # Record per-agent timing in the round trace.  Only record on the
+            # *first* reply per round so a resubmit doesn't mask the original
+            # latency we want to measure.
+            trace = cfn.current_trace
+            if trace is not None and is_first_for_round and handle in trace.per_agent:
+                slot = trace.per_agent[handle]
+                slot.first_response_ms = (time.monotonic() - trace.started_at) * 1000.0
+                if isinstance(reply_data, dict):
+                    slot.reply_action = reply_data.get("action")
             all_received = all(v is not None for v in cfn.pending_replies.values())
             if all_received:
                 should_decide = True
@@ -607,7 +798,7 @@ async def on_agent_response(room_name: str, handle: str, content: str) -> None:
         # All replies in — cancel the timeout so it doesn't double-fire
         if cfn.round_timeout_task and not cfn.round_timeout_task.done():
             cfn.round_timeout_task.cancel()
-        asyncio.ensure_future(_cfn_decide_round(room_name))
+        asyncio.ensure_future(_cfn_decide_round(room_name, decision_path="all_replied"))
 
 
 def _parse_agent_reply(handle: str, content: str) -> dict:

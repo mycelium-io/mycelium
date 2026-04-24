@@ -296,8 +296,8 @@ async def test_on_agent_response_triggers_decide_when_all_replied():
 
     decide_called = []
 
-    async def fake_decide(room_name):
-        decide_called.append(room_name)
+    async def fake_decide(room_name, decision_path="all_replied"):
+        decide_called.append((room_name, decision_path))
 
     with patch.object(coord, "_cfn_decide_round", side_effect=fake_decide):
         await on_agent_response("room-z", "alice", json.dumps({"action": "reject"}))
@@ -305,7 +305,7 @@ async def test_on_agent_response_triggers_decide_when_all_replied():
 
         await on_agent_response("room-z", "bob", json.dumps({"action": "accept"}))
         await asyncio.sleep(0)  # let ensure_future run
-        assert decide_called == ["room-z"]
+        assert decide_called == [("room-z", "all_replied")]
 
     _cfn_state.clear()
 
@@ -536,3 +536,323 @@ async def test_schedule_join_timer_clears_registry_on_completion():
         # Allow the done-callback to run.
         await asyncio.sleep(0)
         assert "ns-e" not in coord._join_timer_tasks
+
+
+# ── Tests: round trace instrumentation (Phase 1 of #162) ─────────────────────
+#
+# These are CI-safe (no real CFN, no real DB) — they exercise the in-memory
+# trace machinery directly using the same mocking pattern as the rest of this
+# file.  The companion E2E matrix (Phase 2) lives outside CI in
+# /home/ubuntu/tests/test_mycelium_e2e.py and scrapes the
+# /api/internal/coordination/round-traces endpoint at runtime.
+
+
+@pytest.fixture(autouse=False)
+def _clean_trace_buffer():
+    """Snapshot/restore the trace buffer so trace tests don't leak into each other."""
+    coord.clear_round_traces()
+    yield
+    coord.clear_round_traces()
+
+
+def _attach_trace(state: _CfnRoundState, room_name: str, addressed: list[str]) -> None:
+    """Open a round trace on a state.  Helper that mirrors _open_round_trace
+    without needing to hold the lock (we're single-threaded in tests)."""
+    coord._open_round_trace(state, room_name, addressed)
+
+
+@pytest.mark.asyncio
+async def test_round_trace_records_first_response_timing(_clean_trace_buffer):
+    """on_agent_response stamps first_response_ms + reply_action on the trace."""
+    _cfn_state.clear()
+    state = _CfnRoundState(
+        session_id="room-tr1",
+        workspace_id="ws",
+        mas_id="mas",
+        agents=["alice", "bob"],
+        pending_replies={"alice": None, "bob": None},
+    )
+    _attach_trace(state, "room-tr1", ["alice", "bob"])
+    _cfn_state["room-tr1"] = state
+
+    # Patch decide so the all-replied path doesn't try to call CFN.
+    with patch.object(coord, "_cfn_decide_round", new=AsyncMock()):
+        await on_agent_response("room-tr1", "alice", json.dumps({"action": "accept"}))
+
+    slot = state.current_trace.per_agent["alice"]
+    assert slot.first_response_ms is not None
+    assert slot.first_response_ms >= 0.0
+    assert slot.reply_action == "accept"
+    assert slot.was_synthesised is False
+    # Bob hasn't replied yet — trace slot is still pristine.
+    assert state.current_trace.per_agent["bob"].first_response_ms is None
+    assert state.current_trace.per_agent["bob"].reply_action is None
+
+    _cfn_state.clear()
+
+
+@pytest.mark.asyncio
+async def test_round_trace_first_reply_wins_for_resubmits(_clean_trace_buffer):
+    """A second reply from the same handle does NOT overwrite first_response_ms.
+
+    This matters because we want to measure how long the agent took to reach us
+    the *first* time, not how long the resubmit took.
+    """
+    _cfn_state.clear()
+    state = _CfnRoundState(
+        session_id="room-tr2",
+        workspace_id="ws",
+        mas_id="mas",
+        agents=["alice"],
+        pending_replies={"alice": None},
+    )
+    _attach_trace(state, "room-tr2", ["alice"])
+    _cfn_state["room-tr2"] = state
+
+    with patch.object(coord, "_cfn_decide_round", new=AsyncMock()):
+        await on_agent_response("room-tr2", "alice", json.dumps({"action": "reject"}))
+        first_ms = state.current_trace.per_agent["alice"].first_response_ms
+        assert first_ms is not None
+        # Resubmit with a different action — must not overwrite the stamp.
+        await asyncio.sleep(0.01)
+        await on_agent_response("room-tr2", "alice", json.dumps({"action": "accept"}))
+
+    slot = state.current_trace.per_agent["alice"]
+    assert slot.first_response_ms == first_ms
+    # reply_action also stays as the first one — same rationale.
+    assert slot.reply_action == "reject"
+
+    _cfn_state.clear()
+
+
+@pytest.mark.asyncio
+async def test_round_trace_marks_synthesised_replies_on_watchdog_fire(_clean_trace_buffer):
+    """When _cfn_decide_round runs with missing replies, the trace records which
+    handles got synthesised reject replies.  This is the data point that
+    motivated #162 — Phase 2 will measure how often it actually happens."""
+    _cfn_state.clear()
+    state = _CfnRoundState(
+        session_id="room-tr3",
+        workspace_id="ws",
+        mas_id="mas",
+        agents=["alice", "bob", "carol"],
+        # alice replied; bob and carol did not.
+        pending_replies={
+            "alice": {"agent_id": "alice", "participant_id": "alice", "action": "accept"},
+            "bob": None,
+            "carol": None,
+        },
+    )
+    _attach_trace(state, "room-tr3", ["alice", "bob", "carol"])
+    _cfn_state["room-tr3"] = state
+
+    decide_response = {"status": "ongoing", "messages": []}
+
+    with (
+        patch(
+            "app.services.cfn_negotiation.decide_negotiation",
+            AsyncMock(return_value=decide_response),
+        ),
+        patch.object(coord, "_post_message", new=AsyncMock()),
+        patch.object(coord, "async_session_maker"),
+    ):
+        await _cfn_decide_round("room-tr3", decision_path="watchdog_fired")
+
+    # Round 0 is closed and emitted; round 1 has been opened.
+    traces = coord.get_round_traces()
+    assert len(traces) == 1
+    closed = traces[0]
+    assert closed["round_n"] == 0
+    assert closed["decision_path"] == "watchdog_fired"
+    assert closed["outcome"] == "ongoing"
+    assert closed["synthesised_count"] == 2
+    assert closed["synthesised_handles"] == ["bob", "carol"]
+    assert closed["per_agent"]["alice"]["was_synthesised"] is False
+    assert closed["per_agent"]["bob"]["was_synthesised"] is True
+
+    # New round should be open with round_n incremented.
+    assert state.round_n == 1
+    assert state.current_trace is not None
+    assert state.current_trace.round_n == 1
+
+    _cfn_state.clear()
+
+
+@pytest.mark.asyncio
+async def test_round_trace_emitted_on_agreed_outcome(_clean_trace_buffer):
+    """Agreed terminal status closes and emits the trace before _finish_cfn."""
+    _cfn_state.clear()
+    state = _CfnRoundState(
+        session_id="room-tr4",
+        workspace_id="ws",
+        mas_id="mas",
+        agents=["alice"],
+        pending_replies={"alice": {"agent_id": "alice", "action": "accept"}},
+    )
+    _attach_trace(state, "room-tr4", ["alice"])
+    _cfn_state["room-tr4"] = state
+
+    decide_response = {
+        "status": "agreed",
+        "session_id": "room-tr4",
+        "round": 1,
+        "final_result": {
+            "kind": "commit",
+            "semantic_context": {
+                "session_id": "room-tr4",
+                "final_agreement": [{"issue_id": "x", "chosen_option": "y"}],
+            },
+            "payload": {"status": "agreed"},
+        },
+    }
+
+    with (
+        patch(
+            "app.services.cfn_negotiation.decide_negotiation",
+            AsyncMock(return_value=decide_response),
+        ),
+        patch.object(coord, "_post_message", new=AsyncMock()),
+        patch.object(coord, "async_session_maker"),
+    ):
+        await _cfn_decide_round("room-tr4", decision_path="all_replied")
+
+    traces = coord.get_round_traces()
+    assert len(traces) == 1
+    assert traces[0]["outcome"] == "agreed"
+    assert traces[0]["decision_path"] == "all_replied"
+    assert traces[0]["synthesised_count"] == 0
+
+    _cfn_state.clear()
+
+
+@pytest.mark.asyncio
+async def test_round_trace_emitted_when_namespace_torn_down(_clean_trace_buffer):
+    """Aborting an in-flight round (room delete) flushes its trace as 'aborted'."""
+    _cfn_state.clear()
+    state = _CfnRoundState(
+        session_id="room-tr5",
+        workspace_id="ws",
+        mas_id="mas",
+        agents=["alice", "bob"],
+        pending_replies={"alice": None, "bob": None},
+    )
+    _attach_trace(state, "room-tr5", ["alice", "bob"])
+    _cfn_state["room-tr5"] = state
+
+    asyncpg_patch, notify_patch = _patch_notify()
+    with _patch_db(), asyncpg_patch, notify_patch:
+        await coord.teardown_for_namespace("room-tr5", [])
+
+    traces = coord.get_round_traces()
+    assert len(traces) == 1
+    assert traces[0]["outcome"] == "aborted"
+    assert traces[0]["decision_path"] == "aborted"
+    # Both agents had no real reply → both synthesised (recorded by the close,
+    # not by the watchdog code path, but the marker is set the same way at
+    # decide-time only — for an abort we just record the outcome).  Verify
+    # the trace landed and includes both agents.
+    assert set(traces[0]["per_agent"].keys()) == {"alice", "bob"}
+
+    _cfn_state.clear()
+
+
+def test_round_trace_buffer_is_bounded(_clean_trace_buffer):
+    """The trace ring buffer truncates to its capacity, oldest-out."""
+    cap = coord._ROUND_TRACE_BUFFER_SIZE
+    # Push cap + 5 traces directly via the emit helper.
+    for i in range(cap + 5):
+        trace = coord._RoundTrace(
+            room_name=f"room-{i}",
+            session_id=f"sess-{i}",
+            mas_id="mas",
+            workspace_id="ws",
+            round_n=0,
+            n_agents=1,
+        )
+        trace.decision_path = "all_replied"
+        trace.outcome = "agreed"
+        trace.closed_at = trace.started_at
+        coord._emit_round_trace(trace)
+
+    traces = coord.get_round_traces()
+    assert len(traces) == cap
+    # The oldest 5 should have been evicted (FIFO ring).
+    assert traces[0]["room"] == "room-5"
+    assert traces[-1]["room"] == f"room-{cap + 4}"
+
+
+def test_get_round_traces_respects_limit(_clean_trace_buffer):
+    """get_round_traces(limit=N) returns the most-recent N entries."""
+    for i in range(10):
+        trace = coord._RoundTrace(
+            room_name=f"room-{i}",
+            session_id=f"sess-{i}",
+            mas_id="mas",
+            workspace_id="ws",
+            round_n=0,
+            n_agents=1,
+        )
+        trace.decision_path = "all_replied"
+        trace.outcome = "agreed"
+        trace.closed_at = trace.started_at
+        coord._emit_round_trace(trace)
+
+    last_three = coord.get_round_traces(limit=3)
+    assert [t["room"] for t in last_three] == ["room-7", "room-8", "room-9"]
+    assert coord.get_round_traces(limit=0) == []
+    assert len(coord.get_round_traces()) == 10
+
+
+def test_round_trace_to_json_shape(_clean_trace_buffer):
+    """The serialised trace has the documented schema fields and types."""
+    trace = coord._RoundTrace(
+        room_name="room-shape",
+        session_id="sess-shape",
+        mas_id="mas-shape",
+        workspace_id="ws-shape",
+        round_n=2,
+        n_agents=2,
+        per_agent={
+            "alice": coord._PerAgentTrace(
+                handle="alice", first_response_ms=123.456, reply_action="accept"
+            ),
+            "bob": coord._PerAgentTrace(handle="bob", was_synthesised=True),
+        },
+    )
+    trace.decision_path = "watchdog_fired"
+    trace.outcome = "ongoing"
+    trace.closed_at = trace.started_at + 1.5  # 1500 ms
+
+    record = trace.to_json()
+
+    # Required top-level keys (the schema documented in app/routes/coordination.py).
+    expected_keys = {
+        "room",
+        "session_id",
+        "mas_id",
+        "workspace_id",
+        "round_n",
+        "n_agents",
+        "started_at",
+        "elapsed_ms",
+        "budget_seconds",
+        "extension_count",
+        "decision_path",
+        "outcome",
+        "synthesised_count",
+        "synthesised_handles",
+        "per_agent",
+    }
+    assert expected_keys.issubset(record.keys())
+    assert record["round_n"] == 2
+    assert record["decision_path"] == "watchdog_fired"
+    assert record["outcome"] == "ongoing"
+    assert record["synthesised_count"] == 1
+    assert record["synthesised_handles"] == ["bob"]
+    assert record["elapsed_ms"] == 1500.0
+    assert record["per_agent"]["alice"]["first_response_ms"] == 123.5
+    assert record["per_agent"]["alice"]["reply_action"] == "accept"
+    assert record["per_agent"]["alice"]["adapter"] == "unknown"
+    assert record["per_agent"]["bob"]["was_synthesised"] is True
+    # Must be JSON-serialisable end-to-end (no datetime objects, etc.).
+    json.dumps(record)
