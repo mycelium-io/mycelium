@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Julia Valenti
 
-"""Tests for /api/internal/coordination/* endpoints (Phase 1 of #162).
+"""Tests for /api/internal/coordination/* endpoints (#162).
 
 CI-safe: drives the trace ring buffer directly via the service module, then
 asserts the HTTP layer surfaces the same data.  No real CFN, no DB, no

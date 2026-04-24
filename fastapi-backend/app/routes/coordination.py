@@ -5,7 +5,7 @@
 Coordination observability endpoints.
 
 Read-only endpoints that expose in-memory coordination state for diagnostics
-and the Phase 2 test matrix described in issue #162.
+of CFN negotiation behaviour (see issue #162).
 
 GET    /api/internal/coordination/round-traces
 DELETE /api/internal/coordination/round-traces
@@ -44,9 +44,8 @@ async def list_round_traces(
     Each trace is one round of a CFN negotiation: who replied, when, whether
     any replies were synthesised because the watchdog fired, and how the
     round closed.  ``round_n`` is per-negotiation (resets to 0 when a new
-    negotiation starts in the same room), not per-room-lifetime.  Used by
-    the Phase 2 test matrix in issue #162 to produce real distributions of
-    agent latency and synthesis rates.
+    negotiation starts in the same room), not per-room-lifetime.  Intended
+    for diagnosing coordination latency and synthesis behaviour (issue #162).
     """
     traces = coordination_service.get_round_traces(limit=limit)
     return {
@@ -60,7 +59,7 @@ async def list_round_traces(
 async def clear_round_traces() -> None:
     """Empty the round trace ring buffer.
 
-    Used by the Phase 2 test matrix to reset between cells so each cell's
-    output is independent.  No-op if the buffer is already empty.
+    Intended for batch diagnostic runs that need each iteration's output to
+    be independent.  No-op if the buffer is already empty.
     """
     coordination_service.clear_round_traces()
