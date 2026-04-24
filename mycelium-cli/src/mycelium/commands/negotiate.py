@@ -20,6 +20,7 @@ payloads are validated against SSTP wire-format models (mycelium.sstp)
 before posting, so the CLI is statically forced to adhere to the protocol.
 """
 
+import difflib
 import json as json_module
 
 import httpx
@@ -170,10 +171,8 @@ def propose(
                     if bad_keys:
                         typer.echo("  Error: counter-offer contains unrecognised issue keys:", err=True)
                         for bk in bad_keys:
-                            # fuzzy suggestion: case-insensitive match
-                            suggestion = next(
-                                (v for v in current_offer if v.lower() == bk.lower()), None
-                            )
+                            matches = difflib.get_close_matches(bk, current_offer.keys(), n=1, cutoff=0.6)
+                            suggestion = matches[0] if matches else None
                             hint = f'  →  did you mean "{suggestion}"?' if suggestion else ""
                             typer.echo(f'    "{bk}"{hint}', err=True)
                         typer.echo("", err=True)

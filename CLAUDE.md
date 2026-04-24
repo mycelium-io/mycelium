@@ -67,6 +67,75 @@ Embeddings: sentence-transformers (all-MiniLM-L6-v2, local, 384 dimensions).
 - **Git for sharing** — rooms can be shared via git push/pull.
 - **No Ensue references in code** — we took inspiration from their API design but the implementation is independent.
 
+## Local development
+
+> **This section is for contributors iterating on the backend source.** End users should follow the normal install path: `curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash` then `mycelium install`.
+
+### Starting the stack
+
+The normal `mycelium up` / `mycelium install` flow uses `compose.yml` with `pull_policy: always` — it always pulls released images and is the correct path for end users. For dev, use `compose-dev.yml` instead, which builds `mycelium-backend` from local source and wires `~/.mycelium/.env` into all service containers. **Always run from the repo root.**
+
+```bash
+# Full stack with CFN (required for negotiate/session commands)
+docker compose \
+  -f mycelium-cli/src/mycelium/docker/compose.yml \
+  -f mycelium-cli/src/mycelium/docker/compose-dev.yml \
+  --profile cfn up -d --build
+
+# Memory only (no CFN)
+docker compose \
+  -f mycelium-cli/src/mycelium/docker/compose.yml \
+  -f mycelium-cli/src/mycelium/docker/compose-dev.yml \
+  up -d --build
+```
+
+On subsequent runs, drop `--build` unless you've changed backend code.
+
+### LLM config
+
+All containers get their LLM settings from `~/.mycelium/.env`, which is generated from `config.toml`. Set these once:
+
+```bash
+mycelium config set llm.model "anthropic/bedrock/global.anthropic.claude-sonnet-4-6"
+mycelium config set llm.api_key "<key>"
+mycelium config set llm.base_url "<base-url>"
+mycelium config apply
+```
+
+Then recreate any running CFN containers to pick up the new env:
+```bash
+docker compose -f mycelium-cli/src/mycelium/docker/compose.yml \
+  -f mycelium-cli/src/mycelium/docker/compose-dev.yml \
+  --profile cfn up -d --force-recreate ioc-cognition-fabric-node-svc
+```
+
+**Important:** `mycelium config apply` regenerates `.env` from `config.toml`. If you edit `.env` directly, those changes will be overwritten. Always use `mycelium config set` to persist values.
+
+### MAS ID
+
+`mas_id` in `config.toml` is a CFN Multi-Agent System UUID required for `session join`/`await`/`negotiate`. Each room gets its own MAS ID on creation — use the one for the room you're testing:
+
+```bash
+mycelium room create my-room        # prints MAS ID on creation
+mycelium config set server.mas_id <uuid-from-above>
+```
+
+After a volume wipe, existing MAS IDs are gone. Create a new room and use its ID.
+
+### Running the backend outside Docker (hot-reload)
+
+```bash
+cd fastapi-backend
+DATABASE_URL="postgresql+asyncpg://postgres:password@localhost:5432/mycelium" \
+  uv run uvicorn app.main:app --reload --port 8000
+```
+
+DB container still needs to be running (`docker compose up -d mycelium-db`). Update `config.toml` if you change the backend port:
+```bash
+mycelium config set server.api_url "http://localhost:8000"
+mycelium config apply
+```
+
 ## Conventions
 
 - Use `uv run` for all Python commands, never bare `python` or `pip install`

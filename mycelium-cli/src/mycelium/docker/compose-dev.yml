@@ -1,0 +1,36 @@
+# Dev override: build mycelium-backend from local source instead of pulling.
+#
+# Run from the repo root:
+#   docker compose -f mycelium-cli/src/mycelium/docker/compose.yml \
+#                  -f mycelium-cli/src/mycelium/docker/compose-dev.yml \
+#                  --profile cfn up -d --build
+#
+# Build context paths are relative to this file's location (docker/).
+# env_file paths are also relative to this file's location.
+services:
+  mycelium-db:
+    pull_policy: always   # keep pulling the pre-built agensgraph image
+    build: !reset {}      # suppress the build context so --build doesn't fail
+
+  # Override env_file for all services to point at ~/.mycelium/.env so that
+  # LLM_MODEL, WORKSPACE_ID etc. are available when running compose manually
+  # from the repo root (compose.yml's ../.env path resolves incorrectly then).
+  mycelium-backend:
+    build:
+      context: ../../../../fastapi-backend
+      dockerfile: Dockerfile
+    pull_policy: never
+    image: mycelium-backend:dev
+    env_file:
+      - path: ~/.mycelium/.env
+        required: false
+
+  ioc-cfn-mgmt-plane-svc:
+    env_file:
+      - path: ~/.mycelium/.env
+        required: false
+
+  ioc-cognition-fabric-node-svc:
+    env_file:
+      - path: ~/.mycelium/.env
+        required: false

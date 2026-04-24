@@ -54,7 +54,7 @@ def generate_env_file(config: MyceliumConfig) -> str:
         "# ── IoC CFN ──────────────────────────────────────────────────────────────",
         f"CFN_MGMT_URL={config.runtime.cfn_mgmt_url or ''}",
         f"COGNITION_FABRIC_NODE_URL={config.runtime.cognition_fabric_node_url or ''}",
-        f"WORKSPACE_ID={config.runtime.workspace_id or ''}",
+        f"WORKSPACE_ID={config.server.workspace_id or config.runtime.workspace_id or ''}",
         f"CFN_DB={config.runtime.cfn_db}",
         f"ADMIN_USER_PASSWORD={config.runtime.admin_user_password}",
         f"CFN_DEV_MODE={'true' if config.runtime.cfn_dev_mode else 'false'}",
