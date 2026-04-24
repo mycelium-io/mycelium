@@ -101,6 +101,15 @@ class _RoundTrace:
     last_reply_received_ms: float | None = None  # when the final reply arrived
     cfn_decide_started_ms: float | None = None  # when /decide was invoked
     cfn_decide_ms: float | None = None  # duration of the /decide HTTP call
+    # CFN response shape — cheap, non-invasive proxies for "what kept CFN busy"
+    # when ``cfn_decide_ms`` is large.  Mycelium has no visibility into CFN's
+    # internal stages, but the response itself tells us a lot:
+    #   * many ``messages`` + long decide → multi-turn mediator loop
+    #   * few ``messages`` + long decide → single slow LLM call
+    #   * large ``response_bytes``       → verbose internal trace
+    cfn_status: str | None = None  # CFN payload status: agreed/ongoing/failed/...
+    cfn_messages_count: int | None = None  # mediator messages returned (ongoing rounds)
+    cfn_response_bytes: int | None = None  # size of CFN's JSON response
 
     def to_json(self) -> dict:
         """Serialise for structured logging / API."""
@@ -138,6 +147,9 @@ class _RoundTrace:
             "cfn_decide_ms": (
                 round(self.cfn_decide_ms, 1) if self.cfn_decide_ms is not None else None
             ),
+            "cfn_status": self.cfn_status,
+            "cfn_messages_count": self.cfn_messages_count,
+            "cfn_response_bytes": self.cfn_response_bytes,
             "per_agent": {
                 h: {
                     "first_response_ms": (
@@ -654,6 +666,20 @@ async def _cfn_decide_round(
         # Fall back to top-level keys for backward compatibility.
         payload = result.get("payload", {})
         status = payload.get("status", result.get("status", ""))
+
+        # Stamp CFN response shape on the trace so a long ``cfn_decide_ms``
+        # can be attributed to "many mediator turns" vs "one slow LLM call"
+        # without needing access to CFN's internal logs.
+        if state.current_trace is not None:
+            state.current_trace.cfn_status = status or None
+            messages_field = result.get("messages")
+            if isinstance(messages_field, list):
+                state.current_trace.cfn_messages_count = len(messages_field)
+            try:
+                state.current_trace.cfn_response_bytes = len(json.dumps(result, default=str))
+            except (TypeError, ValueError):
+                # Best-effort only; never let trace stamping fail the round.
+                state.current_trace.cfn_response_bytes = None
 
         if status in ("agreed",):
             final_result = result.get("final_result", {})

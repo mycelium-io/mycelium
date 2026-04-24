@@ -844,6 +844,9 @@ def test_round_trace_to_json_shape(clean_trace_buffer):
         "last_reply_received_ms",
         "cfn_decide_started_ms",
         "cfn_decide_ms",
+        "cfn_status",
+        "cfn_messages_count",
+        "cfn_response_bytes",
         "per_agent",
     }
     assert expected_keys.issubset(record.keys())
@@ -851,6 +854,9 @@ def test_round_trace_to_json_shape(clean_trace_buffer):
     assert record["last_reply_received_ms"] is None
     assert record["cfn_decide_started_ms"] is None
     assert record["cfn_decide_ms"] is None
+    assert record["cfn_status"] is None
+    assert record["cfn_messages_count"] is None
+    assert record["cfn_response_bytes"] is None
     assert record["round_n"] == 2
     assert record["decision_path"] == "watchdog_fired"
     assert record["outcome"] == "ongoing"
@@ -932,6 +938,65 @@ async def test_round_trace_decomposes_collection_vs_decide_latency(clean_trace_b
     assert record["cfn_decide_ms"] >= 40.0
     # And decide latency is bounded by total elapsed.
     assert record["cfn_decide_ms"] <= record["elapsed_ms"] + 1.0
+
+    # CFN response shape stamped from the (mocked) decide payload.
+    assert record["cfn_status"] == "agreed"
+    # ``messages`` field is absent on the agreed payload above → count is None.
+    assert record["cfn_messages_count"] is None
+    assert isinstance(record["cfn_response_bytes"], int)
+    assert record["cfn_response_bytes"] > 0
+
+    _cfn_state.clear()
+
+
+@pytest.mark.asyncio
+async def test_round_trace_stamps_cfn_messages_count_on_ongoing(clean_trace_buffer):
+    """Ongoing rounds should record how many mediator messages CFN returned —
+    a multi-turn decide loop is the leading hypothesis for CFN-side latency in
+    issue #162, and Mycelium can observe it directly from the response body."""
+    _cfn_state.clear()
+    state = _CfnRoundState(
+        session_id="room-msgs",
+        workspace_id="ws",
+        mas_id="mas",
+        agents=["alice", "bob"],
+        pending_replies={"alice": None, "bob": None},
+    )
+    _attach_trace(state, "room-msgs", ["alice", "bob"])
+    _cfn_state["room-msgs"] = state
+
+    async def ongoing_with_three_messages(**_kwargs):
+        return {
+            "status": "ongoing",
+            "messages": [
+                {"to": "alice", "content": "..."},
+                {"to": "bob", "content": "..."},
+                {"to": "alice", "content": "..."},
+            ],
+        }
+
+    with (
+        patch(
+            "app.services.cfn_negotiation.decide_negotiation",
+            side_effect=ongoing_with_three_messages,
+        ),
+        patch.object(coord, "_post_message", new=AsyncMock()),
+        patch.object(coord, "_fan_out_cfn_messages", new=AsyncMock(return_value=["alice", "bob"])),
+        patch.object(coord, "async_session_maker"),
+    ):
+        await on_agent_response("room-msgs", "alice", json.dumps({"action": "accept"}))
+        await on_agent_response("room-msgs", "bob", json.dumps({"action": "accept"}))
+        for _ in range(20):
+            await asyncio.sleep(0.01)
+            if coord.get_round_traces():
+                break
+
+    traces = coord.get_round_traces()
+    assert len(traces) == 1
+    assert traces[0]["cfn_status"] == "ongoing"
+    assert traces[0]["cfn_messages_count"] == 3
+    assert isinstance(traces[0]["cfn_response_bytes"], int)
+    assert traces[0]["cfn_response_bytes"] > 0
 
     _cfn_state.clear()
 
