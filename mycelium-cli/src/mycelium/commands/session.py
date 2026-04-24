@@ -319,11 +319,15 @@ def await_tick(
                     if "error" in data:
                         participant = (data.get("payload") or {}).get("participant_id")
                         if participant == handle or participant is None:
-                            typer.echo(json_module.dumps({
-                                "type": "error",
-                                "error": data["error"],
-                                "instruction": data.get("instruction"),
-                            }))
+                            typer.echo(
+                                json_module.dumps(
+                                    {
+                                        "type": "error",
+                                        "error": data["error"],
+                                        "instruction": data.get("instruction"),
+                                    }
+                                )
+                            )
                             return
                         continue
                     if "payload" in data and isinstance(data["payload"], dict):

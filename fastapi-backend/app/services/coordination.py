@@ -301,8 +301,17 @@ async def _round_timeout(room_name: str) -> None:
     state = _cfn_state.get(room_name)
     if not state:
         return
-    logger.warning("CFN round timeout fired for %s — agents silent for %ds, aborting session", room_name, _CFN_ROUND_TIMEOUT_SECS)
-    await _finish_cfn(room_name, plan="Negotiation timed out — agents did not respond", assignments={}, broken=True)
+    logger.warning(
+        "CFN round timeout fired for %s — agents silent for %ds, aborting session",
+        room_name,
+        _CFN_ROUND_TIMEOUT_SECS,
+    )
+    await _finish_cfn(
+        room_name,
+        plan="Negotiation timed out — agents did not respond",
+        assignments={},
+        broken=True,
+    )
 
 
 async def _fan_out_cfn_messages(
@@ -621,7 +630,11 @@ async def on_agent_response(room_name: str, handle: str, content: str) -> None:
     async with cfn.lock:
         if handle in cfn.pending_replies:
             reply_data = _parse_agent_reply(handle, content, cfn.current_offer, cfn.issue_options)
-            if reply_data.get("action") == "counter_offer" and cfn.next_proposer_id and handle != cfn.next_proposer_id:
+            if (
+                reply_data.get("action") == "counter_offer"
+                and cfn.next_proposer_id
+                and handle != cfn.next_proposer_id
+            ):
                 out_of_turn = True
                 # Leave pending_replies[handle] as None — round waits for a corrected reply.
             elif reply_data.get("action") == "invalid_keys":
@@ -650,14 +663,16 @@ async def on_agent_response(room_name: str, handle: str, content: str) -> None:
         await _post_message(
             room_name,
             message_type="coordination_tick",
-            content=json.dumps({
-                "error": "counter_offer_not_your_turn",
-                "instruction": (
-                    f"It is not your turn to propose. Only '{cfn.next_proposer_id}' may counter-offer "
-                    "this round. Use 'accept' or 'reject' instead."
-                ),
-                "payload": {"participant_id": handle},
-            }),
+            content=json.dumps(
+                {
+                    "error": "counter_offer_not_your_turn",
+                    "instruction": (
+                        f"It is not your turn to propose. Only '{cfn.next_proposer_id}' may counter-offer "
+                        "this round. Use 'accept' or 'reject' instead."
+                    ),
+                    "payload": {"participant_id": handle},
+                }
+            ),
         )
         return
 
@@ -672,15 +687,17 @@ async def on_agent_response(room_name: str, handle: str, content: str) -> None:
         await _post_message(
             room_name,
             message_type="coordination_tick",
-            content=json.dumps({
-                "error": "counter_offer_invalid_keys",
-                "bad_keys": corrective["bad_keys"],
-                "valid_keys": corrective["valid_keys"],
-                "instruction": (
-                    "Re-submit your counter_offer using only the exact keys listed in valid_keys."
-                ),
-                "payload": {"participant_id": handle},
-            }),
+            content=json.dumps(
+                {
+                    "error": "counter_offer_invalid_keys",
+                    "bad_keys": corrective["bad_keys"],
+                    "valid_keys": corrective["valid_keys"],
+                    "instruction": (
+                        "Re-submit your counter_offer using only the exact keys listed in valid_keys."
+                    ),
+                    "payload": {"participant_id": handle},
+                }
+            ),
         )
         return
 

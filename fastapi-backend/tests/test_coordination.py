@@ -81,8 +81,9 @@ def _patch_db():
     msg = MagicMock()
     msg.id = 1
     msg.created_at = MagicMock(isoformat=MagicMock(return_value="2026-01-01T00:00:00"))
-    mock_session.add.side_effect = lambda m: setattr(m, "id", 1) or setattr(
-        m, "created_at", MagicMock(isoformat=lambda: "2026-01-01T00:00:00")
+    mock_session.add.side_effect = lambda m: (
+        setattr(m, "id", 1)
+        or setattr(m, "created_at", MagicMock(isoformat=lambda: "2026-01-01T00:00:00"))
     )
 
     return patch("app.services.coordination.async_session_maker", return_value=mock_session)
@@ -546,8 +547,12 @@ async def test_schedule_join_timer_clears_registry_on_completion():
 def test_validate_and_fill_offer_bad_key_returns_invalid_keys():
     """Keys not in current_offer return the invalid_keys sentinel."""
     current_offer = {"price": "mid", "timeline": "12mo"}
-    result = {"agent_id": "alice", "participant_id": "alice", "action": "counter_offer",
-              "offer": {"price": "high", "scope": "full"}}
+    result = {
+        "agent_id": "alice",
+        "participant_id": "alice",
+        "action": "counter_offer",
+        "offer": {"price": "high", "scope": "full"},
+    }
     out = _validate_and_fill_offer("alice", result, current_offer)
     assert out["action"] == "invalid_keys"
     assert out["bad_keys"] == ["scope"]
@@ -557,8 +562,12 @@ def test_validate_and_fill_offer_bad_key_returns_invalid_keys():
 def test_validate_and_fill_offer_case_sensitive():
     """Key matching is case-sensitive — wrong casing produces invalid_keys."""
     current_offer = {"Demo is non-negotiable": "yes"}
-    result = {"agent_id": "alice", "participant_id": "alice", "action": "counter_offer",
-              "offer": {"demo is non-negotiable": "yes"}}
+    result = {
+        "agent_id": "alice",
+        "participant_id": "alice",
+        "action": "counter_offer",
+        "offer": {"demo is non-negotiable": "yes"},
+    }
     out = _validate_and_fill_offer("alice", result, current_offer)
     assert out["action"] == "invalid_keys"
     assert out["bad_keys"] == ["demo is non-negotiable"]
@@ -567,8 +576,12 @@ def test_validate_and_fill_offer_case_sensitive():
 def test_validate_and_fill_offer_partial_fill():
     """Valid but partial offer gets silently filled from anchor; agent values win."""
     current_offer = {"price": "mid", "timeline": "12mo", "scope": "standard"}
-    result = {"agent_id": "alice", "participant_id": "alice", "action": "counter_offer",
-              "offer": {"price": "high"}}
+    result = {
+        "agent_id": "alice",
+        "participant_id": "alice",
+        "action": "counter_offer",
+        "offer": {"price": "high"},
+    }
     out = _validate_and_fill_offer("alice", result, current_offer)
     assert out["action"] == "counter_offer"
     assert out["offer"] == {"price": "high", "timeline": "12mo", "scope": "standard"}
@@ -576,8 +589,12 @@ def test_validate_and_fill_offer_partial_fill():
 
 def test_validate_and_fill_offer_no_current_offer_passthrough():
     """When current_offer is None, the offer is returned unchanged."""
-    result = {"agent_id": "alice", "participant_id": "alice", "action": "counter_offer",
-              "offer": {"anything": "goes"}}
+    result = {
+        "agent_id": "alice",
+        "participant_id": "alice",
+        "action": "counter_offer",
+        "offer": {"anything": "goes"},
+    }
     out = _validate_and_fill_offer("alice", result, None)
     assert out["action"] == "counter_offer"
     assert out["offer"] == {"anything": "goes"}

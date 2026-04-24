@@ -373,7 +373,6 @@ async def get_negotiation_status(
         "issue_options": state.issue_options,
         "current_offer": state.current_offer,
         "pending_replies": {
-            h: "received" if v is not None else "waiting"
-            for h, v in state.pending_replies.items()
+            h: "received" if v is not None else "waiting" for h, v in state.pending_replies.items()
         },
     }
