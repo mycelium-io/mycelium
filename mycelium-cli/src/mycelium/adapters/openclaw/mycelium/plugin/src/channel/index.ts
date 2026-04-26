@@ -18,6 +18,7 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 
 import { CHANNEL_ID, type ChannelConfig } from "../config.js";
+import { clearAllBindings, getAllBoundRooms } from "./bindings.js";
 import { dispatchToAgent } from "./dispatch.js";
 import { _ownMessageIds } from "./post-to-room.js";
 import { routeMessage, type RouteAction } from "./route.js";
@@ -73,18 +74,67 @@ export function installChannel(
 
     // Poll for session sub-rooms and subscribe to their SSE streams.
     // Coordination ticks live in session sub-rooms, not the parent room.
+    //
+    // We watch sub-rooms of `cfg.room` (the static channel default) AND any
+    // room an agent has been bound to via the `message_received` hook
+    // (channel/bindings.ts). The bindings registry gets populated when an
+    // inbound channel message references `--room <name>` — typically the
+    // dynamic per-test rooms (`dist-e2e-<uuid>`). Without this widening, the
+    // push path was deaf to anything except cfg.room and agents fell back to
+    // polling via `mycelium session await` (which deadlocks under exec/yield;
+    // see plugin SKILL.md).
+    //
+    // We also subscribe to the parent room's own SSE on first sighting, so
+    // broadcast messages and `coordination_join` messages from dynamic rooms
+    // reach the router. Each call to startRoomSSE / startSessionSSE is
+    // idempotent per (URL), so duplicates are fine.
+    const _watchedParentRooms = new Set<string>([cfg.room]);
     const pollInterval = setInterval(async () => {
       try {
+        const parentRooms = new Set<string>([cfg.room, ...getAllBoundRooms()]);
+        // Open SSE on any new parent room we haven't watched yet so broadcasts
+        // and coordination_join messages flow through the router.
+        for (const parent of parentRooms) {
+          if (!_watchedParentRooms.has(parent) && _abort) {
+            _watchedParentRooms.add(parent);
+            log.info(`[${CHANNEL_ID}] subscribing to bound parent room: ${parent}`);
+            startRoomSSE(
+              runtime,
+              { ...cfg, room: parent },
+              _abort,
+              handleMessage,
+              log,
+            );
+          }
+        }
+
         const res = await fetch(`${cfg.backendUrl}/rooms`);
         if (!res.ok) return;
         const rooms: any[] = await res.json();
         for (const room of rooms) {
+          const name: string | undefined = room.name;
+          if (!name) continue;
+          // Match against every parent room we know about, not just cfg.room.
+          let matchedParent: string | null = null;
+          for (const parent of parentRooms) {
+            if (name.startsWith(parent + ":session:")) {
+              matchedParent = parent;
+              break;
+            }
+          }
+          if (!matchedParent) continue;
           if (
-            room.name?.startsWith(cfg.room + ":session:") &&
-            (room.coordination_state === "waiting" ||
-              room.coordination_state === "negotiating")
+            room.coordination_state === "waiting" ||
+            room.coordination_state === "negotiating"
           ) {
-            startSessionSSE(runtime, cfg, room.name, _abort!, handleMessage, log);
+            startSessionSSE(
+              runtime,
+              { ...cfg, room: matchedParent },
+              name,
+              _abort!,
+              handleMessage,
+              log,
+            );
           }
         }
       } catch {
@@ -99,6 +149,7 @@ export function installChannel(
     _abort?.abort();
     _abort = null;
     clearSubscribedSessions();
+    clearAllBindings();
     log.info(`[${CHANNEL_ID}] gateway stopping — SSE closed`);
   });
 }
