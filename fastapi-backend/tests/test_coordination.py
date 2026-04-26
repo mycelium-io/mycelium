@@ -299,7 +299,7 @@ async def test_on_agent_response_triggers_decide_when_all_replied():
 
     decide_called = []
 
-    async def fake_decide(room_name):
+    async def fake_decide(room_name, **_kwargs):
         decide_called.append(room_name)
 
     with patch.object(coord, "_cfn_decide_round", side_effect=fake_decide):
@@ -676,7 +676,7 @@ async def test_on_agent_response_partial_offer_stored_as_merged():
 
     decide_called = []
 
-    async def fake_decide(room_name):
+    async def fake_decide(room_name, **_kwargs):
         decide_called.append(room_name)
 
     with patch.object(coord, "_cfn_decide_round", side_effect=fake_decide):
@@ -722,5 +722,582 @@ async def test_fan_out_populates_cfn_state_fields():
     assert state.current_offer == {"price": "mid", "timeline": "12mo"}
     assert state.issues == ["price", "timeline"]
     assert state.issue_options == {"price": ["low", "mid", "high"], "timeline": ["6mo", "12mo"]}
+
+    _cfn_state.clear()
+
+
+# ── Tests: round trace instrumentation (#162) ────────────────────────────────
+#
+# These are CI-safe (no real CFN, no real DB) — they exercise the in-memory
+# trace machinery directly using the same mocking pattern as the rest of this
+# file.  Companion E2E coverage that scrapes
+# /api/internal/coordination/round-traces against a live backend lives outside
+# this repository in the operator test harness.
+
+
+@pytest.fixture(autouse=False)
+def clean_trace_buffer():
+    """Snapshot/restore the trace buffer so trace tests don't leak into each other."""
+    coord.clear_round_traces()
+    yield
+    coord.clear_round_traces()
+
+
+def _attach_trace(state: _CfnRoundState, room_name: str, addressed: list[str]) -> None:
+    """Open a round trace on a state.  Helper that mirrors _open_round_trace
+    without needing to hold the lock (we're single-threaded in tests)."""
+    coord._open_round_trace(state, room_name, addressed)
+
+
+@pytest.mark.asyncio
+async def test_round_trace_records_first_response_timing(clean_trace_buffer):
+    """on_agent_response stamps first_response_ms + reply_action on the trace."""
+    _cfn_state.clear()
+    state = _CfnRoundState(
+        session_id="room-tr1",
+        workspace_id="ws",
+        mas_id="mas",
+        agents=["alice", "bob"],
+        pending_replies={"alice": None, "bob": None},
+    )
+    _attach_trace(state, "room-tr1", ["alice", "bob"])
+    _cfn_state["room-tr1"] = state
+
+    # Patch decide so the all-replied path doesn't try to call CFN.
+    with patch.object(coord, "_cfn_decide_round", new=AsyncMock()):
+        await on_agent_response("room-tr1", "alice", json.dumps({"action": "accept"}))
+
+    slot = state.current_trace.per_agent["alice"]
+    assert slot.first_response_ms is not None
+    assert slot.first_response_ms >= 0.0
+    assert slot.reply_action == "accept"
+    assert slot.was_synthesised is False
+    # Bob hasn't replied yet — trace slot is still pristine.
+    assert state.current_trace.per_agent["bob"].first_response_ms is None
+    assert state.current_trace.per_agent["bob"].reply_action is None
+
+    _cfn_state.clear()
+
+
+@pytest.mark.asyncio
+async def test_round_trace_first_reply_wins_for_resubmits(clean_trace_buffer):
+    """A second reply from the same handle does NOT overwrite first_response_ms.
+
+    This matters because we want to measure how long the agent took to reach us
+    the *first* time, not how long the resubmit took.
+    """
+    _cfn_state.clear()
+    state = _CfnRoundState(
+        session_id="room-tr2",
+        workspace_id="ws",
+        mas_id="mas",
+        agents=["alice"],
+        pending_replies={"alice": None},
+    )
+    _attach_trace(state, "room-tr2", ["alice"])
+    _cfn_state["room-tr2"] = state
+
+    with patch.object(coord, "_cfn_decide_round", new=AsyncMock()):
+        await on_agent_response("room-tr2", "alice", json.dumps({"action": "reject"}))
+        first_ms = state.current_trace.per_agent["alice"].first_response_ms
+        assert first_ms is not None
+        # Resubmit with a different action — must not overwrite the stamp.
+        await asyncio.sleep(0.01)
+        await on_agent_response("room-tr2", "alice", json.dumps({"action": "accept"}))
+
+    slot = state.current_trace.per_agent["alice"]
+    assert slot.first_response_ms == first_ms
+    # reply_action also stays as the first one — same rationale.
+    assert slot.reply_action == "reject"
+
+    _cfn_state.clear()
+
+
+@pytest.mark.asyncio
+async def test_round_trace_marks_synthesised_replies_on_watchdog_fire(clean_trace_buffer):
+    """When _cfn_decide_round runs with missing replies, the trace records which
+    handles got synthesised reject replies.  This is the data point that
+    motivated #162 — observability into how often this happens in practice."""
+    _cfn_state.clear()
+    state = _CfnRoundState(
+        session_id="room-tr3",
+        workspace_id="ws",
+        mas_id="mas",
+        agents=["alice", "bob", "carol"],
+        # alice replied; bob and carol did not.
+        pending_replies={
+            "alice": {"agent_id": "alice", "participant_id": "alice", "action": "accept"},
+            "bob": None,
+            "carol": None,
+        },
+    )
+    _attach_trace(state, "room-tr3", ["alice", "bob", "carol"])
+    _cfn_state["room-tr3"] = state
+
+    decide_response = {"status": "ongoing", "messages": []}
+
+    with (
+        patch(
+            "app.services.cfn_negotiation.decide_negotiation",
+            AsyncMock(return_value=decide_response),
+        ),
+        patch.object(coord, "_post_message", new=AsyncMock()),
+        patch.object(coord, "async_session_maker"),
+    ):
+        await _cfn_decide_round("room-tr3", decision_path="watchdog_fired")
+
+    # Round 0 is closed and emitted; round 1 has been opened.
+    traces = coord.get_round_traces()
+    assert len(traces) == 1
+    closed = traces[0]
+    assert closed["round_n"] == 0
+    assert closed["decision_path"] == "watchdog_fired"
+    assert closed["outcome"] == "ongoing"
+    assert closed["synthesised_count"] == 2
+    assert closed["synthesised_handles"] == ["bob", "carol"]
+    assert closed["per_agent"]["alice"]["was_synthesised"] is False
+    assert closed["per_agent"]["bob"]["was_synthesised"] is True
+
+    # New round should be open with round_n incremented.
+    assert state.round_n == 1
+    assert state.current_trace is not None
+    assert state.current_trace.round_n == 1
+
+    _cfn_state.clear()
+
+
+@pytest.mark.asyncio
+async def test_round_trace_emitted_on_agreed_outcome(clean_trace_buffer):
+    """Agreed terminal status closes and emits the trace before _finish_cfn."""
+    _cfn_state.clear()
+    state = _CfnRoundState(
+        session_id="room-tr4",
+        workspace_id="ws",
+        mas_id="mas",
+        agents=["alice"],
+        pending_replies={"alice": {"agent_id": "alice", "action": "accept"}},
+    )
+    _attach_trace(state, "room-tr4", ["alice"])
+    _cfn_state["room-tr4"] = state
+
+    decide_response = {
+        "status": "agreed",
+        "session_id": "room-tr4",
+        "round": 1,
+        "final_result": {
+            "kind": "commit",
+            "semantic_context": {
+                "session_id": "room-tr4",
+                "final_agreement": [{"issue_id": "x", "chosen_option": "y"}],
+            },
+            "payload": {"status": "agreed"},
+        },
+    }
+
+    with (
+        patch(
+            "app.services.cfn_negotiation.decide_negotiation",
+            AsyncMock(return_value=decide_response),
+        ),
+        patch.object(coord, "_post_message", new=AsyncMock()),
+        patch.object(coord, "async_session_maker"),
+    ):
+        await _cfn_decide_round("room-tr4", decision_path="all_replied")
+
+    traces = coord.get_round_traces()
+    assert len(traces) == 1
+    assert traces[0]["outcome"] == "agreed"
+    assert traces[0]["decision_path"] == "all_replied"
+    assert traces[0]["synthesised_count"] == 0
+
+    _cfn_state.clear()
+
+
+@pytest.mark.asyncio
+async def test_round_trace_emitted_when_namespace_torn_down(clean_trace_buffer):
+    """Aborting an in-flight round (room delete) flushes its trace as 'aborted'."""
+    _cfn_state.clear()
+    state = _CfnRoundState(
+        session_id="room-tr5",
+        workspace_id="ws",
+        mas_id="mas",
+        agents=["alice", "bob"],
+        pending_replies={"alice": None, "bob": None},
+    )
+    _attach_trace(state, "room-tr5", ["alice", "bob"])
+    _cfn_state["room-tr5"] = state
+
+    asyncpg_patch, notify_patch = _patch_notify()
+    with _patch_db(), asyncpg_patch, notify_patch:
+        await coord.teardown_for_namespace("room-tr5", [])
+
+    traces = coord.get_round_traces()
+    assert len(traces) == 1
+    assert traces[0]["outcome"] == "aborted"
+    assert traces[0]["decision_path"] == "aborted"
+    # Both agents had no real reply → both synthesised (recorded by the close,
+    # not by the watchdog code path, but the marker is set the same way at
+    # decide-time only — for an abort we just record the outcome).  Verify
+    # the trace landed and includes both agents.
+    assert set(traces[0]["per_agent"].keys()) == {"alice", "bob"}
+
+    _cfn_state.clear()
+
+
+def test_round_trace_buffer_is_bounded(clean_trace_buffer):
+    """The trace ring buffer truncates to its capacity, oldest-out."""
+    cap = coord.ROUND_TRACE_BUFFER_SIZE
+    # Push cap + 5 traces directly via the emit helper.
+    for i in range(cap + 5):
+        trace = coord._RoundTrace(
+            room_name=f"room-{i}",
+            session_id=f"sess-{i}",
+            mas_id="mas",
+            workspace_id="ws",
+            round_n=0,
+            n_agents=1,
+        )
+        trace.decision_path = "all_replied"
+        trace.outcome = "agreed"
+        trace.closed_at = trace.started_at
+        coord._emit_round_trace(trace)
+
+    traces = coord.get_round_traces()
+    assert len(traces) == cap
+    # The oldest 5 should have been evicted (FIFO ring).
+    assert traces[0]["room"] == "room-5"
+    assert traces[-1]["room"] == f"room-{cap + 4}"
+
+
+def test_get_round_traces_respects_limit(clean_trace_buffer):
+    """get_round_traces(limit=N) returns the most-recent N entries."""
+    for i in range(10):
+        trace = coord._RoundTrace(
+            room_name=f"room-{i}",
+            session_id=f"sess-{i}",
+            mas_id="mas",
+            workspace_id="ws",
+            round_n=0,
+            n_agents=1,
+        )
+        trace.decision_path = "all_replied"
+        trace.outcome = "agreed"
+        trace.closed_at = trace.started_at
+        coord._emit_round_trace(trace)
+
+    last_three = coord.get_round_traces(limit=3)
+    assert [t["room"] for t in last_three] == ["room-7", "room-8", "room-9"]
+    assert coord.get_round_traces(limit=0) == []
+    assert len(coord.get_round_traces()) == 10
+
+
+def test_round_trace_to_json_shape(clean_trace_buffer):
+    """The serialised trace has the documented schema fields and types."""
+    trace = coord._RoundTrace(
+        room_name="room-shape",
+        session_id="sess-shape",
+        mas_id="mas-shape",
+        workspace_id="ws-shape",
+        round_n=2,
+        n_agents=2,
+        per_agent={
+            "alice": coord._PerAgentTrace(
+                handle="alice", first_response_ms=123.456, reply_action="accept"
+            ),
+            "bob": coord._PerAgentTrace(handle="bob", was_synthesised=True),
+        },
+    )
+    trace.decision_path = "watchdog_fired"
+    trace.outcome = "ongoing"
+    trace.closed_at = trace.started_at + 1.5  # 1500 ms
+
+    record = trace.to_json()
+
+    # Required top-level keys (the schema documented in app/routes/coordination.py).
+    expected_keys = {
+        "room",
+        "session_id",
+        "mas_id",
+        "workspace_id",
+        "round_n",
+        "n_agents",
+        "started_at",
+        "elapsed_ms",
+        "budget_seconds",
+        "extension_count",
+        "decision_path",
+        "outcome",
+        "synthesised_count",
+        "synthesised_handles",
+        "last_reply_received_ms",
+        "cfn_decide_started_ms",
+        "cfn_decide_ms",
+        "cfn_status",
+        "cfn_messages_count",
+        "cfn_response_bytes",
+        "cfn_internal_timing",
+        "per_agent",
+    }
+    assert expected_keys.issubset(record.keys())
+    # Decomposition fields default to None when never stamped.
+    assert record["last_reply_received_ms"] is None
+    assert record["cfn_decide_started_ms"] is None
+    assert record["cfn_decide_ms"] is None
+    assert record["cfn_status"] is None
+    assert record["cfn_messages_count"] is None
+    assert record["cfn_response_bytes"] is None
+    assert record["cfn_internal_timing"] is None
+    assert record["round_n"] == 2
+    assert record["decision_path"] == "watchdog_fired"
+    assert record["outcome"] == "ongoing"
+    assert record["synthesised_count"] == 1
+    assert record["synthesised_handles"] == ["bob"]
+    assert record["elapsed_ms"] == 1500.0
+    assert record["per_agent"]["alice"]["first_response_ms"] == 123.5
+    assert record["per_agent"]["alice"]["reply_action"] == "accept"
+    assert record["per_agent"]["alice"]["adapter"] == "unknown"
+    assert record["per_agent"]["bob"]["was_synthesised"] is True
+    # Must be JSON-serialisable end-to-end (no datetime objects, etc.).
+    json.dumps(record)
+
+
+@pytest.mark.asyncio
+async def test_round_trace_decomposes_collection_vs_decide_latency(clean_trace_buffer):
+    """End-to-end stamping of last_reply_received_ms / cfn_decide_started_ms /
+    cfn_decide_ms.
+
+    The collection phase ends when the last agent reply lands; the decide phase
+    runs from there until /decide returns.  Splitting the two is the whole point
+    of the decomposition — without it ``elapsed_ms`` rolls them together and
+    callers can't tell agent latency apart from CFN latency.
+    """
+    _cfn_state.clear()
+    state = _CfnRoundState(
+        session_id="room-decomp",
+        workspace_id="ws",
+        mas_id="mas",
+        agents=["alice"],
+        pending_replies={"alice": None},
+    )
+    _attach_trace(state, "room-decomp", ["alice"])
+    _cfn_state["room-decomp"] = state
+
+    # Make /decide take a measurable amount of time so cfn_decide_ms > 0.
+    async def slow_decide(**_kwargs):
+        await asyncio.sleep(0.05)
+        return {
+            "status": "agreed",
+            "session_id": "room-decomp",
+            "round": 1,
+            "final_result": {
+                "kind": "commit",
+                "semantic_context": {
+                    "session_id": "room-decomp",
+                    "final_agreement": [{"issue_id": "x", "chosen_option": "y"}],
+                },
+                "payload": {"status": "agreed"},
+            },
+        }
+
+    with (
+        patch("app.services.cfn_negotiation.decide_negotiation", side_effect=slow_decide),
+        patch.object(coord, "_post_message", new=AsyncMock()),
+        patch.object(coord, "async_session_maker"),
+    ):
+        await on_agent_response("room-decomp", "alice", json.dumps({"action": "accept"}))
+        # on_agent_response schedules _cfn_decide_round via ensure_future; let it run.
+        for _ in range(20):
+            await asyncio.sleep(0.01)
+            if coord.get_round_traces():
+                break
+
+    traces = coord.get_round_traces()
+    assert len(traces) == 1
+    record = traces[0]
+
+    # All three decomposition fields populated on the all_replied → agreed path.
+    assert record["last_reply_received_ms"] is not None
+    assert record["cfn_decide_started_ms"] is not None
+    assert record["cfn_decide_ms"] is not None
+
+    # Causal ordering: reply landed before decide started.
+    assert record["cfn_decide_started_ms"] >= record["last_reply_received_ms"]
+
+    # The 50 ms slow_decide sleep is comfortably observable; allow generous
+    # slack for CI noise.
+    assert record["cfn_decide_ms"] >= 40.0
+    # And decide latency is bounded by total elapsed.
+    assert record["cfn_decide_ms"] <= record["elapsed_ms"] + 1.0
+
+    # CFN response shape stamped from the (mocked) decide payload.
+    assert record["cfn_status"] == "agreed"
+    # ``messages`` field is absent on the agreed payload above → count is None.
+    assert record["cfn_messages_count"] is None
+    assert isinstance(record["cfn_response_bytes"], int)
+    assert record["cfn_response_bytes"] > 0
+
+    _cfn_state.clear()
+
+
+@pytest.mark.asyncio
+async def test_round_trace_stamps_cfn_messages_count_on_ongoing(clean_trace_buffer):
+    """Ongoing rounds should record how many mediator messages CFN returned —
+    a multi-turn decide loop is the leading hypothesis for CFN-side latency in
+    issue #162, and Mycelium can observe it directly from the response body."""
+    _cfn_state.clear()
+    state = _CfnRoundState(
+        session_id="room-msgs",
+        workspace_id="ws",
+        mas_id="mas",
+        agents=["alice", "bob"],
+        pending_replies={"alice": None, "bob": None},
+    )
+    _attach_trace(state, "room-msgs", ["alice", "bob"])
+    _cfn_state["room-msgs"] = state
+
+    async def ongoing_with_three_messages(**_kwargs):
+        return {
+            "status": "ongoing",
+            "messages": [
+                {"to": "alice", "content": "..."},
+                {"to": "bob", "content": "..."},
+                {"to": "alice", "content": "..."},
+            ],
+        }
+
+    with (
+        patch(
+            "app.services.cfn_negotiation.decide_negotiation",
+            side_effect=ongoing_with_three_messages,
+        ),
+        patch.object(coord, "_post_message", new=AsyncMock()),
+        patch.object(coord, "_fan_out_cfn_messages", new=AsyncMock(return_value=["alice", "bob"])),
+        patch.object(coord, "async_session_maker"),
+    ):
+        await on_agent_response("room-msgs", "alice", json.dumps({"action": "accept"}))
+        await on_agent_response("room-msgs", "bob", json.dumps({"action": "accept"}))
+        for _ in range(20):
+            await asyncio.sleep(0.01)
+            if coord.get_round_traces():
+                break
+
+    traces = coord.get_round_traces()
+    assert len(traces) == 1
+    assert traces[0]["cfn_status"] == "ongoing"
+    assert traces[0]["cfn_messages_count"] == 3
+    assert isinstance(traces[0]["cfn_response_bytes"], int)
+    assert traces[0]["cfn_response_bytes"] > 0
+
+    _cfn_state.clear()
+
+
+@pytest.mark.asyncio
+async def test_round_trace_captures_cfn_internal_timing_envelope(clean_trace_buffer):
+    """When CFN returns a ``_timing`` envelope (the experimental patched build),
+    capture it verbatim so the analyzer can decompose where /decide spent its
+    wall-clock time without log scraping.
+
+    Tolerance is critical: this code must also run against unpatched CFN
+    images that don't emit ``_timing`` at all (covered by the agreed/ongoing
+    tests above where the field is absent and stays ``None``)."""
+    _cfn_state.clear()
+    state = _CfnRoundState(
+        session_id="room-timing",
+        workspace_id="ws",
+        mas_id="mas",
+        agents=["alice"],
+        pending_replies={"alice": None},
+    )
+    _attach_trace(state, "room-timing", ["alice"])
+    _cfn_state["room-timing"] = state
+
+    async def decide_with_timing(**_kwargs):
+        return {
+            "status": "agreed",
+            "session_id": "room-timing",
+            "round": 1,
+            "final_result": {
+                "kind": "commit",
+                "semantic_context": {
+                    "session_id": "room-timing",
+                    "final_agreement": [{"issue_id": "x", "chosen_option": "y"}],
+                },
+                "payload": {"status": "agreed"},
+            },
+            # The experimental envelope CFN attaches when patched.  Mix int and
+            # float to confirm both pass the type filter.
+            "_timing": {
+                "validate_ms": 1,
+                "pipeline_ms": 22500.7,
+                "to_dict_ms": 12.3,
+                "thread_wait_ms": 0.4,
+                "in_thread_ms": 22480.0,
+                "total_route_ms": 22515.0,
+                # Junk that should be silently filtered out.
+                "nested_dict_should_be_dropped": {"foo": "bar"},
+                42: "non-string-key-should-be-dropped",
+            },
+        }
+
+    with (
+        patch("app.services.cfn_negotiation.decide_negotiation", side_effect=decide_with_timing),
+        patch.object(coord, "_post_message", new=AsyncMock()),
+        patch.object(coord, "async_session_maker"),
+    ):
+        await on_agent_response("room-timing", "alice", json.dumps({"action": "accept"}))
+        for _ in range(20):
+            await asyncio.sleep(0.01)
+            if coord.get_round_traces():
+                break
+
+    traces = coord.get_round_traces()
+    assert len(traces) == 1
+    timing = traces[0]["cfn_internal_timing"]
+    assert isinstance(timing, dict)
+    # All numeric stages preserved.
+    assert timing["pipeline_ms"] == 22500.7
+    assert timing["thread_wait_ms"] == 0.4
+    assert timing["in_thread_ms"] == 22480.0
+    # Junk filtered out by the captor.
+    assert "nested_dict_should_be_dropped" not in timing
+    assert 42 not in timing
+
+    _cfn_state.clear()
+
+
+@pytest.mark.asyncio
+async def test_round_trace_decide_latency_stamped_when_cfn_call_raises(clean_trace_buffer):
+    """Even when ``decide_negotiation`` raises, the trace records how long the
+    failed call took — otherwise CFN errors would look instantaneous."""
+    _cfn_state.clear()
+    state = _CfnRoundState(
+        session_id="room-decomp-err",
+        workspace_id="ws",
+        mas_id="mas",
+        agents=["alice"],
+        pending_replies={"alice": {"agent_id": "alice", "action": "accept"}},
+    )
+    _attach_trace(state, "room-decomp-err", ["alice"])
+    _cfn_state["room-decomp-err"] = state
+
+    from app.services.cfn_negotiation import CfnNegotiationError
+
+    async def failing_decide(**_kwargs):
+        await asyncio.sleep(0.02)
+        raise CfnNegotiationError("simulated CFN failure")
+
+    with (
+        patch("app.services.cfn_negotiation.decide_negotiation", side_effect=failing_decide),
+        patch.object(coord, "_post_message", new=AsyncMock()),
+        patch.object(coord, "async_session_maker"),
+    ):
+        await coord._cfn_decide_round("room-decomp-err", decision_path="all_replied")
+
+    traces = coord.get_round_traces()
+    assert len(traces) == 1
+    assert traces[0]["outcome"] == "error"
+    assert traces[0]["cfn_decide_started_ms"] is not None
+    assert traces[0]["cfn_decide_ms"] is not None
+    assert traces[0]["cfn_decide_ms"] >= 15.0  # ≥ the 20 ms sleep (slack for CI)
 
     _cfn_state.clear()

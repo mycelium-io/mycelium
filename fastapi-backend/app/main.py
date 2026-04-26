@@ -34,6 +34,7 @@ from app.database import get_async_session
 from app.routes.audit import router as audit_router
 from app.routes.cfn_proxy import cfn_read_router
 from app.routes.cfn_proxy import router as cfn_proxy_router
+from app.routes.coordination import router as coordination_router
 from app.routes.knowledge import router as knowledge_router
 from app.routes.memory import router as memory_router
 from app.routes.messages import router as messages_router
@@ -162,6 +163,9 @@ app.include_router(cfn_read_router)
 
 # Knowledge graph — forwards openclaw turns to CFN shared-memories + observability
 app.include_router(knowledge_router)
+
+# Coordination observability (round-trace ring buffer; see issue #162)
+app.include_router(coordination_router)
 
 
 @app.get("/", tags=["health"])
