@@ -58,11 +58,64 @@ def _describe_exc(exc: Exception) -> str:
 
 async def _cfn_post(url: str, body: dict[str, Any], endpoint: str) -> dict[str, Any]:
     """POST to CFN and raise ``CfnNegotiationError`` with a descriptive reason on any failure."""
+    # Per-call HTTP timing breakdown.  Break the call into:
+    #   client_setup_ms   : AsyncClient context-manager entry (TLS, pool init)
+    #   http_ms           : actual await client.post(...) (the on-the-wire time)
+    #   raise_for_status_ms : status check (cheap, but timed for completeness)
+    #   json_parse_ms     : resp.json() — can be non-trivial for fat payloads
+    # The contextvar bucket is owned by the caller (coordination._cfn_decide_round)
+    # and read after _cfn_post returns; if no caller installed one, all the
+    # timing_stage() calls become no-ops.
+    from app.services._cfn_call_timing import cfn_timing_stage, cfn_timing_stamp
+
+    cfn_timing_stamp("endpoint", endpoint)
     try:
-        async with httpx.AsyncClient(timeout=_CFN_HTTP_TIMEOUT) as client:
-            resp = await client.post(url, json=body)
-            resp.raise_for_status()
-            return resp.json()
+        client_cm = httpx.AsyncClient(timeout=_CFN_HTTP_TIMEOUT)
+        with cfn_timing_stage("client_setup_ms"):
+            client = await client_cm.__aenter__()
+        entered = True
+        try:
+            # Stamp wall-clock send time so CFN can compute
+            # wire_to_middleware_ms = cfn_received_at - X-Client-Sent-Wall-Ns.
+            # Both containers share the host clock (sub-ms skew on the same kernel).
+            import time as _time
+
+            sent_ns = _time.time_ns()
+            cfn_timing_stamp("sent_wall_ns", sent_ns)
+            headers = {"X-Client-Sent-Wall-Ns": str(sent_ns)}
+            with cfn_timing_stage("http_ms"):
+                resp = await client.post(url, json=body, headers=headers)
+            with cfn_timing_stage("raise_for_status_ms"):
+                resp.raise_for_status()
+            with cfn_timing_stage("json_parse_ms"):
+                data = resp.json()
+            cfn_timing_stamp("response_bytes", len(resp.content))
+            # Pull CFN's per-request loop-lag stats out of the response
+            # headers and into the timing snapshot.  These tell
+            # us whether CFN's event loop was blocked *during* the request
+            # — a non-zero value here for a slow request means the wedge
+            # was inside the handler/deps, not just before middleware fired.
+            for hdr_key in (
+                "x-cfn-loop-lag-samples-n",
+                "x-cfn-loop-lag-mean-ms",
+                "x-cfn-loop-lag-p95-ms",
+                "x-cfn-loop-lag-max-ms",
+            ):
+                v = resp.headers.get(hdr_key)
+                if v is not None:
+                    try:
+                        # All these are numeric; n is int, the rest float.
+                        cfn_timing_stamp(
+                            hdr_key.replace("x-", "").replace("-", "_"),
+                            int(v) if "samples-n" in hdr_key else float(v),
+                        )
+                    except (ValueError, TypeError):
+                        pass
+            return data
+        finally:
+            if entered:
+                with cfn_timing_stage("client_close_ms"):
+                    await client_cm.__aexit__(None, None, None)
     except httpx.HTTPStatusError as exc:
         reason = _describe_exc(exc)
         logger.warning(
