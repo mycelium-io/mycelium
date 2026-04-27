@@ -42,6 +42,13 @@ class Settings(BaseSettings):
     # How long to wait for additional agents to join after the first agent joins
     # a session before CognitiveEngine fires tick-0 (starts negotiation).
     COORDINATION_JOIN_WINDOW_SECONDS: int = 30
+    # Each subsequent agent join pushes the deadline forward by this many
+    # seconds (up to COORDINATION_JOIN_WINDOW_MAX_SECONDS total). Mirrors the
+    # round-watchdog extension pattern: as long as new joins keep arriving the
+    # window stays open, but a hard cap bounds total wait time. Set to 0 to
+    # disable extension (fall back to fixed window).
+    COORDINATION_JOIN_WINDOW_EXTENSION_SECONDS: int = 30
+    COORDINATION_JOIN_WINDOW_MAX_SECONDS: int = 180
     # Per-round timeout: how long CognitiveEngine waits for an agent to reply
     # during a negotiation round before falling back to the safe default.
     COORDINATION_TICK_TIMEOUT_SECONDS: int = 30

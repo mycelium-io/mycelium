@@ -147,7 +147,14 @@ def schedule_join_timer(room_name: str, deadline: datetime) -> asyncio.Task:
     Callers should prefer this over a bare ``asyncio.ensure_future(start_join_timer(...))``
     so :func:`teardown_for_namespace` can cancel a still-pending join window
     when the room is deleted.
+
+    If a timer is already armed for this room, cancel it first — this lets
+    subsequent joins extend the window by rescheduling with a new deadline
+    instead of stacking timers (which would race and fire CFN early).
     """
+    existing = _join_timer_tasks.get(room_name)
+    if existing is not None and not existing.done():
+        existing.cancel()
     task = asyncio.ensure_future(start_join_timer(room_name, deadline))
     _join_timer_tasks[room_name] = task
 
