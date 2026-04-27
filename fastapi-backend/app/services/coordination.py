@@ -707,6 +707,7 @@ async def on_agent_response(room_name: str, handle: str, content: str) -> None:
     should_decide = False
     corrective: dict | None = None
     out_of_turn: bool = False
+    extend_timeout: bool = False
     async with cfn.lock:
         if handle in cfn.pending_replies:
             reply_data = _parse_agent_reply(handle, content, cfn.current_offer, cfn.issue_options)
@@ -721,6 +722,11 @@ async def on_agent_response(room_name: str, handle: str, content: str) -> None:
                 corrective = reply_data
                 # Leave pending_replies[handle] as None — round waits for a corrected reply.
             else:
+                # Track newness so we extend the round timer only on first
+                # reply per agent per round — resubmits and duplicates don't
+                # extend (a stalled agent spamming retries shouldn't be able
+                # to keep the round alive forever).
+                was_pending = cfn.pending_replies[handle] is None
                 cfn.pending_replies[handle] = reply_data
                 logger.debug(
                     "CFN room %s: collected reply from %s (%d/%d)",
@@ -732,6 +738,12 @@ async def on_agent_response(room_name: str, handle: str, content: str) -> None:
                 all_received = all(v is not None for v in cfn.pending_replies.values())
                 if all_received:
                     should_decide = True
+                elif was_pending:
+                    # A new agent replied but the round isn't complete yet.
+                    # Reset the round watchdog so a single slow agent doesn't
+                    # blow the budget for everyone — the round only dies when
+                    # the *full* timeout elapses with no further activity.
+                    extend_timeout = True
 
     if out_of_turn:
         logger.warning(
@@ -786,6 +798,13 @@ async def on_agent_response(room_name: str, handle: str, content: str) -> None:
         if cfn.round_timeout_task and not cfn.round_timeout_task.done():
             cfn.round_timeout_task.cancel()
         asyncio.ensure_future(_cfn_decide_round(room_name))
+    elif extend_timeout:
+        # A first reply landed but others are still pending. Reset the round
+        # watchdog so the slow tail of agents gets the full budget too —
+        # otherwise a 3+ agent room dies whenever the slowest agent takes
+        # longer than the round timeout, regardless of when the others
+        # replied. Only first-replies extend (resubmits/dupes don't).
+        _reset_round_timeout(room_name, cfn)
 
 
 def _validate_and_fill_offer(handle: str, result: dict, current_offer: dict | None) -> dict:
