@@ -152,7 +152,7 @@ Interactive API docs at `http://localhost:8000/docs` when the backend is running
 
 Mycelium builds on OSS projects we found invaluable in this space:
 
-- [ioc-cfn-mgmt-plane](https://outshift.cisco.com) + [ioc-cognitive-fabric-node-svc](https://outshift.cisco.com) — Agent registration and fabric orchestration, from Outshift by Cisco
+- [ioc-cfn-mgmt-backend-svc](https://github.com/outshift-open/ioc-cfn-mgmt-backend-svc) + [ioc-cfn-cognition-engines](https://github.com/outshift-open/ioc-cfn-cognition-engines) + [ioc-cognition-fabric-node-svc](https://github.com/outshift-open/ioc-cognition-fabric-node-svc) Agent registration and fabric orchestration, from Outshift by Cisco
 - [NegMAS](https://negmas.readthedocs.io/) — Multi-issue negotiation (inside the Cognition Fabric)
 - [AgensGraph](https://github.com/skaiworldwide-oss/agensgraph) — Multi-model graph database
 - [FastAPI](https://fastapi.tiangolo.com/) + [pgvector](https://github.com/pgvector/pgvector) + [fastembed](https://github.com/qdrant/fastembed)
