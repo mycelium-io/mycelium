@@ -649,8 +649,20 @@ async def teardown_for_namespace(namespace_name: str, child_room_names: list[str
 async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool) -> None:
     """Post consensus and clean up CFN state."""
     state = _cfn_state.pop(room_name, None)
+    # Avoid self-cancellation: if _finish_cfn is being called from inside the
+    # round_timeout_task itself (the timeout path), cancelling that task here
+    # raises CancelledError at the next await — which is _post_message — and
+    # the terminal coordination_consensus never gets written. CancelledError
+    # inherits from BaseException, not Exception, so the try/except below
+    # wouldn't catch it either, and the room hangs in "negotiating" forever.
+    # Only cancel the timeout task when we're NOT the one running it.
     if state and state.round_timeout_task and not state.round_timeout_task.done():
-        state.round_timeout_task.cancel()
+        try:
+            current = asyncio.current_task()
+        except RuntimeError:
+            current = None
+        if state.round_timeout_task is not current:
+            state.round_timeout_task.cancel()
     try:
         await _post_message(
             room_name,
