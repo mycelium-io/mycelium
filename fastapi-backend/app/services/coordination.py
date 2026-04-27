@@ -62,6 +62,19 @@ class _CfnRoundState:
     issues: list[str] | None = None
     issue_options: dict[str, list[str]] | None = None
     next_proposer_id: str | None = None
+    # Round budget passed to CFN /start. Forwarded into ticks so agents can
+    # see how many rounds remain and decide whether to walk away with no
+    # agreement.
+    n_steps_total: int = 0
+    # Per-agent record of last round's action ("accept" | "reject" |
+    # "counter_offer" | "timeout"). Forwarded into the next tick as
+    # ``your_last_action`` so agents don't have to reverse-engineer state.
+    last_actions: dict[str, str] = field(default_factory=dict)
+    # Short label for what happened in the previous round: "first_round",
+    # "proposer_countered", "rejected_by_<id>", or "agreed". Forwarded into
+    # the next tick as ``prior_round_outcome`` so agents stop describing
+    # their own offer as "reflected back".
+    last_round_outcome: str = "first_round"
 
 
 # {room_name: _CfnRoundState}
@@ -234,12 +247,14 @@ async def _run_cfn_negotiation(
     )
 
     try:
+        from app.config import settings
         result = await start_negotiation(
             session_id=session_id,
             content_text=joined_intents,
             agents=agents,
             workspace_id=room.workspace_id,
             mas_id=room.mas_id,
+            n_steps=settings.NEGOTIATION_N_STEPS,
         )
     except CfnNegotiationError as exc:
         logger.error("CFN start_negotiation failed for %s: %s", room_name, exc)
@@ -253,6 +268,9 @@ async def _run_cfn_negotiation(
         mas_id=room.mas_id,
         agents=session_handles[:],
         pending_replies={h: None for h in session_handles},
+        # Use the configured cap; CFN may auto-compute internally when 0,
+        # so display 0 unchanged — agents can interpret that as "no cap".
+        n_steps_total=settings.NEGOTIATION_N_STEPS,
     )
     _cfn_state[room_name] = state
 
@@ -331,6 +349,14 @@ async def _fan_out_cfn_messages(
     Returns the list of agent handles that received a tick this round.
     """
     addressed: list[str] = []
+    # Read state once so each tick in this batch sees the same prior-round
+    # snapshot; _cfn_decide_round overwrites these fields immediately before
+    # calling us so the values describe what just happened.
+    state_snapshot = _cfn_state.get(room_name)
+    n_steps_total = state_snapshot.n_steps_total if state_snapshot else 0
+    last_actions = dict(state_snapshot.last_actions) if state_snapshot else {}
+    prior_round_outcome = state_snapshot.last_round_outcome if state_snapshot else "first_round"
+
     for msg in messages:
         payload = msg.get("payload", msg)
         participant_id = payload.get("participant_id")
@@ -365,6 +391,12 @@ async def _fan_out_cfn_messages(
                                 "next_proposer_id": next_proposer_id,
                                 "issue_options": issue_options,
                                 "issues": issues,
+                                # Negotiation budget + per-agent context so
+                                # agents don't have to reverse-engineer the
+                                # prior turn from action+can_counter_offer.
+                                "n_steps_total": n_steps_total,
+                                "your_last_action": last_actions.get(handle),
+                                "prior_round_outcome": prior_round_outcome,
                             }
                         }
                     ),
@@ -387,6 +419,9 @@ async def _fan_out_cfn_messages(
                             "next_proposer_id": next_proposer_id,
                             "issue_options": issue_options,
                             "issues": issues,
+                            "n_steps_total": n_steps_total,
+                            "your_last_action": last_actions.get(participant_id),
+                            "prior_round_outcome": prior_round_outcome,
                         }
                     }
                 ),
@@ -429,6 +464,11 @@ async def _cfn_decide_round(room_name: str) -> None:
         state.deciding = True
 
     agent_replies = []
+    # Snapshot per-agent actions for the next tick's `your_last_action` field
+    # and derive a short outcome label for `prior_round_outcome`. Both are
+    # forwarded into ticks so agents can stop reverse-engineering the prior
+    # turn from action+can_counter_offer.
+    snapshot_actions: dict[str, str] = {}
     for handle, reply_data in state.pending_replies.items():
         if reply_data is None:
             # Agent timed out / no structured reply — default to reject.
@@ -437,8 +477,27 @@ async def _cfn_decide_round(room_name: str) -> None:
             # mismatch, dropping any other agent's counter-offer in the same
             # round (same failure mode as #105, different code path).
             agent_replies.append({"agent_id": handle, "participant_id": handle, "action": "reject"})
+            snapshot_actions[handle] = "timeout"
         else:
             agent_replies.append(reply_data)
+            snapshot_actions[handle] = str(reply_data.get("action") or "reject")
+
+    proposer_handle = state.next_proposer_id or ""
+    proposer_action = snapshot_actions.get(proposer_handle, "")
+    rejecters = [
+        h for h, a in snapshot_actions.items()
+        if h != proposer_handle and a in ("reject", "timeout")
+    ]
+    if proposer_action == "counter_offer":
+        last_round_outcome = "proposer_countered"
+    elif rejecters:
+        last_round_outcome = f"rejected_by_{rejecters[0]}" if len(rejecters) == 1 else "rejected"
+    elif all(a == "accept" for a in snapshot_actions.values()):
+        last_round_outcome = "agreed"
+    else:
+        last_round_outcome = "no_consensus"
+    state.last_actions = snapshot_actions
+    state.last_round_outcome = last_round_outcome
 
     try:
         result = await decide_negotiation(

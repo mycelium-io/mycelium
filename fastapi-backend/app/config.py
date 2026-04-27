@@ -46,6 +46,12 @@ class Settings(BaseSettings):
     # during a negotiation round before falling back to the safe default.
     COORDINATION_TICK_TIMEOUT_SECONDS: int = 30
 
+    # Maximum SAO rounds per session. Passed to CFN /start as n_steps.
+    # CFN's auto-compute formula assumes Boulware concession that LLM callback
+    # agents don't exhibit; a low fixed cap keeps unconverged sessions from
+    # burning rounds indefinitely. 0 = fall through to CFN auto-compute.
+    NEGOTIATION_N_STEPS: int = 20
+
     @field_validator("LLM_BASE_URL", mode="before")
     @classmethod
     def _coerce_base_url(cls, v: object) -> object:

@@ -93,12 +93,16 @@ async def start_negotiation(
     ``agents`` items: ``{"id": handle, "name": handle}``
     """
     url = _mas_url(workspace_id, mas_id, "start")
-    body = {
+    body: dict[str, Any] = {
         "session_id": session_id,
         "content_text": content_text,
         "agents": agents,
-        "n_steps": n_steps,
     }
+    # n_steps=0 means "let CFN auto-compute from issue/agent count" — omit
+    # the field so the formula in compute_n_steps() runs. A literal 0 in the
+    # request body would cap negotiation at zero rounds.
+    if n_steps and n_steps > 0:
+        body["n_steps"] = n_steps
     return await _cfn_post(url, body, endpoint="start_negotiation")
 
 
