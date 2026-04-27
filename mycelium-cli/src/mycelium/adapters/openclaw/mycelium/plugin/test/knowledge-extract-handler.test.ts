@@ -84,11 +84,41 @@ describe("buildIngestBody — agent_id precedence", () => {
     expect(body.agent_id).toBe("fallback");
   });
 
-  it("wraps payload in records array and echoes workspace/mas ids", () => {
+  it("wraps payload in records array and echoes workspace/mas ids when present", () => {
     const body = buildIngestBody(baseTarget, "a", payload);
     expect(body.workspace_id).toBe("ws-1");
     expect(body.mas_id).toBe("mas-1");
     expect(body.records).toEqual([payload]);
+  });
+
+  it("omits workspace_id / mas_id when the spoke target has neither (issue #139)", () => {
+    // Pure spokes (clients with no local backend) typically have no
+    // [server].workspace_id / mas_id configured. The backend's
+    // resolve_workspace_id / resolve_mas_id chain falls back to its
+    // own settings — but only if the keys are absent from the body.
+    // Sending empty strings would shadow the fallback and 400 the
+    // request, which is exactly how the silent-archive bug in #139
+    // hid all spoke-side ingest.
+    const target = { ...baseTarget, workspaceId: null, masId: null };
+    const body = buildIngestBody(target, "a", payload);
+    expect(body).not.toHaveProperty("workspace_id");
+    expect(body).not.toHaveProperty("mas_id");
+    expect(body.agent_id).toBe("a");
+    expect(body.records).toEqual([payload]);
+  });
+
+  it("omits workspace_id / mas_id when target has empty strings", () => {
+    const target = { ...baseTarget, workspaceId: "", masId: "" };
+    const body = buildIngestBody(target, "a", payload);
+    expect(body).not.toHaveProperty("workspace_id");
+    expect(body).not.toHaveProperty("mas_id");
+  });
+
+  it("includes one id when only one is present (mixed config)", () => {
+    const target = { ...baseTarget, workspaceId: "ws-only", masId: null };
+    const body = buildIngestBody(target, "a", payload);
+    expect(body.workspace_id).toBe("ws-only");
+    expect(body).not.toHaveProperty("mas_id");
   });
 });
 

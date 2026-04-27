@@ -321,19 +321,30 @@ function buildPayload(sessionMeta, turns, entries, maxToolContentBytes) {
  * turns where ``event.context.agentId`` is absent. Without this fallback,
  * every ingest from a mycelium-room turn lands under agent ``(none)`` in
  * ``mycelium cfn stats`` (issue #144).
+ *
+ * ``workspace_id`` / ``mas_id`` are sent only when the local config supplies
+ * them. Spoke nodes (no backend installed) typically have neither; the hub
+ * backend resolves both from its own ``settings.WORKSPACE_ID`` /
+ * ``settings.MAS_ID`` (or per-room DB lookup) — sending empty strings would
+ * shadow that fallback and 400 the request. Mirrors the in-process plugin
+ * behaviour added in issue #139.
  */
 export function buildIngestBody(target, resolvedAgentId, payload) {
-  return {
-    workspace_id: target.workspaceId,
-    mas_id: target.masId,
+  const body = {
     agent_id: resolvedAgentId ?? target.agentId ?? null,
     records: [payload],
   };
+  if (target.workspaceId) body.workspace_id = target.workspaceId;
+  if (target.masId) body.mas_id = target.masId;
+  return body;
 }
 
 async function ingestToMycelium(payload, resolvedAgentId) {
   const target = getIngestTarget();
-  if (!target.apiUrl || !target.workspaceId || !target.masId) return false;
+  // Only api_url is mandatory at the spoke. workspace_id / mas_id are
+  // resolved server-side when the spoke can't supply them — see
+  // resolve_workspace_id / resolve_mas_id in the backend (issue #139).
+  if (!target.apiUrl) return false;
 
   return postKnowledgeIngest(
     target.apiUrl,
@@ -432,9 +443,24 @@ export default async function HookHandler(event) {
 
   ingestToMycelium(payload, agentId)
     .then((ok) => {
-      if (!ok) appendLog(LOG_FILE, payload);
+      if (!ok) {
+        // Loud fallback: a silent local-only archive is how issue #139
+        // hid hundreds of MB of un-ingested conversation data on spoke
+        // nodes. If we can't reach the backend, say so on stderr — the
+        // openclaw gateway captures it into its own logs.
+        process.stderr.write(
+          `[mycelium-knowledge-extract] backend POST failed or skipped — ` +
+            `archiving locally to ${LOG_FILE}. ` +
+            `Check ~/.mycelium/config.toml [server].api_url is reachable.\n`,
+        );
+        appendLog(LOG_FILE, payload);
+      }
     })
     .catch((err) => {
+      process.stderr.write(
+        `[mycelium-knowledge-extract] backend POST raised: ` +
+          `${err?.message ?? String(err)} — archiving locally to ${LOG_FILE}.\n`,
+      );
       appendLog(LOG_FILE, {
         error: err?.message ?? String(err),
         payload,
