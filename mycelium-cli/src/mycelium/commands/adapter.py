@@ -414,8 +414,7 @@ def add(
                     typer.echo(f"  hub probe: {api_url}/health → {reason}")
             else:
                 typer.secho(
-                    f"  warning: cannot reach Mycelium backend at "
-                    f"{api_url}/health ({reason})",
+                    f"  warning: cannot reach Mycelium backend at {api_url}/health ({reason})",
                     fg=typer.colors.YELLOW,
                 )
                 typer.echo(
