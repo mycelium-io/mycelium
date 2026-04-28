@@ -192,6 +192,11 @@ async def join_room(
 
         now = datetime.now(UTC)
         current_deadline = target_room.join_deadline
+        # SQLite returns offset-naive datetimes from DateTime columns; coerce
+        # to UTC-aware before any arithmetic so we don't trip
+        # "can't compare offset-naive and offset-aware datetimes" in tests.
+        if current_deadline is not None and current_deadline.tzinfo is None:
+            current_deadline = current_deadline.replace(tzinfo=UTC)
         first_join_at = (
             current_deadline - timedelta(seconds=settings.COORDINATION_JOIN_WINDOW_SECONDS)
             if current_deadline
