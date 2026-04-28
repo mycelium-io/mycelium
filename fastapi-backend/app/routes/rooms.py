@@ -345,7 +345,7 @@ async def delete_room(
     await _sync_delete_mas(room)
 
 
-@router.get("/{room_name}/negotiation")
+@router.get("/{room_name}/negotiation", operation_id="get_negotiation_status")
 async def get_negotiation_status(
     room_name: str,
     session: AsyncSession = Depends(get_async_session),

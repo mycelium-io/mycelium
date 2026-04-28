@@ -6,13 +6,11 @@ from typing import Any, TypeVar
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
-T = TypeVar(
-    "T", bound="GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet"
-)
+T = TypeVar("T", bound="GetNegotiationStatusResponseGetNegotiationStatus")
 
 
 @_attrs_define
-class GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet:
+class GetNegotiationStatusResponseGetNegotiationStatus:
     """ """
 
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -26,10 +24,10 @@ class GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatu
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        get_negotiation_status_rooms_room_name_negotiation_get_response_get_negotiation_status_rooms_room_name_negotiation_get = cls()
+        get_negotiation_status_response_get_negotiation_status = cls()
 
-        get_negotiation_status_rooms_room_name_negotiation_get_response_get_negotiation_status_rooms_room_name_negotiation_get.additional_properties = d
-        return get_negotiation_status_rooms_room_name_negotiation_get_response_get_negotiation_status_rooms_room_name_negotiation_get
+        get_negotiation_status_response_get_negotiation_status.additional_properties = d
+        return get_negotiation_status_response_get_negotiation_status
 
     @property
     def additional_keys(self) -> list[str]:

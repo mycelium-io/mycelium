@@ -34,8 +34,10 @@ def _parse_response(
     | None
 ):
     if response.status_code == 201:
-        response_201 = SpawnSessionRoomsRoomNameSessionsSpawnPostResponseSpawnSessionRoomsRoomNameSessionsSpawnPost.from_dict(
-            response.json()
+        response_201 = (
+            SpawnSessionRoomsRoomNameSessionsSpawnPostResponseSpawnSessionRoomsRoomNameSessionsSpawnPost.from_dict(
+                response.json()
+            )
         )
 
         return response_201
@@ -54,8 +56,7 @@ def _parse_response(
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
 ) -> Response[
-    HTTPValidationError
-    | SpawnSessionRoomsRoomNameSessionsSpawnPostResponseSpawnSessionRoomsRoomNameSessionsSpawnPost
+    HTTPValidationError | SpawnSessionRoomsRoomNameSessionsSpawnPostResponseSpawnSessionRoomsRoomNameSessionsSpawnPost
 ]:
     return Response(
         status_code=HTTPStatus(response.status_code),
@@ -70,8 +71,7 @@ def sync_detailed(
     *,
     client: AuthenticatedClient | Client,
 ) -> Response[
-    HTTPValidationError
-    | SpawnSessionRoomsRoomNameSessionsSpawnPostResponseSpawnSessionRoomsRoomNameSessionsSpawnPost
+    HTTPValidationError | SpawnSessionRoomsRoomNameSessionsSpawnPostResponseSpawnSessionRoomsRoomNameSessionsSpawnPost
 ]:
     """Spawn Session
 
@@ -134,8 +134,7 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient | Client,
 ) -> Response[
-    HTTPValidationError
-    | SpawnSessionRoomsRoomNameSessionsSpawnPostResponseSpawnSessionRoomsRoomNameSessionsSpawnPost
+    HTTPValidationError | SpawnSessionRoomsRoomNameSessionsSpawnPostResponseSpawnSessionRoomsRoomNameSessionsSpawnPost
 ]:
     """Spawn Session
 

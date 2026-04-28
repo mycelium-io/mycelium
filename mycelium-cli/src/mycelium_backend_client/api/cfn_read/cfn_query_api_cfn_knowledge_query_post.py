@@ -34,16 +34,10 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> (
-    CfnQueryApiCfnKnowledgeQueryPostResponseCfnQueryApiCfnKnowledgeQueryPost
-    | HTTPValidationError
-    | None
-):
+) -> CfnQueryApiCfnKnowledgeQueryPostResponseCfnQueryApiCfnKnowledgeQueryPost | HTTPValidationError | None:
     if response.status_code == 200:
-        response_200 = (
-            CfnQueryApiCfnKnowledgeQueryPostResponseCfnQueryApiCfnKnowledgeQueryPost.from_dict(
-                response.json()
-            )
+        response_200 = CfnQueryApiCfnKnowledgeQueryPostResponseCfnQueryApiCfnKnowledgeQueryPost.from_dict(
+            response.json()
         )
 
         return response_200
@@ -61,9 +55,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[
-    CfnQueryApiCfnKnowledgeQueryPostResponseCfnQueryApiCfnKnowledgeQueryPost | HTTPValidationError
-]:
+) -> Response[CfnQueryApiCfnKnowledgeQueryPostResponseCfnQueryApiCfnKnowledgeQueryPost | HTTPValidationError]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -76,9 +68,7 @@ def sync_detailed(
     *,
     client: AuthenticatedClient | Client,
     body: QueryRequest,
-) -> Response[
-    CfnQueryApiCfnKnowledgeQueryPostResponseCfnQueryApiCfnKnowledgeQueryPost | HTTPValidationError
-]:
+) -> Response[CfnQueryApiCfnKnowledgeQueryPostResponseCfnQueryApiCfnKnowledgeQueryPost | HTTPValidationError]:
     r"""Cfn Query
 
      Semantic-graph query against CFN's shared memory.
@@ -113,11 +103,7 @@ def sync(
     *,
     client: AuthenticatedClient | Client,
     body: QueryRequest,
-) -> (
-    CfnQueryApiCfnKnowledgeQueryPostResponseCfnQueryApiCfnKnowledgeQueryPost
-    | HTTPValidationError
-    | None
-):
+) -> CfnQueryApiCfnKnowledgeQueryPostResponseCfnQueryApiCfnKnowledgeQueryPost | HTTPValidationError | None:
     r"""Cfn Query
 
      Semantic-graph query against CFN's shared memory.
@@ -147,9 +133,7 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient | Client,
     body: QueryRequest,
-) -> Response[
-    CfnQueryApiCfnKnowledgeQueryPostResponseCfnQueryApiCfnKnowledgeQueryPost | HTTPValidationError
-]:
+) -> Response[CfnQueryApiCfnKnowledgeQueryPostResponseCfnQueryApiCfnKnowledgeQueryPost | HTTPValidationError]:
     r"""Cfn Query
 
      Semantic-graph query against CFN's shared memory.
@@ -182,11 +166,7 @@ async def asyncio(
     *,
     client: AuthenticatedClient | Client,
     body: QueryRequest,
-) -> (
-    CfnQueryApiCfnKnowledgeQueryPostResponseCfnQueryApiCfnKnowledgeQueryPost
-    | HTTPValidationError
-    | None
-):
+) -> CfnQueryApiCfnKnowledgeQueryPostResponseCfnQueryApiCfnKnowledgeQueryPost | HTTPValidationError | None:
     r"""Cfn Query
 
      Semantic-graph query against CFN's shared memory.

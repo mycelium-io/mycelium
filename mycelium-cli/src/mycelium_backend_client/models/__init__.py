@@ -20,9 +20,7 @@ from .cfn_query_api_cfn_knowledge_query_post_response_cfn_query_api_cfn_knowledg
     CfnQueryApiCfnKnowledgeQueryPostResponseCfnQueryApiCfnKnowledgeQueryPost,
 )
 from .concepts_by_ids_request import ConceptsByIdsRequest
-from .get_negotiation_status_rooms_room_name_negotiation_get_response_get_negotiation_status_rooms_room_name_negotiation_get import (
-    GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet,
-)
+from .get_negotiation_status_response_get_negotiation_status import GetNegotiationStatusResponseGetNegotiationStatus
 from .graph_paths_request import GraphPathsRequest
 from .http_validation_error import HTTPValidationError
 from .ingest_event import IngestEvent
@@ -76,7 +74,7 @@ __all__ = (
     "CfnListApiCfnKnowledgeListGetResponseCfnListApiCfnKnowledgeListGet",
     "CfnQueryApiCfnKnowledgeQueryPostResponseCfnQueryApiCfnKnowledgeQueryPost",
     "ConceptsByIdsRequest",
-    "GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet",
+    "GetNegotiationStatusResponseGetNegotiationStatus",
     "GraphPathsRequest",
     "HTTPValidationError",
     "IngestEvent",

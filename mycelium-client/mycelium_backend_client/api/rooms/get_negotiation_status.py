@@ -6,8 +6,8 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
-from ...models.get_negotiation_status_rooms_room_name_negotiation_get_response_get_negotiation_status_rooms_room_name_negotiation_get import (
-    GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet,
+from ...models.get_negotiation_status_response_get_negotiation_status import (
+    GetNegotiationStatusResponseGetNegotiationStatus,
 )
 from ...models.http_validation_error import HTTPValidationError
 from ...types import Response
@@ -28,15 +28,9 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> (
-    GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet
-    | HTTPValidationError
-    | None
-):
+) -> GetNegotiationStatusResponseGetNegotiationStatus | HTTPValidationError | None:
     if response.status_code == 200:
-        response_200 = GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet.from_dict(
-            response.json()
-        )
+        response_200 = GetNegotiationStatusResponseGetNegotiationStatus.from_dict(response.json())
 
         return response_200
 
@@ -53,10 +47,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[
-    GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet
-    | HTTPValidationError
-]:
+) -> Response[GetNegotiationStatusResponseGetNegotiationStatus | HTTPValidationError]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -69,10 +60,7 @@ def sync_detailed(
     room_name: str,
     *,
     client: AuthenticatedClient | Client,
-) -> Response[
-    GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet
-    | HTTPValidationError
-]:
+) -> Response[GetNegotiationStatusResponseGetNegotiationStatus | HTTPValidationError]:
     r"""Get Negotiation Status
 
      Return live negotiation state for an active session room.
@@ -88,7 +76,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet | HTTPValidationError]
+        Response[GetNegotiationStatusResponseGetNegotiationStatus | HTTPValidationError]
     """
 
     kwargs = _get_kwargs(
@@ -106,11 +94,7 @@ def sync(
     room_name: str,
     *,
     client: AuthenticatedClient | Client,
-) -> (
-    GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet
-    | HTTPValidationError
-    | None
-):
+) -> GetNegotiationStatusResponseGetNegotiationStatus | HTTPValidationError | None:
     r"""Get Negotiation Status
 
      Return live negotiation state for an active session room.
@@ -126,7 +110,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet | HTTPValidationError
+        GetNegotiationStatusResponseGetNegotiationStatus | HTTPValidationError
     """
 
     return sync_detailed(
@@ -139,10 +123,7 @@ async def asyncio_detailed(
     room_name: str,
     *,
     client: AuthenticatedClient | Client,
-) -> Response[
-    GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet
-    | HTTPValidationError
-]:
+) -> Response[GetNegotiationStatusResponseGetNegotiationStatus | HTTPValidationError]:
     r"""Get Negotiation Status
 
      Return live negotiation state for an active session room.
@@ -158,7 +139,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet | HTTPValidationError]
+        Response[GetNegotiationStatusResponseGetNegotiationStatus | HTTPValidationError]
     """
 
     kwargs = _get_kwargs(
@@ -174,11 +155,7 @@ async def asyncio(
     room_name: str,
     *,
     client: AuthenticatedClient | Client,
-) -> (
-    GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet
-    | HTTPValidationError
-    | None
-):
+) -> GetNegotiationStatusResponseGetNegotiationStatus | HTTPValidationError | None:
     r"""Get Negotiation Status
 
      Return live negotiation state for an active session room.
@@ -194,7 +171,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet | HTTPValidationError
+        GetNegotiationStatusResponseGetNegotiationStatus | HTTPValidationError
     """
 
     return (
