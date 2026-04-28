@@ -255,6 +255,7 @@ async def _run_cfn_negotiation(
 
     try:
         from app.config import settings
+
         result = await start_negotiation(
             session_id=session_id,
             content_text=joined_intents,
@@ -492,7 +493,8 @@ async def _cfn_decide_round(room_name: str) -> None:
     proposer_handle = state.next_proposer_id or ""
     proposer_action = snapshot_actions.get(proposer_handle, "")
     rejecters = [
-        h for h, a in snapshot_actions.items()
+        h
+        for h, a in snapshot_actions.items()
         if h != proposer_handle and a in ("reject", "timeout")
     ]
     if proposer_action == "counter_offer":

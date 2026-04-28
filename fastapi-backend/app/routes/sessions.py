@@ -200,9 +200,7 @@ async def join_room(
         max_deadline = first_join_at + timedelta(
             seconds=settings.COORDINATION_JOIN_WINDOW_MAX_SECONDS
         )
-        proposed = now + timedelta(
-            seconds=settings.COORDINATION_JOIN_WINDOW_EXTENSION_SECONDS
-        )
+        proposed = now + timedelta(seconds=settings.COORDINATION_JOIN_WINDOW_EXTENSION_SECONDS)
         new_deadline = min(proposed, max_deadline)
         # Only push forward — never shorten an already-longer deadline.
         if current_deadline is None or new_deadline > current_deadline:
