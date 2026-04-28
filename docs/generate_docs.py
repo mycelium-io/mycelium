@@ -479,12 +479,13 @@ def _generate_config_reference() -> tuple[str, str]:
 
     section_lines = ["      <h2>Configuration</h2>"]
     section_lines.append(
-        "      <p>Generated from <code>mycelium-cli/src/mycelium/config.py</code>. "
-        "Set values with <code>mycelium config set &lt;namespace&gt;.&lt;key&gt; &lt;value&gt;</code>, "
-        "then run <code>mycelium config apply</code> to regenerate "
-        "<code>~/.mycelium/.env</code>. Container-resident services (CFN, "
-        "mycelium-backend) need <code>docker compose ... up -d --force-recreate "
-        "&lt;service&gt;</code> to pick up changes.</p>"
+        "      <p>Settings live in <code>~/.mycelium/config.toml</code>. Change "
+        "a value with <code>mycelium config set &lt;key&gt; &lt;value&gt;</code> "
+        "(for example, <code>mycelium config set llm.model "
+        "anthropic/claude-sonnet-4-6</code>), then run <code>mycelium config "
+        "apply</code> to regenerate <code>~/.mycelium/.env</code>. If the "
+        "change affects a service running in a container, restart with "
+        "<code>mycelium up</code> for it to take effect.</p>"
     )
     sidebar_links: list[tuple[str, str]] = []
 
