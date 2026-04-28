@@ -42,9 +42,22 @@ class Settings(BaseSettings):
     # How long to wait for additional agents to join after the first agent joins
     # a session before CognitiveEngine fires tick-0 (starts negotiation).
     COORDINATION_JOIN_WINDOW_SECONDS: int = 30
+    # Each subsequent agent join pushes the deadline forward by this many
+    # seconds (up to COORDINATION_JOIN_WINDOW_MAX_SECONDS total). Mirrors the
+    # round-watchdog extension pattern: as long as new joins keep arriving the
+    # window stays open, but a hard cap bounds total wait time. Set to 0 to
+    # disable extension (fall back to fixed window).
+    COORDINATION_JOIN_WINDOW_EXTENSION_SECONDS: int = 30
+    COORDINATION_JOIN_WINDOW_MAX_SECONDS: int = 180
     # Per-round timeout: how long CognitiveEngine waits for an agent to reply
     # during a negotiation round before falling back to the safe default.
     COORDINATION_TICK_TIMEOUT_SECONDS: int = 30
+
+    # Maximum SAO rounds per session. Passed to CFN /start as n_steps.
+    # CFN's auto-compute formula assumes Boulware concession that LLM callback
+    # agents don't exhibit; a low fixed cap keeps unconverged sessions from
+    # burning rounds indefinitely. 0 = fall through to CFN auto-compute.
+    NEGOTIATION_N_STEPS: int = 20
 
     @field_validator("LLM_BASE_URL", mode="before")
     @classmethod

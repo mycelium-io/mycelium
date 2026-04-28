@@ -111,18 +111,47 @@ export function formatTickInstruction(
   const canCounter = payload?.can_counter_offer === true;
   const currentOffer = payload?.current_offer ?? {};
   const round = payload?.round ?? "?";
+  const nStepsTotal = payload?.n_steps_total;
+  const yourLastAction = payload?.your_last_action;
+  const priorOutcome = payload?.prior_round_outcome;
 
   const offerSummary = Object.entries(currentOffer)
     .map(([k, v]) => `  ${k}: ${v}`)
     .join("\n");
 
+  // Compose the round header. If we know the budget, surface remaining
+  // rounds so the agent can decide whether to keep negotiating or walk
+  // away with no agreement (a legitimate outcome — see SKILL.md).
+  const roundHeader =
+    typeof nStepsTotal === "number" && nStepsTotal > 0
+      ? `[CognitiveEngine — Round ${round} of ${nStepsTotal}]`
+      : `[CognitiveEngine — Round ${round}]`;
+
+  // Prior-round context — eliminates the "this is my offer reflected back"
+  // confusion by stating what just happened explicitly.
+  const contextLines: string[] = [];
+  if (priorOutcome && priorOutcome !== "first_round") {
+    const outcomeText = priorOutcome.startsWith("rejected_by_")
+      ? `Last round: ${priorOutcome.replace("rejected_by_", "")} rejected the standing offer.`
+      : priorOutcome === "proposer_countered"
+        ? "Last round: the designated proposer countered with a new offer (shown below)."
+        : priorOutcome === "agreed"
+          ? "Last round: all agents accepted."
+          : `Last round: ${priorOutcome.replace(/_/g, " ")}.`;
+    contextLines.push(outcomeText);
+  }
+  if (yourLastAction) {
+    contextLines.push(`Your last action: ${yourLastAction}.`);
+  }
+
   return [
-    `[CognitiveEngine — Round ${round}]`,
+    roundHeader,
     `You are in a structured negotiation in room ${roomName}.`,
     `Action required: ${action}`,
     canCounter
       ? "You CAN propose a counter-offer."
       : "You can only accept or reject.",
+    ...(contextLines.length > 0 ? ["", ...contextLines] : []),
     "",
     "Current offer on the table:",
     offerSummary,
@@ -133,7 +162,7 @@ export function formatTickInstruction(
     `To accept: mycelium negotiate respond accept --room ${roomName} --handle ${targetAgent}`,
     `To reject: mycelium negotiate respond reject --room ${roomName} --handle ${targetAgent}`,
     "",
-    "Explain your reasoning before running the command.",
+    "Explain your reasoning before running the command. Walking away with no agreement is a legitimate outcome — keep rejecting until the session ends if your hard constraints can't be met.",
   ]
     .filter(Boolean)
     .join("\n");
