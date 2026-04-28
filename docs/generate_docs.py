@@ -28,7 +28,6 @@ SECTION_CONFIG: list[tuple[str, str, str, str]] = [
     ("rooms.md", "rooms", "Concepts", "Rooms"),
     ("sessions.md", "sessions", "Concepts", "Sessions"),
     ("memory.md", "memory", "Concepts", "Memory"),
-    ("notebook.md", "notebook", "Concepts", "Notebook"),
     ("cognitive-engine.md", "cognitive-engine", "Concepts", "CognitiveEngine"),
     ("knowledge-graph.md", "knowledge-graph", "Concepts", "Knowledge Graph"),
     # cli-reference is handled separately by generate_cli_reference
@@ -316,7 +315,6 @@ GROUP_CONFIG: list[tuple[str, str, str]] = [
     ("room", "room", "room"),
     ("session", "session", "session"),
     ("memory", "memory", "memory"),
-    ("notebook", "notebook", "notebook"),
     ("negotiate", "negotiate", "negotiate"),
     ("cfn", "cfn", "cfn"),
     ("adapter", "adapter", "adapter"),
@@ -338,7 +336,6 @@ def _generate_cli_reference() -> tuple[str, str]:
     import mycelium.commands.install  # noqa: F401
     import mycelium.commands.memory  # noqa: F401
     import mycelium.commands.negotiate  # noqa: F401
-    import mycelium.commands.notebook  # noqa: F401
     import mycelium.commands.room  # noqa: F401
     import mycelium.commands.session  # noqa: F401
 

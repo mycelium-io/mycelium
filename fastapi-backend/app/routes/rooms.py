@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/rooms", tags=["rooms"])
 
 # Reserved room names — used by system internals, cannot be created/deleted by users.
-RESERVED_ROOMS = frozenset({"_notebooks"})
+RESERVED_ROOMS: frozenset[str] = frozenset()
 
 
 async def _sync_create_mas(db_room: Room, session: AsyncSession) -> None:
@@ -345,7 +345,7 @@ async def delete_room(
     await _sync_delete_mas(room)
 
 
-@router.get("/{room_name}/negotiation")
+@router.get("/{room_name}/negotiation", operation_id="get_negotiation_status")
 async def get_negotiation_status(
     room_name: str,
     session: AsyncSession = Depends(get_async_session),

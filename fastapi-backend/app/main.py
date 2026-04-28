@@ -37,7 +37,6 @@ from app.routes.cfn_proxy import router as cfn_proxy_router
 from app.routes.knowledge import router as knowledge_router
 from app.routes.memory import router as memory_router
 from app.routes.messages import router as messages_router
-from app.routes.notebook import router as notebook_router
 from app.routes.rooms import router as rooms_router
 from app.routes.sessions import router as sessions_router
 from app.routes.stream import router as stream_router
@@ -153,7 +152,6 @@ app.include_router(messages_router)
 app.include_router(sessions_router)
 app.include_router(stream_router)
 app.include_router(memory_router)
-app.include_router(notebook_router)
 
 # CFN routes
 app.include_router(audit_router)

@@ -76,7 +76,7 @@ class Settings(BaseSettings):
         return v
 
     # Filesystem-native memory storage
-    # Root directory for .mycelium/ data (rooms, notebooks, config)
+    # Root directory for .mycelium/ data (rooms, config)
     # Defaults to ~/.mycelium/ so backend and CLI share the same directory.
     MYCELIUM_DATA_DIR: str = str(Path.home() / ".mycelium")
 

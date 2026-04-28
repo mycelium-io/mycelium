@@ -15,7 +15,7 @@ mycelium memory set "decisions/db" "AgensGraph — SQL + graph + vector in one"
 # Things that failed (so nobody repeats them)
 mycelium memory set "failed/sqlite" "Can't handle pgvector or JSONB"
 
-# Agent-scoped status
+# Per-agent status (handle is just attribution)
 mycelium memory set "status/prometheus" "Working on CFN integration" --handle prometheus-agent
 
 # Browse a namespace

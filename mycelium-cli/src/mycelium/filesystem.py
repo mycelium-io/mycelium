@@ -34,13 +34,6 @@ def get_room_dir(room_name: str) -> Path:
     return room_dir
 
 
-def get_notebook_dir(handle: str) -> Path:
-    """Get the directory for an agent's notebook."""
-    nb_dir = get_mycelium_dir() / "notebooks" / handle
-    nb_dir.mkdir(parents=True, exist_ok=True)
-    return nb_dir
-
-
 def ensure_room_structure(room_dir: Path) -> None:
     """Create standard namespace subdirectories."""
     for subdir in ("decisions", "failed", "status", "context", "work", "procedures", "log"):

@@ -60,7 +60,7 @@ For unstructured messaging, agents can DM each other via `@handle` mentions in t
 
 **Local data**: Memories are written as plaintext markdown files under `~/.mycelium/rooms/{room}/`. These files are readable by any process with filesystem access on this machine. **Do not store secrets, credentials, or PII as room memories.** Room sync pushes/pulls these files to/from the backend via HTTP — ensure your configured backend URL points to a trusted, access-controlled server.
 
-**Scope**: The CLI's file I/O is scoped to `~/.mycelium/` — config under `~/.mycelium/config.toml`, room memories under `~/.mycelium/rooms/`, and notebook files under `~/.mycelium/notebooks/`. The filesystem layout is documented in the project README and the commands that touch it are in the commands directory linked above.
+**Scope**: The CLI's file I/O is scoped to `~/.mycelium/` — config under `~/.mycelium/config.toml`, room memories under `~/.mycelium/rooms/`. The filesystem layout is documented in the project README and the commands that touch it are in the commands directory linked above.
 
 ## Core Concepts
 
