@@ -34,7 +34,11 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> CfnGraphPathsApiCfnKnowledgePathsPostResponseCfnGraphPathsApiCfnKnowledgePathsPost | HTTPValidationError | None:
+) -> (
+    CfnGraphPathsApiCfnKnowledgePathsPostResponseCfnGraphPathsApiCfnKnowledgePathsPost
+    | HTTPValidationError
+    | None
+):
     if response.status_code == 200:
         response_200 = CfnGraphPathsApiCfnKnowledgePathsPostResponseCfnGraphPathsApiCfnKnowledgePathsPost.from_dict(
             response.json()
@@ -55,7 +59,10 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[CfnGraphPathsApiCfnKnowledgePathsPostResponseCfnGraphPathsApiCfnKnowledgePathsPost | HTTPValidationError]:
+) -> Response[
+    CfnGraphPathsApiCfnKnowledgePathsPostResponseCfnGraphPathsApiCfnKnowledgePathsPost
+    | HTTPValidationError
+]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -68,7 +75,10 @@ def sync_detailed(
     *,
     client: AuthenticatedClient | Client,
     body: GraphPathsRequest,
-) -> Response[CfnGraphPathsApiCfnKnowledgePathsPostResponseCfnGraphPathsApiCfnKnowledgePathsPost | HTTPValidationError]:
+) -> Response[
+    CfnGraphPathsApiCfnKnowledgePathsPostResponseCfnGraphPathsApiCfnKnowledgePathsPost
+    | HTTPValidationError
+]:
     """Cfn Graph Paths
 
      Fetch paths between two CFN concepts by ID.
@@ -99,7 +109,11 @@ def sync(
     *,
     client: AuthenticatedClient | Client,
     body: GraphPathsRequest,
-) -> CfnGraphPathsApiCfnKnowledgePathsPostResponseCfnGraphPathsApiCfnKnowledgePathsPost | HTTPValidationError | None:
+) -> (
+    CfnGraphPathsApiCfnKnowledgePathsPostResponseCfnGraphPathsApiCfnKnowledgePathsPost
+    | HTTPValidationError
+    | None
+):
     """Cfn Graph Paths
 
      Fetch paths between two CFN concepts by ID.
@@ -125,7 +139,10 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient | Client,
     body: GraphPathsRequest,
-) -> Response[CfnGraphPathsApiCfnKnowledgePathsPostResponseCfnGraphPathsApiCfnKnowledgePathsPost | HTTPValidationError]:
+) -> Response[
+    CfnGraphPathsApiCfnKnowledgePathsPostResponseCfnGraphPathsApiCfnKnowledgePathsPost
+    | HTTPValidationError
+]:
     """Cfn Graph Paths
 
      Fetch paths between two CFN concepts by ID.
@@ -154,7 +171,11 @@ async def asyncio(
     *,
     client: AuthenticatedClient | Client,
     body: GraphPathsRequest,
-) -> CfnGraphPathsApiCfnKnowledgePathsPostResponseCfnGraphPathsApiCfnKnowledgePathsPost | HTTPValidationError | None:
+) -> (
+    CfnGraphPathsApiCfnKnowledgePathsPostResponseCfnGraphPathsApiCfnKnowledgePathsPost
+    | HTTPValidationError
+    | None
+):
     """Cfn Graph Paths
 
      Fetch paths between two CFN concepts by ID.
