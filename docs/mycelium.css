@@ -446,6 +446,9 @@ tr:last-child td { border-bottom: none; }
 td:first-child { color: var(--accent2); font-family: 'SF Mono', monospace; font-size: 13px; }
 tr:hover td { background: rgba(255,255,255,0.02); }
 
+/* Config table — type column reads worse when wrapped on union types like "str | None" */
+.config-table td:nth-child(2) { white-space: nowrap; }
+
 /* ── CARDS ── */
 .card-grid {
   display: grid;
