@@ -501,26 +501,30 @@ def _generate_config_reference() -> tuple[str, str]:
         ns_doc = (ns_type.__doc__ or "").strip().split("\n", 1)[0]
         if ns_doc:
             section_lines.append(f"      <p>{html.escape(ns_doc)}</p>")
-        section_lines.append('      <table class="config-table">')
-        section_lines.append("        <thead>")
+        # Wrap in .table-wrap so the table scrolls horizontally on overflow
+        # rather than blowing past the main column.
+        section_lines.append('      <div class="table-wrap">')
+        section_lines.append('        <table class="config-table">')
+        section_lines.append("          <thead>")
         section_lines.append(
-            "          <tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr>"
+            "            <tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr>"
         )
-        section_lines.append("        </thead>")
-        section_lines.append("        <tbody>")
+        section_lines.append("          </thead>")
+        section_lines.append("          <tbody>")
         for fname, ff in ns_type.model_fields.items():
             full_key = f"{ns}.{fname}"
             type_str = _format_type(ff.annotation)
             default = _format_default(ff.default)
             desc = ff.description or "—"
             section_lines.append(
-                f"          <tr><td><code>{html.escape(full_key)}</code></td>"
+                f"            <tr><td><code>{html.escape(full_key)}</code></td>"
                 f"<td><code>{type_str}</code></td>"
                 f"<td>{default}</td>"
                 f"<td>{html.escape(desc)}</td></tr>"
             )
-        section_lines.append("        </tbody>")
-        section_lines.append("      </table>")
+        section_lines.append("          </tbody>")
+        section_lines.append("        </table>")
+        section_lines.append("      </div>")
 
     sidebar = [
         '    <div class="nav-section">',

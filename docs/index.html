@@ -1764,101 +1764,115 @@ curl -X POST http://localhost:8888/api/memory/search \
 
       <h3 id="config-identity">identity</h3>
       <p>Agent identity configuration.</p>
-      <table class="config-table">
-        <thead>
-          <tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr>
-        </thead>
-        <tbody>
-          <tr><td><code>identity.name</code></td><td><code>str | None</code></td><td><em>unset</em></td><td>Display name chosen by user</td></tr>
-          <tr><td><code>identity.machine_id</code></td><td><code>str | None</code></td><td><em>unset</em></td><td>Stable UUID for machine affinity (generated on first use)</td></tr>
-          <tr><td><code>identity.autonomous</code></td><td><code>bool</code></td><td><code>false</code></td><td>True when running as an autonomous agent</td></tr>
-        </tbody>
-      </table>
+      <div class="table-wrap">
+        <table class="config-table">
+          <thead>
+            <tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>identity.name</code></td><td><code>str | None</code></td><td><em>unset</em></td><td>Display name chosen by user</td></tr>
+            <tr><td><code>identity.machine_id</code></td><td><code>str | None</code></td><td><em>unset</em></td><td>Stable UUID for machine affinity (generated on first use)</td></tr>
+            <tr><td><code>identity.autonomous</code></td><td><code>bool</code></td><td><code>false</code></td><td>True when running as an autonomous agent</td></tr>
+          </tbody>
+        </table>
+      </div>
 
       <h3 id="config-server">server</h3>
       <p>Server connection configuration.</p>
-      <table class="config-table">
-        <thead>
-          <tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr>
-        </thead>
-        <tbody>
-          <tr><td><code>server.api_url</code></td><td><code>str</code></td><td><code>http://localhost:8000</code></td><td>Mycelium backend API URL</td></tr>
-          <tr><td><code>server.workspace_id</code></td><td><code>str | None</code></td><td><em>unset</em></td><td>Default workspace UUID (created during install)</td></tr>
-          <tr><td><code>server.mas_id</code></td><td><code>str | None</code></td><td><em>unset</em></td><td>Default MAS UUID (created during install)</td></tr>
-        </tbody>
-      </table>
+      <div class="table-wrap">
+        <table class="config-table">
+          <thead>
+            <tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>server.api_url</code></td><td><code>str</code></td><td><code>http://localhost:8000</code></td><td>Mycelium backend API URL</td></tr>
+            <tr><td><code>server.workspace_id</code></td><td><code>str | None</code></td><td><em>unset</em></td><td>Default workspace UUID (created during install)</td></tr>
+            <tr><td><code>server.mas_id</code></td><td><code>str | None</code></td><td><em>unset</em></td><td>Default MAS UUID (created during install)</td></tr>
+          </tbody>
+        </table>
+      </div>
 
       <h3 id="config-llm">llm</h3>
       <p>LLM configuration (litellm format).</p>
-      <table class="config-table">
-        <thead>
-          <tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr>
-        </thead>
-        <tbody>
-          <tr><td><code>llm.model</code></td><td><code>str | None</code></td><td><em>unset</em></td><td>LLM model in litellm format (e.g. anthropic/claude-sonnet-4-6)</td></tr>
-          <tr><td><code>llm.api_key</code></td><td><code>str | None</code></td><td><em>unset</em></td><td>API key for the LLM provider</td></tr>
-          <tr><td><code>llm.base_url</code></td><td><code>str | None</code></td><td><em>unset</em></td><td>Custom base URL for LLM endpoint (ollama, vllm, etc.)</td></tr>
-        </tbody>
-      </table>
+      <div class="table-wrap">
+        <table class="config-table">
+          <thead>
+            <tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>llm.model</code></td><td><code>str | None</code></td><td><em>unset</em></td><td>LLM model in litellm format (e.g. anthropic/claude-sonnet-4-6)</td></tr>
+            <tr><td><code>llm.api_key</code></td><td><code>str | None</code></td><td><em>unset</em></td><td>API key for the LLM provider</td></tr>
+            <tr><td><code>llm.base_url</code></td><td><code>str | None</code></td><td><em>unset</em></td><td>Custom base URL for LLM endpoint (ollama, vllm, etc.)</td></tr>
+          </tbody>
+        </table>
+      </div>
 
       <h3 id="config-runtime">runtime</h3>
       <p>Docker runtime / environment configuration.</p>
-      <table class="config-table">
-        <thead>
-          <tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr>
-        </thead>
-        <tbody>
-          <tr><td><code>runtime.db_password</code></td><td><code>str</code></td><td><code>password</code></td><td>Postgres password for the mycelium-db container</td></tr>
-          <tr><td><code>runtime.db_port</code></td><td><code>int</code></td><td><code>5432</code></td><td>Host port for Postgres</td></tr>
-          <tr><td><code>runtime.backend_port</code></td><td><code>int</code></td><td><code>8000</code></td><td>Host port for the backend API</td></tr>
-          <tr><td><code>runtime.data_dir</code></td><td><code>str | None</code></td><td><em>unset</em></td><td>Root directory for .mycelium/ data (defaults to ~/.mycelium)</td></tr>
-          <tr><td><code>runtime.coordination_tick_timeout_seconds</code></td><td><code>int</code></td><td><code>30</code></td><td>Per-round timeout for CognitiveEngine negotiation</td></tr>
-          <tr><td><code>runtime.cfn_mgmt_url</code></td><td><code>str | None</code></td><td><em>unset</em></td><td>IoC CFN management plane URL</td></tr>
-          <tr><td><code>runtime.cognition_fabric_node_url</code></td><td><code>str | None</code></td><td><em>unset</em></td><td>IoC CFN cognition fabric node URL</td></tr>
-          <tr><td><code>runtime.workspace_id</code></td><td><code>str | None</code></td><td><em>unset</em></td><td>Workspace ID in the CFN mgmt plane</td></tr>
-          <tr><td><code>runtime.cfn_db</code></td><td><code>str</code></td><td><code>cfn_mgmt</code></td><td>CFN management database name</td></tr>
-          <tr><td><code>runtime.admin_user_password</code></td><td><code>str</code></td><td><code>admin</code></td><td>Admin user password for CFN mgmt plane</td></tr>
-          <tr><td><code>runtime.cfn_dev_mode</code></td><td><code>bool</code></td><td><code>false</code></td><td>Enable CFN dev mode</td></tr>
-        </tbody>
-      </table>
+      <div class="table-wrap">
+        <table class="config-table">
+          <thead>
+            <tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>runtime.db_password</code></td><td><code>str</code></td><td><code>password</code></td><td>Postgres password for the mycelium-db container</td></tr>
+            <tr><td><code>runtime.db_port</code></td><td><code>int</code></td><td><code>5432</code></td><td>Host port for Postgres</td></tr>
+            <tr><td><code>runtime.backend_port</code></td><td><code>int</code></td><td><code>8000</code></td><td>Host port for the backend API</td></tr>
+            <tr><td><code>runtime.data_dir</code></td><td><code>str | None</code></td><td><em>unset</em></td><td>Root directory for .mycelium/ data (defaults to ~/.mycelium)</td></tr>
+            <tr><td><code>runtime.coordination_tick_timeout_seconds</code></td><td><code>int</code></td><td><code>30</code></td><td>Per-round timeout for CognitiveEngine negotiation</td></tr>
+            <tr><td><code>runtime.cfn_mgmt_url</code></td><td><code>str | None</code></td><td><em>unset</em></td><td>IoC CFN management plane URL</td></tr>
+            <tr><td><code>runtime.cognition_fabric_node_url</code></td><td><code>str | None</code></td><td><em>unset</em></td><td>IoC CFN cognition fabric node URL</td></tr>
+            <tr><td><code>runtime.workspace_id</code></td><td><code>str | None</code></td><td><em>unset</em></td><td>Workspace ID in the CFN mgmt plane</td></tr>
+            <tr><td><code>runtime.cfn_db</code></td><td><code>str</code></td><td><code>cfn_mgmt</code></td><td>CFN management database name</td></tr>
+            <tr><td><code>runtime.admin_user_password</code></td><td><code>str</code></td><td><code>admin</code></td><td>Admin user password for CFN mgmt plane</td></tr>
+            <tr><td><code>runtime.cfn_dev_mode</code></td><td><code>bool</code></td><td><code>false</code></td><td>Enable CFN dev mode</td></tr>
+          </tbody>
+        </table>
+      </div>
 
       <h3 id="config-negotiation">negotiation</h3>
       <p>Tunables for the CFN-mediated negotiation flow.</p>
-      <table class="config-table">
-        <thead>
-          <tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr>
-        </thead>
-        <tbody>
-          <tr><td><code>negotiation.n_steps</code></td><td><code>int</code></td><td><code>20</code></td><td>Maximum SAO rounds per session. CFN&#x27;s auto-compute formula assumes Boulware-style time-based concession (last ~30% of rounds), which LLM callback agents do not exhibit — so a low fixed cap is preferred. Set to 0 to fall through to CFN&#x27;s auto-computed budget.</td></tr>
-        </tbody>
-      </table>
+      <div class="table-wrap">
+        <table class="config-table">
+          <thead>
+            <tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>negotiation.n_steps</code></td><td><code>int</code></td><td><code>20</code></td><td>Maximum SAO rounds per session. CFN&#x27;s auto-compute formula assumes Boulware-style time-based concession (last ~30% of rounds), which LLM callback agents do not exhibit — so a low fixed cap is preferred. Set to 0 to fall through to CFN&#x27;s auto-computed budget.</td></tr>
+          </tbody>
+        </table>
+      </div>
 
       <h3 id="config-rooms">rooms</h3>
       <p>Room management configuration.</p>
-      <table class="config-table">
-        <thead>
-          <tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr>
-        </thead>
-        <tbody>
-          <tr><td><code>rooms.active</code></td><td><code>str | None</code></td><td><em>unset</em></td><td>Currently active room name</td></tr>
-        </tbody>
-      </table>
+      <div class="table-wrap">
+        <table class="config-table">
+          <thead>
+            <tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>rooms.active</code></td><td><code>str | None</code></td><td><em>unset</em></td><td>Currently active room name</td></tr>
+          </tbody>
+        </table>
+      </div>
 
       <h3 id="config-knowledge-ingest">knowledge_ingest</h3>
       <p>Control surface for the mycelium-knowledge-extract hook → CFN path.</p>
-      <table class="config-table">
-        <thead>
-          <tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr>
-        </thead>
-        <tbody>
-          <tr><td><code>knowledge_ingest.enabled</code></td><td><code>bool</code></td><td><code>true</code></td><td>Master kill switch for the knowledge-extract hook. False stops the hook on entry (no session reads, no POSTs, no CFN spend) and causes the backend to return 200 with a disabled marker.</td></tr>
-          <tr><td><code>knowledge_ingest.events</code></td><td><code>list[str]</code></td><td><code>PydanticUndefined</code></td><td>OpenClaw event types that fire the knowledge-extract hook. &#x27;message:sent&#x27; fires after the agent&#x27;s response is delivered (one finalized turn available per fire). &#x27;agent:bootstrap&#x27; fires on session boot for catch-up. Avoid &#x27;command:new&#x27; — that&#x27;s the /new slash command (session reset), not a new agent turn.</td></tr>
-          <tr><td><code>knowledge_ingest.max_tool_content_bytes</code></td><td><code>int</code></td><td><code>4096</code></td><td>Per-tool-call truncation threshold for tc.input and tc.result in the hook payload. 0 disables truncation. The extractor does not need full file dumps to pull concepts.</td></tr>
-          <tr><td><code>knowledge_ingest.skip_in_progress_turn</code></td><td><code>bool</code></td><td><code>true</code></td><td>Hook skips the last un-finalized turn to avoid re-sending when tool results land after the initial POST. Final session turn is only sent when the next turn arrives or the session closes.</td></tr>
-          <tr><td><code>knowledge_ingest.max_input_tokens</code></td><td><code>int</code></td><td><code>50000</code></td><td>Backend circuit breaker — payloads above this estimated input token count are refused with 413. Set to 0 to disable.</td></tr>
-          <tr><td><code>knowledge_ingest.dedupe_ttl_seconds</code></td><td><code>int</code></td><td><code>300</code></td><td>Backend content-hash dedupe window. Identical payloads posted within this many seconds return the cached response_id without hitting CFN. Set to 0 to disable dedupe entirely.</td></tr>
-        </tbody>
-      </table>
+      <div class="table-wrap">
+        <table class="config-table">
+          <thead>
+            <tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>knowledge_ingest.enabled</code></td><td><code>bool</code></td><td><code>true</code></td><td>Master kill switch for the knowledge-extract hook. False stops the hook on entry (no session reads, no POSTs, no CFN spend) and causes the backend to return 200 with a disabled marker.</td></tr>
+            <tr><td><code>knowledge_ingest.events</code></td><td><code>list[str]</code></td><td><code>PydanticUndefined</code></td><td>OpenClaw event types that fire the knowledge-extract hook. &#x27;message:sent&#x27; fires after the agent&#x27;s response is delivered (one finalized turn available per fire). &#x27;agent:bootstrap&#x27; fires on session boot for catch-up. Avoid &#x27;command:new&#x27; — that&#x27;s the /new slash command (session reset), not a new agent turn.</td></tr>
+            <tr><td><code>knowledge_ingest.max_tool_content_bytes</code></td><td><code>int</code></td><td><code>4096</code></td><td>Per-tool-call truncation threshold for tc.input and tc.result in the hook payload. 0 disables truncation. The extractor does not need full file dumps to pull concepts.</td></tr>
+            <tr><td><code>knowledge_ingest.skip_in_progress_turn</code></td><td><code>bool</code></td><td><code>true</code></td><td>Hook skips the last un-finalized turn to avoid re-sending when tool results land after the initial POST. Final session turn is only sent when the next turn arrives or the session closes.</td></tr>
+            <tr><td><code>knowledge_ingest.max_input_tokens</code></td><td><code>int</code></td><td><code>50000</code></td><td>Backend circuit breaker — payloads above this estimated input token count are refused with 413. Set to 0 to disable.</td></tr>
+            <tr><td><code>knowledge_ingest.dedupe_ttl_seconds</code></td><td><code>int</code></td><td><code>300</code></td><td>Backend content-hash dedupe window. Identical payloads posted within this many seconds return the cached response_id without hitting CFN. Set to 0 to disable dedupe entirely.</td></tr>
+          </tbody>
+        </table>
+      </div>
 <!-- /codegen:config-reference -->
     </section>
 
