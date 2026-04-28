@@ -176,7 +176,7 @@ a.topnav-page:hover { color: var(--accent); }
   background: rgba(5, 9, 15, 0.25);
 }
 .main-inner {
-  max-width: 70ch;
+  max-width: 90ch;
   margin: 0 auto;
   background: rgba(5, 9, 15, 0.6);
   backdrop-filter: blur(16px);
