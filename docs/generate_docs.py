@@ -436,26 +436,63 @@ CONFIG_NAMESPACE_ORDER: list[str] = [
 CONFIG_NAMESPACE_SKIP: set[str] = {"adapters"}
 
 
-def _format_default(value: object) -> str:
-    """Render a pydantic field default as the value users would type."""
+def _highlight_toml(code: str, anchors: dict[str, str] | None = None) -> str:
+    """Apply syntax highlighting classes to a TOML config snippet."""
+    anchors = anchors or {}
+    out = []
+    for line in code.split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            out.append("")
+            continue
+        if stripped.startswith("#"):
+            out.append(f'<span class="comment">{html.escape(line)}</span>')
+            continue
+        if stripped.startswith("[") and stripped.endswith("]"):
+            ns = stripped[1:-1]
+            anchor = anchors.get(ns)
+            id_attr = f' id="{anchor}"' if anchor else ""
+            out.append(
+                f'<span class="cmd"{id_attr}>{html.escape(line)}</span>'
+            )
+            continue
+        # key = value
+        m = re.match(r"^(\s*)([\w.-]+)(\s*=\s*)(.*)$", line)
+        if m:
+            indent, key, eq, value = m.groups()
+            value_esc = html.escape(value)
+            # Wrap quoted strings
+            value_esc = re.sub(
+                r"(&quot;[^&]*&quot;)",
+                r'<span class="str">\1</span>',
+                value_esc,
+            )
+            # Booleans / numbers
+            if value.strip() in ("true", "false"):
+                value_esc = f'<span class="flag">{value_esc}</span>'
+            out.append(
+                f"{indent}<span class=\"arg\">{html.escape(key)}</span>"
+                f"{html.escape(eq)}{value_esc}"
+            )
+            continue
+        out.append(html.escape(line))
+    return "\n".join(out)
+
+
+def _format_toml_value(value: object) -> str:
+    """Render a pydantic field default as a TOML literal."""
     if value is None:
-        return "<em>unset</em>"
+        return '""'
     if isinstance(value, bool):
-        return "<code>true</code>" if value else "<code>false</code>"
+        return "true" if value else "false"
     if isinstance(value, str):
-        if value == "":
-            return "<em>empty</em>"
-        return f"<code>{html.escape(value)}</code>"
-    return f"<code>{html.escape(str(value))}</code>"
-
-
-def _format_type(annotation: object) -> str:
-    """Render a pydantic field type annotation as a readable string."""
-    s = str(annotation)
-    # str | None  →  str (optional)
-    s = s.replace("typing.", "")
-    s = s.replace("<class '", "").replace("'>", "")
-    return html.escape(s)
+        return f'"{value}"'
+    if isinstance(value, (list, tuple)):
+        inner = ", ".join(_format_toml_value(v) for v in value)
+        return f"[{inner}]"
+    if isinstance(value, dict):
+        return "{}"
+    return str(value)
 
 
 def _generate_config_reference() -> tuple[str, str]:
@@ -488,7 +525,9 @@ def _generate_config_reference() -> tuple[str, str]:
         "<code>mycelium up</code> for it to take effect.</p>"
     )
     sidebar_links: list[tuple[str, str]] = []
+    ns_anchors: dict[str, str] = {}
 
+    code_lines: list[str] = []
     for ns in ordered:
         ns_field = MyceliumConfig.model_fields[ns]
         ns_type = ns_field.annotation
@@ -496,45 +535,31 @@ def _generate_config_reference() -> tuple[str, str]:
             continue
         anchor = f"config-{ns.replace('_', '-')}"
         sidebar_links.append((anchor, ns))
-        section_lines.append("")
-        section_lines.append(f'      <h3 id="{anchor}">{html.escape(ns)}</h3>')
+        ns_anchors[ns] = anchor
+
+        if code_lines:
+            code_lines.append("")
         ns_doc = (ns_type.__doc__ or "").strip().split("\n", 1)[0]
         if ns_doc:
-            section_lines.append(f"      <p>{html.escape(ns_doc)}</p>")
-        # Wrap in .table-wrap so the table scrolls horizontally on overflow
-        # rather than blowing past the main column.
-        section_lines.append('      <div class="table-wrap">')
-        section_lines.append('        <table class="config-table">')
-        section_lines.append("          <thead>")
-        section_lines.append(
-            "            <tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr>"
-        )
-        section_lines.append("          </thead>")
-        section_lines.append("          <tbody>")
+            code_lines.append(f"# {ns_doc}")
+        code_lines.append(f"[{ns}]")
         for fname, ff in ns_type.model_fields.items():
-            full_key = f"{ns}.{fname}"
-            type_str = _format_type(ff.annotation)
-            default = _format_default(ff.default)
-            desc = ff.description or "—"
-            section_lines.append(
-                f"            <tr><td><code>{html.escape(full_key)}</code></td>"
-                f"<td><code>{type_str}</code></td>"
-                f"<td>{default}</td>"
-                f"<td>{html.escape(desc)}</td></tr>"
-            )
-        section_lines.append("          </tbody>")
-        section_lines.append("        </table>")
-        section_lines.append("      </div>")
+            desc = ff.description
+            value = _format_toml_value(ff.default)
+            code_lines.append("")
+            if desc:
+                code_lines.append(f"# {desc}")
+            code_lines.append(f"{fname} = {value}")
+
+    code_block = "\n".join(code_lines)
+    highlighted = _highlight_toml(code_block, ns_anchors)
+    section_lines.append(f"      <pre><code>{highlighted}</code></pre>")
 
     sidebar = [
         '    <div class="nav-section">',
-        '      <div class="nav-section-label">Configuration</div>',
+        '      <a href="#config-reference" class="nav-link">Configuration</a>',
+        "    </div>",
     ]
-    for anchor, label in sidebar_links:
-        sidebar.append(
-            f'      <a href="#{anchor}" class="nav-link sub">{html.escape(label)}</a>'
-        )
-    sidebar.append("    </div>")
 
     return "\n".join(section_lines), "\n".join(sidebar)
 
