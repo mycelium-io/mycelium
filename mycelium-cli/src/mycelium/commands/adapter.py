@@ -18,6 +18,8 @@ import shutil
 import subprocess
 import tempfile
 import time
+import urllib.error
+import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlparse
@@ -400,6 +402,26 @@ def add(
             return
 
         if adapter_type == "openclaw":
+            # Probe the configured hub so a misconfigured spoke fails loudly
+            # at install time rather than silently archiving conversation
+            # turns to ~/.openclaw/mycelium-knowledge-extract.log forever
+            # (issue #139). Best-effort: warn-only so air-gapped or
+            # not-yet-running setups still install.
+            api_url = config.server.api_url
+            ok, reason = _probe_hub_reachable(api_url)
+            if ok:
+                if verbose:
+                    typer.echo(f"  hub probe: {api_url}/health → {reason}")
+            else:
+                typer.secho(
+                    f"  warning: cannot reach Mycelium backend at {api_url}/health ({reason})",
+                    fg=typer.colors.YELLOW,
+                )
+                typer.echo(
+                    "  The knowledge-extract hook will archive locally "
+                    "until the backend is reachable. Verify "
+                    "[server].api_url in ~/.mycelium/config.toml."
+                )
             _install_openclaw(
                 verbose=verbose,
                 profile=openclaw_profile,
@@ -1371,6 +1393,37 @@ def _allow_plugin_remove(
             Path(cfg_path).write_text(_json.dumps(cfg, indent=2))
     except Exception:
         pass
+
+
+def _probe_hub_reachable(api_url: str, timeout: float = 3.0) -> tuple[bool, str]:
+    """Best-effort probe of the configured Mycelium backend.
+
+    Issue #139: spoke-only nodes silently archived hundreds of MB of
+    conversation data because the out-of-process knowledge-extract hook
+    couldn't reach the configured api_url and there was no install-time
+    signal that anything was wrong. A 3-second probe at adapter add
+    catches the obvious typo / wrong-port / firewall cases without
+    blocking air-gapped installs (we only warn).
+
+    Returns (ok, message). ``ok`` is False on any non-2xx response,
+    timeout, DNS error, or connection refusal. ``message`` is a short
+    human-readable reason suitable for stderr.
+    """
+    if not api_url:
+        return False, "no api_url configured"
+    health_url = api_url.rstrip("/") + "/health"
+    try:
+        req = urllib.request.Request(health_url, method="GET")
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            if 200 <= resp.status < 300:
+                return True, f"reachable ({resp.status})"
+            return False, f"unexpected HTTP {resp.status}"
+    except urllib.error.HTTPError as exc:
+        return False, f"HTTP {exc.code}"
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        # URLError wraps refused connections, DNS failures, timeouts.
+        reason = getattr(exc, "reason", exc)
+        return False, f"{type(exc).__name__}: {reason}"
 
 
 def _docker_api_url(config: "MyceliumConfig") -> str:
