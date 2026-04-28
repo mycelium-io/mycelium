@@ -24,13 +24,13 @@ from mycelium.doc_ref import doc_ref
 @doc_ref(
     usage="mycelium <group> <command> <args>",
     desc="One-line description. May contain <code>html</code>.",
-    group="room",  # setup, room, memory, notebook, message, adapter, config, or "other"
+    group="room",  # setup, room, memory, message, adapter, config, or "other"
 )
 @app.command()
 def my_command(...): ...
 ```
 
-Groups: setup, room, memory, notebook, message, adapter, config, other
+Groups: setup, room, memory, message, adapter, config, other
 
 ## Adding a new config knob
 
