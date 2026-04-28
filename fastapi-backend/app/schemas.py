@@ -176,10 +176,6 @@ class MemoryCreate(BaseModel):
     )
     embed: bool = Field(True, description="Generate vector embedding for semantic search")
     created_by: str = Field(..., description="Agent handle creating this memory")
-    scope: str = Field("namespace", pattern="^(namespace|notebook)$")
-    owner_handle: str | None = Field(
-        None, description="Required for notebook scope — the owning agent handle"
-    )
 
 
 class MemoryBatchCreate(BaseModel):
@@ -198,8 +194,6 @@ class MemoryRead(BaseModel):
     tags: list[str] | None = None
     created_at: datetime
     updated_at: datetime
-    scope: str = "namespace"
-    owner_handle: str | None = None
     file_path: str | None = None
 
     model_config = {"from_attributes": True}

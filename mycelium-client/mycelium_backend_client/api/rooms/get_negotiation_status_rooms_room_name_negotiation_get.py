@@ -6,10 +6,10 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
-from ...models.http_validation_error import HTTPValidationError
-from ...models.spawn_session_rooms_room_name_sessions_spawn_post_response_spawn_session_rooms_room_name_sessions_spawn_post import (
-    SpawnSessionRoomsRoomNameSessionsSpawnPostResponseSpawnSessionRoomsRoomNameSessionsSpawnPost,
+from ...models.get_negotiation_status_rooms_room_name_negotiation_get_response_get_negotiation_status_rooms_room_name_negotiation_get import (
+    GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet,
 )
+from ...models.http_validation_error import HTTPValidationError
 from ...types import Response
 
 
@@ -17,8 +17,8 @@ def _get_kwargs(
     room_name: str,
 ) -> dict[str, Any]:
     _kwargs: dict[str, Any] = {
-        "method": "post",
-        "url": "/rooms/{room_name}/sessions/spawn".format(
+        "method": "get",
+        "url": "/rooms/{room_name}/negotiation".format(
             room_name=quote(str(room_name), safe=""),
         ),
     }
@@ -29,18 +29,16 @@ def _get_kwargs(
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
 ) -> (
-    HTTPValidationError
-    | SpawnSessionRoomsRoomNameSessionsSpawnPostResponseSpawnSessionRoomsRoomNameSessionsSpawnPost
+    GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet
+    | HTTPValidationError
     | None
 ):
-    if response.status_code == 201:
-        response_201 = (
-            SpawnSessionRoomsRoomNameSessionsSpawnPostResponseSpawnSessionRoomsRoomNameSessionsSpawnPost.from_dict(
-                response.json()
-            )
+    if response.status_code == 200:
+        response_200 = GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet.from_dict(
+            response.json()
         )
 
-        return response_201
+        return response_200
 
     if response.status_code == 422:
         response_422 = HTTPValidationError.from_dict(response.json())
@@ -56,7 +54,8 @@ def _parse_response(
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
 ) -> Response[
-    HTTPValidationError | SpawnSessionRoomsRoomNameSessionsSpawnPostResponseSpawnSessionRoomsRoomNameSessionsSpawnPost
+    GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet
+    | HTTPValidationError
 ]:
     return Response(
         status_code=HTTPStatus(response.status_code),
@@ -71,11 +70,15 @@ def sync_detailed(
     *,
     client: AuthenticatedClient | Client,
 ) -> Response[
-    HTTPValidationError | SpawnSessionRoomsRoomNameSessionsSpawnPostResponseSpawnSessionRoomsRoomNameSessionsSpawnPost
+    GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet
+    | HTTPValidationError
 ]:
-    """Spawn Session
+    r"""Get Negotiation Status
 
-     Explicitly spawn a negotiation session within a namespace room.
+     Return live negotiation state for an active session room.
+
+    Returns ``{\"active\": false}`` when no negotiation is in progress.
+    ``pending_replies`` values are ``\"received\"`` or ``\"waiting\"``.
 
     Args:
         room_name (str):
@@ -85,7 +88,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | SpawnSessionRoomsRoomNameSessionsSpawnPostResponseSpawnSessionRoomsRoomNameSessionsSpawnPost]
+        Response[GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet | HTTPValidationError]
     """
 
     kwargs = _get_kwargs(
@@ -104,13 +107,16 @@ def sync(
     *,
     client: AuthenticatedClient | Client,
 ) -> (
-    HTTPValidationError
-    | SpawnSessionRoomsRoomNameSessionsSpawnPostResponseSpawnSessionRoomsRoomNameSessionsSpawnPost
+    GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet
+    | HTTPValidationError
     | None
 ):
-    """Spawn Session
+    r"""Get Negotiation Status
 
-     Explicitly spawn a negotiation session within a namespace room.
+     Return live negotiation state for an active session room.
+
+    Returns ``{\"active\": false}`` when no negotiation is in progress.
+    ``pending_replies`` values are ``\"received\"`` or ``\"waiting\"``.
 
     Args:
         room_name (str):
@@ -120,7 +126,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | SpawnSessionRoomsRoomNameSessionsSpawnPostResponseSpawnSessionRoomsRoomNameSessionsSpawnPost
+        GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet | HTTPValidationError
     """
 
     return sync_detailed(
@@ -134,11 +140,15 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient | Client,
 ) -> Response[
-    HTTPValidationError | SpawnSessionRoomsRoomNameSessionsSpawnPostResponseSpawnSessionRoomsRoomNameSessionsSpawnPost
+    GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet
+    | HTTPValidationError
 ]:
-    """Spawn Session
+    r"""Get Negotiation Status
 
-     Explicitly spawn a negotiation session within a namespace room.
+     Return live negotiation state for an active session room.
+
+    Returns ``{\"active\": false}`` when no negotiation is in progress.
+    ``pending_replies`` values are ``\"received\"`` or ``\"waiting\"``.
 
     Args:
         room_name (str):
@@ -148,7 +158,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | SpawnSessionRoomsRoomNameSessionsSpawnPostResponseSpawnSessionRoomsRoomNameSessionsSpawnPost]
+        Response[GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet | HTTPValidationError]
     """
 
     kwargs = _get_kwargs(
@@ -165,13 +175,16 @@ async def asyncio(
     *,
     client: AuthenticatedClient | Client,
 ) -> (
-    HTTPValidationError
-    | SpawnSessionRoomsRoomNameSessionsSpawnPostResponseSpawnSessionRoomsRoomNameSessionsSpawnPost
+    GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet
+    | HTTPValidationError
     | None
 ):
-    """Spawn Session
+    r"""Get Negotiation Status
 
-     Explicitly spawn a negotiation session within a namespace room.
+     Return live negotiation state for an active session room.
+
+    Returns ``{\"active\": false}`` when no negotiation is in progress.
+    ``pending_replies`` values are ``\"received\"`` or ``\"waiting\"``.
 
     Args:
         room_name (str):
@@ -181,7 +194,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | SpawnSessionRoomsRoomNameSessionsSpawnPostResponseSpawnSessionRoomsRoomNameSessionsSpawnPost
+        GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet | HTTPValidationError
     """
 
     return (

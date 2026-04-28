@@ -10,9 +10,7 @@ from attrs import field as _attrs_field
 from ..types import UNSET, Unset
 
 if TYPE_CHECKING:
-    from ..models.audit_event_create_audit_information_type_0 import (
-        AuditEventCreateAuditInformationType0,
-    )
+    from ..models.audit_event_create_audit_information_type_0 import AuditEventCreateAuditInformationType0
 
 
 T = TypeVar("T", bound="AuditEventCreate")
@@ -45,9 +43,7 @@ class AuditEventCreate:
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.audit_event_create_audit_information_type_0 import (
-            AuditEventCreateAuditInformationType0,
-        )
+        from ..models.audit_event_create_audit_information_type_0 import AuditEventCreateAuditInformationType0
 
         resource_type = self.resource_type
 
@@ -104,9 +100,7 @@ class AuditEventCreate:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.audit_event_create_audit_information_type_0 import (
-            AuditEventCreateAuditInformationType0,
-        )
+        from ..models.audit_event_create_audit_information_type_0 import AuditEventCreateAuditInformationType0
 
         d = dict(src_dict)
         resource_type = d.pop("resource_type")
@@ -130,9 +124,7 @@ class AuditEventCreate:
 
         operation_id = _parse_operation_id(d.pop("operation_id", UNSET))
 
-        def _parse_audit_information(
-            data: object,
-        ) -> AuditEventCreateAuditInformationType0 | None | Unset:
+        def _parse_audit_information(data: object) -> AuditEventCreateAuditInformationType0 | None | Unset:
             if data is None:
                 return data
             if isinstance(data, Unset):
@@ -156,9 +148,7 @@ class AuditEventCreate:
                 return data
             return cast(None | str | Unset, data)
 
-        audit_extra_information = _parse_audit_extra_information(
-            d.pop("audit_extra_information", UNSET)
-        )
+        audit_extra_information = _parse_audit_extra_information(d.pop("audit_extra_information", UNSET))
 
         audit_event_create = cls(
             resource_type=resource_type,

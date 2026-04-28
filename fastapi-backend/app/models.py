@@ -193,9 +193,7 @@ class AuditEvent(Base):
 class Memory(Base):
     """Persistent memory with optional vector embeddings for semantic search.
 
-    Memories have a scope:
-      - "namespace" (default): shared, visible to all agents in the room
-      - "notebook": private to a specific agent handle
+    Memories are scoped to a room and shared across all agents in the room.
     """
 
     __tablename__ = "memories"
@@ -219,16 +217,10 @@ class Memory(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # "namespace" (shared) or "notebook" (agent-private)
-    scope: Mapped[str] = mapped_column(VARCHAR(20), server_default="namespace", nullable=False)
-    # For notebook-scoped memories, the owning agent handle
-    owner_handle: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     # Filesystem path relative to .mycelium/ data dir
     file_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
 
-    __table_args__ = (
-        UniqueConstraint("room_name", "key", "scope", "owner_handle", name="uq_memory_scope_key"),
-    )
+    __table_args__ = (UniqueConstraint("room_name", "key", name="uq_memory_room_key"),)
 
 
 class MemorySubscription(Base):

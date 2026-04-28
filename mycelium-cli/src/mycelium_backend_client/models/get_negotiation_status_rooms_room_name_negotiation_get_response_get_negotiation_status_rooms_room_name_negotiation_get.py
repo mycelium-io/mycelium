@@ -6,11 +6,13 @@ from typing import Any, TypeVar
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
-T = TypeVar("T", bound="ValidationErrorContext")
+T = TypeVar(
+    "T", bound="GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet"
+)
 
 
 @_attrs_define
-class ValidationErrorContext:
+class GetNegotiationStatusRoomsRoomNameNegotiationGetResponseGetNegotiationStatusRoomsRoomNameNegotiationGet:
     """ """
 
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -24,10 +26,10 @@ class ValidationErrorContext:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        validation_error_context = cls()
+        get_negotiation_status_rooms_room_name_negotiation_get_response_get_negotiation_status_rooms_room_name_negotiation_get = cls()
 
-        validation_error_context.additional_properties = d
-        return validation_error_context
+        get_negotiation_status_rooms_room_name_negotiation_get_response_get_negotiation_status_rooms_room_name_negotiation_get.additional_properties = d
+        return get_negotiation_status_rooms_room_name_negotiation_get_response_get_negotiation_status_rooms_room_name_negotiation_get
 
     @property
     def additional_keys(self) -> list[str]:

@@ -47,13 +47,6 @@ def get_room_dir(room_name: str) -> Path:
     return room_dir
 
 
-def get_notebook_dir(handle: str) -> Path:
-    """Get the directory for an agent's notebook, creating it if needed."""
-    nb_dir = get_data_dir() / "notebooks" / handle
-    nb_dir.mkdir(parents=True, exist_ok=True)
-    return nb_dir
-
-
 def _sanitize_filename(key: str) -> str:
     """Convert a memory key to a safe filename.
 
@@ -87,8 +80,6 @@ def serialize_memory(
     tags: list[str] | None = None,
     created_at: datetime | None = None,
     updated_at: datetime | None = None,
-    scope: str = "namespace",
-    owner_handle: str | None = None,
     extra_meta: dict[str, Any] | None = None,
 ) -> str:
     """Serialize a memory to markdown with YAML frontmatter."""
@@ -104,10 +95,6 @@ def serialize_memory(
         meta["updated_by"] = updated_by
     if tags:
         meta["tags"] = tags
-    if scope != "namespace":
-        meta["scope"] = scope
-    if owner_handle:
-        meta["owner_handle"] = owner_handle
     if extra_meta:
         meta.update(extra_meta)
 
@@ -144,8 +131,6 @@ def write_memory_file(
     tags: list[str] | None = None,
     created_at: datetime | None = None,
     updated_at: datetime | None = None,
-    scope: str = "namespace",
-    owner_handle: str | None = None,
     extra_meta: dict[str, Any] | None = None,
 ) -> Path:
     """Write a memory as a markdown file. Creates parent directories as needed."""
@@ -162,8 +147,6 @@ def write_memory_file(
         tags=tags,
         created_at=created_at,
         updated_at=updated_at,
-        scope=scope,
-        owner_handle=owner_handle,
         extra_meta=extra_meta,
     )
     file_path.write_text(text, encoding="utf-8")

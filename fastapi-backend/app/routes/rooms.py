@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/rooms", tags=["rooms"])
 
 # Reserved room names — used by system internals, cannot be created/deleted by users.
-RESERVED_ROOMS = frozenset({"_notebooks"})
+RESERVED_ROOMS: frozenset[str] = frozenset()
 
 
 async def _sync_create_mas(db_room: Room, session: AsyncSession) -> None:

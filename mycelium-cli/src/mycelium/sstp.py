@@ -93,7 +93,7 @@ class InboundTick(BaseModel):
 
 
 class MemoryCategory(StrEnum):
-    """Structured memory categories — key prefix conventions for agent notebooks.
+    """Structured memory categories — key prefix conventions for room memories.
 
     These are the recommended top-level namespaces for persistent memories.
     Using typed categories instead of raw strings gives CLI validation, tab

@@ -184,22 +184,11 @@ async def create_memories(
         if item.embed:
             embedding = await asyncio.to_thread(embed_text, content_text)
 
-        # Resolve scope and owner
-        scope = item.scope or "namespace"
-        owner_handle = item.owner_handle
-        if scope == "notebook":
-            owner_handle = owner_handle or item.created_by
-
-        # Check for existing memory (upsert) — scoped by (room, key, scope, owner)
+        # Check for existing memory (upsert) — scoped by (room, key)
         upsert_query = select(Memory).where(
             Memory.room_name == room_name,
             Memory.key == item.key,
-            Memory.scope == scope,
         )
-        if scope == "notebook":
-            upsert_query = upsert_query.where(Memory.owner_handle == owner_handle)
-        else:
-            upsert_query = upsert_query.where(Memory.owner_handle.is_(None))
 
         existing_result = await db.execute(upsert_query)
         existing = existing_result.scalar_one_or_none()
@@ -221,8 +210,6 @@ async def create_memories(
                 tags=item.tags,
                 created_at=existing.created_at,
                 updated_at=now,
-                scope=scope,
-                owner_handle=owner_handle,
             )
 
             # Update search index
@@ -257,8 +244,6 @@ async def create_memories(
                 tags=item.tags,
                 created_at=now,
                 updated_at=now,
-                scope=scope,
-                owner_handle=owner_handle,
             )
 
             # Create search index entry
@@ -271,8 +256,6 @@ async def create_memories(
                 created_by=item.created_by,
                 updated_by=item.created_by,
                 tags=item.tags,
-                scope=scope,
-                owner_handle=owner_handle,
                 file_path=str(rel_path.relative_to(room_dir.parent.parent)),
             )
             db.add(mem)
@@ -308,8 +291,6 @@ async def list_memories(
     room_name: str,
     request: Request,
     prefix: str | None = Query(None, description="Key prefix filter"),
-    scope: str = Query("namespace", description="Memory scope: namespace or notebook"),
-    handle: str | None = Query(None, description="Owner handle (required for notebook scope)"),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_async_session),
@@ -323,18 +304,13 @@ async def list_memories(
 
     # Compute ETag from latest updated_at in the room
     ts_result = await db.execute(
-        select(func.max(Memory.updated_at)).where(
-            Memory.room_name == room_name, Memory.scope == scope
-        )
+        select(func.max(Memory.updated_at)).where(Memory.room_name == room_name)
     )
     latest_ts = ts_result.scalar_one_or_none()
     etag = '"' + hashlib.md5(str(latest_ts).encode()).hexdigest() + '"' if latest_ts else '"empty"'
 
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers={"ETag": etag})
-
-    if scope == "notebook" and not handle:
-        raise HTTPException(status_code=400, detail="handle is required for notebook scope")
 
     # Read from filesystem
     room_dir = get_room_dir(room_name)
@@ -352,7 +328,6 @@ async def list_memories(
                 select(Memory).where(
                     Memory.room_name == room_name,
                     Memory.key == key,
-                    Memory.scope == scope,
                 )
             )
             db_mem = db_result.scalar_one_or_none()
@@ -376,17 +351,13 @@ async def list_memories(
                         tags=meta.get("tags"),
                         created_at=meta.get("created_at", datetime.now(UTC)),
                         updated_at=meta.get("updated_at", datetime.now(UTC)),
-                        scope=meta.get("scope", "namespace"),
-                        owner_handle=meta.get("owner_handle"),
                         file_path=f"rooms/{room_name}/{key}.md",
                     )
                 )
         return _etag_response(result_list, etag)
 
     # Fallback to DB for rooms that haven't been migrated yet
-    query = select(Memory).where(Memory.room_name == room_name, Memory.scope == scope)
-    if scope == "notebook":
-        query = query.where(Memory.owner_handle == handle)
+    query = select(Memory).where(Memory.room_name == room_name)
     if prefix:
         query = query.where(Memory.key.startswith(prefix))
     query = query.order_by(Memory.updated_at.desc()).limit(limit).offset(offset)
@@ -552,8 +523,6 @@ async def get_memory(
             tags=meta.get("tags"),
             created_at=meta.get("created_at", datetime.now(UTC)),
             updated_at=meta.get("updated_at", datetime.now(UTC)),
-            scope=meta.get("scope", "namespace"),
-            owner_handle=meta.get("owner_handle"),
             file_path=f"rooms/{room_name}/{key}.md",
         )
 

@@ -9,7 +9,6 @@ Mycelium — multi-agent coordination + persistent memory, built on the Internet
 ```
 .mycelium/              Memory storage (rooms are folders, memories are markdown files)
 ├── rooms/{name}/       Room directories with standard namespace subdirs
-├── notebooks/{handle}/ Agent-private notebook directories
 └── config.toml         Project-local configuration
 
 fastapi-backend/    FastAPI coordination engine (Python 3.12, asyncpg, SQLAlchemy)

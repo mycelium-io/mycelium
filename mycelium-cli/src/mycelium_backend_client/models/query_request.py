@@ -19,16 +19,16 @@ T = TypeVar("T", bound="QueryRequest")
 class QueryRequest:
     """
     Attributes:
-        mas_id (str):
         intent (str):
+        mas_id (None | str | Unset):
         workspace_id (None | str | Unset):
         agent_id (None | str | Unset):
         search_strategy (str | Unset):  Default: 'semantic_graph_traversal'.
         additional_context (None | QueryRequestAdditionalContextType0 | Unset):
     """
 
-    mas_id: str
     intent: str
+    mas_id: None | str | Unset = UNSET
     workspace_id: None | str | Unset = UNSET
     agent_id: None | str | Unset = UNSET
     search_strategy: str | Unset = "semantic_graph_traversal"
@@ -36,13 +36,15 @@ class QueryRequest:
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.query_request_additional_context_type_0 import (
-            QueryRequestAdditionalContextType0,
-        )
-
-        mas_id = self.mas_id
+        from ..models.query_request_additional_context_type_0 import QueryRequestAdditionalContextType0
 
         intent = self.intent
+
+        mas_id: None | str | Unset
+        if isinstance(self.mas_id, Unset):
+            mas_id = UNSET
+        else:
+            mas_id = self.mas_id
 
         workspace_id: None | str | Unset
         if isinstance(self.workspace_id, Unset):
@@ -70,10 +72,11 @@ class QueryRequest:
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
-                "mas_id": mas_id,
                 "intent": intent,
             }
         )
+        if mas_id is not UNSET:
+            field_dict["mas_id"] = mas_id
         if workspace_id is not UNSET:
             field_dict["workspace_id"] = workspace_id
         if agent_id is not UNSET:
@@ -87,14 +90,19 @@ class QueryRequest:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.query_request_additional_context_type_0 import (
-            QueryRequestAdditionalContextType0,
-        )
+        from ..models.query_request_additional_context_type_0 import QueryRequestAdditionalContextType0
 
         d = dict(src_dict)
-        mas_id = d.pop("mas_id")
-
         intent = d.pop("intent")
+
+        def _parse_mas_id(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        mas_id = _parse_mas_id(d.pop("mas_id", UNSET))
 
         def _parse_workspace_id(data: object) -> None | str | Unset:
             if data is None:
@@ -116,9 +124,7 @@ class QueryRequest:
 
         search_strategy = d.pop("search_strategy", UNSET)
 
-        def _parse_additional_context(
-            data: object,
-        ) -> None | QueryRequestAdditionalContextType0 | Unset:
+        def _parse_additional_context(data: object) -> None | QueryRequestAdditionalContextType0 | Unset:
             if data is None:
                 return data
             if isinstance(data, Unset):
@@ -136,8 +142,8 @@ class QueryRequest:
         additional_context = _parse_additional_context(d.pop("additional_context", UNSET))
 
         query_request = cls(
-            mas_id=mas_id,
             intent=intent,
+            mas_id=mas_id,
             workspace_id=workspace_id,
             agent_id=agent_id,
             search_strategy=search_strategy,
