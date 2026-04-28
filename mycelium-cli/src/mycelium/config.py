@@ -151,7 +151,7 @@ class NegotiationConfig(BaseModel):
         default=20,
         description=(
             "Maximum SAO rounds per session. CFN's auto-compute formula assumes "
-            "Boulware-style time-based concession (last ~30%% of rounds), which "
+            "Boulware-style time-based concession (last ~30% of rounds), which "
             "LLM callback agents do not exhibit — so a low fixed cap is preferred. "
             "Set to 0 to fall through to CFN's auto-computed budget."
         ),
