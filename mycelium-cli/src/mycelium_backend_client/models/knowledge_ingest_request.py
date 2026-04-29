@@ -19,23 +19,21 @@ T = TypeVar("T", bound="KnowledgeIngestRequest")
 class KnowledgeIngestRequest:
     """
     Attributes:
-        workspace_id (str):
-        mas_id (str):
         records (list[KnowledgeIngestRequestRecordsItem]):
         agent_id (None | str | Unset):
+        room_name (None | str | Unset):
+        workspace_id (None | str | Unset):
+        mas_id (None | str | Unset):
     """
 
-    workspace_id: str
-    mas_id: str
     records: list[KnowledgeIngestRequestRecordsItem]
     agent_id: None | str | Unset = UNSET
+    room_name: None | str | Unset = UNSET
+    workspace_id: None | str | Unset = UNSET
+    mas_id: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        workspace_id = self.workspace_id
-
-        mas_id = self.mas_id
-
         records = []
         for records_item_data in self.records:
             records_item = records_item_data.to_dict()
@@ -47,17 +45,39 @@ class KnowledgeIngestRequest:
         else:
             agent_id = self.agent_id
 
+        room_name: None | str | Unset
+        if isinstance(self.room_name, Unset):
+            room_name = UNSET
+        else:
+            room_name = self.room_name
+
+        workspace_id: None | str | Unset
+        if isinstance(self.workspace_id, Unset):
+            workspace_id = UNSET
+        else:
+            workspace_id = self.workspace_id
+
+        mas_id: None | str | Unset
+        if isinstance(self.mas_id, Unset):
+            mas_id = UNSET
+        else:
+            mas_id = self.mas_id
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
-                "workspace_id": workspace_id,
-                "mas_id": mas_id,
                 "records": records,
             }
         )
         if agent_id is not UNSET:
             field_dict["agent_id"] = agent_id
+        if room_name is not UNSET:
+            field_dict["room_name"] = room_name
+        if workspace_id is not UNSET:
+            field_dict["workspace_id"] = workspace_id
+        if mas_id is not UNSET:
+            field_dict["mas_id"] = mas_id
 
         return field_dict
 
@@ -66,10 +86,6 @@ class KnowledgeIngestRequest:
         from ..models.knowledge_ingest_request_records_item import KnowledgeIngestRequestRecordsItem
 
         d = dict(src_dict)
-        workspace_id = d.pop("workspace_id")
-
-        mas_id = d.pop("mas_id")
-
         records = []
         _records = d.pop("records")
         for records_item_data in _records:
@@ -86,11 +102,39 @@ class KnowledgeIngestRequest:
 
         agent_id = _parse_agent_id(d.pop("agent_id", UNSET))
 
+        def _parse_room_name(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        room_name = _parse_room_name(d.pop("room_name", UNSET))
+
+        def _parse_workspace_id(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        workspace_id = _parse_workspace_id(d.pop("workspace_id", UNSET))
+
+        def _parse_mas_id(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        mas_id = _parse_mas_id(d.pop("mas_id", UNSET))
+
         knowledge_ingest_request = cls(
-            workspace_id=workspace_id,
-            mas_id=mas_id,
             records=records,
             agent_id=agent_id,
+            room_name=room_name,
+            workspace_id=workspace_id,
+            mas_id=mas_id,
         )
 
         knowledge_ingest_request.additional_properties = d

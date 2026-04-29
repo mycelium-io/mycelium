@@ -16,12 +16,17 @@ from ...types import UNSET, Response, Unset
 def _get_kwargs(
     concept_id: str,
     *,
-    mas_id: str,
+    mas_id: None | str | Unset = UNSET,
     workspace_id: None | str | Unset = UNSET,
 ) -> dict[str, Any]:
     params: dict[str, Any] = {}
 
-    params["mas_id"] = mas_id
+    json_mas_id: None | str | Unset
+    if isinstance(mas_id, Unset):
+        json_mas_id = UNSET
+    else:
+        json_mas_id = mas_id
+    params["mas_id"] = json_mas_id
 
     json_workspace_id: None | str | Unset
     if isinstance(workspace_id, Unset):
@@ -86,7 +91,7 @@ def sync_detailed(
     concept_id: str,
     *,
     client: AuthenticatedClient | Client,
-    mas_id: str,
+    mas_id: None | str | Unset = UNSET,
     workspace_id: None | str | Unset = UNSET,
 ) -> Response[
     CfnConceptNeighborsApiCfnKnowledgeConceptsConceptIdNeighborsGetResponseCfnConceptNeighborsApiCfnKnowledgeConceptsConceptIdNeighborsGet
@@ -98,7 +103,7 @@ def sync_detailed(
 
     Args:
         concept_id (str):
-        mas_id (str):
+        mas_id (None | str | Unset):
         workspace_id (None | str | Unset):
 
     Raises:
@@ -126,7 +131,7 @@ def sync(
     concept_id: str,
     *,
     client: AuthenticatedClient | Client,
-    mas_id: str,
+    mas_id: None | str | Unset = UNSET,
     workspace_id: None | str | Unset = UNSET,
 ) -> (
     CfnConceptNeighborsApiCfnKnowledgeConceptsConceptIdNeighborsGetResponseCfnConceptNeighborsApiCfnKnowledgeConceptsConceptIdNeighborsGet
@@ -139,7 +144,7 @@ def sync(
 
     Args:
         concept_id (str):
-        mas_id (str):
+        mas_id (None | str | Unset):
         workspace_id (None | str | Unset):
 
     Raises:
@@ -162,7 +167,7 @@ async def asyncio_detailed(
     concept_id: str,
     *,
     client: AuthenticatedClient | Client,
-    mas_id: str,
+    mas_id: None | str | Unset = UNSET,
     workspace_id: None | str | Unset = UNSET,
 ) -> Response[
     CfnConceptNeighborsApiCfnKnowledgeConceptsConceptIdNeighborsGetResponseCfnConceptNeighborsApiCfnKnowledgeConceptsConceptIdNeighborsGet
@@ -174,7 +179,7 @@ async def asyncio_detailed(
 
     Args:
         concept_id (str):
-        mas_id (str):
+        mas_id (None | str | Unset):
         workspace_id (None | str | Unset):
 
     Raises:
@@ -200,7 +205,7 @@ async def asyncio(
     concept_id: str,
     *,
     client: AuthenticatedClient | Client,
-    mas_id: str,
+    mas_id: None | str | Unset = UNSET,
     workspace_id: None | str | Unset = UNSET,
 ) -> (
     CfnConceptNeighborsApiCfnKnowledgeConceptsConceptIdNeighborsGetResponseCfnConceptNeighborsApiCfnKnowledgeConceptsConceptIdNeighborsGet
@@ -213,7 +218,7 @@ async def asyncio(
 
     Args:
         concept_id (str):
-        mas_id (str):
+        mas_id (None | str | Unset):
         workspace_id (None | str | Unset):
 
     Raises:

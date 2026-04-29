@@ -176,7 +176,7 @@ a.topnav-page:hover { color: var(--accent); }
   background: rgba(5, 9, 15, 0.25);
 }
 .main-inner {
-  max-width: 70ch;
+  max-width: 90ch;
   margin: 0 auto;
   background: rgba(5, 9, 15, 0.6);
   backdrop-filter: blur(16px);
@@ -287,6 +287,7 @@ pre {
   overflow-x: auto;
   margin: 16px 0 24px;
   position: relative;
+  line-height: 1.4;
 }
 pre code {
   background: none;
@@ -294,7 +295,6 @@ pre code {
   padding: 0;
   font-size: 0.8125rem;
   color: var(--text);
-  line-height: 1.65;
 }
 .pre-label {
   font-size: 10px;
@@ -445,6 +445,9 @@ td {
 tr:last-child td { border-bottom: none; }
 td:first-child { color: var(--accent2); font-family: 'SF Mono', monospace; font-size: 13px; }
 tr:hover td { background: rgba(255,255,255,0.02); }
+
+/* Config table — type column reads worse when wrapped on union types like "str | None" */
+.config-table td:nth-child(2) { white-space: nowrap; }
 
 /* ── CARDS ── */
 .card-grid {

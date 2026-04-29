@@ -178,6 +178,51 @@ async def join_room(
                 target_room.name,
                 deadline,
             )
+    elif (
+        not target_room.is_namespace
+        and target_room.coordination_state == "waiting"
+        and settings.COORDINATION_JOIN_WINDOW_EXTENSION_SECONDS > 0
+    ):
+        # Subsequent joiner: extend the window so slow agents get a chance to
+        # join too. Cap at COORDINATION_JOIN_WINDOW_MAX_SECONDS measured from
+        # the session's first-join time (current join_deadline minus the
+        # initial window) to bound the total wait. Same pattern as the
+        # round-watchdog extension fix — extend on activity, hard cap.
+        from app.services import coordination
+
+        now = datetime.now(UTC)
+        current_deadline = target_room.join_deadline
+        # SQLite returns offset-naive datetimes from DateTime columns; coerce
+        # to UTC-aware before any arithmetic so we don't trip
+        # "can't compare offset-naive and offset-aware datetimes" in tests.
+        if current_deadline is not None and current_deadline.tzinfo is None:
+            current_deadline = current_deadline.replace(tzinfo=UTC)
+        first_join_at = (
+            current_deadline - timedelta(seconds=settings.COORDINATION_JOIN_WINDOW_SECONDS)
+            if current_deadline
+            else now
+        )
+        max_deadline = first_join_at + timedelta(
+            seconds=settings.COORDINATION_JOIN_WINDOW_MAX_SECONDS
+        )
+        proposed = now + timedelta(seconds=settings.COORDINATION_JOIN_WINDOW_EXTENSION_SECONDS)
+        new_deadline = min(proposed, max_deadline)
+        # Only push forward — never shorten an already-longer deadline.
+        if current_deadline is None or new_deadline > current_deadline:
+            await db.execute(
+                update(Room)
+                .where(Room.name == target_room.name, Room.coordination_state == "waiting")
+                .values(join_deadline=new_deadline)
+            )
+            await db.commit()
+            coordination.schedule_join_timer(target_room.name, new_deadline)
+            logger.info(
+                "Coordination join window extended for %s on join by %s (deadline=%s, capped=%s)",
+                target_room.name,
+                payload.agent_handle,
+                new_deadline,
+                new_deadline >= max_deadline,
+            )
 
     return sess
 

@@ -132,7 +132,7 @@ def memory_set(
         if category in MEMORY_CATEGORIES:
             slug = key.split("/", 1)[1]
             try:
-                entry = MemoryLogEntry(category=category, slug=slug, content=value)  # type: ignore[arg-type]
+                entry = MemoryLogEntry(category=category, slug=slug, content=value)  # ty: ignore[invalid-argument-type]
             except ValidationError as exc:
                 errors = exc.errors()
                 if any(e["loc"] == ("slug",) for e in errors):
@@ -148,10 +148,16 @@ def memory_set(
 
     if entry is not None:
         # Structured category key — auto-timestamp and structured value
+        from mycelium_backend_client.models import MemoryCreateValueType0
+
         timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        structured_value = MemoryCreateValueType0()
+        structured_value["text"] = entry.content
+        structured_value["logged_at"] = timestamp
+        structured_value["category"] = entry.category
         item = MemoryCreate(
             key=entry.key,
-            value={"text": entry.content, "logged_at": timestamp, "category": entry.category},
+            value=structured_value,
             created_by=handle,
             embed=not no_embed,
             content_text=f"[{timestamp}] {entry.content}",
@@ -296,9 +302,11 @@ def memory_search(
 
     with _get_client() as client:
         body = MemorySearchRequest(query=query, limit=limit)
+        from mycelium_backend_client.models import MemorySearchResponse
+
         result = search_api.sync(room_name=room_name, client=client, body=body)
 
-        if not result or not result.results:
+        if not isinstance(result, MemorySearchResponse) or not result.results:
             console.print("[dim]No matching memories found[/dim]")
             return
 
@@ -388,14 +396,14 @@ def memory_subscribe(
     from mycelium_backend_client.api.memory import (
         subscribe_rooms_room_name_memory_subscribe_post as sub_api,
     )
-    from mycelium_backend_client.models import SubscriptionCreate
+    from mycelium_backend_client.models import SubscriptionCreate, SubscriptionRead
 
     room_name = _get_active_room(room)
 
     with _get_client() as client:
         body = SubscriptionCreate(key_pattern=pattern, subscriber=handle)
         result = sub_api.sync(room_name=room_name, client=client, body=body)
-        if result:
+        if isinstance(result, SubscriptionRead):
             sub_id = str(result.id)[:8] if result.id else "?"
             console.print(f"[green]Subscribed:[/green] {pattern} (id: {sub_id}...)")
 

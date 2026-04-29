@@ -6,20 +6,20 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
+from ...models.get_negotiation_status_response_get_negotiation_status import (
+    GetNegotiationStatusResponseGetNegotiationStatus,
+)
 from ...models.http_validation_error import HTTPValidationError
-from ...models.memory_read import MemoryRead
 from ...types import Response
 
 
 def _get_kwargs(
-    handle: str,
-    key: str,
+    room_name: str,
 ) -> dict[str, Any]:
     _kwargs: dict[str, Any] = {
         "method": "get",
-        "url": "/notebook/{handle}/memory/{key}".format(
-            handle=quote(str(handle), safe=""),
-            key=quote(str(key), safe=""),
+        "url": "/rooms/{room_name}/negotiation".format(
+            room_name=quote(str(room_name), safe=""),
         ),
     }
 
@@ -28,9 +28,9 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> HTTPValidationError | MemoryRead | None:
+) -> GetNegotiationStatusResponseGetNegotiationStatus | HTTPValidationError | None:
     if response.status_code == 200:
-        response_200 = MemoryRead.from_dict(response.json())
+        response_200 = GetNegotiationStatusResponseGetNegotiationStatus.from_dict(response.json())
 
         return response_200
 
@@ -47,7 +47,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[HTTPValidationError | MemoryRead]:
+) -> Response[GetNegotiationStatusResponseGetNegotiationStatus | HTTPValidationError]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -57,30 +57,30 @@ def _build_response(
 
 
 def sync_detailed(
-    handle: str,
-    key: str,
+    room_name: str,
     *,
     client: AuthenticatedClient | Client,
-) -> Response[HTTPValidationError | MemoryRead]:
-    """Get Notebook Memory
+) -> Response[GetNegotiationStatusResponseGetNegotiationStatus | HTTPValidationError]:
+    r"""Get Negotiation Status
 
-     Get a specific notebook memory by key. Reads from filesystem first.
+     Return live negotiation state for an active session room.
+
+    Returns ``{\"active\": false}`` when no negotiation is in progress.
+    ``pending_replies`` values are ``\"received\"`` or ``\"waiting\"``.
 
     Args:
-        handle (str):
-        key (str):
+        room_name (str):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | MemoryRead]
+        Response[GetNegotiationStatusResponseGetNegotiationStatus | HTTPValidationError]
     """
 
     kwargs = _get_kwargs(
-        handle=handle,
-        key=key,
+        room_name=room_name,
     )
 
     response = client.get_httpx_client().request(
@@ -91,59 +91,59 @@ def sync_detailed(
 
 
 def sync(
-    handle: str,
-    key: str,
+    room_name: str,
     *,
     client: AuthenticatedClient | Client,
-) -> HTTPValidationError | MemoryRead | None:
-    """Get Notebook Memory
+) -> GetNegotiationStatusResponseGetNegotiationStatus | HTTPValidationError | None:
+    r"""Get Negotiation Status
 
-     Get a specific notebook memory by key. Reads from filesystem first.
+     Return live negotiation state for an active session room.
+
+    Returns ``{\"active\": false}`` when no negotiation is in progress.
+    ``pending_replies`` values are ``\"received\"`` or ``\"waiting\"``.
 
     Args:
-        handle (str):
-        key (str):
+        room_name (str):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | MemoryRead
+        GetNegotiationStatusResponseGetNegotiationStatus | HTTPValidationError
     """
 
     return sync_detailed(
-        handle=handle,
-        key=key,
+        room_name=room_name,
         client=client,
     ).parsed
 
 
 async def asyncio_detailed(
-    handle: str,
-    key: str,
+    room_name: str,
     *,
     client: AuthenticatedClient | Client,
-) -> Response[HTTPValidationError | MemoryRead]:
-    """Get Notebook Memory
+) -> Response[GetNegotiationStatusResponseGetNegotiationStatus | HTTPValidationError]:
+    r"""Get Negotiation Status
 
-     Get a specific notebook memory by key. Reads from filesystem first.
+     Return live negotiation state for an active session room.
+
+    Returns ``{\"active\": false}`` when no negotiation is in progress.
+    ``pending_replies`` values are ``\"received\"`` or ``\"waiting\"``.
 
     Args:
-        handle (str):
-        key (str):
+        room_name (str):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | MemoryRead]
+        Response[GetNegotiationStatusResponseGetNegotiationStatus | HTTPValidationError]
     """
 
     kwargs = _get_kwargs(
-        handle=handle,
-        key=key,
+        room_name=room_name,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -152,31 +152,31 @@ async def asyncio_detailed(
 
 
 async def asyncio(
-    handle: str,
-    key: str,
+    room_name: str,
     *,
     client: AuthenticatedClient | Client,
-) -> HTTPValidationError | MemoryRead | None:
-    """Get Notebook Memory
+) -> GetNegotiationStatusResponseGetNegotiationStatus | HTTPValidationError | None:
+    r"""Get Negotiation Status
 
-     Get a specific notebook memory by key. Reads from filesystem first.
+     Return live negotiation state for an active session room.
+
+    Returns ``{\"active\": false}`` when no negotiation is in progress.
+    ``pending_replies`` values are ``\"received\"`` or ``\"waiting\"``.
 
     Args:
-        handle (str):
-        key (str):
+        room_name (str):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | MemoryRead
+        GetNegotiationStatusResponseGetNegotiationStatus | HTTPValidationError
     """
 
     return (
         await asyncio_detailed(
-            handle=handle,
-            key=key,
+            room_name=room_name,
             client=client,
         )
     ).parsed

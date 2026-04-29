@@ -15,7 +15,14 @@ Run all quality checks on the mycelium codebase. Auto-fix issues where possible.
    cd mycelium-cli && uv run ruff check --fix . && uv run ruff format .
    ```
 
-2. **Tests** — Run pytest:
+2. **Type check (ty)** — Both backend and CLI must come back clean. CI gates on this:
+   ```bash
+   cd fastapi-backend && uv run ty check .
+   cd mycelium-cli && uv run ty check .
+   ```
+   Generated client (`mycelium-cli/src/mycelium_backend_client/`) is excluded via `[tool.ty.src]` since openapi-python-client templates produce diagnostics we can't fix without forking the generator. New diagnostics outside that path must be resolved before commit — don't paper over with `# ty: ignore` unless the underlying issue is a typeshed/library bug (CORSMiddleware add_middleware is the canonical example).
+
+3. **Tests** — Run pytest:
    ```bash
    cd fastapi-backend && uv run pytest tests/ -x -q
    ```

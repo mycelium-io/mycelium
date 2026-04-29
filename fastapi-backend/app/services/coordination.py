@@ -233,6 +233,19 @@ class _CfnRoundState:
     issues: list[str] | None = None
     issue_options: dict[str, list[str]] | None = None
     next_proposer_id: str | None = None
+    # Round budget passed to CFN /start. Forwarded into ticks so agents can
+    # see how many rounds remain and decide whether to walk away with no
+    # agreement.
+    n_steps_total: int = 0
+    # Per-agent record of last round's action ("accept" | "reject" |
+    # "counter_offer" | "timeout"). Forwarded into the next tick as
+    # ``your_last_action`` so agents don't have to reverse-engineer state.
+    last_actions: dict[str, str] = field(default_factory=dict)
+    # Short label for what happened in the previous round: "first_round",
+    # "proposer_countered", "rejected_by_<id>", or "agreed". Forwarded into
+    # the next tick as ``prior_round_outcome`` so agents stop describing
+    # their own offer as "reflected back".
+    last_round_outcome: str = "first_round"
 
 
 # {room_name: _CfnRoundState}
@@ -305,7 +318,14 @@ def schedule_join_timer(room_name: str, deadline: datetime) -> asyncio.Task:
     Callers should prefer this over a bare ``asyncio.ensure_future(start_join_timer(...))``
     so :func:`teardown_for_namespace` can cancel a still-pending join window
     when the room is deleted.
+
+    If a timer is already armed for this room, cancel it first — this lets
+    subsequent joins extend the window by rescheduling with a new deadline
+    instead of stacking timers (which would race and fire CFN early).
     """
+    existing = _join_timer_tasks.get(room_name)
+    if existing is not None and not existing.done():
+        existing.cancel()
     task = asyncio.ensure_future(start_join_timer(room_name, deadline))
     _join_timer_tasks[room_name] = task
 
@@ -358,7 +378,7 @@ async def _run_tick(room_name: str, tick: int) -> None:
         and room.workspace_id
     )
 
-    if not use_cfn:
+    if not use_cfn or room is None or not room.mas_id or not room.workspace_id:
         logger.error(
             "Coordination requested for %s but CFN not configured (no COGNITION_FABRIC_NODE_URL "
             "or room.mas_id/workspace_id not set)",
@@ -378,12 +398,21 @@ async def _run_tick(room_name: str, tick: int) -> None:
             await db.commit()
         return
 
-    await _run_cfn_negotiation(room_name, room, session_handles, intents)
+    await _run_cfn_negotiation(
+        room_name,
+        room,
+        room.workspace_id,
+        room.mas_id,
+        session_handles,
+        intents,
+    )
 
 
 async def _run_cfn_negotiation(
     room_name: str,
     room: Room,
+    workspace_id: str,
+    mas_id: str,
     session_handles: list[str],
     intents: list[str],
 ) -> None:
@@ -405,12 +434,15 @@ async def _run_cfn_negotiation(
     )
 
     try:
+        from app.config import settings
+
         result = await start_negotiation(
             session_id=session_id,
             content_text=joined_intents,
             agents=agents,
-            workspace_id=room.workspace_id,
-            mas_id=room.mas_id,
+            workspace_id=workspace_id,
+            mas_id=mas_id,
+            n_steps=settings.NEGOTIATION_N_STEPS,
         )
     except CfnNegotiationError as exc:
         logger.error("CFN start_negotiation failed for %s: %s", room_name, exc)
@@ -420,10 +452,13 @@ async def _run_cfn_negotiation(
     # Set up CFN round state
     state = _CfnRoundState(
         session_id=session_id,
-        workspace_id=room.workspace_id,
-        mas_id=room.mas_id,
+        workspace_id=workspace_id,
+        mas_id=mas_id,
         agents=session_handles[:],
         pending_replies={h: None for h in session_handles},
+        # Use the configured cap; CFN may auto-compute internally when 0,
+        # so display 0 unchanged — agents can interpret that as "no cap".
+        n_steps_total=settings.NEGOTIATION_N_STEPS,
     )
     _cfn_state[room_name] = state
 
@@ -559,6 +594,14 @@ async def _fan_out_cfn_messages(
     Returns the list of agent handles that received a tick this round.
     """
     addressed: list[str] = []
+    # Read state once so each tick in this batch sees the same prior-round
+    # snapshot; _cfn_decide_round overwrites these fields immediately before
+    # calling us so the values describe what just happened.
+    state_snapshot = _cfn_state.get(room_name)
+    n_steps_total = state_snapshot.n_steps_total if state_snapshot else 0
+    last_actions = dict(state_snapshot.last_actions) if state_snapshot else {}
+    prior_round_outcome = state_snapshot.last_round_outcome if state_snapshot else "first_round"
+
     for msg in messages:
         payload = msg.get("payload", msg)
         participant_id = payload.get("participant_id")
@@ -593,6 +636,12 @@ async def _fan_out_cfn_messages(
                                 "next_proposer_id": next_proposer_id,
                                 "issue_options": issue_options,
                                 "issues": issues,
+                                # Negotiation budget + per-agent context so
+                                # agents don't have to reverse-engineer the
+                                # prior turn from action+can_counter_offer.
+                                "n_steps_total": n_steps_total,
+                                "your_last_action": last_actions.get(handle),
+                                "prior_round_outcome": prior_round_outcome,
                             }
                         }
                     ),
@@ -615,6 +664,9 @@ async def _fan_out_cfn_messages(
                             "next_proposer_id": next_proposer_id,
                             "issue_options": issue_options,
                             "issues": issues,
+                            "n_steps_total": n_steps_total,
+                            "your_last_action": last_actions.get(participant_id),
+                            "prior_round_outcome": prior_round_outcome,
                         }
                     }
                 ),
@@ -665,6 +717,11 @@ async def _cfn_decide_round(
         state.deciding = True
 
     agent_replies = []
+    # Snapshot per-agent actions for the next tick's `your_last_action` field
+    # and derive a short outcome label for `prior_round_outcome`. Both are
+    # forwarded into ticks so agents can stop reverse-engineering the prior
+    # turn from action+can_counter_offer.
+    snapshot_actions: dict[str, str] = {}
     for handle, reply_data in state.pending_replies.items():
         if reply_data is None:
             # Agent timed out / no structured reply — default to reject.
@@ -673,12 +730,32 @@ async def _cfn_decide_round(
             # mismatch, dropping any other agent's counter-offer in the same
             # round (same failure mode as #105, different code path).
             agent_replies.append({"agent_id": handle, "participant_id": handle, "action": "reject"})
+            snapshot_actions[handle] = "timeout"
             # Record synthesis in the round trace so callers can measure how
             # often this happens in practice.
             if state.current_trace and handle in state.current_trace.per_agent:
                 state.current_trace.per_agent[handle].was_synthesised = True
         else:
             agent_replies.append(reply_data)
+            snapshot_actions[handle] = str(reply_data.get("action") or "reject")
+
+    proposer_handle = state.next_proposer_id or ""
+    proposer_action = snapshot_actions.get(proposer_handle, "")
+    rejecters = [
+        h
+        for h, a in snapshot_actions.items()
+        if h != proposer_handle and a in ("reject", "timeout")
+    ]
+    if proposer_action == "counter_offer":
+        last_round_outcome = "proposer_countered"
+    elif rejecters:
+        last_round_outcome = f"rejected_by_{rejecters[0]}" if len(rejecters) == 1 else "rejected"
+    elif all(a == "accept" for a in snapshot_actions.values()):
+        last_round_outcome = "agreed"
+    else:
+        last_round_outcome = "no_consensus"
+    state.last_actions = snapshot_actions
+    state.last_round_outcome = last_round_outcome
 
     # Stamp when we entered CFN /decide.  Combined with last_reply_received_ms
     # this lets observers distinguish "agents are slow" from "CFN is slow",
@@ -936,23 +1013,44 @@ async def teardown_for_namespace(namespace_name: str, child_room_names: list[str
 async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool) -> None:
     """Post consensus and clean up CFN state."""
     state = _cfn_state.pop(room_name, None)
+    # Avoid self-cancellation: if _finish_cfn is being called from inside the
+    # round_timeout_task itself (the timeout path), cancelling that task here
+    # raises CancelledError at the next await — which is _post_message — and
+    # the terminal coordination_consensus never gets written. CancelledError
+    # inherits from BaseException, not Exception, so the try/except below
+    # wouldn't catch it either, and the room hangs in "negotiating" forever.
+    # Only cancel the timeout task when we're NOT the one running it.
     if state and state.round_timeout_task and not state.round_timeout_task.done():
-        state.round_timeout_task.cancel()
+        try:
+            current = asyncio.current_task()
+        except RuntimeError:
+            current = None
+        if state.round_timeout_task is not current:
+            state.round_timeout_task.cancel()
     # Defensive flush for the rare case _cfn_decide_round didn't get to it
     # (e.g. _run_cfn_negotiation called _finish_cfn directly on a startup error).
     if state and state.current_trace is not None:
         _close_round_trace(state, decision_path="aborted", outcome="error" if broken else "agreed")
-    await _post_message(
-        room_name,
-        message_type="coordination_consensus",
-        content=json.dumps(
-            {
-                "plan": plan,
-                "assignments": assignments,
-                "broken": broken,
-            }
-        ),
-    )
+    try:
+        await _post_message(
+            room_name,
+            message_type="coordination_consensus",
+            content=json.dumps(
+                {
+                    "plan": plan,
+                    "assignments": assignments,
+                    "broken": broken,
+                }
+            ),
+        )
+    except Exception as exc:
+        # FK violation means the room was deleted before consensus could be written.
+        # Log clearly so it's visible in traces rather than silently dropped.
+        logger.error(
+            "_finish_cfn: failed to write coordination_consensus for %s: %s",
+            room_name,
+            exc,
+        )
     async with async_session_maker() as db:
         await db.execute(
             update(Room)
@@ -977,6 +1075,7 @@ async def on_agent_response(room_name: str, handle: str, content: str) -> None:
     should_decide = False
     corrective: dict | None = None
     out_of_turn: bool = False
+    extend_timeout: bool = False
     async with cfn.lock:
         if handle in cfn.pending_replies:
             reply_data = _parse_agent_reply(handle, content, cfn.current_offer, cfn.issue_options)
@@ -992,6 +1091,11 @@ async def on_agent_response(room_name: str, handle: str, content: str) -> None:
                 corrective = reply_data
                 # Leave pending_replies[handle] as None — round waits for a corrected reply.
             else:
+                # Track newness so we extend the round timer only on first
+                # reply per agent per round — resubmits and duplicates don't
+                # extend (a stalled agent spamming retries shouldn't be able
+                # to keep the round alive forever).
+                was_pending = cfn.pending_replies[handle] is None
                 cfn.pending_replies[handle] = reply_data
                 logger.debug(
                     "CFN room %s: collected reply from %s (%d/%d)",
@@ -1020,6 +1124,12 @@ async def on_agent_response(room_name: str, handle: str, content: str) -> None:
                         trace.last_reply_received_ms = (
                             time.monotonic() - trace.started_at
                         ) * 1000.0
+                elif was_pending:
+                    # A new agent replied but the round isn't complete yet.
+                    # Reset the round watchdog so a single slow agent doesn't
+                    # blow the budget for everyone — the round only dies when
+                    # the *full* timeout elapses with no further activity.
+                    extend_timeout = True
 
     if out_of_turn:
         logger.warning(
@@ -1074,6 +1184,13 @@ async def on_agent_response(room_name: str, handle: str, content: str) -> None:
         if cfn.round_timeout_task and not cfn.round_timeout_task.done():
             cfn.round_timeout_task.cancel()
         asyncio.ensure_future(_cfn_decide_round(room_name, decision_path="all_replied"))
+    elif extend_timeout:
+        # A first reply landed but others are still pending. Reset the round
+        # watchdog so the slow tail of agents gets the full budget too —
+        # otherwise a 3+ agent room dies whenever the slowest agent takes
+        # longer than the round timeout, regardless of when the others
+        # replied. Only first-replies extend (resubmits/dupes don't).
+        _reset_round_timeout(room_name, cfn)
 
 
 def _validate_and_fill_offer(handle: str, result: dict, current_offer: dict | None) -> dict:

@@ -482,7 +482,7 @@ def list_sessions(
             return
 
         sessions = data.get("sessions", [])
-        if not sessions:
+        if not isinstance(sessions, list) or not sessions:
             typer.echo(f"  No active sessions in {room_name}")
             return
 

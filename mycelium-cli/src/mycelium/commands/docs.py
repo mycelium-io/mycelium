@@ -28,7 +28,6 @@ SECTIONS: list[tuple[str, str]] = [
     ("rooms", "Rooms"),
     ("sessions", "Sessions"),
     ("memory", "Memory"),
-    ("notebook", "Notebook"),
     ("cognitive-engine", "CognitiveEngine"),
     ("knowledge-graph", "Knowledge Graph"),
     ("cli-reference", "CLI Reference"),
