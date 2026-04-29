@@ -17,11 +17,13 @@ Endpoints used:
 from __future__ import annotations
 
 import logging
+import time as _time
 from typing import Any
 
 import httpx
 
 from app.config import settings
+from app.services._cfn_call_timing import cfn_timing_stage, cfn_timing_stamp
 from ioc_cfn_svc_api_client import Client
 from ioc_cfn_svc_api_client.api.semantic_negotiation import (
     decide_negotiation_api_workspaces_workspace_id_multi_agentic_systems_mas_id_semantic_negotiation_decide_post as decide_api,
@@ -52,11 +54,12 @@ class CfnNegotiationError(RuntimeError):
     """CFN semantic-negotiation call failed. The message is user-facing."""
 
 
-def _client() -> Client:
+def _client(**extra_headers: str) -> Client:
     return Client(
         base_url=settings.COGNITION_FABRIC_NODE_URL or "",
         timeout=_CFN_HTTP_TIMEOUT,
         raise_on_unexpected_status=True,
+        headers=dict(extra_headers) if extra_headers else {},
     )
 
 
@@ -93,6 +96,30 @@ def _raise_if_validation_error(
     return result
 
 
+def _extract_cfn_loop_lag_headers(headers: Any) -> None:
+    """Pull CFN's per-request loop-lag stats from response headers into the timing snapshot.
+
+    These tell us whether CFN's event loop was blocked *during* the request
+    — a non-zero value for a slow request means the wedge was inside the
+    handler/deps, not before middleware fired.
+    """
+    for hdr_key in (
+        "x-cfn-loop-lag-samples-n",
+        "x-cfn-loop-lag-mean-ms",
+        "x-cfn-loop-lag-p95-ms",
+        "x-cfn-loop-lag-max-ms",
+    ):
+        v = headers.get(hdr_key)
+        if v is not None:
+            try:
+                cfn_timing_stamp(
+                    hdr_key.replace("x-", "").replace("-", "_"),
+                    int(v) if "samples-n" in hdr_key else float(v),
+                )
+            except (ValueError, TypeError):
+                pass
+
+
 async def start_negotiation(
     *,
     session_id: str,
@@ -106,23 +133,33 @@ async def start_negotiation(
 
     ``agents`` items: ``{"id": handle, "name": handle}``
     """
+    cfn_timing_stamp("endpoint", "start_negotiation")
+    sent_ns = _time.time_ns()
+    cfn_timing_stamp("sent_wall_ns", sent_ns)
+
     body = InitiateNegotiationRequest(
         session_id=session_id,
         content_text=content_text,
         agents=[Agent(id=a["id"], name=a["name"]) for a in agents],
-        # n_steps=0 means "let CFN auto-compute from issue/agent count" — pass UNSET
-        # to omit the field so CFN's compute_n_steps() runs. A literal 0 in the
-        # request body would cap negotiation at zero rounds.
         n_steps=n_steps if n_steps and n_steps > 0 else UNSET,
     )
     try:
-        async with _client() as client:
-            result = await start_api.asyncio(
-                workspace_id=workspace_id,
-                mas_id=mas_id,
-                client=client,
-                body=body,
-            )
+        with cfn_timing_stage("client_setup_ms"):
+            client_cm = _client(**{"X-Client-Sent-Wall-Ns": str(sent_ns)})
+            client = await client_cm.__aenter__()
+        try:
+            with cfn_timing_stage("http_ms"):
+                resp = await start_api.asyncio_detailed(
+                    workspace_id=workspace_id,
+                    mas_id=mas_id,
+                    client=client,
+                    body=body,
+                )
+            cfn_timing_stamp("response_bytes", len(resp.content))
+            _extract_cfn_loop_lag_headers(resp.headers)
+        finally:
+            with cfn_timing_stage("client_close_ms"):
+                await client_cm.__aexit__(None, None, None)
     except UnexpectedStatus as exc:
         reason = _describe_exc(exc)
         logger.warning(
@@ -135,7 +172,7 @@ async def start_negotiation(
         reason = _describe_exc(exc)
         logger.exception("CFN start_negotiation failed | reason=%s", reason)
         raise CfnNegotiationError(reason) from exc
-    return _raise_if_validation_error(result, "start_negotiation")
+    return _raise_if_validation_error(resp.parsed, "start_negotiation")
 
 
 def _build_agent_reply(item: dict[str, Any]) -> AgentReply:
@@ -169,18 +206,31 @@ async def decide_negotiation(
 
     ``agent_replies`` items: ``{"agent_id": handle, "action": "accept"|"reject"|"counter_offer", "offer": {...}|None}``
     """
+    cfn_timing_stamp("endpoint", "decide_negotiation")
+    sent_ns = _time.time_ns()
+    cfn_timing_stamp("sent_wall_ns", sent_ns)
+
     body = DecideRequest(
         session_id=session_id,
         agent_replies=[_build_agent_reply(r) for r in agent_replies],
     )
     try:
-        async with _client() as client:
-            result = await decide_api.asyncio(
-                workspace_id=workspace_id,
-                mas_id=mas_id,
-                client=client,
-                body=body,
-            )
+        with cfn_timing_stage("client_setup_ms"):
+            client_cm = _client(**{"X-Client-Sent-Wall-Ns": str(sent_ns)})
+            client = await client_cm.__aenter__()
+        try:
+            with cfn_timing_stage("http_ms"):
+                resp = await decide_api.asyncio_detailed(
+                    workspace_id=workspace_id,
+                    mas_id=mas_id,
+                    client=client,
+                    body=body,
+                )
+            cfn_timing_stamp("response_bytes", len(resp.content))
+            _extract_cfn_loop_lag_headers(resp.headers)
+        finally:
+            with cfn_timing_stage("client_close_ms"):
+                await client_cm.__aexit__(None, None, None)
     except UnexpectedStatus as exc:
         reason = _describe_exc(exc)
         logger.warning(
@@ -193,4 +243,4 @@ async def decide_negotiation(
         reason = _describe_exc(exc)
         logger.exception("CFN decide_negotiation failed | reason=%s", reason)
         raise CfnNegotiationError(reason) from exc
-    return _raise_if_validation_error(result, "decide_negotiation")
+    return _raise_if_validation_error(resp.parsed, "decide_negotiation")
