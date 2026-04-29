@@ -250,6 +250,69 @@ Then run `mycelium synthesize` again.
 
 ---
 
+### 15. Agents Join Sessions but Never Respond (Expired Matrix Tokens)
+
+**Symptom**: An agent appears in `mycelium room ls` as a session
+participant, but never responds to coordination ticks. No error in
+`mycelium logs`.
+
+**Cause**: The agent's Matrix access token has expired or been invalidated
+(e.g., after a Synapse restart). The OpenClaw gateway silently drops the
+Matrix sync connection without surfacing an error to Mycelium.
+
+**Diagnosis**:
+
+```bash
+# Check gateway logs for Matrix sync errors
+journalctl --user -u openclaw-gateway --since "10 min ago" | grep -i matrix
+
+# Or on the hub
+openclaw logs | grep -i "sync\|401\|unauthorized"
+```
+
+**Fix**: Re-authenticate the agent with the Matrix homeserver and update
+the token in `~/.openclaw/openclaw.json` at
+`channels.matrix.accounts.<agent>.accessToken`. Then restart the gateway:
+
+```bash
+openclaw gateway restart
+```
+
+In a hub-and-spoke setup, update tokens on every node that runs agents.
+
+---
+
+### 16. Spoke Cannot Reach Hub Backend
+
+**Symptom**: `mycelium status` or `mycelium room ls` from a spoke returns
+a connection error pointing at the hub's URL.
+
+**Diagnosis**:
+
+```bash
+# Test raw connectivity
+curl http://<hub-ip>:8000/health
+
+# Check what the spoke is configured to use
+grep api_url ~/.mycelium/config.toml
+```
+
+**Common causes**:
+
+- Firewall or security group blocks port 8000
+- Hub backend isn't running (`mycelium up` on the hub)
+- VPN/Tailscale not connected
+- Wrong IP or port in `config.toml`
+
+**Fix**: Ensure the hub is running and the spoke can reach it, then
+re-initialise if the URL is wrong:
+
+```bash
+mycelium init --api-url http://<correct-hub-ip>:8000
+```
+
+---
+
 ## Configuration Reference
 
 ### CLI settings — `~/.mycelium/config.toml`

@@ -59,6 +59,11 @@
       <a href="#knowledge-graph" class="nav-link sub">Knowledge Graph</a>
     </div>
     <div class="nav-section">
+      <div class="nav-section-label">Guides</div>
+      <a href="#structured-memory" class="nav-link sub">Structured Memory</a>
+      <a href="#hub-and-spoke" class="nav-link sub">Hub &amp; Spoke Setup</a>
+    </div>
+    <div class="nav-section">
       <div class="nav-section-label">Architecture</div>
       <a href="#architecture" class="nav-link">Architecture</a>
     </div>
@@ -593,6 +598,257 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
 
     <hr class="divider">
 
+    <section class="doc-section" id="structured-memory">
+      <h1>Structured Memory Guide</h1>
+      <p>This guide shows how to use Mycelium&#x27;s structured memory conventions to give agents continuity across sessions.</p>
+      <h2 id="structured-memory-the-problem">The Problem</h2>
+      <p>An agent helps build something over a long session. The session ends. When the user (or another agent) comes back, there&#x27;s no memory of what happened. The new session starts from scratch.</p>
+      <h2 id="structured-memory-the-solution-category-conventions">The Solution: Category Conventions</h2>
+      <p>Instead of writing memories with arbitrary keys, use structured prefixes:</p>
+      <pre><code>work/        — What was built or changed
+decisions/   — Why choices were made
+context/     — User preferences and background
+status/      — Current state of ongoing work
+procedures/  — Reusable how-to steps (do this again later)</code></pre>
+      <p><code>memory set</code> validates these automatically — when the key starts with a known category prefix, it checks the slug format and auto-timestamps the content.</p>
+      <h2 id="structured-memory-workflow">Workflow</h2>
+      <h3 id="structured-memory-1-set-up-a-room">1. Set up a room</h3>
+      <pre><code><span class="cmd">mycelium room create</span> project-x
+<span class="cmd">mycelium room use</span> project-x</code></pre>
+      <h3 id="structured-memory-2-write-structured-memories-as-you-work">2. Write structured memories as you work</h3>
+      <pre><code><span class="comment"># Record what you built</span>
+<span class="cmd">mycelium memory set</span> work/api-server <span class="str">&quot;Set up FastAPI with auth endpoints&quot;</span>
+<span class="cmd">mycelium memory set</span> work/database <span class="str">&quot;Created PostgreSQL schema, 3 tables&quot;</span>
+
+<span class="comment"># Record why you made choices</span>
+<span class="cmd">mycelium memory set</span> decisions/framework <span class="str">&quot;FastAPI over Flask: async + type hints&quot;</span>
+<span class="cmd">mycelium memory set</span> decisions/auth <span class="str">&quot;JWT tokens, 1hr expiry, refresh via cookie&quot;</span>
+
+<span class="comment"># Record user context</span>
+<span class="cmd">mycelium memory set</span> context/goal <span class="str">&quot;Build MVP for investor demo by Friday&quot;</span>
+<span class="cmd">mycelium memory set</span> context/constraints <span class="str">&quot;Must run on single $20/mo VPS&quot;</span>
+
+<span class="comment"># Track current state</span>
+<span class="cmd">mycelium memory set</span> status/api <span class="str">&quot;PASSING — all 12 endpoints tested&quot;</span>
+<span class="cmd">mycelium memory set</span> status/deploy <span class="str">&quot;BLOCKED — waiting on DNS propagation&quot;</span>
+
+<span class="comment"># Save reusable procedures</span>
+<span class="cmd">mycelium memory set</span> procedures/deploy-vps &quot;1. ssh vps  2. cd /app &amp;&amp; git pull  3. systemctl restart app  4. curl healthcheck&quot;
+<span class="cmd">mycelium memory set</span> procedures/db-migrate &quot;1. uv run alembic upgrade head  2. Verify with psql <span class="flag">-c</span> &#x27;SELECT version()&#x27;&quot;</code></pre>
+      <h3 id="structured-memory-3-check-status-at-a-glance">3. Check status at a glance</h3>
+      <pre><code><span class="cmd">mycelium memory status</span>     # Table of all status/* memories
+<span class="cmd">mycelium memory work</span>       # What&#x27;s been built
+<span class="cmd">mycelium memory decisions</span>  # Why things are the way they are
+<span class="cmd">mycelium memory procedures</span> # How to do things again</code></pre>
+      <h3 id="structured-memory-4-catch-up-after-a-break">4. Catch up after a break</h3>
+      <pre><code><span class="cmd">mycelium catchup</span></code></pre>
+      <p>If synthesis has run, you&#x27;ll get a structured briefing:</p>
+      <pre><code>project-x  12 memories  2 contributors
+
+Latest Synthesis
+  _synthesis/20260318T030000Z  2026-03-18 03:00
+
+<span class="comment">  ## What&#x27;s Built</span>
+  API server with 12 endpoints, PostgreSQL with 3 tables...
+
+<span class="comment">  ## Current Status</span>
+  API passing all tests. Deploy blocked on DNS...
+
+<span class="comment">  ## Key Decisions</span>
+  FastAPI for async + types. JWT auth with 1hr expiry...</code></pre>
+      <h3 id="structured-memory-5-update-status-as-things-change">5. Update status as things change</h3>
+      <pre><code><span class="comment"># memory set always upserts — just set the new value</span>
+<span class="cmd">mycelium memory set</span> status/deploy <span class="str">&quot;ACTIVE — deployed to vps.example.com&quot;</span></code></pre>
+      <h2 id="structured-memory-type-safety">Type Safety</h2>
+      <p><code>memory set</code> validates category keys against the <code>MemoryLogEntry</code> type (defined in <code>mycelium.sstp</code>). This is the same pattern used for negotiation payloads (<code>ProposeReply</code>, <code>RespondReply</code>) — Pydantic validation before the API call, so malformed slugs fail fast on the client side.</p>
+      <p>Valid slugs: lowercase alphanumeric, hyphens, dots, underscores.</p>
+      <ul>
+        <li><code>work/api-server</code> — valid</li>
+        <li><code>status/v2.deploy</code> — valid</li>
+        <li><code>decisions/Why We Chose X</code> — invalid (uppercase, spaces)</li>
+      </ul>
+      <p>Keys without a known category prefix skip validation entirely:</p>
+      <ul>
+        <li><code>custom/anything</code> — passes through, no slug check</li>
+        <li><code>research/pgvector-perf</code> — passes through</li>
+      </ul>
+      <h2 id="structured-memory-synthesis-awareness">Synthesis Awareness</h2>
+      <p>When you trigger synthesis (<code>mycelium room synthesize</code>), the engine groups memories by category prefix. This produces structured output:</p>
+      <ul>
+        <li><strong>What&#x27;s Built</strong> — from <code>work/*</code> memories</li>
+        <li><strong>Current Status</strong> — from <code>status/*</code> memories</li>
+        <li><strong>Key Decisions</strong> — from <code>decisions/*</code> memories</li>
+        <li><strong>Context</strong> — from <code>context/*</code> memories</li>
+        <li><strong>Reusable Procedures</strong> — from <code>procedures/*</code> memories</li>
+      </ul>
+      <p>Memories without a known category prefix are grouped under &quot;Other&quot;.</p>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="hub-and-spoke">
+      <h1>Hub &amp; Spoke Setup</h1>
+      <p>How to run Mycelium across multiple machines so a small team shares memory, rooms, and coordination state from a single backend.</p>
+      <h2 id="hub-and-spoke-when-to-use-this">When to use this</h2>
+      <p>Use hub-and-spoke when multiple people (or multiple machines) need to participate in the same rooms, see the same memories, and coordinate agents together. If everything runs on one machine, the default single-device install is simpler — see the Quick Start.</p>
+      <h2 id="hub-and-spoke-topology">Topology</h2>
+      <pre><code>┌──────────────────────────────────┐
+│  Hub  (one machine)              │
+│                                  │
+│  <span class="cmd">mycelium install</span>                │
+│  ├─ FastAPI backend  :8000       │
+│  ├─ AgensGraph (PG)  :5432       │
+│  ├─ Matrix / Synapse :8008       │
+│  ├─ CFN mgmt plane   :9000      │
+│  └─ CFN runtime      :9002      │
+│                                  │
+│  Channel servers (Matrix, etc)   │
+│  All agent accounts defined here │
+└────────────┬─────────────────────┘
+             │  HTTPS / SSE
+     ┌───────┴───────┐
+     │               │
+┌────┴─────┐   ┌─────┴────┐
+│ Spoke A  │   │ Spoke B  │
+│          │   │          │
+│ CLI only │   │ CLI only │
+│ + agents │   │ + agents │
+│ No Docker│   │ No Docker│
+└──────────┘   └──────────┘</code></pre>
+      <p>The hub runs the full stack. Spokes run only the CLI, agents, and the adapter plugin — no Docker, no database, no channel servers.</p>
+      <h2 id="hub-and-spoke-step-1-set-up-the-hub">Step 1: Set up the hub</h2>
+      <p>On the hub machine, run the standard install:</p>
+      <pre><code><span class="cmd">mycelium install</span></code></pre>
+      <p>This brings up the backend, database, and provisions a default workspace. Verify with:</p>
+      <pre><code><span class="cmd">mycelium doctor</span> <span class="flag">--mode</span> hub</code></pre>
+      <h3 id="hub-and-spoke-open-ports">Open ports</h3>
+      <p>Spokes need to reach the hub on these ports:</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Port</th>
+              <th>Service</th>
+              <th>Required</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>8000</td>
+              <td>Mycelium backend (API + SSE)</td>
+              <td>Yes</td>
+            </tr>
+            <tr>
+              <td>8008</td>
+              <td>Matrix homeserver (Synapse)</td>
+              <td>If using Matrix channel</td>
+            </tr>
+            <tr>
+              <td>9000</td>
+              <td>CFN management plane</td>
+              <td>If using CognitiveEngine</td>
+            </tr>
+            <tr>
+              <td>9002</td>
+              <td>CFN runtime</td>
+              <td>If using CognitiveEngine</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Use a VPN, Tailscale, or firewall rules to restrict access — these services have no built-in authentication.</p>
+      <h3 id="hub-and-spoke-configure-channel-servers">Configure channel servers</h3>
+      <p>If agents coordinate via Matrix, set up Synapse on the hub and create accounts for every agent across all spokes:</p>
+      <pre><code><span class="comment"># Register agent accounts (on the hub)</span>
+<span class="comment"># Each spoke&#x27;s agents need a Matrix account on the hub&#x27;s homeserver</span></code></pre>
+      <p>Add all agent accounts to <code>channels.matrix.accounts</code> in the hub&#x27;s <code>~/.openclaw/openclaw.json</code>. The hub&#x27;s gateway manages all Matrix connections — spokes do not run their own Matrix clients.</p>
+      <h2 id="hub-and-spoke-step-2-set-up-each-spoke">Step 2: Set up each spoke</h2>
+      <p>On each spoke machine, install only the CLI (no <code>mycelium install</code>):</p>
+      <pre><code>pip install mycelium-cli
+<span class="comment"># or</span>
+uv tool install mycelium-cli</code></pre>
+      <h3 id="hub-and-spoke-point-the-spoke-at-the-hub">Point the spoke at the hub</h3>
+      <pre><code><span class="cmd">mycelium init</span> <span class="flag">--api-url</span> http://&lt;hub-ip&gt;:8000</code></pre>
+      <p>This writes <code>~/.mycelium/config.toml</code> with the hub&#x27;s API URL. Verify the connection:</p>
+      <pre><code><span class="cmd">mycelium doctor</span> <span class="flag">--mode</span> spoke</code></pre>
+      <p>The doctor checks that the hub&#x27;s backend is reachable and skips Docker/database checks that only apply to hubs.</p>
+      <h3 id="hub-and-spoke-install-the-adapter">Install the adapter</h3>
+      <p>For OpenClaw agents:</p>
+      <pre><code><span class="cmd">mycelium adapter add</span> openclaw</code></pre>
+      <p>The adapter installs the Mycelium plugin into the local OpenClaw gateway. The plugin connects to the hub&#x27;s backend URL (from <code>config.toml</code>) for SSE subscriptions and API calls.</p>
+      <p>After installing, restart the gateway:</p>
+      <pre><code>openclaw gateway restart</code></pre>
+      <h3 id="hub-and-spoke-spoke-config-summary">Spoke config summary</h3>
+      <p>A spoke needs only two files:</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>File</th>
+              <th>Purpose</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>~/.mycelium/config.toml</code></td>
+              <td>Points <code>server.api_url</code> at the hub</td>
+            </tr>
+            <tr>
+              <td><code>~/.openclaw/openclaw.json</code></td>
+              <td>Agent definitions, Matrix credentials, plugin config</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The spoke does not need <code>server.workspace_id</code> or <code>server.mas_id</code> in its config — the hub resolves these automatically when the spoke&#x27;s agents join rooms and sessions.</p>
+      <h2 id="hub-and-spoke-step-3-verify-the-setup">Step 3: Verify the setup</h2>
+      <p>From each spoke, confirm connectivity:</p>
+      <pre><code><span class="comment"># Should return rooms from the hub</span>
+<span class="cmd">mycelium room ls</span>
+
+<span class="comment"># Should show hub health</span>
+<span class="cmd">mycelium status</span></code></pre>
+      <p>Test agent participation by creating a room on the hub and joining from a spoke:</p>
+      <pre><code><span class="comment"># On the hub</span>
+<span class="cmd">mycelium room create</span> test-room
+
+<span class="comment"># On the spoke</span>
+<span class="cmd">mycelium session join</span> <span class="flag">--handle</span> spoke-agent <span class="flag">-m</span> <span class="str">&quot;Hello from spoke&quot;</span> <span class="flag">-r</span> test-room</code></pre>
+      <h2 id="hub-and-spoke-agent-identity">Agent identity</h2>
+      <p>Each agent needs a unique handle across the entire deployment. The handle is set by:</p>
+      <ol class="steps">
+        <li><code>identity.name</code> in <code>~/.mycelium/config.toml</code></li>
+        <li>The <code>MYCELIUM_AGENT_HANDLE</code> environment variable</li>
+        <li>The <code>--handle</code> flag on CLI commands</li>
+      </ol>
+      <p>When using OpenClaw with Matrix, agent handles should match their Matrix user IDs (the localpart before the colon, e.g., <code>@agent-alpha:local</code> → <code>agent-alpha</code>).</p>
+      <h2 id="hub-and-spoke-matrix-token-management">Matrix token management</h2>
+      <p>Matrix access tokens expire or become invalid after homeserver restarts. When this happens, agents silently stop receiving messages.</p>
+      <p>Signs of expired tokens:</p>
+      <ul>
+        <li>Agents join sessions but never respond to coordination ticks</li>
+        <li>Gateway logs show Matrix sync errors</li>
+        <li><code>mycelium doctor</code> reports Matrix connection failures</li>
+      </ul>
+      <p>To refresh tokens, log in again via the Synapse admin API or re-register the accounts, then update <code>channels.matrix.accounts[agent].accessToken</code> in each node&#x27;s <code>openclaw.json</code> and restart the gateway.</p>
+      <h2 id="hub-and-spoke-troubleshooting">Troubleshooting</h2>
+      <h3 id="hub-and-spoke-spoke-cant-reach-hub">Spoke can&#x27;t reach hub</h3>
+      <pre><code>curl http://&lt;hub-ip&gt;:8000/health</code></pre>
+      <p>If this fails, check firewall rules, VPN connectivity, or security groups. The backend binds to <code>0.0.0.0</code> by default inside Docker, but the host firewall may block external access.</p>
+      <h3 id="hub-and-spoke-agent-joins-but-doesnt-respond">Agent joins but doesn&#x27;t respond</h3>
+      <p>The agent&#x27;s OpenClaw gateway plugin subscribes to SSE on the hub. If the agent joins a session (visible in <code>mycelium room ls</code>) but never responds to coordination ticks:</p>
+      <ol class="steps">
+        <li>Check the gateway logs: <code>journalctl --user -u openclaw-gateway --since &quot;5 min ago&quot;</code></li>
+        <li>Look for <code>session SSE connected</code> — if absent, the plugin isn&#x27;t monitoring the session</li>
+        <li>Verify Matrix tokens are valid (see above)</li>
+      </ol>
+      <h3 id="hub-and-spoke-doctor-reports-spoke-mode-unexpectedly">Doctor reports &quot;spoke mode&quot; unexpectedly</h3>
+      <p><code>mycelium doctor</code> auto-detects mode from <code>server.api_url</code>. If it points to a non-localhost address, doctor assumes spoke mode. Override with:</p>
+      <pre><code><span class="cmd">mycelium doctor</span> <span class="flag">--mode</span> hub</code></pre>
+    </section>
+
+    <hr class="divider">
+
     <section class="doc-section" id="architecture">
       <h1>Architecture</h1>
       <h2 id="architecture-deployment-modes">Deployment Modes</h2>
@@ -625,7 +881,7 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
           </tbody>
         </table>
       </div>
-      <p>Use this when a small team wants one place to look at shared memory, results, and ongoing coordinations — without each member running their own isolated stack.</p>
+      <p>Use this when a small team wants one place to look at shared memory, results, and ongoing coordinations — without each member running their own isolated stack. See the <a href="#hub-and-spoke">Hub &amp; Spoke Setup guide</a> for step-by-step instructions.</p>
       <p><code>mycelium doctor</code> auto-detects which mode you&#x27;re in by looking at <code>server.api_url</code> in <code>~/.mycelium/config.toml</code>: if it points to <code>localhost</code>/<code>127.0.0.1</code>, you&#x27;re a hub; otherwise a spoke. The detection just tells the doctor which checks are relevant — Docker containers, runtime config drift, and the local CFN mgmt plane only matter on a hub. Override the auto-detection with:</p>
       <pre><code><span class="cmd">mycelium doctor</span> <span class="flag">--mode</span> hub     # force hub checks
 <span class="cmd">mycelium doctor</span> <span class="flag">--mode</span> spoke   # force spoke checks (skip local-only)
@@ -859,6 +1115,46 @@ docker exec &lt;container-name&gt; openclaw status
       <p><strong>Fix</strong>: Re-index the room to sync filesystem → database:</p>
       <pre><code><span class="cmd">mycelium reindex</span> &lt;room-name&gt;</code></pre>
       <p>Then run <code>mycelium synthesize</code> again.</p>
+      <hr class="divider">
+      <h3 id="troubleshooting-15-openclaw-gateway-crash-loops-with-unrecognized-key">15. OpenClaw Gateway Crash-Loops with &quot;Unrecognized key&quot;</h3>
+      <p><strong>Symptom</strong>: Gateway exits immediately with <code>Config invalid - Unrecognized key: &#x27;&lt;key&gt;&#x27;</code>.</p>
+      <p><strong>Cause</strong>: <code>~/.openclaw/openclaw.json</code> contains a top-level key the gateway doesn&#x27;t recognise. This can happen if a script or manual edit adds a key at the wrong path (e.g., <code>integrations</code> instead of <code>channels</code>).</p>
+      <p><strong>Fix</strong>: Open <code>~/.openclaw/openclaw.json</code>, find the offending key, and either remove it or move its contents to the correct location. Then restart:</p>
+      <pre><code>openclaw gateway restart</code></pre>
+      <p>To inspect the JSON structure quickly:</p>
+      <pre><code>jq &#x27;keys&#x27; ~/.openclaw/openclaw.json</code></pre>
+      <p>Valid top-level keys are typically <code>agents</code>, <code>channels</code>, <code>plugins</code>, and <code>settings</code>. Anything else is likely misplaced.</p>
+      <hr class="divider">
+      <h3 id="troubleshooting-16-agents-join-sessions-but-never-respond-expired-matrix-tokens">16. Agents Join Sessions but Never Respond (Expired Matrix Tokens)</h3>
+      <p><strong>Symptom</strong>: An agent appears in <code>mycelium room ls</code> as a session participant, but never responds to coordination ticks. No error in <code>mycelium logs</code>.</p>
+      <p><strong>Cause</strong>: The agent&#x27;s Matrix access token has expired or been invalidated (e.g., after a Synapse restart). The OpenClaw gateway silently drops the Matrix sync connection without surfacing an error to Mycelium.</p>
+      <p><strong>Diagnosis</strong>:</p>
+      <pre><code><span class="comment"># Check gateway logs for Matrix sync errors</span>
+journalctl <span class="flag">--user</span> <span class="flag">-u</span> openclaw-gateway <span class="flag">--since</span> <span class="str">&quot;10 min ago&quot;</span> | grep <span class="flag">-i</span> matrix
+
+<span class="comment"># Or on the hub</span>
+openclaw logs | grep <span class="flag">-i</span> <span class="str">&quot;sync\|401\|unauthorized&quot;</span></code></pre>
+      <p><strong>Fix</strong>: Re-authenticate the agent with the Matrix homeserver and update the token in <code>~/.openclaw/openclaw.json</code> at <code>channels.matrix.accounts.&lt;agent&gt;.accessToken</code>. Then restart the gateway:</p>
+      <pre><code>openclaw gateway restart</code></pre>
+      <p>In a hub-and-spoke setup, update tokens on every node that runs agents.</p>
+      <hr class="divider">
+      <h3 id="troubleshooting-17-spoke-cannot-reach-hub-backend">17. Spoke Cannot Reach Hub Backend</h3>
+      <p><strong>Symptom</strong>: <code>mycelium status</code> or <code>mycelium room ls</code> from a spoke returns a connection error pointing at the hub&#x27;s URL.</p>
+      <p><strong>Diagnosis</strong>:</p>
+      <pre><code><span class="comment"># Test raw connectivity</span>
+curl http://&lt;hub-ip&gt;:8000/health
+
+<span class="comment"># Check what the spoke is configured to use</span>
+grep api_url ~/.mycelium/config.toml</code></pre>
+      <p><strong>Common causes</strong>:</p>
+      <ul>
+        <li>Firewall or security group blocks port 8000</li>
+        <li>Hub backend isn&#x27;t running (<code>mycelium up</code> on the hub)</li>
+        <li>VPN/Tailscale not connected</li>
+        <li>Wrong IP or port in <code>config.toml</code></li>
+      </ul>
+      <p><strong>Fix</strong>: Ensure the hub is running and the spoke can reach it, then re-initialise if the URL is wrong:</p>
+      <pre><code><span class="cmd">mycelium init</span> <span class="flag">--api-url</span> http://&lt;correct-hub-ip&gt;:8000</code></pre>
       <hr class="divider">
       <h2 id="troubleshooting-configuration-reference">Configuration Reference</h2>
       <h3 id="troubleshooting-cli-settings-myceliumconfigtoml">CLI settings — <code>~/.mycelium/config.toml</code></h3>
@@ -1323,9 +1619,9 @@ curl -X POST http://localhost:8888/api/memory/search \
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium pull</span> [<span class="flag">--no-restart</span>]</code>
+          <code><span class="cmd">mycelium pull</span> [<span class="flag">--version</span> <span class="arg">&lt;tag&gt;</span>] [<span class="flag">--no-restart</span>]</code>
         </div>
-        <div class="cmd-ref-body">Pull latest Docker images and restart services.</div>
+        <div class="cmd-ref-body">Pull Mycelium Docker images and restart services. Pass --version to pin a preview/specific build.</div>
       </div>
 
       <div class="cmd-ref">

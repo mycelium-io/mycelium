@@ -30,7 +30,8 @@ and connect to the hub over HTTPS/SSE.
 
 Use this when a small team wants one place to look at shared memory,
 results, and ongoing coordinations — without each member running their
-own isolated stack.
+own isolated stack. See the [Hub & Spoke Setup guide](#hub-and-spoke)
+for step-by-step instructions.
 
 `mycelium doctor` auto-detects which mode you're in by looking at
 `server.api_url` in `~/.mycelium/config.toml`: if it points to
