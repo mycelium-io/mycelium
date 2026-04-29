@@ -31,6 +31,8 @@ SECTION_CONFIG: list[tuple[str, str, str, str]] = [
     ("cognitive-engine.md", "cognitive-engine", "Concepts", "CognitiveEngine"),
     ("knowledge-graph.md", "knowledge-graph", "Concepts", "Knowledge Graph"),
     # cli-reference is handled separately by generate_cli_reference
+    ("guides/structured-memory.md", "structured-memory", "Guides", "Structured Memory"),
+    ("guides/hub-and-spoke.md", "hub-and-spoke", "Guides", "Hub & Spoke Setup"),
     ("architecture.md", "architecture", "Architecture", "Architecture"),
     ("troubleshooting.md", "troubleshooting", "Help", "Troubleshooting"),
 ]
