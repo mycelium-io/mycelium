@@ -30,59 +30,34 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - name: Resolve pinned CFN image
-        id: pin
+      - name: Bring up CFN stack via compose
+        # Use the project's actual compose file so we exercise the same
+        # containers + healthchecks + service-dependency wiring that runs
+        # locally. This avoids race conditions from imperative `docker run`
+        # ordering. We only start the CFN-related services (db + mgmt + node);
+        # mycelium-backend is not needed for contract tests.
+        env:
+          LLM_MODEL: anthropic/claude-haiku-4-5-20251001
+          LLM_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          pin=$(grep -E '^\s*image:\s*ghcr\.io/outshift-open/ioc-cognition-fabric-node-svc:' \
-            mycelium-cli/src/mycelium/docker/compose.yml | head -1 | awk -F: '{print $NF}' | xargs)
-          echo "Pinned CFN image tag: $pin"
-          echo "tag=$pin" >> "$GITHUB_OUTPUT"
+          docker compose \
+            -f mycelium-cli/src/mycelium/docker/compose.yml \
+            --profile cfn \
+            up -d mycelium-db ioc-cfn-mgmt-plane-svc ioc-cognition-fabric-node-svc
 
-      - name: Pull pinned CFN + mgmt plane
-        run: |
-          docker pull ghcr.io/outshift-open/ioc-cognition-fabric-node-svc:${{ steps.pin.outputs.tag }}
-          docker pull ghcr.io/outshift-open/ioc-cfn-mgmt-plane-svc:0.1.0
-
-      - name: Bring up minimal CFN stack
-        # We start ioc-cfn-mgmt-plane-svc + ioc-cognition-fabric-node-svc
-        # against the same Postgres the backend tests use — the contract tests
-        # don't need mycelium-backend to be running, just the CFN containers.
-        run: |
-          docker network create cfn-net
-          docker run -d --name cfn-db --network cfn-net \
-            -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password \
-            -e POSTGRES_DB=cfn_mgmt postgres:16-alpine
-          # Wait for db
-          for i in 1 2 3 4 5 6 7 8 9 10; do
-            if docker exec cfn-db pg_isready -U postgres >/dev/null 2>&1; then break; fi
-            sleep 2
-          done
-          docker run -d --name cfn-mgmt --network cfn-net \
-            -e DB_HOST=cfn-db -e DB_PORT=5432 -e DB_USER=postgres \
-            -e DB_PASSWORD=password -e DB_NAME=cfn_mgmt -e DB_SSL_MODE=disable \
-            -e ADMIN_USER_PASSWORD=admin -e CFN_DEV_MODE=false \
-            -p 9000:9000 \
-            ghcr.io/outshift-open/ioc-cfn-mgmt-plane-svc:0.1.0
-          docker run -d --name cfn --network cfn-net \
-            -e DB_HOST=cfn-db -e DB_PORT=5432 -e DB_USER=postgres \
-            -e DB_PASSWORD=password -e DB_NAME=cfn_cp -e DB_SSL_MODE=disable \
-            -e MGMT_URL=http://cfn-mgmt:9000 -e CFN_NAME=ci-cfn \
-            -e LLM_MODEL=anthropic/claude-haiku-4-5-20251001 \
-            -e LLM_API_KEY=${{ secrets.ANTHROPIC_API_KEY }} \
-            -p 9002:9002 \
-            ghcr.io/outshift-open/ioc-cognition-fabric-node-svc:${{ steps.pin.outputs.tag }}
-
-      - name: Wait for CFN to be healthy
+      - name: Wait for CFN node-svc to be healthy
         run: |
           for i in $(seq 1 60); do
-            if curl -sf http://localhost:9002/api/internal/diagnostics/health >/dev/null 2>&1; then
-              echo "CFN healthy after ${i} attempts"
+            status=$(docker inspect --format='{{.State.Health.Status}}' ioc-cognition-fabric-node-svc 2>/dev/null || echo "missing")
+            if [ "$status" = "healthy" ]; then
+              echo "CFN node healthy after ${i} attempts"
               exit 0
             fi
             sleep 3
           done
-          echo "CFN failed to become healthy"
-          docker logs cfn || true
+          echo "CFN node failed to become healthy"
+          docker logs ioc-cognition-fabric-node-svc 2>&1 | tail -50 || true
+          docker logs ioc-cfn-mgmt-plane-svc 2>&1 | tail -30 || true
           exit 1
 
       - name: Provision workspace + MAS via CFN mgmt plane
@@ -120,4 +95,8 @@ jobs:
 
       - name: Dump CFN logs on failure
         if: failure()
-        run: docker logs cfn || true
+        run: |
+          echo "── ioc-cognition-fabric-node-svc ──"
+          docker logs ioc-cognition-fabric-node-svc 2>&1 | tail -100 || true
+          echo "── ioc-cfn-mgmt-plane-svc ──"
+          docker logs ioc-cfn-mgmt-plane-svc 2>&1 | tail -50 || true
