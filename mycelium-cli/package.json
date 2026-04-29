@@ -5,7 +5,7 @@
   "scripts": {
     "build":    "uv sync --frozen",
     "dev":      "echo \"CLI has no dev server\"",
-    "lint":     "uv run ruff check src/ && uv run ruff format --check src/",
+    "lint":     "uv run ruff check src/ && uv run ruff format --check src/ && uv run ty check .",
     "lint:fix": "uv run ruff check src/ --fix && uv run ruff format src/",
     "test":     "uv run pytest",
     "clean":    "rm -rf __pycache__ .pytest_cache"
