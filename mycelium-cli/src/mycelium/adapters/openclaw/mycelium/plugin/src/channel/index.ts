@@ -22,7 +22,13 @@ import { dispatchToAgent } from "./dispatch.js";
 import { _ownMessageIds } from "./post-to-room.js";
 import { routeMessage, type RouteAction } from "./route.js";
 import { startRoomSSE } from "./room-sse.js";
-import { clearSubscribedSessions, startSessionSSE } from "./session-sse.js";
+import {
+  abortAllSessions,
+  abortSession,
+  getSessionControllers,
+  isSessionSubscribed,
+  startSessionSSE,
+} from "./session-sse.js";
 
 type Logger = { info: (s: string) => void; warn: (s: string) => void };
 
@@ -71,20 +77,33 @@ export function installChannel(
 
     startRoomSSE(runtime, cfg, _abort, handleMessage, log);
 
-    // Poll for session sub-rooms and subscribe to their SSE streams.
+    // Poll for session sub-rooms: subscribe to active ones, tear down finished ones.
     // Coordination ticks live in session sub-rooms, not the parent room.
     const pollInterval = setInterval(async () => {
       try {
         const res = await fetch(`${cfg.backendUrl}/rooms`);
         if (!res.ok) return;
         const rooms: any[] = await res.json();
+
+        const activeSessionRooms = new Set<string>();
         for (const room of rooms) {
+          if (!room.name?.startsWith(cfg.room + ":session:")) continue;
           if (
-            room.name?.startsWith(cfg.room + ":session:") &&
-            (room.coordination_state === "waiting" ||
-              room.coordination_state === "negotiating")
+            room.coordination_state === "waiting" ||
+            room.coordination_state === "negotiating"
           ) {
-            startSessionSSE(runtime, cfg, room.name, _abort!, handleMessage, log);
+            activeSessionRooms.add(room.name);
+            if (!isSessionSubscribed(room.name)) {
+              startSessionSSE(runtime, cfg, room.name, _abort!, handleMessage, log);
+            }
+          }
+        }
+
+        // Tear down subscriptions for sessions that are no longer active
+        // (terminal state or deleted from the room list).
+        for (const [sessionRoom] of getSessionControllers()) {
+          if (!activeSessionRooms.has(sessionRoom)) {
+            abortSession(sessionRoom, log);
           }
         }
       } catch {
@@ -98,7 +117,7 @@ export function installChannel(
   api.on("gateway_stop", async () => {
     _abort?.abort();
     _abort = null;
-    clearSubscribedSessions();
+    abortAllSessions();
     log.info(`[${CHANNEL_ID}] gateway stopping — SSE closed`);
   });
 }
