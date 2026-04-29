@@ -75,6 +75,51 @@ jobs:
           MYCELIUM_STUB_EMBEDDINGS: "1"
         run: uv run pytest tests/test_integration.py -x -q
 
+  client-staleness-mycelium:
+    name: Mycelium client staleness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install backend deps
+        working-directory: fastapi-backend
+        run: uv sync --group dev
+
+      - name: Boot backend (in-process)
+        working-directory: fastapi-backend
+        env:
+          MYCELIUM_STUB_EMBEDDINGS: "1"
+          DATABASE_URL: sqlite+aiosqlite:///:memory:
+        run: |
+          uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+          for i in {1..30}; do
+            curl -sf http://127.0.0.1:8000/openapi.json >/dev/null && break
+            sleep 1
+          done
+
+      - name: Regenerate client + diff
+        env:
+          BACKEND_URL: http://127.0.0.1:8000
+        run: |
+          ./scripts/gen-mycelium-client.sh
+          if ! git diff --exit-code mycelium-client mycelium-cli/src/mycelium_backend_client; then
+            echo "::error::Committed mycelium client is stale vs. live OpenAPI. Run scripts/gen-mycelium-client.sh and commit." >&2
+            exit 1
+          fi
+
+  # CFN staleness check is run manually via scripts/gen-cfn-client.sh after
+  # bumping ioc-cognition-fabric-node-svc in compose.yml. Adding it to CI
+  # would require replicating the full compose stack (mgmt-plane + Postgres
+  # for both `cfn_mgmt` and `cfn_cp` databases), which costs more than it
+  # saves — CFN drift only happens when we explicitly bump the image, and
+  # that's the natural moment to regen and commit.
+
   lint-cli:
     name: CLI lint
     runs-on: ubuntu-latest
