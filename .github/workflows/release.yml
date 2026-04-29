@@ -10,7 +10,28 @@ permissions:
   packages: write   # needed to push to GHCR
 
 jobs:
+  # Prerelease tags follow PEP 440: vX.Y.ZrcN, vX.Y.ZbN, vX.Y.ZaN, or
+  # anything with "preview" in it. Prereleases skip every "promote to latest"
+  # step (Docker :latest tag, GH "Latest" label, Homebrew bump, ClawHub).
+  detect-release-type:
+    name: Detect release type
+    runs-on: ubuntu-latest
+    outputs:
+      is_prerelease: ${{ steps.detect.outputs.is_prerelease }}
+    steps:
+      - id: detect
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if [[ "$tag" =~ (rc|alpha|beta|preview)[0-9]* ]]; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "→ $tag is a prerelease (skipping :latest promotion)"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "→ $tag is a stable release"
+          fi
+
   publish-images:
+    needs: detect-release-type
     name: Build and push Docker images to GHCR
     runs-on: ubuntu-latest
     steps:
@@ -30,6 +51,38 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
+      - name: Compute image tags
+        id: tags
+        env:
+          IS_PRERELEASE: ${{ needs.detect-release-type.outputs.is_prerelease }}
+          VERSION: ${{ steps.version.outputs.version }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          # Stable releases get :latest + :version. Prereleases get :version only —
+          # otherwise compose.yml's `pull_policy: always` would push the preview
+          # to every existing user on their next `mycelium pull`.
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            {
+              echo "db<<EOF"
+              echo "ghcr.io/$OWNER/mycelium-db:$VERSION"
+              echo "EOF"
+              echo "backend<<EOF"
+              echo "ghcr.io/$OWNER/mycelium-backend:$VERSION"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo "db<<EOF"
+              echo "ghcr.io/$OWNER/mycelium-db:latest"
+              echo "ghcr.io/$OWNER/mycelium-db:$VERSION"
+              echo "EOF"
+              echo "backend<<EOF"
+              echo "ghcr.io/$OWNER/mycelium-backend:latest"
+              echo "ghcr.io/$OWNER/mycelium-backend:$VERSION"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build and push mycelium-db
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         with:
@@ -37,9 +90,7 @@ jobs:
           file: fastapi-backend/docker/Dockerfile.agensgraph
           platforms: linux/amd64
           push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/mycelium-db:latest
-            ghcr.io/${{ github.repository_owner }}/mycelium-db:${{ steps.version.outputs.version }}
+          tags: ${{ steps.tags.outputs.db }}
           cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-db:cache
           cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-db:cache,mode=max
 
@@ -50,9 +101,7 @@ jobs:
           file: fastapi-backend/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/mycelium-backend:latest
-            ghcr.io/${{ github.repository_owner }}/mycelium-backend:${{ steps.version.outputs.version }}
+          tags: ${{ steps.tags.outputs.backend }}
           cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-backend:cache
           cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-backend:cache,mode=max
 
@@ -117,7 +166,7 @@ jobs:
           path: mycelium-cli/dist/mycelium-${{ matrix.platform }}
 
   build-and-release:
-    needs: [publish-images, build-binaries]
+    needs: [detect-release-type, publish-images, build-binaries]
     name: Build wheel and publish release
     runs-on: ubuntu-latest
 
@@ -166,6 +215,10 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           name: mycelium ${{ github.ref_name }}
+          # Marking the release as a prerelease keeps it out of the
+          # /releases/latest redirect that install.sh and `mycelium upgrade`
+          # both follow — testers opt in via `mycelium upgrade --version <tag>`.
+          prerelease: ${{ needs.detect-release-type.outputs.is_prerelease == 'true' }}
           body: |
             ## Install
 
@@ -188,7 +241,8 @@ jobs:
           fail_on_unmatched_files: true
 
   update-tap:
-    needs: build-and-release
+    needs: [detect-release-type, build-and-release]
+    if: needs.detect-release-type.outputs.is_prerelease == 'false'
     name: Update homebrew tap
     runs-on: ubuntu-latest
 
@@ -240,7 +294,8 @@ jobs:
           git diff --staged --quiet || git commit -m "chore: bump mycelium to v${{ steps.version.outputs.version }}"
           git push
   publish-clawhub:
-    needs: build-and-release
+    needs: [detect-release-type, build-and-release]
+    if: needs.detect-release-type.outputs.is_prerelease == 'false'
     name: Publish skill to clawhub
     runs-on: ubuntu-latest
 
