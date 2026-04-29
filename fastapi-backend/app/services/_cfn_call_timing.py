@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """Mycelium-side per-call timing accumulator for the CFN ``/decide`` HTTP
 client path.
 
