@@ -2,12 +2,19 @@
 # Copyright 2026 Julia Valenti
 
 """
-Async httpx client for the CFN cognitive agents semantic negotiation API.
+Async client for the CFN cognitive agents semantic negotiation API.
 
-The cognitive agents service (ioc-cognition-fabric-node-svc, port 9002) exposes:
+Calls go through the generated ``ioc_cfn_svc_api_client`` (regenerated from
+``http://localhost:9002/openapi.json`` via ``scripts/gen-cfn-client.sh``).
+The typed client is the contract — ty catches breaking CFN field changes
+at the call sites below when the client is regenerated.
+
+Endpoints used:
   POST /api/workspaces/{ws}/multi-agentic-systems/{mas}/semantic-negotiation/start
   POST /api/workspaces/{ws}/multi-agentic-systems/{mas}/semantic-negotiation/decide
 """
+
+from __future__ import annotations
 
 import logging
 from typing import Any
@@ -15,6 +22,24 @@ from typing import Any
 import httpx
 
 from app.config import settings
+from ioc_cfn_svc_api_client import Client
+from ioc_cfn_svc_api_client.api.semantic_negotiation import (
+    decide_negotiation_api_workspaces_workspace_id_multi_agentic_systems_mas_id_semantic_negotiation_decide_post as decide_api,
+)
+from ioc_cfn_svc_api_client.api.semantic_negotiation import (
+    start_negotiation_api_workspaces_workspace_id_multi_agentic_systems_mas_id_semantic_negotiation_start_post as start_api,
+)
+from ioc_cfn_svc_api_client.errors import UnexpectedStatus
+from ioc_cfn_svc_api_client.models import (
+    Agent,
+    AgentReply,
+    AgentReplyAction,
+    AgentReplyOfferType0,
+    DecideRequest,
+    HTTPValidationError,
+    InitiateNegotiationRequest,
+)
+from ioc_cfn_svc_api_client.types import UNSET
 
 logger = logging.getLogger(__name__)
 
@@ -27,29 +52,20 @@ class CfnNegotiationError(RuntimeError):
     """CFN semantic-negotiation call failed. The message is user-facing."""
 
 
-def _mas_url(workspace_id: str, mas_id: str, endpoint: str) -> str:
-    return (
-        f"{settings.COGNITION_FABRIC_NODE_URL}"
-        f"/api/workspaces/{workspace_id}/multi-agentic-systems/{mas_id}"
-        f"/semantic-negotiation/{endpoint}"
+def _client() -> Client:
+    return Client(
+        base_url=settings.COGNITION_FABRIC_NODE_URL or "",
+        timeout=_CFN_HTTP_TIMEOUT,
+        raise_on_unexpected_status=True,
     )
 
 
 def _describe_exc(exc: Exception) -> str:
-    """Turn an httpx exception into a short, user-legible reason string.
-
-    ``httpx.ReadTimeout(message=None)`` has an empty ``__str__``, which is how
-    we previously shipped blank error cards to the UI. Always fall back to the
-    exception type name so the user sees *something*.
-    """
+    """Turn a client/httpx exception into a short, user-legible reason string."""
     name = type(exc).__name__
-    if isinstance(exc, httpx.HTTPStatusError):
-        body = exc.response.text[:200].replace("\n", " ").strip()
-        return (
-            f"{name} {exc.response.status_code}: {body}"
-            if body
-            else f"{name} {exc.response.status_code}"
-        )
+    if isinstance(exc, UnexpectedStatus):
+        body = exc.content[:200].decode("utf-8", errors="replace").replace("\n", " ").strip()
+        return f"{name} {exc.status_code}: {body}" if body else f"{name} {exc.status_code}"
     if isinstance(exc, httpx.TimeoutException):
         read_timeout = _CFN_HTTP_TIMEOUT.read
         timeout_s = float(read_timeout) if isinstance(read_timeout, int | float) else 0.0
@@ -58,27 +74,23 @@ def _describe_exc(exc: Exception) -> str:
     return f"{name}: {msg}" if msg else name
 
 
-async def _cfn_post(url: str, body: dict[str, Any], endpoint: str) -> dict[str, Any]:
-    """POST to CFN and raise ``CfnNegotiationError`` with a descriptive reason on any failure."""
-    try:
-        async with httpx.AsyncClient(timeout=_CFN_HTTP_TIMEOUT) as client:
-            resp = await client.post(url, json=body)
-            resp.raise_for_status()
-            return resp.json()
-    except httpx.HTTPStatusError as exc:
-        reason = _describe_exc(exc)
-        logger.warning(
-            "CFN %s failed | url=%s status=%d body=%r",
-            endpoint,
-            url,
-            exc.response.status_code,
-            exc.response.text[:500],
+def _raise_if_validation_error(
+    result: Any | HTTPValidationError | None, endpoint: str
+) -> dict[str, Any]:
+    """Coerce the typed-client return into a dict, or raise with a clear reason.
+
+    The /start and /decide endpoints are typed as ``Any | HTTPValidationError | None``
+    because CFN returns an open-ended JSON document — we accept whatever and return
+    it as ``dict[str, Any]``. If CFN sends a 422 instead, surface it as an error.
+    """
+    if isinstance(result, HTTPValidationError):
+        details = result.detail if not isinstance(result.detail, type(UNSET)) else "no detail"
+        raise CfnNegotiationError(f"CFN {endpoint} validation error: {details}")
+    if not isinstance(result, dict):
+        raise CfnNegotiationError(
+            f"CFN {endpoint} returned unexpected payload type: {type(result).__name__}"
         )
-        raise CfnNegotiationError(reason) from exc
-    except Exception as exc:
-        reason = _describe_exc(exc)
-        logger.exception("CFN %s failed | url=%s reason=%s", endpoint, url, reason)
-        raise CfnNegotiationError(reason) from exc
+    return result
 
 
 async def start_negotiation(
@@ -94,18 +106,56 @@ async def start_negotiation(
 
     ``agents`` items: ``{"id": handle, "name": handle}``
     """
-    url = _mas_url(workspace_id, mas_id, "start")
-    body: dict[str, Any] = {
-        "session_id": session_id,
-        "content_text": content_text,
-        "agents": agents,
-    }
-    # n_steps=0 means "let CFN auto-compute from issue/agent count" — omit
-    # the field so the formula in compute_n_steps() runs. A literal 0 in the
-    # request body would cap negotiation at zero rounds.
-    if n_steps and n_steps > 0:
-        body["n_steps"] = n_steps
-    return await _cfn_post(url, body, endpoint="start_negotiation")
+    body = InitiateNegotiationRequest(
+        session_id=session_id,
+        content_text=content_text,
+        agents=[Agent(id=a["id"], name=a["name"]) for a in agents],
+        # n_steps=0 means "let CFN auto-compute from issue/agent count" — pass UNSET
+        # to omit the field so CFN's compute_n_steps() runs. A literal 0 in the
+        # request body would cap negotiation at zero rounds.
+        n_steps=n_steps if n_steps and n_steps > 0 else UNSET,
+    )
+    try:
+        async with _client() as client:
+            result = await start_api.asyncio(
+                workspace_id=workspace_id,
+                mas_id=mas_id,
+                client=client,
+                body=body,
+            )
+    except UnexpectedStatus as exc:
+        reason = _describe_exc(exc)
+        logger.warning(
+            "CFN start_negotiation failed | status=%d body=%r",
+            exc.status_code,
+            exc.content[:500],
+        )
+        raise CfnNegotiationError(reason) from exc
+    except Exception as exc:
+        reason = _describe_exc(exc)
+        logger.exception("CFN start_negotiation failed | reason=%s", reason)
+        raise CfnNegotiationError(reason) from exc
+    return _raise_if_validation_error(result, "start_negotiation")
+
+
+def _build_agent_reply(item: dict[str, Any]) -> AgentReply:
+    raw_offer = item.get("offer", UNSET)
+    if raw_offer is None:
+        return AgentReply(
+            agent_id=item["agent_id"],
+            action=AgentReplyAction(item["action"]),
+            offer=None,
+        )
+    if isinstance(raw_offer, dict):
+        return AgentReply(
+            agent_id=item["agent_id"],
+            action=AgentReplyAction(item["action"]),
+            offer=AgentReplyOfferType0.from_dict(raw_offer),
+        )
+    return AgentReply(
+        agent_id=item["agent_id"],
+        action=AgentReplyAction(item["action"]),
+    )
 
 
 async def decide_negotiation(
@@ -119,9 +169,28 @@ async def decide_negotiation(
 
     ``agent_replies`` items: ``{"agent_id": handle, "action": "accept"|"reject"|"counter_offer", "offer": {...}|None}``
     """
-    url = _mas_url(workspace_id, mas_id, "decide")
-    body = {
-        "session_id": session_id,
-        "agent_replies": agent_replies,
-    }
-    return await _cfn_post(url, body, endpoint="decide_negotiation")
+    body = DecideRequest(
+        session_id=session_id,
+        agent_replies=[_build_agent_reply(r) for r in agent_replies],
+    )
+    try:
+        async with _client() as client:
+            result = await decide_api.asyncio(
+                workspace_id=workspace_id,
+                mas_id=mas_id,
+                client=client,
+                body=body,
+            )
+    except UnexpectedStatus as exc:
+        reason = _describe_exc(exc)
+        logger.warning(
+            "CFN decide_negotiation failed | status=%d body=%r",
+            exc.status_code,
+            exc.content[:500],
+        )
+        raise CfnNegotiationError(reason) from exc
+    except Exception as exc:
+        reason = _describe_exc(exc)
+        logger.exception("CFN decide_negotiation failed | reason=%s", reason)
+        raise CfnNegotiationError(reason) from exc
+    return _raise_if_validation_error(result, "decide_negotiation")
