@@ -1,0 +1,123 @@
+name: CFN contract
+
+# Validate that mycelium-backend's assumptions about the CFN HTTP API still
+# hold against whatever CFN image is pinned in compose.yml. Triggers when the
+# pin changes (i.e. when a contributor bumps the version) so PR review surfaces
+# any contract regressions before merge. Also runs nightly on main as a canary
+# against the pinned version drifting out of compatibility with the running CFN
+# Docker images on ghcr.
+
+on:
+  pull_request:
+    paths:
+      - mycelium-cli/src/mycelium/docker/compose.yml
+      - fastapi-backend/app/services/cfn_negotiation.py
+      - fastapi-backend/app/services/coordination.py
+      - fastapi-backend/tests/test_cfn_contract.py
+      - fastapi-backend/tests/fixtures/cfn/**
+      - .github/workflows/cfn-contract.yml
+  schedule:
+    # Daily at 14:00 UTC, weekdays only — gives the CFN team a few hours after
+    # a typical morning release for our canary to catch regressions.
+    - cron: "0 14 * * 1-5"
+  workflow_dispatch:
+
+jobs:
+  contract:
+    name: CFN contract
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Resolve pinned CFN image
+        id: pin
+        run: |
+          pin=$(grep -E '^\s*image:\s*ghcr\.io/outshift-open/ioc-cognition-fabric-node-svc:' \
+            mycelium-cli/src/mycelium/docker/compose.yml | head -1 | awk -F: '{print $NF}' | xargs)
+          echo "Pinned CFN image tag: $pin"
+          echo "tag=$pin" >> "$GITHUB_OUTPUT"
+
+      - name: Pull pinned CFN + mgmt plane
+        run: |
+          docker pull ghcr.io/outshift-open/ioc-cognition-fabric-node-svc:${{ steps.pin.outputs.tag }}
+          docker pull ghcr.io/outshift-open/ioc-cfn-mgmt-plane-svc:0.1.0
+
+      - name: Bring up minimal CFN stack
+        # We start ioc-cfn-mgmt-plane-svc + ioc-cognition-fabric-node-svc
+        # against the same Postgres the backend tests use — the contract tests
+        # don't need mycelium-backend to be running, just the CFN containers.
+        run: |
+          docker network create cfn-net
+          docker run -d --name cfn-db --network cfn-net \
+            -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password \
+            -e POSTGRES_DB=cfn_mgmt postgres:16-alpine
+          # Wait for db
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if docker exec cfn-db pg_isready -U postgres >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          docker run -d --name cfn-mgmt --network cfn-net \
+            -e DB_HOST=cfn-db -e DB_PORT=5432 -e DB_USER=postgres \
+            -e DB_PASSWORD=password -e DB_NAME=cfn_mgmt -e DB_SSL_MODE=disable \
+            -e ADMIN_USER_PASSWORD=admin -e CFN_DEV_MODE=false \
+            -p 9000:9000 \
+            ghcr.io/outshift-open/ioc-cfn-mgmt-plane-svc:0.1.0
+          docker run -d --name cfn --network cfn-net \
+            -e DB_HOST=cfn-db -e DB_PORT=5432 -e DB_USER=postgres \
+            -e DB_PASSWORD=password -e DB_NAME=cfn_cp -e DB_SSL_MODE=disable \
+            -e MGMT_URL=http://cfn-mgmt:9000 -e CFN_NAME=ci-cfn \
+            -e LLM_MODEL=anthropic/claude-haiku-4-5-20251001 \
+            -e LLM_API_KEY=${{ secrets.ANTHROPIC_API_KEY }} \
+            -p 9002:9002 \
+            ghcr.io/outshift-open/ioc-cognition-fabric-node-svc:${{ steps.pin.outputs.tag }}
+
+      - name: Wait for CFN to be healthy
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:9002/api/internal/diagnostics/health >/dev/null 2>&1; then
+              echo "CFN healthy after ${i} attempts"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "CFN failed to become healthy"
+          docker logs cfn || true
+          exit 1
+
+      - name: Provision workspace + MAS via CFN mgmt plane
+        id: provision
+        run: |
+          ws_resp=$(curl -sf -X POST http://localhost:9000/api/workspaces \
+            -H "Content-Type: application/json" \
+            -d '{"name":"ci-contract"}')
+          ws=$(echo "$ws_resp" | python3 -c "import sys,json;print(json.load(sys.stdin)['workspace_id'])")
+          mas_resp=$(curl -sf -X POST "http://localhost:9000/api/workspaces/$ws/multi-agentic-systems" \
+            -H "Content-Type: application/json" \
+            -d '{"name":"ci-contract-mas"}')
+          mas=$(echo "$mas_resp" | python3 -c "import sys,json;print(json.load(sys.stdin)['mas_id'])")
+          echo "workspace_id=$ws" >> "$GITHUB_OUTPUT"
+          echo "mas_id=$mas" >> "$GITHUB_OUTPUT"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        working-directory: fastapi-backend
+        run: uv sync --group dev
+
+      - name: Run contract tests
+        working-directory: fastapi-backend
+        env:
+          MYCELIUM_CFN_CONTRACT_TESTS: "1"
+          COGNITION_FABRIC_NODE_URL: http://localhost:9002
+          WORKSPACE_ID: ${{ steps.provision.outputs.workspace_id }}
+          CFN_CONTRACT_MAS_ID: ${{ steps.provision.outputs.mas_id }}
+        run: uv run pytest tests/test_cfn_contract.py -v
+
+      - name: Dump CFN logs on failure
+        if: failure()
+        run: docker logs cfn || true
