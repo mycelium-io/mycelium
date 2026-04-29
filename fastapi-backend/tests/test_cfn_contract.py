@@ -30,8 +30,11 @@ shows what we used to receive vs what we got now. Update the fixtures in a
 new ``tests/fixtures/cfn/<new-version>/`` directory when intentionally
 adopting a new contract — don't overwrite the old ones.
 
-See ``tests/fixtures/cfn/compatibility.md`` for the canonical "what CFN owes
-us" inventory and version history.
+The canonical "what CFN owes us" inventory lives in this file's individual
+test docstrings — each test names the coordination.py / cfn_negotiation.py
+function that reads the field it asserts. Don't add a parallel markdown
+inventory; it will go stale the moment anyone touches the code path
+without updating it. Trust the code + tests + fixtures.
 """
 
 from __future__ import annotations

@@ -60,17 +60,38 @@ jobs:
           docker logs ioc-cfn-mgmt-plane-svc 2>&1 | tail -30 || true
           exit 1
 
-      - name: Provision workspace + MAS via CFN mgmt plane
+      - name: Provision MAS for contract tests
+        # CFN node-svc registers with the mgmt plane on startup and creates a
+        # default workspace; query it rather than trying to create our own.
+        # Then create one MAS in that workspace using the same shape mycelium-
+        # backend uses (see app/routes/rooms.py:_sync_create_mas).
         id: provision
         run: |
-          ws_resp=$(curl -sf -X POST http://localhost:9000/api/workspaces \
-            -H "Content-Type: application/json" \
-            -d '{"name":"ci-contract"}')
-          ws=$(echo "$ws_resp" | python3 -c "import sys,json;print(json.load(sys.stdin)['workspace_id'])")
+          set -e
+          # Discover the existing workspace
+          ws_list=$(curl -sf http://localhost:9000/api/workspaces || true)
+          echo "workspaces response: $ws_list"
+          ws=$(echo "$ws_list" | python3 -c '
+import sys, json
+data = json.load(sys.stdin)
+items = data if isinstance(data, list) else data.get("workspaces") or data.get("items") or []
+if not items:
+    print("no workspaces", file=sys.stderr)
+    sys.exit(1)
+w = items[0]
+print(w.get("workspace_id") or w.get("id"))
+')
+          echo "workspace_id=$ws"
+          # Create a MAS in that workspace (same shape as mycelium-backend uses)
           mas_resp=$(curl -sf -X POST "http://localhost:9000/api/workspaces/$ws/multi-agentic-systems" \
             -H "Content-Type: application/json" \
             -d '{"name":"ci-contract-mas"}')
-          mas=$(echo "$mas_resp" | python3 -c "import sys,json;print(json.load(sys.stdin)['mas_id'])")
+          echo "mas response: $mas_resp"
+          mas=$(echo "$mas_resp" | python3 -c '
+import sys, json
+d = json.load(sys.stdin)
+print(d.get("mas_id") or d.get("id"))
+')
           echo "workspace_id=$ws" >> "$GITHUB_OUTPUT"
           echo "mas_id=$mas" >> "$GITHUB_OUTPUT"
 
