@@ -777,6 +777,7 @@ async def test_round_trace_records_first_response_timing(clean_trace_buffer):
     with patch.object(coord, "_cfn_decide_round", new=AsyncMock()):
         await on_agent_response("room-tr1", "alice", json.dumps({"action": "accept"}))
 
+    assert state.current_trace is not None
     slot = state.current_trace.per_agent["alice"]
     assert slot.first_response_ms is not None
     assert slot.first_response_ms >= 0.0
@@ -807,14 +808,17 @@ async def test_round_trace_first_reply_wins_for_resubmits(clean_trace_buffer):
     _attach_trace(state, "room-tr2", ["alice"])
     _cfn_state["room-tr2"] = state
 
+    assert state.current_trace is not None
     with patch.object(coord, "_cfn_decide_round", new=AsyncMock()):
         await on_agent_response("room-tr2", "alice", json.dumps({"action": "reject"}))
+        assert state.current_trace is not None
         first_ms = state.current_trace.per_agent["alice"].first_response_ms
         assert first_ms is not None
         # Resubmit with a different action — must not overwrite the stamp.
         await asyncio.sleep(0.01)
         await on_agent_response("room-tr2", "alice", json.dumps({"action": "accept"}))
 
+    assert state.current_trace is not None
     slot = state.current_trace.per_agent["alice"]
     assert slot.first_response_ms == first_ms
     # reply_action also stays as the first one — same rationale.
