@@ -144,6 +144,7 @@ def _prompt_llm() -> dict[str, str]:
     choice = select(providers, cursor="  ▸ ", cursor_style="cyan")
     if choice is None:
         raise KeyboardInterrupt
+    assert isinstance(choice, str)  # noqa: S101
 
     if choice.startswith("Anthropic"):
         models = [
@@ -152,6 +153,7 @@ def _prompt_llm() -> dict[str, str]:
             "anthropic/claude-haiku-4-5",
         ]
         model = select(models, cursor="  ▸ ", cursor_style="cyan")
+        assert isinstance(model, str)  # noqa: S101
         key = _ask("  \x1b[2mAPI key (sk-ant-...):\x1b[0m ")
         print(f"  \x1b[32m✓\x1b[0m {model}")
         return {"LLM_MODEL": model, "LLM_API_KEY": key}
@@ -164,6 +166,7 @@ def _prompt_llm() -> dict[str, str]:
             "openai/o3",
         ]
         model = select(models, cursor="  ▸ ", cursor_style="cyan")
+        assert isinstance(model, str)  # noqa: S101
         key = _ask("  \x1b[2mAPI key (sk-...):\x1b[0m ")
         print(f"  \x1b[32m✓\x1b[0m {model}")
         return {"LLM_MODEL": model, "LLM_API_KEY": key}
@@ -186,6 +189,7 @@ def _prompt_llm() -> dict[str, str]:
             "ollama/deepseek-r1",
         ]
         model = select(models, cursor="  ▸ ", cursor_style="cyan")
+        assert isinstance(model, str)  # noqa: S101
         print(f"  \x1b[32m✓\x1b[0m {model} at localhost:11434")
         return {"LLM_MODEL": model, "LLM_BASE_URL": "http://host.docker.internal:11434"}
 
@@ -844,18 +848,16 @@ def _write_mycelium_config(
         )
 
     # Persist runtime settings into [runtime] section
-    runtime_kwargs: dict[str, object] = {
-        "data_dir": str(Path.home() / ".mycelium"),
-    }
+    runtime = RuntimeConfig(data_dir=str(Path.home() / ".mycelium"))
     if custom_ports:
-        runtime_kwargs["db_port"] = custom_ports.get("db", 5432)
-        runtime_kwargs["backend_port"] = custom_ports.get("backend", 8000)
+        runtime.db_port = custom_ports.get("db", 5432)
+        runtime.backend_port = custom_ports.get("backend", 8000)
     if ioc_enabled:
-        runtime_kwargs["cfn_mgmt_url"] = "http://ioc-cfn-mgmt-plane-svc:9000"
-        runtime_kwargs["cognition_fabric_node_url"] = "http://ioc-cognition-fabric-node-svc:9002"
+        runtime.cfn_mgmt_url = "http://ioc-cfn-mgmt-plane-svc:9000"
+        runtime.cognition_fabric_node_url = "http://ioc-cognition-fabric-node-svc:9002"
     if workspace_id:
-        runtime_kwargs["workspace_id"] = workspace_id
-    config.runtime = RuntimeConfig(**runtime_kwargs)
+        runtime.workspace_id = workspace_id
+    config.runtime = runtime
 
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config.save(config_path)

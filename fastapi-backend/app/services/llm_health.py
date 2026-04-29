@@ -9,6 +9,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import TypedDict
 
 import httpx
 
@@ -30,6 +31,13 @@ _MODEL_LIST_ENDPOINTS: dict[str, str] = {
 
 _PROBE_TIMEOUT = 10
 _CACHE_TTL_SECONDS = 60
+
+
+class _ProbeBase(TypedDict):
+    model: str
+    configured: bool
+    key_hint: str | None
+    key_required: bool
 
 
 @dataclass
@@ -97,9 +105,10 @@ def get_config_status() -> LLMHealthResult:
     """Level A: config and format check only (no network)."""
     model = settings.LLM_MODEL
     provider = _detect_provider()
-    has_key = bool(settings.LLM_API_KEY)
+    api_key = settings.LLM_API_KEY or ""
+    has_key = bool(api_key)
     has_base_url = bool(settings.LLM_BASE_URL)
-    key_hint = mask_key(settings.LLM_API_KEY) if has_key else None
+    key_hint = mask_key(api_key) if has_key else None
 
     is_local = provider == "ollama" or (has_base_url and not has_key)
     key_required = not is_local
@@ -116,7 +125,7 @@ def get_config_status() -> LLMHealthResult:
 
     fmt_warning: str | None = None
     if has_key:
-        fmt_warning = validate_key_format(settings.LLM_API_KEY, provider)
+        fmt_warning = validate_key_format(api_key, provider)
         if fmt_warning:
             logger.warning("LLM key format warning: %s", fmt_warning)
 
@@ -179,7 +188,7 @@ async def probe_provider() -> LLMHealthResult:
 
 async def _probe_by_provider(provider: str, model: str, config: LLMHealthResult) -> LLMHealthResult:
     """Dispatch to the appropriate provider-specific probe."""
-    base = {
+    base: _ProbeBase = {
         "model": model,
         "configured": True,
         "key_hint": config.key_hint,
@@ -187,25 +196,43 @@ async def _probe_by_provider(provider: str, model: str, config: LLMHealthResult)
     }
 
     if provider == "ollama" or (settings.LLM_BASE_URL and not settings.LLM_API_KEY):
-        return await _probe_ollama(**base)
+        return await _probe_ollama(base)
 
     # LiteLLM and other OpenAI-compatible proxies: key is valid only at the proxy,
     # not at api.anthropic.com — probe the custom base URL.
     if settings.LLM_BASE_URL and settings.LLM_API_KEY:
-        return await _probe_openai_compatible_proxy(**base)
+        return await _probe_openai_compatible_proxy(base)
 
     endpoint = _MODEL_LIST_ENDPOINTS.get(provider)
     if endpoint:
-        return await _probe_api_key(endpoint, provider, **base)
+        return await _probe_api_key(endpoint, provider, base)
 
-    return LLMHealthResult(
+    return _result(
+        base,
         status="unchecked",
         message="Key validation not supported for this provider. Key is configured but could not be verified.",
-        **base,
     )
 
 
-async def _probe_openai_compatible_proxy(**base) -> LLMHealthResult:
+def _result(
+    base: _ProbeBase,
+    *,
+    status: str,
+    message: str,
+    remediation: str | None = None,
+) -> LLMHealthResult:
+    return LLMHealthResult(
+        status=status,
+        message=message,
+        remediation=remediation,
+        model=base["model"],
+        configured=base["configured"],
+        key_hint=base["key_hint"],
+        key_required=base["key_required"],
+    )
+
+
+async def _probe_openai_compatible_proxy(base: _ProbeBase) -> LLMHealthResult:
     """Probe LLM_BASE_URL using OpenAI-compatible GET /v1/models (LiteLLM, etc.)."""
     raw_base = settings.LLM_BASE_URL or ""
     base_url = raw_base.rstrip("/")
@@ -216,74 +243,57 @@ async def _probe_openai_compatible_proxy(**base) -> LLMHealthResult:
         try:
             resp = await client.get(models_url, headers=headers)
         except httpx.ConnectError:
-            return LLMHealthResult(
-                status="unreachable",
-                message=f"Cannot connect to LLM proxy at {base_url}",
-                **base,
+            return _result(
+                base, status="unreachable", message=f"Cannot connect to LLM proxy at {base_url}"
             )
         except httpx.TimeoutException:
-            return LLMHealthResult(
-                status="unreachable",
-                message=f"Timeout connecting to LLM proxy at {base_url}",
-                **base,
+            return _result(
+                base, status="unreachable", message=f"Timeout connecting to LLM proxy at {base_url}"
             )
 
         if resp.status_code == 200:
-            return LLMHealthResult(status="ok", message="API key is valid", **base)
+            return _result(base, status="ok", message="API key is valid")
         if resp.status_code in (401, 403):
-            return LLMHealthResult(
-                status="auth_error",
-                message="API key is invalid or expired",
-                **base,
-            )
-        return LLMHealthResult(
+            return _result(base, status="auth_error", message="API key is invalid or expired")
+        return _result(
+            base,
             status="unreachable",
             message=f"LLM proxy returned unexpected status {resp.status_code}",
-            **base,
         )
 
 
-async def _probe_api_key(endpoint: str, provider: str, **base) -> LLMHealthResult:
+async def _probe_api_key(endpoint: str, provider: str, base: _ProbeBase) -> LLMHealthResult:
     """Probe OpenAI or Anthropic via their free model-list endpoint."""
     headers: dict[str, str] = {}
+    api_key = settings.LLM_API_KEY or ""
     if provider == "openai":
-        headers["Authorization"] = f"Bearer {settings.LLM_API_KEY}"
+        headers["Authorization"] = f"Bearer {api_key}"
     elif provider == "anthropic":
-        headers["x-api-key"] = settings.LLM_API_KEY
+        headers["x-api-key"] = api_key
         headers["anthropic-version"] = "2023-06-01"
 
     async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT) as client:
         try:
             resp = await client.get(endpoint, headers=headers)
         except httpx.ConnectError:
-            return LLMHealthResult(
-                status="unreachable",
-                message=f"Cannot connect to {provider} API",
-                **base,
-            )
+            return _result(base, status="unreachable", message=f"Cannot connect to {provider} API")
         except httpx.TimeoutException:
-            return LLMHealthResult(
-                status="unreachable",
-                message=f"Timeout connecting to {provider} API",
-                **base,
+            return _result(
+                base, status="unreachable", message=f"Timeout connecting to {provider} API"
             )
 
     if resp.status_code == 200:
-        return LLMHealthResult(status="ok", message="API key is valid", **base)
+        return _result(base, status="ok", message="API key is valid")
     if resp.status_code in (401, 403):
-        return LLMHealthResult(
-            status="auth_error",
-            message="API key is invalid or expired",
-            **base,
-        )
-    return LLMHealthResult(
+        return _result(base, status="auth_error", message="API key is invalid or expired")
+    return _result(
+        base,
         status="unreachable",
         message=f"{provider} API returned unexpected status {resp.status_code}",
-        **base,
     )
 
 
-async def _probe_ollama(**base) -> LLMHealthResult:
+async def _probe_ollama(base: _ProbeBase) -> LLMHealthResult:
     """Connectivity check for Ollama (no key required)."""
     base_url = (settings.LLM_BASE_URL or "http://localhost:11434").rstrip("/")
     tags_url = f"{base_url}/api/tags"
@@ -292,16 +302,12 @@ async def _probe_ollama(**base) -> LLMHealthResult:
         try:
             resp = await client.get(tags_url)
         except httpx.ConnectError:
-            return LLMHealthResult(
-                status="unreachable",
-                message=f"Cannot connect to Ollama at {base_url}",
-                **base,
+            return _result(
+                base, status="unreachable", message=f"Cannot connect to Ollama at {base_url}"
             )
         except httpx.TimeoutException:
-            return LLMHealthResult(
-                status="unreachable",
-                message=f"Timeout connecting to Ollama at {base_url}",
-                **base,
+            return _result(
+                base, status="unreachable", message=f"Timeout connecting to Ollama at {base_url}"
             )
 
     if resp.status_code == 200:
@@ -391,7 +397,7 @@ async def probe_completion() -> LLMHealthResult:
     provider = _detect_provider()
     model = settings.LLM_MODEL
 
-    base = {
+    base: _ProbeBase = {
         "model": model,
         "configured": True,
         "key_hint": config_result.key_hint,
@@ -402,11 +408,11 @@ async def probe_completion() -> LLMHealthResult:
     try:
         import litellm
     except ImportError as exc:
-        result = LLMHealthResult(
+        result = _result(
+            base,
             status="error",
             message=f"litellm not available in backend: {exc}",
             remediation="Reinstall backend dependencies: uv sync",
-            **base,
         )
         _cached_completion = result
         _cached_completion_at = now
@@ -426,27 +432,23 @@ async def probe_completion() -> LLMHealthResult:
 
     try:
         await litellm.acompletion(**kwargs)
-        result = LLMHealthResult(
-            status="ok",
-            message="Completion probe succeeded",
-            **base,
-        )
+        result = _result(base, status="ok", message="Completion probe succeeded")
     except ModuleNotFoundError as exc:
         # Missing provider SDK extras (boto3, google-cloud-aiplatform, ...).
-        result = LLMHealthResult(
+        result = _result(
+            base,
             status="missing_extras",
             message=f"Missing provider SDK for {provider}: {exc}",
             remediation=_missing_sdk_remediation(provider, str(exc)),
-            **base,
         )
     except ImportError as exc:
         # litellm raises plain ImportError for some provider deps (e.g. bedrock
         # when boto3 is missing from its runtime). Treat the same as ModuleNotFoundError.
-        result = LLMHealthResult(
+        result = _result(
+            base,
             status="missing_extras",
             message=f"Missing provider SDK for {provider}: {exc}",
             remediation=_missing_sdk_remediation(provider, str(exc)),
-            **base,
         )
     except Exception as exc:
         result = _classify_litellm_error(litellm, exc, provider, base)
@@ -460,7 +462,7 @@ def _classify_litellm_error(
     litellm_module,
     exc: Exception,
     provider: str,
-    base: dict,
+    base: _ProbeBase,
 ) -> LLMHealthResult:
     """Map a litellm exception to an LLMHealthResult status + remediation."""
     exc_name = type(exc).__name__
@@ -470,60 +472,54 @@ def _classify_litellm_error(
     # underlying ModuleNotFoundError is often stringified inside the message.
     lower = exc_msg.lower()
     if ("no module named" in lower) or ("install" in lower and "pip install" in lower):
-        return LLMHealthResult(
+        return _result(
+            base,
             status="missing_extras",
             message=f"Missing provider SDK for {provider}: {exc_msg}",
             remediation=_missing_sdk_remediation(provider, exc_msg),
-            **base,
         )
 
     # Walk the known litellm exception hierarchy if available.
     auth_cls = getattr(litellm_module, "AuthenticationError", None)
     if auth_cls and isinstance(exc, auth_cls):
-        return LLMHealthResult(
+        return _result(
+            base,
             status="auth_error",
             message=f"Authentication failed for {provider}: {exc_msg}",
             remediation="Check LLM_API_KEY in ~/.mycelium/.env",
-            **base,
         )
 
     bad_req_cls = getattr(litellm_module, "BadRequestError", None)
     if bad_req_cls and isinstance(exc, bad_req_cls):
-        return LLMHealthResult(
+        return _result(
+            base,
             status="bad_model",
             message=f"Bad request (likely invalid model string): {exc_msg}",
-            remediation=(f"Check LLM_MODEL — expected litellm format like '{provider}/<model-id>'"),
-            **base,
+            remediation=f"Check LLM_MODEL — expected litellm format like '{provider}/<model-id>'",
         )
 
     not_found_cls = getattr(litellm_module, "NotFoundError", None)
     if not_found_cls and isinstance(exc, not_found_cls):
-        return LLMHealthResult(
+        return _result(
+            base,
             status="bad_model",
             message=f"Model not found: {exc_msg}",
             remediation="Verify LLM_MODEL exists for this provider",
-            **base,
         )
 
     timeout_cls = getattr(litellm_module, "Timeout", None)
     if timeout_cls and isinstance(exc, timeout_cls):
-        return LLMHealthResult(
+        return _result(
+            base,
             status="unreachable",
             message=f"Timeout probing {provider}",
             remediation="Check network connectivity from the backend container",
-            **base,
         )
 
     conn_cls = getattr(litellm_module, "APIConnectionError", None)
     if conn_cls and isinstance(exc, conn_cls):
-        return LLMHealthResult(
-            status="unreachable",
-            message=f"Cannot connect to {provider}: {exc_msg}",
-            **base,
+        return _result(
+            base, status="unreachable", message=f"Cannot connect to {provider}: {exc_msg}"
         )
 
-    return LLMHealthResult(
-        status="error",
-        message=f"{exc_name}: {exc_msg}",
-        **base,
-    )
+    return _result(base, status="error", message=f"{exc_name}: {exc_msg}")

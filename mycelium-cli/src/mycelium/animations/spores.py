@@ -254,7 +254,7 @@ def _render_banner(
             result.append("\x1b[0m" + " " * pad + line)
             continue
 
-        parts = [" " * pad]
+        parts: list[str] = [" " * pad]
         for ci, ch in enumerate(line):
             if ch == " ":
                 parts.append(" ")
@@ -533,7 +533,7 @@ def _render_frame(
     lines = []
     for row in range(screen_h):
         start = row * screen_w
-        if rain_mask is not None:
+        if rain_mask is not None and rain_chars is not None:
             cells = []
             for col in range(screen_w):
                 idx = start + col

@@ -16,7 +16,7 @@ try:
     from sqlalchemy import cast, null
     from sqlalchemy.sql.expression import BindParameter
 
-    class Vector(_PgVector):  # type: ignore[misc]
+    class Vector(_PgVector):
         """VECTOR that emits an explicit CAST for NULL params.
 
         asyncpg cannot infer the type for None on a UserDefinedType and
@@ -33,7 +33,7 @@ try:
 
 except ImportError:
     # Fallback for environments without pgvector (e.g., SQLite tests)
-    from sqlalchemy import LargeBinary as Vector  # type: ignore[assignment]
+    from sqlalchemy import LargeBinary as Vector
 
 from sqlalchemy import (
     JSON,
@@ -209,7 +209,9 @@ class Memory(Base):
     created_by: Mapped[str] = mapped_column(String, nullable=False)
     updated_by: Mapped[str | None] = mapped_column(String, nullable=True)
     version: Mapped[int] = mapped_column(Integer, server_default="1", nullable=False)
-    tags: Mapped[dict | None] = mapped_column(JSONB().with_variant(JSON(), "sqlite"), nullable=True)
+    tags: Mapped[list[str] | None] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
