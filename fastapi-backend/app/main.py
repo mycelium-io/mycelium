@@ -136,9 +136,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS
+# CORS — starlette types CORSMiddleware as a class but typeshed expects a factory.
 app.add_middleware(
-    CORSMiddleware,
+    CORSMiddleware,  # ty: ignore[invalid-argument-type]
     allow_origins=list(settings.CORS_ORIGINS),
     allow_credentials=True,
     allow_methods=["*"],

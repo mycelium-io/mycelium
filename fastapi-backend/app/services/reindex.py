@@ -71,15 +71,15 @@ def start_watcher() -> None:
                 name.startswith(p) for p in _ignore_prefixes
             )
 
-        def on_modified(self, event):  # type: ignore[override]
+        def on_modified(self, event):
             if not event.is_directory and not self._should_ignore(event.src_path):
                 self._schedule(event.src_path)
 
-        def on_created(self, event):  # type: ignore[override]
+        def on_created(self, event):
             if not event.is_directory and not self._should_ignore(event.src_path):
                 self._schedule(event.src_path)
 
-        def on_deleted(self, event):  # type: ignore[override]
+        def on_deleted(self, event):
             if not event.is_directory and not self._should_ignore(event.src_path):
                 self._schedule(event.src_path)
 

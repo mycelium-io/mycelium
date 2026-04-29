@@ -242,7 +242,7 @@ def respond(
         action = action.strip().lower()
 
         try:
-            reply = RespondReply(action=action)  # type: ignore[arg-type]
+            reply = RespondReply(action=action)  # ty: ignore[invalid-argument-type]
         except ValidationError:
             typer.echo(
                 f"  Error: action must be one of {', '.join(sorted(VALID_ACTIONS))}, got '{action}'",

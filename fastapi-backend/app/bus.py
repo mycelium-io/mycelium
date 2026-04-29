@@ -13,6 +13,7 @@ import logging
 from collections.abc import Callable
 
 import asyncpg
+import asyncpg.utils
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,6 @@ async def unlisten(conn: asyncpg.Connection, channel: str) -> None:
     """Unregister listener and stop listening on a channel."""
     try:
         await conn.execute(f"UNLISTEN {asyncpg.utils._quote_ident(channel)}")
-        await conn.remove_listener(channel, None)  # type: ignore[arg-type]
+        await conn.remove_listener(channel, None)
     except Exception as e:
         logger.debug(f"unlisten error on {channel}: {e}")

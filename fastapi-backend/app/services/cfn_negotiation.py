@@ -51,7 +51,9 @@ def _describe_exc(exc: Exception) -> str:
             else f"{name} {exc.response.status_code}"
         )
     if isinstance(exc, httpx.TimeoutException):
-        return f"{name}: request exceeded {int(_CFN_HTTP_TIMEOUT.read or 0)}s"
+        read_timeout = _CFN_HTTP_TIMEOUT.read
+        timeout_s = float(read_timeout) if isinstance(read_timeout, int | float) else 0.0
+        return f"{name}: request exceeded {int(timeout_s)}s"
     msg = str(exc).strip()
     return f"{name}: {msg}" if msg else name
 

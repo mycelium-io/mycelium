@@ -57,6 +57,10 @@ jobs:
         working-directory: fastapi-backend
         run: uv run ruff format --check .
 
+      - name: Type check (ty)
+        working-directory: fastapi-backend
+        run: uv run ty check .
+
       - name: Unit tests (SQLite)
         working-directory: fastapi-backend
         env:
@@ -94,6 +98,10 @@ jobs:
       - name: Format check
         working-directory: mycelium-cli
         run: uv run ruff format --check src/
+
+      - name: Type check (ty)
+        working-directory: mycelium-cli
+        run: uv run ty check .
 
   test-openclaw-plugin:
     name: OpenClaw plugin tests

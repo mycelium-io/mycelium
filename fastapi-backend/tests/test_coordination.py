@@ -190,10 +190,20 @@ async def test_cfn_state_keyed_by_room_name_not_mas_id():
         patch.object(coord, "async_session_maker"),
     ):
         await coord._run_cfn_negotiation(
-            "ns:session:aaa", room1, ["alice", "bob"], ["buy house", "sell house"]
+            "ns:session:aaa",
+            room1,
+            room1.workspace_id or "ws",
+            room1.mas_id or "mas",
+            ["alice", "bob"],
+            ["buy house", "sell house"],
         )
         await coord._run_cfn_negotiation(
-            "ns:session:bbb", room2, ["carol", "dave"], ["buy car", "sell car"]
+            "ns:session:bbb",
+            room2,
+            room2.workspace_id or "ws",
+            room2.mas_id or "mas",
+            ["carol", "dave"],
+            ["buy car", "sell car"],
         )
 
     assert "ns:session:aaa" in _cfn_state

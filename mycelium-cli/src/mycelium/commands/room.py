@@ -63,10 +63,15 @@ def room_main(ctx: typer.Context) -> None:
             raise typer.Exit(1)
 
         from mycelium_backend_client.api.rooms import list_rooms_rooms_get as list_api
+        from mycelium_backend_client.models import HTTPValidationError
 
         with _typed_client(config) as client:
             result = list_api.sync(client=client, name=active_room, limit=1)
-            rooms_data = [r.to_dict() for r in result] if result else []
+            rooms_data = (
+                [r.to_dict() for r in result]
+                if result and not isinstance(result, HTTPValidationError)
+                else []
+            )
 
         if not rooms_data:
             typer.secho(f"Active room '{active_room}' not found on server.", fg=typer.colors.RED)
@@ -112,10 +117,15 @@ def list_rooms(
             params["name"] = name
 
         from mycelium_backend_client.api.rooms import list_rooms_rooms_get as list_api
+        from mycelium_backend_client.models import HTTPValidationError
 
         with _typed_client(config) as client:
             result = list_api.sync(client=client, name=name, limit=limit)
-            rooms_data = [r.to_dict() for r in result] if result else []
+            rooms_data = (
+                [r.to_dict() for r in result]
+                if result and not isinstance(result, HTTPValidationError)
+                else []
+            )
 
         if json_output:
             typer.echo(json_module.dumps(rooms_data, indent=2, default=str))
@@ -174,17 +184,19 @@ def create(
         if name is None:
             name = typer.prompt("Room name")
 
+        from mycelium_backend_client.api.rooms import create_room_rooms_post as create_api
+        from mycelium_backend_client.models import RoomCreate, RoomCreateTriggerConfigType0
+
         # Parse trigger config
-        trigger_config = None
+        trigger_config: RoomCreateTriggerConfigType0 | None = None
         if trigger:
+            trigger_config = RoomCreateTriggerConfigType0()
             if ":" in trigger:
                 ttype, tval = trigger.split(":", 1)
-                trigger_config = {"type": ttype, "min_contributions": int(tval)}
+                trigger_config["type"] = ttype
+                trigger_config["min_contributions"] = int(tval)
             else:
-                trigger_config = {"type": trigger}
-
-        from mycelium_backend_client.api.rooms import create_room_rooms_post as create_api
-        from mycelium_backend_client.models import RoomCreate
+                trigger_config["type"] = trigger
 
         with _typed_client(config) as client:
             body = RoomCreate(
@@ -298,10 +310,15 @@ def use(
         config = MyceliumConfig.load()
 
         from mycelium_backend_client.api.rooms import list_rooms_rooms_get as list_api
+        from mycelium_backend_client.models import HTTPValidationError
 
         with _typed_client(config) as client:
             result = list_api.sync(client=client, name=room_name, limit=1)
-            rooms_data = [r.to_dict() for r in result] if result else []
+            rooms_data = (
+                [r.to_dict() for r in result]
+                if result and not isinstance(result, HTTPValidationError)
+                else []
+            )
 
             if not rooms_data:
                 raise MyceliumError(

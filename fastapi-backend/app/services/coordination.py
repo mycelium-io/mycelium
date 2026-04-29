@@ -207,7 +207,7 @@ async def _run_tick(room_name: str, tick: int) -> None:
         and room.workspace_id
     )
 
-    if not use_cfn:
+    if not use_cfn or room is None or not room.mas_id or not room.workspace_id:
         logger.error(
             "Coordination requested for %s but CFN not configured (no COGNITION_FABRIC_NODE_URL "
             "or room.mas_id/workspace_id not set)",
@@ -227,12 +227,21 @@ async def _run_tick(room_name: str, tick: int) -> None:
             await db.commit()
         return
 
-    await _run_cfn_negotiation(room_name, room, session_handles, intents)
+    await _run_cfn_negotiation(
+        room_name,
+        room,
+        room.workspace_id,
+        room.mas_id,
+        session_handles,
+        intents,
+    )
 
 
 async def _run_cfn_negotiation(
     room_name: str,
     room: Room,
+    workspace_id: str,
+    mas_id: str,
     session_handles: list[str],
     intents: list[str],
 ) -> None:
@@ -260,8 +269,8 @@ async def _run_cfn_negotiation(
             session_id=session_id,
             content_text=joined_intents,
             agents=agents,
-            workspace_id=room.workspace_id,
-            mas_id=room.mas_id,
+            workspace_id=workspace_id,
+            mas_id=mas_id,
             n_steps=settings.NEGOTIATION_N_STEPS,
         )
     except CfnNegotiationError as exc:
@@ -272,8 +281,8 @@ async def _run_cfn_negotiation(
     # Set up CFN round state
     state = _CfnRoundState(
         session_id=session_id,
-        workspace_id=room.workspace_id,
-        mas_id=room.mas_id,
+        workspace_id=workspace_id,
+        mas_id=mas_id,
         agents=session_handles[:],
         pending_replies={h: None for h in session_handles},
         # Use the configured cap; CFN may auto-compute internally when 0,
