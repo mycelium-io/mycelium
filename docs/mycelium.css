@@ -113,10 +113,57 @@ a.topnav-page:hover { color: var(--accent); }
 .copy-page-btn:hover { border-color: var(--accent); color: var(--accent); }
 .copy-page-btn.copied { border-color: var(--green); color: var(--green); }
 
+/* ── SECTION NAV (horizontal, below topnav) ── */
+.sectionnav {
+  position: fixed;
+  top: 62px;
+  left: 0;
+  right: 0;
+  height: 44px;
+  background: rgba(5, 9, 15, 0.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  z-index: 99;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.sectionnav-inner {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 29px;
+  gap: 4px;
+  white-space: nowrap;
+}
+.sectionnav a {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 14px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 13px;
+  font-family: 'SF Mono', monospace;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+.sectionnav a:hover { color: var(--text); }
+.sectionnav a.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.sectionnav-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.sectionnav-right a { font-size: 12px; }
+
 /* ── LAYOUT ── */
 .layout {
   display: flex;
-  padding-top: 62px;
+  padding-top: 106px;
   min-height: 100vh;
 }
 
@@ -125,7 +172,7 @@ a.topnav-page:hover { color: var(--accent); }
   width: var(--sidebar-width);
   flex-shrink: 0;
   position: fixed;
-  top: 62px;
+  top: 106px;
   bottom: 0;
   overflow-y: auto;
   padding: 28px 0 40px;
@@ -166,6 +213,13 @@ a.topnav-page:hover { color: var(--accent); }
   padding-left: 20px;
   font-size: 0.8125rem;
 }
+.nav-link.page {
+  font-weight: 600;
+  color: var(--text);
+  margin-top: 6px;
+}
+.nav-link.page:first-of-type { margin-top: 0; }
+.nav-link.page.active { color: var(--accent); }
 
 /* ── MAIN CONTENT ── */
 .main {
@@ -190,6 +244,11 @@ a.topnav-page:hover { color: var(--accent); }
 .doc-section {
   margin-bottom: 72px;
   padding-top: 8px;
+  scroll-margin-top: 122px;
+}
+:target,
+h1[id], h2[id], h3[id], h4[id], section[id] {
+  scroll-margin-top: 122px;
 }
 
 
@@ -669,6 +728,8 @@ h3:hover .header-anchor,
   .topnav { padding: 0 16px; gap: 12px; }
   .topnav-sep, .topnav-page { display: none; }
   .topnav-right { gap: 12px; }
+  .sectionnav-inner { padding: 0 16px; }
+  .sectionnav-right { display: none; }
   .main { padding: 24px 16px 60px; }
   h1 { font-size: 1.75rem; }
   h2 { font-size: 1.25rem; }

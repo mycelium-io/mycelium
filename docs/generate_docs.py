@@ -3,53 +3,99 @@
 # Copyright 2026 Julia Valenti
 
 """
-Generate docs/index.html from markdown source files + CLI @doc_ref decorators.
+Generate per-section docs HTML pages from markdown sources + CLI/config schemas.
 
 Markdown files in mycelium-cli/src/mycelium/docs/ are the single source of truth.
-This script converts them to HTML and injects them into the index.html template.
+Each output page shares chrome (head, topnav, section nav, sidebar shell, footer)
+and gets its own sidebar entries derived from its sections.
 
 Run from repo root:
     cd mycelium-cli && uv run python ../docs/generate_docs.py
+
+Regenerate one page only:
+    cd mycelium-cli && uv run python ../docs/generate_docs.py --page concepts
 """
 
 from __future__ import annotations
 
+import argparse
 import html
 import re
 from collections import defaultdict
 from pathlib import Path
 
-# ── Section config ──
-# (md_filename, section_id, sidebar_section, sidebar_label)
-# sidebar_section groups items under a nav-section-label.
-SECTION_CONFIG: list[tuple[str, str, str, str]] = [
-    ("overview.md", "overview", "Start here", "Overview"),
-    ("quickstart.md", "quickstart", "Start here", "Quick Start"),
-    ("rooms.md", "rooms", "Concepts", "Rooms"),
-    ("sessions.md", "sessions", "Concepts", "Sessions"),
-    ("memory.md", "memory", "Concepts", "Memory"),
-    ("cognitive-engine.md", "cognitive-engine", "Concepts", "CognitiveEngine"),
-    ("knowledge-graph.md", "knowledge-graph", "Concepts", "Knowledge Graph"),
-    # cli-reference is handled separately by generate_cli_reference
-    ("guides/structured-memory.md", "structured-memory", "Guides", "Structured Memory"),
-    ("guides/hub-and-spoke.md", "hub-and-spoke", "Guides", "Hub & Spoke Setup"),
-    ("architecture.md", "architecture", "Architecture", "Architecture"),
-    ("troubleshooting.md", "troubleshooting", "Help", "Troubleshooting"),
+# ── Page layout ──
+# 3 pages, each a long doc with a grouped sidebar.
+# (page_id, file_name, page_title, top_nav_label, meta_description)
+PAGES: list[tuple[str, str, str, str, str]] = [
+    ("learn", "index.html", "mycelium — Docs", "Learn",
+     "Coordination layer for multi-agent systems. Semantic negotiation, persistent memory, collective intelligence."),
+    ("adapters", "adapters.html", "Adapters — mycelium", "Adapters",
+     "Connect Claude Code, OpenClaw, or any HTTP client to the Mycelium coordination layer."),
+    ("reference", "reference.html", "Reference — mycelium", "Reference",
+     "Architecture, CLI reference, configuration, and troubleshooting for Mycelium."),
 ]
 
+# Sections, in render order per page.
+# (md_file_or_None, section_id, page_id, sidebar_group, sidebar_label)
+# md_file=None means the section is hand-coded (kept verbatim from source HTML).
+# If md_file is set AND a kept section with the same id exists, the kept HTML wins.
+SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
+    # ── learn (index.html) ──
+    ("overview.md",                 "overview",           "learn",     "Get Started",  "Overview"),
+    ("quickstart.md",               "quickstart",         "learn",     "Get Started",  "Quick Start"),
+    ("rooms.md",                    "rooms",              "learn",     "Concepts",     "Rooms"),
+    ("sessions.md",                 "sessions",           "learn",     "Concepts",     "Sessions"),
+    ("memory.md",                   "memory",             "learn",     "Concepts",     "Memory"),
+    ("cognitive-engine.md",         "cognitive-engine",   "learn",     "Concepts",     "CognitiveEngine"),
+    ("knowledge-graph.md",          "knowledge-graph",    "learn",     "Concepts",     "Knowledge Graph"),
+    ("guides/structured-memory.md", "structured-memory",  "learn",     "Guides",       "Structured Memory"),
+    ("guides/hub-and-spoke.md",     "hub-and-spoke",      "learn",     "Guides",       "Hub & Spoke"),
+    # ── adapters (adapters.html) — all hand-coded ──
+    (None,                          "adapters",           "adapters",  "Adapters",     "Overview"),
+    (None,                          "adapter-claude-code","adapters",  "Adapters",     "Claude Code"),
+    (None,                          "adapter-openclaw",   "adapters",  "Adapters",     "OpenClaw"),
+    (None,                          "adapter-api",        "adapters",  "Adapters",     "REST API"),
+    # ── reference (reference.html) ──
+    ("architecture.md",             "architecture",       "reference", "Architecture", "Architecture"),
+    # CLI + Config blocks injected after architecture, before troubleshooting.
+    ("troubleshooting.md",          "troubleshooting",    "reference", "Help",         "Troubleshooting"),
+]
+
+# IDs that should be looked up in kept HTML (have <!-- keep --> markers, or rescued by id).
+_KEPT_IDS: set[str] = {
+    "overview", "quickstart",
+    "adapters", "adapter-claude-code", "adapter-openclaw", "adapter-api",
+}
+
+# CLI groups for the cli-reference page.
+GROUP_CONFIG: list[tuple[str, str, str]] = [
+    ("setup", "setup", "setup"),
+    ("room", "room", "room"),
+    ("session", "session", "session"),
+    ("memory", "memory", "memory"),
+    ("negotiate", "negotiate", "negotiate"),
+    ("cfn", "cfn", "cfn"),
+    ("adapter", "adapter", "adapter"),
+    ("config", "config", "config"),
+    ("other", "synthesize / catchup / watch", "synthesize / catchup / watch"),
+]
+
+# Configuration namespace order.
+CONFIG_NAMESPACE_ORDER: list[str] = [
+    "identity", "server", "llm", "runtime", "negotiation", "rooms", "knowledge_ingest",
+]
+CONFIG_NAMESPACE_SKIP: set[str] = {"adapters"}
+
 DOCS_DIR = Path(__file__).parent.parent / "mycelium-cli" / "src" / "mycelium" / "docs"
-INDEX_PATH = Path(__file__).parent / "index.html"
+OUT_DIR = Path(__file__).parent
+LEGACY_INDEX = OUT_DIR / "index.html"  # for kept-section migration
 
 
 # ── Markdown to HTML conversion (minimal, no dependencies) ──
 
 
 def _md_to_html(md: str, section_id: str) -> str:
-    """Convert markdown to HTML matching the docs site styling.
-
-    Handles: headings, paragraphs, code blocks, tables, blockquotes,
-    ordered/unordered lists, inline code, bold, links.
-    """
     lines = md.split("\n")
     out: list[str] = []
     i = 0
@@ -58,13 +104,11 @@ def _md_to_html(md: str, section_id: str) -> str:
     while i < len(lines):
         line = lines[i]
 
-        # Horizontal rule
         if line.strip() == "---":
             out.append('      <hr class="divider">')
             i += 1
             continue
 
-        # Fenced code block
         if line.startswith("```"):
             lang = line[3:].strip()
             code_lines = []
@@ -72,12 +116,11 @@ def _md_to_html(md: str, section_id: str) -> str:
             while i < len(lines) and not lines[i].startswith("```"):
                 code_lines.append(lines[i])
                 i += 1
-            i += 1  # skip closing ```
+            i += 1
             code_content = _highlight_code("\n".join(code_lines), lang)
             out.append(f"      <pre><code>{code_content}</code></pre>")
             continue
 
-        # Table
         if (
             "|" in line
             and i + 1 < len(lines)
@@ -85,22 +128,18 @@ def _md_to_html(md: str, section_id: str) -> str:
         ):
             table_html = _parse_table(lines, i)
             out.append(table_html)
-            # Skip past table
-            i += 2  # header + separator
+            i += 2
             while (
                 i < len(lines) and "|" in lines[i] and lines[i].strip().startswith("|")
             ):
                 i += 1
             continue
 
-        # Headings
         if line.startswith("# "):
             text = line[2:].strip()
             if first_h1:
-                # First h1 becomes the section eyebrow + h1
                 first_h1 = False
                 i += 1
-                # Collect lead paragraph (next non-empty line)
                 lead_lines = []
                 while (
                     i < len(lines)
@@ -139,7 +178,6 @@ def _md_to_html(md: str, section_id: str) -> str:
             i += 1
             continue
 
-        # Blockquote → callout
         if line.startswith("> "):
             quote_lines = []
             while i < len(lines) and lines[i].startswith("> "):
@@ -152,7 +190,6 @@ def _md_to_html(md: str, section_id: str) -> str:
             out.append("      </div>")
             continue
 
-        # Ordered list → steps
         if re.match(r"^\d+\.\s", line):
             out.append('      <ol class="steps">')
             while i < len(lines) and re.match(r"^\d+\.\s", lines[i]):
@@ -162,7 +199,6 @@ def _md_to_html(md: str, section_id: str) -> str:
             out.append("      </ol>")
             continue
 
-        # Unordered list
         if line.startswith("- "):
             out.append("      <ul>")
             while i < len(lines) and lines[i].startswith("- "):
@@ -172,12 +208,10 @@ def _md_to_html(md: str, section_id: str) -> str:
             out.append("      </ul>")
             continue
 
-        # Empty line
         if not line.strip():
             i += 1
             continue
 
-        # Paragraph — collect consecutive non-empty, non-special lines
         para_lines = []
         while (
             i < len(lines)
@@ -199,7 +233,6 @@ def _md_to_html(md: str, section_id: str) -> str:
 
 
 def _slugify(text: str) -> str:
-    """Convert heading text to URL-friendly anchor slug."""
     text = text.lower().strip()
     text = re.sub(r"[^\w\s-]", "", text)
     text = re.sub(r"[\s]+", "-", text)
@@ -207,19 +240,14 @@ def _slugify(text: str) -> str:
 
 
 def _inline(text: str) -> str:
-    """Convert inline markdown (bold, code, links) to HTML."""
     text = html.escape(text)
-    # Bold
     text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
-    # Inline code
     text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
-    # Links  [text](url)
     text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r'<a href="\2">\1</a>', text)
     return text
 
 
 def _highlight_code(code: str, lang: str) -> str:
-    """Apply simple syntax highlighting classes to shell code blocks."""
     if lang not in ("bash", "sh", ""):
         return html.escape(code)
 
@@ -230,19 +258,16 @@ def _highlight_code(code: str, lang: str) -> str:
             out.append(f'<span class="comment">{html.escape(line)}</span>')
         else:
             highlighted = html.escape(line)
-            # Flags like --mode, -r, -H, -m
             highlighted = re.sub(
                 r"(\s)(--?\w[\w-]*)",
                 r'\1<span class="flag">\2</span>',
                 highlighted,
             )
-            # Quoted strings
             highlighted = re.sub(
                 r"(&quot;[^&]*&quot;)",
                 r'<span class="str">\1</span>',
                 highlighted,
             )
-            # mycelium commands
             highlighted = re.sub(
                 r"(mycelium\s+\w+(?:\s+\w+)?)",
                 r'<span class="cmd">\1</span>',
@@ -253,33 +278,19 @@ def _highlight_code(code: str, lang: str) -> str:
 
 
 def _highlight_usage(usage: str) -> str:
-    """Syntax-highlight a CLI usage string for the docs site.
-
-    Applies .cmd to the command, .flag to flags, .arg to placeholders,
-    and .str to quoted strings.
-    """
     s = html.escape(usage)
-    # Command prefix: "mycelium <subcommand> [<subcommand>]"
     s = re.sub(r"^(mycelium(?:\s+\w+){1,2})", r'<span class="cmd">\1</span>', s)
-    # Quoted strings
     s = re.sub(r"(&quot;[^&]*&quot;)", r'<span class="str">\1</span>', s)
-    # Flags: --foo, -f (after whitespace or bracket)
     s = re.sub(r"([\s\[])(-{1,2}\w[\w-]*)", r'\1<span class="flag">\2</span>', s)
-    # Angle-bracket placeholders: <url>, <key>
     s = re.sub(r"(&lt;\w+&gt;)", r'<span class="arg">\1</span>', s)
-    # Bare UPPER placeholders: ROOM, KEY, QUERY (only fully uppercase words 2+ chars)
     s = re.sub(r"(?<=\s)([A-Z]{2,})(?=[\s\]\)]|$)", r'<span class="arg">\1</span>', s)
     return s
 
 
 def _parse_table(lines: list[str], start: int) -> str:
-    """Parse a markdown table into HTML."""
     header_line = lines[start].strip().strip("|")
     headers = [h.strip() for h in header_line.split("|")]
-
-    # Skip separator line
     row_start = start + 2
-
     rows = []
     i = row_start
     while i < len(lines) and "|" in lines[i] and lines[i].strip().startswith("|"):
@@ -310,26 +321,77 @@ def _parse_table(lines: list[str], start: int) -> str:
     return "\n".join(out)
 
 
-# ── CLI Reference generation (from @doc_ref) ──
-
-GROUP_CONFIG: list[tuple[str, str, str]] = [
-    ("setup", "setup", "setup"),
-    ("room", "room", "room"),
-    ("session", "session", "session"),
-    ("memory", "memory", "memory"),
-    ("negotiate", "negotiate", "negotiate"),
-    ("cfn", "cfn", "cfn"),
-    ("adapter", "adapter", "adapter"),
-    ("config", "config", "config"),
-    ("other", "synthesize / catchup / watch", "synthesize / catchup / watch"),
-]
+# ── Kept (hand-crafted) section discovery ──
 
 
-def _generate_cli_reference() -> tuple[str, str]:
-    """Generate CLI Reference HTML section and sidebar nav from @doc_ref."""
+def _extract_kept_sections(html_text: str) -> dict[str, str]:
+    """Return {section_id: full_section_html} for any <section> with <!-- keep -->."""
+    kept: dict[str, str] = {}
+    for m in re.finditer(
+        r'(<section\s+class="doc-section"\s+id="([^"]+)"[^>]*>.*?</section>)',
+        html_text,
+        re.DOTALL,
+    ):
+        if "<!-- keep -->" in m.group(1):
+            kept[m.group(2)] = m.group(1)
+    return kept
+
+
+def _extract_sections_by_id(html_text: str, ids: set[str]) -> dict[str, str]:
+    """Extract any <section> whose id matches, regardless of <!-- keep --> marker."""
+    found: dict[str, str] = {}
+    for m in re.finditer(
+        r'(<section\s+class="doc-section"\s+id="([^"]+)"[^>]*>.*?</section>)',
+        html_text,
+        re.DOTALL,
+    ):
+        sid = m.group(2)
+        if sid in ids:
+            block = m.group(1)
+            # Inject <!-- keep --> if missing so future round-trips work.
+            if "<!-- keep -->" not in block:
+                block = re.sub(
+                    r'(<section\s+class="doc-section"\s+id="[^"]+"[^>]*>)',
+                    r"\1\n      <!-- keep -->",
+                    block,
+                    count=1,
+                )
+            found[sid] = block
+    return found
+
+
+def _all_kept_sections() -> dict[str, str]:
+    """Read kept sections from existing HTML files.
+
+    Falls back to legacy single-page index.html / .legacy copy and rescues
+    hand-coded sections by id (injecting <!-- keep --> for future round-trips).
+    """
+    kept: dict[str, str] = {}
+
+    # Legacy single-page sources (pre-split or saved .legacy copy).
+    legacy_paths = [LEGACY_INDEX, OUT_DIR / "index.html.legacy"]
+    for path in legacy_paths:
+        if path.exists():
+            text = path.read_text()
+            kept.update(_extract_kept_sections(text))
+            for sid, block in _extract_sections_by_id(text, _KEPT_IDS).items():
+                kept.setdefault(sid, block)
+
+    # Per-page files override legacy (post-split source of truth).
+    for _, file_name, *_ in PAGES:
+        path = OUT_DIR / file_name
+        if path.exists():
+            kept.update(_extract_kept_sections(path.read_text()))
+    return kept
+
+
+# ── CLI Reference + Config Reference ──
+
+
+def _generate_cli_reference() -> tuple[str, list[tuple[str, str]]]:
+    """Return (content_html, sidebar_entries) for the cli-reference page."""
     from mycelium.doc_ref import get_registry
 
-    # Force-import all command modules so decorators run
     import mycelium.commands.adapter  # noqa: F401
     import mycelium.commands.cfn  # noqa: F401
     import mycelium.commands.config  # noqa: F401
@@ -342,13 +404,12 @@ def _generate_cli_reference() -> tuple[str, str]:
     import mycelium.commands.session  # noqa: F401
 
     entries = get_registry()
-
     groups: dict[str, list] = defaultdict(list)
     for entry in entries:
         groups[entry.group].append(entry)
 
-    section_lines = ["      <h2>CLI Reference</h2>"]
-    sidebar_links = []
+    section_lines = ["      <h1>CLI Reference</h1>"]
+    sidebar_entries: list[tuple[str, str]] = []
 
     for group_key, heading, sidebar_label in GROUP_CONFIG:
         if group_key not in groups:
@@ -356,11 +417,8 @@ def _generate_cli_reference() -> tuple[str, str]:
 
         anchor = f"cli-{group_key}"
         section_lines.append("")
-        section_lines.append(f'      <h3 id="{anchor}">{html.escape(heading)}</h3>')
-
-        sidebar_links.append(
-            f'      <a href="#{anchor}" class="nav-link sub">{html.escape(sidebar_label)}</a>'
-        )
+        section_lines.append(f'      <h2 id="{anchor}">{html.escape(heading)}</h2>')
+        sidebar_entries.append((anchor, sidebar_label))
 
         for entry in groups[group_key]:
             highlighted_usage = _highlight_usage(entry.usage)
@@ -374,69 +432,16 @@ def _generate_cli_reference() -> tuple[str, str]:
             )
             section_lines.append("      </div>")
 
-    section_html = "\n".join(section_lines)
-
-    sidebar_html = "\n".join(
-        [
-            '    <div class="nav-section">',
-            '      <div class="nav-section-label">CLI Reference</div>',
-            *sidebar_links,
-            "    </div>",
-        ]
+    # Wrap in a <section> for IntersectionObserver tracking.
+    body = (
+        '    <section class="doc-section" id="cli-reference">\n'
+        + "\n".join(section_lines)
+        + "\n    </section>"
     )
-
-    return section_html, sidebar_html
-
-
-# ── Sidebar generation from markdown sections ──
-
-
-def _generate_sidebar() -> str:
-    """Generate the full sidebar nav HTML from section config."""
-    sections_by_group: dict[str, list[tuple[str, str]]] = {}
-    for _, section_id, sidebar_section, sidebar_label in SECTION_CONFIG:
-        sections_by_group.setdefault(sidebar_section, []).append(
-            (section_id, sidebar_label)
-        )
-
-    out = []
-    for group_name, items in sections_by_group.items():
-        out.append('    <div class="nav-section">')
-        out.append(
-            f'      <div class="nav-section-label">{html.escape(group_name)}</div>'
-        )
-        for section_id, label in items:
-            sub = " sub" if len(items) > 1 and group_name != "Architecture" else ""
-            out.append(
-                f'      <a href="#{section_id}" class="nav-link{sub}">{html.escape(label)}</a>'
-            )
-        out.append("    </div>")
-
-    return "\n".join(out)
-
-
-# ── Main content generation ──
-
-# ── Config Reference generation (from pydantic schema) ──
-
-# Order in which top-level config namespaces appear in the docs. Keys not
-# listed here are appended in declaration order.
-CONFIG_NAMESPACE_ORDER: list[str] = [
-    "identity",
-    "server",
-    "llm",
-    "runtime",
-    "negotiation",
-    "rooms",
-    "knowledge_ingest",
-]
-
-# Namespaces to skip (typed as bare dict / non-BaseModel).
-CONFIG_NAMESPACE_SKIP: set[str] = {"adapters"}
+    return body, sidebar_entries
 
 
 def _highlight_toml(code: str, anchors: dict[str, str] | None = None) -> str:
-    """Apply syntax highlighting classes to a TOML config snippet."""
     anchors = anchors or {}
     out = []
     for line in code.split("\n"):
@@ -455,18 +460,15 @@ def _highlight_toml(code: str, anchors: dict[str, str] | None = None) -> str:
                 f'<span class="cmd"{id_attr}>{html.escape(line)}</span>'
             )
             continue
-        # key = value
         m = re.match(r"^(\s*)([\w.-]+)(\s*=\s*)(.*)$", line)
         if m:
             indent, key, eq, value = m.groups()
             value_esc = html.escape(value)
-            # Wrap quoted strings
             value_esc = re.sub(
                 r"(&quot;[^&]*&quot;)",
                 r'<span class="str">\1</span>',
                 value_esc,
             )
-            # Booleans / numbers
             if value.strip() in ("true", "false"):
                 value_esc = f'<span class="flag">{value_esc}</span>'
             out.append(
@@ -479,7 +481,6 @@ def _highlight_toml(code: str, anchors: dict[str, str] | None = None) -> str:
 
 
 def _format_toml_value(value: object) -> str:
-    """Render a pydantic field default as a TOML literal."""
     if value is None:
         return '""'
     if isinstance(value, bool):
@@ -494,26 +495,18 @@ def _format_toml_value(value: object) -> str:
     return str(value)
 
 
-def _generate_config_reference() -> tuple[str, str]:
-    """Generate Configuration HTML section + sidebar nav from pydantic schema.
-
-    Walks ``MyceliumConfig.model_fields`` and emits one ``<h3>`` + table per
-    namespace. Field descriptions come from each ``Field(..., description=...)``
-    declaration — adding a new config knob with a description is enough to get
-    it documented automatically.
-    """
+def _generate_config_reference() -> tuple[str, list[tuple[str, str]]]:
+    """Return (content_html, sidebar_entries) for the configuration page."""
     from pydantic import BaseModel
-
     from mycelium.config import MyceliumConfig
 
-    # Resolve namespace order: declared overrides first, then declaration order.
     declared = list(MyceliumConfig.model_fields.keys())
     ordered = [n for n in CONFIG_NAMESPACE_ORDER if n in declared]
     ordered += [
         n for n in declared if n not in ordered and n not in CONFIG_NAMESPACE_SKIP
     ]
 
-    section_lines = ["      <h2>Configuration</h2>"]
+    section_lines = ["      <h1>Configuration</h1>"]
     section_lines.append(
         "      <p>Settings live in <code>~/.mycelium/config.toml</code>. Change "
         "a value with <code>mycelium config set &lt;key&gt; &lt;value&gt;</code> "
@@ -523,7 +516,7 @@ def _generate_config_reference() -> tuple[str, str]:
         "change affects a service running in a container, restart with "
         "<code>mycelium up</code> for it to take effect.</p>"
     )
-    sidebar_links: list[tuple[str, str]] = []
+    sidebar_entries: list[tuple[str, str]] = []
     ns_anchors: dict[str, str] = {}
 
     code_lines: list[str] = []
@@ -533,7 +526,7 @@ def _generate_config_reference() -> tuple[str, str]:
         if not (isinstance(ns_type, type) and issubclass(ns_type, BaseModel)):
             continue
         anchor = f"config-{ns.replace('_', '-')}"
-        sidebar_links.append((anchor, ns))
+        sidebar_entries.append((anchor, ns))
         ns_anchors[ns] = anchor
 
         if code_lines:
@@ -554,134 +547,299 @@ def _generate_config_reference() -> tuple[str, str]:
     highlighted = _highlight_toml(code_block, ns_anchors)
     section_lines.append(f"      <pre><code>{highlighted}</code></pre>")
 
-    sidebar = [
-        '    <div class="nav-section">',
-        '      <a href="#config-reference" class="nav-link">Configuration</a>',
-        "    </div>",
+    body = (
+        '    <section class="doc-section" id="configuration">\n'
+        + "\n".join(section_lines)
+        + "\n    </section>"
+    )
+    return body, sidebar_entries
+
+
+# ── Page assembly ──
+
+
+GITHUB_SVG = (
+    '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" '
+    'style="display:block;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 '
+    '5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69'
+    '-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 '
+    '1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-'
+    '3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 '
+    '2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 '
+    '1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29'
+    '.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 '
+    '0016 8c0-4.42-3.58-8-8-8z"/></svg>'
+)
+
+SKILL_MD_URL = (
+    "https://raw.githubusercontent.com/mycelium-io/mycelium/main/"
+    "mycelium-cli/src/mycelium/adapters/openclaw/mycelium/plugin/skills/"
+    "mycelium/SKILL.md"
+)
+
+
+def _head(title: str, description: str, file_name: str) -> str:
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{html.escape(title)}</title>
+<meta name="description" content="{html.escape(description)}">
+<meta property="og:title" content="{html.escape(title)}">
+<meta property="og:description" content="{html.escape(description)}">
+<meta property="og:image" content="https://mycelium-io.github.io/mycelium/og.png">
+<meta property="og:url" content="https://mycelium-io.github.io/mycelium/{file_name}">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://mycelium-io.github.io/mycelium/og.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="mycelium.css">
+</head>
+<body>
+<canvas id="mycelium-bg"></canvas>
+"""
+
+
+def _topnav() -> str:
+    return f"""<!-- TOP NAV -->
+<nav class="topnav">
+  <a href="https://mycelium-io.github.io" class="topnav-brand">
+    <img src="logo.png" alt="Mycelium">
+    mycelium
+  </a>
+  <span class="topnav-sep">/</span>
+  <a href="index.html" class="topnav-page">docs</a>
+  <div class="topnav-right">
+    <button class="copy-docs-btn" onclick="copyDocsCmd()"><i data-lucide="terminal" style="width:13px;height:13px;stroke:currentColor;vertical-align:-2px;margin-right:6px;"></i>copy docs cmd</button>
+    <button class="copy-page-btn" onclick="copyPage()"><i data-lucide="copy" style="width:13px;height:13px;stroke:currentColor;vertical-align:-2px;margin-right:6px;"></i>copy this page</button>
+    <a href="https://github.com/mycelium-io/mycelium" aria-label="GitHub" style="display:flex;align-items:center;">{GITHUB_SVG}</a>
+  </div>
+</nav>
+"""
+
+
+def _sectionnav(active_page_id: str) -> str:
+    links = []
+    for page_id, file_name, _, label, _ in PAGES:
+        cls = "active" if page_id == active_page_id else ""
+        links.append(
+            f'    <a href="{file_name}" class="{cls}">{html.escape(label)}</a>'
+        )
+    right_links = [
+        f'    <a href="{SKILL_MD_URL}" target="_blank">SKILL.md ↗</a>',
     ]
-
-    return "\n".join(section_lines), "\n".join(sidebar)
-
-
-def _extract_kept_sections(html: str) -> dict[str, str]:
-    """Extract sections marked <!-- keep --> from existing index.html.
-
-    Sections with this comment are hand-crafted HTML (interactive components,
-    card grids, etc.) that can't be expressed in markdown. The generator
-    preserves them verbatim. Remove the comment to switch to markdown-generated.
-    """
-    kept: dict[str, str] = {}
-    for m in re.finditer(
-        r'(<section\s+class="doc-section"\s+id="([^"]+)"[^>]*>.*?</section>)',
-        html,
-        re.DOTALL,
-    ):
-        if "<!-- keep -->" in m.group(1):
-            kept[m.group(2)] = m.group(1)
-    return kept
-
-
-def _generate_content_sections(existing_html: str) -> str:
-    """Generate all content section HTML from markdown files.
-
-    Sections in the existing HTML that contain <!-- keep --> are preserved
-    verbatim. All others are regenerated from their markdown source.
-    """
-    kept = _extract_kept_sections(existing_html)
-    sections = []
-
-    for md_file, section_id, _, _ in SECTION_CONFIG:
-        if section_id in kept:
-            print(f"  {section_id}: kept (hand-crafted HTML)")
-            sections.append(kept[section_id])
-        else:
-            md_path = DOCS_DIR / md_file
-            if not md_path.exists():
-                print(f"  WARNING: {md_path} not found, skipping")
-                continue
-
-            md_content = md_path.read_text()
-            section_html = _md_to_html(md_content, section_id)
-
-            sections.append(f'    <section class="doc-section" id="{section_id}">')
-            sections.append(section_html)
-            sections.append("    </section>")
-
-        sections.append("")
-        sections.append('    <hr class="divider">')
-        sections.append("")
-
-    return "\n".join(sections)
-
-
-# ── Template replacement ──
-
-
-def _replace_between_markers(content: str, marker: str, replacement: str) -> str:
-    """Replace content between <!-- marker --> and <!-- /marker --> comments."""
-    pattern = re.compile(
-        rf"(<!-- {re.escape(marker)} -->).*?(<!-- /{re.escape(marker)} -->)",
-        re.DOTALL,
-    )
-    match = pattern.search(content)
-    if not match:
-        msg = f"Could not find <!-- {marker} --> markers in index.html"
-        raise RuntimeError(msg)
     return (
-        content[: match.start(1)]
-        + match.group(1)
-        + "\n"
-        + replacement
-        + "\n"
-        + match.group(2)
-        + content[match.end(2) :]
+        '<nav class="sectionnav">\n'
+        '  <div class="sectionnav-inner">\n'
+        + "\n".join(links)
+        + '\n    <div class="sectionnav-right">\n'
+        + "\n".join(right_links)
+        + "\n    </div>\n"
+        "  </div>\n"
+        "</nav>\n"
     )
+
+
+def _sidebar(groups: list[tuple[str, list[tuple[str, str]]]]) -> str:
+    """Render a grouped sidebar: [(group_label, [(anchor, label), ...]), ...]."""
+    out = ['  <nav class="sidebar">']
+    for group_label, items in groups:
+        out.append('    <div class="nav-section">')
+        out.append(
+            f'      <div class="nav-section-label">{html.escape(group_label)}</div>'
+        )
+        for anchor, label in items:
+            out.append(
+                f'      <a href="#{anchor}" class="nav-link sub">'
+                f'{html.escape(label)}</a>'
+            )
+        out.append("    </div>")
+    out.append("  </nav>")
+    return "\n".join(out)
+
+
+def _layout_open(sidebar_html: str) -> str:
+    return f"""<div class="layout">
+
+{sidebar_html}
+
+  <!-- MAIN -->
+  <main class="main">
+  <div class="main-inner">
+"""
+
+
+LAYOUT_CLOSE = """    <!-- FOOTER -->
+    <div style="font-size:12px; color: var(--muted); font-family: 'SF Mono', monospace; padding-top: 8px; display:flex; flex-wrap:wrap; gap: 4px 12px;">
+      <a href="https://github.com/mycelium-io/mycelium" style="color: var(--muted);">mycelium-io/mycelium</a>
+      <span>Apache 2.0 License</span>
+      <span>Shared Intent &middot; Shared Memory &middot; Shared Context</span>
+    </div>
+
+  </div>
+  </main>
+</div>
+
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script src="site.js"></script>
+
+</body>
+</html>
+"""
+
+
+def _render_page(
+    page_id: str,
+    file_name: str,
+    title: str,
+    description: str,
+    content_html: str,
+    sidebar_groups: list[tuple[str, list[tuple[str, str]]]],
+) -> str:
+    sidebar_html = _sidebar(sidebar_groups)
+    return (
+        _head(title, description, file_name)
+        + _topnav()
+        + _sectionnav(page_id)
+        + _layout_open(sidebar_html)
+        + content_html
+        + "\n"
+        + LAYOUT_CLOSE
+    )
+
+
+# ── Page content builders ──
+
+
+def _md_section_html(md_file: str, section_id: str) -> str:
+    md_path = DOCS_DIR / md_file
+    if not md_path.exists():
+        print(f"  WARNING: {md_path} not found, skipping {section_id}")
+        return ""
+    md_content = md_path.read_text()
+    body = _md_to_html(md_content, section_id)
+    return (
+        f'    <section class="doc-section" id="{section_id}">\n'
+        f"{body}\n"
+        f"    </section>"
+    )
+
+
+def _build_page(
+    page_id: str,
+    kept: dict[str, str],
+    cli_block: tuple[str, list[tuple[str, str]]] | None = None,
+    config_block: tuple[str, list[tuple[str, str]]] | None = None,
+) -> tuple[str, list[tuple[str, list[tuple[str, str]]]]]:
+    """Build (content_html, sidebar_groups) for a single page.
+
+    sidebar_groups: list of (group_label, [(anchor, label), ...]) preserving order.
+    For the reference page, cli_block + config_block (each a (html, sidebar_entries))
+    are inserted between architecture and troubleshooting.
+    """
+    parts: list[str] = []
+    grouped: dict[str, list[tuple[str, str]]] = {}
+    group_order: list[str] = []
+
+    def add_group(group: str, anchor: str, label: str) -> None:
+        if group not in grouped:
+            grouped[group] = []
+            group_order.append(group)
+        grouped[group].append((anchor, label))
+
+    inject_after_architecture = page_id == "reference"
+
+    for md_file, sid, pid, group, label in SECTION_CONFIG:
+        if pid != page_id:
+            continue
+
+        if sid in kept:
+            parts.append(kept[sid])
+        elif md_file:
+            section_html = _md_section_html(md_file, sid)
+            if not section_html:
+                continue
+            parts.append(section_html)
+        else:
+            print(f"  WARNING: section '{sid}' has no md and no kept HTML")
+            continue
+
+        add_group(group, sid, label)
+
+        # Inject CLI + Config blocks right after the architecture section on the
+        # reference page (and before troubleshooting).
+        if inject_after_architecture and sid == "architecture":
+            if cli_block is not None:
+                cli_html, cli_entries = cli_block
+                parts.append(cli_html)
+                for anchor, lbl in cli_entries:
+                    add_group("CLI Reference", anchor, lbl)
+            if config_block is not None:
+                config_html, config_entries = config_block
+                parts.append(config_html)
+                for anchor, lbl in config_entries:
+                    add_group("Configuration", anchor, lbl)
+
+    content = "\n\n    <hr class=\"divider\">\n\n".join(parts)
+    sidebar_groups = [(g, grouped[g]) for g in group_order]
+    return content, sidebar_groups
+
+
+# ── Main ──
+
+
+def _render_and_write(
+    page_id: str,
+    file_name: str,
+    title: str,
+    description: str,
+    content_html: str,
+    sidebar_groups: list[tuple[str, list[tuple[str, str]]]],
+) -> None:
+    page_html = _render_page(
+        page_id, file_name, title, description, content_html, sidebar_groups,
+    )
+    (OUT_DIR / file_name).write_text(page_html)
+    n = sum(len(items) for _, items in sidebar_groups)
+    print(f"  wrote {file_name} ({len(page_html):,} bytes, {n} subsections in {len(sidebar_groups)} groups)")
 
 
 def main() -> None:
-    content = INDEX_PATH.read_text()
-
-    # Generate content sections from markdown
-    print("Generating content sections from markdown...")
-    sections_html = _generate_content_sections(content)
-    content = _replace_between_markers(content, "codegen:content", sections_html)
-
-    # Generate CLI reference from @doc_ref
-    print("Generating CLI reference from @doc_ref decorators...")
-    cli_html, cli_sidebar = _generate_cli_reference()
-    content = _replace_between_markers(content, "codegen:cli-reference", cli_html)
-
-    # Generate config reference from pydantic schema
-    print("Generating config reference from pydantic schema...")
-    config_html, config_sidebar = _generate_config_reference()
-    content = _replace_between_markers(content, "codegen:config-reference", config_html)
-    content = _replace_between_markers(
-        content, "codegen:config-sidebar", config_sidebar
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--page", help="Regenerate a single page by id (learn|adapters|reference).",
     )
+    args = parser.parse_args()
 
-    # Generate sidebar
-    print("Generating sidebar navigation...")
-    sidebar_html = _generate_sidebar()
-    content = _replace_between_markers(content, "codegen:sidebar", sidebar_html)
+    pages_to_build = {p[0] for p in PAGES}
+    if args.page:
+        if args.page not in pages_to_build:
+            raise SystemExit(f"Unknown page '{args.page}'. Choices: {sorted(pages_to_build)}")
+        pages_to_build = {args.page}
 
-    # CLI sidebar
-    content = _replace_between_markers(content, "codegen:cli-sidebar", cli_sidebar)
+    print("Loading kept sections from existing HTML...")
+    kept = _all_kept_sections()
+    print(f"  found {len(kept)} kept section(s): {sorted(kept)}")
 
-    INDEX_PATH.write_text(content)
+    cli_block: tuple[str, list[tuple[str, str]]] | None = None
+    config_block: tuple[str, list[tuple[str, str]]] | None = None
+    if "reference" in pages_to_build:
+        print("Generating CLI reference from @doc_ref decorators...")
+        cli_block = _generate_cli_reference()
+        print("Generating config reference from pydantic schema...")
+        config_block = _generate_config_reference()
 
-    from mycelium.doc_ref import get_registry
+    print("Rendering pages...")
+    for page_id, file_name, title, _label, description in PAGES:
+        if page_id not in pages_to_build:
+            continue
+        content, sidebar_groups = _build_page(page_id, kept, cli_block, config_block)
+        _render_and_write(
+            page_id, file_name, title, description, content, sidebar_groups,
+        )
 
-    entries = get_registry()
-    groups = defaultdict(list)
-    for e in entries:
-        groups[e.group].append(e)
-
-    print("\nUpdated docs/index.html:")
-    print(f"  {len(SECTION_CONFIG)} content sections from markdown")
-    print(f"  {len(entries)} CLI commands from @doc_ref:")
-    for group_key, heading, _ in GROUP_CONFIG:
-        if group_key in groups:
-            print(f"    {heading}: {len(groups[group_key])} commands")
+    print("\nDone.")
 
 
 if __name__ == "__main__":
