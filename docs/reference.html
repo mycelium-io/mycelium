@@ -888,16 +888,16 @@ docker exec &lt;container-name&gt; openclaw status
       <pre><code><span class="cmd">mycelium reindex</span> &lt;room-name&gt;</code></pre>
       <p>Then run <code>mycelium synthesize</code> again.</p>
       <hr class="divider">
-      <h3 id="troubleshooting-15-agents-join-sessions-but-never-respond-expired-matrix-tokens">15. Agents Join Sessions but Never Respond (Expired Matrix Tokens)</h3>
+      <h3 id="troubleshooting-15-agents-join-sessions-but-never-respond-expired-channel-tokens">15. Agents Join Sessions but Never Respond (Expired Channel Tokens)</h3>
       <p><strong>Symptom</strong>: An agent appears in <code>mycelium room ls</code> as a session participant, but never responds to coordination ticks. No error in <code>mycelium logs</code>.</p>
-      <p><strong>Cause</strong>: The agent&#x27;s Matrix access token has expired or been invalidated (e.g., after a Synapse restart). The OpenClaw gateway silently drops the Matrix sync connection without surfacing an error to Mycelium.</p>
+      <p><strong>Cause</strong>: The agent&#x27;s channel access token (e.g., Matrix) has expired or been invalidated (e.g., after a server restart). The OpenClaw gateway silently drops the channel sync connection without surfacing an error to Mycelium.</p>
       <p><strong>Diagnosis</strong>:</p>
-      <pre><code><span class="comment"># Check gateway logs for Matrix sync errors</span>
-journalctl <span class="flag">--user</span> <span class="flag">-u</span> openclaw-gateway <span class="flag">--since</span> <span class="str">&quot;10 min ago&quot;</span> | grep <span class="flag">-i</span> matrix
+      <pre><code><span class="comment"># Check gateway logs for channel sync errors</span>
+journalctl <span class="flag">--user</span> <span class="flag">-u</span> openclaw-gateway <span class="flag">--since</span> <span class="str">&quot;10 min ago&quot;</span> | grep <span class="flag">-i</span> <span class="str">&quot;sync\|401\|unauthorized&quot;</span>
 
 <span class="comment"># Or on the hub</span>
 openclaw logs | grep <span class="flag">-i</span> <span class="str">&quot;sync\|401\|unauthorized&quot;</span></code></pre>
-      <p><strong>Fix</strong>: Re-authenticate the agent with the Matrix homeserver and update the token in <code>~/.openclaw/openclaw.json</code> at <code>channels.matrix.accounts.&lt;agent&gt;.accessToken</code>. Then restart the gateway:</p>
+      <p><strong>Fix</strong>: Re-authenticate the agent with the channel server and update the token in <code>~/.openclaw/openclaw.json</code> under the corresponding <code>channels.&lt;channel&gt;.accounts.&lt;agent&gt;</code> section. Then restart the gateway:</p>
       <pre><code>openclaw gateway restart</code></pre>
       <p>In a hub-and-spoke setup, update tokens on every node that runs agents.</p>
       <hr class="divider">
