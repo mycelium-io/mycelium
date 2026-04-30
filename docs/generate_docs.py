@@ -612,7 +612,6 @@ def _topnav() -> str:
     <span class="brand-word">mycelium</span>
   </a>
   <span class="topnav-cell topnav-page-cell">
-    <span class="square-dot"></span>
     <span class="caps-mono">DOCS</span>
   </span>
   <div class="topnav-right">
