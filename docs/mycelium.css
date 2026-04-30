@@ -16,7 +16,8 @@
   --cyan: #67e8f9;
   --yellow: #67e8f9; /* alias for cyan — used in dataflow */
   --text: #eaeaea;           /* chalk-white primary */
-  --muted: #6e6c66;          /* dimmed warm gray */
+  --text2: #a8a6a0;          /* softer chalk (lead, secondary copy) */
+  --muted: #6e6c66;          /* dimmed warm gray (labels, captions) */
   --dim: rgba(234, 234, 234, 0.22);
   --sidebar-width: 240px;
 }
@@ -362,7 +363,7 @@ strong { color: var(--text); font-weight: 600; }
 
 .lead {
   font-size: 1.125rem;
-  color: var(--muted);
+  color: var(--text2);
   line-height: 1.6;
   margin-bottom: 32px;
 }
