@@ -1,41 +1,82 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg: #050a12;
-  --color-surface: #0c1524;
-  --color-border: #162035;
-  --color-accent: #38bdf8;
-  --color-muted: #4a6080;
+  --color-bg: #0c0d10;
+  --color-surface: #111216;
+  --color-paper: #14161b;
+  --color-border: rgba(234, 234, 234, 0.10);
+  --color-border2: rgba(234, 234, 234, 0.22);
+  --color-accent: #5dd4e0;
+  --color-text: #eaeaea;
+  --color-text2: #a8a6a0;
+  --color-muted: #898781;
+  --color-dim: #46443e;
 }
 
 :root {
-  --bg: #050a12;
-  --surface: #0c1524;
-  --card: #0c1524;
-  --border: #162035;
-  --accent: #38bdf8;
+  --bg: #0c0d10;
+  --surface: #111216;
+  --paper: #14161b;
+  --card: #14161b;
+  --border: rgba(234, 234, 234, 0.10);
+  --border2: rgba(234, 234, 234, 0.22);
+  --accent: #5dd4e0;
+  --accent2: #7dd3fc;
   --green: #34d399;
   --purple: #c084fc;
   --yellow: #fbbf24;
-  --text: #e2eaf6;
-  --muted: #4a6080;
+  --text: #eaeaea;
+  --text2: #a8a6a0;
+  --muted: #898781;
+  --dim: #46443e;
 }
 
 body {
   background: var(--bg);
   color: var(--text);
+  font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 ::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
-::-webkit-scrollbar-track {
-  background: transparent;
-}
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: #1e2d42;
-  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.10);
+  border-radius: 0;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: #2a3f5a;
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.18); }
+
+/* ── Onyx atoms (used by RM-000 + future screens) ── */
+
+.caps-mono {
+  font-family: 'SF Mono', 'JetBrains Mono', 'Fira Mono', Menlo, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
 }
+.caps-mono-sm {
+  font-family: 'SF Mono', 'JetBrains Mono', 'Fira Mono', Menlo, monospace;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.square-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: transparent;
+  border: 1.5px solid currentColor;
+  flex-shrink: 0;
+}
+.square-dot.filled { background: currentColor; }
+.square-dot.pulse { animation: myc-pulse 1.6s ease-in-out infinite; }
+@keyframes myc-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.tabular { font-variant-numeric: tabular-nums; }
