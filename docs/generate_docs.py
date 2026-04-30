@@ -26,13 +26,16 @@ from pathlib import Path
 
 # ── Page layout ──
 # 3 pages, each a long doc with a grouped sidebar.
-# (page_id, file_name, page_title, top_nav_label, meta_description)
-PAGES: list[tuple[str, str, str, str, str]] = [
+# (page_id, file_name, page_title, top_nav_label, sheet_no, plate_title, meta_description)
+PAGES: list[tuple[str, str, str, str, str, str, str]] = [
     ("learn", "index.html", "mycelium — Docs", "Learn",
+     "LRN-001", "LEARN · OVERVIEW · QUICKSTART · CONCEPTS · GUIDES",
      "Coordination layer for multi-agent systems. Semantic negotiation, persistent memory, collective intelligence."),
     ("adapters", "adapters.html", "Adapters — mycelium", "Adapters",
+     "ADP-001", "ADAPTERS · CLAUDE CODE · OPENCLAW · REST API",
      "Connect Claude Code, OpenClaw, or any HTTP client to the Mycelium coordination layer."),
     ("reference", "reference.html", "Reference — mycelium", "Reference",
+     "REF-001", "REFERENCE · ARCHITECTURE · CLI · CONFIG · HELP",
      "Architecture, CLI reference, configuration, and troubleshooting for Mycelium."),
 ]
 
@@ -604,12 +607,13 @@ def _head(title: str, description: str, file_name: str) -> str:
 def _topnav() -> str:
     return f"""<!-- TOP NAV -->
 <nav class="topnav">
-  <a href="https://mycelium-io.github.io" class="topnav-brand">
+  <a href="https://mycelium-io.github.io" class="topnav-cell topnav-brand">
     <img src="logo.png" alt="Mycelium">
-    mycelium
+    <span class="brand-word">mycelium</span>
   </a>
-  <span class="topnav-sep">/</span>
-  <a href="index.html" class="topnav-page">docs</a>
+  <span class="topnav-cell topnav-page-cell">
+    <span class="caps-mono">DOCS</span>
+  </span>
   <div class="topnav-right">
     <button class="copy-docs-btn" onclick="copyDocsCmd()"><i data-lucide="terminal" style="width:13px;height:13px;stroke:currentColor;vertical-align:-2px;margin-right:6px;"></i>copy docs cmd</button>
     <button class="copy-page-btn" onclick="copyPage()"><i data-lucide="copy" style="width:13px;height:13px;stroke:currentColor;vertical-align:-2px;margin-right:6px;"></i>copy this page</button>
@@ -621,10 +625,11 @@ def _topnav() -> str:
 
 def _sectionnav(active_page_id: str) -> str:
     links = []
-    for page_id, file_name, _, label, _ in PAGES:
+    for page_id, file_name, _, label, *_ in PAGES:
         cls = "active" if page_id == active_page_id else ""
         links.append(
-            f'    <a href="{file_name}" class="{cls}">{html.escape(label)}</a>'
+            f'    <a href="{file_name}" class="{cls}">'
+            f'<span class="square-dot"></span>{html.escape(label).upper()}</a>'
         )
     right_links = [
         f'    <a href="{SKILL_MD_URL}" target="_blank">SKILL.md ↗</a>',
@@ -670,11 +675,14 @@ def _layout_open(sidebar_html: str) -> str:
 """
 
 
-LAYOUT_CLOSE = """    <!-- FOOTER -->
-    <div style="font-size:12px; color: var(--muted); font-family: 'SF Mono', monospace; padding-top: 8px; display:flex; flex-wrap:wrap; gap: 4px 12px;">
-      <a href="https://github.com/mycelium-io/mycelium" style="color: var(--muted);">mycelium-io/mycelium</a>
-      <span>Apache 2.0 License</span>
-      <span>Shared Intent &middot; Shared Memory &middot; Shared Context</span>
+def _layout_close(sheet_no: str, plate_title: str) -> str:
+    return """    <!-- FOOTER -->
+    <div class="docs-footer">
+      <a href="https://github.com/mycelium-io/mycelium">mycelium-io/mycelium</a>
+      <span class="sep">·</span>
+      <span>Apache 2.0</span>
+      <span class="sep">·</span>
+      <span class="tagline">Shared Intent &middot; Shared Memory &middot; Shared Context</span>
     </div>
 
   </div>
@@ -696,6 +704,8 @@ def _render_page(
     description: str,
     content_html: str,
     sidebar_groups: list[tuple[str, list[tuple[str, str]]]],
+    sheet_no: str,
+    plate_title: str,
 ) -> str:
     sidebar_html = _sidebar(sidebar_groups)
     return (
@@ -705,7 +715,7 @@ def _render_page(
         + _layout_open(sidebar_html)
         + content_html
         + "\n"
-        + LAYOUT_CLOSE
+        + _layout_close(sheet_no, plate_title)
     )
 
 
@@ -796,9 +806,12 @@ def _render_and_write(
     description: str,
     content_html: str,
     sidebar_groups: list[tuple[str, list[tuple[str, str]]]],
+    sheet_no: str,
+    plate_title: str,
 ) -> None:
     page_html = _render_page(
         page_id, file_name, title, description, content_html, sidebar_groups,
+        sheet_no, plate_title,
     )
     (OUT_DIR / file_name).write_text(page_html)
     n = sum(len(items) for _, items in sidebar_groups)
@@ -831,12 +844,13 @@ def main() -> None:
         config_block = _generate_config_reference()
 
     print("Rendering pages...")
-    for page_id, file_name, title, _label, description in PAGES:
+    for page_id, file_name, title, _label, sheet_no, plate_title, description in PAGES:
         if page_id not in pages_to_build:
             continue
         content, sidebar_groups = _build_page(page_id, kept, cli_block, config_block)
         _render_and_write(
             page_id, file_name, title, description, content, sidebar_groups,
+            sheet_no, plate_title,
         )
 
     print("\nDone.")

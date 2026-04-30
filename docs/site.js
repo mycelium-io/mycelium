@@ -143,7 +143,7 @@
   var trail = new Float32Array(cols * rows);       // animated nutrient flow
   var colorIdx = new Uint8Array(cols * rows);
 
-  const BG = { r: 5, g: 9, b: 15 };
+  const BG = { r: 12, g: 13, b: 16 };
   const COLORS = [
     { r: 56, g: 189, b: 248 },   // cyan
     { r: 129, g: 140, b: 248 },   // indigo
