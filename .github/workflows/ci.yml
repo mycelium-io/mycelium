@@ -95,7 +95,7 @@ jobs:
         working-directory: fastapi-backend
         env:
           MYCELIUM_STUB_EMBEDDINGS: "1"
-          DATABASE_URL: sqlite+aiosqlite:///:memory:
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
         run: |
           uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 &
           for i in {1..30}; do
