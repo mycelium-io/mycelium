@@ -19,12 +19,14 @@
 <canvas id="mycelium-bg"></canvas>
 <!-- TOP NAV -->
 <nav class="topnav">
-  <a href="https://mycelium-io.github.io" class="topnav-brand">
+  <a href="https://mycelium-io.github.io" class="topnav-cell topnav-brand">
     <img src="logo.png" alt="Mycelium">
-    mycelium
+    <span class="brand-word">mycelium</span>
   </a>
-  <span class="topnav-sep">/</span>
-  <a href="index.html" class="topnav-page">docs</a>
+  <span class="topnav-cell topnav-page-cell">
+    <span class="square-dot"></span>
+    <span class="caps-mono">DOCS</span>
+  </span>
   <div class="topnav-right">
     <button class="copy-docs-btn" onclick="copyDocsCmd()"><i data-lucide="terminal" style="width:13px;height:13px;stroke:currentColor;vertical-align:-2px;margin-right:6px;"></i>copy docs cmd</button>
     <button class="copy-page-btn" onclick="copyPage()"><i data-lucide="copy" style="width:13px;height:13px;stroke:currentColor;vertical-align:-2px;margin-right:6px;"></i>copy this page</button>
@@ -33,9 +35,9 @@
 </nav>
 <nav class="sectionnav">
   <div class="sectionnav-inner">
-    <a href="index.html" class="">Learn</a>
-    <a href="adapters.html" class="">Adapters</a>
-    <a href="reference.html" class="active">Reference</a>
+    <a href="index.html" class=""><span class="square-dot"></span>LEARN</a>
+    <a href="adapters.html" class=""><span class="square-dot"></span>ADAPTERS</a>
+    <a href="reference.html" class="active"><span class="square-dot"></span>REFERENCE</a>
     <div class="sectionnav-right">
     <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/adapters/openclaw/mycelium/plugin/skills/mycelium/SKILL.md" target="_blank">SKILL.md ↗</a>
     </div>
@@ -1013,10 +1015,12 @@ rm <span class="flag">-rf</span> ~/.mycelium        # remove all config
       <p>Report issues at <strong>https://github.com/mycelium-io/mycelium/issues</strong></p>
     </section>
     <!-- FOOTER -->
-    <div style="font-size:12px; color: var(--muted); font-family: 'SF Mono', monospace; padding-top: 8px; display:flex; flex-wrap:wrap; gap: 4px 12px;">
-      <a href="https://github.com/mycelium-io/mycelium" style="color: var(--muted);">mycelium-io/mycelium</a>
-      <span>Apache 2.0 License</span>
-      <span>Shared Intent &middot; Shared Memory &middot; Shared Context</span>
+    <div class="docs-footer">
+      <a href="https://github.com/mycelium-io/mycelium">mycelium-io/mycelium</a>
+      <span class="sep">·</span>
+      <span>Apache 2.0</span>
+      <span class="sep">·</span>
+      <span class="tagline">Shared Intent &middot; Shared Memory &middot; Shared Context</span>
     </div>
 
   </div>
