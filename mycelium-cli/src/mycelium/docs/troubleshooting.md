@@ -250,29 +250,30 @@ Then run `mycelium synthesize` again.
 
 ---
 
-### 15. Agents Join Sessions but Never Respond (Expired Matrix Tokens)
+### 15. Agents Join Sessions but Never Respond (Expired Channel Tokens)
 
 **Symptom**: An agent appears in `mycelium room ls` as a session
 participant, but never responds to coordination ticks. No error in
 `mycelium logs`.
 
-**Cause**: The agent's Matrix access token has expired or been invalidated
-(e.g., after a Synapse restart). The OpenClaw gateway silently drops the
-Matrix sync connection without surfacing an error to Mycelium.
+**Cause**: The agent's channel access token (e.g., Matrix) has expired or
+been invalidated (e.g., after a server restart). The OpenClaw gateway
+silently drops the channel sync connection without surfacing an error to
+Mycelium.
 
 **Diagnosis**:
 
 ```bash
-# Check gateway logs for Matrix sync errors
-journalctl --user -u openclaw-gateway --since "10 min ago" | grep -i matrix
+# Check gateway logs for channel sync errors
+journalctl --user -u openclaw-gateway --since "10 min ago" | grep -i "sync\|401\|unauthorized"
 
 # Or on the hub
 openclaw logs | grep -i "sync\|401\|unauthorized"
 ```
 
-**Fix**: Re-authenticate the agent with the Matrix homeserver and update
-the token in `~/.openclaw/openclaw.json` at
-`channels.matrix.accounts.<agent>.accessToken`. Then restart the gateway:
+**Fix**: Re-authenticate the agent with the channel server and update
+the token in `~/.openclaw/openclaw.json` under the corresponding
+`channels.<channel>.accounts.<agent>` section. Then restart the gateway:
 
 ```bash
 openclaw gateway restart

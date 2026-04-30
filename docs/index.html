@@ -646,6 +646,10 @@ Latest Synthesis
     <section class="doc-section" id="hub-and-spoke">
       <h1>Hub &amp; Spoke Setup</h1>
       <p>How to run Mycelium across multiple machines so a small team shares memory, rooms, and coordination state from a single backend.</p>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body"><strong>Note:</strong> The examples below use <strong>Matrix</strong> as the channel server and <strong>OpenClaw</strong> as the agent adapter. The same pattern applies to other channels (Discord, Slack, etc.) and adapters — substitute the relevant names and config paths.</div>
+      </div>
       <h2 id="hub-and-spoke-when-to-use-this">When to use this</h2>
       <p>Use hub-and-spoke when multiple people (or multiple machines) need to participate in the same rooms, see the same memories, and coordinate agents together. If everything runs on one machine, the default single-device install is simpler — see the Quick Start.</p>
       <h2 id="hub-and-spoke-topology">Topology</h2>
@@ -655,11 +659,11 @@ Latest Synthesis
 │  <span class="cmd">mycelium install</span>                │
 │  ├─ FastAPI backend  :8000       │
 │  ├─ AgensGraph (PG)  :5432       │
-│  ├─ Matrix / Synapse :8008       │
-│  ├─ CFN mgmt plane   :9000      │
-│  └─ CFN runtime      :9002      │
+│  ├─ Channel server   :8008       │
+│  ├─ CFN mgmt plane   :9000       │
+│  └─ CFN runtime      :9002       │
 │                                  │
-│  Channel servers (Matrix, etc)   │
+│  Channel servers                 │
 │  All agent accounts defined here │
 └────────────┬─────────────────────┘
              │  HTTPS / SSE
@@ -677,7 +681,7 @@ Latest Synthesis
       <p>On the hub machine, run the standard install:</p>
       <pre><code><span class="cmd">mycelium install</span></code></pre>
       <p>This brings up the backend, database, and provisions a default workspace. Verify with:</p>
-      <pre><code><span class="cmd">mycelium doctor</span> <span class="flag">--mode</span> hub</code></pre>
+      <pre><code><span class="cmd">mycelium doctor</span></code></pre>
       <h3 id="hub-and-spoke-open-ports">Open ports</h3>
       <p>Spokes need to reach the hub on these ports:</p>
       <div class="table-wrap">
@@ -697,8 +701,8 @@ Latest Synthesis
             </tr>
             <tr>
               <td>8008</td>
-              <td>Matrix homeserver (Synapse)</td>
-              <td>If using Matrix channel</td>
+              <td>Channel server (Matrix/Synapse in this example)</td>
+              <td>If using a channel server</td>
             </tr>
             <tr>
               <td>9000</td>
@@ -714,27 +718,24 @@ Latest Synthesis
         </table>
       </div>
       <p>Use a VPN, Tailscale, or firewall rules to restrict access — these services have no built-in authentication.</p>
-      <h3 id="hub-and-spoke-configure-channel-servers">Configure channel servers</h3>
-      <p>If agents coordinate via Matrix, set up Synapse on the hub and create accounts for every agent across all spokes:</p>
-      <pre><code><span class="comment"># Register agent accounts (on the hub)</span>
-<span class="comment"># Each spoke&#x27;s agents need a Matrix account on the hub&#x27;s homeserver</span></code></pre>
-      <p>Add all agent accounts to <code>channels.matrix.accounts</code> in the hub&#x27;s <code>~/.openclaw/openclaw.json</code>. The hub&#x27;s gateway manages all Matrix connections — spokes do not run their own Matrix clients.</p>
+      <h3 id="hub-and-spoke-configure-the-channel-server">Configure the channel server</h3>
+      <p>Run the channel server on the hub and create accounts for every agent across all spokes. For Matrix, this means running Synapse on the hub and registering each agent:</p>
+      <pre><code><span class="comment"># Register agent accounts on the hub&#x27;s Synapse instance</span>
+register_new_matrix_user <span class="flag">-c</span> /etc/synapse/homeserver.yaml http://localhost:8008</code></pre>
+      <p>Add all agent accounts to <code>channels.matrix.accounts</code> in the hub&#x27;s <code>~/.openclaw/openclaw.json</code>. The hub&#x27;s gateway manages all channel connections — spokes do not run their own channel clients.</p>
       <h2 id="hub-and-spoke-step-2-set-up-each-spoke">Step 2: Set up each spoke</h2>
       <p>On each spoke machine, install only the CLI (no <code>mycelium install</code>):</p>
-      <pre><code>pip install mycelium-cli
-<span class="comment"># or</span>
-uv tool install mycelium-cli</code></pre>
-      <h3 id="hub-and-spoke-point-the-spoke-at-the-hub">Point the spoke at the hub</h3>
-      <pre><code><span class="cmd">mycelium init</span> <span class="flag">--api-url</span> http://&lt;hub-ip&gt;:8000</code></pre>
-      <p>This writes <code>~/.mycelium/config.toml</code> with the hub&#x27;s API URL. Verify the connection:</p>
-      <pre><code><span class="cmd">mycelium doctor</span> <span class="flag">--mode</span> spoke</code></pre>
-      <p>The doctor checks that the hub&#x27;s backend is reachable and skips Docker/database checks that only apply to hubs.</p>
-      <h3 id="hub-and-spoke-install-the-adapter">Install the adapter</h3>
-      <p>For OpenClaw agents:</p>
-      <pre><code><span class="cmd">mycelium adapter add</span> openclaw</code></pre>
-      <p>The adapter installs the Mycelium plugin into the local OpenClaw gateway. The plugin connects to the hub&#x27;s backend URL (from <code>config.toml</code>) for SSE subscriptions and API calls.</p>
+      <pre><code>curl <span class="flag">-fsSL</span> https://mycelium-io.github.io/mycelium/install.sh | bash</code></pre>
+      <h3 id="hub-and-spoke-initialize-and-install-the-adapter">Initialize and install the adapter</h3>
+      <p>Point the spoke at the hub and install the adapter:</p>
+      <pre><code><span class="cmd">mycelium init</span> <span class="flag">--api-url</span> http://&lt;hub-ip&gt;:8000
+<span class="cmd">mycelium adapter add</span> openclaw</code></pre>
+      <p><code>init</code> writes <code>~/.mycelium/config.toml</code> with the hub&#x27;s API URL. <code>adapter add</code> installs the Mycelium plugin into the local OpenClaw gateway and probes the hub to confirm it&#x27;s reachable. The plugin connects to the hub&#x27;s backend for SSE subscriptions and API calls.</p>
       <p>After installing, restart the gateway:</p>
       <pre><code>openclaw gateway restart</code></pre>
+      <p>Verify the setup:</p>
+      <pre><code><span class="cmd">mycelium doctor</span></code></pre>
+      <p>The doctor auto-detects whether this node is a hub or spoke from <code>server.api_url</code> and adjusts its checks accordingly (e.g., skipping Docker/database checks on spokes).</p>
       <h3 id="hub-and-spoke-spoke-config-summary">Spoke config summary</h3>
       <p>A spoke needs only two files:</p>
       <div class="table-wrap">
@@ -752,7 +753,7 @@ uv tool install mycelium-cli</code></pre>
             </tr>
             <tr>
               <td><code>~/.openclaw/openclaw.json</code></td>
-              <td>Agent definitions, Matrix credentials, plugin config</td>
+              <td>Agent definitions, channel credentials, Mycelium plugin config</td>
             </tr>
           </tbody>
         </table>
@@ -778,16 +779,16 @@ uv tool install mycelium-cli</code></pre>
         <li>The <code>MYCELIUM_AGENT_HANDLE</code> environment variable</li>
         <li>The <code>--handle</code> flag on CLI commands</li>
       </ol>
-      <p>When using OpenClaw with Matrix, agent handles should match their Matrix user IDs (the localpart before the colon, e.g., <code>@agent-alpha:local</code> → <code>agent-alpha</code>).</p>
-      <h2 id="hub-and-spoke-matrix-token-management">Matrix token management</h2>
-      <p>Matrix access tokens expire or become invalid after homeserver restarts. When this happens, agents silently stop receiving messages.</p>
+      <p>Agent handles should match their channel user IDs. For Matrix, use the localpart before the colon: <code>@agent-alpha:local</code> → <code>agent-alpha</code>.</p>
+      <h2 id="hub-and-spoke-token-management">Token management</h2>
+      <p>Channel access tokens can expire or become invalid after server restarts. When this happens, agents silently stop receiving messages.</p>
       <p>Signs of expired tokens:</p>
       <ul>
         <li>Agents join sessions but never respond to coordination ticks</li>
-        <li>Gateway logs show Matrix sync errors</li>
-        <li><code>mycelium doctor</code> reports Matrix connection failures</li>
+        <li>Gateway logs show sync errors or 401/unauthorized responses</li>
+        <li><code>mycelium doctor</code> reports channel connection failures</li>
       </ul>
-      <p>To refresh tokens, log in again via the Synapse admin API or re-register the accounts, then update <code>channels.matrix.accounts[agent].accessToken</code> in each node&#x27;s <code>openclaw.json</code> and restart the gateway.</p>
+      <p>To refresh tokens, re-authenticate with the channel server (for Matrix, log in again via the Synapse admin API), update the token in <code>channels.&lt;channel&gt;.accounts[agent]</code> in each node&#x27;s <code>openclaw.json</code>, and restart the gateway.</p>
       <h2 id="hub-and-spoke-troubleshooting">Troubleshooting</h2>
       <h3 id="hub-and-spoke-spoke-cant-reach-hub">Spoke can&#x27;t reach hub</h3>
       <pre><code>curl http://&lt;hub-ip&gt;:8000/health</code></pre>
@@ -797,11 +798,10 @@ uv tool install mycelium-cli</code></pre>
       <ol class="steps">
         <li>Check the gateway logs: <code>journalctl --user -u openclaw-gateway --since &quot;5 min ago&quot;</code></li>
         <li>Look for <code>session SSE connected</code> — if absent, the plugin isn&#x27;t monitoring the session</li>
-        <li>Verify Matrix tokens are valid (see above)</li>
+        <li>Verify channel tokens are valid (see above)</li>
       </ol>
       <h3 id="hub-and-spoke-doctor-reports-spoke-mode-unexpectedly">Doctor reports &quot;spoke mode&quot; unexpectedly</h3>
-      <p><code>mycelium doctor</code> auto-detects mode from <code>server.api_url</code>. If it points to a non-localhost address, doctor assumes spoke mode. Override with:</p>
-      <pre><code><span class="cmd">mycelium doctor</span> <span class="flag">--mode</span> hub</code></pre>
+      <p><code>mycelium doctor</code> auto-detects mode from <code>server.api_url</code>. If it points to a non-localhost address, doctor assumes spoke mode. If you&#x27;re running the backend locally on a non-default address, set <code>server.api_url</code> to <code>http://localhost:8000</code> in <code>~/.mycelium/config.toml</code>.</p>
     </section>
     <!-- FOOTER -->
     <div class="docs-footer">
