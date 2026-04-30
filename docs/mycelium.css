@@ -81,6 +81,8 @@ body {
 .topnav-page-cell {
   gap: 9px;
   color: var(--muted);
+  border-right: none;
+  padding-left: 14px;
 }
 .caps-mono {
   font-family: 'SF Mono', 'JetBrains Mono', 'Fira Mono', monospace;
