@@ -19,7 +19,9 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 
 import { CHANNEL_ID, type ChannelConfig } from "../config.js";
 import { dispatchToAgent } from "./dispatch.js";
+import { executeNotifyHome } from "./notify-home.js";
 import { _ownMessageIds } from "./post-to-room.js";
+import { stashReturnAddress } from "./return-address.js";
 import { routeMessage, type RouteAction } from "./route.js";
 import { startRoomSSE } from "./room-sse.js";
 import { clearSubscribedSessions, startSessionSSE } from "./session-sse.js";
@@ -158,6 +160,24 @@ function executeAction(
       if (_abort) {
         startSessionSSE(runtime, cfg, action.roomName, _abort, handleMessage, log);
       }
+      return;
+    }
+    case "stash-return-address": {
+      stashReturnAddress(action.sessionRoom, action.agentId, log);
+      return;
+    }
+    case "notify-home": {
+      log.info(
+        `[${CHANNEL_ID}] 📬 notify-home for [${action.agentIds.join(", ")}] in ${action.sessionRoom}`,
+      );
+      void executeNotifyHome(
+        runtime,
+        cfg,
+        action.sessionRoom,
+        action.agentIds,
+        action.consensusSummary,
+        log,
+      );
       return;
     }
     case "ignore": {
