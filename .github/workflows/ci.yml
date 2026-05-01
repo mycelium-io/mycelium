@@ -75,8 +75,8 @@ jobs:
           MYCELIUM_STUB_EMBEDDINGS: "1"
         run: uv run pytest tests/test_integration.py -x -q
 
-  client-staleness-mycelium:
-    name: Mycelium client staleness
+  openapi-staleness:
+    name: OpenAPI snapshot staleness
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -103,13 +103,11 @@ jobs:
             sleep 1
           done
 
-      - name: Regenerate client + diff
-        env:
-          BACKEND_URL: http://127.0.0.1:8000
+      - name: Diff live OpenAPI vs committed snapshot
         run: |
-          ./scripts/gen-mycelium-client.sh
-          if ! git diff --exit-code mycelium-client mycelium-cli/src/mycelium_backend_client; then
-            echo "::error::Committed mycelium client is stale vs. live OpenAPI. Run scripts/gen-mycelium-client.sh and commit." >&2
+          curl -sf http://127.0.0.1:8000/openapi.json | python3 -m json.tool > /tmp/openapi.live.json
+          if ! diff -u openapi.json /tmp/openapi.live.json; then
+            echo "::error::Committed openapi.json is stale vs. live backend. Run scripts/snapshot-openapi.sh and commit, then regen clients with scripts/gen-mycelium-client.sh." >&2
             exit 1
           fi
 
