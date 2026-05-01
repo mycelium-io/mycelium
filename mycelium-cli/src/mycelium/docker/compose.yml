@@ -92,7 +92,7 @@ services:
   # ── CFN Stack (profile: cfn) ──────────────────────────────────────────────────
 
   ioc-cfn-mgmt-plane-svc:
-    image: ghcr.io/outshift-open/ioc-cfn-mgmt-plane-svc:0.1.0
+    image: ghcr.io/outshift-open/ioc-cfn-mgmt-plane-svc:0.1.1
     container_name: ioc-cfn-mgmt-plane-svc
     restart: unless-stopped
     profiles: [cfn]
