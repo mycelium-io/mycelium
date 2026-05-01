@@ -208,20 +208,27 @@
       <p>
         OpenClaw is an autonomous, channel-resident agent runtime — a long-running
         gateway process that listens for inbound messages and dispatches them to
-        agents in-process. That's the paradigm the Mycelium channel plugin was
-        built for, and why the OpenClaw adapter is the only one that ships the
-        <code>mycelium-channel</code> plugin. (Claude Code and other
-        interactive-session agents use the <a href="#adapter-claude-code">Claude
-        Code adapter</a> instead, which gives them memory and session access but
-        no channel binding — they're not daemons listening for room traffic.)
+        agents in-process. That's the paradigm the Mycelium plugin's channel
+        layer was built for, and why the OpenClaw adapter is the only one that
+        ships channel-side wake-up — agents in your gateway can be addressed
+        with <code>@handle</code> mentions and woken to respond. (Claude Code
+        and other interactive-session agents use the
+        <a href="#adapter-claude-code">Claude Code adapter</a> instead, which
+        gives them memory and session access but no channel binding — they're
+        not daemons listening for room traffic.)
       </p>
       <p>
-        The OpenClaw adapter installs two plugins, two hooks, and a skill into your
-        OpenClaw environment. The <code>mycelium</code> plugin handles session lifecycle
-        and forwards coordination state. The <code>mycelium-channel</code> plugin turns
-        a Mycelium room into an addressed message bus for the agents in your gateway —
-        so agents can DM each other without Discord, Slack, or any other third-party
-        chat platform.
+        The OpenClaw adapter installs one plugin, two hooks, and a skill into your
+        OpenClaw environment. The <code>mycelium</code> plugin does three things:
+        session lifecycle (per-turn context injection), channel messaging (turns a
+        Mycelium room into an addressed message bus for agents in your gateway, so
+        they can DM each other without Discord, Slack, or any other third-party
+        chat platform), and cross-channel return-trip delivery for structured
+        negotiations — when consensus is reached in a Mycelium negotiation,
+        the plugin posts a one-shot summary back to whichever channel session
+        each agent was active on when they joined (Matrix DM, Discord DM, etc.),
+        so the user sees the result in their own chat instead of having to come
+        find it.
       </p>
 
       <h2 id="oc-install">Install</h2>
@@ -234,8 +241,7 @@
             <tr><th>Asset</th><th>Type</th><th>Purpose</th></tr>
           </thead>
           <tbody>
-            <tr><td><code>mycelium</code></td><td>Plugin</td><td>Session lifecycle, coordination state, SSE tick subscription for structured negotiation</td></tr>
-            <tr><td><code>mycelium-channel</code></td><td>Plugin</td><td>Real-time addressed messaging — routes room messages to agent runtimes in-process via <code>runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher</code>. Enforces <code>@handle</code> addressing by default.</td></tr>
+            <tr><td><code>mycelium</code></td><td>Plugin</td><td>Session lifecycle, channel messaging (routes addressed room messages to agent runtimes in-process via <code>runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher</code>; enforces <code>@handle</code> addressing by default), SSE tick subscription for structured negotiation, and auto return-trip delivery of consensus summaries to each agent's home channel.</td></tr>
             <tr><td><code>mycelium-bootstrap</code></td><td>Hook</td><td>Injects MYCELIUM_API_URL, MYCELIUM_ROOM, and coordination instructions at agent bootstrap</td></tr>
             <tr><td><code>mycelium-knowledge-extract</code></td><td>Hook</td><td>On each <code>message:sent</code>, forwards finalized turns to mycelium-backend, which relays them to CFN's <code>shared-memories</code> endpoint for concept + relationship extraction. User-configurable gates (<code>knowledge_ingest.enabled</code> / <code>max_input_tokens</code> / <code>dedupe_ttl_seconds</code>) bound cost. Observability via <code>mycelium cfn log</code> / <code>cfn stats</code> / <code>cfn ls</code>.</td></tr>
             <tr><td><code>mycelium</code> SKILL.md</td><td>Skill</td><td>Coordination skill available to all OpenClaw agents</td></tr>
@@ -244,7 +250,7 @@
       </div>
 
       <h3 id="oc-channel-config">Channel config (<code>openclaw.json</code>)</h3>
-      <p>The <code>mycelium-channel</code> plugin reads its config from <code>channels.mycelium-room</code> in <code>~/.openclaw/openclaw.json</code>:</p>
+      <p>The Mycelium plugin reads its channel config from <code>channels.mycelium-room</code> in <code>~/.openclaw/openclaw.json</code> (<code>mycelium-room</code> is the OpenClaw channel id this plugin registers under):</p>
       <pre><code>{
   "channels": {
     "mycelium-room": {
@@ -267,6 +273,35 @@
         Coordination ticks from session sub-rooms are routed by <code>participant_id</code>
         and are unaffected by the <code>requireMention</code> setting — structured negotiation
         works identically whether broadcast chat is on or off.
+      </p>
+
+      <h3 id="oc-return-trip">Cross-channel return trip</h3>
+      <p>
+        When a user kicks off a Mycelium negotiation from their home chat (Matrix DM,
+        Discord DM, etc.), the agent is woken in a parallel mycelium-room session to
+        run the negotiation. When that negotiation concludes — agreement <em>or</em>
+        timeout — the plugin posts a one-shot summary back to whichever channel
+        session each agent was on when they joined.
+      </p>
+      <p>
+        Mechanically: when the first <code>coordination_tick</code> for an agent
+        lands in a session sub-room, the plugin freezes the agent's most-recent
+        non-mycelium-room session (channel + conversation id + account id) from
+        <code>~/.openclaw/agents/&lt;id&gt;/sessions/sessions.json</code>. On
+        <code>coordination_consensus</code>, it dispatches the summary via OpenClaw's
+        outbound runtime to that same session. Agents that didn't participate, or
+        whose home session wasn't recorded, are skipped silently — the negotiation
+        result still lives in the Mycelium room as a fallback.
+      </p>
+      <p>
+        Limitations to be aware of: in-memory only (gateway restart between
+        negotiation start and consensus loses the proactive notification), and
+        the "most recent home channel at first-tick time" heuristic can drift if
+        the agent receives inbound from a <em>different</em> home channel between
+        <code>session join</code> and the first tick. In practice the window is a
+        few seconds; for deterministic routing in adversarial conditions, capture
+        <code>OPENCLAW_SESSION_KEY</code> at CLI invocation time and forward it
+        through the join request.
       </p>
 
       <h2 id="oc-after-install">After install</h2>
