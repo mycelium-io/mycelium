@@ -34,7 +34,7 @@ fi
 
 echo "→ Generating client at $OUT"
 rm -rf "$OUT"
-uv run --with openapi-python-client openapi-python-client generate \
+uv run --with 'openapi-python-client==0.28.3' openapi-python-client generate \
   --path "$SPEC" --output-path "$OUT" >/dev/null
 
 echo "→ Copying to mycelium-client/"
