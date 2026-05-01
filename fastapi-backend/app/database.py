@@ -20,13 +20,11 @@ if parsed_db_url.scheme.startswith("postgresql") and "+" not in parsed_db_url.sc
 else:
     async_db_connection_url = settings.DATABASE_URL
 
-engine = create_async_engine(
-    async_db_connection_url,
-    pool_size=5,
-    max_overflow=10,
-    pool_timeout=30,
-    pool_recycle=1800,
-)
+_engine_kwargs: dict[str, object] = {"pool_recycle": 1800}
+if not async_db_connection_url.startswith("sqlite"):
+    _engine_kwargs.update(pool_size=5, max_overflow=10, pool_timeout=30)
+
+engine = create_async_engine(async_db_connection_url, **_engine_kwargs)
 
 
 async_session_maker = async_sessionmaker(engine, expire_on_commit=settings.EXPIRE_ON_COMMIT)
