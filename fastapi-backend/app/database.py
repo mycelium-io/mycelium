@@ -11,11 +11,14 @@ from .models import Base
 
 parsed_db_url = urlparse(settings.DATABASE_URL)
 
-async_db_connection_url = (
-    f"postgresql+asyncpg://{parsed_db_url.username}:{parsed_db_url.password}@"
-    f"{parsed_db_url.hostname}{':' + str(parsed_db_url.port) if parsed_db_url.port else ''}"
-    f"{parsed_db_url.path}"
-)
+if parsed_db_url.scheme.startswith("postgresql") and "+" not in parsed_db_url.scheme:
+    async_db_connection_url = (
+        f"postgresql+asyncpg://{parsed_db_url.username}:{parsed_db_url.password}@"
+        f"{parsed_db_url.hostname}{':' + str(parsed_db_url.port) if parsed_db_url.port else ''}"
+        f"{parsed_db_url.path}"
+    )
+else:
+    async_db_connection_url = settings.DATABASE_URL
 
 engine = create_async_engine(
     async_db_connection_url,
