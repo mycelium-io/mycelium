@@ -79,7 +79,11 @@ export async function executeNotifyHome(
       continue;
     }
 
-    const text = `[Mycelium return trip — ${cfg.room}]\n\n${summary}`;
+    // Label with the actual room the negotiation happened in, derived from
+    // the session sub-room name (`<parent>:session:<id>` → `<parent>`).
+    // Falls back to cfg.room only if the session-room name is malformed.
+    const parentRoom = sessionRoom.split(":session:")[0] || cfg.room;
+    const text = `[Mycelium return trip — ${parentRoom}]\n\n${summary}`;
     try {
       await adapter.sendText({
         cfg: openclawConfig,

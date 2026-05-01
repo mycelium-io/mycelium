@@ -21,7 +21,7 @@ import { CHANNEL_ID, type ChannelConfig } from "../config.js";
 import { dispatchToAgent } from "./dispatch.js";
 import { executeNotifyHome } from "./notify-home.js";
 import { _ownMessageIds } from "./post-to-room.js";
-import { stashReturnAddress } from "./return-address.js";
+import { lookupReturnAddress, stashReturnAddress } from "./return-address.js";
 import { routeMessage, type RouteAction } from "./route.js";
 import { startRoomSSE } from "./room-sse.js";
 import { clearSubscribedSessions, startSessionSSE } from "./session-sse.js";
@@ -73,21 +73,33 @@ export function installChannel(
 
     startRoomSSE(runtime, cfg, _abort, handleMessage, log);
 
-    // Poll for session sub-rooms and subscribe to their SSE streams.
-    // Coordination ticks live in session sub-rooms, not the parent room.
+    // Poll for active session sub-rooms (anywhere in the backend) and
+    // subscribe to each one's SSE stream. Coordination ticks live in session
+    // sub-rooms, not parent rooms.
+    //
+    // We deliberately do NOT filter by `cfg.room` here — that scoping was the
+    // root cause of "agents go silent" when a negotiation was kicked off in a
+    // room name different from the channel's configured `room` (per-test
+    // ad-hoc rooms, teammate's room, dynamic topic rooms). All gating on
+    // "is this tick relevant to one of our agents?" already happens in
+    // routeTick (`cfg.agents.includes(participant_id)`) and in notify-home
+    // (per-session-sub-room stash). Subscribing broadly and filtering narrowly
+    // is safer than the reverse: irrelevant ticks become cheap ignored events;
+    // missed ticks become silent failures.
+    //
+    // startSessionSSE's subscribed-set is idempotent, so re-evaluating each
+    // poll tick is a no-op for already-subscribed rooms.
     const pollInterval = setInterval(async () => {
       try {
         const res = await fetch(`${cfg.backendUrl}/rooms`);
         if (!res.ok) return;
         const rooms: any[] = await res.json();
         for (const room of rooms) {
-          if (
-            room.name?.startsWith(cfg.room + ":session:") &&
-            (room.coordination_state === "waiting" ||
-              room.coordination_state === "negotiating")
-          ) {
-            startSessionSSE(runtime, cfg, room.name, _abort!, handleMessage, log);
-          }
+          const name: string | undefined = room.name;
+          if (!name || !name.includes(":session:")) continue;
+          const state = room.coordination_state;
+          if (state !== "waiting" && state !== "negotiating") continue;
+          startSessionSSE(runtime, cfg, name, _abort!, handleMessage, log);
         }
       } catch {
         /* polling failure is non-fatal */
@@ -134,6 +146,25 @@ function executeAction(
 ): void {
   switch (action.kind) {
     case "dispatch": {
+      // Consensus dispatch needs participant gating: now that we subscribe
+      // to every active session sub-room (not just sub-rooms of cfg.room),
+      // a coordination_consensus from a session our agents weren't part of
+      // would otherwise wake their mycelium-room sessions with someone
+      // else's outcome. The stash is our authoritative "did this agent
+      // participate in this session" signal — populated on first tick.
+      // Tick dispatch is already gated upstream by `cfg.agents.includes(participant_id)`
+      // in routeTick; only consensus needs this extra check.
+      if (
+        action.sender === "CognitiveEngine" &&
+        msg.message_type === "coordination_consensus" &&
+        msg.room_name &&
+        !lookupReturnAddress(msg.room_name, action.agentId)
+      ) {
+        log.info(
+          `[${CHANNEL_ID}] consensus skipped for ${action.agentId} — not a participant in ${msg.room_name}`,
+        );
+        return;
+      }
       if (action.sender === "CognitiveEngine") {
         // Tick or consensus — log with a distinguishing emoji
         log.info(

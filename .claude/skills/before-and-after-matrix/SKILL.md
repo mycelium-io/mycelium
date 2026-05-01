@@ -15,7 +15,7 @@ Tests the **cross-channel coordination** path end-to-end:
 
 The **ship gate** is step 4: did the user actually see the result land in their Matrix DM, without the agent having to remember to call `sessions_send`?
 
-This skill is opinionated about the **happy path** (matrix bound to the same room the prompt names). Use the "Failure-mode variant" near the end if you want to reproduce the silent-failure bug from issue #220 (channel binding scope).
+The negotiation can happen in any room name — the channel plugin watches every active session sub-room and routes ticks by `participant_id`, not by room. The skill exercises that: agents negotiate in a fresh per-test room (`$EXP_ROOM`), and the return-trip still lands.
 
 **You are the test harness.** You set up Synapse users, wire OpenClaw, seed scenarios, observe transcripts, evaluate. The agents do the negotiating.
 
@@ -247,9 +247,9 @@ openclaw agents bind --agent "$EXP_AGENT_B" --bind "matrix:$EXP_AGENT_B"
 openclaw agents bindings   # confirm both show up
 ```
 
-### 1g. Create the Mycelium room + bind the channel to it
+### 1g. Create the Mycelium room + register the channel
 
-The single most important alignment: **`channels.mycelium-room.room` must equal the room you're going to negotiate in.** If they differ, the channel plugin won't subscribe to the session sub-room, ticks fall on the floor, and agents go silent. (Until issue #220 fixes the per-agent subscription, this is the only safe shape.)
+The plugin watches every active session sub-room and routes ticks by `participant_id`, so `channels.mycelium-room.room` does not have to match the room your prompt names. It only sets the default for outbound `mycelium room send` calls and unaddressed broadcasts. Pick anything sensible.
 
 ```bash
 mycelium room create "$EXP_ROOM"
@@ -266,7 +266,7 @@ cfg.setdefault('channels', {})['mycelium-room'] = {
     'requireMention': True,
 }
 json.dump(cfg, open(p, 'w'), indent=2)
-print('mycelium-room channel bound to $EXP_ROOM')
+print('mycelium-room channel registered with default room $EXP_ROOM')
 PYEOF
 ```
 
@@ -581,22 +581,23 @@ openclaw gateway restart
 # accept the residue — the next ${EXP_ID}- prefix avoids collisions.
 ```
 
-## Failure-mode variant: reproduce issue #220
+## Variant: negotiate in an unbound room
 
-If you want to reproduce the original "agents go silent" bug (channel binding scope, issue #220), modify Phase 1g so `channels.mycelium-room.room` does NOT match `$EXP_ROOM`:
+Confirms the channel plugin's room-agnostic routing: agents negotiate in a room name that the channel was never told about. Should still work end-to-end.
+
+Modify Phase 1g so `channels.mycelium-room.room` is set to something *other* than `$EXP_ROOM`:
 
 ```bash
-# Run all of Phase 1, but in 1g, set the channel to a DIFFERENT room name
 python3 - <<PYEOF
 import json, os
 p = os.path.expanduser('~/.openclaw/openclaw.json')
 cfg = json.load(open(p))
-cfg['channels']['mycelium-room']['room'] = 'some-other-room'   # NOT $EXP_ROOM
+cfg['channels']['mycelium-room']['room'] = 'totally-unrelated'   # NOT $EXP_ROOM
 json.dump(cfg, open(p, 'w'), indent=2)
 PYEOF
 ```
 
-Run Phase 3 normally. Expected outcome: agents `session join` succeeds, but no `🎯` ticks ever fire — the channel plugin isn't subscribed to `$EXP_ROOM:session:*`. Phase 4 fails as expected. This confirms #220 is still open; if it surprises you by passing, #220 has been fixed.
+Run Phase 3 normally. Expected outcome: ticks dispatch as usual (`🎯 → ...`), consensus fires (`🤝 → ...`), notify-home delivers (`📬 ...`), and the return-trip Matrix message lands. Phase 4 passes. If the variant fails, the room-agnostic routing has regressed — the plugin is filtering session sub-rooms by parent room name again.
 
 ## Input
 
@@ -613,7 +614,7 @@ For batch runs, provide a JSON file with the same `experiments[]` schema as the 
 - `--phase=<0|0a|1|2|3|4|5|6>` — Run a single phase (e.g. `--phase=4` to re-verify ship gate against an already-running negotiation)
 - `--scenario-only` — Skip Synapse user creation and OpenClaw config; assume Phase 1 has been done and reuse `$EXP_ID` from a prior run
 - `--cleanup-only` — Skip everything; just run Phase 6
-- `--failure-mode` — Run the variant from above (intentionally misalign the channel binding to repro #220)
+- `--unbound-room` — Run the variant from above (negotiate in a room the channel was never told about; verifies room-agnostic routing)
 - No flags — full run: 0 → 1 → 2 → 3 → 4 → 5 → 6
 
 ## Troubleshooting
