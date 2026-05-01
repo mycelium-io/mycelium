@@ -45,12 +45,11 @@ echo "→ Copying to mycelium-cli/src/mycelium_backend_client/"
 rm -rf "$ROOT/mycelium-cli/src/mycelium_backend_client"
 cp -R "$OUT/mycelium_backend_client" "$ROOT/mycelium-cli/src/"
 
-# Format with the project's ruff config so committed output matches what
-# `ruff format --check` will accept in CI.
+# Format with a pinned ruff so committed output is byte-identical between
+# local devs and CI regardless of project lockfile drift.
 echo "→ Running ruff format on generated files"
-(cd "$ROOT/mycelium-cli" && uv run ruff format src/mycelium_backend_client >/dev/null) || true
-# mycelium-client/ is a poetry standalone package; format from the cli env
-# (its ruff config is what we ship under).
-(cd "$ROOT/mycelium-cli" && uv run ruff format ../mycelium-client/mycelium_backend_client >/dev/null) || true
+RUFF_PIN='ruff==0.15.10'
+(cd "$ROOT/mycelium-cli" && uv run --with "$RUFF_PIN" ruff format src/mycelium_backend_client >/dev/null)
+(cd "$ROOT/mycelium-cli" && uv run --with "$RUFF_PIN" ruff format ../mycelium-client/mycelium_backend_client >/dev/null)
 
 echo "✓ Done. Run \`git diff\` to see drift."
