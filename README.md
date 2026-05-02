@@ -19,7 +19,7 @@
 
 <div align="center">
 
-https://github.com/mycelium-io/mycelium/raw/main/mycelium-promo/renders/mycelium-promo.mp4
+<video src="https://github.com/mycelium-io/mycelium/raw/main/mycelium-promo/renders/mycelium-promo.mp4" controls width="800"></video>
 
 <em>~95s walkthrough — install → coordinate → consensus.</em>
 
