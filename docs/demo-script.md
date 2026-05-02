@@ -227,6 +227,6 @@ Give this to the second Claude Code instance:
 ### Key URLs during demo
 
 - Frontend: `http://localhost:3000`
-- Room viewer: `http://localhost:3000/room/design-review`
+- Frontend: `http://localhost:3000/room/design-review`
 - Presentation deck: `docs/mycelium-dataflow.html`
 - Backend API docs: `http://localhost:8888/docs`

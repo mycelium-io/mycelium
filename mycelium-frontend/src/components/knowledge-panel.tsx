@@ -62,9 +62,9 @@ export function KnowledgePanel({ masId }: Props) {
 
   if (!masId) {
     return (
-      <div className="px-4 py-10 text-center text-muted/60 text-sm">
+      <div className="px-4 py-10 text-center text-muted text-sm">
         Room is not linked to a MAS.
-        <div className="text-xs text-muted/40 mt-2 font-mono">
+        <div className="text-xs text-muted mt-2 font-mono">
           Set <code className="text-accent/70">mas_id</code> on the room to view CFN knowledge.
         </div>
       </div>
@@ -72,14 +72,14 @@ export function KnowledgePanel({ masId }: Props) {
   }
 
   if (state === "loading") {
-    return <div className="px-4 py-10 text-center text-muted/60 text-sm">Loading CFN graph…</div>;
+    return <div className="px-4 py-10 text-center text-muted text-sm">Loading CFN graph…</div>;
   }
 
   if (state === "error") {
     return (
-      <div className="px-4 py-10 text-center text-muted/60 text-sm">
+      <div className="px-4 py-10 text-center text-muted text-sm">
         <div className="text-red-400/80">CFN graph unavailable</div>
-        {error && <div className="text-xs text-muted/40 mt-2 font-mono">{error}</div>}
+        {error && <div className="text-xs text-muted mt-2 font-mono">{error}</div>}
         <button
           onClick={load}
           className="mt-4 text-xs text-accent/80 hover:text-accent underline-offset-2 hover:underline"
@@ -92,9 +92,9 @@ export function KnowledgePanel({ masId }: Props) {
 
   if (state === "empty") {
     return (
-      <div className="px-4 py-10 text-center text-muted/60 text-sm">
+      <div className="px-4 py-10 text-center text-muted text-sm">
         No concepts ingested yet.
-        <div className="text-xs text-muted/40 mt-2 font-mono">
+        <div className="text-xs text-muted mt-2 font-mono">
           Graph exists but is empty for <span className="text-accent/70">{masId}</span>
         </div>
       </div>
@@ -111,12 +111,12 @@ export function KnowledgePanel({ masId }: Props) {
         >
           {masId}
         </code>
-        <span className="text-[10px] text-muted/50 font-mono whitespace-nowrap shrink-0">
+        <span className="text-micro text-muted font-mono whitespace-nowrap shrink-0">
           {concepts.length} concepts
         </span>
         <button
           onClick={load}
-          className="text-[10px] text-muted hover:text-white font-bold uppercase tracking-wider whitespace-nowrap shrink-0"
+          className="text-micro text-muted hover:text-white font-bold uppercase tracking-wider whitespace-nowrap shrink-0"
         >
           refresh
         </button>
@@ -146,12 +146,12 @@ export function KnowledgePanel({ masId }: Props) {
                   {c.name || c.id || c.vid || "(unnamed)"}
                 </span>
                 {c.label && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted/10 text-muted font-bold shrink-0">
+                  <span className="text-micro px-1.5 py-0.5 rounded bg-muted/10 text-muted font-bold shrink-0">
                     {c.label}
                   </span>
                 )}
                 <span
-                  className="text-[10px] text-muted/30 font-mono truncate max-w-[120px] shrink-0"
+                  className="text-micro text-muted font-mono truncate max-w-[120px] shrink-0"
                   title={c.id}
                 >
                   {c.id}
@@ -160,18 +160,18 @@ export function KnowledgePanel({ masId }: Props) {
               {isExpanded && (
                 <div className="ml-5 mt-2 space-y-1">
                   {neigh === undefined ? (
-                    <div className="text-[11px] text-muted/60">Loading neighbors…</div>
+                    <div className="text-label text-muted">Loading neighbors…</div>
                   ) : neighList.length === 0 ? (
-                    <div className="text-[11px] text-muted/60">No neighbors</div>
+                    <div className="text-label text-muted">No neighbors</div>
                   ) : (
                     neighList.map((n, ni) => {
                       const name = (n.name as string) || (n.id as string) || "(unnamed)";
                       const rel = (n.relation as string) || (n.edge as string) || "";
                       return (
-                        <div key={ni} className="flex items-center gap-2 text-[11px]">
+                        <div key={ni} className="flex items-center gap-2 text-label">
                           <span className="w-1 h-1 rounded-full bg-accent/50 shrink-0" />
                           <span className="font-mono text-white/70">{name}</span>
-                          {rel && <span className="text-muted/60 italic">{rel}</span>}
+                          {rel && <span className="text-muted italic">{rel}</span>}
                         </div>
                       );
                     })

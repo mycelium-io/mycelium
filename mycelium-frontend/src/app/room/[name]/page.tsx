@@ -3,60 +3,99 @@
 
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState, useCallback } from "react";
-import Image from "next/image";
+import { useParams } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import { fetchRoom } from "@/lib/api";
 import { EventStream } from "@/components/event-stream";
 import { MemoryPanel } from "@/components/memory-panel";
+import { SessionsRail } from "@/components/sessions-rail";
+import { MainTopBar } from "@/components/main-top-bar";
+import { SubNav, type Crumb } from "@/components/sub-nav";
+import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from "react-resizable-panels";
+
+interface Room {
+  name: string;
+  coordination_state: string;
+  mas_id?: string | null;
+  is_persistent?: boolean;
+  parent_namespace?: string | null;
+}
 
 export default function RoomPage() {
   const params = useParams();
-  const router = useRouter();
   const roomName = params.name as string;
-  const [room, setRoom] = useState<any>(null);
+  const [room, setRoom] = useState<Room | null>(null);
   const [memoryRefresh, setMemoryRefresh] = useState(0);
 
   useEffect(() => {
-    fetchRoom(roomName).then(setRoom).catch(() => {});
+    let cancelled = false;
+    const load = () =>
+      fetchRoom(roomName).then((r: Room) => { if (!cancelled) setRoom(r); }).catch(() => {});
+    load();
+    const t = setInterval(load, 8000);
+    return () => { cancelled = true; clearInterval(t); };
   }, [roomName]);
 
   const handleMemoryChanged = useCallback(() => {
     setMemoryRefresh(n => n + 1);
   }, []);
 
+  const crumbs: Crumb[] = [
+    { label: "rooms", href: "/" },
+    { sigil: "rm:", label: roomName },
+  ];
+
   return (
-    <div className="h-screen flex flex-col">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-6 py-3 border-b border-border bg-surface/50 backdrop-blur-sm">
-        <button onClick={() => router.push("/")} className="text-muted hover:text-white transition-colors">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M12 4L6 10L12 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-        </button>
-        <Image src="/logo.png" alt="" width={24} height={24} className="opacity-70" />
-        <h1 className="font-bold font-mono text-lg">{roomName}</h1>
-        {room && (
-          <span className="text-xs text-muted font-mono ml-2">
-            {room.coordination_state}
-          </span>
-        )}
-      </div>
+    <div className="flex h-screen flex-col overflow-hidden bg-bg text-text">
+      <MainTopBar activeTab="rooms" />
+      <SubNav crumbs={crumbs} />
 
-      {/* Split layout */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left: Channel + event stream */}
-        <div className="w-[60%] border-r border-border flex flex-col overflow-hidden">
-          <EventStream roomName={roomName} onMemoryChanged={handleMemoryChanged} />
-        </div>
+      <div className="flex flex-1 overflow-hidden">
+        <aside className="w-[240px] flex-shrink-0 border-r border-border">
+          <SessionsRail roomName={roomName} activeSessionName={null} />
+        </aside>
 
-        {/* Right: Memory / Synthesis / Knowledge */}
-        <div className="w-[40%] flex flex-col overflow-hidden">
-          <MemoryPanel
-            roomName={roomName}
-            masId={room?.mas_id ?? null}
-            refreshTrigger={memoryRefresh}
-          />
-        </div>
+        <PanelGroup orientation="horizontal" className="flex-1" style={{ width: "100%", height: "100%" }}>
+          <Panel id="activity" defaultSize={62} minSize={30} className="overflow-hidden" style={{ minWidth: 0 }}>
+            <main className="flex flex-col h-full overflow-hidden" style={{ minWidth: 0 }}>
+              <PaneHeader>
+                <span className="caps-mono-sm text-muted">ROOM ACTIVITY</span>
+              </PaneHeader>
+              <div className="flex-1 overflow-hidden">
+                <EventStream roomName={roomName} onMemoryChanged={handleMemoryChanged} />
+              </div>
+            </main>
+          </Panel>
+          <PanelResizeHandle
+            className="w-px bg-border hover:bg-accent transition-colors flex-shrink-0 relative"
+            style={{ cursor: "col-resize" }}
+          >
+            <span aria-hidden className="absolute inset-y-0 -left-1.5 -right-1.5" />
+          </PanelResizeHandle>
+          <Panel id="memory" defaultSize={38} minSize={22} className="overflow-hidden" style={{ minWidth: 0 }}>
+            <aside className="flex flex-col h-full bg-surface/40 overflow-hidden" style={{ minWidth: 0 }}>
+              <PaneHeader>
+                <span className="caps-mono-sm text-muted">MEMORY</span>
+              </PaneHeader>
+              <div className="flex-1 overflow-hidden">
+                <MemoryPanel
+                  roomName={roomName}
+                  masId={room?.mas_id ?? null}
+                  refreshTrigger={memoryRefresh}
+                />
+              </div>
+            </aside>
+          </Panel>
+        </PanelGroup>
       </div>
+    </div>
+  );
+}
+
+function PaneHeader({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex flex-shrink-0 items-center gap-2 border-b border-border bg-paper px-4 py-2.5 min-w-0">
+      {children}
     </div>
   );
 }
