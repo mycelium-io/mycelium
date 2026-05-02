@@ -62,25 +62,27 @@
       .terminal {
         background: rgba(20, 22, 27, 0.92);
         border: 1px solid var(--border2);
-        border-radius: 12px;
+        border-radius: 14px;
         backdrop-filter: blur(8px);
         font-family: 'Geist Mono', 'SF Mono', Menlo, monospace;
         color: var(--text);
-        font-size: 26px;
+        font-size: 33px;
         line-height: 1.55;
         overflow: hidden;
         box-shadow: 0 30px 80px rgba(0,0,0,0.5);
+        margin-top: auto;
+        margin-bottom: auto;
       }
       .term-bar {
-        display: flex; align-items: center; gap: 10px;
-        padding: 14px 20px;
+        display: flex; align-items: center; gap: 12px;
+        padding: 18px 26px;
         border-bottom: 1px solid var(--border);
         background: rgba(255,255,255,0.02);
       }
-      .term-bar .dot { width: 14px; height: 14px; border-radius: 50%; }
+      .term-bar .dot { width: 18px; height: 18px; border-radius: 50%; }
       .dot.r { background: #ff6058; } .dot.y { background: #ffbd2e; } .dot.g { background: #28c941; }
-      .term-bar .title { margin-left: 16px; color: var(--muted); font-size: 16px; letter-spacing: 0.1em; }
-      .term-body { padding: 28px 36px; min-height: 0; }
+      .term-bar .title { margin-left: 20px; color: var(--muted); font-size: 20px; letter-spacing: 0.1em; }
+      .term-body { padding: 36px 46px; min-height: 0; }
       .term-line { display: block; white-space: pre; }
       .term-line.cmd { color: var(--text); }
       .term-line.cmd .prompt { color: var(--accent); }
@@ -91,19 +93,19 @@
       .term-line.cyan { color: var(--accent); }
       .term-line.purple { color: var(--purple); }
       .scene-title {
-        margin-bottom: 28px;
-        display: flex; align-items: center; gap: 16px;
+        margin-bottom: 40px;
+        display: flex; align-items: center; gap: 24px;
       }
       .scene-title .num {
         font-family: 'Geist Mono', monospace;
-        font-size: 14px; font-weight: 600;
+        font-size: 28px; font-weight: 600;
         letter-spacing: 0.2em; color: var(--muted);
-        border: 1px solid var(--border2);
-        padding: 4px 10px;
+        border: 1.5px solid var(--border2);
+        padding: 8px 18px;
       }
       .scene-title .label {
         font-family: 'Geist Mono', monospace;
-        font-size: 18px; font-weight: 600;
+        font-size: 36px; font-weight: 600;
         letter-spacing: 0.18em; text-transform: uppercase;
         color: var(--accent);
       }
@@ -116,98 +118,98 @@
         overflow: hidden;
         box-shadow: 0 40px 100px rgba(0,0,0,0.6);
         display: flex; flex-direction: column;
-        height: 760px;
+        height: 800px;
       }
       .ui-topbar {
-        height: 56px;
+        height: 76px;
         background: var(--paper);
         border-bottom: 1px solid var(--border);
         display: flex; align-items: center;
-        padding: 0 24px; gap: 18px;
+        padding: 0 32px; gap: 24px;
         font-family: 'Geist Mono', monospace;
-        font-size: 15px; color: var(--muted);
+        font-size: 22px; color: var(--muted);
         letter-spacing: 0.16em; text-transform: uppercase;
       }
       .ui-topbar .brand {
         font-family: 'Cormorant Garamond', serif;
         font-style: italic; font-weight: 600;
-        font-size: 26px; color: var(--text);
+        font-size: 36px; color: var(--text);
         text-transform: none; letter-spacing: 0;
       }
       .ui-topbar .tab { color: var(--muted); }
       .ui-topbar .tab.active { color: var(--accent); }
       .ui-subnav {
-        height: 48px; background: var(--surface);
+        height: 64px; background: var(--surface);
         border-bottom: 1px solid var(--border);
-        display: flex; align-items: center; padding: 0 24px;
-        font-family: 'Geist Mono', monospace; font-size: 15px;
+        display: flex; align-items: center; padding: 0 32px;
+        font-family: 'Geist Mono', monospace; font-size: 22px;
         color: var(--text2);
       }
-      .ui-subnav .crumb-sep { color: var(--dim); margin: 0 12px; }
-      .ui-subnav .sigil { color: var(--accent); margin-right: 6px; font-weight: 600; }
+      .ui-subnav .crumb-sep { color: var(--dim); margin: 0 14px; }
+      .ui-subnav .sigil { color: var(--accent); margin-right: 8px; font-weight: 600; }
       .ui-body { flex: 1; display: flex; min-height: 0; }
       .ui-rail {
-        width: 240px;
+        width: 320px;
         border-right: 1px solid var(--border);
-        padding: 20px 16px;
-        font-family: 'Geist Mono', monospace; font-size: 14px;
+        padding: 24px 20px;
+        font-family: 'Geist Mono', monospace; font-size: 20px;
       }
-      .ui-rail .label { color: var(--muted); letter-spacing: 0.18em; text-transform: uppercase; font-size: 12px; margin-bottom: 14px; }
-      .ui-rail .item { padding: 10px 12px; color: var(--text2); border-left: 2px solid transparent; }
+      .ui-rail .label { color: var(--muted); letter-spacing: 0.18em; text-transform: uppercase; font-size: 16px; margin-bottom: 18px; }
+      .ui-rail .item { padding: 12px 14px; color: var(--text2); border-left: 2px solid transparent; }
       .ui-rail .item.active { color: var(--text); border-left-color: var(--accent); background: rgba(93, 212, 224, 0.04); }
       .ui-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; }
       .pane-header {
-        height: 44px; padding: 0 24px;
+        height: 60px; padding: 0 32px;
         border-bottom: 1px solid var(--border);
         background: var(--paper);
         display: flex; align-items: center;
-        font-family: 'Geist Mono', monospace; font-size: 12px;
+        font-family: 'Geist Mono', monospace; font-size: 18px;
         color: var(--muted); letter-spacing: 0.18em; text-transform: uppercase;
       }
-      .event-stream { flex: 1; padding: 24px 32px; overflow: hidden; }
+      .event-stream { flex: 1; padding: 30px 40px; overflow: hidden; }
       .event-row {
-        display: flex; gap: 16px; padding: 14px 0;
+        display: flex; gap: 20px; padding: 18px 0;
         border-bottom: 1px solid var(--border);
-        font-size: 18px;
+        font-size: 26px;
       }
       .event-row .ts {
-        font-family: 'Geist Mono', monospace; font-size: 14px;
-        color: var(--muted); min-width: 84px; padding-top: 2px;
+        font-family: 'Geist Mono', monospace; font-size: 18px;
+        color: var(--muted); min-width: 110px; padding-top: 4px;
       }
       .event-row .who {
-        font-family: 'Geist Mono', monospace; font-size: 14px;
-        color: var(--accent); min-width: 130px; padding-top: 2px;
+        font-family: 'Geist Mono', monospace; font-size: 18px;
+        color: var(--accent); min-width: 170px; padding-top: 4px;
       }
       .event-row .who.purple { color: var(--purple); }
       .event-row .who.yellow { color: var(--yellow); }
       .event-row .body { color: var(--text); flex: 1; line-height: 1.5; }
       .event-row .body .pill {
         display: inline-block;
-        padding: 2px 8px; margin-right: 6px;
-        font-family: 'Geist Mono', monospace; font-size: 12px;
+        padding: 3px 10px; margin-right: 8px;
+        font-family: 'Geist Mono', monospace; font-size: 16px;
         background: rgba(93, 212, 224, 0.08);
         border: 1px solid rgba(93, 212, 224, 0.3);
         color: var(--accent);
         border-radius: 3px;
       }
       .ui-memory {
-        width: 460px;
+        width: 580px;
         border-left: 1px solid var(--border);
         background: rgba(17, 18, 22, 0.4);
         display: flex; flex-direction: column;
       }
       .mem-header {
-        height: 44px; padding: 0 24px;
+        height: 60px; padding: 0 32px;
         border-bottom: 1px solid var(--border);
         background: var(--paper);
         display: flex; align-items: center;
-        font-family: 'Geist Mono', monospace; font-size: 12px;
+        font-family: 'Geist Mono', monospace; font-size: 18px;
         color: var(--muted); letter-spacing: 0.18em; text-transform: uppercase;
       }
-      .mem-list { padding: 18px 24px; }
+      .mem-list { padding: 24px 32px; }
       .mem-item {
-        padding: 10px 0; border-bottom: 1px solid var(--border);
-        font-family: 'Geist Mono', monospace; font-size: 14px;
+        padding: 14px 0; border-bottom: 1px solid var(--border);
+        font-family: 'Geist Mono', monospace; font-size: 20px;
         color: var(--text2);
       }
       .mem-item .key { color: var(--accent); }
@@ -417,7 +419,7 @@
 
       /* ── Generic chat app (Discord/Slack/Webex) ──────── */
       .chat-window {
-        position: absolute; left: 80px; right: 80px; top: 160px; bottom: 80px;
+        position: absolute; left: 60px; right: 60px; top: 200px; bottom: 60px;
         background: #1f2125;
         border: 1px solid var(--border2);
         border-radius: 14px;
@@ -426,70 +428,70 @@
         display: flex;
       }
       .chat-rail {
-        width: 240px; flex-shrink: 0;
+        width: 320px; flex-shrink: 0;
         background: #16181c;
         border-right: 1px solid var(--border);
-        padding: 18px 0;
+        padding: 24px 0;
       }
       .chat-rail .ws-name {
-        padding: 0 18px 14px;
+        padding: 0 24px 18px;
         border-bottom: 1px solid var(--border);
         font-family: 'IBM Plex Sans', sans-serif;
-        font-weight: 700; font-size: 18px;
+        font-weight: 700; font-size: 26px;
         color: var(--text);
-        margin-bottom: 14px;
+        margin-bottom: 18px;
       }
       .chat-rail .ch-section {
-        padding: 4px 18px;
+        padding: 6px 24px;
         font-family: 'IBM Plex Sans', sans-serif;
-        font-size: 11px; font-weight: 600;
+        font-size: 16px; font-weight: 600;
         letter-spacing: 0.12em; text-transform: uppercase;
-        color: #8b8d92; margin-top: 6px; margin-bottom: 6px;
+        color: #8b8d92; margin-top: 8px; margin-bottom: 8px;
       }
       .chat-rail .ch-item {
-        padding: 7px 18px;
+        padding: 10px 24px;
         font-family: 'IBM Plex Sans', sans-serif;
-        font-size: 16px;
+        font-size: 22px;
         color: #b9bbc6;
       }
       .chat-rail .ch-item.active { background: #313338; color: var(--text); }
-      .chat-rail .ch-item .hash { color: #6c6f78; margin-right: 8px; }
+      .chat-rail .ch-item .hash { color: #6c6f78; margin-right: 10px; }
 
       .chat-main {
         flex: 1; display: flex; flex-direction: column;
         background: #313338; min-width: 0;
       }
       .chat-header {
-        height: 56px;
+        height: 76px;
         border-bottom: 1px solid #1e1f22;
-        padding: 0 22px;
-        display: flex; align-items: center; gap: 10px;
+        padding: 0 30px;
+        display: flex; align-items: center; gap: 14px;
         background: #313338;
       }
       .chat-header .h {
         font-family: 'IBM Plex Sans', sans-serif;
-        font-weight: 700; font-size: 18px;
+        font-weight: 700; font-size: 26px;
         color: var(--text);
       }
-      .chat-header .h .hash { color: #6c6f78; margin-right: 6px; }
+      .chat-header .h .hash { color: #6c6f78; margin-right: 8px; }
       .chat-header .desc {
-        margin-left: 14px; padding-left: 14px;
+        margin-left: 18px; padding-left: 18px;
         border-left: 1px solid #3f4147;
-        color: #b9bbc6; font-size: 14px;
+        color: #b9bbc6; font-size: 20px;
       }
       .chat-stream {
-        flex: 1; padding: 20px 28px; overflow: hidden;
-        display: flex; flex-direction: column; gap: 18px;
+        flex: 1; padding: 28px 38px; overflow: hidden;
+        display: flex; flex-direction: column; gap: 26px;
       }
       .chat-msg {
-        display: flex; gap: 14px; align-items: flex-start;
+        display: flex; gap: 20px; align-items: flex-start;
       }
       .chat-avatar {
-        width: 44px; height: 44px; border-radius: 50%;
+        width: 60px; height: 60px; border-radius: 50%;
         flex-shrink: 0;
         display: flex; align-items: center; justify-content: center;
         font-family: 'IBM Plex Sans', sans-serif;
-        font-weight: 600; font-size: 16px;
+        font-weight: 600; font-size: 22px;
         color: #fff;
       }
       .chat-avatar.user { background: #5865f2; }
@@ -497,38 +499,40 @@
       .chat-avatar.selina  { background: linear-gradient(135deg, #c084fc 0%, #a855f7 100%); }
       .chat-msg .body { flex: 1; min-width: 0; }
       .chat-msg .meta {
-        display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px;
+        display: flex; align-items: baseline; gap: 14px; margin-bottom: 6px;
       }
       .chat-msg .name {
         font-family: 'IBM Plex Sans', sans-serif;
-        font-weight: 600; font-size: 16px; color: var(--text);
+        font-weight: 600; font-size: 22px; color: var(--text);
       }
       .chat-msg .time {
         font-family: 'IBM Plex Sans', sans-serif;
-        font-size: 12px; color: #8b8d92;
+        font-size: 16px; color: #8b8d92;
       }
       .chat-msg .text {
         font-family: 'IBM Plex Sans', sans-serif;
-        font-size: 16px; line-height: 1.45; color: #dbdbdf;
+        font-size: 22px; line-height: 1.45; color: #dbdbdf;
       }
       .chat-msg .text .mention {
         background: rgba(88, 101, 242, 0.18);
         color: #a3b0fd;
-        padding: 1px 4px; border-radius: 3px;
+        padding: 2px 6px; border-radius: 3px;
       }
+      /* Typewriter — words start invisible, GSAP fades them in one by one */
+      .word { opacity: 0; }
       .chat-msg .text .mention.julia { background: rgba(93,212,224,0.16); color: var(--accent); }
       .chat-msg .text .mention.selina { background: rgba(192,132,252,0.18); color: var(--purple); }
       .chat-typing {
-        display: inline-flex; gap: 5px; align-items: center;
-        margin-top: 4px;
+        display: inline-flex; gap: 7px; align-items: center;
+        margin-top: 6px;
         font-family: 'IBM Plex Sans', sans-serif;
-        font-size: 13px; color: #8b8d92; font-style: italic;
+        font-size: 18px; color: #8b8d92; font-style: italic;
       }
       .chat-typing .dots {
-        display: inline-flex; gap: 4px; margin-right: 6px;
+        display: inline-flex; gap: 5px; margin-right: 8px;
       }
       .chat-typing .dot {
-        width: 6px; height: 6px; background: var(--accent); border-radius: 50%;
+        width: 8px; height: 8px; background: var(--accent); border-radius: 50%;
         animation: chat-bounce 1.2s ease-in-out infinite;
       }
       .chat-typing .dot:nth-child(2) { animation-delay: 0.15s; }
@@ -538,31 +542,31 @@
         40% { opacity: 1; transform: translateY(-3px); }
       }
       .chat-plan-box {
-        margin-top: 8px;
-        border-left: 3px solid var(--green);
+        margin-top: 12px;
+        border-left: 4px solid var(--green);
         background: rgba(52,211,153,0.06);
-        padding: 12px 16px;
+        padding: 16px 22px;
         border-radius: 0 6px 6px 0;
       }
       .chat-plan-box .ttl {
-        font-family: 'Geist Mono', monospace; font-size: 12px;
+        font-family: 'Geist Mono', monospace; font-size: 16px;
         font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase;
-        color: var(--green); margin-bottom: 8px;
+        color: var(--green); margin-bottom: 12px;
       }
       .chat-plan-box .row {
-        font-family: 'Geist Mono', monospace; font-size: 13px;
-        display: flex; gap: 12px; padding: 2px 0;
+        font-family: 'Geist Mono', monospace; font-size: 18px;
+        display: flex; gap: 16px; padding: 3px 0;
       }
-      .chat-plan-box .row .k { color: var(--green); min-width: 110px; }
+      .chat-plan-box .row .k { color: var(--green); min-width: 150px; }
       .chat-plan-box .row .eq { color: var(--dim); }
       .chat-plan-box .row .v { color: var(--text); }
 
       .chat-input {
-        margin: 0 28px 22px;
+        margin: 0 38px 30px;
         background: #383a40; border-radius: 8px;
-        padding: 14px 18px;
+        padding: 18px 24px;
         font-family: 'IBM Plex Sans', sans-serif;
-        font-size: 16px; color: #dbdbdf;
+        font-size: 22px; color: #dbdbdf;
         border: 1px solid transparent;
       }
       .chat-input .placeholder { color: #6c6f78; }
@@ -578,8 +582,8 @@
         letter-spacing: 0.28em; text-transform: uppercase; color: var(--accent);
       }
       .outro .url {
-        font-family: 'Geist Mono', monospace; font-size: 18px;
-        color: var(--muted); letter-spacing: 0.1em; margin-top: 16px;
+        font-family: 'Geist Mono', monospace; font-size: 30px;
+        color: var(--muted); letter-spacing: 0.12em; margin-top: 24px;
       }
     </style>
   </head>
@@ -588,12 +592,12 @@
       id="root"
       data-composition-id="main"
       data-start="0"
-      data-duration="95"
+      data-duration="100"
       data-width="1920"
       data-height="1080"
     >
       <!-- Background canvas runs the entire duration -->
-      <div id="bg-wrap" class="clip" data-start="0" data-duration="95" data-track-index="0">
+      <div id="bg-wrap" class="clip" data-start="0" data-duration="100" data-track-index="0">
         <canvas id="mycelium-bg"></canvas>
       </div>
 
@@ -666,7 +670,7 @@
             <div id="s4-l6" class="term-line ok">  ✓ wrote decisions/db (v1)</div>
           </div>
         </div>
-        <div id="s4-ui" class="ui-window" style="position: absolute; left: 120px; right: 120px; top: 200px;">
+        <div id="s4-ui" class="ui-window" style="position: absolute; left: 60px; right: 60px; top: 200px;">
           <div class="ui-topbar">
             <span class="brand">mycelium</span>
             <span class="tab active">rooms</span>
@@ -718,7 +722,7 @@
       </div>
 
       <!-- ── Scene 5b: Chat app — user prompts agent ──── -->
-      <div id="s5b" class="clip scene" data-start="52.2" data-duration="6.8" data-track-index="6">
+      <div id="s5b" class="clip scene" data-start="52.2" data-duration="9.8" data-track-index="6">
         <div class="scene-title"><span class="num">06</span><span class="label">Trigger from any chat</span></div>
         <div id="s5b-win" class="chat-window">
           <div class="chat-rail">
@@ -728,8 +732,8 @@
             <div class="ch-item active"><span class="hash">#</span>planning</div>
             <div class="ch-item"><span class="hash">#</span>engineering</div>
             <div class="ch-section">Agents</div>
-            <div class="ch-item"><span class="hash">@</span>julia</div>
-            <div class="ch-item"><span class="hash">@</span>selina</div>
+            <div class="ch-item"><span class="hash">@</span>julia-agent</div>
+            <div class="ch-item"><span class="hash">@</span>selina-agent</div>
           </div>
           <div class="chat-main">
             <div class="chat-header">
@@ -741,23 +745,41 @@
                 <div class="chat-avatar user">AL</div>
                 <div class="body">
                   <div class="meta"><span class="name">alex</span><span class="time">today at 12:08</span></div>
-                  <div class="text">hey <span class="mention julia">@julia</span> — let's lock the Q3 launch plan with <span class="mention selina">@selina</span></div>
+                  <div class="text">hey <span class="mention julia">@julia-agent</span> — let's lock the Q3 launch plan with <span class="mention selina">@selina-agent</span></div>
                 </div>
               </div>
               <div id="s5b-typing" class="chat-msg">
-                <div class="chat-avatar julia">j</div>
+                <div class="chat-avatar julia">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 8V4H8"/>
+                    <rect width="16" height="12" x="4" y="8" rx="2"/>
+                    <path d="M2 14h2"/>
+                    <path d="M20 14h2"/>
+                    <path d="M15 13v2"/>
+                    <path d="M9 13v2"/>
+                  </svg>
+                </div>
                 <div class="body">
                   <div class="chat-typing">
                     <span class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>
-                    julia is thinking…
+                    julia-agent is thinking…
                   </div>
                 </div>
               </div>
               <div id="s5b-m2" class="chat-msg">
-                <div class="chat-avatar julia">j</div>
+                <div class="chat-avatar julia">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 8V4H8"/>
+                    <rect width="16" height="12" x="4" y="8" rx="2"/>
+                    <path d="M2 14h2"/>
+                    <path d="M20 14h2"/>
+                    <path d="M15 13v2"/>
+                    <path d="M9 13v2"/>
+                  </svg>
+                </div>
                 <div class="body">
-                  <div class="meta"><span class="name">julia</span><span class="time">12:08</span></div>
-                  <div class="text">On it. Spinning up a coordination session with <span class="mention selina">@selina</span> in <span class="mention">mycelium</span>. I'll report back with the plan.</div>
+                  <div class="meta"><span class="name">julia-agent</span><span class="time">12:08</span></div>
+                  <div class="text">On it. Spinning up a coordination session with <span class="mention selina">@selina-agent</span> in <span class="mention">mycelium</span>. I'll report back with the plan.</div>
                 </div>
               </div>
             </div>
@@ -769,7 +791,7 @@
       </div>
 
       <!-- ── Scene 6: Session UI (swim lanes) ──────────── -->
-      <div id="s6" class="clip scene" data-start="58.6" data-duration="24" data-track-index="7">
+      <div id="s6" class="clip scene" data-start="61.6" data-duration="24" data-track-index="7">
         <div class="scene-title"><span class="num">05</span><span class="label">Agents coordinate</span></div>
         <div id="s6-ui" class="ui-window" style="position: absolute; left: 80px; right: 80px; top: 160px; bottom: 80px; height: auto;">
           <div class="ui-topbar">
@@ -912,7 +934,7 @@
 
               <!-- Negotiation space -->
               <div id="s6-offer" class="sess-section">
-                <div class="title">Current Offer · 4 issues</div>
+                <div id="s6-offer-title" class="title">Current Offer · 4 issues</div>
                 <div class="offer-table">
                   <div class="offer-row">
                     <span class="offer-issue">01 · budget</span>
@@ -1012,7 +1034,7 @@
       </div>
 
       <!-- ── Scene 6b: Chat app — agent returns plan ──── -->
-      <div id="s6b" class="clip scene" data-start="82.4" data-duration="7" data-track-index="8">
+      <div id="s6b" class="clip scene" data-start="85.4" data-duration="9" data-track-index="8">
         <div class="scene-title"><span class="num">07</span><span class="label">Plan delivered</span></div>
         <div id="s6b-win" class="chat-window">
           <div class="chat-rail">
@@ -1022,8 +1044,8 @@
             <div class="ch-item active"><span class="hash">#</span>planning</div>
             <div class="ch-item"><span class="hash">#</span>engineering</div>
             <div class="ch-section">Agents</div>
-            <div class="ch-item"><span class="hash">@</span>julia</div>
-            <div class="ch-item"><span class="hash">@</span>selina</div>
+            <div class="ch-item"><span class="hash">@</span>julia-agent</div>
+            <div class="ch-item"><span class="hash">@</span>selina-agent</div>
           </div>
           <div class="chat-main">
             <div class="chat-header">
@@ -1032,17 +1054,35 @@
             </div>
             <div class="chat-stream">
               <div id="s6b-m1" class="chat-msg" style="opacity: 0.55;">
-                <div class="chat-avatar julia">j</div>
+                <div class="chat-avatar julia">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 8V4H8"/>
+                    <rect width="16" height="12" x="4" y="8" rx="2"/>
+                    <path d="M2 14h2"/>
+                    <path d="M20 14h2"/>
+                    <path d="M15 13v2"/>
+                    <path d="M9 13v2"/>
+                  </svg>
+                </div>
                 <div class="body">
-                  <div class="meta"><span class="name">julia</span><span class="time">12:08</span></div>
-                  <div class="text">On it. Spinning up a coordination session with <span class="mention selina">@selina</span>…</div>
+                  <div class="meta"><span class="name">julia-agent</span><span class="time">12:08</span></div>
+                  <div class="text">On it. Spinning up a coordination session with <span class="mention selina">@selina-agent</span>…</div>
                 </div>
               </div>
               <div id="s6b-m2" class="chat-msg">
-                <div class="chat-avatar julia">j</div>
+                <div class="chat-avatar julia">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 8V4H8"/>
+                    <rect width="16" height="12" x="4" y="8" rx="2"/>
+                    <path d="M2 14h2"/>
+                    <path d="M20 14h2"/>
+                    <path d="M15 13v2"/>
+                    <path d="M9 13v2"/>
+                  </svg>
+                </div>
                 <div class="body">
-                  <div class="meta"><span class="name">julia</span><span class="time">12:09</span></div>
-                  <div class="text">Plan locked after 5 rounds. <span class="mention selina">@selina</span> and I converged on:</div>
+                  <div class="meta"><span class="name">julia-agent</span><span class="time">12:09</span></div>
+                  <div class="text">Plan locked after 5 rounds. <span class="mention selina">@selina-agent</span> and I converged on:</div>
                   <div id="s6b-plan" class="chat-plan-box">
                     <div class="ttl">Q3 LAUNCH · CONSENSUS</div>
                     <div class="row"><span class="k">budget</span><span class="eq">=</span><span class="v">high</span></div>
@@ -1050,6 +1090,22 @@
                     <div class="row"><span class="k">scope</span><span class="eq">=</span><span class="v">reduced</span></div>
                     <div class="row"><span class="k">quality</span><span class="eq">=</span><span class="v">high</span></div>
                   </div>
+                </div>
+              </div>
+              <div id="s6b-m3" class="chat-msg">
+                <div class="chat-avatar julia">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 8V4H8"/>
+                    <rect width="16" height="12" x="4" y="8" rx="2"/>
+                    <path d="M2 14h2"/>
+                    <path d="M20 14h2"/>
+                    <path d="M15 13v2"/>
+                    <path d="M9 13v2"/>
+                  </svg>
+                </div>
+                <div class="body">
+                  <div class="meta"><span class="name">julia-agent</span><span class="time">12:09</span></div>
+                  <div class="text">We are kicking off the Q3 rollout now — we'll keep you posted in <span class="mention">#engineering</span>.</div>
                 </div>
               </div>
             </div>
@@ -1061,15 +1117,48 @@
       </div>
 
       <!-- ── Scene 7: Outro ────────────────────────────── -->
-      <div id="outro" class="clip scene outro" data-start="89" data-duration="6" data-track-index="9">
+      <div id="outro" class="clip scene outro" data-start="94" data-duration="6" data-track-index="9">
         <div class="wordmark">mycelium</div>
-        <div class="ready">ready when your agents are</div>
+        <div class="ready">shared intent · shared memory · shared context</div>
         <div class="url">mycelium-io.github.io/mycelium</div>
       </div>
     </div>
 
     <script src="./mycelium-bg.js"></script>
     <script>
+      // Split agent-reply text into per-word spans so GSAP can typewriter them.
+      // Mentions (e.g. <span class="mention">@selina</span>) are wrapped as one word.
+      function splitWords(selector) {
+        const el = document.querySelector(selector);
+        if (!el) return;
+        const children = Array.from(el.childNodes);
+        el.innerHTML = '';
+        children.forEach(node => {
+          if (node.nodeType === Node.TEXT_NODE) {
+            const tokens = node.textContent.split(/(\s+)/);
+            tokens.forEach(t => {
+              if (!t) return;
+              if (/^\s+$/.test(t)) {
+                el.appendChild(document.createTextNode(t));
+              } else {
+                const span = document.createElement('span');
+                span.className = 'word';
+                span.textContent = t;
+                el.appendChild(span);
+              }
+            });
+          } else {
+            const span = document.createElement('span');
+            span.className = 'word';
+            span.appendChild(node);
+            el.appendChild(span);
+          }
+        });
+      }
+      splitWords('#s5b-m2 .text');
+      splitWords('#s6b-m2 .text');
+      splitWords('#s6b-m3 .text');
+
       window.__timelines = window.__timelines || {};
       const tl = gsap.timeline({ paused: true });
 
@@ -1126,213 +1215,280 @@
         tl.from('#' + id, { opacity: 0, y: 8, duration: 0.4 }, 42.4 + i * 0.7);
       });
 
-      // ── Scene 5b: Chat prompt (52.2–59.0s) ──
-      // Hide agent reply until the typing indicator finishes
+      // ── Scene 5b: Chat prompt (52.2–62.0s) ──
+      // Hide agent reply + typing until needed
       tl.set('#s5b-m2',     { display: 'none' }, 52.2);
       tl.set('#s5b-typing', { display: 'none' }, 52.2);
+      // Contained zoom: scale .chat-stream itself, origin near m1's text.
+      tl.set('#s5b-win .chat-stream', { transformOrigin: '32% 18%' }, 52.2);
 
       tl.from('#s5b .scene-title', { x: -40, opacity: 0, duration: 0.6, ease: 'expo.out' }, 52.4);
-      tl.from('#s5b-win',          { y: 80, opacity: 0, duration: 0.8, ease: 'power3.out' }, 52.6);
-      tl.from('#s5b-win .chat-rail', { x: -20, opacity: 0, duration: 0.5 }, 53.4);
-      tl.from('#s5b-win .chat-header', { y: -10, opacity: 0, duration: 0.5 }, 53.5);
-      // User message slides in
-      tl.from('#s5b-m1 .chat-avatar', { scale: 0, opacity: 0, duration: 0.4, ease: 'back.out(2)' }, 54.0);
-      tl.from('#s5b-m1 .body',        { x: 20, opacity: 0, duration: 0.5, ease: 'power2.out' }, 54.1);
-      // Agent typing indicator
-      tl.set('#s5b-typing', { display: 'flex' }, 55.1);
-      tl.from('#s5b-typing .chat-avatar', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 55.1);
-      tl.from('#s5b-typing .body',        { opacity: 0, duration: 0.3 }, 55.2);
-      // Typing indicator hides, real reply appears
-      tl.to('#s5b-typing',   { opacity: 0, duration: 0.2 }, 56.6);
-      tl.set('#s5b-typing',  { display: 'none' }, 56.8);
-      tl.set('#s5b-m2',      { display: 'flex' }, 56.8);
-      tl.from('#s5b-m2 .chat-avatar', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 56.8);
-      tl.from('#s5b-m2 .body',        { x: 20, opacity: 0, duration: 0.5, ease: 'power2.out' }, 56.9);
+      // Full chat app slides in
+      tl.from('#s5b-win', { y: 60, opacity: 0, duration: 0.7, ease: 'power3.out' }, 52.6);
+      tl.from('#s5b-win .chat-rail',   { x: -20, opacity: 0, duration: 0.5 }, 53.0);
+      tl.from('#s5b-win .chat-header', { y: -10, opacity: 0, duration: 0.5 }, 53.1);
+      // User message appears at normal scale
+      tl.from('#s5b-m1 .chat-avatar', { scale: 0, opacity: 0, duration: 0.4, ease: 'back.out(2)' }, 53.6);
+      tl.from('#s5b-m1 .body',        { x: 20, opacity: 0, duration: 0.5, ease: 'power2.out' }, 53.7);
+      // ~2.4s reading time on m1 (the user's prompt) before zooming in
+      tl.to('#s5b-win .chat-stream', { scale: 1.3, duration: 0.8, ease: 'power2.inOut' }, 56.6);
+      // Chrome fades — leaves text floating on the canvas bg
+      tl.to('#s5b-win', {
+        backgroundColor: 'rgba(0,0,0,0)',
+        borderColor: 'rgba(0,0,0,0)',
+        boxShadow: '0 0 0 rgba(0,0,0,0)',
+        duration: 0.7,
+      }, 57.4);
+      tl.to('#s5b-win .chat-main', { backgroundColor: 'rgba(0,0,0,0)', duration: 0.7 }, 57.4);
+      tl.to('#s5b-win .chat-rail',   { opacity: 0, duration: 0.6 }, 57.4);
+      tl.to('#s5b-win .chat-header', { opacity: 0, duration: 0.6 }, 57.4);
+      tl.to('#s5b-win .chat-input',  { opacity: 0, duration: 0.6 }, 57.4);
+      // Give the chat-stream its own panel bg + radius so the floating message stands out
+      tl.to('#s5b-win .chat-stream', {
+        backgroundColor: 'rgba(20, 22, 27, 0.92)',
+        borderRadius: '14px',
+        duration: 0.7,
+      }, 57.4);
+      // Agent typing indicator — appears on the now-bare bg
+      tl.set('#s5b-typing', { display: 'flex' }, 58.2);
+      tl.from('#s5b-typing .chat-avatar', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 58.2);
+      tl.from('#s5b-typing .body',        { opacity: 0, duration: 0.3 }, 58.3);
+      // Typing → agent reply
+      tl.to('#s5b-typing',   { opacity: 0, duration: 0.2 }, 58.9);
+      tl.set('#s5b-typing',  { display: 'none' }, 59.1);
+      tl.set('#s5b-m2',      { display: 'flex' }, 59.1);
+      tl.from('#s5b-m2 .chat-avatar', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 59.1);
+      tl.from('#s5b-m2 .meta',        { opacity: 0, duration: 0.3 }, 59.2);
+      // Typewriter — ~17 words at 0.075s stagger ≈ 1.3s
+      tl.to('#s5b-m2 .text .word', { opacity: 1, duration: 0.05, stagger: 0.075 }, 59.4);
+      // ~1.5s hold so viewer can finish reading the agent reply
 
-      // ── Scene 6: Session UI swim lanes (58.6–82.6s) ──
-      tl.set('#s6-consensus', { display: 'none' }, 58.6);
-      tl.set('#s6-offer',     { display: 'none' }, 58.6);
+      // ── Scene 6: Session UI swim lanes (61.6–85.6s) ──
+      tl.set('#s6-consensus', { display: 'none' }, 61.6);
+      tl.set('#s6-offer',     { display: 'none' }, 61.6);
 
-      tl.from('#s6 .scene-title', { x: -40, opacity: 0, duration: 0.6, ease: 'expo.out' }, 58.8);
-      tl.from('#s6-ui', { y: 80, opacity: 0, duration: 0.8, ease: 'power3.out' }, 59.0);
-      tl.from('#s6-ui .ui-topbar', { y: -10, opacity: 0, duration: 0.5 }, 59.8);
-      tl.from('#s6-ui .ui-subnav', { y: -10, opacity: 0, duration: 0.5 }, 60.0);
-      tl.from('#s6-ui .ui-rail .item', { x: -20, opacity: 0, duration: 0.4, stagger: 0.1 }, 60.2);
+      tl.from('#s6 .scene-title', { x: -40, opacity: 0, duration: 0.6, ease: 'expo.out' }, 61.8);
+      tl.from('#s6-ui', { y: 80, opacity: 0, duration: 0.8, ease: 'power3.out' }, 62.0);
+      tl.from('#s6-ui .ui-topbar', { y: -10, opacity: 0, duration: 0.5 }, 62.8);
+      tl.from('#s6-ui .ui-subnav', { y: -10, opacity: 0, duration: 0.5 }, 63.0);
+      tl.from('#s6-ui .ui-rail .item', { x: -20, opacity: 0, duration: 0.4, stagger: 0.1 }, 63.2);
 
-      tl.from('#s6-header .col-l',             { y: 16, opacity: 0, duration: 0.5 }, 60.8);
-      tl.from('#s6-header > div:nth-child(2)', { y: 16, opacity: 0, duration: 0.5 }, 60.9);
-      tl.from('#s6-header .col-r',             { y: 16, opacity: 0, duration: 0.5 }, 61.0);
+      tl.from('#s6-header .col-l',             { y: 16, opacity: 0, duration: 0.5 }, 63.8);
+      tl.from('#s6-header > div:nth-child(2)', { y: 16, opacity: 0, duration: 0.5 }, 63.9);
+      tl.from('#s6-header .col-r',             { y: 16, opacity: 0, duration: 0.5 }, 64.0);
 
-      tl.from('#s6 .sess-section:first-of-type .title', { x: -20, opacity: 0, duration: 0.4 }, 61.4);
-      tl.from('#s6 .sess-table', { opacity: 0, y: 20, duration: 0.6, ease: 'power2.out' }, 61.6);
+      tl.from('#s6 .sess-section:first-of-type .title', { x: -20, opacity: 0, duration: 0.4 }, 64.4);
+      tl.from('#s6 .sess-table', { opacity: 0, y: 20, duration: 0.6, ease: 'power2.out' }, 64.6);
       ['s6-rh-1','s6-rh-2','s6-rh-3','s6-rh-4','s6-rh-5','s6-rh-6','s6-rh-7','s6-rh-8'].forEach((id, i) => {
         tl.from('#' + id, { opacity: 0, duration: 0.2 }, 61.8 + i * 0.05);
       });
-      tl.set('#s6-rh-1', { className: 'cell head cur' }, 62.3);
-      tl.set('#s6-j-1',  { className: 'cell cur' }, 62.3);
-      tl.set('#s6-s-1',  { className: 'cell cur' }, 62.3);
-      tl.from('#s6 .sess-table .row:nth-child(2) .lane-label', { x: -16, opacity: 0, duration: 0.4 }, 62.1);
-      tl.from('#s6 .sess-table .row:nth-child(3) .lane-label', { x: -16, opacity: 0, duration: 0.4 }, 62.25);
-      tl.from('#s6-j-1-tick', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 62.4);
-      tl.from('#s6-s-1-tick', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 62.55);
+      tl.set('#s6-rh-1', { className: 'cell head cur' }, 65.3);
+      tl.set('#s6-j-1',  { className: 'cell cur' }, 65.3);
+      tl.set('#s6-s-1',  { className: 'cell cur' }, 65.3);
+      tl.from('#s6 .sess-table .row:nth-child(2) .lane-label', { x: -16, opacity: 0, duration: 0.4 }, 65.1);
+      tl.from('#s6 .sess-table .row:nth-child(3) .lane-label', { x: -16, opacity: 0, duration: 0.4 }, 65.25);
+      tl.from('#s6-j-1-tick', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 65.4);
+      tl.from('#s6-s-1-tick', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 65.55);
 
-      tl.from('#s6 .ui-eventlog .eventlog-header', { x: 20, opacity: 0, duration: 0.4 }, 62.4);
+      tl.from('#s6 .ui-eventlog .eventlog-header', { x: 20, opacity: 0, duration: 0.4 }, 65.4);
 
-      tl.set('#s6-offer', { display: 'block' }, 62.8);
-      tl.from('#s6-offer', { y: 20, opacity: 0, duration: 0.5, ease: 'power2.out' }, 62.8);
-      tl.from('#s6-offer .offer-row', { x: -10, opacity: 0, duration: 0.35, stagger: 0.08 }, 63.0);
+      tl.set('#s6-offer', { display: 'block' }, 65.8);
+      tl.from('#s6-offer', { y: 20, opacity: 0, duration: 0.5, ease: 'power2.out' }, 65.8);
+      tl.from('#s6-offer .offer-row', { x: -10, opacity: 0, duration: 0.35, stagger: 0.08 }, 66.0);
+
+      // Set transform origin over session-main's center for the zoom-in
+      tl.set('#s6 .ui-body', { transformOrigin: '44% 50%' }, 61.6);
+      // Zoom into session-main; fade rail + eventlog AND the surrounding window chrome
+      // so only the focused panel is left floating on the canvas bg
+      tl.to('#s6 .ui-body',     { scale: 1.35, duration: 0.8, ease: 'power3.inOut' }, 66.5);
+      tl.to('#s6 .ui-rail',     { opacity: 0, duration: 0.7 }, 66.5);
+      tl.to('#s6 .ui-eventlog', { opacity: 0, duration: 0.7 }, 66.5);
+      tl.to('#s6-ui', {
+        backgroundColor: 'rgba(0,0,0,0)',
+        borderColor: 'rgba(0,0,0,0)',
+        boxShadow: '0 0 0 rgba(0,0,0,0)',
+        duration: 0.7,
+      }, 66.5);
+      tl.to('#s6 .ui-topbar', { backgroundColor: 'rgba(0,0,0,0)', opacity: 0, duration: 0.7 }, 66.5);
+      tl.to('#s6 .ui-subnav', { backgroundColor: 'rgba(0,0,0,0)', opacity: 0, duration: 0.7 }, 66.5);
+      // Give session-main its own panel bg + radius so it stands out from the canvas
+      tl.to('#s6 .session-main', {
+        backgroundColor: 'rgba(20, 22, 27, 0.92)',
+        borderRadius: '14px',
+        duration: 0.7,
+      }, 66.5);
 
       // ─── ROUND 01 ──
-      tl.to('#s6-j-1-tick', { opacity: 0, duration: 0.2 }, 63.8);
-      tl.set('#s6-j-1-tick', { display: 'none' }, 64.0);
-      tl.set('#s6-j-1-prop', { display: 'inline-block' }, 64.0);
-      tl.from('#s6-j-1-prop', { scale: 0, opacity: 0, duration: 0.35, ease: 'back.out(2)' }, 64.0);
-      tl.from('#s6-ev-1', { x: 30, opacity: 0, duration: 0.4 }, 64.1);
-      tl.to('#s6-s-1-tick', { opacity: 0, duration: 0.2 }, 64.6);
-      tl.set('#s6-s-1-tick', { display: 'none' }, 64.8);
-      tl.set('#s6-s-1-rej', { display: 'inline-block' }, 64.8);
-      tl.from('#s6-s-1-rej', { scale: 0, opacity: 0, duration: 0.35, ease: 'back.out(2)' }, 64.8);
-      tl.from('#s6-ev-2', { x: 30, opacity: 0, duration: 0.4 }, 64.9);
+      tl.to('#s6-j-1-tick', { opacity: 0, duration: 0.2 }, 66.8);
+      tl.set('#s6-j-1-tick', { display: 'none' }, 67.0);
+      tl.set('#s6-j-1-prop', { display: 'inline-block' }, 67.0);
+      tl.from('#s6-j-1-prop', { scale: 0, opacity: 0, duration: 0.35, ease: 'back.out(2)' }, 67.0);
+      tl.from('#s6-ev-1', { x: 30, opacity: 0, duration: 0.4 }, 67.1);
+      tl.to('#s6-s-1-tick', { opacity: 0, duration: 0.2 }, 67.6);
+      tl.set('#s6-s-1-tick', { display: 'none' }, 67.8);
+      tl.set('#s6-s-1-rej', { display: 'inline-block' }, 67.8);
+      tl.from('#s6-s-1-rej', { scale: 0, opacity: 0, duration: 0.35, ease: 'back.out(2)' }, 67.8);
+      tl.from('#s6-ev-2', { x: 30, opacity: 0, duration: 0.4 }, 67.9);
 
       // ─── advance to ROUND 02 ──
-      tl.set('#s6-rh-1', { className: 'cell head past' }, 65.9);
-      tl.set('#s6-j-1',  { className: 'cell' }, 65.9);
-      tl.set('#s6-s-1',  { className: 'cell' }, 65.9);
-      tl.set('#s6-rh-2', { className: 'cell head cur' }, 65.9);
-      tl.set('#s6-j-2',  { className: 'cell cur' }, 65.9);
-      tl.set('#s6-s-2',  { className: 'cell cur' }, 65.9);
-      tl.to('#s6-round-num', { opacity: 0, y: -20, duration: 0.22 }, 65.9);
-      tl.set('#s6-round-num', { textContent: '02', y: 20 }, 66.15);
-      tl.to('#s6-round-num', { opacity: 1, y: 0, duration: 0.28, ease: 'power2.out' }, 66.15);
-      tl.set('#s6-j-2-tick', { display: 'inline-block' }, 66.3);
-      tl.from('#s6-j-2-tick', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 66.3);
-      tl.set('#s6-s-2-tick', { display: 'inline-block' }, 66.45);
-      tl.from('#s6-s-2-tick', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 66.45);
-      tl.to('#s6-offer .offer-row:nth-child(2) .offer-val', { opacity: 0, duration: 0.18 }, 67.0);
-      tl.set('#s6-offer .offer-row:nth-child(2) .offer-val', { textContent: 'tight' }, 67.18);
-      tl.to('#s6-offer .offer-row:nth-child(2) .offer-val', { opacity: 1, duration: 0.25 }, 67.18);
-      tl.to('#s6-j-2-tick', { opacity: 0, duration: 0.2 }, 67.3);
-      tl.set('#s6-j-2-tick', { display: 'none' }, 67.5);
-      tl.set('#s6-j-2-cnt', { display: 'inline-block' }, 67.5);
-      tl.from('#s6-j-2-cnt', { scale: 0, opacity: 0, duration: 0.4, ease: 'back.out(2)' }, 67.5);
-      tl.from('#s6-ev-3', { x: 30, opacity: 0, duration: 0.4 }, 67.6);
-      tl.to('#s6-s-2-tick', { opacity: 0, duration: 0.2 }, 68.1);
-      tl.set('#s6-s-2-tick', { display: 'none' }, 68.3);
-      tl.set('#s6-s-2-rej', { display: 'inline-block' }, 68.3);
-      tl.from('#s6-s-2-rej', { scale: 0, opacity: 0, duration: 0.35, ease: 'back.out(2)' }, 68.3);
-      tl.from('#s6-ev-4', { x: 30, opacity: 0, duration: 0.4 }, 68.4);
+      tl.set('#s6-rh-1', { className: 'cell head past' }, 68.9);
+      tl.set('#s6-j-1',  { className: 'cell' }, 68.9);
+      tl.set('#s6-s-1',  { className: 'cell' }, 68.9);
+      tl.set('#s6-rh-2', { className: 'cell head cur' }, 68.9);
+      tl.set('#s6-j-2',  { className: 'cell cur' }, 68.9);
+      tl.set('#s6-s-2',  { className: 'cell cur' }, 68.9);
+      tl.to('#s6-round-num', { opacity: 0, y: -20, duration: 0.22 }, 68.9);
+      tl.set('#s6-round-num', { textContent: '02', y: 20 }, 69.15);
+      tl.to('#s6-round-num', { opacity: 1, y: 0, duration: 0.28, ease: 'power2.out' }, 69.15);
+      tl.set('#s6-j-2-tick', { display: 'inline-block' }, 69.3);
+      tl.from('#s6-j-2-tick', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 69.3);
+      tl.set('#s6-s-2-tick', { display: 'inline-block' }, 69.45);
+      tl.from('#s6-s-2-tick', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 69.45);
+      tl.to('#s6-offer .offer-row:nth-child(2) .offer-val', { opacity: 0, duration: 0.18 }, 70.0);
+      tl.set('#s6-offer .offer-row:nth-child(2) .offer-val', { textContent: 'tight' }, 70.18);
+      tl.to('#s6-offer .offer-row:nth-child(2) .offer-val', { opacity: 1, duration: 0.25 }, 70.18);
+      tl.to('#s6-j-2-tick', { opacity: 0, duration: 0.2 }, 70.3);
+      tl.set('#s6-j-2-tick', { display: 'none' }, 70.5);
+      tl.set('#s6-j-2-cnt', { display: 'inline-block' }, 70.5);
+      tl.from('#s6-j-2-cnt', { scale: 0, opacity: 0, duration: 0.4, ease: 'back.out(2)' }, 70.5);
+      tl.from('#s6-ev-3', { x: 30, opacity: 0, duration: 0.4 }, 70.6);
+      tl.to('#s6-s-2-tick', { opacity: 0, duration: 0.2 }, 71.1);
+      tl.set('#s6-s-2-tick', { display: 'none' }, 71.3);
+      tl.set('#s6-s-2-rej', { display: 'inline-block' }, 71.3);
+      tl.from('#s6-s-2-rej', { scale: 0, opacity: 0, duration: 0.35, ease: 'back.out(2)' }, 71.3);
+      tl.from('#s6-ev-4', { x: 30, opacity: 0, duration: 0.4 }, 71.4);
 
       // ─── advance to ROUND 03 ──
-      tl.set('#s6-rh-2', { className: 'cell head past' }, 69.3);
-      tl.set('#s6-j-2',  { className: 'cell' }, 69.3);
-      tl.set('#s6-s-2',  { className: 'cell' }, 69.3);
-      tl.set('#s6-rh-3', { className: 'cell head cur' }, 69.3);
-      tl.set('#s6-j-3',  { className: 'cell cur' }, 69.3);
-      tl.set('#s6-s-3',  { className: 'cell cur' }, 69.3);
-      tl.to('#s6-round-num', { opacity: 0, y: -20, duration: 0.22 }, 69.3);
-      tl.set('#s6-round-num', { textContent: '03', y: 20 }, 69.55);
-      tl.to('#s6-round-num', { opacity: 1, y: 0, duration: 0.28, ease: 'power2.out' }, 69.55);
-      tl.set('#s6-j-3-tick', { display: 'inline-block' }, 69.7);
-      tl.from('#s6-j-3-tick', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 69.7);
-      tl.set('#s6-s-3-tick', { display: 'inline-block' }, 69.85);
-      tl.from('#s6-s-3-tick', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 69.85);
-      tl.to('#s6-offer .offer-row:nth-child(3) .offer-val', { opacity: 0, duration: 0.18 }, 70.35);
-      tl.set('#s6-offer .offer-row:nth-child(3) .offer-val', { textContent: 'reduced' }, 70.53);
-      tl.to('#s6-offer .offer-row:nth-child(3) .offer-val', { opacity: 1, duration: 0.25 }, 70.53);
-      tl.to('#s6-s-3-tick', { opacity: 0, duration: 0.2 }, 70.65);
-      tl.set('#s6-s-3-tick', { display: 'none' }, 70.85);
-      tl.set('#s6-s-3-cnt', { display: 'inline-block' }, 70.85);
-      tl.from('#s6-s-3-cnt', { scale: 0, opacity: 0, duration: 0.4, ease: 'back.out(2)' }, 70.85);
-      tl.from('#s6-ev-5', { x: 30, opacity: 0, duration: 0.4 }, 70.95);
-      tl.to('#s6-j-3-tick', { opacity: 0, duration: 0.2 }, 71.45);
-      tl.set('#s6-j-3-tick', { display: 'none' }, 71.65);
-      tl.set('#s6-j-3-rej', { display: 'inline-block' }, 71.65);
-      tl.from('#s6-j-3-rej', { scale: 0, opacity: 0, duration: 0.35, ease: 'back.out(2)' }, 71.65);
-      tl.from('#s6-ev-6', { x: 30, opacity: 0, duration: 0.4 }, 71.75);
+      tl.set('#s6-rh-2', { className: 'cell head past' }, 72.3);
+      tl.set('#s6-j-2',  { className: 'cell' }, 72.3);
+      tl.set('#s6-s-2',  { className: 'cell' }, 72.3);
+      tl.set('#s6-rh-3', { className: 'cell head cur' }, 72.3);
+      tl.set('#s6-j-3',  { className: 'cell cur' }, 72.3);
+      tl.set('#s6-s-3',  { className: 'cell cur' }, 72.3);
+      tl.to('#s6-round-num', { opacity: 0, y: -20, duration: 0.22 }, 72.3);
+      tl.set('#s6-round-num', { textContent: '03', y: 20 }, 72.55);
+      tl.to('#s6-round-num', { opacity: 1, y: 0, duration: 0.28, ease: 'power2.out' }, 72.55);
+      tl.set('#s6-j-3-tick', { display: 'inline-block' }, 72.7);
+      tl.from('#s6-j-3-tick', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 72.7);
+      tl.set('#s6-s-3-tick', { display: 'inline-block' }, 72.85);
+      tl.from('#s6-s-3-tick', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 72.85);
+      tl.to('#s6-offer .offer-row:nth-child(3) .offer-val', { opacity: 0, duration: 0.18 }, 73.35);
+      tl.set('#s6-offer .offer-row:nth-child(3) .offer-val', { textContent: 'reduced' }, 73.53);
+      tl.to('#s6-offer .offer-row:nth-child(3) .offer-val', { opacity: 1, duration: 0.25 }, 73.53);
+      tl.to('#s6-s-3-tick', { opacity: 0, duration: 0.2 }, 73.65);
+      tl.set('#s6-s-3-tick', { display: 'none' }, 73.85);
+      tl.set('#s6-s-3-cnt', { display: 'inline-block' }, 73.85);
+      tl.from('#s6-s-3-cnt', { scale: 0, opacity: 0, duration: 0.4, ease: 'back.out(2)' }, 73.85);
+      tl.from('#s6-ev-5', { x: 30, opacity: 0, duration: 0.4 }, 73.95);
+      tl.to('#s6-j-3-tick', { opacity: 0, duration: 0.2 }, 74.45);
+      tl.set('#s6-j-3-tick', { display: 'none' }, 74.65);
+      tl.set('#s6-j-3-rej', { display: 'inline-block' }, 74.65);
+      tl.from('#s6-j-3-rej', { scale: 0, opacity: 0, duration: 0.35, ease: 'back.out(2)' }, 74.65);
+      tl.from('#s6-ev-6', { x: 30, opacity: 0, duration: 0.4 }, 74.75);
 
       // ─── advance to ROUND 04 ──
-      tl.set('#s6-rh-3', { className: 'cell head past' }, 72.6);
-      tl.set('#s6-j-3',  { className: 'cell' }, 72.6);
-      tl.set('#s6-s-3',  { className: 'cell' }, 72.6);
-      tl.set('#s6-rh-4', { className: 'cell head cur' }, 72.6);
-      tl.set('#s6-j-4',  { className: 'cell cur' }, 72.6);
-      tl.set('#s6-s-4',  { className: 'cell cur' }, 72.6);
-      tl.to('#s6-round-num', { opacity: 0, y: -20, duration: 0.22 }, 72.6);
-      tl.set('#s6-round-num', { textContent: '04', y: 20 }, 72.85);
-      tl.to('#s6-round-num', { opacity: 1, y: 0, duration: 0.28, ease: 'power2.out' }, 72.85);
-      tl.set('#s6-j-4-tick', { display: 'inline-block' }, 73.0);
-      tl.from('#s6-j-4-tick', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 73.0);
-      tl.set('#s6-s-4-tick', { display: 'inline-block' }, 73.15);
-      tl.from('#s6-s-4-tick', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 73.15);
-      tl.to('#s6-offer .offer-row:nth-child(4) .offer-val', { opacity: 0, duration: 0.18 }, 73.6);
-      tl.set('#s6-offer .offer-row:nth-child(4) .offer-val', { textContent: 'high' }, 73.78);
-      tl.to('#s6-offer .offer-row:nth-child(4) .offer-val', { opacity: 1, duration: 0.25 }, 73.78);
-      tl.to('#s6-j-4-tick', { opacity: 0, duration: 0.2 }, 73.9);
-      tl.set('#s6-j-4-tick', { display: 'none' }, 74.1);
-      tl.set('#s6-j-4-cnt', { display: 'inline-block' }, 74.1);
-      tl.from('#s6-j-4-cnt', { scale: 0, opacity: 0, duration: 0.4, ease: 'back.out(2)' }, 74.1);
-      tl.from('#s6-ev-7', { x: 30, opacity: 0, duration: 0.4 }, 74.2);
-      tl.to('#s6-s-4-tick', { opacity: 0, duration: 0.2 }, 74.6);
-      tl.set('#s6-s-4-tick', { display: 'none' }, 74.8);
-      tl.set('#s6-s-4-cnt', { display: 'inline-block' }, 74.8);
-      tl.from('#s6-s-4-cnt', { scale: 0, opacity: 0, duration: 0.4, ease: 'back.out(2)' }, 74.8);
-      tl.from('#s6-ev-8', { x: 30, opacity: 0, duration: 0.4 }, 74.9);
+      tl.set('#s6-rh-3', { className: 'cell head past' }, 75.6);
+      tl.set('#s6-j-3',  { className: 'cell' }, 75.6);
+      tl.set('#s6-s-3',  { className: 'cell' }, 75.6);
+      tl.set('#s6-rh-4', { className: 'cell head cur' }, 75.6);
+      tl.set('#s6-j-4',  { className: 'cell cur' }, 75.6);
+      tl.set('#s6-s-4',  { className: 'cell cur' }, 75.6);
+      tl.to('#s6-round-num', { opacity: 0, y: -20, duration: 0.22 }, 75.6);
+      tl.set('#s6-round-num', { textContent: '04', y: 20 }, 75.85);
+      tl.to('#s6-round-num', { opacity: 1, y: 0, duration: 0.28, ease: 'power2.out' }, 75.85);
+      tl.set('#s6-j-4-tick', { display: 'inline-block' }, 76.0);
+      tl.from('#s6-j-4-tick', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 76.0);
+      tl.set('#s6-s-4-tick', { display: 'inline-block' }, 76.15);
+      tl.from('#s6-s-4-tick', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 76.15);
+      tl.to('#s6-offer .offer-row:nth-child(4) .offer-val', { opacity: 0, duration: 0.18 }, 76.6);
+      tl.set('#s6-offer .offer-row:nth-child(4) .offer-val', { textContent: 'high' }, 76.78);
+      tl.to('#s6-offer .offer-row:nth-child(4) .offer-val', { opacity: 1, duration: 0.25 }, 76.78);
+      tl.to('#s6-j-4-tick', { opacity: 0, duration: 0.2 }, 76.9);
+      tl.set('#s6-j-4-tick', { display: 'none' }, 77.1);
+      tl.set('#s6-j-4-cnt', { display: 'inline-block' }, 77.1);
+      tl.from('#s6-j-4-cnt', { scale: 0, opacity: 0, duration: 0.4, ease: 'back.out(2)' }, 77.1);
+      tl.from('#s6-ev-7', { x: 30, opacity: 0, duration: 0.4 }, 77.2);
+      tl.to('#s6-s-4-tick', { opacity: 0, duration: 0.2 }, 77.6);
+      tl.set('#s6-s-4-tick', { display: 'none' }, 77.8);
+      tl.set('#s6-s-4-cnt', { display: 'inline-block' }, 77.8);
+      tl.from('#s6-s-4-cnt', { scale: 0, opacity: 0, duration: 0.4, ease: 'back.out(2)' }, 77.8);
+      tl.from('#s6-ev-8', { x: 30, opacity: 0, duration: 0.4 }, 77.9);
 
       // ─── advance to ROUND 05 (consensus) ──
-      tl.set('#s6-rh-4', { className: 'cell head past' }, 75.6);
-      tl.set('#s6-j-4',  { className: 'cell' }, 75.6);
-      tl.set('#s6-s-4',  { className: 'cell' }, 75.6);
-      tl.set('#s6-rh-5', { className: 'cell head cur' }, 75.6);
-      tl.set('#s6-j-5',  { className: 'cell cur' }, 75.6);
-      tl.set('#s6-s-5',  { className: 'cell cur' }, 75.6);
-      tl.to('#s6-round-num', { opacity: 0, y: -20, duration: 0.22 }, 75.6);
-      tl.set('#s6-round-num', { textContent: '05', y: 20 }, 75.85);
-      tl.to('#s6-round-num', { opacity: 1, y: 0, duration: 0.28, ease: 'power2.out' }, 75.85);
-      tl.set('#s6-j-5-tick', { display: 'inline-block' }, 76.0);
-      tl.from('#s6-j-5-tick', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 76.0);
-      tl.set('#s6-s-5-tick', { display: 'inline-block' }, 76.15);
-      tl.from('#s6-s-5-tick', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 76.15);
-      tl.to('#s6-j-5-tick', { opacity: 0, duration: 0.2 }, 76.7);
-      tl.set('#s6-j-5-tick', { display: 'none' }, 76.9);
-      tl.set('#s6-j-5-acc', { display: 'inline-block' }, 76.9);
-      tl.from('#s6-j-5-acc', { scale: 0, opacity: 0, duration: 0.45, ease: 'back.out(2)' }, 76.9);
-      tl.from('#s6-ev-9', { x: 30, opacity: 0, duration: 0.4 }, 77.0);
-      tl.to('#s6-s-5-tick', { opacity: 0, duration: 0.2 }, 77.4);
-      tl.set('#s6-s-5-tick', { display: 'none' }, 77.6);
-      tl.set('#s6-s-5-acc', { display: 'inline-block' }, 77.6);
-      tl.from('#s6-s-5-acc', { scale: 0, opacity: 0, duration: 0.45, ease: 'back.out(2)' }, 77.6);
-      tl.from('#s6-ev-10', { x: 30, opacity: 0, duration: 0.4 }, 77.7);
+      tl.set('#s6-rh-4', { className: 'cell head past' }, 78.6);
+      tl.set('#s6-j-4',  { className: 'cell' }, 78.6);
+      tl.set('#s6-s-4',  { className: 'cell' }, 78.6);
+      tl.set('#s6-rh-5', { className: 'cell head cur' }, 78.6);
+      tl.set('#s6-j-5',  { className: 'cell cur' }, 78.6);
+      tl.set('#s6-s-5',  { className: 'cell cur' }, 78.6);
+      tl.to('#s6-round-num', { opacity: 0, y: -20, duration: 0.22 }, 78.6);
+      tl.set('#s6-round-num', { textContent: '05', y: 20 }, 78.85);
+      tl.to('#s6-round-num', { opacity: 1, y: 0, duration: 0.28, ease: 'power2.out' }, 78.85);
+      tl.set('#s6-j-5-tick', { display: 'inline-block' }, 79.0);
+      tl.from('#s6-j-5-tick', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 79.0);
+      tl.set('#s6-s-5-tick', { display: 'inline-block' }, 79.15);
+      tl.from('#s6-s-5-tick', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 79.15);
+      tl.to('#s6-j-5-tick', { opacity: 0, duration: 0.2 }, 79.7);
+      tl.set('#s6-j-5-tick', { display: 'none' }, 79.9);
+      tl.set('#s6-j-5-acc', { display: 'inline-block' }, 79.9);
+      tl.from('#s6-j-5-acc', { scale: 0, opacity: 0, duration: 0.45, ease: 'back.out(2)' }, 79.9);
+      tl.from('#s6-ev-9', { x: 30, opacity: 0, duration: 0.4 }, 80.0);
+      tl.to('#s6-s-5-tick', { opacity: 0, duration: 0.2 }, 80.4);
+      tl.set('#s6-s-5-tick', { display: 'none' }, 80.6);
+      tl.set('#s6-s-5-acc', { display: 'inline-block' }, 80.6);
+      tl.from('#s6-s-5-acc', { scale: 0, opacity: 0, duration: 0.45, ease: 'back.out(2)' }, 80.6);
+      tl.from('#s6-ev-10', { x: 30, opacity: 0, duration: 0.4 }, 80.7);
 
-      tl.set('#s6-consensus', { display: 'block' }, 78.3);
-      tl.from('#s6-consensus', { y: 30, opacity: 0, duration: 0.6, ease: 'power3.out' }, 78.3);
-      tl.from('#s6-consensus .head', { x: -10, opacity: 0, duration: 0.4 }, 78.6);
-      tl.from('#s6-consensus .plan', { opacity: 0, duration: 0.4 }, 78.8);
-      tl.from('#s6-consensus .consensus-assignment', { x: -10, opacity: 0, duration: 0.3, stagger: 0.07 }, 79.0);
-      tl.from('#s6-ev-11', { x: 30, opacity: 0, duration: 0.4 }, 79.1);
+      tl.from('#s6-ev-11', { x: 30, opacity: 0, duration: 0.4 }, 82.1);
 
-      tl.to('#s6-state', { opacity: 0, duration: 0.2 }, 78.5);
-      tl.set('#s6-state', { textContent: 'CONSENSUS', className: 'sess-state consensus' }, 78.7);
-      tl.to('#s6-state', { opacity: 1, duration: 0.3 }, 78.7);
+      // ─── Consensus moment — transform offer in place + dramatic header pulse ───
+      // Title swaps from "Current Offer" → "Consensus Reached" with a green flip
+      tl.to('#s6-offer-title', { opacity: 0, duration: 0.2 }, 81.3);
+      tl.set('#s6-offer-title', { textContent: 'Consensus Reached · 4 issues', color: 'var(--green)' }, 81.5);
+      tl.to('#s6-offer-title', { opacity: 1, duration: 0.3 }, 81.5);
+      // Offer table border + bg shift to green (locked)
+      tl.to('#s6-offer .offer-table', {
+        borderColor: 'var(--green)',
+        backgroundColor: 'rgba(52,211,153,0.06)',
+        duration: 0.6,
+      }, 81.4);
+      // Offer values lock in green, staggered
+      tl.to('#s6-offer .offer-val', { color: 'var(--green)', duration: 0.5, stagger: 0.08 }, 81.4);
 
-      // ── Scene 6b: Chat return — agent posts plan (82.4–89.4s) ──
-      tl.set('#s6b-plan', { display: 'none' }, 82.4);
-      tl.from('#s6b .scene-title', { x: -40, opacity: 0, duration: 0.6, ease: 'expo.out' }, 82.6);
-      tl.from('#s6b-win', { y: 80, opacity: 0, duration: 0.8, ease: 'power3.out' }, 82.8);
-      tl.from('#s6b-win .chat-rail', { x: -20, opacity: 0, duration: 0.5 }, 83.4);
-      tl.from('#s6b-win .chat-header', { y: -10, opacity: 0, duration: 0.5 }, 83.5);
-      tl.from('#s6b-m1 .chat-avatar', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 84.0);
-      tl.from('#s6b-m1 .body',        { x: 20, opacity: 0, duration: 0.4 }, 84.1);
-      tl.from('#s6b-m2 .chat-avatar', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 84.9);
-      tl.from('#s6b-m2 .body',        { x: 20, opacity: 0, duration: 0.4 }, 85.0);
-      tl.set('#s6b-plan', { display: 'block' }, 85.6);
-      tl.from('#s6b-plan', { y: 16, opacity: 0, duration: 0.5, ease: 'power3.out' }, 85.6);
-      tl.from('#s6b-plan .ttl', { x: -10, opacity: 0, duration: 0.4 }, 85.85);
-      tl.from('#s6b-plan .row', { x: -10, opacity: 0, duration: 0.3, stagger: 0.1 }, 86.05);
+      // Header STATE pulses dramatically — NEGOTIATING → CONSENSUS in green with bounce
+      tl.to('#s6-state', { opacity: 0, duration: 0.2 }, 81.5);
+      tl.set('#s6-state', { textContent: 'CONSENSUS', className: 'sess-state consensus' }, 81.7);
+      tl.fromTo('#s6-state',
+        { opacity: 0, scale: 1.5 },
+        { opacity: 1, scale: 1, duration: 0.5, ease: 'back.out(2.4)' },
+        81.7);
 
-      // ── Scene 7: Outro (89–95s) ──
-      tl.from('#outro .wordmark', { y: 50, opacity: 0, duration: 1.0, ease: 'power3.out' }, 89.2);
-      tl.from('#outro .ready',    { y: 20, opacity: 0, duration: 0.7, ease: 'power2.out' }, 89.8);
-      tl.from('#outro .url',      { opacity: 0, duration: 0.6 }, 90.4);
+      // ── Scene 6b: Chat return — agent posts plan + farewell (85.4–94.4s) ──
+      tl.set('#s6b-plan', { display: 'none' }, 85.4);
+      tl.from('#s6b .scene-title', { x: -40, opacity: 0, duration: 0.6, ease: 'expo.out' }, 85.6);
+      tl.from('#s6b-win', { y: 80, opacity: 0, duration: 0.8, ease: 'power3.out' }, 85.8);
+      tl.from('#s6b-win .chat-rail', { x: -20, opacity: 0, duration: 0.5 }, 86.4);
+      tl.from('#s6b-win .chat-header', { y: -10, opacity: 0, duration: 0.5 }, 86.5);
+      tl.from('#s6b-m1 .chat-avatar', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 87.0);
+      tl.from('#s6b-m1 .body',        { x: 20, opacity: 0, duration: 0.4 }, 87.1);
+      tl.from('#s6b-m2 .chat-avatar', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 87.9);
+      tl.from('#s6b-m2 .meta',        { opacity: 0, duration: 0.3 }, 88.0);
+      // Typewriter on the agent reply text
+      tl.to('#s6b-m2 .text .word', { opacity: 1, duration: 0.05, stagger: 0.07 }, 88.2);
+      tl.set('#s6b-plan', { display: 'block' }, 88.9);
+      tl.from('#s6b-plan', { y: 16, opacity: 0, duration: 0.5, ease: 'power3.out' }, 88.9);
+      tl.from('#s6b-plan .ttl', { x: -10, opacity: 0, duration: 0.4 }, 89.15);
+      tl.from('#s6b-plan .row', { x: -10, opacity: 0, duration: 0.3, stagger: 0.1 }, 89.35);
+
+      // Farewell — agent confirms work is starting
+      tl.from('#s6b-m3 .chat-avatar', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 90.6);
+      tl.from('#s6b-m3 .meta',        { opacity: 0, duration: 0.3 }, 90.7);
+      tl.to('#s6b-m3 .text .word', { opacity: 1, duration: 0.05, stagger: 0.07 }, 90.9);
+
+      // ── Scene 7: Outro (94–100s) ──
+      tl.from('#outro .wordmark', { y: 50, opacity: 0, duration: 1.0, ease: 'power3.out' }, 94.2);
+      tl.from('#outro .ready',    { y: 20, opacity: 0, duration: 0.7, ease: 'power2.out' }, 94.8);
+      tl.from('#outro .url',      { opacity: 0, duration: 0.6 }, 95.4);
 
       window.__timelines['main'] = tl;
     </script>
