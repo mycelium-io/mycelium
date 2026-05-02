@@ -53,22 +53,28 @@ The release pipeline's "promote to latest" steps (Docker `:latest` tags, GH "Lat
    - `Mycelium Release Notes` — always (room ID in `/webex` skill)
    - `IoC::Mycelium Eng` — only if `--with-webex=eng` was passed (room ID in `/webex` skill)
 
-   **Preview release (`--preview`)** — post a short eng-only ping to `IoC::Mycelium Eng` (NOT `Mycelium Release Notes` — that channel is user-facing). No changelog. Just the tag, the GH release URL, and the install/upgrade commands testers need:
+   **Preview release (`--preview`)** — post a short eng-only ping to `IoC::Mycelium Eng` (NOT `Mycelium Release Notes` — that channel is user-facing). No changelog. Use `--markdown` so the code blocks render. Just the tag, the GH release URL, and the install/upgrade commands testers need:
    ```
    Preview build cut: <tag>
    <release-url>
 
    Test on a fresh server:
-       MYCELIUM_VERSION=<tag-without-v> curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
-       mycelium pull --version <tag-without-v>
+   ```bash
+   MYCELIUM_VERSION=<tag-without-v> curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
+   mycelium pull --version <tag-without-v>
+   ```
 
    Or upgrade in place:
-       mycelium upgrade --version <tag-without-v>
-       mycelium pull --version <tag-without-v>
+   ```bash
+   mycelium upgrade --version <tag-without-v>
+   mycelium pull --version <tag-without-v>
+   ```
 
    Roll back:
-       mycelium upgrade --version <previous-stable>
-       mycelium pull --version latest
+   ```bash
+   mycelium upgrade --version <previous-stable>
+   mycelium pull --version latest
+   ```
    ```
    `mycelium pull --version <tag>` is the critical second step — it pins both `mycelium-backend` and `mycelium-db` images via `MYCELIUM_IMAGE_TAG` in `~/.mycelium/.env`. Without it, the new CLI runs against stale stable containers. Stable users are unaffected — `install.sh` and `mycelium upgrade` (no `--version`) still resolve to the latest stable, and `mycelium pull` (no `--version`) still pulls `:latest`.
 
