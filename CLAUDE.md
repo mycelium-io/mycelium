@@ -16,6 +16,11 @@ mycelium-cli/       CLI tool (typer, Rich, typed OpenAPI client)
 mycelium-client/    Generated OpenAPI client (openapi-python-client)
 mycelium-frontend/  Next.js frontend (TypeScript, Tailwind)
 docs/               Presentation deck, demo script
+mycelium-promo/     HyperFrames promo video — code-defined HTML→MP4 walkthrough
+                    (CLI install → app install → room → adapter → chat → swim
+                    lanes → consensus → return). Renders ~95s 1920x1080.
+                    `cd mycelium-promo && npm run dev` to preview,
+                    `npm run render` to export to renders/*.mp4
 ```
 
 ## Development
