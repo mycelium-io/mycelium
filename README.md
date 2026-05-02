@@ -19,7 +19,7 @@
 
 <div align="center">
 
-https://github.com/user-attachments/assets/96630c58-4cba-4dfa-b6a9-cd11b74a5ef1
+https://github.com/user-attachments/assets/1a5febbb-87e7-48a4-aa7d-8d1b116889c3
 
 <em>install → coordinate → consensus.</em>
 
