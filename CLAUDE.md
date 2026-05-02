@@ -18,9 +18,15 @@ mycelium-frontend/  Next.js frontend (TypeScript, Tailwind)
 docs/               Presentation deck, demo script
 mycelium-promo/     HyperFrames promo video — code-defined HTML→MP4 walkthrough
                     (CLI install → app install → room → adapter → chat → swim
-                    lanes → consensus → return). Renders ~95s 1920x1080.
+                    lanes → consensus → return). Renders 1920x1080 H.264.
                     `cd mycelium-promo && npm run dev` to preview,
-                    `npm run render` to export to renders/*.mp4
+                    `npm run render` to export to renders/*.mp4.
+                    The README + docs/index.html embed the rendered MP4 via a
+                    `user-attachments/assets/...` URL — these only auto-render
+                    inline when uploaded via GitHub's web drag-drop (gh CLI has
+                    no equivalent). After re-rendering, drag the new MP4 into a
+                    PR comment to mint a fresh URL, then swap it into both
+                    embeds.
 ```
 
 ## Development

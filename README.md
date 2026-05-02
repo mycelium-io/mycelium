@@ -19,9 +19,9 @@
 
 <div align="center">
 
-https://github.com/user-attachments/assets/2d3f5980-8d04-48a5-8f55-e25a09a5a460
+https://github.com/user-attachments/assets/96630c58-4cba-4dfa-b6a9-cd11b74a5ef1
 
-<em>~95s walkthrough — install → coordinate → consensus.</em>
+<em>install → coordinate → consensus.</em>
 
 </div>
 
