@@ -703,7 +703,7 @@
 
       <!-- ── Scene 5: Adapter add ──────────────────────── -->
       <div id="s5" class="clip scene" data-start="41.4" data-duration="11" data-track-index="5">
-        <div class="scene-title"><span class="num">04</span><span class="label">Wire in your agents</span></div>
+        <div class="scene-title"><span class="num">04</span><span class="label">Wire in your OpenClaw agents</span></div>
         <div class="terminal" style="max-width: 1500px; align-self: center; width: 100%;">
           <div class="term-bar">
             <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
@@ -723,7 +723,7 @@
 
       <!-- ── Scene 5b: Chat app — user prompts agent ──── -->
       <div id="s5b" class="clip scene" data-start="52.2" data-duration="9.8" data-track-index="6">
-        <div class="scene-title"><span class="num">06</span><span class="label">Trigger from any chat</span></div>
+        <div class="scene-title"><span class="num">05</span><span class="label">Trigger from any chat</span></div>
         <div id="s5b-win" class="chat-window">
           <div class="chat-rail">
             <div class="ws-name">acme-corp</div>
@@ -792,7 +792,7 @@
 
       <!-- ── Scene 6: Session UI (swim lanes) ──────────── -->
       <div id="s6" class="clip scene" data-start="61.6" data-duration="24" data-track-index="7">
-        <div class="scene-title"><span class="num">05</span><span class="label">Agents coordinate</span></div>
+        <div class="scene-title"><span class="num">06</span><span class="label">Agents coordinate</span></div>
         <div id="s6-ui" class="ui-window" style="position: absolute; left: 80px; right: 80px; top: 160px; bottom: 80px; height: auto;">
           <div class="ui-topbar">
             <span class="brand">mycelium</span>
@@ -1201,12 +1201,13 @@
       tl.from('#s4-l5', { opacity: 0, y: 8, duration: 0.35 }, 31.2);
       tl.from('#s4-l6', { opacity: 0, y: 8, duration: 0.35 }, 32.0);
       // UI window slides up over the terminal
-      tl.from('#s4-ui', { y: 800, opacity: 0, duration: 1.0, ease: 'power3.out' }, 33.0);
-      tl.from('#s4-ui .ui-topbar', { y: -10, opacity: 0, duration: 0.5 }, 34.0);
-      tl.from('#s4-ui .ui-subnav', { y: -10, opacity: 0, duration: 0.5 }, 34.2);
-      tl.from('#s4-ui .ui-rail .item', { x: -20, opacity: 0, duration: 0.4, stagger: 0.1 }, 34.4);
-      tl.from('#s4-ui .event-row', { x: 30, opacity: 0, duration: 0.5 }, 34.8);
-      tl.from('#s4-ui .mem-item', { x: -20, opacity: 0, duration: 0.5 }, 35.0);
+      // ~2s pause after memory set so the viewer can read the terminal output
+      tl.from('#s4-ui', { y: 800, opacity: 0, duration: 1.0, ease: 'power3.out' }, 35.0);
+      tl.from('#s4-ui .ui-topbar', { y: -10, opacity: 0, duration: 0.5 }, 36.0);
+      tl.from('#s4-ui .ui-subnav', { y: -10, opacity: 0, duration: 0.5 }, 36.2);
+      tl.from('#s4-ui .ui-rail .item', { x: -20, opacity: 0, duration: 0.4, stagger: 0.1 }, 36.4);
+      tl.from('#s4-ui .event-row', { x: 30, opacity: 0, duration: 0.5 }, 36.8);
+      tl.from('#s4-ui .mem-item', { x: -20, opacity: 0, duration: 0.5 }, 37.0);
 
       // ── Scene 5: Adapter add (41.4–52.4s) ──
       tl.from('#s5 .scene-title', { x: -40, opacity: 0, duration: 0.6, ease: 'expo.out' }, 41.6);
