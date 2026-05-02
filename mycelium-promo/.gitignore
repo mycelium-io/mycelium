@@ -1,0 +1,12 @@
+# HyperFrames skills (reinstall: npx skills add heygen-com/hyperframes)
+.agents/
+skills/
+
+# Editor / agent local state
+.claude/
+.pi/
+.windsurf/
+.thumbnails/
+
+# HyperFrames preview cache
+.hyperframes/
