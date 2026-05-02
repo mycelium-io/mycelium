@@ -14,12 +14,17 @@ from ...types import UNSET, Response, Unset
 
 def _get_kwargs(
     *,
-    mas_id: str,
+    mas_id: None | str | Unset = UNSET,
     limit: int | Unset = 50,
 ) -> dict[str, Any]:
     params: dict[str, Any] = {}
 
-    params["mas_id"] = mas_id
+    json_mas_id: None | str | Unset
+    if isinstance(mas_id, Unset):
+        json_mas_id = UNSET
+    else:
+        json_mas_id = mas_id
+    params["mas_id"] = json_mas_id
 
     params["limit"] = limit
 
@@ -73,7 +78,7 @@ def _build_response(
 def sync_detailed(
     *,
     client: AuthenticatedClient | Client,
-    mas_id: str,
+    mas_id: None | str | Unset = UNSET,
     limit: int | Unset = 50,
 ) -> Response[
     CfnListApiCfnKnowledgeListGetResponseCfnListApiCfnKnowledgeListGet | HTTPValidationError
@@ -88,7 +93,7 @@ def sync_detailed(
     (``graph_<mas_id_with_hyphens_underscored>``).
 
     Args:
-        mas_id (str):
+        mas_id (None | str | Unset):
         limit (int | Unset):  Default: 50.
 
     Raises:
@@ -114,7 +119,7 @@ def sync_detailed(
 def sync(
     *,
     client: AuthenticatedClient | Client,
-    mas_id: str,
+    mas_id: None | str | Unset = UNSET,
     limit: int | Unset = 50,
 ) -> (
     CfnListApiCfnKnowledgeListGetResponseCfnListApiCfnKnowledgeListGet | HTTPValidationError | None
@@ -129,7 +134,7 @@ def sync(
     (``graph_<mas_id_with_hyphens_underscored>``).
 
     Args:
-        mas_id (str):
+        mas_id (None | str | Unset):
         limit (int | Unset):  Default: 50.
 
     Raises:
@@ -150,7 +155,7 @@ def sync(
 async def asyncio_detailed(
     *,
     client: AuthenticatedClient | Client,
-    mas_id: str,
+    mas_id: None | str | Unset = UNSET,
     limit: int | Unset = 50,
 ) -> Response[
     CfnListApiCfnKnowledgeListGetResponseCfnListApiCfnKnowledgeListGet | HTTPValidationError
@@ -165,7 +170,7 @@ async def asyncio_detailed(
     (``graph_<mas_id_with_hyphens_underscored>``).
 
     Args:
-        mas_id (str):
+        mas_id (None | str | Unset):
         limit (int | Unset):  Default: 50.
 
     Raises:
@@ -189,7 +194,7 @@ async def asyncio_detailed(
 async def asyncio(
     *,
     client: AuthenticatedClient | Client,
-    mas_id: str,
+    mas_id: None | str | Unset = UNSET,
     limit: int | Unset = 50,
 ) -> (
     CfnListApiCfnKnowledgeListGetResponseCfnListApiCfnKnowledgeListGet | HTTPValidationError | None
@@ -204,7 +209,7 @@ async def asyncio(
     (``graph_<mas_id_with_hyphens_underscored>``).
 
     Args:
-        mas_id (str):
+        mas_id (None | str | Unset):
         limit (int | Unset):  Default: 50.
 
     Raises:

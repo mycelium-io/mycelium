@@ -36,6 +36,7 @@ async def test_query_forwards_intent_to_cfn(client: AsyncClient, monkeypatch):
     body = resp.json()
     assert body["message"] == "the website_selector picks websites"
 
+    assert mock.await_args is not None
     call = mock.await_args.kwargs
     assert call["workspace_id"] == "ws-default"
     assert call["mas_id"] == "mas-a"
@@ -58,6 +59,7 @@ async def test_query_uses_explicit_workspace_over_default(
             "intent": "anything",
         },
     )
+    assert mock.await_args is not None
     assert mock.await_args.kwargs["workspace_id"] == "ws-override"
 
 
@@ -65,7 +67,7 @@ async def test_query_resolves_mas_id_from_settings_when_omitted(
     client: AsyncClient,
     monkeypatch,
 ):
-    """Leaf nodes can omit mas_id; backend resolves from settings.MAS_ID."""
+    """Spoke nodes can omit mas_id; backend resolves from settings.MAS_ID."""
     mock = AsyncMock(return_value={"response_id": "r", "message": "ok"})
     monkeypatch.setattr("app.routes.cfn_proxy.query_shared_memories", mock)
 
@@ -74,6 +76,7 @@ async def test_query_resolves_mas_id_from_settings_when_omitted(
         json={"intent": "anything"},
     )
     assert resp.status_code == 200
+    assert mock.await_args is not None
     call = mock.await_args.kwargs
     assert call["workspace_id"] == "ws-default"
     assert call["mas_id"] == "mas-default"
@@ -146,6 +149,7 @@ async def test_concepts_by_ids(client: AsyncClient, monkeypatch):
     )
     assert resp.status_code == 200
     assert resp.json()["records"][0]["concepts"][0]["id"] == "c1"
+    assert mock.await_args is not None
     assert mock.await_args.kwargs["ids"] == ["c1", "c2"]
 
 
@@ -173,6 +177,7 @@ async def test_concept_neighbors(client: AsyncClient, monkeypatch):
         params={"mas_id": "mas-a"},
     )
     assert resp.status_code == 200
+    assert mock.await_args is not None
     call = mock.await_args.kwargs
     assert call["workspace_id"] == "ws-default"
     assert call["mas_id"] == "mas-a"
@@ -186,6 +191,7 @@ async def test_concept_neighbors_explicit_workspace(client: AsyncClient, monkeyp
         "/api/cfn/knowledge/concepts/c1/neighbors",
         params={"mas_id": "mas-a", "workspace_id": "ws-override"},
     )
+    assert mock.await_args is not None
     assert mock.await_args.kwargs["workspace_id"] == "ws-override"
 
 
@@ -207,6 +213,7 @@ async def test_paths(client: AsyncClient, monkeypatch):
         },
     )
     assert resp.status_code == 200
+    assert mock.await_args is not None
     call = mock.await_args.kwargs
     assert call["source_id"] == "c1"
     assert call["target_id"] == "c2"
@@ -222,6 +229,7 @@ async def test_paths_optional_args_omitted_when_unset(client: AsyncClient, monke
         "/api/cfn/knowledge/paths",
         json={"mas_id": "mas-a", "source_id": "c1", "target_id": "c2"},
     )
+    assert mock.await_args is not None
     call = mock.await_args.kwargs
     assert call["max_depth"] is None
     assert call["relations"] is None

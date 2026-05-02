@@ -15,18 +15,18 @@ T = TypeVar("T", bound="GraphPathsRequest")
 class GraphPathsRequest:
     """
     Attributes:
-        mas_id (str):
         source_id (str):
         target_id (str):
+        mas_id (None | str | Unset):
         workspace_id (None | str | Unset):
         max_depth (int | None | Unset):
         relations (list[str] | None | Unset):
         limit (int | None | Unset):
     """
 
-    mas_id: str
     source_id: str
     target_id: str
+    mas_id: None | str | Unset = UNSET
     workspace_id: None | str | Unset = UNSET
     max_depth: int | None | Unset = UNSET
     relations: list[str] | None | Unset = UNSET
@@ -34,11 +34,15 @@ class GraphPathsRequest:
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        mas_id = self.mas_id
-
         source_id = self.source_id
 
         target_id = self.target_id
+
+        mas_id: None | str | Unset
+        if isinstance(self.mas_id, Unset):
+            mas_id = UNSET
+        else:
+            mas_id = self.mas_id
 
         workspace_id: None | str | Unset
         if isinstance(self.workspace_id, Unset):
@@ -71,11 +75,12 @@ class GraphPathsRequest:
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
-                "mas_id": mas_id,
                 "source_id": source_id,
                 "target_id": target_id,
             }
         )
+        if mas_id is not UNSET:
+            field_dict["mas_id"] = mas_id
         if workspace_id is not UNSET:
             field_dict["workspace_id"] = workspace_id
         if max_depth is not UNSET:
@@ -90,11 +95,18 @@ class GraphPathsRequest:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        mas_id = d.pop("mas_id")
-
         source_id = d.pop("source_id")
 
         target_id = d.pop("target_id")
+
+        def _parse_mas_id(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        mas_id = _parse_mas_id(d.pop("mas_id", UNSET))
 
         def _parse_workspace_id(data: object) -> None | str | Unset:
             if data is None:
@@ -141,9 +153,9 @@ class GraphPathsRequest:
         limit = _parse_limit(d.pop("limit", UNSET))
 
         graph_paths_request = cls(
-            mas_id=mas_id,
             source_id=source_id,
             target_id=target_id,
+            mas_id=mas_id,
             workspace_id=workspace_id,
             max_depth=max_depth,
             relations=relations,

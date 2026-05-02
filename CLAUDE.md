@@ -9,14 +9,24 @@ Mycelium — multi-agent coordination + persistent memory, built on the Internet
 ```
 .mycelium/              Memory storage (rooms are folders, memories are markdown files)
 ├── rooms/{name}/       Room directories with standard namespace subdirs
-├── notebooks/{handle}/ Agent-private notebook directories
 └── config.toml         Project-local configuration
 
 fastapi-backend/    FastAPI coordination engine (Python 3.12, asyncpg, SQLAlchemy)
 mycelium-cli/       CLI tool (typer, Rich, typed OpenAPI client)
 mycelium-client/    Generated OpenAPI client (openapi-python-client)
-mycelium-frontend/  Next.js room viewer (TypeScript, Tailwind)
+mycelium-frontend/  Next.js frontend (TypeScript, Tailwind)
 docs/               Presentation deck, demo script
+mycelium-promo/     HyperFrames promo video — code-defined HTML→MP4 walkthrough
+                    (CLI install → app install → room → adapter → chat → swim
+                    lanes → consensus → return). Renders 1920x1080 H.264.
+                    `cd mycelium-promo && npm run dev` to preview,
+                    `npm run render` to export to renders/*.mp4.
+                    The README + docs/index.html embed the rendered MP4 via a
+                    `user-attachments/assets/...` URL — these only auto-render
+                    inline when uploaded via GitHub's web drag-drop (gh CLI has
+                    no equivalent). After re-rendering, drag the new MP4 into a
+                    PR comment to mint a fresh URL, then swap it into both
+                    embeds.
 ```
 
 ## Development
@@ -66,6 +76,80 @@ Embeddings: sentence-transformers (all-MiniLM-L6-v2, local, 384 dimensions).
 - **memory set always upserts** — `memory set` overwrites existing keys automatically (version increments).
 - **Git for sharing** — rooms can be shared via git push/pull.
 - **No Ensue references in code** — we took inspiration from their API design but the implementation is independent.
+- **Two delivery paths for coordination ticks — keep them in sync.** When a `coordination_tick` is posted to a session room, agents see it via one of two paths depending on their adapter:
+  - **CLI path (Claude Code, Cursor, plain shell):** the agent runs `mycelium await` (or `mycelium negotiate await`) which streams ticks from the SSE endpoint. Formatting is whatever the agent does with the raw JSON tick payload.
+  - **OpenClaw path:** the agent does NOT run `mycelium await`. The `mycelium-room` channel plugin (`mycelium-cli/src/mycelium/adapters/openclaw/mycelium/plugin/src/channel/`) subscribes to the session room's SSE on its behalf and dispatches a *human-readable string* into the agent's session via `formatTickInstruction()` in `route.ts`. The agent only ever sees that formatted string — the raw payload fields are invisible to it.
+
+  This means that **adding a field to the backend tick payload (`coordination.py:_fan_out_cfn_messages`) is not enough on its own** — the openclaw flow won't surface it until you also update `formatTickInstruction()` to render it into the dispatched string. Always change both.
+
+## Local development
+
+> **This section is for contributors iterating on the backend source.** End users should follow the normal install path: `curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash` then `mycelium install`.
+
+### Starting the stack
+
+The normal `mycelium up` / `mycelium install` flow uses `compose.yml` with `pull_policy: always` — it always pulls released images and is the correct path for end users. For dev, use `compose-dev.yml` instead, which builds `mycelium-backend` from local source and wires `~/.mycelium/.env` into all service containers. **Always run from the repo root.**
+
+```bash
+# Full stack with CFN (required for negotiate/session commands)
+docker compose \
+  -f mycelium-cli/src/mycelium/docker/compose.yml \
+  -f mycelium-cli/src/mycelium/docker/compose-dev.yml \
+  --profile cfn up -d --build
+
+# Memory only (no CFN)
+docker compose \
+  -f mycelium-cli/src/mycelium/docker/compose.yml \
+  -f mycelium-cli/src/mycelium/docker/compose-dev.yml \
+  up -d --build
+```
+
+On subsequent runs, drop `--build` unless you've changed backend code.
+
+### LLM config
+
+All containers get their LLM settings from `~/.mycelium/.env`, which is generated from `config.toml`. Set these once:
+
+```bash
+mycelium config set llm.model "anthropic/bedrock/global.anthropic.claude-sonnet-4-6"
+mycelium config set llm.api_key "<key>"
+mycelium config set llm.base_url "<base-url>"
+mycelium config apply
+```
+
+Then recreate any running CFN containers to pick up the new env:
+```bash
+docker compose -f mycelium-cli/src/mycelium/docker/compose.yml \
+  -f mycelium-cli/src/mycelium/docker/compose-dev.yml \
+  --profile cfn up -d --force-recreate ioc-cognition-fabric-node-svc
+```
+
+**Important:** `mycelium config apply` regenerates `.env` from `config.toml`. If you edit `.env` directly, those changes will be overwritten. Always use `mycelium config set` to persist values.
+
+### MAS ID
+
+`mas_id` in `config.toml` is a CFN Multi-Agent System UUID required for `session join`/`await`/`negotiate`. Each room gets its own MAS ID on creation — use the one for the room you're testing:
+
+```bash
+mycelium room create my-room        # prints MAS ID on creation
+mycelium config set server.mas_id <uuid-from-above>
+```
+
+After a volume wipe, existing MAS IDs are gone. Create a new room and use its ID.
+
+### Running the backend outside Docker (hot-reload)
+
+```bash
+cd fastapi-backend
+DATABASE_URL="postgresql+asyncpg://postgres:password@localhost:5432/mycelium" \
+  uv run uvicorn app.main:app --reload --port 8000
+```
+
+DB container still needs to be running (`docker compose up -d mycelium-db`). Update `config.toml` if you change the backend port:
+```bash
+mycelium config set server.api_url "http://localhost:8000"
+mycelium config apply
+```
 
 ## Conventions
 

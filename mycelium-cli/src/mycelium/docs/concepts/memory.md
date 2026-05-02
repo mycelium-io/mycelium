@@ -20,7 +20,7 @@ When a room is deleted, its memories are cascade-deleted.
 
 ## Structured Categories
 
-Mycelium defines five recommended key prefixes for agent notebooks:
+Mycelium defines five recommended key prefixes for room memories:
 
 | Category       | Prefix         | Purpose                           |
 |---------------|---------------|-----------------------------------|

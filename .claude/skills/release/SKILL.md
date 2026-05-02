@@ -1,7 +1,7 @@
 ---
 name: release
-description: Cut a release — commit any staged changes, tag, create GitHub release, and optionally notify Webex. Use when the user says /release or /release --with-webex.
-argument-hint: "[--with-webex]"
+description: Cut a release — commit any staged changes, tag, create GitHub release, and optionally notify Webex. Use when the user says /release, /release --with-webex, or /release --preview.
+argument-hint: "[--with-webex] [--preview]"
 ---
 
 # Release
@@ -10,26 +10,38 @@ Commit latest changes (if any), tag, cut a GitHub release, and optionally notify
 
 ## Arguments
 
-- `--with-webex` — after releasing, post a summary to Webex (default: `Mycelium Release Notes` only; add `--with-webex=eng` to also post to `IoC::Mycelium Eng`)
+- `--with-webex` — after releasing, post a summary to Webex (default: `Mycelium Release Notes` only; add `--with-webex=eng` to also post to `IoC::Mycelium Eng`).
+- `--preview` — cut a prerelease build for testing without affecting stable users. Skips Docker `:latest`, Homebrew, and ClawHub. Webex still gets a short preview ping (eng channel only — not user-facing release notes). Testers opt in via `mycelium upgrade --version <tag>`.
+
+## Why preview releases are safe
+
+The release pipeline's "promote to latest" steps (Docker `:latest` tags, GH "Latest" label, Homebrew formula, ClawHub) are gated on the tag matching a stable pattern. Tags containing `rc`, `alpha`, `beta`, or `preview` are detected as prereleases by the `detect-release-type` job in `.github/workflows/release.yml` and bypass all of those.
+
+`install.sh` and `mycelium upgrade` both follow the GitHub `/releases/latest` redirect, which only resolves to releases NOT marked as prerelease. So stable users never see preview builds. Testers install with an explicit version pin.
 
 ## Steps
 
 1. **Commit staged changes** — Run `git status`. If there are uncommitted changes, run /precommit checks then commit directly to main (admin push, no PR needed). Use a conventional commit message.
 
-2. **Determine next tag** — Run `gh release list --limit 5` to find the current "Latest" release tag. Increment the patch version (e.g. `v1.0.0` → `v1.0.1`).
+   **For `--preview`:** do NOT commit a `pyproject.toml` version bump to main. The release workflow seds the version in-place during the build only — main keeps tracking the next stable version, not the preview.
+
+2. **Determine next tag** —
+   - **Stable (`/release`):** Run `gh release list --limit 5` to find the current "Latest" release tag. Increment the patch version (e.g. `v1.0.0` → `v1.0.1`).
+   - **Preview (`/release --preview`):** Find the latest stable tag (highest non-prerelease in `gh release list`). Target version is `<latest-stable-patch+1>`. Then check existing prereleases for that target: if `vX.Y.Zrc1` exists, cut `vX.Y.Zrc2`, etc. First preview for a target version is always `rc1`. Use PEP 440 format with no separator (`vX.Y.ZrcN`, NOT `vX.Y.Z-rc.N`) so the wheel filename matches what `install.sh` expects.
 
 3. **Tag and push** — Run:
    ```
    git tag <new-tag> && git push origin <new-tag>
    ```
+   The `release.yml` workflow detects whether the tag is a prerelease and gates the rest of the pipeline accordingly.
 
-4. **Create GitHub release** — Run:
-   ```
-   gh release create <new-tag> --title "<new-tag>" --notes "<summary of changes since last tag>"
-   ```
-   Generate the release notes from `git log <prev-tag>..HEAD --oneline`.
+4. **Create GitHub release** — The `release.yml` workflow handles this automatically (via `softprops/action-gh-release`), including setting `prerelease: true` for preview tags. No manual `gh release create` needed.
 
-5. **Webex notification** — If `--with-webex` was passed, invoke `/webex` (no confirmation needed) to post a bullet-point changelog summary with the tag and release URL. Each bullet should include the PR link if one exists (e.g. `- feat: description ([#123](https://github.com/mycelium-io/mycelium/pull/123))`). Follow with upgrade instructions using triple-backtick code blocks so they're copyable:
+   Wait for the workflow to finish (`gh run watch` or `gh run list --workflow=release.yml --limit 1`). If it fails, fix and re-run before posting any notifications.
+
+5. **Webex notification** — Invoke `/webex` (no confirmation needed). Behavior depends on whether this is a stable or preview release.
+
+   **Stable release** — when `--with-webex` is passed, post a bullet-point changelog summary with the tag and release URL. Each bullet should include the PR link if one exists (e.g. `- feat: description ([#123](https://github.com/mycelium-io/mycelium/pull/123))`). Follow with upgrade instructions using triple-backtick code blocks so they're copyable:
    ```
    To upgrade:
    mycelium upgrade && mycelium pull
@@ -41,7 +53,32 @@ Commit latest changes (if any), tag, cut a GitHub release, and optionally notify
    - `Mycelium Release Notes` — always (room ID in `/webex` skill)
    - `IoC::Mycelium Eng` — only if `--with-webex=eng` was passed (room ID in `/webex` skill)
 
-6. **Mycelium patch notes** — Write the same changelog summary to the active Mycelium room:
+   **Preview release (`--preview`)** — post a short eng-only ping to `IoC::Mycelium Eng` (NOT `Mycelium Release Notes` — that channel is user-facing). No changelog. Use `--markdown` so the code blocks render. Just the tag, the GH release URL, and the install/upgrade commands testers need:
+   ```
+   Preview build cut: <tag>
+   <release-url>
+
+   Test on a fresh server:
+   ```bash
+   MYCELIUM_VERSION=<tag-without-v> curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
+   mycelium pull --version <tag-without-v>
+   ```
+
+   Or upgrade in place:
+   ```bash
+   mycelium upgrade --version <tag-without-v>
+   mycelium pull --version <tag-without-v>
+   ```
+
+   Roll back:
+   ```bash
+   mycelium upgrade --version <previous-stable>
+   mycelium pull --version latest
+   ```
+   ```
+   `mycelium pull --version <tag>` is the critical second step — it pins both `mycelium-backend` and `mycelium-db` images via `MYCELIUM_IMAGE_TAG` in `~/.mycelium/.env`. Without it, the new CLI runs against stale stable containers. Stable users are unaffected — `install.sh` and `mycelium upgrade` (no `--version`) still resolve to the latest stable, and `mycelium pull` (no `--version`) still pulls `:latest`.
+
+6. **Mycelium patch notes** — Skipped for `--preview` (or scope to a `previews/<tag>` key if the user explicitly asks for it). Otherwise write the same changelog summary to the active Mycelium room:
    ```bash
    mycelium memory set "releases/<tag>" "<same bullet-point summary as Webex>" --handle claude-code-agent
    ```

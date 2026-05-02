@@ -144,6 +144,7 @@ def _prompt_llm() -> dict[str, str]:
     choice = select(providers, cursor="  ▸ ", cursor_style="cyan")
     if choice is None:
         raise KeyboardInterrupt
+    assert isinstance(choice, str)  # noqa: S101
 
     if choice.startswith("Anthropic"):
         models = [
@@ -152,6 +153,7 @@ def _prompt_llm() -> dict[str, str]:
             "anthropic/claude-haiku-4-5",
         ]
         model = select(models, cursor="  ▸ ", cursor_style="cyan")
+        assert isinstance(model, str)  # noqa: S101
         key = _ask("  \x1b[2mAPI key (sk-ant-...):\x1b[0m ")
         print(f"  \x1b[32m✓\x1b[0m {model}")
         return {"LLM_MODEL": model, "LLM_API_KEY": key}
@@ -164,6 +166,7 @@ def _prompt_llm() -> dict[str, str]:
             "openai/o3",
         ]
         model = select(models, cursor="  ▸ ", cursor_style="cyan")
+        assert isinstance(model, str)  # noqa: S101
         key = _ask("  \x1b[2mAPI key (sk-...):\x1b[0m ")
         print(f"  \x1b[32m✓\x1b[0m {model}")
         return {"LLM_MODEL": model, "LLM_API_KEY": key}
@@ -186,6 +189,7 @@ def _prompt_llm() -> dict[str, str]:
             "ollama/deepseek-r1",
         ]
         model = select(models, cursor="  ▸ ", cursor_style="cyan")
+        assert isinstance(model, str)  # noqa: S101
         print(f"  \x1b[32m✓\x1b[0m {model} at localhost:11434")
         return {"LLM_MODEL": model, "LLM_BASE_URL": "http://host.docker.internal:11434"}
 
@@ -853,18 +857,16 @@ def _write_mycelium_config(
         )
 
     # Persist runtime settings into [runtime] section
-    runtime_kwargs: dict[str, object] = {
-        "data_dir": str(Path.home() / ".mycelium"),
-    }
+    runtime = RuntimeConfig(data_dir=str(Path.home() / ".mycelium"))
     if custom_ports:
-        runtime_kwargs["db_port"] = custom_ports.get("db", 5432)
-        runtime_kwargs["backend_port"] = custom_ports.get("backend", 8000)
+        runtime.db_port = custom_ports.get("db", 5432)
+        runtime.backend_port = custom_ports.get("backend", 8000)
     if ioc_enabled:
-        runtime_kwargs["cfn_mgmt_url"] = "http://ioc-cfn-mgmt-plane-svc:9000"
-        runtime_kwargs["cognition_fabric_node_url"] = "http://ioc-cognition-fabric-node-svc:9002"
+        runtime.cfn_mgmt_url = "http://ioc-cfn-mgmt-plane-svc:9000"
+        runtime.cognition_fabric_node_url = "http://ioc-cognition-fabric-node-svc:9002"
     if workspace_id:
-        runtime_kwargs["workspace_id"] = workspace_id
-    config.runtime = RuntimeConfig(**runtime_kwargs)
+        runtime.workspace_id = workspace_id
+    config.runtime = runtime
 
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config.save(config_path)
@@ -908,6 +910,11 @@ def install(
         0, "--backend-port", help="Host port for backend API (0 = auto-detect, default 8000)"
     ),
     ioc: bool = typer.Option(True, "--ioc/--no-ioc", help="Enable IoC CFN stack (default: on)"),
+    ui: bool = typer.Option(
+        True,
+        "--ui/--no-ui",
+        help="Bring up the frontend (default: on; interactive mode prompts to confirm)",
+    ),
     force: bool = typer.Option(
         False, "--force", help="Force full reinstall even if already installed"
     ),
@@ -988,11 +995,21 @@ def install(
                 )
                 compose_profiles.append("cfn")
 
+            # Non-interactive: trust the --ui/--no-ui flag, never prompt.
+            enable_ui = ui
+            if enable_ui:
+                compose_profiles.append("ui")
+
             # Resolve ports — use explicit flags, or auto-detect conflicts
-            default_ports = {"db": db_port or 5432, "backend": backend_port or 8000}
-            if not db_port or not backend_port:
+            default_ports: dict[str, int] = {
+                "db": db_port or 5432,
+                "backend": backend_port or 8000,
+            }
+            if enable_ui:
+                default_ports["ui"] = 3000
+            if not db_port or not backend_port or enable_ui:
                 busy = _check_ports(list(default_ports.values()))
-                for label, port in default_ports.items():
+                for label, port in list(default_ports.items()):
                     if port in busy:
                         new_port = port + 1
                         while new_port in busy or new_port in default_ports.values():
@@ -1005,6 +1022,8 @@ def install(
             custom_ports = default_ports
             llm_config["MYCELIUM_DB_PORT"] = str(custom_ports["db"])
             llm_config["MYCELIUM_BACKEND_PORT"] = str(custom_ports["backend"])
+            if enable_ui:
+                llm_config["MYCELIUM_UI_PORT"] = str(custom_ports["ui"])
             llm_config["MYCELIUM_DATA_DIR"] = str(Path.home() / ".mycelium")
 
             typer.secho(
@@ -1092,6 +1111,11 @@ def install(
                 _report_llm_probe_result(status, model, msg, remediation, interactive=False)
 
             typer.secho("  ✓ Done.", fg=typer.colors.GREEN, bold=True)
+            typer.echo(f"  mycelium-backend  → {api_url}")
+            if enable_ui:
+                ui_url = f"http://localhost:{custom_ports['ui']}"
+                typer.echo(f"  mycelium-frontend → {ui_url}")
+                typer.echo("  Open it with: mycelium ui open")
             return
 
         if not sys.stdin.isatty():
@@ -1250,8 +1274,18 @@ def install(
             llm_config["COGNITION_FABRIC_NODE_URL"] = "http://ioc-cognition-fabric-node-svc:9002"
             compose_profiles.append("cfn")
 
+        # Frontend prompt — default to the --ui flag value (True unless --no-ui).
+        enable_ui = ui and typer.confirm(
+            "  Bring up the frontend (browser at http://localhost:3000)?",
+            default=True,
+        )
+        if enable_ui:
+            compose_profiles.append("ui")
+
         # Port check — allow user to pick alternatives
-        default_ports = {"db": 5432, "backend": 8000}
+        default_ports: dict[str, int] = {"db": 5432, "backend": 8000}
+        if enable_ui:
+            default_ports["ui"] = 3000
         ports_to_check = list(default_ports.values())
         busy_ports = _check_ports(ports_to_check)
         custom_ports = dict(default_ports)
@@ -1270,6 +1304,8 @@ def install(
             # Update llm_config with custom ports for env file
             llm_config["MYCELIUM_DB_PORT"] = str(custom_ports["db"])
             llm_config["MYCELIUM_BACKEND_PORT"] = str(custom_ports["backend"])
+            if enable_ui:
+                llm_config["MYCELIUM_UI_PORT"] = str(custom_ports["ui"])
 
         # Set MYCELIUM_DATA_DIR so compose mounts the host's .mycelium/ into the container
         llm_config["MYCELIUM_DATA_DIR"] = str(Path.home() / ".mycelium")
@@ -1390,11 +1426,16 @@ def install(
         typer.echo("  Services:")
         typer.echo(f"    mycelium-backend  → {api_url}")
         typer.echo(f"    mycelium-db       → localhost:{custom_ports['db']}")
+        if enable_ui:
+            ui_url = f"http://localhost:{custom_ports['ui']}"
+            typer.echo(f"    mycelium-frontend → {ui_url}")
         typer.echo("    graph-db-viewer   → http://localhost:5457  (dev profile only)")
         print()
         typer.echo("  Next steps:")
         typer.echo("    mycelium adapter add openclaw   # wire openclaw agents")
         typer.echo("    mycelium room create <name>     # create your first room")
+        if enable_ui:
+            typer.echo("    mycelium ui open                # open the frontend in your browser")
         print()
 
     except KeyboardInterrupt:

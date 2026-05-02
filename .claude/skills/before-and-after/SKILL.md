@@ -127,14 +127,32 @@ openclaw gateway restart
 
 Experiment runs get expensive fast. Each scenario fires 10–40+ LLM calls across multi-turn chatter (before case) and negotiation rounds (after case). **Default to haiku** unless the user explicitly wants sonnet — the quality difference for "pick REST vs GraphQL" is indistinguishable, but the cost difference is ~12×.
 
-Before creating agents, use `AskUserQuestion` to ask:
+First, check what model is already configured in openclaw:
+
+```bash
+CONFIGURED_MODEL=$(python3 -c "
+import json, os
+p = os.path.expanduser('~/.openclaw/openclaw.json')
+try:
+    cfg = json.load(open(p))
+    print(cfg.get('agents', {}).get('defaults', {}).get('model', ''))
+except Exception:
+    print('')
+")
+echo "Currently configured model: ${CONFIGURED_MODEL:-'(none)'}"
+```
+
+Before creating agents, use `AskUserQuestion` to ask — **include the currently configured model as an option if one is set**:
 
 > **Which LLM and API key should the experiment agents use?**
-> 1. **Haiku + existing key** *(recommended — ~$0.10–0.30 per full experiment)*
-> 2. **Sonnet + existing key** *(flagship model — ~$1.50–4.00 per full experiment)*
-> 3. **Different API key or provider** *(isolate experiment cost to a separate key)*
+> 1. **Haiku** *(recommended — ~$0.10–0.30 per full experiment)*
+> 2. **Sonnet** *(flagship model — ~$1.50–4.00 per full experiment)*
+> 3. **Currently configured model** (`$CONFIGURED_MODEL`) *(reuse existing openclaw default — no setup needed)* ← only show this if `$CONFIGURED_MODEL` is non-empty
+> 4. **Different API key or provider** *(isolate experiment cost to a separate key)*
 
-Then set `EXP_MODEL` and, if option 3, `EXP_ANTHROPIC_KEY` (or equivalent) based on the answer:
+If the configured model is already haiku or sonnet, collapse options 1/2 and 3 into one — no need to ask twice for the same thing.
+
+Then set `EXP_MODEL` and, if option 4, `EXP_ANTHROPIC_KEY` (or equivalent) based on the answer:
 
 ```bash
 # Option 1 (default)
@@ -143,14 +161,17 @@ EXP_MODEL="anthropic/claude-haiku-4-5-20251001"
 # Option 2
 EXP_MODEL="anthropic/claude-sonnet-4-6"
 
-# Option 3 — ask the user for: (a) provider+model string, (b) API key or env var name
+# Option 3 — reuse the already-configured openclaw model
+EXP_MODEL="$CONFIGURED_MODEL"
+
+# Option 4 — ask the user for: (a) provider+model string, (b) API key or env var name
 EXP_MODEL="anthropic/claude-haiku-4-5-20251001"    # or whatever they specify
 export ANTHROPIC_API_KEY="sk-ant-..."              # their separate key; scoped to this shell
 ```
 
-**Reuse path (default):** If the user picks option 1 or 2, do nothing to the openclaw config — newly-created agents inherit `auth.profiles` from `~/.openclaw/openclaw.json`. Zero setup.
+**Reuse path (default):** If the user picks option 1, 2, or 3, do nothing to the openclaw config — newly-created agents inherit `auth.profiles` from `~/.openclaw/openclaw.json`. Zero setup.
 
-**Override path (option 3):** Export the key in the shell before running `openclaw agents add`. Openclaw agents call LLMs via litellm, which picks up provider env vars (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.) automatically. Do NOT write the key into `openclaw.json` — keep it in the shell so it's ephemeral and doesn't touch the user's real config.
+**Override path (option 4):** Export the key in the shell before running `openclaw agents add`. Openclaw agents call LLMs via litellm, which picks up provider env vars (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.) automatically. Do NOT write the key into `openclaw.json` — keep it in the shell so it's ephemeral and doesn't touch the user's real config.
 
 Print a one-line summary of the choice so it lands in the transcript:
 
@@ -544,7 +565,7 @@ if isinstance(msgs, list):
     for m in msgs:
         mt = m['message_type']
         sh = m.get('sender_handle', '')
-        c = str(m['content'])[:200]
+        c = json.dumps(m['content']) if isinstance(m['content'], (dict, list)) else str(m['content'])
         print(f'[{mt}] {sh}: {c}')
         print()
 " > ~/.mycelium/rooms/${EXP_ID}-after/session-transcript.md

@@ -15,20 +15,24 @@ T = TypeVar("T", bound="ConceptsByIdsRequest")
 class ConceptsByIdsRequest:
     """
     Attributes:
-        mas_id (str):
         ids (list[str]):
+        mas_id (None | str | Unset):
         workspace_id (None | str | Unset):
     """
 
-    mas_id: str
     ids: list[str]
+    mas_id: None | str | Unset = UNSET
     workspace_id: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        mas_id = self.mas_id
-
         ids = self.ids
+
+        mas_id: None | str | Unset
+        if isinstance(self.mas_id, Unset):
+            mas_id = UNSET
+        else:
+            mas_id = self.mas_id
 
         workspace_id: None | str | Unset
         if isinstance(self.workspace_id, Unset):
@@ -40,10 +44,11 @@ class ConceptsByIdsRequest:
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
-                "mas_id": mas_id,
                 "ids": ids,
             }
         )
+        if mas_id is not UNSET:
+            field_dict["mas_id"] = mas_id
         if workspace_id is not UNSET:
             field_dict["workspace_id"] = workspace_id
 
@@ -52,9 +57,16 @@ class ConceptsByIdsRequest:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        mas_id = d.pop("mas_id")
-
         ids = cast(list[str], d.pop("ids"))
+
+        def _parse_mas_id(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        mas_id = _parse_mas_id(d.pop("mas_id", UNSET))
 
         def _parse_workspace_id(data: object) -> None | str | Unset:
             if data is None:
@@ -66,8 +78,8 @@ class ConceptsByIdsRequest:
         workspace_id = _parse_workspace_id(d.pop("workspace_id", UNSET))
 
         concepts_by_ids_request = cls(
-            mas_id=mas_id,
             ids=ids,
+            mas_id=mas_id,
             workspace_id=workspace_id,
         )
 

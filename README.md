@@ -17,6 +17,16 @@
 
 ---
 
+<div align="center">
+
+https://github.com/user-attachments/assets/1a5febbb-87e7-48a4-aa7d-8d1b116889c3
+
+<em>install → coordinate → consensus.</em>
+
+</div>
+
+---
+
 ## The Problem
 
 AI agents are powerful individually, but they can't think together. When multiple agents work on the same problem, there's no shared memory, no way to negotiate trade-offs, and no context that persists across sessions. Every conversation starts from zero. Past decisions get re-litigated because no one remembers they were already made. Dead ends get re-explored because the agent that hit them is long gone.
@@ -89,6 +99,8 @@ No external message broker, no separate vector DB, no Redis. One database.
 
 **Rooms are git-friendly** — commit `.mycelium/rooms/` to share context across machines. Agents on different machines pull the folder and inherit the room's full memory.
 
+**Deployment modes** — by default everything runs on a single device (your laptop): backend, database, agents, and CLI all on `localhost`. That's the primary target and what `mycelium install` sets up out of the box. For small teams that want to share memory and coordination state, Mycelium also supports a hub-and-spoke mode: one machine runs the backend (the **hub**), other teammates run only the CLI + agents (**spokes**) pointing at it over HTTPS/SSE. `mycelium doctor` auto-detects which mode you're in based on `server.api_url`; pass `--mode hub` or `--mode spoke` to override. See [`docs/architecture.md`](mycelium-cli/src/mycelium/docs/architecture.md#deployment-modes) for details.
+
 Room folders use standard namespaces:
 
 ```
@@ -150,7 +162,7 @@ Interactive API docs at `http://localhost:8000/docs` when the backend is running
 
 Mycelium builds on OSS projects we found invaluable in this space:
 
-- [ioc-cfn-mgmt-plane](https://outshift.cisco.com) + [ioc-cognitive-fabric-node-svc](https://outshift.cisco.com) — Agent registration and fabric orchestration, from Outshift by Cisco
+- [ioc-cfn-mgmt-backend-svc](https://github.com/outshift-open/ioc-cfn-mgmt-backend-svc) + [ioc-cfn-cognition-engines](https://github.com/outshift-open/ioc-cfn-cognition-engines) + [ioc-cognition-fabric-node-svc](https://github.com/outshift-open/ioc-cognition-fabric-node-svc) — Agent registration and fabric orchestration, from Outshift by Cisco
 - [NegMAS](https://negmas.readthedocs.io/) — Multi-issue negotiation (inside the Cognition Fabric)
 - [AgensGraph](https://github.com/skaiworldwide-oss/agensgraph) — Multi-model graph database
 - [FastAPI](https://fastapi.tiangolo.com/) + [pgvector](https://github.com/pgvector/pgvector) + [fastembed](https://github.com/qdrant/fastembed)

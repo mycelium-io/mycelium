@@ -4,8 +4,8 @@
 """
 Filesystem → pgvector indexer.
 
-Scans .mycelium/rooms/{room}/ and .mycelium/notebooks/{handle}/ directories,
-reads markdown files, and upserts embeddings into the memories table.
+Scans .mycelium/rooms/{room}/ directories, reads markdown files, and upserts
+embeddings into the memories table.
 
 Incremental: compares file mtime against DB updated_at and skips unchanged files.
 """
@@ -61,7 +61,7 @@ async def index_room(room_name: str, db: AsyncSession, *, force: bool = False) -
             # Check if file has changed since last index
             if not force:
                 mtime = _file_mtime(room_dir, key)
-                existing = await _find_existing(db, room_name, key, "namespace", None)
+                existing = await _find_existing(db, room_name, key)
                 if existing and existing.updated_at and existing.updated_at >= mtime:
                     stats["skipped"] += 1
                     continue
@@ -72,8 +72,6 @@ async def index_room(room_name: str, db: AsyncSession, *, force: bool = False) -
                 key=key,
                 content=content,
                 meta=meta,
-                scope="namespace",
-                owner_handle=None,
                 file_path=f"rooms/{room_name}/{key}.md",
             )
             stats["indexed"] += 1
@@ -82,13 +80,7 @@ async def index_room(room_name: str, db: AsyncSession, *, force: bool = False) -
             stats["errors"] += 1
 
     # Prune DB records whose files no longer exist
-    result = await db.execute(
-        select(Memory).where(
-            Memory.room_name == room_name,
-            Memory.scope == "namespace",
-            Memory.owner_handle.is_(None),
-        )
-    )
+    result = await db.execute(select(Memory).where(Memory.room_name == room_name))
     for mem in result.scalars().all():
         if mem.key not in file_keys:
             await db.delete(mem)
@@ -104,59 +96,6 @@ async def index_room(room_name: str, db: AsyncSession, *, force: bool = False) -
         indexed=stats["indexed"],
         skipped=stats["skipped"],
         pruned=stats["pruned"],
-        errors=stats["errors"],
-        duration_ms=elapsed_ms,
-    )
-
-    return stats
-
-
-async def index_notebook(handle: str, db: AsyncSession, *, force: bool = False) -> dict:
-    """Scan an agent's notebook directory and upsert embeddings."""
-    import time
-
-    t0 = time.monotonic()
-    data_dir = get_data_dir()
-    notebook_dir = data_dir / "notebooks" / handle
-    if not notebook_dir.exists():
-        return {"indexed": 0, "skipped": 0, "pruned": 0, "errors": 0}
-
-    entries = list_memory_files(notebook_dir, limit=10000)
-    stats = {"indexed": 0, "skipped": 0, "pruned": 0, "errors": 0}
-
-    for key, meta, content in entries:
-        try:
-            if not force:
-                mtime = _file_mtime(notebook_dir, key)
-                existing = await _find_existing(db, "_notebooks", key, "notebook", handle)
-                if existing and existing.updated_at and existing.updated_at >= mtime:
-                    stats["skipped"] += 1
-                    continue
-
-            await _index_single_memory(
-                db=db,
-                room_name="_notebooks",
-                key=key,
-                content=content,
-                meta=meta,
-                scope="notebook",
-                owner_handle=handle,
-                file_path=f"notebooks/{handle}/{key}.md",
-            )
-            stats["indexed"] += 1
-        except Exception:
-            logger.warning("Failed to index notebook %s/%s", handle, key, exc_info=True)
-            stats["errors"] += 1
-
-    await db.commit()
-
-    from app.services.metrics import record_index_run
-
-    elapsed_ms = (time.monotonic() - t0) * 1000
-    record_index_run(
-        target="notebook",
-        indexed=stats["indexed"],
-        skipped=stats["skipped"],
         errors=stats["errors"],
         duration_ms=elapsed_ms,
     )
@@ -199,7 +138,6 @@ async def index_single_file(room_name: str, key: str, db: AsyncSession) -> bool:
             delete(Memory).where(
                 Memory.room_name == room_name,
                 Memory.key == key,
-                Memory.scope == "namespace",
             )
         )
         await db.commit()
@@ -217,8 +155,6 @@ async def index_single_file(room_name: str, key: str, db: AsyncSession) -> bool:
             key=key,
             content=content,
             meta=meta,
-            scope="namespace",
-            owner_handle=None,
             file_path=f"rooms/{room_name}/{key}.md",
         )
         await db.commit()
@@ -228,20 +164,11 @@ async def index_single_file(room_name: str, key: str, db: AsyncSession) -> bool:
         return False
 
 
-async def _find_existing(
-    db: AsyncSession, room_name: str, key: str, scope: str, owner_handle: str | None
-) -> Memory | None:
+async def _find_existing(db: AsyncSession, room_name: str, key: str) -> Memory | None:
     """Find an existing memory record."""
-    query = select(Memory).where(
-        Memory.room_name == room_name,
-        Memory.key == key,
-        Memory.scope == scope,
+    result = await db.execute(
+        select(Memory).where(Memory.room_name == room_name, Memory.key == key)
     )
-    if scope == "notebook":
-        query = query.where(Memory.owner_handle == owner_handle)
-    else:
-        query = query.where(Memory.owner_handle.is_(None))
-    result = await db.execute(query)
     return result.scalar_one_or_none()
 
 
@@ -252,8 +179,6 @@ async def _index_single_memory(
     key: str,
     content: str,
     meta: dict,
-    scope: str,
-    owner_handle: str | None,
     file_path: str,
 ) -> None:
     """Upsert a single memory into the pgvector search index."""
@@ -272,7 +197,7 @@ async def _index_single_memory(
     created_at = _parse_datetime(meta.get("created_at")) or now
     updated_at = _parse_datetime(meta.get("updated_at")) or now
 
-    existing = await _find_existing(db, room_name, key, scope, owner_handle)
+    existing = await _find_existing(db, room_name, key)
 
     if existing:
         existing.value = value
@@ -295,8 +220,6 @@ async def _index_single_memory(
             updated_by=updated_by,
             version=version,
             tags=tags,
-            scope=scope,
-            owner_handle=owner_handle,
             file_path=file_path,
         )
         mem.created_at = created_at

@@ -110,6 +110,32 @@ def _compose_base_cmd(compose_path: Path | None = None, env_path: Path | None = 
     return cmd
 
 
+def _patch_env_image_tag(env_path: Path, tag: str) -> None:
+    """Set MYCELIUM_IMAGE_TAG=<tag> in ~/.mycelium/.env (insert if absent).
+
+    Used by ``mycelium pull --version`` to pin compose's ``${MYCELIUM_IMAGE_TAG:-latest}``
+    substitution across restarts. Pass ``tag="latest"`` to unpin.
+    """
+    if not env_path.exists():
+        env_path.parent.mkdir(parents=True, exist_ok=True)
+        env_path.write_text(f"MYCELIUM_IMAGE_TAG={tag}\n", encoding="utf-8")
+        return
+    lines = env_path.read_text(encoding="utf-8").splitlines()
+    found = False
+    new_lines = []
+    for line in lines:
+        if "=" in line and not line.lstrip().startswith("#"):
+            key = line.split("=", 1)[0].strip()
+            if key == "MYCELIUM_IMAGE_TAG":
+                new_lines.append(f"MYCELIUM_IMAGE_TAG={tag}")
+                found = True
+                continue
+        new_lines.append(line)
+    if not found:
+        new_lines.append(f"MYCELIUM_IMAGE_TAG={tag}")
+    env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+
+
 def _cfn_enabled() -> bool:
     """Return True if CFN_MGMT_URL is set in ~/.mycelium/.env."""
     env_path = _get_env_path()
@@ -270,13 +296,14 @@ def init(
 
 
 @doc_ref(
-    usage="mycelium up [--build]",
+    usage="mycelium up [--build] [--ui]",
     desc="Start the Mycelium stack via <code>docker compose up</code>.",
     group="setup",
 )
 def start(
     ctx: typer.Context,
     build: bool = typer.Option(False, "--build", help="Rebuild images before starting"),
+    ui: bool = typer.Option(False, "--ui", help="Also start the frontend (mycelium-frontend)"),
 ) -> None:
     """
     Start Mycelium services.
@@ -287,6 +314,7 @@ def start(
     Examples:
         mycelium up          # start all services
         mycelium up --build  # rebuild images first
+        mycelium up --ui     # also start the frontend at http://localhost:3000
     """
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
@@ -301,6 +329,8 @@ def start(
         base = _compose_base_cmd(compose_path)
         if cfn:
             base = base + ["--profile", "cfn"]
+        if ui:
+            base = base + ["--profile", "ui"]
         up_args = ["up", "-d", "--remove-orphans"]
         if build:
             up_args.append("--build")
@@ -355,6 +385,8 @@ def start(
 
         typer.secho("Services started.", fg=typer.colors.GREEN)
         typer.echo("  mycelium-backend  → http://localhost:8000")
+        if ui:
+            typer.echo("  mycelium-frontend → http://localhost:3000")
 
     except typer.Exit:
         raise
@@ -925,28 +957,39 @@ def migrate(
 
 
 @doc_ref(
-    usage="mycelium pull [--no-restart]",
-    desc="Pull latest Docker images and restart services.",
+    usage="mycelium pull [--version <tag>] [--no-restart]",
+    desc="Pull Mycelium Docker images and restart services. Pass --version to pin a preview/specific build.",
     group="setup",
 )
 def pull(
     ctx: typer.Context,
+    target_version: str | None = typer.Option(
+        None,
+        "--version",
+        help="Pin mycelium-backend and mycelium-db image tags to a specific version "
+        "(e.g. 0.1.84rc1). Without --version, pulls :latest. Persisted to ~/.mycelium/.env "
+        "as MYCELIUM_IMAGE_TAG so subsequent restarts stay pinned. Pass --version=latest to "
+        "unpin and return to tracking the latest stable.",
+    ),
     no_restart: bool = typer.Option(
         False, "--no-restart", help="Pull images but don't restart services"
     ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmations"),  # noqa: ARG001
 ) -> None:
     """
-    Pull latest Docker images and restart services.
+    Pull Mycelium Docker images and restart services.
 
-    Fetches the newest versions of all Mycelium container images, then
-    restarts the stack so the updated images take effect. Also runs
-    database migrations.
+    By default, pulls the :latest tag of each Mycelium image. Pass
+    --version <tag> to pin to a specific build (typically used with preview
+    releases) — the tag is persisted to ~/.mycelium/.env as
+    MYCELIUM_IMAGE_TAG so the stack stays pinned across restarts.
 
     \b
     Examples:
-        mycelium pull              # pull + restart + migrate
-        mycelium pull --no-restart # pull only, restart later with mycelium up
+        mycelium pull                       # latest stable
+        mycelium pull --version 0.1.84rc1   # pin to preview build
+        mycelium pull --version latest      # unpin (back to latest stable)
+        mycelium pull --no-restart          # pull only, restart later
     """
     try:
         compose_path = _get_compose_path()
@@ -958,6 +1001,18 @@ def pull(
 
         env_path = _get_env_path()
         cfn = _cfn_enabled()
+
+        # If the user explicitly pinned a version (or asked to unpin via
+        # --version=latest), persist that to .env *before* compose pull so the
+        # ${MYCELIUM_IMAGE_TAG:-latest} substitution in compose.yml resolves
+        # correctly. Stripping a leading 'v' lets users pass tag names freely.
+        if target_version is not None and env_path is not None:
+            normalized = target_version.lstrip("v") or "latest"
+            _patch_env_image_tag(env_path, normalized)
+            if normalized == "latest":
+                typer.echo("  ✓ Unpinned image tag (back to :latest)")
+            else:
+                typer.echo(f"  ✓ Pinned image tag to {normalized} (in {env_path})")
 
         base = _compose_base_cmd(compose_path, env_path)
         if cfn:

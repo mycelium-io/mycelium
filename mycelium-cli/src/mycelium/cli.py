@@ -22,9 +22,9 @@ from mycelium.commands import (
     memory,
     metrics,
     negotiate,
-    notebook,
     room,
     session,
+    ui,
 )
 
 app = typer.Typer(
@@ -131,7 +131,7 @@ app.add_typer(config.app, name="config")
 app.add_typer(adapter.app, name="adapter")
 app.add_typer(docs.app, name="docs")
 app.add_typer(metrics.app, name="metrics")
-app.add_typer(notebook.app, name="notebook")
+app.add_typer(ui.app, name="ui")
 app.add_typer(session.app, name="session")
 app.add_typer(cfn.app, name="cfn")
 

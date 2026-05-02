@@ -16,7 +16,7 @@ try:
     from sqlalchemy import cast, null
     from sqlalchemy.sql.expression import BindParameter
 
-    class Vector(_PgVector):  # type: ignore[misc]
+    class Vector(_PgVector):
         """VECTOR that emits an explicit CAST for NULL params.
 
         asyncpg cannot infer the type for None on a UserDefinedType and
@@ -33,7 +33,7 @@ try:
 
 except ImportError:
     # Fallback for environments without pgvector (e.g., SQLite tests)
-    from sqlalchemy import LargeBinary as Vector  # type: ignore[assignment]
+    from sqlalchemy import LargeBinary as Vector
 
 from sqlalchemy import (
     JSON,
@@ -193,9 +193,7 @@ class AuditEvent(Base):
 class Memory(Base):
     """Persistent memory with optional vector embeddings for semantic search.
 
-    Memories have a scope:
-      - "namespace" (default): shared, visible to all agents in the room
-      - "notebook": private to a specific agent handle
+    Memories are scoped to a room and shared across all agents in the room.
     """
 
     __tablename__ = "memories"
@@ -211,7 +209,9 @@ class Memory(Base):
     created_by: Mapped[str] = mapped_column(String, nullable=False)
     updated_by: Mapped[str | None] = mapped_column(String, nullable=True)
     version: Mapped[int] = mapped_column(Integer, server_default="1", nullable=False)
-    tags: Mapped[dict | None] = mapped_column(JSONB().with_variant(JSON(), "sqlite"), nullable=True)
+    tags: Mapped[list[str] | None] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -219,16 +219,10 @@ class Memory(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # "namespace" (shared) or "notebook" (agent-private)
-    scope: Mapped[str] = mapped_column(VARCHAR(20), server_default="namespace", nullable=False)
-    # For notebook-scoped memories, the owning agent handle
-    owner_handle: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     # Filesystem path relative to .mycelium/ data dir
     file_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
 
-    __table_args__ = (
-        UniqueConstraint("room_name", "key", "scope", "owner_handle", name="uq_memory_scope_key"),
-    )
+    __table_args__ = (UniqueConstraint("room_name", "key", name="uq_memory_room_key"),)
 
 
 class MemorySubscription(Base):

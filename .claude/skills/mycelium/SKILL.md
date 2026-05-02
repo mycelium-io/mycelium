@@ -1,1 +1,0 @@
-../../../mycelium-cli/src/mycelium/adapters/claude-code/skills/mycelium/SKILL.md

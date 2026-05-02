@@ -27,6 +27,14 @@ export type RouteAction =
       messageId: string | undefined;
     }
   | { kind: "subscribe-session"; roomName: string }
+  | { kind: "stash-return-address"; sessionRoom: string; agentId: string }
+  | {
+      kind: "notify-home";
+      sessionRoom: string;
+      agentIds: string[];
+      consensusSummary: string;
+      messageId: string | undefined;
+    }
   | { kind: "ignore"; reason: string };
 
 /**
@@ -91,15 +99,30 @@ export function routeTick(cfg: ChannelConfig, msg: any): RouteAction[] {
 
   const instruction = formatTickInstruction(payload, msg.room_name ?? cfg.room, targetAgent);
 
-  return [
-    {
-      kind: "dispatch",
+  const actions: RouteAction[] = [];
+
+  // Stash the agent's return address the first time we see a tick for them
+  // in this session sub-room. The stash is idempotent on the executor side,
+  // so emitting on every tick is fine — but only when room_name names a
+  // session sub-room (not the parent room).
+  const sessionRoom = msg.room_name ?? "";
+  if (sessionRoom.includes(":session:")) {
+    actions.push({
+      kind: "stash-return-address",
+      sessionRoom,
       agentId: targetAgent,
-      sender: "CognitiveEngine",
-      content: instruction,
-      messageId: msg.id,
-    },
-  ];
+    });
+  }
+
+  actions.push({
+    kind: "dispatch",
+    agentId: targetAgent,
+    sender: "CognitiveEngine",
+    content: instruction,
+    messageId: msg.id,
+  });
+
+  return actions;
 }
 
 export function formatTickInstruction(
@@ -111,18 +134,47 @@ export function formatTickInstruction(
   const canCounter = payload?.can_counter_offer === true;
   const currentOffer = payload?.current_offer ?? {};
   const round = payload?.round ?? "?";
+  const nStepsTotal = payload?.n_steps_total;
+  const yourLastAction = payload?.your_last_action;
+  const priorOutcome = payload?.prior_round_outcome;
 
   const offerSummary = Object.entries(currentOffer)
     .map(([k, v]) => `  ${k}: ${v}`)
     .join("\n");
 
+  // Compose the round header. If we know the budget, surface remaining
+  // rounds so the agent can decide whether to keep negotiating or walk
+  // away with no agreement (a legitimate outcome — see SKILL.md).
+  const roundHeader =
+    typeof nStepsTotal === "number" && nStepsTotal > 0
+      ? `[CognitiveEngine — Round ${round} of ${nStepsTotal}]`
+      : `[CognitiveEngine — Round ${round}]`;
+
+  // Prior-round context — eliminates the "this is my offer reflected back"
+  // confusion by stating what just happened explicitly.
+  const contextLines: string[] = [];
+  if (priorOutcome && priorOutcome !== "first_round") {
+    const outcomeText = priorOutcome.startsWith("rejected_by_")
+      ? `Last round: ${priorOutcome.replace("rejected_by_", "")} rejected the standing offer.`
+      : priorOutcome === "proposer_countered"
+        ? "Last round: the designated proposer countered with a new offer (shown below)."
+        : priorOutcome === "agreed"
+          ? "Last round: all agents accepted."
+          : `Last round: ${priorOutcome.replace(/_/g, " ")}.`;
+    contextLines.push(outcomeText);
+  }
+  if (yourLastAction) {
+    contextLines.push(`Your last action: ${yourLastAction}.`);
+  }
+
   return [
-    `[CognitiveEngine — Round ${round}]`,
+    roundHeader,
     `You are in a structured negotiation in room ${roomName}.`,
     `Action required: ${action}`,
     canCounter
       ? "You CAN propose a counter-offer."
       : "You can only accept or reject.",
+    ...(contextLines.length > 0 ? ["", ...contextLines] : []),
     "",
     "Current offer on the table:",
     offerSummary,
@@ -133,7 +185,7 @@ export function formatTickInstruction(
     `To accept: mycelium negotiate respond accept --room ${roomName} --handle ${targetAgent}`,
     `To reject: mycelium negotiate respond reject --room ${roomName} --handle ${targetAgent}`,
     "",
-    "Explain your reasoning before running the command.",
+    "Explain your reasoning before running the command. Walking away with no agreement is a legitimate outcome — keep rejecting until the session ends if your hard constraints can't be met.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -152,13 +204,33 @@ export function routeConsensus(cfg: ChannelConfig, msg: any): RouteAction[] {
 
   const summary = formatConsensusSummary(consensusData);
 
-  return cfg.agents.map((agentId) => ({
+  const actions: RouteAction[] = cfg.agents.map((agentId) => ({
     kind: "dispatch" as const,
     agentId,
     sender: "CognitiveEngine",
     content: summary,
     messageId: msg.id,
   }));
+
+  // Also notify each agent's home channel session (Matrix/Discord/etc.)
+  // with the consensus summary. The notify-home executor checks whether a
+  // return address was stashed for each (session, agent) pair when the agent
+  // first showed up in the negotiation; agents without a stash are skipped.
+  // Passing all of cfg.agents is safe — the per-agent stash check is the
+  // real filter — and avoids fragile inference of who participated from
+  // assignment keys (which can be issue names rather than agent IDs).
+  const sessionRoom = msg.room_name ?? "";
+  if (cfg.agents.length > 0 && sessionRoom.includes(":session:")) {
+    actions.push({
+      kind: "notify-home",
+      sessionRoom,
+      agentIds: cfg.agents,
+      consensusSummary: summary,
+      messageId: msg.id,
+    });
+  }
+
+  return actions;
 }
 
 export function formatConsensusSummary(consensusData: any): string {
@@ -183,10 +255,25 @@ export function formatConsensusSummary(consensusData: any): string {
 
 export function routeJoin(msg: any): RouteAction[] {
   const roomName = msg.room_name;
-  if (roomName && typeof roomName === "string" && roomName.includes(":session:")) {
-    return [{ kind: "subscribe-session", roomName }];
+  if (!(roomName && typeof roomName === "string" && roomName.includes(":session:"))) {
+    return [{ kind: "ignore", reason: "join without session sub-room" }];
   }
-  return [{ kind: "ignore", reason: "join without session sub-room" }];
+  const actions: RouteAction[] = [{ kind: "subscribe-session", roomName }];
+
+  // Stash the return address for the joining agent so we can deliver
+  // consensus back to their home channel later. coordination_join carries
+  // the joiner's handle in sender_handle; coordination_start does not
+  // (it's CFN-broadcast for the whole session).
+  const sender =
+    msg.message_type === "coordination_join" ? msg.sender_handle : undefined;
+  if (sender && typeof sender === "string") {
+    actions.push({
+      kind: "stash-return-address",
+      sessionRoom: roomName,
+      agentId: sender,
+    });
+  }
+  return actions;
 }
 
 // ── Broadcast ─────────────────────────────────────────────────────────────
