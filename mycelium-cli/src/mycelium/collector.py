@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """
 Lightweight OTLP HTTP receiver for OpenClaw telemetry.
 

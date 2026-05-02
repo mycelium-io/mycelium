@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Julia Valenti
+
 """Extract model pricing from litellm and write pricing.json.
 
 Run from the fastapi-backend uv environment (where litellm is installed):
