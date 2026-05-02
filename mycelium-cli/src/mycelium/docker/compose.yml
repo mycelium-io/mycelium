@@ -68,6 +68,31 @@ services:
       retries: 6
       start_period: 15s
 
+  # ── Frontend (profile: ui) ───────────────────────────────────────────────
+  #
+  # Next.js frontend for browsing rooms, sessions, memory, and live negotiation.
+  # Opt-in via `mycelium up --ui` (or `--profile ui` directly). The browser
+  # reads the backend at the URL baked into the image at build time —
+  # http://localhost:<backend_port> for the standard local install.
+
+  mycelium-frontend:
+    build:
+      context: ../../../../mycelium-frontend
+      dockerfile: Dockerfile
+    image: ghcr.io/mycelium-io/mycelium-frontend:${MYCELIUM_IMAGE_TAG:-latest}
+    pull_policy: always
+    container_name: mycelium-frontend
+    restart: unless-stopped
+    profiles: [ui]
+    env_file:
+      - path: ../.env
+        required: false
+    depends_on:
+      mycelium-backend:
+        condition: service_healthy
+    ports:
+      - "${MYCELIUM_UI_PORT:-3000}:3000"
+
   # ── Graph Viewer (optional, for development) ─────────────────────────────────
 
   mycelium-graph-viewer:

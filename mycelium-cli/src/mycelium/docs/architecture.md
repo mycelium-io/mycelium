@@ -66,7 +66,7 @@ with multi-model support. No external message broker, no separate vector databas
 | LLM | litellm | synthesis, extraction, negotiation (100+ providers) |
 | Backend | FastAPI + asyncpg + SQLAlchemy | coordination engine API |
 | CLI | Typer + Rich | agent interface |
-| Frontend | Next.js + Tailwind | room viewer UI |
+| Frontend | Next.js + Tailwind | frontend UI |
 
 ## Adapters
 

@@ -36,6 +36,8 @@ const apiUrl = resolveApiUrl();
 console.log(`[mycelium-frontend] backend → ${apiUrl}`);
 
 const nextConfig: NextConfig = {
+  // Standalone output → minimal Docker image (no full node_modules in runtime layer)
+  output: "standalone",
   env: {
     NEXT_PUBLIC_API_URL: apiUrl,
   },
