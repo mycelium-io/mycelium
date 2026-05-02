@@ -257,12 +257,14 @@ async def _register_agent_cfn(room: Room, handle: str) -> None:
         if resp.status_code == 409:
             logger.debug(
                 "CFN agent %s already registered in workspace %s",
-                handle, room.workspace_id,
+                handle,
+                room.workspace_id,
             )
         else:
             logger.debug(
                 "CFN agent registered: %s in workspace %s",
-                handle, room.workspace_id,
+                handle,
+                room.workspace_id,
             )
     except Exception as exc:
         record_cfn_call(

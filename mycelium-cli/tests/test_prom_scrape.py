@@ -102,11 +102,7 @@ def test_parse_text_handles_inf_bucket_boundary() -> None:
 
 def test_parse_text_drops_malformed_lines_without_crashing() -> None:
     """A garbled line must not poison the rest of the payload."""
-    body = (
-        "this is not a metric line at all\n"
-        "http_requests_total 5\n"
-        "another_garbage_line==!!\n"
-    )
+    body = "this is not a metric line at all\nhttp_requests_total 5\nanother_garbage_line==!!\n"
     samples = parse_text(body)
     assert len(samples) == 1
     assert samples[0].name == "http_requests_total"
@@ -181,14 +177,14 @@ def test_aggregate_http_red_captures_full_bucket_array() -> None:
     # Sorted ascending by upper bound, in milliseconds.
     bounds = [b for b, _ in buckets]
     assert bounds == sorted(bounds)
-    assert bounds[0] == 100.0     # 0.1s
-    assert bounds[-2] == 2500.0   # 2.5s — last finite
+    assert bounds[0] == 100.0  # 0.1s
+    assert bounds[-2] == 2500.0  # 2.5s — last finite
     assert math.isinf(bounds[-1])
     # Cumulative counts must be monotonically non-decreasing — a regression
     # here means we'd compute negative bucket populations in quantile().
     counts = [c for _, c in buckets]
     assert counts == sorted(counts)
-    assert counts[-1] == 53       # +Inf bucket equals the histogram's _count
+    assert counts[-1] == 53  # +Inf bucket equals the histogram's _count
 
 
 def test_aggregate_http_red_handles_no_samples() -> None:
@@ -274,14 +270,14 @@ def _make_config(
     explicit_scrape: list[dict] | None = None,
 ):
     """Build a MyceliumConfig for resolution tests without touching disk."""
-    from mycelium.config import MyceliumConfig
+    from mycelium.config import MetricsConfig, MyceliumConfig, RuntimeConfig, ScrapeTarget
 
     return MyceliumConfig(
-        runtime={
-            "cfn_mgmt_url": cfn_mgmt_url,
-            "cognition_fabric_node_url": cognition_fabric_node_url,
-        },
-        metrics={"scrape": explicit_scrape or []},
+        runtime=RuntimeConfig(
+            cfn_mgmt_url=cfn_mgmt_url,
+            cognition_fabric_node_url=cognition_fabric_node_url,
+        ),
+        metrics=MetricsConfig(scrape=[ScrapeTarget(**s) for s in (explicit_scrape or [])]),
     )
 
 

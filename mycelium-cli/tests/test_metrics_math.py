@@ -36,11 +36,7 @@ from mycelium.commands.metrics import (
 )
 
 _PRICING_JSON = (
-    Path(__file__).resolve().parent.parent
-    / "src"
-    / "mycelium"
-    / "data"
-    / "pricing.json"
+    Path(__file__).resolve().parent.parent / "src" / "mycelium" / "data" / "pricing.json"
 )
 
 
@@ -162,9 +158,7 @@ def test_every_model_has_cache_write_premium() -> None:
 
 def test_get_model_pricing_returns_write_premium() -> None:
     """_get_model_pricing must expose write_premium for downstream math."""
-    pricing, label = _get_model_pricing(
-        "bedrock/global.anthropic.claude-haiku-4-5-20251001-v1:0"
-    )
+    pricing, label = _get_model_pricing("bedrock/global.anthropic.claude-haiku-4-5-20251001-v1:0")
     assert label == "claude-haiku-4"
     assert pricing["input"] == 1e-06
     assert pricing["cache_discount"] == 0.9

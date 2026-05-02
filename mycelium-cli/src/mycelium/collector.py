@@ -228,7 +228,7 @@ class MetricsStore:
             return
 
         attrs = _attrs_dict(span.attributes)
-        session_id = attrs.get("openclaw.sessionId", "")
+        session_id = str(attrs.get("openclaw.sessionId", ""))
         if not session_id:
             return
 
@@ -238,8 +238,8 @@ class MetricsStore:
 
         ts = datetime.fromtimestamp(start_ns / 1_000_000_000, tz=UTC).isoformat()
 
-        session_key = attrs.get("openclaw.sessionKey", "")
-        agent = _agent_from_session_key(session_key) or attrs.get("openclaw.channel", "")
+        session_key = str(attrs.get("openclaw.sessionKey", ""))
+        agent = _agent_from_session_key(session_key) or str(attrs.get("openclaw.channel", ""))
 
         record = {
             "session_id": session_id,
@@ -289,10 +289,10 @@ def _agent_from_session_key(session_key: str) -> str:
     return ""
 
 
-def _safe_int(value: object) -> int:
+def _safe_int(value: str | int | float) -> int:
     """Convert a value to int, returning 0 on failure."""
     try:
-        return int(value)  # type: ignore[arg-type]
+        return int(value)
     except (ValueError, TypeError):
         return 0
 
@@ -330,7 +330,9 @@ def _deep_merge(base: dict, override: dict) -> None:
             base[key] = value
 
 
-def _fetch_backend_metrics(store: MetricsStore, api_url: str, output_path: Path | None = None) -> None:
+def _fetch_backend_metrics(
+    store: MetricsStore, api_url: str, output_path: Path | None = None
+) -> None:
     """Poll the Mycelium backend /api/metrics endpoint (best-effort).
 
     If output_path is provided, persist the updated metrics to disk.
@@ -449,7 +451,9 @@ class OTLPHandler(BaseHTTPRequestHandler):
                     self.rfile.readline()
                 body = b"".join(chunks)
             else:
-                log.warning("POST %s: no Content-Length or chunked encoding, assuming empty body", self.path)
+                log.warning(
+                    "POST %s: no Content-Length or chunked encoding, assuming empty body", self.path
+                )
                 body = b""
         except Exception:
             log.warning("Failed to read request body for %s", self.path)

@@ -19,7 +19,9 @@ def main() -> None:
         "--output", type=str, default=str(Path.home() / ".mycelium" / "metrics.json")
     )
     parser.add_argument(
-        "--backend-url", type=str, default="http://localhost:8000",
+        "--backend-url",
+        type=str,
+        default="http://localhost:8000",
         help="Mycelium backend URL for polling /api/metrics",
     )
 

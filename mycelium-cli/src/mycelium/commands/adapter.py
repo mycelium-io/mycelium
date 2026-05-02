@@ -1528,14 +1528,16 @@ def _configure_otel(
         otel = diagnostics.setdefault("otel", {})
         otel["enabled"] = True
         otel.setdefault("serviceName", "openclaw-gateway")
-        otel.update({
-            "endpoint": endpoint,
-            "protocol": "http/protobuf",
-            "traces": True,
-            "metrics": True,
-            "logs": False,
-            "flushIntervalMs": 5000,
-        })
+        otel.update(
+            {
+                "endpoint": endpoint,
+                "protocol": "http/protobuf",
+                "traces": True,
+                "metrics": True,
+                "logs": False,
+                "flushIntervalMs": 5000,
+            }
+        )
 
         plugins = cfg.setdefault("plugins", {})
         allow_list = plugins.setdefault("allow", [])
@@ -1556,7 +1558,9 @@ def _configure_otel(
                 text=True,
             )
             if result.returncode != 0:
-                typer.secho(f"  ✗ Could not write openclaw.json: {result.stderr}", fg=typer.colors.RED)
+                typer.secho(
+                    f"  ✗ Could not write openclaw.json: {result.stderr}", fg=typer.colors.RED
+                )
                 return False
         else:
             config_path.write_text(cfg_json)

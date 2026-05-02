@@ -25,6 +25,7 @@ import math
 import re
 import urllib.error
 import urllib.request
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 # A line like:  http_requests_total{method="get",status="200"} 1027 1395066363000
@@ -188,7 +189,9 @@ def aggregate_http_red(samples: list[Sample]) -> dict:
     }
 
 
-def histogram_quantile(q: float, buckets: list[tuple[float, float]]) -> float | None:
+def histogram_quantile(
+    q: float, buckets: Sequence[tuple[float | int, float | int]]
+) -> float | None:
     """Estimate the q-th quantile (0 ≤ q ≤ 1) from cumulative histogram buckets.
 
     Mirrors Prometheus's ``histogram_quantile()`` PromQL function:
@@ -256,13 +259,17 @@ def scrape(url: str, timeout: float = 5.0) -> list[Sample] | None:
     collector loop.
     """
     try:
-        req = urllib.request.Request(url, method="GET", headers={
-            # Stock prometheus-fastapi-instrumentator returns 0.0.4 text
-            # when no Accept header is set; this is fine but being explicit
-            # protects us if a target ever serves protobuf by default.
-            "Accept": "text/plain; version=0.0.4",
-            "User-Agent": "mycelium-metrics-collector/1",
-        })
+        req = urllib.request.Request(
+            url,
+            method="GET",
+            headers={
+                # Stock prometheus-fastapi-instrumentator returns 0.0.4 text
+                # when no Accept header is set; this is fine but being explicit
+                # protects us if a target ever serves protobuf by default.
+                "Accept": "text/plain; version=0.0.4",
+                "User-Agent": "mycelium-metrics-collector/1",
+            },
+        )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             if resp.status != 200:
                 return None

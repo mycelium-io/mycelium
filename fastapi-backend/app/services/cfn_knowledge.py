@@ -343,7 +343,8 @@ async def _cfn_post(url: str, body: dict[str, Any], *, operation: str) -> dict[s
                 "CFN POST failed | url=%s status=%d cause=age-concurrent-writer-race "
                 "(upstream ioc-knowledge-memory AGE bug, see "
                 "cfn_component_metrics_reconciliation.md)",
-                url, status,
+                url,
+                status,
             )
         else:
             logger.warning("CFN POST failed | url=%s status=%d body=%r", url, status, snippet)

@@ -186,7 +186,7 @@ async def create_memories(
         embedding = None
         if item.embed:
             embedding = await asyncio.to_thread(embed_text, content_text)
-        _write_metrics.append((item.scope or "namespace", item.embed))
+        _write_metrics.append(("namespace", item.embed))
 
         # Check for existing memory (upsert) — scoped by (room, key)
         upsert_query = select(Memory).where(
