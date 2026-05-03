@@ -402,8 +402,16 @@ def reset() -> None:
         typer.echo("No metrics data to clear.")
 
 
+_VALID_SECTIONS = ("openclaw", "claude", "mycelium", "cfn", "cost", "all")
+_SECTION_ALIASES: dict[str, str] = {}  # reserved for future aliases
+
+
 @app.command("show")
 def show(
+    section: str | None = typer.Argument(
+        None,
+        help="Section to show: openclaw, claude, mycelium, cfn, cost, all. Omit for overview.",
+    ),
     json_output: bool = typer.Option(False, "--json", help="Output raw JSON"),
     workspace: bool = typer.Option(False, "--workspace", help="Show per-file workspace breakdown"),
     include_heartbeat: bool = typer.Option(
@@ -415,9 +423,19 @@ def show(
     """
     Display collected metrics with agent metadata and workspace sizes.
 
-    Combines OTLP data from the collector with live agent inventory from
-    `openclaw status --json` and workspace file sizes from the filesystem.
+    With no argument, shows a compact overview. Pass a section name for
+    full detail: openclaw, claude, mycelium, cfn.
     """
+    if section is not None:
+        section = section.lower()
+        if section not in _VALID_SECTIONS:
+            typer.secho(
+                f"Unknown section '{section}'. Valid: openclaw, claude, mycelium, cfn, cost, all",
+                fg=typer.colors.RED,
+            )
+            raise typer.Exit(1)
+        section = _SECTION_ALIASES.get(section, section)
+
     otel_data = _load_metrics_json()
     oc_status = _get_openclaw_status()
 
@@ -451,33 +469,215 @@ def show(
         console.print_json(json.dumps(combined, default=str))
         return
 
-    # ── OpenClaw panels ──────────────────────────────────────────────
-    _render_summary_table(
-        otel_data,
-        oc_status,
-        oc_cost,
-        include_background=include_heartbeat,
-    )
-    _render_cache_efficiency_table(otel_data, include_background=include_heartbeat)
-    _render_agent_table(otel_data, agents_meta)
-    if otel_data and otel_data.get("sessions"):
-        _render_session_table(otel_data["sessions"])
+    # ── Dispatch by section ───────────────────────────────────────────
+    if section is None:
+        _render_overview(otel_data, oc_cost, backend_data, include_heartbeat=include_heartbeat)
+        return
 
-    # ── Mycelium backend panels ──────────────────────────────────────
-    _render_cost_avoidance_table(backend_data)
-    _render_mycelium_llm_table(backend_data)
-    _render_data_reuse_table(backend_data)
+    show_openclaw = section in ("openclaw", "all")
+    show_claude = section in ("claude", "all")
+    show_mycelium = section in ("mycelium", "all")
+    show_cfn = section in ("cfn", "all")
+    show_cost = section in ("cost", "all")
 
-    # ── CFN panels (via backend) ─────────────────────────────────────
-    _render_coordination_table(backend_data)
-    _render_cfn_transport_table(backend_data)
-    _render_cfn_scrape_table((otel_data or {}).get("scrape"))
+    if show_claude:
+        console.print(
+            "[bold blue]Claude Code[/bold blue]\n"
+            "[dim]Metrics collection for the Claude Code adapter is not yet wired.\n"
+            "Once connected, token usage and session data will appear here.[/dim]\n"
+        )
 
-    # ── Opt-in / always-last ─────────────────────────────────────────
-    if workspace:
-        _render_workspace_tables(agents_meta)
+    if show_openclaw:
+        _render_summary_table(
+            otel_data,
+            oc_status,
+            include_background=include_heartbeat,
+        )
+        _render_cache_efficiency_table(otel_data, include_background=include_heartbeat)
+        _render_agent_table(otel_data, agents_meta)
+        if otel_data and otel_data.get("sessions"):
+            _render_session_table(otel_data["sessions"])
+        if workspace:
+            _render_workspace_tables(agents_meta)
+
+    if show_mycelium:
+        if not backend_data:
+            console.print(
+                "[dim]Backend metrics not collected (spoke mode or collector not running)[/dim]"
+            )
+            console.print()
+        else:
+            rendered = False
+            be_counters = backend_data.get("counters", {})
+            has_embeddings = be_counters.get("embeddings", {}).get("computed", 0) > 0
+            has_indexer = (
+                be_counters.get("indexer", {}).get("files_indexed", 0) > 0
+                or be_counters.get("indexer", {}).get("files_skipped", 0) > 0
+            )
+            has_llm = be_counters.get("llm", {}).get("calls", 0) > 0
+
+            if has_embeddings or has_indexer:
+                _render_cost_avoidance_table(backend_data)
+                rendered = True
+            if has_llm:
+                _render_mycelium_llm_table(backend_data)
+                rendered = True
+
+            if not rendered and not (be_counters.get("knowledge") or {}).get("writes", 0):
+                table = Table(
+                    title="Mycelium Backend",
+                    title_style="bold magenta",
+                    title_justify="left",
+                    show_header=False,
+                    border_style="dim",
+                )
+                table.add_column("Info")
+                table.add_row(
+                    "No activity yet — this section populates when the backend\n"
+                    "processes embeddings, LLM calls, knowledge, or briefings."
+                )
+                console.print(table)
+                console.print()
+
+    if show_cfn:
+        _render_coordination_table(backend_data)
+        _render_cfn_llm_usage_table(backend_data)
+        _render_cfn_transport_table(backend_data)
+        _render_cfn_scrape_table((otel_data or {}).get("scrape"))
+        if not backend_data and not (otel_data or {}).get("scrape"):
+            console.print(
+                "[dim]CFN metrics not available (spoke mode or no CFN stack running)[/dim]"
+            )
+            console.print()
+
+    if show_cost:
+        _render_cost_estimates(
+            otel_data, oc_cost, backend_data, include_heartbeat=include_heartbeat
+        )
 
     _render_field_legend()
+    console.print()
+
+
+def _render_overview(
+    otel: dict | None,
+    oc_cost: dict | None,
+    backend: dict | None,
+    *,
+    include_heartbeat: bool = False,
+) -> None:
+    """Compact overview pulling headline numbers from all data sources."""
+    table = Table(
+        title="Mycelium Metrics Overview",
+        title_style="bold",
+        title_justify="left",
+        show_header=False,
+        border_style="dim",
+    )
+    table.add_column("Metric", style="bold")
+    table.add_column("Value", justify="right")
+
+    # ── OpenClaw section ──────────────────────────────────────────────
+    fg_tokens, _ = _oc_token_totals(otel, include_background=include_heartbeat)
+    total_tokens = fg_tokens.get("total", 0)
+    otel_sessions = (otel or {}).get("sessions", [])
+
+    cache_read = fg_tokens.get("cache_read", 0)
+    cache_write = fg_tokens.get("cache_write", 0)
+    input_tokens = fg_tokens.get("input", 0)
+    denom = cache_read + cache_write + input_tokens
+    cache_rate = (cache_read / denom * 100) if denom > 0 and cache_read > 0 else 0.0
+
+    table.add_row("[cyan]Adapters (OpenClaw)[/cyan]", "")
+    table.add_row("  Tokens", _fmt_num(total_tokens))
+    table.add_row("  Sessions", _fmt_num(len(otel_sessions)))
+    if cache_rate > 0:
+        table.add_row("  Cache hit rate", f"{cache_rate:.0f}%")
+
+    # ── Mycelium backend section ──────────────────────────────────────
+    table.add_section()
+    if backend:
+        be_counters = backend.get("counters", {})
+        llm = be_counters.get("llm", {})
+        embeddings = be_counters.get("embeddings", {})
+        memory = be_counters.get("memory", {})
+        knowledge = be_counters.get("knowledge", {})
+
+        table.add_row("[magenta]Mycelium Backend[/magenta]", "")
+        if llm.get("calls", 0) > 0:
+            table.add_row("  LLM calls", _fmt_num(llm["calls"]))
+        embed_count = embeddings.get("computed", 0)
+        if embed_count > 0:
+            table.add_row("  Embeddings (local)", _fmt_num(embed_count))
+        writes = memory.get("writes", 0)
+        searches = memory.get("searches", 0)
+        if writes > 0 or searches > 0:
+            table.add_row(
+                "  Memory writes / searches", f"{_fmt_num(writes)} / {_fmt_num(searches)}"
+            )
+        ingestions = knowledge.get("ingestions", 0)
+        if ingestions > 0:
+            table.add_row("  Knowledge ingestions", _fmt_num(ingestions))
+    else:
+        table.add_row(
+            "[magenta]Mycelium Backend[/magenta]", "[dim]not collected (spoke mode)[/dim]"
+        )
+
+    # ── CFN section ───────────────────────────────────────────────────
+    table.add_section()
+    if backend:
+        be_counters = backend.get("counters", {})
+        coord = be_counters.get("coordination", {})
+        cfn = be_counters.get("cfn", {})
+
+        cfn_llm = be_counters.get("cfn_llm", {})
+        has_cfn = (
+            coord.get("sessions_started", 0) > 0
+            or cfn.get("calls", 0) > 0
+            or cfn_llm.get("calls", 0) > 0
+        )
+
+        table.add_row("[blue]CFN[/blue]", "")
+        if has_cfn:
+            started = coord.get("sessions_started", 0)
+            completed = coord.get("sessions_completed", 0)
+            success = coord.get("outcome.success", 0)
+            failure = coord.get("outcome.failure", 0)
+            if started > 0:
+                table.add_row(
+                    "  Coordination",
+                    f"{_fmt_num(started)} started, {_fmt_num(completed)} completed",
+                )
+                if success + failure > 0:
+                    table.add_row(
+                        "  Outcomes",
+                        f"[green]{success}[/green] consensus, [red]{failure}[/red] failed",
+                    )
+            rounds = coord.get("rounds", 0)
+            if rounds > 0:
+                table.add_row("  Rounds", _fmt_num(rounds))
+            total_calls = cfn.get("calls", 0)
+            if total_calls > 0:
+                errors = cfn.get("errors", 0)
+                err_str = f"  [red]({errors} errors)[/red]" if errors else ""
+                table.add_row("  Transport calls", f"{_fmt_num(total_calls)}{err_str}")
+            llm_calls = cfn_llm.get("calls", 0)
+            if llm_calls > 0:
+                prompt_tok = cfn_llm.get("prompt_tokens", 0)
+                compl_tok = cfn_llm.get("completion_tokens", 0)
+                table.add_row("  LLM calls (engines)", _fmt_num(llm_calls))
+                table.add_row(
+                    "  LLM tokens",
+                    f"{_fmt_num(prompt_tok)} prompt / {_fmt_num(compl_tok)} completion",
+                )
+        else:
+            table.add_row("  [dim]No CFN activity yet[/dim]", "")
+    else:
+        table.add_row("[blue]CFN[/blue]", "[dim]not collected (spoke mode)[/dim]")
+
+    console.print(table)
+    console.print()
+    console.print("[dim]Detail: mycelium metrics show <openclaw|mycelium|cfn|cost>[/dim]")
     console.print()
 
 
@@ -490,33 +690,95 @@ def _load_metrics_json() -> dict | None:
         return None
 
 
+_OC_STATUS_CACHE = _MYCELIUM_DIR / "openclaw_status_cache.json"
+_OC_STATUS_MAX_AGE_S = 60
+
+
 def _get_openclaw_status() -> dict | None:
+    """Get openclaw status, using a short-lived cache to avoid blocking the CLI.
+
+    ``openclaw status --json`` can take 10+ seconds.  We cache the result for
+    up to 60s so repeated ``metrics show`` calls are fast.  A null result is
+    also cached to avoid re-attempting a slow/failing subprocess.
+    """
+    import time as _t
+
+    # Try cache first
+    try:
+        if _OC_STATUS_CACHE.exists():
+            age = _t.time() - _OC_STATUS_CACHE.stat().st_mtime
+            if age < _OC_STATUS_MAX_AGE_S:
+                raw = _OC_STATUS_CACHE.read_text()
+                if not raw.strip() or raw.strip() == "null":
+                    return None
+                return json.loads(raw)
+    except (OSError, json.JSONDecodeError):
+        pass
+
+    # Cache miss or stale — fetch fresh
+    data = _fetch_openclaw_status()
+    try:
+        _OC_STATUS_CACHE.write_text(json.dumps(data) if data else "null")
+    except OSError:
+        pass
+    return data
+
+
+def _fetch_openclaw_status() -> dict | None:
     try:
         result = subprocess.run(
             ["openclaw", "status", "--json"],
-            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
             text=True,
-            timeout=10,
+            timeout=15,
         )
         if result.returncode == 0 and result.stdout.strip():
             return json.loads(result.stdout)
     except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError, OSError):
         pass
+    finally:
+        _restore_terminal()
     return None
 
 
-def _extract_agents(oc: dict | None) -> list[dict]:
-    """Extract the agent list from ``openclaw status --json``.
+def _restore_terminal() -> None:
+    """Reset terminal to cooked/canonical mode if stdin is a tty.
 
-    The actual agent records live at ``oc["agents"]["agents"]``, each with
-    ``id`` and ``workspaceDir`` fields.  We normalise ``id`` → ``name`` so
-    downstream code can use a single key.
+    Node-based CLIs (like openclaw) may put the terminal into raw mode for
+    interactive prompts.  If the subprocess is killed or exits uncleanly the
+    terminal stays in raw mode, breaking readline (arrow keys, Ctrl-P, etc.).
     """
-    if not oc:
-        return []
-    agents_section = oc.get("agents")
+    if not sys.stdin.isatty():
+        return
+    try:
+        import termios
+
+        fd = sys.stdin.fileno()
+        attrs = termios.tcgetattr(fd)
+        # If ICANON or ECHO are off, the terminal is in raw/cbreak mode
+        if not (attrs[3] & termios.ICANON) or not (attrs[3] & termios.ECHO):
+            subprocess.run(["stty", "sane"], stdin=sys.stdin, check=False)
+    except (ImportError, OSError, ValueError):
+        pass
+
+
+def _extract_agents(oc: dict | None) -> list[dict]:
+    """Extract the agent list from ``openclaw status --json`` or config fallback.
+
+    Tries ``oc["agents"]["agents"]`` first (legacy), then ``oc["agents"]["list"]``
+    (current openclaw config layout).  If ``oc`` is None (status command failed or
+    timed out), falls back to reading ``~/.openclaw/openclaw.json`` directly.
+    """
+    agents_section = None
+    if oc:
+        agents_section = oc.get("agents")
+    else:
+        agents_section = _read_openclaw_agents_from_config()
+
     if isinstance(agents_section, dict):
-        agent_list = agents_section.get("agents", [])
+        agent_list = agents_section.get("agents") or agents_section.get("list") or []
     elif isinstance(agents_section, list):
         agent_list = agents_section
     else:
@@ -530,6 +792,17 @@ def _extract_agents(oc: dict | None) -> list[dict]:
             entry["name"] = entry["id"]
         result.append(entry)
     return result
+
+
+def _read_openclaw_agents_from_config() -> dict | None:
+    """Read agents section directly from ~/.openclaw/openclaw.json as fallback."""
+    config_path = Path.home() / ".openclaw" / "openclaw.json"
+    try:
+        with open(config_path) as f:
+            data = json.load(f)
+        return data.get("agents")
+    except (OSError, json.JSONDecodeError):
+        return None
 
 
 def _extract_oc_sessions(oc: dict | None) -> list[dict]:
@@ -762,7 +1035,6 @@ def _fmt_size(nbytes: int) -> str:
 def _render_summary_table(
     otel: dict | None,
     oc: dict | None,
-    oc_cost: dict | None,
     *,
     include_background: bool = False,
 ) -> None:
@@ -800,11 +1072,6 @@ def _render_summary_table(
             "  [dim]heartbeat (background)[/dim]",
             f"[dim]{_fmt_num(bg_total)} ({bg_pct:.0f}%)[/dim]",
         )
-
-    cost = counters.get("cost_usd", {}).get("total", 0.0)
-    if oc_cost and oc_cost.get("total") is not None:
-        cost = oc_cost["total"]
-    table.add_row("Estimated cost", _fmt_cost(cost))
 
     table.add_row("Messages", _fmt_num(messages.get("processed", 0)))
 
@@ -869,14 +1136,6 @@ def _render_summary_table(
     if run_attempts:
         table.add_row("Run attempts", _fmt_num(run_attempts))
 
-    # By-model cost breakdown
-    cost_by_model = counters.get("cost_usd", {}).get("by_model", {})
-    if cost_by_model:
-        table.add_section()
-        table.add_row("[dim]Cost by model[/dim]", "")
-        for model_name in sorted(cost_by_model):
-            table.add_row(f"  {model_name}", _fmt_cost(cost_by_model[model_name]))
-
     # By-model token breakdown
     tokens_by_model = counters.get("tokens", {}).get("by_model", {})
     if tokens_by_model:
@@ -892,7 +1151,6 @@ def _render_summary_table(
 
 def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
     counters = (otel or {}).get("counters", {})
-    by_channel_cost = counters.get("cost_usd", {}).get("by_agent", {})
     by_channel_histograms = (otel or {}).get("histograms", {}).get("by_agent", {})
     by_channel_tokens = counters.get("tokens", {}).get("by_agent", {})
     otel_sessions = (otel or {}).get("sessions", [])
@@ -923,7 +1181,6 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
             agent_names.add(name)
     agent_names |= known_agents
 
-    has_cost = any(by_channel_cost.get(n) for n in agent_names)
     has_hist = any(
         by_channel_histograms.get(n, {}).get("run_duration_ms", {}).get("count", 0) > 0
         for n in agent_names
@@ -933,13 +1190,10 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
         title="OpenClaw Agents", title_style="bold cyan", title_justify="left", border_style="dim"
     )
     table.add_column("Agent", style="bold")
-    table.add_column("Input", justify="right")
-    table.add_column("Output", justify="right")
-    table.add_column("Cache R", justify="right", style="dim")
-    table.add_column("Cache W", justify="right", style="dim")
-    table.add_column("Total", justify="right")
-    if has_cost:
-        table.add_column("Cost", justify="right")
+    table.add_column("Input\ntokens", justify="right")
+    table.add_column("Output\ntokens", justify="right")
+    table.add_column("Cache R\ntokens", justify="right", style="dim")
+    table.add_column("Cache W\ntokens", justify="right", style="dim")
     table.add_column("Sessions", justify="right")
     table.add_column("Turns", justify="right")
     if has_hist:
@@ -951,10 +1205,8 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
         "output": 0,
         "cache_read": 0,
         "cache_write": 0,
-        "total": 0,
         "sessions": 0,
         "turns": 0,
-        "cost": 0.0,
     }
 
     for name in sorted(agent_names):
@@ -967,12 +1219,8 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
         totals["output"] += tok.get("output", 0)
         totals["cache_read"] += tok.get("cache_read", 0)
         totals["cache_write"] += tok.get("cache_write", 0)
-        totals["total"] += tok.get("total", 0)
         totals["sessions"] += sess_count
         totals["turns"] += total_turns
-
-        agent_cost = by_channel_cost.get(name, 0.0)
-        totals["cost"] += agent_cost
 
         ws_size = "—"
         for a in agents_meta:
@@ -995,10 +1243,7 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
             _fmt_num(tok.get("output", 0)),
             _fmt_num(tok.get("cache_read", 0)),
             _fmt_num(tok.get("cache_write", 0)),
-            _fmt_num(tok.get("total", 0)),
         ]
-        if has_cost:
-            row.append(_fmt_cost(agent_cost) if agent_cost else "—")
         row.append(str(sess_count))
         row.append(str(total_turns) if total_turns else "—")
         if has_hist:
@@ -1013,10 +1258,7 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
             f"[bold]{_fmt_num(totals['output'])}[/bold]",
             f"[bold]{_fmt_num(totals['cache_read'])}[/bold]",
             f"[bold]{_fmt_num(totals['cache_write'])}[/bold]",
-            f"[bold]{_fmt_num(totals['total'])}[/bold]",
         ]
-        if has_cost:
-            total_row.append(f"[bold]{_fmt_cost(totals['cost'])}[/bold]")
         total_row.append(f"[bold]{totals['sessions']}[/bold]")
         total_row.append(f"[bold]{totals['turns']}[/bold]")
         if has_hist:
@@ -1025,18 +1267,17 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
         table.add_row(*total_row)
 
     if not agent_names:
-        placeholder_cols = 8 + (1 if has_cost else 0) + (1 if has_hist else 0)
-        table.add_row("(none)", *["—"] * placeholder_cols)
+        placeholder_cols = 7 + (1 if has_hist else 0)
+        table.add_row("(none)", *["—"] * (placeholder_cols - 1))
 
     console.print(table)
     console.print()
 
-    _render_channel_table(by_channel_tokens, by_channel_cost, by_channel_histograms, known_agents)
+    _render_channel_table(by_channel_tokens, by_channel_histograms, known_agents)
 
 
 def _render_channel_table(
     by_channel_tokens: dict,
-    by_channel_cost: dict,
     by_channel_histograms: dict,
     known_agents: set[str],
 ) -> None:
@@ -1045,7 +1286,6 @@ def _render_channel_table(
     if not channel_names:
         return
 
-    has_cost = any(by_channel_cost.get(c) for c in channel_names)
     has_hist = any(
         by_channel_histograms.get(c, {}).get("run_duration_ms", {}).get("count", 0) > 0
         for c in channel_names
@@ -1058,13 +1298,10 @@ def _render_channel_table(
         border_style="dim",
     )
     table.add_column("Channel", style="bold")
-    table.add_column("Input", justify="right")
-    table.add_column("Output", justify="right")
-    table.add_column("Cache R", justify="right", style="dim")
-    table.add_column("Cache W", justify="right", style="dim")
-    table.add_column("Total", justify="right")
-    if has_cost:
-        table.add_column("Cost", justify="right")
+    table.add_column("Input\ntokens", justify="right")
+    table.add_column("Output\ntokens", justify="right")
+    table.add_column("Cache R\ntokens", justify="right", style="dim")
+    table.add_column("Cache W\ntokens", justify="right", style="dim")
     if has_hist:
         table.add_column("Avg Run", justify="right")
 
@@ -1073,8 +1310,6 @@ def _render_channel_table(
         "output": 0,
         "cache_read": 0,
         "cache_write": 0,
-        "total": 0,
-        "cost": 0.0,
     }
 
     for name in sorted(channel_names):
@@ -1083,10 +1318,6 @@ def _render_channel_table(
         totals["output"] += tok.get("output", 0)
         totals["cache_read"] += tok.get("cache_read", 0)
         totals["cache_write"] += tok.get("cache_write", 0)
-        totals["total"] += tok.get("total", 0)
-
-        ch_cost = by_channel_cost.get(name, 0.0)
-        totals["cost"] += ch_cost
 
         avg_run = "—"
         ch_h = by_channel_histograms.get(name, {})
@@ -1101,10 +1332,7 @@ def _render_channel_table(
             _fmt_num(tok.get("output", 0)),
             _fmt_num(tok.get("cache_read", 0)),
             _fmt_num(tok.get("cache_write", 0)),
-            _fmt_num(tok.get("total", 0)),
         ]
-        if has_cost:
-            row.append(_fmt_cost(ch_cost) if ch_cost else "—")
         if has_hist:
             row.append(avg_run)
         table.add_row(*row)
@@ -1116,10 +1344,7 @@ def _render_channel_table(
             f"[bold]{_fmt_num(totals['output'])}[/bold]",
             f"[bold]{_fmt_num(totals['cache_read'])}[/bold]",
             f"[bold]{_fmt_num(totals['cache_write'])}[/bold]",
-            f"[bold]{_fmt_num(totals['total'])}[/bold]",
         ]
-        if has_cost:
-            total_row.append(f"[bold]{_fmt_cost(totals['cost'])}[/bold]")
         if has_hist:
             total_row.append("—")
         table.add_row(*total_row)
@@ -1289,14 +1514,17 @@ def _get_model_pricing(model_name: str) -> tuple[dict, str]:
 
     The pricing dict contains:
       - input:                $/token for raw input
+      - output:               $/token for output (defaults to 4x input)
       - cache_discount:       fraction off input price for cache reads (e.g. 0.90)
       - cache_write_premium:  fraction MORE than input price for cache writes
                               (e.g. 0.25 means writes cost 1.25x input)
     """
     data = _load_pricing()
     default = data.get("default", {})
+    default_input = default.get("input_per_token", 8e-07)
     default_pricing = {
-        "input": default.get("input_per_token", 8e-07),
+        "input": default_input,
+        "output": default_input * 4,
         "cache_discount": default.get("cache_discount", 0.90),
         "cache_write_premium": default.get("cache_write_premium", 0.25),
     }
@@ -1304,8 +1532,10 @@ def _get_model_pricing(model_name: str) -> tuple[dict, str]:
     lower = model_name.lower()
     for entry in data.get("models", []):
         if entry["pattern"] in lower:
+            inp = entry["input_per_token"]
             return {
-                "input": entry["input_per_token"],
+                "input": inp,
+                "output": entry.get("output_per_token", inp * 4),
                 "cache_discount": entry["cache_discount"],
                 "cache_write_premium": entry.get("cache_write_premium", 0.25),
             }, entry["pattern"]
@@ -1473,6 +1703,8 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
         return
 
     be_counters = backend.get("counters", {})
+    cfn_llm = be_counters.get("cfn_llm", {})
+    has_cfn_tokens = cfn_llm.get("calls", 0) > 0
     llm = be_counters.get("llm", {})
 
     if llm.get("calls", 0) == 0:
@@ -1491,9 +1723,6 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
     table.add_row("Total LLM calls", _fmt_num(llm.get("calls", 0)))
     table.add_row("  input tokens", _fmt_num(llm.get("input_tokens", 0)))
     table.add_row("  output tokens", _fmt_num(llm.get("output_tokens", 0)))
-    cost = llm.get("cost_usd", 0.0)
-    if cost > 0:
-        table.add_row("  total cost", _fmt_cost(cost))
     errors = llm.get("errors", 0)
     if errors > 0:
         table.add_row("  errors", f"[red]{_fmt_num(errors)}[/red]")
@@ -1539,7 +1768,7 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
         table.add_row("  concepts extracted", _fmt_num(knowledge.get("concepts_extracted", 0)))
         table.add_row("  relations extracted", _fmt_num(knowledge.get("relations_extracted", 0)))
         est_tokens = knowledge.get("estimated_input_tokens", 0)
-        if est_tokens:
+        if est_tokens and not has_cfn_tokens:
             table.add_row("  est. input tokens", _fmt_num(est_tokens))
         kg_errors = knowledge.get("errors", 0)
         if kg_errors:
@@ -1775,7 +2004,7 @@ def _render_coordination_table(backend: dict | None) -> None:
     by_room_keys = sorted(k for k in coord if k.startswith("by_room."))
     if by_room_keys:
         table.add_section()
-        table.add_row("[dim]By room:[/dim]", "")
+        table.add_row("[dim]Rounds by room:[/dim]", "")
         for key in by_room_keys[:5]:
             label = key.replace("by_room.", "")
             # Strip ``:session:<uuid>`` suffix — the session id is high-
@@ -1787,6 +2016,113 @@ def _render_coordination_table(backend: dict | None) -> None:
             table.add_row(f"  {label}", _fmt_num(coord[key]))
         if len(by_room_keys) > 5:
             table.add_row(f"  [dim]...and {len(by_room_keys) - 5} more[/dim]", "")
+
+    console.print(table)
+    console.print()
+
+
+def _render_cfn_llm_usage_table(backend: dict | None) -> None:
+    """Render actual LLM token usage reported by the cognition engines via _usage."""
+    if not backend:
+        return
+
+    be_counters = backend.get("counters", {})
+    cfn_llm = be_counters.get("cfn_llm", {})
+
+    total_calls = cfn_llm.get("calls", 0)
+    if total_calls == 0:
+        return
+
+    table = Table(
+        title="CFN LLM Token Usage",
+        title_style="bold blue",
+        title_justify="left",
+        show_header=False,
+        border_style="dim",
+    )
+    table.add_column("Metric", style="bold")
+    table.add_column("Value", justify="right")
+
+    table.add_row("Total LLM calls (engines)", _fmt_num(total_calls))
+    table.add_row("  prompt tokens", _fmt_num(cfn_llm.get("prompt_tokens", 0)))
+    table.add_row("  completion tokens", _fmt_num(cfn_llm.get("completion_tokens", 0)))
+    total_tokens = cfn_llm.get("total_tokens", 0)
+    if total_tokens > 0:
+        table.add_row("  total tokens", _fmt_num(total_tokens))
+    cached = cfn_llm.get("cached_tokens", 0)
+    if cached > 0:
+        table.add_row("  cached tokens", _fmt_num(cached))
+
+    be_histograms = backend.get("histograms", {})
+    lat = be_histograms.get("cfn_llm.latency_ms", {})
+    if lat.get("count", 0) > 0:
+        table.add_row("LLM latency (total)", _fmt_histogram_s(lat, _max_n_width(lat)))
+
+    # By pipeline rollup
+    pipeline_keys = sorted(k for k in cfn_llm if k.startswith("by_pipeline."))
+    if pipeline_keys:
+        table.add_section()
+        table.add_row("[dim]By pipeline:[/dim]", "")
+        pipelines: dict[str, dict[str, int]] = {}
+        for key in pipeline_keys:
+            parts = key.split(".")
+            if len(parts) >= 3:
+                pip = parts[1]
+                metric = parts[2]
+                pipelines.setdefault(pip, {})[metric] = cfn_llm[key]
+        for pip, data in sorted(pipelines.items()):
+            calls = data.get("calls", 0)
+            prompt = data.get("prompt_tokens", 0)
+            compl = data.get("completion_tokens", 0)
+            table.add_row(
+                f"  {pip}",
+                f"{_fmt_num(calls)} calls, {_fmt_num(prompt)} prompt / {_fmt_num(compl)} compl",
+            )
+
+    # By LLM operation detail
+    op_keys = sorted(k for k in cfn_llm if k.startswith("by_llm_operation."))
+    if op_keys:
+        table.add_section()
+        table.add_row("[dim]By operation:[/dim]", "")
+        operations: dict[str, dict[str, int]] = {}
+        for key in op_keys:
+            parts = key.split(".")
+            if len(parts) >= 3:
+                op = ".".join(parts[1:-1])
+                metric = parts[-1]
+                operations.setdefault(op, {})[metric] = cfn_llm[key]
+        for op, data in sorted(operations.items()):
+            calls = data.get("calls", 0)
+            prompt = data.get("prompt_tokens", 0)
+            compl = data.get("completion_tokens", 0)
+            table.add_row(
+                f"  {op}",
+                f"{_fmt_num(calls)} calls, {_fmt_num(prompt)} prompt / {_fmt_num(compl)} compl",
+            )
+
+    # By room
+    room_keys = sorted(k for k in cfn_llm if k.startswith("by_room."))
+    if room_keys:
+        table.add_section()
+        table.add_row("[dim]By room:[/dim]", "")
+        rooms: dict[str, dict[str, int]] = {}
+        for key in room_keys:
+            parts = key.split(".")
+            if len(parts) >= 3:
+                room = parts[1]
+                metric = parts[2]
+                rooms.setdefault(room, {})[metric] = cfn_llm[key]
+        for room, data in sorted(rooms.items()):
+            calls = data.get("calls", 0)
+            prompt = data.get("prompt_tokens", 0)
+            compl = data.get("completion_tokens", 0)
+            label = room
+            if ":session:" in label:
+                label = label.split(":session:", 1)[0]
+            table.add_row(
+                f"  {label}",
+                f"{_fmt_num(calls)} calls, {_fmt_num(prompt)} prompt / {_fmt_num(compl)} compl",
+            )
 
     console.print(table)
     console.print()
@@ -2001,10 +2337,215 @@ def _render_cfn_scrape_table(scrape: dict | None) -> None:
     console.print()
 
 
+def _estimate_cost(
+    input_tokens: int,
+    output_tokens: int,
+    cache_read_tokens: int,
+    cache_write_tokens: int,
+    model: str,
+) -> float:
+    """Estimate cost in USD from token counts and model pricing."""
+    pricing, _ = _get_model_pricing(model)
+    input_rate = pricing["input"]
+    output_rate = pricing["output"]
+    cache_read_rate = input_rate * (1 - pricing["cache_discount"])
+    cache_write_rate = input_rate * (1 + pricing["cache_write_premium"])
+
+    return (
+        input_tokens * input_rate
+        + output_tokens * output_rate
+        + cache_read_tokens * cache_read_rate
+        + cache_write_tokens * cache_write_rate
+    )
+
+
+def _render_cost_estimates(
+    otel: dict | None,
+    oc_cost: dict | None,
+    backend: dict | None,
+    *,
+    include_heartbeat: bool = False,
+) -> None:
+    """Unified cost section compiling token usage from all sources."""
+    from mycelium.config import MyceliumConfig
+
+    try:
+        config = MyceliumConfig.load()
+        cfn_model = config.llm.model or ""
+    except Exception:
+        cfn_model = ""
+
+    table = Table(
+        title="Cost Estimates",
+        title_style="bold yellow",
+        title_justify="left",
+        show_header=True,
+        header_style="dim",
+        border_style="dim",
+    )
+    table.add_column("Source", style="bold")
+    table.add_column("Tokens", justify="right")
+    table.add_column("Cost", justify="right")
+    table.add_column("Method", style="dim")
+
+    total_cost = 0.0
+    cost_avoided = 0.0
+
+    # ── OpenClaw (provider-reported cost) ──────────────────────────────
+    oc_reported_cost = 0.0
+    if oc_cost and oc_cost.get("total") is not None:
+        oc_reported_cost = oc_cost["total"]
+    elif otel:
+        oc_reported_cost = otel.get("counters", {}).get("cost_usd", {}).get("total", 0.0)
+
+    fg_tokens, _ = _oc_token_totals(otel, include_background=include_heartbeat)
+    oc_total_tokens = (
+        fg_tokens.get("input", 0)
+        + fg_tokens.get("output", 0)
+        + fg_tokens.get("cache_read", 0)
+        + fg_tokens.get("cache_write", 0)
+    )
+
+    if oc_total_tokens > 0 or oc_reported_cost > 0:
+        table.add_row(
+            "[cyan]OpenClaw Agents[/cyan]",
+            _fmt_num(oc_total_tokens) if oc_total_tokens else "—",
+            _fmt_cost(oc_reported_cost) if oc_reported_cost > 0 else "[dim]$0.00[/dim]",
+            "provider" if oc_reported_cost > 0 else "",
+        )
+        total_cost += oc_reported_cost
+
+    # ── CFN Engines (estimated from tokens + pricing.json) ─────────────
+    be_counters = (backend or {}).get("counters", {})
+    cfn_llm = be_counters.get("cfn_llm", {})
+    cfn_calls = cfn_llm.get("calls", 0)
+
+    if cfn_calls > 0:
+        cfn_prompt = cfn_llm.get("prompt_tokens", 0)
+        cfn_compl = cfn_llm.get("completion_tokens", 0)
+        cfn_cached = cfn_llm.get("cached_tokens", 0)
+        cfn_total = cfn_prompt + cfn_compl + cfn_cached
+
+        cfn_est_cost = _estimate_cost(
+            input_tokens=cfn_prompt,
+            output_tokens=cfn_compl,
+            cache_read_tokens=cfn_cached,
+            cache_write_tokens=0,
+            model=cfn_model,
+        )
+        _, model_label = _get_model_pricing(cfn_model)
+        table.add_row(
+            "[blue]CFN Engines[/blue]",
+            _fmt_num(cfn_total),
+            _fmt_cost(cfn_est_cost),
+            f"est. ({model_label})",
+        )
+        total_cost += cfn_est_cost
+
+        # Per-pipeline breakdown under CFN
+        pipeline_keys = sorted(k for k in cfn_llm if k.startswith("by_pipeline."))
+        if pipeline_keys:
+            pipelines: dict[str, dict[str, int]] = {}
+            for key in pipeline_keys:
+                parts = key.split(".")
+                if len(parts) >= 3:
+                    pip = parts[1]
+                    metric = parts[2]
+                    pipelines.setdefault(pip, {})[metric] = cfn_llm[key]
+            for pip, data in sorted(pipelines.items()):
+                p_prompt = data.get("prompt_tokens", 0)
+                p_compl = data.get("completion_tokens", 0)
+                p_total = p_prompt + p_compl
+                p_cost = _estimate_cost(
+                    input_tokens=p_prompt,
+                    output_tokens=p_compl,
+                    cache_read_tokens=0,
+                    cache_write_tokens=0,
+                    model=cfn_model,
+                )
+                label = pip.replace("_", " ").title()
+                table.add_row(
+                    f"  [dim]{label}[/dim]",
+                    f"[dim]{_fmt_num(p_total)}[/dim]",
+                    f"[dim]{_fmt_cost(p_cost)}[/dim]",
+                    "",
+                )
+
+    # ── Mycelium Backend LLM (estimated) ───────────────────────────────
+    myc_llm = be_counters.get("llm", {})
+    myc_calls = myc_llm.get("calls", 0)
+
+    if myc_calls > 0:
+        myc_prompt = myc_llm.get("prompt_tokens", 0)
+        myc_compl = myc_llm.get("completion_tokens", 0)
+        myc_total = myc_prompt + myc_compl
+        myc_reported = myc_llm.get("cost_usd", 0.0)
+
+        if myc_reported > 0:
+            table.add_row(
+                "[magenta]Mycelium LLM[/magenta]",
+                _fmt_num(myc_total),
+                _fmt_cost(myc_reported),
+                "provider",
+            )
+            total_cost += myc_reported
+        else:
+            myc_est = _estimate_cost(
+                input_tokens=myc_prompt,
+                output_tokens=myc_compl,
+                cache_read_tokens=0,
+                cache_write_tokens=0,
+                model=cfn_model,
+            )
+            _, model_label = _get_model_pricing(cfn_model)
+            table.add_row(
+                "[magenta]Mycelium LLM[/magenta]",
+                _fmt_num(myc_total),
+                _fmt_cost(myc_est),
+                f"est. ({model_label})",
+            )
+            total_cost += myc_est
+
+    # ── Claude Code (placeholder) ──────────────────────────────────────
+    # Not yet wired — omit row entirely until data available
+
+    # ── Cost avoidance (local embeddings) ──────────────────────────────
+    embeddings = be_counters.get("embeddings", {})
+    embed_avoided = embeddings.get("estimated_cost_avoided_usd", 0.0)
+    if embed_avoided > 0:
+        cost_avoided = embed_avoided
+
+    # ── Totals ─────────────────────────────────────────────────────────
+    if total_cost > 0 or cost_avoided > 0:
+        table.add_section()
+        if total_cost > 0:
+            table.add_row("[bold]Total[/bold]", "", f"[bold]{_fmt_cost(total_cost)}[/bold]", "")
+        if cost_avoided >= 0.0001:
+            table.add_row(
+                "  [green]Cost avoided (local)[/green]",
+                "",
+                f"[green]-{_fmt_cost(cost_avoided)}[/green]",
+                "",
+            )
+            net = total_cost - cost_avoided
+            table.add_row("[bold]Net[/bold]", "", f"[bold]{_fmt_cost(max(net, 0))}[/bold]", "")
+
+    if total_cost == 0 and oc_total_tokens == 0 and cfn_calls == 0:
+        table.add_row("[dim]No cost data yet[/dim]", "", "", "")
+
+    console.print(table)
+
+    # Pricing source note
+    gen_date = _pricing_generated_at()
+    if gen_date:
+        console.print(f"[dim]  Estimates use litellm pricing data (updated {gen_date})[/dim]")
+    console.print()
+
+
 def _render_field_legend() -> None:
     console.print("[dim]Data sources:[/dim]")
     console.print(
-        "[dim]  [cyan]OpenClaw[/cyan]  — Agent activity via OTLP telemetry (tokens, costs, sessions)[/dim]"
+        "[dim]  [cyan]OpenClaw[/cyan]  — Agent activity via OTLP telemetry (tokens, sessions)[/dim]"
     )
     console.print(
         "[dim]  [magenta]Mycelium[/magenta]  — Backend API metrics (embeddings, memory, LLM calls)[/dim]"
@@ -2012,16 +2553,6 @@ def _render_field_legend() -> None:
     console.print(
         "[dim]  [blue]CFN[/blue]   — Cognition Fabric Node (coordination, negotiation)[/dim]"
     )
-    data = _load_pricing()
-    gen_date = _pricing_generated_at()
-    litellm_ver = data.get("litellm_version", "")
-    if gen_date or litellm_ver:
-        source_parts = ["Pricing: litellm"]
-        if litellm_ver and litellm_ver != "unknown":
-            source_parts[0] += f" {litellm_ver}"
-        if gen_date:
-            source_parts.append(f"updated {gen_date}")
-        console.print(f"[dim]  {' · '.join(source_parts)}[/dim]")
     console.print()
 
 

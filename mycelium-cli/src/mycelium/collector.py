@@ -505,6 +505,14 @@ class OTLPHandler(BaseHTTPRequestHandler):
         log.debug(format, *args)
 
 
+def _is_local_url(url: str) -> bool:
+    """Return True if the URL points to a local address (hub mode)."""
+    from urllib.parse import urlparse
+
+    host = urlparse(url).hostname or ""
+    return host in ("localhost", "127.0.0.1", "::1", "0.0.0.0")
+
+
 def run(
     port: int,
     output_path: Path,
@@ -520,6 +528,12 @@ def run(
     """
     store = MetricsStore()
     scrape_targets = list(scrape_targets or [])
+    is_hub = _is_local_url(backend_api_url)
+    if not is_hub:
+        log.info(
+            "Running as spoke (backend %s is non-local) -- backend metrics polling disabled",
+            backend_api_url,
+        )
 
     if output_path.exists():
         try:
@@ -551,16 +565,19 @@ def run(
 
     # Periodically poll backend metrics + Prometheus scrape targets in
     # one background thread; both share the same 30-second cadence.
+    # In spoke mode, skip backend polling (sensitive hub-wide data).
     _stop_event = threading.Event()
 
     def _backend_poller() -> None:
         while not _stop_event.wait(30):
-            _fetch_backend_metrics(store, backend_api_url, output_path)
+            if is_hub:
+                _fetch_backend_metrics(store, backend_api_url, output_path)
             _fetch_scrape_targets(store, scrape_targets, output_path)
 
     poller = threading.Thread(target=_backend_poller, daemon=True)
     poller.start()
-    _fetch_backend_metrics(store, backend_api_url, output_path)
+    if is_hub:
+        _fetch_backend_metrics(store, backend_api_url, output_path)
     _fetch_scrape_targets(store, scrape_targets, output_path)
     if scrape_targets:
         log.info(
@@ -578,7 +595,8 @@ def run(
     finally:
         _stop_event.set()
         server.server_close()
-        _fetch_backend_metrics(store, backend_api_url, output_path)
+        if is_hub:
+            _fetch_backend_metrics(store, backend_api_url, output_path)
         data = store.to_dict()
         tmp = output_path.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, indent=2, default=str))
