@@ -374,6 +374,50 @@ def record_cfn_call(
         _record_histogram(f"cfn.latency_ms.{service}", duration_ms)
 
 
+@_safe
+def record_cfn_llm_usage(
+    *,
+    operation: str,
+    room: str = "",
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+    cached_tokens: int = 0,
+    total_tokens: int = 0,
+    llm_calls: int = 0,
+    latency_ms: float = 0.0,
+    by_operation: dict[str, dict] | None = None,
+) -> None:
+    """Record LLM token usage returned by CFN in ``_usage`` response fields.
+
+    Captures token counts from the cognition engines (via the litellm callback)
+    for ``start_negotiation`` responses.  The ``decide`` path makes no LLM calls
+    directly (background ingestion is tracked via Prometheus on the CFN node).
+    """
+    _inc("cfn_llm", "calls", llm_calls)
+    _inc("cfn_llm", "prompt_tokens", prompt_tokens)
+    _inc("cfn_llm", "completion_tokens", completion_tokens)
+    _inc("cfn_llm", "cached_tokens", cached_tokens)
+    _inc("cfn_llm", "total_tokens", total_tokens)
+    if latency_ms > 0:
+        _record_histogram("cfn_llm.latency_ms", latency_ms)
+    if room:
+        _inc("cfn_llm", f"by_room.{room}.calls", llm_calls)
+        _inc("cfn_llm", f"by_room.{room}.prompt_tokens", prompt_tokens)
+        _inc("cfn_llm", f"by_room.{room}.completion_tokens", completion_tokens)
+    if by_operation:
+        for op_name, op_data in by_operation.items():
+            op_calls = op_data.get("calls", 0)
+            op_prompt = op_data.get("prompt_tokens", 0)
+            op_compl = op_data.get("completion_tokens", 0)
+            _inc("cfn_llm", f"by_llm_operation.{op_name}.calls", op_calls)
+            _inc("cfn_llm", f"by_llm_operation.{op_name}.prompt_tokens", op_prompt)
+            _inc("cfn_llm", f"by_llm_operation.{op_name}.completion_tokens", op_compl)
+            pipeline = op_name.split(".")[0] if "." in op_name else op_name
+            _inc("cfn_llm", f"by_pipeline.{pipeline}.calls", op_calls)
+            _inc("cfn_llm", f"by_pipeline.{pipeline}.prompt_tokens", op_prompt)
+            _inc("cfn_llm", f"by_pipeline.{pipeline}.completion_tokens", op_compl)
+
+
 def snapshot() -> dict:
     """Return a JSON-serializable snapshot of all metrics."""
     with _lock:

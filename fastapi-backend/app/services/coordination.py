@@ -455,6 +455,7 @@ async def _run_cfn_negotiation(
             workspace_id=workspace_id,
             mas_id=mas_id,
             n_steps=settings.NEGOTIATION_N_STEPS,
+            room=room_name,
         )
     except CfnNegotiationError as exc:
         logger.error("CFN start_negotiation failed for %s: %s", room_name, exc)

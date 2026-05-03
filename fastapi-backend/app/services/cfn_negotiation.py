@@ -24,7 +24,7 @@ import httpx
 
 from app.config import settings
 from app.services._cfn_call_timing import cfn_timing_stage, cfn_timing_stamp
-from app.services.metrics import record_cfn_call
+from app.services.metrics import record_cfn_call, record_cfn_llm_usage
 from ioc_cfn_svc_api_client import Client
 from ioc_cfn_svc_api_client.api.semantic_negotiation import (
     decide_negotiation_api_workspaces_workspace_id_multi_agentic_systems_mas_id_semantic_negotiation_decide_post as decide_api,
@@ -97,6 +97,31 @@ def _raise_if_validation_error(
     return result
 
 
+def _extract_cfn_usage(result: dict[str, Any], operation: str, *, room: str = "") -> None:
+    """Extract ``_usage`` from a CFN response and record it as metrics."""
+    usage = result.pop("_usage", None)
+    if not isinstance(usage, dict):
+        return
+    record_cfn_llm_usage(
+        operation=operation,
+        room=room,
+        prompt_tokens=usage.get("prompt_tokens", 0),
+        completion_tokens=usage.get("completion_tokens", 0),
+        cached_tokens=usage.get("cached_tokens", 0),
+        total_tokens=usage.get("total_tokens", 0),
+        llm_calls=usage.get("llm_calls", 0),
+        latency_ms=usage.get("total_latency_ms", 0.0),
+        by_operation=usage.get("by_operation"),
+    )
+    logger.debug(
+        "CFN %s usage: %d calls, %d prompt, %d completion tokens",
+        operation,
+        usage.get("llm_calls", 0),
+        usage.get("prompt_tokens", 0),
+        usage.get("completion_tokens", 0),
+    )
+
+
 def _extract_cfn_loop_lag_headers(headers: Any) -> None:
     """Pull CFN's per-request loop-lag stats from response headers into the timing snapshot.
 
@@ -129,6 +154,7 @@ async def start_negotiation(
     workspace_id: str,
     mas_id: str,
     n_steps: int = 20,
+    room: str = "",
 ) -> dict[str, Any]:
     """Call CFN /start. Raises :class:`CfnNegotiationError` on any failure.
 
@@ -193,7 +219,9 @@ async def start_negotiation(
         duration_ms=(time.monotonic() - t0) * 1000,
         status_code=resp.status_code,
     )
-    return _raise_if_validation_error(resp.parsed, "start_negotiation")
+    result = _raise_if_validation_error(resp.parsed, "start_negotiation")
+    _extract_cfn_usage(result, "start_negotiation", room=room)
+    return result
 
 
 def _build_agent_reply(item: dict[str, Any]) -> AgentReply:
@@ -284,4 +312,5 @@ async def decide_negotiation(
         duration_ms=(time.monotonic() - t0) * 1000,
         status_code=resp.status_code,
     )
-    return _raise_if_validation_error(resp.parsed, "decide_negotiation")
+    result = _raise_if_validation_error(resp.parsed, "decide_negotiation")
+    return result
