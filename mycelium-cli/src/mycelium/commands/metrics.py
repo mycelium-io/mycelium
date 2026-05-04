@@ -246,6 +246,32 @@ def status() -> None:
         except Exception:
             pass
 
+    # ── Pricing data ────────────────────────────────────────────────────
+    pricing = _load_pricing()
+    models = pricing.get("models", [])
+    gen_date = _pricing_generated_at()
+    if models:
+        source_label = "update-pricing" if pricing.get("source") == "litellm_catalog_api" else "bundled"
+        console.print(
+            f"[green]✓[/green] Pricing data        "
+            f"{len(models)} models ({source_label}"
+            f"{', ' + gen_date.split(',')[0] if gen_date else ''})"
+        )
+        patterns = [m.get("pattern", "?") for m in models]
+        console.print(f"  [dim]{', '.join(patterns)}[/dim]")
+    elif pricing:
+        console.print("[yellow]⚠[/yellow] Pricing data        no models found")
+        console.print(
+            "  [dim]Run [bold]mycelium metrics update-pricing[/bold] to fetch pricing[/dim]"
+        )
+        all_ok = False
+    else:
+        console.print("[yellow]⚠[/yellow] Pricing data        not found")
+        console.print(
+            "  [dim]Run [bold]mycelium metrics update-pricing[/bold] to fetch pricing[/dim]"
+        )
+        all_ok = False
+
     # ── Summary ──────────────────────────────────────────────────────────
     console.print()
     if all_ok:
