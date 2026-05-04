@@ -2014,6 +2014,26 @@
                     }
                 }
             }
+        },
+        "/api/metrics": {
+            "get": {
+                "tags": [
+                    "metrics"
+                ],
+                "summary": "Get Metrics",
+                "description": "Return a snapshot of backend-collected metrics (embeddings, LLM, indexer, etc.).",
+                "operationId": "get_metrics_api_metrics_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "components": {

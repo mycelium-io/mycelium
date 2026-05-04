@@ -36,6 +36,11 @@ from app.bus import agent_channel, notify, room_channel
 from app.config import settings
 from app.database import async_session_maker
 from app.models import Message, Room, Session
+from app.services.metrics import (
+    record_consensus,
+    record_coordination_round,
+    record_coordination_start,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -223,6 +228,10 @@ class _CfnRoundState:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     round_timeout_task: asyncio.Task | None = field(default=None)
     deciding: bool = field(default=False)  # guard against double-decide
+    # Metrics tracking
+    round_num: int = field(default=0)
+    round_start_time: float = field(default=0.0)
+    session_start_time: float = field(default=0.0)
     round_n: int = 0  # round index from #162 trace machinery (0-based, ours)
     current_trace: _RoundTrace | None = None
     # CFN-reported round + negotiation context used by the counter-offer
@@ -427,6 +436,9 @@ async def _run_cfn_negotiation(
     # mas_id is shared across all sessions in the namespace so it can't be used here.
     session_id = room_name
 
+    session_start_time = time.monotonic()
+    record_coordination_start(participants=len(session_handles))
+
     await _post_message(
         room_name,
         message_type="coordination_start",
@@ -443,6 +455,7 @@ async def _run_cfn_negotiation(
             workspace_id=workspace_id,
             mas_id=mas_id,
             n_steps=settings.NEGOTIATION_N_STEPS,
+            room=room_name,
         )
     except CfnNegotiationError as exc:
         logger.error("CFN start_negotiation failed for %s: %s", room_name, exc)
@@ -456,8 +469,9 @@ async def _run_cfn_negotiation(
         mas_id=mas_id,
         agents=session_handles[:],
         pending_replies={h: None for h in session_handles},
-        # Use the configured cap; CFN may auto-compute internally when 0,
-        # so display 0 unchanged — agents can interpret that as "no cap".
+        round_num=1,
+        round_start_time=time.monotonic(),
+        session_start_time=session_start_time,
         n_steps_total=settings.NEGOTIATION_N_STEPS,
     )
     _cfn_state[room_name] = state
@@ -704,7 +718,11 @@ async def _cfn_decide_round(
     instrumentation to distinguish watchdog-fired rounds (where we synthesise
     rejects, the failure mode from #162) from the happy "all_replied" path.
     """
-    from app.services.cfn_negotiation import CfnNegotiationError, decide_negotiation
+    from app.services.cfn_negotiation import (
+        CfnNegotiationError,
+        _extract_cfn_usage,
+        decide_negotiation,
+    )
 
     state = _cfn_state.get(room_name)
     if not state:
@@ -813,6 +831,13 @@ async def _cfn_decide_round(
             )
         except CfnNegotiationError as exc:
             logger.error("CFN decide_negotiation failed for %s: %s", room_name, exc)
+            round_duration_ms = (time.monotonic() - state.round_start_time) * 1000
+            record_coordination_round(
+                room=room_name,
+                round_num=state.round_num,
+                participants=len(state.agents),
+                duration_ms=round_duration_ms,
+            )
             _close_with_decide_ms("error")
             await _finish_cfn(
                 room_name, plan=f"CFN decide failed — {exc}", assignments={}, broken=True
@@ -832,6 +857,15 @@ async def _cfn_decide_round(
             except Exception:
                 logger.exception("cfn timing snapshot failed")
 
+    # Record round completion metrics
+    round_duration_ms = (time.monotonic() - state.round_start_time) * 1000
+    record_coordination_round(
+        room=room_name,
+        round_num=state.round_num,
+        participants=len(state.agents),
+        duration_ms=round_duration_ms,
+    )
+
     # Stamp from "result returned from CFN" to "trace closed" — this is where
     # any per-round post-processing lives (response normalisation, trace stamping,
     # _fan_out_cfn_messages on ongoing rounds, agreement persistence on agreed).
@@ -844,6 +878,8 @@ async def _cfn_decide_round(
                 room_name, plan="CFN decide returned invalid response", assignments={}, broken=True
             )
             return
+
+        _extract_cfn_usage(result, "decide_negotiation", room=room_name)
 
         with cfn_timing_stage("normalize_response_ms"):
             result = _normalize_cfn_decide_response(result)
@@ -919,6 +955,8 @@ async def _cfn_decide_round(
                 state.round_n += 1
                 state.pending_replies = {h: None for h in addressed}
                 state.deciding = False
+                state.round_num += 1
+                state.round_start_time = time.monotonic()
                 _open_round_trace(state, room_name, addressed)
             _reset_round_timeout(room_name, state)
 
@@ -1031,6 +1069,23 @@ async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool
     # (e.g. _run_cfn_negotiation called _finish_cfn directly on a startup error).
     if state and state.current_trace is not None:
         _close_round_trace(state, decision_path="aborted", outcome="error" if broken else "agreed")
+
+    if state:
+        total_duration_ms = (time.monotonic() - state.session_start_time) * 1000
+        record_consensus(
+            room=room_name,
+            total_rounds=state.round_num,
+            total_duration_ms=total_duration_ms,
+            participants=len(state.agents),
+            outcome="success" if not broken else "failure",
+        )
+    else:
+        record_consensus(
+            room=room_name,
+            total_rounds=0,
+            outcome="failure",
+        )
+
     try:
         await _post_message(
             room_name,
