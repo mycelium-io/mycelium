@@ -1506,7 +1506,9 @@ def _patch_model_cost_and_compat(cfg: dict) -> list[str]:
                 continue
 
             cost = model.get("cost", {})
-            all_zero = all(cost.get(k, 0) == 0 for k in ("input", "output", "cacheRead", "cacheWrite"))
+            all_zero = all(
+                cost.get(k, 0) == 0 for k in ("input", "output", "cacheRead", "cacheWrite")
+            )
 
             if all_zero:
                 pricing, label = _get_model_pricing(model_id)

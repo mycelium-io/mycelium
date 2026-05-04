@@ -233,9 +233,7 @@ def status() -> None:
             elif otel_enabled:
                 console.print("[green]✓[/green] Model cost          configured for all models")
             if missing_compat:
-                console.print(
-                    f"[yellow]⚠[/yellow] Missing compat      {', '.join(missing_compat)}"
-                )
+                console.print(f"[yellow]⚠[/yellow] Missing compat      {', '.join(missing_compat)}")
                 console.print(
                     "  [dim]supportsUsageInStreaming not set — streaming token counts may be lost. "
                     "Run [bold]mycelium adapter add openclaw --step=otel[/bold] to patch.[/dim]"
@@ -251,7 +249,9 @@ def status() -> None:
     models = pricing.get("models", [])
     gen_date = _pricing_generated_at()
     if models:
-        source_label = "update-pricing" if pricing.get("source") == "litellm_catalog_api" else "bundled"
+        source_label = (
+            "update-pricing" if pricing.get("source") == "litellm_catalog_api" else "bundled"
+        )
         console.print(
             f"[green]✓[/green] Pricing data        "
             f"{len(models)} models ({source_label}"
@@ -460,20 +460,36 @@ def reset() -> None:
 _LITELLM_CATALOG_API = "https://api.litellm.ai/model_catalog"
 
 _TRACKED_MODELS: list[dict] = [
-    {"pattern": "claude-sonnet-4",   "provider": "anthropic", "litellm_key": "claude-sonnet-4-5"},
-    {"pattern": "claude-3-7-sonnet", "provider": "anthropic", "litellm_key": "claude-3-7-sonnet-20250219"},
-    {"pattern": "claude-3-5-sonnet", "provider": "anthropic", "litellm_key": "anthropic.claude-3-5-sonnet-20240620-v1:0"},
-    {"pattern": "claude-3-5-haiku",  "provider": "anthropic", "litellm_key": "anthropic.claude-3-5-haiku-20241022-v1:0"},
-    {"pattern": "claude-haiku-4",    "provider": "anthropic", "litellm_key": "claude-haiku-4-5"},
-    {"pattern": "claude-3-haiku",    "provider": "anthropic", "litellm_key": "claude-3-haiku-20240307"},
-    {"pattern": "claude-3-opus",     "provider": "anthropic", "litellm_key": "claude-3-opus-20240229"},
-    {"pattern": "claude-opus-4",     "provider": "anthropic", "litellm_key": "claude-opus-4-1"},
-    {"pattern": "gpt-4o-mini",       "provider": "openai",    "litellm_key": "gpt-4o-mini"},
-    {"pattern": "gpt-4o",            "provider": "openai",    "litellm_key": "gpt-4o"},
-    {"pattern": "gpt-4-turbo",       "provider": "openai",    "litellm_key": "gpt-4-turbo"},
-    {"pattern": "o3-mini",           "provider": "openai",    "litellm_key": "o3-mini"},
-    {"pattern": "o3",                "provider": "openai",    "litellm_key": "o3"},
-    {"pattern": "o4-mini",           "provider": "openai",    "litellm_key": "o4-mini"},
+    {"pattern": "claude-sonnet-4", "provider": "anthropic", "litellm_key": "claude-sonnet-4-5"},
+    {
+        "pattern": "claude-3-7-sonnet",
+        "provider": "anthropic",
+        "litellm_key": "claude-3-7-sonnet-20250219",
+    },
+    {
+        "pattern": "claude-3-5-sonnet",
+        "provider": "anthropic",
+        "litellm_key": "anthropic.claude-3-5-sonnet-20240620-v1:0",
+    },
+    {
+        "pattern": "claude-3-5-haiku",
+        "provider": "anthropic",
+        "litellm_key": "anthropic.claude-3-5-haiku-20241022-v1:0",
+    },
+    {"pattern": "claude-haiku-4", "provider": "anthropic", "litellm_key": "claude-haiku-4-5"},
+    {
+        "pattern": "claude-3-haiku",
+        "provider": "anthropic",
+        "litellm_key": "claude-3-haiku-20240307",
+    },
+    {"pattern": "claude-3-opus", "provider": "anthropic", "litellm_key": "claude-3-opus-20240229"},
+    {"pattern": "claude-opus-4", "provider": "anthropic", "litellm_key": "claude-opus-4-1"},
+    {"pattern": "gpt-4o-mini", "provider": "openai", "litellm_key": "gpt-4o-mini"},
+    {"pattern": "gpt-4o", "provider": "openai", "litellm_key": "gpt-4o"},
+    {"pattern": "gpt-4-turbo", "provider": "openai", "litellm_key": "gpt-4-turbo"},
+    {"pattern": "o3-mini", "provider": "openai", "litellm_key": "o3-mini"},
+    {"pattern": "o3", "provider": "openai", "litellm_key": "o3"},
+    {"pattern": "o4-mini", "provider": "openai", "litellm_key": "o4-mini"},
 ]
 
 _DEFAULT_CACHE_DISCOUNT = 0.90
@@ -554,7 +570,7 @@ def _resolve_litellm_key(model_string: str) -> str:
         changed = False
         for prefix in _PROVIDER_PREFIXES:
             if key.startswith(prefix):
-                key = key[len(prefix):]
+                key = key[len(prefix) :]
                 changed = True
                 break
     return key
@@ -636,7 +652,9 @@ def update_pricing(
     for spec in _TRACKED_MODELS:
         api_data = _fetch_model_pricing_from_api(spec["litellm_key"])
         if api_data is None:
-            warnings.append(f"  [yellow]WARNING[/yellow]: no API data for '{spec['pattern']}' ({spec['litellm_key']})")
+            warnings.append(
+                f"  [yellow]WARNING[/yellow]: no API data for '{spec['pattern']}' ({spec['litellm_key']})"
+            )
             continue
 
         entry = _build_pricing_entry(spec, api_data)
@@ -661,7 +679,9 @@ def update_pricing(
 
         api_data = _fetch_model_pricing_from_api(litellm_key)
         if api_data is None:
-            warnings.append(f"  [yellow]WARNING[/yellow]: no API data for discovered model '{model_string}' (tried key '{litellm_key}')")
+            warnings.append(
+                f"  [yellow]WARNING[/yellow]: no API data for discovered model '{model_string}' (tried key '{litellm_key}')"
+            )
             continue
 
         spec = {"pattern": litellm_key, "provider": "", "litellm_key": litellm_key}
@@ -687,7 +707,9 @@ def update_pricing(
 
         api_data = _fetch_model_pricing_from_api(spec["litellm_key"])
         if api_data is None:
-            warnings.append(f"  [yellow]WARNING[/yellow]: no API data for --add '{raw_spec}' (tried key '{spec['litellm_key']}')")
+            warnings.append(
+                f"  [yellow]WARNING[/yellow]: no API data for --add '{raw_spec}' (tried key '{spec['litellm_key']}')"
+            )
             continue
 
         entry = _build_pricing_entry(spec, api_data)
@@ -749,8 +771,8 @@ def update_pricing(
             if not old:
                 console.print(
                     f"  [green]+[/green] {m['pattern']:25s}  "
-                    f"in ${m['input_per_token']*1e6:.2f}  "
-                    f"out ${m['output_per_token']*1e6:.2f}/MTok  "
+                    f"in ${m['input_per_token'] * 1e6:.2f}  "
+                    f"out ${m['output_per_token'] * 1e6:.2f}/MTok  "
                     f"{m['cache_discount']:.0%} discount"
                 )
                 changes += 1
@@ -765,8 +787,8 @@ def update_pricing(
                 ):
                     console.print(
                         f"  [yellow]~[/yellow] {m['pattern']:25s}  "
-                        f"in ${old_input*1e6:.2f} -> ${m['input_per_token']*1e6:.2f}  "
-                        f"out ${old_output*1e6:.2f} -> ${m['output_per_token']*1e6:.2f}/MTok  "
+                        f"in ${old_input * 1e6:.2f} -> ${m['input_per_token'] * 1e6:.2f}  "
+                        f"out ${old_output * 1e6:.2f} -> ${m['output_per_token'] * 1e6:.2f}/MTok  "
                         f"{old_discount:.0%} -> {m['cache_discount']:.0%} discount"
                     )
                     changes += 1
