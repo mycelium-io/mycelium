@@ -124,7 +124,7 @@ def status() -> None:
         all_ok = False
 
     collector_log = _MYCELIUM_DIR / "collector.log"
-    if collector_log.exists():
+    if not collector_alive and collector_log.exists():
         try:
             log_lines = collector_log.read_text().strip().splitlines()
             recent = log_lines[-5:] if len(log_lines) > 5 else log_lines
