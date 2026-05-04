@@ -320,6 +320,21 @@ def collect(
             except OSError:
                 _PID_FILE.unlink(missing_ok=True)
 
+        # Guard: even without a valid PID file, check if the port is busy
+        import socket as _sock
+
+        _probe = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)
+        try:
+            _probe.bind(("127.0.0.1", resolved_port))
+        except OSError:
+            typer.secho(
+                f"Collector already running on port {resolved_port} (stale PID file)",
+                fg=typer.colors.YELLOW,
+            )
+            return
+        finally:
+            _probe.close()
+
         log_file = _MYCELIUM_DIR / "collector.log"
         log_fh = open(log_file, "a")  # noqa: SIM115
 
