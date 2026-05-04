@@ -605,7 +605,10 @@ def run(
 
     try:
         server = _DualStackHTTPServer(("::", port), handler)
-    except OSError:
+    except OSError as exc:
+        if exc.errno == 98:  # EADDRINUSE
+            log.error("Port %d is already in use — is another collector running?", port)
+            raise SystemExit(1) from exc
         server = HTTPServer(("", port), handler)
     log.info("OTLP receiver listening on :%d", port)
     try:
