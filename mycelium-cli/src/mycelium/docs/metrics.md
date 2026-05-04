@@ -36,8 +36,7 @@ variable.
 
 | Command                   | Description                                      |
 | ------------------------- | ------------------------------------------------ |
-| `mycelium metrics install`| Install optional deps (`opentelemetry-proto`, `protobuf`) |
-| `mycelium metrics status` | Health check: collector process, data file, OTEL config   |
+| `mycelium metrics status` | Health check: deps, collector process, data file, OTEL config, model cost |
 | `mycelium metrics collect`| Start the OTLP receiver (background by default; `--fg` for foreground, `--backend-url` to override backend) |
 | `mycelium metrics stop`   | Stop the background collector                    |
 | `mycelium metrics reset`  | Delete `~/.mycelium/metrics.json`                |
@@ -305,13 +304,58 @@ This script runs in the backend's `uv` environment (where litellm is installed)
 and reads `litellm.model_cost` directly. It serves as the fallback when users
 haven't run `update-pricing`.
 
+### OpenClaw Model Configuration for Cost Tracking
+
+OpenClaw calculates `openclaw.cost.usd` from the `cost` block on each model
+entry in `~/.openclaw/openclaw.json`. If these are all zero (the default from
+`openclaw configure`), the OTLP cost metric will always be $0 — even when
+token counts are correct.
+
+Two model-level settings are required for full metrics accuracy:
+
+| Setting | Purpose | Default |
+| ------- | ------- | ------- |
+| `cost.{input,output,cacheRead,cacheWrite}` | Per-token prices used by OpenClaw to compute `openclaw.cost.usd` | `0` (from `openclaw configure`) |
+| `compat.supportsUsageInStreaming` | Tells OpenClaw to request token usage in streamed responses | `false` |
+
+**Automated fix:**
+
+```bash
+mycelium adapter add openclaw --step=otel
+```
+
+This patches `openclaw.json` with real per-token costs (from Mycelium's
+pricing data) and adds the `compat` flag for any model that's missing it.
+It also configures the diagnostics-otel plugin if not already enabled.
+
+**Manual fix** — add to each model entry in `~/.openclaw/openclaw.json`:
+
+```json5
+{
+  "id": "bedrock/global.anthropic.claude-haiku-4-5-20251001-v1:0",
+  // ...
+  "cost": {
+    "input": 1e-6,       // $/token for prompt input
+    "output": 5e-6,      // $/token for completion output
+    "cacheRead": 0.1e-6, // $/token for cached input reads
+    "cacheWrite": 1.25e-6 // $/token for cache writes
+  },
+  "compat": {
+    "supportsUsageInStreaming": true
+  }
+}
+```
+
+`mycelium metrics status` warns when it detects zero-cost models or missing
+compat flags.
+
 ### Cost Estimation
 
 `mycelium metrics show cost` compiles costs from three sources:
 
 | Source | Method | Notes |
 | ------ | ------ | ----- |
-| **OpenClaw Agents** | Provider-reported via `openclaw.cost.usd` OTLP metric | Displayed as-is; $0.00 if gateway was restarted (counter resets) |
+| **OpenClaw Agents** | Provider-reported via `openclaw.cost.usd` OTLP metric | Displayed as-is; $0.00 if model cost config is missing or gateway was restarted (counter resets) |
 | **CFN Engines** | Estimated from actual engine-reported token counts × `pricing.json` rates | Token counts come from the CFN `_usage` response, not estimated |
 | **Mycelium LLM** | Provider-reported `cost_usd` from litellm's `response_cost` | Falls back to estimation if provider cost unavailable |
 
@@ -441,6 +485,11 @@ the features are wired up:
 
 ## Periodic Maintenance Checklist
 
+- [ ] **OpenClaw model config** — run `mycelium metrics status` and check for
+      zero-cost or missing-compat warnings. Fix with
+      `mycelium adapter add openclaw --step=otel` or manually in
+      `~/.openclaw/openclaw.json`. Required after adding new models or
+      re-running `openclaw configure`.
 - [ ] **Pricing update** — run `mycelium metrics update-pricing` to fetch the
       latest pricing from the LiteLLM API and write `~/.mycelium/pricing.json`.
       Any models found in collected metrics that aren't in the built-in list are

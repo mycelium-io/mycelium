@@ -380,8 +380,7 @@ def record_cfn_call(
     if error:
         _inc("cfn", "errors")
         _inc("cfn", f"errors.{service}")
-    if status_code > 0:
-        _inc("cfn", f"status.{status_code}")
+    _inc("cfn", f"status.{status_code}")
     if duration_ms > 0:
         _record_histogram("cfn.latency_ms", duration_ms)
         _record_histogram(f"cfn.latency_ms.{service}", duration_ms)

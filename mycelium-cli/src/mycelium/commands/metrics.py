@@ -73,41 +73,19 @@ def _read_pid_file() -> tuple[int | None, int]:
         return None, _DEFAULT_PORT
 
 
-@app.command("install")
-def install_metrics() -> None:
-    """Install optional metrics dependencies (opentelemetry-proto, protobuf)."""
+def _check_otel_deps() -> bool:
+    """Return True if opentelemetry-proto is importable, else print an error."""
     try:
         from opentelemetry.proto.collector.metrics.v1 import metrics_service_pb2  # noqa: F401
 
-        typer.secho("✓ Metrics dependencies already installed.", fg=typer.colors.GREEN)
-        return
+        return True
     except ImportError:
-        pass
-
-    typer.echo("Installing metrics dependencies...")
-    packages = ["opentelemetry-proto", "protobuf>=4.21.0"]
-
-    # Prefer uv (used by uv tool installs which don't ship pip)
-    import shutil
-
-    if shutil.which("uv"):
-        result = subprocess.run(
-            ["uv", "pip", "install", "--python", sys.executable] + packages,
-            capture_output=True,
-            text=True,
+        typer.secho(
+            "✗ opentelemetry-proto not found. Reinstall the CLI:\n"
+            "  curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash",
+            fg=typer.colors.RED,
         )
-    else:
-        result = subprocess.run(
-            [sys.executable, "-m", "pip", "install"] + packages,
-            capture_output=True,
-            text=True,
-        )
-
-    if result.returncode != 0:
-        typer.secho(f"✗ Install failed:\n{result.stderr}", fg=typer.colors.RED)
-        raise typer.Exit(1)
-
-    typer.secho("✓ Metrics dependencies installed.", fg=typer.colors.GREEN)
+        return False
 
 
 @app.command("status")
@@ -116,6 +94,13 @@ def status() -> None:
     from datetime import UTC, datetime
 
     all_ok = True
+
+    # ── OTLP deps ────────────────────────────────────────────────────────
+    if _check_otel_deps():
+        console.print("[green]✓[/green] OTLP dependencies  installed")
+    else:
+        console.print("[red]✗[/red] OTLP dependencies  missing (opentelemetry-proto)")
+        all_ok = False
 
     # ── Collector process ────────────────────────────────────────────────
     collector_alive = False
@@ -220,6 +205,47 @@ def status() -> None:
         console.print("[yellow]⚠[/yellow] No openclaw.json found (gateway not configured)")
         all_ok = False
 
+    # ── OpenClaw model cost / compat flags ─────────────────────────────
+    if oc_config_path.exists():
+        try:
+            cfg = json.loads(oc_config_path.read_text())
+            zero_cost_models: list[str] = []
+            missing_compat: list[str] = []
+            for _pname, prov in cfg.get("models", {}).get("providers", {}).items():
+                for m in prov.get("models", []):
+                    mid = m.get("id", "")
+                    if not mid:
+                        continue
+                    cost = m.get("cost", {})
+                    if all(cost.get(k, 0) == 0 for k in ("input", "output")):
+                        zero_cost_models.append(mid)
+                    if not m.get("compat", {}).get("supportsUsageInStreaming"):
+                        missing_compat.append(mid)
+            if zero_cost_models:
+                console.print(
+                    f"[yellow]⚠[/yellow] Model cost = $0     {', '.join(zero_cost_models)}"
+                )
+                console.print(
+                    "  [dim]OpenClaw will report $0 cost via OTLP. "
+                    "Run [bold]mycelium adapter add openclaw --step=otel[/bold] to patch.[/dim]"
+                )
+                all_ok = False
+            elif otel_enabled:
+                console.print("[green]✓[/green] Model cost          configured for all models")
+            if missing_compat:
+                console.print(
+                    f"[yellow]⚠[/yellow] Missing compat      {', '.join(missing_compat)}"
+                )
+                console.print(
+                    "  [dim]supportsUsageInStreaming not set — streaming token counts may be lost. "
+                    "Run [bold]mycelium adapter add openclaw --step=otel[/bold] to patch.[/dim]"
+                )
+                all_ok = False
+            elif otel_enabled:
+                console.print("[green]✓[/green] Streaming compat    set for all models")
+        except Exception:
+            pass
+
     # ── Summary ──────────────────────────────────────────────────────────
     console.print()
     if all_ok:
@@ -244,6 +270,9 @@ def collect(
     ),
 ) -> None:
     """Start the OTLP HTTP receiver to collect OpenClaw telemetry."""
+    if not _check_otel_deps():
+        raise typer.Exit(1)
+
     from mycelium.config import MyceliumConfig
 
     resolved_port = _resolve_port(port)
@@ -2518,6 +2547,7 @@ def _render_cfn_transport_table(backend: dict | None) -> None:
 
     # Status code breakdown: aggregate 2xx, suppress 409 (expected for
     # idempotent re-registrations), show remaining codes individually.
+    # status.0 means no HTTP response (timeout, connection refused, DNS).
     status_keys = sorted(k for k in cfn if k.startswith("status."))
     if status_keys:
         ok_total = 0
@@ -2527,15 +2557,20 @@ def _render_cfn_transport_table(backend: dict | None) -> None:
             count = cfn[key]
             if 200 <= code < 300 or code == 409:
                 ok_total += count
+            elif code == 0:
+                other_rows.append(("no response", count))
             else:
                 other_rows.append((str(code), count))
         table.add_section()
         table.add_row("[dim]By status code:[/dim]", "")
         if ok_total:
             table.add_row("  OK (2xx)", _fmt_num(ok_total))
-        for code, count in other_rows:
-            style = "red" if int(code) >= 500 else "yellow"
-            table.add_row(f"  HTTP {code}", f"[{style}]{_fmt_num(count)}[/{style}]")
+        for label, count in other_rows:
+            if label == "no response":
+                table.add_row("  no response (transport error)", f"[red]{_fmt_num(count)}[/red]")
+            else:
+                style = "red" if int(label) >= 500 else "yellow"
+                table.add_row(f"  HTTP {label}", f"[{style}]{_fmt_num(count)}[/{style}]")
 
     console.print(table)
     console.print()

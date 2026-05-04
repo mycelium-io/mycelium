@@ -1475,6 +1475,56 @@ def _normalize_plugin_entries(plugins_section: dict) -> dict:
     return entries
 
 
+def _patch_model_cost_and_compat(cfg: dict) -> list[str]:
+    """Patch zero-cost model entries and add ``compat.supportsUsageInStreaming``.
+
+    OpenClaw uses the ``cost`` block on each model to calculate ``openclaw.cost.usd``.
+    If the costs are all zero (the default from ``openclaw configure``), the OTLP
+    cost metric will always be $0.  This function fills in real per-token pricing
+    from Mycelium's pricing data and adds the ``compat`` flag that enables token
+    usage reporting in streamed responses.
+
+    Returns a list of human-readable change descriptions (empty if nothing changed).
+    """
+    changes: list[str] = []
+
+    try:
+        from mycelium.commands.metrics import _get_model_pricing
+    except Exception:
+        return changes
+
+    providers = cfg.get("models", {}).get("providers", {})
+    for _provider_name, provider in providers.items():
+        for model in provider.get("models", []):
+            model_id = model.get("id", "")
+            if not model_id:
+                continue
+
+            cost = model.get("cost", {})
+            all_zero = all(cost.get(k, 0) == 0 for k in ("input", "output", "cacheRead", "cacheWrite"))
+
+            if all_zero:
+                pricing, label = _get_model_pricing(model_id)
+                inp = pricing["input"]
+                if inp > 0:
+                    cache_read_rate = inp * (1 - pricing["cache_discount"])
+                    cache_write_rate = inp * (1 + pricing["cache_write_premium"])
+                    model["cost"] = {
+                        "input": inp,
+                        "output": pricing["output"],
+                        "cacheRead": cache_read_rate,
+                        "cacheWrite": cache_write_rate,
+                    }
+                    changes.append(f"cost for {model_id} (matched: {label})")
+
+            compat = model.setdefault("compat", {})
+            if not compat.get("supportsUsageInStreaming"):
+                compat["supportsUsageInStreaming"] = True
+                changes.append(f"compat.supportsUsageInStreaming for {model_id}")
+
+    return changes
+
+
 def _configure_otel(
     port: int | None = None,
     profile: str | None = None,
@@ -1547,6 +1597,10 @@ def _configure_otel(
         entries = _normalize_plugin_entries(plugins)
         if "diagnostics-otel" not in entries:
             entries["diagnostics-otel"] = {"enabled": True}
+
+        model_changes = _patch_model_cost_and_compat(cfg)
+        for desc in model_changes:
+            typer.secho(f"  ✓ patched {desc}", fg=typer.colors.GREEN)
 
         cfg_json = json_module.dumps(cfg, indent=2) + "\n"
 
