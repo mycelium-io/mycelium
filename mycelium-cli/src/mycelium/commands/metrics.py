@@ -2758,7 +2758,7 @@ def _render_cost_estimates(
     table.add_column("Source", style="bold")
     table.add_column("Tokens", justify="right")
     table.add_column("Cost", justify="right")
-    table.add_column("Method", style="dim")
+    table.add_column("Pricing", style="dim")
 
     total_cost = 0.0
 
@@ -2778,11 +2778,15 @@ def _render_cost_estimates(
     )
 
     if oc_total_tokens > 0 or oc_reported_cost > 0:
+        if oc_reported_cost > 0:
+            oc_pricing_label = "otel (provider-reported)"
+        else:
+            oc_pricing_label = "[yellow]otel — $0 (check model cost config)[/yellow]"
         table.add_row(
             "[cyan]OpenClaw Agents[/cyan]",
             _fmt_num(oc_total_tokens) if oc_total_tokens else "—",
             _fmt_cost(oc_reported_cost) if oc_reported_cost > 0 else "[dim]$0.00[/dim]",
-            "provider" if oc_reported_cost > 0 else "",
+            oc_pricing_label,
         )
         total_cost += oc_reported_cost
 
@@ -2857,7 +2861,7 @@ def _render_cost_estimates(
                 "[magenta]Mycelium LLM[/magenta]",
                 _fmt_num(myc_total),
                 _fmt_cost(myc_reported),
-                "provider",
+                "litellm (provider-reported)",
             )
             total_cost += myc_reported
         else:
