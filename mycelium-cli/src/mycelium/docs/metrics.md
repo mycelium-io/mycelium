@@ -41,6 +41,8 @@ variable.
 | `mycelium metrics collect`| Start the OTLP receiver (background by default; `--fg` for foreground, `--backend-url` to override backend) |
 | `mycelium metrics stop`   | Stop the background collector                    |
 | `mycelium metrics reset`  | Delete `~/.mycelium/metrics.json`                |
+| `mycelium metrics update-pricing` | Fetch latest LLM pricing from LiteLLM API and write to `~/.mycelium/pricing.json` |
+| `mycelium metrics update-pricing --add pat:key` | Also fetch pricing for a manually specified model (repeatable) |
 | `mycelium metrics show`   | Render collected data as Rich tables              |
 | `mycelium metrics show --json` | Dump raw JSON for scripting                  |
 | `mycelium metrics show --workspace` | Include per-file workspace breakdowns   |
@@ -51,6 +53,7 @@ variable.
 | Path                            | Purpose                              |
 | ------------------------------- | ------------------------------------ |
 | `~/.mycelium/metrics.json`      | Aggregated metrics (counters, histograms, sessions, backend snapshot) |
+| `~/.mycelium/pricing.json`      | User-local pricing cache (written by `update-pricing`) |
 | `~/.mycelium/collector.pid`     | PID and port of the background collector process |
 | `~/.mycelium/collector.log`     | Stdout/stderr log from the background collector  |
 
@@ -118,7 +121,7 @@ The collector polls `GET /api/metrics` on the FastAPI backend every 30 seconds
 
 | Namespace    | Keys                                                             |
 | ------------ | ---------------------------------------------------------------- |
-| `embeddings` | `computed`, `by_source.*`, `estimated_tokens`, `estimated_cost_avoided_usd` |
+| `embeddings` | `computed`, `by_source.*`, `estimated_tokens`                    |
 | `llm`        | `calls`, `by_operation.*`, `by_model.*`, `input_tokens`, `output_tokens`, `cost_usd`, `errors` |
 | `indexer`    | `runs`, `files_indexed`, `files_skipped`, `files_pruned`, `errors`, `by_target.*` |
 | `memory`     | `writes`, `writes.*`, `writes_embedded`, `searches`, `search_hits`, `search_misses`, `results_returned` |
@@ -126,6 +129,7 @@ The collector polls `GET /api/metrics` on the FastAPI backend every 30 seconds
 | `knowledge`  | `ingestions`, `concepts_extracted`, `relations_extracted`, `estimated_input_tokens`, `errors`, `queries`, `queries.*` (by type: neighbour, path, concept, semantic), `query_hits`, `query_misses`, `query_errors`, `results_returned`, `cache_hits` |
 | `coordination` | `sessions_started`, `sessions_completed`, `rounds`, `by_room.*`, `consensus_reached`, `outcome.*` (success, failure) |
 | `cfn`        | `calls`, `calls.<service>`, `calls.<service>.<operation>`, `errors`, `errors.<service>`, `status.<code>` |
+| `cfn_llm`    | `calls`, `input_tokens`, `output_tokens`, `cached_tokens`, `total_tokens`, `by_pipeline.*`, `by_llm_operation.*`, `by_room.*` |
 
 #### Backend Histograms
 
@@ -150,6 +154,7 @@ The collector polls `GET /api/metrics` on the FastAPI backend every 30 seconds
 | `coordination.time_to_consensus_ms` | ms   |
 | `cfn.latency_ms`                    | ms   |
 | `cfn.latency_ms.<service>`          | ms   |
+| `cfn_llm.latency_ms`               | ms   |
 
 ## Display Panels
 
@@ -184,12 +189,9 @@ OpenClaw → Mycelium backend → CFN → opt-in.
 
 ### Mycelium backend (polled)
 
-5. **Mycelium Cost Avoidance** — directly-measurable savings from work done
-   locally by Mycelium: local embedding counts (vs paying a cloud embedding
-   API) with estimated cost avoided, and indexer skip-unchanged file stats.
-   Prompt cache "savings" are deliberately excluded (see panel 2), and
-   CFN-side LLM usage isn't visible to us yet (see Tier 3 in the roadmap
-   below).
+5. **Local Embeddings & Indexer** — operational metrics for local embedding
+   computation (counts, latency, by-source breakdown) and the indexer's
+   skip-unchanged file stats (skip rate, files indexed/pruned, run duration).
 
 6. **Mycelium Backend LLM Usage** — backend LLM calls, tokens, cost, latency
    by operation and model; knowledge graph, synthesis, and memory stats.
@@ -202,11 +204,15 @@ OpenClaw → Mycelium backend → CFN → opt-in.
 8. **CFN Coordination** — negotiation session counts, rounds, consensus
    success/failure rates, timeouts, and timing histograms.
 
-9. **CFN Transport Health** — outbound HTTP call counts to CFN node and mgmt
-   plane, error rates, latency histograms, per-operation and per-status-code
-   breakdowns.
+9. **CFN LLM Token Usage** — actual LLM token usage reported by the cognition
+   engines via the `_usage` response field. Shows total calls, prompt/completion
+   tokens, latency, and breakdowns by pipeline, operation, and room.
 
-10. **CFN /metrics Scrape** — opt-in. Direct HTTP-RED rollup
+10. **CFN Transport Health** — outbound HTTP call counts to CFN node and mgmt
+    plane, error rates, latency histograms, per-operation and per-status-code
+    breakdowns.
+
+11. **CFN /metrics Scrape** — opt-in. Direct HTTP-RED rollup
     (requests, errors, latency) of any CFN service that exposes a Prometheus
     `/metrics` endpoint via `prometheus-fastapi-instrumentator`. Today that's
     `ioc-cfn-mgmt-backend-svc` (port 9000) and `ioc-knowledge-memory`;
@@ -233,8 +239,8 @@ OpenClaw → Mycelium backend → CFN → opt-in.
     `[degraded]` rather than dropped silently. Restart `mycelium metrics
     collect` after editing config so the new targets are picked up.
 
-    The complementary panel is #9 (CFN Transport Health), which measures
-    *outbound* CFN calls *as observed by the Mycelium backend*. Panel #10
+    The complementary panel is #10 (CFN Transport Health), which measures
+    *outbound* CFN calls *as observed by the Mycelium backend*. Panel #11
     measures the *inbound* HTTP surface of the CFN service itself. The two
     will not generally agree (different vantage points; #10 sees calls from
     every client, not just Mycelium) but large divergence is itself a useful
@@ -242,76 +248,94 @@ OpenClaw → Mycelium backend → CFN → opt-in.
 
 ### Opt-in
 
-10. **Workspace Files** (via `--workspace`) — per-file size breakdown of
+12. **Workspace Files** (via `--workspace`) — per-file size breakdown of
     each agent's `~/.openclaw` workspace directory.
 
 ## Pricing Data
 
-All pricing lives in a single generated file:
+Pricing data is resolved in this order:
 
-```
-mycelium-cli/src/mycelium/data/pricing.json
-```
+1. **User-local cache** — `~/.mycelium/pricing.json` (written by `mycelium metrics update-pricing`)
+2. **Bundled default** — `mycelium-cli/src/mycelium/data/pricing.json` (shipped with the CLI package)
 
-This file is consumed by both the CLI (prompt cache savings calculations) and
-the backend (embedding cost avoidance baseline). It is **not hand-edited** —
-run the update script to regenerate it from litellm's `model_cost` map:
+The first file found with a non-empty `models` list wins. The `generated_at`
+timestamp and source are shown in the footer of the cost table.
+
+### Updating Pricing at Runtime
 
 ```bash
-pnpm run update:pricing          # from either mycelium-cli/ or fastapi-backend/
+mycelium metrics update-pricing
 ```
 
-The script (`scripts/update-pricing.py`) runs in the backend's `uv`
-environment (where litellm is installed) and:
+This fetches current pricing from the **LiteLLM Model Catalog API**
+(`api.litellm.ai/model_catalog/{model_id}`) — a free public API that refreshes
+from LiteLLM's GitHub every 60 seconds. No new dependencies are needed (uses
+the CLI's existing `httpx` client).
 
-1. Iterates a `TRACKED_MODELS` list of substring patterns (e.g. `"claude-sonnet-4"`,
-   `"gpt-4o"`) and finds the best matching litellm entry
-2. Extracts `input_cost_per_token` and computes `cache_discount` from
-   `cache_read_input_token_cost` (falling back to 90% if no cache pricing)
-3. Extracts the `text-embedding-3-small` price for the embedding baseline
-4. Writes `pricing.json` and prints a diff of any changes
+Models are sourced from three places:
 
-### Prompt Cache Pricing (reference only)
+1. **Built-in tracked models** (14 common Anthropic/OpenAI models) — always fetched
+2. **Auto-discovered models** — the command reads `~/.mycelium/metrics.json` and
+   finds model names (from OTLP `by_model` and backend `llm.by_model.*`) that
+   aren't covered by the built-in list. Provider prefixes like `bedrock/global.`
+   and `anthropic.` are stripped to derive a LiteLLM catalog key.
+3. **Manually added models** via `--add` — for models not yet in collected metrics:
 
-`pricing.json` carries three numbers per model that describe how the LLM
-provider charges for prompt caching:
+```bash
+mycelium metrics update-pricing --add "deepseek-v3:deepseek-chat"
+mycelium metrics update-pricing --add "mistral-large:mistral-large-latest"
+```
+
+The `--add` format is `pattern:litellm_key` (or just `litellm_key` if both
+are the same). The flag is repeatable.
+
+### Updating Pricing at Build Time
+
+The bundled `pricing.json` is regenerated by:
+
+```bash
+cd fastapi-backend && uv run python ../scripts/update-pricing.py
+```
+
+This script runs in the backend's `uv` environment (where litellm is installed)
+and reads `litellm.model_cost` directly. It serves as the fallback when users
+haven't run `update-pricing`.
+
+### Cost Estimation
+
+`mycelium metrics show cost` compiles costs from three sources:
+
+| Source | Method | Notes |
+| ------ | ------ | ----- |
+| **OpenClaw Agents** | Provider-reported via `openclaw.cost.usd` OTLP metric | Displayed as-is; $0.00 if gateway was restarted (counter resets) |
+| **CFN Engines** | Estimated from actual engine-reported token counts × `pricing.json` rates | Token counts come from the CFN `_usage` response, not estimated |
+| **Mycelium LLM** | Provider-reported `cost_usd` from litellm's `response_cost` | Falls back to estimation if provider cost unavailable |
+
+### Per-Model Pricing Fields
+
+`pricing.json` carries these fields per model:
 
 | Field                  | Meaning                                                                 |
 | ---------------------- | ----------------------------------------------------------------------- |
-| `input_per_token`      | Raw input price per token                                               |
+| `input_per_token`      | Price per input token                                                   |
+| `output_per_token`     | Price per output token                                                  |
 | `cache_discount`       | Fraction off `input_per_token` for cache reads (e.g. 0.90 = 90% off)    |
 | `cache_write_premium`  | Fraction more than `input_per_token` for cache writes (e.g. 0.25 = 1.25×) |
 
-**Note**: Earlier versions of this CLI computed and displayed a "prompt cache
-savings" dollar figure here. We removed it because (a) the saving is created
-by the LLM provider's caching feature, not by Mycelium, and (b) the original
-calculation ignored the cost of `cache_write` tokens, inflating the number.
-The Cache Efficiency panel now shows hit rate and read/write volumes only.
+Pricing is matched by substring against the `models` array. The model string
+comes from the Mycelium config (`llm.model`).
 
-The model is auto-detected from OTLP `tokens.by_model` data (whichever model
-has the most total tokens). Pricing is matched by substring against the
-`models` array in `pricing.json`.
-
-**Fallback**: if no model matches, a conservative Haiku-class estimate is used
-($0.80/MTok input, 90% cache discount, 25% write premium). Add the new
+**Fallback**: if no model matches, a conservative default is used ($0.80/MTok
+input, $3.20/MTok output, 90% cache discount, 25% write premium). Add the new
 substring pattern to `TRACKED_MODELS` in `scripts/update-pricing.py` and
-re-run if you want better-attributed numbers in the cache panel.
+re-run.
 
-### Local Embedding Cost Avoidance
+### Prompt Cache Pricing (reference only)
 
-The backend estimates how much running embeddings locally (via
-`sentence-transformers/all-MiniLM-L6-v2`) saves versus calling a cloud
-embedding API. It loads the `text-embedding-3-small` input price from
-`pricing.json` at startup (`embedding_baseline.input_per_token`).
-
-To change the comparison target model, edit `EMBEDDING_MODEL` in
-`scripts/update-pricing.py` and re-run.
-
-### OpenClaw-Reported Cost
-
-The `"Cost (openclaw)"` line comes directly from the `openclaw.cost.usd` OTLP
-metric emitted by the OpenClaw gateway. This value is controlled by OpenClaw
-and is not calculated by Mycelium. We display it as-is.
+The Cache Efficiency panel shows the LLM provider's prompt cache behaviour:
+hit rate, read/write/uncached input token volumes, and reads-per-write ratio.
+It intentionally has no dollar figure — prompt caching is a feature of the LLM
+provider (e.g. Anthropic), not Mycelium.
 
 ## Schema Evolution
 
@@ -395,19 +419,13 @@ Prioritised by effort and value.
 
 ### Tier 3 — Requires IoC owner coordination
 
-- **Deep CFN token usage** — CFN's cognition engines consume LLM tokens
-  internally (two-pass extraction, embeddings) but the `CreateOrUpdateResponse`
-  schema only returns `{response_id, message}`. Actual token counts would
-  require upstream changes to propagate `litellm.completion` usage through
-  the CFN node's response body. Currently tracked via client-side
-  `estimated_input_tokens` (cl100k_base estimate of outbound payload).
-
-  **Why this matters for the Cost Avoidance panel**: without CFN-side token
-  telemetry we only know what we *sent* to CFN, not what CFN actually spent
-  handling it. The Cost Avoidance panel therefore shows only savings we can
-  directly measure on the Mycelium side (local embeddings, indexer
-  skip-unchanged). Once CFN exposes per-request token usage upstream, we
-  can add a CFN-attributable row alongside.
+- **CFN provider-reported cost** — CFN engines now report actual LLM token
+  counts via the `_usage` response field (see panel 9), but not dollar cost.
+  The cost table estimates CFN cost from tokens × `pricing.json` rates. To
+  get provider-reported cost, the `UsageAccumulator` in
+  `common/metrics/usage_callback.py` would need to extract
+  `response._hidden_params["response_cost"]` from litellm and propagate it
+  through the `_usage` snapshot.
 
 ### Not yet implementable (stubbed / planned)
 
@@ -419,12 +437,20 @@ the features are wired up:
 
 ## Periodic Maintenance Checklist
 
-- [ ] **Pricing update** — run `pnpm run update:pricing` from either package
-      to regenerate `pricing.json` from litellm. Do this when litellm is
-      updated or when provider pricing changes. The script prints a diff.
+- [ ] **Pricing update** — run `mycelium metrics update-pricing` to fetch the
+      latest pricing from the LiteLLM API and write `~/.mycelium/pricing.json`.
+      Any models found in collected metrics that aren't in the built-in list are
+      auto-discovered and priced. The `generated_at` date appears in the
+      `mycelium metrics show cost` footer.
+- [ ] **Bundled pricing refresh** — run `cd fastapi-backend && uv run python ../scripts/update-pricing.py`
+      to update the bundled `data/pricing.json` shipped with the CLI package.
+      This is the fallback when users haven't run `update-pricing`.
 - [ ] **New models** — if a new model isn't matched (the `"pricing basis"` row
-      says "unknown model"), add the substring pattern to `TRACKED_MODELS` in
-      `scripts/update-pricing.py` and re-run.
+      says "unknown model"), either:
+      - Run `mycelium metrics update-pricing` (auto-discovers from metrics), or
+      - Use `--add pattern:litellm_key` for models not yet in collected metrics, or
+      - Add the substring pattern to `_TRACKED_MODELS` in `metrics.py` for
+        permanent built-in tracking.
 - [ ] **New OpenClaw metrics** — if OpenClaw adds new OTLP metrics, add
       handling in `collector.py` `_process_metric` and display in
       `commands/metrics.py`.

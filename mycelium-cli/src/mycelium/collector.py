@@ -392,7 +392,7 @@ def _fetch_scrape_targets(
         if kind == "http_red":
             rolled = prom_scrape.aggregate_http_red(samples)
         else:
-            # Unknown kind — preserve raw samples so we don't lose data.
+            log.warning("Unknown scrape kind %r for target %r, storing raw count only", kind, name)
             rolled = {"raw_sample_count": len(samples)}
         store.set_scrape_target(name, rolled)
 
@@ -478,18 +478,23 @@ class OTLPHandler(BaseHTTPRequestHandler):
 
         log.debug("POST %s  %d bytes", self.path, len(body))
 
-        if self.path in ("/v1/metrics", "/v1/traces"):
-            try:
-                if self.path == "/v1/metrics":
-                    self.store.ingest_metrics(body)
-                else:
-                    self.store.ingest_traces(body)
-                self._flush()
-            except Exception:
-                log.exception("Failed to process %s", self.path)
-                self.send_response(500)
-                self.end_headers()
-                return
+        if self.path not in ("/v1/metrics", "/v1/traces"):
+            log.warning("Unexpected POST path %s, returning 400", self.path)
+            self.send_response(400)
+            self.end_headers()
+            return
+
+        try:
+            if self.path == "/v1/metrics":
+                self.store.ingest_metrics(body)
+            else:
+                self.store.ingest_traces(body)
+            self._flush()
+        except Exception:
+            log.exception("Failed to process %s", self.path)
+            self.send_response(500)
+            self.end_headers()
+            return
 
         self.send_response(200)
         self.send_header("Content-Type", "application/x-protobuf")

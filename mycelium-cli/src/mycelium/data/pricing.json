@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-16T19:42:36.218723+00:00",
+  "generated_at": "2026-05-04T13:36:04.223482+00:00",
   "litellm_version": "unknown",
   "models": [
     {
@@ -47,7 +47,7 @@
       "input_per_token": 2.5e-07,
       "output_per_token": 1.25e-06,
       "cache_discount": 0.88,
-      "cache_write_premium": 0.25,
+      "cache_write_premium": 0.2,
       "litellm_key": "claude-3-haiku-20240307"
     },
     {
@@ -117,6 +117,7 @@
   ],
   "default": {
     "input_per_token": 8e-07,
+    "output_per_token": 3.2e-06,
     "cache_discount": 0.9,
     "cache_write_premium": 0.25,
     "label": "unknown model"

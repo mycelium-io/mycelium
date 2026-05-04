@@ -120,8 +120,10 @@ async def run_synthesis(room_name: str) -> dict | None:
                         fs_count,
                         room_name,
                     )
+                    record_synthesis(skipped="needs_reindex")
                     return {"status": "needs_reindex", "files_on_disk": fs_count}
 
+                record_synthesis(skipped="no_memories")
                 return None
 
             # Check LLM availability before doing work

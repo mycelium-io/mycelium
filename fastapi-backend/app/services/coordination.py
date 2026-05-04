@@ -718,7 +718,11 @@ async def _cfn_decide_round(
     instrumentation to distinguish watchdog-fired rounds (where we synthesise
     rejects, the failure mode from #162) from the happy "all_replied" path.
     """
-    from app.services.cfn_negotiation import CfnNegotiationError, decide_negotiation
+    from app.services.cfn_negotiation import (
+        CfnNegotiationError,
+        _extract_cfn_usage,
+        decide_negotiation,
+    )
 
     state = _cfn_state.get(room_name)
     if not state:
@@ -827,6 +831,13 @@ async def _cfn_decide_round(
             )
         except CfnNegotiationError as exc:
             logger.error("CFN decide_negotiation failed for %s: %s", room_name, exc)
+            round_duration_ms = (time.monotonic() - state.round_start_time) * 1000
+            record_coordination_round(
+                room=room_name,
+                round_num=state.round_num,
+                participants=len(state.agents),
+                duration_ms=round_duration_ms,
+            )
             _close_with_decide_ms("error")
             await _finish_cfn(
                 room_name, plan=f"CFN decide failed — {exc}", assignments={}, broken=True
@@ -867,6 +878,8 @@ async def _cfn_decide_round(
                 room_name, plan="CFN decide returned invalid response", assignments={}, broken=True
             )
             return
+
+        _extract_cfn_usage(result, "decide_negotiation", room=room_name)
 
         with cfn_timing_stage("normalize_response_ms"):
             result = _normalize_cfn_decide_response(result)

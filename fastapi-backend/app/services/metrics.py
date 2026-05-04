@@ -88,14 +88,18 @@ def _record_histogram(name: str, value: float) -> None:
 
 
 def _safe(fn):
-    """Wrap a metrics function so it never raises."""
+    """Wrap a metrics function so it never raises.
+
+    Logs at WARNING so silent data loss from bad inputs (e.g. non-int
+    token counts from CFN ``_usage``) is visible in operational logs.
+    """
 
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
         try:
             return fn(*args, **kwargs)
         except Exception:
-            _log.debug("metrics.%s failed", fn.__name__, exc_info=True)
+            _log.warning("metrics.%s failed", fn.__name__, exc_info=True)
 
     return wrapper
 
@@ -210,11 +214,15 @@ def record_memory_search(
 
 
 @_safe
-def record_synthesis(duration_ms: float = 0.0, *, error: bool = False) -> None:
+def record_synthesis(duration_ms: float = 0.0, *, error: bool = False, skipped: str = "") -> None:
     _inc("synthesis", "runs")
+    if skipped:
+        _inc("synthesis", "skipped")
+        _inc("synthesis", f"skipped.{skipped}")
+        return
     if error:
         _inc("synthesis", "errors")
-    if duration_ms > 0 and not error:
+    if duration_ms > 0:
         _record_histogram("synthesis.duration_ms", duration_ms)
 
 
@@ -314,6 +322,8 @@ def record_coordination_round(
     _inc("coordination", "rounds")
     if room:
         _inc("coordination", f"by_room.{room}")
+    if round_num > 0:
+        _record_histogram("coordination.round_num", float(round_num))
     if participants > 0:
         _record_histogram("coordination.participants", float(participants))
     if duration_ms > 0:
@@ -332,6 +342,9 @@ def record_consensus(
     """Record completion of a coordination session (consensus or failure)."""
     _inc("coordination", "sessions_completed")
     _inc("coordination", f"outcome.{outcome}")
+    if room:
+        _inc("coordination", f"completed_by_room.{room}")
+        _inc("coordination", f"completed_by_room.{room}.{outcome}")
     if total_rounds > 0:
         _record_histogram("coordination.rounds_to_completion", float(total_rounds))
     if total_duration_ms > 0:
@@ -392,30 +405,35 @@ def record_cfn_llm_usage(
     Captures token counts from the cognition engines (via the litellm callback)
     for ``start_negotiation`` responses.  The ``decide`` path makes no LLM calls
     directly (background ingestion is tracked via Prometheus on the CFN node).
+
+    Parameter names (``prompt_tokens`` / ``completion_tokens``) match the CFN
+    ``_usage`` snapshot produced by litellm, but metric keys are normalised to
+    ``input_tokens`` / ``output_tokens`` for consistency with the ``llm``
+    namespace.
     """
     _inc("cfn_llm", "calls", llm_calls)
-    _inc("cfn_llm", "prompt_tokens", prompt_tokens)
-    _inc("cfn_llm", "completion_tokens", completion_tokens)
+    _inc("cfn_llm", "input_tokens", prompt_tokens)
+    _inc("cfn_llm", "output_tokens", completion_tokens)
     _inc("cfn_llm", "cached_tokens", cached_tokens)
     _inc("cfn_llm", "total_tokens", total_tokens)
     if latency_ms > 0:
         _record_histogram("cfn_llm.latency_ms", latency_ms)
     if room:
         _inc("cfn_llm", f"by_room.{room}.calls", llm_calls)
-        _inc("cfn_llm", f"by_room.{room}.prompt_tokens", prompt_tokens)
-        _inc("cfn_llm", f"by_room.{room}.completion_tokens", completion_tokens)
+        _inc("cfn_llm", f"by_room.{room}.input_tokens", prompt_tokens)
+        _inc("cfn_llm", f"by_room.{room}.output_tokens", completion_tokens)
     if by_operation:
         for op_name, op_data in by_operation.items():
             op_calls = op_data.get("calls", 0)
-            op_prompt = op_data.get("prompt_tokens", 0)
-            op_compl = op_data.get("completion_tokens", 0)
+            op_input = op_data.get("prompt_tokens", 0)
+            op_output = op_data.get("completion_tokens", 0)
             _inc("cfn_llm", f"by_llm_operation.{op_name}.calls", op_calls)
-            _inc("cfn_llm", f"by_llm_operation.{op_name}.prompt_tokens", op_prompt)
-            _inc("cfn_llm", f"by_llm_operation.{op_name}.completion_tokens", op_compl)
+            _inc("cfn_llm", f"by_llm_operation.{op_name}.input_tokens", op_input)
+            _inc("cfn_llm", f"by_llm_operation.{op_name}.output_tokens", op_output)
             pipeline = op_name.split(".")[0] if "." in op_name else op_name
             _inc("cfn_llm", f"by_pipeline.{pipeline}.calls", op_calls)
-            _inc("cfn_llm", f"by_pipeline.{pipeline}.prompt_tokens", op_prompt)
-            _inc("cfn_llm", f"by_pipeline.{pipeline}.completion_tokens", op_compl)
+            _inc("cfn_llm", f"by_pipeline.{pipeline}.input_tokens", op_input)
+            _inc("cfn_llm", f"by_pipeline.{pipeline}.output_tokens", op_output)
 
 
 def snapshot() -> dict:

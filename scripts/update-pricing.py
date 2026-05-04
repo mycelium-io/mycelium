@@ -7,8 +7,8 @@
 Run from the fastapi-backend uv environment (where litellm is installed):
     cd fastapi-backend && uv run python ../scripts/update-pricing.py
 
-The output file is consumed by both the CLI (prompt cache savings) and the
-backend (embedding cost avoidance baseline).
+The output file is consumed by the CLI for cost estimation in
+``mycelium metrics show cost``.
 """
 
 from __future__ import annotations
@@ -111,8 +111,16 @@ def main() -> None:
 
         key, entry = match
         input_price = entry.get("input_cost_per_token", 0)
+        output_price = entry.get("output_cost_per_token", 0)
         cache_read = entry.get("cache_read_input_token_cost")
         cache_write = entry.get("cache_creation_input_token_cost")
+
+        if not output_price and input_price:
+            output_price = input_price * 4
+            warnings.append(
+                f"  NOTE: '{pattern}' ({key}) has no output pricing, "
+                f"defaulting to 4x input"
+            )
 
         if input_price and cache_read is not None and cache_read >= 0:
             cache_discount = round(max(0.0, min(1.0, 1.0 - (cache_read / input_price))), 2)
@@ -141,6 +149,7 @@ def main() -> None:
         models.append({
             "pattern": pattern,
             "input_per_token": input_price,
+            "output_per_token": output_price,
             "cache_discount": cache_discount,
             "cache_write_premium": cache_write_premium,
             "litellm_key": key,
@@ -156,6 +165,7 @@ def main() -> None:
         "models": models,
         "default": {
             "input_per_token": 8e-07,
+            "output_per_token": 3.2e-06,
             "cache_discount": DEFAULT_CACHE_DISCOUNT,
             "cache_write_premium": 0.25,
             "label": "unknown model",
@@ -185,15 +195,26 @@ def main() -> None:
         for m in models:
             old = old_models.get(m["pattern"])
             if not old:
-                print(f"  + {m['pattern']:25s}  ${m['input_per_token']*1e6:.2f}/MTok  {m['cache_discount']:.0%} discount")
+                print(
+                    f"  + {m['pattern']:25s}  "
+                    f"in ${m['input_per_token']*1e6:.2f}  "
+                    f"out ${m['output_per_token']*1e6:.2f}/MTok  "
+                    f"{m['cache_discount']:.0%} discount"
+                )
                 changes += 1
             else:
                 old_input = old.get("input_per_token", 0)
+                old_output = old.get("output_per_token", 0)
                 old_discount = old.get("cache_discount", 0)
-                if abs(old_input - m["input_per_token"]) > 1e-12 or abs(old_discount - m["cache_discount"]) > 0.001:
+                if (
+                    abs(old_input - m["input_per_token"]) > 1e-12
+                    or abs(old_output - m["output_per_token"]) > 1e-12
+                    or abs(old_discount - m["cache_discount"]) > 0.001
+                ):
                     print(
                         f"  ~ {m['pattern']:25s}  "
-                        f"${old_input*1e6:.2f} → ${m['input_per_token']*1e6:.2f}/MTok  "
+                        f"in ${old_input*1e6:.2f} → ${m['input_per_token']*1e6:.2f}  "
+                        f"out ${old_output*1e6:.2f} → ${m['output_per_token']*1e6:.2f}/MTok  "
                         f"{old_discount:.0%} → {m['cache_discount']:.0%} discount"
                     )
                     changes += 1

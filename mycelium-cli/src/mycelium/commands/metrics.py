@@ -402,6 +402,323 @@ def reset() -> None:
         typer.echo("No metrics data to clear.")
 
 
+_LITELLM_CATALOG_API = "https://api.litellm.ai/model_catalog"
+
+_TRACKED_MODELS: list[dict] = [
+    {"pattern": "claude-sonnet-4",   "provider": "anthropic", "litellm_key": "claude-sonnet-4-5"},
+    {"pattern": "claude-3-7-sonnet", "provider": "anthropic", "litellm_key": "claude-3-7-sonnet-20250219"},
+    {"pattern": "claude-3-5-sonnet", "provider": "anthropic", "litellm_key": "anthropic.claude-3-5-sonnet-20240620-v1:0"},
+    {"pattern": "claude-3-5-haiku",  "provider": "anthropic", "litellm_key": "anthropic.claude-3-5-haiku-20241022-v1:0"},
+    {"pattern": "claude-haiku-4",    "provider": "anthropic", "litellm_key": "claude-haiku-4-5"},
+    {"pattern": "claude-3-haiku",    "provider": "anthropic", "litellm_key": "claude-3-haiku-20240307"},
+    {"pattern": "claude-3-opus",     "provider": "anthropic", "litellm_key": "claude-3-opus-20240229"},
+    {"pattern": "claude-opus-4",     "provider": "anthropic", "litellm_key": "claude-opus-4-1"},
+    {"pattern": "gpt-4o-mini",       "provider": "openai",    "litellm_key": "gpt-4o-mini"},
+    {"pattern": "gpt-4o",            "provider": "openai",    "litellm_key": "gpt-4o"},
+    {"pattern": "gpt-4-turbo",       "provider": "openai",    "litellm_key": "gpt-4-turbo"},
+    {"pattern": "o3-mini",           "provider": "openai",    "litellm_key": "o3-mini"},
+    {"pattern": "o3",                "provider": "openai",    "litellm_key": "o3"},
+    {"pattern": "o4-mini",           "provider": "openai",    "litellm_key": "o4-mini"},
+]
+
+_DEFAULT_CACHE_DISCOUNT = 0.90
+
+_EMBEDDING_MODEL = "text-embedding-3-small"
+
+
+def _fetch_model_pricing_from_api(litellm_key: str) -> dict | None:
+    """Fetch a single model's pricing from the LiteLLM Model Catalog API."""
+    import httpx
+
+    url = f"{_LITELLM_CATALOG_API}/{litellm_key}"
+    try:
+        resp = httpx.get(url, headers={"Accept": "application/json"}, timeout=10.0)
+        if resp.status_code != 200:
+            return None
+        return resp.json()
+    except (httpx.HTTPError, ValueError):
+        return None
+
+
+def _build_pricing_entry(spec: dict, api_data: dict) -> dict | None:
+    """Transform LiteLLM Catalog API response into a pricing.json model entry."""
+    input_price = api_data.get("input_cost_per_token", 0)
+    output_price = api_data.get("output_cost_per_token", 0)
+    cache_read = api_data.get("cache_read_input_token_cost")
+    cache_write = api_data.get("cache_creation_input_token_cost")
+
+    if not input_price:
+        return None
+
+    if not output_price:
+        output_price = input_price * 4
+
+    if cache_read is not None and cache_read >= 0 and input_price > 0:
+        cache_discount = round(max(0.0, min(1.0, 1.0 - (cache_read / input_price))), 2)
+    else:
+        cache_discount = _DEFAULT_CACHE_DISCOUNT
+
+    if cache_write is not None and cache_write > 0 and input_price > 0:
+        cache_write_premium = round(max(0.0, (cache_write / input_price) - 1.0), 4)
+    else:
+        provider = spec.get("provider", "").lower()
+        cache_write_premium = 0.25 if provider == "anthropic" else 0.0
+
+    return {
+        "pattern": spec["pattern"],
+        "input_per_token": input_price,
+        "output_per_token": output_price,
+        "cache_discount": cache_discount,
+        "cache_write_premium": cache_write_premium,
+        "litellm_key": spec["litellm_key"],
+    }
+
+
+_PROVIDER_PREFIXES = [
+    "bedrock/global.",
+    "bedrock/",
+    "anthropic/",
+    "anthropic.",
+    "openai/",
+    "azure/",
+    "vertex_ai/",
+    "google/",
+]
+
+
+def _resolve_litellm_key(model_string: str) -> str:
+    """Strip provider/routing prefixes to derive a plausible LiteLLM catalog key.
+
+    Applies iteratively so stacked prefixes like
+    ``"bedrock/global.anthropic.claude-haiku-4-5-20251001-v1:0"``
+    are fully stripped to ``"claude-haiku-4-5-20251001-v1:0"``.
+    """
+    key = model_string
+    changed = True
+    while changed:
+        changed = False
+        for prefix in _PROVIDER_PREFIXES:
+            if key.startswith(prefix):
+                key = key[len(prefix):]
+                changed = True
+                break
+    return key
+
+
+def _discover_models_from_metrics() -> list[str]:
+    """Extract model names from collected metrics not covered by _TRACKED_MODELS.
+
+    Reads ``~/.mycelium/metrics.json`` and returns model strings from:
+      - OTLP: ``counters.tokens.by_model`` keys
+      - Backend: ``backend.counters.llm.by_model.*`` keys
+    """
+    try:
+        data = json.loads(_METRICS_JSON.read_text())
+    except (OSError, json.JSONDecodeError):
+        return []
+
+    raw_models: set[str] = set()
+
+    otlp_by_model = data.get("counters", {}).get("tokens", {}).get("by_model", {})
+    raw_models.update(otlp_by_model.keys())
+
+    be_llm = data.get("backend", {}).get("counters", {}).get("llm", {})
+    for key in be_llm:
+        if key.startswith("by_model."):
+            raw_models.add(key.removeprefix("by_model."))
+
+    tracked_patterns = [spec["pattern"] for spec in _TRACKED_MODELS]
+
+    untracked: list[str] = []
+    for model in sorted(raw_models):
+        lower = model.lower()
+        if not any(pat in lower for pat in tracked_patterns):
+            untracked.append(model)
+
+    return untracked
+
+
+def _parse_add_spec(spec: str) -> dict:
+    """Parse a ``pattern:litellm_key`` or bare ``litellm_key`` into a model spec."""
+    if ":" in spec:
+        pattern, litellm_key = spec.split(":", 1)
+    else:
+        pattern = spec
+        litellm_key = spec
+    return {"pattern": pattern, "provider": "", "litellm_key": litellm_key}
+
+
+@app.command("update-pricing")
+def update_pricing(
+    add: list[str] | None = typer.Option(
+        None,
+        "--add",
+        help=(
+            "Manually add a model. Format: 'pattern:litellm_key' or just 'litellm_key'. "
+            "Repeatable. Example: --add deepseek-v3:deepseek-chat"
+        ),
+    ),
+) -> None:
+    """Fetch latest LLM pricing from the LiteLLM Model Catalog API.
+
+    Writes updated pricing to ~/.mycelium/pricing.json, which is used by
+    ``mycelium metrics show cost`` for cost estimates. Falls back to the
+    bundled pricing.json when the local cache is missing.
+
+    Models are sourced from three places (in order):
+      1. Built-in tracked models (14 common Anthropic/OpenAI models)
+      2. Auto-discovered models from collected metrics (~/.mycelium/metrics.json)
+      3. Manually added models via --add
+    """
+    from datetime import UTC, datetime
+
+    console.print("[bold]Fetching pricing from LiteLLM Model Catalog API...[/bold]")
+
+    models: list[dict] = []
+    warnings: list[str] = []
+
+    # 1. Built-in tracked models
+    for spec in _TRACKED_MODELS:
+        api_data = _fetch_model_pricing_from_api(spec["litellm_key"])
+        if api_data is None:
+            warnings.append(f"  [yellow]WARNING[/yellow]: no API data for '{spec['pattern']}' ({spec['litellm_key']})")
+            continue
+
+        entry = _build_pricing_entry(spec, api_data)
+        if entry is None:
+            warnings.append(f"  [yellow]WARNING[/yellow]: '{spec['pattern']}' has no input pricing")
+            continue
+
+        models.append(entry)
+
+    tracked_count = len(models)
+    console.print(f"  {tracked_count}/{len(_TRACKED_MODELS)} tracked models updated")
+
+    # 2. Auto-discover from collected metrics
+    discovered = _discover_models_from_metrics()
+    known_patterns = {m["pattern"] for m in models}
+    discovered_count = 0
+
+    for model_string in discovered:
+        litellm_key = _resolve_litellm_key(model_string)
+        if litellm_key in known_patterns:
+            continue
+
+        api_data = _fetch_model_pricing_from_api(litellm_key)
+        if api_data is None:
+            warnings.append(f"  [yellow]WARNING[/yellow]: no API data for discovered model '{model_string}' (tried key '{litellm_key}')")
+            continue
+
+        spec = {"pattern": litellm_key, "provider": "", "litellm_key": litellm_key}
+        entry = _build_pricing_entry(spec, api_data)
+        if entry is None:
+            continue
+
+        entry["discovered_from"] = model_string
+        models.append(entry)
+        known_patterns.add(litellm_key)
+        discovered_count += 1
+
+    if discovered_count > 0:
+        console.print(f"  {discovered_count} model(s) discovered from collected metrics")
+
+    # 3. Manually added models via --add
+    manual_count = 0
+    for raw_spec in add or []:
+        spec = _parse_add_spec(raw_spec)
+        if spec["pattern"] in known_patterns:
+            console.print(f"  [dim]Skipping '{spec['pattern']}' (already tracked)[/dim]")
+            continue
+
+        api_data = _fetch_model_pricing_from_api(spec["litellm_key"])
+        if api_data is None:
+            warnings.append(f"  [yellow]WARNING[/yellow]: no API data for --add '{raw_spec}' (tried key '{spec['litellm_key']}')")
+            continue
+
+        entry = _build_pricing_entry(spec, api_data)
+        if entry is None:
+            warnings.append(f"  [yellow]WARNING[/yellow]: --add '{raw_spec}' has no input pricing")
+            continue
+
+        models.append(entry)
+        known_patterns.add(spec["pattern"])
+        manual_count += 1
+
+    if manual_count > 0:
+        console.print(f"  {manual_count} model(s) added via --add")
+
+    embed_data = _fetch_model_pricing_from_api(_EMBEDDING_MODEL)
+    embed_price = (embed_data or {}).get("input_cost_per_token", 2e-08)
+
+    output = {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "source": "litellm_catalog_api",
+        "models": models,
+        "default": {
+            "input_per_token": 8e-07,
+            "output_per_token": 3.2e-06,
+            "cache_discount": _DEFAULT_CACHE_DISCOUNT,
+            "cache_write_premium": 0.25,
+            "label": "unknown model",
+        },
+        "embedding_baseline": {
+            "model": _EMBEDDING_MODEL,
+            "input_per_token": embed_price,
+        },
+    }
+
+    _MYCELIUM_DIR.mkdir(parents=True, exist_ok=True)
+    _USER_PRICING_JSON.write_text(json.dumps(output, indent=2) + "\n")
+
+    global _pricing_data
+    _pricing_data = None
+
+    console.print(f"[green]Wrote {_USER_PRICING_JSON}[/green]")
+
+    if warnings:
+        for w in warnings:
+            console.print(w)
+
+    # Show diff against bundled defaults
+    old_bundled: dict | None = None
+    try:
+        old_bundled = json.loads(_BUNDLED_PRICING_JSON.read_text())
+    except (OSError, json.JSONDecodeError):
+        pass
+
+    if old_bundled:
+        old_models = {m["pattern"]: m for m in old_bundled.get("models", [])}
+        changes = 0
+        for m in models:
+            old = old_models.get(m["pattern"])
+            if not old:
+                console.print(
+                    f"  [green]+[/green] {m['pattern']:25s}  "
+                    f"in ${m['input_per_token']*1e6:.2f}  "
+                    f"out ${m['output_per_token']*1e6:.2f}/MTok  "
+                    f"{m['cache_discount']:.0%} discount"
+                )
+                changes += 1
+            else:
+                old_input = old.get("input_per_token", 0)
+                old_output = old.get("output_per_token", 0)
+                old_discount = old.get("cache_discount", 0)
+                if (
+                    abs(old_input - m["input_per_token"]) > 1e-12
+                    or abs(old_output - m["output_per_token"]) > 1e-12
+                    or abs(old_discount - m["cache_discount"]) > 0.001
+                ):
+                    console.print(
+                        f"  [yellow]~[/yellow] {m['pattern']:25s}  "
+                        f"in ${old_input*1e6:.2f} -> ${m['input_per_token']*1e6:.2f}  "
+                        f"out ${old_output*1e6:.2f} -> ${m['output_per_token']*1e6:.2f}/MTok  "
+                        f"{old_discount:.0%} -> {m['cache_discount']:.0%} discount"
+                    )
+                    changes += 1
+        if changes == 0:
+            console.print("  No pricing changes vs bundled defaults.")
+
+
 _VALID_SECTIONS = ("openclaw", "claude", "mycelium", "cfn", "cost", "all")
 _SECTION_ALIASES: dict[str, str] = {}  # reserved for future aliases
 
@@ -663,12 +980,12 @@ def _render_overview(
                 table.add_row("  Transport calls", f"{_fmt_num(total_calls)}{err_str}")
             llm_calls = cfn_llm.get("calls", 0)
             if llm_calls > 0:
-                prompt_tok = cfn_llm.get("prompt_tokens", 0)
-                compl_tok = cfn_llm.get("completion_tokens", 0)
+                prompt_tok = cfn_llm.get("input_tokens", 0)
+                compl_tok = cfn_llm.get("output_tokens", 0)
                 table.add_row("  LLM calls (engines)", _fmt_num(llm_calls))
                 table.add_row(
                     "  LLM tokens",
-                    f"{_fmt_num(prompt_tok)} prompt / {_fmt_num(compl_tok)} completion",
+                    f"{_fmt_num(prompt_tok)} in / {_fmt_num(compl_tok)} out",
                 )
         else:
             table.add_row("  [dim]No CFN activity yet[/dim]", "")
@@ -1488,23 +1805,32 @@ def _oc_token_totals(
     return fg, bg
 
 
-_PRICING_JSON = Path(__file__).resolve().parent.parent / "data" / "pricing.json"
+_BUNDLED_PRICING_JSON = Path(__file__).resolve().parent.parent / "data" / "pricing.json"
+_USER_PRICING_JSON = _MYCELIUM_DIR / "pricing.json"
 _pricing_data: dict | None = None
 
 
 def _load_pricing() -> dict:
-    """Load pricing.json (cached after first call).
+    """Load pricing data (cached after first call).
 
-    Generated by ``scripts/update-pricing.py`` from litellm's model_cost map.
-    Run ``npm run update:pricing`` in mycelium-cli or fastapi-backend to refresh.
+    Resolution order:
+      1. ``~/.mycelium/pricing.json`` — written by ``mycelium metrics update-pricing``
+      2. Bundled ``data/pricing.json`` — shipped with the CLI package
     """
     global _pricing_data
     if _pricing_data is not None:
         return _pricing_data
-    try:
-        _pricing_data = json.loads(_PRICING_JSON.read_text())
-    except (OSError, json.JSONDecodeError):
-        _pricing_data = {}
+
+    for path in (_USER_PRICING_JSON, _BUNDLED_PRICING_JSON):
+        try:
+            data = json.loads(path.read_text())
+            if data.get("models"):
+                _pricing_data = data
+                return _pricing_data
+        except (OSError, json.JSONDecodeError):
+            continue
+
+    _pricing_data = {}
     return _pricing_data
 
 
@@ -1524,7 +1850,7 @@ def _get_model_pricing(model_name: str) -> tuple[dict, str]:
     default_input = default.get("input_per_token", 8e-07)
     default_pricing = {
         "input": default_input,
-        "output": default_input * 4,
+        "output": default.get("output_per_token", default_input * 4),
         "cache_discount": default.get("cache_discount", 0.90),
         "cache_write_premium": default.get("cache_write_premium", 0.25),
     }
@@ -1544,12 +1870,14 @@ def _get_model_pricing(model_name: str) -> tuple[dict, str]:
 
 
 def _pricing_generated_at() -> str:
-    """Return the generation timestamp from pricing.json, or empty string."""
+    """Return the generation timestamp and source label from pricing data."""
     data = _load_pricing()
     ts = data.get("generated_at", "")
-    if "T" in ts:
-        return ts.split("T")[0]
-    return ts
+    date_part = ts.split("T")[0] if "T" in ts else ts
+    source = data.get("source", "bundled")
+    if source == "litellm_catalog_api":
+        return f"{date_part}, via update-pricing" if date_part else ""
+    return date_part
 
 
 def _render_cache_efficiency_table(
@@ -1617,17 +1945,7 @@ def _render_cache_efficiency_table(
 
 
 def _render_cost_avoidance_table(backend: dict | None) -> None:
-    """Directly-measurable cost avoidance on the Mycelium side.
-
-    Covers things Mycelium does in place of a cloud API call — currently
-    local embeddings and the indexer's skip-unchanged behaviour.
-
-    NOTE: We deliberately do NOT show dollar figures for OpenClaw prompt
-    cache "savings" here — that's an LLM-provider feature (e.g. Anthropic's
-    prompt caching). We also can't yet measure CFN-side LLM token savings,
-    since the CFN node service doesn't propagate token counts in its
-    responses (see metrics.md, Tier 3).
-    """
+    """Local embeddings and indexer operational metrics."""
     if not backend:
         return
 
@@ -1644,7 +1962,7 @@ def _render_cost_avoidance_table(backend: dict | None) -> None:
         return
 
     table = Table(
-        title="Mycelium Cost Avoidance",
+        title="Local Embeddings & Indexer",
         title_style="bold green",
         title_justify="left",
         show_header=False,
@@ -1654,15 +1972,7 @@ def _render_cost_avoidance_table(backend: dict | None) -> None:
     table.add_column("Value", justify="right")
 
     if embed_count > 0:
-        cost_avoided = embeddings.get("estimated_cost_avoided_usd", 0.0)
         table.add_row("Local embeddings computed", _fmt_num(embed_count))
-        table.add_row(
-            "  estimated cloud API cost avoided",
-            f"[green]{_fmt_cost(cost_avoided)}[/green]",
-        )
-        est_tokens = embeddings.get("estimated_tokens", 0)
-        if est_tokens:
-            table.add_row("  estimated tokens (local)", _fmt_num(est_tokens))
 
         by_source_keys = [k for k in embeddings if k.startswith("by_source.")]
         for key in sorted(by_source_keys):
@@ -2044,8 +2354,8 @@ def _render_cfn_llm_usage_table(backend: dict | None) -> None:
     table.add_column("Value", justify="right")
 
     table.add_row("Total LLM calls (engines)", _fmt_num(total_calls))
-    table.add_row("  prompt tokens", _fmt_num(cfn_llm.get("prompt_tokens", 0)))
-    table.add_row("  completion tokens", _fmt_num(cfn_llm.get("completion_tokens", 0)))
+    table.add_row("  input tokens", _fmt_num(cfn_llm.get("input_tokens", 0)))
+    table.add_row("  output tokens", _fmt_num(cfn_llm.get("output_tokens", 0)))
     total_tokens = cfn_llm.get("total_tokens", 0)
     if total_tokens > 0:
         table.add_row("  total tokens", _fmt_num(total_tokens))
@@ -2072,11 +2382,11 @@ def _render_cfn_llm_usage_table(backend: dict | None) -> None:
                 pipelines.setdefault(pip, {})[metric] = cfn_llm[key]
         for pip, data in sorted(pipelines.items()):
             calls = data.get("calls", 0)
-            prompt = data.get("prompt_tokens", 0)
-            compl = data.get("completion_tokens", 0)
+            inp = data.get("input_tokens", 0)
+            out = data.get("output_tokens", 0)
             table.add_row(
                 f"  {pip}",
-                f"{_fmt_num(calls)} calls, {_fmt_num(prompt)} prompt / {_fmt_num(compl)} compl",
+                f"{_fmt_num(calls)} calls, {_fmt_num(inp)} in / {_fmt_num(out)} out",
             )
 
     # By LLM operation detail
@@ -2093,11 +2403,11 @@ def _render_cfn_llm_usage_table(backend: dict | None) -> None:
                 operations.setdefault(op, {})[metric] = cfn_llm[key]
         for op, data in sorted(operations.items()):
             calls = data.get("calls", 0)
-            prompt = data.get("prompt_tokens", 0)
-            compl = data.get("completion_tokens", 0)
+            inp = data.get("input_tokens", 0)
+            out = data.get("output_tokens", 0)
             table.add_row(
                 f"  {op}",
-                f"{_fmt_num(calls)} calls, {_fmt_num(prompt)} prompt / {_fmt_num(compl)} compl",
+                f"{_fmt_num(calls)} calls, {_fmt_num(inp)} in / {_fmt_num(out)} out",
             )
 
     # By room
@@ -2114,14 +2424,14 @@ def _render_cfn_llm_usage_table(backend: dict | None) -> None:
                 rooms.setdefault(room, {})[metric] = cfn_llm[key]
         for room, data in sorted(rooms.items()):
             calls = data.get("calls", 0)
-            prompt = data.get("prompt_tokens", 0)
-            compl = data.get("completion_tokens", 0)
+            inp = data.get("input_tokens", 0)
+            out = data.get("output_tokens", 0)
             label = room
             if ":session:" in label:
                 label = label.split(":session:", 1)[0]
             table.add_row(
                 f"  {label}",
-                f"{_fmt_num(calls)} calls, {_fmt_num(prompt)} prompt / {_fmt_num(compl)} compl",
+                f"{_fmt_num(calls)} calls, {_fmt_num(inp)} in / {_fmt_num(out)} out",
             )
 
     console.print(table)
@@ -2351,10 +2661,11 @@ def _estimate_cost(
     cache_read_rate = input_rate * (1 - pricing["cache_discount"])
     cache_write_rate = input_rate * (1 + pricing["cache_write_premium"])
 
+    non_cached_input = max(input_tokens - cache_read_tokens, 0)
     return (
-        input_tokens * input_rate
-        + output_tokens * output_rate
+        non_cached_input * input_rate
         + cache_read_tokens * cache_read_rate
+        + output_tokens * output_rate
         + cache_write_tokens * cache_write_rate
     )
 
@@ -2389,7 +2700,6 @@ def _render_cost_estimates(
     table.add_column("Method", style="dim")
 
     total_cost = 0.0
-    cost_avoided = 0.0
 
     # ── OpenClaw (provider-reported cost) ──────────────────────────────
     oc_reported_cost = 0.0
@@ -2421,10 +2731,10 @@ def _render_cost_estimates(
     cfn_calls = cfn_llm.get("calls", 0)
 
     if cfn_calls > 0:
-        cfn_prompt = cfn_llm.get("prompt_tokens", 0)
-        cfn_compl = cfn_llm.get("completion_tokens", 0)
+        cfn_prompt = cfn_llm.get("input_tokens", 0)
+        cfn_compl = cfn_llm.get("output_tokens", 0)
         cfn_cached = cfn_llm.get("cached_tokens", 0)
-        cfn_total = cfn_prompt + cfn_compl + cfn_cached
+        cfn_total = cfn_prompt + cfn_compl
 
         cfn_est_cost = _estimate_cost(
             input_tokens=cfn_prompt,
@@ -2453,8 +2763,8 @@ def _render_cost_estimates(
                     metric = parts[2]
                     pipelines.setdefault(pip, {})[metric] = cfn_llm[key]
             for pip, data in sorted(pipelines.items()):
-                p_prompt = data.get("prompt_tokens", 0)
-                p_compl = data.get("completion_tokens", 0)
+                p_prompt = data.get("input_tokens", 0)
+                p_compl = data.get("output_tokens", 0)
                 p_total = p_prompt + p_compl
                 p_cost = _estimate_cost(
                     input_tokens=p_prompt,
@@ -2476,8 +2786,8 @@ def _render_cost_estimates(
     myc_calls = myc_llm.get("calls", 0)
 
     if myc_calls > 0:
-        myc_prompt = myc_llm.get("prompt_tokens", 0)
-        myc_compl = myc_llm.get("completion_tokens", 0)
+        myc_prompt = myc_llm.get("input_tokens", 0)
+        myc_compl = myc_llm.get("output_tokens", 0)
         myc_total = myc_prompt + myc_compl
         myc_reported = myc_llm.get("cost_usd", 0.0)
 
@@ -2509,26 +2819,10 @@ def _render_cost_estimates(
     # ── Claude Code (placeholder) ──────────────────────────────────────
     # Not yet wired — omit row entirely until data available
 
-    # ── Cost avoidance (local embeddings) ──────────────────────────────
-    embeddings = be_counters.get("embeddings", {})
-    embed_avoided = embeddings.get("estimated_cost_avoided_usd", 0.0)
-    if embed_avoided > 0:
-        cost_avoided = embed_avoided
-
     # ── Totals ─────────────────────────────────────────────────────────
-    if total_cost > 0 or cost_avoided > 0:
+    if total_cost > 0:
         table.add_section()
-        if total_cost > 0:
-            table.add_row("[bold]Total[/bold]", "", f"[bold]{_fmt_cost(total_cost)}[/bold]", "")
-        if cost_avoided >= 0.0001:
-            table.add_row(
-                "  [green]Cost avoided (local)[/green]",
-                "",
-                f"[green]-{_fmt_cost(cost_avoided)}[/green]",
-                "",
-            )
-            net = total_cost - cost_avoided
-            table.add_row("[bold]Net[/bold]", "", f"[bold]{_fmt_cost(max(net, 0))}[/bold]", "")
+        table.add_row("[bold]Total[/bold]", "", f"[bold]{_fmt_cost(total_cost)}[/bold]", "")
 
     if total_cost == 0 and oc_total_tokens == 0 and cfn_calls == 0:
         table.add_row("[dim]No cost data yet[/dim]", "", "", "")

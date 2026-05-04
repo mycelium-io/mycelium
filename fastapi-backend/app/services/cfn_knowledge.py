@@ -173,6 +173,7 @@ async def create_or_update_shared_memories(
         service="node",
         operation="shared_memories",
         duration_ms=(time.monotonic() - t0) * 1000,
+        status_code=200,
     )
 
     if isinstance(result, HTTPValidationError):
