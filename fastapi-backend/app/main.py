@@ -244,6 +244,43 @@ async def get_metrics():
     return snapshot()
 
 
+@app.get("/api/metrics/collector", tags=["metrics"])
+async def get_collector_metrics():
+    """Return OTLP/scrape metrics written by the CLI collector.
+
+    Reads ``~/.mycelium/metrics.json`` and returns the collector-specific
+    keys (counters, histograms, sessions, scrape) — excluding the ``backend``
+    key which duplicates ``GET /api/metrics``.  Returns 404 when the file is
+    absent (collector not running or never started).
+    """
+    import json
+    from pathlib import Path
+
+    from fastapi.responses import JSONResponse
+
+    metrics_path = Path.home() / ".mycelium" / "metrics.json"
+    if not metrics_path.exists():
+        return JSONResponse(
+            status_code=404,
+            content={"detail": "Collector metrics file not found. Run: mycelium metrics collect"},
+        )
+    try:
+        raw = json.loads(metrics_path.read_text())
+    except Exception:
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Failed to read collector metrics file"},
+        )
+    result = {
+        "updated_at": raw.get("updated_at"),
+        "counters": raw.get("counters", {}),
+        "histograms": raw.get("histograms", {}),
+        "sessions": raw.get("sessions", []),
+        "scrape": raw.get("scrape", {}),
+    }
+    return result
+
+
 async def _check_database(session: AsyncSession) -> dict:
     """Probe database connectivity with SELECT 1."""
     from sqlalchemy import text
