@@ -1480,12 +1480,17 @@ def _patch_model_cost_and_compat(cfg: dict) -> list[str]:
 
     OpenClaw uses the ``cost`` block on each model to calculate ``openclaw.cost.usd``.
     If the costs are all zero (the default from ``openclaw configure``), the OTLP
-    cost metric will always be $0.  This function fills in real per-token pricing
-    from Mycelium's pricing data and adds the ``compat`` flag that enables token
+    cost metric will always be $0.  This function fills in real pricing from
+    Mycelium's pricing data and adds the ``compat`` flag that enables token
     usage reporting in streamed responses.
+
+    OpenClaw cost values are **USD per 1M tokens**, while Mycelium's pricing
+    data stores per-token rates.  This function converts accordingly.
 
     Returns a list of human-readable change descriptions (empty if nothing changed).
     """
+    PER_M = 1_000_000
+
     changes: list[str] = []
 
     try:
@@ -1510,10 +1515,10 @@ def _patch_model_cost_and_compat(cfg: dict) -> list[str]:
                     cache_read_rate = inp * (1 - pricing["cache_discount"])
                     cache_write_rate = inp * (1 + pricing["cache_write_premium"])
                     model["cost"] = {
-                        "input": inp,
-                        "output": pricing["output"],
-                        "cacheRead": cache_read_rate,
-                        "cacheWrite": cache_write_rate,
+                        "input": inp * PER_M,
+                        "output": pricing["output"] * PER_M,
+                        "cacheRead": cache_read_rate * PER_M,
+                        "cacheWrite": cache_write_rate * PER_M,
                     }
                     changes.append(f"cost for {model_id} (matched: {label})")
 

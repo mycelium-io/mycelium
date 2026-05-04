@@ -315,7 +315,7 @@ Two model-level settings are required for full metrics accuracy:
 
 | Setting | Purpose | Default |
 | ------- | ------- | ------- |
-| `cost.{input,output,cacheRead,cacheWrite}` | Per-token prices used by OpenClaw to compute `openclaw.cost.usd` | `0` (from `openclaw configure`) |
+| `cost.{input,output,cacheRead,cacheWrite}` | USD per 1M tokens, used by OpenClaw to compute `openclaw.cost.usd` | `0` (from `openclaw configure`) |
 | `compat.supportsUsageInStreaming` | Tells OpenClaw to request token usage in streamed responses | `false` |
 
 **Automated fix:**
@@ -324,9 +324,10 @@ Two model-level settings are required for full metrics accuracy:
 mycelium adapter add openclaw --step=otel
 ```
 
-This patches `openclaw.json` with real per-token costs (from Mycelium's
-pricing data) and adds the `compat` flag for any model that's missing it.
-It also configures the diagnostics-otel plugin if not already enabled.
+This patches `openclaw.json` with correct per-1M-token costs (converted from
+Mycelium's pricing data) and adds the `compat` flag for any model that's
+missing it.  It also configures the diagnostics-otel plugin if not already
+enabled.
 
 **Manual fix** — add to each model entry in `~/.openclaw/openclaw.json`:
 
@@ -335,10 +336,10 @@ It also configures the diagnostics-otel plugin if not already enabled.
   "id": "bedrock/global.anthropic.claude-haiku-4-5-20251001-v1:0",
   // ...
   "cost": {
-    "input": 1e-6,       // $/token for prompt input
-    "output": 5e-6,      // $/token for completion output
-    "cacheRead": 0.1e-6, // $/token for cached input reads
-    "cacheWrite": 1.25e-6 // $/token for cache writes
+    "input": 1,       // $/1M tokens for prompt input
+    "output": 5,      // $/1M tokens for completion output
+    "cacheRead": 0.1, // $/1M tokens for cached input reads
+    "cacheWrite": 1.25 // $/1M tokens for cache writes
   },
   "compat": {
     "supportsUsageInStreaming": true

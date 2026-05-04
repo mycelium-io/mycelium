@@ -16,6 +16,7 @@ import copy
 import gzip
 import json
 import logging
+import socket
 import threading
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -501,10 +502,14 @@ class OTLPHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _flush(self) -> None:
-        data = self.store.to_dict()
-        tmp = self.output_path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, indent=2, default=str))
-        tmp.replace(self.output_path)
+        try:
+            self.output_path.parent.mkdir(parents=True, exist_ok=True)
+            data = self.store.to_dict()
+            tmp = self.output_path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(data, indent=2, default=str))
+            tmp.replace(self.output_path)
+        except Exception as exc:
+            log.warning("Failed to flush metrics to %s: %s", self.output_path, exc)
 
     def log_message(self, format, *args) -> None:  # noqa: A002
         log.debug(format, *args)
@@ -591,7 +596,17 @@ def run(
             ", ".join(t.get("name", t.get("url", "?")) for t in scrape_targets),
         )
 
-    server = HTTPServer(("127.0.0.1", port), handler)
+    class _DualStackHTTPServer(HTTPServer):
+        address_family = socket.AF_INET6
+
+        def server_bind(self) -> None:
+            self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+            super().server_bind()
+
+    try:
+        server = _DualStackHTTPServer(("::", port), handler)
+    except OSError:
+        server = HTTPServer(("", port), handler)
     log.info("OTLP receiver listening on :%d", port)
     try:
         server.serve_forever()
