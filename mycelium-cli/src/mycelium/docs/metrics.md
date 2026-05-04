@@ -214,10 +214,9 @@ OpenClaw → Mycelium backend → CFN → opt-in.
 
 11. **CFN /metrics Scrape** — opt-in. Direct HTTP-RED rollup
     (requests, errors, latency) of any CFN service that exposes a Prometheus
-    `/metrics` endpoint via `prometheus-fastapi-instrumentator`. Today that's
-    `ioc-cfn-mgmt-backend-svc` (port 9000) and `ioc-knowledge-memory`;
-    `ioc-cognition-fabric-node-svc` does **not** expose metrics yet (see
-    `cfn_component_metrics_reconciliation.md` for the planned work).
+    metrics endpoint via `prometheus-fastapi-instrumentator`. Today that's
+    `ioc-cfn-mgmt-backend-svc` (port 9000), `ioc-knowledge-memory`, and
+    `ioc-cognition-fabric-node-svc` (port 9002, at `/api/internal/metrics`).
 
     Configured under `[[metrics.scrape]]` in `~/.mycelium/config.toml`:
 
@@ -230,6 +229,11 @@ OpenClaw → Mycelium backend → CFN → opt-in.
     [[metrics.scrape]]
     name = "knowledge-memory"
     url  = "http://localhost:9001/metrics"
+    kind = "http_red"
+
+    [[metrics.scrape]]
+    name = "cfn-node"
+    url  = "http://localhost:9002/api/internal/metrics"
     kind = "http_red"
     ```
 
