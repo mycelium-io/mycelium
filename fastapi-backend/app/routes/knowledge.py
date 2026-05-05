@@ -34,6 +34,7 @@ from app.services.cfn_knowledge import (
 from app.services.cfn_resolve import resolve_mas_id, resolve_workspace_id
 from app.services.ingest_dedupe import get_cache
 from app.services.ingest_log_buffer import IngestEvent, IngestState, get_buffer
+from app.services.metrics import record_knowledge_ingestion
 
 logger = logging.getLogger(__name__)
 
@@ -236,6 +237,7 @@ async def knowledge_ingest(
             request_id=request_id,
         )
     except CfnKnowledgeError as exc:
+        cfn_latency = (time.perf_counter() - started) * 1000
         _log_ingest_event(
             workspace_id=workspace_id,
             mas_id=mas_id,
@@ -243,10 +245,15 @@ async def knowledge_ingest(
             request_id=request_id,
             est_tokens=est_tokens,
             payload_bytes=payload_bytes,
-            latency_ms=(time.perf_counter() - started) * 1000,
+            latency_ms=cfn_latency,
             state="error",
             reason=str(exc),
             cfn_status=exc.status_code,
+        )
+        record_knowledge_ingestion(
+            duration_ms=cfn_latency,
+            error=True,
+            estimated_input_tokens=est_tokens,
         )
         code = exc.status_code or status.HTTP_502_BAD_GATEWAY
         raise HTTPException(status_code=code, detail=str(exc)) from exc
@@ -274,6 +281,11 @@ async def knowledge_ingest(
         state="ok",
         cfn_status=status.HTTP_201_CREATED,
         cfn_message=cfn_message,
+    )
+
+    record_knowledge_ingestion(
+        duration_ms=latency_ms,
+        estimated_input_tokens=est_tokens,
     )
 
     _write_audit_event(db, mas_id)

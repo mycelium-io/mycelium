@@ -3,6 +3,11 @@
 How to run Mycelium across multiple machines so a small team shares
 memory, rooms, and coordination state from a single backend.
 
+> **Note:** The examples below use **Matrix** as the channel server and
+> **OpenClaw** as the agent adapter. The same pattern applies to other
+> channels (Discord, Slack, etc.) and adapters — substitute the
+> relevant names and config paths.
+
 ## When to use this
 
 Use hub-and-spoke when multiple people (or multiple machines) need to
@@ -19,11 +24,11 @@ single-device install is simpler — see the Quick Start.
 │  mycelium install                │
 │  ├─ FastAPI backend  :8000       │
 │  ├─ AgensGraph (PG)  :5432       │
-│  ├─ Matrix / Synapse :8008       │
-│  ├─ CFN mgmt plane   :9000      │
-│  └─ CFN runtime      :9002      │
+│  ├─ Channel server   :8008       │
+│  ├─ CFN mgmt plane   :9000       │
+│  └─ CFN runtime      :9002       │
 │                                  │
-│  Channel servers (Matrix, etc)   │
+│  Channel servers                 │
 │  All agent accounts defined here │
 └────────────┬─────────────────────┘
              │  HTTPS / SSE
@@ -53,7 +58,7 @@ This brings up the backend, database, and provisions a default workspace.
 Verify with:
 
 ```bash
-mycelium doctor --mode hub
+mycelium doctor
 ```
 
 ### Open ports
@@ -63,70 +68,65 @@ Spokes need to reach the hub on these ports:
 | Port | Service | Required |
 |------|---------|----------|
 | 8000 | Mycelium backend (API + SSE) | Yes |
-| 8008 | Matrix homeserver (Synapse) | If using Matrix channel |
+| 8008 | Channel server (Matrix/Synapse in this example) | If using a channel server |
 | 9000 | CFN management plane | If using CognitiveEngine |
 | 9002 | CFN runtime | If using CognitiveEngine |
 
 Use a VPN, Tailscale, or firewall rules to restrict access — these
 services have no built-in authentication.
 
-### Configure channel servers
+### Configure the channel server
 
-If agents coordinate via Matrix, set up Synapse on the hub and create
-accounts for every agent across all spokes:
+Run the channel server on the hub and create accounts for every agent
+across all spokes. For Matrix, this means running Synapse on the hub
+and registering each agent:
 
 ```bash
-# Register agent accounts (on the hub)
-# Each spoke's agents need a Matrix account on the hub's homeserver
+# Register agent accounts on the hub's Synapse instance
+register_new_matrix_user -c /etc/synapse/homeserver.yaml http://localhost:8008
 ```
 
 Add all agent accounts to `channels.matrix.accounts` in the hub's
-`~/.openclaw/openclaw.json`. The hub's gateway manages all Matrix
-connections — spokes do not run their own Matrix clients.
+`~/.openclaw/openclaw.json`. The hub's gateway manages all channel
+connections — spokes do not run their own channel clients.
 
 ## Step 2: Set up each spoke
 
 On each spoke machine, install only the CLI (no `mycelium install`):
 
 ```bash
-pip install mycelium-cli
-# or
-uv tool install mycelium-cli
+curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 ```
 
-### Point the spoke at the hub
+### Initialize and install the adapter
+
+Point the spoke at the hub and install the adapter:
 
 ```bash
 mycelium init --api-url http://<hub-ip>:8000
-```
-
-This writes `~/.mycelium/config.toml` with the hub's API URL. Verify
-the connection:
-
-```bash
-mycelium doctor --mode spoke
-```
-
-The doctor checks that the hub's backend is reachable and skips
-Docker/database checks that only apply to hubs.
-
-### Install the adapter
-
-For OpenClaw agents:
-
-```bash
 mycelium adapter add openclaw
 ```
 
-The adapter installs the Mycelium plugin into the local OpenClaw gateway.
-The plugin connects to the hub's backend URL (from `config.toml`) for
-SSE subscriptions and API calls.
+`init` writes `~/.mycelium/config.toml` with the hub's API URL.
+`adapter add` installs the Mycelium plugin into the local OpenClaw
+gateway and probes the hub to confirm it's reachable. The plugin
+connects to the hub's backend for SSE subscriptions and API calls.
 
 After installing, restart the gateway:
 
 ```bash
 openclaw gateway restart
 ```
+
+Verify the setup:
+
+```bash
+mycelium doctor
+```
+
+The doctor auto-detects whether this node is a hub or spoke from
+`server.api_url` and adjusts its checks accordingly (e.g., skipping
+Docker/database checks on spokes).
 
 ### Spoke config summary
 
@@ -135,7 +135,7 @@ A spoke needs only two files:
 | File | Purpose |
 |------|---------|
 | `~/.mycelium/config.toml` | Points `server.api_url` at the hub |
-| `~/.openclaw/openclaw.json` | Agent definitions, Matrix credentials, plugin config |
+| `~/.openclaw/openclaw.json` | Agent definitions, channel credentials, Mycelium plugin config |
 
 The spoke does not need `server.workspace_id` or `server.mas_id` in its
 config — the hub resolves these automatically when the spoke's agents
@@ -173,24 +173,24 @@ is set by:
 2. The `MYCELIUM_AGENT_HANDLE` environment variable
 3. The `--handle` flag on CLI commands
 
-When using OpenClaw with Matrix, agent handles should match their Matrix
-user IDs (the localpart before the colon, e.g., `@agent-alpha:local` →
-`agent-alpha`).
+Agent handles should match their channel user IDs. For Matrix, use the
+localpart before the colon: `@agent-alpha:local` → `agent-alpha`.
 
-## Matrix token management
+## Token management
 
-Matrix access tokens expire or become invalid after homeserver restarts.
+Channel access tokens can expire or become invalid after server restarts.
 When this happens, agents silently stop receiving messages.
 
 Signs of expired tokens:
 
 - Agents join sessions but never respond to coordination ticks
-- Gateway logs show Matrix sync errors
-- `mycelium doctor` reports Matrix connection failures
+- Gateway logs show sync errors or 401/unauthorized responses
+- `mycelium doctor` reports channel connection failures
 
-To refresh tokens, log in again via the Synapse admin API or re-register
-the accounts, then update `channels.matrix.accounts[agent].accessToken`
-in each node's `openclaw.json` and restart the gateway.
+To refresh tokens, re-authenticate with the channel server (for Matrix,
+log in again via the Synapse admin API), update the token in
+`channels.<channel>.accounts[agent]` in each node's `openclaw.json`,
+and restart the gateway.
 
 ## Troubleshooting
 
@@ -212,13 +212,11 @@ to coordination ticks:
 
 1. Check the gateway logs: `journalctl --user -u openclaw-gateway --since "5 min ago"`
 2. Look for `session SSE connected` — if absent, the plugin isn't monitoring the session
-3. Verify Matrix tokens are valid (see above)
+3. Verify channel tokens are valid (see above)
 
 ### Doctor reports "spoke mode" unexpectedly
 
 `mycelium doctor` auto-detects mode from `server.api_url`. If it points
-to a non-localhost address, doctor assumes spoke mode. Override with:
-
-```bash
-mycelium doctor --mode hub
-```
+to a non-localhost address, doctor assumes spoke mode. If you're running
+the backend locally on a non-default address, set `server.api_url` to
+`http://localhost:8000` in `~/.mycelium/config.toml`.

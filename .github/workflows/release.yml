@@ -69,6 +69,9 @@ jobs:
               echo "backend<<EOF"
               echo "ghcr.io/$OWNER/mycelium-backend:$VERSION"
               echo "EOF"
+              echo "frontend<<EOF"
+              echo "ghcr.io/$OWNER/mycelium-frontend:$VERSION"
+              echo "EOF"
             } >> "$GITHUB_OUTPUT"
           else
             {
@@ -79,6 +82,10 @@ jobs:
               echo "backend<<EOF"
               echo "ghcr.io/$OWNER/mycelium-backend:latest"
               echo "ghcr.io/$OWNER/mycelium-backend:$VERSION"
+              echo "EOF"
+              echo "frontend<<EOF"
+              echo "ghcr.io/$OWNER/mycelium-frontend:latest"
+              echo "ghcr.io/$OWNER/mycelium-frontend:$VERSION"
               echo "EOF"
             } >> "$GITHUB_OUTPUT"
           fi
@@ -104,6 +111,22 @@ jobs:
           tags: ${{ steps.tags.outputs.backend }}
           cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-backend:cache
           cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-backend:cache,mode=max
+
+      - name: Build and push mycelium-frontend
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: mycelium-frontend
+          file: mycelium-frontend/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          # NEXT_PUBLIC_API_URL is baked at build time — keep the published
+          # image pointing at the default local-install backend port. Users
+          # with custom setups can rebuild the image with --build-arg API_URL=…
+          build-args: |
+            API_URL=http://localhost:8000
+          tags: ${{ steps.tags.outputs.frontend }}
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-frontend:cache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-frontend:cache,mode=max
 
   build-binaries:
     needs: publish-images

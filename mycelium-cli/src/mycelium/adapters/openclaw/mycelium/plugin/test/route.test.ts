@@ -282,14 +282,34 @@ describe("routeMessage — coordination_tick", () => {
 
   it("dispatches with CognitiveEngine as sender", () => {
     const actions = routeMessage(baseCfg, tickMsg("julia-agent"), freshOwnIds());
-    expect(actions[0]).toMatchObject({ kind: "dispatch", sender: "CognitiveEngine" });
+    const dispatch = actions.find((a) => a.kind === "dispatch") as any;
+    expect(dispatch).toMatchObject({ kind: "dispatch", sender: "CognitiveEngine" });
   });
 
   it("passes through the tick's own message id (for echo prevention)", () => {
     const actions = routeMessage(baseCfg, tickMsg("julia-agent"), freshOwnIds());
-    if (actions[0].kind === "dispatch") {
-      expect(actions[0].messageId).toBe("tick-1");
-    }
+    const dispatch = actions.find((a) => a.kind === "dispatch") as any;
+    expect(dispatch.messageId).toBe("tick-1");
+  });
+
+  it("emits stash-return-address alongside dispatch when room_name names a session sub-room", () => {
+    const actions = routeMessage(baseCfg, tickMsg("julia-agent"), freshOwnIds());
+    const stash = actions.find((a) => a.kind === "stash-return-address") as any;
+    expect(stash).toEqual({
+      kind: "stash-return-address",
+      sessionRoom: "test-room:session:abc123",
+      agentId: "julia-agent",
+    });
+  });
+
+  it("does NOT emit stash-return-address when the tick has no session sub-room name", () => {
+    const msg = {
+      id: "rootless-tick",
+      message_type: "coordination_tick",
+      content: JSON.stringify({ payload: { participant_id: "julia-agent", round: 1, action: "respond", current_offer: {} } }),
+    };
+    const actions = routeMessage(baseCfg, msg, freshOwnIds());
+    expect(actions.some((a) => a.kind === "stash-return-address")).toBe(false);
   });
 
   it("ignores ticks with unparseable content", () => {
@@ -332,6 +352,7 @@ describe("routeMessage — coordination_consensus", () => {
   const consensusMsg = (broken = false) => ({
     id: "consensus-1",
     message_type: "coordination_consensus",
+    room_name: "test-room:session:abc123",
     content: JSON.stringify({
       plan: "Ship v1 with core features only",
       assignments: { "julia-agent": "build API", "selina-agent": "ship frontend" },
@@ -365,6 +386,66 @@ describe("routeMessage — coordination_consensus", () => {
     const actions = routeMessage(baseCfg, msg, freshOwnIds());
     expect(actions[0].kind).toBe("ignore");
   });
+
+  it("emits a notify-home action with all cfg.agents and the session room", () => {
+    const actions = routeMessage(baseCfg, consensusMsg(), freshOwnIds());
+    const notify = actions.find((a) => a.kind === "notify-home") as any;
+    expect(notify).toBeDefined();
+    expect(notify.sessionRoom).toBe("test-room:session:abc123");
+    expect(notify.agentIds.sort()).toEqual(["arnold", "julia-agent", "selina-agent"]);
+    expect(notify.consensusSummary).toContain("Ship v1");
+    expect(notify.messageId).toBe("consensus-1");
+  });
+
+  it("emits notify-home for broken/timeout consensus too", () => {
+    const msg = {
+      id: "broken-consensus",
+      message_type: "coordination_consensus",
+      room_name: "test-room:session:xyz",
+      content: JSON.stringify({
+        plan: "Negotiation ended: timeout",
+        assignments: {},
+        broken: true,
+      }),
+    };
+    const actions = routeMessage(baseCfg, msg, freshOwnIds());
+    const notify = actions.find((a) => a.kind === "notify-home") as any;
+    expect(notify).toBeDefined();
+    expect(notify.agentIds.sort()).toEqual(["arnold", "julia-agent", "selina-agent"]);
+    expect(notify.consensusSummary).toContain("Negotiation FAILED");
+  });
+
+  it("emits notify-home with cfg.agents even when assignments are keyed by issue names", () => {
+    // Real-world case: CFN sometimes emits assignments keyed by issue name,
+    // not agent ID. The previous filter dropped everything; passing cfg.agents
+    // through unconditionally is the simpler, correct behavior.
+    const msg = {
+      id: "issue-keyed-consensus",
+      message_type: "coordination_consensus",
+      room_name: "test-room:session:abc",
+      content: JSON.stringify({
+        plan: "REST + OpenAPI as default",
+        assignments: {
+          "REST + OpenAPI is the right default": "REST + OpenAPI with graduated adoption",
+        },
+        broken: false,
+      }),
+    };
+    const actions = routeMessage(baseCfg, msg, freshOwnIds());
+    const notify = actions.find((a) => a.kind === "notify-home") as any;
+    expect(notify).toBeDefined();
+    expect(notify.agentIds.sort()).toEqual(["arnold", "julia-agent", "selina-agent"]);
+  });
+
+  it("does NOT emit notify-home when the consensus message has no session room_name", () => {
+    const msg = {
+      id: "rootless-consensus",
+      message_type: "coordination_consensus",
+      content: JSON.stringify({ plan: "X", assignments: { "julia-agent": "y" }, broken: false }),
+    };
+    const actions = routeMessage(baseCfg, msg, freshOwnIds());
+    expect(actions.some((a) => a.kind === "notify-home")).toBe(false);
+  });
 });
 
 // ── Coordination join (session sub-room discovery) ────────────────────────
@@ -379,12 +460,42 @@ describe("routeMessage — coordination_join", () => {
       },
       freshOwnIds(),
     );
-    expect(actions).toEqual([
-      { kind: "subscribe-session", roomName: "test-room:session:abc123" },
-    ]);
+    expect(actions[0]).toEqual({
+      kind: "subscribe-session",
+      roomName: "test-room:session:abc123",
+    });
   });
 
-  it("handles coordination_start the same as coordination_join", () => {
+  it("emits stash-return-address when coordination_join has a sender_handle", () => {
+    const actions = routeMessage(
+      baseCfg,
+      {
+        message_type: "coordination_join",
+        room_name: "test-room:session:abc123",
+        sender_handle: "julia-agent",
+      },
+      freshOwnIds(),
+    );
+    const stash = actions.find((a) => a.kind === "stash-return-address") as any;
+    expect(stash).toBeDefined();
+    expect(stash.sessionRoom).toBe("test-room:session:abc123");
+    expect(stash.agentId).toBe("julia-agent");
+  });
+
+  it("does NOT emit stash-return-address for coordination_start (no per-agent sender)", () => {
+    const actions = routeMessage(
+      baseCfg,
+      {
+        message_type: "coordination_start",
+        room_name: "test-room:session:xyz",
+        sender_handle: "CognitiveEngine",
+      },
+      freshOwnIds(),
+    );
+    expect(actions.some((a) => a.kind === "stash-return-address")).toBe(false);
+  });
+
+  it("handles coordination_start the same as coordination_join (subscribe only)", () => {
     const actions = routeMessage(
       baseCfg,
       {

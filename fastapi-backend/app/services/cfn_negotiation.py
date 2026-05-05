@@ -17,13 +17,14 @@ Endpoints used:
 from __future__ import annotations
 
 import logging
-import time as _time
+import time
 from typing import Any
 
 import httpx
 
 from app.config import settings
 from app.services._cfn_call_timing import cfn_timing_stage, cfn_timing_stamp
+from app.services.metrics import record_cfn_call, record_cfn_llm_usage
 from ioc_cfn_svc_api_client import Client
 from ioc_cfn_svc_api_client.api.semantic_negotiation import (
     decide_negotiation_api_workspaces_workspace_id_multi_agentic_systems_mas_id_semantic_negotiation_decide_post as decide_api,
@@ -96,6 +97,31 @@ def _raise_if_validation_error(
     return result
 
 
+def _extract_cfn_usage(result: dict[str, Any], operation: str, *, room: str = "") -> None:
+    """Extract ``_usage`` from a CFN response and record it as metrics."""
+    usage = result.pop("_usage", None)
+    if not isinstance(usage, dict):
+        return
+    record_cfn_llm_usage(
+        operation=operation,
+        room=room,
+        prompt_tokens=usage.get("prompt_tokens", 0),
+        completion_tokens=usage.get("completion_tokens", 0),
+        cached_tokens=usage.get("cached_tokens", 0),
+        total_tokens=usage.get("total_tokens", 0),
+        llm_calls=usage.get("llm_calls", 0),
+        latency_ms=usage.get("total_latency_ms", 0.0),
+        by_operation=usage.get("by_operation"),
+    )
+    logger.debug(
+        "CFN %s usage: %d calls, %d prompt, %d completion tokens",
+        operation,
+        usage.get("llm_calls", 0),
+        usage.get("prompt_tokens", 0),
+        usage.get("completion_tokens", 0),
+    )
+
+
 def _extract_cfn_loop_lag_headers(headers: Any) -> None:
     """Pull CFN's per-request loop-lag stats from response headers into the timing snapshot.
 
@@ -128,13 +154,14 @@ async def start_negotiation(
     workspace_id: str,
     mas_id: str,
     n_steps: int = 20,
+    room: str = "",
 ) -> dict[str, Any]:
     """Call CFN /start. Raises :class:`CfnNegotiationError` on any failure.
 
     ``agents`` items: ``{"id": handle, "name": handle}``
     """
     cfn_timing_stamp("endpoint", "start_negotiation")
-    sent_ns = _time.time_ns()
+    sent_ns = time.time_ns()
     cfn_timing_stamp("sent_wall_ns", sent_ns)
 
     body = InitiateNegotiationRequest(
@@ -143,6 +170,7 @@ async def start_negotiation(
         agents=[Agent(id=a["id"], name=a["name"]) for a in agents],
         n_steps=n_steps if n_steps and n_steps > 0 else UNSET,
     )
+    t0 = time.monotonic()
     try:
         with cfn_timing_stage("client_setup_ms"):
             client_cm = _client(**{"X-Client-Sent-Wall-Ns": str(sent_ns)})
@@ -167,12 +195,33 @@ async def start_negotiation(
             exc.status_code,
             exc.content[:500],
         )
+        record_cfn_call(
+            service="node",
+            operation="start_negotiation",
+            duration_ms=(time.monotonic() - t0) * 1000,
+            status_code=exc.status_code,
+            error=True,
+        )
         raise CfnNegotiationError(reason) from exc
     except Exception as exc:
         reason = _describe_exc(exc)
         logger.exception("CFN start_negotiation failed | reason=%s", reason)
+        record_cfn_call(
+            service="node",
+            operation="start_negotiation",
+            duration_ms=(time.monotonic() - t0) * 1000,
+            error=True,
+        )
         raise CfnNegotiationError(reason) from exc
-    return _raise_if_validation_error(resp.parsed, "start_negotiation")
+    record_cfn_call(
+        service="node",
+        operation="start_negotiation",
+        duration_ms=(time.monotonic() - t0) * 1000,
+        status_code=resp.status_code,
+    )
+    result = _raise_if_validation_error(resp.parsed, "start_negotiation")
+    _extract_cfn_usage(result, "start_negotiation", room=room)
+    return result
 
 
 def _build_agent_reply(item: dict[str, Any]) -> AgentReply:
@@ -207,13 +256,14 @@ async def decide_negotiation(
     ``agent_replies`` items: ``{"agent_id": handle, "action": "accept"|"reject"|"counter_offer", "offer": {...}|None}``
     """
     cfn_timing_stamp("endpoint", "decide_negotiation")
-    sent_ns = _time.time_ns()
+    sent_ns = time.time_ns()
     cfn_timing_stamp("sent_wall_ns", sent_ns)
 
     body = DecideRequest(
         session_id=session_id,
         agent_replies=[_build_agent_reply(r) for r in agent_replies],
     )
+    t0 = time.monotonic()
     try:
         with cfn_timing_stage("client_setup_ms"):
             client_cm = _client(**{"X-Client-Sent-Wall-Ns": str(sent_ns)})
@@ -238,9 +288,29 @@ async def decide_negotiation(
             exc.status_code,
             exc.content[:500],
         )
+        record_cfn_call(
+            service="node",
+            operation="decide_negotiation",
+            duration_ms=(time.monotonic() - t0) * 1000,
+            status_code=exc.status_code,
+            error=True,
+        )
         raise CfnNegotiationError(reason) from exc
     except Exception as exc:
         reason = _describe_exc(exc)
         logger.exception("CFN decide_negotiation failed | reason=%s", reason)
+        record_cfn_call(
+            service="node",
+            operation="decide_negotiation",
+            duration_ms=(time.monotonic() - t0) * 1000,
+            error=True,
+        )
         raise CfnNegotiationError(reason) from exc
-    return _raise_if_validation_error(resp.parsed, "decide_negotiation")
+    record_cfn_call(
+        service="node",
+        operation="decide_negotiation",
+        duration_ms=(time.monotonic() - t0) * 1000,
+        status_code=resp.status_code,
+    )
+    result = _raise_if_validation_error(resp.parsed, "decide_negotiation")
+    return result

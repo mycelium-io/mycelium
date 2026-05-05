@@ -43,6 +43,9 @@ async def index_room(room_name: str, db: AsyncSession, *, force: bool = False) -
 
     Returns stats: {"indexed": N, "skipped": N, "pruned": N, "errors": N}
     """
+    import time
+
+    t0 = time.monotonic()
     data_dir = get_data_dir()
     room_dir = data_dir / "rooms" / room_name
     if not room_dir.exists():
@@ -84,6 +87,19 @@ async def index_room(room_name: str, db: AsyncSession, *, force: bool = False) -
             stats["pruned"] += 1
 
     await db.commit()
+
+    from app.services.metrics import record_index_run
+
+    elapsed_ms = (time.monotonic() - t0) * 1000
+    record_index_run(
+        target="room",
+        indexed=stats["indexed"],
+        skipped=stats["skipped"],
+        pruned=stats["pruned"],
+        errors=stats["errors"],
+        duration_ms=elapsed_ms,
+    )
+
     return stats
 
 
@@ -112,6 +128,11 @@ async def index_single_file(room_name: str, key: str, db: AsyncSession) -> bool:
 
     Returns True if indexed, False if skipped/error.
     """
+    import time
+
+    from app.services.metrics import record_index_run
+
+    t0 = time.monotonic()
     data_dir = get_data_dir()
     room_dir = data_dir / "rooms" / room_name
     file_path = room_dir / (key + ".md" if not key.endswith(".md") else key)
@@ -125,6 +146,7 @@ async def index_single_file(room_name: str, key: str, db: AsyncSession) -> bool:
             )
         )
         await db.commit()
+        record_index_run(target="watcher", pruned=1, duration_ms=(time.monotonic() - t0) * 1000)
         return True
 
     try:
@@ -142,9 +164,11 @@ async def index_single_file(room_name: str, key: str, db: AsyncSession) -> bool:
             file_path=f"rooms/{room_name}/{key}.md",
         )
         await db.commit()
+        record_index_run(target="watcher", indexed=1, duration_ms=(time.monotonic() - t0) * 1000)
         return True
     except Exception:
         logger.warning("Failed to index single file %s/%s", room_name, key, exc_info=True)
+        record_index_run(target="watcher", errors=1, duration_ms=(time.monotonic() - t0) * 1000)
         return False
 
 
