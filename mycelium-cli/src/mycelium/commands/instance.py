@@ -125,8 +125,11 @@ def _detect_compose_project() -> str:
     try:
         result = subprocess.run(
             [
-                "docker", "inspect", "mycelium-backend",
-                "--format", '{{ index .Config.Labels "com.docker.compose.project" }}',
+                "docker",
+                "inspect",
+                "mycelium-backend",
+                "--format",
+                '{{ index .Config.Labels "com.docker.compose.project" }}',
             ],
             capture_output=True,
             text=True,

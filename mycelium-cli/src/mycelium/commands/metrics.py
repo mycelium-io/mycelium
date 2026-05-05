@@ -921,10 +921,9 @@ def show(
             has_embeddings = be_counters.get("embeddings", {}).get("computed", 0) > 0
             has_indexer = be_counters.get("indexer", {}).get("runs", 0) > 0
             has_llm = be_counters.get("llm", {}).get("calls", 0) > 0
-            has_knowledge = (
-                (be_counters.get("knowledge") or {}).get("writes", 0) > 0
-                or (be_counters.get("knowledge") or {}).get("ingestions", 0) > 0
-            )
+            has_knowledge = (be_counters.get("knowledge") or {}).get("writes", 0) > 0 or (
+                be_counters.get("knowledge") or {}
+            ).get("ingestions", 0) > 0
 
             if has_embeddings or has_indexer:
                 _render_cost_avoidance_table(backend_data)
