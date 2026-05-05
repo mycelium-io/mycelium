@@ -258,7 +258,7 @@ function CollectorChip({ on }: { on: boolean }) {
 // ── KPI plate ──────────────────────────────────────────────────────────────
 
 function KpiPlate({
-  label, value, sub, sparkline, disabled = false, alert = false, cta,
+  label, value, sub, sparkline, disabled = false, alert = false, errorRatePct, cta,
 }: {
   label: string;
   value: ReactNode;
@@ -266,19 +266,33 @@ function KpiPlate({
   sparkline?: number[];
   disabled?: boolean;
   alert?: boolean;
+  errorRatePct?: number;
   cta?: string;
 }) {
+  const valueColor = (() => {
+    if (disabled) return "var(--dim)";
+    if (errorRatePct != null && errorRatePct > 0) {
+      // lerp from --text (#eaeaea) to red (#f87171) clamped at 20%
+      const t = Math.min(errorRatePct / 20, 1);
+      const r = Math.round(0xea + t * (0xf8 - 0xea));
+      const g = Math.round(0xea + t * (0x71 - 0xea));
+      const b = Math.round(0xea + t * (0x71 - 0xea));
+      return `rgb(${r},${g},${b})`;
+    }
+    return "var(--text)";
+  })();
   return (
     <div className="flex min-w-0 items-center gap-5 border-r border-border2 px-6 py-4 last:border-r-0">
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <Caps>{label}</Caps>
         <div
-          className={`tabular ${disabled ? "text-dim" : "text-text"} ${alert ? "italic" : ""}`}
+          className={`tabular ${alert ? "italic" : ""}`}
           style={{
             fontSize: "2rem",
             fontWeight: 700,
             lineHeight: 1.05,
             letterSpacing: "-0.01em",
+            color: valueColor,
           }}
         >
           {value}
@@ -430,7 +444,7 @@ const AGENT_COLS = "1.4fr 0.9fr 0.9fr 0.7fr 1.2fr 0.6fr";
 
 function AgentActivityTable({ collector }: { collector: CollectorMetrics }) {
   const agents = deriveAgents(collector);
-  const max = Math.max(0.0001, ...agents.map(a => a.tokens));
+  const total = Math.max(0.0001, agents.reduce((s, a) => s + a.tokens, 0));
   return (
     <div className="border-b border-border2 px-6 py-5">
       <div className="mb-3.5 flex items-baseline justify-between">
@@ -456,7 +470,7 @@ function AgentActivityTable({ collector }: { collector: CollectorMetrics }) {
             <Caps>TOKENS</Caps>
             <Caps>COST</Caps>
             <Caps>SESSIONS</Caps>
-            <Caps>SHARE</Caps>
+            <Caps>TOKEN SHARE</Caps>
             <Caps className="text-right">LAST</Caps>
           </div>
           {agents.map((a, i) => (
@@ -469,9 +483,14 @@ function AgentActivityTable({ collector }: { collector: CollectorMetrics }) {
               <span className="font-mono text-label tabular text-text">{fmtNum(a.tokens)}</span>
               <span className="font-mono text-label tabular text-text">{fmtUsd(a.cost)}</span>
               <span className="font-mono text-label tabular text-text2">{a.sessions}</span>
-              <div className="relative h-1 max-w-[220px] flex-1 bg-border">
-                <div className="absolute inset-y-0 left-0 bg-accent/85"
-                     style={{ width: `${(a.tokens / max) * 100}%` }} />
+              <div className="flex items-center gap-2">
+                <div className="relative h-1 w-[120px] flex-shrink-0 bg-border">
+                  <div className="absolute inset-y-0 left-0 bg-accent/85"
+                       style={{ width: `${(a.tokens / total) * 100}%` }} />
+                </div>
+                <span className="font-mono text-micro tabular text-muted">
+                  {Math.round((a.tokens / total) * 100)}%
+                </span>
               </div>
               <span className="font-mono text-micro text-muted text-right">{a.last}</span>
             </div>
@@ -516,9 +535,14 @@ function ByModelTable({ models }: { models: ByModel[] }) {
           <span className="font-mono text-label tabular text-text">{fmtNum(m.tokens_in)}</span>
           <span className="font-mono text-label tabular text-text">{fmtNum(m.tokens_out)}</span>
           <span className="font-mono text-label tabular text-text2">{m.calls}</span>
-          <div className="relative h-1 max-w-[220px] flex-1 bg-border">
-            <div className="absolute inset-y-0 left-0 bg-accent"
-                 style={{ width: `${(m.cost_usd / total) * 100}%` }} />
+          <div className="flex items-center gap-2">
+            <div className="relative h-1 w-[120px] flex-shrink-0 bg-border">
+              <div className="absolute inset-y-0 left-0 bg-accent"
+                   style={{ width: `${(m.cost_usd / total) * 100}%` }} />
+            </div>
+            <span className="font-mono text-micro tabular text-muted">
+              {Math.round((m.cost_usd / total) * 100)}%
+            </span>
           </div>
           <span className="font-mono text-label font-semibold tabular text-text text-right">{fmtUsd(m.cost_usd)}</span>
         </div>
@@ -668,6 +692,8 @@ export function MetricsScreen() {
                 <span className="text-text2">{Object.keys(collector?.counters?.tokens?.by_model || {}).length}</span>{" "}
                 models <span className="mx-1 text-dim">·</span>{" "}
                 <span className="text-text2">{fmtNum(tokensTotal)}</span> tokens
+                <span className="mx-1 text-dim">·</span>{" "}
+                since <span className="text-text2">{fmtDur(backend?.started_at)}</span>
               </>
             ) : "requires collector"}
             sparkline={collector?.spend_5m}
@@ -678,6 +704,7 @@ export function MetricsScreen() {
             label="ERROR RATE"
             value={errValue}
             alert={errAlert}
+            errorRatePct={errPct}
             sub={errIsZero ? "no CFN calls yet" : (
               <>
                 <span className={errAlert ? "italic text-accent" : "text-text2"}>{errStats.errors}</span>
@@ -695,12 +722,16 @@ export function MetricsScreen() {
                 <span className="text-text2">{cc.messages?.queued ?? 0}</span> queued
                 <span className="mx-1 text-dim">·</span>
                 <span className="text-text2">{cc.sessions_stuck ?? 0}</span> stuck
+                <span className="mx-1 text-dim">·</span>{" "}
+                since <span className="text-text2">{fmtDur(backend?.started_at)}</span>
               </>
             ) : (
               <>
                 <span className="text-text2">{bc.coordination?.sessions_started ?? 0}</span>{" "}
                 sessions <span className="mx-1 text-dim">·</span>{" "}
                 <span className="text-text2">{bc.coordination?.rounds ?? 0}</span> rounds
+                <span className="mx-1 text-dim">·</span>{" "}
+                since <span className="text-text2">{fmtDur(backend?.started_at)}</span>
               </>
             )}
           />
