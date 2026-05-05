@@ -98,16 +98,46 @@ def _get_env_path() -> Path | None:
     return env_path if env_path.exists() else None
 
 
-def _compose_base_cmd(compose_path: Path | None = None, env_path: Path | None = None) -> list[str]:
+def _compose_base_cmd(
+    compose_path: Path | None = None,
+    env_path: Path | None = None,
+    project_name: str | None = None,
+) -> list[str]:
     """Build the docker compose prefix with consistent project name."""
     if compose_path is None:
         compose_path = _get_compose_path()
     if env_path is None:
         env_path = _get_env_path()
-    cmd = ["docker", "compose", "-p", _COMPOSE_PROJECT, "-f", str(compose_path)]
+    cmd = ["docker", "compose", "-p", project_name or _COMPOSE_PROJECT, "-f", str(compose_path)]
     if env_path:
         cmd += ["--env-file", str(env_path)]
     return cmd
+
+
+def _detect_compose_project() -> str:
+    """Return the compose project name that running Mycelium containers belong to.
+
+    Inspects the ``mycelium-backend`` container label to discover the project
+    name that was used at ``docker compose up`` time.  Falls back to the
+    default ``_COMPOSE_PROJECT`` if the container isn't running or doesn't
+    have the expected label.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "docker", "inspect", "mycelium-backend",
+                "--format", '{{ index .Config.Labels "com.docker.compose.project" }}',
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return _COMPOSE_PROJECT
 
 
 def _patch_env_image_tag(env_path: Path, tag: str) -> None:
@@ -421,7 +451,10 @@ def stop(
             typer.secho(f"Compose file not found at {compose_path}", fg=typer.colors.RED)
             raise typer.Exit(1)
 
-        base = _compose_base_cmd(compose_path)
+        project = _detect_compose_project()
+        base = _compose_base_cmd(compose_path, project_name=project)
+        if _cfn_enabled():
+            base = base + ["--profile", "cfn"]
         down_args = ["down", "--remove-orphans"]
         if volumes:
             down_args.append("-v")
@@ -832,7 +865,10 @@ def logs(
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
 
-        cmd = _compose_base_cmd()
+        project = _detect_compose_project()
+        cmd = _compose_base_cmd(project_name=project)
+        if _cfn_enabled():
+            cmd += ["--profile", "cfn"]
         cmd += ["logs"]
         if follow:
             cmd.append("-f")
