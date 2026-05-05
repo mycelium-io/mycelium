@@ -236,21 +236,26 @@ async def root(
     return result
 
 
-@app.get("/api/metrics", tags=["metrics"])
+@app.get("/api/observability", tags=["metrics"])
 async def get_metrics():
-    """Return a snapshot of backend-collected metrics (embeddings, LLM, indexer, etc.)."""
+    """Return a snapshot of backend-collected metrics (embeddings, LLM, indexer, etc.).
+
+    Note: served under ``/observability`` rather than ``/api/metrics`` because
+    privacy-extension blocklists pattern-match ``/api/metrics*`` as analytics
+    telemetry and silently drop the request in the browser.
+    """
     from app.services.metrics import snapshot
 
     return snapshot()
 
 
-@app.get("/api/metrics/collector", tags=["metrics"])
+@app.get("/api/observability/collector", tags=["metrics"])
 async def get_collector_metrics():
     """Return OTLP/scrape metrics written by the CLI collector.
 
     Reads ``~/.mycelium/metrics.json`` and returns the collector-specific
     keys (counters, histograms, sessions, scrape) — excluding the ``backend``
-    key which duplicates ``GET /api/metrics``.  Returns 404 when the file is
+    key which duplicates ``GET /observability``.  Returns 404 when the file is
     absent (collector not running or never started).
     """
     import json

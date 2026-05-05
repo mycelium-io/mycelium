@@ -22,7 +22,7 @@ def main() -> None:
         "--backend-url",
         type=str,
         default="http://localhost:8000",
-        help="Mycelium backend URL for polling /api/metrics",
+        help="Mycelium backend URL for polling /api/observability",
     )
 
     args = parser.parse_args()

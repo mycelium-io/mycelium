@@ -76,13 +76,13 @@ export function getSSEUrl(roomName: string) {
 // ── Metrics ──────────────────────────────────────────────────────────────────
 
 export async function fetchBackendMetrics() {
-  const res = await fetch(`${API}/api/metrics`, { cache: "no-store" });
+  const res = await fetch(`${API}/api/observability`, { cache: "no-store" });
   if (!res.ok) return null;
   return res.json();
 }
 
 export async function fetchCollectorMetrics() {
-  const res = await fetch(`${API}/api/metrics/collector`, { cache: "no-store" });
+  const res = await fetch(`${API}/api/observability/collector`, { cache: "no-store" });
   if (!res.ok) return null;
   return res.json();
 }

@@ -2015,14 +2015,34 @@
                 }
             }
         },
-        "/api/metrics": {
+        "/api/observability": {
             "get": {
                 "tags": [
                     "metrics"
                 ],
                 "summary": "Get Metrics",
-                "description": "Return a snapshot of backend-collected metrics (embeddings, LLM, indexer, etc.).",
-                "operationId": "get_metrics_api_metrics_get",
+                "description": "Return a snapshot of backend-collected metrics (embeddings, LLM, indexer, etc.).\n\nNote: served under ``/observability`` rather than ``/api/metrics`` because\nprivacy-extension blocklists pattern-match ``/api/metrics*`` as analytics\ntelemetry and silently drop the request in the browser.",
+                "operationId": "get_metrics_api_observability_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/observability/collector": {
+            "get": {
+                "tags": [
+                    "metrics"
+                ],
+                "summary": "Get Collector Metrics",
+                "description": "Return OTLP/scrape metrics written by the CLI collector.\n\nReads ``~/.mycelium/metrics.json`` and returns the collector-specific\nkeys (counters, histograms, sessions, scrape) \u2014 excluding the ``backend``\nkey which duplicates ``GET /observability``.  Returns 404 when the file is\nabsent (collector not running or never started).",
+                "operationId": "get_collector_metrics_api_observability_collector_get",
                 "responses": {
                     "200": {
                         "description": "Successful Response",
