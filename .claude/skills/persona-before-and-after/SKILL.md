@@ -259,20 +259,16 @@ wants sonnet.
 
 Use `AskUserQuestion`:
 
-> **Which LLM and API key should the experiment agents use?**
+> **Which LLM should the experiment agents use?**
 > 1. **Haiku + existing key** *(recommended — ~$0.10–0.30 per full experiment)*
 > 2. **Sonnet + existing key** *(~$1.50–4.00 per full experiment)*
-> 3. **Different API key** *(isolate experiment cost)*
 
 ```bash
-# Option 1
-EXP_MODEL="anthropic/claude-haiku-4-5-20251001"
+# Option 1 — use the litellm provider path that matches the auth in this environment
+EXP_MODEL="litellm/bedrock/global.anthropic.claude-haiku-4-5-20251001-v1:0"
 
 # Option 2
-EXP_MODEL="anthropic/claude-sonnet-4-6"
-
-# Option 3 — ask user for model + key
-export ANTHROPIC_API_KEY="sk-ant-..."
+EXP_MODEL="litellm/bedrock/global.anthropic.claude-sonnet-4-6"
 ```
 
 **Never hardcode a model.** Always use `$EXP_MODEL`.
