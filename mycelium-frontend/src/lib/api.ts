@@ -73,6 +73,67 @@ export function getSSEUrl(roomName: string) {
   return `${API}/rooms/${roomName}/messages/stream`;
 }
 
+// ── Metrics ──────────────────────────────────────────────────────────────────
+
+export async function fetchBackendMetrics() {
+  const res = await fetch(`${API}/api/metrics`, { cache: "no-store" });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function fetchCollectorMetrics() {
+  const res = await fetch(`${API}/api/observability/collector`, { cache: "no-store" });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+// ── Traces & Logs ────────────────────────────────────────────────────────────
+
+export interface TraceSpan {
+  trace_id: string;
+  span_id: string;
+  parent_span_id: string;
+  name: string;
+  kind: string;
+  service: string;
+  start_time: string;
+  duration_ms: number;
+  status: string;
+  status_message: string;
+  attributes: Record<string, string | number | boolean>;
+}
+
+export interface TraceSummary {
+  trace_id: string;
+  root_span: string;
+  service: string;
+  agent: string;
+  start_time: string;
+  duration_ms: number;
+  span_count: number;
+  has_error: boolean;
+  spans: TraceSpan[];
+}
+
+export async function fetchRecentTraces(limit = 100): Promise<{ traces: TraceSummary[]; count: number } | null> {
+  const res = await fetch(`${API}/api/observability/traces/recent?limit=${limit}`, { cache: "no-store" });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function fetchRoundTraces(limit?: number): Promise<{ traces: unknown[]; count: number } | null> {
+  const params = limit != null ? `?limit=${limit}` : "";
+  const res = await fetch(`${API}/api/internal/coordination/round-traces${params}`, { cache: "no-store" });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function fetchIngestLog(limit = 50) {
+  const res = await fetch(`${API}/api/knowledge/ingest/log?limit=${limit}`, { cache: "no-store" });
+  if (!res.ok) return null;
+  return res.json();
+}
+
 // ── CFN knowledge graph ──────────────────────────────────────────────────────
 // Backs the `mycelium cfn` CLI; see fastapi-backend/app/routes/cfn_proxy.py.
 

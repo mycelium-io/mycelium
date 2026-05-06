@@ -17,6 +17,7 @@ import gzip
 import json
 import logging
 import socket
+import sqlite3
 import threading
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -25,7 +26,263 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 _MAX_SESSIONS = 200
+_MAX_TRACES = 500
 _MAX_BODY_BYTES = 10 * 1024 * 1024  # 10 MiB guard against oversized payloads
+
+
+_SPAN_KIND_MAP = {
+    0: "unspecified",
+    1: "internal",
+    2: "server",
+    3: "client",
+    4: "producer",
+    5: "consumer",
+}
+_STATUS_MAP = {0: "unset", 1: "ok", 2: "error"}
+
+_TRACES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS spans (
+    trace_id     TEXT NOT NULL,
+    span_id      TEXT NOT NULL PRIMARY KEY,
+    parent_span_id TEXT NOT NULL DEFAULT '',
+    name         TEXT NOT NULL,
+    kind         TEXT NOT NULL DEFAULT 'internal',
+    service      TEXT NOT NULL DEFAULT '',
+    start_time   TEXT NOT NULL,
+    duration_ms  REAL NOT NULL DEFAULT 0,
+    status       TEXT NOT NULL DEFAULT 'unset',
+    status_message TEXT NOT NULL DEFAULT '',
+    attributes   TEXT NOT NULL DEFAULT '{}',
+    created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_spans_trace_id ON spans(trace_id);
+CREATE INDEX IF NOT EXISTS idx_spans_created_at ON spans(created_at);
+CREATE INDEX IF NOT EXISTS idx_spans_start_time ON spans(start_time);
+"""
+
+_DEFAULT_RETENTION_DAYS = 7
+
+
+class TraceStore:
+    """SQLite-backed trace span storage with automatic retention cleanup."""
+
+    def __init__(self, db_path: Path, retention_days: int = _DEFAULT_RETENTION_DAYS) -> None:
+        self._db_path = db_path
+        self._retention_days = retention_days
+        self._lock = threading.Lock()
+        self._last_cleanup = 0.0
+
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(db_path))
+        conn.executescript(_TRACES_SCHEMA)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.close()
+        log.info("Trace store opened: %s (retention=%dd)", db_path, retention_days)
+
+    def _connect(self) -> sqlite3.Connection:
+        return sqlite3.connect(str(self._db_path), timeout=10)
+
+    def ingest_traces(self, request_bytes: bytes) -> None:
+        from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
+            ExportTraceServiceRequest,
+        )
+
+        msg = ExportTraceServiceRequest()
+        msg.ParseFromString(request_bytes)
+
+        rows: list[tuple] = []
+        for rs in msg.resource_spans:
+            resource_attrs = _attrs_dict(rs.resource.attributes) if rs.resource else {}
+            service_name = str(resource_attrs.get("service.name", ""))
+            for ss in rs.scope_spans:
+                for span in ss.spans:
+                    rows.append(self._span_to_row(span, service_name))
+
+        if not rows:
+            return
+
+        with self._lock:
+            conn = self._connect()
+            try:
+                conn.executemany(
+                    "INSERT OR REPLACE INTO spans "
+                    "(trace_id, span_id, parent_span_id, name, kind, service, "
+                    " start_time, duration_ms, status, status_message, attributes) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                    rows,
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+    def _span_to_row(self, span, service_name: str) -> tuple:
+        trace_id = span.trace_id.hex() if isinstance(span.trace_id, bytes) else str(span.trace_id)
+        span_id = span.span_id.hex() if isinstance(span.span_id, bytes) else str(span.span_id)
+        parent_id = (
+            span.parent_span_id.hex()
+            if isinstance(span.parent_span_id, bytes) and span.parent_span_id
+            else ""
+        )
+        start_ns = span.start_time_unix_nano
+        end_ns = span.end_time_unix_nano
+        duration_ms = (end_ns - start_ns) / 1_000_000 if end_ns > start_ns else 0
+        start_iso = datetime.fromtimestamp(start_ns / 1_000_000_000, tz=UTC).isoformat()
+        attrs = _attrs_dict(span.attributes)
+        kind = _SPAN_KIND_MAP.get(span.kind, "unknown")
+        status_code = span.status.code if span.status else 0
+        status_msg = span.status.message if span.status else ""
+
+        return (
+            trace_id,
+            span_id,
+            parent_id,
+            span.name,
+            kind,
+            service_name,
+            start_iso,
+            round(duration_ms, 2),
+            _STATUS_MAP.get(status_code, "unknown"),
+            status_msg,
+            json.dumps(attrs, default=str),
+        )
+
+    def get_recent_traces(self, limit: int = 100) -> list[dict]:
+        """Return recent traces as a list of trace summary objects, newest first.
+
+        Each trace includes its full list of spans for waterfall rendering.
+        """
+        with self._lock:
+            conn = self._connect()
+            conn.row_factory = sqlite3.Row
+            try:
+                trace_ids = [
+                    r[0]
+                    for r in conn.execute(
+                        "SELECT DISTINCT trace_id FROM spans ORDER BY start_time DESC LIMIT ?",
+                        (limit * 20,),
+                    ).fetchall()
+                ]
+                seen: list[str] = []
+                seen_set: set[str] = set()
+                for tid in trace_ids:
+                    if tid not in seen_set:
+                        seen.append(tid)
+                        seen_set.add(tid)
+                    if len(seen) >= limit:
+                        break
+
+                result: list[dict] = []
+                for trace_id in seen:
+                    rows = conn.execute(
+                        "SELECT * FROM spans WHERE trace_id = ? ORDER BY start_time",
+                        (trace_id,),
+                    ).fetchall()
+                    if not rows:
+                        continue
+
+                    spans = []
+                    for r in rows:
+                        spans.append(
+                            {
+                                "trace_id": r["trace_id"],
+                                "span_id": r["span_id"],
+                                "parent_span_id": r["parent_span_id"],
+                                "name": r["name"],
+                                "kind": r["kind"],
+                                "service": r["service"],
+                                "start_time": r["start_time"],
+                                "duration_ms": r["duration_ms"],
+                                "status": r["status"],
+                                "status_message": r["status_message"],
+                                "attributes": json.loads(r["attributes"]),
+                            }
+                        )
+
+                    root_spans = [s for s in spans if not s["parent_span_id"]]
+                    root = root_spans[0] if root_spans else spans[0]
+                    total_duration = max((s["duration_ms"] for s in spans), default=0)
+                    has_error = any(s["status"] == "error" for s in spans)
+
+                    agent = ""
+                    for s in spans:
+                        a = s.get("attributes", {})
+                        agent = (
+                            str(a.get("openclaw.channel", ""))
+                            or str(a.get("openclaw.agent", ""))
+                            or str(a.get("gen_ai.agent", ""))
+                        )
+                        if agent:
+                            break
+
+                    result.append(
+                        {
+                            "trace_id": trace_id,
+                            "root_span": root["name"],
+                            "service": root.get("service", ""),
+                            "agent": agent,
+                            "start_time": root["start_time"],
+                            "duration_ms": round(total_duration, 2),
+                            "span_count": len(spans),
+                            "has_error": has_error,
+                            "spans": spans,
+                        }
+                    )
+                return result
+            finally:
+                conn.close()
+
+    def cleanup_old_spans(self) -> int:
+        """Delete spans older than the retention period. Returns count deleted."""
+        import time
+
+        now = time.monotonic()
+        if now - self._last_cleanup < 3600:
+            return 0
+        self._last_cleanup = now
+
+        with self._lock:
+            conn = self._connect()
+            try:
+                cursor = conn.execute(
+                    "DELETE FROM spans WHERE created_at < datetime('now', ?)",
+                    (f"-{self._retention_days} days",),
+                )
+                deleted = cursor.rowcount
+                if deleted > 0:
+                    conn.execute("PRAGMA incremental_vacuum")
+                conn.commit()
+                if deleted > 0:
+                    log.info(
+                        "Trace cleanup: deleted %d spans older than %d days",
+                        deleted,
+                        self._retention_days,
+                    )
+                return deleted
+            finally:
+                conn.close()
+
+    def get_stats(self) -> dict:
+        """Return storage statistics for diagnostics."""
+        with self._lock:
+            conn = self._connect()
+            try:
+                span_count = conn.execute("SELECT COUNT(*) FROM spans").fetchone()[0]
+                trace_count = conn.execute("SELECT COUNT(DISTINCT trace_id) FROM spans").fetchone()[
+                    0
+                ]
+                oldest = conn.execute("SELECT MIN(created_at) FROM spans").fetchone()[0]
+                newest = conn.execute("SELECT MAX(created_at) FROM spans").fetchone()[0]
+                return {
+                    "span_count": span_count,
+                    "trace_count": trace_count,
+                    "oldest": oldest,
+                    "newest": newest,
+                    "retention_days": self._retention_days,
+                    "db_path": str(self._db_path),
+                }
+            finally:
+                conn.close()
 
 
 class MetricsStore:
@@ -112,6 +369,11 @@ class MetricsStore:
                         self._process_metric(metric)
 
     def ingest_traces(self, request_bytes: bytes) -> None:
+        """Process model.usage spans for session aggregation.
+
+        The raw request_bytes are also forwarded to a TraceStore (if set)
+        for full trace capture — see ``trace_store`` attribute.
+        """
         from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
             ExportTraceServiceRequest,
         )
@@ -411,8 +673,19 @@ class OTLPHandler(BaseHTTPRequestHandler):
     """HTTP handler for OTLP protobuf endpoints."""
 
     store: MetricsStore
+    trace_store: TraceStore
     output_path: Path
     backend_api_url: str
+
+    def do_GET(self) -> None:
+        if self.path == "/health":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status":"ok"}')
+            return
+        self.send_response(404)
+        self.end_headers()
 
     def do_POST(self) -> None:
         try:
@@ -479,7 +752,7 @@ class OTLPHandler(BaseHTTPRequestHandler):
 
         log.debug("POST %s  %d bytes", self.path, len(body))
 
-        if self.path not in ("/v1/metrics", "/v1/traces"):
+        if self.path not in ("/v1/metrics", "/v1/traces", "/v1/logs"):
             log.warning("Unexpected POST path %s, returning 400", self.path)
             self.send_response(400)
             self.end_headers()
@@ -488,8 +761,11 @@ class OTLPHandler(BaseHTTPRequestHandler):
         try:
             if self.path == "/v1/metrics":
                 self.store.ingest_metrics(body)
-            else:
+            elif self.path == "/v1/traces":
                 self.store.ingest_traces(body)
+                self.trace_store.ingest_traces(body)
+            elif self.path == "/v1/logs":
+                log.debug("Received OTLP logs (%d bytes), ack-only", len(body))
             self._flush()
         except Exception:
             log.exception("Failed to process %s", self.path)
@@ -537,6 +813,8 @@ def run(
     Targets are polled on the same 30-second interval as the backend.
     """
     store = MetricsStore()
+    traces_db = output_path.parent / "traces.db"
+    trace_store = TraceStore(traces_db)
     scrape_targets = list(scrape_targets or [])
     is_hub = _is_local_url(backend_api_url)
     if not is_hub:
@@ -568,7 +846,12 @@ def run(
     handler = type(
         "Handler",
         (OTLPHandler,),
-        {"store": store, "output_path": output_path, "backend_api_url": backend_api_url},
+        {
+            "store": store,
+            "trace_store": trace_store,
+            "output_path": output_path,
+            "backend_api_url": backend_api_url,
+        },
     )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -583,6 +866,7 @@ def run(
             if is_hub:
                 _fetch_backend_metrics(store, backend_api_url, output_path)
             _fetch_scrape_targets(store, scrape_targets, output_path)
+            trace_store.cleanup_old_spans()
 
     poller = threading.Thread(target=_backend_poller, daemon=True)
     poller.start()
@@ -598,6 +882,7 @@ def run(
 
     class _DualStackHTTPServer(HTTPServer):
         address_family = socket.AF_INET6
+        allow_reuse_address = True
 
         def server_bind(self) -> None:
             self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
@@ -624,4 +909,5 @@ def run(
         tmp = output_path.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, indent=2, default=str))
         tmp.replace(output_path)
-        log.info("Final state saved to %s", output_path)
+        trace_store.cleanup_old_spans()
+        log.info("Final state saved to %s; traces in %s", output_path, traces_db)

@@ -244,6 +244,140 @@ async def get_metrics():
     return snapshot()
 
 
+@app.get("/api/observability/collector", tags=["observability"])
+async def get_collector_metrics():
+    """Return OTLP/scrape metrics written by the CLI collector.
+
+    Reads ``~/.mycelium/metrics.json`` and returns the collector-specific
+    keys (counters, histograms, sessions, scrape) -- excluding the ``backend``
+    key which duplicates ``GET /api/observability``.  Returns 404 when the file
+    is absent (collector not running or never started).
+    """
+    import json
+
+    from fastapi.responses import JSONResponse
+
+    metrics_path = Path.home() / ".mycelium" / "metrics.json"
+    if not metrics_path.exists():
+        return JSONResponse(
+            status_code=404,
+            content={"detail": "Collector metrics file not found. Run: mycelium metrics collect"},
+        )
+    try:
+        raw = json.loads(metrics_path.read_text())
+    except Exception:
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Failed to read collector metrics file"},
+        )
+    return {
+        "updated_at": raw.get("updated_at"),
+        "counters": raw.get("counters", {}),
+        "histograms": raw.get("histograms", {}),
+        "sessions": raw.get("sessions", []),
+        "scrape": raw.get("scrape", {}),
+    }
+
+
+@app.get("/api/observability/traces/recent", tags=["observability"])
+async def get_recent_traces(limit: int = 100):
+    """Return recent OTLP traces captured by the CLI collector.
+
+    Reads ``~/.mycelium/traces.db`` (SQLite) written by ``mycelium metrics collect``.
+    Each trace includes its full span tree for waterfall rendering.
+    Returns 404 when the database is absent.
+    """
+    import json
+    import sqlite3
+
+    from fastapi.responses import JSONResponse
+
+    db_path = Path.home() / ".mycelium" / "traces.db"
+    if not db_path.exists():
+        return JSONResponse(
+            status_code=404,
+            content={"detail": "Traces database not found. Run: mycelium metrics collect"},
+        )
+    try:
+        conn = sqlite3.connect(str(db_path), timeout=5)
+        conn.row_factory = sqlite3.Row
+
+        trace_ids = [
+            r[0] for r in conn.execute(
+                "SELECT DISTINCT trace_id FROM spans ORDER BY start_time DESC LIMIT ?",
+                (limit * 20,),
+            ).fetchall()
+        ]
+        seen: list[str] = []
+        seen_set: set[str] = set()
+        for tid in trace_ids:
+            if tid not in seen_set:
+                seen.append(tid)
+                seen_set.add(tid)
+            if len(seen) >= limit:
+                break
+
+        traces: list[dict] = []
+        for trace_id in seen:
+            rows = conn.execute(
+                "SELECT * FROM spans WHERE trace_id = ? ORDER BY start_time",
+                (trace_id,),
+            ).fetchall()
+            if not rows:
+                continue
+            spans = []
+            for r in rows:
+                spans.append({
+                    "trace_id": r["trace_id"],
+                    "span_id": r["span_id"],
+                    "parent_span_id": r["parent_span_id"],
+                    "name": r["name"],
+                    "kind": r["kind"],
+                    "service": r["service"],
+                    "start_time": r["start_time"],
+                    "duration_ms": r["duration_ms"],
+                    "status": r["status"],
+                    "status_message": r["status_message"],
+                    "attributes": json.loads(r["attributes"]),
+                })
+            root_spans = [s for s in spans if not s["parent_span_id"]]
+            root = root_spans[0] if root_spans else spans[0]
+            total_duration = max((s["duration_ms"] for s in spans), default=0)
+            has_error = any(s["status"] == "error" for s in spans)
+            agent = ""
+            for s in spans:
+                a = s.get("attributes", {})
+                agent = (
+                    str(a.get("openclaw.channel", ""))
+                    or str(a.get("openclaw.agent", ""))
+                    or str(a.get("gen_ai.agent", ""))
+                )
+                if agent:
+                    break
+            traces.append({
+                "trace_id": trace_id,
+                "root_span": root["name"],
+                "service": root.get("service", ""),
+                "agent": agent,
+                "start_time": root["start_time"],
+                "duration_ms": round(total_duration, 2),
+                "span_count": len(spans),
+                "has_error": has_error,
+                "spans": spans,
+            })
+        conn.close()
+    except Exception:
+        logger.exception("Failed to read traces database")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Failed to read traces database"},
+        )
+    return {
+        "count": len(traces),
+        "traces": traces,
+    }
+
+
 async def _check_database(session: AsyncSession) -> dict:
     """Probe database connectivity with SELECT 1."""
     from sqlalchemy import text

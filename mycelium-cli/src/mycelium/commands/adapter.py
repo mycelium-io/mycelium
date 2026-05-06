@@ -74,6 +74,7 @@ def adapter_main(ctx: typer.Context) -> None:
 
 _OPENCLAW_STEPS = {
     "otel": "configure OpenClaw diagnostics-otel plugin to export to the OTLP receiver",
+    "deep-observability": "install and configure the openclaw-deep-observability-plugin for hierarchical traces",
     "docker-env": "show env vars for Docker-based experiment agents",
 }
 
@@ -242,8 +243,8 @@ def add(
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Show what would be installed without doing it"
     ),
-    step: str | None = typer.Option(
-        None, "--step", help=f"Run a follow-up setup step: {', '.join(_OPENCLAW_STEPS)}"
+    step: list[str] | None = typer.Option(
+        None, "--step", help=f"Run a follow-up setup step (repeatable): {', '.join(_OPENCLAW_STEPS)}"
     ),
     reinstall: bool = typer.Option(
         False, "--reinstall", help="Reinstall assets even if adapter is already registered"
@@ -321,23 +322,33 @@ def add(
         config = MyceliumConfig.load()
 
         # ── Follow-up steps run independently of the base install ────────────
-        if step is not None:
+        if step:
             if adapter_type != "openclaw":
                 typer.secho(
                     "--step is only supported for the 'openclaw' adapter.", fg=typer.colors.RED
                 )
                 raise typer.Exit(1)
-            if step not in _OPENCLAW_STEPS:
-                known_steps = ", ".join(_OPENCLAW_STEPS)
-                typer.secho(
-                    f"Unknown step '{step}'. Known steps: {known_steps}", fg=typer.colors.RED
-                )
-                raise typer.Exit(1)
-            if step == "docker-env":
-                _step_docker_env(config)
-            elif step == "otel":
-                if _configure_otel(profile=openclaw_profile, container=openclaw_container):
-                    _restart_gateway_if_needed(openclaw_profile, openclaw_container)
+            for s in step:
+                if s not in _OPENCLAW_STEPS:
+                    known_steps = ", ".join(_OPENCLAW_STEPS)
+                    typer.secho(
+                        f"Unknown step '{s}'. Known steps: {known_steps}", fg=typer.colors.RED
+                    )
+                    raise typer.Exit(1)
+            needs_restart = False
+            for s in step:
+                if s == "docker-env":
+                    _step_docker_env(config)
+                elif s == "otel":
+                    if _configure_otel(profile=openclaw_profile, container=openclaw_container):
+                        needs_restart = True
+                elif s == "deep-observability":
+                    if _configure_deep_observability(
+                        profile=openclaw_profile, container=openclaw_container
+                    ):
+                        needs_restart = True
+            if needs_restart:
+                _restart_gateway_if_needed(openclaw_profile, openclaw_container)
             return
 
         # ── Base install ──────────────────────────────────────────────────────
@@ -1632,6 +1643,131 @@ def _configure_otel(
 
     typer.secho("  ✓ diagnostics-otel enabled in openclaw.json", fg=typer.colors.GREEN)
     typer.echo(f"    endpoint: {endpoint}")
+    return True
+
+
+_DEEP_OBS_PLUGIN_ID = "openclaw-deep-observability-plugin"
+_DEEP_OBS_CLAWHUB_SPEC = "clawhub:openclaw-deep-observability-plugin"
+
+
+def _configure_deep_observability(
+    port: int | None = None,
+    profile: str | None = None,
+    container: str | None = None,
+) -> bool:
+    """Install and configure the openclaw-deep-observability-plugin.
+
+    1. Runs ``openclaw plugins install`` from ClawhHub (if not already installed)
+    2. Adds the plugin to ``plugins.allow`` and ``plugins.entries`` with
+       OTLP endpoint config matching the collector port
+    3. Patches model cost data (same as --step=otel)
+    """
+    resolved_port = port if port is not None else 4318
+    env_port = os.environ.get("MYCELIUM_METRICS_PORT")
+    if port is None and env_port:
+        try:
+            p = int(env_port)
+            if 1 <= p <= 65535:
+                resolved_port = p
+        except ValueError:
+            pass
+    host = "host.docker.internal" if container else "localhost"
+    endpoint = f"http://{host}:{resolved_port}"
+
+    # ── 1. Install via openclaw CLI if not already present ─────────────────
+    typer.echo("  Installing openclaw-deep-observability-plugin from ClawhHub...")
+    install_cmd = _openclaw_cmd(
+        ["openclaw", "plugins", "install", _DEEP_OBS_CLAWHUB_SPEC],
+        profile,
+        container,
+    )
+    result = subprocess.run(install_cmd, text=True, capture_output=True)
+    if result.returncode != 0:
+        combined = ((result.stderr or "") + (result.stdout or "")).lower()
+        if "already exists" in combined or "already installed" in combined:
+            typer.secho("  ✓ plugin already installed", fg=typer.colors.GREEN)
+        else:
+            typer.secho(
+                f"  ✗ Plugin install failed (exit {result.returncode})",
+                fg=typer.colors.RED,
+            )
+            stderr = (result.stderr or "").strip()
+            if stderr:
+                typer.echo(f"    {stderr[:300]}")
+            return False
+    else:
+        typer.secho("  ✓ plugin installed", fg=typer.colors.GREEN)
+
+    if container:
+        _wait_container_healthy(container)
+
+    # ── 2. Configure in openclaw.json ──────────────────────────────────────
+    if container:
+        config_path_str = _container_config_path(container, profile)
+        cfg = _read_container_json(container, config_path_str)
+        if cfg is None:
+            typer.secho(f"  ✗ {config_path_str} not found in container.", fg=typer.colors.RED)
+            return False
+    else:
+        state_dir = _openclaw_state_dir(profile)
+        config_path = state_dir / "openclaw.json"
+        if not config_path.exists():
+            typer.secho(f"  ✗ {config_path} not found.", fg=typer.colors.RED)
+            return False
+        try:
+            cfg = json_module.loads(config_path.read_text())
+        except (json_module.JSONDecodeError, OSError) as exc:
+            typer.secho(f"  ✗ Could not read openclaw.json: {exc}", fg=typer.colors.RED)
+            return False
+
+    try:
+        plugins = cfg.setdefault("plugins", {})
+        allow_list = plugins.setdefault("allow", [])
+        if _DEEP_OBS_PLUGIN_ID not in allow_list:
+            allow_list.append(_DEEP_OBS_PLUGIN_ID)
+
+        entries = _normalize_plugin_entries(plugins)
+        entries[_DEEP_OBS_PLUGIN_ID] = {
+            "enabled": True,
+            "config": {
+                "endpoint": endpoint,
+                "protocol": "http/protobuf",
+                "traces": True,
+                "metrics": True,
+                "logs": False,
+                "captureContent": False,
+                "metricsIntervalMs": 5000,
+            },
+        }
+
+        model_changes = _patch_model_cost_and_compat(cfg)
+        for desc in model_changes:
+            typer.secho(f"  ✓ patched {desc}", fg=typer.colors.GREEN)
+
+        cfg_json = json_module.dumps(cfg, indent=2) + "\n"
+
+        if container:
+            result = subprocess.run(
+                ["docker", "exec", "-i", container, "sh", "-c", f"cat > {config_path_str}"],
+                input=cfg_json,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                typer.secho(
+                    f"  ✗ Could not write openclaw.json: {result.stderr}", fg=typer.colors.RED
+                )
+                return False
+        else:
+            config_path.write_text(cfg_json)
+
+    except OSError as exc:
+        typer.secho(f"  ✗ Could not write openclaw.json: {exc}", fg=typer.colors.RED)
+        return False
+
+    typer.secho(f"  ✓ {_DEEP_OBS_PLUGIN_ID} enabled in openclaw.json", fg=typer.colors.GREEN)
+    typer.echo(f"    endpoint: {endpoint}")
+    typer.echo("    traces: true, metrics: true, captureContent: false")
     return True
 
 

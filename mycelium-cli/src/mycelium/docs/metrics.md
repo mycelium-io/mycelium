@@ -11,14 +11,21 @@ HTTP polling) — and writes it to a single JSON file for the CLI to render.
 │   OpenClaw   │ ──────────────────────▶ │  Metrics Collector │
 │   Gateway    │   /v1/metrics           │  (localhost:4318)  │
 │              │   /v1/traces            │                    │
-└──────────────┘                         │  ┌──────────────┐  │
-                                         │  │ MetricsStore │  │
-┌──────────────┐   GET /api/metrics      │  │  (in-memory) │  │
-│  Mycelium    │ ◀ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │  └──────┬───────┘  │
-│  Backend     │  (polled every 30s)     │         │ flush    │
+│  (diagnostics│   /v1/logs              │  ┌──────────────┐  │
+│  -otel  and  │                         │  │ MetricsStore │  │
+│  deep-obs    │                         │  │  (in-memory) │  │
+│  plugins)    │                         │  └──────┬───────┘  │
+└──────────────┘                         │         │ flush    │
+                                         │  ┌──────┴───────┐  │
+┌──────────────┐   GET /api/metrics      │  │  TraceStore  │  │
+│  Mycelium    │ ◀ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │  │  (SQLite)    │  │
+│  Backend     │  (polled every 30s)     │  └──────┬───────┘  │
 │  (FastAPI)   │                         └─────────┼──────────┘
-└──────────────┘                                   ▼
-                                         ~/.mycelium/metrics.json
+│              │                                   ▼
+│  GET /api/   │                   ┌───────────────────────────┐
+│  traces/     │ ◀─reads─────────  │ ~/.mycelium/metrics.json  │
+│  recent      │                   │ ~/.mycelium/traces.db     │
+└──────────────┘                   └───────────────────────────┘
                                                    │
                                                    ▼
                                          ┌──────────────────┐
@@ -46,12 +53,14 @@ variable.
 | `mycelium metrics show --json` | Dump raw JSON for scripting                  |
 | `mycelium metrics show --workspace` | Include per-file workspace breakdowns   |
 | `mycelium metrics show --include-heartbeat` | Include OpenClaw `heartbeat` channel tokens in totals (excluded by default) |
+| `mycelium adapter add openclaw --step=otel --step=deep-observability` | Configure both OTLP plugins in one command (see below) |
 
 ## Files Created
 
 | Path                            | Purpose                              |
 | ------------------------------- | ------------------------------------ |
 | `~/.mycelium/metrics.json`      | Aggregated metrics (counters, histograms, sessions, backend snapshot) |
+| `~/.mycelium/traces.db`         | SQLite database of OTLP trace spans (7-day retention) |
 | `~/.mycelium/pricing.json`      | User-local pricing cache (written by `update-pricing`) |
 | `~/.mycelium/collector.pid`     | PID and port of the background collector process |
 | `~/.mycelium/collector.log`     | Stdout/stderr log from the background collector  |
@@ -59,12 +68,17 @@ variable.
 `metrics.json` is atomically updated (write to `.tmp`, rename) on every OTLP
 ingestion and on graceful shutdown.
 
+`traces.db` is a WAL-mode SQLite database written by the `TraceStore`.
+Spans older than 7 days are automatically purged hourly and at shutdown.
+
 ## What We Collect
 
 ### Source 1: OpenClaw OTLP Telemetry
 
 The collector listens on `localhost:4318` and accepts standard OTLP/HTTP
-protobuf payloads from OpenClaw's `diagnostics-otel` plugin.
+protobuf payloads on `/v1/metrics`, `/v1/traces`, and `/v1/logs`. The
+`/v1/logs` endpoint is acknowledged (200) but not stored — it exists so
+the deep observability plugin doesn't get rejected for log payloads.
 
 #### Counters (from OTLP `sum` metrics)
 
@@ -108,6 +122,108 @@ Spans named `openclaw.model.usage` are tracked per session. Fields extracted:
 - Duration, timestamp, cumulative turn count
 
 Up to 200 sessions are retained (oldest evicted).
+
+### Deep Observability Plugin
+
+The `openclaw-deep-observability-plugin` provides richer, hierarchical OTLP
+traces compared to the built-in `diagnostics-otel` plugin. It emits
+parent-child span trees with per-tool timing, LLM call isolation, and
+session lifecycle spans.
+
+The plugin works for **root agents** and **peer agents** (independent
+OpenClaw sessions) — which is how Mycelium's agents are structured. It
+does **not** emit traces for internal sub-agent calls within a single
+OpenClaw session.
+
+#### Setup
+
+```bash
+mycelium adapter add openclaw --step=otel --step=deep-observability
+```
+
+Both steps should be run together. `--step=otel` configures the built-in
+`diagnostics-otel` plugin which emits the flat counters and histograms
+that power `mycelium metrics show`. `--step=deep-observability` adds the
+hierarchical trace spans stored in `traces.db`. Without `--step=otel`,
+the OpenClaw panels in `mycelium metrics show` will have no data.
+
+The `--step=deep-observability` portion:
+
+1. Installs the plugin from ClawhHub (`openclaw plugins install`)
+2. Adds the plugin to `plugins.allow` and `plugins.entries` in
+   `~/.openclaw/openclaw.json` with the OTLP endpoint matching the
+   collector port
+3. Patches model cost and `compat.supportsUsageInStreaming` settings
+4. Restarts the OpenClaw gateway to pick up the config
+
+The resulting `openclaw.json` plugin entry looks like:
+
+```json
+{
+  "plugins": {
+    "allow": ["openclaw-deep-observability-plugin"],
+    "entries": {
+      "openclaw-deep-observability-plugin": {
+        "enabled": true,
+        "config": {
+          "endpoint": "http://localhost:4318",
+          "protocol": "http/protobuf",
+          "traces": true,
+          "metrics": true,
+          "logs": false,
+          "captureContent": false,
+          "metricsIntervalMs": 5000
+        }
+      }
+    }
+  }
+}
+```
+
+When running OpenClaw in a Docker container, the endpoint is automatically
+set to `http://host.docker.internal:4318`.
+
+The deep observability plugin and the built-in `diagnostics-otel` plugin
+can run side by side. Both emit to the same collector. The deep plugin's
+traces are richer (hierarchical spans) while `diagnostics-otel` provides
+the flat counter/histogram metrics used by `mycelium metrics show`.
+
+### Trace Storage (TraceStore)
+
+Raw OTLP trace spans are persisted to `~/.mycelium/traces.db` (SQLite,
+WAL mode) by the `TraceStore` class in `collector.py`. This runs in
+parallel with the `MetricsStore` — on every `/v1/traces` POST, the
+collector feeds bytes to both stores.
+
+**Schema:**
+
+| Column           | Type  | Description                                     |
+| ---------------- | ----- | ----------------------------------------------- |
+| `trace_id`       | TEXT  | Hex trace ID                                    |
+| `span_id`        | TEXT  | Hex span ID (primary key)                       |
+| `parent_span_id` | TEXT  | Parent span ID (empty for root spans)           |
+| `name`           | TEXT  | Span operation name                             |
+| `kind`           | TEXT  | `internal`, `server`, `client`, `producer`, `consumer` |
+| `service`        | TEXT  | `service.name` from the OTLP resource           |
+| `start_time`     | TEXT  | ISO 8601 timestamp                              |
+| `duration_ms`    | REAL  | Span duration in milliseconds                   |
+| `status`         | TEXT  | `unset`, `ok`, or `error`                       |
+| `status_message` | TEXT  | Error message when status is `error`            |
+| `attributes`     | TEXT  | JSON-encoded span attributes                    |
+| `created_at`     | TEXT  | Insertion timestamp (used for retention cleanup) |
+
+**Retention:** Spans older than 7 days are deleted automatically
+(checked hourly and at collector shutdown). The cleanup runs
+`PRAGMA incremental_vacuum` to reclaim disk space.
+
+**API access:** The FastAPI backend exposes `GET /api/observability/traces/recent?limit=100`
+which reads `traces.db` directly and returns trace summaries with full span
+trees for waterfall rendering. Each trace includes `root_span`, `agent`,
+`duration_ms`, `span_count`, `has_error`, and the full `spans` array.
+
+The backend also exposes `GET /api/observability/collector` which returns the
+collector-written `metrics.json` contents (counters, histograms, sessions,
+scrape) — excluding the `backend` key that duplicates `GET /api/observability`.
 
 ### Source 2: Mycelium Backend Metrics
 
@@ -402,11 +518,12 @@ users can run `mycelium metrics reset` to start fresh.
 | File | Role |
 | ---- | ---- |
 | `mycelium-cli/src/mycelium/commands/metrics.py`  | CLI commands, display rendering, pricing lookup |
+| `mycelium-cli/src/mycelium/commands/adapter.py`  | `--step=otel` and `--step=deep-observability` setup |
 | `mycelium-cli/src/mycelium/data/pricing.json`    | Generated model and embedding pricing data |
-| `mycelium-cli/src/mycelium/collector.py`          | OTLP HTTP receiver, MetricsStore, backend poller |
+| `mycelium-cli/src/mycelium/collector.py`          | OTLP HTTP receiver, MetricsStore, TraceStore, backend poller |
 | `mycelium-cli/src/mycelium/collector_main.py`     | Entrypoint for background collector process |
 | `fastapi-backend/app/services/metrics.py`         | Backend in-process metrics store |
-| `fastapi-backend/app/main.py`                     | `GET /api/metrics` endpoint |
+| `fastapi-backend/app/main.py`                     | `GET /api/observability`, `GET /api/observability/collector`, `GET /api/observability/traces/recent` |
 | `scripts/update-pricing.py`                       | Generates pricing.json from litellm |
 
 ## Metrics Roadmap
@@ -491,6 +608,10 @@ the features are wired up:
       `mycelium adapter add openclaw --step=otel` or manually in
       `~/.openclaw/openclaw.json`. Required after adding new models or
       re-running `openclaw configure`.
+- [ ] **Deep observability plugin** — if not yet installed, run
+      `mycelium adapter add openclaw --step=deep-observability` on each
+      machine running an OpenClaw gateway. Verify with
+      `grep deep-observability ~/.openclaw/openclaw.json`.
 - [ ] **Pricing update** — run `mycelium metrics update-pricing` to fetch the
       latest pricing from the LiteLLM API and write `~/.mycelium/pricing.json`.
       Any models found in collected metrics that aren't in the built-in list are
