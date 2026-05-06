@@ -81,9 +81,13 @@ async def _spawn_session_room(parent_name: str, db: AsyncSession) -> Room:
     if existing:
         return existing
 
-    # Create a new session room
+    # Create a new session room, inheriting workspace/mas from parent
     short_id = uuid4().hex[:8]
     session_name = f"{parent_name}:session:{short_id}"
+
+    parent_result = await db.execute(select(Room).where(Room.name == parent_name))
+    parent_room = parent_result.scalar_one_or_none()
+
     session_room = Room(
         name=session_name,
         is_public=True,
@@ -91,6 +95,8 @@ async def _spawn_session_room(parent_name: str, db: AsyncSession) -> Room:
         is_namespace=False,
         parent_namespace=parent_name,
         namespace=parent_name,
+        workspace_id=parent_room.workspace_id if parent_room else None,
+        mas_id=parent_room.mas_id if parent_room else None,
     )
     db.add(session_room)
     await db.flush()
