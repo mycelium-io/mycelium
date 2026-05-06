@@ -53,6 +53,7 @@ variable.
 | `mycelium metrics show --json` | Dump raw JSON for scripting                  |
 | `mycelium metrics show --workspace` | Include per-file workspace breakdowns   |
 | `mycelium metrics show --include-heartbeat` | Include OpenClaw `heartbeat` channel tokens in totals (excluded by default) |
+| `mycelium up --metrics`   | Start the stack with the Dockerized OTLP collector |
 | `mycelium adapter add openclaw --step=otel --step=deep-observability` | Configure both OTLP plugins in one command (see below) |
 
 ## Files Created
@@ -502,6 +503,57 @@ hit rate, read/write/uncached input token volumes, and reads-per-write ratio.
 It intentionally has no dollar figure — prompt caching is a feature of the LLM
 provider (e.g. Anthropic), not Mycelium.
 
+## Containerized Collector (Docker)
+
+The OTLP collector runs as a Docker Compose service alongside the rest of
+the Mycelium stack.
+
+### Starting
+
+```bash
+mycelium up --metrics
+```
+
+This adds `--profile metrics` to the `docker compose up` command, which
+starts the `mycelium-collector` service. It depends on `mycelium-backend`
+being healthy before starting.
+
+The collector is accessible at `http://localhost:4318` (configurable via
+`MYCELIUM_METRICS_PORT` in `~/.mycelium/.env`).
+
+### How It Works
+
+The `mycelium-collector` service is defined in `compose.yml` under the
+`metrics` profile:
+
+- **Image:** Built from `Dockerfile.collector` (Python 3.12-slim with
+  only the OTLP/protobuf dependencies, no full CLI install)
+- **Port:** `${MYCELIUM_METRICS_PORT:-4318}:4318`
+- **Volume:** `~/.mycelium` is mounted at `/root/.mycelium` so
+  `metrics.json` and `traces.db` are shared with the host
+- **Backend URL:** `http://mycelium-backend:8000` (Docker network, not
+  localhost)
+- **Health check:** `GET /health` on port 4318 returns `{"status":"ok"}`
+
+### Management
+
+`mycelium down` and `mycelium logs` automatically include
+`--profile metrics` when they detect the collector container is running,
+so they manage it correctly without needing the `--metrics` flag.
+
+### Development Overrides
+
+`compose-dev.yml` provides a `mycelium-collector` entry with
+`image: mycelium-collector:dev` and the `~/.mycelium/.env` env file,
+matching the pattern used by other dev-mode services.
+
+### Environment Variables
+
+| Variable                | Default          | Purpose                              |
+| ----------------------- | ---------------- | ------------------------------------ |
+| `MYCELIUM_METRICS_PORT` | `4318`           | Host port for the collector          |
+| `MYCELIUM_DATA_DIR`     | `~/.mycelium`    | Data directory mounted into container |
+
 ## Schema Evolution
 
 When new counter or histogram keys are added to the collector, old
@@ -519,9 +571,13 @@ users can run `mycelium metrics reset` to start fresh.
 | ---- | ---- |
 | `mycelium-cli/src/mycelium/commands/metrics.py`  | CLI commands, display rendering, pricing lookup |
 | `mycelium-cli/src/mycelium/commands/adapter.py`  | `--step=otel` and `--step=deep-observability` setup |
+| `mycelium-cli/src/mycelium/commands/instance.py`  | `mycelium up --metrics`, `down`, `logs` with collector awareness |
 | `mycelium-cli/src/mycelium/data/pricing.json`    | Generated model and embedding pricing data |
 | `mycelium-cli/src/mycelium/collector.py`          | OTLP HTTP receiver, MetricsStore, TraceStore, backend poller |
 | `mycelium-cli/src/mycelium/collector_main.py`     | Entrypoint for background collector process |
+| `mycelium-cli/Dockerfile.collector`               | Minimal image for the containerized collector |
+| `mycelium-cli/src/mycelium/docker/compose.yml`    | `mycelium-collector` service definition (metrics profile) |
+| `mycelium-cli/src/mycelium/docker/compose-dev.yml`| Dev overrides for collector image/env |
 | `fastapi-backend/app/services/metrics.py`         | Backend in-process metrics store |
 | `fastapi-backend/app/main.py`                     | `GET /api/observability`, `GET /api/observability/collector`, `GET /api/observability/traces/recent` |
 | `scripts/update-pricing.py`                       | Generates pricing.json from litellm |

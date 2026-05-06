@@ -28,6 +28,12 @@ services:
       CFN_MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
       COGNITION_FABRIC_NODE_URL: http://ioc-cognition-fabric-node-svc:9002
 
+  mycelium-collector:
+    image: mycelium-collector:dev
+    env_file:
+      - path: ~/.mycelium/.env
+        required: false
+
   ioc-cfn-mgmt-plane-svc:
     env_file:
       - path: ~/.mycelium/.env

@@ -93,6 +93,44 @@ services:
     ports:
       - "${MYCELIUM_UI_PORT:-3000}:3000"
 
+  # ── OTLP Collector (profile: metrics) ──────────────────────────────────────
+  #
+  # Lightweight HTTP receiver for OpenClaw diagnostics-otel and deep-
+  # observability traces/metrics. Writes ~/.mycelium/metrics.json and
+  # traces.db, and polls the backend for coordination metrics.
+  # Opt-in via `mycelium up --metrics`.
+
+  mycelium-collector:
+    build:
+      context: ../../../
+      dockerfile: Dockerfile.collector
+    image: mycelium-collector:local
+    pull_policy: never
+    container_name: mycelium-collector
+    restart: unless-stopped
+    profiles: [metrics]
+    env_file:
+      - path: ../.env
+        required: false
+    depends_on:
+      mycelium-backend:
+        condition: service_healthy
+    ports:
+      - "${MYCELIUM_METRICS_PORT:-4318}:4318"
+    volumes:
+      - ${MYCELIUM_DATA_DIR:-~/.mycelium}:/root/.mycelium
+    command: >-
+      python -m mycelium.collector_main
+      --port 4318
+      --output /root/.mycelium/metrics.json
+      --backend-url http://mycelium-backend:8000
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:4318/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
   # ── Graph Viewer (optional, for development) ─────────────────────────────────
 
   mycelium-graph-viewer:
