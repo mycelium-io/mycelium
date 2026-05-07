@@ -296,13 +296,14 @@ def init(
 
 
 @doc_ref(
-    usage="mycelium up [--build]",
+    usage="mycelium up [--build] [--ui]",
     desc="Start the Mycelium stack via <code>docker compose up</code>.",
     group="setup",
 )
 def start(
     ctx: typer.Context,
     build: bool = typer.Option(False, "--build", help="Rebuild images before starting"),
+    ui: bool = typer.Option(False, "--ui", help="Also start the frontend (mycelium-frontend)"),
 ) -> None:
     """
     Start Mycelium services.
@@ -313,6 +314,7 @@ def start(
     Examples:
         mycelium up          # start all services
         mycelium up --build  # rebuild images first
+        mycelium up --ui     # also start the frontend at http://localhost:3000
     """
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
@@ -327,6 +329,8 @@ def start(
         base = _compose_base_cmd(compose_path)
         if cfn:
             base = base + ["--profile", "cfn"]
+        if ui:
+            base = base + ["--profile", "ui"]
         up_args = ["up", "-d", "--remove-orphans"]
         if build:
             up_args.append("--build")
@@ -381,6 +385,8 @@ def start(
 
         typer.secho("Services started.", fg=typer.colors.GREEN)
         typer.echo("  mycelium-backend  → http://localhost:8000")
+        if ui:
+            typer.echo("  mycelium-frontend → http://localhost:3000")
 
     except typer.Exit:
         raise

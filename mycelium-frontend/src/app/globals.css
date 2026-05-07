@@ -1,41 +1,177 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg: #050a12;
-  --color-surface: #0c1524;
-  --color-border: #162035;
-  --color-accent: #38bdf8;
-  --color-muted: #4a6080;
+  --color-bg: #0c0d10;
+  --color-surface: #111216;
+  --color-paper: #14161b;
+  --color-border: rgba(234, 234, 234, 0.10);
+  --color-border2: rgba(234, 234, 234, 0.22);
+  --color-accent: #5dd4e0;
+  --color-text: #eaeaea;
+  --color-text2: #a8a6a0;
+  --color-muted: #b8b5ae;
+  --color-dim: #46443e;
+
+  /* ── font-size scale ─────────────────────────────────────────────────
+   * Five semantic tokens. Pick by role, not pixels.
+   *   text-micro   counts, timestamps, tabular nums, decorations
+   *   text-label   caps-mono labels (uppercase, tracked)
+   *   text-body    default table cells, secondary copy
+   *   text-ui      room names, prominent identifiers
+   *   text-display serif brand wordmark
+   * ──────────────────────────────────────────────────────────────────── */
+  --text-micro:   12px;
+  --text-label:   14px;
+  --text-body:    15px;
+  --text-ui:      16px;
+  --text-display: 25px;
+
+  --font-mono: "Geist Mono", "SF Mono", "JetBrains Mono", Menlo, monospace;
+  --font-sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-serif: "Cormorant Garamond", Georgia, serif;
 }
 
 :root {
-  --bg: #050a12;
-  --surface: #0c1524;
-  --card: #0c1524;
-  --border: #162035;
-  --accent: #38bdf8;
+  --bg: #0c0d10;
+  --surface: #111216;
+  --paper: #14161b;
+  --card: #14161b;
+  --border: rgba(234, 234, 234, 0.10);
+  --border2: rgba(234, 234, 234, 0.22);
+  --accent: #5dd4e0;
+  --accent2: #7dd3fc;
   --green: #34d399;
   --purple: #c084fc;
   --yellow: #fbbf24;
-  --text: #e2eaf6;
-  --muted: #4a6080;
+  --text: #eaeaea;
+  --text2: #a8a6a0;
+  --muted: #b8b5ae;
+  --dim: #46443e;
 }
 
+html {
+  /* +25% — scales rem-based Tailwind defaults (text-xs/sm/base etc) */
+  font-size: 20px;
+}
 body {
   background: var(--bg);
   color: var(--text);
+  font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 ::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
-::-webkit-scrollbar-track {
-  background: transparent;
-}
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: #1e2d42;
+  background: rgba(255, 255, 255, 0.10);
+  border-radius: 0;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.18); }
+
+/* ── Onyx atoms (used by RM-000 + future screens) ── */
+
+.caps-mono {
+  font-family: 'Geist Mono', 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+  font-size: var(--text-label);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.caps-mono-sm {
+  font-family: 'Geist Mono', 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+  font-size: var(--text-micro);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.square-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: transparent;
+  border: 1.5px solid currentColor;
+  flex-shrink: 0;
+}
+.square-dot.filled { background: currentColor; }
+.square-dot.pulse { animation: myc-pulse 1.6s ease-in-out infinite; }
+@keyframes myc-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* ── markdown body ── */
+.markdown-body { color: inherit; }
+.markdown-body > *:first-child { margin-top: 0; }
+.markdown-body > *:last-child { margin-bottom: 0; }
+.markdown-body p { margin: 0.5em 0; line-height: 1.55; color: var(--text2); }
+.markdown-body strong { color: var(--text); font-weight: 600; }
+.markdown-body em { font-style: italic; color: var(--text); }
+.markdown-body ul, .markdown-body ol { margin: 0.5em 0; padding-left: 1.5em; }
+.markdown-body ul { list-style: disc; }
+.markdown-body ol { list-style: decimal; }
+.markdown-body li { margin: 0.15em 0; line-height: 1.55; color: var(--text2); }
+.markdown-body li::marker { color: var(--muted); }
+.markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
+  margin: 0.8em 0 0.4em; color: var(--text); font-weight: 700; line-height: 1.25;
+  font-family: 'IBM Plex Sans', sans-serif;
+}
+.markdown-body h1 { font-size: var(--text-ui); }
+.markdown-body h2 { font-size: var(--text-body); text-transform: uppercase; letter-spacing: 0.08em; color: var(--text2); }
+.markdown-body h3 { font-size: var(--text-label); text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+.markdown-body h4 { font-size: var(--text-label); color: var(--text2); }
+.markdown-body code {
+  font-family: 'Geist Mono', 'SF Mono', Menlo, monospace;
+  font-size: 0.9em;
+  padding: 1px 5px;
+  background: rgba(255,255,255,0.06);
   border-radius: 3px;
+  color: var(--accent);
 }
-::-webkit-scrollbar-thumb:hover {
-  background: #2a3f5a;
+.markdown-body pre {
+  margin: 0.5em 0;
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.04);
+  border-left: 2px solid var(--border2);
+  overflow-x: auto;
+  font-family: 'Geist Mono', 'SF Mono', Menlo, monospace;
+  font-size: var(--text-micro);
+  line-height: 1.5;
 }
+.markdown-body pre code {
+  background: none;
+  padding: 0;
+  color: var(--text);
+}
+.markdown-body blockquote {
+  margin: 0.5em 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--border2);
+  color: var(--muted);
+  font-style: italic;
+}
+.markdown-body table {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  font-size: var(--text-label);
+}
+.markdown-body th, .markdown-body td {
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  text-align: left;
+}
+.markdown-body th {
+  background: rgba(255,255,255,0.04);
+  font-weight: 600;
+  color: var(--text);
+  text-transform: uppercase;
+  font-family: 'Geist Mono', 'SF Mono', Menlo, monospace;
+  font-size: var(--text-micro);
+  letter-spacing: 0.08em;
+}
+.markdown-body td { color: var(--text2); }
+.markdown-body hr { border: none; border-top: 1px solid var(--border); margin: 0.8em 0; }
+.markdown-body a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }

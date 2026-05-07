@@ -14,6 +14,7 @@ Planned:
 
 import importlib.resources
 import json as json_module
+import os
 import shutil
 import subprocess
 import tempfile
@@ -72,6 +73,7 @@ def adapter_main(ctx: typer.Context) -> None:
 
 
 _OPENCLAW_STEPS = {
+    "otel": "configure OpenClaw diagnostics-otel plugin to export to the OTLP receiver",
     "docker-env": "show env vars for Docker-based experiment agents",
 }
 
@@ -277,7 +279,7 @@ def add(
         mycelium adapter add openclaw --reinstall
         mycelium adapter add openclaw --openclaw-profile work
         mycelium adapter add openclaw --openclaw-container openclaw
-        mycelium adapter add openclaw --step=local-gateway
+        mycelium adapter add openclaw --step=otel
         mycelium adapter add openclaw --step=docker-env
     """
     try:
@@ -333,6 +335,9 @@ def add(
                 raise typer.Exit(1)
             if step == "docker-env":
                 _step_docker_env(config)
+            elif step == "otel":
+                if _configure_otel(profile=openclaw_profile, container=openclaw_container):
+                    _restart_gateway_if_needed(openclaw_profile, openclaw_container)
             return
 
         # ── Base install ──────────────────────────────────────────────────────
@@ -1445,6 +1450,223 @@ def _docker_api_url(config: "MyceliumConfig") -> str:
         hostname = "host.docker.internal"
     scheme = parsed.scheme or "http"
     return f"{scheme}://{hostname}:{port}"
+
+
+def _normalize_plugin_entries(plugins_section: dict) -> dict:
+    """Ensure plugins.entries is a dict (record), converting from list if needed.
+
+    OpenClaw validates entries as a record (``{plugin_id: {enabled: bool}}``).
+    Mutates *plugins_section* in place and returns the dict.
+    """
+    entries = plugins_section.get("entries")
+    if isinstance(entries, dict):
+        return entries
+    if isinstance(entries, list):
+        converted: dict = {}
+        for e in entries:
+            if isinstance(e, dict):
+                key = e.get("name") or e.get("id")
+                if key:
+                    converted[key] = {k: v for k, v in e.items() if k not in ("name", "id")}
+        entries = converted
+    else:
+        entries = {}
+    plugins_section["entries"] = entries
+    return entries
+
+
+def _patch_model_cost_and_compat(cfg: dict) -> list[str]:
+    """Patch zero-cost model entries and add ``compat.supportsUsageInStreaming``.
+
+    OpenClaw uses the ``cost`` block on each model to calculate ``openclaw.cost.usd``.
+    If the costs are all zero (the default from ``openclaw configure``), the OTLP
+    cost metric will always be $0.  This function fills in real pricing from
+    Mycelium's pricing data and adds the ``compat`` flag that enables token
+    usage reporting in streamed responses.
+
+    OpenClaw cost values are **USD per 1M tokens**, while Mycelium's pricing
+    data stores per-token rates.  This function converts accordingly.
+
+    Returns a list of human-readable change descriptions (empty if nothing changed).
+    """
+    PER_M = 1_000_000
+
+    changes: list[str] = []
+
+    try:
+        from mycelium.commands.metrics import _get_model_pricing
+    except Exception:
+        return changes
+
+    providers = cfg.get("models", {}).get("providers", {})
+    for _provider_name, provider in providers.items():
+        for model in provider.get("models", []):
+            model_id = model.get("id", "")
+            if not model_id:
+                continue
+
+            cost = model.get("cost", {})
+            all_zero = all(
+                cost.get(k, 0) == 0 for k in ("input", "output", "cacheRead", "cacheWrite")
+            )
+
+            if all_zero:
+                pricing, label = _get_model_pricing(model_id)
+                inp = pricing["input"]
+                if inp > 0:
+                    cache_read_rate = inp * (1 - pricing["cache_discount"])
+                    cache_write_rate = inp * (1 + pricing["cache_write_premium"])
+                    model["cost"] = {
+                        "input": inp * PER_M,
+                        "output": pricing["output"] * PER_M,
+                        "cacheRead": cache_read_rate * PER_M,
+                        "cacheWrite": cache_write_rate * PER_M,
+                    }
+                    changes.append(f"cost for {model_id} (matched: {label})")
+
+            compat = model.setdefault("compat", {})
+            if not compat.get("supportsUsageInStreaming"):
+                compat["supportsUsageInStreaming"] = True
+                changes.append(f"compat.supportsUsageInStreaming for {model_id}")
+
+    return changes
+
+
+def _configure_otel(
+    port: int | None = None,
+    profile: str | None = None,
+    container: str | None = None,
+) -> bool:
+    """Configure OpenClaw's diagnostics-otel plugin in openclaw.json."""
+    if container:
+        config_path_str = _container_config_path(container, profile)
+        result = subprocess.run(
+            ["docker", "exec", container, "cat", config_path_str],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            typer.secho(f"  ✗ {config_path_str} not found in container.", fg=typer.colors.RED)
+            typer.echo("    Run 'openclaw gateway start' first to create the config file.")
+            return False
+        try:
+            cfg = json_module.loads(result.stdout)
+        except json_module.JSONDecodeError as exc:
+            typer.secho(f"  ✗ Could not parse openclaw.json: {exc}", fg=typer.colors.RED)
+            return False
+    else:
+        state_dir = _openclaw_state_dir(profile)
+        config_path = state_dir / "openclaw.json"
+        if not config_path.exists():
+            typer.secho(f"  ✗ {config_path} not found.", fg=typer.colors.RED)
+            typer.echo("    Run 'openclaw gateway start' first to create the config file.")
+            return False
+        try:
+            cfg = json_module.loads(config_path.read_text())
+        except (json_module.JSONDecodeError, OSError) as exc:
+            typer.secho(f"  ✗ Could not read openclaw.json: {exc}", fg=typer.colors.RED)
+            return False
+
+    try:
+        resolved_port = port if port is not None else 4318
+        env_port = os.environ.get("MYCELIUM_METRICS_PORT")
+        if port is None and env_port:
+            try:
+                p = int(env_port)
+                if 1 <= p <= 65535:
+                    resolved_port = p
+            except ValueError:
+                pass
+        host = "host.docker.internal" if container else "localhost"
+        endpoint = f"http://{host}:{resolved_port}"
+
+        diagnostics = cfg.setdefault("diagnostics", {})
+        diagnostics["enabled"] = True
+        otel = diagnostics.setdefault("otel", {})
+        otel["enabled"] = True
+        otel.setdefault("serviceName", "openclaw-gateway")
+        otel.update(
+            {
+                "endpoint": endpoint,
+                "protocol": "http/protobuf",
+                "traces": True,
+                "metrics": True,
+                "logs": False,
+                "flushIntervalMs": 5000,
+            }
+        )
+
+        plugins = cfg.setdefault("plugins", {})
+        allow_list = plugins.setdefault("allow", [])
+        if "diagnostics-otel" not in allow_list:
+            allow_list.append("diagnostics-otel")
+
+        entries = _normalize_plugin_entries(plugins)
+        if "diagnostics-otel" not in entries:
+            entries["diagnostics-otel"] = {"enabled": True}
+
+        model_changes = _patch_model_cost_and_compat(cfg)
+        for desc in model_changes:
+            typer.secho(f"  ✓ patched {desc}", fg=typer.colors.GREEN)
+
+        cfg_json = json_module.dumps(cfg, indent=2) + "\n"
+
+        if container:
+            result = subprocess.run(
+                ["docker", "exec", "-i", container, "sh", "-c", f"cat > {config_path_str}"],
+                input=cfg_json,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                typer.secho(
+                    f"  ✗ Could not write openclaw.json: {result.stderr}", fg=typer.colors.RED
+                )
+                return False
+        else:
+            config_path.write_text(cfg_json)
+
+    except OSError as exc:
+        typer.secho(f"  ✗ Could not write openclaw.json: {exc}", fg=typer.colors.RED)
+        return False
+
+    typer.secho("  ✓ diagnostics-otel enabled in openclaw.json", fg=typer.colors.GREEN)
+    typer.echo(f"    endpoint: {endpoint}")
+    return True
+
+
+def _restart_gateway_if_needed(profile: str | None, container: str | None) -> None:
+    """Restart the OpenClaw gateway service to pick up config changes."""
+    typer.echo("")
+    typer.secho("  Restarting gateway to apply changes...", dim=True)
+
+    if container:
+        typer.secho(
+            "  ⚠ Container gateway: please restart the container manually.",
+            fg=typer.colors.YELLOW,
+        )
+        return
+
+    try:
+        result = subprocess.run(
+            ["systemctl", "--user", "restart", "openclaw-gateway.service"],
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        typer.secho(
+            "  ⚠ systemctl not found. Restart the OpenClaw gateway manually.",
+            fg=typer.colors.YELLOW,
+        )
+        return
+
+    if result.returncode == 0:
+        typer.secho("  ✓ openclaw-gateway.service restarted", fg=typer.colors.GREEN)
+    else:
+        typer.secho(
+            "  ⚠ Could not restart gateway service. You may need to restart it manually.",
+            fg=typer.colors.YELLOW,
+        )
 
 
 def _step_docker_env(config: "MyceliumConfig") -> None:

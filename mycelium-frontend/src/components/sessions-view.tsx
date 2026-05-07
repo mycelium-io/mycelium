@@ -92,7 +92,7 @@ function OfferBlock({ offer, tone = "indigo" }: { offer: Record<string, unknown>
       {entries.map(([k, v]) => (
         <div key={k} className="flex gap-2 items-start">
           <span className={toneColors[tone]}>{k}</span>
-          <span className="text-muted/40">=</span>
+          <span className="text-muted">=</span>
           <span className="text-white/80 break-all">{String(v)}</span>
         </div>
       ))}
@@ -106,9 +106,9 @@ function JoinCard({ event }: { event: Event }) {
   return (
     <div className="bg-cyan-500/5 border border-cyan-500/20 rounded-lg p-3">
       <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-        <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 font-bold uppercase tracking-wider">joined</span>
+        <span className="text-micro px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 font-bold uppercase tracking-wider">joined</span>
         <span className="font-mono text-sm text-cyan-200 font-semibold">{handle}</span>
-        <span className="ml-auto text-[10px] text-muted/40 font-mono">{event.time}</span>
+        <span className="ml-auto text-micro text-muted font-mono">{event.time}</span>
       </div>
       {intent && (
         <p className="text-sm text-white/85 leading-relaxed whitespace-pre-wrap">{intent}</p>
@@ -124,7 +124,7 @@ function StartCard({ event }: { event: Event }) {
       <div className="flex items-center gap-2">
         <span className="text-cyan-300 font-bold uppercase tracking-wider text-xs">Session started</span>
         <span className="text-xs text-muted">{count} agents</span>
-        <span className="ml-auto text-[10px] text-muted/40 font-mono">{event.time}</span>
+        <span className="ml-auto text-micro text-muted font-mono">{event.time}</span>
       </div>
     </div>
   );
@@ -142,22 +142,22 @@ function TickCard({ event }: { event: Event }) {
   return (
     <div className="bg-indigo-500/5 border border-indigo-500/20 rounded-lg p-3">
       <div className="flex items-center gap-2 mb-1 flex-wrap">
-        <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-300 font-bold uppercase tracking-wider whitespace-nowrap">
+        <span className="text-micro px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-300 font-bold uppercase tracking-wider whitespace-nowrap">
           round {round}
         </span>
         <span className="font-mono text-sm text-indigo-200 font-semibold">{participant}</span>
-        <span className="text-[11px] text-muted/60">{action === "respond" ? "to respond" : action}</span>
+        <span className="text-label text-muted">{action === "respond" ? "to respond" : action}</span>
         {canCounter && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-fuchsia-500/15 text-fuchsia-300 font-bold uppercase tracking-wider whitespace-nowrap">
+          <span className="text-micro px-1.5 py-0.5 rounded bg-fuchsia-500/15 text-fuchsia-300 font-bold uppercase tracking-wider whitespace-nowrap">
             can counter
           </span>
         )}
-        <span className="ml-auto text-[10px] text-muted/40 font-mono">{event.time}</span>
+        <span className="ml-auto text-micro text-muted font-mono">{event.time}</span>
       </div>
       {allowed.length > 0 && (
         <div className="flex gap-1 mt-1 flex-wrap">
           {allowed.map((a) => (
-            <span key={a} className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-muted/80 font-mono uppercase tracking-wider">
+            <span key={a} className="text-micro px-1.5 py-0.5 rounded bg-white/5 text-muted font-mono uppercase tracking-wider">
               {a}
             </span>
           ))}
@@ -165,7 +165,7 @@ function TickCard({ event }: { event: Event }) {
       )}
       {currentOffer && Object.keys(currentOffer).length > 0 && (
         <>
-          <div className="text-muted/50 uppercase tracking-wider text-[9px] mt-2">current offer</div>
+          <div className="text-muted uppercase tracking-wider text-micro mt-2">current offer</div>
           <OfferBlock offer={currentOffer} tone="indigo" />
         </>
       )}
@@ -189,10 +189,10 @@ function ResponseCard({ event }: { event: Event }) {
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-base leading-none">{s.icon}</span>
         <span className="font-mono text-sm text-white/90 font-semibold">{event.sender}</span>
-        <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider whitespace-nowrap ${s.chip}`}>
+        <span className={`text-micro px-1.5 py-0.5 rounded font-bold uppercase tracking-wider whitespace-nowrap ${s.chip}`}>
           {s.text}
         </span>
-        <span className="ml-auto text-[10px] text-muted/40 font-mono">{event.time}</span>
+        <span className="ml-auto text-micro text-muted font-mono">{event.time}</span>
       </div>
       {offer && <OfferBlock offer={offer} tone="fuchsia" />}
     </div>
@@ -211,7 +211,7 @@ function ConsensusCard({ event }: { event: Event }) {
         <div className="flex items-center gap-2 mb-2">
           <span className="text-red-400 text-lg leading-none">✗</span>
           <span className="text-red-300 font-bold uppercase tracking-wider text-xs">Negotiation failed</span>
-          <span className="ml-auto text-[10px] text-muted/40 font-mono">{event.time}</span>
+          <span className="ml-auto text-micro text-muted font-mono">{event.time}</span>
         </div>
         {plan && <p className="text-sm text-white/90 leading-relaxed whitespace-pre-wrap">{plan}</p>}
       </div>
@@ -223,7 +223,7 @@ function ConsensusCard({ event }: { event: Event }) {
       <div className="flex items-center gap-2 mb-2">
         <span className="text-emerald-400 text-lg leading-none">✓</span>
         <span className="text-emerald-300 font-bold uppercase tracking-wider text-xs">Consensus reached</span>
-        <span className="ml-auto text-[10px] text-muted/40 font-mono">{event.time}</span>
+        <span className="ml-auto text-micro text-muted font-mono">{event.time}</span>
       </div>
       {plan && <p className="text-sm text-white/90 mb-2 leading-relaxed whitespace-pre-wrap">{plan}</p>}
       {hasAssignments && <OfferBlock offer={assignments} tone="emerald" />}
@@ -237,8 +237,8 @@ function ChatCard({ event }: { event: Event }) {
     <div className="py-2 border-b border-border/20">
       <div className="flex items-baseline gap-2 mb-1">
         <span className="font-mono text-sm text-sky-300 font-semibold">{event.sender}</span>
-        <span className="text-[10px] text-muted/50 uppercase">{event.type}</span>
-        <span className="ml-auto text-[10px] text-muted/40 font-mono">{event.time}</span>
+        <span className="text-micro text-muted uppercase">{event.type}</span>
+        <span className="ml-auto text-micro text-muted font-mono">{event.time}</span>
       </div>
       <p className="text-sm text-white/90 whitespace-pre-wrap leading-relaxed">{text}</p>
     </div>
@@ -250,11 +250,11 @@ function GenericCard({ event }: { event: Event }) {
   return (
     <div className="border-l-2 border-l-muted/30 pl-3 py-1.5">
       <div className="flex items-center gap-2">
-        <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-muted/10 text-muted">
+        <span className="text-micro font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-muted/10 text-muted">
           {event.type}
         </span>
-        <span className="flex-1 text-xs text-muted/70 font-mono truncate" title={preview}>{preview}</span>
-        <span className="text-[10px] text-muted/40 font-mono">{event.time}</span>
+        <span className="flex-1 text-xs text-muted font-mono truncate" title={preview}>{preview}</span>
+        <span className="text-micro text-muted font-mono">{event.time}</span>
       </div>
     </div>
   );
@@ -335,13 +335,13 @@ function SessionFeed({ sessionName }: { sessionName: string }) {
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 px-4 py-2 border-b border-border/50">
         <span className={`w-1.5 h-1.5 rounded-full ${connected ? "bg-emerald-400 animate-pulse" : "bg-red-400"}`} />
-        <span className="text-[10px] text-muted/60 font-mono">{connected ? "live" : "reconnecting"}</span>
-        <span className="text-[10px] text-muted/40 font-mono truncate" title={sessionName}>{sessionName}</span>
-        <span className="ml-auto text-[10px] text-muted/40 font-mono">{events.length}</span>
+        <span className="text-micro text-muted font-mono">{connected ? "live" : "reconnecting"}</span>
+        <span className="text-micro text-muted font-mono truncate" title={sessionName}>{sessionName}</span>
+        <span className="ml-auto text-micro text-muted font-mono">{events.length}</span>
       </div>
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
         {events.length === 0 ? (
-          <div className="text-center text-muted/50 py-20 text-sm">No events yet</div>
+          <div className="text-center text-muted py-20 text-sm">No events yet</div>
         ) : (
           <>
             {events.map((ev) => <div key={ev.id}>{renderEvent(ev)}</div>)}
@@ -386,9 +386,9 @@ export function SessionsView({ roomName }: Props) {
 
   if (sessions.length === 0) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-center text-muted/60 text-sm px-6">
+      <div className="flex-1 flex flex-col items-center justify-center text-center text-muted text-sm px-6">
         <div className="mb-2">No sessions in this room</div>
-        <div className="text-xs text-muted/40 font-mono">
+        <div className="text-xs text-muted font-mono">
           Spawn one with <code className="text-accent/70">mycelium session join</code>
         </div>
       </div>
@@ -410,12 +410,12 @@ export function SessionsView({ roomName }: Props) {
               className={`group relative flex items-center gap-2 px-3 py-2 text-xs font-mono border-r border-border/60 transition-colors whitespace-nowrap ${
                 isActive
                   ? "bg-bg text-white"
-                  : "text-muted/70 hover:text-white hover:bg-white/5"
+                  : "text-muted hover:text-white hover:bg-white/5"
               }`}
             >
               <span className={`w-1.5 h-1.5 rounded-full ${state.dot}`} />
               <span>{shortId}</span>
-              <span className={`text-[9px] uppercase tracking-wider ${state.label}`}>{s.coordination_state}</span>
+              <span className={`text-micro uppercase tracking-wider ${state.label}`}>{s.coordination_state}</span>
               {isActive && (
                 <span className="absolute left-0 right-0 bottom-0 h-[2px] bg-accent" />
               )}
@@ -429,7 +429,7 @@ export function SessionsView({ roomName }: Props) {
         {activeSession ? (
           <SessionFeed key={activeSession.name} sessionName={activeSession.name} />
         ) : (
-          <div className="text-center text-muted/50 py-20 text-sm">Pick a session</div>
+          <div className="text-center text-muted py-20 text-sm">Pick a session</div>
         )}
       </div>
     </div>

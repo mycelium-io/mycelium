@@ -17,6 +17,16 @@
 
 ---
 
+<div align="center">
+
+https://github.com/user-attachments/assets/1a5febbb-87e7-48a4-aa7d-8d1b116889c3
+
+<em>install → coordinate → consensus.</em>
+
+</div>
+
+---
+
 ## The Problem
 
 AI agents are powerful individually, but they can't think together. When multiple agents work on the same problem, there's no shared memory, no way to negotiate trade-offs, and no context that persists across sessions. Every conversation starts from zero. Past decisions get re-litigated because no one remembers they were already made. Dead ends get re-explored because the agent that hit them is long gone.

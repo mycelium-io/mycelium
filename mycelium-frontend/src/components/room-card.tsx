@@ -35,7 +35,7 @@ export function RoomCard({ room }: RoomCardProps) {
           <span className={`w-2 h-2 rounded-full ${stateIndicator[room.coordination_state] || stateIndicator.idle}`} />
           <span>{room.coordination_state}</span>
         </div>
-        <div className="mt-2 text-xs text-muted/60">
+        <div className="mt-2 text-xs text-muted">
           {room.created_at?.slice(0, 10)}
         </div>
       </div>

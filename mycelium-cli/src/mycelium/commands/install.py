@@ -596,7 +596,8 @@ def _wait_for_health(urls: list[str], timeout: int = 120) -> bool:
     try:
         import httpx
     except ImportError:
-        return True  # skip if httpx not available
+        typer.echo("  ⚠ httpx not installed — skipping health check")
+        return False
 
     deadline = time.time() + timeout
     pending = list(urls)
@@ -795,7 +796,15 @@ def _provision_backend(api_url: str, workspace_name: str = "default") -> tuple[s
     except urllib.error.HTTPError as e:
         if e.code in (400, 409):
             workspaces = _get("/api/workspaces")
-            ws = next((w for w in workspaces if w.get("name") == workspace_name), workspaces[0])
+            ws = next(
+                (w for w in workspaces if w.get("name") == workspace_name),
+                workspaces[0] if workspaces else None,
+            )
+            if ws is None:
+                raise RuntimeError(
+                    f"Workspace '{workspace_name}' creation returned {e.code} "
+                    "but no workspaces exist on the backend"
+                )
         else:
             raise
     workspace_id: str = ws["id"]
@@ -901,6 +910,11 @@ def install(
         0, "--backend-port", help="Host port for backend API (0 = auto-detect, default 8000)"
     ),
     ioc: bool = typer.Option(True, "--ioc/--no-ioc", help="Enable IoC CFN stack (default: on)"),
+    ui: bool = typer.Option(
+        True,
+        "--ui/--no-ui",
+        help="Bring up the frontend (default: on; interactive mode prompts to confirm)",
+    ),
     force: bool = typer.Option(
         False, "--force", help="Force full reinstall even if already installed"
     ),
@@ -981,11 +995,21 @@ def install(
                 )
                 compose_profiles.append("cfn")
 
+            # Non-interactive: trust the --ui/--no-ui flag, never prompt.
+            enable_ui = ui
+            if enable_ui:
+                compose_profiles.append("ui")
+
             # Resolve ports — use explicit flags, or auto-detect conflicts
-            default_ports = {"db": db_port or 5432, "backend": backend_port or 8000}
-            if not db_port or not backend_port:
+            default_ports: dict[str, int] = {
+                "db": db_port or 5432,
+                "backend": backend_port or 8000,
+            }
+            if enable_ui:
+                default_ports["ui"] = 3000
+            if not db_port or not backend_port or enable_ui:
                 busy = _check_ports(list(default_ports.values()))
-                for label, port in default_ports.items():
+                for label, port in list(default_ports.items()):
                     if port in busy:
                         new_port = port + 1
                         while new_port in busy or new_port in default_ports.values():
@@ -998,6 +1022,8 @@ def install(
             custom_ports = default_ports
             llm_config["MYCELIUM_DB_PORT"] = str(custom_ports["db"])
             llm_config["MYCELIUM_BACKEND_PORT"] = str(custom_ports["backend"])
+            if enable_ui:
+                llm_config["MYCELIUM_UI_PORT"] = str(custom_ports["ui"])
             llm_config["MYCELIUM_DATA_DIR"] = str(Path.home() / ".mycelium")
 
             typer.secho(
@@ -1085,6 +1111,11 @@ def install(
                 _report_llm_probe_result(status, model, msg, remediation, interactive=False)
 
             typer.secho("  ✓ Done.", fg=typer.colors.GREEN, bold=True)
+            typer.echo(f"  mycelium-backend  → {api_url}")
+            if enable_ui:
+                ui_url = f"http://localhost:{custom_ports['ui']}"
+                typer.echo(f"  mycelium-frontend → {ui_url}")
+                typer.echo("  Open it with: mycelium ui open")
             return
 
         if not sys.stdin.isatty():
@@ -1243,8 +1274,18 @@ def install(
             llm_config["COGNITION_FABRIC_NODE_URL"] = "http://ioc-cognition-fabric-node-svc:9002"
             compose_profiles.append("cfn")
 
+        # Frontend prompt — default to the --ui flag value (True unless --no-ui).
+        enable_ui = ui and typer.confirm(
+            "  Bring up the frontend (browser at http://localhost:3000)?",
+            default=True,
+        )
+        if enable_ui:
+            compose_profiles.append("ui")
+
         # Port check — allow user to pick alternatives
-        default_ports = {"db": 5432, "backend": 8000}
+        default_ports: dict[str, int] = {"db": 5432, "backend": 8000}
+        if enable_ui:
+            default_ports["ui"] = 3000
         ports_to_check = list(default_ports.values())
         busy_ports = _check_ports(ports_to_check)
         custom_ports = dict(default_ports)
@@ -1263,6 +1304,8 @@ def install(
             # Update llm_config with custom ports for env file
             llm_config["MYCELIUM_DB_PORT"] = str(custom_ports["db"])
             llm_config["MYCELIUM_BACKEND_PORT"] = str(custom_ports["backend"])
+            if enable_ui:
+                llm_config["MYCELIUM_UI_PORT"] = str(custom_ports["ui"])
 
         # Set MYCELIUM_DATA_DIR so compose mounts the host's .mycelium/ into the container
         llm_config["MYCELIUM_DATA_DIR"] = str(Path.home() / ".mycelium")
@@ -1330,7 +1373,7 @@ def install(
                 typer.echo(f"  ✓ MAS created        {mas_id}")
             except Exception as exc:
                 typer.secho(f"  ⚠  Could not provision backend: {exc}", fg=typer.colors.YELLOW)
-                typer.echo("     Run manually: mycelium install --provision")
+                typer.echo("     Re-run install or check the backend logs.")
                 workspace_id, mas_id = "", ""
 
         # ── Phase 6: Migrate DB + write config ────────────────────────────
@@ -1383,11 +1426,16 @@ def install(
         typer.echo("  Services:")
         typer.echo(f"    mycelium-backend  → {api_url}")
         typer.echo(f"    mycelium-db       → localhost:{custom_ports['db']}")
+        if enable_ui:
+            ui_url = f"http://localhost:{custom_ports['ui']}"
+            typer.echo(f"    mycelium-frontend → {ui_url}")
         typer.echo("    graph-db-viewer   → http://localhost:5457  (dev profile only)")
         print()
         typer.echo("  Next steps:")
         typer.echo("    mycelium adapter add openclaw   # wire openclaw agents")
         typer.echo("    mycelium room create <name>     # create your first room")
+        if enable_ui:
+            typer.echo("    mycelium ui open                # open the frontend in your browser")
         print()
 
     except KeyboardInterrupt:

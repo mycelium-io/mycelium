@@ -48,8 +48,11 @@ export async function reindexRoom(roomName: string) {
   return res.json();
 }
 
-export async function fetchMessages(roomName: string) {
-  const res = await fetch(`${API}/rooms/${roomName}/messages`, { cache: "no-store" });
+export async function fetchMessages(roomName: string, limit?: number) {
+  const url = limit
+    ? `${API}/rooms/${roomName}/messages?limit=${limit}`
+    : `${API}/rooms/${roomName}/messages`;
+  const res = await fetch(url, { cache: "no-store" });
   return res.json();
 }
 

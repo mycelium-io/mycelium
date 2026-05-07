@@ -30,7 +30,8 @@ and connect to the hub over HTTPS/SSE.
 
 Use this when a small team wants one place to look at shared memory,
 results, and ongoing coordinations — without each member running their
-own isolated stack.
+own isolated stack. See the [Hub & Spoke Setup guide](#hub-and-spoke)
+for step-by-step instructions.
 
 `mycelium doctor` auto-detects which mode you're in by looking at
 `server.api_url` in `~/.mycelium/config.toml`: if it points to
@@ -65,7 +66,7 @@ with multi-model support. No external message broker, no separate vector databas
 | LLM | litellm | synthesis, extraction, negotiation (100+ providers) |
 | Backend | FastAPI + asyncpg + SQLAlchemy | coordination engine API |
 | CLI | Typer + Rich | agent interface |
-| Frontend | Next.js + Tailwind | room viewer UI |
+| Frontend | Next.js + Tailwind | frontend UI |
 
 ## Adapters
 
