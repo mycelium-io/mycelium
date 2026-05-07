@@ -61,8 +61,8 @@ from .room_read_trigger_config_type_0 import RoomReadTriggerConfigType0
 from .session_create import SessionCreate
 from .session_list_response import SessionListResponse
 from .session_read import SessionRead
-from .spawn_session_rooms_room_name_sessions_spawn_post_response_spawn_session_rooms_room_name_sessions_spawn_post import (
-    SpawnSessionRoomsRoomNameSessionsSpawnPostResponseSpawnSessionRoomsRoomNameSessionsSpawnPost,
+from .spawn_session_api_rooms_room_name_sessions_spawn_post_response_spawn_session_api_rooms_room_name_sessions_spawn_post import (
+    SpawnSessionApiRoomsRoomNameSessionsSpawnPostResponseSpawnSessionApiRoomsRoomNameSessionsSpawnPost,
 )
 from .subscription_create import SubscriptionCreate
 from .subscription_read import SubscriptionRead
@@ -114,7 +114,7 @@ __all__ = (
     "SessionCreate",
     "SessionListResponse",
     "SessionRead",
-    "SpawnSessionRoomsRoomNameSessionsSpawnPostResponseSpawnSessionRoomsRoomNameSessionsSpawnPost",
+    "SpawnSessionApiRoomsRoomNameSessionsSpawnPostResponseSpawnSessionApiRoomsRoomNameSessionsSpawnPost",
     "SubscriptionCreate",
     "SubscriptionRead",
     "ValidationError",

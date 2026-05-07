@@ -113,7 +113,7 @@ export function installSession(
 
       if (entry?.room) {
         await apiPost(
-          `/rooms/${entry.room}/messages`,
+          `/api/rooms/${entry.room}/messages`,
           {
             sender_handle: handle,
             recipient_handle: null,
@@ -169,7 +169,7 @@ export function installSession(
 
       const room = existing?.room;
       if (room) {
-        const data = (await apiGet(`/rooms/${room}/messages?limit=30`, log)) as any;
+        const data = (await apiGet(`/api/rooms/${room}/messages?limit=30`, log)) as any;
         const coord = data?.messages?.find(
           (m: any) =>
             m.message_type === "coordination_consensus" ||

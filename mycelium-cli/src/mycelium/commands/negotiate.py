@@ -48,7 +48,7 @@ def _resolve_active_session_room(config: "MyceliumConfig", room_name: str) -> st
 
     try:
         resp = httpx.get(
-            f"{config.server.api_url}/rooms",
+            f"{config.server.api_url}/api/rooms",
             params={"limit": 200},
             timeout=5,
         )
@@ -62,7 +62,7 @@ def _resolve_active_session_room(config: "MyceliumConfig", room_name: str) -> st
         # If there are multiple, prefer the one in 'negotiating' state
         for sr in reversed(session_rooms):
             try:
-                r = httpx.get(f"{config.server.api_url}/rooms/{sr}", timeout=5)
+                r = httpx.get(f"{config.server.api_url}/api/rooms/{sr}", timeout=5)
                 if r.status_code == 200 and r.json().get("coordination_state") == "negotiating":
                     return sr
             except Exception:
@@ -76,7 +76,7 @@ def _post(ctx: typer.Context, room: str | None, handle: str | None, content: str
     from mycelium.commands.room import _resolve_room
     from mycelium_backend_client import Client
     from mycelium_backend_client.api.messages import (
-        send_message_rooms_room_name_messages_post as send_api,
+        send_message_api_rooms_room_name_messages_post as send_api,
     )
     from mycelium_backend_client.models import MessageCreate
 
@@ -160,7 +160,7 @@ def propose(
         session_room = _resolve_active_session_room(config, room_name)
         try:
             resp = httpx.get(
-                f"{config.server.api_url}/rooms/{session_room}/negotiation",
+                f"{config.server.api_url}/api/rooms/{session_room}/negotiation",
                 timeout=5,
             )
             if resp.status_code == 200:
@@ -328,7 +328,7 @@ def status(
         room_name = _resolve_active_session_room(config, room_name)
 
         resp = httpx.get(
-            f"{config.server.api_url}/rooms/{room_name}/negotiation",
+            f"{config.server.api_url}/api/rooms/{room_name}/negotiation",
             timeout=5,
         )
         if resp.status_code == 404:

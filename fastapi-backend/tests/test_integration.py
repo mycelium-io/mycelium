@@ -82,12 +82,12 @@ async def test_memory_create_with_embedding(integration_client: AsyncClient):
     client = integration_client
 
     # Create async room
-    resp = await client.post("/rooms", json={"name": "e2e-embed"})
+    resp = await client.post("/api/rooms", json={"name": "e2e-embed"})
     assert resp.status_code == 201
 
     # Create memory with embedding (embed=True is default)
     resp = await client.post(
-        "/rooms/e2e-embed/memory",
+        "/api/rooms/e2e-embed/memory",
         json={
             "items": [
                 {
@@ -110,11 +110,11 @@ async def test_semantic_search(integration_client: AsyncClient):
     """Test semantic vector search returns relevant results ranked by similarity."""
     client = integration_client
 
-    await client.post("/rooms", json={"name": "e2e-search"})
+    await client.post("/api/rooms", json={"name": "e2e-search"})
 
     # Write several memories with different topics
     await client.post(
-        "/rooms/e2e-search/memory",
+        "/api/rooms/e2e-search/memory",
         json={
             "items": [
                 {
@@ -141,7 +141,7 @@ async def test_semantic_search(integration_client: AsyncClient):
 
     # Search for database-related content
     resp = await client.post(
-        "/rooms/e2e-search/memory/search",
+        "/api/rooms/e2e-search/memory/search",
         json={
             "query": "database storage and queries",
             "limit": 3,
@@ -171,10 +171,10 @@ async def test_semantic_search_with_min_similarity(integration_client: AsyncClie
     """Test that min_similarity filters out low-relevance results."""
     client = integration_client
 
-    await client.post("/rooms", json={"name": "e2e-minsim"})
+    await client.post("/api/rooms", json={"name": "e2e-minsim"})
 
     await client.post(
-        "/rooms/e2e-minsim/memory",
+        "/api/rooms/e2e-minsim/memory",
         json={
             "items": [
                 {
@@ -194,7 +194,7 @@ async def test_semantic_search_with_min_similarity(integration_client: AsyncClie
     )
 
     resp = await client.post(
-        "/rooms/e2e-minsim/memory/search",
+        "/api/rooms/e2e-minsim/memory/search",
         json={
             "query": "semantic search with vectors",
             "limit": 10,
@@ -213,11 +213,11 @@ async def test_upsert_preserves_embedding(integration_client: AsyncClient):
     """Test that upserting a memory updates the embedding."""
     client = integration_client
 
-    await client.post("/rooms", json={"name": "e2e-upsert"})
+    await client.post("/api/rooms", json={"name": "e2e-upsert"})
 
     # Create
     await client.post(
-        "/rooms/e2e-upsert/memory",
+        "/api/rooms/e2e-upsert/memory",
         json={
             "items": [
                 {
@@ -232,7 +232,7 @@ async def test_upsert_preserves_embedding(integration_client: AsyncClient):
 
     # Update with different content
     await client.post(
-        "/rooms/e2e-upsert/memory",
+        "/api/rooms/e2e-upsert/memory",
         json={
             "items": [
                 {
@@ -247,7 +247,7 @@ async def test_upsert_preserves_embedding(integration_client: AsyncClient):
 
     # Search should find the updated content
     resp = await client.post(
-        "/rooms/e2e-upsert/memory/search",
+        "/api/rooms/e2e-upsert/memory/search",
         json={
             "query": "systems programming and memory safety",
             "limit": 1,
@@ -270,7 +270,7 @@ async def test_async_room_full_flow(integration_client: AsyncClient):
 
     # Create room with low threshold for testing
     resp = await client.post(
-        "/rooms",
+        "/api/rooms",
         json={
             "name": "e2e-flow",
             "trigger_config": {"type": "threshold", "min_contributions": 2},
@@ -281,7 +281,7 @@ async def test_async_room_full_flow(integration_client: AsyncClient):
 
     # Agent 1 writes
     await client.post(
-        "/rooms/e2e-flow/memory",
+        "/api/rooms/e2e-flow/memory",
         json={
             "items": [
                 {
@@ -296,7 +296,7 @@ async def test_async_room_full_flow(integration_client: AsyncClient):
 
     # Agent 2 writes — this should hit threshold (2)
     await client.post(
-        "/rooms/e2e-flow/memory",
+        "/api/rooms/e2e-flow/memory",
         json={
             "items": [
                 {
@@ -313,14 +313,14 @@ async def test_async_room_full_flow(integration_client: AsyncClient):
     await asyncio.sleep(1)
 
     # Check that synthesis was produced
-    resp = await client.get("/rooms/e2e-flow/memory", params={"prefix": "_synthesis/"})
+    resp = await client.get("/api/rooms/e2e-flow/memory", params={"prefix": "_synthesis/"})
     _data = resp.json()
     # Synthesis may or may not have fired (depends on timing), so just check the room is still healthy
-    resp = await client.get("/rooms/e2e-flow")
+    resp = await client.get("/api/rooms/e2e-flow")
     assert resp.status_code == 200
 
     # Explicit synthesis — may return 200 (ran) or 409 (auto-trigger already running)
-    resp = await client.post("/rooms/e2e-flow/synthesize")
+    resp = await client.post("/api/rooms/e2e-flow/synthesize")
     assert resp.status_code in (200, 409)
 
 
@@ -330,12 +330,12 @@ async def test_sync_room_still_works(integration_client: AsyncClient):
     client = integration_client
 
     # Create namespace room
-    resp = await client.post("/rooms", json={"name": "e2e-sync"})
+    resp = await client.post("/api/rooms", json={"name": "e2e-sync"})
     assert resp.status_code == 201
 
     # Join auto-spawns a session; the session room enters waiting
     resp = await client.post(
-        "/rooms/e2e-sync/sessions",
+        "/api/rooms/e2e-sync/sessions",
         json={
             "agent_handle": "agent-a",
             "intent": "testing sync flow",
@@ -346,12 +346,12 @@ async def test_sync_room_still_works(integration_client: AsyncClient):
     assert "e2e-sync:session:" in session_room_name
 
     # The spawned session room should be in waiting state
-    resp = await client.get(f"/rooms/{session_room_name}")
+    resp = await client.get(f"/api/rooms/{session_room_name}")
     session_room = resp.json()
     assert session_room["coordination_state"] == "waiting"
 
     # The parent namespace should still be idle
-    resp = await client.get("/rooms/e2e-sync")
+    resp = await client.get("/api/rooms/e2e-sync")
     assert resp.json()["coordination_state"] == "idle"
 
 
@@ -360,10 +360,10 @@ async def test_namespace_room_stays_idle_after_join(integration_client: AsyncCli
     """Verify namespace room stays idle — the spawned session gets the state change."""
     client = integration_client
 
-    await client.post("/rooms", json={"name": "e2e-ns-join"})
+    await client.post("/api/rooms", json={"name": "e2e-ns-join"})
 
     resp = await client.post(
-        "/rooms/e2e-ns-join/sessions",
+        "/api/rooms/e2e-ns-join/sessions",
         json={
             "agent_handle": "agent-a",
             "intent": "just sharing context",
@@ -372,7 +372,7 @@ async def test_namespace_room_stays_idle_after_join(integration_client: AsyncCli
     assert resp.status_code == 201
 
     # Namespace room should still be idle
-    resp = await client.get("/rooms/e2e-ns-join")
+    resp = await client.get("/api/rooms/e2e-ns-join")
     assert resp.json()["coordination_state"] == "idle"
 
 
@@ -384,11 +384,11 @@ async def test_sync_join_starts_timer(integration_client: AsyncClient):
     """Joining a namespace room spawns a session that transitions to 'waiting'."""
     client = integration_client
 
-    await client.post("/rooms", json={"name": "e2e-timer"})
+    await client.post("/api/rooms", json={"name": "e2e-timer"})
 
     # First agent joins — auto-spawns session, starts the timer
     resp = await client.post(
-        "/rooms/e2e-timer/sessions",
+        "/api/rooms/e2e-timer/sessions",
         json={
             "agent_handle": "alpha",
             "intent": "I want budget=high",
@@ -397,7 +397,7 @@ async def test_sync_join_starts_timer(integration_client: AsyncClient):
     assert resp.status_code == 201
     session_room_name = resp.json()["room_name"]
 
-    resp = await client.get(f"/rooms/{session_room_name}")
+    resp = await client.get(f"/api/rooms/{session_room_name}")
     session_room = resp.json()
     assert session_room["coordination_state"] == "waiting"
     assert session_room["join_deadline"] is not None
@@ -408,11 +408,11 @@ async def test_sync_multiple_agents_join(integration_client: AsyncClient):
     """Multiple agents can join during the waiting window."""
     client = integration_client
 
-    await client.post("/rooms", json={"name": "e2e-multi"})
+    await client.post("/api/rooms", json={"name": "e2e-multi"})
 
     # Two agents join — both land in the same pending session
     resp1 = await client.post(
-        "/rooms/e2e-multi/sessions",
+        "/api/rooms/e2e-multi/sessions",
         json={
             "agent_handle": "alpha",
             "intent": "budget=high, timeline=short",
@@ -422,7 +422,7 @@ async def test_sync_multiple_agents_join(integration_client: AsyncClient):
     session_room_name = resp1.json()["room_name"]
 
     resp2 = await client.post(
-        "/rooms/e2e-multi/sessions",
+        "/api/rooms/e2e-multi/sessions",
         json={
             "agent_handle": "beta",
             "intent": "budget=low, quality=premium",
@@ -431,14 +431,14 @@ async def test_sync_multiple_agents_join(integration_client: AsyncClient):
     assert resp2.status_code == 201
 
     # Both sessions should exist in the session room
-    resp = await client.get(f"/rooms/{session_room_name}/sessions")
+    resp = await client.get(f"/api/rooms/{session_room_name}/sessions")
     sessions = resp.json()
     assert sessions["total"] == 2
     handles = {s["agent_handle"] for s in sessions["sessions"]}
     assert handles == {"alpha", "beta"}
 
     # Session room should still be waiting (timer hasn't fired)
-    resp = await client.get(f"/rooms/{session_room_name}")
+    resp = await client.get(f"/api/rooms/{session_room_name}")
     assert resp.json()["coordination_state"] == "waiting"
 
 
@@ -452,11 +452,11 @@ async def test_sync_negotiation_produces_messages(integration_client: AsyncClien
     client = integration_client
 
     # Create namespace room
-    await client.post("/rooms", json={"name": "e2e-negot"})
+    await client.post("/api/rooms", json={"name": "e2e-negot"})
 
     # Two agents join — auto-spawns a session
     resp = await client.post(
-        "/rooms/e2e-negot/sessions",
+        "/api/rooms/e2e-negot/sessions",
         json={
             "agent_handle": "agent-x",
             "intent": "I want scope=full and quality=premium",
@@ -465,7 +465,7 @@ async def test_sync_negotiation_produces_messages(integration_client: AsyncClien
     session_room_name = resp.json()["room_name"]
 
     await client.post(
-        "/rooms/e2e-negot/sessions",
+        "/api/rooms/e2e-negot/sessions",
         json={
             "agent_handle": "agent-y",
             "intent": "I want budget=minimal and timeline=express",
@@ -481,12 +481,12 @@ async def test_sync_negotiation_produces_messages(integration_client: AsyncClien
     await asyncio.sleep(2)
 
     # Session room should be in negotiating state
-    resp = await client.get(f"/rooms/{session_room_name}")
+    resp = await client.get(f"/api/rooms/{session_room_name}")
     room = resp.json()
     assert room["coordination_state"] in ("negotiating", "complete")
 
     # CognitiveEngine should have posted messages to the session room
-    resp = await client.get(f"/rooms/{session_room_name}/messages")
+    resp = await client.get(f"/api/rooms/{session_room_name}/messages")
     messages = resp.json()["messages"]
     assert len(messages) > 0
 
@@ -505,11 +505,11 @@ async def test_namespace_room_supports_memory_and_sessions(integration_client: A
     """Namespace room: can write memories AND spawn sync sessions."""
     client = integration_client
 
-    await client.post("/rooms", json={"name": "e2e-ns-both"})
+    await client.post("/api/rooms", json={"name": "e2e-ns-both"})
 
     # Write memories (persistent namespace behavior)
     resp = await client.post(
-        "/rooms/e2e-ns-both/memory",
+        "/api/rooms/e2e-ns-both/memory",
         json={
             "items": [
                 {
@@ -525,7 +525,7 @@ async def test_namespace_room_supports_memory_and_sessions(integration_client: A
 
     # Join spawns a sync session within the namespace
     resp = await client.post(
-        "/rooms/e2e-ns-both/sessions",
+        "/api/rooms/e2e-ns-both/sessions",
         json={
             "agent_handle": "agent-a",
             "intent": "Ready to negotiate API design",
@@ -535,15 +535,15 @@ async def test_namespace_room_supports_memory_and_sessions(integration_client: A
     session_room_name = resp.json()["room_name"]
 
     # Session room should be in waiting state
-    resp = await client.get(f"/rooms/{session_room_name}")
+    resp = await client.get(f"/api/rooms/{session_room_name}")
     assert resp.json()["coordination_state"] == "waiting"
 
     # Namespace room stays idle
-    resp = await client.get("/rooms/e2e-ns-both")
+    resp = await client.get("/api/rooms/e2e-ns-both")
     assert resp.json()["coordination_state"] == "idle"
 
     # Memory should still be accessible on the namespace
-    resp = await client.get("/rooms/e2e-ns-both/memory/context/background")
+    resp = await client.get("/api/rooms/e2e-ns-both/memory/context/background")
     assert resp.status_code == 200
     assert resp.json()["value"]["text"] == "We need to decide on API design"
 
@@ -553,10 +553,10 @@ async def test_messages_route_during_negotiation(integration_client: AsyncClient
     """Agent messages during negotiation get routed to coordination service."""
     client = integration_client
 
-    await client.post("/rooms", json={"name": "e2e-msg-route"})
+    await client.post("/api/rooms", json={"name": "e2e-msg-route"})
 
     resp = await client.post(
-        "/rooms/e2e-msg-route/sessions",
+        "/api/rooms/e2e-msg-route/sessions",
         json={
             "agent_handle": "agent-a",
             "intent": "testing message routing",
@@ -580,7 +580,7 @@ async def test_messages_route_during_negotiation(integration_client: AsyncClient
 
     # Post a message to session room — should succeed even during negotiation
     resp = await client.post(
-        f"/rooms/{session_room_name}/messages",
+        f"/api/rooms/{session_room_name}/messages",
         json={
             "sender_handle": "agent-a",
             "message_type": "direct",
@@ -590,5 +590,5 @@ async def test_messages_route_during_negotiation(integration_client: AsyncClient
     assert resp.status_code == 201
 
     # Message should be recorded
-    resp = await client.get(f"/rooms/{session_room_name}/messages")
+    resp = await client.get(f"/api/rooms/{session_room_name}/messages")
     assert resp.json()["total"] >= 1

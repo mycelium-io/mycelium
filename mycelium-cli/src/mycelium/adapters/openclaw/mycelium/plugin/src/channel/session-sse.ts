@@ -77,7 +77,7 @@ export function startSessionSSE(
   const signal = sessionAbort.signal;
   if (signal.aborted) return;
 
-  const sseUrl = `${cfg.backendUrl}/rooms/${encodeURIComponent(sessionRoom)}/messages/stream`;
+  const sseUrl = `${cfg.backendUrl}/api/rooms/${encodeURIComponent(sessionRoom)}/messages/stream`;
   log.info(`[${CHANNEL_ID}] subscribing to session sub-room: ${sessionRoom}`);
 
   (async () => {

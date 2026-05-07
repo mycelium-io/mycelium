@@ -104,7 +104,7 @@ mycelium session join --handle agent-beta -m "Prioritize developer experience" -
 sleep 40
 
 # Check state
-curl -s http://localhost:8000/rooms/e2e-test-room | python3 -c "import sys,json; [print(f'{r[\"name\"]}: {r[\"coordination_state\"]}') for r in json.load(sys.stdin)] if isinstance(json.load(open('/dev/stdin')), list) else None" 2>/dev/null
+curl -s http://localhost:8000/api/rooms/e2e-test-room | python3 -c "import sys,json; [print(f'{r[\"name\"]}: {r[\"coordination_state\"]}') for r in json.load(sys.stdin)] if isinstance(json.load(open('/dev/stdin')), list) else None" 2>/dev/null
 # Or check session room directly from session create output
 
 # Await first tick
@@ -184,7 +184,7 @@ grep "mycelium.*wake dispatched\|mycelium.*wake completed" /tmp/openclaw/opencla
 # Expect: wake dispatched + wake completed for both agents
 
 # Check session messages for agent responses
-curl -s "http://localhost:8000/rooms/e2e-openclaw-test:session:*/messages?limit=50"
+curl -s "http://localhost:8000/api/rooms/e2e-openclaw-test:session:*/messages?limit=50"
 # Expect: coordination_tick messages AND direct messages from agents (accept/reject/counter_offer)
 
 # Poll for consensus (up to 5 min for complex negotiations)
@@ -261,8 +261,8 @@ mycelium memory ls
 
 ```bash
 # Delete test rooms
-curl -s -X DELETE http://localhost:8000/rooms/e2e-test-room
-curl -s -X DELETE http://localhost:8000/rooms/e2e-openclaw-test
+curl -s -X DELETE http://localhost:8000/api/rooms/e2e-test-room
+curl -s -X DELETE http://localhost:8000/api/rooms/e2e-openclaw-test
 # Also clean up any session sub-rooms
 ```
 
