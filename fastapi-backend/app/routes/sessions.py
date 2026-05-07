@@ -26,9 +26,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bus import notify, room_channel
 from app.config import settings
 from app.database import get_async_session
-from app.models import Room, Session
+from app.models import CoordinationSession, Room, Session
 from app.routes.rooms import _sync_create_mas
-from app.schemas import SessionCreate, SessionListResponse, SessionRead
+from app.schemas import (
+    CoordinationSessionRead,
+    SessionCreate,
+    SessionListResponse,
+    SessionRead,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +104,19 @@ async def _spawn_session_room(parent_name: str, db: AsyncSession) -> Room:
         mas_id=parent_room.mas_id if parent_room else None,
     )
     db.add(session_room)
+
+    # Dual-write the first-class CoordinationSession entity (#197). The shadow
+    # Room row above stays during the deprecation window so messages.room_name
+    # and memories.room_name FKs keep resolving.
+    coord_session = CoordinationSession(
+        parent_room_name=parent_name,
+        short_id=short_id,
+        state="idle",
+        mas_id=parent_room.mas_id if parent_room else None,
+        workspace_id=parent_room.workspace_id if parent_room else None,
+    )
+    db.add(coord_session)
+
     await db.flush()
     await db.refresh(session_room)
     logger.info("Spawned session %s in namespace %s", session_name, parent_name)
@@ -309,6 +327,30 @@ async def _notify_join(room_name: str, handle: str, intent: str | None) -> None:
             await conn.close()
     except Exception as e:
         logger.warning("NOTIFY coordination_join failed: %s", e)
+
+
+@router.get("/coordination", response_model=list[CoordinationSessionRead])
+async def list_coordination_sessions(
+    room_name: str,
+    db: AsyncSession = Depends(get_async_session),
+):
+    """List negotiation sessions in a room (#197).
+
+    Returns first-class CoordinationSession entities. The shadow rows in the
+    rooms table are an implementation detail that callers shouldn't depend on.
+    """
+    parent = (
+        await db.execute(select(Room).where(Room.name == room_name))
+    ).scalar_one_or_none()
+    if not parent:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    result = await db.execute(
+        select(CoordinationSession)
+        .where(CoordinationSession.parent_room_name == room_name)
+        .order_by(CoordinationSession.created_at.desc())
+    )
+    return [CoordinationSessionRead.model_validate(s) for s in result.scalars().all()]
 
 
 @router.get("", response_model=SessionListResponse)

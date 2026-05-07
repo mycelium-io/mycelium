@@ -15,6 +15,7 @@ def _get_kwargs(
     skip: int | Unset = 0,
     limit: int | Unset = 1000,
     name: None | str | Unset = UNSET,
+    include_sessions: bool | Unset = False,
 ) -> dict[str, Any]:
     params: dict[str, Any] = {}
 
@@ -28,6 +29,8 @@ def _get_kwargs(
     else:
         json_name = name
     params["name"] = json_name
+
+    params["include_sessions"] = include_sessions
 
     params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
 
@@ -81,15 +84,22 @@ def sync_detailed(
     skip: int | Unset = 0,
     limit: int | Unset = 1000,
     name: None | str | Unset = UNSET,
+    include_sessions: bool | Unset = False,
 ) -> Response[HTTPValidationError | list[RoomRead]]:
     """List Rooms
 
-     List rooms with optional name filter.
+     List rooms.
+
+    By default returns only real rooms (namespaces). Session-shadow rows are
+    excluded so ``mycelium room ls`` stays clean. Pass ``include_sessions=true``
+    to include the shadow rows — used by callers (e.g. the OpenClaw channel
+    plugin) that still address sessions by name during the deprecation window.
 
     Args:
         skip (int | Unset):  Default: 0.
         limit (int | Unset):  Default: 1000.
         name (None | str | Unset):
+        include_sessions (bool | Unset):  Default: False.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -103,6 +113,7 @@ def sync_detailed(
         skip=skip,
         limit=limit,
         name=name,
+        include_sessions=include_sessions,
     )
 
     response = client.get_httpx_client().request(
@@ -118,15 +129,22 @@ def sync(
     skip: int | Unset = 0,
     limit: int | Unset = 1000,
     name: None | str | Unset = UNSET,
+    include_sessions: bool | Unset = False,
 ) -> HTTPValidationError | list[RoomRead] | None:
     """List Rooms
 
-     List rooms with optional name filter.
+     List rooms.
+
+    By default returns only real rooms (namespaces). Session-shadow rows are
+    excluded so ``mycelium room ls`` stays clean. Pass ``include_sessions=true``
+    to include the shadow rows — used by callers (e.g. the OpenClaw channel
+    plugin) that still address sessions by name during the deprecation window.
 
     Args:
         skip (int | Unset):  Default: 0.
         limit (int | Unset):  Default: 1000.
         name (None | str | Unset):
+        include_sessions (bool | Unset):  Default: False.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -141,6 +159,7 @@ def sync(
         skip=skip,
         limit=limit,
         name=name,
+        include_sessions=include_sessions,
     ).parsed
 
 
@@ -150,15 +169,22 @@ async def asyncio_detailed(
     skip: int | Unset = 0,
     limit: int | Unset = 1000,
     name: None | str | Unset = UNSET,
+    include_sessions: bool | Unset = False,
 ) -> Response[HTTPValidationError | list[RoomRead]]:
     """List Rooms
 
-     List rooms with optional name filter.
+     List rooms.
+
+    By default returns only real rooms (namespaces). Session-shadow rows are
+    excluded so ``mycelium room ls`` stays clean. Pass ``include_sessions=true``
+    to include the shadow rows — used by callers (e.g. the OpenClaw channel
+    plugin) that still address sessions by name during the deprecation window.
 
     Args:
         skip (int | Unset):  Default: 0.
         limit (int | Unset):  Default: 1000.
         name (None | str | Unset):
+        include_sessions (bool | Unset):  Default: False.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -172,6 +198,7 @@ async def asyncio_detailed(
         skip=skip,
         limit=limit,
         name=name,
+        include_sessions=include_sessions,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -185,15 +212,22 @@ async def asyncio(
     skip: int | Unset = 0,
     limit: int | Unset = 1000,
     name: None | str | Unset = UNSET,
+    include_sessions: bool | Unset = False,
 ) -> HTTPValidationError | list[RoomRead] | None:
     """List Rooms
 
-     List rooms with optional name filter.
+     List rooms.
+
+    By default returns only real rooms (namespaces). Session-shadow rows are
+    excluded so ``mycelium room ls`` stays clean. Pass ``include_sessions=true``
+    to include the shadow rows — used by callers (e.g. the OpenClaw channel
+    plugin) that still address sessions by name during the deprecation window.
 
     Args:
         skip (int | Unset):  Default: 0.
         limit (int | Unset):  Default: 1000.
         name (None | str | Unset):
+        include_sessions (bool | Unset):  Default: False.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -209,5 +243,6 @@ async def asyncio(
             skip=skip,
             limit=limit,
             name=name,
+            include_sessions=include_sessions,
         )
     ).parsed

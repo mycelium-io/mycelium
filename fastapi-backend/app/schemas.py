@@ -111,6 +111,23 @@ class SessionListResponse(BaseModel):
     total: int
 
 
+# ── CoordinationSession (#197) ────────────────────────────────────────────────
+
+
+class CoordinationSessionRead(BaseModel):
+    id: UUID
+    parent_room_name: str
+    short_id: str
+    state: str
+    created_at: datetime
+    join_window_ends_at: datetime | None = None
+    mas_id: str | None = None
+    workspace_id: str | None = None
+    display_name: str
+
+    model_config = {"from_attributes": True}
+
+
 # ── AuditEvent ────────────────────────────────────────────────────────────────
 
 VALID_RESOURCE_TYPES = {

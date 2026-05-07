@@ -123,6 +123,47 @@ class Room(Base):
     workspace_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
+class CoordinationSession(Base):
+    """Coordination session — first-class entity per #197.
+
+    A session is a single negotiation round inside a parent room. State lives
+    here; the parent room holds persistent memory and namespace identity.
+
+    A "shadow" row in `rooms` (is_namespace=False, parent_namespace=parent_room_name)
+    is also kept during the deprecation window so messages.room_name and
+    memories.room_name FKs continue to resolve. The shadow is scheduled for
+    removal in a follow-up release.
+    """
+
+    __tablename__ = "coordination_sessions"
+
+    id: Mapped[UUID_Type] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    parent_room_name: Mapped[str] = mapped_column(
+        String, ForeignKey("rooms.name", ondelete="CASCADE"), nullable=False, index=True
+    )
+    short_id: Mapped[str] = mapped_column(String(16), nullable=False)
+    # State machine: idle | waiting | negotiating | agreed | failed | complete
+    state: Mapped[str] = mapped_column(VARCHAR(20), nullable=False, server_default="idle")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    join_window_ends_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Inherited from parent at create time — see issue #237 for context.
+    mas_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    workspace_id: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    @property
+    def display_name(self) -> str:
+        """Synthesize the legacy ``{parent}:session:{short_id}`` display string.
+
+        Kept for backward compatibility with messages.room_name and any caller
+        that still resolves sessions by name.
+        """
+        return f"{self.parent_room_name}:session:{self.short_id}"
+
+
 class Message(Base):
     """Agent-to-agent messages within a room."""
 

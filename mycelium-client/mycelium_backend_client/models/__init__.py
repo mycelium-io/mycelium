@@ -20,6 +20,7 @@ from .cfn_query_api_cfn_knowledge_query_post_response_cfn_query_api_cfn_knowledg
     CfnQueryApiCfnKnowledgeQueryPostResponseCfnQueryApiCfnKnowledgeQueryPost,
 )
 from .concepts_by_ids_request import ConceptsByIdsRequest
+from .coordination_session_read import CoordinationSessionRead
 from .get_negotiation_status_response_get_negotiation_status import GetNegotiationStatusResponseGetNegotiationStatus
 from .graph_paths_request import GraphPathsRequest
 from .http_validation_error import HTTPValidationError
@@ -77,6 +78,7 @@ __all__ = (
     "CfnListApiCfnKnowledgeListGetResponseCfnListApiCfnKnowledgeListGet",
     "CfnQueryApiCfnKnowledgeQueryPostResponseCfnQueryApiCfnKnowledgeQueryPost",
     "ConceptsByIdsRequest",
+    "CoordinationSessionRead",
     "GetNegotiationStatusResponseGetNegotiationStatus",
     "GraphPathsRequest",
     "HTTPValidationError",

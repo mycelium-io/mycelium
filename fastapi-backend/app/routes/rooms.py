@@ -145,9 +145,20 @@ async def list_rooms(
     skip: int = 0,
     limit: int = 1000,
     name: str | None = None,
+    include_sessions: bool = False,
 ):
-    """List rooms with optional name filter."""
+    """List rooms.
+
+    By default returns only real rooms (namespaces). Session-shadow rows are
+    excluded so ``mycelium room ls`` stays clean. Pass ``include_sessions=true``
+    to include the shadow rows — used by callers (e.g. the OpenClaw channel
+    plugin) that still address sessions by name during the deprecation window.
+    """
     query = select(Room).where(Room.is_public == True)  # noqa: E712
+
+    if not include_sessions:
+        # Session-shadow rows have parent_namespace set; real rooms don't.
+        query = query.where(Room.parent_namespace.is_(None))
 
     if name:
         query = query.where(Room.name.ilike(f"%{name}%"))

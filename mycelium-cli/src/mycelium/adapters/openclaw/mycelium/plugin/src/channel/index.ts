@@ -98,7 +98,10 @@ export function installChannel(
 
     const pollInterval = setInterval(async () => {
       try {
-        const res = await fetch(`${cfg.backendUrl}/api/rooms`);
+        // include_sessions=true: rooms endpoint hides session-shadow rows by
+        // default (#197). The plugin still addresses sessions by display name
+        // during the deprecation window, so it opts back in here.
+        const res = await fetch(`${cfg.backendUrl}/api/rooms?include_sessions=true`);
         if (!res.ok) return;
         const rooms: any[] = await res.json();
 

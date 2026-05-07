@@ -51,7 +51,7 @@
                     "rooms"
                 ],
                 "summary": "List Rooms",
-                "description": "List rooms with optional name filter.",
+                "description": "List rooms.\n\nBy default returns only real rooms (namespaces). Session-shadow rows are\nexcluded so ``mycelium room ls`` stays clean. Pass ``include_sessions=true``\nto include the shadow rows \u2014 used by callers (e.g. the OpenClaw channel\nplugin) that still address sessions by name during the deprecation window.",
                 "operationId": "list_rooms_api_rooms_get",
                 "parameters": [
                     {
@@ -88,6 +88,16 @@
                                 }
                             ],
                             "title": "Name"
+                        }
+                    },
+                    {
+                        "name": "include_sessions",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false,
+                            "title": "Include Sessions"
                         }
                     }
                 ],
@@ -633,6 +643,53 @@
                             "application/json": {
                                 "schema": {
                                     "$ref": "#/components/schemas/SessionListResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/rooms/{room_name}/sessions/coordination": {
+            "get": {
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "List Coordination Sessions",
+                "description": "List negotiation sessions in a room (#197).\n\nReturns first-class CoordinationSession entities. The shadow rows in the\nrooms table are an implementation detail that callers shouldn't depend on.",
+                "operationId": "list_coordination_sessions_api_rooms__room_name__sessions_coordination_get",
+                "parameters": [
+                    {
+                        "name": "room_name",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Room Name"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/CoordinationSessionRead"
+                                    },
+                                    "title": "Response List Coordination Sessions Api Rooms  Room Name  Sessions Coordination Get"
                                 }
                             }
                         }
@@ -2262,6 +2319,80 @@
                     "ids"
                 ],
                 "title": "ConceptsByIdsRequest"
+            },
+            "CoordinationSessionRead": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Id"
+                    },
+                    "parent_room_name": {
+                        "type": "string",
+                        "title": "Parent Room Name"
+                    },
+                    "short_id": {
+                        "type": "string",
+                        "title": "Short Id"
+                    },
+                    "state": {
+                        "type": "string",
+                        "title": "State"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    },
+                    "join_window_ends_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Join Window Ends At"
+                    },
+                    "mas_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Mas Id"
+                    },
+                    "workspace_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Workspace Id"
+                    },
+                    "display_name": {
+                        "type": "string",
+                        "title": "Display Name"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "parent_room_name",
+                    "short_id",
+                    "state",
+                    "created_at",
+                    "display_name"
+                ],
+                "title": "CoordinationSessionRead"
             },
             "GraphPathsRequest": {
                 "properties": {
