@@ -24,28 +24,35 @@ type HandleMessageFn = (runtime: any, cfg: ChannelConfig, msg: any, log: Logger)
 
 const MAX_TRANSIENT_RETRIES = 6;
 
-const _sessionControllers = new Map<string, AbortController>();
+interface SessionHandle {
+  ctrl: AbortController;
+  detach: () => void;
+}
+
+const _sessions = new Map<string, SessionHandle>();
 
 export function clearSubscribedSessions(): void {
-  for (const [, ctrl] of _sessionControllers) {
-    ctrl.abort();
+  for (const [, h] of _sessions) {
+    h.detach();
+    h.ctrl.abort();
   }
-  _sessionControllers.clear();
+  _sessions.clear();
 }
 
 /** Abort and remove a single session subscription. */
 export function stopSessionSSE(sessionRoom: string, log?: Logger): void {
-  const ctrl = _sessionControllers.get(sessionRoom);
-  if (ctrl) {
-    ctrl.abort();
-    _sessionControllers.delete(sessionRoom);
+  const h = _sessions.get(sessionRoom);
+  if (h) {
+    h.detach();
+    h.ctrl.abort();
+    _sessions.delete(sessionRoom);
     log?.info(`[${CHANNEL_ID}] session SSE stopped: ${sessionRoom}`);
   }
 }
 
 /** Returns the set of currently-subscribed session room names. */
 export function subscribedSessionRooms(): ReadonlySet<string> {
-  return new Set(_sessionControllers.keys());
+  return new Set(_sessions.keys());
 }
 
 export function startSessionSSE(
@@ -56,14 +63,15 @@ export function startSessionSSE(
   handleMessage: HandleMessageFn,
   log: Logger,
 ): void {
-  if (_sessionControllers.has(sessionRoom)) return;
+  if (_sessions.has(sessionRoom)) return;
 
   const sessionAbort = new AbortController();
-  _sessionControllers.set(sessionRoom, sessionAbort);
+  const onGatewayAbort = () => sessionAbort.abort();
+  _gatewayAbort.signal.addEventListener("abort", onGatewayAbort);
 
-  // Also tear down when the gateway-level controller fires.
-  _gatewayAbort.signal.addEventListener("abort", () => {
-    sessionAbort.abort();
+  _sessions.set(sessionRoom, {
+    ctrl: sessionAbort,
+    detach: () => _gatewayAbort.signal.removeEventListener("abort", onGatewayAbort),
   });
 
   const signal = sessionAbort.signal;
