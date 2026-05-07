@@ -102,8 +102,15 @@ def _compose_base_cmd(
     compose_path: Path | None = None,
     env_path: Path | None = None,
     project_name: str | None = None,
+    *,
+    include_cfn_profile: bool = True,
 ) -> list[str]:
-    """Build the docker compose prefix with consistent project name."""
+    """Build the docker compose prefix with consistent project name.
+
+    When *include_cfn_profile* is True (the default) and CFN is enabled in
+    the user's .env, ``--profile cfn`` is appended automatically so callers
+    don't need to duplicate that logic.
+    """
     if compose_path is None:
         compose_path = _get_compose_path()
     if env_path is None:
@@ -111,6 +118,8 @@ def _compose_base_cmd(
     cmd = ["docker", "compose", "-p", project_name or _COMPOSE_PROJECT, "-f", str(compose_path)]
     if env_path:
         cmd += ["--env-file", str(env_path)]
+    if include_cfn_profile and _cfn_enabled():
+        cmd += ["--profile", "cfn"]
     return cmd
 
 
@@ -358,10 +367,7 @@ def start(
             typer.echo("Run 'mycelium install' first.")
             raise typer.Exit(1)
 
-        cfn = _cfn_enabled()
         base = _compose_base_cmd(compose_path)
-        if cfn:
-            base = base + ["--profile", "cfn"]
         if ui:
             base = base + ["--profile", "ui"]
         up_args = ["up", "-d", "--remove-orphans"]
@@ -370,7 +376,7 @@ def start(
 
         typer.echo("Starting Mycelium...")
 
-        if cfn:
+        if _cfn_enabled():
             # Phase 1: start DB first, then provision CFN databases before the
             # CFN services come up and try to connect.
             db_only_cmd = base[:2] + ["--progress=plain"] + base[2:] + ["up", "-d", "mycelium-db"]
@@ -456,8 +462,6 @@ def stop(
 
         project = _detect_compose_project()
         base = _compose_base_cmd(compose_path, project_name=project)
-        if _cfn_enabled():
-            base = base + ["--profile", "cfn"]
         down_args = ["down", "--remove-orphans"]
         if volumes:
             down_args.append("-v")
@@ -870,8 +874,6 @@ def logs(
 
         project = _detect_compose_project()
         cmd = _compose_base_cmd(project_name=project)
-        if _cfn_enabled():
-            cmd += ["--profile", "cfn"]
         cmd += ["logs"]
         if follow:
             cmd.append("-f")
@@ -1039,7 +1041,6 @@ def pull(
             raise typer.Exit(1)
 
         env_path = _get_env_path()
-        cfn = _cfn_enabled()
 
         # If the user explicitly pinned a version (or asked to unpin via
         # --version=latest), persist that to .env *before* compose pull so the
@@ -1054,8 +1055,6 @@ def pull(
                 typer.echo(f"  ✓ Pinned image tag to {normalized} (in {env_path})")
 
         base = _compose_base_cmd(compose_path, env_path)
-        if cfn:
-            base = base + ["--profile", "cfn"]
 
         # Pull
         typer.secho("Pulling latest images...", bold=True)
@@ -1074,7 +1073,7 @@ def pull(
         typer.echo("")
         typer.secho("Restarting services...", bold=True)
 
-        if cfn:
+        if _cfn_enabled():
             # Start DB first, provision CFN databases, then bring up everything
             db_cmd = base[:2] + ["--progress=plain"] + base[2:] + ["up", "-d", "mycelium-db"]
             subprocess.run(db_cmd, capture_output=True, text=True)
