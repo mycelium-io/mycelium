@@ -19,15 +19,16 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 
 import { CHANNEL_ID, type ChannelConfig } from "../config.js";
 import { dispatchToAgent } from "./dispatch.js";
+import { executeNotifyHome } from "./notify-home.js";
 import { _ownMessageIds } from "./post-to-room.js";
+import { lookupReturnAddress, stashReturnAddress } from "./return-address.js";
 import { routeMessage, type RouteAction } from "./route.js";
 import { startRoomSSE } from "./room-sse.js";
 import {
-  abortAllSessions,
-  abortSession,
-  getSessionControllers,
-  isSessionSubscribed,
+  clearSubscribedSessions,
   startSessionSSE,
+  stopSessionSSE,
+  subscribedSessionRooms,
 } from "./session-sse.js";
 
 type Logger = { info: (s: string) => void; warn: (s: string) => void };
@@ -77,8 +78,24 @@ export function installChannel(
 
     startRoomSSE(runtime, cfg, _abort, handleMessage, log);
 
-    // Poll for session sub-rooms: subscribe to active ones, tear down finished ones.
-    // Coordination ticks live in session sub-rooms, not the parent room.
+    // Poll for active session sub-rooms (anywhere in the backend) and
+    // subscribe to each one's SSE stream. Coordination ticks live in session
+    // sub-rooms, not parent rooms.
+    //
+    // We deliberately do NOT filter by `cfg.room` here — that scoping was the
+    // root cause of "agents go silent" when a negotiation was kicked off in a
+    // room name different from the channel's configured `room` (per-test
+    // ad-hoc rooms, teammate's room, dynamic topic rooms). All gating on
+    // "is this tick relevant to one of our agents?" already happens in
+    // routeTick (`cfg.agents.includes(participant_id)`) and in notify-home
+    // (per-session-sub-room stash). Subscribing broadly and filtering narrowly
+    // is safer than the reverse: irrelevant ticks become cheap ignored events;
+    // missed ticks become silent failures.
+    //
+    // startSessionSSE's subscribed-set is idempotent, so re-evaluating each
+    // poll tick is a no-op for already-subscribed rooms.
+    const TERMINAL_STATES = new Set(["agreed", "failed", "idle"]);
+
     const pollInterval = setInterval(async () => {
       try {
         const res = await fetch(`${cfg.backendUrl}/rooms`);
@@ -86,24 +103,26 @@ export function installChannel(
         const rooms: any[] = await res.json();
 
         const activeSessionRooms = new Set<string>();
+
         for (const room of rooms) {
-          if (!room.name?.startsWith(cfg.room + ":session:")) continue;
-          if (
-            room.coordination_state === "waiting" ||
-            room.coordination_state === "negotiating"
-          ) {
-            activeSessionRooms.add(room.name);
-            if (!isSessionSubscribed(room.name)) {
-              startSessionSSE(runtime, cfg, room.name, _abort!, handleMessage, log);
-            }
+          const name: string | undefined = room.name;
+          if (!name || !name.includes(":session:")) continue;
+          const state = room.coordination_state;
+
+          activeSessionRooms.add(name);
+
+          if (state === "waiting" || state === "negotiating") {
+            startSessionSSE(runtime, cfg, name, _abort!, handleMessage, log);
+          } else if (TERMINAL_STATES.has(state)) {
+            stopSessionSSE(name, log);
           }
         }
 
-        // Tear down subscriptions for sessions that are no longer active
-        // (terminal state or deleted from the room list).
-        for (const [sessionRoom] of getSessionControllers()) {
-          if (!activeSessionRooms.has(sessionRoom)) {
-            abortSession(sessionRoom, log);
+        // Unsubscribe from sessions whose rooms no longer exist on the
+        // backend (deleted by test harness or coordination teardown).
+        for (const subbed of subscribedSessionRooms()) {
+          if (!activeSessionRooms.has(subbed)) {
+            stopSessionSSE(subbed, log);
           }
         }
       } catch {
@@ -117,7 +136,7 @@ export function installChannel(
   api.on("gateway_stop", async () => {
     _abort?.abort();
     _abort = null;
-    abortAllSessions();
+    clearSubscribedSessions();
     log.info(`[${CHANNEL_ID}] gateway stopping — SSE closed`);
   });
 }
@@ -151,6 +170,25 @@ function executeAction(
 ): void {
   switch (action.kind) {
     case "dispatch": {
+      // Consensus dispatch needs participant gating: now that we subscribe
+      // to every active session sub-room (not just sub-rooms of cfg.room),
+      // a coordination_consensus from a session our agents weren't part of
+      // would otherwise wake their mycelium-room sessions with someone
+      // else's outcome. The stash is our authoritative "did this agent
+      // participate in this session" signal — populated on first tick.
+      // Tick dispatch is already gated upstream by `cfg.agents.includes(participant_id)`
+      // in routeTick; only consensus needs this extra check.
+      if (
+        action.sender === "CognitiveEngine" &&
+        msg.message_type === "coordination_consensus" &&
+        msg.room_name &&
+        !lookupReturnAddress(msg.room_name, action.agentId)
+      ) {
+        log.info(
+          `[${CHANNEL_ID}] consensus skipped for ${action.agentId} — not a participant in ${msg.room_name}`,
+        );
+        return;
+      }
       if (action.sender === "CognitiveEngine") {
         // Tick or consensus — log with a distinguishing emoji
         log.info(
@@ -177,6 +215,24 @@ function executeAction(
       if (_abort) {
         startSessionSSE(runtime, cfg, action.roomName, _abort, handleMessage, log);
       }
+      return;
+    }
+    case "stash-return-address": {
+      stashReturnAddress(action.sessionRoom, action.agentId, log);
+      return;
+    }
+    case "notify-home": {
+      log.info(
+        `[${CHANNEL_ID}] 📬 notify-home for [${action.agentIds.join(", ")}] in ${action.sessionRoom}`,
+      );
+      void executeNotifyHome(
+        runtime,
+        cfg,
+        action.sessionRoom,
+        action.agentIds,
+        action.consensusSummary,
+        log,
+      );
       return;
     }
     case "ignore": {
