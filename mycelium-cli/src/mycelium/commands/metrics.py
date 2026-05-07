@@ -289,7 +289,7 @@ def collect(
         None,
         "--backend-url",
         "-b",
-        help="Mycelium backend URL for polling /api/metrics (default: server.api_url from config)",
+        help="Mycelium backend URL for polling /api/observability (default: server.api_url from config)",
     ),
     fg: bool = typer.Option(
         False, "--fg", help="Run collector in the foreground (default: background)"

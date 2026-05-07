@@ -73,6 +73,20 @@ export function getSSEUrl(roomName: string) {
   return `${API}/rooms/${roomName}/messages/stream`;
 }
 
+// ── Metrics ──────────────────────────────────────────────────────────────────
+
+export async function fetchBackendMetrics() {
+  const res = await fetch(`${API}/api/observability`, { cache: "no-store" });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function fetchCollectorMetrics() {
+  const res = await fetch(`${API}/api/observability/collector`, { cache: "no-store" });
+  if (!res.ok) return null;
+  return res.json();
+}
+
 // ── CFN knowledge graph ──────────────────────────────────────────────────────
 // Backs the `mycelium cfn` CLI; see fastapi-backend/app/routes/cfn_proxy.py.
 
