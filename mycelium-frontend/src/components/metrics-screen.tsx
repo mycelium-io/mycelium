@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Julia Valenti
 //
-// MX-000 — Metrics · Live Observation
+// Metrics dashboard.
 //
 // Hierarchy: header band → 3 KPI plates → 3 latency strips → agent activity →
 // 5 diagnostic tiles → secondary token strip → by-model table.
@@ -594,7 +594,7 @@ function BackendDownPlate() {
         <div className="absolute inset-y-0 left-0 w-[3px] bg-accent" />
         <Caps className="text-accent">BACKEND UNREACHABLE</Caps>
         <div className="mt-1.5 text-ui font-semibold leading-snug text-text">
-          Could not reach <span className="font-mono text-accent">GET /api/metrics</span>
+          Could not reach <span className="font-mono text-accent">GET /api/observability</span>
         </div>
         <div className="mt-2.5 text-micro leading-relaxed text-muted">
           The frontend is running but the backend isn&apos;t responding. Start it with{" "}
@@ -759,7 +759,7 @@ export function MetricsScreen() {
         <div className="px-6 py-5">
           <div className="mb-3.5 flex items-baseline justify-between">
             <Caps className="text-text2">DIAGNOSTICS · BACKEND COUNTERS</Caps>
-            <span className="font-mono text-micro italic text-dim">always available · GET /api/metrics</span>
+            <span className="font-mono text-micro italic text-dim">always available · GET /api/observability</span>
           </div>
 
           <div className="mb-4 grid border border-border2 bg-paper" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
