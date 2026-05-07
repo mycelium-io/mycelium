@@ -919,11 +919,11 @@ def show(
             rendered = False
             be_counters = backend_data.get("counters", {})
             has_embeddings = be_counters.get("embeddings", {}).get("computed", 0) > 0
-            has_indexer = (
-                be_counters.get("indexer", {}).get("files_indexed", 0) > 0
-                or be_counters.get("indexer", {}).get("files_skipped", 0) > 0
-            )
+            has_indexer = be_counters.get("indexer", {}).get("runs", 0) > 0
             has_llm = be_counters.get("llm", {}).get("calls", 0) > 0
+            has_knowledge = (be_counters.get("knowledge") or {}).get("writes", 0) > 0 or (
+                be_counters.get("knowledge") or {}
+            ).get("ingestions", 0) > 0
 
             if has_embeddings or has_indexer:
                 _render_cost_avoidance_table(backend_data)
@@ -931,8 +931,11 @@ def show(
             if has_llm:
                 _render_mycelium_llm_table(backend_data)
                 rendered = True
+            if has_knowledge:
+                _render_knowledge_table(backend_data)
+                rendered = True
 
-            if not rendered and not (be_counters.get("knowledge") or {}).get("writes", 0):
+            if not rendered:
                 table = Table(
                     title="Mycelium Backend",
                     title_style="bold magenta",
@@ -1011,22 +1014,42 @@ def _render_overview(
         embeddings = be_counters.get("embeddings", {})
         memory = be_counters.get("memory", {})
         knowledge = be_counters.get("knowledge", {})
+        indexer = be_counters.get("indexer", {})
 
         table.add_row("[magenta]Mycelium Backend[/magenta]", "")
+        has_be_row = False
         if llm.get("calls", 0) > 0:
             table.add_row("  LLM calls", _fmt_num(llm["calls"]))
+            has_be_row = True
         embed_count = embeddings.get("computed", 0)
         if embed_count > 0:
             table.add_row("  Embeddings (local)", _fmt_num(embed_count))
+            has_be_row = True
         writes = memory.get("writes", 0)
         searches = memory.get("searches", 0)
         if writes > 0 or searches > 0:
             table.add_row(
                 "  Memory writes / searches", f"{_fmt_num(writes)} / {_fmt_num(searches)}"
             )
+            has_be_row = True
+        knowledge_writes = knowledge.get("writes", 0)
         ingestions = knowledge.get("ingestions", 0)
-        if ingestions > 0:
-            table.add_row("  Knowledge ingestions", _fmt_num(ingestions))
+        if knowledge_writes > 0 or ingestions > 0:
+            parts = []
+            if ingestions > 0:
+                parts.append(f"{_fmt_num(ingestions)} ingested")
+            if knowledge_writes > 0:
+                parts.append(f"{_fmt_num(knowledge_writes)} written")
+            table.add_row("  Knowledge", ", ".join(parts))
+            has_be_row = True
+        indexed = indexer.get("files_indexed", 0)
+        skipped = indexer.get("files_skipped", 0)
+        runs = indexer.get("runs", 0)
+        if runs > 0:
+            table.add_row("  Indexer", f"{_fmt_num(indexed)} indexed, {_fmt_num(skipped)} skipped")
+            has_be_row = True
+        if not has_be_row:
+            table.add_row("  [dim]No activity yet[/dim]", "")
     else:
         table.add_row(
             "[magenta]Mycelium Backend[/magenta]", "[dim]not collected (spoke mode)[/dim]"
@@ -2049,8 +2072,9 @@ def _render_cost_avoidance_table(backend: dict | None) -> None:
     embed_count = embeddings.get("computed", 0)
     files_indexed = indexer.get("files_indexed", 0)
     files_skipped = indexer.get("files_skipped", 0)
+    indexer_runs = indexer.get("runs", 0)
 
-    if embed_count == 0 and files_indexed == 0 and files_skipped == 0:
+    if embed_count == 0 and files_indexed == 0 and files_skipped == 0 and indexer_runs == 0:
         return
 
     table = Table(
@@ -2078,22 +2102,62 @@ def _render_cost_avoidance_table(backend: dict | None) -> None:
         table.add_row("Embedding latency (local)", _fmt_histogram_s(embed_lat, embed_idx_n))
 
     total_index_files = files_indexed + files_skipped
-    if total_index_files > 0:
+    if total_index_files > 0 or indexer_runs > 0:
         if embed_count > 0:
             table.add_section()
-        skip_pct = files_skipped / total_index_files * 100
-        table.add_row("Indexer files processed", _fmt_num(total_index_files))
-        table.add_row(
-            "  skipped (unchanged)",
-            f"[green]{_fmt_num(files_skipped)} ({skip_pct:.0f}%)[/green]",
-        )
-        table.add_row("  indexed (re-embedded)", _fmt_num(files_indexed))
+        if total_index_files > 0:
+            skip_pct = files_skipped / total_index_files * 100
+            table.add_row("Indexer files processed", _fmt_num(total_index_files))
+            table.add_row(
+                "  skipped (unchanged)",
+                f"[green]{_fmt_num(files_skipped)} ({skip_pct:.0f}%)[/green]",
+            )
+            table.add_row("  indexed (re-embedded)", _fmt_num(files_indexed))
+        else:
+            table.add_row("Indexer runs", _fmt_num(indexer_runs))
+            table.add_row("  files processed", "0")
         pruned = indexer.get("files_pruned", 0)
         if pruned:
             table.add_row("  pruned (deleted)", _fmt_num(pruned))
 
     if idx_lat.get("count", 0) > 0:
         table.add_row("Index run duration", _fmt_histogram_s(idx_lat, embed_idx_n))
+
+    console.print(table)
+    console.print()
+
+
+def _render_knowledge_table(backend: dict | None) -> None:
+    """Render a panel showing knowledge ingestion activity."""
+    if not backend:
+        return
+    be_counters = backend.get("counters", {})
+    knowledge = be_counters.get("knowledge", {})
+    writes = knowledge.get("writes", 0)
+    ingestions = knowledge.get("ingestions", 0)
+    if writes == 0 and ingestions == 0:
+        return
+
+    table = Table(
+        title="Knowledge Ingestion",
+        title_style="bold magenta",
+        title_justify="left",
+        show_header=False,
+        border_style="dim",
+    )
+    table.add_column("Metric", style="bold")
+    table.add_column("Value", justify="right")
+
+    if ingestions > 0:
+        table.add_row("Ingestions", _fmt_num(ingestions))
+    if writes > 0:
+        table.add_row("Shared-memory writes", _fmt_num(writes))
+    errors = knowledge.get("errors", 0)
+    if errors > 0:
+        table.add_row("Errors", f"[red]{_fmt_num(errors)}[/red]")
+    skipped = knowledge.get("skipped", 0)
+    if skipped > 0:
+        table.add_row("Skipped (dedupe)", _fmt_num(skipped))
 
     console.print(table)
     console.print()
