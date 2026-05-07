@@ -24,7 +24,12 @@ import { _ownMessageIds } from "./post-to-room.js";
 import { lookupReturnAddress, stashReturnAddress } from "./return-address.js";
 import { routeMessage, type RouteAction } from "./route.js";
 import { startRoomSSE } from "./room-sse.js";
-import { clearSubscribedSessions, startSessionSSE } from "./session-sse.js";
+import {
+  clearSubscribedSessions,
+  startSessionSSE,
+  stopSessionSSE,
+  subscribedSessionRooms,
+} from "./session-sse.js";
 
 type Logger = { info: (s: string) => void; warn: (s: string) => void };
 
@@ -89,17 +94,36 @@ export function installChannel(
     //
     // startSessionSSE's subscribed-set is idempotent, so re-evaluating each
     // poll tick is a no-op for already-subscribed rooms.
+    const TERMINAL_STATES = new Set(["agreed", "failed", "idle"]);
+
     const pollInterval = setInterval(async () => {
       try {
         const res = await fetch(`${cfg.backendUrl}/rooms`);
         if (!res.ok) return;
         const rooms: any[] = await res.json();
+
+        const activeSessionRooms = new Set<string>();
+
         for (const room of rooms) {
           const name: string | undefined = room.name;
           if (!name || !name.includes(":session:")) continue;
           const state = room.coordination_state;
-          if (state !== "waiting" && state !== "negotiating") continue;
-          startSessionSSE(runtime, cfg, name, _abort!, handleMessage, log);
+
+          activeSessionRooms.add(name);
+
+          if (state === "waiting" || state === "negotiating") {
+            startSessionSSE(runtime, cfg, name, _abort!, handleMessage, log);
+          } else if (TERMINAL_STATES.has(state)) {
+            stopSessionSSE(name, log);
+          }
+        }
+
+        // Unsubscribe from sessions whose rooms no longer exist on the
+        // backend (deleted by test harness or coordination teardown).
+        for (const subbed of subscribedSessionRooms()) {
+          if (!activeSessionRooms.has(subbed)) {
+            stopSessionSSE(subbed, log);
+          }
         }
       } catch {
         /* polling failure is non-fatal */

@@ -10,6 +10,11 @@
  *
  * This module subscribes to sub-room SSE streams (idempotent per sub-room)
  * and forwards every message to handleMessage for dispatch.
+ *
+ * Each session gets its own AbortController so it can be torn down
+ * independently when the session reaches a terminal state (agreed/failed)
+ * or the room is deleted. This prevents the leaked-connection accumulation
+ * described in #175.
  */
 
 import { CHANNEL_ID, type ChannelConfig } from "../config.js";
@@ -17,44 +22,92 @@ import { CHANNEL_ID, type ChannelConfig } from "../config.js";
 type Logger = { info: (s: string) => void; warn: (s: string) => void };
 type HandleMessageFn = (runtime: any, cfg: ChannelConfig, msg: any, log: Logger) => void;
 
-const _subscribedSessions = new Set<string>();
+const MAX_TRANSIENT_RETRIES = 6;
+
+const _sessionControllers = new Map<string, AbortController>();
 
 export function clearSubscribedSessions(): void {
-  _subscribedSessions.clear();
+  for (const [, ctrl] of _sessionControllers) {
+    ctrl.abort();
+  }
+  _sessionControllers.clear();
+}
+
+/** Abort and remove a single session subscription. */
+export function stopSessionSSE(sessionRoom: string, log?: Logger): void {
+  const ctrl = _sessionControllers.get(sessionRoom);
+  if (ctrl) {
+    ctrl.abort();
+    _sessionControllers.delete(sessionRoom);
+    log?.info(`[${CHANNEL_ID}] session SSE stopped: ${sessionRoom}`);
+  }
+}
+
+/** Returns the set of currently-subscribed session room names. */
+export function subscribedSessionRooms(): ReadonlySet<string> {
+  return new Set(_sessionControllers.keys());
 }
 
 export function startSessionSSE(
   runtime: any,
   cfg: ChannelConfig,
   sessionRoom: string,
-  abort: AbortController,
+  _gatewayAbort: AbortController,
   handleMessage: HandleMessageFn,
   log: Logger,
 ): void {
-  if (_subscribedSessions.has(sessionRoom)) return;
-  _subscribedSessions.add(sessionRoom);
+  if (_sessionControllers.has(sessionRoom)) return;
 
-  const signal = abort.signal;
+  const sessionAbort = new AbortController();
+  _sessionControllers.set(sessionRoom, sessionAbort);
+
+  // Also tear down when the gateway-level controller fires.
+  _gatewayAbort.signal.addEventListener("abort", () => {
+    sessionAbort.abort();
+  });
+
+  const signal = sessionAbort.signal;
   if (signal.aborted) return;
 
   const sseUrl = `${cfg.backendUrl}/rooms/${encodeURIComponent(sessionRoom)}/messages/stream`;
   log.info(`[${CHANNEL_ID}] subscribing to session sub-room: ${sessionRoom}`);
 
   (async () => {
+    let transientFailures = 0;
+
     while (!signal.aborted) {
       try {
         const res = await fetch(sseUrl, {
           headers: { Accept: "text/event-stream" },
           signal,
         });
-        if (!res.ok || !res.body) {
-          log.warn(
-            `[${CHANNEL_ID}] session SSE ${res.status} for ${sessionRoom} — retry 5s`,
+
+        if (res.status === 404) {
+          log.info(
+            `[${CHANNEL_ID}] session room gone (404): ${sessionRoom} — unsubscribing`,
           );
-          await new Promise((r) => setTimeout(r, 5000));
+          stopSessionSSE(sessionRoom);
+          return;
+        }
+
+        if (!res.ok || !res.body) {
+          transientFailures++;
+          if (transientFailures >= MAX_TRANSIENT_RETRIES) {
+            log.warn(
+              `[${CHANNEL_ID}] session SSE gave up after ${MAX_TRANSIENT_RETRIES} failures for ${sessionRoom}`,
+            );
+            stopSessionSSE(sessionRoom);
+            return;
+          }
+          const backoff = Math.min(5000 * 2 ** (transientFailures - 1), 30_000);
+          log.warn(
+            `[${CHANNEL_ID}] session SSE ${res.status} for ${sessionRoom} — retry ${transientFailures}/${MAX_TRANSIENT_RETRIES} in ${backoff}ms`,
+          );
+          await new Promise((r) => setTimeout(r, backoff));
           continue;
         }
 
+        transientFailures = 0;
         log.info(`[${CHANNEL_ID}] session SSE connected: ${sessionRoom}`);
         const reader = (res.body as any).getReader();
         const decoder = new TextDecoder();
@@ -83,8 +136,19 @@ export function startSessionSSE(
         }
       } catch (err: any) {
         if (signal.aborted) return;
-        log.warn(`[${CHANNEL_ID}] session SSE error: ${err?.message} — retry 5s`);
-        await new Promise((r) => setTimeout(r, 5000));
+        transientFailures++;
+        if (transientFailures >= MAX_TRANSIENT_RETRIES) {
+          log.warn(
+            `[${CHANNEL_ID}] session SSE gave up after ${MAX_TRANSIENT_RETRIES} errors for ${sessionRoom}`,
+          );
+          stopSessionSSE(sessionRoom);
+          return;
+        }
+        const backoff = Math.min(5000 * 2 ** (transientFailures - 1), 30_000);
+        log.warn(
+          `[${CHANNEL_ID}] session SSE error: ${err?.message} — retry ${transientFailures}/${MAX_TRANSIENT_RETRIES} in ${backoff}ms`,
+        );
+        await new Promise((r) => setTimeout(r, backoff));
       }
     }
   })();
