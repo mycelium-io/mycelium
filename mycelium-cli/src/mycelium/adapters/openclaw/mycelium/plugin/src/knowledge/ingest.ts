@@ -45,7 +45,7 @@ export function installKnowledgeIngest(
 
       if (channelCfg?.room) {
         await apiPost(
-          `/rooms/${channelCfg.room}/messages`,
+          `/api/rooms/${channelCfg.room}/messages`,
           {
             sender_handle: handle,
             recipient_handle: null,

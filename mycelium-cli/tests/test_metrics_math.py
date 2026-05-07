@@ -285,7 +285,11 @@ def test_estimate_cost_all_zero_is_free() -> None:
 
 def test_build_pricing_entry_anthropic_with_cache() -> None:
     """Verify cache_discount and cache_write_premium computation from API data."""
-    spec = {"pattern": "claude-sonnet-4", "provider": "anthropic", "litellm_key": "claude-sonnet-4-5"}
+    spec = {
+        "pattern": "claude-sonnet-4",
+        "provider": "anthropic",
+        "litellm_key": "claude-sonnet-4-5",
+    }
     api_data = {
         "input_cost_per_token": 3e-06,
         "output_cost_per_token": 1.5e-05,
@@ -332,7 +336,9 @@ def test_build_pricing_entry_missing_output_defaults_4x() -> None:
 def test_build_pricing_entry_no_cache_read_uses_default_discount() -> None:
     """Missing cache_read_input_token_cost -> default 90% discount."""
     spec = {"pattern": "test-model", "provider": "anthropic", "litellm_key": "test"}
-    entry = _build_pricing_entry(spec, {"input_cost_per_token": 1e-06, "output_cost_per_token": 4e-06})
+    entry = _build_pricing_entry(
+        spec, {"input_cost_per_token": 1e-06, "output_cost_per_token": 4e-06}
+    )
     assert entry is not None
     assert entry["cache_discount"] == 0.9
     assert entry["cache_write_premium"] == 0.25
@@ -346,16 +352,31 @@ def test_load_pricing_prefers_user_cache(tmp_path: Path, monkeypatch: pytest.Mon
     import mycelium.commands.metrics as mod
 
     user_pricing = tmp_path / "pricing.json"
-    user_pricing.write_text(json.dumps({
-        "generated_at": "2026-05-04T00:00:00+00:00",
-        "source": "litellm_catalog_api",
-        "models": [{"pattern": "test-model", "input_per_token": 9.99e-06,
-                     "output_per_token": 3e-05, "cache_discount": 0.5,
-                     "cache_write_premium": 0.1, "litellm_key": "test"}],
-        "default": {"input_per_token": 1e-06, "output_per_token": 4e-06,
-                     "cache_discount": 0.9, "cache_write_premium": 0.25,
-                     "label": "unknown model"},
-    }))
+    user_pricing.write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-05-04T00:00:00+00:00",
+                "source": "litellm_catalog_api",
+                "models": [
+                    {
+                        "pattern": "test-model",
+                        "input_per_token": 9.99e-06,
+                        "output_per_token": 3e-05,
+                        "cache_discount": 0.5,
+                        "cache_write_premium": 0.1,
+                        "litellm_key": "test",
+                    }
+                ],
+                "default": {
+                    "input_per_token": 1e-06,
+                    "output_per_token": 4e-06,
+                    "cache_discount": 0.9,
+                    "cache_write_premium": 0.25,
+                    "label": "unknown model",
+                },
+            }
+        )
+    )
 
     monkeypatch.setattr(mod, "_USER_PRICING_JSON", user_pricing)
     monkeypatch.setattr(mod, "_pricing_data", None)
@@ -367,7 +388,9 @@ def test_load_pricing_prefers_user_cache(tmp_path: Path, monkeypatch: pytest.Mon
     monkeypatch.setattr(mod, "_pricing_data", None)
 
 
-def test_load_pricing_falls_back_to_bundled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_pricing_falls_back_to_bundled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """When the user cache is missing, fall back to bundled pricing."""
     import mycelium.commands.metrics as mod
 
@@ -382,7 +405,9 @@ def test_load_pricing_falls_back_to_bundled(tmp_path: Path, monkeypatch: pytest.
     monkeypatch.setattr(mod, "_pricing_data", None)
 
 
-def test_load_pricing_skips_corrupt_user_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_pricing_skips_corrupt_user_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Corrupt user cache is skipped; bundled data loads instead."""
     import mycelium.commands.metrics as mod
 
@@ -398,7 +423,9 @@ def test_load_pricing_skips_corrupt_user_cache(tmp_path: Path, monkeypatch: pyte
     monkeypatch.setattr(mod, "_pricing_data", None)
 
 
-def test_load_pricing_skips_empty_models_user_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_pricing_skips_empty_models_user_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """User cache with empty models list is skipped."""
     import mycelium.commands.metrics as mod
 
@@ -446,7 +473,9 @@ def test_resolve_litellm_key_strips_only_first_matching_prefix() -> None:
 # ── _discover_models_from_metrics ───────────────────────────────────
 
 
-def test_discover_models_from_metrics_finds_untracked(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_discover_models_from_metrics_finds_untracked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Models in metrics.json not covered by TRACKED_MODELS are returned."""
     import mycelium.commands.metrics as mod
 
@@ -478,7 +507,9 @@ def test_discover_models_from_metrics_finds_untracked(tmp_path: Path, monkeypatc
     assert not any("claude-haiku-4" in m for m in result)
 
 
-def test_discover_models_from_metrics_empty_when_all_tracked(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_discover_models_from_metrics_empty_when_all_tracked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Returns empty when all models in metrics are already tracked."""
     import mycelium.commands.metrics as mod
 
@@ -499,7 +530,9 @@ def test_discover_models_from_metrics_empty_when_all_tracked(tmp_path: Path, mon
     assert _discover_models_from_metrics() == []
 
 
-def test_discover_models_from_metrics_handles_missing_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_discover_models_from_metrics_handles_missing_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Returns empty when metrics.json doesn't exist."""
     import mycelium.commands.metrics as mod
 

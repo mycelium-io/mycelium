@@ -540,7 +540,7 @@ def status(ctx: typer.Context) -> None:
 
             if backend_running:
                 try:
-                    response = client.get("/rooms")
+                    response = client.get("/api/rooms")
                     rooms = response.json()
                     backend_room_count = len(rooms) if isinstance(rooms, list) else 0
                 except Exception:

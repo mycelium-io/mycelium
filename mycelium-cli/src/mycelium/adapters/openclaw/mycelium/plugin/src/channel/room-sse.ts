@@ -23,7 +23,7 @@ export function startRoomSSE(
   log: Logger,
 ): void {
   const signal = abort.signal;
-  const sseUrl = `${cfg.backendUrl}/rooms/${encodeURIComponent(cfg.room)}/messages/stream`;
+  const sseUrl = `${cfg.backendUrl}/api/rooms/${encodeURIComponent(cfg.room)}/messages/stream`;
 
   (async () => {
     while (!signal.aborted) {

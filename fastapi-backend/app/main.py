@@ -165,12 +165,12 @@ app.add_middleware(
 )
 
 
-# Core routes
-app.include_router(rooms_router)
-app.include_router(messages_router)
-app.include_router(sessions_router)
-app.include_router(stream_router)
-app.include_router(memory_router)
+# Core routes. Health endpoints stay top-level for orchestrator probes.
+app.include_router(rooms_router, prefix="/api")
+app.include_router(messages_router, prefix="/api")
+app.include_router(sessions_router, prefix="/api")
+app.include_router(stream_router, prefix="/api")
+app.include_router(memory_router, prefix="/api")
 
 # CFN routes
 app.include_router(audit_router)

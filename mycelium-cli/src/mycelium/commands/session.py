@@ -66,7 +66,7 @@ def create(
         import httpx
 
         resp = httpx.post(
-            f"{config.server.api_url}/rooms/{room_name}/sessions/spawn",
+            f"{config.server.api_url}/api/rooms/{room_name}/sessions/spawn",
             timeout=10,
         )
         resp.raise_for_status()
@@ -208,7 +208,7 @@ def await_tick(
                     # Ticks are posted to session sub-rooms (e.g. room:session:xxxx).
                     # Find all session rooms under this namespace and scan them.
                     rooms_resp = http.get(
-                        f"{config.server.api_url}/rooms",
+                        f"{config.server.api_url}/api/rooms",
                         params={"limit": 200},
                     )
                     rooms_to_scan = [resolved_room]
@@ -220,7 +220,7 @@ def await_tick(
 
                     for scan_room in rooms_to_scan:
                         resp = http.get(
-                            f"{config.server.api_url}/rooms/{scan_room}/messages",
+                            f"{config.server.api_url}/api/rooms/{scan_room}/messages",
                             params={"limit": 20},
                         )
                         if resp.status_code != 200:
@@ -286,7 +286,7 @@ def await_tick(
                 except Exception:
                     pass  # fall through to SSE
 
-        url = f"{config.server.api_url}/agents/{handle}/stream"
+        url = f"{config.server.api_url}/api/agents/{handle}/stream"
         start = time.time()
 
         with httpx.Client(timeout=None) as http, http.stream("GET", url) as response:
@@ -424,7 +424,7 @@ def watch_session(
                 break
 
             try:
-                resp = httpx.get(f"{config.server.api_url}/rooms?limit=200", timeout=10)
+                resp = httpx.get(f"{config.server.api_url}/api/rooms?limit=200", timeout=10)
                 resp.raise_for_status()
                 all_rooms = resp.json()
             except Exception:

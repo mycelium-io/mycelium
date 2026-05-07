@@ -690,7 +690,7 @@ def _check_room_mas_ids() -> CheckResult:
         import httpx
 
         with httpx.Client(base_url=api_url, timeout=5) as client:
-            resp = client.get("/rooms")
+            resp = client.get("/api/rooms")
             resp.raise_for_status()
             rooms = resp.json()
     except Exception:

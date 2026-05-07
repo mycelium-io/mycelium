@@ -429,7 +429,7 @@ def clone_room(
         typer.echo(f"Cloning {room_name} from {api_url}...")
 
         with httpx.Client(base_url=api_url, timeout=60) as client:
-            resp = client.get(f"/rooms/{room_name}/memory", params={"limit": 1000})
+            resp = client.get(f"/api/rooms/{room_name}/memory", params={"limit": 1000})
             resp.raise_for_status()
             memories = resp.json()
 
@@ -474,7 +474,7 @@ def clone_room(
         typer.echo("Re-indexing...")
         try:
             with httpx.Client(base_url=config.server.api_url, timeout=120) as client:
-                resp = client.post(f"/rooms/{room_name}/reindex")
+                resp = client.post(f"/api/rooms/{room_name}/reindex")
                 resp.raise_for_status()
                 data = resp.json()
             typer.echo(f"  Indexed {data.get('indexed', 0)} memories")
@@ -754,7 +754,7 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
     # Fetch room metadata for the header
     room_meta = ""
     try:
-        resp = httpx.get(f"{config.server.api_url}/rooms/{room_name}", timeout=5)
+        resp = httpx.get(f"{config.server.api_url}/api/rooms/{room_name}", timeout=5)
         if resp.status_code == 200:
             room = resp.json()
             state = room.get("coordination_state", "idle")
@@ -790,7 +790,7 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
     # them from the sessions list to ensure all participants are shown.
     try:
         sess_resp = httpx.get(
-            f"{config.server.api_url}/rooms/{room_name}/sessions",
+            f"{config.server.api_url}/api/rooms/{room_name}/sessions",
             timeout=10,
         )
         if sess_resp.status_code == 200:
@@ -816,7 +816,7 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
 
     try:
         hist_resp = httpx.get(
-            f"{config.server.api_url}/rooms/{room_name}/messages",
+            f"{config.server.api_url}/api/rooms/{room_name}/messages",
             params={"limit": 50},
             timeout=10,
         )
@@ -830,7 +830,7 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
     except Exception:
         pass
 
-    url = f"{config.server.api_url}/rooms/{room_name}/messages/stream"
+    url = f"{config.server.api_url}/api/rooms/{room_name}/messages/stream"
     start = time.time()
 
     with httpx.Client(timeout=None) as http, http.stream("GET", url) as response:

@@ -370,7 +370,7 @@ def memory_reindex(
 
     console.print(f"[dim]Re-indexing {room_name}...[/dim]")
     with httpx.Client(base_url=cfg.server.api_url, timeout=120) as client:
-        resp = client.post(f"/rooms/{room_name}/reindex")
+        resp = client.post(f"/api/rooms/{room_name}/reindex")
         resp.raise_for_status()
         data = resp.json()
 
@@ -424,7 +424,7 @@ def memory_catchup(
     cfg = MyceliumConfig.load()
 
     with httpx.Client(base_url=cfg.server.api_url, timeout=30) as client:
-        resp = client.get(f"/rooms/{room_name}/catchup")
+        resp = client.get(f"/api/rooms/{room_name}/catchup")
         resp.raise_for_status()
         data = resp.json()
 
@@ -608,7 +608,7 @@ def memory_sync(
     console.print(f"[dim]Syncing {room_name} from {cfg.server.api_url}...[/dim]")
 
     with httpx.Client(base_url=cfg.server.api_url, timeout=60) as client:
-        resp = client.get(f"/rooms/{room_name}/memory", params={"limit": 1000}, headers=headers)
+        resp = client.get(f"/api/rooms/{room_name}/memory", params={"limit": 1000}, headers=headers)
 
     if resp.status_code == 304:
         console.print("[dim]Already up to date[/dim]")
@@ -664,7 +664,7 @@ def memory_sync(
     if not no_reindex:
         try:
             with httpx.Client(base_url=cfg.server.api_url, timeout=120) as client:
-                resp = client.post(f"/rooms/{room_name}/reindex")
+                resp = client.post(f"/api/rooms/{room_name}/reindex")
                 resp.raise_for_status()
                 data = resp.json()
             console.print(f"[green]Re-indexed:[/green] {data.get('indexed', 0)} memories")

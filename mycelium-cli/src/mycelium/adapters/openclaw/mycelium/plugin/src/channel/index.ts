@@ -50,10 +50,10 @@ export function installChannel(
     // Ensure the configured room exists before subscribing to SSE.
     try {
       const checkRes = await fetch(
-        `${cfg.backendUrl}/rooms/${encodeURIComponent(cfg.room)}`,
+        `${cfg.backendUrl}/api/rooms/${encodeURIComponent(cfg.room)}`,
       );
       if (checkRes.status === 404) {
-        const createRes = await fetch(`${cfg.backendUrl}/rooms`, {
+        const createRes = await fetch(`${cfg.backendUrl}/api/rooms`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -98,7 +98,7 @@ export function installChannel(
 
     const pollInterval = setInterval(async () => {
       try {
-        const res = await fetch(`${cfg.backendUrl}/rooms`);
+        const res = await fetch(`${cfg.backendUrl}/api/rooms`);
         if (!res.ok) return;
         const rooms: any[] = await res.json();
 
