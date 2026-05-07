@@ -339,9 +339,7 @@ async def list_coordination_sessions(
     Returns first-class CoordinationSession entities. The shadow rows in the
     rooms table are an implementation detail that callers shouldn't depend on.
     """
-    parent = (
-        await db.execute(select(Room).where(Room.name == room_name))
-    ).scalar_one_or_none()
+    parent = (await db.execute(select(Room).where(Room.name == room_name))).scalar_one_or_none()
     if not parent:
         raise HTTPException(status_code=404, detail="Room not found")
 
