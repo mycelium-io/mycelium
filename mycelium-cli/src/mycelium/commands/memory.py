@@ -119,7 +119,7 @@ def memory_set(
         mycelium memory set work/api-server "Built 12 endpoints with auth"
     """
     from mycelium_backend_client.api.memory import (
-        create_memories_rooms_room_name_memory_post as create_api,
+        create_memories_api_rooms_room_name_memory_post as create_api,
     )
     from mycelium_backend_client.models import MemoryBatchCreate, MemoryCreate
 
@@ -294,7 +294,7 @@ def memory_search(
 ) -> None:
     """Semantic search over memories (uses pgvector via backend API)."""
     from mycelium_backend_client.api.memory import (
-        search_memories_rooms_room_name_memory_search_post as search_api,
+        search_memories_api_rooms_room_name_memory_search_post as search_api,
     )
     from mycelium_backend_client.models import MemorySearchRequest
 
@@ -334,7 +334,7 @@ def memory_rm(
 ) -> None:
     """Delete a memory — removes both the file and search index."""
     from mycelium_backend_client.api.memory import (
-        delete_memory_rooms_room_name_memory_key_delete as delete_api,
+        delete_memory_api_rooms_room_name_memory_key_delete as delete_api,
     )
 
     room_name = _get_active_room(room)
@@ -394,7 +394,7 @@ def memory_subscribe(
 ) -> None:
     """Subscribe to memory change notifications."""
     from mycelium_backend_client.api.memory import (
-        subscribe_rooms_room_name_memory_subscribe_post as sub_api,
+        subscribe_api_rooms_room_name_memory_subscribe_post as sub_api,
     )
     from mycelium_backend_client.models import SubscriptionCreate, SubscriptionRead
 

@@ -62,7 +62,7 @@ def room_main(ctx: typer.Context) -> None:
                 typer.echo("Set a room with: mycelium room use <name>")
             raise typer.Exit(1)
 
-        from mycelium_backend_client.api.rooms import list_rooms_rooms_get as list_api
+        from mycelium_backend_client.api.rooms import list_rooms_api_rooms_get as list_api
         from mycelium_backend_client.models import HTTPValidationError
 
         with _typed_client(config) as client:
@@ -116,7 +116,7 @@ def list_rooms(
         if name:
             params["name"] = name
 
-        from mycelium_backend_client.api.rooms import list_rooms_rooms_get as list_api
+        from mycelium_backend_client.api.rooms import list_rooms_api_rooms_get as list_api
         from mycelium_backend_client.models import HTTPValidationError
 
         with _typed_client(config) as client:
@@ -184,7 +184,7 @@ def create(
         if name is None:
             name = typer.prompt("Room name")
 
-        from mycelium_backend_client.api.rooms import create_room_rooms_post as create_api
+        from mycelium_backend_client.api.rooms import create_room_api_rooms_post as create_api
         from mycelium_backend_client.models import RoomCreate, RoomCreateTriggerConfigType0
 
         # Parse trigger config
@@ -257,7 +257,7 @@ def synthesize(
         name = room_name or room or _resolve_room(config)
 
         from mycelium_backend_client.api.rooms import (
-            synthesize_room_rooms_room_name_synthesize_post as synth_api,
+            synthesize_room_api_rooms_room_name_synthesize_post as synth_api,
         )
 
         with (
@@ -309,7 +309,7 @@ def use(
 
         config = MyceliumConfig.load()
 
-        from mycelium_backend_client.api.rooms import list_rooms_rooms_get as list_api
+        from mycelium_backend_client.api.rooms import list_rooms_api_rooms_get as list_api
         from mycelium_backend_client.models import HTTPValidationError
 
         with _typed_client(config) as client:
@@ -369,7 +369,7 @@ def delete(
                 raise typer.Exit(0)
 
         from mycelium_backend_client.api.rooms import (
-            delete_room_rooms_room_name_delete as delete_api,
+            delete_room_api_rooms_room_name_delete as delete_api,
         )
 
         with _typed_client(config) as client:
@@ -911,7 +911,7 @@ def post(
         config = MyceliumConfig.load()
 
         from mycelium_backend_client.api.messages import (
-            send_message_rooms_room_name_messages_post as send_api,
+            send_message_api_rooms_room_name_messages_post as send_api,
         )
         from mycelium_backend_client.models import MessageCreate
 
@@ -983,7 +983,7 @@ def send(
         sender_handle = handle or config.get_current_identity()
 
         from mycelium_backend_client.api.messages import (
-            send_message_rooms_room_name_messages_post as send_api,
+            send_message_api_rooms_room_name_messages_post as send_api,
         )
         from mycelium_backend_client.models import MessageCreate
 
@@ -1038,7 +1038,7 @@ def delegate(
         sender = config.get_current_identity()
 
         from mycelium_backend_client.api.messages import (
-            send_message_rooms_room_name_messages_post as send_api,
+            send_message_api_rooms_room_name_messages_post as send_api,
         )
         from mycelium_backend_client.models import MessageCreate
 

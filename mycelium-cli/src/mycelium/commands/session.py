@@ -141,7 +141,7 @@ def join(
             intent = file.read_text().strip()
 
         from mycelium_backend_client.api.sessions import (
-            join_room_rooms_room_name_sessions_post as join_api,
+            join_room_api_rooms_room_name_sessions_post as join_api,
         )
         from mycelium_backend_client.models import SessionCreate
 
@@ -467,7 +467,7 @@ def list_sessions(
         room_name = _resolve_room(config, room)
 
         from mycelium_backend_client.api.sessions import (
-            list_sessions_rooms_room_name_sessions_get as list_api,
+            list_sessions_api_rooms_room_name_sessions_get as list_api,
         )
 
         with _typed_client(config) as client:
