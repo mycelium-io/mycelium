@@ -51,7 +51,7 @@
                     "rooms"
                 ],
                 "summary": "List Rooms",
-                "description": "List rooms.\n\nSessions live in ``coordination_sessions`` and are not surfaced here. The\n``include_sessions`` parameter is kept for backward-compatible URLs but is\na no-op now (#244 \u2014 session-shadow rows no longer exist).",
+                "description": "List rooms.\n\nSessions live in ``coordination_sessions`` and are not surfaced here. The\n``include_sessions`` parameter is accepted for backward-compatible URLs\nbut is a no-op \u2014 there are no session-shadow rows in this table.",
                 "operationId": "list_rooms_api_rooms_get",
                 "parameters": [
                     {
@@ -666,7 +666,7 @@
                     "sessions"
                 ],
                 "summary": "List Coordination Sessions",
-                "description": "List negotiation sessions in a room (#197).\n\nReturns first-class CoordinationSession entities. The shadow rows in the\nrooms table are an implementation detail that callers shouldn't depend on.",
+                "description": "List negotiation sessions in a room.\n\nReturns first-class CoordinationSession entities scoped to ``room_name``.",
                 "operationId": "list_coordination_sessions_api_rooms__room_name__sessions_coordination_get",
                 "parameters": [
                     {
