@@ -178,8 +178,7 @@ async def join_room(
         _notify_join(coord_session.display_name, payload.agent_handle, payload.intent)
     )
 
-    # Drive the join-window state machine on the CoordinationSession itself
-    # (was previously on the shadow Room.coordination_state / join_deadline).
+    # Drive the join-window state machine on the CoordinationSession.
     if coord_session.state == "idle":
         deadline = datetime.now(UTC) + timedelta(seconds=settings.COORDINATION_JOIN_WINDOW_SECONDS)
         result = await db.execute(

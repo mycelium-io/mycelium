@@ -351,8 +351,8 @@ def schedule_join_timer(room_name: str, deadline: datetime) -> asyncio.Task:
 async def _run_tick(room_name: str, tick: int) -> None:
     """Tick 0: launch CFN negotiation. Errors if CFN not configured on the room."""
     async with async_session_maker() as db:
-        # room_name here is the session-shadow display name like "{parent}:session:{short}".
-        # Look up the corresponding CoordinationSession to find its participants.
+        # room_name here is a session display name like "{parent}:session:{short}".
+        # Resolve it to the CoordinationSession entity.
         if ":session:" in room_name:
             parent, _, short_id = room_name.partition(":session:")
             coord_result = await db.execute(

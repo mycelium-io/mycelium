@@ -8,7 +8,7 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_spawn_creates_coordination_session(client):
-    """Spawning a session creates a CoordinationSession (no shadow Room)."""
+    """Spawning a session creates a CoordinationSession entity."""
     await client.post("/api/rooms", json={"name": "p1"})
     spawn = await client.post("/api/rooms/p1/sessions/spawn")
     assert spawn.status_code == 201
@@ -17,9 +17,9 @@ async def test_spawn_creates_coordination_session(client):
     assert "coordination_session_id" in body
     display_name = body["session_room"]
 
-    # No shadow Room row — display name is synthesized from the coord session.
-    shadow = await client.get(f"/api/rooms/{display_name}")
-    assert shadow.status_code == 404
+    # The display name is synthesized — no Room row exists at it.
+    resp = await client.get(f"/api/rooms/{display_name}")
+    assert resp.status_code == 404
 
     # First-class entity is reachable on both endpoints.
     coord = await client.get("/api/rooms/p1/sessions/coordination")

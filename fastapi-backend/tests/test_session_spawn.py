@@ -173,6 +173,6 @@ async def test_session_display_name_is_not_a_room(client: AsyncClient):
     coord = await _coord_for_room(client, "check-ns")
     session_name = coord["display_name"]
 
-    # /api/rooms/{display_name} 404s because shadow rows are gone.
+    # Display names don't exist as Room rows — only as CoordinationSession entities.
     resp = await client.get(f"/api/rooms/{session_name}")
     assert resp.status_code == 404

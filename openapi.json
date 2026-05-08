@@ -51,7 +51,7 @@
                     "rooms"
                 ],
                 "summary": "List Rooms",
-                "description": "List rooms.\n\nSessions live in ``coordination_sessions`` and are not surfaced here. The\n``include_sessions`` parameter is accepted for backward-compatible URLs\nbut is a no-op \u2014 there are no session-shadow rows in this table.",
+                "description": "List rooms.\n\nSessions live in ``coordination_sessions`` and are not surfaced here. The\n``include_sessions`` parameter is accepted for backward-compatible URLs\nbut is a no-op.",
                 "operationId": "list_rooms_api_rooms_get",
                 "parameters": [
                     {
