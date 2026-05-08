@@ -120,17 +120,36 @@ def status() -> None:
 
     # ── Collector process ────────────────────────────────────────────────
     collector_alive = False
+    collector_label = ""
     collector_pid, collector_port = _read_pid_file()
     if collector_pid is not None:
         try:
             os.kill(collector_pid, 0)
             collector_alive = True
+            collector_label = f"PID {collector_pid}  port {collector_port}"
         except OSError:
             collector_alive = False
+
+    if not collector_alive and _docker_collector_running():
+        collector_alive = True
+        collector_label = "Docker container"
+
+    if not collector_alive:
+        import socket as _sock
+
+        _probe = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)
+        try:
+            _probe.settimeout(1)
+            _probe.connect(("127.0.0.1", collector_port))
+            collector_alive = True
+            collector_label = f"port {collector_port} (no PID file)"
+        except OSError:
+            pass
+        finally:
+            _probe.close()
+
     if collector_alive:
-        console.print(
-            f"[green]✓[/green] Collector running  PID {collector_pid}  port {collector_port}"
-        )
+        console.print(f"[green]✓[/green] Collector running  {collector_label}")
     else:
         console.print("[red]✗[/red] Collector not running")
         if _pid_file().exists():
@@ -333,8 +352,8 @@ def collect(
     if _docker_collector_running():
         typer.secho(
             "The mycelium-collector Docker container is already running on this host.\n"
-            "Use 'mycelium logs mycelium-collector' to view its output, or\n"
-            "'mycelium down' to stop it before starting a host-side collector.",
+            "View logs:  docker logs mycelium-collector\n"
+            "Stop it:    docker stop mycelium-collector && docker rm mycelium-collector",
             fg=typer.colors.YELLOW,
         )
         return
@@ -371,7 +390,7 @@ def collect(
             _probe.bind(("127.0.0.1", resolved_port))
         except OSError:
             typer.secho(
-                f"Collector already running on port {resolved_port} (stale PID file)",
+                f"Collector already running on port {resolved_port}",
                 fg=typer.colors.YELLOW,
             )
             return

@@ -83,13 +83,18 @@ class TraceStore:
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(str(self._db_path), timeout=10)
 
-    def ingest_traces(self, request_bytes: bytes) -> None:
+    def ingest_traces(self, request_bytes: bytes, *, is_json: bool = False) -> None:
         from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
             ExportTraceServiceRequest,
         )
 
         msg = ExportTraceServiceRequest()
-        msg.ParseFromString(request_bytes)
+        if is_json:
+            from google.protobuf.json_format import Parse
+
+            Parse(request_bytes, msg)
+        else:
+            msg.ParseFromString(request_bytes)
 
         rows: list[tuple] = []
         for rs in msg.resource_spans:
@@ -354,13 +359,18 @@ class MetricsStore:
                 result["scrape"] = copy.deepcopy(self._scrape_targets)
             return result
 
-    def ingest_metrics(self, request_bytes: bytes) -> None:
+    def ingest_metrics(self, request_bytes: bytes, *, is_json: bool = False) -> None:
         from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import (
             ExportMetricsServiceRequest,
         )
 
         msg = ExportMetricsServiceRequest()
-        msg.ParseFromString(request_bytes)
+        if is_json:
+            from google.protobuf.json_format import Parse
+
+            Parse(request_bytes, msg)
+        else:
+            msg.ParseFromString(request_bytes)
 
         with self.lock:
             for rm in msg.resource_metrics:
@@ -368,7 +378,7 @@ class MetricsStore:
                     for metric in sm.metrics:
                         self._process_metric(metric)
 
-    def ingest_traces(self, request_bytes: bytes) -> None:
+    def ingest_traces(self, request_bytes: bytes, *, is_json: bool = False) -> None:
         """Process model.usage spans for session aggregation.
 
         The raw request_bytes are also forwarded to a TraceStore (if set)
@@ -379,7 +389,12 @@ class MetricsStore:
         )
 
         msg = ExportTraceServiceRequest()
-        msg.ParseFromString(request_bytes)
+        if is_json:
+            from google.protobuf.json_format import Parse
+
+            Parse(request_bytes, msg)
+        else:
+            msg.ParseFromString(request_bytes)
 
         with self.lock:
             for rs in msg.resource_spans:
@@ -796,12 +811,15 @@ class OTLPHandler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
+        ct = (self.headers.get("Content-Type") or "").lower()
+        is_json = "json" in ct
+
         try:
             if self.path == "/v1/metrics":
-                self.store.ingest_metrics(body)
+                self.store.ingest_metrics(body, is_json=is_json)
             elif self.path == "/v1/traces":
-                self.store.ingest_traces(body)
-                self.trace_store.ingest_traces(body)
+                self.store.ingest_traces(body, is_json=is_json)
+                self.trace_store.ingest_traces(body, is_json=is_json)
             elif self.path == "/v1/logs":
                 log.debug("Received OTLP logs (%d bytes), ack-only", len(body))
             self._flush()
