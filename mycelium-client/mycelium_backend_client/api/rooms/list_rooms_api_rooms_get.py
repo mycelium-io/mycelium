@@ -92,7 +92,7 @@ def sync_detailed(
 
     Sessions live in ``coordination_sessions`` and are not surfaced here. The
     ``include_sessions`` parameter is accepted for backward-compatible URLs
-    but is a no-op — there are no session-shadow rows in this table.
+    but is a no-op.
 
     Args:
         skip (int | Unset):  Default: 0.
@@ -136,7 +136,7 @@ def sync(
 
     Sessions live in ``coordination_sessions`` and are not surfaced here. The
     ``include_sessions`` parameter is accepted for backward-compatible URLs
-    but is a no-op — there are no session-shadow rows in this table.
+    but is a no-op.
 
     Args:
         skip (int | Unset):  Default: 0.
@@ -175,7 +175,7 @@ async def asyncio_detailed(
 
     Sessions live in ``coordination_sessions`` and are not surfaced here. The
     ``include_sessions`` parameter is accepted for backward-compatible URLs
-    but is a no-op — there are no session-shadow rows in this table.
+    but is a no-op.
 
     Args:
         skip (int | Unset):  Default: 0.
@@ -217,7 +217,7 @@ async def asyncio(
 
     Sessions live in ``coordination_sessions`` and are not surfaced here. The
     ``include_sessions`` parameter is accepted for backward-compatible URLs
-    but is a no-op — there are no session-shadow rows in this table.
+    but is a no-op.
 
     Args:
         skip (int | Unset):  Default: 0.

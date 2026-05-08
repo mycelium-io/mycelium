@@ -88,9 +88,36 @@ class MessageListResponse(BaseModel):
 # ── Participant (agent in a coordination session) ────────────────────────────
 
 
+class ContextFile(BaseModel):
+    """An opt-in shared file injected into a coordination session.
+
+    The agent (via the CLI) explicitly selected this file to share with the
+    session. Content is visible to other participants on tick fan-out and
+    counts as a deliberate room write — it flows to KXP/CFN like any other
+    room artifact. Use ``sha256`` for audit/dedupe and ``path`` for display.
+    """
+
+    path: str = Field(..., description="Absolute or repo-relative path on the sender's machine")
+    content: str = Field(..., description="File contents at join time")
+    sha256: str = Field(..., description="hex sha256 of content for audit and dedupe")
+
+
 class ParticipantCreate(BaseModel):
     agent_handle: str = Field(..., description="Agent handle joining the room")
     intent: str | None = Field(None, description="Agent's requirements/intent for coordination")
+    context_files: list[ContextFile] | None = Field(
+        None,
+        description="Files explicitly shared into the session at join time. "
+        "Visible to other participants and forwarded to KXP.",
+    )
+
+
+class ContextFileRead(BaseModel):
+    path: str
+    sha256: str
+    # Content is also returned to participants reading their own session
+    # roster — they need it to render shared context.
+    content: str
 
 
 class ParticipantRead(BaseModel):
@@ -100,6 +127,7 @@ class ParticipantRead(BaseModel):
     intent: str | None = None
     joined_at: datetime
     last_seen: datetime | None = None
+    context_files: list[ContextFileRead] | None = None
 
     model_config = {"from_attributes": True}
 

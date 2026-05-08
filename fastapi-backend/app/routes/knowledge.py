@@ -54,7 +54,7 @@ class KnowledgeIngestRequest(BaseModel):
     # the two deliberate room-write paths after the silent-hook removal; legacy
     # is reserved for any caller still using the old per-turn hook flow during
     # the deprecation window.
-    source: Literal["channel_message", "memory_set", "legacy"] = "legacy"
+    source: Literal["channel_message", "memory_set", "context_file", "legacy"] = "legacy"
 
 
 class KnowledgeIngestResponse(BaseModel):

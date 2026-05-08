@@ -26,7 +26,7 @@ from app.database import async_session_maker
 
 logger = logging.getLogger(__name__)
 
-Source = Literal["channel_message", "memory_set"]
+Source = Literal["channel_message", "memory_set", "context_file"]
 
 
 async def fan_in(

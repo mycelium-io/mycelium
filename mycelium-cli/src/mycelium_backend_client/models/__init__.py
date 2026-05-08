@@ -20,6 +20,8 @@ from .cfn_query_api_cfn_knowledge_query_post_response_cfn_query_api_cfn_knowledg
     CfnQueryApiCfnKnowledgeQueryPostResponseCfnQueryApiCfnKnowledgeQueryPost,
 )
 from .concepts_by_ids_request import ConceptsByIdsRequest
+from .context_file import ContextFile
+from .context_file_read import ContextFileRead
 from .coordination_session_read import CoordinationSessionRead
 from .get_negotiation_status_response_get_negotiation_status import (
     GetNegotiationStatusResponseGetNegotiationStatus,
@@ -81,6 +83,8 @@ __all__ = (
     "CfnListApiCfnKnowledgeListGetResponseCfnListApiCfnKnowledgeListGet",
     "CfnQueryApiCfnKnowledgeQueryPostResponseCfnQueryApiCfnKnowledgeQueryPost",
     "ConceptsByIdsRequest",
+    "ContextFile",
+    "ContextFileRead",
     "CoordinationSessionRead",
     "GetNegotiationStatusResponseGetNegotiationStatus",
     "GraphPathsRequest",

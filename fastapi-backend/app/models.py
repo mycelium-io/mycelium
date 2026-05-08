@@ -210,6 +210,13 @@ class Participant(Base):
     )
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     intent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Files the agent explicitly shared into the session on join.
+    # Shape: [{"path": str, "content": str, "sha256": str}]. Content is
+    # opt-in shared context — visible to other participants in the session
+    # and forwarded to KXP/CFN like any deliberate room write.
+    context_files: Mapped[list | None] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"), nullable=True
+    )
 
 
 class AuditEvent(Base):

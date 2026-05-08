@@ -29,6 +29,40 @@ def _typed_client(config: MyceliumConfig):
     return Client(base_url=config.server.api_url, raise_on_unexpected_status=True)
 
 
+def _resolve_context_files(
+    paths: list[Path] | None,
+) -> list[tuple[Path, str, str]]:
+    """Read --context-files paths into ``[(path, content, sha256)]``.
+
+    Accepts repeated ``--context-files`` and comma-separated values within
+    each occurrence. Falls back to ``MYCELIUM_SESSION_JOIN_DEFAULT_CONTEXT_FILES``
+    (comma-separated) when no flag is passed.
+    """
+    import hashlib
+    import os
+
+    raw: list[str] = []
+    if paths:
+        for p in paths:
+            for part in str(p).split(","):
+                part = part.strip()
+                if part:
+                    raw.append(part)
+    else:
+        env = os.environ.get("MYCELIUM_SESSION_JOIN_DEFAULT_CONTEXT_FILES", "")
+        raw.extend(p.strip() for p in env.split(",") if p.strip())
+
+    out: list[tuple[Path, str, str]] = []
+    for entry in raw:
+        path = Path(entry).expanduser()
+        if not path.is_file():
+            raise typer.BadParameter(f"--context-files: not a file: {path}")
+        content = path.read_text()
+        sha = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        out.append((path, content, sha))
+    return out
+
+
 def _resolve_room(config: MyceliumConfig, room: str | None = None) -> str:
     import os
 
@@ -115,6 +149,17 @@ def join(
     handle: str = typer.Option(
         ..., "--handle", "-H", help="Agent handle (your identity in this session)"
     ),
+    context_files: list[Path] | None = typer.Option(
+        None,
+        "--context-files",
+        "-C",
+        help=(
+            "Files to share into the session as opt-in context. Visible to "
+            "other participants and forwarded to room memory / KXP. Repeat "
+            "the flag or comma-separate. Defaults to "
+            "$MYCELIUM_SESSION_JOIN_DEFAULT_CONTEXT_FILES."
+        ),
+    ),
 ) -> None:
     """
     Join a negotiation session within a room.
@@ -143,10 +188,25 @@ def join(
         from mycelium_backend_client.api.sessions import (
             join_room_api_rooms_room_name_sessions_post as join_api,
         )
-        from mycelium_backend_client.models import ParticipantCreate
+        from mycelium_backend_client.models import ContextFile, ParticipantCreate
+
+        resolved_files = _resolve_context_files(context_files)
+        cf_payload = [
+            ContextFile(path=str(p), content=content, sha256=sha)
+            for p, content, sha in resolved_files
+        ]
+        if cf_payload:
+            typer.echo(
+                f"  Sharing {len(cf_payload)} context file(s) with the session: "
+                + ", ".join(Path(cf.path).name for cf in cf_payload)
+            )
 
         with _typed_client(config) as client:
-            body = ParticipantCreate(agent_handle=handle, intent=intent)
+            body = ParticipantCreate(
+                agent_handle=handle,
+                intent=intent,
+                context_files=cf_payload if cf_payload else None,
+            )
             result = join_api.sync(room_name=room_name, client=client, body=body)
             data = result.to_dict() if result and hasattr(result, "to_dict") else {}
 

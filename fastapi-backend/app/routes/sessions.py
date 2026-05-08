@@ -26,9 +26,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bus import notify, room_channel
 from app.config import settings
 from app.database import get_async_session
-from app.models import CoordinationSession, Participant, Room
+from app.models import AuditEvent, CoordinationSession, Participant, Room
 from app.routes.rooms import _sync_create_mas
 from app.schemas import (
+    ContextFile,
     CoordinationSessionRead,
     ParticipantCreate,
     ParticipantListResponse,
@@ -161,10 +162,14 @@ async def join_room(
     # Auto-spawn or fetch the active coordination session for this room.
     coord_session = await _spawn_coordination_session(room_name, db)
 
+    context_files_payload = (
+        [cf.model_dump() for cf in payload.context_files] if payload.context_files else None
+    )
     sess = Participant(
         coordination_session_id=coord_session.id,
         agent_handle=payload.agent_handle,
         intent=payload.intent,
+        context_files=context_files_payload,
     )
     db.add(sess)
     await db.commit()
@@ -172,6 +177,23 @@ async def join_room(
 
     # Register agent handle in CFN mgmt plane (non-fatal, fire-and-forget)
     asyncio.ensure_future(_register_agent_cfn(room, payload.agent_handle))
+
+    # Audit + KXP fan-in for opt-in shared context files. The agent
+    # deliberately selected these via --context-files; treat them as room
+    # writes, mirroring channel_message / memory_set in Part 1.
+    if payload.context_files:
+        await _record_context_files_audit(db, room, payload.agent_handle, payload.context_files)
+        from app.services.knowledge_fanin import fan_in
+
+        for cf in payload.context_files:
+            asyncio.ensure_future(
+                fan_in(
+                    room_name=room_name,
+                    sender_handle=payload.agent_handle,
+                    content=cf.content,
+                    source="context_file",
+                )
+            )
 
     # Post coordination_join notification on the session display channel.
     asyncio.ensure_future(
@@ -319,6 +341,40 @@ async def _notify_join(room_name: str, handle: str, intent: str | None) -> None:
             await conn.close()
     except Exception as e:
         logger.warning("NOTIFY coordination_join failed: %s", e)
+
+
+async def _record_context_files_audit(
+    db: AsyncSession,
+    room: Room,
+    handle: str,
+    files: list[ContextFile],
+) -> None:
+    """Write a durable record of which files an agent opted into sharing.
+
+    Stores ``path`` and ``sha256`` only — content lives on the participant
+    row and (via fan-in) in KXP. The audit row captures consent: who shared
+    what, in which room, identified by hash.
+    """
+    nil_uuid = UUID(int=0)
+    now = datetime.now(UTC)
+    db.add(
+        AuditEvent(
+            resource_type="MAS",
+            resource_identifier=str(room.mas_id) if room.mas_id else room.name,
+            audit_type="KNOWLEDGE_INGESTION",
+            audit_resource_identifier=handle,
+            audit_information={
+                "kind": "context_files_shared",
+                "room": room.name,
+                "files": [{"path": cf.path, "sha256": cf.sha256} for cf in files],
+            },
+            created_by=nil_uuid,
+            created_on=now,
+            last_modified_by=nil_uuid,
+            last_modified_on=now,
+        )
+    )
+    await db.commit()
 
 
 @router.get("/coordination", response_model=list[CoordinationSessionRead])
