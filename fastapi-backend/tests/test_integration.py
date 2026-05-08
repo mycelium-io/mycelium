@@ -24,6 +24,15 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
+
+async def _session_display_name(client: AsyncClient, namespace: str) -> str:
+    """Return the most recent CoordinationSession's display_name for a namespace."""
+    resp = await client.get(f"/api/rooms/{namespace}/sessions/coordination")
+    rows = resp.json()
+    assert rows, f"no coordination sessions in {namespace}"
+    return rows[0]["display_name"]
+
+
 # Skip entire module if no real DB configured
 INTEGRATION_DB_URL = os.environ.get("DATABASE_URL", "")
 pytestmark = pytest.mark.skipif(
@@ -342,7 +351,7 @@ async def test_sync_room_still_works(integration_client: AsyncClient):
         },
     )
     assert resp.status_code == 201
-    session_room_name = resp.json()["room_name"]
+    session_room_name = await _session_display_name(client, "e2e-sync")
     assert "e2e-sync:session:" in session_room_name
 
     # The spawned session room should be in waiting state
@@ -395,7 +404,7 @@ async def test_sync_join_starts_timer(integration_client: AsyncClient):
         },
     )
     assert resp.status_code == 201
-    session_room_name = resp.json()["room_name"]
+    session_room_name = await _session_display_name(client, "e2e-timer")
 
     resp = await client.get(f"/api/rooms/{session_room_name}")
     session_room = resp.json()
@@ -419,7 +428,7 @@ async def test_sync_multiple_agents_join(integration_client: AsyncClient):
         },
     )
     assert resp1.status_code == 201
-    session_room_name = resp1.json()["room_name"]
+    session_room_name = await _session_display_name(client, "e2e-multi")
 
     resp2 = await client.post(
         "/api/rooms/e2e-multi/sessions",
@@ -462,7 +471,7 @@ async def test_sync_negotiation_produces_messages(integration_client: AsyncClien
             "intent": "I want scope=full and quality=premium",
         },
     )
-    session_room_name = resp.json()["room_name"]
+    session_room_name = await _session_display_name(client, "e2e-negot")
 
     await client.post(
         "/api/rooms/e2e-negot/sessions",
@@ -532,7 +541,7 @@ async def test_namespace_room_supports_memory_and_sessions(integration_client: A
         },
     )
     assert resp.status_code == 201
-    session_room_name = resp.json()["room_name"]
+    session_room_name = await _session_display_name(client, "e2e-ns-both")
 
     # Session room should be in waiting state
     resp = await client.get(f"/api/rooms/{session_room_name}")
@@ -562,7 +571,7 @@ async def test_messages_route_during_negotiation(integration_client: AsyncClient
             "intent": "testing message routing",
         },
     )
-    session_room_name = resp.json()["room_name"]
+    session_room_name = await _session_display_name(client, "e2e-msg-route")
 
     # Manually set session room to negotiating state to test routing
     from sqlalchemy import update as sa_update
