@@ -208,6 +208,23 @@ def _collector_container_running() -> bool:
         return False
 
 
+def _bare_metal_collector_running() -> bool:
+    """Return True if a host-side ``mycelium metrics collect`` process is listening."""
+    import os
+    import socket
+
+    port = int(os.environ.get("MYCELIUM_METRICS_PORT", "4318"))
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.settimeout(1)
+        sock.connect(("127.0.0.1", port))
+        return True
+    except OSError:
+        return False
+    finally:
+        sock.close()
+
+
 def _ensure_cfn_databases(db_container: str = "mycelium-db") -> None:
     """Create cfn_mgmt and cfn_cp databases if they don't exist.
 
@@ -391,6 +408,13 @@ def start(
         if ui:
             base = base + ["--profile", "ui"]
         if metrics:
+            if _bare_metal_collector_running():
+                typer.secho(
+                    "A host-side collector is already running on the metrics port.\n"
+                    "Stop it first:  mycelium metrics stop",
+                    fg=typer.colors.YELLOW,
+                )
+                raise typer.Exit(1)
             base = base + ["--profile", "metrics"]
         up_args = ["up", "-d", "--remove-orphans"]
         if build:
