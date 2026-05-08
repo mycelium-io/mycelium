@@ -1,25 +1,23 @@
 from http import HTTPStatus
 from typing import Any
 from urllib.parse import quote
+from uuid import UUID
 
 import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.http_validation_error import HTTPValidationError
-from ...models.spawn_session_api_rooms_room_name_sessions_spawn_post_response_spawn_session_api_rooms_room_name_sessions_spawn_post import (
-    SpawnSessionApiRoomsRoomNameSessionsSpawnPostResponseSpawnSessionApiRoomsRoomNameSessionsSpawnPost,
-)
 from ...types import Response
 
 
 def _get_kwargs(
-    room_name: str,
+    session_id: UUID,
 ) -> dict[str, Any]:
     _kwargs: dict[str, Any] = {
-        "method": "post",
-        "url": "/api/rooms/{room_name}/sessions/spawn".format(
-            room_name=quote(str(room_name), safe=""),
+        "method": "get",
+        "url": "/api/coordination-sessions/{session_id}/messages/stream".format(
+            session_id=quote(str(session_id), safe=""),
         ),
     }
 
@@ -28,17 +26,10 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> (
-    HTTPValidationError
-    | SpawnSessionApiRoomsRoomNameSessionsSpawnPostResponseSpawnSessionApiRoomsRoomNameSessionsSpawnPost
-    | None
-):
-    if response.status_code == 201:
-        response_201 = SpawnSessionApiRoomsRoomNameSessionsSpawnPostResponseSpawnSessionApiRoomsRoomNameSessionsSpawnPost.from_dict(
-            response.json()
-        )
-
-        return response_201
+) -> Any | HTTPValidationError | None:
+    if response.status_code == 200:
+        response_200 = response.json()
+        return response_200
 
     if response.status_code == 422:
         response_422 = HTTPValidationError.from_dict(response.json())
@@ -53,10 +44,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[
-    HTTPValidationError
-    | SpawnSessionApiRoomsRoomNameSessionsSpawnPostResponseSpawnSessionApiRoomsRoomNameSessionsSpawnPost
-]:
+) -> Response[Any | HTTPValidationError]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -66,30 +54,31 @@ def _build_response(
 
 
 def sync_detailed(
-    room_name: str,
+    session_id: UUID,
     *,
     client: AuthenticatedClient | Client,
-) -> Response[
-    HTTPValidationError
-    | SpawnSessionApiRoomsRoomNameSessionsSpawnPostResponseSpawnSessionApiRoomsRoomNameSessionsSpawnPost
-]:
-    """Spawn Session
+) -> Response[Any | HTTPValidationError]:
+    """Stream Session Messages
 
-     Explicitly spawn a negotiation session within a room.
+     SSE stream for a coordination session.
+
+    Resolves the session and subscribes to the underlying ``room:{display_name}``
+    Postgres NOTIFY channel so any inbound message routed to either coord_session_id
+    or the legacy display name surfaces here.
 
     Args:
-        room_name (str):
+        session_id (UUID):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | SpawnSessionApiRoomsRoomNameSessionsSpawnPostResponseSpawnSessionApiRoomsRoomNameSessionsSpawnPost]
+        Response[Any | HTTPValidationError]
     """
 
     kwargs = _get_kwargs(
-        room_name=room_name,
+        session_id=session_id,
     )
 
     response = client.get_httpx_client().request(
@@ -100,60 +89,61 @@ def sync_detailed(
 
 
 def sync(
-    room_name: str,
+    session_id: UUID,
     *,
     client: AuthenticatedClient | Client,
-) -> (
-    HTTPValidationError
-    | SpawnSessionApiRoomsRoomNameSessionsSpawnPostResponseSpawnSessionApiRoomsRoomNameSessionsSpawnPost
-    | None
-):
-    """Spawn Session
+) -> Any | HTTPValidationError | None:
+    """Stream Session Messages
 
-     Explicitly spawn a negotiation session within a room.
+     SSE stream for a coordination session.
+
+    Resolves the session and subscribes to the underlying ``room:{display_name}``
+    Postgres NOTIFY channel so any inbound message routed to either coord_session_id
+    or the legacy display name surfaces here.
 
     Args:
-        room_name (str):
+        session_id (UUID):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | SpawnSessionApiRoomsRoomNameSessionsSpawnPostResponseSpawnSessionApiRoomsRoomNameSessionsSpawnPost
+        Any | HTTPValidationError
     """
 
     return sync_detailed(
-        room_name=room_name,
+        session_id=session_id,
         client=client,
     ).parsed
 
 
 async def asyncio_detailed(
-    room_name: str,
+    session_id: UUID,
     *,
     client: AuthenticatedClient | Client,
-) -> Response[
-    HTTPValidationError
-    | SpawnSessionApiRoomsRoomNameSessionsSpawnPostResponseSpawnSessionApiRoomsRoomNameSessionsSpawnPost
-]:
-    """Spawn Session
+) -> Response[Any | HTTPValidationError]:
+    """Stream Session Messages
 
-     Explicitly spawn a negotiation session within a room.
+     SSE stream for a coordination session.
+
+    Resolves the session and subscribes to the underlying ``room:{display_name}``
+    Postgres NOTIFY channel so any inbound message routed to either coord_session_id
+    or the legacy display name surfaces here.
 
     Args:
-        room_name (str):
+        session_id (UUID):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | SpawnSessionApiRoomsRoomNameSessionsSpawnPostResponseSpawnSessionApiRoomsRoomNameSessionsSpawnPost]
+        Response[Any | HTTPValidationError]
     """
 
     kwargs = _get_kwargs(
-        room_name=room_name,
+        session_id=session_id,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -162,32 +152,32 @@ async def asyncio_detailed(
 
 
 async def asyncio(
-    room_name: str,
+    session_id: UUID,
     *,
     client: AuthenticatedClient | Client,
-) -> (
-    HTTPValidationError
-    | SpawnSessionApiRoomsRoomNameSessionsSpawnPostResponseSpawnSessionApiRoomsRoomNameSessionsSpawnPost
-    | None
-):
-    """Spawn Session
+) -> Any | HTTPValidationError | None:
+    """Stream Session Messages
 
-     Explicitly spawn a negotiation session within a room.
+     SSE stream for a coordination session.
+
+    Resolves the session and subscribes to the underlying ``room:{display_name}``
+    Postgres NOTIFY channel so any inbound message routed to either coord_session_id
+    or the legacy display name surfaces here.
 
     Args:
-        room_name (str):
+        session_id (UUID):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | SpawnSessionApiRoomsRoomNameSessionsSpawnPostResponseSpawnSessionApiRoomsRoomNameSessionsSpawnPost
+        Any | HTTPValidationError
     """
 
     return (
         await asyncio_detailed(
-            room_name=room_name,
+            session_id=session_id,
             client=client,
         )
     ).parsed

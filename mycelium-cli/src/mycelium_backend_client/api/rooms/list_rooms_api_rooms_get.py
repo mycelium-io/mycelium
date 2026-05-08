@@ -90,10 +90,9 @@ def sync_detailed(
 
      List rooms.
 
-    By default returns only real rooms (namespaces). Session-shadow rows are
-    excluded so ``mycelium room ls`` stays clean. Pass ``include_sessions=true``
-    to include the shadow rows — used by callers (e.g. the OpenClaw channel
-    plugin) that still address sessions by name during the deprecation window.
+    Sessions live in ``coordination_sessions`` and are not surfaced here. The
+    ``include_sessions`` parameter is kept for backward-compatible URLs but is
+    a no-op now (#244 — session-shadow rows no longer exist).
 
     Args:
         skip (int | Unset):  Default: 0.
@@ -135,10 +134,9 @@ def sync(
 
      List rooms.
 
-    By default returns only real rooms (namespaces). Session-shadow rows are
-    excluded so ``mycelium room ls`` stays clean. Pass ``include_sessions=true``
-    to include the shadow rows — used by callers (e.g. the OpenClaw channel
-    plugin) that still address sessions by name during the deprecation window.
+    Sessions live in ``coordination_sessions`` and are not surfaced here. The
+    ``include_sessions`` parameter is kept for backward-compatible URLs but is
+    a no-op now (#244 — session-shadow rows no longer exist).
 
     Args:
         skip (int | Unset):  Default: 0.
@@ -175,10 +173,9 @@ async def asyncio_detailed(
 
      List rooms.
 
-    By default returns only real rooms (namespaces). Session-shadow rows are
-    excluded so ``mycelium room ls`` stays clean. Pass ``include_sessions=true``
-    to include the shadow rows — used by callers (e.g. the OpenClaw channel
-    plugin) that still address sessions by name during the deprecation window.
+    Sessions live in ``coordination_sessions`` and are not surfaced here. The
+    ``include_sessions`` parameter is kept for backward-compatible URLs but is
+    a no-op now (#244 — session-shadow rows no longer exist).
 
     Args:
         skip (int | Unset):  Default: 0.
@@ -218,10 +215,9 @@ async def asyncio(
 
      List rooms.
 
-    By default returns only real rooms (namespaces). Session-shadow rows are
-    excluded so ``mycelium room ls`` stays clean. Pass ``include_sessions=true``
-    to include the shadow rows — used by callers (e.g. the OpenClaw channel
-    plugin) that still address sessions by name during the deprecation window.
+    Sessions live in ``coordination_sessions`` and are not surfaced here. The
+    ``include_sessions`` parameter is kept for backward-compatible URLs but is
+    a no-op now (#244 — session-shadow rows no longer exist).
 
     Args:
         skip (int | Unset):  Default: 0.

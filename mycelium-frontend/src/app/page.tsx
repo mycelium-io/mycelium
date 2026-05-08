@@ -13,8 +13,6 @@ import { IDChip } from "@/components/id-chip";
 interface Room {
   name: string;
   created_at: string;
-  parent_namespace: string | null;
-  is_namespace: boolean;
   is_persistent: boolean;
 }
 
@@ -40,7 +38,7 @@ export default function Dashboard() {
 
   const load = () =>
     fetchRooms()
-      .then((data: Room[]) => setRooms(data.filter(r => r.is_namespace !== false)))
+      .then((data: Room[]) => setRooms(data))
       .catch(() => {});
 
   useEffect(() => {

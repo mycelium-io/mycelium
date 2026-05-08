@@ -61,7 +61,11 @@ def sync_detailed(
 ) -> Response[HTTPValidationError | ParticipantListResponse]:
     """List Sessions
 
-     List agents participating in a room's coordination session.
+     List agents participating in a room's coordination session(s).
+
+    Accepts either a real room name (returns participants across all its
+    coord_sessions) or a legacy ``{parent}:session:{short}`` display name
+    (returns participants of just that one session).
 
     Args:
         room_name (str):
@@ -92,7 +96,11 @@ def sync(
 ) -> HTTPValidationError | ParticipantListResponse | None:
     """List Sessions
 
-     List agents participating in a room's coordination session.
+     List agents participating in a room's coordination session(s).
+
+    Accepts either a real room name (returns participants across all its
+    coord_sessions) or a legacy ``{parent}:session:{short}`` display name
+    (returns participants of just that one session).
 
     Args:
         room_name (str):
@@ -118,7 +126,11 @@ async def asyncio_detailed(
 ) -> Response[HTTPValidationError | ParticipantListResponse]:
     """List Sessions
 
-     List agents participating in a room's coordination session.
+     List agents participating in a room's coordination session(s).
+
+    Accepts either a real room name (returns participants across all its
+    coord_sessions) or a legacy ``{parent}:session:{short}`` display name
+    (returns participants of just that one session).
 
     Args:
         room_name (str):
@@ -147,7 +159,11 @@ async def asyncio(
 ) -> HTTPValidationError | ParticipantListResponse | None:
     """List Sessions
 
-     List agents participating in a room's coordination session.
+     List agents participating in a room's coordination session(s).
+
+    Accepts either a real room name (returns participants across all its
+    coord_sessions) or a legacy ``{parent}:session:{short}`` display name
+    (returns participants of just that one session).
 
     Args:
         room_name (str):

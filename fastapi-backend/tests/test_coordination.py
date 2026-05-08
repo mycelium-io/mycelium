@@ -60,7 +60,6 @@ def _make_room(room_name: str = "test-room", mas_id: str = "mas-1", workspace_id
     room.name = room_name
     room.mas_id = mas_id
     room.workspace_id = workspace_id
-    room.parent_namespace = None
     return room
 
 

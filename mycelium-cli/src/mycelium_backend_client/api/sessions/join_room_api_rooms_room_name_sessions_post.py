@@ -72,7 +72,7 @@ def sync_detailed(
 ) -> Response[HTTPValidationError | ParticipantRead]:
     """Join Room
 
-     Join a room. If the room is a namespace, auto-spawns a session and joins that.
+     Join a room. Auto-spawns a coordination session if one doesn't exist.
 
     Args:
         room_name (str):
@@ -106,7 +106,7 @@ def sync(
 ) -> HTTPValidationError | ParticipantRead | None:
     """Join Room
 
-     Join a room. If the room is a namespace, auto-spawns a session and joins that.
+     Join a room. Auto-spawns a coordination session if one doesn't exist.
 
     Args:
         room_name (str):
@@ -135,7 +135,7 @@ async def asyncio_detailed(
 ) -> Response[HTTPValidationError | ParticipantRead]:
     """Join Room
 
-     Join a room. If the room is a namespace, auto-spawns a session and joins that.
+     Join a room. Auto-spawns a coordination session if one doesn't exist.
 
     Args:
         room_name (str):
@@ -167,7 +167,7 @@ async def asyncio(
 ) -> HTTPValidationError | ParticipantRead | None:
     """Join Room
 
-     Join a room. If the room is a namespace, auto-spawns a session and joins that.
+     Join a room. Auto-spawns a coordination session if one doesn't exist.
 
     Args:
         room_name (str):
