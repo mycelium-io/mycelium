@@ -19,9 +19,7 @@ async def test_create_room_defaults(client: AsyncClient):
     assert resp.status_code == 201
     data = resp.json()
     assert data["name"] == "test-default-room"
-    assert data["mode"] == "async"
     assert data["is_persistent"] is True
-    assert data["is_namespace"] is True
 
 
 @pytest.mark.asyncio
@@ -239,16 +237,14 @@ async def test_async_room_join_no_timer(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_synthesize_non_namespace_rejected(client: AsyncClient):
-    """Test that non-namespace rooms reject synthesis requests."""
-    # All user-created rooms are namespaces now, so we test via a session room
+async def test_synthesize_session_display_404(client: AsyncClient):
+    """Synthesis on a session display name 404s — sessions don't have rooms."""
     await client.post("/api/rooms", json={"name": "synth-ns"})
     resp = await client.post("/api/rooms/synth-ns/sessions/spawn")
-    assert resp.status_code == 201
     session_room = resp.json()["session_room"]
 
     resp = await client.post(f"/api/rooms/{session_room}/synthesize")
-    assert resp.status_code == 400
+    assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -263,8 +259,6 @@ async def test_room_with_trigger(client: AsyncClient):
     )
     assert resp.status_code == 201
     data = resp.json()
-    assert data["mode"] == "async"
-    assert data["is_namespace"] is True
     assert data["trigger_config"]["type"] == "threshold"
     assert data["trigger_config"]["min_contributions"] == 3
 

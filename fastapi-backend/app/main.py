@@ -35,6 +35,7 @@ from app.routes.audit import router as audit_router
 from app.routes.cfn_proxy import cfn_read_router
 from app.routes.cfn_proxy import router as cfn_proxy_router
 from app.routes.coordination import router as coordination_router
+from app.routes.coordination_sessions import router as coordination_sessions_router
 from app.routes.knowledge import router as knowledge_router
 from app.routes.memory import router as memory_router
 from app.routes.messages import router as messages_router
@@ -182,6 +183,10 @@ app.include_router(knowledge_router)
 
 # Coordination observability (round-trace ring buffer; see issue #162)
 app.include_router(coordination_router)
+
+# Coordination sessions as a top-level resource (#244 — replaces shadow-room
+# display-name addressing for OpenClaw plugin / frontend / CLI consumers).
+app.include_router(coordination_sessions_router)
 
 
 @app.get("/", tags=["health"])

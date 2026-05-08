@@ -57,26 +57,20 @@ def sync_detailed(
     *,
     client: AuthenticatedClient | Client,
 ) -> Response[Any | HTTPValidationError]:
-    r"""Delete Room
+    """Delete Room
 
      Delete a room and cascade to its child session rooms.
 
-    Cleanup order is important to avoid stale state firing against
-    already-deleted rows:
+    Cleanup order:
 
-      1. Enumerate child session rooms (``parent_namespace == room_name``).
-      2. Tear down all in-memory CFN coordination state for the namespace
-         and its children (cancels pending join timers and active round
-         timeouts, posts ``coordination_consensus broken=True`` to any
-         SSE subscribers).
-      3. Delete child ``Session`` rows, then child ``Room`` rows.
-      4. Mark any active child rooms as ``coordination_state=\"failed\"``
-         (defensive — if step 3 didn't catch them due to a race, the
-         state still reflects reality).
-      5. Delete the parent ``Room`` row.
-      6. Remove the filesystem directory.
-      7. Delete the MAS in the CFN mgmt plane (non-fatal, last so a CFN
-         error doesn't block the local cleanup).
+      1. Resolve all coordination sessions for this room (display names + IDs).
+      2. Tear down in-memory CFN coordination state. Doing this before DB
+         deletes prevents in-flight ticks from firing against half-deleted
+         state.
+      3. Delete the room row — coordination_sessions, participants, and
+         messages cascade automatically via FK ON DELETE CASCADE.
+      4. Remove the filesystem directory.
+      5. Delete the MAS in the CFN mgmt plane (non-fatal, last).
 
     Args:
         room_name (str):
@@ -105,26 +99,20 @@ def sync(
     *,
     client: AuthenticatedClient | Client,
 ) -> Any | HTTPValidationError | None:
-    r"""Delete Room
+    """Delete Room
 
      Delete a room and cascade to its child session rooms.
 
-    Cleanup order is important to avoid stale state firing against
-    already-deleted rows:
+    Cleanup order:
 
-      1. Enumerate child session rooms (``parent_namespace == room_name``).
-      2. Tear down all in-memory CFN coordination state for the namespace
-         and its children (cancels pending join timers and active round
-         timeouts, posts ``coordination_consensus broken=True`` to any
-         SSE subscribers).
-      3. Delete child ``Session`` rows, then child ``Room`` rows.
-      4. Mark any active child rooms as ``coordination_state=\"failed\"``
-         (defensive — if step 3 didn't catch them due to a race, the
-         state still reflects reality).
-      5. Delete the parent ``Room`` row.
-      6. Remove the filesystem directory.
-      7. Delete the MAS in the CFN mgmt plane (non-fatal, last so a CFN
-         error doesn't block the local cleanup).
+      1. Resolve all coordination sessions for this room (display names + IDs).
+      2. Tear down in-memory CFN coordination state. Doing this before DB
+         deletes prevents in-flight ticks from firing against half-deleted
+         state.
+      3. Delete the room row — coordination_sessions, participants, and
+         messages cascade automatically via FK ON DELETE CASCADE.
+      4. Remove the filesystem directory.
+      5. Delete the MAS in the CFN mgmt plane (non-fatal, last).
 
     Args:
         room_name (str):
@@ -148,26 +136,20 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient | Client,
 ) -> Response[Any | HTTPValidationError]:
-    r"""Delete Room
+    """Delete Room
 
      Delete a room and cascade to its child session rooms.
 
-    Cleanup order is important to avoid stale state firing against
-    already-deleted rows:
+    Cleanup order:
 
-      1. Enumerate child session rooms (``parent_namespace == room_name``).
-      2. Tear down all in-memory CFN coordination state for the namespace
-         and its children (cancels pending join timers and active round
-         timeouts, posts ``coordination_consensus broken=True`` to any
-         SSE subscribers).
-      3. Delete child ``Session`` rows, then child ``Room`` rows.
-      4. Mark any active child rooms as ``coordination_state=\"failed\"``
-         (defensive — if step 3 didn't catch them due to a race, the
-         state still reflects reality).
-      5. Delete the parent ``Room`` row.
-      6. Remove the filesystem directory.
-      7. Delete the MAS in the CFN mgmt plane (non-fatal, last so a CFN
-         error doesn't block the local cleanup).
+      1. Resolve all coordination sessions for this room (display names + IDs).
+      2. Tear down in-memory CFN coordination state. Doing this before DB
+         deletes prevents in-flight ticks from firing against half-deleted
+         state.
+      3. Delete the room row — coordination_sessions, participants, and
+         messages cascade automatically via FK ON DELETE CASCADE.
+      4. Remove the filesystem directory.
+      5. Delete the MAS in the CFN mgmt plane (non-fatal, last).
 
     Args:
         room_name (str):
@@ -194,26 +176,20 @@ async def asyncio(
     *,
     client: AuthenticatedClient | Client,
 ) -> Any | HTTPValidationError | None:
-    r"""Delete Room
+    """Delete Room
 
      Delete a room and cascade to its child session rooms.
 
-    Cleanup order is important to avoid stale state firing against
-    already-deleted rows:
+    Cleanup order:
 
-      1. Enumerate child session rooms (``parent_namespace == room_name``).
-      2. Tear down all in-memory CFN coordination state for the namespace
-         and its children (cancels pending join timers and active round
-         timeouts, posts ``coordination_consensus broken=True`` to any
-         SSE subscribers).
-      3. Delete child ``Session`` rows, then child ``Room`` rows.
-      4. Mark any active child rooms as ``coordination_state=\"failed\"``
-         (defensive — if step 3 didn't catch them due to a race, the
-         state still reflects reality).
-      5. Delete the parent ``Room`` row.
-      6. Remove the filesystem directory.
-      7. Delete the MAS in the CFN mgmt plane (non-fatal, last so a CFN
-         error doesn't block the local cleanup).
+      1. Resolve all coordination sessions for this room (display names + IDs).
+      2. Tear down in-memory CFN coordination state. Doing this before DB
+         deletes prevents in-flight ticks from firing against half-deleted
+         state.
+      3. Delete the room row — coordination_sessions, participants, and
+         messages cascade automatically via FK ON DELETE CASCADE.
+      4. Remove the filesystem directory.
+      5. Delete the MAS in the CFN mgmt plane (non-fatal, last).
 
     Args:
         room_name (str):

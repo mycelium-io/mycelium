@@ -8,7 +8,7 @@ import time
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import delete, select, update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -119,7 +119,6 @@ async def create_room(
         trigger_config=room.trigger_config,
         is_persistent=True,
         namespace=room.name,
-        is_namespace=True,
         mas_id=room.mas_id,
         workspace_id=room.workspace_id,
     )
@@ -149,16 +148,12 @@ async def list_rooms(
 ):
     """List rooms.
 
-    By default returns only real rooms (namespaces). Session-shadow rows are
-    excluded so ``mycelium room ls`` stays clean. Pass ``include_sessions=true``
-    to include the shadow rows — used by callers (e.g. the OpenClaw channel
-    plugin) that still address sessions by name during the deprecation window.
+    Sessions live in ``coordination_sessions`` and are not surfaced here. The
+    ``include_sessions`` parameter is kept for backward-compatible URLs but is
+    a no-op now (#244 — session-shadow rows no longer exist).
     """
+    _ = include_sessions  # accepted for compat; nothing to filter
     query = select(Room).where(Room.is_public == True)  # noqa: E712
-
-    if not include_sessions:
-        # Session-shadow rows have parent_namespace set; real rooms don't.
-        query = query.where(Room.parent_namespace.is_(None))
 
     if name:
         query = query.where(Room.name.ilike(f"%{name}%"))
@@ -191,8 +186,6 @@ async def synthesize_room(
     room = result.scalar_one_or_none()
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
-    if not room.is_namespace:
-        raise HTTPException(status_code=400, detail="Synthesis only available for async rooms")
     if room.coordination_state == "synthesizing":
         raise HTTPException(status_code=409, detail="Synthesis already in progress")
 
@@ -325,71 +318,48 @@ async def delete_room(
 ):
     """Delete a room and cascade to its child session rooms.
 
-    Cleanup order is important to avoid stale state firing against
-    already-deleted rows:
+    Cleanup order:
 
-      1. Enumerate child session rooms (``parent_namespace == room_name``).
-      2. Tear down all in-memory CFN coordination state for the namespace
-         and its children (cancels pending join timers and active round
-         timeouts, posts ``coordination_consensus broken=True`` to any
-         SSE subscribers).
-      3. Delete child ``Session`` rows, then child ``Room`` rows.
-      4. Mark any active child rooms as ``coordination_state="failed"``
-         (defensive — if step 3 didn't catch them due to a race, the
-         state still reflects reality).
-      5. Delete the parent ``Room`` row.
-      6. Remove the filesystem directory.
-      7. Delete the MAS in the CFN mgmt plane (non-fatal, last so a CFN
-         error doesn't block the local cleanup).
+      1. Resolve all coordination sessions for this room (display names + IDs).
+      2. Tear down in-memory CFN coordination state. Doing this before DB
+         deletes prevents in-flight ticks from firing against half-deleted
+         state.
+      3. Delete the room row — coordination_sessions, participants, and
+         messages cascade automatically via FK ON DELETE CASCADE.
+      4. Remove the filesystem directory.
+      5. Delete the MAS in the CFN mgmt plane (non-fatal, last).
     """
     if room_name in RESERVED_ROOMS:
         raise HTTPException(status_code=400, detail=f"'{room_name}' is a reserved system room")
+
+    from app.models import CoordinationSession
 
     result = await session.execute(select(Room).where(Room.name == room_name))
     room = result.scalar_one_or_none()
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
 
-    # 1. Enumerate child session rooms.
-    child_result = await session.execute(
-        select(Room.name).where(Room.parent_namespace == room_name)
+    coord_result = await session.execute(
+        select(CoordinationSession).where(CoordinationSession.parent_room_name == room_name)
     )
-    child_room_names = [r for r in child_result.scalars().all()]
+    coord_sessions = list(coord_result.scalars().all())
+    child_display_names = [c.display_name for c in coord_sessions]
 
-    # 2. Tear down in-memory coordination state for namespace + all children.
-    # Do this BEFORE the DB deletes so any in-flight `_run_tick` that resolves
-    # against the DB sees the row gone and bails, rather than firing ticks
-    # against a half-deleted state.
     try:
-        await coordination.teardown_for_namespace(room_name, child_room_names)
+        await coordination.teardown_for_namespace(room_name, child_display_names)
     except Exception as exc:
-        # Teardown is best-effort cleanup; log but don't block the delete.
         logger.warning("coordination.teardown_for_namespace failed for %s: %s", room_name, exc)
 
-    # 3. Mark any still-existing child rooms as failed before delete so any
-    #    concurrent reader sees a consistent state. Participant rows cascade
-    #    away via coordination_sessions.id (CASCADE) when the parent room is
-    #    deleted in step 4.
-    if child_room_names:
-        await session.execute(
-            update(Room).where(Room.name.in_(child_room_names)).values(coordination_state="failed")
-        )
-        await session.execute(delete(Room).where(Room.name.in_(child_room_names)))
-
-    # 5. Delete the parent room row.
     await session.delete(room)
     await session.commit()
 
-    # 6. Remove filesystem directory for the parent (children share the parent
-    #    namespace's filesystem layout — no separate per-session directory).
     remove_room_dir(room_name)
     logger.info(
-        "Removed room %s and %d child session room(s)",
+        "Removed room %s and %d child coordination session(s)",
         room_name,
-        len(child_room_names),
+        len(coord_sessions),
     )
 
-    # 7. Delete MAS from CFN mgmt plane (non-fatal, last).
     await _sync_delete_mas(room)
 
 

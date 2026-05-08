@@ -205,18 +205,17 @@ def await_tick(
         if resolved_room:
             with httpx.Client(timeout=10) as http:
                 try:
-                    # Ticks are posted to session sub-rooms (e.g. room:session:xxxx).
-                    # Find all session rooms under this namespace and scan them.
-                    rooms_resp = http.get(
-                        f"{config.server.api_url}/api/rooms",
-                        params={"limit": 200},
-                    )
+                    # Ticks are posted to coordination sessions (legacy display
+                    # name: ``{room}:session:{short}``). Pull the active sessions
+                    # from the first-class endpoint instead of scanning rooms.
                     rooms_to_scan = [resolved_room]
-                    if rooms_resp.status_code == 200:
-                        prefix = f"{resolved_room}:session:"
-                        for r in rooms_resp.json():
-                            if r.get("name", "").startswith(prefix):
-                                rooms_to_scan.append(r["name"])
+                    coord_resp = http.get(
+                        f"{config.server.api_url}/api/coordination-sessions",
+                        params={"parent_room": resolved_room, "limit": 200},
+                    )
+                    if coord_resp.status_code == 200:
+                        for c in coord_resp.json():
+                            rooms_to_scan.append(c["display_name"])
 
                     for scan_room in rooms_to_scan:
                         resp = http.get(
@@ -413,7 +412,6 @@ def watch_session(
     try:
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
-        prefix = f"{room_name}:session:"
         watched: set[str] = set()
         start = time.time()
 
@@ -424,15 +422,19 @@ def watch_session(
                 break
 
             try:
-                resp = httpx.get(f"{config.server.api_url}/api/rooms?limit=200", timeout=10)
+                resp = httpx.get(
+                    f"{config.server.api_url}/api/coordination-sessions",
+                    params={"parent_room": room_name, "limit": 200},
+                    timeout=10,
+                )
                 resp.raise_for_status()
-                all_rooms = resp.json()
+                coords = resp.json()
             except Exception:
                 time.sleep(2)
                 continue
 
-            session_rooms = [r["name"] for r in all_rooms if r["name"].startswith(prefix)]
-            for sr in session_rooms:
+            for c in coords:
+                sr = c["display_name"]
                 if sr not in watched:
                     watched.add(sr)
                     console.print(f"[dim]  + {sr}[/dim]")

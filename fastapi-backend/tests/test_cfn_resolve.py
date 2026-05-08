@@ -113,30 +113,32 @@ async def test_resolve_mas_id_from_room_lookup(
     assert resp.status_code == 200
 
 
-async def test_resolve_mas_id_from_parent_namespace(
+async def test_resolve_mas_id_from_session_display_name(
     client: AsyncClient, db_session: AsyncSession, monkeypatch
 ):
-    """Session sub-rooms inherit mas_id from parent namespace."""
+    """Session display names resolve mas_id via the CoordinationSession row."""
+    from app.models import CoordinationSession
+
     monkeypatch.setattr("app.config.settings.WORKSPACE_ID", "settings-ws")
-    monkeypatch.setattr("app.config.settings.MAS_ID", "")  # no fallback
+    monkeypatch.setattr("app.config.settings.MAS_ID", "")
     monkeypatch.setattr("app.config.settings.MYCELIUM_INGEST_ENABLED", False)
 
     parent = Room(
         name="parent-ns",
         mas_id="parent-mas-id",
         workspace_id="parent-ws-id",
-        is_namespace=True,
     )
     db_session.add(parent)
     await db_session.flush()
 
-    child = Room(
-        name="parent-ns:session:abc",
-        mas_id=None,  # session doesn't have its own mas_id
+    coord = CoordinationSession(
+        parent_room_name="parent-ns",
+        short_id="abc",
+        state="idle",
+        mas_id="parent-mas-id",
         workspace_id="parent-ws-id",
-        parent_namespace="parent-ns",
     )
-    db_session.add(child)
+    db_session.add(coord)
     await db_session.commit()
 
     resp = await client.post(

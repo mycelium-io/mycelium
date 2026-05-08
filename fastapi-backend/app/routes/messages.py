@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bus import notify, room_channel
 from app.config import settings
 from app.database import get_async_session
-from app.models import Message, Room
+from app.models import CoordinationSession, Message, Room
 from app.schemas import MessageCreate, MessageListResponse, MessageRead
 
 logger = logging.getLogger(__name__)
@@ -29,12 +29,33 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/rooms/{room_name}/messages", tags=["messages"])
 
 
-async def _get_room_or_404(room_name: str, session: AsyncSession) -> Room:
-    result = await session.execute(select(Room).where(Room.name == room_name))
+async def _resolve_target(
+    name: str, session: AsyncSession
+) -> tuple[Room | None, CoordinationSession | None]:
+    """Resolve a path name to either a real Room or a CoordinationSession.
+
+    Names with the legacy ``{parent}:session:{short}`` shape resolve to a
+    coordination session even when no shadow Room row exists (#244). Real
+    room names resolve to the Room. 404 if neither matches.
+    """
+    if ":session:" in name:
+        parent, _, short_id = name.partition(":session:")
+        result = await session.execute(
+            select(CoordinationSession).where(
+                CoordinationSession.parent_room_name == parent,
+                CoordinationSession.short_id == short_id,
+            )
+        )
+        coord = result.scalar_one_or_none()
+        if coord:
+            return None, coord
+
+    result = await session.execute(select(Room).where(Room.name == name))
     room = result.scalar_one_or_none()
-    if not room:
-        raise HTTPException(status_code=404, detail="Room not found")
-    return room
+    if room:
+        return room, None
+
+    raise HTTPException(status_code=404, detail="Room or session not found")
 
 
 @router.post("", response_model=MessageRead, status_code=201)
@@ -49,10 +70,11 @@ async def send_message(
     After persisting, fires NOTIFY on `room:{room_name}` so SSE subscribers
     receive it without polling.
     """
-    room = await _get_room_or_404(room_name, session)
+    room, coord = await _resolve_target(room_name, session)
 
     msg = Message(
-        room_name=room_name,
+        room_name=room.name if room else None,
+        coordination_session_id=coord.id if coord else None,
         sender_handle=payload.sender_handle,
         recipient_handle=payload.recipient_handle,
         message_type=payload.message_type,
@@ -62,7 +84,20 @@ async def send_message(
     await session.commit()
     await session.refresh(msg)
 
-    # Fire NOTIFY for SSE stream consumers
+    notify_channel = room_channel(room.name if room else coord.display_name)
+    notify_payload: dict = {
+        "id": str(msg.id),
+        "sender_handle": msg.sender_handle,
+        "recipient_handle": msg.recipient_handle,
+        "message_type": msg.message_type,
+        "content": msg.content,
+        "created_at": msg.created_at.isoformat(),
+    }
+    if room:
+        notify_payload["room_name"] = room.name
+    else:
+        notify_payload["coordination_session_id"] = str(coord.id)
+        notify_payload["room_name"] = coord.display_name  # legacy compat
     try:
         from urllib.parse import urlparse
 
@@ -75,30 +110,17 @@ async def send_message(
             database=parsed.path.lstrip("/"),
         )
         try:
-            await notify(
-                conn,
-                room_channel(room_name),
-                {
-                    "id": str(msg.id),
-                    "room_name": room_name,
-                    "sender_handle": msg.sender_handle,
-                    "recipient_handle": msg.recipient_handle,
-                    "message_type": msg.message_type,
-                    "content": msg.content,
-                    "created_at": msg.created_at.isoformat(),
-                },
-            )
+            await notify(conn, notify_channel, notify_payload)
         finally:
             await conn.close()
     except Exception as e:
-        logger.warning(f"NOTIFY failed for room {room_name}: {e}")
+        logger.warning("NOTIFY failed for %s: %s", notify_channel, e)
 
-    # Hook coordination service if this room is in negotiating state
-    if room.coordination_state == "negotiating":
+    if coord and coord.state == "negotiating":
         from app.services import coordination
 
         asyncio.ensure_future(
-            coordination.on_agent_response(room_name, msg.sender_handle, msg.content)
+            coordination.on_agent_response(coord.display_name, msg.sender_handle, msg.content)
         )
 
     return msg
@@ -113,10 +135,17 @@ async def list_messages(
     sender: str | None = None,
     message_type: str | None = None,
 ):
-    """List messages in a room, newest first."""
-    await _get_room_or_404(room_name, session)
+    """List messages in a room (or coordination session), newest first."""
+    room, coord = await _resolve_target(room_name, session)
 
-    query = select(Message).where(Message.room_name == room_name)
+    if room:
+        query = select(Message).where(Message.room_name == room.name)
+    else:
+        # Surface both new (coord_session_id) and legacy (display-name room_name) rows.
+        query = select(Message).where(
+            (Message.coordination_session_id == coord.id)
+            | (Message.room_name == coord.display_name)
+        )
 
     if sender:
         query = query.where(Message.sender_handle == sender)

@@ -29,13 +29,9 @@ class RoomRead(BaseModel):
     is_public: bool
     created_at: datetime
     coordination_state: str = "idle"
-    join_deadline: datetime | None = None
-    mode: str = "sync"
     trigger_config: dict | None = None
     last_synthesis_at: datetime | None = None
     is_persistent: bool = False
-    is_namespace: bool = False
-    parent_namespace: str | None = None
     mas_id: str | None = None
     workspace_id: str | None = None
 
@@ -72,7 +68,9 @@ class MessageCreate(BaseModel):
 
 class MessageRead(BaseModel):
     id: UUID
-    room_name: str
+    # Polymorphic: exactly one of room_name / coordination_session_id is set.
+    room_name: str | None = None
+    coordination_session_id: UUID | None = None
     sender_handle: str
     recipient_handle: str | None = None
     message_type: str

@@ -63,10 +63,22 @@ export async function fetchSessions(roomName: string) {
 }
 
 export async function fetchChildRooms(parentName: string) {
-  const res = await fetch(`${API}/api/rooms?name=${encodeURIComponent(parentName + ":session:")}`, { cache: "no-store" });
+  // Sessions live in coordination_sessions (#244). Return the per-session
+  // display name + state so callers that previously walked rooms by name
+  // pattern keep working with minimal changes.
+  const res = await fetch(
+    `${API}/api/coordination-sessions?parent_room=${encodeURIComponent(parentName)}&limit=200`,
+    { cache: "no-store" },
+  );
   if (!res.ok) return [];
-  const rooms = await res.json();
-  return rooms.filter((r: any) => r.parent_namespace === parentName);
+  const sessions = await res.json();
+  return sessions.map((s: any) => ({
+    name: s.display_name,
+    coordination_session_id: s.id,
+    coordination_state: s.state,
+    parent_namespace: s.parent_room_name,
+    created_at: s.created_at,
+  }));
 }
 
 export function getSSEUrl(roomName: string) {
