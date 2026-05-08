@@ -15,6 +15,7 @@ Planned:
 import importlib.resources
 import json as json_module
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -49,6 +50,10 @@ _OPENCLAW_SKILL_NAME = "mycelium"
 # reinstall we remove them so upgraders don't keep the silent path running.
 _OPENCLAW_STALE_HOOKS: list[str] = ["mycelium-knowledge-extract"]
 
+# >= 2026.5.3: plugins must ship compiled dist/ (TS source-only rejected at install time)
+# >= 2026.5.7: hooks install/uninstall removed; hooks are managed by the plugin system
+_OPENCLAW_MIN_VERSION = (2026, 5, 7)
+
 _CLAUDE_CODE_SKILL_NAME = "mycelium"
 _CLAUDE_CODE_HOOKS: list[str] = []
 
@@ -81,6 +86,35 @@ _OPENCLAW_STEPS = {
     "otel": "configure OpenClaw diagnostics-otel plugin to export to the OTLP receiver",
     "docker-env": "show env vars for Docker-based experiment agents",
 }
+
+
+def _check_openclaw_version(container: str | None = None) -> None:
+    """Warn if the detected openclaw version is below _OPENCLAW_MIN_VERSION."""
+    cmd = (
+        ["docker", "exec", container, "openclaw", "--version"]
+        if container
+        else ["openclaw", "--version"]
+    )
+    result = subprocess.run(cmd, text=True, capture_output=True)
+    raw = (result.stdout + result.stderr).strip()
+    # Version string is expected to be "YYYY.M.P" or "openclaw/YYYY.M.P ..."
+    m = re.search(r"(\d{4})\.(\d+)\.(\d+)", raw)
+    if not m:
+        typer.secho(
+            f"  warning: could not detect openclaw version (got: {raw[:60]!r})"
+            " — mycelium v1.0.10+ requires openclaw >= 2026.5.7",
+            fg=typer.colors.YELLOW,
+        )
+        return
+    detected = (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    if detected < _OPENCLAW_MIN_VERSION:
+        min_str = ".".join(str(x) for x in _OPENCLAW_MIN_VERSION)
+        det_str = ".".join(str(x) for x in detected)
+        typer.secho(
+            f"  warning: openclaw {det_str} is below the required {min_str}."
+            " Run `npm install -g openclaw@latest` to upgrade.",
+            fg=typer.colors.YELLOW,
+        )
 
 
 def _openclaw_state_dir(profile: str | None) -> Path:
@@ -393,7 +427,6 @@ def add(
                     typer.echo(f"  hook  → {claude_dir}/hooks/{hook}")
             else:
                 plugin_src = _resolve_asset(_MYCELIUM_PLUGIN_SRC)
-                hook_src = _resolve_asset(_MYCELIUM_BOOTSTRAP_HOOK_SRC)
                 parts: list[str] = ["openclaw"]
                 if openclaw_profile and openclaw_profile.lower() != "default":
                     parts += ["--profile", openclaw_profile]
@@ -401,7 +434,6 @@ def add(
                     parts += ["--container", openclaw_container]
                 prefix = " ".join(parts)
                 typer.echo(f"  {prefix} plugins install {plugin_src}")
-                typer.echo(f"  {prefix} hooks install   {hook_src}")
                 typer.echo(f"  state dir: {_openclaw_state_dir(openclaw_profile)}")
                 if openclaw_container:
                     typer.echo(f"  container: {openclaw_container} (assets staged via docker cp)")
@@ -769,6 +801,8 @@ def _install_openclaw(
                 + (f": {stderr}" if stderr else "")
             )
 
+    _check_openclaw_version(container)
+
     if container:
         # Gateway is containerized: stage assets inside the container so install
         # paths resolve from the container filesystem, not the host-only uv path.
@@ -784,22 +818,15 @@ def _install_openclaw(
         _run(["openclaw", "plugins", "install", container_plugin_path], allow_already_exists=True)
         _wait_container_healthy(container)
 
-        hook_src = _resolve_asset(_MYCELIUM_BOOTSTRAP_HOOK_SRC)
-        container_hook_path = f"/tmp/mycelium-stage/hooks/{_OPENCLAW_HOOK_NAME}"
-        if verbose:
-            typer.echo(f"  staging {hook_src} → {container}:{container_hook_path}")
-        _stage_assets_in_container(container, hook_src, container_hook_path)
-        _run(["openclaw", "hooks", "install", container_hook_path], allow_already_exists=True)
-        _wait_container_healthy(container)
-
-        # Uninstall the legacy mycelium-knowledge-extract hook if a previous
-        # adapter version installed it inside the container.
+        # Remove stale hooks that earlier versions installed inside the container
+        # (openclaw hooks uninstall was removed in 2026.5.7).
         for stale in _OPENCLAW_STALE_HOOKS:
-            _run(
-                ["openclaw", "hooks", "uninstall", stale, "--force"],
-                allow_already_exists=False,
+            stale_container_path = f"{container_state_dir}/hooks/{stale}"
+            subprocess.run(
+                ["docker", "exec", container, "rm", "-rf", stale_container_path],
+                text=True,
+                capture_output=not verbose,
             )
-            _wait_container_healthy(container)
 
         # Write allow list, load path, and entries into the *container's*
         # openclaw.json so OpenClaw's provenance check passes at runtime.
@@ -920,10 +947,6 @@ def _install_openclaw(
                 _resolve_asset(_MYCELIUM_PLUGIN_SRC),
                 state_dir / "extensions" / _OPENCLAW_PLUGIN_NAME,
             ),
-            (
-                _resolve_asset(_MYCELIUM_BOOTSTRAP_HOOK_SRC),
-                state_dir / "hooks" / _OPENCLAW_HOOK_NAME,
-            ),
         ]
         for src, dst in targets:
             if dst.exists():
@@ -955,12 +978,12 @@ def _install_openclaw(
     # Add plugin to plugins.allow so openclaw doesn't warn on every command
     _allow_plugin(_OPENCLAW_PLUGIN_NAME, profile=profile)
 
-    hook_src = _resolve_asset(_MYCELIUM_BOOTSTRAP_HOOK_SRC)
-    _run(["openclaw", "hooks", "install", str(hook_src)], allow_already_exists=tolerate_exists)
-
-    # Uninstall hooks that earlier versions installed.
+    # Remove stale hooks that earlier versions installed
+    # (openclaw hooks uninstall was removed in 2026.5.7).
     for stale in _OPENCLAW_STALE_HOOKS:
-        _run(["openclaw", "hooks", "uninstall", stale, "--force"], allow_already_exists=False)
+        stale_hook_path = _openclaw_state_dir(profile) / "hooks" / stale
+        if stale_hook_path.exists():
+            shutil.rmtree(stale_hook_path, ignore_errors=True)
 
     # Install skill into the openclaw workspace skills directory
     _install_openclaw_skill(profile=profile)
@@ -1340,32 +1363,39 @@ def _uninstall_openclaw(
     adapter_record: dict, profile: str | None = None, container: str | None = None
 ) -> None:
     """Uninstall the mycelium plugin and hook (non-interactively)."""
-    for cmd in [
-        _openclaw_cmd(
-            ["openclaw", "plugins", "uninstall", _OPENCLAW_PLUGIN_NAME, "--force"],
-            profile,
-            container,
-        ),
-        _openclaw_cmd(
-            ["openclaw", "hooks", "uninstall", _OPENCLAW_HOOK_NAME, "--force"], profile, container
-        ),
-        *[
-            _openclaw_cmd(["openclaw", "hooks", "uninstall", stale, "--force"], profile, container)
-            for stale in _OPENCLAW_STALE_HOOKS
-        ],
-    ]:
-        result = subprocess.run(cmd, text=True, capture_output=True)
-        # Non-zero is acceptable if already removed manually; 137 means the
-        # gateway restarted after the config change (expected in container mode).
-        if result.returncode == 137 and container:
-            pass
-        elif result.returncode != 0 and "not found" not in (result.stderr or "").lower():
-            typer.secho(
-                f"  warning: {' '.join(cmd[:3])} exited {result.returncode}",
-                fg=typer.colors.YELLOW,
-            )
+    uninstall_cmd = _openclaw_cmd(
+        ["openclaw", "plugins", "uninstall", _OPENCLAW_PLUGIN_NAME, "--force"],
+        profile,
+        container,
+    )
+    result = subprocess.run(uninstall_cmd, text=True, capture_output=True)
+    if result.returncode == 137 and container:
+        pass
+    elif result.returncode != 0 and "not found" not in (result.stderr or "").lower():
+        typer.secho(
+            f"  warning: {' '.join(uninstall_cmd[:3])} exited {result.returncode}",
+            fg=typer.colors.YELLOW,
+        )
+    if container:
+        _wait_container_healthy(container)
+
+    # Remove hook and stale hooks via filesystem (openclaw hooks uninstall removed in 2026.5.7).
+    state_dir = _openclaw_state_dir(profile)
+    for hook_name in [_OPENCLAW_HOOK_NAME, *_OPENCLAW_STALE_HOOKS]:
         if container:
-            _wait_container_healthy(container)
+            hook_state_suffix = f"-{profile}" if profile and profile.lower() != "default" else ""
+            container_home = _openclaw_container_home(container)
+            hook_path = f"{container_home}/.openclaw{hook_state_suffix}/hooks/{hook_name}"
+            subprocess.run(
+                ["docker", "exec", container, "rm", "-rf", hook_path],
+                text=True,
+                capture_output=True,
+            )
+        else:
+            hook_path_fs = state_dir / "hooks" / hook_name
+            if hook_path_fs.exists():
+                shutil.rmtree(hook_path_fs, ignore_errors=True)
+
     _allow_plugin_remove(_OPENCLAW_PLUGIN_NAME, profile=profile, container=container)
     skill_dir = _openclaw_state_dir(profile) / "workspace" / "skills" / _OPENCLAW_SKILL_NAME
     if skill_dir.exists():
