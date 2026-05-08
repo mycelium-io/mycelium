@@ -89,3 +89,27 @@ async def test_top_level_state_filter(client):
 
     resp = await client.get("/api/coordination-sessions?state=agreed,failed")
     assert not any(r["parent_room_name"] == "p5" for r in resp.json())
+
+
+@pytest.mark.asyncio
+async def test_sessions_are_a_subset_of_a_room(client):
+    """Filtering by parent_room returns only that room's sessions.
+
+    This is the contract ``mycelium session ls --room <name>`` relies on:
+    sessions are scoped under a parent room and never bleed across rooms.
+    """
+    await client.post("/api/rooms", json={"name": "alpha"})
+    await client.post("/api/rooms", json={"name": "beta"})
+    await client.post("/api/rooms/alpha/sessions/spawn")
+    await client.post("/api/rooms/beta/sessions/spawn")
+
+    alpha_only = (await client.get("/api/coordination-sessions?parent_room=alpha")).json()
+    beta_only = (await client.get("/api/coordination-sessions?parent_room=beta")).json()
+
+    assert {s["parent_room_name"] for s in alpha_only} == {"alpha"}
+    assert {s["parent_room_name"] for s in beta_only} == {"beta"}
+    assert len(alpha_only) == 1
+    assert len(beta_only) == 1
+    # display_name preserves the parent → session relationship for legacy URLs.
+    assert alpha_only[0]["display_name"].startswith("alpha:session:")
+    assert beta_only[0]["display_name"].startswith("beta:session:")

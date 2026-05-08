@@ -84,7 +84,7 @@ async def send_message(
     await session.commit()
     await session.refresh(msg)
 
-    notify_channel = room_channel(room.name if room else coord.display_name)
+    # _resolve_target raises 404 if neither, so exactly one is non-None.
     notify_payload: dict = {
         "id": str(msg.id),
         "sender_handle": msg.sender_handle,
@@ -93,11 +93,15 @@ async def send_message(
         "content": msg.content,
         "created_at": msg.created_at.isoformat(),
     }
-    if room:
+    if room is not None:
+        notify_channel = room_channel(room.name)
         notify_payload["room_name"] = room.name
-    else:
+    elif coord is not None:
+        notify_channel = room_channel(coord.display_name)
         notify_payload["coordination_session_id"] = str(coord.id)
         notify_payload["room_name"] = coord.display_name  # legacy compat
+    else:
+        raise HTTPException(status_code=500, detail="resolver returned (None, None)")
     try:
         from urllib.parse import urlparse
 
@@ -138,9 +142,10 @@ async def list_messages(
     """List messages in a room (or coordination session), newest first."""
     room, coord = await _resolve_target(room_name, session)
 
-    if room:
+    if room is not None:
         query = select(Message).where(Message.room_name == room.name)
     else:
+        assert coord is not None
         # Surface both new (coord_session_id) and legacy (display-name room_name) rows.
         query = select(Message).where(
             (Message.coordination_session_id == coord.id)

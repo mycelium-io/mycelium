@@ -407,9 +407,7 @@ async def _run_tick(room_name: str, tick: int) -> None:
     if tick != 0:
         return
 
-    use_cfn = bool(settings.COGNITION_FABRIC_NODE_URL and mas_id and workspace_id)
-
-    if not use_cfn:
+    if not settings.COGNITION_FABRIC_NODE_URL or mas_id is None or workspace_id is None:
         logger.error(
             "Coordination requested for %s but CFN not configured (no COGNITION_FABRIC_NODE_URL "
             "or coord_session mas_id/workspace_id not set)",
@@ -444,7 +442,7 @@ async def _run_tick(room_name: str, tick: int) -> None:
 
     await _run_cfn_negotiation(
         room_name,
-        room_for_negotiation,
+        room_for_negotiation,  # ty: ignore[invalid-argument-type]
         workspace_id,
         mas_id,
         session_handles,

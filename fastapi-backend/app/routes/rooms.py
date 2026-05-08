@@ -273,7 +273,6 @@ async def catchup_room(
 
     return {
         "room": room_name,
-        "mode": room.mode,
         "total_memories": len(non_synthesis),
         "contributors": contributors,
         "latest_synthesis": latest_synthesis_data,

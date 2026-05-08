@@ -454,7 +454,7 @@ def watch_session(
 
 @doc_ref(
     usage="mycelium session ls [-r <room>]",
-    desc="List active sessions in a room.",
+    desc="List negotiation sessions inside a room.",
     group="session",
 )
 @app.command(name="ls")
@@ -462,37 +462,36 @@ def list_sessions(
     ctx: typer.Context,
     room: str | None = typer.Option(None, "--room", "-r", help="Room"),
 ) -> None:
-    """List active negotiation sessions in a room."""
+    """List negotiation sessions inside a room (newest first)."""
+    import httpx
+
     try:
         json_output = ctx.obj.get("json", False) if ctx.obj else False
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
 
-        from mycelium_backend_client.api.sessions import (
-            list_sessions_api_rooms_room_name_sessions_get as list_api,
-        )
-
-        with _typed_client(config) as client:
-            result = list_api.sync(room_name=room_name, client=client)
-            if result and hasattr(result, "to_dict"):
-                data = result.to_dict()
-            else:
-                data = {"participants": [], "total": 0}
+        with httpx.Client(timeout=10) as http:
+            resp = http.get(
+                f"{config.server.api_url}/api/coordination-sessions",
+                params={"parent_room": room_name, "limit": 200},
+            )
+            resp.raise_for_status()
+            sessions = resp.json()
 
         if json_output:
-            typer.echo(json_module.dumps(data, indent=2, default=str))
+            typer.echo(json_module.dumps(sessions, indent=2, default=str))
             return
 
-        participants = data.get("participants", [])
-        if not isinstance(participants, list) or not participants:
-            typer.echo(f"  No active participants in {room_name}")
+        if not sessions:
+            typer.echo(f"  No sessions in {room_name}")
             return
 
-        typer.echo(f"  {room_name} — {len(participants)} participant(s)\n")
-        for p in participants:
-            typer.echo(
-                f"    {p.get('agent_handle', '?')}  joined {str(p.get('joined_at', ''))[:16]}"
-            )
+        typer.echo(f"  {room_name} — {len(sessions)} session(s)\n")
+        for s in sessions:
+            short = s.get("short_id", "?")
+            state = s.get("state", "?")
+            created = str(s.get("created_at", ""))[:16]
+            typer.echo(f"    :{short}  [{state}]  created {created}")
 
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
