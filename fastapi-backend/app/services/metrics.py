@@ -6,7 +6,7 @@ Lightweight in-process metrics store for Mycelium backend.
 
 Tracks embedding, LLM, indexing, memory, and synthesis operations with
 counters, histograms, and cost-avoidance estimates. Exposed via
-GET /api/metrics and consumed by `mycelium metrics show`.
+GET /api/observability and consumed by `mycelium metrics show`.
 
 Thread-safe via a threading lock; all public ``record_*`` functions
 are guarded so they never raise — metrics failures are logged and

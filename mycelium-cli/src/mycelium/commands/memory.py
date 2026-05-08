@@ -119,7 +119,7 @@ def memory_set(
         mycelium memory set work/api-server "Built 12 endpoints with auth"
     """
     from mycelium_backend_client.api.memory import (
-        create_memories_rooms_room_name_memory_post as create_api,
+        create_memories_api_rooms_room_name_memory_post as create_api,
     )
     from mycelium_backend_client.models import MemoryBatchCreate, MemoryCreate
 
@@ -294,7 +294,7 @@ def memory_search(
 ) -> None:
     """Semantic search over memories (uses pgvector via backend API)."""
     from mycelium_backend_client.api.memory import (
-        search_memories_rooms_room_name_memory_search_post as search_api,
+        search_memories_api_rooms_room_name_memory_search_post as search_api,
     )
     from mycelium_backend_client.models import MemorySearchRequest
 
@@ -334,7 +334,7 @@ def memory_rm(
 ) -> None:
     """Delete a memory — removes both the file and search index."""
     from mycelium_backend_client.api.memory import (
-        delete_memory_rooms_room_name_memory_key_delete as delete_api,
+        delete_memory_api_rooms_room_name_memory_key_delete as delete_api,
     )
 
     room_name = _get_active_room(room)
@@ -370,7 +370,7 @@ def memory_reindex(
 
     console.print(f"[dim]Re-indexing {room_name}...[/dim]")
     with httpx.Client(base_url=cfg.server.api_url, timeout=120) as client:
-        resp = client.post(f"/rooms/{room_name}/reindex")
+        resp = client.post(f"/api/rooms/{room_name}/reindex")
         resp.raise_for_status()
         data = resp.json()
 
@@ -394,7 +394,7 @@ def memory_subscribe(
 ) -> None:
     """Subscribe to memory change notifications."""
     from mycelium_backend_client.api.memory import (
-        subscribe_rooms_room_name_memory_subscribe_post as sub_api,
+        subscribe_api_rooms_room_name_memory_subscribe_post as sub_api,
     )
     from mycelium_backend_client.models import SubscriptionCreate, SubscriptionRead
 
@@ -424,7 +424,7 @@ def memory_catchup(
     cfg = MyceliumConfig.load()
 
     with httpx.Client(base_url=cfg.server.api_url, timeout=30) as client:
-        resp = client.get(f"/rooms/{room_name}/catchup")
+        resp = client.get(f"/api/rooms/{room_name}/catchup")
         resp.raise_for_status()
         data = resp.json()
 
@@ -608,7 +608,7 @@ def memory_sync(
     console.print(f"[dim]Syncing {room_name} from {cfg.server.api_url}...[/dim]")
 
     with httpx.Client(base_url=cfg.server.api_url, timeout=60) as client:
-        resp = client.get(f"/rooms/{room_name}/memory", params={"limit": 1000}, headers=headers)
+        resp = client.get(f"/api/rooms/{room_name}/memory", params={"limit": 1000}, headers=headers)
 
     if resp.status_code == 304:
         console.print("[dim]Already up to date[/dim]")
@@ -664,7 +664,7 @@ def memory_sync(
     if not no_reindex:
         try:
             with httpx.Client(base_url=cfg.server.api_url, timeout=120) as client:
-                resp = client.post(f"/rooms/{room_name}/reindex")
+                resp = client.post(f"/api/rooms/{room_name}/reindex")
                 resp.raise_for_status()
                 data = resp.json()
             console.print(f"[green]Re-indexed:[/green] {data.get('indexed', 0)} memories")

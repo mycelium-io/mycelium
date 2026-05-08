@@ -4,7 +4,7 @@
 """
 Mycelium data models.
 
-Agent, Room, Message, Session, AuditEvent, Memory, MemorySubscription.
+Agent, Room, CoordinationSession, Participant, Message, AuditEvent, Memory, MemorySubscription.
 """
 
 from datetime import datetime
@@ -89,14 +89,11 @@ class Room(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    # Coordination state machine: idle | waiting | negotiating | complete | synthesizing
+    # Coordination state for async-room synthesis: idle | synthesizing.
+    # Session state lives on coordination_sessions.state; this column applies
+    # to async rooms only.
     coordination_state: Mapped[str] = mapped_column(
         VARCHAR(20), nullable=False, server_default="idle"
-    )
-    join_deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # Legacy column — kept for migration compat. Always "async" for rooms, "sync" for sessions.
-    mode: Mapped[str] = mapped_column(
-        VARCHAR(10), nullable=False, server_default="async", default="async"
     )
     # Trigger config for async CognitiveEngine activation
     # e.g. {"type": "threshold", "min_contributions": 5}
@@ -113,14 +110,47 @@ class Room(Base):
     is_persistent: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)
     # Namespace identifier (defaults to room name)
     namespace: Mapped[str | None] = mapped_column(String, nullable=True)
-    # True for persistent namespaces (async rooms), False for ephemeral sessions (sync)
-    is_namespace: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)
-    # For sessions spawned within a namespace, points to the parent room name.
-    # No FK constraint — validated in application code to avoid AgensGraph create_all ordering issues.
-    parent_namespace: Mapped[str | None] = mapped_column(String, nullable=True)
     # CFN MAS sync — foreign IDs in the cfn_mgmt DB (not FK-constrained)
     mas_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     workspace_id: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+class CoordinationSession(Base):
+    """Coordination session — first-class negotiation entity.
+
+    A session is a single negotiation round inside a parent room. State lives
+    here; the parent room holds persistent memory and namespace identity.
+    Messages addressed to a session use ``messages.coordination_session_id``;
+    the parent-room FK stays available for namespace-level chat.
+    """
+
+    __tablename__ = "coordination_sessions"
+
+    id: Mapped[UUID_Type] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    parent_room_name: Mapped[str] = mapped_column(
+        String, ForeignKey("rooms.name", ondelete="CASCADE"), nullable=False, index=True
+    )
+    short_id: Mapped[str] = mapped_column(String(16), nullable=False)
+    # State machine: idle | waiting | negotiating | agreed | failed | complete
+    state: Mapped[str] = mapped_column(VARCHAR(20), nullable=False, server_default="idle")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    join_window_ends_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Inherited from parent at create time — see issue #237 for context.
+    mas_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    workspace_id: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    @property
+    def display_name(self) -> str:
+        """Synthesize the legacy ``{parent}:session:{short_id}`` display string.
+
+        Kept for backward compatibility with messages.room_name and any caller
+        that still resolves sessions by name.
+        """
+        return f"{self.parent_room_name}:session:{self.short_id}"
 
 
 class Message(Base):
@@ -129,8 +159,17 @@ class Message(Base):
     __tablename__ = "messages"
 
     id: Mapped[UUID_Type] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    room_name: Mapped[str] = mapped_column(
-        String, ForeignKey("rooms.name", ondelete="CASCADE"), nullable=False, index=True
+    # Polymorphic: exactly one of room_name or coordination_session_id is set.
+    # room_name → namespace-room messages (chat in a real room).
+    # coordination_session_id → negotiation session messages.
+    room_name: Mapped[str | None] = mapped_column(
+        String, ForeignKey("rooms.name", ondelete="CASCADE"), nullable=True, index=True
+    )
+    coordination_session_id: Mapped[UUID_Type | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("coordination_sessions.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
     )
 
     # Sender/recipient are handles (e.g., "kappa#203b")
@@ -146,14 +185,24 @@ class Message(Base):
     )
 
 
-class Session(Base):
-    """Agent presence in a room — tracks who has joined."""
+class Participant(Base):
+    """Agent participating in a coordination session — the roster.
 
-    __tablename__ = "sessions"
+    One row per agent join. The CognitiveEngine reads this to learn the list
+    of agent handles + intents at tick 0 and to address per-agent ticks during
+    a round. The original name ``sessions`` conflated "the negotiation entity"
+    with "the agent roster for that negotiation"; renaming clarifies which is
+    which.
+    """
+
+    __tablename__ = "participants"
 
     id: Mapped[UUID_Type] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    room_name: Mapped[str] = mapped_column(
-        String, ForeignKey("rooms.name", ondelete="CASCADE"), nullable=False, index=True
+    coordination_session_id: Mapped[UUID_Type] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("coordination_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     agent_handle: Mapped[str] = mapped_column(String, nullable=False, index=True)
     joined_at: Mapped[datetime] = mapped_column(
@@ -161,6 +210,13 @@ class Session(Base):
     )
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     intent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Files the agent explicitly shared into the session on join.
+    # Shape: [{"path": str, "content": str, "sha256": str}]. Content is
+    # opt-in shared context — visible to other participants in the session
+    # and forwarded to KXP/CFN like any deliberate room write.
+    context_files: Mapped[list | None] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"), nullable=True
+    )
 
 
 class AuditEvent(Base):

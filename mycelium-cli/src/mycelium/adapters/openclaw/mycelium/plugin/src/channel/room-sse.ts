@@ -23,7 +23,7 @@ export function startRoomSSE(
   log: Logger,
 ): void {
   const signal = abort.signal;
-  const sseUrl = `${cfg.backendUrl}/rooms/${encodeURIComponent(cfg.room)}/messages/stream`;
+  const sseUrl = `${cfg.backendUrl}/api/rooms/${encodeURIComponent(cfg.room)}/messages/stream`;
 
   (async () => {
     while (!signal.aborted) {
@@ -32,6 +32,11 @@ export function startRoomSSE(
           headers: { Accept: "text/event-stream" },
           signal,
         });
+        if (res.status === 404) {
+          log.warn(`[${CHANNEL_ID}] room SSE 404 for ${cfg.room} — room may not exist yet, retry 15s`);
+          await new Promise((r) => setTimeout(r, 15_000));
+          continue;
+        }
         if (!res.ok || !res.body) {
           log.warn(`[${CHANNEL_ID}] SSE ${res.status} — retry 5s`);
           await new Promise((r) => setTimeout(r, 5000));

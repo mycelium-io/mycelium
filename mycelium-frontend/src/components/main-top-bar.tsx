@@ -9,13 +9,14 @@ import type { ReactNode } from "react";
 
 const NAV_TABS = [
   { id: "rooms", label: "ROOMS", href: "/" },
+  { id: "metrics", label: "METRICS", href: "/metrics" },
   { id: "memory", label: "MEMORY" },
   { id: "agents", label: "AGENTS" },
   { id: "logs", label: "LOGS" },
 ];
 
 interface MainTopBarProps {
-  activeTab?: "rooms" | "memory" | "agents" | "logs";
+  activeTab?: "rooms" | "metrics" | "memory" | "agents" | "logs";
   actions?: ReactNode;
 }
 

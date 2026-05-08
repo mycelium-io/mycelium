@@ -35,7 +35,7 @@ from sqlalchemy import delete, select, update
 from app.bus import agent_channel, notify, room_channel
 from app.config import settings
 from app.database import async_session_maker
-from app.models import Message, Room, Session
+from app.models import CoordinationSession, Message, Participant, Room
 from app.services.metrics import (
     record_consensus,
     record_coordination_round,
@@ -351,46 +351,66 @@ def schedule_join_timer(room_name: str, deadline: datetime) -> asyncio.Task:
 async def _run_tick(room_name: str, tick: int) -> None:
     """Tick 0: launch CFN negotiation. Errors if CFN not configured on the room."""
     async with async_session_maker() as db:
+        # room_name here is a session display name like "{parent}:session:{short}".
+        # Resolve it to the CoordinationSession entity.
+        if ":session:" in room_name:
+            parent, _, short_id = room_name.partition(":session:")
+            coord_result = await db.execute(
+                select(CoordinationSession).where(
+                    CoordinationSession.parent_room_name == parent,
+                    CoordinationSession.short_id == short_id,
+                )
+            )
+            coord_session = coord_result.scalar_one_or_none()
+        else:
+            coord_session = None
+
+        if coord_session is None:
+            logger.warning("No coordination session for room %s at tick %d", room_name, tick)
+            return
+
         result = await db.execute(
-            select(Session).where(Session.room_name == room_name).order_by(Session.joined_at)
+            select(Participant)
+            .where(Participant.coordination_session_id == coord_session.id)
+            .order_by(Participant.joined_at)
         )
         sessions = list(result.scalars().all())
 
         if not sessions:
-            logger.warning("No sessions found for room %s at tick %d", room_name, tick)
+            logger.warning("No participants for room %s at tick %d", room_name, tick)
             return
 
         session_handles = [s.agent_handle for s in sessions]
         intents = [s.intent or "" for s in sessions]
 
-        # Load room — mas_id lives on the namespace room, not the session room
-        room_result = await db.execute(select(Room).where(Room.name == room_name))
-        room = room_result.scalar_one_or_none()
-        if room is not None and room.mas_id is None and room.parent_namespace:
-            ns_result = await db.execute(select(Room).where(Room.name == room.parent_namespace))
-            ns_room = ns_result.scalar_one_or_none()
-            if ns_room is not None and ns_room.mas_id:
-                room = ns_room
+        # mas_id / workspace_id live on the coord session (inherited from parent
+        # at spawn). Fall back to the parent room if for any reason the coord
+        # session row is missing them (legacy data).
+        mas_id = coord_session.mas_id
+        workspace_id = coord_session.workspace_id
+        if not mas_id or not workspace_id:
+            parent_room_result = await db.execute(
+                select(Room).where(Room.name == coord_session.parent_room_name)
+            )
+            parent_room = parent_room_result.scalar_one_or_none()
+            if parent_room is not None:
+                mas_id = mas_id or parent_room.mas_id
+                workspace_id = workspace_id or parent_room.workspace_id
 
         await db.execute(
-            update(Room).where(Room.name == room_name).values(coordination_state="negotiating")
+            update(CoordinationSession)
+            .where(CoordinationSession.id == coord_session.id)
+            .values(state="negotiating")
         )
         await db.commit()
 
     if tick != 0:
         return
 
-    use_cfn = bool(
-        settings.COGNITION_FABRIC_NODE_URL
-        and room is not None
-        and room.mas_id
-        and room.workspace_id
-    )
-
-    if not use_cfn or room is None or not room.mas_id or not room.workspace_id:
+    if not settings.COGNITION_FABRIC_NODE_URL or mas_id is None or workspace_id is None:
         logger.error(
             "Coordination requested for %s but CFN not configured (no COGNITION_FABRIC_NODE_URL "
-            "or room.mas_id/workspace_id not set)",
+            "or coord_session mas_id/workspace_id not set)",
             room_name,
         )
         await _post_message(
@@ -402,16 +422,29 @@ async def _run_tick(room_name: str, tick: int) -> None:
         )
         async with async_session_maker() as db:
             await db.execute(
-                update(Room).where(Room.name == room_name).values(coordination_state="failed")
+                update(CoordinationSession)
+                .where(CoordinationSession.id == coord_session.id)
+                .values(state="failed")
             )
             await db.commit()
         return
 
+    # Build a lightweight namespace-resolver shim; the rest of the negotiation
+    # path only reads ``room.workspace_id`` / ``room.mas_id`` / ``room.name``,
+    # so a SimpleNamespace is sufficient and avoids re-loading the Room.
+    from types import SimpleNamespace
+
+    room_for_negotiation = SimpleNamespace(
+        name=coord_session.parent_room_name,
+        mas_id=mas_id,
+        workspace_id=workspace_id,
+    )
+
     await _run_cfn_negotiation(
         room_name,
-        room,
-        room.workspace_id,
-        room.mas_id,
+        room_for_negotiation,  # ty: ignore[invalid-argument-type]
+        workspace_id,
+        mas_id,
         session_handles,
         intents,
     )
@@ -591,6 +624,53 @@ async def _round_timeout(room_name: str) -> None:
     )
 
 
+async def _load_shared_context_files(room_name: str, db=None) -> list[dict]:
+    """Return the opt-in context files shared by every participant of a session.
+
+    ``room_name`` is the session display name (``{parent}:session:{short}``).
+    Returns ``[{"shared_by": handle, "path": ..., "sha256": ..., "content": ...}]``
+    flattened across participants. Empty list if none.
+
+    Callers in the fan-out path don't hold a session, so a fresh one is
+    opened from ``async_session_maker``; tests can pass an open session.
+    """
+    if ":session:" not in room_name:
+        return []
+    parent, _, short_id = room_name.partition(":session:")
+    if not parent or not short_id:
+        return []
+
+    async def _query(session) -> list[dict]:
+        result = await session.execute(
+            select(Participant.agent_handle, Participant.context_files)
+            .join(
+                CoordinationSession,
+                Participant.coordination_session_id == CoordinationSession.id,
+            )
+            .where(
+                CoordinationSession.parent_room_name == parent,
+                CoordinationSession.short_id == short_id,
+            )
+        )
+        out: list[dict] = []
+        for handle, files in result.all():
+            for cf in files or []:
+                out.append(
+                    {
+                        "shared_by": handle,
+                        "path": cf.get("path"),
+                        "sha256": cf.get("sha256"),
+                        "content": cf.get("content"),
+                    }
+                )
+        return out
+
+    if db is not None:
+        return await _query(db)
+    async with async_session_maker() as session:
+        return await _query(session)
+
+
 async def _fan_out_cfn_messages(
     room_name: str,
     messages: list[dict],
@@ -608,6 +688,11 @@ async def _fan_out_cfn_messages(
     Returns the list of agent handles that received a tick this round.
     """
     addressed: list[str] = []
+    try:
+        shared_context = await _load_shared_context_files(room_name)
+    except Exception as exc:
+        logger.debug("shared_context_files load skipped for %s: %s", room_name, exc)
+        shared_context = []
     # Read state once so each tick in this batch sees the same prior-round
     # snapshot; _cfn_decide_round overwrites these fields immediately before
     # calling us so the values describe what just happened.
@@ -681,6 +766,7 @@ async def _fan_out_cfn_messages(
                             "n_steps_total": n_steps_total,
                             "your_last_action": last_actions.get(participant_id),
                             "prior_round_outcome": prior_round_outcome,
+                            "shared_context_files": shared_context,
                         }
                     }
                 ),
@@ -1107,14 +1193,28 @@ async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool
             exc,
         )
     async with async_session_maker() as db:
-        await db.execute(
-            update(Room)
-            .where(Room.name == room_name)
-            .values(coordination_state="complete" if not broken else "failed")
-        )
-        # Clean up agent Session rows so a subsequent session in the same
-        # namespace doesn't see stale participants and cause CFN to fail.
-        await db.execute(delete(Session).where(Session.room_name == room_name))
+        if ":session:" in room_name:
+            parent, _, short_id = room_name.partition(":session:")
+            await db.execute(
+                update(CoordinationSession)
+                .where(
+                    CoordinationSession.parent_room_name == parent,
+                    CoordinationSession.short_id == short_id,
+                )
+                .values(state="complete" if not broken else "failed")
+            )
+            # Clean up Participant rows so a subsequent session in the same
+            # namespace doesn't see stale participants and cause CFN to fail.
+            await db.execute(
+                delete(Participant).where(
+                    Participant.coordination_session_id.in_(
+                        select(CoordinationSession.id).where(
+                            CoordinationSession.parent_room_name == parent,
+                            CoordinationSession.short_id == short_id,
+                        )
+                    )
+                )
+            )
         await db.commit()
 
 
@@ -1366,10 +1466,21 @@ async def _post_message(room_name: str, message_type: str, content: str) -> None
             pass
     elif message_type == "coordination_consensus":
         async with async_session_maker() as db:
-            result = await db.execute(
-                select(Session.agent_handle).where(Session.room_name == room_name)
-            )
-            agent_handles = list(result.scalars().all())
+            if ":session:" in room_name:
+                parent, _, short_id = room_name.partition(":session:")
+                result = await db.execute(
+                    select(Participant.agent_handle).where(
+                        Participant.coordination_session_id.in_(
+                            select(CoordinationSession.id).where(
+                                CoordinationSession.parent_room_name == parent,
+                                CoordinationSession.short_id == short_id,
+                            )
+                        )
+                    )
+                )
+                agent_handles = list(result.scalars().all())
+            else:
+                agent_handles = []
 
     try:
         parsed_url = urlparse(settings.DATABASE_URL)

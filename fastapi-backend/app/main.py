@@ -35,6 +35,7 @@ from app.routes.audit import router as audit_router
 from app.routes.cfn_proxy import cfn_read_router
 from app.routes.cfn_proxy import router as cfn_proxy_router
 from app.routes.coordination import router as coordination_router
+from app.routes.coordination_sessions import router as coordination_sessions_router
 from app.routes.knowledge import router as knowledge_router
 from app.routes.memory import router as memory_router
 from app.routes.messages import router as messages_router
@@ -165,12 +166,12 @@ app.add_middleware(
 )
 
 
-# Core routes
-app.include_router(rooms_router)
-app.include_router(messages_router)
-app.include_router(sessions_router)
-app.include_router(stream_router)
-app.include_router(memory_router)
+# Core routes. Health endpoints stay top-level for orchestrator probes.
+app.include_router(rooms_router, prefix="/api")
+app.include_router(messages_router, prefix="/api")
+app.include_router(sessions_router, prefix="/api")
+app.include_router(stream_router, prefix="/api")
+app.include_router(memory_router, prefix="/api")
 
 # CFN routes
 app.include_router(audit_router)
@@ -182,6 +183,11 @@ app.include_router(knowledge_router)
 
 # Coordination observability (round-trace ring buffer; see issue #162)
 app.include_router(coordination_router)
+
+# Coordination sessions as a top-level resource — used by OpenClaw plugin,
+# frontend, and CLI in place of addressing sessions by their parent room's
+# display name.
+app.include_router(coordination_sessions_router)
 
 
 @app.get("/", tags=["health"])
@@ -236,12 +242,54 @@ async def root(
     return result
 
 
-@app.get("/api/metrics", tags=["metrics"])
+@app.get("/api/observability", tags=["metrics"])
 async def get_metrics():
-    """Return a snapshot of backend-collected metrics (embeddings, LLM, indexer, etc.)."""
+    """Return a snapshot of backend-collected metrics (embeddings, LLM, indexer, etc.).
+
+    Note: served under ``/observability`` rather than ``/api/metrics`` because
+    privacy-extension blocklists pattern-match ``/api/metrics*`` as analytics
+    telemetry and silently drop the request in the browser.
+    """
     from app.services.metrics import snapshot
 
     return snapshot()
+
+
+@app.get("/api/observability/collector", tags=["metrics"])
+async def get_collector_metrics():
+    """Return OTLP/scrape metrics written by the CLI collector.
+
+    Reads ``~/.mycelium/metrics.json`` and returns the collector-specific
+    keys (counters, histograms, sessions, scrape) — excluding the ``backend``
+    key which duplicates ``GET /observability``.  Returns 404 when the file is
+    absent (collector not running or never started).
+    """
+    import json
+    from pathlib import Path
+
+    from fastapi.responses import JSONResponse
+
+    metrics_path = Path.home() / ".mycelium" / "metrics.json"
+    if not metrics_path.exists():
+        return JSONResponse(
+            status_code=404,
+            content={"detail": "Collector metrics file not found. Run: mycelium metrics collect"},
+        )
+    try:
+        raw = json.loads(metrics_path.read_text())
+    except Exception:
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Failed to read collector metrics file"},
+        )
+    result = {
+        "updated_at": raw.get("updated_at"),
+        "counters": raw.get("counters", {}),
+        "histograms": raw.get("histograms", {}),
+        "sessions": raw.get("sessions", []),
+        "scrape": raw.get("scrape", {}),
+    }
+    return result
 
 
 async def _check_database(session: AsyncSession) -> dict:

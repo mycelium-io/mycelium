@@ -7,6 +7,7 @@ class IngestEventState(str, Enum):
     ERROR = "error"
     OK = "ok"
     REFUSED = "refused"
+    SKIPPED = "skipped"
     TRUNCATED = "truncated"
 
     def __str__(self) -> str:

@@ -96,11 +96,13 @@ class Settings(BaseSettings):
     # Default MAS ID — fallback when ingest requests omit mas_id and room_name
     MAS_ID: str = ""
 
-    # Knowledge ingest control surface — see KnowledgeIngestConfig in the CLI
-    # for the authoritative descriptions. Defaults here match CLI defaults.
+    # Knowledge ingest control surface. Master switch + per-payload caps.
     MYCELIUM_INGEST_ENABLED: bool = True
     MYCELIUM_INGEST_MAX_INPUT_TOKENS: int = 50_000
     MYCELIUM_INGEST_DEDUPE_TTL_SECONDS: int = 300
+    # Skip ingest for trivially short content. Channel posts like "ack" or
+    # a single emoji produce KG noise without value. Set 0 to ingest all.
+    MYCELIUM_INGEST_MIN_CONTENT_CHARS: int = 32
 
     model_config = SettingsConfigDict(
         env_file=tuple(_env_files),

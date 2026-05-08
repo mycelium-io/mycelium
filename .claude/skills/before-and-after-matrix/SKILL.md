@@ -512,10 +512,10 @@ ARTIFACT_DIR="$HOME/.mycelium/rooms/$EXP_ROOM/_test-artifacts"
 mkdir -p "$ARTIFACT_DIR"
 
 # Mycelium room transcripts
-curl -s "$MYCELIUM_API_URL/rooms/$EXP_ROOM/messages?limit=200" > "$ARTIFACT_DIR/parent-room.json"
+curl -s "$MYCELIUM_API_URL/api/rooms/$EXP_ROOM/messages?limit=200" > "$ARTIFACT_DIR/parent-room.json"
 
 # Session sub-room transcripts (there can be more than one if you re-ran)
-curl -s "$MYCELIUM_API_URL/rooms" | python3 -c "
+curl -s "$MYCELIUM_API_URL/api/rooms" | python3 -c "
 import sys, json
 rs = json.load(sys.stdin)
 for r in rs:
@@ -523,7 +523,7 @@ for r in rs:
         print(r['name'])
 " | while read SR; do
   SAFE=$(echo "$SR" | tr ':' '_')
-  curl -s "$MYCELIUM_API_URL/rooms/$SR/messages?limit=200" > "$ARTIFACT_DIR/${SAFE}.json"
+  curl -s "$MYCELIUM_API_URL/api/rooms/$SR/messages?limit=200" > "$ARTIFACT_DIR/${SAFE}.json"
 done
 
 # Both Matrix DMs
@@ -571,7 +571,7 @@ rm -rf ~/.openclaw/workspaces/${EXP_ID}-*
 rm -rf ~/.openclaw/agents/${EXP_ID}-*
 
 # Mycelium room (data persists on disk under ~/.mycelium/rooms; backend has it too)
-curl -s -X DELETE "$MYCELIUM_API_URL/rooms/$EXP_ROOM" >/dev/null
+curl -s -X DELETE "$MYCELIUM_API_URL/api/rooms/$EXP_ROOM" >/dev/null
 
 # Restart gateway to drop the matrix sessions cleanly
 openclaw gateway restart

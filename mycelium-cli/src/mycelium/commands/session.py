@@ -29,6 +29,40 @@ def _typed_client(config: MyceliumConfig):
     return Client(base_url=config.server.api_url, raise_on_unexpected_status=True)
 
 
+def _resolve_context_files(
+    paths: list[Path] | None,
+) -> list[tuple[Path, str, str]]:
+    """Read --context-files paths into ``[(path, content, sha256)]``.
+
+    Accepts repeated ``--context-files`` and comma-separated values within
+    each occurrence. Falls back to ``MYCELIUM_SESSION_JOIN_DEFAULT_CONTEXT_FILES``
+    (comma-separated) when no flag is passed.
+    """
+    import hashlib
+    import os
+
+    raw: list[str] = []
+    if paths:
+        for p in paths:
+            for part in str(p).split(","):
+                part = part.strip()
+                if part:
+                    raw.append(part)
+    else:
+        env = os.environ.get("MYCELIUM_SESSION_JOIN_DEFAULT_CONTEXT_FILES", "")
+        raw.extend(p.strip() for p in env.split(",") if p.strip())
+
+    out: list[tuple[Path, str, str]] = []
+    for entry in raw:
+        path = Path(entry).expanduser()
+        if not path.is_file():
+            raise typer.BadParameter(f"--context-files: not a file: {path}")
+        content = path.read_text()
+        sha = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        out.append((path, content, sha))
+    return out
+
+
 def _resolve_room(config: MyceliumConfig, room: str | None = None) -> str:
     import os
 
@@ -66,7 +100,7 @@ def create(
         import httpx
 
         resp = httpx.post(
-            f"{config.server.api_url}/rooms/{room_name}/sessions/spawn",
+            f"{config.server.api_url}/api/rooms/{room_name}/sessions/spawn",
             timeout=10,
         )
         resp.raise_for_status()
@@ -115,6 +149,17 @@ def join(
     handle: str = typer.Option(
         ..., "--handle", "-H", help="Agent handle (your identity in this session)"
     ),
+    context_files: list[Path] | None = typer.Option(
+        None,
+        "--context-files",
+        "-C",
+        help=(
+            "Files to share into the session as opt-in context. Visible to "
+            "other participants and forwarded to room memory / KXP. Repeat "
+            "the flag or comma-separate. Defaults to "
+            "$MYCELIUM_SESSION_JOIN_DEFAULT_CONTEXT_FILES."
+        ),
+    ),
 ) -> None:
     """
     Join a negotiation session within a room.
@@ -141,12 +186,27 @@ def join(
             intent = file.read_text().strip()
 
         from mycelium_backend_client.api.sessions import (
-            join_room_rooms_room_name_sessions_post as join_api,
+            join_room_api_rooms_room_name_sessions_post as join_api,
         )
-        from mycelium_backend_client.models import SessionCreate
+        from mycelium_backend_client.models import ContextFile, ParticipantCreate
+
+        resolved_files = _resolve_context_files(context_files)
+        cf_payload = [
+            ContextFile(path=str(p), content=content, sha256=sha)
+            for p, content, sha in resolved_files
+        ]
+        if cf_payload:
+            typer.echo(
+                f"  Sharing {len(cf_payload)} context file(s) with the session: "
+                + ", ".join(Path(cf.path).name for cf in cf_payload)
+            )
 
         with _typed_client(config) as client:
-            body = SessionCreate(agent_handle=handle, intent=intent)
+            body = ParticipantCreate(
+                agent_handle=handle,
+                intent=intent,
+                context_files=cf_payload if cf_payload else None,
+            )
             result = join_api.sync(room_name=room_name, client=client, body=body)
             data = result.to_dict() if result and hasattr(result, "to_dict") else {}
 
@@ -205,22 +265,21 @@ def await_tick(
         if resolved_room:
             with httpx.Client(timeout=10) as http:
                 try:
-                    # Ticks are posted to session sub-rooms (e.g. room:session:xxxx).
-                    # Find all session rooms under this namespace and scan them.
-                    rooms_resp = http.get(
-                        f"{config.server.api_url}/rooms",
-                        params={"limit": 200},
-                    )
+                    # Ticks are posted to coordination sessions (legacy display
+                    # name: ``{room}:session:{short}``). Pull the active sessions
+                    # from the first-class endpoint instead of scanning rooms.
                     rooms_to_scan = [resolved_room]
-                    if rooms_resp.status_code == 200:
-                        prefix = f"{resolved_room}:session:"
-                        for r in rooms_resp.json():
-                            if r.get("name", "").startswith(prefix):
-                                rooms_to_scan.append(r["name"])
+                    coord_resp = http.get(
+                        f"{config.server.api_url}/api/coordination-sessions",
+                        params={"parent_room": resolved_room, "limit": 200},
+                    )
+                    if coord_resp.status_code == 200:
+                        for c in coord_resp.json():
+                            rooms_to_scan.append(c["display_name"])
 
                     for scan_room in rooms_to_scan:
                         resp = http.get(
-                            f"{config.server.api_url}/rooms/{scan_room}/messages",
+                            f"{config.server.api_url}/api/rooms/{scan_room}/messages",
                             params={"limit": 20},
                         )
                         if resp.status_code != 200:
@@ -286,7 +345,7 @@ def await_tick(
                 except Exception:
                     pass  # fall through to SSE
 
-        url = f"{config.server.api_url}/agents/{handle}/stream"
+        url = f"{config.server.api_url}/api/agents/{handle}/stream"
         start = time.time()
 
         with httpx.Client(timeout=None) as http, http.stream("GET", url) as response:
@@ -413,7 +472,6 @@ def watch_session(
     try:
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
-        prefix = f"{room_name}:session:"
         watched: set[str] = set()
         start = time.time()
 
@@ -424,15 +482,19 @@ def watch_session(
                 break
 
             try:
-                resp = httpx.get(f"{config.server.api_url}/rooms?limit=200", timeout=10)
+                resp = httpx.get(
+                    f"{config.server.api_url}/api/coordination-sessions",
+                    params={"parent_room": room_name, "limit": 200},
+                    timeout=10,
+                )
                 resp.raise_for_status()
-                all_rooms = resp.json()
+                coords = resp.json()
             except Exception:
                 time.sleep(2)
                 continue
 
-            session_rooms = [r["name"] for r in all_rooms if r["name"].startswith(prefix)]
-            for sr in session_rooms:
+            for c in coords:
+                sr = c["display_name"]
                 if sr not in watched:
                     watched.add(sr)
                     console.print(f"[dim]  + {sr}[/dim]")
@@ -452,7 +514,7 @@ def watch_session(
 
 @doc_ref(
     usage="mycelium session ls [-r <room>]",
-    desc="List active sessions in a room.",
+    desc="List negotiation sessions inside a room.",
     group="session",
 )
 @app.command(name="ls")
@@ -460,37 +522,36 @@ def list_sessions(
     ctx: typer.Context,
     room: str | None = typer.Option(None, "--room", "-r", help="Room"),
 ) -> None:
-    """List active negotiation sessions in a room."""
+    """List negotiation sessions inside a room (newest first)."""
+    import httpx
+
     try:
         json_output = ctx.obj.get("json", False) if ctx.obj else False
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
 
-        from mycelium_backend_client.api.sessions import (
-            list_sessions_rooms_room_name_sessions_get as list_api,
-        )
-
-        with _typed_client(config) as client:
-            result = list_api.sync(room_name=room_name, client=client)
-            if result and hasattr(result, "to_dict"):
-                data = result.to_dict()
-            else:
-                data = {"sessions": [], "total": 0}
+        with httpx.Client(timeout=10) as http:
+            resp = http.get(
+                f"{config.server.api_url}/api/coordination-sessions",
+                params={"parent_room": room_name, "limit": 200},
+            )
+            resp.raise_for_status()
+            sessions = resp.json()
 
         if json_output:
-            typer.echo(json_module.dumps(data, indent=2, default=str))
+            typer.echo(json_module.dumps(sessions, indent=2, default=str))
             return
 
-        sessions = data.get("sessions", [])
-        if not isinstance(sessions, list) or not sessions:
-            typer.echo(f"  No active sessions in {room_name}")
+        if not sessions:
+            typer.echo(f"  No sessions in {room_name}")
             return
 
         typer.echo(f"  {room_name} — {len(sessions)} session(s)\n")
         for s in sessions:
-            typer.echo(
-                f"    {s.get('agent_handle', '?')}  joined {str(s.get('joined_at', ''))[:16]}"
-            )
+            short = s.get("short_id", "?")
+            state = s.get("state", "?")
+            created = str(s.get("created_at", ""))[:16]
+            typer.echo(f"    :{short}  [{state}]  created {created}")
 
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False

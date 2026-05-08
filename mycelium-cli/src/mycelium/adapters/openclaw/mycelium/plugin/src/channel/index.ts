@@ -24,7 +24,12 @@ import { _ownMessageIds } from "./post-to-room.js";
 import { lookupReturnAddress, stashReturnAddress } from "./return-address.js";
 import { routeMessage, type RouteAction } from "./route.js";
 import { startRoomSSE } from "./room-sse.js";
-import { clearSubscribedSessions, startSessionSSE } from "./session-sse.js";
+import {
+  clearSubscribedSessions,
+  startSessionSSE,
+  stopSessionSSE,
+  subscribedSessionRooms,
+} from "./session-sse.js";
 
 type Logger = { info: (s: string) => void; warn: (s: string) => void };
 
@@ -45,10 +50,10 @@ export function installChannel(
     // Ensure the configured room exists before subscribing to SSE.
     try {
       const checkRes = await fetch(
-        `${cfg.backendUrl}/rooms/${encodeURIComponent(cfg.room)}`,
+        `${cfg.backendUrl}/api/rooms/${encodeURIComponent(cfg.room)}`,
       );
       if (checkRes.status === 404) {
-        const createRes = await fetch(`${cfg.backendUrl}/rooms`, {
+        const createRes = await fetch(`${cfg.backendUrl}/api/rooms`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -89,17 +94,39 @@ export function installChannel(
     //
     // startSessionSSE's subscribed-set is idempotent, so re-evaluating each
     // poll tick is a no-op for already-subscribed rooms.
+    const TERMINAL_STATES = new Set(["agreed", "failed", "idle"]);
+
     const pollInterval = setInterval(async () => {
       try {
-        const res = await fetch(`${cfg.backendUrl}/rooms`);
+        // Poll the first-class coord-sessions endpoint instead of /api/rooms
+        // (which no longer surfaces sessions). Display names are returned by
+        // the API so the rest of the SSE-by-display-name flow stays the same.
+        const res = await fetch(`${cfg.backendUrl}/api/coordination-sessions?limit=200`);
         if (!res.ok) return;
-        const rooms: any[] = await res.json();
-        for (const room of rooms) {
-          const name: string | undefined = room.name;
-          if (!name || !name.includes(":session:")) continue;
-          const state = room.coordination_state;
-          if (state !== "waiting" && state !== "negotiating") continue;
-          startSessionSSE(runtime, cfg, name, _abort!, handleMessage, log);
+        const sessions: any[] = await res.json();
+
+        const activeSessionRooms = new Set<string>();
+
+        for (const s of sessions) {
+          const name: string | undefined = s.display_name;
+          if (!name) continue;
+          const state: string | undefined = s.state;
+
+          activeSessionRooms.add(name);
+
+          if (state === "waiting" || state === "negotiating") {
+            startSessionSSE(runtime, cfg, name, _abort!, handleMessage, log);
+          } else if (state && TERMINAL_STATES.has(state)) {
+            stopSessionSSE(name, log);
+          }
+        }
+
+        // Unsubscribe from sessions that are no longer in the active list
+        // (removed by coordination teardown or parent-room delete).
+        for (const subbed of subscribedSessionRooms()) {
+          if (!activeSessionRooms.has(subbed)) {
+            stopSessionSSE(subbed, log);
+          }
         }
       } catch {
         /* polling failure is non-fatal */

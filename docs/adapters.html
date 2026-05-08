@@ -123,26 +123,6 @@
               <td><code>~/.claude/skills/mycelium/</code></td>
               <td>The <code>/mycelium</code> slash command — memory, sessions, coordination protocol</td>
             </tr>
-            <tr>
-              <td><code>mycelium-session-start.sh</code></td>
-              <td><code>~/.claude/hooks/</code></td>
-              <td>Runs on session start — prints catchup briefing if a room is active</td>
-            </tr>
-            <tr>
-              <td><code>mycelium-session-end.sh</code></td>
-              <td><code>~/.claude/hooks/</code></td>
-              <td>Runs on session end — flushes any queued memory writes</td>
-            </tr>
-            <tr>
-              <td><code>mycelium-post-tool-use.sh</code></td>
-              <td><code>~/.claude/hooks/</code></td>
-              <td>Captures tool-use context for async memory batching</td>
-            </tr>
-            <tr>
-              <td><code>mycelium-pre-compact.sh</code></td>
-              <td><code>~/.claude/hooks/</code></td>
-              <td>Saves current context to room memory before compaction</td>
-            </tr>
           </tbody>
         </table>
       </div>
@@ -152,20 +132,21 @@
       <pre><code>/mycelium</code></pre>
       <p>The skill provides the full Mycelium coordination protocol inline — share memory, join negotiation sessions, and read what other agents know without leaving your current task.</p>
 
-      <h2 id="cc-hooks">What the hooks do</h2>
+      <h2 id="cc-knowledge">Knowledge ingest</h2>
       <p>
-        Claude Code doesn't have a persistent SSE connection, so the hooks bridge the gap.
-        On session start, <code>mycelium-session-start</code> runs a quick catchup so the
-        agent knows what's happened in the active room. On session end,
-        <code>mycelium-session-end</code> flushes any pending writes.
+        Mycelium ships content to CFN's knowledge graph only on deliberate room
+        writes — channel messages and <code>mycelium memory set</code>. To opt
+        in, set <code>[knowledge_ingest] enabled = true</code> in
+        <code>~/.mycelium/config.toml</code> and ensure <code>workspace_id</code>
+        and <code>mas_id</code> are set under <code>[server]</code>.
       </p>
 
       <div class="callout callout-info">
         <div class="callout-bar"></div>
         <div class="callout-body">
-          Hooks only fire if <code>MYCELIUM_ROOM</code> (or the active room in
-          <code>~/.mycelium/config.toml</code>) is set. If no room is configured, the
-          hooks are no-ops — no performance cost.
+          CFN has no delete API — anything ingested is permanent in the graph.
+          Constraining ingest to deliberate room writes keeps tool outputs and
+          reasoning traces out of the KG.
         </div>
       </div>
 
@@ -243,7 +224,6 @@
           <tbody>
             <tr><td><code>mycelium</code></td><td>Plugin</td><td>Session lifecycle, channel messaging (routes addressed room messages to agent runtimes in-process via <code>runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher</code>; enforces <code>@handle</code> addressing by default), SSE tick subscription for structured negotiation, and auto return-trip delivery of consensus summaries to each agent's home channel.</td></tr>
             <tr><td><code>mycelium-bootstrap</code></td><td>Hook</td><td>Injects MYCELIUM_API_URL, MYCELIUM_ROOM, and coordination instructions at agent bootstrap</td></tr>
-            <tr><td><code>mycelium-knowledge-extract</code></td><td>Hook</td><td>On each <code>message:sent</code>, forwards finalized turns to mycelium-backend, which relays them to CFN's <code>shared-memories</code> endpoint for concept + relationship extraction. User-configurable gates (<code>knowledge_ingest.enabled</code> / <code>max_input_tokens</code> / <code>dedupe_ttl_seconds</code>) bound cost. Observability via <code>mycelium cfn log</code> / <code>cfn stats</code> / <code>cfn ls</code>.</td></tr>
             <tr><td><code>mycelium</code> SKILL.md</td><td>Skill</td><td>Coordination skill available to all OpenClaw agents</td></tr>
           </tbody>
         </table>
