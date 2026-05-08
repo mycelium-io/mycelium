@@ -886,7 +886,32 @@ def _install_openclaw(
     # Copying into place first keeps validation happy; openclaw's own install
     # step becomes a no-op on matching files.
     def _plugin_ignore(_src: str, names: list[str]) -> list[str]:
-        return [n for n in names if n in ("node_modules", "test", "package-lock.json")]
+        return [n for n in names if n in ("node_modules", "test", "dist", "package-lock.json")]
+
+    def _build_plugin(plugin_dir: Path) -> None:
+        """Run npm install + npm run build in the plugin directory.
+
+        OpenClaw 2026.5+ rejects TypeScript entry points — the plugin must be
+        compiled to dist/index.js before install.  Best-effort: warn on failure
+        so a missing npm doesn't hard-block the install on older OpenClaw.
+        """
+        for npm_cmd in (
+            ["npm", "install", "--prefer-offline", "--silent"],
+            ["npm", "run", "build"],
+        ):
+            if verbose:
+                typer.echo(f"  {' '.join(npm_cmd)} (in {plugin_dir})")
+            result = subprocess.run(
+                npm_cmd, cwd=str(plugin_dir), text=True, capture_output=not verbose
+            )
+            if result.returncode != 0:
+                stderr = (result.stderr or "").strip()
+                typer.secho(
+                    f"  warning: plugin build step '{' '.join(npm_cmd)}' failed"
+                    + (f": {stderr}" if stderr else ""),
+                    fg=typer.colors.YELLOW,
+                )
+                return
 
     if reinstall:
         state_dir = _openclaw_state_dir(profile)
@@ -908,6 +933,10 @@ def _install_openclaw(
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copytree(str(src), str(dst), ignore=_plugin_ignore)
 
+        # Build the plugin after copying so openclaw gets compiled JS.
+        plugin_dst = state_dir / "extensions" / _OPENCLAW_PLUGIN_NAME
+        _build_plugin(plugin_dst)
+
         # Clean up hooks that earlier versions installed.
         for stale in _OPENCLAW_STALE_HOOKS:
             stale_path = state_dir / "hooks" / stale
@@ -917,6 +946,10 @@ def _install_openclaw(
                 shutil.rmtree(stale_path, ignore_errors=True)
 
     plugin_src = _resolve_asset(_MYCELIUM_PLUGIN_SRC)
+    # On a fresh install (not reinstall), build in the source tree before handing
+    # it to openclaw so the compiled dist/ is present when openclaw validates it.
+    if not reinstall:
+        _build_plugin(plugin_src)
     _run(["openclaw", "plugins", "install", str(plugin_src)], allow_already_exists=tolerate_exists)
 
     # Add plugin to plugins.allow so openclaw doesn't warn on every command
