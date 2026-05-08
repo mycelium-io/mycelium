@@ -15,7 +15,7 @@ import logging
 import time
 import uuid as uuid_mod
 from datetime import UTC, datetime, timedelta
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -50,6 +50,11 @@ class KnowledgeIngestRequest(BaseModel):
     room_name: str | None = None
     workspace_id: str | None = None
     mas_id: str | None = None
+    # Attribution for the ingest source. Channel messages and memory_set are
+    # the two deliberate room-write paths after the silent-hook removal; legacy
+    # is reserved for any caller still using the old per-turn hook flow during
+    # the deprecation window.
+    source: Literal["channel_message", "memory_set", "legacy"] = "legacy"
 
 
 class KnowledgeIngestResponse(BaseModel):
@@ -170,7 +175,37 @@ async def knowledge_ingest(
             estimated_cfn_knowledge_input_tokens=est_tokens,
         )
 
-    # ── Gate 2: token circuit breaker ─────────────────────────────────────────
+    # ── Gate 2: minimum content length ────────────────────────────────────────
+    # Channel posts like "ack" or "👍" carry no real signal for the KG. Skip
+    # them rather than burning concept-extraction LLM calls. Computed across
+    # all records' text fields concatenated.
+    min_chars = settings.MYCELIUM_INGEST_MIN_CONTENT_CHARS
+    if min_chars > 0:
+        total_text = sum(
+            len(str(r.get(k, "") or ""))
+            for r in data.records
+            for k in ("content", "response", "text", "value")
+        )
+        if total_text < min_chars:
+            _log_ingest_event(
+                workspace_id=workspace_id,
+                mas_id=mas_id,
+                data=data,
+                request_id=request_id,
+                est_tokens=est_tokens,
+                payload_bytes=payload_bytes,
+                latency_ms=(time.perf_counter() - started) * 1000,
+                state="skipped",
+                reason=f"content shorter than MIN_CONTENT_CHARS={min_chars}",
+            )
+            return KnowledgeIngestResponse(
+                cfn_response_id=request_id,
+                cfn_message=f"skipped: content shorter than {min_chars} chars",
+                ingested_at=datetime.now(UTC),
+                estimated_cfn_knowledge_input_tokens=est_tokens,
+            )
+
+    # ── Gate 3: token circuit breaker ─────────────────────────────────────────
     max_tokens = settings.MYCELIUM_INGEST_MAX_INPUT_TOKENS
     if max_tokens > 0 and est_tokens > max_tokens:
         reason = f"payload exceeded {max_tokens} estimated input tokens (actual: {est_tokens})"
@@ -197,7 +232,7 @@ async def knowledge_ingest(
             detail=reason,
         )
 
-    # ── Gate 3: content-hash dedupe ───────────────────────────────────────────
+    # ── Gate 4: content-hash dedupe ───────────────────────────────────────────
     cache = get_cache()
     ttl = settings.MYCELIUM_INGEST_DEDUPE_TTL_SECONDS
     content_hash = cache.hash_records(data.records) if ttl > 0 else ""

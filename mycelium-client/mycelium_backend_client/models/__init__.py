@@ -33,6 +33,7 @@ from .ingest_stats_response_by_agent import IngestStatsResponseByAgent
 from .ingest_stats_response_by_mas import IngestStatsResponseByMas
 from .knowledge_ingest_request import KnowledgeIngestRequest
 from .knowledge_ingest_request_records_item import KnowledgeIngestRequestRecordsItem
+from .knowledge_ingest_request_source import KnowledgeIngestRequestSource
 from .knowledge_ingest_response import KnowledgeIngestResponse
 from .list_round_traces_api_internal_coordination_round_traces_get_response_list_round_traces_api_internal_coordination_round_traces_get import (
     ListRoundTracesApiInternalCoordinationRoundTracesGetResponseListRoundTracesApiInternalCoordinationRoundTracesGet,
@@ -91,6 +92,7 @@ __all__ = (
     "IngestStatsResponseByMas",
     "KnowledgeIngestRequest",
     "KnowledgeIngestRequestRecordsItem",
+    "KnowledgeIngestRequestSource",
     "KnowledgeIngestResponse",
     "ListRoundTracesApiInternalCoordinationRoundTracesGetResponseListRoundTracesApiInternalCoordinationRoundTracesGet",
     "MemoryBatchCreate",

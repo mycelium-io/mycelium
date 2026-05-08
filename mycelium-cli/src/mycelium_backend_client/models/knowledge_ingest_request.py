@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
+from ..models.knowledge_ingest_request_source import KnowledgeIngestRequestSource
 from ..types import UNSET, Unset
 
 if TYPE_CHECKING:
@@ -24,6 +25,7 @@ class KnowledgeIngestRequest:
         room_name (None | str | Unset):
         workspace_id (None | str | Unset):
         mas_id (None | str | Unset):
+        source (KnowledgeIngestRequestSource | Unset):  Default: KnowledgeIngestRequestSource.LEGACY.
     """
 
     records: list[KnowledgeIngestRequestRecordsItem]
@@ -31,6 +33,7 @@ class KnowledgeIngestRequest:
     room_name: None | str | Unset = UNSET
     workspace_id: None | str | Unset = UNSET
     mas_id: None | str | Unset = UNSET
+    source: KnowledgeIngestRequestSource | Unset = KnowledgeIngestRequestSource.LEGACY
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -63,6 +66,10 @@ class KnowledgeIngestRequest:
         else:
             mas_id = self.mas_id
 
+        source: str | Unset = UNSET
+        if not isinstance(self.source, Unset):
+            source = self.source.value
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
@@ -78,6 +85,8 @@ class KnowledgeIngestRequest:
             field_dict["workspace_id"] = workspace_id
         if mas_id is not UNSET:
             field_dict["mas_id"] = mas_id
+        if source is not UNSET:
+            field_dict["source"] = source
 
         return field_dict
 
@@ -129,12 +138,20 @@ class KnowledgeIngestRequest:
 
         mas_id = _parse_mas_id(d.pop("mas_id", UNSET))
 
+        _source = d.pop("source", UNSET)
+        source: KnowledgeIngestRequestSource | Unset
+        if isinstance(_source, Unset):
+            source = UNSET
+        else:
+            source = KnowledgeIngestRequestSource(_source)
+
         knowledge_ingest_request = cls(
             records=records,
             agent_id=agent_id,
             room_name=room_name,
             workspace_id=workspace_id,
             mas_id=mas_id,
+            source=source,
         )
 
         knowledge_ingest_request.additional_properties = d

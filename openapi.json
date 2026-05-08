@@ -2855,6 +2855,7 @@
                             "truncated",
                             "refused",
                             "disabled",
+                            "skipped",
                             "error"
                         ],
                         "title": "State",
@@ -3062,6 +3063,16 @@
                             }
                         ],
                         "title": "Mas Id"
+                    },
+                    "source": {
+                        "type": "string",
+                        "enum": [
+                            "channel_message",
+                            "memory_set",
+                            "legacy"
+                        ],
+                        "title": "Source",
+                        "default": "legacy"
                     }
                 },
                 "type": "object",

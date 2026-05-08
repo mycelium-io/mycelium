@@ -34,6 +34,15 @@ def _reset_state():
     get_buffer().clear()
 
 
+@pytest.fixture(autouse=True)
+def _disable_min_content_gate(monkeypatch):
+    """Existing tests use legacy openclaw-conversation-v1 payloads whose content
+    isn't surfaced via the new ``content``/``response``/``text`` keys the
+    min-content gate inspects. The gate has its own dedicated tests.
+    """
+    monkeypatch.setattr("app.config.settings.MYCELIUM_INGEST_MIN_CONTENT_CHARS", 0)
+
+
 @pytest.fixture()
 def mock_cfn(monkeypatch):
     """Replace the CFN client with a success-returning AsyncMock."""
