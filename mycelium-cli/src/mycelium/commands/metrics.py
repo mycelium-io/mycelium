@@ -296,7 +296,6 @@ def status() -> None:
         console.print("[bold yellow]Pipeline has issues — see above[/bold yellow]")
 
 
-@app.command("collect")
 def _docker_collector_running() -> bool:
     """Return True if the mycelium-collector Docker container is running."""
     try:
@@ -312,6 +311,7 @@ def _docker_collector_running() -> bool:
         return False
 
 
+@app.command("collect")
 def collect(
     port: int | None = typer.Option(
         None, "--port", "-p", help=f"OTLP receiver port (default: {_DEFAULT_PORT})"
