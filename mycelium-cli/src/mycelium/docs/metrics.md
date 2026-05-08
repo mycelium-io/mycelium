@@ -36,16 +36,59 @@ HTTP polling) — and writes it to a single JSON file for the CLI to render.
 
 The backend URL for polling defaults to `server.api_url` from the Mycelium
 config (typically `http://localhost:8000`). Override with `--backend-url`
-on `mycelium metrics collect` or via the `MYCELIUM_API_URL` environment
+in the Docker Compose command or via the `MYCELIUM_API_URL` environment
 variable.
+
+## Hub-and-Spoke Setup
+
+In a multi-device deployment, spoke nodes do **not** need a local collector.
+Instead, spokes send OTLP telemetry directly to the hub's collector and
+`mycelium metrics show` fetches data from the hub:
+
+```
+┌─────────────────────────┐           ┌──────────────────────────────────┐
+│     Spoke Node          │           │          Hub Node                │
+│                         │           │                                  │
+│  OpenClaw Gateway ──────┼── OTLP ──▶  Collector (:4318)               │
+│                         │           │    ├─▶ MetricsStore              │
+│  mycelium metrics show ─┼── HTTP ──▶    ├─▶ TraceStore                │
+│    (fetches from hub)   │           │    └─▶ poll Backend + CFN scrape │
+└─────────────────────────┘           │                                  │
+                                      │  Backend (:8000)                 │
+                                      │  CFN services                    │
+                                      └──────────────────────────────────┘
+```
+
+### Spoke Configuration
+
+Set `collector_url` in the spoke's `~/.mycelium/config.toml`:
+
+```toml
+[metrics]
+collector_url = "http://<hub-ip>:4318"
+```
+
+Or via environment variable:
+
+```bash
+export MYCELIUM_COLLECTOR_URL="http://<hub-ip>:4318"
+```
+
+Then configure the OTLP plugins (the endpoint is auto-derived from
+`collector_url`):
+
+```bash
+mycelium adapter add openclaw --step=otel --step=deep-observability
+```
+
+That's it. `mycelium metrics show` on the spoke will fetch data from the
+hub, and `mycelium metrics status` will probe the remote collector's health.
 
 ## CLI Commands
 
 | Command                   | Description                                      |
 | ------------------------- | ------------------------------------------------ |
 | `mycelium metrics status` | Health check: deps, collector process, data file, OTEL config, model cost |
-| `mycelium metrics collect`| Start the OTLP receiver (background by default; `--fg` for foreground, `--backend-url` to override backend) |
-| `mycelium metrics stop`   | Stop the background collector                    |
 | `mycelium metrics reset`  | Delete collected metrics data                    |
 | `mycelium metrics update-pricing` | Fetch latest LLM pricing from LiteLLM API |
 | `mycelium metrics update-pricing --add pat:key` | Also fetch pricing for a manually specified model (repeatable) |
@@ -66,8 +109,6 @@ Set `MYCELIUM_DATA_DIR` to override the root.
 | `metrics/metrics.json`            | Aggregated metrics (counters, histograms, sessions, backend snapshot) |
 | `metrics/traces.db`               | SQLite database of OTLP trace spans (7-day retention) |
 | `metrics/pricing.json`            | User-local pricing cache (written by `update-pricing`) |
-| `metrics/collector.pid`           | PID and port of the background collector process |
-| `metrics/collector.log`           | Stdout/stderr log from the background collector  |
 
 `metrics.json` is atomically updated (write to `.tmp`, rename) on every OTLP
 ingestion and on graceful shutdown.
@@ -359,8 +400,9 @@ OpenClaw → Mycelium backend → CFN → opt-in.
     Targets are polled on the same 30-second cadence as the backend `/api/observability`
     poll, results are stored under the top-level `scrape` key in
     `metrics/metrics.json`, and unreachable targets are surfaced as
-    `[degraded]` rather than dropped silently. Restart `mycelium metrics
-    collect` after editing config so the new targets are picked up.
+    `[degraded]` rather than dropped silently. Restart the collector
+    (`mycelium down && mycelium up --metrics`) after editing config so
+    the new targets are picked up.
 
     The complementary panel is #10 (CFN Transport Health), which measures
     *outbound* CFN calls *as observed by the Mycelium backend*. Panel #11
@@ -577,7 +619,7 @@ users can run `mycelium metrics reset` to start fresh.
 | `mycelium-cli/src/mycelium/commands/instance.py`  | `mycelium up --metrics`, `down`, `logs` with collector awareness |
 | `mycelium-cli/src/mycelium/data/pricing.json`    | Generated model and embedding pricing data |
 | `mycelium-cli/src/mycelium/collector.py`          | OTLP HTTP receiver, MetricsStore, TraceStore, backend poller |
-| `mycelium-cli/src/mycelium/collector_main.py`     | Entrypoint for background collector process |
+| `mycelium-cli/src/mycelium/collector_main.py`     | Entrypoint for the Docker collector process |
 | `mycelium-cli/Dockerfile.collector`               | Minimal image for the containerized collector |
 | `mycelium-cli/src/mycelium/docker/compose.yml`    | `mycelium-collector` service definition (metrics profile) |
 | `mycelium-cli/src/mycelium/docker/compose-dev.yml`| Dev overrides for collector image/env |

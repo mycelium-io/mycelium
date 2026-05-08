@@ -7,7 +7,7 @@ Lightweight OTLP HTTP receiver for OpenClaw telemetry.
 Accepts protobuf-encoded OTLP data on /v1/traces and /v1/metrics,
 aggregates counters/histograms/sessions in memory, and persists to a JSON file.
 
-Designed to be run as a background process via `mycelium metrics collect`.
+Designed to be run as a Docker container via `mycelium up --metrics`.
 """
 
 from __future__ import annotations
@@ -887,8 +887,8 @@ def run(
             if existing.get("backend"):
                 store.set_backend_metrics(existing["backend"])
             # Preserve last-known scrape state across restarts so panels
-            # don't blank out for the first poll interval after `mycelium
-            # metrics collect` is restarted.
+            # don't blank out for the first poll interval after the
+            # collector is restarted.
             for name, payload in (existing.get("scrape") or {}).items():
                 store._scrape_targets[name] = payload
             log.info("Loaded existing data from %s", output_path)

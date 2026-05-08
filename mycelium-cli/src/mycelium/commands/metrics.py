@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import json
 import os
-import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -44,10 +43,6 @@ def _metrics_dir() -> Path:
 
 def _metrics_json() -> Path:
     return _metrics_dir() / "metrics.json"
-
-
-def _pid_file() -> Path:
-    return _metrics_dir() / "collector.pid"
 
 
 console = Console()
@@ -85,25 +80,6 @@ def _port_in_use(port: int) -> bool:
         s.close()
 
 
-def _read_pid_file() -> tuple[int | None, int]:
-    """Read the PID and port from the collector PID file.
-
-    Returns (pid, port).  ``pid`` is None when the file is missing or
-    unparsable; ``port`` falls back to ``_DEFAULT_PORT``.
-    """
-    if not _pid_file().exists():
-        return None, _DEFAULT_PORT
-    try:
-        lines = _pid_file().read_text().strip().splitlines()
-        if not lines:
-            return None, _DEFAULT_PORT
-        pid = int(lines[0])
-        port = int(lines[1]) if len(lines) >= 2 else _DEFAULT_PORT
-        return pid, port
-    except (OSError, ValueError, IndexError):
-        return None, _DEFAULT_PORT
-
-
 def _check_otel_deps() -> bool:
     """Return True if opentelemetry-proto is importable, else print an error."""
     try:
@@ -134,46 +110,37 @@ def status() -> None:
         all_ok = False
 
     # ── Collector process ────────────────────────────────────────────────
+    collector_url = _get_collector_url()
     collector_alive = False
     collector_label = ""
-    collector_pid, collector_port = _read_pid_file()
-    if collector_pid is not None:
-        try:
-            os.kill(collector_pid, 0)
+    collector_port = _resolve_port(None)
+
+    if collector_url:
+        remote_data = _fetch_remote_metrics(collector_url)
+        if remote_data is not None:
             collector_alive = True
-            collector_label = f"PID {collector_pid}  port {collector_port}"
-        except OSError:
-            collector_alive = False
-
-    if not collector_alive and _docker_collector_running():
-        collector_alive = True
-        collector_label = "Docker container"
-
-    if not collector_alive and _port_in_use(collector_port):
-        collector_alive = True
-        collector_label = f"port {collector_port} (no PID file)"
+            collector_label = f"remote ({collector_url})"
+        else:
+            collector_label = f"remote ({collector_url}) — unreachable"
+    else:
+        if _docker_collector_running():
+            collector_alive = True
+            collector_label = "Docker container"
+        elif _port_in_use(collector_port):
+            collector_alive = True
+            collector_label = f"port {collector_port}"
 
     if collector_alive:
         console.print(f"[green]✓[/green] Collector running  {collector_label}")
     else:
-        console.print("[red]✗[/red] Collector not running")
-        if _pid_file().exists():
+        if collector_url:
+            console.print(f"[red]✗[/red] Collector {collector_label}")
+        else:
             console.print(
-                "  [dim]Stale PID file exists — run [bold]mycelium metrics stop[/bold] to clean up[/dim]"
+                "[red]✗[/red] Collector not running\n"
+                "  [dim]Start with [bold]mycelium up --metrics[/bold][/dim]"
             )
         all_ok = False
-
-    collector_log = _metrics_dir() / "collector.log"
-    if not collector_alive and collector_log.exists():
-        try:
-            log_lines = collector_log.read_text().strip().splitlines()
-            recent = log_lines[-5:] if len(log_lines) > 5 else log_lines
-            if recent:
-                console.print(f"  [dim]Log ({collector_log}):[/dim]")
-                for ln in recent:
-                    console.print(f"  [dim]  {ln}[/dim]")
-        except OSError:
-            pass
 
     # ── Metrics data file ────────────────────────────────────────────────
     if _metrics_json().exists():
@@ -333,200 +300,6 @@ def _docker_collector_running() -> bool:
         return result.returncode == 0 and result.stdout.strip().lower() == "true"
     except Exception:
         return False
-
-
-@app.command("collect")
-def collect(
-    port: int | None = typer.Option(
-        None, "--port", "-p", help=f"OTLP receiver port (default: {_DEFAULT_PORT})"
-    ),
-    backend_url: str | None = typer.Option(
-        None,
-        "--backend-url",
-        "-b",
-        help="Mycelium backend URL for polling /api/observability (default: server.api_url from config)",
-    ),
-    fg: bool = typer.Option(
-        False, "--fg", help="Run collector in the foreground (default: background)"
-    ),
-) -> None:
-    """Start the OTLP HTTP receiver to collect OpenClaw telemetry."""
-    if not _check_otel_deps():
-        raise typer.Exit(1)
-
-    if _docker_collector_running():
-        typer.secho(
-            "The mycelium-collector Docker container is already running on this host.\n"
-            "View logs:  docker logs mycelium-collector\n"
-            "Stop it:    docker stop mycelium-collector && docker rm mycelium-collector",
-            fg=typer.colors.YELLOW,
-        )
-        return
-
-    from mycelium.config import MyceliumConfig
-
-    resolved_port = _resolve_port(port)
-    if backend_url is None:
-        backend_url = MyceliumConfig.load().server.api_url
-
-    if not fg:
-        _metrics_dir().mkdir(parents=True, exist_ok=True)
-
-        old_pid, old_port = _read_pid_file()
-        if old_pid is not None:
-            try:
-                os.kill(old_pid, 0)
-                typer.secho(
-                    f"Collector already running (PID {old_pid}) on port {old_port}",
-                    fg=typer.colors.YELLOW,
-                )
-                return
-            except OSError:
-                _pid_file().unlink(missing_ok=True)
-
-        # Guard: even without a valid PID file, check if the port is busy.
-        # Use SO_REUSEADDR so lingering TIME_WAIT sockets from a just-killed
-        # collector don't cause a false "already running" report.
-        import socket as _sock
-
-        _probe = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)
-        _probe.setsockopt(_sock.SOL_SOCKET, _sock.SO_REUSEADDR, 1)
-        try:
-            _probe.bind(("127.0.0.1", resolved_port))
-        except OSError:
-            typer.secho(
-                f"Collector already running on port {resolved_port}",
-                fg=typer.colors.YELLOW,
-            )
-            return
-        finally:
-            _probe.close()
-
-        log_file = _metrics_dir() / "collector.log"
-        log_fh = open(log_file, "a")  # noqa: SIM115
-
-        proc = subprocess.Popen(
-            [
-                sys.executable,
-                "-m",
-                "mycelium.collector_main",
-                "--port",
-                str(resolved_port),
-                "--backend-url",
-                backend_url,
-            ],
-            stdout=log_fh,
-            stderr=log_fh,
-            start_new_session=True,
-        )
-
-        _pid_file().write_text(f"{proc.pid}\n{resolved_port}\n")
-
-        import time as _time
-
-        _time.sleep(0.5)
-        exit_code = proc.poll()
-        if exit_code is not None:
-            _pid_file().unlink(missing_ok=True)
-            typer.secho(
-                f"✗ Collector exited immediately (code {exit_code}). Check {log_file}",
-                fg=typer.colors.RED,
-            )
-            raise typer.Exit(1)
-
-        typer.secho(f"✓ Collector started (PID {proc.pid})", fg=typer.colors.GREEN)
-        typer.echo(f"  OTLP receiver on port {resolved_port}")
-        typer.echo(f"  Metrics file: {_metrics_json()}")
-        typer.echo(f"  Log file: {log_file}")
-    else:
-        # Check if something is already listening on the port
-        import socket
-
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            sock.bind(("127.0.0.1", resolved_port))
-        except OSError:
-            typer.secho(
-                f"✗ Port {resolved_port} is already in use.",
-                fg=typer.colors.RED,
-            )
-            bg_pid, _ = _read_pid_file()
-            if bg_pid is not None:
-                try:
-                    os.kill(bg_pid, 0)
-                    typer.echo(
-                        f"  A background collector is running (PID {bg_pid}).\n"
-                        f"  Stop it first:  mycelium metrics stop"
-                    )
-                except OSError:
-                    typer.echo("  Another process is using this port.")
-            else:
-                typer.echo("  Another process is using this port.")
-            raise typer.Exit(1)
-        finally:
-            sock.close()
-
-        import logging
-
-        logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-
-        typer.echo(f"Starting OTLP collector on port {resolved_port}...")
-        typer.echo("Press Ctrl+C to stop.\n")
-
-        from mycelium.collector import run as run_collector
-
-        scrape_targets = MyceliumConfig.load().resolve_scrape_targets()
-        run_collector(
-            resolved_port,
-            _metrics_json(),
-            backend_api_url=backend_url,
-            scrape_targets=scrape_targets,
-        )
-
-
-@app.command("stop")
-def stop() -> None:
-    """Stop the background OTLP collector."""
-    if not _pid_file().exists():
-        typer.secho("No collector running (PID file not found).", fg=typer.colors.YELLOW)
-        raise typer.Exit(0)
-
-    pid, _ = _read_pid_file()
-    if pid is None:
-        typer.secho("Could not read collector PID.", fg=typer.colors.RED)
-        _pid_file().unlink(missing_ok=True)
-        return
-
-    try:
-        os.kill(pid, signal.SIGTERM)
-    except ProcessLookupError:
-        typer.secho(f"Collector (PID {pid}) already exited.", fg=typer.colors.YELLOW)
-        _pid_file().unlink(missing_ok=True)
-        return
-    except OSError as exc:
-        typer.secho(f"Could not stop collector (PID {pid}): {exc}", fg=typer.colors.RED)
-        return
-
-    import time as _time
-
-    stopped = False
-    for _ in range(20):
-        _time.sleep(0.1)
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            stopped = True
-            break
-
-    if stopped:
-        typer.secho(f"✓ Collector stopped (PID {pid})", fg=typer.colors.GREEN)
-        _pid_file().unlink(missing_ok=True)
-    else:
-        typer.secho(
-            f"⚠ Collector (PID {pid}) still running after SIGTERM. "
-            "It may need to be killed manually.",
-            fg=typer.colors.YELLOW,
-        )
 
 
 @app.command("reset")
@@ -917,8 +690,8 @@ def show(
 
     if otel_data is None and oc_status is None:
         collector_up = (
-            _docker_collector_running()
-            or _read_pid_file()[0] is not None
+            _get_collector_url() is not None
+            or _docker_collector_running()
             or _port_in_use(_resolve_port(None))
         )
         if collector_up:
@@ -932,8 +705,7 @@ def show(
         else:
             console.print(
                 "[yellow]No metrics data available.[/yellow]\n\n"
-                "  Start the collector:  [bold]mycelium metrics collect[/bold]\n"
-                "  (runs in background by default; use --fg for foreground)\n\n"
+                "  Start the collector:  [bold]mycelium up --metrics[/bold]\n\n"
                 "  Make sure OpenClaw's diagnostics-otel plugin is configured:\n"
                 "    [bold]mycelium adapter add openclaw --step=otel[/bold]"
             )
@@ -1194,7 +966,38 @@ def _render_overview(
     console.print()
 
 
+def _get_collector_url() -> str | None:
+    """Return the configured remote collector URL, or None for local mode."""
+    try:
+        from mycelium.config import MyceliumConfig
+
+        return MyceliumConfig.load().metrics.collector_url or None
+    except Exception:
+        return None
+
+
+def _fetch_remote_metrics(collector_url: str) -> dict | None:
+    """GET /collector/metrics from a remote collector (best-effort)."""
+    import urllib.request
+
+    url = f"{collector_url.rstrip('/')}/collector/metrics"
+    try:
+        req = urllib.request.Request(url, method="GET")
+        with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
+            return json.loads(resp.read())
+    except Exception:
+        return None
+
+
 def _load_metrics_json() -> dict | None:
+    """Load metrics data from local file or remote collector.
+
+    When ``collector_url`` is configured (spoke mode), fetches from the
+    hub's ``/collector/metrics`` endpoint. Otherwise reads the local file.
+    """
+    collector_url = _get_collector_url()
+    if collector_url:
+        return _fetch_remote_metrics(collector_url)
     if not _metrics_json().exists():
         return None
     try:
@@ -1337,12 +1140,6 @@ def _extract_oc_cost(oc: dict | None) -> dict | None:
     if not oc:
         return None
     return oc.get("cost")
-
-
-def _get_port() -> int:
-    """Read actual port from PID file (line 2)."""
-    _, port = _read_pid_file()
-    return port
 
 
 def _fmt_num(n: int | float | None) -> str:

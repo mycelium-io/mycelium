@@ -1581,17 +1581,27 @@ def _configure_otel(
             return False
 
     try:
-        resolved_port = port if port is not None else 4318
-        env_port = os.environ.get("MYCELIUM_METRICS_PORT")
-        if port is None and env_port:
+        endpoint = None
+        if port is None and not container:
             try:
-                p = int(env_port)
-                if 1 <= p <= 65535:
-                    resolved_port = p
-            except ValueError:
+                from mycelium.config import MyceliumConfig
+
+                endpoint = MyceliumConfig.load().metrics.collector_url or None
+            except Exception:
                 pass
-        host = "host.docker.internal" if container else "localhost"
-        endpoint = f"http://{host}:{resolved_port}"
+
+        if endpoint is None:
+            resolved_port = port if port is not None else 4318
+            env_port = os.environ.get("MYCELIUM_METRICS_PORT")
+            if port is None and env_port:
+                try:
+                    p = int(env_port)
+                    if 1 <= p <= 65535:
+                        resolved_port = p
+                except ValueError:
+                    pass
+            host = "host.docker.internal" if container else "localhost"
+            endpoint = f"http://{host}:{resolved_port}"
 
         diagnostics = cfg.setdefault("diagnostics", {})
         diagnostics["enabled"] = True
@@ -1664,17 +1674,27 @@ def _configure_deep_observability(
        OTLP endpoint config matching the collector port
     3. Patches model cost data (same as --step=otel)
     """
-    resolved_port = port if port is not None else 4318
-    env_port = os.environ.get("MYCELIUM_METRICS_PORT")
-    if port is None and env_port:
+    endpoint = None
+    if port is None and not container:
         try:
-            p = int(env_port)
-            if 1 <= p <= 65535:
-                resolved_port = p
-        except ValueError:
+            from mycelium.config import MyceliumConfig
+
+            endpoint = MyceliumConfig.load().metrics.collector_url or None
+        except Exception:
             pass
-    host = "host.docker.internal" if container else "localhost"
-    endpoint = f"http://{host}:{resolved_port}"
+
+    if endpoint is None:
+        resolved_port = port if port is not None else 4318
+        env_port = os.environ.get("MYCELIUM_METRICS_PORT")
+        if port is None and env_port:
+            try:
+                p = int(env_port)
+                if 1 <= p <= 65535:
+                    resolved_port = p
+            except ValueError:
+                pass
+        host = "host.docker.internal" if container else "localhost"
+        endpoint = f"http://{host}:{resolved_port}"
 
     # ── 1. Install via openclaw CLI if not already present ─────────────────
     typer.echo("  Installing openclaw-deep-observability-plugin from ClawhHub...")

@@ -269,8 +269,22 @@ class MetricsConfig(BaseModel):
     scrape targets from those runtime URLs. Use ``[[metrics.scrape]]`` only
     to add *additional* targets (e.g. a user's own Prometheus-instrumented
     service) or to override an auto-derived target by matching its ``name``.
+
+    On spoke nodes, set ``collector_url`` to the hub's collector address
+    (e.g. ``http://hub-ip:4318``). This makes ``mycelium metrics show``
+    fetch data from the hub and sets the default OTLP endpoint for
+    adapter plugins — no local collector needed.
     """
 
+    collector_url: str | None = Field(
+        default=None,
+        description=(
+            "URL of the hub OTLP collector (e.g. http://hub-ip:4318). "
+            "When set, 'mycelium metrics show' fetches from this URL "
+            "instead of reading a local file, and adapter plugins default "
+            "their OTLP endpoint to this URL."
+        ),
+    )
     scrape: list[ScrapeTarget] = Field(
         default_factory=list,
         description=(
@@ -398,6 +412,7 @@ class MyceliumConfig(BaseModel):
             "llm": {},
             "runtime": {},
             "knowledge_ingest": {},
+            "metrics": {},
         }
 
         if api_url := os.getenv("MYCELIUM_API_URL"):
@@ -440,6 +455,10 @@ class MyceliumConfig(BaseModel):
                 env_config["knowledge_ingest"]["max_tool_content_bytes"] = int(v)
             except ValueError:
                 pass
+
+        # Metrics overrides
+        if collector_url := os.getenv("MYCELIUM_COLLECTOR_URL"):
+            env_config["metrics"]["collector_url"] = collector_url
 
         return env_config
 
