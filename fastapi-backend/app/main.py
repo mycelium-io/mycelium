@@ -273,16 +273,19 @@ async def get_recent_traces(limit: int = 100):
 
 
 async def _proxy_collector(path: str):
-    """Forward a GET request to the collector and return the JSON response."""
+    """Forward a GET request to the collector and return the raw JSON response."""
     import httpx
-    from fastapi.responses import JSONResponse
+    from fastapi.responses import JSONResponse, Response
 
     url = f"{settings.COLLECTOR_URL.rstrip('/')}{path}"
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(url)
         if resp.status_code == 200:
-            return resp.json()
+            return Response(
+                content=resp.content,
+                media_type="application/json",
+            )
         return JSONResponse(
             status_code=resp.status_code,
             content=resp.json()

@@ -568,6 +568,15 @@ def _zero_histogram() -> dict:
     return {"count": 0, "sum": 0, "min": None, "max": None}
 
 
+def _json_default(obj: object) -> object:
+    """json.dumps default handler: coerce inf/nan to None, everything else to str."""
+    import math
+
+    if isinstance(obj, float) and (math.isinf(obj) or math.isnan(obj)):
+        return None
+    return str(obj)
+
+
 def _attrs_dict(attributes) -> dict[str, str | int | float | bool]:
     """Convert protobuf KeyValue list to a plain dict."""
     result: dict[str, str | int | float | bool] = {}
@@ -613,7 +622,7 @@ def _fetch_backend_metrics(
                 try:
                     full_data = store.to_dict()
                     tmp = output_path.with_suffix(".tmp")
-                    tmp.write_text(json.dumps(full_data, indent=2, default=str))
+                    tmp.write_text(json.dumps(full_data, indent=2, default=_json_default))
                     tmp.replace(output_path)
                 except Exception as write_exc:
                     log.debug("Failed to persist metrics: %s", write_exc)
@@ -663,7 +672,7 @@ def _fetch_scrape_targets(
         try:
             full_data = store.to_dict()
             tmp = output_path.with_suffix(".tmp")
-            tmp.write_text(json.dumps(full_data, indent=2, default=str))
+            tmp.write_text(json.dumps(full_data, indent=2, default=_json_default))
             tmp.replace(output_path)
         except Exception as write_exc:
             log.debug("Failed to persist scrape data: %s", write_exc)
@@ -709,7 +718,7 @@ class OTLPHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _json_response(self, data: dict, status: int = 200) -> None:
-        body = json.dumps(data, default=str).encode()
+        body = json.dumps(data, default=_json_default).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -811,7 +820,7 @@ class OTLPHandler(BaseHTTPRequestHandler):
             self.output_path.parent.mkdir(parents=True, exist_ok=True)
             data = self.store.to_dict()
             tmp = self.output_path.with_suffix(".tmp")
-            tmp.write_text(json.dumps(data, indent=2, default=str))
+            tmp.write_text(json.dumps(data, indent=2, default=_json_default))
             tmp.replace(self.output_path)
         except Exception as exc:
             log.warning("Failed to flush metrics to %s: %s", self.output_path, exc)
@@ -936,7 +945,7 @@ def run(
             _fetch_backend_metrics(store, backend_api_url, output_path)
         data = store.to_dict()
         tmp = output_path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, indent=2, default=str))
+        tmp.write_text(json.dumps(data, indent=2, default=_json_default))
         tmp.replace(output_path)
         trace_store.cleanup_old_spans()
         log.info("Final state saved to %s; traces in %s", output_path, traces_db)
