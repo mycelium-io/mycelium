@@ -1,0 +1,1635 @@
+[1mdiff --git a/fastapi-backend/app/main.py b/fastapi-backend/app/main.py[m
+[1mindex b7fe706..c4e14b1 100644[m
+[1m--- a/fastapi-backend/app/main.py[m
+[1m+++ b/fastapi-backend/app/main.py[m
+[36m@@ -249,17 +249,16 @@[m [masync def get_metrics():[m
+     return snapshot()[m
+ [m
+ [m
+[31m-@app.get("/api/observability/collector", tags=["metrics"])[m
+[32m+[m[32m@app.get("/api/observability/collector", tags=["observability"])[m
+ async def get_collector_metrics():[m
+     """Return OTLP/scrape metrics written by the CLI collector.[m
+ [m
+     Reads ``~/.mycelium/metrics.json`` and returns the collector-specific[m
+     keys (counters, histograms, sessions, scrape) — excluding the ``backend``[m
+[31m-    key which duplicates ``GET /observability``.  Returns 404 when the file is[m
+[31m-    absent (collector not running or never started).[m
+[32m+[m[32m    key which duplicates ``GET /api/observability``.  Returns 404 when the file[m
+[32m+[m[32m    is absent (collector not running or never started).[m
+     """[m
+     import json[m
+[31m-    from pathlib import Path[m
+ [m
+     from fastapi.responses import JSONResponse[m
+ [m
+[36m@@ -276,14 +275,113 @@[m [masync def get_collector_metrics():[m
+             status_code=500,[m
+             content={"detail": "Failed to read collector metrics file"},[m
+         )[m
+[31m-    result = {[m
+[32m+[m[32m    return {[m
+         "updated_at": raw.get("updated_at"),[m
+         "counters": raw.get("counters", {}),[m
+         "histograms": raw.get("histograms", {}),[m
+         "sessions": raw.get("sessions", []),[m
+         "scrape": raw.get("scrape", {}),[m
+     }[m
+[31m-    return result[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m[32m@app.get("/api/observability/traces/recent", tags=["observability"])[m
+[32m+[m[32masync def get_recent_traces(limit: int = 100):[m
+[32m+[m[32m    """Return recent OTLP traces captured by the CLI collector.[m
+[32m+[m
+[32m+[m[32m    Reads ``~/.mycelium/traces.db`` (SQLite) written by ``mycelium metrics collect``.[m
+[32m+[m[32m    Each trace includes its full span tree for waterfall rendering.[m
+[32m+[m[32m    Returns 404 when the database is absent.[m
+[32m+[m[32m    """[m
+[32m+[m[32m    import json[m
+[32m+[m[32m    import sqlite3[m
+[32m+[m
+[32m+[m[32m    from fastapi.responses import JSONResponse[m
+[32m+[m
+[32m+[m[32m    db_path = Path.home() / ".mycelium" / "traces.db"[m
+[32m+[m[32m    if not db_path.exists():[m
+[32m+[m[32m        return JSONResponse([m
+[32m+[m[32m            status_code=404,[m
+[32m+[m[32m            content={"detail": "Traces database not found. Run: mycelium metrics collect"},[m
+[32m+[m[32m        )[m
+[32m+[m[32m    try:[m
+[32m+[m[32m        conn = sqlite3.connect(str(db_path), timeout=5)[m
+[32m+[m[32m        conn.row_factory = sqlite3.Row[m
+[32m+[m
+[32m+[m[32m        trace_ids = [[m
+[32m+[m[32m            r[0] for r in conn.execute([m
+[32m+[m[32m                "SELECT DISTINCT trace_id FROM spans ORDER BY start_time DESC LIMIT ?",[m
+[32m+[m[32m                (limit * 20,),[m
+[32m+[m[32m            ).fetchall()[m
+[32m+[m[32m        ][m
+[32m+[m[32m        seen: list[str] = [][m
+[32m+[m[32m        seen_set: set[str] = set()[m
+[32m+[m[32m        for tid in trace_ids:[m
+[32m+[m[32m            if tid not in seen_set:[m
+[32m+[m[32m                seen.append(tid)[m
+[32m+[m[32m                seen_set.add(tid)[m
+[32m+[m[32m            if len(seen) >= limit:[m
+[32m+[m[32m                break[m
+[32m+[m
+[32m+[m[32m        traces: list[dict] = [][m
+[32m+[m[32m        for trace_id in seen:[m
+[32m+[m[32m            rows = conn.execute([m
+[32m+[m[32m                "SELECT * FROM spans WHERE trace_id = ? ORDER BY start_time",[m
+[32m+[m[32m                (trace_id,),[m
+[32m+[m[32m            ).fetchall()[m
+[32m+[m[32m            if not rows:[m
+[32m+[m[32m                continue[m
+[32m+[m[32m            spans = [][m
+[32m+[m[32m            for r in rows:[m
+[32m+[m[32m                spans.append({[m
+[32m+[m[32m                    "trace_id": r["trace_id"],[m
+[32m+[m[32m                    "span_id": r["span_id"],[m
+[32m+[m[32m                    "parent_span_id": r["parent_span_id"],[m
+[32m+[m[32m                    "name": r["name"],[m
+[32m+[m[32m                    "kind": r["kind"],[m
+[32m+[m[32m                    "service": r["service"],[m
+[32m+[m[32m                    "start_time": r["start_time"],[m
+[32m+[m[32m                    "duration_ms": r["duration_ms"],[m
+[32m+[m[32m                    "status": r["status"],[m
+[32m+[m[32m                    "status_message": r["status_message"],[m
+[32m+[m[32m                    "attributes": json.loads(r["attributes"]),[m
+[32m+[m[32m                })[m
+[32m+[m[32m            root_spans = [s for s in spans if not s["parent_span_id"]][m
+[32m+[m[32m            root = root_spans[0] if root_spans else spans[0][m
+[32m+[m[32m            total_duration = max((s["duration_ms"] for s in spans), default=0)[m
+[32m+[m[32m            has_error = any(s["status"] == "error" for s in spans)[m
+[32m+[m[32m            agent = ""[m
+[32m+[m[32m            for s in spans:[m
+[32m+[m[32m                a = s.get("attributes", {})[m
+[32m+[m[32m                agent = ([m
+[32m+[m[32m                    str(a.get("openclaw.channel", ""))[m
+[32m+[m[32m                    or str(a.get("openclaw.agent", ""))[m
+[32m+[m[32m                    or str(a.get("gen_ai.agent", ""))[m
+[32m+[m[32m                )[m
+[32m+[m[32m                if agent:[m
+[32m+[m[32m                    break[m
+[32m+[m[32m            traces.append({[m
+[32m+[m[32m                "trace_id": trace_id,[m
+[32m+[m[32m                "root_span": root["name"],[m
+[32m+[m[32m                "service": root.get("service", ""),[m
+[32m+[m[32m                "agent": agent,[m
+[32m+[m[32m                "start_time": root["start_time"],[m
+[32m+[m[32m                "duration_ms": round(total_duration, 2),[m
+[32m+[m[32m                "span_count": len(spans),[m
+[32m+[m[32m                "has_error": has_error,[m
+[32m+[m[32m                "spans": spans,[m
+[32m+[m[32m            })[m
+[32m+[m[32m        conn.close()[m
+[32m+[m[32m    except Exception:[m
+[32m+[m[32m        logger.exception("Failed to read traces database")[m
+[32m+[m[32m        return JSONResponse([m
+[32m+[m[32m            status_code=500,[m
+[32m+[m[32m            content={"detail": "Failed to read traces database"},[m
+[32m+[m[32m        )[m
+[32m+[m[32m    return {[m
+[32m+[m[32m        "count": len(traces),[m
+[32m+[m[32m        "traces": traces,[m
+[32m+[m[32m    }[m
+ [m
+ [m
+ async def _check_database(session: AsyncSession) -> dict:[m
+[1mdiff --git a/mycelium-cli/src/mycelium/collector.py b/mycelium-cli/src/mycelium/collector.py[m
+[1mindex f781546..b667055 100644[m
+[1m--- a/mycelium-cli/src/mycelium/collector.py[m
+[1m+++ b/mycelium-cli/src/mycelium/collector.py[m
+[36m@@ -17,6 +17,7 @@[m [mimport gzip[m
+ import json[m
+ import logging[m
+ import socket[m
+[32m+[m[32mimport sqlite3[m
+ import threading[m
+ from datetime import UTC, datetime[m
+ from http.server import BaseHTTPRequestHandler, HTTPServer[m
+[36m@@ -25,9 +26,265 @@[m [mfrom pathlib import Path[m
+ log = logging.getLogger(__name__)[m
+ [m
+ _MAX_SESSIONS = 200[m
+[32m+[m[32m_MAX_TRACES = 500[m
+ _MAX_BODY_BYTES = 10 * 1024 * 1024  # 10 MiB guard against oversized payloads[m
+ [m
+ [m
+[32m+[m[32m_SPAN_KIND_MAP = {[m
+[32m+[m[32m    0: "unspecified",[m
+[32m+[m[32m    1: "internal",[m
+[32m+[m[32m    2: "server",[m
+[32m+[m[32m    3: "client",[m
+[32m+[m[32m    4: "producer",[m
+[32m+[m[32m    5: "consumer",[m
+[32m+[m[32m}[m
+[32m+[m[32m_STATUS_MAP = {0: "unset", 1: "ok", 2: "error"}[m
+[32m+[m
+[32m+[m[32m_TRACES_SCHEMA = """[m
+[32m+[m[32mCREATE TABLE IF NOT EXISTS spans ([m
+[32m+[m[32m    trace_id     TEXT NOT NULL,[m
+[32m+[m[32m    span_id      TEXT NOT NULL PRIMARY KEY,[m
+[32m+[m[32m    parent_span_id TEXT NOT NULL DEFAULT '',[m
+[32m+[m[32m    name         TEXT NOT NULL,[m
+[32m+[m[32m    kind         TEXT NOT NULL DEFAULT 'internal',[m
+[32m+[m[32m    service      TEXT NOT NULL DEFAULT '',[m
+[32m+[m[32m    start_time   TEXT NOT NULL,[m
+[32m+[m[32m    duration_ms  REAL NOT NULL DEFAULT 0,[m
+[32m+[m[32m    status       TEXT NOT NULL DEFAULT 'unset',[m
+[32m+[m[32m    status_message TEXT NOT NULL DEFAULT '',[m
+[32m+[m[32m    attributes   TEXT NOT NULL DEFAULT '{}',[m
+[32m+[m[32m    created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))[m
+[32m+[m[32m);[m
+[32m+[m[32mCREATE INDEX IF NOT EXISTS idx_spans_trace_id ON spans(trace_id);[m
+[32m+[m[32mCREATE INDEX IF NOT EXISTS idx_spans_created_at ON spans(created_at);[m
+[32m+[m[32mCREATE INDEX IF NOT EXISTS idx_spans_start_time ON spans(start_time);[m
+[32m+[m[32m"""[m
+[32m+[m
+[32m+[m[32m_DEFAULT_RETENTION_DAYS = 7[m
+[32m+[m
+[32m+[m
+[32m+[m[32mclass TraceStore:[m
+[32m+[m[32m    """SQLite-backed trace span storage with automatic retention cleanup."""[m
+[32m+[m
+[32m+[m[32m    def __init__(self, db_path: Path, retention_days: int = _DEFAULT_RETENTION_DAYS) -> None:[m
+[32m+[m[32m        self._db_path = db_path[m
+[32m+[m[32m        self._retention_days = retention_days[m
+[32m+[m[32m        self._lock = threading.Lock()[m
+[32m+[m[32m        self._last_cleanup = 0.0[m
+[32m+[m
+[32m+[m[32m        db_path.parent.mkdir(parents=True, exist_ok=True)[m
+[32m+[m[32m        conn = sqlite3.connect(str(db_path))[m
+[32m+[m[32m        conn.executescript(_TRACES_SCHEMA)[m
+[32m+[m[32m        conn.execute("PRAGMA journal_mode=WAL")[m
+[32m+[m[32m        conn.execute("PRAGMA synchronous=NORMAL")[m
+[32m+[m[32m        conn.close()[m
+[32m+[m[32m        log.info("Trace store opened: %s (retention=%dd)", db_path, retention_days)[m
+[32m+[m
+[32m+[m[32m    def _connect(self) -> sqlite3.Connection:[m
+[32m+[m[32m        return sqlite3.connect(str(self._db_path), timeout=10)[m
+[32m+[m
+[32m+[m[32m    def ingest_traces(self, request_bytes: bytes) -> None:[m
+[32m+[m[32m        from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ([m
+[32m+[m[32m            ExportTraceServiceRequest,[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m        msg = ExportTraceServiceRequest()[m
+[32m+[m[32m        msg.ParseFromString(request_bytes)[m
+[32m+[m
+[32m+[m[32m        rows: list[tuple] = [][m
+[32m+[m[32m        for rs in msg.resource_spans:[m
+[32m+[m[32m            resource_attrs = _attrs_dict(rs.resource.attributes) if rs.resource else {}[m
+[32m+[m[32m            service_name = str(resource_attrs.get("service.name", ""))[m
+[32m+[m[32m            for ss in rs.scope_spans:[m
+[32m+[m[32m                for span in ss.spans:[m
+[32m+[m[32m                    rows.append(self._span_to_row(span, service_name))[m
+[32m+[m
+[32m+[m[32m        if not rows:[m
+[32m+[m[32m            return[m
+[32m+[m
+[32m+[m[32m        with self._lock:[m
+[32m+[m[32m            conn = self._connect()[m
+[32m+[m[32m            try:[m
+[32m+[m[32m                conn.executemany([m
+[32m+[m[32m                    "INSERT OR REPLACE INTO spans "[m
+[32m+[m[32m                    "(trace_id, span_id, parent_span_id, name, kind, service, "[m
+[32m+[m[32m                    " start_time, duration_ms, status, status_message, attributes) "[m
+[32m+[m[32m                    "VALUES (?,?,?,?,?,?,?,?,?,?,?)",[m
+[32m+[m[32m                    rows,[m
+[32m+[m[32m                )[m
+[32m+[m[32m                conn.commit()[m
+[32m+[m[32m            finally:[m
+[32m+[m[32m                conn.close()[m
+[32m+[m
+[32m+[m[32m    def _span_to_row(self, span, service_name: str) -> tuple:[m
+[32m+[m[32m        trace_id = span.trace_id.hex() if isinstance(span.trace_id, bytes) else str(span.trace_id)[m
+[32m+[m[32m        span_id = span.span_id.hex() if isinstance(span.span_id, bytes) else str(span.span_id)[m
+[32m+[m[32m        parent_id = ([m
+[32m+[m[32m            span.parent_span_id.hex()[m
+[32m+[m[32m            if isinstance(span.parent_span_id, bytes) and span.parent_span_id[m
+[32m+[m[32m            else ""[m
+[32m+[m[32m        )[m
+[32m+[m[32m        start_ns = span.start_time_unix_nano[m
+[32m+[m[32m        end_ns = span.end_time_unix_nano[m
+[32m+[m[32m        duration_ms = (end_ns - start_ns) / 1_000_000 if end_ns > start_ns else 0[m
+[32m+[m[32m        start_iso = datetime.fromtimestamp(start_ns / 1_000_000_000, tz=UTC).isoformat()[m
+[32m+[m[32m        attrs = _attrs_dict(span.attributes)[m
+[32m+[m[32m        kind = _SPAN_KIND_MAP.get(span.kind, "unknown")[m
+[32m+[m[32m        status_code = span.status.code if span.status else 0[m
+[32m+[m[32m        status_msg = span.status.message if span.status else ""[m
+[32m+[m
+[32m+[m[32m        return ([m
+[32m+[m[32m            trace_id,[m
+[32m+[m[32m            span_id,[m
+[32m+[m[32m            parent_id,[m
+[32m+[m[32m            span.name,[m
+[32m+[m[32m            kind,[m
+[32m+[m[32m            service_name,[m
+[32m+[m[32m            start_iso,[m
+[32m+[m[32m            round(duration_ms, 2),[m
+[32m+[m[32m            _STATUS_MAP.get(status_code, "unknown"),[m
+[32m+[m[32m            status_msg,[m
+[32m+[m[32m            json.dumps(attrs, default=str),[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m    def get_recent_traces(self, limit: int = 100) -> list[dict]:[m
+[32m+[m[32m        """Return recent traces as a list of trace summary objects, newest first.[m
+[32m+[m
+[32m+[m[32m        Each trace includes its full list of spans for waterfall rendering.[m
+[32m+[m[32m        """[m
+[32m+[m[32m        with self._lock:[m
+[32m+[m[32m            conn = self._connect()[m
+[32m+[m[32m            conn.row_factory = sqlite3.Row[m
+[32m+[m[32m            try:[m
+[32m+[m[32m                trace_ids = [[m
+[32m+[m[32m                    r[0][m
+[32m+[m[32m                    for r in conn.execute([m
+[32m+[m[32m                        "SELECT DISTINCT trace_id FROM spans ORDER BY start_time DESC LIMIT ?",[m
+[32m+[m[32m                        (limit * 20,),[m
+[32m+[m[32m                    ).fetchall()[m
+[32m+[m[32m                ][m
+[32m+[m[32m                seen: list[str] = [][m
+[32m+[m[32m                seen_set: set[str] = set()[m
+[32m+[m[32m                for tid in trace_ids:[m
+[32m+[m[32m                    if tid not in seen_set:[m
+[32m+[m[32m                        seen.append(tid)[m
+[32m+[m[32m                        seen_set.add(tid)[m
+[32m+[m[32m                    if len(seen) >= limit:[m
+[32m+[m[32m                        break[m
+[32m+[m
+[32m+[m[32m                result: list[dict] = [][m
+[32m+[m[32m                for trace_id in seen:[m
+[32m+[m[32m                    rows = conn.execute([m
+[32m+[m[32m                        "SELECT * FROM spans WHERE trace_id = ? ORDER BY start_time",[m
+[32m+[m[32m                        (trace_id,),[m
+[32m+[m[32m                    ).fetchall()[m
+[32m+[m[32m                    if not rows:[m
+[32m+[m[32m                        continue[m
+[32m+[m
+[32m+[m[32m                    spans = [][m
+[32m+[m[32m                    for r in rows:[m
+[32m+[m[32m                        spans.append([m
+[32m+[m[32m                            {[m
+[32m+[m[32m                                "trace_id": r["trace_id"],[m
+[32m+[m[32m                                "span_id": r["span_id"],[m
+[32m+[m[32m                                "parent_span_id": r["parent_span_id"],[m
+[32m+[m[32m                                "name": r["name"],[m
+[32m+[m[32m                                "kind": r["kind"],[m
+[32m+[m[32m                                "service": r["service"],[m
+[32m+[m[32m                                "start_time": r["start_time"],[m
+[32m+[m[32m                                "duration_ms": r["duration_ms"],[m
+[32m+[m[32m                                "status": r["status"],[m
+[32m+[m[32m                                "status_message": r["status_message"],[m
+[32m+[m[32m                                "attributes": json.loads(r["attributes"]),[m
+[32m+[m[32m                            }[m
+[32m+[m[32m                        )[m
+[32m+[m
+[32m+[m[32m                    root_spans = [s for s in spans if not s["parent_span_id"]][m
+[32m+[m[32m                    root = root_spans[0] if root_spans else spans[0][m
+[32m+[m[32m                    total_duration = max((s["duration_ms"] for s in spans), default=0)[m
+[32m+[m[32m                    has_error = any(s["status"] == "error" for s in spans)[m
+[32m+[m
+[32m+[m[32m                    agent = ""[m
+[32m+[m[32m                    for s in spans:[m
+[32m+[m[32m                        a = s.get("attributes", {})[m
+[32m+[m[32m                        agent = ([m
+[32m+[m[32m                            str(a.get("openclaw.channel", ""))[m
+[32m+[m[32m                            or str(a.get("openclaw.agent", ""))[m
+[32m+[m[32m                            or str(a.get("gen_ai.agent", ""))[m
+[32m+[m[32m                        )[m
+[32m+[m[32m                        if agent:[m
+[32m+[m[32m                            break[m
+[32m+[m
+[32m+[m[32m                    result.append([m
+[32m+[m[32m                        {[m
+[32m+[m[32m                            "trace_id": trace_id,[m
+[32m+[m[32m                            "root_span": root["name"],[m
+[32m+[m[32m                            "service": root.get("service", ""),[m
+[32m+[m[32m                            "agent": agent,[m
+[32m+[m[32m                            "start_time": root["start_time"],[m
+[32m+[m[32m                            "duration_ms": round(total_duration, 2),[m
+[32m+[m[32m                            "span_count": len(spans),[m
+[32m+[m[32m                            "has_error": has_error,[m
+[32m+[m[32m                            "spans": spans,[m
+[32m+[m[32m                        }[m
+[32m+[m[32m                    )[m
+[32m+[m[32m                return result[m
+[32m+[m[32m            finally:[m
+[32m+[m[32m                conn.close()[m
+[32m+[m
+[32m+[m[32m    def cleanup_old_spans(self) -> int:[m
+[32m+[m[32m        """Delete spans older than the retention period. Returns count deleted."""[m
+[32m+[m[32m        import time[m
+[32m+[m
+[32m+[m[32m        now = time.monotonic()[m
+[32m+[m[32m        if now - self._last_cleanup < 3600:[m
+[32m+[m[32m            return 0[m
+[32m+[m[32m        self._last_cleanup = now[m
+[32m+[m
+[32m+[m[32m        with self._lock:[m
+[32m+[m[32m            conn = self._connect()[m
+[32m+[m[32m            try:[m
+[32m+[m[32m                cursor = conn.execute([m
+[32m+[m[32m                    "DELETE FROM spans WHERE created_at < datetime('now', ?)",[m
+[32m+[m[32m                    (f"-{self._retention_days} days",),[m
+[32m+[m[32m                )[m
+[32m+[m[32m                deleted = cursor.rowcount[m
+[32m+[m[32m                if deleted > 0:[m
+[32m+[m[32m                    conn.execute("PRAGMA incremental_vacuum")[m
+[32m+[m[32m                conn.commit()[m
+[32m+[m[32m                if deleted > 0:[m
+[32m+[m[32m                    log.info([m
+[32m+[m[32m                        "Trace cleanup: deleted %d spans older than %d days",[m
+[32m+[m[32m                        deleted,[m
+[32m+[m[32m                        self._retention_days,[m
+[32m+[m[32m                    )[m
+[32m+[m[32m                return deleted[m
+[32m+[m[32m            finally:[m
+[32m+[m[32m                conn.close()[m
+[32m+[m
+[32m+[m[32m    def get_stats(self) -> dict:[m
+[32m+[m[32m        """Return storage statistics for diagnostics."""[m
+[32m+[m[32m        with self._lock:[m
+[32m+[m[32m            conn = self._connect()[m
+[32m+[m[32m            try:[m
+[32m+[m[32m                span_count = conn.execute("SELECT COUNT(*) FROM spans").fetchone()[0][m
+[32m+[m[32m                trace_count = conn.execute("SELECT COUNT(DISTINCT trace_id) FROM spans").fetchone()[[m
+[32m+[m[32m                    0[m
+[32m+[m[32m                ][m
+[32m+[m[32m                oldest = conn.execute("SELECT MIN(created_at) FROM spans").fetchone()[0][m
+[32m+[m[32m                newest = conn.execute("SELECT MAX(created_at) FROM spans").fetchone()[0][m
+[32m+[m[32m                return {[m
+[32m+[m[32m                    "span_count": span_count,[m
+[32m+[m[32m                    "trace_count": trace_count,[m
+[32m+[m[32m                    "oldest": oldest,[m
+[32m+[m[32m                    "newest": newest,[m
+[32m+[m[32m                    "retention_days": self._retention_days,[m
+[32m+[m[32m                    "db_path": str(self._db_path),[m
+[32m+[m[32m                }[m
+[32m+[m[32m            finally:[m
+[32m+[m[32m                conn.close()[m
+[32m+[m
+[32m+[m
+ class MetricsStore:[m
+     """In-memory aggregation of OTLP counters, histograms, and session records."""[m
+ [m
+[36m@@ -112,6 +369,11 @@[m [mclass MetricsStore:[m
+                         self._process_metric(metric)[m
+ [m
+     def ingest_traces(self, request_bytes: bytes) -> None:[m
+[32m+[m[32m        """Process model.usage spans for session aggregation.[m
+[32m+[m
+[32m+[m[32m        The raw request_bytes are also forwarded to a TraceStore (if set)[m
+[32m+[m[32m        for full trace capture — see ``trace_store`` attribute.[m
+[32m+[m[32m        """[m
+         from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ([m
+             ExportTraceServiceRequest,[m
+         )[m
+[36m@@ -411,9 +673,20 @@[m [mclass OTLPHandler(BaseHTTPRequestHandler):[m
+     """HTTP handler for OTLP protobuf endpoints."""[m
+ [m
+     store: MetricsStore[m
+[32m+[m[32m    trace_store: TraceStore[m
+     output_path: Path[m
+     backend_api_url: str[m
+ [m
+[32m+[m[32m    def do_GET(self) -> None:[m
+[32m+[m[32m        if self.path == "/health":[m
+[32m+[m[32m            self.send_response(200)[m
+[32m+[m[32m            self.send_header("Content-Type", "application/json")[m
+[32m+[m[32m            self.end_headers()[m
+[32m+[m[32m            self.wfile.write(b'{"status":"ok"}')[m
+[32m+[m[32m            return[m
+[32m+[m[32m        self.send_response(404)[m
+[32m+[m[32m        self.end_headers()[m
+[32m+[m
+     def do_POST(self) -> None:[m
+         try:[m
+             cl_header = self.headers.get("Content-Length")[m
+[36m@@ -479,7 +752,7 @@[m [mclass OTLPHandler(BaseHTTPRequestHandler):[m
+ [m
+         log.debug("POST %s  %d bytes", self.path, len(body))[m
+ [m
+[31m-        if self.path not in ("/v1/metrics", "/v1/traces"):[m
+[32m+[m[32m        if self.path not in ("/v1/metrics", "/v1/traces", "/v1/logs"):[m
+             log.warning("Unexpected POST path %s, returning 400", self.path)[m
+             self.send_response(400)[m
+             self.end_headers()[m
+[36m@@ -488,8 +761,11 @@[m [mclass OTLPHandler(BaseHTTPRequestHandler):[m
+         try:[m
+             if self.path == "/v1/metrics":[m
+                 self.store.ingest_metrics(body)[m
+[31m-            else:[m
+[32m+[m[32m            elif self.path == "/v1/traces":[m
+                 self.store.ingest_traces(body)[m
+[32m+[m[32m                self.trace_store.ingest_traces(body)[m
+[32m+[m[32m            elif self.path == "/v1/logs":[m
+[32m+[m[32m                log.debug("Received OTLP logs (%d bytes), ack-only", len(body))[m
+             self._flush()[m
+         except Exception:[m
+             log.exception("Failed to process %s", self.path)[m
+[36m@@ -537,6 +813,8 @@[m [mdef run([m
+     Targets are polled on the same 30-second interval as the backend.[m
+     """[m
+     store = MetricsStore()[m
+[32m+[m[32m    traces_db = output_path.parent / "traces.db"[m
+[32m+[m[32m    trace_store = TraceStore(traces_db)[m
+     scrape_targets = list(scrape_targets or [])[m
+     is_hub = _is_local_url(backend_api_url)[m
+     if not is_hub:[m
+[36m@@ -568,7 +846,12 @@[m [mdef run([m
+     handler = type([m
+         "Handler",[m
+         (OTLPHandler,),[m
+[31m-        {"store": store, "output_path": output_path, "backend_api_url": backend_api_url},[m
+[32m+[m[32m        {[m
+[32m+[m[32m            "store": store,[m
+[32m+[m[32m            "trace_store": trace_store,[m
+[32m+[m[32m            "output_path": output_path,[m
+[32m+[m[32m            "backend_api_url": backend_api_url,[m
+[32m+[m[32m        },[m
+     )[m
+ [m
+     output_path.parent.mkdir(parents=True, exist_ok=True)[m
+[36m@@ -583,6 +866,7 @@[m [mdef run([m
+             if is_hub:[m
+                 _fetch_backend_metrics(store, backend_api_url, output_path)[m
+             _fetch_scrape_targets(store, scrape_targets, output_path)[m
+[32m+[m[32m            trace_store.cleanup_old_spans()[m
+ [m
+     poller = threading.Thread(target=_backend_poller, daemon=True)[m
+     poller.start()[m
+[36m@@ -598,6 +882,7 @@[m [mdef run([m
+ [m
+     class _DualStackHTTPServer(HTTPServer):[m
+         address_family = socket.AF_INET6[m
+[32m+[m[32m        allow_reuse_address = True[m
+ [m
+         def server_bind(self) -> None:[m
+             self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)[m
+[36m@@ -624,4 +909,5 @@[m [mdef run([m
+         tmp = output_path.with_suffix(".tmp")[m
+         tmp.write_text(json.dumps(data, indent=2, default=str))[m
+         tmp.replace(output_path)[m
+[31m-        log.info("Final state saved to %s", output_path)[m
+[32m+[m[32m        trace_store.cleanup_old_spans()[m
+[32m+[m[32m        log.info("Final state saved to %s; traces in %s", output_path, traces_db)[m
+[1mdiff --git a/mycelium-cli/src/mycelium/commands/adapter.py b/mycelium-cli/src/mycelium/commands/adapter.py[m
+[1mindex d168524..fc6dff8 100644[m
+[1m--- a/mycelium-cli/src/mycelium/commands/adapter.py[m
+[1m+++ b/mycelium-cli/src/mycelium/commands/adapter.py[m
+[36m@@ -74,6 +74,7 @@[m [mdef adapter_main(ctx: typer.Context) -> None:[m
+ [m
+ _OPENCLAW_STEPS = {[m
+     "otel": "configure OpenClaw diagnostics-otel plugin to export to the OTLP receiver",[m
+[32m+[m[32m    "deep-observability": "install and configure the openclaw-deep-observability-plugin for hierarchical traces",[m
+     "docker-env": "show env vars for Docker-based experiment agents",[m
+ }[m
+ [m
+[36m@@ -242,8 +243,8 @@[m [mdef add([m
+     dry_run: bool = typer.Option([m
+         False, "--dry-run", help="Show what would be installed without doing it"[m
+     ),[m
+[31m-    step: str | None = typer.Option([m
+[31m-        None, "--step", help=f"Run a follow-up setup step: {', '.join(_OPENCLAW_STEPS)}"[m
+[32m+[m[32m    step: list[str] | None = typer.Option([m
+[32m+[m[32m        None, "--step", help=f"Run a follow-up setup step (repeatable): {', '.join(_OPENCLAW_STEPS)}"[m
+     ),[m
+     reinstall: bool = typer.Option([m
+         False, "--reinstall", help="Reinstall assets even if adapter is already registered"[m
+[36m@@ -321,23 +322,33 @@[m [mdef add([m
+         config = MyceliumConfig.load()[m
+ [m
+         # ── Follow-up steps run independently of the base install ────────────[m
+[31m-        if step is not None:[m
+[32m+[m[32m        if step:[m
+             if adapter_type != "openclaw":[m
+                 typer.secho([m
+                     "--step is only supported for the 'openclaw' adapter.", fg=typer.colors.RED[m
+                 )[m
+                 raise typer.Exit(1)[m
+[31m-            if step not in _OPENCLAW_STEPS:[m
+[31m-                known_steps = ", ".join(_OPENCLAW_STEPS)[m
+[31m-                typer.secho([m
+[31m-                    f"Unknown step '{step}'. Known steps: {known_steps}", fg=typer.colors.RED[m
+[31m-                )[m
+[31m-                raise typer.Exit(1)[m
+[31m-            if step == "docker-env":[m
+[31m-                _step_docker_env(config)[m
+[31m-            elif step == "otel":[m
+[31m-                if _configure_otel(profile=openclaw_profile, container=openclaw_container):[m
+[31m-                    _restart_gateway_if_needed(openclaw_profile, openclaw_container)[m
+[32m+[m[32m            for s in step:[m
+[32m+[m[32m                if s not in _OPENCLAW_STEPS:[m
+[32m+[m[32m                    known_steps = ", ".join(_OPENCLAW_STEPS)[m
+[32m+[m[32m                    typer.secho([m
+[32m+[m[32m                        f"Unknown step '{s}'. Known steps: {known_steps}", fg=typer.colors.RED[m
+[32m+[m[32m                    )[m
+[32m+[m[32m                    raise typer.Exit(1)[m
+[32m+[m[32m            needs_restart = False[m
+[32m+[m[32m            for s in step:[m
+[32m+[m[32m                if s == "docker-env":[m
+[32m+[m[32m                    _step_docker_env(config)[m
+[32m+[m[32m                elif s == "otel":[m
+[32m+[m[32m                    if _configure_otel(profile=openclaw_profile, container=openclaw_container):[m
+[32m+[m[32m                        needs_restart = True[m
+[32m+[m[32m                elif s == "deep-observability":[m
+[32m+[m[32m                    if _configure_deep_observability([m
+[32m+[m[32m                        profile=openclaw_profile, container=openclaw_container[m
+[32m+[m[32m                    ):[m
+[32m+[m[32m                        needs_restart = True[m
+[32m+[m[32m            if needs_restart:[m
+[32m+[m[32m                _restart_gateway_if_needed(openclaw_profile, openclaw_container)[m
+             return[m
+ [m
+         # ── Base install ──────────────────────────────────────────────────────[m
+[36m@@ -1635,6 +1646,131 @@[m [mdef _configure_otel([m
+     return True[m
+ [m
+ [m
+[32m+[m[32m_DEEP_OBS_PLUGIN_ID = "openclaw-deep-observability-plugin"[m
+[32m+[m[32m_DEEP_OBS_CLAWHUB_SPEC = "clawhub:openclaw-deep-observability-plugin"[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef _configure_deep_observability([m
+[32m+[m[32m    port: int | None = None,[m
+[32m+[m[32m    profile: str | None = None,[m
+[32m+[m[32m    container: str | None = None,[m
+[32m+[m[32m) -> bool:[m
+[32m+[m[32m    """Install and configure the openclaw-deep-observability-plugin.[m
+[32m+[m
+[32m+[m[32m    1. Runs ``openclaw plugins install`` from ClawhHub (if not already installed)[m
+[32m+[m[32m    2. Adds the plugin to ``plugins.allow`` and ``plugins.entries`` with[m
+[32m+[m[32m       OTLP endpoint config matching the collector port[m
+[32m+[m[32m    3. Patches model cost data (same as --step=otel)[m
+[32m+[m[32m    """[m
+[32m+[m[32m    resolved_port = port if port is not None else 4318[m
+[32m+[m[32m    env_port = os.environ.get("MYCELIUM_METRICS_PORT")[m
+[32m+[m[32m    if port is None and env_port:[m
+[32m+[m[32m        try:[m
+[32m+[m[32m            p = int(env_port)[m
+[32m+[m[32m            if 1 <= p <= 65535:[m
+[32m+[m[32m                resolved_port = p[m
+[32m+[m[32m        except ValueError:[m
+[32m+[m[32m            pass[m
+[32m+[m[32m    host = "host.docker.internal" if container else "localhost"[m
+[32m+[m[32m    endpoint = f"http://{host}:{resolved_port}"[m
+[32m+[m
+[32m+[m[32m    # ── 1. Install via openclaw CLI if not already present ─────────────────[m
+[32m+[m[32m    typer.echo("  Installing openclaw-deep-observability-plugin from ClawhHub...")[m
+[32m+[m[32m    install_cmd = _openclaw_cmd([m
+[32m+[m[32m        ["openclaw", "plugins", "install", _DEEP_OBS_CLAWHUB_SPEC],[m
+[32m+[m[32m        profile,[m
+[32m+[m[32m        container,[m
+[32m+[m[32m    )[m
+[32m+[m[32m    result = subprocess.run(install_cmd, text=True, capture_output=True)[m
+[32m+[m[32m    if result.returncode != 0:[m
+[32m+[m[32m        combined = ((result.stderr or "") + (result.stdout or "")).lower()[m
+[32m+[m[32m        if "already exists" in combined or "already installed" in combined:[m
+[32m+[m[32m            typer.secho("  ✓ plugin already installed", fg=typer.colors.GREEN)[m
+[32m+[m[32m        else:[m
+[32m+[m[32m            typer.secho([m
+[32m+[m[32m                f"  ✗ Plugin install failed (exit {result.returncode})",[m
+[32m+[m[32m                fg=typer.colors.RED,[m
+[32m+[m[32m            )[m
+[32m+[m[32m            stderr = (result.stderr or "").strip()[m
+[32m+[m[32m            if stderr:[m
+[32m+[m[32m                typer.echo(f"    {stderr[:300]}")[m
+[32m+[m[32m            return False[m
+[32m+[m[32m    else:[m
+[32m+[m[32m        typer.secho("  ✓ plugin installed", fg=typer.colors.GREEN)[m
+[32m+[m
+[32m+[m[32m    if container:[m
+[32m+[m[32m        _wait_container_healthy(container)[m
+[32m+[m
+[32m+[m[32m    # ── 2. Configure in openclaw.json ──────────────────────────────────────[m
+[32m+[m[32m    if container:[m
+[32m+[m[32m        config_path_str = _container_config_path(container, profile)[m
+[32m+[m[32m        cfg = _read_container_json(container, config_path_str)[m
+[32m+[m[32m        if cfg is None:[m
+[32m+[m[32m            typer.secho(f"  ✗ {config_path_str} not found in container.", fg=typer.colors.RED)[m
+[32m+[m[32m            return False[m
+[32m+[m[32m    else:[m
+[32m+[m[32m        state_dir = _openclaw_state_dir(profile)[m
+[32m+[m[32m        config_path = state_dir / "openclaw.json"[m
+[32m+[m[32m        if not config_path.exists():[m
+[32m+[m[32m            typer.secho(f"  ✗ {config_path} not found.", fg=typer.colors.RED)[m
+[32m+[m[32m            return False[m
+[32m+[m[32m        try:[m
+[32m+[m[32m            cfg = json_module.loads(config_path.read_text())[m
+[32m+[m[32m        except (json_module.JSONDecodeError, OSError) as exc:[m
+[32m+[m[32m            typer.secho(f"  ✗ Could not read openclaw.json: {exc}", fg=typer.colors.RED)[m
+[32m+[m[32m            return False[m
+[32m+[m
+[32m+[m[32m    try:[m
+[32m+[m[32m        plugins = cfg.setdefault("plugins", {})[m
+[32m+[m[32m        allow_list = plugins.setdefault("allow", [])[m
+[32m+[m[32m        if _DEEP_OBS_PLUGIN_ID not in allow_list:[m
+[32m+[m[32m            allow_list.append(_DEEP_OBS_PLUGIN_ID)[m
+[32m+[m
+[32m+[m[32m        entries = _normalize_plugin_entries(plugins)[m
+[32m+[m[32m        entries[_DEEP_OBS_PLUGIN_ID] = {[m
+[32m+[m[32m            "enabled": True,[m
+[32m+[m[32m            "config": {[m
+[32m+[m[32m                "endpoint": endpoint,[m
+[32m+[m[32m                "protocol": "http/protobuf",[m
+[32m+[m[32m                "traces": True,[m
+[32m+[m[32m                "metrics": True,[m
+[32m+[m[32m                "logs": False,[m
+[32m+[m[32m                "captureContent": False,[m
+[32m+[m[32m                "metricsIntervalMs": 5000,[m
+[32m+[m[32m            },[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        model_changes = _patch_model_cost_and_compat(cfg)[m
+[32m+[m[32m        for desc in model_changes:[m
+[32m+[m[32m            typer.secho(f"  ✓ patched {desc}", fg=typer.colors.GREEN)[m
+[32m+[m
+[32m+[m[32m        cfg_json = json_module.dumps(cfg, indent=2) + "\n"[m
+[32m+[m
+[32m+[m[32m        if container:[m
+[32m+[m[32m            result = subprocess.run([m
+[32m+[m[32m                ["docker", "exec", "-i", container, "sh", "-c", f"cat > {config_path_str}"],[m
+[32m+[m[32m                input=cfg_json,[m
+[32m+[m[32m                capture_output=True,[m
+[32m+[m[32m                text=True,[m
+[32m+[m[32m            )[m
+[32m+[m[32m            if result.returncode != 0:[m
+[32m+[m[32m                typer.secho([m
+[32m+[m[32m                    f"  ✗ Could not write openclaw.json: {result.stderr}", fg=typer.colors.RED[m
+[32m+[m[32m                )[m
+[32m+[m[32m                return False[m
+[32m+[m[32m        else:[m
+[32m+[m[32m            config_path.write_text(cfg_json)[m
+[32m+[m
+[32m+[m[32m    except OSError as exc:[m
+[32m+[m[32m        typer.secho(f"  ✗ Could not write openclaw.json: {exc}", fg=typer.colors.RED)[m
+[32m+[m[32m        return False[m
+[32m+[m
+[32m+[m[32m    typer.secho(f"  ✓ {_DEEP_OBS_PLUGIN_ID} enabled in openclaw.json", fg=typer.colors.GREEN)[m
+[32m+[m[32m    typer.echo(f"    endpoint: {endpoint}")[m
+[32m+[m[32m    typer.echo("    traces: true, metrics: true, captureContent: false")[m
+[32m+[m[32m    return True[m
+[32m+[m
+[32m+[m
+ def _restart_gateway_if_needed(profile: str | None, container: str | None) -> None:[m
+     """Restart the OpenClaw gateway service to pick up config changes."""[m
+     typer.echo("")[m
+[1mdiff --git a/mycelium-cli/src/mycelium/docs/metrics.md b/mycelium-cli/src/mycelium/docs/metrics.md[m
+[1mindex 2d3015b..eba28f8 100644[m
+[1m--- a/mycelium-cli/src/mycelium/docs/metrics.md[m
+[1m+++ b/mycelium-cli/src/mycelium/docs/metrics.md[m
+[36m@@ -11,14 +11,21 @@[m [mHTTP polling) — and writes it to a single JSON file for the CLI to render.[m
+ │   OpenClaw   │ ──────────────────────▶ │  Metrics Collector │[m
+ │   Gateway    │   /v1/metrics           │  (localhost:4318)  │[m
+ │              │   /v1/traces            │                    │[m
+[31m-└──────────────┘                         │  ┌──────────────┐  │[m
+[31m-                                         │  │ MetricsStore │  │[m
+[31m-┌──────────────┐   GET /api/observability      │  │  (in-memory) │  │[m
+[31m-│  Mycelium    │ ◀ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │  └──────┬───────┘  │[m
+[31m-│  Backend     │  (polled every 30s)     │         │ flush    │[m
+[32m+[m[32m│  (diagnostics│   /v1/logs              │  ┌──────────────┐  │[m
+[32m+[m[32m│  -otel  and  │                         │  │ MetricsStore │  │[m
+[32m+[m[32m│  deep-obs    │                         │  │  (in-memory) │  │[m
+[32m+[m[32m│  plugins)    │                         │  └──────┬───────┘  │[m
+[32m+[m[32m└──────────────┘                         │         │ flush    │[m
+[32m+[m[32m                                         │  ┌──────┴───────┐  │[m
+[32m+[m[32m┌──────────────┐   GET /api/observability │  │  TraceStore  │  │[m
+[32m+[m[32m│  Mycelium    │ ◀ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │  │  (SQLite)    │  │[m
+[32m+[m[32m│  Backend     │  (polled every 30s)     │  └──────┬───────┘  │[m
+ │  (FastAPI)   │                         └─────────┼──────────┘[m
+[31m-└──────────────┘                                   ▼[m
+[31m-                                         ~/.mycelium/metrics.json[m
+[32m+[m[32m│              │                                   ▼[m
+[32m+[m[32m│  GET /api/   │                   ┌───────────────────────────┐[m
+[32m+[m[32m│  traces/     │ ◀─reads─────────  │ ~/.mycelium/metrics.json  │[m
+[32m+[m[32m│  recent      │                   │ ~/.mycelium/traces.db     │[m
+[32m+[m[32m└──────────────┘                   └───────────────────────────┘[m
+                                                    │[m
+                                                    ▼[m
+                                          ┌──────────────────┐[m
+[36m@@ -46,12 +53,14 @@[m [mvariable.[m
+ | `mycelium metrics show --json` | Dump raw JSON for scripting                  |[m
+ | `mycelium metrics show --workspace` | Include per-file workspace breakdowns   |[m
+ | `mycelium metrics show --include-heartbeat` | Include OpenClaw `heartbeat` channel tokens in totals (excluded by default) |[m
+[32m+[m[32m| `mycelium adapter add openclaw --step=otel --step=deep-observability` | Configure both OTLP plugins in one command (see below) |[m
+ [m
+ ## Files Created[m
+ [m
+ | Path                            | Purpose                              |[m
+ | ------------------------------- | ------------------------------------ |[m
+ | `~/.mycelium/metrics.json`      | Aggregated metrics (counters, histograms, sessions, backend snapshot) |[m
+[32m+[m[32m| `~/.mycelium/traces.db`         | SQLite database of OTLP trace spans (7-day retention) |[m
+ | `~/.mycelium/pricing.json`      | User-local pricing cache (written by `update-pricing`) |[m
+ | `~/.mycelium/collector.pid`     | PID and port of the background collector process |[m
+ | `~/.mycelium/collector.log`     | Stdout/stderr log from the background collector  |[m
+[36m@@ -59,12 +68,17 @@[m [mvariable.[m
+ `metrics.json` is atomically updated (write to `.tmp`, rename) on every OTLP[m
+ ingestion and on graceful shutdown.[m
+ [m
+[32m+[m[32m`traces.db` is a WAL-mode SQLite database written by the `TraceStore`.[m
+[32m+[m[32mSpans older than 7 days are automatically purged hourly and at shutdown.[m
+[32m+[m
+ ## What We Collect[m
+ [m
+ ### Source 1: OpenClaw OTLP Telemetry[m
+ [m
+ The collector listens on `localhost:4318` and accepts standard OTLP/HTTP[m
+[31m-protobuf payloads from OpenClaw's `diagnostics-otel` plugin.[m
+[32m+[m[32mprotobuf payloads on `/v1/metrics`, `/v1/traces`, and `/v1/logs`. The[m
+[32m+[m[32m`/v1/logs` endpoint is acknowledged (200) but not stored — it exists so[m
+[32m+[m[32mthe deep observability plugin doesn't get rejected for log payloads.[m
+ [m
+ #### Counters (from OTLP `sum` metrics)[m
+ [m
+[36m@@ -109,6 +123,108 @@[m [mSpans named `openclaw.model.usage` are tracked per session. Fields extracted:[m
+ [m
+ Up to 200 sessions are retained (oldest evicted).[m
+ [m
+[32m+[m[32m### Deep Observability Plugin[m
+[32m+[m
+[32m+[m[32mThe `openclaw-deep-observability-plugin` provides richer, hierarchical OTLP[m
+[32m+[m[32mtraces compared to the built-in `diagnostics-otel` plugin. It emits[m
+[32m+[m[32mparent-child span trees with per-tool timing, LLM call isolation, and[m
+[32m+[m[32msession lifecycle spans.[m
+[32m+[m
+[32m+[m[32mThe plugin works for **root agents** and **peer agents** (independent[m
+[32m+[m[32mOpenClaw sessions) — which is how Mycelium's agents are structured. It[m
+[32m+[m[32mdoes **not** emit traces for internal sub-agent calls within a single[m
+[32m+[m[32mOpenClaw session.[m
+[32m+[m
+[32m+[m[32m#### Setup[m
+[32m+[m
+[32m+[m[32m```bash[m
+[32m+[m[32mmycelium adapter add openclaw --step=otel --step=deep-observability[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32mBoth steps should be run together. `--step=otel` configures the built-in[m
+[32m+[m[32m`diagnostics-otel` plugin which emits the flat counters and histograms[m
+[32m+[m[32mthat power `mycelium metrics show`. `--step=deep-observability` adds the[m
+[32m+[m[32mhierarchical trace spans stored in `traces.db`. Without `--step=otel`,[m
+[32m+[m[32mthe OpenClaw panels in `mycelium metrics show` will have no data.[m
+[32m+[m
+[32m+[m[32mThe `--step=deep-observability` portion:[m
+[32m+[m
+[32m+[m[32m1. Installs the plugin from ClawhHub (`openclaw plugins install`)[m
+[32m+[m[32m2. Adds the plugin to `plugins.allow` and `plugins.entries` in[m
+[32m+[m[32m   `~/.openclaw/openclaw.json` with the OTLP endpoint matching the[m
+[32m+[m[32m   collector port[m
+[32m+[m[32m3. Patches model cost and `compat.supportsUsageInStreaming` settings[m
+[32m+[m[32m4. Restarts the OpenClaw gateway to pick up the config[m
+[32m+[m
+[32m+[m[32mThe resulting `openclaw.json` plugin entry looks like:[m
+[32m+[m
+[32m+[m[32m```json[m
+[32m+[m[32m{[m
+[32m+[m[32m  "plugins": {[m
+[32m+[m[32m    "allow": ["openclaw-deep-observability-plugin"],[m
+[32m+[m[32m    "entries": {[m
+[32m+[m[32m      "openclaw-deep-observability-plugin": {[m
+[32m+[m[32m        "enabled": true,[m
+[32m+[m[32m        "config": {[m
+[32m+[m[32m          "endpoint": "http://localhost:4318",[m
+[32m+[m[32m          "protocol": "http/protobuf",[m
+[32m+[m[32m          "traces": true,[m
+[32m+[m[32m          "metrics": true,[m
+[32m+[m[32m          "logs": false,[m
+[32m+[m[32m          "captureContent": false,[m
+[32m+[m[32m          "metricsIntervalMs": 5000[m
+[32m+[m[32m        }[m
+[32m+[m[32m      }[m
+[32m+[m[32m    }[m
+[32m+[m[32m  }[m
+[32m+[m[32m}[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32mWhen running OpenClaw in a Docker container, the endpoint is automatically[m
+[32m+[m[32mset to `http://host.docker.internal:4318`.[m
+[32m+[m
+[32m+[m[32mThe deep observability plugin and the built-in `diagnostics-otel` plugin[m
+[32m+[m[32mcan run side by side. Both emit to the same collector. The deep plugin's[m
+[32m+[m[32mtraces are richer (hierarchical spans) while `diagnostics-otel` provides[m
+[32m+[m[32mthe flat counter/histogram metrics used by `mycelium metrics show`.[m
+[32m+[m
+[32m+[m[32m### Trace Storage (TraceStore)[m
+[32m+[m
+[32m+[m[32mRaw OTLP trace spans are persisted to `~/.mycelium/traces.db` (SQLite,[m
+[32m+[m[32mWAL mode) by the `TraceStore` class in `collector.py`. This runs in[m
+[32m+[m[32mparallel with the `MetricsStore` — on every `/v1/traces` POST, the[m
+[32m+[m[32mcollector feeds bytes to both stores.[m
+[32m+[m
+[32m+[m[32m**Schema:**[m
+[32m+[m
+[32m+[m[32m| Column           | Type  | Description                                     |[m
+[32m+[m[32m| ---------------- | ----- | ----------------------------------------------- |[m
+[32m+[m[32m| `trace_id`       | TEXT  | Hex trace ID                                    |[m
+[32m+[m[32m| `span_id`        | TEXT  | Hex span ID (primary key)                       |[m
+[32m+[m[32m| `parent_span_id` | TEXT  | Parent span ID (empty for root spans)           |[m
+[32m+[m[32m| `name`           | TEXT  | Span operation name                             |[m
+[32m+[m[32m| `kind`           | TEXT  | `internal`, `server`, `client`, `producer`, `consumer` |[m
+[32m+[m[32m| `service`        | TEXT  | `service.name` from the OTLP resource           |[m
+[32m+[m[32m| `start_time`     | TEXT  | ISO 8601 timestamp                              |[m
+[32m+[m[32m| `duration_ms`    | REAL  | Span duration in milliseconds                   |[m
+[32m+[m[32m| `status`         | TEXT  | `unset`, `ok`, or `error`                       |[m
+[32m+[m[32m| `status_message` | TEXT  | Error message when status is `error`            |[m
+[32m+[m[32m| `attributes`     | TEXT  | JSON-encoded span attributes                    |[m
+[32m+[m[32m| `created_at`     | TEXT  | Insertion timestamp (used for retention cleanup) |[m
+[32m+[m
+[32m+[m[32m**Retention:** Spans older than 7 days are deleted automatically[m
+[32m+[m[32m(checked hourly and at collector shutdown). The cleanup runs[m
+[32m+[m[32m`PRAGMA incremental_vacuum` to reclaim disk space.[m
+[32m+[m
+[32m+[m[32m**API access:** The FastAPI backend exposes `GET /api/observability/traces/recent?limit=100`[m
+[32m+[m[32mwhich reads `traces.db` directly and returns trace summaries with full span[m
+[32m+[m[32mtrees for waterfall rendering. Each trace includes `root_span`, `agent`,[m
+[32m+[m[32m`duration_ms`, `span_count`, `has_error`, and the full `spans` array.[m
+[32m+[m
+[32m+[m[32mThe backend also exposes `GET /api/observability/collector` which returns the[m
+[32m+[m[32mcollector-written `metrics.json` contents (counters, histograms, sessions,[m
+[32m+[m[32mscrape) — excluding the `backend` key that duplicates `GET /api/observability`.[m
+[32m+[m
+ ### Source 2: Mycelium Backend Metrics[m
+ [m
+ The collector polls `GET /api/observability` on the FastAPI backend every 30 seconds[m
+[36m@@ -402,11 +518,12 @@[m [musers can run `mycelium metrics reset` to start fresh.[m
+ | File | Role |[m
+ | ---- | ---- |[m
+ | `mycelium-cli/src/mycelium/commands/metrics.py`  | CLI commands, display rendering, pricing lookup |[m
+[32m+[m[32m| `mycelium-cli/src/mycelium/commands/adapter.py`  | `--step=otel` and `--step=deep-observability` setup |[m
+ | `mycelium-cli/src/mycelium/data/pricing.json`    | Generated model and embedding pricing data |[m
+[31m-| `mycelium-cli/src/mycelium/collector.py`          | OTLP HTTP receiver, MetricsStore, backend poller |[m
+[32m+[m[32m| `mycelium-cli/src/mycelium/collector.py`          | OTLP HTTP receiver, MetricsStore, TraceStore, backend poller |[m
+ | `mycelium-cli/src/mycelium/collector_main.py`     | Entrypoint for background collector process |[m
+ | `fastapi-backend/app/services/metrics.py`         | Backend in-process metrics store |[m
+[31m-| `fastapi-backend/app/main.py`                     | `GET /api/observability` endpoint |[m
+[32m+[m[32m| `fastapi-backend/app/main.py`                     | `GET /api/observability`, `GET /api/observability/collector`, `GET /api/observability/traces/recent` |[m
+ | `scripts/update-pricing.py`                       | Generates pricing.json from litellm |[m
+ [m
+ ## Metrics Roadmap[m
+[36m@@ -491,6 +608,10 @@[m [mthe features are wired up:[m
+       `mycelium adapter add openclaw --step=otel` or manually in[m
+       `~/.openclaw/openclaw.json`. Required after adding new models or[m
+       re-running `openclaw configure`.[m
+[32m+[m[32m- [ ] **Deep observability plugin** — if not yet installed, run[m
+[32m+[m[32m      `mycelium adapter add openclaw --step=deep-observability` on each[m
+[32m+[m[32m      machine running an OpenClaw gateway. Verify with[m
+[32m+[m[32m      `grep deep-observability ~/.openclaw/openclaw.json`.[m
+ - [ ] **Pricing update** — run `mycelium metrics update-pricing` to fetch the[m
+       latest pricing from the LiteLLM API and write `~/.mycelium/pricing.json`.[m
+       Any models found in collected metrics that aren't in the built-in list are[m
+[1mdiff --git a/mycelium-frontend/src/components/ingest-log-panel.tsx b/mycelium-frontend/src/components/ingest-log-panel.tsx[m
+[1mnew file mode 100644[m
+[1mindex 0000000..f412de7[m
+[1m--- /dev/null[m
+[1m+++ b/mycelium-frontend/src/components/ingest-log-panel.tsx[m
+[36m@@ -0,0 +1,110 @@[m
+[32m+[m[32m// SPDX-License-Identifier: Apache-2.0[m
+[32m+[m[32m// Copyright 2026 Julia Valenti[m
+[32m+[m
+[32m+[m[32m"use client";[m
+[32m+[m
+[32m+[m[32minterface IngestEvent {[m
+[32m+[m[32m  timestamp: string;[m
+[32m+[m[32m  mas_id: string;[m
+[32m+[m[32m  agent_id: string;[m
+[32m+[m[32m  state: string;[m
+[32m+[m[32m  room: string;[m
+[32m+[m[32m  payload_bytes: number;[m
+[32m+[m[32m  response_id: string | null;[m
+[32m+[m[32m  error: string | null;[m
+[32m+[m[32m  duration_ms: number;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32minterface IngestLogData {[m
+[32m+[m[32m  events: IngestEvent[];[m
+[32m+[m[32m  count: number;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32minterface IngestLogPanelProps {[m
+[32m+[m[32m  data: unknown;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport function IngestLogPanel({ data }: IngestLogPanelProps) {[m
+[32m+[m[32m  if (!data) {[m
+[32m+[m[32m    return ([m
+[32m+[m[32m      <div className="flex flex-col items-center justify-center py-16 text-muted">[m
+[32m+[m[32m        <p className="mb-2">No ingest log data available</p>[m
+[32m+[m[32m        <p className="text-micro text-dim">Knowledge ingestion events will appear here when CFN processes shared memories</p>[m
+[32m+[m[32m      </div>[m
+[32m+[m[32m    );[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  const log = data as IngestLogData;[m
+[32m+[m[32m  const events = log.events || [];[m
+[32m+[m
+[32m+[m[32m  if (events.length === 0) {[m
+[32m+[m[32m    return ([m
+[32m+[m[32m      <div className="flex flex-col items-center justify-center py-16 text-muted">[m
+[32m+[m[32m        <p>No ingestion events recorded</p>[m
+[32m+[m[32m      </div>[m
+[32m+[m[32m    );[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  return ([m
+[32m+[m[32m    <div className="overflow-y-auto">[m
+[32m+[m[32m      {/* Header */}[m
+[32m+[m[32m      <div className="grid grid-cols-[160px_1fr_120px_80px_80px_80px] gap-2 px-5 py-2 border-b border-border bg-surface/40 text-micro text-muted caps-mono-sm sticky top-0">[m
+[32m+[m[32m        <span>Time</span>[m
+[32m+[m[32m        <span>Room</span>[m
+[32m+[m[32m        <span>Agent</span>[m
+[32m+[m[32m        <span>State</span>[m
+[32m+[m[32m        <span>Size</span>[m
+[32m+[m[32m        <span className="text-right">Duration</span>[m
+[32m+[m[32m      </div>[m
+[32m+[m
+[32m+[m[32m      {events.map((e, idx) => ([m
+[32m+[m[32m        <div[m
+[32m+[m[32m          key={idx}[m
+[32m+[m[32m          className="grid grid-cols-[160px_1fr_120px_80px_80px_80px] gap-2 px-5 py-2.5 border-b border-border hover:bg-surface/40 transition-colors items-center"[m
+[32m+[m[32m        >[m
+[32m+[m[32m          <span className="text-micro text-dim tabular">{fmtTime(e.timestamp)}</span>[m
+[32m+[m[32m          <span className="text-micro text-text font-mono truncate">{e.room}</span>[m
+[32m+[m[32m          <span className="text-micro text-accent truncate">{e.agent_id}</span>[m
+[32m+[m[32m          <StateBadge state={e.state} />[m
+[32m+[m[32m          <span className="text-micro text-dim tabular">{fmtBytes(e.payload_bytes)}</span>[m
+[32m+[m[32m          <span className="text-micro text-text tabular text-right">{fmtMs(e.duration_ms)}</span>[m
+[32m+[m[32m        </div>[m
+[32m+[m[32m      ))}[m
+[32m+[m[32m    </div>[m
+[32m+[m[32m  );[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunction StateBadge({ state }: { state: string }) {[m
+[32m+[m[32m  const colors: Record<string, string> = {[m
+[32m+[m[32m    ok: "text-green-400",[m
+[32m+[m[32m    success: "text-green-400",[m
+[32m+[m[32m    error: "text-red-400",[m
+[32m+[m[32m    failed: "text-red-400",[m
+[32m+[m[32m    deduped: "text-yellow-400",[m
+[32m+[m[32m    disabled: "text-dim",[m
+[32m+[m[32m    skipped: "text-dim",[m
+[32m+[m[32m  };[m
+[32m+[m[32m  return <span className={`text-micro font-semibold ${colors[state] || "text-dim"}`}>{state}</span>;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunction fmtTime(iso: string): string {[m
+[32m+[m[32m  try {[m
+[32m+[m[32m    return new Date(iso).toLocaleString("en-US", {[m
+[32m+[m[32m      hour12: false, month: "short", day: "numeric",[m
+[32m+[m[32m      hour: "2-digit", minute: "2-digit", second: "2-digit",[m
+[32m+[m[32m    });[m
+[32m+[m[32m  } catch {[m
+[32m+[m[32m    return iso;[m
+[32m+[m[32m  }[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunction fmtBytes(b: number): string {[m
+[32m+[m[32m  if (b < 1024) return `${b}B`;[m
+[32m+[m[32m  if (b < 1048576) return `${(b / 1024).toFixed(1)}KB`;[m
+[32m+[m[32m  return `${(b / 1048576).toFixed(1)}MB`;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunction fmtMs(ms: number): string {[m
+[32m+[m[32m  if (ms < 1000) return `${Math.round(ms)}ms`;[m
+[32m+[m[32m  return `${(ms / 1000).toFixed(1)}s`;[m
+[32m+[m[32m}[m
+[1mdiff --git a/mycelium-frontend/src/components/main-top-bar.tsx b/mycelium-frontend/src/components/main-top-bar.tsx[m
+[1mindex da2a546..e5f70de 100644[m
+[1m--- a/mycelium-frontend/src/components/main-top-bar.tsx[m
+[1m+++ b/mycelium-frontend/src/components/main-top-bar.tsx[m
+[36m@@ -9,14 +9,13 @@[m [mimport type { ReactNode } from "react";[m
+ [m
+ const NAV_TABS = [[m
+   { id: "rooms", label: "ROOMS", href: "/" },[m
+[31m-  { id: "metrics", label: "METRICS", href: "/metrics" },[m
+[32m+[m[32m  { id: "metrics", label: "METRICS", href: "/logs" },[m
+   { id: "memory", label: "MEMORY" },[m
+   { id: "agents", label: "AGENTS" },[m
+[31m-  { id: "logs", label: "LOGS" },[m
+ ];[m
+ [m
+ interface MainTopBarProps {[m
+[31m-  activeTab?: "rooms" | "metrics" | "memory" | "agents" | "logs";[m
+[32m+[m[32m  activeTab?: "rooms" | "metrics" | "memory" | "agents";[m
+   actions?: ReactNode;[m
+ }[m
+ [m
+[1mdiff --git a/mycelium-frontend/src/components/round-traces-panel.tsx b/mycelium-frontend/src/components/round-traces-panel.tsx[m
+[1mnew file mode 100644[m
+[1mindex 0000000..74f3221[m
+[1m--- /dev/null[m
+[1m+++ b/mycelium-frontend/src/components/round-traces-panel.tsx[m
+[36m@@ -0,0 +1,169 @@[m
+[32m+[m[32m// SPDX-License-Identifier: Apache-2.0[m
+[32m+[m[32m// Copyright 2026 Julia Valenti[m
+[32m+[m
+[32m+[m[32m"use client";[m
+[32m+[m
+[32m+[m[32mimport { useState } from "react";[m
+[32m+[m
+[32m+[m[32minterface RoundTrace {[m
+[32m+[m[32m  room: string;[m
+[32m+[m[32m  session_id: string;[m
+[32m+[m[32m  round_n: number;[m
+[32m+[m[32m  n_agents: number;[m
+[32m+[m[32m  elapsed_ms: number;[m
+[32m+[m[32m  decision_path: string;[m
+[32m+[m[32m  outcome: string;[m
+[32m+[m[32m  cfn_status: string | null;[m
+[32m+[m[32m  cfn_decide_ms: number | null;[m
+[32m+[m[32m  started_at: string;[m
+[32m+[m[32m  per_agent: Record<string, {[m
+[32m+[m[32m    first_response_ms: number | null;[m
+[32m+[m[32m    reply_action: string | null;[m
+[32m+[m[32m    was_synthesised: boolean;[m
+[32m+[m[32m  }>;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32minterface RoundTracesPanelProps {[m
+[32m+[m[32m  traces: unknown[] | null;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport function RoundTracesPanel({ traces }: RoundTracesPanelProps) {[m
+[32m+[m[32m  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);[m
+[32m+[m
+[32m+[m[32m  if (traces === null) {[m
+[32m+[m[32m    return ([m
+[32m+[m[32m      <div className="flex flex-col items-center justify-center py-16 text-muted">[m
+[32m+[m[32m        <p className="mb-2">No coordination round data available</p>[m
+[32m+[m[32m        <p className="text-micro text-dim">Round traces appear when agents negotiate via CFN</p>[m
+[32m+[m[32m      </div>[m
+[32m+[m[32m    );[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  const rounds = traces as RoundTrace[];[m
+[32m+[m[32m  const reversed = [...rounds].reverse();[m
+[32m+[m
+[32m+[m[32m  if (reversed.length === 0) {[m
+[32m+[m[32m    return ([m
+[32m+[m[32m      <div className="flex flex-col items-center justify-center py-16 text-muted">[m
+[32m+[m[32m        <p>No coordination rounds recorded yet</p>[m
+[32m+[m[32m      </div>[m
+[32m+[m[32m    );[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  return ([m
+[32m+[m[32m    <div className="overflow-y-auto">[m
+[32m+[m[32m      {/* Header */}[m
+[32m+[m[32m      <div className="grid grid-cols-[80px_1fr_80px_80px_100px_100px_80px] gap-2 px-5 py-2 border-b border-border bg-surface/40 text-micro text-muted caps-mono-sm sticky top-0">[m
+[32m+[m[32m        <span>Round</span>[m
+[32m+[m[32m        <span>Session</span>[m
+[32m+[m[32m        <span>Agents</span>[m
+[32m+[m[32m        <span>Path</span>[m
+[32m+[m[32m        <span>Outcome</span>[m
+[32m+[m[32m        <span>CFN Status</span>[m
+[32m+[m[32m        <span className="text-right">Duration</span>[m
+[32m+[m[32m      </div>[m
+[32m+[m
+[32m+[m[32m      {reversed.map((r, idx) => ([m
+[32m+[m[32m        <div key={idx} className="border-b border-border">[m
+[32m+[m[32m          <button[m
+[32m+[m[32m            onClick={() => setExpandedIdx(expandedIdx === idx ? null : idx)}[m
+[32m+[m[32m            className="grid grid-cols-[80px_1fr_80px_80px_100px_100px_80px] gap-2 w-full px-5 py-2.5 text-left hover:bg-surface/40 transition-colors items-center"[m
+[32m+[m[32m          >[m
+[32m+[m[32m            <span className="text-micro text-text tabular">R{r.round_n}</span>[m
+[32m+[m[32m            <span className="text-micro text-dim truncate font-mono">{r.session_id}</span>[m
+[32m+[m[32m            <span className="text-micro text-text tabular">{r.n_agents}</span>[m
+[32m+[m[32m            <PathBadge path={r.decision_path} />[m
+[32m+[m[32m            <OutcomeBadge outcome={r.outcome} />[m
+[32m+[m[32m            <span className="text-micro text-dim">{r.cfn_status ?? "—"}</span>[m
+[32m+[m[32m            <span className="text-micro text-text tabular text-right">{fmtMs(r.elapsed_ms)}</span>[m
+[32m+[m[32m          </button>[m
+[32m+[m
+[32m+[m[32m          {expandedIdx === idx && ([m
+[32m+[m[32m            <div className="px-5 py-3 bg-bg border-t border-border">[m
+[32m+[m[32m              <div className="grid grid-cols-2 gap-4 mb-3">[m
+[32m+[m[32m                <div>[m
+[32m+[m[32m                  <span className="caps-mono-sm text-muted block mb-1">Room</span>[m
+[32m+[m[32m                  <span className="text-micro text-text font-mono">{r.room}</span>[m
+[32m+[m[32m                </div>[m
+[32m+[m[32m                <div>[m
+[32m+[m[32m                  <span className="caps-mono-sm text-muted block mb-1">Started</span>[m
+[32m+[m[32m                  <span className="text-micro text-text">{fmtTime(r.started_at)}</span>[m
+[32m+[m[32m                </div>[m
+[32m+[m[32m                {r.cfn_decide_ms != null && ([m
+[32m+[m[32m                  <div>[m
+[32m+[m[32m                    <span className="caps-mono-sm text-muted block mb-1">CFN /decide</span>[m
+[32m+[m[32m                    <span className="text-micro text-text tabular">{fmtMs(r.cfn_decide_ms)}</span>[m
+[32m+[m[32m                  </div>[m
+[32m+[m[32m                )}[m
+[32m+[m[32m              </div>[m
+[32m+[m
+[32m+[m[32m              <span className="caps-mono-sm text-muted block mb-2">Per Agent</span>[m
+[32m+[m[32m              <div className="space-y-1">[m
+[32m+[m[32m                {Object.entries(r.per_agent || {}).map(([handle, a]) => ([m
+[32m+[m[32m                  <div key={handle} className="flex items-center gap-3 text-micro">[m
+[32m+[m[32m                    <span className="text-accent w-[160px] truncate">{handle}</span>[m
+[32m+[m[32m                    <span className="text-text tabular w-[80px]">[m
+[32m+[m[32m                      {a.first_response_ms != null ? fmtMs(a.first_response_ms) : <span className="text-red-400">no reply</span>}[m
+[32m+[m[32m                    </span>[m
+[32m+[m[32m                    <ActionBadge action={a.reply_action} />[m
+[32m+[m[32m                    {a.was_synthesised && <span className="text-yellow-400 text-micro">(synthesised)</span>}[m
+[32m+[m[32m                  </div>[m
+[32m+[m[32m                ))}[m
+[32m+[m[32m              </div>[m
+[32m+[m[32m            </div>[m
+[32m+[m[32m          )}[m
+[32m+[m[32m        </div>[m
+[32m+[m[32m      ))}[m
+[32m+[m[32m    </div>[m
+[32m+[m[32m  );[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunction PathBadge({ path }: { path: string }) {[m
+[32m+[m[32m  const colors: Record<string, string> = {[m
+[32m+[m[32m    all_replied: "text-green-400",[m
+[32m+[m[32m    aborted: "text-red-400",[m
+[32m+[m[32m    synthesised: "text-yellow-400",[m
+[32m+[m[32m    partial: "text-amber-400",[m
+[32m+[m[32m  };[m
+[32m+[m[32m  return <span className={`text-micro ${colors[path] || "text-dim"}`}>{path}</span>;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunction OutcomeBadge({ outcome }: { outcome: string }) {[m
+[32m+[m[32m  const colors: Record<string, string> = {[m
+[32m+[m[32m    agreed: "text-green-400",[m
+[32m+[m[32m    ongoing: "text-blue-400",[m
+[32m+[m[32m    error: "text-red-400",[m
+[32m+[m[32m    timeout: "text-yellow-400",[m
+[32m+[m[32m    deadlocked: "text-red-400",[m
+[32m+[m[32m  };[m
+[32m+[m[32m  return <span className={`text-micro font-semibold ${colors[outcome] || "text-dim"}`}>{outcome}</span>;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunction ActionBadge({ action }: { action: string | null }) {[m
+[32m+[m[32m  if (!action) return <span className="text-micro text-dim">—</span>;[m
+[32m+[m[32m  const colors: Record<string, string> = {[m
+[32m+[m[32m    accept: "text-green-400",[m
+[32m+[m[32m    reject: "text-red-400",[m
+[32m+[m[32m    counter_offer: "text-amber-400",[m
+[32m+[m[32m  };[m
+[32m+[m[32m  return <span className={`text-micro ${colors[action] || "text-dim"}`}>{action}</span>;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunction fmtMs(ms: number): string {[m
+[32m+[m[32m  if (ms < 1000) return `${Math.round(ms)}ms`;[m
+[32m+[m[32m  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;[m
+[32m+[m[32m  const min = Math.floor(ms / 60000);[m
+[32m+[m[32m  const sec = Math.floor((ms % 60000) / 1000);[m
+[32m+[m[32m  return `${min}m${sec}s`;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunction fmtTime(iso: string): string {[m
+[32m+[m[32m  try {[m
+[32m+[m[32m    return new Date(iso).toLocaleString("en-US", {[m
+[32m+[m[32m      hour12: false, month: "short", day: "numeric",[m
+[32m+[m[32m      hour: "2-digit", minute: "2-digit", second: "2-digit",[m
+[32m+[m[32m    });[m
+[32m+[m[32m  } catch {[m
+[32m+[m[32m    return iso;[m
+[32m+[m[32m  }[m
+[32m+[m[32m}[m
+[1mdiff --git a/mycelium-frontend/src/components/trace-explorer.tsx b/mycelium-frontend/src/components/trace-explorer.tsx[m
+[1mnew file mode 100644[m
+[1mindex 0000000..3a5ca7f[m
+[1m--- /dev/null[m
+[1m+++ b/mycelium-frontend/src/components/trace-explorer.tsx[m
+[36m@@ -0,0 +1,322 @@[m
+[32m+[m[32m// SPDX-License-Identifier: Apache-2.0[m
+[32m+[m[32m// Copyright 2026 Julia Valenti[m
+[32m+[m
+[32m+[m[32m"use client";[m
+[32m+[m
+[32m+[m[32mimport { useState } from "react";[m
+[32m+[m[32mimport type { TraceSummary, TraceSpan } from "@/lib/api";[m
+[32m+[m
+[32m+[m[32minterface TraceExplorerProps {[m
+[32m+[m[32m  traces: TraceSummary[] | null;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport function TraceExplorer({ traces }: TraceExplorerProps) {[m
+[32m+[m[32m  const [expandedTrace, setExpandedTrace] = useState<string | null>(null);[m
+[32m+[m[32m  const [filter, setFilter] = useState("");[m
+[32m+[m
+[32m+[m[32m  if (traces === null) {[m
+[32m+[m[32m    return ([m
+[32m+[m[32m      <div className="flex flex-col items-center justify-center py-16 text-muted">[m
+[32m+[m[32m        <p className="mb-2">No trace data available</p>[m
+[32m+[m[32m        <p className="text-micro text-dim">[m
+[32m+[m[32m          Start the collector: <code className="text-accent">mycelium metrics collect</code>[m
+[32m+[m[32m        </p>[m
+[32m+[m[32m      </div>[m
+[32m+[m[32m    );[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  if (traces.length === 0) {[m
+[32m+[m[32m    return ([m
+[32m+[m[32m      <div className="flex flex-col items-center justify-center py-16 text-muted">[m
+[32m+[m[32m        <p className="mb-2">No traces captured yet</p>[m
+[32m+[m[32m        <p className="text-micro text-dim">Traces will appear as agents process requests</p>[m
+[32m+[m[32m      </div>[m
+[32m+[m[32m    );[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  const filtered = filter[m
+[32m+[m[32m    ? traces.filter(t =>[m
+[32m+[m[32m        t.root_span.toLowerCase().includes(filter.toLowerCase()) ||[m
+[32m+[m[32m        t.agent.toLowerCase().includes(filter.toLowerCase()) ||[m
+[32m+[m[32m        t.service.toLowerCase().includes(filter.toLowerCase()) ||[m
+[32m+[m[32m        t.trace_id.includes(filter)[m
+[32m+[m[32m      )[m
+[32m+[m[32m    : traces;[m
+[32m+[m
+[32m+[m[32m  return ([m
+[32m+[m[32m    <div className="flex flex-col h-full">[m
+[32m+[m[32m      {/* Filter bar */}[m
+[32m+[m[32m      <div className="flex items-center gap-3 border-b border-border bg-paper px-5 py-2">[m
+[32m+[m[32m        <input[m
+[32m+[m[32m          type="text"[m
+[32m+[m[32m          value={filter}[m
+[32m+[m[32m          onChange={e => setFilter(e.target.value)}[m
+[32m+[m[32m          placeholder="Filter by span name, agent, service, or trace ID..."[m
+[32m+[m[32m          className="flex-1 bg-transparent text-micro text-text placeholder:text-dim outline-none"[m
+[32m+[m[32m        />[m
+[32m+[m[32m        <span className="text-micro text-dim tabular">{filtered.length} traces</span>[m
+[32m+[m[32m      </div>[m
+[32m+[m
+[32m+[m[32m      {/* Trace list */}[m
+[32m+[m[32m      <div className="flex-1 overflow-y-auto">[m
+[32m+[m[32m        {filtered.map(trace => ([m
+[32m+[m[32m          <div key={trace.trace_id} className="border-b border-border">[m
+[32m+[m[32m            {/* Trace summary row */}[m
+[32m+[m[32m            <button[m
+[32m+[m[32m              onClick={() => setExpandedTrace(expandedTrace === trace.trace_id ? null : trace.trace_id)}[m
+[32m+[m[32m              className="flex w-full items-center gap-4 px-5 py-3 text-left hover:bg-surface/40 transition-colors"[m
+[32m+[m[32m            >[m
+[32m+[m[32m              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${trace.has_error ? "bg-red-400" : "bg-green-500"}`} />[m
+[32m+[m
+[32m+[m[32m              <div className="flex-1 min-w-0">[m
+[32m+[m[32m                <div className="flex items-baseline gap-2">[m
+[32m+[m[32m                  <span className="text-micro font-semibold text-text truncate">{trace.root_span}</span>[m
+[32m+[m[32m                  {trace.agent && ([m
+[32m+[m[32m                    <span className="text-micro text-accent truncate">{trace.agent}</span>[m
+[32m+[m[32m                  )}[m
+[32m+[m[32m                </div>[m
+[32m+[m[32m                <div className="flex items-center gap-3 mt-0.5">[m
+[32m+[m[32m                  <span className="text-micro text-dim">{trace.service}</span>[m
+[32m+[m[32m                  <span className="text-micro text-dim">{trace.trace_id.slice(0, 16)}...</span>[m
+[32m+[m[32m                </div>[m
+[32m+[m[32m              </div>[m
+[32m+[m
+[32m+[m[32m              <div className="flex items-center gap-4 flex-shrink-0">[m
+[32m+[m[32m                <span className="text-micro text-muted tabular">{trace.span_count} spans</span>[m
+[32m+[m[32m                <span className="text-micro text-text tabular font-semibold">{fmtDuration(trace.duration_ms)}</span>[m
+[32m+[m[32m                <span className="text-micro text-dim tabular">{fmtTime(trace.start_time)}</span>[m
+[32m+[m[32m                <span className={`text-micro transition-transform ${expandedTrace === trace.trace_id ? "rotate-90" : ""}`}>[m
+[32m+[m[32m                  {"\u25B6"}[m
+[32m+[m[32m                </span>[m
+[32m+[m[32m              </div>[m
+[32m+[m[32m            </button>[m
+[32m+[m
+[32m+[m[32m            {/* Expanded waterfall */}[m
+[32m+[m[32m            {expandedTrace === trace.trace_id && ([m
+[32m+[m[32m              <TraceWaterfall spans={trace.spans} totalDuration={trace.duration_ms} />[m
+[32m+[m[32m            )}[m
+[32m+[m[32m          </div>[m
+[32m+[m[32m        ))}[m
+[32m+[m[32m      </div>[m
+[32m+[m[32m    </div>[m
+[32m+[m[32m  );[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m
+[32m+[m[32mfunction TraceWaterfall({ spans, totalDuration }: { spans: TraceSpan[]; totalDuration: number }) {[m
+[32m+[m[32m  const [selectedSpan, setSelectedSpan] = useState<TraceSpan | null>(null);[m
+[32m+[m
+[32m+[m[32m  if (!spans.length) return null;[m
+[32m+[m
+[32m+[m[32m  const tree = buildSpanTree(spans);[m
+[32m+[m[32m  const minStart = Math.min(...spans.map(s => new Date(s.start_time).getTime()));[m
+[32m+[m
+[32m+[m[32m  return ([m
+[32m+[m[32m    <div className="border-t border-border bg-bg">[m
+[32m+[m[32m      <div className="flex">[m
+[32m+[m[32m        {/* Waterfall */}[m
+[32m+[m[32m        <div className="flex-1 overflow-x-auto">[m
+[32m+[m[32m          {/* Time ruler */}[m
+[32m+[m[32m          <div className="flex items-center h-6 border-b border-border px-4 bg-surface/20">[m
+[32m+[m[32m            <span className="w-[260px] flex-shrink-0" />[m
+[32m+[m[32m            <div className="flex-1 flex justify-between text-micro text-dim tabular">[m
+[32m+[m[32m              <span>0ms</span>[m
+[32m+[m[32m              <span>{fmtDuration(totalDuration / 4)}</span>[m
+[32m+[m[32m              <span>{fmtDuration(totalDuration / 2)}</span>[m
+[32m+[m[32m              <span>{fmtDuration((totalDuration * 3) / 4)}</span>[m
+[32m+[m[32m              <span>{fmtDuration(totalDuration)}</span>[m
+[32m+[m[32m            </div>[m
+[32m+[m[32m          </div>[m
+[32m+[m
+[32m+[m[32m          {/* Span rows */}[m
+[32m+[m[32m          {tree.map(node => ([m
+[32m+[m[32m            <SpanRow[m
+[32m+[m[32m              key={node.span.span_id}[m
+[32m+[m[32m              node={node}[m
+[32m+[m[32m              depth={0}[m
+[32m+[m[32m              minStart={minStart}[m
+[32m+[m[32m              totalDuration={totalDuration || 1}[m
+[32m+[m[32m              selected={selectedSpan?.span_id === node.span.span_id}[m
+[32m+[m[32m              onSelect={setSelectedSpan}[m
+[32m+[m[32m            />[m
+[32m+[m[32m          ))}[m
+[32m+[m[32m        </div>[m
+[32m+[m
+[32m+[m[32m        {/* Detail panel */}[m
+[32m+[m[32m        {selectedSpan && ([m
+[32m+[m[32m          <div className="w-[340px] border-l border-border bg-paper overflow-y-auto">[m
+[32m+[m[32m            <SpanDetail span={selectedSpan} onClose={() => setSelectedSpan(null)} />[m
+[32m+[m[32m          </div>[m
+[32m+[m[32m        )}[m
+[32m+[m[32m      </div>[m
+[32m+[m[32m    </div>[m
+[32m+[m[32m  );[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32minterface SpanNode {[m
+[32m+[m[32m  span: TraceSpan;[m
+[32m+[m[32m  children: SpanNode[];[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunction buildSpanTree(spans: TraceSpan[]): SpanNode[] {[m
+[32m+[m[32m  const nodes = new Map<string, SpanNode>();[m
+[32m+[m[32m  for (const s of spans) {[m
+[32m+[m[32m    nodes.set(s.span_id, { span: s, children: [] });[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  const roots: SpanNode[] = [];[m
+[32m+[m[32m  for (const s of spans) {[m
+[32m+[m[32m    const node = nodes.get(s.span_id)!;[m
+[32m+[m[32m    if (s.parent_span_id && nodes.has(s.parent_span_id)) {[m
+[32m+[m[32m      nodes.get(s.parent_span_id)!.children.push(node);[m
+[32m+[m[32m    } else {[m
+[32m+[m[32m      roots.push(node);[m
+[32m+[m[32m    }[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  const sortChildren = (n: SpanNode) => {[m
+[32m+[m[32m    n.children.sort((a, b) => new Date(a.span.start_time).getTime() - new Date(b.span.start_time).getTime());[m
+[32m+[m[32m    n.children.forEach(sortChildren);[m
+[32m+[m[32m  };[m
+[32m+[m[32m  roots.sort((a, b) => new Date(a.span.start_time).getTime() - new Date(b.span.start_time).getTime());[m
+[32m+[m[32m  roots.forEach(sortChildren);[m
+[32m+[m
+[32m+[m[32m  return roots;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunction SpanRow({[m
+[32m+[m[32m  node, depth, minStart, totalDuration, selected, onSelect,[m
+[32m+[m[32m}: {[m
+[32m+[m[32m  node: SpanNode;[m
+[32m+[m[32m  depth: number;[m
+[32m+[m[32m  minStart: number;[m
+[32m+[m[32m  totalDuration: number;[m
+[32m+[m[32m  selected: boolean;[m
+[32m+[m[32m  onSelect: (s: TraceSpan) => void;[m
+[32m+[m[32m}) {[m
+[32m+[m[32m  const s = node.span;[m
+[32m+[m[32m  const spanStart = new Date(s.start_time).getTime();[m
+[32m+[m[32m  const offset = spanStart - minStart;[m
+[32m+[m[32m  const leftPct = (offset / totalDuration) * 100;[m
+[32m+[m[32m  const widthPct = Math.max((s.duration_ms / totalDuration) * 100, 0.5);[m
+[32m+[m
+[32m+[m[32m  const kindColors: Record<string, string> = {[m
+[32m+[m[32m    server: "bg-blue-500",[m
+[32m+[m[32m    client: "bg-amber-500",[m
+[32m+[m[32m    internal: "bg-emerald-500",[m
+[32m+[m[32m    producer: "bg-purple-500",[m
+[32m+[m[32m    consumer: "bg-pink-500",[m
+[32m+[m[32m  };[m
+[32m+[m[32m  const barColor = s.status === "error" ? "bg-red-400" : (kindColors[s.kind] || "bg-gray-400");[m
+[32m+[m
+[32m+[m[32m  return ([m
+[32m+[m[32m    <>[m
+[32m+[m[32m      <button[m
+[32m+[m[32m        onClick={() => onSelect(s)}[m
+[32m+[m[32m        className={`flex items-center w-full h-7 hover:bg-surface/40 transition-colors ${selected ? "bg-surface/60" : ""}`}[m
+[32m+[m[32m      >[m
+[32m+[m[32m        {/* Label */}[m
+[32m+[m[32m        <div[m
+[32m+[m[32m          className="w-[260px] flex-shrink-0 flex items-center gap-1 px-2 overflow-hidden"[m
+[32m+[m[32m          style={{ paddingLeft: `${depth * 16 + 8}px` }}[m
+[32m+[m[32m        >[m
+[32m+[m[32m          {node.children.length > 0 && ([m
+[32m+[m[32m            <span className="text-micro text-dim">{"\u25BC"}</span>[m
+[32m+[m[32m          )}[m
+[32m+[m[32m          <span className={`text-micro truncate ${s.status === "error" ? "text-red-400" : "text-text"}`}>[m
+[32m+[m[32m            {s.name}[m
+[32m+[m[32m          </span>[m
+[32m+[m[32m          <span className="text-micro text-dim ml-1 tabular flex-shrink-0">{fmtDuration(s.duration_ms)}</span>[m
+[32m+[m[32m        </div>[m
+[32m+[m
+[32m+[m[32m        {/* Bar */}[m
+[32m+[m[32m        <div className="flex-1 relative h-full">[m
+[32m+[m[32m          <div[m
+[32m+[m[32m            className={`absolute top-1.5 h-4 rounded-sm ${barColor} opacity-80`}[m
+[32m+[m[32m            style={{ left: `${leftPct}%`, width: `${widthPct}%`, minWidth: "2px" }}[m
+[32m+[m[32m          />[m
+[32m+[m[32m        </div>[m
+[32m+[m[32m      </button>[m
+[32m+[m
+[32m+[m[32m      {node.children.map(child => ([m
+[32m+[m[32m        <SpanRow[m
+[32m+[m[32m          key={child.span.span_id}[m
+[32m+[m[32m          node={child}[m
+[32m+[m[32m          depth={depth + 1}[m
+[32m+[m[32m          minStart={minStart}[m
+[32m+[m[32m          totalDuration={totalDuration}[m
+[32m+[m[32m          selected={selected}[m
+[32m+[m[32m          onSelect={onSelect}[m
+[32m+[m[32m        />[m
+[32m+[m[32m      ))}[m
+[32m+[m[32m    </>[m
+[32m+[m[32m  );[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunction SpanDetail({ span, onClose }: { span: TraceSpan; onClose: () => void }) {[m
+[32m+[m[32m  const attrs = Object.entries(span.attributes || {});[m
+[32m+[m
+[32m+[m[32m  return ([m
+[32m+[m[32m    <div className="p-4">[m
+[32m+[m[32m      <div className="flex items-center justify-between mb-3">[m
+[32m+[m[32m        <h3 className="caps-mono-sm text-muted">Span Detail</h3>[m
+[32m+[m[32m        <button onClick={onClose} className="text-micro text-dim hover:text-text">{"\u2715"}</button>[m
+[32m+[m[32m      </div>[m
+[32m+[m
+[32m+[m[32m      <div className="space-y-2 mb-4">[m
+[32m+[m[32m        <DetailRow label="Name" value={span.name} />[m
+[32m+[m[32m        <DetailRow label="Kind" value={span.kind} />[m
+[32m+[m[32m        <DetailRow label="Status" value={span.status} warn={span.status === "error"} />[m
+[32m+[m[32m        {span.status_message && <DetailRow label="Message" value={span.status_message} />}[m
+[32m+[m[32m        <DetailRow label="Duration" value={fmtDuration(span.duration_ms)} />[m
+[32m+[m[32m        <DetailRow label="Service" value={span.service} />[m
+[32m+[m[32m        <DetailRow label="Started" value={fmtTime(span.start_time)} />[m
+[32m+[m[32m        <DetailRow label="Span ID" value={span.span_id} mono />[m
+[32m+[m[32m        <DetailRow label="Parent" value={span.parent_span_id || "(root)"} mono />[m
+[32m+[m[32m      </div>[m
+[32m+[m
+[32m+[m[32m      {attrs.length > 0 && ([m
+[32m+[m[32m        <>[m
+[32m+[m[32m          <h4 className="caps-mono-sm text-muted mb-2">Attributes</h4>[m
+[32m+[m[32m          <div className="space-y-1">[m
+[32m+[m[32m            {attrs.map(([k, v]) => ([m
+[32m+[m[32m              <div key={k} className="flex gap-2 text-micro">[m
+[32m+[m[32m                <span className="text-muted truncate flex-shrink-0" style={{ maxWidth: "140px" }}>{k}</span>[m
+[32m+[m[32m                <span className="text-text truncate">{String(v)}</span>[m
+[32m+[m[32m              </div>[m
+[32m+[m[32m            ))}[m
+[32m+[m[32m          </div>[m
+[32m+[m[32m        </>[m
+[32m+[m[32m      )}[m
+[32m+[m[32m    </div>[m
+[32m+[m[32m  );[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunction DetailRow({ label, value, mono, warn }: { label: string; value: string; mono?: boolean; warn?: boolean }) {[m
+[32m+[m[32m  return ([m
+[32m+[m[32m    <div className="flex items-baseline justify-between gap-2">[m
+[32m+[m[32m      <span className="text-micro text-muted">{label}</span>[m
+[32m+[m[32m      <span className={`text-micro tabular ${warn ? "text-red-400" : "text-text"} ${mono ? "font-mono" : ""} truncate`} style={{ maxWidth: "200px" }}>[m
+[32m+[m[32m        {value}[m
+[32m+[m[32m      </span>[m
+[32m+[m[32m    </div>[m
+[32m+[m[32m  );[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunction fmtDuration(ms: number): string {[m
+[32m+[m[32m  if (ms < 1) return "<1ms";[m
+[32m+[m[32m  if (ms < 1000) return `${Math.round(ms)}ms`;[m
+[32m+[m[32m  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;[m
+[32m+[m[32m  const min = Math.floor(ms / 60000);[m
+[32m+[m[32m  const sec = Math.floor((ms % 60000) / 1000);[m
+[32m+[m[32m  return `${min}m${sec}s`;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunction fmtTime(iso: string): string {[m
+[32m+[m[32m  try {[m
+[32m+[m[32m    const d = new Date(iso);[m
+[32m+[m[32m    return d.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });[m
+[32m+[m[32m  } catch {[m
+[32m+[m[32m    return iso;[m
+[32m+[m[32m  }[m
+[32m+[m[32m}[m
+[1mdiff --git a/mycelium-frontend/src/lib/api.ts b/mycelium-frontend/src/lib/api.ts[m
+[1mindex 7533714..e2b687c 100644[m
+[1m--- a/mycelium-frontend/src/lib/api.ts[m
+[1m+++ b/mycelium-frontend/src/lib/api.ts[m
+[36m@@ -87,6 +87,67 @@[m [mexport async function fetchCollectorMetrics() {[m
+   return res.json();[m
+ }[m
+ [m
+[32m+[m[32m// ── Metrics ──────────────────────────────────────────────────────────────────[m
+[32m+[m
+[32m+[m[32mexport async function fetchBackendMetrics() {[m
+[32m+[m[32m  const res = await fetch(`${API}/api/metrics`, { cache: "no-store" });[m
+[32m+[m[32m  if (!res.ok) return null;[m
+[32m+[m[32m  return res.json();[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport async function fetchCollectorMetrics() {[m
+[32m+[m[32m  const res = await fetch(`${API}/api/observability/collector`, { cache: "no-store" });[m
+[32m+[m[32m  if (!res.ok) return null;[m
+[32m+[m[32m  return res.json();[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m// ── Traces & Logs ────────────────────────────────────────────────────────────[m
+[32m+[m
+[32m+[m[32mexport interface TraceSpan {[m
+[32m+[m[32m  trace_id: string;[m
+[32m+[m[32m  span_id: string;[m
+[32m+[m[32m  parent_span_id: string;[m
+[32m+[m[32m  name: string;[m
+[32m+[m[32m  kind: string;[m
+[32m+[m[32m  service: string;[m
+[32m+[m[32m  start_time: string;[m
+[32m+[m[32m  duration_ms: number;[m
+[32m+[m[32m  status: string;[m
+[32m+[m[32m  status_message: string;[m
+[32m+[m[32m  attributes: Record<string, string | number | boolean>;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport interface TraceSummary {[m
+[32m+[m[32m  trace_id: string;[m
+[32m+[m[32m  root_span: string;[m
+[32m+[m[32m  service: string;[m
+[32m+[m[32m  agent: string;[m
+[32m+[m[32m  start_time: string;[m
+[32m+[m[32m  duration_ms: number;[m
+[32m+[m[32m  span_count: number;[m
+[32m+[m[32m  has_error: boolean;[m
+[32m+[m[32m  spans: TraceSpan[];[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport async function fetchRecentTraces(limit = 100): Promise<{ traces: TraceSummary[]; count: number } | null> {[m
+[32m+[m[32m  const res = await fetch(`${API}/api/observability/traces/recent?limit=${limit}`, { cache: "no-store" });[m
+[32m+[m[32m  if (!res.ok) return null;[m
+[32m+[m[32m  return res.json();[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport async function fetchRoundTraces(limit?: number): Promise<{ traces: unknown[]; count: number } | null> {[m
+[32m+[m[32m  const params = limit != null ? `?limit=${limit}` : "";[m
+[32m+[m[32m  const res = await fetch(`${API}/api/internal/coordination/round-traces${params}`, { cache: "no-store" });[m
+[32m+[m[32m  if (!res.ok) return null;[m
+[32m+[m[32m  return res.json();[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport async function fetchIngestLog(limit = 50) {[m
+[32m+[m[32m  const res = await fetch(`${API}/api/knowledge/ingest/log?limit=${limit}`, { cache: "no-store" });[m
+[32m+[m[32m  if (!res.ok) return null;[m
+[32m+[m[32m  return res.json();[m
+[32m+[m[32m}[m
+[32m+[m
+ // ── CFN knowledge graph ──────────────────────────────────────────────────────[m
+ // Backs the `mycelium cfn` CLI; see fastapi-backend/app/routes/cfn_proxy.py.[m
+ [m

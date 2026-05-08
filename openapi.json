@@ -5,14 +5,14 @@
         "version": "0.1.0"
     },
     "paths": {
-        "/rooms": {
+        "/api/rooms": {
             "post": {
                 "tags": [
                     "rooms"
                 ],
                 "summary": "Create Room",
                 "description": "Create a new room.",
-                "operationId": "create_room_rooms_post",
+                "operationId": "create_room_api_rooms_post",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -52,7 +52,7 @@
                 ],
                 "summary": "List Rooms",
                 "description": "List rooms with optional name filter.",
-                "operationId": "list_rooms_rooms_get",
+                "operationId": "list_rooms_api_rooms_get",
                 "parameters": [
                     {
                         "name": "skip",
@@ -101,7 +101,7 @@
                                     "items": {
                                         "$ref": "#/components/schemas/RoomRead"
                                     },
-                                    "title": "Response List Rooms Rooms Get"
+                                    "title": "Response List Rooms Api Rooms Get"
                                 }
                             }
                         }
@@ -119,14 +119,14 @@
                 }
             }
         },
-        "/rooms/{room_name}": {
+        "/api/rooms/{room_name}": {
             "get": {
                 "tags": [
                     "rooms"
                 ],
                 "summary": "Get Room",
                 "description": "Get a room by name.",
-                "operationId": "get_room_rooms__room_name__get",
+                "operationId": "get_room_api_rooms__room_name__get",
                 "parameters": [
                     {
                         "name": "room_name",
@@ -167,7 +167,7 @@
                 ],
                 "summary": "Delete Room",
                 "description": "Delete a room and cascade to its child session rooms.\n\nCleanup order is important to avoid stale state firing against\nalready-deleted rows:\n\n  1. Enumerate child session rooms (``parent_namespace == room_name``).\n  2. Tear down all in-memory CFN coordination state for the namespace\n     and its children (cancels pending join timers and active round\n     timeouts, posts ``coordination_consensus broken=True`` to any\n     SSE subscribers).\n  3. Delete child ``Session`` rows, then child ``Room`` rows.\n  4. Mark any active child rooms as ``coordination_state=\"failed\"``\n     (defensive \u2014 if step 3 didn't catch them due to a race, the\n     state still reflects reality).\n  5. Delete the parent ``Room`` row.\n  6. Remove the filesystem directory.\n  7. Delete the MAS in the CFN mgmt plane (non-fatal, last so a CFN\n     error doesn't block the local cleanup).",
-                "operationId": "delete_room_rooms__room_name__delete",
+                "operationId": "delete_room_api_rooms__room_name__delete",
                 "parameters": [
                     {
                         "name": "room_name",
@@ -196,14 +196,14 @@
                 }
             }
         },
-        "/rooms/{room_name}/synthesize": {
+        "/api/rooms/{room_name}/synthesize": {
             "post": {
                 "tags": [
                     "rooms"
                 ],
                 "summary": "Synthesize Room",
                 "description": "Trigger CognitiveEngine async synthesis for a room.",
-                "operationId": "synthesize_room_rooms__room_name__synthesize_post",
+                "operationId": "synthesize_room_api_rooms__room_name__synthesize_post",
                 "parameters": [
                     {
                         "name": "room_name",
@@ -237,14 +237,14 @@
                 }
             }
         },
-        "/rooms/{room_name}/catchup": {
+        "/api/rooms/{room_name}/catchup": {
             "get": {
                 "tags": [
                     "rooms"
                 ],
                 "summary": "Catchup Room",
                 "description": "Get a briefing for an agent joining a room: latest synthesis + recent activity.",
-                "operationId": "catchup_room_rooms__room_name__catchup_get",
+                "operationId": "catchup_room_api_rooms__room_name__catchup_get",
                 "parameters": [
                     {
                         "name": "room_name",
@@ -278,14 +278,14 @@
                 }
             }
         },
-        "/rooms/{room_name}/reindex": {
+        "/api/rooms/{room_name}/reindex": {
             "post": {
                 "tags": [
                     "rooms"
                 ],
                 "summary": "Reindex Room",
                 "description": "Re-index a room's filesystem into the pgvector search index.\n\nScans .mycelium/rooms/{room_name}/ and upserts all markdown files\ninto the memories table with fresh embeddings.",
-                "operationId": "reindex_room_rooms__room_name__reindex_post",
+                "operationId": "reindex_room_api_rooms__room_name__reindex_post",
                 "parameters": [
                     {
                         "name": "room_name",
@@ -319,7 +319,7 @@
                 }
             }
         },
-        "/rooms/{room_name}/negotiation": {
+        "/api/rooms/{room_name}/negotiation": {
             "get": {
                 "tags": [
                     "rooms"
@@ -364,14 +364,14 @@
                 }
             }
         },
-        "/rooms/{room_name}/messages": {
+        "/api/rooms/{room_name}/messages": {
             "post": {
                 "tags": [
                     "messages"
                 ],
                 "summary": "Send Message",
                 "description": "Send a message to a room.\n\nAfter persisting, fires NOTIFY on `room:{room_name}` so SSE subscribers\nreceive it without polling.",
-                "operationId": "send_message_rooms__room_name__messages_post",
+                "operationId": "send_message_api_rooms__room_name__messages_post",
                 "parameters": [
                     {
                         "name": "room_name",
@@ -422,7 +422,7 @@
                 ],
                 "summary": "List Messages",
                 "description": "List messages in a room, newest first.",
-                "operationId": "list_messages_rooms__room_name__messages_get",
+                "operationId": "list_messages_api_rooms__room_name__messages_get",
                 "parameters": [
                     {
                         "name": "room_name",
@@ -511,14 +511,14 @@
                 }
             }
         },
-        "/rooms/{room_name}/sessions/spawn": {
+        "/api/rooms/{room_name}/sessions/spawn": {
             "post": {
                 "tags": [
                     "sessions"
                 ],
                 "summary": "Spawn Session",
                 "description": "Explicitly spawn a negotiation session within a namespace room.",
-                "operationId": "spawn_session_rooms__room_name__sessions_spawn_post",
+                "operationId": "spawn_session_api_rooms__room_name__sessions_spawn_post",
                 "parameters": [
                     {
                         "name": "room_name",
@@ -538,7 +538,7 @@
                                 "schema": {
                                     "type": "object",
                                     "additionalProperties": true,
-                                    "title": "Response Spawn Session Rooms  Room Name  Sessions Spawn Post"
+                                    "title": "Response Spawn Session Api Rooms  Room Name  Sessions Spawn Post"
                                 }
                             }
                         }
@@ -556,14 +556,14 @@
                 }
             }
         },
-        "/rooms/{room_name}/sessions": {
+        "/api/rooms/{room_name}/sessions": {
             "post": {
                 "tags": [
                     "sessions"
                 ],
                 "summary": "Join Room",
                 "description": "Join a room. If the room is a namespace, auto-spawns a session and joins that.",
-                "operationId": "join_room_rooms__room_name__sessions_post",
+                "operationId": "join_room_api_rooms__room_name__sessions_post",
                 "parameters": [
                     {
                         "name": "room_name",
@@ -614,7 +614,7 @@
                 ],
                 "summary": "List Sessions",
                 "description": "List agents currently in a room.",
-                "operationId": "list_sessions_rooms__room_name__sessions_get",
+                "operationId": "list_sessions_api_rooms__room_name__sessions_get",
                 "parameters": [
                     {
                         "name": "room_name",
@@ -650,14 +650,14 @@
                 }
             }
         },
-        "/rooms/{room_name}/sessions/{session_id}": {
+        "/api/rooms/{room_name}/sessions/{session_id}": {
             "delete": {
                 "tags": [
                     "sessions"
                 ],
                 "summary": "Leave Room",
                 "description": "Remove an agent session (leave room).",
-                "operationId": "leave_room_rooms__room_name__sessions__session_id__delete",
+                "operationId": "leave_room_api_rooms__room_name__sessions__session_id__delete",
                 "parameters": [
                     {
                         "name": "room_name",
@@ -696,14 +696,14 @@
                 }
             }
         },
-        "/rooms/{room_name}/messages/stream": {
+        "/api/rooms/{room_name}/messages/stream": {
             "get": {
                 "tags": [
                     "stream"
                 ],
                 "summary": "Stream Room Messages",
                 "description": "Server-Sent Events stream for a room.\n\nYields SSE events as messages arrive via Postgres NOTIFY.\nConnect with: curl -N http://localhost:8000/rooms/{room}/messages/stream",
-                "operationId": "stream_room_messages_rooms__room_name__messages_stream_get",
+                "operationId": "stream_room_messages_api_rooms__room_name__messages_stream_get",
                 "parameters": [
                     {
                         "name": "room_name",
@@ -737,14 +737,14 @@
                 }
             }
         },
-        "/agents/{handle}/stream": {
+        "/api/agents/{handle}/stream": {
             "get": {
                 "tags": [
                     "stream"
                 ],
                 "summary": "Stream Agent Events",
                 "description": "Server-Sent Events stream for a specific agent handle.\n\nDelivers coordination_tick and coordination_consensus events addressed to\nthis agent across all rooms \u2014 no room configuration required on the client.\nConnect with: curl -N http://localhost:8000/agents/{handle}/stream",
-                "operationId": "stream_agent_events_agents__handle__stream_get",
+                "operationId": "stream_agent_events_api_agents__handle__stream_get",
                 "parameters": [
                     {
                         "name": "handle",
@@ -778,14 +778,14 @@
                 }
             }
         },
-        "/rooms/{room_name}/memory": {
+        "/api/rooms/{room_name}/memory": {
             "post": {
                 "tags": [
                     "memory"
                 ],
                 "summary": "Create Memories",
                 "description": "Create or upsert one or more memories (batch: 1-100 items).\n\nWrites markdown files to .mycelium/rooms/{room_name}/ and updates\nthe pgvector search index.",
-                "operationId": "create_memories_rooms__room_name__memory_post",
+                "operationId": "create_memories_api_rooms__room_name__memory_post",
                 "parameters": [
                     {
                         "name": "room_name",
@@ -817,7 +817,7 @@
                                     "items": {
                                         "$ref": "#/components/schemas/MemoryRead"
                                     },
-                                    "title": "Response Create Memories Rooms  Room Name  Memory Post"
+                                    "title": "Response Create Memories Api Rooms  Room Name  Memory Post"
                                 }
                             }
                         }
@@ -840,7 +840,7 @@
                 ],
                 "summary": "List Memories",
                 "description": "List memories in a room.\n\nReads from the filesystem, falls back to DB index.\nSupports ETag / If-None-Match for efficient sync \u2014 returns 304 if nothing changed.",
-                "operationId": "list_memories_rooms__room_name__memory_get",
+                "operationId": "list_memories_api_rooms__room_name__memory_get",
                 "parameters": [
                     {
                         "name": "room_name",
@@ -915,14 +915,14 @@
                 }
             }
         },
-        "/rooms/{room_name}/memory/search": {
+        "/api/rooms/{room_name}/memory/search": {
             "post": {
                 "tags": [
                     "memory"
                 ],
                 "summary": "Search Memories",
                 "description": "Semantic vector search over memories in a room.\n\nSearch uses the pgvector index.",
-                "operationId": "search_memories_rooms__room_name__memory_search_post",
+                "operationId": "search_memories_api_rooms__room_name__memory_search_post",
                 "parameters": [
                     {
                         "name": "room_name",
@@ -968,14 +968,14 @@
                 }
             }
         },
-        "/rooms/{room_name}/memory/subscribe": {
+        "/api/rooms/{room_name}/memory/subscribe": {
             "post": {
                 "tags": [
                     "memory"
                 ],
                 "summary": "Subscribe",
                 "description": "Subscribe to memory change notifications for a key pattern.",
-                "operationId": "subscribe_rooms__room_name__memory_subscribe_post",
+                "operationId": "subscribe_api_rooms__room_name__memory_subscribe_post",
                 "parameters": [
                     {
                         "name": "room_name",
@@ -1021,14 +1021,14 @@
                 }
             }
         },
-        "/rooms/{room_name}/memory/subscribe/{subscription_id}": {
+        "/api/rooms/{room_name}/memory/subscribe/{subscription_id}": {
             "delete": {
                 "tags": [
                     "memory"
                 ],
                 "summary": "Unsubscribe",
                 "description": "Remove a memory subscription.",
-                "operationId": "unsubscribe_rooms__room_name__memory_subscribe__subscription_id__delete",
+                "operationId": "unsubscribe_api_rooms__room_name__memory_subscribe__subscription_id__delete",
                 "parameters": [
                     {
                         "name": "room_name",
@@ -1067,14 +1067,14 @@
                 }
             }
         },
-        "/rooms/{room_name}/memory/subscriptions": {
+        "/api/rooms/{room_name}/memory/subscriptions": {
             "get": {
                 "tags": [
                     "memory"
                 ],
                 "summary": "List Subscriptions",
                 "description": "List active memory subscriptions for a room.",
-                "operationId": "list_subscriptions_rooms__room_name__memory_subscriptions_get",
+                "operationId": "list_subscriptions_api_rooms__room_name__memory_subscriptions_get",
                 "parameters": [
                     {
                         "name": "room_name",
@@ -1096,7 +1096,7 @@
                                     "items": {
                                         "$ref": "#/components/schemas/SubscriptionRead"
                                     },
-                                    "title": "Response List Subscriptions Rooms  Room Name  Memory Subscriptions Get"
+                                    "title": "Response List Subscriptions Api Rooms  Room Name  Memory Subscriptions Get"
                                 }
                             }
                         }
@@ -1114,14 +1114,14 @@
                 }
             }
         },
-        "/rooms/{room_name}/memory/{key}": {
+        "/api/rooms/{room_name}/memory/{key}": {
             "get": {
                 "tags": [
                     "memory"
                 ],
                 "summary": "Get Memory",
                 "description": "Get a specific memory by key.\n\nReads from the filesystem first, falls back to DB index.",
-                "operationId": "get_memory_rooms__room_name__memory__key__get",
+                "operationId": "get_memory_api_rooms__room_name__memory__key__get",
                 "parameters": [
                     {
                         "name": "room_name",
@@ -1171,7 +1171,7 @@
                 ],
                 "summary": "Delete Memory",
                 "description": "Delete a memory by key. Removes the file and the DB search index entry.\n\nEither the file or the DB entry (or both) must exist \u2014 404 only if neither is found.",
-                "operationId": "delete_memory_rooms__room_name__memory__key__delete",
+                "operationId": "delete_memory_api_rooms__room_name__memory__key__delete",
                 "parameters": [
                     {
                         "name": "room_name",
@@ -2015,14 +2015,34 @@
                 }
             }
         },
-        "/api/metrics": {
+        "/api/observability": {
             "get": {
                 "tags": [
                     "metrics"
                 ],
                 "summary": "Get Metrics",
-                "description": "Return a snapshot of backend-collected metrics (embeddings, LLM, indexer, etc.).",
-                "operationId": "get_metrics_api_metrics_get",
+                "description": "Return a snapshot of backend-collected metrics (embeddings, LLM, indexer, etc.).\n\nNote: served under ``/observability`` rather than ``/api/metrics`` because\nprivacy-extension blocklists pattern-match ``/api/metrics*`` as analytics\ntelemetry and silently drop the request in the browser.",
+                "operationId": "get_metrics_api_observability_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/observability/collector": {
+            "get": {
+                "tags": [
+                    "metrics"
+                ],
+                "summary": "Get Collector Metrics",
+                "description": "Return OTLP/scrape metrics written by the CLI collector.\n\nReads ``~/.mycelium/metrics.json`` and returns the collector-specific\nkeys (counters, histograms, sessions, scrape) \u2014 excluding the ``backend``\nkey which duplicates ``GET /observability``.  Returns 404 when the file is\nabsent (collector not running or never started).",
+                "operationId": "get_collector_metrics_api_observability_collector_get",
                 "responses": {
                     "200": {
                         "description": "Successful Response",

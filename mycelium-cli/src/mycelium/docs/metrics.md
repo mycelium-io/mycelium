@@ -17,7 +17,7 @@ HTTP polling) — and writes it to a single JSON file for the CLI to render.
 │  plugins)    │                         │  └──────┬───────┘  │
 └──────────────┘                         │         │ flush    │
                                          │  ┌──────┴───────┐  │
-┌──────────────┐   GET /api/metrics      │  │  TraceStore  │  │
+┌──────────────┐   GET /api/observability │  │  TraceStore  │  │
 │  Mycelium    │ ◀ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │  │  (SQLite)    │  │
 │  Backend     │  (polled every 30s)     │  └──────┬───────┘  │
 │  (FastAPI)   │                         └─────────┼──────────┘
@@ -228,7 +228,7 @@ scrape) — excluding the `backend` key that duplicates `GET /api/observability`
 
 ### Source 2: Mycelium Backend Metrics
 
-The collector polls `GET /api/metrics` on the FastAPI backend every 30 seconds
+The collector polls `GET /api/observability` on the FastAPI backend every 30 seconds
 (URL resolved from `server.api_url` in the Mycelium config, overridable with
 `--backend-url`). The backend maintains its own in-process metrics store
 (`fastapi-backend/app/services/metrics.py`).
@@ -353,7 +353,7 @@ OpenClaw → Mycelium backend → CFN → opt-in.
     kind = "http_red"
     ```
 
-    Targets are polled on the same 30-second cadence as the backend `/api/metrics`
+    Targets are polled on the same 30-second cadence as the backend `/api/observability`
     poll, results are stored under the top-level `scrape` key in
     `~/.mycelium/metrics.json`, and unreachable targets are surfaced as
     `[degraded]` rather than dropped silently. Restart `mycelium metrics

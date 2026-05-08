@@ -596,14 +596,14 @@ def _deep_merge(base: dict, override: dict) -> None:
 def _fetch_backend_metrics(
     store: MetricsStore, api_url: str, output_path: Path | None = None
 ) -> None:
-    """Poll the Mycelium backend /api/metrics endpoint (best-effort).
+    """Poll the Mycelium backend /api/observability endpoint (best-effort).
 
     If output_path is provided, persist the updated metrics to disk.
     """
     import urllib.request
 
     try:
-        req = urllib.request.Request(f"{api_url}/api/metrics", method="GET")
+        req = urllib.request.Request(f"{api_url}/api/observability", method="GET")
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read())
             store.set_backend_metrics(data)
@@ -679,13 +679,42 @@ class OTLPHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         if self.path == "/health":
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(b'{"status":"ok"}')
+            self._json_response({"status": "ok"})
             return
+
+        if self.path == "/collector/metrics":
+            data = self.store.to_dict()
+            self._json_response(
+                {
+                    "updated_at": data.get("updated_at"),
+                    "counters": data.get("counters", {}),
+                    "histograms": data.get("histograms", {}),
+                    "sessions": data.get("sessions", []),
+                    "scrape": data.get("scrape", {}),
+                }
+            )
+            return
+
+        if self.path.startswith("/collector/traces"):
+            from urllib.parse import parse_qs, urlparse
+
+            qs = parse_qs(urlparse(self.path).query)
+            limit = int(qs.get("limit", ["100"])[0])
+            limit = max(1, min(limit, _MAX_TRACES))
+            traces = self.trace_store.get_recent_traces(limit)
+            self._json_response({"count": len(traces), "traces": traces})
+            return
+
         self.send_response(404)
         self.end_headers()
+
+    def _json_response(self, data: dict, status: int = 200) -> None:
+        body = json.dumps(data, default=str).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def do_POST(self) -> None:
         try:

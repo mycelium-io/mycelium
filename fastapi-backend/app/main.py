@@ -165,12 +165,12 @@ app.add_middleware(
 )
 
 
-# Core routes
-app.include_router(rooms_router)
-app.include_router(messages_router)
-app.include_router(sessions_router)
-app.include_router(stream_router)
-app.include_router(memory_router)
+# Core routes. Health endpoints stay top-level for orchestrator probes.
+app.include_router(rooms_router, prefix="/api")
+app.include_router(messages_router, prefix="/api")
+app.include_router(sessions_router, prefix="/api")
+app.include_router(stream_router, prefix="/api")
+app.include_router(memory_router, prefix="/api")
 
 # CFN routes
 app.include_router(audit_router)
@@ -236,146 +236,72 @@ async def root(
     return result
 
 
-@app.get("/api/metrics", tags=["metrics"])
+@app.get("/api/observability", tags=["metrics"])
 async def get_metrics():
-    """Return a snapshot of backend-collected metrics (embeddings, LLM, indexer, etc.)."""
+    """Return a snapshot of backend-collected metrics (embeddings, LLM, indexer, etc.).
+
+    Note: served under ``/api/observability`` rather than ``/api/metrics`` because
+    privacy-extension blocklists pattern-match ``/api/metrics*`` as analytics
+    telemetry and silently drop the request in the browser.
+    """
     from app.services.metrics import snapshot
 
     return snapshot()
 
 
-@app.get("/api/observability/collector", tags=["observability"])
+@app.get("/api/observability/collector", tags=["metrics"])
 async def get_collector_metrics():
-    """Return OTLP/scrape metrics written by the CLI collector.
+    """Proxy to the OTLP collector's ``/collector/metrics`` endpoint.
 
-    Reads ``~/.mycelium/metrics.json`` and returns the collector-specific
-    keys (counters, histograms, sessions, scrape) -- excluding the ``backend``
-    key which duplicates ``GET /api/observability``.  Returns 404 when the file
-    is absent (collector not running or never started).
+    Returns counters, histograms, sessions, and scrape data directly from the
+    collector's in-memory store.  Returns 502 if the collector is unreachable.
+
+    Configure ``COLLECTOR_URL`` (default ``http://mycelium-collector:4318``)
+    to point at the collector service.
     """
-    import json
-
-    from fastapi.responses import JSONResponse
-
-    metrics_path = Path.home() / ".mycelium" / "metrics.json"
-    if not metrics_path.exists():
-        return JSONResponse(
-            status_code=404,
-            content={"detail": "Collector metrics file not found. Run: mycelium metrics collect"},
-        )
-    try:
-        raw = json.loads(metrics_path.read_text())
-    except Exception:
-        return JSONResponse(
-            status_code=500,
-            content={"detail": "Failed to read collector metrics file"},
-        )
-    return {
-        "updated_at": raw.get("updated_at"),
-        "counters": raw.get("counters", {}),
-        "histograms": raw.get("histograms", {}),
-        "sessions": raw.get("sessions", []),
-        "scrape": raw.get("scrape", {}),
-    }
+    return await _proxy_collector("/collector/metrics")
 
 
-@app.get("/api/observability/traces/recent", tags=["observability"])
+@app.get("/api/observability/traces/recent", tags=["metrics"])
 async def get_recent_traces(limit: int = 100):
-    """Return recent OTLP traces captured by the CLI collector.
+    """Proxy to the OTLP collector's ``/collector/traces`` endpoint.
 
-    Reads ``~/.mycelium/traces.db`` (SQLite) written by ``mycelium metrics collect``.
-    Each trace includes its full span tree for waterfall rendering.
-    Returns 404 when the database is absent.
+    Returns recent trace spans from the collector's SQLite store.
+    Returns 502 if the collector is unreachable.
     """
-    import json
-    import sqlite3
+    return await _proxy_collector(f"/collector/traces?limit={limit}")
 
+
+async def _proxy_collector(path: str):
+    """Forward a GET request to the collector and return the JSON response."""
+    import httpx
     from fastapi.responses import JSONResponse
 
-    db_path = Path.home() / ".mycelium" / "traces.db"
-    if not db_path.exists():
-        return JSONResponse(
-            status_code=404,
-            content={"detail": "Traces database not found. Run: mycelium metrics collect"},
-        )
+    url = f"{settings.COLLECTOR_URL.rstrip('/')}{path}"
     try:
-        conn = sqlite3.connect(str(db_path), timeout=5)
-        conn.row_factory = sqlite3.Row
-
-        trace_ids = [
-            r[0] for r in conn.execute(
-                "SELECT DISTINCT trace_id FROM spans ORDER BY start_time DESC LIMIT ?",
-                (limit * 20,),
-            ).fetchall()
-        ]
-        seen: list[str] = []
-        seen_set: set[str] = set()
-        for tid in trace_ids:
-            if tid not in seen_set:
-                seen.append(tid)
-                seen_set.add(tid)
-            if len(seen) >= limit:
-                break
-
-        traces: list[dict] = []
-        for trace_id in seen:
-            rows = conn.execute(
-                "SELECT * FROM spans WHERE trace_id = ? ORDER BY start_time",
-                (trace_id,),
-            ).fetchall()
-            if not rows:
-                continue
-            spans = []
-            for r in rows:
-                spans.append({
-                    "trace_id": r["trace_id"],
-                    "span_id": r["span_id"],
-                    "parent_span_id": r["parent_span_id"],
-                    "name": r["name"],
-                    "kind": r["kind"],
-                    "service": r["service"],
-                    "start_time": r["start_time"],
-                    "duration_ms": r["duration_ms"],
-                    "status": r["status"],
-                    "status_message": r["status_message"],
-                    "attributes": json.loads(r["attributes"]),
-                })
-            root_spans = [s for s in spans if not s["parent_span_id"]]
-            root = root_spans[0] if root_spans else spans[0]
-            total_duration = max((s["duration_ms"] for s in spans), default=0)
-            has_error = any(s["status"] == "error" for s in spans)
-            agent = ""
-            for s in spans:
-                a = s.get("attributes", {})
-                agent = (
-                    str(a.get("openclaw.channel", ""))
-                    or str(a.get("openclaw.agent", ""))
-                    or str(a.get("gen_ai.agent", ""))
-                )
-                if agent:
-                    break
-            traces.append({
-                "trace_id": trace_id,
-                "root_span": root["name"],
-                "service": root.get("service", ""),
-                "agent": agent,
-                "start_time": root["start_time"],
-                "duration_ms": round(total_duration, 2),
-                "span_count": len(spans),
-                "has_error": has_error,
-                "spans": spans,
-            })
-        conn.close()
-    except Exception:
-        logger.exception("Failed to read traces database")
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(url)
+        if resp.status_code == 200:
+            return resp.json()
         return JSONResponse(
-            status_code=500,
-            content={"detail": "Failed to read traces database"},
+            status_code=resp.status_code,
+            content=resp.json()
+            if resp.headers.get("content-type", "").startswith("application/json")
+            else {"detail": resp.text},
         )
-    return {
-        "count": len(traces),
-        "traces": traces,
-    }
+    except httpx.ConnectError:
+        return JSONResponse(
+            status_code=502,
+            content={
+                "detail": f"Collector unreachable at {settings.COLLECTOR_URL}. Run: mycelium up --metrics"
+            },
+        )
+    except Exception as exc:
+        logger.warning("Collector proxy failed: %s", exc)
+        return JSONResponse(
+            status_code=502,
+            content={"detail": f"Collector proxy error: {type(exc).__name__}"},
+        )
 
 
 async def _check_database(session: AsyncSession) -> dict:

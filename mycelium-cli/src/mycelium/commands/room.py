@@ -62,7 +62,7 @@ def room_main(ctx: typer.Context) -> None:
                 typer.echo("Set a room with: mycelium room use <name>")
             raise typer.Exit(1)
 
-        from mycelium_backend_client.api.rooms import list_rooms_rooms_get as list_api
+        from mycelium_backend_client.api.rooms import list_rooms_api_rooms_get as list_api
         from mycelium_backend_client.models import HTTPValidationError
 
         with _typed_client(config) as client:
@@ -116,7 +116,7 @@ def list_rooms(
         if name:
             params["name"] = name
 
-        from mycelium_backend_client.api.rooms import list_rooms_rooms_get as list_api
+        from mycelium_backend_client.api.rooms import list_rooms_api_rooms_get as list_api
         from mycelium_backend_client.models import HTTPValidationError
 
         with _typed_client(config) as client:
@@ -184,7 +184,7 @@ def create(
         if name is None:
             name = typer.prompt("Room name")
 
-        from mycelium_backend_client.api.rooms import create_room_rooms_post as create_api
+        from mycelium_backend_client.api.rooms import create_room_api_rooms_post as create_api
         from mycelium_backend_client.models import RoomCreate, RoomCreateTriggerConfigType0
 
         # Parse trigger config
@@ -257,7 +257,7 @@ def synthesize(
         name = room_name or room or _resolve_room(config)
 
         from mycelium_backend_client.api.rooms import (
-            synthesize_room_rooms_room_name_synthesize_post as synth_api,
+            synthesize_room_api_rooms_room_name_synthesize_post as synth_api,
         )
 
         with (
@@ -309,7 +309,7 @@ def use(
 
         config = MyceliumConfig.load()
 
-        from mycelium_backend_client.api.rooms import list_rooms_rooms_get as list_api
+        from mycelium_backend_client.api.rooms import list_rooms_api_rooms_get as list_api
         from mycelium_backend_client.models import HTTPValidationError
 
         with _typed_client(config) as client:
@@ -369,7 +369,7 @@ def delete(
                 raise typer.Exit(0)
 
         from mycelium_backend_client.api.rooms import (
-            delete_room_rooms_room_name_delete as delete_api,
+            delete_room_api_rooms_room_name_delete as delete_api,
         )
 
         with _typed_client(config) as client:
@@ -429,7 +429,7 @@ def clone_room(
         typer.echo(f"Cloning {room_name} from {api_url}...")
 
         with httpx.Client(base_url=api_url, timeout=60) as client:
-            resp = client.get(f"/rooms/{room_name}/memory", params={"limit": 1000})
+            resp = client.get(f"/api/rooms/{room_name}/memory", params={"limit": 1000})
             resp.raise_for_status()
             memories = resp.json()
 
@@ -474,7 +474,7 @@ def clone_room(
         typer.echo("Re-indexing...")
         try:
             with httpx.Client(base_url=config.server.api_url, timeout=120) as client:
-                resp = client.post(f"/rooms/{room_name}/reindex")
+                resp = client.post(f"/api/rooms/{room_name}/reindex")
                 resp.raise_for_status()
                 data = resp.json()
             typer.echo(f"  Indexed {data.get('indexed', 0)} memories")
@@ -754,7 +754,7 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
     # Fetch room metadata for the header
     room_meta = ""
     try:
-        resp = httpx.get(f"{config.server.api_url}/rooms/{room_name}", timeout=5)
+        resp = httpx.get(f"{config.server.api_url}/api/rooms/{room_name}", timeout=5)
         if resp.status_code == 200:
             room = resp.json()
             state = room.get("coordination_state", "idle")
@@ -790,7 +790,7 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
     # them from the sessions list to ensure all participants are shown.
     try:
         sess_resp = httpx.get(
-            f"{config.server.api_url}/rooms/{room_name}/sessions",
+            f"{config.server.api_url}/api/rooms/{room_name}/sessions",
             timeout=10,
         )
         if sess_resp.status_code == 200:
@@ -816,7 +816,7 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
 
     try:
         hist_resp = httpx.get(
-            f"{config.server.api_url}/rooms/{room_name}/messages",
+            f"{config.server.api_url}/api/rooms/{room_name}/messages",
             params={"limit": 50},
             timeout=10,
         )
@@ -830,7 +830,7 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
     except Exception:
         pass
 
-    url = f"{config.server.api_url}/rooms/{room_name}/messages/stream"
+    url = f"{config.server.api_url}/api/rooms/{room_name}/messages/stream"
     start = time.time()
 
     with httpx.Client(timeout=None) as http, http.stream("GET", url) as response:
@@ -911,7 +911,7 @@ def post(
         config = MyceliumConfig.load()
 
         from mycelium_backend_client.api.messages import (
-            send_message_rooms_room_name_messages_post as send_api,
+            send_message_api_rooms_room_name_messages_post as send_api,
         )
         from mycelium_backend_client.models import MessageCreate
 
@@ -983,7 +983,7 @@ def send(
         sender_handle = handle or config.get_current_identity()
 
         from mycelium_backend_client.api.messages import (
-            send_message_rooms_room_name_messages_post as send_api,
+            send_message_api_rooms_room_name_messages_post as send_api,
         )
         from mycelium_backend_client.models import MessageCreate
 
@@ -1038,7 +1038,7 @@ def delegate(
         sender = config.get_current_identity()
 
         from mycelium_backend_client.api.messages import (
-            send_message_rooms_room_name_messages_post as send_api,
+            send_message_api_rooms_room_name_messages_post as send_api,
         )
         from mycelium_backend_client.models import MessageCreate
 

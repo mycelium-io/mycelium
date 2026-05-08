@@ -244,7 +244,9 @@ def add(
         False, "--dry-run", help="Show what would be installed without doing it"
     ),
     step: list[str] | None = typer.Option(
-        None, "--step", help=f"Run a follow-up setup step (repeatable): {', '.join(_OPENCLAW_STEPS)}"
+        None,
+        "--step",
+        help=f"Run a follow-up setup step (repeatable): {', '.join(_OPENCLAW_STEPS)}",
     ),
     reinstall: bool = typer.Option(
         False, "--reinstall", help="Reinstall assets even if adapter is already registered"

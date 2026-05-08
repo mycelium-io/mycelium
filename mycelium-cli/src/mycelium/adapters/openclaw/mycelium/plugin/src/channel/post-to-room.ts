@@ -26,7 +26,7 @@ export async function postToRoom(
   senderHandle: string,
   content: string,
 ): Promise<boolean> {
-  const url = `${cfg.backendUrl}/rooms/${encodeURIComponent(cfg.room)}/messages`;
+  const url = `${cfg.backendUrl}/api/rooms/${encodeURIComponent(cfg.room)}/messages`;
   try {
     const res = await fetch(url, {
       method: "POST",
