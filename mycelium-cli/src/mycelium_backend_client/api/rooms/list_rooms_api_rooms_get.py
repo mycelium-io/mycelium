@@ -91,8 +91,8 @@ def sync_detailed(
      List rooms.
 
     Sessions live in ``coordination_sessions`` and are not surfaced here. The
-    ``include_sessions`` parameter is kept for backward-compatible URLs but is
-    a no-op now (#244 — session-shadow rows no longer exist).
+    ``include_sessions`` parameter is accepted for backward-compatible URLs
+    but is a no-op.
 
     Args:
         skip (int | Unset):  Default: 0.
@@ -135,8 +135,8 @@ def sync(
      List rooms.
 
     Sessions live in ``coordination_sessions`` and are not surfaced here. The
-    ``include_sessions`` parameter is kept for backward-compatible URLs but is
-    a no-op now (#244 — session-shadow rows no longer exist).
+    ``include_sessions`` parameter is accepted for backward-compatible URLs
+    but is a no-op.
 
     Args:
         skip (int | Unset):  Default: 0.
@@ -174,8 +174,8 @@ async def asyncio_detailed(
      List rooms.
 
     Sessions live in ``coordination_sessions`` and are not surfaced here. The
-    ``include_sessions`` parameter is kept for backward-compatible URLs but is
-    a no-op now (#244 — session-shadow rows no longer exist).
+    ``include_sessions`` parameter is accepted for backward-compatible URLs
+    but is a no-op.
 
     Args:
         skip (int | Unset):  Default: 0.
@@ -216,8 +216,8 @@ async def asyncio(
      List rooms.
 
     Sessions live in ``coordination_sessions`` and are not surfaced here. The
-    ``include_sessions`` parameter is kept for backward-compatible URLs but is
-    a no-op now (#244 — session-shadow rows no longer exist).
+    ``include_sessions`` parameter is accepted for backward-compatible URLs
+    but is a no-op.
 
     Args:
         skip (int | Unset):  Default: 0.

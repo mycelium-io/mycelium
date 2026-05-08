@@ -66,10 +66,9 @@ def sync_detailed(
 ) -> Response[HTTPValidationError | list[CoordinationSessionRead]]:
     """List Coordination Sessions
 
-     List negotiation sessions in a room (#197).
+     List negotiation sessions in a room.
 
-    Returns first-class CoordinationSession entities. The shadow rows in the
-    rooms table are an implementation detail that callers shouldn't depend on.
+    Returns first-class CoordinationSession entities scoped to ``room_name``.
 
     Args:
         room_name (str):
@@ -100,10 +99,9 @@ def sync(
 ) -> HTTPValidationError | list[CoordinationSessionRead] | None:
     """List Coordination Sessions
 
-     List negotiation sessions in a room (#197).
+     List negotiation sessions in a room.
 
-    Returns first-class CoordinationSession entities. The shadow rows in the
-    rooms table are an implementation detail that callers shouldn't depend on.
+    Returns first-class CoordinationSession entities scoped to ``room_name``.
 
     Args:
         room_name (str):
@@ -129,10 +127,9 @@ async def asyncio_detailed(
 ) -> Response[HTTPValidationError | list[CoordinationSessionRead]]:
     """List Coordination Sessions
 
-     List negotiation sessions in a room (#197).
+     List negotiation sessions in a room.
 
-    Returns first-class CoordinationSession entities. The shadow rows in the
-    rooms table are an implementation detail that callers shouldn't depend on.
+    Returns first-class CoordinationSession entities scoped to ``room_name``.
 
     Args:
         room_name (str):
@@ -161,10 +158,9 @@ async def asyncio(
 ) -> HTTPValidationError | list[CoordinationSessionRead] | None:
     """List Coordination Sessions
 
-     List negotiation sessions in a room (#197).
+     List negotiation sessions in a room.
 
-    Returns first-class CoordinationSession entities. The shadow rows in the
-    rooms table are an implementation detail that callers shouldn't depend on.
+    Returns first-class CoordinationSession entities scoped to ``room_name``.
 
     Args:
         room_name (str):

@@ -579,6 +579,39 @@ describe("formatTickInstruction", () => {
     expect(instruction).toContain("price: 500k");
     expect(instruction).toContain("timeline: 30 days");
   });
+
+  it("renders shared context files when present", () => {
+    const instruction = formatTickInstruction(
+      {
+        round: 1,
+        action: "respond",
+        current_offer: {},
+        shared_context_files: [
+          {
+            shared_by: "alpha",
+            path: "/agents/alpha/SOUL.md",
+            sha256: "deadbeef",
+            content: "I value privacy and clarity.",
+          },
+        ],
+      },
+      "r",
+      "alpha",
+    );
+    expect(instruction).toContain("Shared context files");
+    expect(instruction).toContain("/agents/alpha/SOUL.md");
+    expect(instruction).toContain("shared by alpha");
+    expect(instruction).toContain("I value privacy and clarity.");
+  });
+
+  it("omits the shared context block when empty", () => {
+    const instruction = formatTickInstruction(
+      { round: 1, action: "respond", current_offer: {}, shared_context_files: [] },
+      "r",
+      "a",
+    );
+    expect(instruction).not.toContain("Shared context files");
+  });
 });
 
 // ── Consensus summary formatting ──────────────────────────────────────────

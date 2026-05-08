@@ -4,24 +4,26 @@
 /**
  * Unified plugin register function.
  *
- * Wires three concerns into the OpenClawPluginApi:
+ * Wires two concerns into the OpenClawPluginApi:
  *
  *   1. Session lifecycle  — always installed (tracks session_start/end,
  *                           injects MYCELIUM_INSTRUCTIONS via before_agent_start)
  *   2. Channel            — installed iff channels.mycelium-room is configured
  *                           (room SSE, addressed dispatch, coordination ticks)
- *   3. Knowledge ingest   — always installed (forwards message_sent to the
- *                           knowledge graph ingest endpoint)
  *
  * Each concern is a self-contained install* function that takes the api and
  * registers its own hooks. register() is purely the conductor.
+ *
+ * Knowledge extraction (KXP) used to live here as a third concern that
+ * silently shipped every message_sent / Stop event to the backend. That
+ * path is gone. KXP now fires only on deliberate room artifacts —
+ * channel-message POST and ``mycelium memory set`` — wired in the backend.
  */
 
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 
 import { installChannel } from "./channel/index.js";
 import { loadMyceliumConfig, readChannelConfig } from "./config.js";
-import { installKnowledgeIngest } from "./knowledge/ingest.js";
 import { installSession } from "./session/index.js";
 
 export function register(api: OpenClawPluginApi): void {
@@ -31,7 +33,6 @@ export function register(api: OpenClawPluginApi): void {
   const channelCfg = readChannelConfig(api.config);
 
   installSession(api, channelCfg, log);
-  installKnowledgeIngest(api, channelCfg, log);
 
   if (channelCfg) {
     log.info(

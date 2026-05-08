@@ -26,6 +26,7 @@ IngestState = Literal[
     "truncated",
     "refused",
     "disabled",
+    "skipped",
     "error",
 ]
 

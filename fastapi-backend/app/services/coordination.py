@@ -351,8 +351,8 @@ def schedule_join_timer(room_name: str, deadline: datetime) -> asyncio.Task:
 async def _run_tick(room_name: str, tick: int) -> None:
     """Tick 0: launch CFN negotiation. Errors if CFN not configured on the room."""
     async with async_session_maker() as db:
-        # room_name here is the session-shadow display name like "{parent}:session:{short}".
-        # Look up the corresponding CoordinationSession to find its participants.
+        # room_name here is a session display name like "{parent}:session:{short}".
+        # Resolve it to the CoordinationSession entity.
         if ":session:" in room_name:
             parent, _, short_id = room_name.partition(":session:")
             coord_result = await db.execute(
@@ -624,6 +624,53 @@ async def _round_timeout(room_name: str) -> None:
     )
 
 
+async def _load_shared_context_files(room_name: str, db=None) -> list[dict]:
+    """Return the opt-in context files shared by every participant of a session.
+
+    ``room_name`` is the session display name (``{parent}:session:{short}``).
+    Returns ``[{"shared_by": handle, "path": ..., "sha256": ..., "content": ...}]``
+    flattened across participants. Empty list if none.
+
+    Callers in the fan-out path don't hold a session, so a fresh one is
+    opened from ``async_session_maker``; tests can pass an open session.
+    """
+    if ":session:" not in room_name:
+        return []
+    parent, _, short_id = room_name.partition(":session:")
+    if not parent or not short_id:
+        return []
+
+    async def _query(session) -> list[dict]:
+        result = await session.execute(
+            select(Participant.agent_handle, Participant.context_files)
+            .join(
+                CoordinationSession,
+                Participant.coordination_session_id == CoordinationSession.id,
+            )
+            .where(
+                CoordinationSession.parent_room_name == parent,
+                CoordinationSession.short_id == short_id,
+            )
+        )
+        out: list[dict] = []
+        for handle, files in result.all():
+            for cf in files or []:
+                out.append(
+                    {
+                        "shared_by": handle,
+                        "path": cf.get("path"),
+                        "sha256": cf.get("sha256"),
+                        "content": cf.get("content"),
+                    }
+                )
+        return out
+
+    if db is not None:
+        return await _query(db)
+    async with async_session_maker() as session:
+        return await _query(session)
+
+
 async def _fan_out_cfn_messages(
     room_name: str,
     messages: list[dict],
@@ -641,6 +688,11 @@ async def _fan_out_cfn_messages(
     Returns the list of agent handles that received a tick this round.
     """
     addressed: list[str] = []
+    try:
+        shared_context = await _load_shared_context_files(room_name)
+    except Exception as exc:
+        logger.debug("shared_context_files load skipped for %s: %s", room_name, exc)
+        shared_context = []
     # Read state once so each tick in this batch sees the same prior-round
     # snapshot; _cfn_decide_round overwrites these fields immediately before
     # calling us so the values describe what just happened.
@@ -714,6 +766,7 @@ async def _fan_out_cfn_messages(
                             "n_steps_total": n_steps_total,
                             "your_last_action": last_actions.get(participant_id),
                             "prior_round_outcome": prior_round_outcome,
+                            "shared_context_files": shared_context,
                         }
                     }
                 ),

@@ -120,11 +120,8 @@ class CoordinationSession(Base):
 
     A session is a single negotiation round inside a parent room. State lives
     here; the parent room holds persistent memory and namespace identity.
-
-    A "shadow" row in `rooms` (is_namespace=False, parent_namespace=parent_room_name)
-    is also kept during the deprecation window so messages.room_name and
-    memories.room_name FKs continue to resolve. The shadow is scheduled for
-    removal in a follow-up release.
+    Messages addressed to a session use ``messages.coordination_session_id``;
+    the parent-room FK stays available for namespace-level chat.
     """
 
     __tablename__ = "coordination_sessions"
@@ -213,6 +210,13 @@ class Participant(Base):
     )
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     intent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Files the agent explicitly shared into the session on join.
+    # Shape: [{"path": str, "content": str, "sha256": str}]. Content is
+    # opt-in shared context — visible to other participants in the session
+    # and forwarded to KXP/CFN like any deliberate room write.
+    context_files: Mapped[list | None] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"), nullable=True
+    )
 
 
 class AuditEvent(Base):

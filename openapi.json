@@ -51,7 +51,7 @@
                     "rooms"
                 ],
                 "summary": "List Rooms",
-                "description": "List rooms.\n\nSessions live in ``coordination_sessions`` and are not surfaced here. The\n``include_sessions`` parameter is accepted for backward-compatible URLs\nbut is a no-op \u2014 there are no session-shadow rows in this table.",
+                "description": "List rooms.\n\nSessions live in ``coordination_sessions`` and are not surfaced here. The\n``include_sessions`` parameter is accepted for backward-compatible URLs\nbut is a no-op.",
                 "operationId": "list_rooms_api_rooms_get",
                 "parameters": [
                     {
@@ -2638,6 +2638,56 @@
                 ],
                 "title": "ConceptsByIdsRequest"
             },
+            "ContextFile": {
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "title": "Path",
+                        "description": "Absolute or repo-relative path on the sender's machine"
+                    },
+                    "content": {
+                        "type": "string",
+                        "title": "Content",
+                        "description": "File contents at join time"
+                    },
+                    "sha256": {
+                        "type": "string",
+                        "title": "Sha256",
+                        "description": "hex sha256 of content for audit and dedupe"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "path",
+                    "content",
+                    "sha256"
+                ],
+                "title": "ContextFile",
+                "description": "An opt-in shared file injected into a coordination session.\n\nThe agent (via the CLI) explicitly selected this file to share with the\nsession. Content is visible to other participants on tick fan-out and\ncounts as a deliberate room write \u2014 it flows to KXP/CFN like any other\nroom artifact. Use ``sha256`` for audit/dedupe and ``path`` for display."
+            },
+            "ContextFileRead": {
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "title": "Path"
+                    },
+                    "sha256": {
+                        "type": "string",
+                        "title": "Sha256"
+                    },
+                    "content": {
+                        "type": "string",
+                        "title": "Content"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "path",
+                    "sha256",
+                    "content"
+                ],
+                "title": "ContextFileRead"
+            },
             "CoordinationSessionRead": {
                 "properties": {
                     "id": {
@@ -2855,6 +2905,7 @@
                             "truncated",
                             "refused",
                             "disabled",
+                            "skipped",
                             "error"
                         ],
                         "title": "State",
@@ -3062,6 +3113,17 @@
                             }
                         ],
                         "title": "Mas Id"
+                    },
+                    "source": {
+                        "type": "string",
+                        "enum": [
+                            "channel_message",
+                            "memory_set",
+                            "context_file",
+                            "legacy"
+                        ],
+                        "title": "Source",
+                        "default": "legacy"
                     }
                 },
                 "type": "object",
@@ -3523,6 +3585,21 @@
                         ],
                         "title": "Intent",
                         "description": "Agent's requirements/intent for coordination"
+                    },
+                    "context_files": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "$ref": "#/components/schemas/ContextFile"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Context Files",
+                        "description": "Files explicitly shared into the session at join time. Visible to other participants and forwarded to KXP."
                     }
                 },
                 "type": "object",
@@ -3595,6 +3672,20 @@
                             }
                         ],
                         "title": "Last Seen"
+                    },
+                    "context_files": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "$ref": "#/components/schemas/ContextFileRead"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Context Files"
                     }
                 },
                 "type": "object",
