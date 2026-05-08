@@ -22,4 +22,4 @@ RUN pip install --no-cache-dir --no-deps .
 EXPOSE 4318
 
 ENTRYPOINT ["python", "-m", "mycelium.collector_main"]
-CMD ["--port", "4318", "--output", "/root/.mycelium/metrics.json"]
+CMD ["--port", "4318", "--output", "/root/.mycelium/metrics/metrics.json"]

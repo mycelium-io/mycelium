@@ -22,10 +22,10 @@ HTTP polling) — and writes it to a single JSON file for the CLI to render.
 │  Backend     │  (polled every 30s)     │  └──────┬───────┘  │
 │  (FastAPI)   │                         └─────────┼──────────┘
 │              │                                   ▼
-│  GET /api/   │                   ┌───────────────────────────┐
-│  traces/     │ ◀─reads─────────  │ ~/.mycelium/metrics.json  │
-│  recent      │                   │ ~/.mycelium/traces.db     │
-└──────────────┘                   └───────────────────────────┘
+│  GET /api/   │                   ┌─────────────────────────────────┐
+│  traces/     │ ◀─reads─────────  │ $DATA_DIR/metrics/metrics.json  │
+│  recent      │                   │ $DATA_DIR/metrics/traces.db     │
+└──────────────┘                   └─────────────────────────────────┘
                                                    │
                                                    ▼
                                          ┌──────────────────┐
@@ -46,8 +46,8 @@ variable.
 | `mycelium metrics status` | Health check: deps, collector process, data file, OTEL config, model cost |
 | `mycelium metrics collect`| Start the OTLP receiver (background by default; `--fg` for foreground, `--backend-url` to override backend) |
 | `mycelium metrics stop`   | Stop the background collector                    |
-| `mycelium metrics reset`  | Delete `~/.mycelium/metrics.json`                |
-| `mycelium metrics update-pricing` | Fetch latest LLM pricing from LiteLLM API and write to `~/.mycelium/pricing.json` |
+| `mycelium metrics reset`  | Delete collected metrics data                    |
+| `mycelium metrics update-pricing` | Fetch latest LLM pricing from LiteLLM API |
 | `mycelium metrics update-pricing --add pat:key` | Also fetch pricing for a manually specified model (repeatable) |
 | `mycelium metrics show`   | Render collected data as Rich tables              |
 | `mycelium metrics show --json` | Dump raw JSON for scripting                  |
@@ -58,13 +58,16 @@ variable.
 
 ## Files Created
 
-| Path                            | Purpose                              |
-| ------------------------------- | ------------------------------------ |
-| `~/.mycelium/metrics.json`      | Aggregated metrics (counters, histograms, sessions, backend snapshot) |
-| `~/.mycelium/traces.db`         | SQLite database of OTLP trace spans (7-day retention) |
-| `~/.mycelium/pricing.json`      | User-local pricing cache (written by `update-pricing`) |
-| `~/.mycelium/collector.pid`     | PID and port of the background collector process |
-| `~/.mycelium/collector.log`     | Stdout/stderr log from the background collector  |
+All metrics files live under `$MYCELIUM_DATA_DIR/metrics/` (default `~/.mycelium/metrics/`).
+Set `MYCELIUM_DATA_DIR` to override the root.
+
+| Path                              | Purpose                              |
+| --------------------------------- | ------------------------------------ |
+| `metrics/metrics.json`            | Aggregated metrics (counters, histograms, sessions, backend snapshot) |
+| `metrics/traces.db`               | SQLite database of OTLP trace spans (7-day retention) |
+| `metrics/pricing.json`            | User-local pricing cache (written by `update-pricing`) |
+| `metrics/collector.pid`           | PID and port of the background collector process |
+| `metrics/collector.log`           | Stdout/stderr log from the background collector  |
 
 `metrics.json` is atomically updated (write to `.tmp`, rename) on every OTLP
 ingestion and on graceful shutdown.
@@ -191,7 +194,7 @@ the flat counter/histogram metrics used by `mycelium metrics show`.
 
 ### Trace Storage (TraceStore)
 
-Raw OTLP trace spans are persisted to `~/.mycelium/traces.db` (SQLite,
+Raw OTLP trace spans are persisted to `$DATA_DIR/metrics/traces.db` (SQLite,
 WAL mode) by the `TraceStore` class in `collector.py`. This runs in
 parallel with the `MetricsStore` — on every `/v1/traces` POST, the
 collector feeds bytes to both stores.
@@ -355,7 +358,7 @@ OpenClaw → Mycelium backend → CFN → opt-in.
 
     Targets are polled on the same 30-second cadence as the backend `/api/observability`
     poll, results are stored under the top-level `scrape` key in
-    `~/.mycelium/metrics.json`, and unreachable targets are surfaced as
+    `metrics/metrics.json`, and unreachable targets are surfaced as
     `[degraded]` rather than dropped silently. Restart `mycelium metrics
     collect` after editing config so the new targets are picked up.
 
@@ -375,7 +378,7 @@ OpenClaw → Mycelium backend → CFN → opt-in.
 
 Pricing data is resolved in this order:
 
-1. **User-local cache** — `~/.mycelium/pricing.json` (written by `mycelium metrics update-pricing`)
+1. **User-local cache** — `$DATA_DIR/metrics/pricing.json` (written by `mycelium metrics update-pricing`)
 2. **Bundled default** — `mycelium-cli/src/mycelium/data/pricing.json` (shipped with the CLI package)
 
 The first file found with a non-empty `models` list wins. The `generated_at`
@@ -395,7 +398,7 @@ the CLI's existing `httpx` client).
 Models are sourced from three places:
 
 1. **Built-in tracked models** (14 common Anthropic/OpenAI models) — always fetched
-2. **Auto-discovered models** — the command reads `~/.mycelium/metrics.json` and
+2. **Auto-discovered models** — the command reads `metrics/metrics.json` and
    finds model names (from OTLP `by_model` and backend `llm.by_model.*`) that
    aren't covered by the built-in list. Provider prefixes like `bedrock/global.`
    and `anthropic.` are stripped to derive a LiteLLM catalog key.
@@ -669,7 +672,7 @@ the features are wired up:
       machine running an OpenClaw gateway. Verify with
       `grep deep-observability ~/.openclaw/openclaw.json`.
 - [ ] **Pricing update** — run `mycelium metrics update-pricing` to fetch the
-      latest pricing from the LiteLLM API and write `~/.mycelium/pricing.json`.
+      latest pricing from the LiteLLM API and write `metrics/pricing.json`.
       Any models found in collected metrics that aren't in the built-in list are
       auto-discovered and priced. The `generated_at` date appears in the
       `mycelium metrics show cost` footer.

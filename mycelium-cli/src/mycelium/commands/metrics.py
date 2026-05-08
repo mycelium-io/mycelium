@@ -30,9 +30,25 @@ app = typer.Typer(
 
 _DEFAULT_PORT = 4318
 _ENV_PORT = "MYCELIUM_METRICS_PORT"
-_MYCELIUM_DIR = Path.home() / ".mycelium"
-_METRICS_JSON = _MYCELIUM_DIR / "metrics.json"
-_PID_FILE = _MYCELIUM_DIR / "collector.pid"
+
+
+def _data_dir() -> Path:
+    """Resolve the Mycelium data directory, respecting MYCELIUM_DATA_DIR."""
+    return Path(os.environ.get("MYCELIUM_DATA_DIR") or Path.home() / ".mycelium")
+
+
+def _metrics_dir() -> Path:
+    """Resolve the metrics subdirectory under the data dir."""
+    return _data_dir() / "metrics"
+
+
+def _metrics_json() -> Path:
+    return _metrics_dir() / "metrics.json"
+
+
+def _pid_file() -> Path:
+    return _metrics_dir() / "collector.pid"
+
 
 console = Console()
 
@@ -60,10 +76,10 @@ def _read_pid_file() -> tuple[int | None, int]:
     Returns (pid, port).  ``pid`` is None when the file is missing or
     unparsable; ``port`` falls back to ``_DEFAULT_PORT``.
     """
-    if not _PID_FILE.exists():
+    if not _pid_file().exists():
         return None, _DEFAULT_PORT
     try:
-        lines = _PID_FILE.read_text().strip().splitlines()
+        lines = _pid_file().read_text().strip().splitlines()
         if not lines:
             return None, _DEFAULT_PORT
         pid = int(lines[0])
@@ -117,13 +133,13 @@ def status() -> None:
         )
     else:
         console.print("[red]✗[/red] Collector not running")
-        if _PID_FILE.exists():
+        if _pid_file().exists():
             console.print(
                 "  [dim]Stale PID file exists — run [bold]mycelium metrics stop[/bold] to clean up[/dim]"
             )
         all_ok = False
 
-    collector_log = _MYCELIUM_DIR / "collector.log"
+    collector_log = _metrics_dir() / "collector.log"
     if not collector_alive and collector_log.exists():
         try:
             log_lines = collector_log.read_text().strip().splitlines()
@@ -136,9 +152,9 @@ def status() -> None:
             pass
 
     # ── Metrics data file ────────────────────────────────────────────────
-    if _METRICS_JSON.exists():
+    if _metrics_json().exists():
         try:
-            stat = _METRICS_JSON.stat()
+            stat = _metrics_json().stat()
             mtime = datetime.fromtimestamp(stat.st_mtime, tz=UTC)
             age = datetime.now(UTC) - mtime
             age_str = f"{int(age.total_seconds())}s ago"
@@ -147,18 +163,18 @@ def status() -> None:
             elif age.total_seconds() > 60:
                 age_str = f"{int(age.total_seconds() / 60)}m ago"
 
-            data = json.loads(_METRICS_JSON.read_text())
+            data = json.loads(_metrics_json().read_text())
             sessions = data.get("sessions", [])
             counters = data.get("counters", {})
             msgs = counters.get("messages", {}).get("processed", 0)
             total_tok = counters.get("tokens", {}).get("total", {}).get("total", 0)
 
-            console.print(f"[green]✓[/green] Data file          {_METRICS_JSON}")
+            console.print(f"[green]✓[/green] Data file          {_metrics_json()}")
             console.print(
                 f"  [dim]Last updated {age_str}  •  {msgs} messages  •  {len(sessions)} sessions  •  {total_tok:,} tokens[/dim]"
             )
         except Exception:
-            console.print(f"[yellow]⚠[/yellow] Data file exists but unreadable: {_METRICS_JSON}")
+            console.print(f"[yellow]⚠[/yellow] Data file exists but unreadable: {_metrics_json()}")
             all_ok = False
     else:
         console.print("[yellow]⚠[/yellow] No metrics data yet (no messages received)")
@@ -330,7 +346,7 @@ def collect(
         backend_url = MyceliumConfig.load().server.api_url
 
     if not fg:
-        _MYCELIUM_DIR.mkdir(parents=True, exist_ok=True)
+        _metrics_dir().mkdir(parents=True, exist_ok=True)
 
         old_pid, old_port = _read_pid_file()
         if old_pid is not None:
@@ -342,7 +358,7 @@ def collect(
                 )
                 return
             except OSError:
-                _PID_FILE.unlink(missing_ok=True)
+                _pid_file().unlink(missing_ok=True)
 
         # Guard: even without a valid PID file, check if the port is busy.
         # Use SO_REUSEADDR so lingering TIME_WAIT sockets from a just-killed
@@ -362,7 +378,7 @@ def collect(
         finally:
             _probe.close()
 
-        log_file = _MYCELIUM_DIR / "collector.log"
+        log_file = _metrics_dir() / "collector.log"
         log_fh = open(log_file, "a")  # noqa: SIM115
 
         proc = subprocess.Popen(
@@ -380,14 +396,14 @@ def collect(
             start_new_session=True,
         )
 
-        _PID_FILE.write_text(f"{proc.pid}\n{resolved_port}\n")
+        _pid_file().write_text(f"{proc.pid}\n{resolved_port}\n")
 
         import time as _time
 
         _time.sleep(0.5)
         exit_code = proc.poll()
         if exit_code is not None:
-            _PID_FILE.unlink(missing_ok=True)
+            _pid_file().unlink(missing_ok=True)
             typer.secho(
                 f"✗ Collector exited immediately (code {exit_code}). Check {log_file}",
                 fg=typer.colors.RED,
@@ -396,7 +412,7 @@ def collect(
 
         typer.secho(f"✓ Collector started (PID {proc.pid})", fg=typer.colors.GREEN)
         typer.echo(f"  OTLP receiver on port {resolved_port}")
-        typer.echo(f"  Metrics file: {_METRICS_JSON}")
+        typer.echo(f"  Metrics file: {_metrics_json()}")
         typer.echo(f"  Log file: {log_file}")
     else:
         # Check if something is already listening on the port
@@ -438,7 +454,7 @@ def collect(
         scrape_targets = MyceliumConfig.load().resolve_scrape_targets()
         run_collector(
             resolved_port,
-            _METRICS_JSON,
+            _metrics_json(),
             backend_api_url=backend_url,
             scrape_targets=scrape_targets,
         )
@@ -447,21 +463,21 @@ def collect(
 @app.command("stop")
 def stop() -> None:
     """Stop the background OTLP collector."""
-    if not _PID_FILE.exists():
+    if not _pid_file().exists():
         typer.secho("No collector running (PID file not found).", fg=typer.colors.YELLOW)
         raise typer.Exit(0)
 
     pid, _ = _read_pid_file()
     if pid is None:
         typer.secho("Could not read collector PID.", fg=typer.colors.RED)
-        _PID_FILE.unlink(missing_ok=True)
+        _pid_file().unlink(missing_ok=True)
         return
 
     try:
         os.kill(pid, signal.SIGTERM)
     except ProcessLookupError:
         typer.secho(f"Collector (PID {pid}) already exited.", fg=typer.colors.YELLOW)
-        _PID_FILE.unlink(missing_ok=True)
+        _pid_file().unlink(missing_ok=True)
         return
     except OSError as exc:
         typer.secho(f"Could not stop collector (PID {pid}): {exc}", fg=typer.colors.RED)
@@ -480,7 +496,7 @@ def stop() -> None:
 
     if stopped:
         typer.secho(f"✓ Collector stopped (PID {pid})", fg=typer.colors.GREEN)
-        _PID_FILE.unlink(missing_ok=True)
+        _pid_file().unlink(missing_ok=True)
     else:
         typer.secho(
             f"⚠ Collector (PID {pid}) still running after SIGTERM. "
@@ -492,8 +508,8 @@ def stop() -> None:
 @app.command("reset")
 def reset() -> None:
     """Delete collected metrics data."""
-    if _METRICS_JSON.exists():
-        _METRICS_JSON.unlink()
+    if _metrics_json().exists():
+        _metrics_json().unlink()
         typer.secho("✓ Metrics data cleared.", fg=typer.colors.GREEN)
     else:
         typer.echo("No metrics data to clear.")
@@ -621,12 +637,12 @@ def _resolve_litellm_key(model_string: str) -> str:
 def _discover_models_from_metrics() -> list[str]:
     """Extract model names from collected metrics not covered by _TRACKED_MODELS.
 
-    Reads ``~/.mycelium/metrics.json`` and returns model strings from:
+    Reads metrics.json from the metrics directory and returns model strings from:
       - OTLP: ``counters.tokens.by_model`` keys
       - Backend: ``backend.counters.llm.by_model.*`` keys
     """
     try:
-        data = json.loads(_METRICS_JSON.read_text())
+        data = json.loads(_metrics_json().read_text())
     except (OSError, json.JSONDecodeError):
         return []
 
@@ -674,13 +690,13 @@ def update_pricing(
 ) -> None:
     """Fetch latest LLM pricing from the LiteLLM Model Catalog API.
 
-    Writes updated pricing to ~/.mycelium/pricing.json, which is used by
-    ``mycelium metrics show cost`` for cost estimates. Falls back to the
-    bundled pricing.json when the local cache is missing.
+    Writes updated pricing to ``$MYCELIUM_DATA_DIR/metrics/pricing.json``,
+    which is used by ``mycelium metrics show cost`` for cost estimates.
+    Falls back to the bundled pricing.json when the local cache is missing.
 
     Models are sourced from three places (in order):
       1. Built-in tracked models (14 common Anthropic/OpenAI models)
-      2. Auto-discovered models from collected metrics (~/.mycelium/metrics.json)
+      2. Auto-discovered models from collected metrics (metrics/metrics.json)
       3. Manually added models via --add
     """
     from datetime import UTC, datetime
@@ -786,13 +802,13 @@ def update_pricing(
         },
     }
 
-    _MYCELIUM_DIR.mkdir(parents=True, exist_ok=True)
-    _USER_PRICING_JSON.write_text(json.dumps(output, indent=2) + "\n")
+    _metrics_dir().mkdir(parents=True, exist_ok=True)
+    _user_pricing_json().write_text(json.dumps(output, indent=2) + "\n")
 
     global _pricing_data
     _pricing_data = None
 
-    console.print(f"[green]Wrote {_USER_PRICING_JSON}[/green]")
+    console.print(f"[green]Wrote {_user_pricing_json()}[/green]")
 
     if warnings:
         for w in warnings:
@@ -1141,15 +1157,15 @@ def _render_overview(
 
 
 def _load_metrics_json() -> dict | None:
-    if not _METRICS_JSON.exists():
+    if not _metrics_json().exists():
         return None
     try:
-        return json.loads(_METRICS_JSON.read_text())
+        return json.loads(_metrics_json().read_text())
     except (json.JSONDecodeError, OSError):
         return None
 
 
-_OC_STATUS_CACHE = _MYCELIUM_DIR / "openclaw_status_cache.json"
+_OC_STATUS_CACHE = _data_dir() / "openclaw_status_cache.json"
 _OC_STATUS_MAX_AGE_S = 60
 
 
@@ -1948,7 +1964,12 @@ def _oc_token_totals(
 
 
 _BUNDLED_PRICING_JSON = Path(__file__).resolve().parent.parent / "data" / "pricing.json"
-_USER_PRICING_JSON = _MYCELIUM_DIR / "pricing.json"
+
+
+def _user_pricing_json() -> Path:
+    return _metrics_dir() / "pricing.json"
+
+
 _pricing_data: dict | None = None
 
 
@@ -1956,14 +1977,14 @@ def _load_pricing() -> dict:
     """Load pricing data (cached after first call).
 
     Resolution order:
-      1. ``~/.mycelium/pricing.json`` — written by ``mycelium metrics update-pricing``
+      1. ``$MYCELIUM_DATA_DIR/metrics/pricing.json`` — written by ``mycelium metrics update-pricing``
       2. Bundled ``data/pricing.json`` — shipped with the CLI package
     """
     global _pricing_data
     if _pricing_data is not None:
         return _pricing_data
 
-    for path in (_USER_PRICING_JSON, _BUNDLED_PRICING_JSON):
+    for path in (_user_pricing_json(), _BUNDLED_PRICING_JSON):
         try:
             data = json.loads(path.read_text())
             if data.get("models"):

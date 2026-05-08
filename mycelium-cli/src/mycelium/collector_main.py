@@ -7,7 +7,13 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 from pathlib import Path
+
+
+def _default_output() -> str:
+    data_dir = Path(os.environ.get("MYCELIUM_DATA_DIR") or Path.home() / ".mycelium")
+    return str(data_dir / "metrics" / "metrics.json")
 
 
 def main() -> None:
@@ -15,9 +21,7 @@ def main() -> None:
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=4318)
-    parser.add_argument(
-        "--output", type=str, default=str(Path.home() / ".mycelium" / "metrics.json")
-    )
+    parser.add_argument("--output", type=str, default=_default_output())
     parser.add_argument(
         "--backend-url",
         type=str,

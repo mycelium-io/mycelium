@@ -239,7 +239,7 @@ class ScrapeTarget(BaseModel):
 
     The collector polls every target on the same 30s cadence as the backend
     and stores results under the top-level ``scrape`` key in
-    ``~/.mycelium/metrics.json``. Targets unreachable at scrape time are
+    ``$MYCELIUM_DATA_DIR/metrics/metrics.json``. Targets unreachable at scrape time are
     preserved with ``data: null`` so the display panel can show "degraded"
     rather than silently dropping them.
     """
