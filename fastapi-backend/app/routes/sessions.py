@@ -26,13 +26,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bus import notify, room_channel
 from app.config import settings
 from app.database import get_async_session
-from app.models import CoordinationSession, Room, Session
+from app.models import CoordinationSession, Participant, Room
 from app.routes.rooms import _sync_create_mas
 from app.schemas import (
     CoordinationSessionRead,
-    SessionCreate,
-    SessionListResponse,
-    SessionRead,
+    ParticipantCreate,
+    ParticipantListResponse,
+    ParticipantRead,
 )
 
 logger = logging.getLogger(__name__)
@@ -69,22 +69,60 @@ async def _upsert_room(room_name: str, session: AsyncSession) -> Room:
     return room
 
 
-async def _spawn_session_room(parent_name: str, db: AsyncSession) -> Room:
-    """Create an ephemeral sync session room within a namespace.
+def _coord_short_id_from_display(name: str) -> str | None:
+    """Extract the short_id from a session-shadow display name."""
+    if ":session:" not in name:
+        return None
+    return name.split(":session:", 1)[1]
+
+
+async def _resolve_coord_session(target_room: Room, db: AsyncSession) -> CoordinationSession | None:
+    """Find the CoordinationSession for an existing session-shadow Room row."""
+    if target_room.is_namespace or not target_room.parent_namespace:
+        return None
+    short_id = _coord_short_id_from_display(target_room.name)
+    if not short_id:
+        return None
+    result = await db.execute(
+        select(CoordinationSession).where(
+            CoordinationSession.parent_room_name == target_room.parent_namespace,
+            CoordinationSession.short_id == short_id,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def _spawn_session_room(
+    parent_name: str, db: AsyncSession
+) -> tuple[Room, CoordinationSession]:
+    """Create an ephemeral sync session room + CoordinationSession entity.
 
     If there's already a pending session (idle/waiting) in this namespace,
     return it instead of creating a new one.
     """
-    # Check for existing pending session in this namespace
+    # Check for existing pending session-shadow in this namespace
     result = await db.execute(
         select(Room).where(
             Room.parent_namespace == parent_name,
             Room.coordination_state.in_(["idle", "waiting", "negotiating"]),
         )
     )
-    existing = result.scalar_one_or_none()
-    if existing:
-        return existing
+    existing_room = result.scalar_one_or_none()
+    if existing_room:
+        existing_coord = await _resolve_coord_session(existing_room, db)
+        if existing_coord:
+            return existing_room, existing_coord
+        # Pre-0011 data without a backfilled coord_session — repair on the fly.
+        repair = CoordinationSession(
+            parent_room_name=parent_name,
+            short_id=_coord_short_id_from_display(existing_room.name) or uuid4().hex[:8],
+            state=existing_room.coordination_state or "idle",
+            mas_id=existing_room.mas_id,
+            workspace_id=existing_room.workspace_id,
+        )
+        db.add(repair)
+        await db.flush()
+        return existing_room, repair
 
     # Create a new session room, inheriting workspace/mas from parent
     short_id = uuid4().hex[:8]
@@ -107,7 +145,7 @@ async def _spawn_session_room(parent_name: str, db: AsyncSession) -> Room:
 
     # Dual-write the first-class CoordinationSession entity (#197). The shadow
     # Room row above stays during the deprecation window so messages.room_name
-    # and memories.room_name FKs keep resolving.
+    # FKs keep resolving.
     coord_session = CoordinationSession(
         parent_room_name=parent_name,
         short_id=short_id,
@@ -120,7 +158,7 @@ async def _spawn_session_room(parent_name: str, db: AsyncSession) -> Room:
     await db.flush()
     await db.refresh(session_room)
     logger.info("Spawned session %s in namespace %s", session_name, parent_name)
-    return session_room
+    return session_room, coord_session
 
 
 @router.post("/spawn", response_model=dict, status_code=201)
@@ -136,7 +174,7 @@ async def spawn_session(
     if not room.is_namespace:
         raise HTTPException(status_code=400, detail="Can only spawn sessions in namespace rooms")
 
-    session_room = await _spawn_session_room(room_name, db)
+    session_room, _ = await _spawn_session_room(room_name, db)
     await db.commit()
 
     cfn_enabled = bool(settings.COGNITION_FABRIC_NODE_URL and room.mas_id and room.workspace_id)
@@ -152,22 +190,34 @@ async def spawn_session(
     return result
 
 
-@router.post("", response_model=SessionRead, status_code=201)
+@router.post("", response_model=ParticipantRead, status_code=201)
 async def join_room(
     room_name: str,
-    payload: SessionCreate,
+    payload: ParticipantCreate,
     db: AsyncSession = Depends(get_async_session),
 ):
     """Join a room. If the room is a namespace, auto-spawns a session and joins that."""
     room = await _upsert_room(room_name, db)
 
-    # If joining a namespace (async room), auto-spawn a session within it
+    # Resolve the coordination session this join attaches to.
     target_room = room
+    coord_session: CoordinationSession | None = None
     if room.is_namespace:
-        target_room = await _spawn_session_room(room_name, db)
+        target_room, coord_session = await _spawn_session_room(room_name, db)
+    else:
+        coord_session = await _resolve_coord_session(target_room, db)
 
-    sess = Session(
-        room_name=target_room.name,
+    if coord_session is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"No coordination session found for room {room_name!r}. "
+                "Either pass a namespace to auto-spawn, or a session-shadow display name."
+            ),
+        )
+
+    sess = Participant(
+        coordination_session_id=coord_session.id,
         agent_handle=payload.agent_handle,
         intent=payload.intent,
     )
@@ -351,24 +401,39 @@ async def list_coordination_sessions(
     return [CoordinationSessionRead.model_validate(s) for s in result.scalars().all()]
 
 
-@router.get("", response_model=SessionListResponse)
+@router.get("", response_model=ParticipantListResponse)
 async def list_sessions(
     room_name: str,
     db: AsyncSession = Depends(get_async_session),
 ):
-    """List agents currently in a room."""
-    result = await db.execute(select(Room).where(Room.name == room_name))
-    if not result.scalar_one_or_none():
+    """List agents participating in a room's coordination session."""
+    room = (await db.execute(select(Room).where(Room.name == room_name))).scalar_one_or_none()
+    if not room:
         raise HTTPException(status_code=404, detail="Room not found")
 
-    result = await db.execute(
-        select(Session).where(Session.room_name == room_name).order_by(Session.joined_at.desc())
-    )
-    sessions = list(result.scalars().all())
+    # Resolve which coord_session(s) this room corresponds to. For a namespace,
+    # gather all participants across all its coord_sessions; for a session
+    # shadow, just that one.
+    if room.is_namespace:
+        coord_q = select(CoordinationSession.id).where(
+            CoordinationSession.parent_room_name == room_name
+        )
+    else:
+        coord = await _resolve_coord_session(room, db)
+        if coord is None:
+            return ParticipantListResponse(participants=[], total=0)
+        coord_q = select(CoordinationSession.id).where(CoordinationSession.id == coord.id)
 
-    return SessionListResponse(
-        sessions=[SessionRead.model_validate(s) for s in sessions],
-        total=len(sessions),
+    result = await db.execute(
+        select(Participant)
+        .where(Participant.coordination_session_id.in_(coord_q))
+        .order_by(Participant.joined_at.desc())
+    )
+    participants = list(result.scalars().all())
+
+    return ParticipantListResponse(
+        participants=[ParticipantRead.model_validate(p) for p in participants],
+        total=len(participants),
     )
 
 
@@ -378,16 +443,11 @@ async def leave_room(
     session_id: UUID,
     db: AsyncSession = Depends(get_async_session),
 ):
-    """Remove an agent session (leave room)."""
-    result = await db.execute(
-        select(Session).where(
-            Session.id == session_id,
-            Session.room_name == room_name,
-        )
-    )
-    session = result.scalar_one_or_none()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+    """Remove a participant (agent leaves the session)."""
+    result = await db.execute(select(Participant).where(Participant.id == session_id))
+    participant = result.scalar_one_or_none()
+    if not participant:
+        raise HTTPException(status_code=404, detail="Participant not found")
 
-    await db.delete(session)
+    await db.delete(participant)
     await db.commit()

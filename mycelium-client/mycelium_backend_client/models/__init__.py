@@ -51,15 +51,15 @@ from .memory_search_result import MemorySearchResult
 from .message_create import MessageCreate
 from .message_list_response import MessageListResponse
 from .message_read import MessageRead
+from .participant_create import ParticipantCreate
+from .participant_list_response import ParticipantListResponse
+from .participant_read import ParticipantRead
 from .query_request import QueryRequest
 from .query_request_additional_context_type_0 import QueryRequestAdditionalContextType0
 from .room_create import RoomCreate
 from .room_create_trigger_config_type_0 import RoomCreateTriggerConfigType0
 from .room_read import RoomRead
 from .room_read_trigger_config_type_0 import RoomReadTriggerConfigType0
-from .session_create import SessionCreate
-from .session_list_response import SessionListResponse
-from .session_read import SessionRead
 from .spawn_session_api_rooms_room_name_sessions_spawn_post_response_spawn_session_api_rooms_room_name_sessions_spawn_post import (
     SpawnSessionApiRoomsRoomNameSessionsSpawnPostResponseSpawnSessionApiRoomsRoomNameSessionsSpawnPost,
 )
@@ -105,15 +105,15 @@ __all__ = (
     "MessageCreate",
     "MessageListResponse",
     "MessageRead",
+    "ParticipantCreate",
+    "ParticipantListResponse",
+    "ParticipantRead",
     "QueryRequest",
     "QueryRequestAdditionalContextType0",
     "RoomCreate",
     "RoomCreateTriggerConfigType0",
     "RoomRead",
     "RoomReadTriggerConfigType0",
-    "SessionCreate",
-    "SessionListResponse",
-    "SessionRead",
     "SpawnSessionApiRoomsRoomNameSessionsSpawnPostResponseSpawnSessionApiRoomsRoomNameSessionsSpawnPost",
     "SubscriptionCreate",
     "SubscriptionRead",

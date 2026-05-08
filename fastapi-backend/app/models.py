@@ -4,7 +4,7 @@
 """
 Mycelium data models.
 
-Agent, Room, Message, Session, AuditEvent, Memory, MemorySubscription.
+Agent, Room, CoordinationSession, Participant, Message, AuditEvent, Memory, MemorySubscription.
 """
 
 from datetime import datetime
@@ -187,14 +187,23 @@ class Message(Base):
     )
 
 
-class Session(Base):
-    """Agent presence in a room — tracks who has joined."""
+class Participant(Base):
+    """Agent participating in a coordination session — the roster.
 
-    __tablename__ = "sessions"
+    One row per agent join. The CognitiveEngine reads this to learn the list
+    of agent handles + intents at tick 0 and to address per-agent ticks during
+    a round. Renamed from ``sessions`` (#197 follow-up); the old name conflated
+    "the negotiation entity" with "the agent roster for that negotiation".
+    """
+
+    __tablename__ = "participants"
 
     id: Mapped[UUID_Type] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    room_name: Mapped[str] = mapped_column(
-        String, ForeignKey("rooms.name", ondelete="CASCADE"), nullable=False, index=True
+    coordination_session_id: Mapped[UUID_Type] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("coordination_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     agent_handle: Mapped[str] = mapped_column(String, nullable=False, index=True)
     joined_at: Mapped[datetime] = mapped_column(

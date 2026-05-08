@@ -63,7 +63,7 @@ def sync_detailed(
 ) -> Response[Any | HTTPValidationError]:
     """Leave Room
 
-     Remove an agent session (leave room).
+     Remove a participant (agent leaves the session).
 
     Args:
         room_name (str):
@@ -97,7 +97,7 @@ def sync(
 ) -> Any | HTTPValidationError | None:
     """Leave Room
 
-     Remove an agent session (leave room).
+     Remove a participant (agent leaves the session).
 
     Args:
         room_name (str):
@@ -126,7 +126,7 @@ async def asyncio_detailed(
 ) -> Response[Any | HTTPValidationError]:
     """Leave Room
 
-     Remove an agent session (leave room).
+     Remove a participant (agent leaves the session).
 
     Args:
         room_name (str):
@@ -158,7 +158,7 @@ async def asyncio(
 ) -> Any | HTTPValidationError | None:
     """Leave Room
 
-     Remove an agent session (leave room).
+     Remove a participant (agent leaves the session).
 
     Args:
         room_name (str):

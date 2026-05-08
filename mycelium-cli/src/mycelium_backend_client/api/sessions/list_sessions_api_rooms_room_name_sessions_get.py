@@ -7,7 +7,7 @@ import httpx
 from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.http_validation_error import HTTPValidationError
-from ...models.session_list_response import SessionListResponse
+from ...models.participant_list_response import ParticipantListResponse
 from ...types import Response
 
 
@@ -26,9 +26,9 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> HTTPValidationError | SessionListResponse | None:
+) -> HTTPValidationError | ParticipantListResponse | None:
     if response.status_code == 200:
-        response_200 = SessionListResponse.from_dict(response.json())
+        response_200 = ParticipantListResponse.from_dict(response.json())
 
         return response_200
 
@@ -45,7 +45,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[HTTPValidationError | SessionListResponse]:
+) -> Response[HTTPValidationError | ParticipantListResponse]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -58,10 +58,10 @@ def sync_detailed(
     room_name: str,
     *,
     client: AuthenticatedClient | Client,
-) -> Response[HTTPValidationError | SessionListResponse]:
+) -> Response[HTTPValidationError | ParticipantListResponse]:
     """List Sessions
 
-     List agents currently in a room.
+     List agents participating in a room's coordination session.
 
     Args:
         room_name (str):
@@ -71,7 +71,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | SessionListResponse]
+        Response[HTTPValidationError | ParticipantListResponse]
     """
 
     kwargs = _get_kwargs(
@@ -89,10 +89,10 @@ def sync(
     room_name: str,
     *,
     client: AuthenticatedClient | Client,
-) -> HTTPValidationError | SessionListResponse | None:
+) -> HTTPValidationError | ParticipantListResponse | None:
     """List Sessions
 
-     List agents currently in a room.
+     List agents participating in a room's coordination session.
 
     Args:
         room_name (str):
@@ -102,7 +102,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | SessionListResponse
+        HTTPValidationError | ParticipantListResponse
     """
 
     return sync_detailed(
@@ -115,10 +115,10 @@ async def asyncio_detailed(
     room_name: str,
     *,
     client: AuthenticatedClient | Client,
-) -> Response[HTTPValidationError | SessionListResponse]:
+) -> Response[HTTPValidationError | ParticipantListResponse]:
     """List Sessions
 
-     List agents currently in a room.
+     List agents participating in a room's coordination session.
 
     Args:
         room_name (str):
@@ -128,7 +128,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | SessionListResponse]
+        Response[HTTPValidationError | ParticipantListResponse]
     """
 
     kwargs = _get_kwargs(
@@ -144,10 +144,10 @@ async def asyncio(
     room_name: str,
     *,
     client: AuthenticatedClient | Client,
-) -> HTTPValidationError | SessionListResponse | None:
+) -> HTTPValidationError | ParticipantListResponse | None:
     """List Sessions
 
-     List agents currently in a room.
+     List agents participating in a room's coordination session.
 
     Args:
         room_name (str):
@@ -157,7 +157,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | SessionListResponse
+        HTTPValidationError | ParticipantListResponse
     """
 
     return (

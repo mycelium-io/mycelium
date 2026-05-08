@@ -143,10 +143,10 @@ def join(
         from mycelium_backend_client.api.sessions import (
             join_room_api_rooms_room_name_sessions_post as join_api,
         )
-        from mycelium_backend_client.models import SessionCreate
+        from mycelium_backend_client.models import ParticipantCreate
 
         with _typed_client(config) as client:
-            body = SessionCreate(agent_handle=handle, intent=intent)
+            body = ParticipantCreate(agent_handle=handle, intent=intent)
             result = join_api.sync(room_name=room_name, client=client, body=body)
             data = result.to_dict() if result and hasattr(result, "to_dict") else {}
 
@@ -475,21 +475,21 @@ def list_sessions(
             if result and hasattr(result, "to_dict"):
                 data = result.to_dict()
             else:
-                data = {"sessions": [], "total": 0}
+                data = {"participants": [], "total": 0}
 
         if json_output:
             typer.echo(json_module.dumps(data, indent=2, default=str))
             return
 
-        sessions = data.get("sessions", [])
-        if not isinstance(sessions, list) or not sessions:
-            typer.echo(f"  No active sessions in {room_name}")
+        participants = data.get("participants", [])
+        if not isinstance(participants, list) or not participants:
+            typer.echo(f"  No active participants in {room_name}")
             return
 
-        typer.echo(f"  {room_name} — {len(sessions)} session(s)\n")
-        for s in sessions:
+        typer.echo(f"  {room_name} — {len(participants)} participant(s)\n")
+        for p in participants:
             typer.echo(
-                f"    {s.get('agent_handle', '?')}  joined {str(s.get('joined_at', ''))[:16]}"
+                f"    {p.get('agent_handle', '?')}  joined {str(p.get('joined_at', ''))[:16]}"
             )
 
     except Exception as e:
