@@ -87,17 +87,17 @@ class MessageListResponse(BaseModel):
     total: int
 
 
-# ── Session ───────────────────────────────────────────────────────────────────
+# ── Participant (agent in a coordination session) ────────────────────────────
 
 
-class SessionCreate(BaseModel):
+class ParticipantCreate(BaseModel):
     agent_handle: str = Field(..., description="Agent handle joining the room")
     intent: str | None = Field(None, description="Agent's requirements/intent for coordination")
 
 
-class SessionRead(BaseModel):
+class ParticipantRead(BaseModel):
     id: UUID
-    room_name: str
+    coordination_session_id: UUID
     agent_handle: str
     intent: str | None = None
     joined_at: datetime
@@ -106,9 +106,26 @@ class SessionRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class SessionListResponse(BaseModel):
-    sessions: list[SessionRead]
+class ParticipantListResponse(BaseModel):
+    participants: list[ParticipantRead]
     total: int
+
+
+# ── CoordinationSession (#197) ────────────────────────────────────────────────
+
+
+class CoordinationSessionRead(BaseModel):
+    id: UUID
+    parent_room_name: str
+    short_id: str
+    state: str
+    created_at: datetime
+    join_window_ends_at: datetime | None = None
+    mas_id: str | None = None
+    workspace_id: str | None = None
+    display_name: str
+
+    model_config = {"from_attributes": True}
 
 
 # ── AuditEvent ────────────────────────────────────────────────────────────────

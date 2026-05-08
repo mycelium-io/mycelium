@@ -11,15 +11,15 @@ from dateutil.parser import isoparse
 
 from ..types import UNSET, Unset
 
-T = TypeVar("T", bound="SessionRead")
+T = TypeVar("T", bound="ParticipantRead")
 
 
 @_attrs_define
-class SessionRead:
+class ParticipantRead:
     """
     Attributes:
         id (UUID):
-        room_name (str):
+        coordination_session_id (UUID):
         agent_handle (str):
         joined_at (datetime.datetime):
         intent (None | str | Unset):
@@ -27,7 +27,7 @@ class SessionRead:
     """
 
     id: UUID
-    room_name: str
+    coordination_session_id: UUID
     agent_handle: str
     joined_at: datetime.datetime
     intent: None | str | Unset = UNSET
@@ -37,7 +37,7 @@ class SessionRead:
     def to_dict(self) -> dict[str, Any]:
         id = str(self.id)
 
-        room_name = self.room_name
+        coordination_session_id = str(self.coordination_session_id)
 
         agent_handle = self.agent_handle
 
@@ -62,7 +62,7 @@ class SessionRead:
         field_dict.update(
             {
                 "id": id,
-                "room_name": room_name,
+                "coordination_session_id": coordination_session_id,
                 "agent_handle": agent_handle,
                 "joined_at": joined_at,
             }
@@ -79,7 +79,7 @@ class SessionRead:
         d = dict(src_dict)
         id = UUID(d.pop("id"))
 
-        room_name = d.pop("room_name")
+        coordination_session_id = UUID(d.pop("coordination_session_id"))
 
         agent_handle = d.pop("agent_handle")
 
@@ -111,17 +111,17 @@ class SessionRead:
 
         last_seen = _parse_last_seen(d.pop("last_seen", UNSET))
 
-        session_read = cls(
+        participant_read = cls(
             id=id,
-            room_name=room_name,
+            coordination_session_id=coordination_session_id,
             agent_handle=agent_handle,
             joined_at=joined_at,
             intent=intent,
             last_seen=last_seen,
         )
 
-        session_read.additional_properties = d
-        return session_read
+        participant_read.additional_properties = d
+        return participant_read
 
     @property
     def additional_keys(self) -> list[str]:

@@ -8,11 +8,11 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
-T = TypeVar("T", bound="SessionCreate")
+T = TypeVar("T", bound="ParticipantCreate")
 
 
 @_attrs_define
-class SessionCreate:
+class ParticipantCreate:
     """
     Attributes:
         agent_handle (str): Agent handle joining the room
@@ -58,13 +58,13 @@ class SessionCreate:
 
         intent = _parse_intent(d.pop("intent", UNSET))
 
-        session_create = cls(
+        participant_create = cls(
             agent_handle=agent_handle,
             intent=intent,
         )
 
-        session_create.additional_properties = d
-        return session_create
+        participant_create.additional_properties = d
+        return participant_create
 
     @property
     def additional_keys(self) -> list[str]:

@@ -35,7 +35,7 @@ from sqlalchemy import delete, select, update
 from app.bus import agent_channel, notify, room_channel
 from app.config import settings
 from app.database import async_session_maker
-from app.models import Message, Room, Session
+from app.models import CoordinationSession, Message, Participant, Room
 from app.services.metrics import (
     record_consensus,
     record_coordination_round,
@@ -351,13 +351,33 @@ def schedule_join_timer(room_name: str, deadline: datetime) -> asyncio.Task:
 async def _run_tick(room_name: str, tick: int) -> None:
     """Tick 0: launch CFN negotiation. Errors if CFN not configured on the room."""
     async with async_session_maker() as db:
+        # room_name here is the session-shadow display name like "{parent}:session:{short}".
+        # Look up the corresponding CoordinationSession to find its participants.
+        if ":session:" in room_name:
+            parent, _, short_id = room_name.partition(":session:")
+            coord_result = await db.execute(
+                select(CoordinationSession).where(
+                    CoordinationSession.parent_room_name == parent,
+                    CoordinationSession.short_id == short_id,
+                )
+            )
+            coord_session = coord_result.scalar_one_or_none()
+        else:
+            coord_session = None
+
+        if coord_session is None:
+            logger.warning("No coordination session for room %s at tick %d", room_name, tick)
+            return
+
         result = await db.execute(
-            select(Session).where(Session.room_name == room_name).order_by(Session.joined_at)
+            select(Participant)
+            .where(Participant.coordination_session_id == coord_session.id)
+            .order_by(Participant.joined_at)
         )
         sessions = list(result.scalars().all())
 
         if not sessions:
-            logger.warning("No sessions found for room %s at tick %d", room_name, tick)
+            logger.warning("No participants for room %s at tick %d", room_name, tick)
             return
 
         session_handles = [s.agent_handle for s in sessions]
@@ -1112,9 +1132,20 @@ async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool
             .where(Room.name == room_name)
             .values(coordination_state="complete" if not broken else "failed")
         )
-        # Clean up agent Session rows so a subsequent session in the same
+        # Clean up Participant rows so a subsequent session in the same
         # namespace doesn't see stale participants and cause CFN to fail.
-        await db.execute(delete(Session).where(Session.room_name == room_name))
+        if ":session:" in room_name:
+            parent, _, short_id = room_name.partition(":session:")
+            await db.execute(
+                delete(Participant).where(
+                    Participant.coordination_session_id.in_(
+                        select(CoordinationSession.id).where(
+                            CoordinationSession.parent_room_name == parent,
+                            CoordinationSession.short_id == short_id,
+                        )
+                    )
+                )
+            )
         await db.commit()
 
 
@@ -1366,10 +1397,21 @@ async def _post_message(room_name: str, message_type: str, content: str) -> None
             pass
     elif message_type == "coordination_consensus":
         async with async_session_maker() as db:
-            result = await db.execute(
-                select(Session.agent_handle).where(Session.room_name == room_name)
-            )
-            agent_handles = list(result.scalars().all())
+            if ":session:" in room_name:
+                parent, _, short_id = room_name.partition(":session:")
+                result = await db.execute(
+                    select(Participant.agent_handle).where(
+                        Participant.coordination_session_id.in_(
+                            select(CoordinationSession.id).where(
+                                CoordinationSession.parent_room_name == parent,
+                                CoordinationSession.short_id == short_id,
+                            )
+                        )
+                    )
+                )
+                agent_handles = list(result.scalars().all())
+            else:
+                agent_handles = []
 
     try:
         parsed_url = urlparse(settings.DATABASE_URL)

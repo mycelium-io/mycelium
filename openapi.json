@@ -51,7 +51,7 @@
                     "rooms"
                 ],
                 "summary": "List Rooms",
-                "description": "List rooms with optional name filter.",
+                "description": "List rooms.\n\nBy default returns only real rooms (namespaces). Session-shadow rows are\nexcluded so ``mycelium room ls`` stays clean. Pass ``include_sessions=true``\nto include the shadow rows \u2014 used by callers (e.g. the OpenClaw channel\nplugin) that still address sessions by name during the deprecation window.",
                 "operationId": "list_rooms_api_rooms_get",
                 "parameters": [
                     {
@@ -88,6 +88,16 @@
                                 }
                             ],
                             "title": "Name"
+                        }
+                    },
+                    {
+                        "name": "include_sessions",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false,
+                            "title": "Include Sessions"
                         }
                     }
                 ],
@@ -580,7 +590,7 @@
                     "content": {
                         "application/json": {
                             "schema": {
-                                "$ref": "#/components/schemas/SessionCreate"
+                                "$ref": "#/components/schemas/ParticipantCreate"
                             }
                         }
                     }
@@ -591,7 +601,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/SessionRead"
+                                    "$ref": "#/components/schemas/ParticipantRead"
                                 }
                             }
                         }
@@ -613,7 +623,7 @@
                     "sessions"
                 ],
                 "summary": "List Sessions",
-                "description": "List agents currently in a room.",
+                "description": "List agents participating in a room's coordination session.",
                 "operationId": "list_sessions_api_rooms__room_name__sessions_get",
                 "parameters": [
                     {
@@ -632,7 +642,54 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/SessionListResponse"
+                                    "$ref": "#/components/schemas/ParticipantListResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/rooms/{room_name}/sessions/coordination": {
+            "get": {
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "List Coordination Sessions",
+                "description": "List negotiation sessions in a room (#197).\n\nReturns first-class CoordinationSession entities. The shadow rows in the\nrooms table are an implementation detail that callers shouldn't depend on.",
+                "operationId": "list_coordination_sessions_api_rooms__room_name__sessions_coordination_get",
+                "parameters": [
+                    {
+                        "name": "room_name",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Room Name"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/CoordinationSessionRead"
+                                    },
+                                    "title": "Response List Coordination Sessions Api Rooms  Room Name  Sessions Coordination Get"
                                 }
                             }
                         }
@@ -656,7 +713,7 @@
                     "sessions"
                 ],
                 "summary": "Leave Room",
-                "description": "Remove an agent session (leave room).",
+                "description": "Remove a participant (agent leaves the session).",
                 "operationId": "leave_room_api_rooms__room_name__sessions__session_id__delete",
                 "parameters": [
                     {
@@ -2263,6 +2320,80 @@
                 ],
                 "title": "ConceptsByIdsRequest"
             },
+            "CoordinationSessionRead": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Id"
+                    },
+                    "parent_room_name": {
+                        "type": "string",
+                        "title": "Parent Room Name"
+                    },
+                    "short_id": {
+                        "type": "string",
+                        "title": "Short Id"
+                    },
+                    "state": {
+                        "type": "string",
+                        "title": "State"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    },
+                    "join_window_ends_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Join Window Ends At"
+                    },
+                    "mas_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Mas Id"
+                    },
+                    "workspace_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Workspace Id"
+                    },
+                    "display_name": {
+                        "type": "string",
+                        "title": "Display Name"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "parent_room_name",
+                    "short_id",
+                    "state",
+                    "created_at",
+                    "display_name"
+                ],
+                "title": "CoordinationSessionRead"
+            },
             "GraphPathsRequest": {
                 "properties": {
                     "source_id": {
@@ -3038,6 +3169,107 @@
                 ],
                 "title": "MessageRead"
             },
+            "ParticipantCreate": {
+                "properties": {
+                    "agent_handle": {
+                        "type": "string",
+                        "title": "Agent Handle",
+                        "description": "Agent handle joining the room"
+                    },
+                    "intent": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Intent",
+                        "description": "Agent's requirements/intent for coordination"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "agent_handle"
+                ],
+                "title": "ParticipantCreate"
+            },
+            "ParticipantListResponse": {
+                "properties": {
+                    "participants": {
+                        "items": {
+                            "$ref": "#/components/schemas/ParticipantRead"
+                        },
+                        "type": "array",
+                        "title": "Participants"
+                    },
+                    "total": {
+                        "type": "integer",
+                        "title": "Total"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "participants",
+                    "total"
+                ],
+                "title": "ParticipantListResponse"
+            },
+            "ParticipantRead": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Id"
+                    },
+                    "coordination_session_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Coordination Session Id"
+                    },
+                    "agent_handle": {
+                        "type": "string",
+                        "title": "Agent Handle"
+                    },
+                    "intent": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Intent"
+                    },
+                    "joined_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Joined At"
+                    },
+                    "last_seen": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Last Seen"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "coordination_session_id",
+                    "agent_handle",
+                    "joined_at"
+                ],
+                "title": "ParticipantRead"
+            },
             "QueryRequest": {
                 "properties": {
                     "intent": {
@@ -3295,106 +3527,6 @@
                     "created_at"
                 ],
                 "title": "RoomRead"
-            },
-            "SessionCreate": {
-                "properties": {
-                    "agent_handle": {
-                        "type": "string",
-                        "title": "Agent Handle",
-                        "description": "Agent handle joining the room"
-                    },
-                    "intent": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Intent",
-                        "description": "Agent's requirements/intent for coordination"
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "agent_handle"
-                ],
-                "title": "SessionCreate"
-            },
-            "SessionListResponse": {
-                "properties": {
-                    "sessions": {
-                        "items": {
-                            "$ref": "#/components/schemas/SessionRead"
-                        },
-                        "type": "array",
-                        "title": "Sessions"
-                    },
-                    "total": {
-                        "type": "integer",
-                        "title": "Total"
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "sessions",
-                    "total"
-                ],
-                "title": "SessionListResponse"
-            },
-            "SessionRead": {
-                "properties": {
-                    "id": {
-                        "type": "string",
-                        "format": "uuid",
-                        "title": "Id"
-                    },
-                    "room_name": {
-                        "type": "string",
-                        "title": "Room Name"
-                    },
-                    "agent_handle": {
-                        "type": "string",
-                        "title": "Agent Handle"
-                    },
-                    "intent": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Intent"
-                    },
-                    "joined_at": {
-                        "type": "string",
-                        "format": "date-time",
-                        "title": "Joined At"
-                    },
-                    "last_seen": {
-                        "anyOf": [
-                            {
-                                "type": "string",
-                                "format": "date-time"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Last Seen"
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "id",
-                    "room_name",
-                    "agent_handle",
-                    "joined_at"
-                ],
-                "title": "SessionRead"
             },
             "SubscriptionCreate": {
                 "properties": {

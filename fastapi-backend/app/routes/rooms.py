@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_async_session
-from app.models import Room, Session
+from app.models import Room
 from app.schemas import RoomCreate, RoomRead
 from app.services import coordination
 from app.services.filesystem import ensure_room_structure, get_room_dir, remove_room_dir
@@ -145,9 +145,20 @@ async def list_rooms(
     skip: int = 0,
     limit: int = 1000,
     name: str | None = None,
+    include_sessions: bool = False,
 ):
-    """List rooms with optional name filter."""
+    """List rooms.
+
+    By default returns only real rooms (namespaces). Session-shadow rows are
+    excluded so ``mycelium room ls`` stays clean. Pass ``include_sessions=true``
+    to include the shadow rows — used by callers (e.g. the OpenClaw channel
+    plugin) that still address sessions by name during the deprecation window.
+    """
     query = select(Room).where(Room.is_public == True)  # noqa: E712
+
+    if not include_sessions:
+        # Session-shadow rows have parent_namespace set; real rooms don't.
+        query = query.where(Room.parent_namespace.is_(None))
 
     if name:
         query = query.where(Room.name.ilike(f"%{name}%"))
@@ -355,14 +366,10 @@ async def delete_room(
         # Teardown is best-effort cleanup; log but don't block the delete.
         logger.warning("coordination.teardown_for_namespace failed for %s: %s", room_name, exc)
 
-    # 3. Delete child Session rows for every child room (and the parent, in
-    #    case anyone joined it directly), then the child Room rows.
-    if child_room_names:
-        await session.execute(delete(Session).where(Session.room_name.in_(child_room_names)))
-    await session.execute(delete(Session).where(Session.room_name == room_name))
-
-    # 4. Defensive: mark any still-existing child rooms as failed before delete
-    #    so any concurrent reader sees a consistent state.
+    # 3. Mark any still-existing child rooms as failed before delete so any
+    #    concurrent reader sees a consistent state. Participant rows cascade
+    #    away via coordination_sessions.id (CASCADE) when the parent room is
+    #    deleted in step 4.
     if child_room_names:
         await session.execute(
             update(Room).where(Room.name.in_(child_room_names)).values(coordination_state="failed")

@@ -51,7 +51,7 @@ cd mycelium-frontend && pnpm install && pnpm dev
 
 **AgensGraph** (PostgreSQL 16 fork) is the search index and coordination backend:
 - pgvector: semantic vector search over memory embeddings (updated on write)
-- SQL tables: rooms, sessions, messages, subscriptions, coordination state
+- SQL tables: rooms, coordination_sessions, sessions (presence), messages, subscriptions
 - openCypher: knowledge graph (optional enrichment layer)
 
 **Memory flow**:
