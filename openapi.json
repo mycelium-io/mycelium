@@ -51,7 +51,7 @@
                     "rooms"
                 ],
                 "summary": "List Rooms",
-                "description": "List rooms.\n\nBy default returns only real rooms (namespaces). Session-shadow rows are\nexcluded so ``mycelium room ls`` stays clean. Pass ``include_sessions=true``\nto include the shadow rows \u2014 used by callers (e.g. the OpenClaw channel\nplugin) that still address sessions by name during the deprecation window.",
+                "description": "List rooms.\n\nSessions live in ``coordination_sessions`` and are not surfaced here. The\n``include_sessions`` parameter is accepted for backward-compatible URLs\nbut is a no-op \u2014 there are no session-shadow rows in this table.",
                 "operationId": "list_rooms_api_rooms_get",
                 "parameters": [
                     {
@@ -176,7 +176,7 @@
                     "rooms"
                 ],
                 "summary": "Delete Room",
-                "description": "Delete a room and cascade to its child session rooms.\n\nCleanup order is important to avoid stale state firing against\nalready-deleted rows:\n\n  1. Enumerate child session rooms (``parent_namespace == room_name``).\n  2. Tear down all in-memory CFN coordination state for the namespace\n     and its children (cancels pending join timers and active round\n     timeouts, posts ``coordination_consensus broken=True`` to any\n     SSE subscribers).\n  3. Delete child ``Session`` rows, then child ``Room`` rows.\n  4. Mark any active child rooms as ``coordination_state=\"failed\"``\n     (defensive \u2014 if step 3 didn't catch them due to a race, the\n     state still reflects reality).\n  5. Delete the parent ``Room`` row.\n  6. Remove the filesystem directory.\n  7. Delete the MAS in the CFN mgmt plane (non-fatal, last so a CFN\n     error doesn't block the local cleanup).",
+                "description": "Delete a room and cascade to its child session rooms.\n\nCleanup order:\n\n  1. Resolve all coordination sessions for this room (display names + IDs).\n  2. Tear down in-memory CFN coordination state. Doing this before DB\n     deletes prevents in-flight ticks from firing against half-deleted\n     state.\n  3. Delete the room row \u2014 coordination_sessions, participants, and\n     messages cascade automatically via FK ON DELETE CASCADE.\n  4. Remove the filesystem directory.\n  5. Delete the MAS in the CFN mgmt plane (non-fatal, last).",
                 "operationId": "delete_room_api_rooms__room_name__delete",
                 "parameters": [
                     {
@@ -431,7 +431,7 @@
                     "messages"
                 ],
                 "summary": "List Messages",
-                "description": "List messages in a room, newest first.",
+                "description": "List messages in a room (or coordination session), newest first.",
                 "operationId": "list_messages_api_rooms__room_name__messages_get",
                 "parameters": [
                     {
@@ -527,7 +527,7 @@
                     "sessions"
                 ],
                 "summary": "Spawn Session",
-                "description": "Explicitly spawn a negotiation session within a namespace room.",
+                "description": "Explicitly spawn a negotiation session within a room.",
                 "operationId": "spawn_session_api_rooms__room_name__sessions_spawn_post",
                 "parameters": [
                     {
@@ -572,7 +572,7 @@
                     "sessions"
                 ],
                 "summary": "Join Room",
-                "description": "Join a room. If the room is a namespace, auto-spawns a session and joins that.",
+                "description": "Join a room. Auto-spawns a coordination session if one doesn't exist.",
                 "operationId": "join_room_api_rooms__room_name__sessions_post",
                 "parameters": [
                     {
@@ -623,7 +623,7 @@
                     "sessions"
                 ],
                 "summary": "List Sessions",
-                "description": "List agents participating in a room's coordination session.",
+                "description": "List agents participating in a room's coordination session(s).\n\nAccepts either a real room name (returns participants across all its\ncoord_sessions) or a legacy ``{parent}:session:{short}`` display name\n(returns participants of just that one session).",
                 "operationId": "list_sessions_api_rooms__room_name__sessions_get",
                 "parameters": [
                     {
@@ -666,7 +666,7 @@
                     "sessions"
                 ],
                 "summary": "List Coordination Sessions",
-                "description": "List negotiation sessions in a room (#197).\n\nReturns first-class CoordinationSession entities. The shadow rows in the\nrooms table are an implementation detail that callers shouldn't depend on.",
+                "description": "List negotiation sessions in a room.\n\nReturns first-class CoordinationSession entities scoped to ``room_name``.",
                 "operationId": "list_coordination_sessions_api_rooms__room_name__sessions_coordination_get",
                 "parameters": [
                     {
@@ -1968,6 +1968,324 @@
                 }
             }
         },
+        "/api/coordination-sessions": {
+            "get": {
+                "tags": [
+                    "coordination-sessions"
+                ],
+                "summary": "List Coordination Sessions",
+                "description": "List coordination sessions, newest first.\n\nSupports two filters used by the OpenClaw channel plugin's polling loop\n(``state=waiting,negotiating``) and the frontend sessions rail\n(``parent_room=<name>``).",
+                "operationId": "list_coordination_sessions_api_coordination_sessions_get",
+                "parameters": [
+                    {
+                        "name": "parent_room",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter by parent room name",
+                            "title": "Parent Room"
+                        },
+                        "description": "Filter by parent room name"
+                    },
+                    {
+                        "name": "state",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Comma-separated state filter (e.g. 'waiting,negotiating')",
+                            "title": "State"
+                        },
+                        "description": "Comma-separated state filter (e.g. 'waiting,negotiating')"
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 1000,
+                            "default": 200,
+                            "title": "Limit"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/CoordinationSessionRead"
+                                    },
+                                    "title": "Response List Coordination Sessions Api Coordination Sessions Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/coordination-sessions/{session_id}": {
+            "get": {
+                "tags": [
+                    "coordination-sessions"
+                ],
+                "summary": "Get Coordination Session",
+                "operationId": "get_coordination_session_api_coordination_sessions__session_id__get",
+                "parameters": [
+                    {
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Session Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CoordinationSessionRead"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/coordination-sessions/{session_id}/messages": {
+            "post": {
+                "tags": [
+                    "coordination-sessions"
+                ],
+                "summary": "Post Session Message",
+                "description": "Post a message to a coordination session.\n\nMessages are stored with ``coordination_session_id`` set and ``room_name``\nnull. SSE subscribers on the session-display channel still receive them\nvia the same ``room:{display_name}`` NOTIFY topic during the deprecation\nwindow so existing OpenClaw plugin / CLI subscribers don't break.",
+                "operationId": "post_session_message_api_coordination_sessions__session_id__messages_post",
+                "parameters": [
+                    {
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Session Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/MessageCreate"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MessageRead"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "get": {
+                "tags": [
+                    "coordination-sessions"
+                ],
+                "summary": "List Session Messages",
+                "operationId": "list_session_messages_api_coordination_sessions__session_id__messages_get",
+                "parameters": [
+                    {
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Session Id"
+                        }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 500,
+                            "default": 50,
+                            "title": "Limit"
+                        }
+                    },
+                    {
+                        "name": "offset",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 0,
+                            "title": "Offset"
+                        }
+                    },
+                    {
+                        "name": "sender",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Sender"
+                        }
+                    },
+                    {
+                        "name": "message_type",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Message Type"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MessageListResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/coordination-sessions/{session_id}/messages/stream": {
+            "get": {
+                "tags": [
+                    "coordination-sessions"
+                ],
+                "summary": "Stream Session Messages",
+                "description": "SSE stream for a coordination session.\n\nResolves the session and subscribes to the underlying ``room:{display_name}``\nPostgres NOTIFY channel so any inbound message routed to either coord_session_id\nor the legacy display name surfaces here.",
+                "operationId": "stream_session_messages_api_coordination_sessions__session_id__messages_stream_get",
+                "parameters": [
+                    {
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Session Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/health": {
             "get": {
                 "tags": [
@@ -3126,8 +3444,27 @@
                         "title": "Id"
                     },
                     "room_name": {
-                        "type": "string",
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
                         "title": "Room Name"
+                    },
+                    "coordination_session_id": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "uuid"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Coordination Session Id"
                     },
                     "sender_handle": {
                         "type": "string",
@@ -3161,7 +3498,6 @@
                 "type": "object",
                 "required": [
                     "id",
-                    "room_name",
                     "sender_handle",
                     "message_type",
                     "content",
@@ -3434,23 +3770,6 @@
                         "title": "Coordination State",
                         "default": "idle"
                     },
-                    "join_deadline": {
-                        "anyOf": [
-                            {
-                                "type": "string",
-                                "format": "date-time"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Join Deadline"
-                    },
-                    "mode": {
-                        "type": "string",
-                        "title": "Mode",
-                        "default": "sync"
-                    },
                     "trigger_config": {
                         "anyOf": [
                             {
@@ -3479,22 +3798,6 @@
                         "type": "boolean",
                         "title": "Is Persistent",
                         "default": false
-                    },
-                    "is_namespace": {
-                        "type": "boolean",
-                        "title": "Is Namespace",
-                        "default": false
-                    },
-                    "parent_namespace": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Parent Namespace"
                     },
                     "mas_id": {
                         "anyOf": [

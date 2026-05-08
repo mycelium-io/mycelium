@@ -33,7 +33,7 @@ async def check_trigger(room_name: str) -> None:
     async with async_session_maker() as db:
         result = await db.execute(select(Room).where(Room.name == room_name))
         room = result.scalar_one_or_none()
-        if not room or not room.is_namespace:
+        if not room:
             return
 
         config = room.trigger_config

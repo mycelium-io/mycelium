@@ -383,34 +383,34 @@ async def _run_tick(room_name: str, tick: int) -> None:
         session_handles = [s.agent_handle for s in sessions]
         intents = [s.intent or "" for s in sessions]
 
-        # Load room — mas_id lives on the namespace room, not the session room
-        room_result = await db.execute(select(Room).where(Room.name == room_name))
-        room = room_result.scalar_one_or_none()
-        if room is not None and room.mas_id is None and room.parent_namespace:
-            ns_result = await db.execute(select(Room).where(Room.name == room.parent_namespace))
-            ns_room = ns_result.scalar_one_or_none()
-            if ns_room is not None and ns_room.mas_id:
-                room = ns_room
+        # mas_id / workspace_id live on the coord session (inherited from parent
+        # at spawn). Fall back to the parent room if for any reason the coord
+        # session row is missing them (legacy data).
+        mas_id = coord_session.mas_id
+        workspace_id = coord_session.workspace_id
+        if not mas_id or not workspace_id:
+            parent_room_result = await db.execute(
+                select(Room).where(Room.name == coord_session.parent_room_name)
+            )
+            parent_room = parent_room_result.scalar_one_or_none()
+            if parent_room is not None:
+                mas_id = mas_id or parent_room.mas_id
+                workspace_id = workspace_id or parent_room.workspace_id
 
         await db.execute(
-            update(Room).where(Room.name == room_name).values(coordination_state="negotiating")
+            update(CoordinationSession)
+            .where(CoordinationSession.id == coord_session.id)
+            .values(state="negotiating")
         )
         await db.commit()
 
     if tick != 0:
         return
 
-    use_cfn = bool(
-        settings.COGNITION_FABRIC_NODE_URL
-        and room is not None
-        and room.mas_id
-        and room.workspace_id
-    )
-
-    if not use_cfn or room is None or not room.mas_id or not room.workspace_id:
+    if not settings.COGNITION_FABRIC_NODE_URL or mas_id is None or workspace_id is None:
         logger.error(
             "Coordination requested for %s but CFN not configured (no COGNITION_FABRIC_NODE_URL "
-            "or room.mas_id/workspace_id not set)",
+            "or coord_session mas_id/workspace_id not set)",
             room_name,
         )
         await _post_message(
@@ -422,16 +422,29 @@ async def _run_tick(room_name: str, tick: int) -> None:
         )
         async with async_session_maker() as db:
             await db.execute(
-                update(Room).where(Room.name == room_name).values(coordination_state="failed")
+                update(CoordinationSession)
+                .where(CoordinationSession.id == coord_session.id)
+                .values(state="failed")
             )
             await db.commit()
         return
 
+    # Build a lightweight namespace-resolver shim; the rest of the negotiation
+    # path only reads ``room.workspace_id`` / ``room.mas_id`` / ``room.name``,
+    # so a SimpleNamespace is sufficient and avoids re-loading the Room.
+    from types import SimpleNamespace
+
+    room_for_negotiation = SimpleNamespace(
+        name=coord_session.parent_room_name,
+        mas_id=mas_id,
+        workspace_id=workspace_id,
+    )
+
     await _run_cfn_negotiation(
         room_name,
-        room,
-        room.workspace_id,
-        room.mas_id,
+        room_for_negotiation,  # ty: ignore[invalid-argument-type]
+        workspace_id,
+        mas_id,
         session_handles,
         intents,
     )
@@ -1127,15 +1140,18 @@ async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool
             exc,
         )
     async with async_session_maker() as db:
-        await db.execute(
-            update(Room)
-            .where(Room.name == room_name)
-            .values(coordination_state="complete" if not broken else "failed")
-        )
-        # Clean up Participant rows so a subsequent session in the same
-        # namespace doesn't see stale participants and cause CFN to fail.
         if ":session:" in room_name:
             parent, _, short_id = room_name.partition(":session:")
+            await db.execute(
+                update(CoordinationSession)
+                .where(
+                    CoordinationSession.parent_room_name == parent,
+                    CoordinationSession.short_id == short_id,
+                )
+                .values(state="complete" if not broken else "failed")
+            )
+            # Clean up Participant rows so a subsequent session in the same
+            # namespace doesn't see stale participants and cause CFN to fail.
             await db.execute(
                 delete(Participant).where(
                     Participant.coordination_session_id.in_(

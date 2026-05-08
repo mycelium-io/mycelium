@@ -27,13 +27,9 @@ class RoomRead:
         created_at (datetime.datetime):
         description (None | str | Unset):
         coordination_state (str | Unset):  Default: 'idle'.
-        join_deadline (datetime.datetime | None | Unset):
-        mode (str | Unset):  Default: 'sync'.
         trigger_config (None | RoomReadTriggerConfigType0 | Unset):
         last_synthesis_at (datetime.datetime | None | Unset):
         is_persistent (bool | Unset):  Default: False.
-        is_namespace (bool | Unset):  Default: False.
-        parent_namespace (None | str | Unset):
         mas_id (None | str | Unset):
         workspace_id (None | str | Unset):
     """
@@ -44,13 +40,9 @@ class RoomRead:
     created_at: datetime.datetime
     description: None | str | Unset = UNSET
     coordination_state: str | Unset = "idle"
-    join_deadline: datetime.datetime | None | Unset = UNSET
-    mode: str | Unset = "sync"
     trigger_config: None | RoomReadTriggerConfigType0 | Unset = UNSET
     last_synthesis_at: datetime.datetime | None | Unset = UNSET
     is_persistent: bool | Unset = False
-    is_namespace: bool | Unset = False
-    parent_namespace: None | str | Unset = UNSET
     mas_id: None | str | Unset = UNSET
     workspace_id: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -74,16 +66,6 @@ class RoomRead:
 
         coordination_state = self.coordination_state
 
-        join_deadline: None | str | Unset
-        if isinstance(self.join_deadline, Unset):
-            join_deadline = UNSET
-        elif isinstance(self.join_deadline, datetime.datetime):
-            join_deadline = self.join_deadline.isoformat()
-        else:
-            join_deadline = self.join_deadline
-
-        mode = self.mode
-
         trigger_config: dict[str, Any] | None | Unset
         if isinstance(self.trigger_config, Unset):
             trigger_config = UNSET
@@ -101,14 +83,6 @@ class RoomRead:
             last_synthesis_at = self.last_synthesis_at
 
         is_persistent = self.is_persistent
-
-        is_namespace = self.is_namespace
-
-        parent_namespace: None | str | Unset
-        if isinstance(self.parent_namespace, Unset):
-            parent_namespace = UNSET
-        else:
-            parent_namespace = self.parent_namespace
 
         mas_id: None | str | Unset
         if isinstance(self.mas_id, Unset):
@@ -136,20 +110,12 @@ class RoomRead:
             field_dict["description"] = description
         if coordination_state is not UNSET:
             field_dict["coordination_state"] = coordination_state
-        if join_deadline is not UNSET:
-            field_dict["join_deadline"] = join_deadline
-        if mode is not UNSET:
-            field_dict["mode"] = mode
         if trigger_config is not UNSET:
             field_dict["trigger_config"] = trigger_config
         if last_synthesis_at is not UNSET:
             field_dict["last_synthesis_at"] = last_synthesis_at
         if is_persistent is not UNSET:
             field_dict["is_persistent"] = is_persistent
-        if is_namespace is not UNSET:
-            field_dict["is_namespace"] = is_namespace
-        if parent_namespace is not UNSET:
-            field_dict["parent_namespace"] = parent_namespace
         if mas_id is not UNSET:
             field_dict["mas_id"] = mas_id
         if workspace_id is not UNSET:
@@ -180,25 +146,6 @@ class RoomRead:
         description = _parse_description(d.pop("description", UNSET))
 
         coordination_state = d.pop("coordination_state", UNSET)
-
-        def _parse_join_deadline(data: object) -> datetime.datetime | None | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            try:
-                if not isinstance(data, str):
-                    raise TypeError()
-                join_deadline_type_0 = isoparse(data)
-
-                return join_deadline_type_0
-            except (TypeError, ValueError, AttributeError, KeyError):
-                pass
-            return cast(datetime.datetime | None | Unset, data)
-
-        join_deadline = _parse_join_deadline(d.pop("join_deadline", UNSET))
-
-        mode = d.pop("mode", UNSET)
 
         def _parse_trigger_config(data: object) -> None | RoomReadTriggerConfigType0 | Unset:
             if data is None:
@@ -236,17 +183,6 @@ class RoomRead:
 
         is_persistent = d.pop("is_persistent", UNSET)
 
-        is_namespace = d.pop("is_namespace", UNSET)
-
-        def _parse_parent_namespace(data: object) -> None | str | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(None | str | Unset, data)
-
-        parent_namespace = _parse_parent_namespace(d.pop("parent_namespace", UNSET))
-
         def _parse_mas_id(data: object) -> None | str | Unset:
             if data is None:
                 return data
@@ -272,13 +208,9 @@ class RoomRead:
             created_at=created_at,
             description=description,
             coordination_state=coordination_state,
-            join_deadline=join_deadline,
-            mode=mode,
             trigger_config=trigger_config,
             last_synthesis_at=last_synthesis_at,
             is_persistent=is_persistent,
-            is_namespace=is_namespace,
-            parent_namespace=parent_namespace,
             mas_id=mas_id,
             workspace_id=workspace_id,
         )

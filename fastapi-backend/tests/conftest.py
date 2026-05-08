@@ -11,6 +11,7 @@ Sets MYCELIUM_DATA_DIR to a temp directory for filesystem tests.
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.database import get_async_session
@@ -30,6 +31,16 @@ def _set_data_dir(tmp_path, monkeypatch):
 async def db_session():
     """Ephemeral in-memory SQLite session, schema created fresh per test."""
     engine = create_async_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
+
+    # SQLite enforces FK constraints only when PRAGMA foreign_keys=ON. Without
+    # this the cascade-on-delete chain (room → coord_sessions → participants &
+    # messages) wouldn't fire in tests, hiding regressions.
+    @event.listens_for(engine.sync_engine, "connect")
+    def _enable_sqlite_fk(dbapi_conn, _conn_record):
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
