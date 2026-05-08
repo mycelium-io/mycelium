@@ -443,7 +443,7 @@ async def test_sync_multiple_agents_join(integration_client: AsyncClient):
     resp = await client.get(f"/api/rooms/{session_room_name}/sessions")
     sessions = resp.json()
     assert sessions["total"] == 2
-    handles = {s["agent_handle"] for s in sessions["sessions"]}
+    handles = {p["agent_handle"] for p in sessions["participants"]}
     assert handles == {"alpha", "beta"}
 
     # Session room should still be waiting (timer hasn't fired)
