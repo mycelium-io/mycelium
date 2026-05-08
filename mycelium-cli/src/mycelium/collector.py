@@ -631,8 +631,8 @@ def _fetch_backend_metrics(
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read())
             store.set_backend_metrics(data)
+            log.info("Backend metrics polled OK (%d counters)", len(data.get("counters", {})))
 
-            # Persist to disk if output path provided
             if output_path is not None:
                 try:
                     full_data = store.to_dict()
@@ -642,7 +642,7 @@ def _fetch_backend_metrics(
                 except Exception as write_exc:
                     log.debug("Failed to persist metrics: %s", write_exc)
     except Exception as exc:
-        log.debug("Backend metrics poll failed (%s): %s", api_url, exc)
+        log.warning("Backend metrics poll failed (%s): %s", api_url, exc)
 
 
 def _fetch_scrape_targets(
@@ -708,15 +708,7 @@ class OTLPHandler(BaseHTTPRequestHandler):
 
         if self.path == "/collector/metrics":
             data = self.store.to_dict()
-            self._json_response(
-                {
-                    "updated_at": data.get("updated_at"),
-                    "counters": data.get("counters", {}),
-                    "histograms": data.get("histograms", {}),
-                    "sessions": data.get("sessions", []),
-                    "scrape": data.get("scrape", {}),
-                }
-            )
+            self._json_response(data)
             return
 
         if self.path.startswith("/collector/traces"):
@@ -848,11 +840,15 @@ class OTLPHandler(BaseHTTPRequestHandler):
 
 
 def _is_local_url(url: str) -> bool:
-    """Return True if the URL points to a local address (hub mode)."""
+    """Return True if the URL points to a local/hub address.
+
+    Recognises localhost variants and the Docker Compose service name
+    used when the collector runs alongside the backend in the same stack.
+    """
     from urllib.parse import urlparse
 
     host = urlparse(url).hostname or ""
-    return host in ("localhost", "127.0.0.1", "::1", "0.0.0.0")
+    return host in ("localhost", "127.0.0.1", "::1", "0.0.0.0", "mycelium-backend")
 
 
 def run(
