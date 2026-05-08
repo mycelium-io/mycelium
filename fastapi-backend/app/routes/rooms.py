@@ -149,8 +149,8 @@ async def list_rooms(
     """List rooms.
 
     Sessions live in ``coordination_sessions`` and are not surfaced here. The
-    ``include_sessions`` parameter is kept for backward-compatible URLs but is
-    a no-op now (#244 — session-shadow rows no longer exist).
+    ``include_sessions`` parameter is accepted for backward-compatible URLs
+    but is a no-op — there are no session-shadow rows in this table.
     """
     _ = include_sessions  # accepted for compat; nothing to filter
     query = select(Room).where(Room.is_public == True)  # noqa: E712

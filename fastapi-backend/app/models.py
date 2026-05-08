@@ -116,7 +116,7 @@ class Room(Base):
 
 
 class CoordinationSession(Base):
-    """Coordination session — first-class entity per #197.
+    """Coordination session — first-class negotiation entity.
 
     A session is a single negotiation round inside a parent room. State lives
     here; the parent room holds persistent memory and namespace identity.
@@ -193,8 +193,9 @@ class Participant(Base):
 
     One row per agent join. The CognitiveEngine reads this to learn the list
     of agent handles + intents at tick 0 and to address per-agent ticks during
-    a round. Renamed from ``sessions`` (#197 follow-up); the old name conflated
-    "the negotiation entity" with "the agent roster for that negotiation".
+    a round. The original name ``sessions`` conflated "the negotiation entity"
+    with "the agent roster for that negotiation"; renaming clarifies which is
+    which.
     """
 
     __tablename__ = "participants"

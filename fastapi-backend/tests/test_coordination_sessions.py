@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Julia Valenti
 
-"""Tests for the first-class CoordinationSession entity (#197 + #244)."""
+"""Tests for the first-class CoordinationSession entity."""
 
 import pytest
 

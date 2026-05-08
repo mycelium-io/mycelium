@@ -63,9 +63,9 @@ export async function fetchSessions(roomName: string) {
 }
 
 export async function fetchChildRooms(parentName: string) {
-  // Sessions live in coordination_sessions (#244). Return the per-session
-  // display name + state so callers that previously walked rooms by name
-  // pattern keep working with minimal changes.
+  // Sessions live in coordination_sessions. Return the per-session display
+  // name + state so callers that previously walked rooms by name pattern
+  // keep working with minimal changes.
   const res = await fetch(
     `${API}/api/coordination-sessions?parent_room=${encodeURIComponent(parentName)}&limit=200`,
     { cache: "no-store" },

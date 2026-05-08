@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Julia Valenti
 
-"""Cascade-delete invariants for the post-#244 schema.
+"""Cascade-delete invariants for the room → coord-session → participant chain.
 
 The chain is:
     rooms.name → coordination_sessions.parent_room_name (CASCADE)

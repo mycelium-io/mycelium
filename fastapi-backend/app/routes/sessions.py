@@ -87,13 +87,12 @@ async def _resolve_coord_session_by_display(
 
 
 async def _spawn_coordination_session(parent_name: str, db: AsyncSession) -> CoordinationSession:
-    """Create or return a pending CoordinationSession in a namespace (#244).
+    """Create or return a pending CoordinationSession in a namespace.
 
-    Replaces the previous dual-write of (Room shadow + CoordinationSession).
-    Sessions no longer take up a row in ``rooms``; they live exclusively in
-    ``coordination_sessions``. Display names are synthesized from
-    ``parent_room_name + ":session:" + short_id`` for backward compat with the
-    SSE / messages URLs.
+    Sessions live exclusively in ``coordination_sessions`` — there is no
+    backing row in ``rooms``. Display names are synthesized from
+    ``parent_room_name + ":session:" + short_id`` so the SSE and messages
+    URLs that address sessions by name keep working.
     """
     result = await db.execute(
         select(CoordinationSession)
@@ -328,10 +327,9 @@ async def list_coordination_sessions(
     room_name: str,
     db: AsyncSession = Depends(get_async_session),
 ):
-    """List negotiation sessions in a room (#197).
+    """List negotiation sessions in a room.
 
-    Returns first-class CoordinationSession entities. The shadow rows in the
-    rooms table are an implementation detail that callers shouldn't depend on.
+    Returns first-class CoordinationSession entities scoped to ``room_name``.
     """
     parent = (await db.execute(select(Room).where(Room.name == room_name))).scalar_one_or_none()
     if not parent:

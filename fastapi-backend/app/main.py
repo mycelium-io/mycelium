@@ -184,8 +184,9 @@ app.include_router(knowledge_router)
 # Coordination observability (round-trace ring buffer; see issue #162)
 app.include_router(coordination_router)
 
-# Coordination sessions as a top-level resource (#244 — replaces shadow-room
-# display-name addressing for OpenClaw plugin / frontend / CLI consumers).
+# Coordination sessions as a top-level resource — used by OpenClaw plugin,
+# frontend, and CLI in place of addressing sessions by their parent room's
+# display name.
 app.include_router(coordination_sessions_router)
 
 

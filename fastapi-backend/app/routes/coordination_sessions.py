@@ -2,13 +2,12 @@
 # Copyright 2026 Julia Valenti
 
 """
-Coordination-session API — top-level resource (#244).
+Coordination-session API — top-level resource.
 
-Exposes negotiation sessions as first-class entities, replacing the
-legacy ``/api/rooms/{room}/sessions/coordination`` lookup which still
-addressed sessions via their parent-room display name. Consumers
-(OpenClaw plugin, frontend, CLI) use this surface so we can drop the
-shadow-room compat layer.
+Exposes negotiation sessions as first-class entities. Consumers (OpenClaw
+plugin, frontend, CLI) address sessions by id here rather than via their
+parent room's display name, so the ``/api/rooms/...`` surface no longer
+needs to know about session-name encoding.
 """
 
 import asyncio

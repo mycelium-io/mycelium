@@ -35,8 +35,8 @@ async def _resolve_target(
     """Resolve a path name to either a real Room or a CoordinationSession.
 
     Names with the legacy ``{parent}:session:{short}`` shape resolve to a
-    coordination session even when no shadow Room row exists (#244). Real
-    room names resolve to the Room. 404 if neither matches.
+    coordination session — there is no Room row for them. Real room names
+    resolve to the Room. 404 if neither matches.
     """
     if ":session:" in name:
         parent, _, short_id = name.partition(":session:")

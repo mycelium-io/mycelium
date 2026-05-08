@@ -109,7 +109,7 @@ class ParticipantListResponse(BaseModel):
     total: int
 
 
-# ── CoordinationSession (#197) ────────────────────────────────────────────────
+# ── CoordinationSession ──────────────────────────────────────────────────────
 
 
 class CoordinationSessionRead(BaseModel):

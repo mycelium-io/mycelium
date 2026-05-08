@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Julia Valenti
 
-"""Tests for coordination session spawning (#197 + #244)."""
+"""Tests for coordination session spawning."""
 
 from uuid import UUID
 
@@ -163,7 +163,7 @@ async def test_list_participants_via_session_display_name(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_session_display_name_is_not_a_room(client: AsyncClient):
-    """Session display names no longer have a backing Room row (#244)."""
+    """Session display names have no backing Room row — only a CoordinationSession."""
     await client.post("/api/rooms", json={"name": "check-ns"})
 
     await client.post(
