@@ -895,8 +895,10 @@ def _install_openclaw(
         compiled to dist/index.js before install.  Best-effort: warn on failure
         so a missing npm doesn't hard-block the install on older OpenClaw.
         """
-        for npm_cmd in (["npm", "install", "--prefer-offline", "--silent"],
-                        ["npm", "run", "build"]):
+        for npm_cmd in (
+            ["npm", "install", "--prefer-offline", "--silent"],
+            ["npm", "run", "build"],
+        ):
             if verbose:
                 typer.echo(f"  {' '.join(npm_cmd)} (in {plugin_dir})")
             result = subprocess.run(
