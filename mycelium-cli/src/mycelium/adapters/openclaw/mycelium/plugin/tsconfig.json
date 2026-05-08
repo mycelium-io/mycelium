@@ -6,8 +6,9 @@
     "outDir": "./dist",
     "rootDir": "./",
     "strict": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "allowJs": true
   },
-  "include": ["index.ts", "src/**/*.ts"],
+  "include": ["index.ts", "src/**/*.ts", "read-mycelium-config.js"],
   "exclude": ["test", "node_modules", "dist"]
 }
