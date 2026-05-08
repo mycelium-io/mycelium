@@ -98,31 +98,31 @@ export function installChannel(
 
     const pollInterval = setInterval(async () => {
       try {
-        // include_sessions=true: rooms endpoint hides session-shadow rows by
-        // default (#197). The plugin still addresses sessions by display name
-        // during the deprecation window, so it opts back in here.
-        const res = await fetch(`${cfg.backendUrl}/api/rooms?include_sessions=true`);
+        // Poll the first-class coord-sessions endpoint instead of /api/rooms
+        // (which no longer surfaces sessions). Display names are returned by
+        // the API so the rest of the SSE-by-display-name flow stays the same.
+        const res = await fetch(`${cfg.backendUrl}/api/coordination-sessions?limit=200`);
         if (!res.ok) return;
-        const rooms: any[] = await res.json();
+        const sessions: any[] = await res.json();
 
         const activeSessionRooms = new Set<string>();
 
-        for (const room of rooms) {
-          const name: string | undefined = room.name;
-          if (!name || !name.includes(":session:")) continue;
-          const state = room.coordination_state;
+        for (const s of sessions) {
+          const name: string | undefined = s.display_name;
+          if (!name) continue;
+          const state: string | undefined = s.state;
 
           activeSessionRooms.add(name);
 
           if (state === "waiting" || state === "negotiating") {
             startSessionSSE(runtime, cfg, name, _abort!, handleMessage, log);
-          } else if (TERMINAL_STATES.has(state)) {
+          } else if (state && TERMINAL_STATES.has(state)) {
             stopSessionSSE(name, log);
           }
         }
 
-        // Unsubscribe from sessions whose rooms no longer exist on the
-        // backend (deleted by test harness or coordination teardown).
+        // Unsubscribe from sessions that are no longer in the active list
+        // (removed by coordination teardown or parent-room delete).
         for (const subbed of subscribedSessionRooms()) {
           if (!activeSessionRooms.has(subbed)) {
             stopSessionSSE(subbed, log);

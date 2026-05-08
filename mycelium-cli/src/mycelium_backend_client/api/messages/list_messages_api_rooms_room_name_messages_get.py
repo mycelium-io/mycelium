@@ -93,7 +93,7 @@ def sync_detailed(
 ) -> Response[HTTPValidationError | MessageListResponse]:
     """List Messages
 
-     List messages in a room, newest first.
+     List messages in a room (or coordination session), newest first.
 
     Args:
         room_name (str):
@@ -136,7 +136,7 @@ def sync(
 ) -> HTTPValidationError | MessageListResponse | None:
     """List Messages
 
-     List messages in a room, newest first.
+     List messages in a room (or coordination session), newest first.
 
     Args:
         room_name (str):
@@ -174,7 +174,7 @@ async def asyncio_detailed(
 ) -> Response[HTTPValidationError | MessageListResponse]:
     """List Messages
 
-     List messages in a room, newest first.
+     List messages in a room (or coordination session), newest first.
 
     Args:
         room_name (str):
@@ -215,7 +215,7 @@ async def asyncio(
 ) -> HTTPValidationError | MessageListResponse | None:
     """List Messages
 
-     List messages in a room, newest first.
+     List messages in a room (or coordination session), newest first.
 
     Args:
         room_name (str):

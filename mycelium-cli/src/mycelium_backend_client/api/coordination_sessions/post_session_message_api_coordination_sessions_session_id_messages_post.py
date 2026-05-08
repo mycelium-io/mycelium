@@ -1,28 +1,29 @@
 from http import HTTPStatus
 from typing import Any
 from urllib.parse import quote
+from uuid import UUID
 
 import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.http_validation_error import HTTPValidationError
-from ...models.participant_create import ParticipantCreate
-from ...models.participant_read import ParticipantRead
+from ...models.message_create import MessageCreate
+from ...models.message_read import MessageRead
 from ...types import Response
 
 
 def _get_kwargs(
-    room_name: str,
+    session_id: UUID,
     *,
-    body: ParticipantCreate,
+    body: MessageCreate,
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
 
     _kwargs: dict[str, Any] = {
         "method": "post",
-        "url": "/api/rooms/{room_name}/sessions".format(
-            room_name=quote(str(room_name), safe=""),
+        "url": "/api/coordination-sessions/{session_id}/messages".format(
+            session_id=quote(str(session_id), safe=""),
         ),
     }
 
@@ -36,9 +37,9 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> HTTPValidationError | ParticipantRead | None:
+) -> HTTPValidationError | MessageRead | None:
     if response.status_code == 201:
-        response_201 = ParticipantRead.from_dict(response.json())
+        response_201 = MessageRead.from_dict(response.json())
 
         return response_201
 
@@ -55,7 +56,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[HTTPValidationError | ParticipantRead]:
+) -> Response[HTTPValidationError | MessageRead]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -65,29 +66,34 @@ def _build_response(
 
 
 def sync_detailed(
-    room_name: str,
+    session_id: UUID,
     *,
     client: AuthenticatedClient | Client,
-    body: ParticipantCreate,
-) -> Response[HTTPValidationError | ParticipantRead]:
-    """Join Room
+    body: MessageCreate,
+) -> Response[HTTPValidationError | MessageRead]:
+    """Post Session Message
 
-     Join a room. Auto-spawns a coordination session if one doesn't exist.
+     Post a message to a coordination session.
+
+    Messages are stored with ``coordination_session_id`` set and ``room_name``
+    null. SSE subscribers on the session-display channel still receive them
+    via the same ``room:{display_name}`` NOTIFY topic during the deprecation
+    window so existing OpenClaw plugin / CLI subscribers don't break.
 
     Args:
-        room_name (str):
-        body (ParticipantCreate):
+        session_id (UUID):
+        body (MessageCreate):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | ParticipantRead]
+        Response[HTTPValidationError | MessageRead]
     """
 
     kwargs = _get_kwargs(
-        room_name=room_name,
+        session_id=session_id,
         body=body,
     )
 
@@ -99,58 +105,68 @@ def sync_detailed(
 
 
 def sync(
-    room_name: str,
+    session_id: UUID,
     *,
     client: AuthenticatedClient | Client,
-    body: ParticipantCreate,
-) -> HTTPValidationError | ParticipantRead | None:
-    """Join Room
+    body: MessageCreate,
+) -> HTTPValidationError | MessageRead | None:
+    """Post Session Message
 
-     Join a room. Auto-spawns a coordination session if one doesn't exist.
+     Post a message to a coordination session.
+
+    Messages are stored with ``coordination_session_id`` set and ``room_name``
+    null. SSE subscribers on the session-display channel still receive them
+    via the same ``room:{display_name}`` NOTIFY topic during the deprecation
+    window so existing OpenClaw plugin / CLI subscribers don't break.
 
     Args:
-        room_name (str):
-        body (ParticipantCreate):
+        session_id (UUID):
+        body (MessageCreate):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | ParticipantRead
+        HTTPValidationError | MessageRead
     """
 
     return sync_detailed(
-        room_name=room_name,
+        session_id=session_id,
         client=client,
         body=body,
     ).parsed
 
 
 async def asyncio_detailed(
-    room_name: str,
+    session_id: UUID,
     *,
     client: AuthenticatedClient | Client,
-    body: ParticipantCreate,
-) -> Response[HTTPValidationError | ParticipantRead]:
-    """Join Room
+    body: MessageCreate,
+) -> Response[HTTPValidationError | MessageRead]:
+    """Post Session Message
 
-     Join a room. Auto-spawns a coordination session if one doesn't exist.
+     Post a message to a coordination session.
+
+    Messages are stored with ``coordination_session_id`` set and ``room_name``
+    null. SSE subscribers on the session-display channel still receive them
+    via the same ``room:{display_name}`` NOTIFY topic during the deprecation
+    window so existing OpenClaw plugin / CLI subscribers don't break.
 
     Args:
-        room_name (str):
-        body (ParticipantCreate):
+        session_id (UUID):
+        body (MessageCreate):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | ParticipantRead]
+        Response[HTTPValidationError | MessageRead]
     """
 
     kwargs = _get_kwargs(
-        room_name=room_name,
+        session_id=session_id,
         body=body,
     )
 
@@ -160,30 +176,35 @@ async def asyncio_detailed(
 
 
 async def asyncio(
-    room_name: str,
+    session_id: UUID,
     *,
     client: AuthenticatedClient | Client,
-    body: ParticipantCreate,
-) -> HTTPValidationError | ParticipantRead | None:
-    """Join Room
+    body: MessageCreate,
+) -> HTTPValidationError | MessageRead | None:
+    """Post Session Message
 
-     Join a room. Auto-spawns a coordination session if one doesn't exist.
+     Post a message to a coordination session.
+
+    Messages are stored with ``coordination_session_id`` set and ``room_name``
+    null. SSE subscribers on the session-display channel still receive them
+    via the same ``room:{display_name}`` NOTIFY topic during the deprecation
+    window so existing OpenClaw plugin / CLI subscribers don't break.
 
     Args:
-        room_name (str):
-        body (ParticipantCreate):
+        session_id (UUID):
+        body (MessageCreate):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | ParticipantRead
+        HTTPValidationError | MessageRead
     """
 
     return (
         await asyncio_detailed(
-            room_name=room_name,
+            session_id=session_id,
             client=client,
             body=body,
         )

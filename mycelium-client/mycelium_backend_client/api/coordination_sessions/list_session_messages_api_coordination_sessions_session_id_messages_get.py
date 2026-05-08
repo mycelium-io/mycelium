@@ -1,6 +1,7 @@
 from http import HTTPStatus
 from typing import Any
 from urllib.parse import quote
+from uuid import UUID
 
 import httpx
 
@@ -12,7 +13,7 @@ from ...types import UNSET, Response, Unset
 
 
 def _get_kwargs(
-    room_name: str,
+    session_id: UUID,
     *,
     limit: int | Unset = 50,
     offset: int | Unset = 0,
@@ -43,8 +44,8 @@ def _get_kwargs(
 
     _kwargs: dict[str, Any] = {
         "method": "get",
-        "url": "/api/rooms/{room_name}/messages".format(
-            room_name=quote(str(room_name), safe=""),
+        "url": "/api/coordination-sessions/{session_id}/messages".format(
+            session_id=quote(str(session_id), safe=""),
         ),
         "params": params,
     }
@@ -83,7 +84,7 @@ def _build_response(
 
 
 def sync_detailed(
-    room_name: str,
+    session_id: UUID,
     *,
     client: AuthenticatedClient | Client,
     limit: int | Unset = 50,
@@ -91,12 +92,10 @@ def sync_detailed(
     sender: None | str | Unset = UNSET,
     message_type: None | str | Unset = UNSET,
 ) -> Response[HTTPValidationError | MessageListResponse]:
-    """List Messages
-
-     List messages in a room (or coordination session), newest first.
+    """List Session Messages
 
     Args:
-        room_name (str):
+        session_id (UUID):
         limit (int | Unset):  Default: 50.
         offset (int | Unset):  Default: 0.
         sender (None | str | Unset):
@@ -111,7 +110,7 @@ def sync_detailed(
     """
 
     kwargs = _get_kwargs(
-        room_name=room_name,
+        session_id=session_id,
         limit=limit,
         offset=offset,
         sender=sender,
@@ -126,7 +125,7 @@ def sync_detailed(
 
 
 def sync(
-    room_name: str,
+    session_id: UUID,
     *,
     client: AuthenticatedClient | Client,
     limit: int | Unset = 50,
@@ -134,12 +133,10 @@ def sync(
     sender: None | str | Unset = UNSET,
     message_type: None | str | Unset = UNSET,
 ) -> HTTPValidationError | MessageListResponse | None:
-    """List Messages
-
-     List messages in a room (or coordination session), newest first.
+    """List Session Messages
 
     Args:
-        room_name (str):
+        session_id (UUID):
         limit (int | Unset):  Default: 50.
         offset (int | Unset):  Default: 0.
         sender (None | str | Unset):
@@ -154,7 +151,7 @@ def sync(
     """
 
     return sync_detailed(
-        room_name=room_name,
+        session_id=session_id,
         client=client,
         limit=limit,
         offset=offset,
@@ -164,7 +161,7 @@ def sync(
 
 
 async def asyncio_detailed(
-    room_name: str,
+    session_id: UUID,
     *,
     client: AuthenticatedClient | Client,
     limit: int | Unset = 50,
@@ -172,12 +169,10 @@ async def asyncio_detailed(
     sender: None | str | Unset = UNSET,
     message_type: None | str | Unset = UNSET,
 ) -> Response[HTTPValidationError | MessageListResponse]:
-    """List Messages
-
-     List messages in a room (or coordination session), newest first.
+    """List Session Messages
 
     Args:
-        room_name (str):
+        session_id (UUID):
         limit (int | Unset):  Default: 50.
         offset (int | Unset):  Default: 0.
         sender (None | str | Unset):
@@ -192,7 +187,7 @@ async def asyncio_detailed(
     """
 
     kwargs = _get_kwargs(
-        room_name=room_name,
+        session_id=session_id,
         limit=limit,
         offset=offset,
         sender=sender,
@@ -205,7 +200,7 @@ async def asyncio_detailed(
 
 
 async def asyncio(
-    room_name: str,
+    session_id: UUID,
     *,
     client: AuthenticatedClient | Client,
     limit: int | Unset = 50,
@@ -213,12 +208,10 @@ async def asyncio(
     sender: None | str | Unset = UNSET,
     message_type: None | str | Unset = UNSET,
 ) -> HTTPValidationError | MessageListResponse | None:
-    """List Messages
-
-     List messages in a room (or coordination session), newest first.
+    """List Session Messages
 
     Args:
-        room_name (str):
+        session_id (UUID):
         limit (int | Unset):  Default: 50.
         offset (int | Unset):  Default: 0.
         sender (None | str | Unset):
@@ -234,7 +227,7 @@ async def asyncio(
 
     return (
         await asyncio_detailed(
-            room_name=room_name,
+            session_id=session_id,
             client=client,
             limit=limit,
             offset=offset,

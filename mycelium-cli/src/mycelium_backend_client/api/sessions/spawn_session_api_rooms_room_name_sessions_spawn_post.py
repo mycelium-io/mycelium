@@ -75,7 +75,7 @@ def sync_detailed(
 ]:
     """Spawn Session
 
-     Explicitly spawn a negotiation session within a namespace room.
+     Explicitly spawn a negotiation session within a room.
 
     Args:
         room_name (str):
@@ -110,7 +110,7 @@ def sync(
 ):
     """Spawn Session
 
-     Explicitly spawn a negotiation session within a namespace room.
+     Explicitly spawn a negotiation session within a room.
 
     Args:
         room_name (str):
@@ -139,7 +139,7 @@ async def asyncio_detailed(
 ]:
     """Spawn Session
 
-     Explicitly spawn a negotiation session within a namespace room.
+     Explicitly spawn a negotiation session within a room.
 
     Args:
         room_name (str):
@@ -172,7 +172,7 @@ async def asyncio(
 ):
     """Spawn Session
 
-     Explicitly spawn a negotiation session within a namespace room.
+     Explicitly spawn a negotiation session within a room.
 
     Args:
         room_name (str):
