@@ -70,6 +70,21 @@ def _resolve_port(cli_port: int | None) -> int:
     return _DEFAULT_PORT
 
 
+def _port_in_use(port: int) -> bool:
+    """Return True if *port* is already bound on localhost."""
+    import socket as _sock
+
+    s = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)
+    try:
+        s.settimeout(1)
+        s.connect(("127.0.0.1", port))
+        return True
+    except OSError:
+        return False
+    finally:
+        s.close()
+
+
 def _read_pid_file() -> tuple[int | None, int]:
     """Read the PID and port from the collector PID file.
 
@@ -134,19 +149,9 @@ def status() -> None:
         collector_alive = True
         collector_label = "Docker container"
 
-    if not collector_alive:
-        import socket as _sock
-
-        _probe = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)
-        try:
-            _probe.settimeout(1)
-            _probe.connect(("127.0.0.1", collector_port))
-            collector_alive = True
-            collector_label = f"port {collector_port} (no PID file)"
-        except OSError:
-            pass
-        finally:
-            _probe.close()
+    if not collector_alive and _port_in_use(collector_port):
+        collector_alive = True
+        collector_label = f"port {collector_port} (no PID file)"
 
     if collector_alive:
         console.print(f"[green]✓[/green] Collector running  {collector_label}")
@@ -911,13 +916,27 @@ def show(
     oc_status = _get_openclaw_status()
 
     if otel_data is None and oc_status is None:
-        console.print(
-            "[yellow]No metrics data available.[/yellow]\n\n"
-            "  Start the collector:  [bold]mycelium metrics collect[/bold]\n"
-            "  (runs in background by default; use --fg for foreground)\n\n"
-            "  Make sure OpenClaw's diagnostics-otel plugin is configured:\n"
-            "    [bold]mycelium adapter add openclaw --step=otel[/bold]"
+        collector_up = (
+            _docker_collector_running()
+            or _read_pid_file()[0] is not None
+            or _port_in_use(_resolve_port(None))
         )
+        if collector_up:
+            console.print(
+                "[yellow]No metrics data yet.[/yellow]\n\n"
+                "  The collector is running but hasn't received data.\n"
+                "  Make sure agents are active and OpenClaw's diagnostics-otel\n"
+                "  plugin is configured:\n"
+                "    [bold]mycelium adapter add openclaw --step=otel[/bold]"
+            )
+        else:
+            console.print(
+                "[yellow]No metrics data available.[/yellow]\n\n"
+                "  Start the collector:  [bold]mycelium metrics collect[/bold]\n"
+                "  (runs in background by default; use --fg for foreground)\n\n"
+                "  Make sure OpenClaw's diagnostics-otel plugin is configured:\n"
+                "    [bold]mycelium adapter add openclaw --step=otel[/bold]"
+            )
         raise typer.Exit(0)
 
     agents_meta = _extract_agents(oc_status)
