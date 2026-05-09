@@ -110,6 +110,10 @@ class RuntimeConfig(BaseModel):
         default=8000,
         description="Host port for the backend API",
     )
+    collector_port: int = Field(
+        default=4318,
+        description="Host port for the OTLP metrics collector",
+    )
     data_dir: str | None = Field(
         default=None,
         description="Root directory for .mycelium/ data (defaults to ~/.mycelium)",

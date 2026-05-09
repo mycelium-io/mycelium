@@ -332,10 +332,28 @@ def init(
 
         assert api_url is not None
 
+        from mycelium.config import MetricsConfig
+
+        # Auto-derive collector_url for spoke nodes (non-local api_url).
+        metrics_config = MetricsConfig()
+        from urllib.parse import urlparse
+
+        parsed = urlparse(api_url)
+        hub_host = parsed.hostname or ""
+        if hub_host not in ("localhost", "127.0.0.1", "::1", "0.0.0.0", ""):
+            default_collector = f"http://{hub_host}:4318"
+            collector_url = typer.prompt(
+                "Hub collector URL (for metrics)",
+                default=default_collector,
+                show_default=True,
+            )
+            metrics_config = MetricsConfig(collector_url=collector_url)
+
         config = MyceliumConfig(
             server=ServerConfig(
                 api_url=api_url,
-            )
+            ),
+            metrics=metrics_config,
         )
         config.save(config_path)
 
@@ -343,10 +361,17 @@ def init(
         typer.echo("")
         typer.echo("Configuration:")
         typer.echo(f"  API URL: {api_url}")
+        if metrics_config.collector_url:
+            typer.echo(f"  Collector URL: {metrics_config.collector_url}  (hub-centric metrics)")
         typer.echo("")
-        typer.echo("Next steps:")
-        typer.echo("  - Run 'mycelium install' to pull and start all services")
-        typer.echo("  - Run 'mycelium status' to check service health")
+        if metrics_config.collector_url:
+            typer.echo("Next steps:")
+            typer.echo("  - Run 'mycelium adapter add openclaw --step=otel' to configure OTLP")
+            typer.echo("  - Run 'mycelium metrics status' to verify collector connectivity")
+        else:
+            typer.echo("Next steps:")
+            typer.echo("  - Run 'mycelium install' to pull and start all services")
+            typer.echo("  - Run 'mycelium status' to check service health")
 
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False

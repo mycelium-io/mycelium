@@ -28,7 +28,16 @@ app = typer.Typer(
 )
 
 _DEFAULT_PORT = 4318
-_ENV_PORT = "MYCELIUM_METRICS_PORT"
+
+
+def _config_collector_port() -> int:
+    """Read collector_port from config.toml (falls back to _DEFAULT_PORT)."""
+    try:
+        from mycelium.config import MyceliumConfig
+
+        return MyceliumConfig.load().runtime.collector_port
+    except Exception:
+        return _DEFAULT_PORT
 
 
 def _data_dir() -> Path:
@@ -49,12 +58,13 @@ console = Console()
 
 
 def _resolve_port(cli_port: int | None) -> int:
+    """Resolve the collector port: CLI flag > env var > config.toml > 4318."""
     if cli_port is not None:
         if not 1 <= cli_port <= 65535:
             typer.secho(f"✗ Invalid port {cli_port} (must be 1–65535)", fg=typer.colors.RED)
             raise typer.Exit(1)
         return cli_port
-    env = os.environ.get(_ENV_PORT)
+    env = os.environ.get("MYCELIUM_METRICS_PORT")
     if env:
         try:
             p = int(env)
@@ -62,7 +72,7 @@ def _resolve_port(cli_port: int | None) -> int:
                 return p
         except ValueError:
             pass
-    return _DEFAULT_PORT
+    return _config_collector_port()
 
 
 def _port_in_use(port: int) -> bool:

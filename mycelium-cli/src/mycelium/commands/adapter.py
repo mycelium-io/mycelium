@@ -14,7 +14,6 @@ Planned:
 
 import importlib.resources
 import json as json_module
-import os
 import shutil
 import subprocess
 import tempfile
@@ -1586,20 +1585,17 @@ def _configure_otel(
             try:
                 from mycelium.config import MyceliumConfig
 
-                endpoint = MyceliumConfig.load().metrics.collector_url or None
+                cfg_obj = MyceliumConfig.load()
+                endpoint = cfg_obj.metrics.collector_url or None
+                if endpoint is None:
+                    resolved_port = cfg_obj.runtime.collector_port
+                    host = "localhost"
+                    endpoint = f"http://{host}:{resolved_port}"
             except Exception:
                 pass
 
         if endpoint is None:
             resolved_port = port if port is not None else 4318
-            env_port = os.environ.get("MYCELIUM_METRICS_PORT")
-            if port is None and env_port:
-                try:
-                    p = int(env_port)
-                    if 1 <= p <= 65535:
-                        resolved_port = p
-                except ValueError:
-                    pass
             host = "host.docker.internal" if container else "localhost"
             endpoint = f"http://{host}:{resolved_port}"
 
@@ -1679,20 +1675,17 @@ def _configure_deep_observability(
         try:
             from mycelium.config import MyceliumConfig
 
-            endpoint = MyceliumConfig.load().metrics.collector_url or None
+            cfg_obj = MyceliumConfig.load()
+            endpoint = cfg_obj.metrics.collector_url or None
+            if endpoint is None:
+                resolved_port = cfg_obj.runtime.collector_port
+                host = "localhost"
+                endpoint = f"http://{host}:{resolved_port}"
         except Exception:
             pass
 
     if endpoint is None:
         resolved_port = port if port is not None else 4318
-        env_port = os.environ.get("MYCELIUM_METRICS_PORT")
-        if port is None and env_port:
-            try:
-                p = int(env_port)
-                if 1 <= p <= 65535:
-                    resolved_port = p
-            except ValueError:
-                pass
         host = "host.docker.internal" if container else "localhost"
         endpoint = f"http://{host}:{resolved_port}"
 
