@@ -666,6 +666,65 @@ def _check_runtime_config_drift() -> CheckResult:
     )
 
 
+def _check_cfn_intent() -> CheckResult:
+    """Catch the CFN intent/config mismatch that silently breaks negotiation.
+
+    Symptom: user has `server.mas_id` in config.toml (set at some point — usually
+    by an earlier `mycelium room create` against a CFN-enabled install) but
+    `.env` has no `CFN_MGMT_URL` / `COGNITION_FABRIC_NODE_URL`. `mycelium up`
+    then skips `--profile cfn`, the backend starts with empty CFN env vars, new
+    rooms get no `mas_id` / `workspace_id`, and the first negotiate tick fails
+    with `"CFN coordination required but not configured for this room"`. The
+    old CFN check (`_check_room_mas_ids`) silently skips when CFN is disabled,
+    so doctor reports all-green while negotiation is broken.
+    """
+    env_path = Path.home() / ".mycelium" / ".env"
+    if not env_path.exists():
+        return CheckResult(name="CFN config", status="ok", message="Skipped (no .env)")
+
+    from dotenv import dotenv_values
+
+    vals = dotenv_values(env_path)
+    mgmt = (vals.get("CFN_MGMT_URL") or "").strip()
+    node = (vals.get("COGNITION_FABRIC_NODE_URL") or "").strip()
+
+    from mycelium.config import MyceliumConfig
+
+    try:
+        cfg = MyceliumConfig.load()
+        configured_mas_id = (cfg.server.mas_id or "").strip()
+    except Exception:
+        configured_mas_id = ""
+
+    if not mgmt and not node:
+        if configured_mas_id:
+            return CheckResult(
+                name="CFN config",
+                status="warning",
+                message="server.mas_id set but CFN URLs empty — negotiation will fail",
+                details=[
+                    f"  config.toml server.mas_id = {configured_mas_id}",
+                    "  .env CFN_MGMT_URL = (empty)",
+                    "  .env COGNITION_FABRIC_NODE_URL = (empty)",
+                    "Fix: set both URLs and run `mycelium up` to start the cfn profile:",
+                    "  CFN_MGMT_URL=http://ioc-cfn-mgmt-plane-svc:9000",
+                    "  COGNITION_FABRIC_NODE_URL=http://ioc-cognition-fabric-node-svc:9002",
+                ],
+            )
+        return CheckResult(name="CFN config", status="ok", message="CFN not enabled")
+
+    missing = [k for k, v in (("CFN_MGMT_URL", mgmt), ("COGNITION_FABRIC_NODE_URL", node)) if not v]
+    if missing:
+        return CheckResult(
+            name="CFN config",
+            status="warning",
+            message=f"partial CFN config — {', '.join(missing)} empty",
+            details=["Both URLs are required for the backend to forward ticks to CFN."],
+        )
+
+    return CheckResult(name="CFN config", status="ok", message="CFN URLs configured")
+
+
 def _check_room_mas_ids() -> CheckResult:
     """Check that all rooms have a MAS ID (CFN-enabled installs only)."""
     env_path = Path.home() / ".mycelium" / ".env"
@@ -1094,6 +1153,7 @@ def doctor(
             (
                 "CFN",
                 [
+                    _check_cfn_intent(),
                     _check_workspace_id(local_backend=local),
                     _check_room_mas_ids(),
                 ],
