@@ -50,6 +50,26 @@ def upgrade() -> None:
 
     # Backfill: every session-shadow row in `rooms` becomes a coordination_sessions row.
     # short_id is the suffix after `:session:` in the room name (8-char hex by convention).
+    # Skip orphans whose parent_namespace no longer exists in `rooms` — they would
+    # violate the FK we just declared. Surface them via NOTICE so operators know.
+    orphans = (
+        op.get_bind()
+        .execute(
+            sa.text(
+                """
+                SELECT name, parent_namespace FROM rooms
+                WHERE is_namespace = FALSE
+                  AND parent_namespace IS NOT NULL
+                  AND parent_namespace NOT IN (SELECT name FROM rooms)
+                """
+            )
+        )
+        .fetchall()
+    )
+    if orphans:
+        names = ", ".join(f"{n} (orphan parent={p})" for n, p in orphans)
+        print(f"[0011] Skipping {len(orphans)} orphan session row(s): {names}")
+
     op.execute(
         """
         INSERT INTO coordination_sessions
@@ -64,7 +84,9 @@ def upgrade() -> None:
             mas_id,
             workspace_id
         FROM rooms
-        WHERE is_namespace = FALSE AND parent_namespace IS NOT NULL
+        WHERE is_namespace = FALSE
+          AND parent_namespace IS NOT NULL
+          AND parent_namespace IN (SELECT name FROM rooms)
         """
     )
 
