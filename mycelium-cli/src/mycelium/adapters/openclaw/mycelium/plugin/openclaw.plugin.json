@@ -10,5 +10,41 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {}
+  },
+  "channelConfigs": {
+    "mycelium-room": {
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["backendUrl", "room"],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Set false to disable the channel without removing config."
+          },
+          "backendUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Mycelium backend URL, e.g. http://localhost:8000."
+          },
+          "room": {
+            "type": "string",
+            "description": "Mycelium room name this channel fans messages into and out of."
+          },
+          "agents": {
+            "type": "array",
+            "items": { "type": "string" },
+            "default": [],
+            "description": "OpenClaw agent ids that participate in this room."
+          },
+          "requireMention": {
+            "type": "boolean",
+            "default": false,
+            "description": "If true, only deliver messages that explicitly @mention one of the configured agents."
+          }
+        }
+      }
+    }
   }
 }
