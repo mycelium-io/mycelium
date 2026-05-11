@@ -429,7 +429,7 @@ def memory_catchup(
         data = resp.json()
 
     console.print(
-        f"\n[bold]{data['room']}[/bold]  [dim]{data['mode']} room  {data['total_memories']} memories  {len(data['contributors'])} contributors[/dim]\n"
+        f"\n[bold]{data['room']}[/bold]  [dim]{data.get('mode', 'public')} room  {data['total_memories']} memories  {len(data['contributors'])} contributors[/dim]\n"
     )
 
     # Contributors
