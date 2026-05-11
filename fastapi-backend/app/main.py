@@ -18,6 +18,7 @@ import asyncio
 import logging
 import os
 import sys
+import tomllib
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -149,9 +150,23 @@ async def lifespan(app: FastAPI):
     logger.info("Mycelium backend shutting down")
 
 
+def _read_pkg_version() -> str:
+    """Read version from pyproject.toml so release.yml's tag bump (which seds
+    pyproject.toml::project.version) is reflected at /healthz without needing
+    a second sed against this file. Falls back to '0.0.0+unknown' if the file
+    can't be located (e.g. running from an unusual layout)."""
+    for candidate in (Path(__file__).resolve().parent.parent / "pyproject.toml",):
+        if candidate.exists():
+            try:
+                return tomllib.loads(candidate.read_text())["project"]["version"]
+            except (KeyError, tomllib.TOMLDecodeError):
+                break
+    return "0.0.0+unknown"
+
+
 app = FastAPI(
     title="Mycelium Backend",
-    version="0.1.0",
+    version=_read_pkg_version(),
     openapi_url=settings.OPENAPI_URL,
     lifespan=lifespan,
 )
