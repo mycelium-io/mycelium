@@ -41,27 +41,32 @@ variable.
 
 ## Hub-and-Spoke Setup
 
-In a multi-device deployment, spoke nodes do **not** need a local collector.
-Instead, spokes send OTLP telemetry directly to the hub's collector and
-`mycelium metrics show` fetches data from the hub:
+In a multi-device deployment, spoke nodes run a **lightweight local collector**
+for their own OpenClaw OTLP data and fetch Mycelium backend + CFN metrics from
+the hub. `mycelium metrics show` merges both sources automatically.
 
 ```
-┌─────────────────────────┐           ┌──────────────────────────────────┐
-│     Spoke Node          │           │          Hub Node                │
-│                         │           │                                  │
-│  OpenClaw Gateway ──────┼── OTLP ──▶  Collector (:4318)               │
-│                         │           │    ├─▶ MetricsStore              │
-│  mycelium metrics show ─┼── HTTP ──▶    ├─▶ TraceStore                │
-│    (fetches from hub)   │           │    └─▶ poll Backend + CFN scrape │
-└─────────────────────────┘           │                                  │
-                                      │  Backend (:8000)                 │
-                                      │  CFN services                    │
-                                      └──────────────────────────────────┘
+┌──────────────────────────────────┐        ┌──────────────────────────────────┐
+│         Spoke Node               │        │          Hub Node                │
+│                                  │        │                                  │
+│  OpenClaw ─── OTLP ──▶ Local    │        │  Collector (:4318)               │
+│  Gateway        Collector       │        │    ├─▶ MetricsStore              │
+│                  (:4318,         │        │    ├─▶ TraceStore                │
+│                   no-backend)    │        │    └─▶ poll Backend + CFN scrape │
+│                   │              │        │                                  │
+│                   ▼              │        │  Backend (:8000)                 │
+│            local metrics.json    │        │  CFN services                    │
+│            (OpenClaw only)       │        └──────────────┬───────────────────┘
+│                                  │                       │
+│  mycelium metrics show ──────────┼── HTTP GET ──────────▶│
+│   merges local OpenClaw          │  /collector/metrics    │
+│   + hub backend/CFN data         │  (backend + CFN)       │
+└──────────────────────────────────┘                       │
 ```
 
 ### Spoke Configuration
 
-Set `collector_url` in the spoke's `~/.mycelium/config.toml`:
+1. Set `collector_url` in the spoke's `~/.mycelium/config.toml`:
 
 ```toml
 [metrics]
@@ -74,21 +79,41 @@ Or via environment variable:
 export MYCELIUM_COLLECTOR_URL="http://<hub-ip>:4318"
 ```
 
-Then configure the OTLP plugins (the endpoint is auto-derived from
-`collector_url`):
+2. Configure the OTLP plugins (the endpoint defaults to `localhost:4318`
+for the local spoke collector):
 
 ```bash
 mycelium adapter add openclaw --step=otel --step=deep-observability
 ```
 
-That's it. `mycelium metrics show` on the spoke will fetch data from the
-hub, and `mycelium metrics status` will probe the remote collector's health.
+3. Start the local spoke collector:
+
+```bash
+mycelium metrics collect
+```
+
+This runs a foreground OTLP receiver in `--no-backend` mode: it accepts
+OpenClaw telemetry pushes and writes to the local `metrics.json` but does
+**not** poll the backend or scrape Prometheus targets.
+
+### How it works
+
+- `mycelium metrics show` on the spoke reads local OpenClaw data (counters,
+  histograms, sessions) from the local `metrics.json`, then fetches backend
+  and CFN data from the hub's `/collector/metrics` endpoint. The two are
+  merged into a single view.
+- `mycelium metrics status` probes both the hub collector (reachability)
+  and the local collector (port check).
+- The `collect` command is only available in spoke mode (when `collector_url`
+  points to a remote host). On hub/local nodes, use `mycelium up --metrics`
+  instead.
 
 ## CLI Commands
 
 | Command                   | Description                                      |
 | ------------------------- | ------------------------------------------------ |
 | `mycelium metrics status` | Health check: deps, collector process, data file, OTEL config, model cost |
+| `mycelium metrics collect` | Run a lightweight local OTLP collector in spoke mode (foreground, no backend polling) |
 | `mycelium metrics reset`  | Delete collected metrics data                    |
 | `mycelium metrics update-pricing` | Fetch latest LLM pricing from LiteLLM API |
 | `mycelium metrics update-pricing --add pat:key` | Also fetch pricing for a manually specified model (repeatable) |
@@ -96,7 +121,7 @@ hub, and `mycelium metrics status` will probe the remote collector's health.
 | `mycelium metrics show --json` | Dump raw JSON for scripting                  |
 | `mycelium metrics show --workspace` | Include per-file workspace breakdowns   |
 | `mycelium metrics show --include-heartbeat` | Include OpenClaw `heartbeat` channel tokens in totals (excluded by default) |
-| `mycelium up --metrics`   | Start the stack with the Dockerized OTLP collector |
+| `mycelium up --metrics`   | Start the stack with the Dockerized OTLP collector (hub/local mode) |
 | `mycelium adapter add openclaw --step=otel --step=deep-observability` | Configure both OTLP plugins in one command (see below) |
 
 ## Files Created

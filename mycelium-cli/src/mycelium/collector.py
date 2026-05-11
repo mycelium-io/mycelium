@@ -857,19 +857,30 @@ def run(
     *,
     backend_api_url: str = "http://localhost:8000",
     scrape_targets: list[dict] | None = None,
+    no_backend: bool = False,
 ) -> None:
     """Start the OTLP HTTP receiver. Blocks until interrupted.
 
     ``scrape_targets`` is a list of ``{"name": str, "url": str, "kind": str}``
     dicts loaded from ``[[metrics.scrape]]`` in ``~/.mycelium/config.toml``.
     Targets are polled on the same 30-second interval as the backend.
+
+    When ``no_backend`` is True the collector skips backend polling and
+    Prometheus scraping entirely — it only accepts OTLP pushes.  This is
+    the mode used on spoke nodes that run a lightweight local collector
+    for OpenClaw telemetry only.
     """
     store = MetricsStore()
     traces_db = output_path.parent / "traces.db"
     trace_store = TraceStore(traces_db)
     scrape_targets = list(scrape_targets or [])
-    is_hub = _is_local_url(backend_api_url)
-    if not is_hub:
+    if no_backend:
+        is_hub = False
+        scrape_targets = []
+        log.info("Running in --no-backend mode: backend polling and scraping disabled")
+    else:
+        is_hub = _is_local_url(backend_api_url)
+    if not is_hub and not no_backend:
         log.info(
             "Running as spoke (backend %s is non-local) -- backend metrics polling disabled",
             backend_api_url,

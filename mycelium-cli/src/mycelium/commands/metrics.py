@@ -121,18 +121,34 @@ def status() -> None:
 
     # ── Collector process ────────────────────────────────────────────────
     collector_url = _get_collector_url()
-    collector_alive = False
-    collector_label = ""
     collector_port = _resolve_port(None)
+    spoke = _is_spoke_mode()
 
-    if collector_url:
+    if spoke and collector_url:
+        # Spoke mode: show hub (remote) AND local collector state
+        hub_alive = False
         remote_data = _fetch_remote_metrics(collector_url)
         if remote_data is not None:
-            collector_alive = True
-            collector_label = f"remote ({collector_url})"
+            hub_alive = True
+            console.print(f"[green]✓[/green] Hub collector      reachable ({collector_url})")
         else:
-            collector_label = f"remote ({collector_url}) — unreachable"
+            console.print(f"[red]✗[/red] Hub collector      unreachable ({collector_url})")
+            all_ok = False
+
+        local_alive = _port_in_use(collector_port)
+        if local_alive:
+            console.print(f"[green]✓[/green] Local collector    running on :{collector_port}")
+        else:
+            console.print(
+                f"[yellow]⚠[/yellow] Local collector    not running on :{collector_port}\n"
+                "  [dim]Start with [bold]mycelium metrics collect[/bold] for local OpenClaw data[/dim]"
+            )
+
+        collector_alive = hub_alive
     else:
+        # Hub / local mode
+        collector_alive = False
+        collector_label = ""
         if _docker_collector_running():
             collector_alive = True
             collector_label = "Docker container"
@@ -140,17 +156,14 @@ def status() -> None:
             collector_alive = True
             collector_label = f"port {collector_port}"
 
-    if collector_alive:
-        console.print(f"[green]✓[/green] Collector running  {collector_label}")
-    else:
-        if collector_url:
-            console.print(f"[red]✗[/red] Collector {collector_label}")
+        if collector_alive:
+            console.print(f"[green]✓[/green] Collector running  {collector_label}")
         else:
             console.print(
                 "[red]✗[/red] Collector not running\n"
                 "  [dim]Start with [bold]mycelium up --metrics[/bold][/dim]"
             )
-        all_ok = False
+            all_ok = False
 
     # ── Metrics data file ────────────────────────────────────────────────
     if _metrics_json().exists():
@@ -310,6 +323,65 @@ def _docker_collector_running() -> bool:
         return result.returncode == 0 and result.stdout.strip().lower() == "true"
     except Exception:
         return False
+
+
+def _is_spoke_mode() -> bool:
+    """True when this node is configured as a spoke (collector_url points to a remote host)."""
+    url = _get_collector_url()
+    if not url:
+        return False
+    from urllib.parse import urlparse
+
+    host = urlparse(url).hostname or ""
+    return host not in ("localhost", "127.0.0.1", "::1", "0.0.0.0", "")
+
+
+@app.command("collect")
+def collect(
+    port: int | None = typer.Option(None, "--port", "-p", help="OTLP listen port"),
+) -> None:
+    """Run a lightweight local OTLP collector (foreground, spoke mode).
+
+    Accepts OpenClaw OTLP pushes and writes to the local metrics file.
+    Backend polling and Prometheus scraping are disabled — use this on
+    spoke nodes that fetch hub data via ``collector_url``.
+    """
+    if not _is_spoke_mode():
+        typer.secho(
+            "✗ 'collect' is for spoke nodes only.\n"
+            "  Set metrics.collector_url in config.toml (or MYCELIUM_COLLECTOR_URL)\n"
+            "  to point at the hub collector, then re-run.\n"
+            "  On hub/local nodes use: mycelium up --metrics",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(1)
+
+    if not _check_otel_deps():
+        raise typer.Exit(1)
+
+    resolved_port = _resolve_port(port)
+
+    if _port_in_use(resolved_port):
+        typer.secho(
+            f"✗ Port {resolved_port} is already in use. "
+            "Stop the existing process or choose a different port with --port.",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(1)
+
+    output = _metrics_json()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    typer.echo(f"Starting spoke collector on :{resolved_port} (no-backend mode)")
+    typer.echo(f"  Data: {output}")
+    typer.echo("  Press Ctrl+C to stop\n")
+
+    from mycelium.collector import run as collector_run
+
+    collector_run(
+        resolved_port,
+        output,
+        no_backend=True,
+    )
 
 
 @app.command("reset")
@@ -699,10 +771,12 @@ def show(
     oc_status = _get_openclaw_status()
 
     if otel_data is None and oc_status is None:
+        spoke = _is_spoke_mode()
+        hub_url = _get_collector_url()
         collector_up = (
-            _get_collector_url() is not None
-            or _docker_collector_running()
+            _docker_collector_running()
             or _port_in_use(_resolve_port(None))
+            or (spoke and hub_url is not None and _fetch_remote_metrics(hub_url) is not None)
         )
         if collector_up:
             console.print(
@@ -713,9 +787,14 @@ def show(
                 "    [bold]mycelium adapter add openclaw --step=otel[/bold]"
             )
         else:
+            hint = (
+                "  Start the local collector:  [bold]mycelium metrics collect[/bold]"
+                if spoke
+                else "  Start the collector:  [bold]mycelium up --metrics[/bold]"
+            )
             console.print(
-                "[yellow]No metrics data available.[/yellow]\n\n"
-                "  Start the collector:  [bold]mycelium up --metrics[/bold]\n\n"
+                f"[yellow]No metrics data available.[/yellow]\n\n"
+                f"{hint}\n\n"
                 "  Make sure OpenClaw's diagnostics-otel plugin is configured:\n"
                 "    [bold]mycelium adapter add openclaw --step=otel[/bold]"
             )
@@ -774,9 +853,13 @@ def show(
 
     if show_mycelium:
         if not backend_data:
-            console.print(
-                "[dim]Backend metrics not collected (spoke mode or collector not running)[/dim]"
-            )
+            if _is_spoke_mode():
+                console.print(
+                    "[dim]Backend metrics not yet available from hub. "
+                    "Ensure the hub collector is running.[/dim]"
+                )
+            else:
+                console.print("[dim]Backend metrics not collected (collector not running)[/dim]")
             console.print()
         else:
             rendered = False
@@ -914,9 +997,8 @@ def _render_overview(
         if not has_be_row:
             table.add_row("  [dim]No activity yet[/dim]", "")
     else:
-        table.add_row(
-            "[magenta]Mycelium Backend[/magenta]", "[dim]not collected (spoke mode)[/dim]"
-        )
+        label = "[dim]via hub[/dim]" if _is_spoke_mode() else ""
+        table.add_row("[magenta]Mycelium Backend[/magenta]", f"[dim]No activity yet[/dim] {label}")
 
     # ── CFN section ───────────────────────────────────────────────────
     table.add_section()
@@ -968,7 +1050,8 @@ def _render_overview(
         else:
             table.add_row("  [dim]No CFN activity yet[/dim]", "")
     else:
-        table.add_row("[blue]CFN[/blue]", "[dim]not collected (spoke mode)[/dim]")
+        label = "[dim]via hub[/dim]" if _is_spoke_mode() else ""
+        table.add_row("[blue]CFN[/blue]", f"[dim]No activity yet[/dim] {label}")
 
     console.print(table)
     console.print()
@@ -999,21 +1082,51 @@ def _fetch_remote_metrics(collector_url: str) -> dict | None:
         return None
 
 
-def _load_metrics_json() -> dict | None:
-    """Load metrics data from local file or remote collector.
-
-    When ``collector_url`` is configured (spoke mode), fetches from the
-    hub's ``/collector/metrics`` endpoint. Otherwise reads the local file.
-    """
-    collector_url = _get_collector_url()
-    if collector_url:
-        return _fetch_remote_metrics(collector_url)
+def _load_local_metrics() -> dict | None:
+    """Load metrics from the local metrics.json file (if it exists)."""
     if not _metrics_json().exists():
         return None
     try:
         return json.loads(_metrics_json().read_text())
     except (json.JSONDecodeError, OSError):
         return None
+
+
+def _load_metrics_json() -> dict | None:
+    """Load metrics data, merging local and remote sources in spoke mode.
+
+    Hub / local mode (no ``collector_url`` or it points to localhost):
+      Read only the local ``metrics.json`` — the Docker collector already
+      has everything.
+
+    Spoke mode (``collector_url`` points to a remote hub):
+      1. Fetch backend + CFN data from the hub's ``/collector/metrics``.
+      2. Read local ``metrics.json`` for OpenClaw OTLP data written by
+         the lightweight spoke collector.
+      3. Merge: local OpenClaw counters/histograms/sessions take priority;
+         hub ``backend`` and ``scrape`` sections are overlaid.
+    """
+    if not _is_spoke_mode():
+        return _load_local_metrics()
+
+    hub_url = _get_collector_url()
+    hub_data = _fetch_remote_metrics(hub_url) if hub_url else None
+    local_data = _load_local_metrics()
+
+    if hub_data is None and local_data is None:
+        return None
+    if hub_data is None:
+        return local_data
+    if local_data is None:
+        return hub_data
+
+    merged = dict(local_data)
+    if "backend" in hub_data:
+        merged["backend"] = hub_data["backend"]
+    if "scrape" in hub_data:
+        merged["scrape"] = hub_data["scrape"]
+    merged.setdefault("updated_at", hub_data.get("updated_at", ""))
+    return merged
 
 
 _OC_STATUS_CACHE = _data_dir() / "openclaw_status_cache.json"

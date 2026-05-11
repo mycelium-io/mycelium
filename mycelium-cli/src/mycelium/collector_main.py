@@ -28,6 +28,12 @@ def main() -> None:
         default="http://localhost:8000",
         help="Mycelium backend URL for polling /api/observability",
     )
+    parser.add_argument(
+        "--no-backend",
+        action="store_true",
+        default=False,
+        help="Skip backend polling and Prometheus scraping (spoke-local OTLP-only mode)",
+    )
 
     args = parser.parse_args()
 
@@ -51,6 +57,7 @@ def main() -> None:
         Path(args.output),
         backend_api_url=args.backend_url,
         scrape_targets=scrape_targets,
+        no_backend=args.no_backend,
     )
 
 
