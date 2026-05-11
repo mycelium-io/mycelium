@@ -70,6 +70,7 @@
       <a href="#config-negotiation" class="nav-link sub">negotiation</a>
       <a href="#config-rooms" class="nav-link sub">rooms</a>
       <a href="#config-knowledge-ingest" class="nav-link sub">knowledge_ingest</a>
+      <a href="#config-metrics" class="nav-link sub">metrics</a>
     </div>
     <div class="nav-section">
       <div class="nav-section-label">Help</div>
@@ -176,7 +177,7 @@
             <tr>
               <td>Frontend</td>
               <td>Next.js + Tailwind</td>
-              <td>room viewer UI</td>
+              <td>frontend UI</td>
             </tr>
           </tbody>
         </table>
@@ -235,7 +236,7 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium up</span> [<span class="flag">--build</span>]</code>
+          <code><span class="cmd">mycelium up</span> [<span class="flag">--build</span>] [<span class="flag">--ui</span>]</code>
         </div>
         <div class="cmd-ref-body">Start the Mycelium stack via <code>docker compose up</code>.</div>
       </div>
@@ -381,7 +382,7 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
         <div class="cmd-ref-header">
           <code><span class="cmd">mycelium session ls</span> [<span class="flag">-r</span> <span class="arg">&lt;room&gt;</span>]</code>
         </div>
-        <div class="cmd-ref-body">List active sessions in a room.</div>
+        <div class="cmd-ref-body">List negotiation sessions inside a room.</div>
       </div>
 
       <h2 id="cli-memory">memory</h2>
@@ -731,26 +732,26 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
 <span class="comment"># Currently active room name</span>
 <span class="arg">active</span> = <span class="str">&quot;&quot;</span>
 
-<span class="comment"># Control surface for the mycelium-knowledge-extract hook → CFN path.</span>
+<span class="comment"># Control surface for the channel-message and ``memory set`` → CFN path.</span>
 <span class="cmd" id="config-knowledge-ingest">[knowledge_ingest]</span>
 
-<span class="comment"># Master kill switch for the knowledge-extract hook. False stops the hook on entry (no session reads, no POSTs, no CFN spend) and causes the backend to return 200 with a disabled marker.</span>
+<span class="comment"># Master kill switch. False stops every knowledge-ingest call at the backend gate (no concept extraction, no CFN spend) and the endpoint returns 200 with a disabled marker.</span>
 <span class="arg">enabled</span> = <span class="flag">true</span>
-
-<span class="comment"># OpenClaw event types that fire the knowledge-extract hook. &#x27;message:sent&#x27; fires after the agent&#x27;s response is delivered (one finalized turn available per fire). &#x27;agent:bootstrap&#x27; fires on session boot for catch-up. Avoid &#x27;command:new&#x27; — that&#x27;s the /new slash command (session reset), not a new agent turn.</span>
-<span class="arg">events</span> = PydanticUndefined
-
-<span class="comment"># Per-tool-call truncation threshold for tc.input and tc.result in the hook payload. 0 disables truncation. The extractor does not need full file dumps to pull concepts.</span>
-<span class="arg">max_tool_content_bytes</span> = 4096
-
-<span class="comment"># Hook skips the last un-finalized turn to avoid re-sending when tool results land after the initial POST. Final session turn is only sent when the next turn arrives or the session closes.</span>
-<span class="arg">skip_in_progress_turn</span> = <span class="flag">true</span>
 
 <span class="comment"># Backend circuit breaker — payloads above this estimated input token count are refused with 413. Set to 0 to disable.</span>
 <span class="arg">max_input_tokens</span> = 50000
 
 <span class="comment"># Backend content-hash dedupe window. Identical payloads posted within this many seconds return the cached response_id without hitting CFN. Set to 0 to disable dedupe entirely.</span>
-<span class="arg">dedupe_ttl_seconds</span> = 300</code></pre>
+<span class="arg">dedupe_ttl_seconds</span> = 300
+
+<span class="comment"># Skip ingest for trivially short content. Channel posts like &#x27;ack&#x27; or a single emoji produce KG noise without value. Set to 0 to ingest everything.</span>
+<span class="arg">min_content_chars</span> = 32
+
+<span class="comment"># Configuration for the metrics collector + display.</span>
+<span class="cmd" id="config-metrics">[metrics]</span>
+
+<span class="comment"># Explicit Prometheus /metrics endpoints to scrape. Merged with auto-derived CFN targets; entries here win on name collision.</span>
+<span class="arg">scrape</span> = PydanticUndefined</code></pre>
     </section>
 
     <hr class="divider">

@@ -29,13 +29,9 @@ class RoomRead(BaseModel):
     is_public: bool
     created_at: datetime
     coordination_state: str = "idle"
-    join_deadline: datetime | None = None
-    mode: str = "sync"
     trigger_config: dict | None = None
     last_synthesis_at: datetime | None = None
     is_persistent: bool = False
-    is_namespace: bool = False
-    parent_namespace: str | None = None
     mas_id: str | None = None
     workspace_id: str | None = None
 
@@ -72,7 +68,9 @@ class MessageCreate(BaseModel):
 
 class MessageRead(BaseModel):
     id: UUID
-    room_name: str
+    # Polymorphic: exactly one of room_name / coordination_session_id is set.
+    room_name: str | None = None
+    coordination_session_id: UUID | None = None
     sender_handle: str
     recipient_handle: str | None = None
     message_type: str
@@ -87,28 +85,73 @@ class MessageListResponse(BaseModel):
     total: int
 
 
-# ── Session ───────────────────────────────────────────────────────────────────
+# ── Participant (agent in a coordination session) ────────────────────────────
 
 
-class SessionCreate(BaseModel):
+class ContextFile(BaseModel):
+    """An opt-in shared file injected into a coordination session.
+
+    The agent (via the CLI) explicitly selected this file to share with the
+    session. Content is visible to other participants on tick fan-out and
+    counts as a deliberate room write — it flows to KXP/CFN like any other
+    room artifact. Use ``sha256`` for audit/dedupe and ``path`` for display.
+    """
+
+    path: str = Field(..., description="Absolute or repo-relative path on the sender's machine")
+    content: str = Field(..., description="File contents at join time")
+    sha256: str = Field(..., description="hex sha256 of content for audit and dedupe")
+
+
+class ParticipantCreate(BaseModel):
     agent_handle: str = Field(..., description="Agent handle joining the room")
     intent: str | None = Field(None, description="Agent's requirements/intent for coordination")
+    context_files: list[ContextFile] | None = Field(
+        None,
+        description="Files explicitly shared into the session at join time. "
+        "Visible to other participants and forwarded to KXP.",
+    )
 
 
-class SessionRead(BaseModel):
+class ContextFileRead(BaseModel):
+    path: str
+    sha256: str
+    # Content is also returned to participants reading their own session
+    # roster — they need it to render shared context.
+    content: str
+
+
+class ParticipantRead(BaseModel):
     id: UUID
-    room_name: str
+    coordination_session_id: UUID
     agent_handle: str
     intent: str | None = None
     joined_at: datetime
     last_seen: datetime | None = None
+    context_files: list[ContextFileRead] | None = None
 
     model_config = {"from_attributes": True}
 
 
-class SessionListResponse(BaseModel):
-    sessions: list[SessionRead]
+class ParticipantListResponse(BaseModel):
+    participants: list[ParticipantRead]
     total: int
+
+
+# ── CoordinationSession ──────────────────────────────────────────────────────
+
+
+class CoordinationSessionRead(BaseModel):
+    id: UUID
+    parent_room_name: str
+    short_id: str
+    state: str
+    created_at: datetime
+    join_window_ends_at: datetime | None = None
+    mas_id: str | None = None
+    workspace_id: str | None = None
+    display_name: str
+
+    model_config = {"from_attributes": True}
 
 
 # ── AuditEvent ────────────────────────────────────────────────────────────────

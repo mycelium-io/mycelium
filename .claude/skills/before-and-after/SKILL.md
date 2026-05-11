@@ -55,12 +55,11 @@ If any prerequisite fails, fix it before proceeding.
 
 **Throughout this skill, use `$MYCELIUM_API_URL` for all backend requests. Never hardcode a port.**
 
-### 0b. Verify server.mas_id is set
+### 0b. Verify server.mas_id is set (for CFN knowledge ingest)
 
-The `mycelium-knowledge-extract` hook reads `server.mas_id` from
-`~/.mycelium/config.toml` to know which MAS to ingest into. If it's empty,
-every ingest attempt silently falls back to the local log file and nothing
-reaches CFN's knowledge graph.
+`mas_id` is required for CFN knowledge ingest. KXP fires on deliberate room
+writes — channel messages and `mycelium memory set`. Without `mas_id` those
+writes reach the backend but never forward to CFN's knowledge graph.
 
 ```bash
 python3 -c "
@@ -73,54 +72,23 @@ if not mas_id:
 "
 ```
 
-If `mas_id` is empty, fetch the default MAS for the workspace and set it:
+If `mas_id` is empty, set it from the active room:
 
 ```bash
-# List MASes for the configured workspace
-WORKSPACE_ID=$(python3 -c "
-import toml, os
-cfg = toml.load(os.path.expanduser('~/.mycelium/config.toml'))
-print(cfg.get('server', {}).get('workspace_id', ''))
-")
-echo "workspace_id = $WORKSPACE_ID"
-
-# Option A: get mas_id from the active room (if a room is already set)
 ACTIVE_ROOM=$(python3 -c "
 import toml, os
 cfg = toml.load(os.path.expanduser('~/.mycelium/config.toml'))
 print(cfg.get('rooms', {}).get('active', ''))
 ")
 if [ -n "$ACTIVE_ROOM" ]; then
-    MAS_ID=$(curl -sf "$MYCELIUM_API_URL/rooms/$ACTIVE_ROOM" | python3 -c "
+    MAS_ID=$(curl -sf "$MYCELIUM_API_URL/api/rooms/$ACTIVE_ROOM" | python3 -c "
 import sys, json
 r = json.load(sys.stdin)
 print(r.get('mas_id') or '')
 ")
     echo "Room mas_id: $MAS_ID"
+    mycelium config set server.mas_id "$MAS_ID"
 fi
-
-# Option B: use mycelium config set
-mycelium config set server.mas_id "$MAS_ID"
-```
-
-Verify:
-
-```bash
-python3 -c "
-import toml, os
-cfg = toml.load(os.path.expanduser('~/.mycelium/config.toml'))
-print('mas_id:', cfg['server']['mas_id'])
-"
-```
-
-A non-empty `mas_id` here is required for knowledge ingest to work in Phase 3.
-
-**If you just set `mas_id`, restart the gateway now.** The hook process holds
-module-level state that isn't flushed on config hot-reload — only a full
-restart picks up the new value:
-
-```bash
-openclaw gateway restart
 ```
 
 ## Phase 0.5: Choose experiment LLM & API key
@@ -355,7 +323,7 @@ How to work together in this room:
 - Aim for consensus. When you think you've agreed, @-mention the other agent and explicitly say 'I agree' with the final decision.
 - Do NOT use any mycelium CLI commands — coordinate only by talking."
 
-curl -sf "$MYCELIUM_API_URL/rooms/${EXP_ID}-before/messages" \
+curl -sf "$MYCELIUM_API_URL/api/rooms/${EXP_ID}-before/messages" \
   -H "Content-Type: application/json" \
   -d "$(python3 -c "import json,sys; print(json.dumps({'sender_handle':'facilitator','message_type':'broadcast','content':sys.argv[1]}))" "$SEED_BODY")"
 ```
@@ -371,7 +339,7 @@ grep "mycelium-room.*←\|mycelium-room.*→" /tmp/openclaw/openclaw-$(date +%Y-
 Poll room messages:
 
 ```bash
-curl -sf "$MYCELIUM_API_URL/rooms/${EXP_ID}-before/messages?limit=20" | python3 -c "
+curl -sf "$MYCELIUM_API_URL/api/rooms/${EXP_ID}-before/messages?limit=20" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 msgs = data.get('messages', data) if isinstance(data, dict) else data
@@ -414,7 +382,7 @@ Capture the transcript from the before room **before** you kill the channel, oth
 ### 2d. Capture transcript
 
 ```bash
-curl -sf "$MYCELIUM_API_URL/rooms/${EXP_ID}-before/messages?limit=50" | python3 -c "
+curl -sf "$MYCELIUM_API_URL/api/rooms/${EXP_ID}-before/messages?limit=50" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 msgs = data.get('messages', data) if isinstance(data, dict) else data
@@ -431,29 +399,26 @@ if isinstance(msgs, list):
 
 ### 2e. Capture CFN ingest log for the before window
 
-Every time the `mycelium-knowledge-extract` hook fires during the before run
-it appends an event to the in-memory buffer on mycelium-backend. Capture the
-full buffer to disk so the experiment artifact has a per-event cost trail.
+Channel messages are deliberate room writes — KXP indexes them into CFN.
+Capture the ingest buffer to disk for the experiment artifact.
 
 ```bash
 mycelium cfn log --limit 500 --json > ~/.mycelium/rooms/${EXP_ID}-before/ingest-log.json
 mycelium cfn stats --json > ~/.mycelium/rooms/${EXP_ID}-before/ingest-stats.json
 ```
 
-The `.json` snapshots are what goes into the gist. For human review during
-the run, `mycelium cfn log --state=refused,error` is the fast signal on
-"did anything blow up here."
+For human review during the run, `mycelium cfn log --state=refused,error` is
+the fast signal on "did anything blow up here."
 
 ## Phase 3: Run "After" (Mycelium Negotiation)
 
-### 3a. Install the Mycelium plugin and configure the channel
+### 3a. Configure the channel for the after room
 
-Re-enable the bootstrap hook and switch the channel to the after room. The
-variable under test is now clearly "with bootstrap context injected" (after)
-vs "without" (before) — same channel plugin, same agents, same scenario.
+Re-enable the bootstrap hook (injects `MYCELIUM_ROOM_ID` + `MYCELIUM_API_URL`
+into agent bootstrap) and switch the channel to the after room.
 
 ```bash
-# Re-enable bootstrap hook — agents now get MYCELIUM_ROOM_ID injected
+# Re-enable bootstrap hook
 openclaw hooks enable mycelium-bootstrap
 
 # Switch channel to after room
@@ -499,7 +464,7 @@ Use Mycelium structured negotiation to reach consensus. Do NOT discuss this in c
 
 Explain your reasoning briefly in chat before each CLI command so the human can follow along. Repeat until you receive a consensus message."
 
-curl -sf "$MYCELIUM_API_URL/rooms/${EXP_ID}-after/messages" \
+curl -sf "$MYCELIUM_API_URL/api/rooms/${EXP_ID}-after/messages" \
   -H "Content-Type: application/json" \
   -d "$(python3 -c "import json,sys; print(json.dumps({'sender_handle':'facilitator','message_type':'broadcast','content':sys.argv[1]}))" "$SEED_BODY")"
 ```
@@ -522,7 +487,7 @@ Monitor:
 grep "mycelium-room.*🎯\|mycelium-room.*🤝" /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log | tail -20
 
 # Session state
-curl -sf "$MYCELIUM_API_URL/rooms" | python3 -c "
+curl -sf "$MYCELIUM_API_URL/api/rooms" | python3 -c "
 import sys, json
 for r in json.load(sys.stdin):
     if '${EXP_ID}-after' in r['name']:
@@ -536,7 +501,7 @@ When consensus is reached or the session completes:
 
 ```bash
 # Room messages
-curl -sf "$MYCELIUM_API_URL/rooms/${EXP_ID}-after/messages?limit=50" | python3 -c "
+curl -sf "$MYCELIUM_API_URL/api/rooms/${EXP_ID}-after/messages?limit=50" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 msgs = data.get('messages', data) if isinstance(data, dict) else data
@@ -549,14 +514,14 @@ if isinstance(msgs, list):
 " > ~/.mycelium/rooms/${EXP_ID}-after/transcript.md
 
 # Session room messages (ticks, proposals, consensus)
-SESSION_ROOM=$(curl -sf "$MYCELIUM_API_URL/rooms" | python3 -c "
+SESSION_ROOM=$(curl -sf "$MYCELIUM_API_URL/api/rooms" | python3 -c "
 import sys, json
 for r in json.load(sys.stdin):
     if '${EXP_ID}-after:session:' in r['name']:
         print(r['name']); break
 ")
 echo "Session room: $SESSION_ROOM"
-curl -sf "$MYCELIUM_API_URL/rooms/$SESSION_ROOM/messages?limit=100" | python3 -c "
+curl -sf "$MYCELIUM_API_URL/api/rooms/$SESSION_ROOM/messages?limit=100" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 msgs = data.get('messages', data) if isinstance(data, dict) else data
@@ -815,8 +780,8 @@ openclaw hooks enable mycelium-bootstrap
 openclaw hooks enable mycelium-knowledge-extract
 
 # Delete experiment rooms
-curl -sf -X DELETE "$MYCELIUM_API_URL/rooms/${EXP_ID}-before"
-curl -sf -X DELETE "$MYCELIUM_API_URL/rooms/${EXP_ID}-after"
+curl -sf -X DELETE "$MYCELIUM_API_URL/api/rooms/${EXP_ID}-before"
+curl -sf -X DELETE "$MYCELIUM_API_URL/api/rooms/${EXP_ID}-after"
 
 # Restart gateway to pick up config changes
 openclaw gateway restart

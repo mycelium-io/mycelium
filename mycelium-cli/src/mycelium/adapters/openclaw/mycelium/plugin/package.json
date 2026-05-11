@@ -3,13 +3,15 @@
   "version": "0.1.0",
   "type": "module",
   "openclaw": {
-    "extensions": ["./index.ts"]
+    "extensions": ["./dist/index.js"]
   },
   "scripts": {
+    "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "devDependencies": {
+    "typescript": "^5.0.0",
     "vitest": "^2.1.0"
   }
 }

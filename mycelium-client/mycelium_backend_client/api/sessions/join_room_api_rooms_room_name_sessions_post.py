@@ -7,15 +7,15 @@ import httpx
 from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.http_validation_error import HTTPValidationError
-from ...models.session_create import SessionCreate
-from ...models.session_read import SessionRead
+from ...models.participant_create import ParticipantCreate
+from ...models.participant_read import ParticipantRead
 from ...types import Response
 
 
 def _get_kwargs(
     room_name: str,
     *,
-    body: SessionCreate,
+    body: ParticipantCreate,
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
 
@@ -36,9 +36,9 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> HTTPValidationError | SessionRead | None:
+) -> HTTPValidationError | ParticipantRead | None:
     if response.status_code == 201:
-        response_201 = SessionRead.from_dict(response.json())
+        response_201 = ParticipantRead.from_dict(response.json())
 
         return response_201
 
@@ -55,7 +55,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[HTTPValidationError | SessionRead]:
+) -> Response[HTTPValidationError | ParticipantRead]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -68,22 +68,22 @@ def sync_detailed(
     room_name: str,
     *,
     client: AuthenticatedClient | Client,
-    body: SessionCreate,
-) -> Response[HTTPValidationError | SessionRead]:
+    body: ParticipantCreate,
+) -> Response[HTTPValidationError | ParticipantRead]:
     """Join Room
 
-     Join a room. If the room is a namespace, auto-spawns a session and joins that.
+     Join a room. Auto-spawns a coordination session if one doesn't exist.
 
     Args:
         room_name (str):
-        body (SessionCreate):
+        body (ParticipantCreate):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | SessionRead]
+        Response[HTTPValidationError | ParticipantRead]
     """
 
     kwargs = _get_kwargs(
@@ -102,22 +102,22 @@ def sync(
     room_name: str,
     *,
     client: AuthenticatedClient | Client,
-    body: SessionCreate,
-) -> HTTPValidationError | SessionRead | None:
+    body: ParticipantCreate,
+) -> HTTPValidationError | ParticipantRead | None:
     """Join Room
 
-     Join a room. If the room is a namespace, auto-spawns a session and joins that.
+     Join a room. Auto-spawns a coordination session if one doesn't exist.
 
     Args:
         room_name (str):
-        body (SessionCreate):
+        body (ParticipantCreate):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | SessionRead
+        HTTPValidationError | ParticipantRead
     """
 
     return sync_detailed(
@@ -131,22 +131,22 @@ async def asyncio_detailed(
     room_name: str,
     *,
     client: AuthenticatedClient | Client,
-    body: SessionCreate,
-) -> Response[HTTPValidationError | SessionRead]:
+    body: ParticipantCreate,
+) -> Response[HTTPValidationError | ParticipantRead]:
     """Join Room
 
-     Join a room. If the room is a namespace, auto-spawns a session and joins that.
+     Join a room. Auto-spawns a coordination session if one doesn't exist.
 
     Args:
         room_name (str):
-        body (SessionCreate):
+        body (ParticipantCreate):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | SessionRead]
+        Response[HTTPValidationError | ParticipantRead]
     """
 
     kwargs = _get_kwargs(
@@ -163,22 +163,22 @@ async def asyncio(
     room_name: str,
     *,
     client: AuthenticatedClient | Client,
-    body: SessionCreate,
-) -> HTTPValidationError | SessionRead | None:
+    body: ParticipantCreate,
+) -> HTTPValidationError | ParticipantRead | None:
     """Join Room
 
-     Join a room. If the room is a namespace, auto-spawns a session and joins that.
+     Join a room. Auto-spawns a coordination session if one doesn't exist.
 
     Args:
         room_name (str):
-        body (SessionCreate):
+        body (ParticipantCreate):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | SessionRead
+        HTTPValidationError | ParticipantRead
     """
 
     return (

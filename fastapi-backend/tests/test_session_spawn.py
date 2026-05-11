@@ -1,49 +1,52 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Julia Valenti
 
-"""Tests for session spawning within namespace rooms."""
+"""Tests for coordination session spawning."""
+
+from uuid import UUID
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Room
+from app.models import CoordinationSession
+
+
+async def _coord_for_room(client: AsyncClient, namespace: str) -> dict:
+    """Return the most recent CoordinationSession dict for a namespace room."""
+    resp = await client.get(f"/api/rooms/{namespace}/sessions/coordination")
+    rows = resp.json()
+    assert rows, f"no coordination sessions for {namespace}"
+    return rows[0]
 
 
 @pytest.mark.asyncio
-async def test_create_room_without_mode(client: AsyncClient):
-    """Creating a room without mode field works — defaults to async namespace."""
+async def test_create_room_defaults(client: AsyncClient):
+    """Creating a room defaults to a persistent namespace."""
     resp = await client.post("/api/rooms", json={"name": "no-mode-test"})
     assert resp.status_code == 201
-    data = resp.json()
-    assert data["mode"] == "async"
-    assert data["is_namespace"] is True
-    assert data["is_persistent"] is True
+    assert resp.json()["is_persistent"] is True
 
 
 @pytest.mark.asyncio
 async def test_join_namespace_auto_spawns_session(client: AsyncClient):
-    """Joining a namespace room should auto-spawn a sync session."""
-    # Create a room (always a namespace now)
-    resp = await client.post("/api/rooms", json={"name": "ns-test"})
-    assert resp.status_code == 201
-    assert resp.json()["is_namespace"] is True
+    """Joining a room auto-spawns a coordination session."""
+    await client.post("/api/rooms", json={"name": "ns-test"})
 
-    # Join it — should auto-spawn a session
     resp = await client.post(
         "/api/rooms/ns-test/sessions",
         json={"agent_handle": "agent-a", "intent": "Let's negotiate"},
     )
     assert resp.status_code == 201
-    data = resp.json()
-    # Should be joined to a session room, not the namespace itself
-    assert data["room_name"].startswith("ns-test:session:")
+    coord = await _coord_for_room(client, "ns-test")
+    assert resp.json()["coordination_session_id"] == coord["id"]
+    assert coord["display_name"].startswith("ns-test:session:")
 
 
 @pytest.mark.asyncio
 async def test_multiple_agents_join_same_session(client: AsyncClient):
-    """Multiple agents joining the same namespace should land in the same session."""
+    """Multiple agents joining the same room land in the same coord session."""
     await client.post("/api/rooms", json={"name": "shared-ns"})
 
     resp1 = await client.post(
@@ -54,13 +57,12 @@ async def test_multiple_agents_join_same_session(client: AsyncClient):
         "/api/rooms/shared-ns/sessions",
         json={"agent_handle": "agent-2", "intent": "Second"},
     )
-
-    assert resp1.json()["room_name"] == resp2.json()["room_name"]
+    assert resp1.json()["coordination_session_id"] == resp2.json()["coordination_session_id"]
 
 
 @pytest.mark.asyncio
 async def test_explicit_spawn(client: AsyncClient):
-    """Explicitly spawning a session in a namespace."""
+    """Explicitly spawning a coordination session."""
     await client.post("/api/rooms", json={"name": "spawn-ns"})
 
     resp = await client.post("/api/rooms/spawn-ns/sessions/spawn")
@@ -68,42 +70,37 @@ async def test_explicit_spawn(client: AsyncClient):
     data = resp.json()
     assert data["parent"] == "spawn-ns"
     assert data["session_room"].startswith("spawn-ns:session:")
+    assert "coordination_session_id" in data
 
 
 @pytest.mark.asyncio
-async def test_spawn_on_non_namespace_fails(client: AsyncClient):
-    """Spawning a session on a non-namespace room should 400."""
-    # Create a namespace, then spawn a session (which is non-namespace)
+async def test_spawn_on_session_display_404(client: AsyncClient):
+    """Spawning under a session display name returns 404 (no real room)."""
     await client.post("/api/rooms", json={"name": "parent-ns"})
     resp = await client.post("/api/rooms/parent-ns/sessions/spawn")
     session_name = resp.json()["session_room"]
 
-    # Try to spawn inside the session room — should fail
     resp = await client.post(f"/api/rooms/{session_name}/sessions/spawn")
-    assert resp.status_code == 400
-    assert "namespace" in resp.json()["detail"].lower()
+    assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_session_room_enters_waiting_on_join(client: AsyncClient):
-    """Joining a session room should transition it to waiting."""
+async def test_join_transitions_coord_session_to_waiting(client: AsyncClient):
+    """Joining transitions the coord session state machine to waiting."""
     await client.post("/api/rooms", json={"name": "wait-ns"})
 
-    resp = await client.post(
+    await client.post(
         "/api/rooms/wait-ns/sessions",
         json={"agent_handle": "agent-a", "intent": "testing"},
     )
-    session_name = resp.json()["room_name"]
-
-    # Session room should be waiting
-    resp = await client.get(f"/api/rooms/{session_name}")
-    assert resp.json()["coordination_state"] == "waiting"
-    assert resp.json()["join_deadline"] is not None
+    coord = await _coord_for_room(client, "wait-ns")
+    assert coord["state"] == "waiting"
+    assert coord["join_window_ends_at"] is not None
 
 
 @pytest.mark.asyncio
-async def test_namespace_stays_idle_after_join(client: AsyncClient):
-    """The namespace room should remain idle when agents join."""
+async def test_namespace_room_stays_idle_after_join(client: AsyncClient):
+    """The room itself stays idle; only the coord session enters waiting."""
     await client.post("/api/rooms", json={"name": "idle-ns"})
 
     await client.post(
@@ -117,43 +114,40 @@ async def test_namespace_stays_idle_after_join(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_new_session_after_complete(client: AsyncClient, db_session: AsyncSession):
-    """Completing a session should allow spawning a new one in the same namespace."""
+    """Completing a session lets a fresh one spawn in the same namespace."""
     await client.post("/api/rooms", json={"name": "multi-session-ns"})
 
-    # First session
-    resp = await client.post(
+    resp1 = await client.post(
         "/api/rooms/multi-session-ns/sessions",
         json={"agent_handle": "agent-a", "intent": "round 1"},
     )
-    session1 = resp.json()["room_name"]
+    coord1_id = resp1.json()["coordination_session_id"]
 
-    # Mark the first session as complete via DB
     await db_session.execute(
-        sa_update(Room).where(Room.name == session1).values(coordination_state="complete")
+        sa_update(CoordinationSession)
+        .where(CoordinationSession.id == UUID(coord1_id))
+        .values(state="complete")
     )
     await db_session.commit()
 
-    # Second join should spawn a NEW session (first is complete)
-    resp = await client.post(
+    resp2 = await client.post(
         "/api/rooms/multi-session-ns/sessions",
         json={"agent_handle": "agent-b", "intent": "round 2"},
     )
-    session2 = resp.json()["room_name"]
-
-    assert session2 != session1
-    assert session2.startswith("multi-session-ns:session:")
+    assert resp2.json()["coordination_session_id"] != coord1_id
 
 
 @pytest.mark.asyncio
-async def test_list_sessions_on_session_room(client: AsyncClient):
-    """Listing sessions on a session room returns the joined agents."""
+async def test_list_participants_via_session_display_name(client: AsyncClient):
+    """List participants by session display name returns the joined agents."""
     await client.post("/api/rooms", json={"name": "list-ns"})
 
-    resp = await client.post(
+    await client.post(
         "/api/rooms/list-ns/sessions",
         json={"agent_handle": "alpha", "intent": "first"},
     )
-    session_name = resp.json()["room_name"]
+    coord = await _coord_for_room(client, "list-ns")
+    session_name = coord["display_name"]
 
     await client.post(
         "/api/rooms/list-ns/sessions",
@@ -163,22 +157,22 @@ async def test_list_sessions_on_session_room(client: AsyncClient):
     resp = await client.get(f"/api/rooms/{session_name}/sessions")
     data = resp.json()
     assert data["total"] == 2
-    handles = {s["agent_handle"] for s in data["sessions"]}
+    handles = {p["agent_handle"] for p in data["participants"]}
     assert handles == {"alpha", "beta"}
 
 
 @pytest.mark.asyncio
-async def test_session_room_is_not_namespace(client: AsyncClient):
-    """Session rooms should have is_namespace=False."""
+async def test_session_display_name_is_not_a_room(client: AsyncClient):
+    """Session display names have no backing Room row — only a CoordinationSession."""
     await client.post("/api/rooms", json={"name": "check-ns"})
 
-    resp = await client.post(
+    await client.post(
         "/api/rooms/check-ns/sessions",
         json={"agent_handle": "agent-a", "intent": "testing"},
     )
-    session_name = resp.json()["room_name"]
+    coord = await _coord_for_room(client, "check-ns")
+    session_name = coord["display_name"]
 
+    # Display names don't exist as Room rows — only as CoordinationSession entities.
     resp = await client.get(f"/api/rooms/{session_name}")
-    data = resp.json()
-    assert data["is_namespace"] is False
-    assert data["parent_namespace"] == "check-ns"
+    assert resp.status_code == 404

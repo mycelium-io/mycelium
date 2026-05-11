@@ -167,6 +167,26 @@ export function formatTickInstruction(
     contextLines.push(`Your last action: ${yourLastAction}.`);
   }
 
+  // Opt-in shared context files: any participant can attach files at join
+  // time via `mycelium session join --context-files`. The CLI hashes them,
+  // sends content to the backend, and the backend echoes the full content
+  // here so every agent sees what was shared.
+  const sharedContextFiles = Array.isArray(payload?.shared_context_files)
+    ? payload.shared_context_files
+    : [];
+  const contextFilesBlock: string[] = [];
+  if (sharedContextFiles.length > 0) {
+    contextFilesBlock.push("Shared context files (opt-in by participants):");
+    for (const cf of sharedContextFiles) {
+      const path = cf?.path ?? "(unknown)";
+      const sharer = cf?.shared_by ?? "?";
+      const content = cf?.content ?? "";
+      contextFilesBlock.push(`--- ${path} (shared by ${sharer}) ---`);
+      contextFilesBlock.push(content);
+      contextFilesBlock.push("--- end ---");
+    }
+  }
+
   return [
     roundHeader,
     `You are in a structured negotiation in room ${roomName}.`,
@@ -175,6 +195,7 @@ export function formatTickInstruction(
       ? "You CAN propose a counter-offer."
       : "You can only accept or reject.",
     ...(contextLines.length > 0 ? ["", ...contextLines] : []),
+    ...(contextFilesBlock.length > 0 ? ["", ...contextFilesBlock] : []),
     "",
     "Current offer on the table:",
     offerSummary,

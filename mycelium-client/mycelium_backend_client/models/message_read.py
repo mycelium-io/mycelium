@@ -19,27 +19,27 @@ class MessageRead:
     """
     Attributes:
         id (UUID):
-        room_name (str):
         sender_handle (str):
         message_type (str):
         content (str):
         created_at (datetime.datetime):
+        room_name (None | str | Unset):
+        coordination_session_id (None | Unset | UUID):
         recipient_handle (None | str | Unset):
     """
 
     id: UUID
-    room_name: str
     sender_handle: str
     message_type: str
     content: str
     created_at: datetime.datetime
+    room_name: None | str | Unset = UNSET
+    coordination_session_id: None | Unset | UUID = UNSET
     recipient_handle: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         id = str(self.id)
-
-        room_name = self.room_name
 
         sender_handle = self.sender_handle
 
@@ -48,6 +48,20 @@ class MessageRead:
         content = self.content
 
         created_at = self.created_at.isoformat()
+
+        room_name: None | str | Unset
+        if isinstance(self.room_name, Unset):
+            room_name = UNSET
+        else:
+            room_name = self.room_name
+
+        coordination_session_id: None | str | Unset
+        if isinstance(self.coordination_session_id, Unset):
+            coordination_session_id = UNSET
+        elif isinstance(self.coordination_session_id, UUID):
+            coordination_session_id = str(self.coordination_session_id)
+        else:
+            coordination_session_id = self.coordination_session_id
 
         recipient_handle: None | str | Unset
         if isinstance(self.recipient_handle, Unset):
@@ -60,13 +74,16 @@ class MessageRead:
         field_dict.update(
             {
                 "id": id,
-                "room_name": room_name,
                 "sender_handle": sender_handle,
                 "message_type": message_type,
                 "content": content,
                 "created_at": created_at,
             }
         )
+        if room_name is not UNSET:
+            field_dict["room_name"] = room_name
+        if coordination_session_id is not UNSET:
+            field_dict["coordination_session_id"] = coordination_session_id
         if recipient_handle is not UNSET:
             field_dict["recipient_handle"] = recipient_handle
 
@@ -77,8 +94,6 @@ class MessageRead:
         d = dict(src_dict)
         id = UUID(d.pop("id"))
 
-        room_name = d.pop("room_name")
-
         sender_handle = d.pop("sender_handle")
 
         message_type = d.pop("message_type")
@@ -86,6 +101,32 @@ class MessageRead:
         content = d.pop("content")
 
         created_at = isoparse(d.pop("created_at"))
+
+        def _parse_room_name(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        room_name = _parse_room_name(d.pop("room_name", UNSET))
+
+        def _parse_coordination_session_id(data: object) -> None | Unset | UUID:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                coordination_session_id_type_0 = UUID(data)
+
+                return coordination_session_id_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | Unset | UUID, data)
+
+        coordination_session_id = _parse_coordination_session_id(d.pop("coordination_session_id", UNSET))
 
         def _parse_recipient_handle(data: object) -> None | str | Unset:
             if data is None:
@@ -98,11 +139,12 @@ class MessageRead:
 
         message_read = cls(
             id=id,
-            room_name=room_name,
             sender_handle=sender_handle,
             message_type=message_type,
             content=content,
             created_at=created_at,
+            room_name=room_name,
+            coordination_session_id=coordination_session_id,
             recipient_handle=recipient_handle,
         )
 

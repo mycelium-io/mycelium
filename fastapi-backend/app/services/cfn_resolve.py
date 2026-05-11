@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models import Room
+from app.models import CoordinationSession, Room
 
 logger = logging.getLogger(__name__)
 
@@ -41,40 +41,55 @@ async def resolve_mas_id(
     room_name: str | None,
     db: AsyncSession,
 ) -> str:
-    """Resolve mas_id via: client value > room DB lookup > settings > 400.
+    """Resolve mas_id via: client value > DB lookup > settings > 400.
 
-    When room_name is provided, looks up the Room row and reads its mas_id.
-    If the room is a session sub-room (has parent_namespace), walks up to
-    the parent namespace which owns the MAS.
+    ``room_name`` may be either a real room name or a legacy session display
+    name (``{parent}:session:{short}``). For sessions, the mas_id lives on
+    the CoordinationSession row, which inherits it from the parent room at
+    spawn time. For real rooms, it lives on the Room row.
     """
     if client_value:
         return client_value
 
     if room_name:
+        # Try resolving as a session display name first.
+        if ":session:" in room_name:
+            parent, _, short_id = room_name.partition(":session:")
+            if parent and short_id:
+                coord_result = await db.execute(
+                    select(CoordinationSession).where(
+                        CoordinationSession.parent_room_name == parent,
+                        CoordinationSession.short_id == short_id,
+                    )
+                )
+                coord = coord_result.scalar_one_or_none()
+                if coord:
+                    if coord.mas_id:
+                        return coord.mas_id
+                    # Coord session missing mas_id — fall back to parent room.
+                    parent_result = await db.execute(select(Room).where(Room.name == parent))
+                    parent_room = parent_result.scalar_one_or_none()
+                    if parent_room and parent_room.mas_id:
+                        return parent_room.mas_id
+
         result = await db.execute(select(Room).where(Room.name == room_name))
         room = result.scalar_one_or_none()
         if room is None:
+            # Maybe it was a session display we couldn't resolve above.
             raise HTTPException(
                 status_code=400,
                 detail=f"room_name '{room_name}' not found — cannot resolve mas_id.",
             )
         if room.mas_id:
             return room.mas_id
-        # Session sub-rooms inherit mas_id from their parent namespace
-        if room.parent_namespace:
-            parent_result = await db.execute(select(Room).where(Room.name == room.parent_namespace))
-            parent = parent_result.scalar_one_or_none()
-            if parent and parent.mas_id:
-                return parent.mas_id
-        logger.warning("room '%s' exists but has no mas_id (and no parent with one)", room_name)
+        logger.warning("room '%s' exists but has no mas_id", room_name)
         if not settings.MAS_ID:
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    f"Room '{room_name}' exists but has no mas_id configured "
-                    f"(and no parent namespace with one). Either create the room "
-                    f"via `mycelium room create` (which provisions a MAS), or set "
-                    f"MAS_ID in your backend .env as a fallback."
+                    f"Room '{room_name}' exists but has no mas_id configured. "
+                    f"Either create the room via `mycelium room create` (which "
+                    f"provisions a MAS), or set MAS_ID in your backend .env."
                 ),
             )
 

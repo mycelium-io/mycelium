@@ -172,9 +172,10 @@ class RoomConfig(BaseModel):
 
 
 class KnowledgeIngestConfig(BaseModel):
-    """Control surface for the mycelium-knowledge-extract hook → CFN path.
+    """Control surface for the channel-message and ``memory set`` → CFN path.
 
-    Every knob in this section is user-facing and exposed via
+    KXP fires only on deliberate room artifacts; the silent per-turn hook is
+    gone. These knobs are user-facing and exposed via
     ``mycelium config set knowledge_ingest.<key> <value>``. Values are also
     overridable via ``MYCELIUM_INGEST_*`` env vars for ephemeral changes.
     """
@@ -182,36 +183,9 @@ class KnowledgeIngestConfig(BaseModel):
     enabled: bool = Field(
         default=True,
         description=(
-            "Master kill switch for the knowledge-extract hook. False stops "
-            "the hook on entry (no session reads, no POSTs, no CFN spend) and "
-            "causes the backend to return 200 with a disabled marker."
-        ),
-    )
-    events: list[str] = Field(
-        default_factory=lambda: ["message:sent", "agent:bootstrap"],
-        description=(
-            "OpenClaw event types that fire the knowledge-extract hook. "
-            "'message:sent' fires after the agent's response is delivered "
-            "(one finalized turn available per fire). 'agent:bootstrap' "
-            "fires on session boot for catch-up. Avoid 'command:new' — "
-            "that's the /new slash command (session reset), not a new "
-            "agent turn."
-        ),
-    )
-    max_tool_content_bytes: int = Field(
-        default=4096,
-        description=(
-            "Per-tool-call truncation threshold for tc.input and tc.result in "
-            "the hook payload. 0 disables truncation. The extractor does not "
-            "need full file dumps to pull concepts."
-        ),
-    )
-    skip_in_progress_turn: bool = Field(
-        default=True,
-        description=(
-            "Hook skips the last un-finalized turn to avoid re-sending when "
-            "tool results land after the initial POST. Final session turn is "
-            "only sent when the next turn arrives or the session closes."
+            "Master kill switch. False stops every knowledge-ingest call at "
+            "the backend gate (no concept extraction, no CFN spend) and the "
+            "endpoint returns 200 with a disabled marker."
         ),
     )
     max_input_tokens: int = Field(
@@ -227,6 +201,14 @@ class KnowledgeIngestConfig(BaseModel):
             "Backend content-hash dedupe window. Identical payloads posted "
             "within this many seconds return the cached response_id without "
             "hitting CFN. Set to 0 to disable dedupe entirely."
+        ),
+    )
+    min_content_chars: int = Field(
+        default=32,
+        description=(
+            "Skip ingest for trivially short content. Channel posts like "
+            "'ack' or a single emoji produce KG noise without value. Set to "
+            "0 to ingest everything."
         ),
     )
 

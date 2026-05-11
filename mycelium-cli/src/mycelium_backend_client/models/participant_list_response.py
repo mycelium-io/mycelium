@@ -7,29 +7,29 @@ from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
 if TYPE_CHECKING:
-    from ..models.session_read import SessionRead
+    from ..models.participant_read import ParticipantRead
 
 
-T = TypeVar("T", bound="SessionListResponse")
+T = TypeVar("T", bound="ParticipantListResponse")
 
 
 @_attrs_define
-class SessionListResponse:
+class ParticipantListResponse:
     """
     Attributes:
-        sessions (list[SessionRead]):
+        participants (list[ParticipantRead]):
         total (int):
     """
 
-    sessions: list[SessionRead]
+    participants: list[ParticipantRead]
     total: int
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        sessions = []
-        for sessions_item_data in self.sessions:
-            sessions_item = sessions_item_data.to_dict()
-            sessions.append(sessions_item)
+        participants = []
+        for participants_item_data in self.participants:
+            participants_item = participants_item_data.to_dict()
+            participants.append(participants_item)
 
         total = self.total
 
@@ -37,7 +37,7 @@ class SessionListResponse:
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
-                "sessions": sessions,
+                "participants": participants,
                 "total": total,
             }
         )
@@ -46,25 +46,25 @@ class SessionListResponse:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.session_read import SessionRead
+        from ..models.participant_read import ParticipantRead
 
         d = dict(src_dict)
-        sessions = []
-        _sessions = d.pop("sessions")
-        for sessions_item_data in _sessions:
-            sessions_item = SessionRead.from_dict(sessions_item_data)
+        participants = []
+        _participants = d.pop("participants")
+        for participants_item_data in _participants:
+            participants_item = ParticipantRead.from_dict(participants_item_data)
 
-            sessions.append(sessions_item)
+            participants.append(participants_item)
 
         total = d.pop("total")
 
-        session_list_response = cls(
-            sessions=sessions,
+        participant_list_response = cls(
+            participants=participants,
             total=total,
         )
 
-        session_list_response.additional_properties = d
-        return session_list_response
+        participant_list_response.additional_properties = d
+        return participant_list_response
 
     @property
     def additional_keys(self) -> list[str]:
