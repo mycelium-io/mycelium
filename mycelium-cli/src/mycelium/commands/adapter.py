@@ -982,10 +982,11 @@ def _install_openclaw(
                 shutil.rmtree(stale_path, ignore_errors=True)
 
     plugin_src = _resolve_asset(_MYCELIUM_PLUGIN_SRC)
-    # On a fresh install (not reinstall), build in the source tree before handing
-    # it to openclaw so the compiled dist/ is present when openclaw validates it.
-    if not reinstall:
-        _build_plugin(plugin_src)
+    # Build in the source tree so the compiled dist/ is present when openclaw
+    # validates the install path.  Needed for both fresh and reinstall: on
+    # reinstall we already built in the destination, but openclaw plugins
+    # install validates the *source* path it's given.
+    _build_plugin(plugin_src)
     _run(["openclaw", "plugins", "install", str(plugin_src)], allow_already_exists=tolerate_exists)
 
     # Add plugin to plugins.allow so openclaw doesn't warn on every command
