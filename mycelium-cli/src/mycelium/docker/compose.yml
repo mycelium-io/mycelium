@@ -35,11 +35,8 @@ services:
       retries: 10
 
   mycelium-backend:
-    build:
-      context: ../fastapi-backend
-      dockerfile: Dockerfile
-    image: mycelium-backend:local
-    pull_policy: never
+    image: ghcr.io/mycelium-io/mycelium-backend:${MYCELIUM_IMAGE_TAG:-latest}
+    pull_policy: always
     container_name: mycelium-backend
     restart: unless-stopped
     env_file:
