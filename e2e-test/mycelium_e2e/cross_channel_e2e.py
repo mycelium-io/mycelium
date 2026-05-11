@@ -1,9 +1,11 @@
 """
-Cross-channel memory isolation E2E test.
+Cross-channel memory isolation and return-trip E2E test.
 
 Proves that memory accumulated in one mycelium room is NOT automatically
-visible to an agent woken in a different room's session context, and then
-tests whether explicit context inclusion can bridge the gap.
+visible to an agent woken in a different room's session context, tests
+whether explicit context inclusion can bridge the gap, and verifies that
+PR #221's cross-channel return-trip delivers consensus results back to
+the originating Matrix channel.
 
 Architecture:
   Phase 1 — Seed: Tell agent-alpha (via Matrix) to store a specific decision
@@ -14,9 +16,9 @@ Architecture:
             WITHOUT including context.  Expect no knowledge.
   Phase 4 — Bridged probe: Ask agent-beta the SAME question but include
             the relevant context in the message body.  Expect awareness.
-
-This validates that an agent in a different session context is oblivious
-to another room's memory, and that sender-included context is the bridge.
+  Phase 5 — Return-trip: Trigger a negotiation from Matrix, wait for
+            coordination consensus, and verify the plugin auto-delivers
+            a "[Mycelium return trip — …]" message back to Matrix.
 
 Requires:
   - Mycelium backend running on oclw4
@@ -36,6 +38,8 @@ from typing import Optional
 from urllib.parse import quote
 
 import httpx
+
+from mycelium_e2e.distributed_e2e import wait_for_mycelium_consensus
 
 from mycelium_e2e.bundle import (
     BACKEND_URL,
@@ -215,6 +219,7 @@ async def test_cross_channel_memory_isolation(test_ctx: TestContext):
     print_section(50, "Cross-channel memory isolation")
 
     seed_room = f"xch-seed-{uuid.uuid4().hex[:8]}"
+    nego_room: str | None = None
     ctx = CrossChannelContext(test_name="cross-channel-isolation", seed_room=seed_room)
 
     skip_checks = [
@@ -230,10 +235,12 @@ async def test_cross_channel_memory_isolation(test_ctx: TestContext):
         "Bridged probe sent to agent-beta",
         "agent-beta responded to bridged probe",
         "Bridged probe response contains seed-room knowledge",
-        # Phase 5: session-level isolation via `mycelium room send` DM
-        "Channel DM posted to mycelium-room",
-        "agent-beta received DM in a fresh session",
-        "DM response lacks sender's Matrix history",
+        # Phase 5: cross-channel return-trip (PR #221)
+        "Negotiation room created",
+        "Negotiation trigger sent",
+        "Agents joined negotiation",
+        "Coordination consensus reached",
+        "Return-trip delivered to Matrix",
     ]
 
     if test_ctx.skip_llm_tests:
@@ -589,154 +596,178 @@ async def test_cross_channel_memory_isolation(test_ctx: TestContext):
             print(f"    {DIM}Bridged probe response (first 200 chars):{RESET}")
             print(f"    {DIM}{bridged_text[:200]}{RESET}")
 
-        # ── Phase 5: session-level isolation via channel DM ──────────────
+        # ── Phase 5: cross-channel return-trip (PR #221) ─────────────────
         #
-        # Mycelium SKILL.md §"Channel Messaging (Cross-Agent DMs)" makes
-        # a load-bearing guarantee:
-        #
-        #   "Sessions are NOT shared across channels. When another agent
-        #    sends you a message via the mycelium channel, you receive it
-        #    in a *separate session* from whatever conversation you're
-        #    currently in with the user. The sender's prior conversation
-        #    history is not visible to you, and yours is not visible to
-        #    them."
-        #
-        # Phases 1-4 test *memory* isolation. Phase 5 tests *session*
-        # isolation: if agent-alpha drops a `mycelium room send "@agent-
-        # beta …"` DM after a long Matrix conversation with the user,
-        # agent-beta must respond without any awareness of that Matrix
-        # history — they only get the DM text. We post the DM via the
-        # backend HTTP API (functionally equivalent to the CLI, but
-        # avoids per-agent OpenClaw approval gates on leaf nodes that
-        # would otherwise stall the test on a tangential issue).
+        # PR #221 adds auto-delivery of negotiation consensus results back
+        # to the user's home channel. When coordination_consensus fires,
+        # the plugin posts a "[Mycelium return trip — …]" message to
+        # whichever channel session the agent first appeared in. This
+        # phase verifies that mechanism end-to-end on the local Matrix
+        # setup: trigger a negotiation from the agents room, wait for
+        # consensus, and confirm the return-trip message lands.
 
-        log_info("Phase 5: Channel DM isolation — `mycelium room send` from agent-alpha to agent-beta")
+        log_info("Phase 5: Cross-channel return-trip — negotiation via Matrix")
 
-        # A deliberately-cryptic reference that only makes sense if beta
-        # can see alpha's *prior* Matrix history (which it shouldn't).
-        # If beta echoes this token back, session isolation is broken.
-        history_canary = f"CANARY-{uuid.uuid4().hex[:8]}"
+        nego_room = f"xch-nego-{uuid.uuid4().hex[:8]}"
+        nego_room_created = False
 
-        # Simulate: alpha has been chatting with the user in Matrix about
-        # a secret project. Post that history *only* to the agents-Matrix
-        # room (not to the seed room or mycelium-room). Agent-beta has
-        # no channel subscription to agents-Matrix, so beta cannot see
-        # this — but we include it so the scenario is realistic.
-        try:
-            await observer.send_message(
-                agents_room,
-                f"(scratchpad for agent-alpha — internal, do not reply): {history_canary}",
+        async with httpx.AsyncClient(timeout=30.0) as http:
+            r = await http.post(
+                f"{BACKEND_URL}/rooms",
+                json={"name": nego_room, "mode": "coordination"},
             )
-            await asyncio.sleep(2)
-        except Exception:
-            pass  # Non-fatal; just flavor context.
-
-        dm_ts = int(time.time() * 1000)
-        dm_body = (
-            f"@agent-beta Heads up: we're standardizing on Redis for the "
-            f"{DECISION_TOKEN} project. If that conflicts with anything on "
-            f"your side, ping me. (ref: {history_canary})"
-        )
-
-        # Post to the channel's configured room (`mycelium-room`), not the
-        # seed room. The `mycelium-room` channel plugin only has agents
-        # subscribed to its own room, so that's where `mycelium room
-        # send` DMs would land in real use. Posting to the seed room
-        # would not wake any agent because no one's subscribed there.
-        dm_posted = False
-        try:
-            async with httpx.AsyncClient(timeout=15.0) as http:
-                r = await http.post(
-                    f"{BACKEND_URL}/rooms/{quote(MYCELIUM_CHANNEL_ROOM, safe='')}/messages",
-                    json={
-                        "sender_handle": "agent-alpha",
-                        "message_type": "broadcast",
-                        "content": dm_body,
-                    },
-                )
-                dm_posted = r.status_code in (200, 201, 202)
-                if not dm_posted:
-                    log_warning(f"Channel DM POST returned {r.status_code}: {r.text[:200]}")
-        except Exception as e:
-            log_error(f"Channel DM POST failed: {e}")
+            nego_room_created = r.status_code in (200, 201)
+            if not nego_room_created:
+                log_warning(f"Negotiation room creation returned {r.status_code}: {r.text[:200]}")
 
         check(
             test_ctx,
-            "Channel DM posted to mycelium-room",
-            dm_posted,
-            error="Could not POST channel DM — see backend logs" if not dm_posted else None,
+            "Negotiation room created",
+            nego_room_created,
+            error=f"Could not create room {nego_room}" if not nego_room_created else None,
         )
 
-        if not dm_posted:
+        if not nego_room_created:
             for name in skip_checks[13:]:
-                check(test_ctx, name, False, skipped=True, skip_reason="DM post failed")
+                check(test_ctx, name, False, skipped=True,
+                      skip_reason="Negotiation room creation failed")
         else:
-            # Wait for agent-beta to respond in Matrix (the channel
-            # plugin wakes the addressed agent as a fresh session; if
-            # beta responds at all, the wake-on-mention path works).
-            dm_responses = await wait_for_agent_response(
-                observer, agents_room, "agent-beta", dm_ts, timeout_seconds=90,
-            )
-            dm_responded = len(dm_responses) > 0
+            await asyncio.sleep(5)
+            nego_trigger_ts = int(time.time() * 1000)
 
-            if not dm_responded:
-                # The backend's POST /rooms/{room}/messages endpoint
-                # writes the message to storage but does NOT invoke the
-                # OpenClaw mycelium-room channel plugin's fan-out path
-                # — that fires only when a leaf-node `mycelium room
-                # send` call arrives *through* the plugin. Running the
-                # CLI from inside the test would hit per-agent approval
-                # gates on oclw4 (the same failure mode that motivated
-                # the prompt fixes above), so we skip the wake + isolation
-                # assertions with a pointer to where the gap is.
-                check(
-                    test_ctx,
-                    "agent-beta received DM in a fresh session",
-                    False,
-                    skipped=True,
-                    skip_reason=(
-                        "Backend POST /rooms/{room}/messages does not fire the "
-                        "OpenClaw mycelium-room plugin's Matrix fan-out — this "
-                        "path can only be exercised by `mycelium room send` on a "
-                        "leaf node, and that currently requires a per-agent "
-                        "approval allowlist entry on oclw4. To enable this "
-                        "phase: on oclw4, run `openclaw approvals allowlist add "
-                        "--agent agent-alpha --node oclw4 ~/.local/bin/mycelium` "
-                        "and retry."
-                    ),
-                )
-                check(
-                    test_ctx,
-                    "DM response lacks sender's Matrix history",
-                    False,
-                    skipped=True,
-                    skip_reason="upstream wake step was skipped",
-                )
+            nego_prompt = (
+                f"@agent-alpha:local @agent-beta:local\n\n"
+                f"This is a NEW independent test run. Ignore any prior sessions.\n\n"
+                f"Topic: Caching strategy for {DECISION_TOKEN} — Redis vs Memcached\n"
+                f"Room: {nego_room}\n\n"
+                f"Positions:\n"
+                f"- agent-alpha: Redis — persistence, pub/sub, richer data structures\n"
+                f"- agent-beta: Memcached — simpler, faster for pure cache, less memory overhead\n\n"
+                f"Run EXACTLY these commands — do NOT run any others:\n\n"
+                f"1. Join the coordination session as yourself:\n"
+                f"     mycelium session join --handle YOUR_HANDLE --room {nego_room} "
+                f"-m \"YOUR_POSITION\"\n\n"
+                f"2. Do NOT run mycelium session await. The Mycelium channel plugin "
+                f"wakes you when CognitiveEngine addresses you.\n\n"
+                f"3. When a tick arrives, respond via the CLI:\n"
+                f"     mycelium negotiate respond accept --room {nego_room} --handle YOUR_HANDLE\n"
+                f"   or, only if the tick says can_counter_offer: true:\n"
+                f"     mycelium negotiate propose ISSUE=VALUE ISSUE=VALUE "
+                f"--room {nego_room} --handle YOUR_HANDLE\n\n"
+                f"4. After responding, return control. Continue until the negotiation concludes.\n\n"
+                f"5. The result will be auto-delivered back here by the Mycelium plugin — "
+                f"you do NOT need to relay it yourself.\n\n"
+                f"Briefly explain your reasoning before each CLI command."
+            )
+
+            nego_html = (
+                f'<a href="https://matrix.to/#/@agent-alpha:local">@agent-alpha:local</a> '
+                f'<a href="https://matrix.to/#/@agent-beta:local">@agent-beta:local</a><br/><br/>'
+                f"This is a NEW independent test run. Ignore any prior sessions.<br/><br/>"
+                f"Topic: Caching strategy for <strong>{DECISION_TOKEN}</strong> — Redis vs Memcached<br/>"
+                f"Room: <code>{nego_room}</code><br/><br/>"
+                f"Positions:<br/>"
+                f"- agent-alpha: Redis — persistence, pub/sub, richer data structures<br/>"
+                f"- agent-beta: Memcached — simpler, faster for pure cache, less memory overhead<br/><br/>"
+                f"Run EXACTLY these commands (see plain-text body for details)."
+            )
+
+            try:
+                await observer.send_message(agents_room, nego_prompt, formatted_body=nego_html)
+                nego_sent = True
+            except Exception as exc:
+                nego_sent = False
+                log_error(f"Failed to send negotiation trigger: {exc}")
+
+            check(
+                test_ctx,
+                "Negotiation trigger sent",
+                nego_sent,
+                error="Could not post negotiation prompt to agents room" if not nego_sent else None,
+            )
+
+            if not nego_sent:
+                for name in skip_checks[14:]:
+                    check(test_ctx, name, False, skipped=True,
+                          skip_reason="Negotiation trigger send failed")
             else:
-                check(test_ctx, "agent-beta received DM in a fresh session", True)
-                dm_text = " ".join(dm_responses)
-                # The canary MUST NOT appear in beta's response. If it
-                # does, beta somehow saw alpha's Matrix scratchpad —
-                # cross-channel session isolation is broken.
-                leaked_canary = history_canary in dm_text or history_canary.lower() in dm_text.lower()
+                log_info("Waiting 30s for agents to join the negotiation...")
+                await asyncio.sleep(30)
+
+                alpha_joined = await wait_for_agent_response(
+                    observer, agents_room, "agent-alpha", nego_trigger_ts, timeout_seconds=60,
+                )
+                beta_joined = await wait_for_agent_response(
+                    observer, agents_room, "agent-beta", nego_trigger_ts, timeout_seconds=60,
+                )
+                agents_joined = len(alpha_joined) > 0 and len(beta_joined) > 0
                 check(
                     test_ctx,
-                    "DM response lacks sender's Matrix history",
-                    not leaked_canary,
+                    "Agents joined negotiation",
+                    agents_joined,
                     error=(
-                        f"Session isolation broken: agent-beta's DM response "
-                        f"contains sender's prior Matrix canary ({history_canary}). "
-                        f"Response (first 300 chars): {dm_text[:300]}"
-                    ) if leaked_canary else None,
+                        f"alpha responded: {len(alpha_joined) > 0}, "
+                        f"beta responded: {len(beta_joined) > 0}"
+                    ) if not agents_joined else None,
                 )
-                if leaked_canary:
-                    print(f"    {RED}Leaked canary in DM response!{RESET}")
-                    print(f"    {DIM}{dm_text[:300]}{RESET}")
+
+                consensus = await wait_for_mycelium_consensus(
+                    nego_room, timeout_seconds=300,
+                )
+                check(
+                    test_ctx,
+                    "Coordination consensus reached",
+                    consensus is not None,
+                    error=f"No consensus in {nego_room} within 300s" if consensus is None else None,
+                )
+
+                if consensus:
+                    log_info("Consensus reached — polling Matrix for return-trip message...")
+                    return_trip_found = False
+                    deadline = time.time() + 90
+                    seen_events: set[str] = set()
+
+                    while time.time() < deadline:
+                        messages = await observer.read_messages(agents_room, limit=50)
+                        for msg in messages:
+                            eid = msg.get("event_id", "")
+                            if eid in seen_events:
+                                continue
+                            seen_events.add(eid)
+                            if msg.get("timestamp", 0) <= nego_trigger_ts:
+                                continue
+                            body = msg.get("body", "")
+                            if "[Mycelium return trip" in body:
+                                log_info(f"Return-trip found: {body[:120]}...")
+                                return_trip_found = True
+                                break
+                        if return_trip_found:
+                            break
+                        await asyncio.sleep(5)
+
+                    check(
+                        test_ctx,
+                        "Return-trip delivered to Matrix",
+                        return_trip_found,
+                        error=(
+                            "No '[Mycelium return trip' message appeared in "
+                            "the agents room within 90s of consensus"
+                        ) if not return_trip_found else None,
+                    )
+                else:
+                    check(
+                        test_ctx,
+                        "Return-trip delivered to Matrix",
+                        False,
+                        skipped=True,
+                        skip_reason="No consensus reached — cannot verify return-trip",
+                    )
 
         # ── Summary ──────────────────────────────────────────────────────
 
         print(f"\n  {BOLD}Summary:{RESET}")
         print(f"    Seed room:           {seed_room}")
+        print(f"    Negotiation room:    {nego_room}")
         print(f"    Channel room:        {MYCELIUM_CHANNEL_ROOM}")
         if memory_found:
             print(f"    Seed room memories:  {GREEN}present{RESET}")
@@ -745,6 +776,7 @@ async def test_cross_channel_memory_isolation(test_ctx: TestContext):
         print(f"    Cross-channel leak:  {'%sYES%s' % (RED, RESET) if not channel_room_clean else '%sNO%s' % (GREEN, RESET)}")
         print(f"    Blind probe aware:   {'%sYES (unexpected)%s' % (RED, RESET) if knows_decision else '%sNO (expected)%s' % (GREEN, RESET)}")
         print(f"    Bridged probe aware: {'%sYES (expected)%s' % (GREEN, RESET) if bridge_has_knowledge else '%sNO (unexpected)%s' % (YELLOW, RESET)}")
+        print(f"    Return-trip:         {'%sdelivered%s' % (GREEN, RESET) if nego_room_created and 'return_trip_found' in dir() and return_trip_found else '%snot verified%s' % (YELLOW, RESET)}")
 
         await observer.close()
 
@@ -753,11 +785,13 @@ async def test_cross_channel_memory_isolation(test_ctx: TestContext):
         check(test_ctx, "Test completed without error", False, error=str(e))
 
     finally:
-        # Cleanup: delete the seed room
         try:
             async with httpx.AsyncClient(timeout=10.0) as http:
                 await http.delete(f"{BACKEND_URL}/rooms/{quote(seed_room, safe='')}")
                 log_info(f"Cleaned up seed room: {seed_room}")
+                if nego_room:
+                    await http.delete(f"{BACKEND_URL}/rooms/{quote(nego_room, safe='')}")
+                    log_info(f"Cleaned up negotiation room: {nego_room}")
         except Exception:
             pass
 

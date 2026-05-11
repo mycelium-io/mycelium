@@ -34,6 +34,7 @@ from mycelium_e2e.bundle import (
     CFN_MGMT_URL,
     TestContext,
     check,
+    register_room,
     capture_backend_logs,
     capture_cfn_logs,
     check_ioc_path_in_logs,
@@ -411,6 +412,8 @@ async def test_matrix_two_agent_negotiation(test_ctx: TestContext):
     try:
         agent_handles = [h for h, _, _ in agents_config]
         setup_ok = await setup_matrix_e2e_test(ctx, agent_handles)
+        if ctx.mycelium_room_name:
+            register_room(test_ctx, ctx.mycelium_room_name)
         check(test_ctx, "Matrix room created", setup_ok and ctx.matrix_room_id is not None)
         check(test_ctx, "Agents joined Matrix room", len(ctx.agent_tokens) == 2)
         
@@ -503,6 +506,8 @@ async def test_matrix_three_agent_negotiation(test_ctx: TestContext):
     try:
         agent_handles = [h for h, _, _ in agents_config]
         setup_ok = await setup_matrix_e2e_test(ctx, agent_handles)
+        if ctx.mycelium_room_name:
+            register_room(test_ctx, ctx.mycelium_room_name)
         check(test_ctx, "Matrix room created", setup_ok)
         check(test_ctx, "All agents joined", len(ctx.agent_tokens) == 3)
         
@@ -579,6 +584,8 @@ async def test_matrix_architecture_decision(test_ctx: TestContext):
     try:
         agent_handles = [h for h, _, _ in agents_config]
         setup_ok = await setup_matrix_e2e_test(ctx, agent_handles)
+        if ctx.mycelium_room_name:
+            register_room(test_ctx, ctx.mycelium_room_name)
         check(test_ctx, "Matrix room created", setup_ok)
         check(test_ctx, "Agents joined", len(ctx.agent_tokens) == 2)
         

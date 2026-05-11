@@ -271,6 +271,7 @@ from mycelium_e2e.distributed_e2e import (
     distributed_preexisting_context,
     distributed_feature_prioritization,
     distributed_backend_resolved_cfn_ids,
+    skill_cross_channel_return_trip,
 )
 
 
@@ -444,6 +445,22 @@ def test_48_distributed_backend_resolved_cfn_ids(bundle_ctx: TestContext) -> Non
     """
     n = len(bundle_ctx.results)
     distributed_backend_resolved_cfn_ids(bundle_ctx)
+    _assert_new_checks(bundle_ctx, n)
+
+
+@pytest.mark.llm
+@pytest.mark.slow
+@pytest.mark.distributed
+@pytest.mark.cross_channel
+def test_49_skill_cross_channel_return_trip(bundle_ctx: TestContext) -> None:
+    """
+    SKILL.md faithful reproduction: 3 agents on 3 devices, individual DMs,
+    dynamic room, full return-trip verification (PR #221).
+    """
+    if bundle_ctx.coordination_blocked_reason:
+        pytest.skip(bundle_ctx.coordination_blocked_reason)
+    n = len(bundle_ctx.results)
+    skill_cross_channel_return_trip(bundle_ctx)
     _assert_new_checks(bundle_ctx, n)
 
 

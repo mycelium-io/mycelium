@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
 import sys
 import time
 import urllib.error
@@ -48,12 +50,147 @@ _ran_distributed: bool = False
 _LEAKED_STATES = ("negotiating", "waiting", "synthesizing")
 
 
+def _kill_stale_pytest_processes() -> None:
+    """Kill any pre-existing pytest processes running the e2e suite.
+
+    Concurrent runs share the same backend and their reapers delete each
+    other's session rooms, causing spurious 404s mid-negotiation.
+    """
+    import subprocess
+
+    my_pid = os.getpid()
+    try:
+        result = subprocess.run(
+            ["pgrep", "-f", "pytest.*test_mycelium_e2e"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        for line in result.stdout.strip().splitlines():
+            pid = int(line.strip())
+            if pid == my_pid:
+                continue
+            print(
+                f"  [GUARD] killing stale pytest process {pid} "
+                f"to prevent cross-run interference"
+            )
+            os.kill(pid, 9)
+    except (subprocess.TimeoutExpired, FileNotFoundError, ValueError):
+        pass
+
+
+def _presuite_sanity_checks() -> None:
+    """Run before the test suite to ensure a clean environment.
+
+    Addresses known failure modes:
+      - Orphan session rooms left by previous crashed/timed-out runs
+      - Agent session history bloat causing context overflow (#175 comment)
+      - Runaway agent processes from leaked sessions
+      - Stale mycelium_room messages that re-trigger agents
+    """
+    print("\n[SETUP] Running pre-suite sanity checks...")
+
+    # 1. Kill stale pytest processes (already existed, moved here for clarity)
+    _kill_stale_pytest_processes()
+
+    # 2. Clean up ALL stale sessions (not just old ones — any failed/negotiating)
+    for prefix in ("e2e-", "dist-e2e-", "mycelium_room:session:"):
+        cleaned = cleanup_stale_sessions(prefix=prefix, max_age_minutes=0)
+        if cleaned:
+            print(f"  [SETUP] Cleaned {cleaned} stale '{prefix}*' session(s)")
+
+    # 3. Trim agent session history to prevent context bloat.
+    #    The gateway accumulates .jsonl files in ~/.openclaw/agents/<id>/sessions/
+    #    which bloat agent context windows and cause narration instead of tool use.
+    _trim_agent_sessions(max_files=5)
+
+    # 4. Trim agent session history on remote hosts too
+    _trim_remote_agent_sessions(max_files=5)
+
+    # 5. Wait for any in-flight agent turns to finish
+    counts = wait_for_agents_idle(timeout=15, poll_interval=2.0)
+    busy = {h: c for h, c in counts.items() if c > 0}
+    if busy:
+        print(f"  [SETUP] Warning: agents still busy after 15s: {busy}")
+    else:
+        print("  [SETUP] All agents idle")
+
+    print("[SETUP] Pre-suite checks complete\n")
+
+
+def _trim_agent_sessions(max_files: int = 5) -> None:
+    """Remove excess .jsonl session files for local agents.
+
+    Keeps the most recent ``max_files`` per agent to preserve some context,
+    but prevents the unbounded growth that causes context overflow.
+    """
+    agents_dir = Path.home() / ".openclaw" / "agents"
+    if not agents_dir.exists():
+        return
+    for agent_dir in agents_dir.iterdir():
+        if not agent_dir.is_dir():
+            continue
+        sessions_dir = agent_dir / "sessions"
+        if not sessions_dir.exists():
+            continue
+        jsonl_files = sorted(
+            sessions_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime
+        )
+        excess = len(jsonl_files) - max_files
+        if excess > 0:
+            for f in jsonl_files[:excess]:
+                f.unlink(missing_ok=True)
+            print(
+                f"  [SETUP] Trimmed {excess} session file(s) for "
+                f"{agent_dir.name} (kept {max_files})"
+            )
+
+
+def _trim_remote_agent_sessions(
+    max_files: int = 5,
+    hosts: list[str] | None = None,
+    ssh_key: str = "~/.ssh/ioc.pem",
+    user: str = "ubuntu",
+) -> None:
+    """Trim .jsonl session files on remote gateway hosts."""
+    if hosts is None:
+        hosts = [
+            os.environ.get("OCLW3_IP", "10.0.50.171"),
+            os.environ.get("OCLW5_IP", "10.0.50.142"),
+        ]
+    key_path = os.path.expanduser(ssh_key)
+    if not os.path.exists(key_path):
+        return
+    for host in hosts:
+        cmd = (
+            f"for d in ~/.openclaw/agents/*/sessions; do "
+            f"  [ -d \"$d\" ] || continue; "
+            f"  count=$(ls -1 \"$d\"/*.jsonl 2>/dev/null | wc -l); "
+            f"  if [ \"$count\" -gt {max_files} ]; then "
+            f"    ls -1t \"$d\"/*.jsonl | tail -n +{max_files + 1} | xargs rm -f; "
+            f'    echo "trimmed $d: $count -> {max_files}"; '
+            f"  fi; "
+            f"done"
+        )
+        try:
+            result = subprocess.run(
+                [
+                    "ssh", "-i", key_path, "-o", "StrictHostKeyChecking=no",
+                    "-o", "ConnectTimeout=5", f"{user}@{host}", cmd,
+                ],
+                capture_output=True, text=True, timeout=10,
+            )
+            for line in result.stdout.strip().splitlines():
+                if line:
+                    print(f"  [SETUP] {host}: {line}")
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            pass
+
+
 @pytest.fixture(scope="session")
 def bundle_ctx() -> TestContext:
-    # Clean up any stale sessions from previous crashed runs (older than 10 minutes)
-    cleanup_stale_sessions(prefix="e2e-", max_age_minutes=10)
-    cleanup_stale_sessions(prefix="dist-e2e-", max_age_minutes=10)
-    
+    _presuite_sanity_checks()
+
     room_suffix = str(int(time.time()))[-7:]
     room_name = f"{ROOM_PREFIX}-{room_suffix}"
     ctx = TestContext(room_name=room_name)
@@ -74,9 +211,16 @@ def pytest_runtest_setup(item: pytest.Item) -> None:
         _ran_distributed = True
 
 
-def _list_leaked_rooms(prefixes: tuple[str, ...]) -> list[dict[str, Any]]:
-    """Return rooms whose name starts with any of ``prefixes`` and whose
-    coordination_state is still in ``_LEAKED_STATES``.
+def _list_leaked_rooms(
+    prefixes: tuple[str, ...],
+    owned_rooms: set[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Return rooms whose coordination_state is still in ``_LEAKED_STATES``
+    and that belong to the current run.
+
+    When ``owned_rooms`` is provided, only rooms whose base name (the part
+    before ``:session:``) is in that set are considered.  This prevents
+    concurrent test runs from deleting each other's active sessions.
 
     Uses urllib (stdlib) so this runs even before mycelium_e2e.bundle's http
     helpers have been imported; keeps the fixture cheap and dependency-free.
@@ -93,8 +237,14 @@ def _list_leaked_rooms(prefixes: tuple[str, ...]) -> list[dict[str, Any]]:
         name = room.get("name", "")
         if not any(name.startswith(p) for p in prefixes):
             continue
-        if room.get("coordination_state") in _LEAKED_STATES:
-            leaked.append(room)
+        if room.get("coordination_state") not in _LEAKED_STATES:
+            continue
+        # Scope to current run: extract the base room name (strip
+        # ``:session:…`` suffix) and check against the owned set.
+        base_name = name.split(":session:")[0]
+        if owned_rooms is not None and base_name not in owned_rooms:
+            continue
+        leaked.append(room)
     return leaked
 
 
@@ -130,16 +280,24 @@ def _reap_leaked_sessions(request: pytest.FixtureRequest):
     it consumes CFN slots and can starve later tests of LLM/agent capacity
     (we observed test_44 failing immediately after test_41/42/43 leaked).
     Yields control to the test, then logs structured diagnostics and deletes.
+
+    **Scope safety**: only reaps rooms registered in ``ctx._owned_rooms`` by
+    the current run.  This prevents concurrent runs from nuking each other's
+    active sessions (root cause of the 404-mid-negotiation failures diagnosed
+    2026-04-29).
     """
     yield
-    # Only reap for tests that actually touch coordination — gate on the same
-    # markers used elsewhere so unit-style tests don't pay the polling cost.
     relevant_markers = {"distributed", "matrix_e2e", "convergence"}
     test_markers = {m.name for m in request.node.iter_markers()}
     if not (test_markers & relevant_markers):
         return
 
-    leaked = _list_leaked_rooms(prefixes=("e2e-", "dist-e2e-"))
+    ctx = _ctx_holder.get("ctx")
+    owned = ctx._owned_rooms if ctx else None
+
+    leaked = _list_leaked_rooms(
+        prefixes=("e2e-", "dist-e2e-", "mycelium_room:session:"), owned_rooms=owned,
+    )
     if leaked:
         test_name = request.node.name
         print(
@@ -155,6 +313,9 @@ def _reap_leaked_sessions(request: pytest.FixtureRequest):
             )
             ok = _delete_room(room.get("name", ""))
             print(f"       reaped: {'ok' if ok else 'FAILED'}")
+    else:
+        test_name = request.node.name
+        print(f"\n  [REAPER] {test_name}: no leaked sessions (owned={len(owned) if owned else 0} rooms)")
 
     # Poll for in-flight agent turns to finish before the next test starts.
     # openclaw agent processes are ephemeral and ignore SIGTERM (see
@@ -225,7 +386,7 @@ def _run_trace_analyzer(paths: list[Path]) -> None:
 # to pytest to run it automatically at session end on the files captured this
 # session.
 
-_TRACE_ENDPOINT = f"{BACKEND_URL}/api/internal/coordination/round-traces"
+_TRACE_ENDPOINT = f"{BACKEND_URL}/internal/coordination/round-traces"
 _TRACE_DIR = Path(
     os.environ.get(
         "MYCELIUM_TRACE_DIR",

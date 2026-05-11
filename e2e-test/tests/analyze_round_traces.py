@@ -594,7 +594,7 @@ def print_comparison(label_a: str, runs_a: list[TestRun],
         return f"{v:>8.0f}" if v is not None else f"{'-':>8}"
 
     def ratio(a: float | None, b: float | None) -> str:
-        if a is None or b is None or b == 0:
+        if a is None or b is None or b == 0 or a == 0:
             return f"{'-':>8}"
         r = a / b
         if r < 1:
