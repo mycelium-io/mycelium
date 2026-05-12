@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- OpenClaw plugin: add `replyOptions: { sourceReplyDeliveryMode: "automatic" }` to
+  `dispatchReplyWithBufferedBlockDispatcher` so agent replies are delivered regardless
+  of the host's `messages.groupChat.visibleReplies` setting (fixes silent suppression
+  when set to `"message_tool"`)
+
 ## [0.1.9] - 2026-03-23
 
 ### Added
