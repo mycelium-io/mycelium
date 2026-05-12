@@ -135,9 +135,13 @@ def status() -> None:
             console.print(f"[red]✗[/red] Hub collector      unreachable ({collector_url})")
             all_ok = False
 
-        local_alive = _port_in_use(collector_port)
+        local_pid = _read_collector_pid()
+        local_alive = local_pid is not None or _port_in_use(collector_port)
         if local_alive:
-            console.print(f"[green]✓[/green] Local collector    running on :{collector_port}")
+            pid_label = f" PID {local_pid}" if local_pid else ""
+            console.print(
+                f"[green]✓[/green] Local collector    running on :{collector_port}{pid_label}"
+            )
         else:
             console.print(
                 f"[yellow]⚠[/yellow] Local collector    not running on :{collector_port}\n"
@@ -336,15 +340,39 @@ def _is_spoke_mode() -> bool:
     return host not in ("localhost", "127.0.0.1", "::1", "0.0.0.0", "")
 
 
+def _collector_pid_file() -> Path:
+    """Path to the spoke collector PID file."""
+    return _metrics_dir() / "collector.pid"
+
+
+def _read_collector_pid() -> int | None:
+    """Return the PID from the collector PID file, or None."""
+    pf = _collector_pid_file()
+    if not pf.exists():
+        return None
+    try:
+        pid = int(pf.read_text().strip())
+        os.kill(pid, 0)
+        return pid
+    except (ValueError, ProcessLookupError, PermissionError):
+        pf.unlink(missing_ok=True)
+        return None
+
+
 @app.command("collect")
 def collect(
     port: int | None = typer.Option(None, "--port", "-p", help="OTLP listen port"),
+    foreground: bool = typer.Option(
+        False, "--foreground", "-f", help="Run in the foreground instead of daemonizing"
+    ),
 ) -> None:
-    """Run a lightweight local OTLP collector (foreground, spoke mode).
+    """Start the spoke OTLP collector (background by default).
 
     Accepts OpenClaw OTLP pushes and writes to the local metrics file.
     Backend polling and Prometheus scraping are disabled — use this on
     spoke nodes that fetch hub data via ``collector_url``.
+
+    Stop with ``mycelium metrics stop``.
     """
     if not _is_spoke_mode():
         typer.secho(
@@ -361,6 +389,15 @@ def collect(
 
     resolved_port = _resolve_port(port)
 
+    existing_pid = _read_collector_pid()
+    if existing_pid:
+        typer.secho(
+            f"✗ Spoke collector already running (PID {existing_pid}).\n"
+            "  Stop it first with: mycelium metrics stop",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(1)
+
     if _port_in_use(resolved_port):
         typer.secho(
             f"✗ Port {resolved_port} is already in use. "
@@ -374,20 +411,124 @@ def collect(
 
     hub_url = _get_collector_url()
 
-    typer.echo(f"Starting spoke collector on :{resolved_port} (no-backend mode)")
-    typer.echo(f"  Data: {output}")
-    if hub_url:
-        typer.echo(f"  Forwarding OTLP to hub: {hub_url}")
-    typer.echo("  Press Ctrl+C to stop\n")
+    if foreground:
+        typer.echo(f"Starting spoke collector on :{resolved_port} (foreground)")
+        typer.echo(f"  Data: {output}")
+        if hub_url:
+            typer.echo(f"  Forwarding OTLP to hub: {hub_url}")
+        typer.echo("  Press Ctrl+C to stop\n")
 
-    from mycelium.collector import run as collector_run
+        from mycelium.collector import run as collector_run
 
-    collector_run(
-        resolved_port,
-        output,
-        no_backend=True,
-        hub_url=hub_url,
-    )
+        collector_run(resolved_port, output, no_backend=True, hub_url=hub_url)
+        return
+
+    _daemonize_collector(resolved_port, output, hub_url)
+
+
+def _daemonize_collector(port: int, output: Path, hub_url: str | None) -> None:
+    """Fork the collector into the background and write a PID file."""
+    import signal
+
+    log_file = _metrics_dir() / "collector.log"
+    pid_file = _collector_pid_file()
+
+    child_pid = os.fork()
+    if child_pid != 0:
+        typer.secho(f"✓ Spoke collector started (PID {child_pid})", fg=typer.colors.GREEN)
+        typer.echo(f"  Port: {port}")
+        typer.echo(f"  Data: {output}")
+        if hub_url:
+            typer.echo(f"  Forwarding OTLP to hub: {hub_url}")
+        typer.echo(f"  Log:  {log_file}")
+        typer.echo("  Stop: mycelium metrics stop")
+        return
+
+    # ── Child process (daemon) ──
+    os.setsid()
+
+    # Second fork to fully detach
+    if os.fork() != 0:
+        os._exit(0)
+
+    pid_file.write_text(str(os.getpid()))
+
+    # Redirect stdio to log file
+    sys.stdin.close()
+    fd = os.open(str(log_file), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+    os.dup2(fd, 1)
+    os.dup2(fd, 2)
+    os.close(fd)
+
+    def _cleanup(signum: int, _frame: object) -> None:
+        pid_file.unlink(missing_ok=True)
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, _cleanup)
+    signal.signal(signal.SIGINT, _cleanup)
+
+    try:
+        import logging
+
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+        from mycelium.collector import run as collector_run
+
+        collector_run(port, output, no_backend=True, hub_url=hub_url)
+    finally:
+        pid_file.unlink(missing_ok=True)
+
+
+@app.command("stop")
+def stop_collector() -> None:
+    """Stop the metrics collector.
+
+    On spoke nodes, stops the background spoke collector process.
+    On hub/local nodes, stops the Dockerized collector container.
+    """
+    import signal
+
+    spoke = _is_spoke_mode()
+
+    if spoke:
+        pid = _read_collector_pid()
+        if pid is None:
+            port = _resolve_port(None)
+            if _port_in_use(port):
+                typer.secho(
+                    f"⚠ Collector appears to be running on :{port} but no PID file found.\n"
+                    "  It may have been started in foreground mode — Ctrl+C it directly.",
+                    fg=typer.colors.YELLOW,
+                )
+                raise typer.Exit(1)
+            typer.echo("Spoke collector is not running.")
+            return
+
+        try:
+            os.kill(pid, signal.SIGTERM)
+            typer.secho(f"✓ Spoke collector stopped (PID {pid})", fg=typer.colors.GREEN)
+        except ProcessLookupError:
+            typer.echo("Spoke collector is not running (stale PID file cleaned up).")
+        _collector_pid_file().unlink(missing_ok=True)
+    else:
+        if not _docker_collector_running():
+            typer.echo("Collector container is not running.")
+            return
+        typer.echo("Stopping collector container...")
+        result = subprocess.run(
+            ["docker", "stop", "mycelium-collector"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            typer.secho("✓ Collector container stopped", fg=typer.colors.GREEN)
+        else:
+            typer.secho(
+                f"✗ Failed to stop collector: {result.stderr.strip()}",
+                fg=typer.colors.RED,
+            )
+            raise typer.Exit(1)
 
 
 @app.command("reset")
@@ -868,7 +1009,8 @@ def show(
                 _render_session_table(otel_data["sessions"])
             if workspace:
                 _render_workspace_tables(agents_meta)
-            _render_spoke_sites_table(otel_data)
+            if not _is_spoke_mode():
+                _render_spoke_sites_table(otel_data)
 
     if show_mycelium:
         if not backend_data:
@@ -1076,7 +1218,8 @@ def _render_overview(
     console.print()
 
     by_host = (otel or {}).get("by_host", {})
-    if by_host:
+    is_spoke = _is_spoke_mode()
+    if by_host and not is_spoke:
         host_table = Table(
             title="Spoke Sites",
             title_style="bold cyan",
@@ -1106,7 +1249,7 @@ def _render_overview(
         console.print()
 
     console.print("[dim]Detail: mycelium metrics show <openclaw|mycelium|cfn|cost>[/dim]")
-    if by_host:
+    if by_host and not is_spoke:
         console.print("[dim]Filter: mycelium metrics show --host <HOST>[/dim]")
     console.print()
 

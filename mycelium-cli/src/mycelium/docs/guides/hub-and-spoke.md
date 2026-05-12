@@ -205,8 +205,11 @@ mycelium config set metrics.collector_url "http://<hub-ip>:4318"
 # Configure OTLP plugins (endpoint defaults to localhost:4318)
 mycelium adapter add openclaw --step=otel --step=deep-observability
 
-# Start the spoke collector (foreground)
+# Start the spoke collector (daemonizes into background)
 mycelium metrics collect
+
+# Stop it later with:
+mycelium metrics stop
 ```
 
 `mycelium metrics show` on the spoke merges local OpenClaw data with

@@ -93,15 +93,17 @@ mycelium adapter add openclaw --step=otel --step=deep-observability
 3. Start the local spoke collector:
 
 ```bash
-mycelium metrics collect
+mycelium metrics collect          # daemonizes into the background
+mycelium metrics collect -f       # or run in foreground (Ctrl+C to stop)
+mycelium metrics stop             # stop the background collector
 ```
 
-This runs a foreground OTLP receiver in `--no-backend` mode: it accepts
-OpenClaw telemetry pushes and writes to the local `metrics.json` but does
-**not** poll the backend or scrape Prometheus targets. It automatically
-forwards OTLP /v1/metrics and /v1/traces payloads to the hub's collector
-(the `collector_url` from config) via fire-and-forget HTTP POSTs in
-background threads.
+The collector runs in `--no-backend` mode: it accepts OpenClaw telemetry
+pushes and writes to the local `metrics.json` but does **not** poll the
+backend or scrape Prometheus targets. It automatically forwards OTLP
+/v1/metrics and /v1/traces payloads to the hub's collector (the
+`collector_url` from config) via fire-and-forget HTTP POSTs in background
+threads. Logs are written to `$DATA_DIR/metrics/collector.log`.
 
 ### How it works
 
@@ -125,7 +127,8 @@ background threads.
 | Command                   | Description                                      |
 | ------------------------- | ------------------------------------------------ |
 | `mycelium metrics status` | Health check: deps, collector process, data file, OTEL config, model cost |
-| `mycelium metrics collect` | Run a lightweight local OTLP collector in spoke mode (foreground, no backend polling) |
+| `mycelium metrics collect` | Start the spoke OTLP collector (background by default, `--foreground` for interactive) |
+| `mycelium metrics stop`   | Stop the collector (spoke: background process, hub: Docker container) |
 | `mycelium metrics reset`  | Delete collected metrics data                    |
 | `mycelium metrics update-pricing` | Fetch latest LLM pricing from LiteLLM API |
 | `mycelium metrics update-pricing --add pat:key` | Also fetch pricing for a manually specified model (repeatable) |
@@ -146,6 +149,8 @@ Set `MYCELIUM_DATA_DIR` to override the root.
 | `metrics/metrics.json`            | Aggregated metrics (counters, histograms, sessions, backend snapshot) |
 | `metrics/traces.db`               | SQLite database of OTLP trace spans (7-day retention) |
 | `metrics/pricing.json`            | User-local pricing cache (written by `update-pricing`) |
+| `metrics/collector.pid`           | PID file for the background spoke collector |
+| `metrics/collector.log`           | Log output from the background spoke collector |
 
 `metrics.json` is atomically updated (write to `.tmp`, rename) on every OTLP
 ingestion and on graceful shutdown.
