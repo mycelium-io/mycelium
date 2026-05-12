@@ -14,7 +14,6 @@ Planned:
 
 import importlib.resources
 import json as json_module
-import os
 import re
 import shutil
 import subprocess

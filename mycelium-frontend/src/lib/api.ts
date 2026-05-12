@@ -108,6 +108,7 @@ export interface TraceSpan {
   name: string;
   kind: string;
   service: string;
+  host: string;
   start_time: string;
   duration_ms: number;
   status: string;
@@ -120,6 +121,8 @@ export interface TraceSummary {
   root_span: string;
   service: string;
   agent: string;
+  host: string;
+  hosts: string[];
   start_time: string;
   duration_ms: number;
   span_count: number;
@@ -127,8 +130,25 @@ export interface TraceSummary {
   spans: TraceSpan[];
 }
 
-export async function fetchRecentTraces(limit = 100): Promise<{ traces: TraceSummary[]; count: number } | null> {
-  const res = await fetch(`${API}/api/observability/traces/recent?limit=${limit}`, { cache: "no-store" });
+export async function fetchRecentTraces(limit = 100, host?: string): Promise<{ traces: TraceSummary[]; count: number } | null> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (host) params.set("host", host);
+  const res = await fetch(`${API}/api/observability/traces/recent?${params}`, { cache: "no-store" });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export interface HostInfo {
+  host: string;
+  span_count: number;
+  trace_count: number;
+  last_seen: string;
+  agents: string[];
+  error_count: number;
+}
+
+export async function fetchHosts(): Promise<{ hosts: HostInfo[] } | null> {
+  const res = await fetch(`${API}/api/observability/hosts`, { cache: "no-store" });
   if (!res.ok) return null;
   return res.json();
 }

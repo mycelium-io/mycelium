@@ -750,6 +750,11 @@ def show(
         "--include-heartbeat",
         help="Include OpenClaw 'heartbeat' channel tokens in totals (excluded by default).",
     ),
+    host: str | None = typer.Option(
+        None,
+        "--host",
+        help="Filter to a specific spoke host (IP or hostname from OTLP resource attributes).",
+    ),
 ) -> None:
     """
     Display collected metrics with agent metadata and workspace sizes.
@@ -839,17 +844,21 @@ def show(
         )
 
     if show_openclaw:
-        _render_summary_table(
-            otel_data,
-            oc_status,
-            include_background=include_heartbeat,
-        )
-        _render_cache_efficiency_table(otel_data, include_background=include_heartbeat)
-        _render_agent_table(otel_data, agents_meta)
-        if otel_data and otel_data.get("sessions"):
-            _render_session_table(otel_data["sessions"])
-        if workspace:
-            _render_workspace_tables(agents_meta)
+        if host:
+            _render_host_filtered_view(otel_data, host)
+        else:
+            _render_summary_table(
+                otel_data,
+                oc_status,
+                include_background=include_heartbeat,
+            )
+            _render_cache_efficiency_table(otel_data, include_background=include_heartbeat)
+            _render_agent_table(otel_data, agents_meta)
+            if otel_data and otel_data.get("sessions"):
+                _render_session_table(otel_data["sessions"])
+            if workspace:
+                _render_workspace_tables(agents_meta)
+            _render_spoke_sites_table(otel_data)
 
     if show_mycelium:
         if not backend_data:
@@ -3005,6 +3014,94 @@ def _render_cost_estimates(
     gen_date = _pricing_generated_at()
     if gen_date:
         console.print(f"[dim]  Estimates use litellm pricing data (updated {gen_date})[/dim]")
+    console.print()
+
+
+def _render_spoke_sites_table(otel: dict | None) -> None:
+    """Show per-host summary table from by_host data in the collector metrics."""
+    by_host = (otel or {}).get("by_host")
+    if not by_host:
+        return
+
+    table = Table(
+        title="Spoke Sites",
+        title_style="bold cyan",
+        title_justify="left",
+        show_header=True,
+        border_style="dim",
+    )
+    table.add_column("Host", style="bold")
+    table.add_column("Agents")
+    table.add_column("Spans", justify="right")
+    table.add_column("Tokens", justify="right")
+    table.add_column("Cost", justify="right")
+    table.add_column("Last Seen")
+
+    for host_key in sorted(by_host, key=lambda h: by_host[h].get("last_seen", ""), reverse=True):
+        data = by_host[host_key]
+        agents = ", ".join(data.get("agents", [])) or "—"
+        spans = str(data.get("spans", 0))
+        tokens = data.get("tokens", {})
+        total_tokens = tokens.get("total", 0)
+        tok_str = f"{total_tokens:,}" if total_tokens else "—"
+        cost = data.get("cost_usd", 0.0)
+        cost_str = f"${cost:.4f}" if cost > 0 else "—"
+        last_seen = data.get("last_seen", "—")
+        if last_seen and last_seen != "—":
+            try:
+                from datetime import datetime
+
+                dt = datetime.fromisoformat(last_seen.replace("Z", "+00:00"))
+                last_seen = dt.strftime("%H:%M:%S")
+            except Exception:
+                pass
+        table.add_row(host_key, agents, spans, tok_str, cost_str, last_seen)
+
+    console.print(table)
+    console.print()
+
+
+def _render_host_filtered_view(otel: dict | None, host: str) -> None:
+    """Show metrics filtered to a single host."""
+    by_host = (otel or {}).get("by_host", {})
+    data = by_host.get(host)
+    if not data:
+        matching = [h for h in by_host if host in h]
+        if matching:
+            data = by_host[matching[0]]
+            host = matching[0]
+
+    if not data:
+        console.print(f"[yellow]No data found for host '{host}'.[/yellow]")
+        if by_host:
+            console.print(f"[dim]Known hosts: {', '.join(sorted(by_host))}[/dim]")
+        console.print()
+        return
+
+    table = Table(
+        title=f"OpenClaw · {host}",
+        title_style="bold cyan",
+        title_justify="left",
+        show_header=False,
+        border_style="dim",
+    )
+    table.add_column("Metric", style="bold")
+    table.add_column("Value", justify="right")
+
+    agents = ", ".join(data.get("agents", [])) or "—"
+    tokens = data.get("tokens", {})
+    cost = data.get("cost_usd", 0.0)
+    table.add_row("Agents", agents)
+    table.add_row("Spans", f"{data.get('spans', 0):,}")
+    table.add_row("Messages processed", str(data.get("messages_processed", 0)))
+    table.add_row("Tokens (input)", f"{tokens.get('input', 0):,}")
+    table.add_row("Tokens (output)", f"{tokens.get('output', 0):,}")
+    table.add_row("Tokens (cache read)", f"{tokens.get('cache_read', 0):,}")
+    table.add_row("Tokens (total)", f"{tokens.get('total', 0):,}")
+    table.add_row("Cost (USD)", f"${cost:.4f}" if cost > 0 else "—")
+    table.add_row("Last seen", data.get("last_seen", "—"))
+
+    console.print(table)
     console.print()
 
 

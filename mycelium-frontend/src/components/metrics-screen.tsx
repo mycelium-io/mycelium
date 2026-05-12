@@ -29,7 +29,7 @@ import {
   statusKind, errorRate, histAvg,
   type BackendHistogram,
 } from "@/lib/metrics-format";
-import { fetchBackendMetrics, fetchCollectorMetrics } from "@/lib/api";
+import { fetchBackendMetrics, fetchCollectorMetrics, fetchHosts, type HostInfo } from "@/lib/api";
 
 // ── Types (loose; backend payload is dynamic) ─────────────────────────────
 
@@ -606,11 +606,84 @@ function BackendDownPlate() {
   );
 }
 
+// ── Spoke Sites ───────────────────────────────────────────────────────────
+
+function SpokeSitesTable({
+  hosts, activeHost, onHostClick,
+}: {
+  hosts: HostInfo[];
+  activeHost: string | null;
+  onHostClick: (host: string | null) => void;
+}) {
+  if (hosts.length === 0) return null;
+  return (
+    <div className="border-b border-border2 px-6 py-5">
+      <div className="mb-3.5 flex items-baseline justify-between">
+        <Caps className="text-text2">SPOKE SITES</Caps>
+        <span className="font-mono text-micro italic text-dim">hosts reporting OTLP data</span>
+      </div>
+      {activeHost && (
+        <div className="mb-3 flex items-center gap-2">
+          <span className="text-micro text-muted">Filtered to</span>
+          <span className="border border-accent bg-accent/10 px-2 py-0.5 font-mono text-micro font-semibold text-accent">
+            {activeHost}
+          </span>
+          <button
+            onClick={() => onHostClick(null)}
+            className="text-micro text-dim hover:text-text transition-colors"
+          >
+            clear
+          </button>
+        </div>
+      )}
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse font-mono text-micro">
+          <thead>
+            <tr className="border-b border-border text-left text-dim">
+              <th className="py-1.5 pr-4 font-normal">HOST</th>
+              <th className="py-1.5 pr-4 font-normal">AGENTS</th>
+              <th className="py-1.5 pr-4 font-normal text-right">SPANS</th>
+              <th className="py-1.5 pr-4 font-normal text-right">TRACES</th>
+              <th className="py-1.5 pr-4 font-normal text-right">ERRORS</th>
+              <th className="py-1.5 font-normal">LAST SEEN</th>
+            </tr>
+          </thead>
+          <tbody>
+            {hosts.map(h => {
+              const isActive = activeHost === h.host;
+              return (
+                <tr
+                  key={h.host}
+                  onClick={() => onHostClick(isActive ? null : h.host)}
+                  className={`border-b border-border/50 cursor-pointer transition-colors ${
+                    isActive ? "bg-accent/10" : "hover:bg-surface/40"
+                  }`}
+                >
+                  <td className="py-1.5 pr-4 font-semibold text-text">{h.host}</td>
+                  <td className="py-1.5 pr-4 text-text2">{h.agents.join(", ") || "—"}</td>
+                  <td className="py-1.5 pr-4 text-right tabular text-text2">{h.span_count.toLocaleString()}</td>
+                  <td className="py-1.5 pr-4 text-right tabular text-text2">{h.trace_count.toLocaleString()}</td>
+                  <td className={`py-1.5 pr-4 text-right tabular ${h.error_count > 0 ? "text-red-400 font-semibold" : "text-dim"}`}>
+                    {h.error_count}
+                  </td>
+                  <td className="py-1.5 text-dim">{fmtAgo(h.last_seen)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ── Main screen ───────────────────────────────────────────────────────────
 
 export function MetricsScreen() {
   const [backend, setBackend] = useState<BackendMetrics | null>(null);
   const [collector, setCollector] = useState<CollectorMetrics | null>(null);
+  const [hosts, setHosts] = useState<HostInfo[]>([]);
+  const [hostFilter, setHostFilter] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
   const [intervalSec, setIntervalSec] = useState(10);
   const [backendUnreachable, setBackendUnreachable] = useState(false);
@@ -625,6 +698,9 @@ export function MetricsScreen() {
       const c = await fetchCollectorMetrics();
       if (cancelled) return;
       setCollector(c);
+      const h = await fetchHosts();
+      if (cancelled) return;
+      setHosts(h?.hosts ?? []);
     };
     load();
     if (paused) return () => { cancelled = true; };
@@ -753,6 +829,11 @@ export function MetricsScreen() {
           <div className="border-b border-border2 px-6 py-5">
             <CollectorOffPlate />
           </div>
+        )}
+
+        {/* ── Spoke sites ──────────────────────────────────────────────── */}
+        {hosts.length > 0 && (
+          <SpokeSitesTable hosts={hosts} activeHost={hostFilter} onHostClick={setHostFilter} />
         )}
 
         {/* ── Diagnostic grid ──────────────────────────────────────────── */}

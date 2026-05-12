@@ -284,13 +284,28 @@ async def get_collector_metrics():
 
 
 @app.get("/api/observability/traces/recent", tags=["metrics"])
-async def get_recent_traces(limit: int = 100):
+async def get_recent_traces(limit: int = 100, host: str | None = None):
     """Proxy to the OTLP collector's ``/collector/traces`` endpoint.
 
     Returns recent trace spans from the collector's SQLite store.
     Returns 502 if the collector is unreachable.
     """
-    return await _proxy_collector(f"/collector/traces?limit={limit}")
+    path = f"/collector/traces?limit={limit}"
+    if host:
+        from urllib.parse import quote
+
+        path += f"&host={quote(host)}"
+    return await _proxy_collector(path)
+
+
+@app.get("/api/observability/hosts", tags=["metrics"])
+async def get_hosts():
+    """Proxy to the OTLP collector's ``/collector/hosts`` endpoint.
+
+    Returns distinct hosts that have reported OTLP data, with span counts
+    and agent lists.  Returns 502 if the collector is unreachable.
+    """
+    return await _proxy_collector("/collector/hosts")
 
 
 async def _proxy_collector(path: str):

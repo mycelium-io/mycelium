@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS spans (
     name         TEXT NOT NULL,
     kind         TEXT NOT NULL DEFAULT 'internal',
     service      TEXT NOT NULL DEFAULT '',
+    host         TEXT NOT NULL DEFAULT '',
     start_time   TEXT NOT NULL,
     duration_ms  REAL NOT NULL DEFAULT 0,
     status       TEXT NOT NULL DEFAULT 'unset',
@@ -58,6 +59,7 @@ CREATE TABLE IF NOT EXISTS spans (
 CREATE INDEX IF NOT EXISTS idx_spans_trace_id ON spans(trace_id);
 CREATE INDEX IF NOT EXISTS idx_spans_created_at ON spans(created_at);
 CREATE INDEX IF NOT EXISTS idx_spans_start_time ON spans(start_time);
+CREATE INDEX IF NOT EXISTS idx_spans_host ON spans(host);
 """
 
 _DEFAULT_RETENTION_DAYS = 7
@@ -77,13 +79,31 @@ class TraceStore:
         conn.executescript(_TRACES_SCHEMA)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
+        self._migrate_host_column(conn)
         conn.close()
         log.info("Trace store opened: %s (retention=%dd)", db_path, retention_days)
+
+    @staticmethod
+    def _migrate_host_column(conn: sqlite3.Connection) -> None:
+        """Add `host` column to existing databases that lack it."""
+        cursor = conn.execute("PRAGMA table_info(spans)")
+        columns = {row[1] for row in cursor.fetchall()}
+        if "host" not in columns:
+            conn.execute("ALTER TABLE spans ADD COLUMN host TEXT NOT NULL DEFAULT ''")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_spans_host ON spans(host)")
+            conn.commit()
+            log.info("Migrated spans table: added 'host' column")
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(str(self._db_path), timeout=10)
 
-    def ingest_traces(self, request_bytes: bytes, *, is_json: bool = False) -> None:
+    def ingest_traces(
+        self,
+        request_bytes: bytes,
+        *,
+        is_json: bool = False,
+        source_ip: str = "",
+    ) -> None:
         from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
             ExportTraceServiceRequest,
         )
@@ -100,9 +120,14 @@ class TraceStore:
         for rs in msg.resource_spans:
             resource_attrs = _attrs_dict(rs.resource.attributes) if rs.resource else {}
             service_name = str(resource_attrs.get("service.name", ""))
+            host = (
+                str(resource_attrs.get("host.name", ""))
+                or str(resource_attrs.get("service.instance.id", ""))
+                or source_ip
+            )
             for ss in rs.scope_spans:
                 for span in ss.spans:
-                    rows.append(self._span_to_row(span, service_name))
+                    rows.append(self._span_to_row(span, service_name, host))
 
         if not rows:
             return
@@ -112,16 +137,16 @@ class TraceStore:
             try:
                 conn.executemany(
                     "INSERT OR REPLACE INTO spans "
-                    "(trace_id, span_id, parent_span_id, name, kind, service, "
+                    "(trace_id, span_id, parent_span_id, name, kind, service, host, "
                     " start_time, duration_ms, status, status_message, attributes) "
-                    "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                     rows,
                 )
                 conn.commit()
             finally:
                 conn.close()
 
-    def _span_to_row(self, span, service_name: str) -> tuple:
+    def _span_to_row(self, span, service_name: str, host: str = "") -> tuple:
         trace_id = span.trace_id.hex() if isinstance(span.trace_id, bytes) else str(span.trace_id)
         span_id = span.span_id.hex() if isinstance(span.span_id, bytes) else str(span.span_id)
         parent_id = (
@@ -145,6 +170,7 @@ class TraceStore:
             span.name,
             kind,
             service_name,
+            host,
             start_iso,
             round(duration_ms, 2),
             _STATUS_MAP.get(status_code, "unknown"),
@@ -152,22 +178,34 @@ class TraceStore:
             json.dumps(attrs, default=str),
         )
 
-    def get_recent_traces(self, limit: int = 100) -> list[dict]:
+    def get_recent_traces(self, limit: int = 100, *, host: str | None = None) -> list[dict]:
         """Return recent traces as a list of trace summary objects, newest first.
 
         Each trace includes its full list of spans for waterfall rendering.
+        When *host* is given, only traces that contain at least one span from
+        that host are returned.
         """
         with self._lock:
             conn = self._connect()
             conn.row_factory = sqlite3.Row
             try:
-                trace_ids = [
-                    r[0]
-                    for r in conn.execute(
-                        "SELECT DISTINCT trace_id FROM spans ORDER BY start_time DESC LIMIT ?",
-                        (limit * 20,),
-                    ).fetchall()
-                ]
+                if host:
+                    trace_ids = [
+                        r[0]
+                        for r in conn.execute(
+                            "SELECT DISTINCT trace_id FROM spans WHERE host = ? "
+                            "ORDER BY start_time DESC LIMIT ?",
+                            (host, limit * 20),
+                        ).fetchall()
+                    ]
+                else:
+                    trace_ids = [
+                        r[0]
+                        for r in conn.execute(
+                            "SELECT DISTINCT trace_id FROM spans ORDER BY start_time DESC LIMIT ?",
+                            (limit * 20,),
+                        ).fetchall()
+                    ]
                 seen: list[str] = []
                 seen_set: set[str] = set()
                 for tid in trace_ids:
@@ -188,6 +226,7 @@ class TraceStore:
 
                     spans = []
                     for r in rows:
+                        span_host = r.get("host", "")
                         spans.append(
                             {
                                 "trace_id": r["trace_id"],
@@ -196,6 +235,7 @@ class TraceStore:
                                 "name": r["name"],
                                 "kind": r["kind"],
                                 "service": r["service"],
+                                "host": span_host,
                                 "start_time": r["start_time"],
                                 "duration_ms": r["duration_ms"],
                                 "status": r["status"],
@@ -220,17 +260,59 @@ class TraceStore:
                         if agent:
                             break
 
+                    hosts_in_trace = sorted({s["host"] for s in spans if s["host"]})
+
                     result.append(
                         {
                             "trace_id": trace_id,
                             "root_span": root["name"],
                             "service": root.get("service", ""),
                             "agent": agent,
+                            "host": root.get("host", ""),
+                            "hosts": hosts_in_trace,
                             "start_time": root["start_time"],
                             "duration_ms": round(total_duration, 2),
                             "span_count": len(spans),
                             "has_error": has_error,
                             "spans": spans,
+                        }
+                    )
+                return result
+            finally:
+                conn.close()
+
+    def get_hosts(self) -> list[dict]:
+        """Return distinct hosts with span counts and last-seen times."""
+        with self._lock:
+            conn = self._connect()
+            try:
+                rows = conn.execute(
+                    "SELECT host, COUNT(*) AS span_count, MAX(start_time) AS last_seen, "
+                    "COUNT(DISTINCT trace_id) AS trace_count "
+                    "FROM spans WHERE host != '' GROUP BY host ORDER BY last_seen DESC"
+                ).fetchall()
+                result = []
+                for r in rows:
+                    host_val, span_count, last_seen, trace_count = r
+                    agents_rows = conn.execute(
+                        "SELECT DISTINCT json_extract(attributes, '$.\"openclaw.channel\"') AS agent "
+                        "FROM spans WHERE host = ? AND json_extract(attributes, '$.\"openclaw.channel\"') IS NOT NULL "
+                        "AND json_extract(attributes, '$.\"openclaw.channel\"') != ''",
+                        (host_val,),
+                    ).fetchall()
+                    agents = sorted({a[0] for a in agents_rows if a[0]})
+                    error_count = conn.execute(
+                        "SELECT COUNT(*) FROM spans WHERE host = ? AND status = 'error'",
+                        (host_val,),
+                    ).fetchone()[0]
+                    result.append(
+                        {
+                            "host": host_val,
+                            "span_count": span_count,
+                            "trace_count": trace_count,
+                            "last_seen": last_seen,
+                            "agents": agents,
+                            "error_count": error_count,
                         }
                     )
                 return result
@@ -317,6 +399,7 @@ class MetricsStore:
         }
         self._sessions: dict[str, dict] = {}
         self._backend_metrics: dict | None = None
+        self._by_host: dict[str, dict] = {}
         # Per-target Prometheus scrape state, keyed by config-supplied name.
         # Populated by `_fetch_scrape_targets` in the collector poller thread.
         self._scrape_targets: dict[str, dict] = {}
@@ -357,9 +440,13 @@ class MetricsStore:
                 result["backend"] = copy.deepcopy(self._backend_metrics)
             if self._scrape_targets:
                 result["scrape"] = copy.deepcopy(self._scrape_targets)
+            if self._by_host:
+                result["by_host"] = copy.deepcopy(self._by_host)
             return result
 
-    def ingest_metrics(self, request_bytes: bytes, *, is_json: bool = False) -> None:
+    def ingest_metrics(
+        self, request_bytes: bytes, *, is_json: bool = False, source_ip: str = ""
+    ) -> None:
         from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import (
             ExportMetricsServiceRequest,
         )
@@ -374,11 +461,21 @@ class MetricsStore:
 
         with self.lock:
             for rm in msg.resource_metrics:
+                resource_attrs = _attrs_dict(rm.resource.attributes) if rm.resource else {}
+                host = (
+                    str(resource_attrs.get("host.name", ""))
+                    or str(resource_attrs.get("service.instance.id", ""))
+                    or source_ip
+                )
                 for sm in rm.scope_metrics:
                     for metric in sm.metrics:
                         self._process_metric(metric)
+                        if host:
+                            self._track_host_metric(host, metric)
 
-    def ingest_traces(self, request_bytes: bytes, *, is_json: bool = False) -> None:
+    def ingest_traces(
+        self, request_bytes: bytes, *, is_json: bool = False, source_ip: str = ""
+    ) -> None:
         """Process model.usage spans for session aggregation.
 
         The raw request_bytes are also forwarded to a TraceStore (if set)
@@ -398,9 +495,17 @@ class MetricsStore:
 
         with self.lock:
             for rs in msg.resource_spans:
+                resource_attrs = _attrs_dict(rs.resource.attributes) if rs.resource else {}
+                host = (
+                    str(resource_attrs.get("host.name", ""))
+                    or str(resource_attrs.get("service.instance.id", ""))
+                    or source_ip
+                )
                 for ss in rs.scope_spans:
                     for span in ss.spans:
                         self._process_span(span)
+                        if host:
+                            self._track_host_span(host, span)
 
     def _process_metric(self, metric) -> None:  # noqa: C901
         name = metric.name
@@ -557,6 +662,53 @@ class MetricsStore:
                 )
                 del self._sessions[oldest_key]
 
+    def _ensure_host_bucket(self, host: str) -> dict:
+        """Return (and lazily create) the by-host tracking dict."""
+        if host not in self._by_host:
+            self._by_host[host] = {
+                "tokens": _zero_tokens(),
+                "cost_usd": 0.0,
+                "spans": 0,
+                "messages_processed": 0,
+                "agents": [],
+                "last_seen": "",
+            }
+        return self._by_host[host]
+
+    def _track_host_metric(self, host: str, metric) -> None:
+        """Accumulate per-host counters from a single OTLP metric."""
+        bucket = self._ensure_host_bucket(host)
+        name = metric.name
+        if metric.HasField("sum"):
+            for dp in metric.sum.data_points:
+                attrs = _attrs_dict(dp.attributes)
+                value = dp.as_double if dp.HasField("as_double") else float(dp.as_int)
+                if name == "openclaw.tokens":
+                    token_type = attrs.get("openclaw.token", "total")
+                    if token_type in bucket["tokens"]:
+                        bucket["tokens"][token_type] = value
+                    agent = attrs.get("openclaw.channel", "")
+                    if agent and agent not in bucket["agents"]:
+                        bucket["agents"].append(agent)
+                elif name == "openclaw.cost.usd":
+                    bucket["cost_usd"] = value
+                elif name == "openclaw.message.processed":
+                    bucket["messages_processed"] = value
+
+    def _track_host_span(self, host: str, span) -> None:
+        """Accumulate per-host span counts from trace data."""
+        bucket = self._ensure_host_bucket(host)
+        bucket["spans"] += 1
+        start_ns = span.start_time_unix_nano
+        if start_ns:
+            ts = datetime.fromtimestamp(start_ns / 1_000_000_000, tz=UTC).isoformat()
+            if ts > bucket["last_seen"]:
+                bucket["last_seen"] = ts
+        attrs = _attrs_dict(span.attributes)
+        agent = str(attrs.get("openclaw.channel", ""))
+        if agent and agent not in bucket["agents"]:
+            bucket["agents"].append(agent)
+
 
 def _agent_from_session_key(session_key: str) -> str:
     """Extract agent name from a session key like 'agent:selina-agent:matrix:...'."""
@@ -711,13 +863,19 @@ class OTLPHandler(BaseHTTPRequestHandler):
             self._json_response(data)
             return
 
+        if self.path == "/collector/hosts":
+            hosts = self.trace_store.get_hosts()
+            self._json_response({"hosts": hosts})
+            return
+
         if self.path.startswith("/collector/traces"):
             from urllib.parse import parse_qs, urlparse
 
             qs = parse_qs(urlparse(self.path).query)
             limit = int(qs.get("limit", ["100"])[0])
             limit = max(1, min(limit, _MAX_TRACES))
-            traces = self.trace_store.get_recent_traces(limit)
+            host_filter = qs.get("host", [None])[0]
+            traces = self.trace_store.get_recent_traces(limit, host=host_filter)
             self._json_response({"count": len(traces), "traces": traces})
             return
 
@@ -806,12 +964,18 @@ class OTLPHandler(BaseHTTPRequestHandler):
         ct = (self.headers.get("Content-Type") or "").lower()
         is_json = "json" in ct
 
+        source_ip = self.client_address[0] if self.client_address else ""
+        if source_ip == "::1" or source_ip == "::ffff:127.0.0.1":
+            source_ip = "127.0.0.1"
+        elif source_ip.startswith("::ffff:"):
+            source_ip = source_ip[7:]
+
         try:
             if self.path == "/v1/metrics":
-                self.store.ingest_metrics(body, is_json=is_json)
+                self.store.ingest_metrics(body, is_json=is_json, source_ip=source_ip)
             elif self.path == "/v1/traces":
-                self.store.ingest_traces(body, is_json=is_json)
-                self.trace_store.ingest_traces(body, is_json=is_json)
+                self.store.ingest_traces(body, is_json=is_json, source_ip=source_ip)
+                self.trace_store.ingest_traces(body, is_json=is_json, source_ip=source_ip)
             elif self.path == "/v1/logs":
                 log.debug("Received OTLP logs (%d bytes), ack-only", len(body))
             self._flush()

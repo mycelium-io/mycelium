@@ -8,9 +8,11 @@ import type { TraceSummary, TraceSpan } from "@/lib/api";
 
 interface TraceExplorerProps {
   traces: TraceSummary[] | null;
+  hostFilter?: string | null;
+  onHostFilter?: (host: string | null) => void;
 }
 
-export function TraceExplorer({ traces }: TraceExplorerProps) {
+export function TraceExplorer({ traces, hostFilter, onHostFilter }: TraceExplorerProps) {
   const [expandedTrace, setExpandedTrace] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
 
@@ -34,14 +36,23 @@ export function TraceExplorer({ traces }: TraceExplorerProps) {
     );
   }
 
-  const filtered = filter
-    ? traces.filter(t =>
-        t.root_span.toLowerCase().includes(filter.toLowerCase()) ||
-        t.agent.toLowerCase().includes(filter.toLowerCase()) ||
-        t.service.toLowerCase().includes(filter.toLowerCase()) ||
-        t.trace_id.includes(filter)
-      )
-    : traces;
+  const allHosts = Array.from(new Set(traces.flatMap(t => t.hosts ?? (t.host ? [t.host] : [])))).filter(Boolean).sort();
+
+  let filtered = traces;
+  if (hostFilter) {
+    filtered = filtered.filter(t =>
+      (t.hosts ?? []).includes(hostFilter) || t.host === hostFilter
+    );
+  }
+  if (filter) {
+    filtered = filtered.filter(t =>
+      t.root_span.toLowerCase().includes(filter.toLowerCase()) ||
+      t.agent.toLowerCase().includes(filter.toLowerCase()) ||
+      t.service.toLowerCase().includes(filter.toLowerCase()) ||
+      t.trace_id.includes(filter) ||
+      (t.host ?? "").toLowerCase().includes(filter.toLowerCase())
+    );
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -51,9 +62,27 @@ export function TraceExplorer({ traces }: TraceExplorerProps) {
           type="text"
           value={filter}
           onChange={e => setFilter(e.target.value)}
-          placeholder="Filter by span name, agent, service, or trace ID..."
+          placeholder="Filter by span name, agent, service, host, or trace ID..."
           className="flex-1 bg-transparent text-micro text-text placeholder:text-dim outline-none"
         />
+        {allHosts.length > 1 && (
+          <select
+            value={hostFilter ?? ""}
+            onChange={e => onHostFilter?.(e.target.value || null)}
+            className="bg-transparent text-micro text-text border border-border px-1.5 py-0.5 outline-none"
+          >
+            <option value="">all hosts</option>
+            {allHosts.map(h => <option key={h} value={h}>{h}</option>)}
+          </select>
+        )}
+        {hostFilter && (
+          <button
+            onClick={() => onHostFilter?.(null)}
+            className="text-micro text-dim hover:text-text"
+          >
+            clear
+          </button>
+        )}
         <span className="text-micro text-dim tabular">{filtered.length} traces</span>
       </div>
 
@@ -73,6 +102,9 @@ export function TraceExplorer({ traces }: TraceExplorerProps) {
                   <span className="text-micro font-semibold text-text truncate">{trace.root_span}</span>
                   {trace.agent && (
                     <span className="text-micro text-accent truncate">{trace.agent}</span>
+                  )}
+                  {trace.host && (
+                    <span className="text-micro text-dim border border-border/60 px-1 rounded truncate">{trace.host}</span>
                   )}
                 </div>
                 <div className="flex items-center gap-3 mt-0.5">
@@ -270,6 +302,7 @@ function SpanDetail({ span, onClose }: { span: TraceSpan; onClose: () => void })
         {span.status_message && <DetailRow label="Message" value={span.status_message} />}
         <DetailRow label="Duration" value={fmtDuration(span.duration_ms)} />
         <DetailRow label="Service" value={span.service} />
+        {span.host && <DetailRow label="Host" value={span.host} />}
         <DetailRow label="Started" value={fmtTime(span.start_time)} />
         <DetailRow label="Span ID" value={span.span_id} mono />
         <DetailRow label="Parent" value={span.parent_span_id || "(root)"} mono />
