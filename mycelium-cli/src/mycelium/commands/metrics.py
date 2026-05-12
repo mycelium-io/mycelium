@@ -1068,7 +1068,40 @@ def _render_overview(
 
     console.print(table)
     console.print()
+
+    by_host = (otel or {}).get("by_host", {})
+    if by_host:
+        host_table = Table(
+            title="Spoke Sites",
+            title_style="bold cyan",
+            title_justify="left",
+            show_header=True,
+            border_style="dim",
+        )
+        host_table.add_column("Host", style="bold")
+        host_table.add_column("Agents")
+        host_table.add_column("Spans", justify="right")
+        host_table.add_column("Last Seen")
+        for hk in sorted(by_host, key=lambda h: by_host[h].get("last_seen", ""), reverse=True):
+            hd = by_host[hk]
+            agents = ", ".join(hd.get("agents", [])) or "—"
+            spans = str(hd.get("spans", 0))
+            last = hd.get("last_seen", "—")
+            if last and last != "—":
+                try:
+                    from datetime import datetime
+
+                    dt = datetime.fromisoformat(last.replace("Z", "+00:00"))
+                    last = dt.strftime("%H:%M:%S")
+                except Exception:
+                    pass
+            host_table.add_row(hk, agents, spans, last)
+        console.print(host_table)
+        console.print()
+
     console.print("[dim]Detail: mycelium metrics show <openclaw|mycelium|cfn|cost>[/dim]")
+    if by_host:
+        console.print("[dim]Filter: mycelium metrics show --host <HOST>[/dim]")
     console.print()
 
 
