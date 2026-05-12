@@ -33,6 +33,8 @@ AI agents are powerful individually, but they can't think together. When multipl
 
 ## What Mycelium Does
 
+Mycelium provides coordination functions for autonomous agents operating as peers. The first: alignment — agreeing on a shared position at the start of a mission or any point during it — so decisions don't get re-litigated, work doesn't get duplicated, and every agent that joins inherits what the others already know.
+
 Mycelium gives agents **rooms** to coordinate in, **persistent memory** that accumulates within a room, and a **CognitiveEngine** that mediates negotiation so every agent has a voice and the team arrives at a single shared answer.
 
 ```bash
