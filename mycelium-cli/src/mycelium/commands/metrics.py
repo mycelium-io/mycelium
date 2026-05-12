@@ -371,8 +371,13 @@ def collect(
 
     output = _metrics_json()
     output.parent.mkdir(parents=True, exist_ok=True)
+
+    hub_url = _get_collector_url()
+
     typer.echo(f"Starting spoke collector on :{resolved_port} (no-backend mode)")
     typer.echo(f"  Data: {output}")
+    if hub_url:
+        typer.echo(f"  Forwarding OTLP to hub: {hub_url}")
     typer.echo("  Press Ctrl+C to stop\n")
 
     from mycelium.collector import run as collector_run
@@ -381,6 +386,7 @@ def collect(
         resolved_port,
         output,
         no_backend=True,
+        hub_url=hub_url,
     )
 
 
@@ -3071,7 +3077,6 @@ def _render_spoke_sites_table(otel: dict | None) -> None:
     table.add_column("Agents")
     table.add_column("Spans", justify="right")
     table.add_column("Tokens", justify="right")
-    table.add_column("Cost", justify="right")
     table.add_column("Last Seen")
 
     for host_key in sorted(by_host, key=lambda h: by_host[h].get("last_seen", ""), reverse=True):
@@ -3081,8 +3086,6 @@ def _render_spoke_sites_table(otel: dict | None) -> None:
         tokens = data.get("tokens", {})
         total_tokens = tokens.get("total", 0)
         tok_str = f"{total_tokens:,}" if total_tokens else "—"
-        cost = data.get("cost_usd", 0.0)
-        cost_str = f"${cost:.4f}" if cost > 0 else "—"
         last_seen = data.get("last_seen", "—")
         if last_seen and last_seen != "—":
             try:
@@ -3092,7 +3095,7 @@ def _render_spoke_sites_table(otel: dict | None) -> None:
                 last_seen = dt.strftime("%H:%M:%S")
             except Exception:
                 pass
-        table.add_row(host_key, agents, spans, tok_str, cost_str, last_seen)
+        table.add_row(host_key, agents, spans, tok_str, last_seen)
 
     console.print(table)
     console.print()

@@ -7,7 +7,11 @@ Lightweight OTLP HTTP receiver for OpenClaw telemetry.
 Accepts protobuf-encoded OTLP data on /v1/traces and /v1/metrics,
 aggregates counters/histograms/sessions in memory, and persists to a JSON file.
 
-Designed to be run as a Docker container via `mycelium up --metrics`.
+Hub mode (default):  run as a Docker container via ``mycelium up --metrics``.
+Spoke mode:          run via ``mycelium metrics collect``.  Stores OTLP data
+                     locally *and* forwards the raw payloads to the hub
+                     collector (agent-to-gateway pattern) so the hub can
+                     build a unified cross-host view.
 """
 
 from __future__ import annotations
@@ -19,6 +23,7 @@ import logging
 import socket
 import sqlite3
 import threading
+import urllib.request
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -76,10 +81,10 @@ class TraceStore:
 
         db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(db_path))
-        conn.executescript(_TRACES_SCHEMA)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
         self._migrate_host_column(conn)
+        conn.executescript(_TRACES_SCHEMA)
         conn.close()
         log.info("Trace store opened: %s (retention=%dd)", db_path, retention_days)
 
@@ -88,6 +93,8 @@ class TraceStore:
         """Add `host` column to existing databases that lack it."""
         cursor = conn.execute("PRAGMA table_info(spans)")
         columns = {row[1] for row in cursor.fetchall()}
+        if not columns:
+            return  # fresh DB, table doesn't exist yet — schema script will create it
         if "host" not in columns:
             conn.execute("ALTER TABLE spans ADD COLUMN host TEXT NOT NULL DEFAULT ''")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_spans_host ON spans(host)")
@@ -845,6 +852,39 @@ def _fetch_scrape_targets(
             log.debug("Failed to persist scrape data: %s", write_exc)
 
 
+class _HubForwarder:
+    """Fire-and-forget OTLP forwarder from spoke collector to hub.
+
+    Implements the agent-to-gateway pattern: every OTLP payload accepted
+    locally is also POSTed to the hub collector so it can maintain a
+    unified cross-host view (by_host metrics, traces).  Failures are
+    logged but never block the local ingest path.
+    """
+
+    def __init__(self, hub_url: str) -> None:
+        self._base = hub_url.rstrip("/")
+        log.info("Hub forwarding enabled → %s", self._base)
+
+    def forward(self, path: str, body: bytes, content_type: str) -> None:
+        """POST *body* to hub_url+path in a daemon thread."""
+        threading.Thread(target=self._send, args=(path, body, content_type), daemon=True).start()
+
+    def _send(self, path: str, body: bytes, content_type: str) -> None:
+        url = f"{self._base}{path}"
+        req = urllib.request.Request(
+            url,
+            data=body,
+            method="POST",
+            headers={"Content-Type": content_type},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+                resp.read()
+            log.debug("Forwarded %s (%d bytes) to hub", path, len(body))
+        except Exception as exc:
+            log.debug("Hub forward failed for %s: %s", path, exc)
+
+
 class OTLPHandler(BaseHTTPRequestHandler):
     """HTTP handler for OTLP protobuf endpoints."""
 
@@ -852,6 +892,7 @@ class OTLPHandler(BaseHTTPRequestHandler):
     trace_store: TraceStore
     output_path: Path
     backend_api_url: str
+    hub_forwarder: _HubForwarder | None
 
     def do_GET(self) -> None:
         if self.path == "/health":
@@ -979,6 +1020,9 @@ class OTLPHandler(BaseHTTPRequestHandler):
             elif self.path == "/v1/logs":
                 log.debug("Received OTLP logs (%d bytes), ack-only", len(body))
             self._flush()
+
+            if self.hub_forwarder and self.path in ("/v1/metrics", "/v1/traces"):
+                self.hub_forwarder.forward(self.path, body, ct or "application/x-protobuf")
         except Exception:
             log.exception("Failed to process %s", self.path)
             self.send_response(500)
@@ -1022,6 +1066,7 @@ def run(
     backend_api_url: str = "http://localhost:8000",
     scrape_targets: list[dict] | None = None,
     no_backend: bool = False,
+    hub_url: str | None = None,
 ) -> None:
     """Start the OTLP HTTP receiver. Blocks until interrupted.
 
@@ -1033,6 +1078,11 @@ def run(
     Prometheus scraping entirely — it only accepts OTLP pushes.  This is
     the mode used on spoke nodes that run a lightweight local collector
     for OpenClaw telemetry only.
+
+    ``hub_url``, when set, enables the agent-to-gateway forwarding pattern:
+    every OTLP /v1/metrics and /v1/traces payload accepted locally is also
+    POSTed (fire-and-forget) to the hub collector so it can aggregate
+    cross-host data.
     """
     store = MetricsStore()
     traces_db = output_path.parent / "traces.db"
@@ -1070,6 +1120,8 @@ def run(
         except Exception:
             log.warning("Could not load existing %s, starting fresh", output_path)
 
+    forwarder = _HubForwarder(hub_url) if hub_url else None
+
     handler = type(
         "Handler",
         (OTLPHandler,),
@@ -1078,6 +1130,7 @@ def run(
             "trace_store": trace_store,
             "output_path": output_path,
             "backend_api_url": backend_api_url,
+            "hub_forwarder": forwarder,
         },
     )
 

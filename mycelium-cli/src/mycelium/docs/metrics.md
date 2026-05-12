@@ -45,14 +45,18 @@ In a multi-device deployment, spoke nodes run a **lightweight local collector**
 for their own OpenClaw OTLP data and fetch Mycelium backend + CFN metrics from
 the hub. `mycelium metrics show` merges both sources automatically.
 
+The spoke collector also **forwards** every OTLP payload to the hub collector
+(agent-to-gateway pattern), so the hub maintains a unified cross-host view
+with per-host breakdowns (the "Spoke Sites" table and `--host` filter).
+
 ```
 ┌──────────────────────────────────┐        ┌──────────────────────────────────┐
 │         Spoke Node               │        │          Hub Node                │
 │                                  │        │                                  │
 │  OpenClaw ─── OTLP ──▶ Local    │        │  Collector (:4318)               │
 │  Gateway        Collector       │        │    ├─▶ MetricsStore              │
-│                  (:4318,         │        │    ├─▶ TraceStore                │
-│                   no-backend)    │        │    └─▶ poll Backend + CFN scrape │
+│                  (:4318,     ────┼─ OTLP ─┼──▶├─▶ TraceStore (by_host)     │
+│                   no-backend)    │ forward │    └─▶ poll Backend + CFN scrape │
 │                   │              │        │                                  │
 │                   ▼              │        │  Backend (:8000)                 │
 │            local metrics.json    │        │  CFN services                    │
@@ -94,7 +98,10 @@ mycelium metrics collect
 
 This runs a foreground OTLP receiver in `--no-backend` mode: it accepts
 OpenClaw telemetry pushes and writes to the local `metrics.json` but does
-**not** poll the backend or scrape Prometheus targets.
+**not** poll the backend or scrape Prometheus targets. It automatically
+forwards OTLP /v1/metrics and /v1/traces payloads to the hub's collector
+(the `collector_url` from config) via fire-and-forget HTTP POSTs in
+background threads.
 
 ### How it works
 
@@ -107,6 +114,11 @@ OpenClaw telemetry pushes and writes to the local `metrics.json` but does
 - The `collect` command is only available in spoke mode (when `collector_url`
   points to a remote host). On hub/local nodes, use `mycelium up --metrics`
   instead.
+- **OTLP forwarding**: the spoke collector transparently forwards raw OTLP
+  payloads to the hub, enabling the hub's `by_host` aggregation (Spoke Sites
+  table, `--host` filter) and unified trace database. Forwarding failures
+  are logged at debug level but never block local ingest — the spoke always
+  stores data locally first.
 
 ## CLI Commands
 
@@ -643,7 +655,7 @@ users can run `mycelium metrics reset` to start fresh.
 | `mycelium-cli/src/mycelium/commands/adapter.py`  | `--step=otel` and `--step=deep-observability` setup |
 | `mycelium-cli/src/mycelium/commands/instance.py`  | `mycelium up --metrics`, `down`, `logs` with collector awareness |
 | `mycelium-cli/src/mycelium/data/pricing.json`    | Generated model and embedding pricing data |
-| `mycelium-cli/src/mycelium/collector.py`          | OTLP HTTP receiver, MetricsStore, TraceStore, backend poller |
+| `mycelium-cli/src/mycelium/collector.py`          | OTLP HTTP receiver, MetricsStore, TraceStore, backend poller, hub forwarding |
 | `mycelium-cli/src/mycelium/collector_main.py`     | Entrypoint for the Docker collector process |
 | `mycelium-cli/Dockerfile.collector`               | Minimal image for the containerized collector |
 | `mycelium-cli/src/mycelium/docker/compose.yml`    | `mycelium-collector` service definition (metrics profile) |

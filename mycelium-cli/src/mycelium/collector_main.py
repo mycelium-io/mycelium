@@ -34,6 +34,12 @@ def main() -> None:
         default=False,
         help="Skip backend polling and Prometheus scraping (spoke-local OTLP-only mode)",
     )
+    parser.add_argument(
+        "--hub-url",
+        type=str,
+        default=None,
+        help="Forward OTLP payloads to a hub collector (agent-to-gateway pattern)",
+    )
 
     args = parser.parse_args()
 
@@ -58,6 +64,7 @@ def main() -> None:
         backend_api_url=args.backend_url,
         scrape_targets=scrape_targets,
         no_backend=args.no_backend,
+        hub_url=args.hub_url,
     )
 
 
