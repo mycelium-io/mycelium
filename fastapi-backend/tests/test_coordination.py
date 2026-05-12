@@ -568,8 +568,8 @@ def test_validate_and_fill_offer_bad_key_returns_invalid_keys():
     assert set(out["valid_keys"]) == {"price", "timeline"}
 
 
-def test_validate_and_fill_offer_case_sensitive():
-    """Key matching is case-sensitive — wrong casing produces invalid_keys."""
+def test_validate_and_fill_offer_case_insensitive_snap():
+    """Wrong casing is snapped to the canonical key (tier 2)."""
     current_offer = {"Demo is non-negotiable": "yes"}
     result = {
         "agent_id": "alice",
@@ -578,8 +578,47 @@ def test_validate_and_fill_offer_case_sensitive():
         "offer": {"demo is non-negotiable": "yes"},
     }
     out = _validate_and_fill_offer("alice", result, current_offer)
-    assert out["action"] == "invalid_keys"
-    assert out["bad_keys"] == ["demo is non-negotiable"]
+    assert out["action"] == "counter_offer"
+    assert out["offer"] == {"Demo is non-negotiable": "yes"}
+
+
+def test_validate_and_fill_offer_underscore_snap():
+    """Underscored keys snap to space-separated canonical keys (tier 3)."""
+    current_offer = {
+        "ACID compliance": "strict",
+        "horizontal scaling": "read replicas",
+        "pgvector for AI features": "enabled",
+    }
+    result = {
+        "agent_id": "alpha",
+        "participant_id": "alpha",
+        "action": "counter_offer",
+        "offer": {
+            "ACID_compliance": "flexible",
+            "horizontal_scaling": "sharding",
+            "pgvector_for_AI_features": "optional",
+        },
+    }
+    out = _validate_and_fill_offer("alpha", result, current_offer)
+    assert out["action"] == "counter_offer"
+    assert set(out["offer"]) == set(current_offer)
+    assert out["offer"]["ACID compliance"] == "flexible"
+    assert out["offer"]["horizontal scaling"] == "sharding"
+    assert out["offer"]["pgvector for AI features"] == "optional"
+
+
+def test_validate_and_fill_offer_fuzzy_snap():
+    """Close-enough keys snap via token-set ratio (tier 4)."""
+    current_offer = {"horizontal scaling": "read replicas"}
+    result = {
+        "agent_id": "alice",
+        "participant_id": "alice",
+        "action": "counter_offer",
+        "offer": {"scaling horizontal": "sharding"},
+    }
+    out = _validate_and_fill_offer("alice", result, current_offer)
+    assert out["action"] == "counter_offer"
+    assert out["offer"] == {"horizontal scaling": "sharding"}
 
 
 def test_validate_and_fill_offer_partial_fill():
