@@ -826,6 +826,9 @@ def show(
         return
 
     # ── Dispatch by section ───────────────────────────────────────────
+    if host and section is None:
+        section = "openclaw"
+
     if section is None:
         _render_overview(otel_data, oc_cost, backend_data, include_heartbeat=include_heartbeat)
         return
@@ -846,6 +849,7 @@ def show(
     if show_openclaw:
         if host:
             _render_host_filtered_view(otel_data, host)
+            return
         else:
             _render_summary_table(
                 otel_data,
@@ -3061,8 +3065,8 @@ def _render_spoke_sites_table(otel: dict | None) -> None:
     console.print()
 
 
-def _render_host_filtered_view(otel: dict | None, host: str) -> None:
-    """Show metrics filtered to a single host."""
+def _render_host_filtered_view(otel: dict | None, host: str) -> bool:
+    """Show metrics filtered to a single host. Returns True if data was found."""
     by_host = (otel or {}).get("by_host", {})
     data = by_host.get(host)
     if not data:
@@ -3075,8 +3079,13 @@ def _render_host_filtered_view(otel: dict | None, host: str) -> None:
         console.print(f"[yellow]No data found for host '{host}'.[/yellow]")
         if by_host:
             console.print(f"[dim]Known hosts: {', '.join(sorted(by_host))}[/dim]")
+        else:
+            console.print(
+                "[dim]No per-host data collected yet. Host tracking starts when "
+                "spoke nodes send OTLP data to the hub collector.[/dim]"
+            )
         console.print()
-        return
+        return False
 
     table = Table(
         title=f"OpenClaw · {host}",
@@ -3103,6 +3112,7 @@ def _render_host_filtered_view(otel: dict | None, host: str) -> None:
 
     console.print(table)
     console.print()
+    return True
 
 
 def _render_field_legend() -> None:
