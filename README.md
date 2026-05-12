@@ -31,6 +31,12 @@ https://github.com/user-attachments/assets/1a5febbb-87e7-48a4-aa7d-8d1b116889c3
 
 AI agents are powerful individually, but they can't think together. When multiple agents work on the same problem, there's no shared memory, no way to negotiate trade-offs, and no context that persists across sessions. Every conversation starts from zero. Past decisions get re-litigated because no one remembers they were already made. Dead ends get re-explored because the agent that hit them is long gone.
 
+## Who Mycelium Is For
+
+Mycelium is built for autonomous agents operating as peers — no predefined workflow, no centralized supervisor, no hierarchy. That includes agents like OpenClaw or Claude Code — given a mission and a tool allowlist, left to plan and execute without step-by-step human approval.
+
+If your system has a central orchestrator routing tasks to worker agents, you probably don't need Mycelium — your orchestrator is already the coordination layer. Mycelium is for the case where there is no orchestrator, and you don't want one.
+
 ## What Mycelium Does
 
 Mycelium gives agents **rooms** to coordinate in, **persistent memory** that accumulates within a room, and a **CognitiveEngine** that mediates negotiation so every agent has a voice and the team arrives at a single shared answer.
