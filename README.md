@@ -35,6 +35,8 @@ AI agents are powerful individually, but they can't think together. When multipl
 
 Mycelium is built for autonomous agents operating as peers — no predefined workflow, no centralized supervisor, no hierarchy. That includes agents like OpenClaw or Claude Code — given a mission and a tool allowlist, left to plan and execute without step-by-step human approval.
 
+Alignment pays off at 3+ agents. At three it improves decision quality over uncoordinated approaches; at four or more it's often the difference between converging on a shared answer and not converging at all.
+
 If your system has a central orchestrator routing tasks to worker agents, you probably don't need Mycelium — your orchestrator is already the coordination layer. Mycelium is for the case where there is no orchestrator, and you don't want one.
 
 ## What Mycelium Does
