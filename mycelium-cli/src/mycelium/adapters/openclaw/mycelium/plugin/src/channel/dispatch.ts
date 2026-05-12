@@ -60,6 +60,7 @@ export async function dispatchToAgent(
     await runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
       ctx,
       cfg: openclawConfig,
+      replyOptions: { sourceReplyDeliveryMode: "automatic" },
       dispatcherOptions: {
         deliver: async (payload: ReplyPayload) => {
           const text = payload.text?.trim();

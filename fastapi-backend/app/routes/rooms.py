@@ -374,10 +374,12 @@ async def get_negotiation_status(
     """
     from app.services.coordination import _cfn_state
 
-    result = await session.execute(select(Room).where(Room.name == room_name))
-    if not result.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Room not found")
-
+    # Don't require a matching Room row here. After migration 0014 (drop
+    # session-shadow rows) the session display name (e.g.
+    # "exp:session:abc123") no longer exists in `rooms`, so the old 404
+    # check broke the CLI's pre-flight snap path. `_cfn_state` is keyed by
+    # the same display name the CLI passes in, so a missing entry just
+    # means "no active negotiation" — same as for a non-existent room.
     state = _cfn_state.get(room_name)
     if not state:
         return {"active": False}
