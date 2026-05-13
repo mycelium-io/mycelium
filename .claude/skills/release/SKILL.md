@@ -29,7 +29,13 @@ The release pipeline's "promote to latest" steps (Docker `:latest` tags, GH "Lat
    - **Stable (`/release`):** Run `gh release list --limit 5` to find the current "Latest" release tag. Increment the patch version (e.g. `v1.0.0` → `v1.0.1`).
    - **Preview (`/release --preview`):** Find the latest stable tag (highest non-prerelease in `gh release list`). Target version is `<latest-stable-patch+1>`. Then check existing prereleases for that target: if `vX.Y.Zrc1` exists, cut `vX.Y.Zrc2`, etc. First preview for a target version is always `rc1`. Use PEP 440 format with no separator (`vX.Y.ZrcN`, NOT `vX.Y.Z-rc.N`) so the wheel filename matches what `install.sh` expects.
 
-3. **Generate the CHANGELOG.md entry** — *Stable only. Skipped for `--preview`*: prerelease iterations get rolled up into the next stable's entry, not their own.
+3. **Check for new migrations** — *Stable only.* Run:
+   ```
+   git diff <prev-stable-tag>..HEAD -- fastapi-backend/alembic_migrations/versions/
+   ```
+   If any new migration files exist, note this in the changelog and **include `mycelium migrate` in the upgrade instructions** in the Webex message (before `mycelium doctor`).
+
+4. **Generate the CHANGELOG.md entry** — *Stable only. Skipped for `--preview`*: prerelease iterations get rolled up into the next stable's entry, not their own.
 
    No `[Unreleased]` block is maintained on `main`. Each release's section is derived from `git log <prev-stable-tag>..HEAD --no-merges --oneline` at release time. Group commits by conventional-commit prefix:
 
@@ -42,26 +48,28 @@ The release pipeline's "promote to latest" steps (Docker `:latest` tags, GH "Lat
 
    Commit the changelog update directly to `main` (admin push, no PR) with message `chore(release): changelog for <tag>`. **This commit must land before the tag is pushed** so the tag points at the commit that includes its own entry.
 
-4. **Tag and push** — Run:
+5. **Tag and push** — Run:
    ```
    git tag <new-tag> && git push origin <new-tag>
    ```
    The `release.yml` workflow detects whether the tag is a prerelease and gates the rest of the pipeline accordingly.
 
-5. **Create GitHub release** — The `release.yml` workflow handles this automatically (via `softprops/action-gh-release`), including setting `prerelease: true` for preview tags. No manual `gh release create` needed.
+6. **Create GitHub release** — The `release.yml` workflow handles this automatically (via `softprops/action-gh-release`), including setting `prerelease: true` for preview tags. No manual `gh release create` needed.
 
    Wait for the workflow to finish (`gh run watch` or `gh run list --workflow=release.yml --limit 1`). If it fails, fix and re-run before posting any notifications.
 
-6. **Webex notification** — Invoke `/webex` (no confirmation needed). Behavior depends on whether this is a stable or preview release.
+7. **Webex notification** — Invoke `/webex` (no confirmation needed). Behavior depends on whether this is a stable or preview release.
 
    **Stable release** — when `--with-webex` is passed, post a bullet-point changelog summary with the tag and release URL. Each bullet should include the PR link if one exists (e.g. `- feat: description ([#123](https://github.com/mycelium-io/mycelium/pull/123))`). Follow with upgrade instructions using triple-backtick code blocks so they're copyable:
    ```
    To upgrade:
    mycelium upgrade && mycelium pull
+   mycelium migrate              # if this release includes new migrations
    mycelium adapter add openclaw --reinstall   # if using openclaw
    mycelium adapter add claude-code --reinstall  # if using claude-code
    mycelium doctor  # to check health of services
    ```
+   Include `mycelium migrate` only if step 3 found new migration files. Omit the line otherwise.
    Post to:
    - `Mycelium Release Notes` — always (room ID in `/webex` skill)
    - `IoC::Mycelium Eng` — only if `--with-webex=eng` was passed (room ID in `/webex` skill)
@@ -91,7 +99,7 @@ The release pipeline's "promote to latest" steps (Docker `:latest` tags, GH "Lat
    ```
    `mycelium pull --version <tag>` is the critical second step — it pins both `mycelium-backend` and `mycelium-db` images via `MYCELIUM_IMAGE_TAG` in `~/.mycelium/.env`. Without it, the new CLI runs against stale stable containers. Stable users are unaffected — `install.sh` and `mycelium upgrade` (no `--version`) still resolve to the latest stable, and `mycelium pull` (no `--version`) still pulls `:latest`.
 
-7. **Mycelium patch notes** — Skipped for `--preview` (or scope to a `previews/<tag>` key if the user explicitly asks for it). Otherwise write the same changelog summary to the active Mycelium room:
+8. **Mycelium patch notes** — Skipped for `--preview` (or scope to a `previews/<tag>` key if the user explicitly asks for it). Otherwise write the same changelog summary to the active Mycelium room:
    ```bash
    mycelium memory set "releases/<tag>" "<same bullet-point summary as Webex>" --handle claude-code-agent
    ```
