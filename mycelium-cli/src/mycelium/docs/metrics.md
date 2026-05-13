@@ -138,6 +138,7 @@ threads. Logs are written to `$DATA_DIR/metrics/collector.log`.
 | `mycelium metrics show --include-heartbeat` | Include OpenClaw `heartbeat` channel tokens in totals (excluded by default) |
 | `mycelium up --metrics`   | Start the stack with the Dockerized OTLP collector (hub/local mode) |
 | `mycelium adapter add openclaw --step=otel --step=deep-observability` | Configure both OTLP plugins in one command (see below) |
+| `mycelium metrics traces …` | Query and pivot the trace spans collected in `traces.db` (see [Viewing Traces](#viewing-traces)) |
 
 ## Files Created
 
@@ -462,6 +463,99 @@ OpenClaw → Mycelium backend → CFN → opt-in.
 
 12. **Workspace Files** (via `--workspace`) — per-file size breakdown of
     each agent's `~/.openclaw` workspace directory.
+
+## Viewing Traces
+
+`mycelium metrics show` rolls everything up into a few high-level panels;
+`mycelium metrics traces …` lets you slice the raw spans in
+`$DATA_DIR/metrics/traces.db` by every dimension the spans actually carry.
+
+The deep-observability plugin annotates each span with rich identity and
+behavior info, so you can pivot on:
+
+| Pivot | Source field(s) | What it tells you |
+|---|---|---|
+| **Host** | `host` column | Which OpenClaw machine emitted the span |
+| **Agent** | `openclaw.agent`, `gen_ai.agent.id`, `ioa_observe.entity.name` | Which agent did the work |
+| **Room** | parsed from `gen_ai.conversation.id` / `openclaw.session.key` (`agent:<a>:<chan-kind>:<chan-type>:<room-id>`) | Matrix room id _or_ Mycelium room name — both are first-class |
+| **Channel kind** | parsed from same key, plus `openclaw.channel` | `matrix` vs `mycelium-room` (lets you tell coordination spans from chat spans) |
+| **Session** | `session.id`, `openclaw.session.key` | One conversation/turn lifecycle |
+| **Model** | `gen_ai.request.model`, `gen_ai.response.model` | Which LLM was called |
+| **Tool** | `openclaw.toolName`, `gen_ai.tool.name`, `openclaw.exec.exit_code` | Which tool was invoked and its exit code |
+| **Outcome** | `openclaw.outcome` | `completed` / `failed` / etc. |
+| **Status** | `status`, `status_message` columns | Span-level `ok` / `error` plus the message |
+| **Latency** | `duration_ms` column | Span duration |
+| **Trace tree** | `trace_id` + `parent_span_id` | Full parent → child call hierarchy |
+
+### Subcommands
+
+| Command | What it shows |
+|---------|---------------|
+| `mycelium metrics traces summary` | Total spans, errors, hosts, agents, rooms, channel kinds, models, tool calls, tokens, span p50/p95/p99 |
+| `mycelium metrics traces by-host` | Group by source host (spans, errors, avg/p95 latency, tokens) |
+| `mycelium metrics traces by-agent` | Group by agent |
+| `mycelium metrics traces by-room` | Group by Matrix room id or Mycelium room name |
+| `mycelium metrics traces by-channel` | Group by channel kind (`matrix`, `mycelium-room`, …) |
+| `mycelium metrics traces by-model` | Group by LLM model |
+| `mycelium metrics traces by-name` | Group by span name (`openclaw.agent.turn`, `openclaw.tool.execution`, …) |
+| `mycelium metrics traces by-tool` | Group tool-call spans by tool name |
+| `mycelium metrics traces errors` | Recent `status=error` spans with message |
+| `mycelium metrics traces slow` | Slowest spans in the window |
+| `mycelium metrics traces list` | Recent spans with the most useful columns inline |
+| `mycelium metrics traces show <trace_id_or_span_id>` | Render one trace as a parent → child tree with model, tokens, tool name, exit code, and error message inlined per span |
+| `mycelium metrics traces show-attrs <span_id>` | Dump the full attribute JSON for one span |
+| `mycelium metrics traces rooms` | Active rooms with span counts and which agents/hosts touched each |
+| `mycelium metrics traces agents` | Per-agent rollup with hosts, rooms, models, tokens, errors |
+| `mycelium metrics traces schema` | Print the SQLite schema and the most common attribute keys (handy when authoring ad-hoc SQL) |
+
+### Common flags
+
+Most pivot subcommands accept the same filter set:
+
+| Flag | Meaning |
+|------|---------|
+| `--since 30s\|15m\|2h\|1d` | Time window (default `1h`). Bare numbers are minutes. |
+| `--host <name>` | Filter to one host (e.g. `--host oclw3`) |
+| `--agent <id>` | Filter to one agent |
+| `--room <id_substring>` | Filter to a Matrix room id or Mycelium room name (substring match) |
+| `--name '<glob>'` | Filter span name (`*` wildcard) |
+| `--status ok\|error\|unset` | Filter by span status |
+| `--limit N` / `-n N` | Cap the number of rows |
+| `--all` | (For `errors` / `slow` only) Include the gateway's CPU/event-loop watchdog spans (`openclaw.diagnostic.phase`, `openclaw.liveness.warning`), which are excluded by default so real workload spans stand out |
+
+### Examples
+
+```bash
+# Top-level health check across the whole fleet
+mycelium metrics traces summary --since=1h
+
+# Which Mycelium rooms are active right now, and which agents are in them?
+mycelium metrics traces rooms --since=30m
+
+# What's claire-agent doing on oclw3 in the last 15 minutes?
+mycelium metrics traces list --agent=claire-agent --host=oclw3 --since=15m
+
+# All tool-call spans for the mycelium-room (negotiation activity)
+mycelium metrics traces by-tool --room=mycelium_room --since=1h
+
+# Real failures (skips the gateway's CPU watchdog noise)
+mycelium metrics traces errors --since=1h
+
+# Slowest user-facing spans (skips the same noise)
+mycelium metrics traces slow --since=1h
+
+# Drill into one trace as a tree
+mycelium metrics traces show 6df3b9b5e3832b7247a2079346ec3dc5
+
+# Dump everything OpenTelemetry knows about one span
+mycelium metrics traces show-attrs <span_id>
+```
+
+### Read-only access
+
+`traces` opens `traces.db` via SQLite URI mode (`mode=ro`), so it never
+contends with the OTLP receiver writing new spans. This is safe to run
+against a live hub.
 
 ## Pricing Data
 

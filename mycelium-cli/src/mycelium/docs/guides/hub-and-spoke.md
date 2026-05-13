@@ -217,6 +217,20 @@ backend/CFN data fetched from the hub. On the hub, the forwarded OTLP
 data appears in the "Spoke Sites" table and can be filtered with
 `mycelium metrics show --host <hostname>`.
 
+For a span-level view of the activity each spoke is forwarding — drill
+down by host, agent, room, channel, model, tool, error, or latency, and
+render any single trace as a parent → child tree — use the trace viewer
+on the hub:
+
+```bash
+mycelium metrics traces summary --since=1h     # rollup
+mycelium metrics traces by-host --since=1h      # per-spoke
+mycelium metrics traces show <trace_id>         # one trace as a tree
+```
+
+See [Viewing Traces](../metrics.md#viewing-traces) for the full command
+list and pivots.
+
 See the [Metrics System docs](../metrics.md#hub-and-spoke-setup) for
 full details.
 

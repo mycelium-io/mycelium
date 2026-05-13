@@ -243,6 +243,78 @@ openclaw gateway restart
    openclaw devices approve --latest
    ```
 
+### 15. Agent Behaving Strangely / "Why did it do that?"
+
+**Symptom**: An agent took an unexpected action, replied with the wrong context, called the wrong tool, or burned a lot of tokens. `mycelium metrics show` rolls everything up into headline numbers but doesn't show *why* a specific turn behaved that way.
+
+**Fix**: Drill into the actual span tree with `mycelium metrics traces`:
+
+```bash
+# 1. Find the recent spans for the agent
+mycelium metrics traces list --agent=claire-agent --since=15m
+
+# 2. Pick a trace_id from the output and render it as a tree.
+#    Each row shows model, tokens, tool name, exit code, and any
+#    error message, so you can see exactly which step went wrong.
+mycelium metrics traces show <trace_id>
+
+# 3. Want every attribute the OTel pipeline captured? (system prompt
+#    chars, context window size, channel, trigger, etc.)
+mycelium metrics traces show-attrs <span_id>
+```
+
+Other useful pivots when an agent looks off:
+
+```bash
+# What models is it actually calling?
+mycelium metrics traces by-model --agent=claire-agent --since=1h
+
+# Which rooms / channels has it been active in?
+mycelium metrics traces by-room --agent=claire-agent --since=1h
+mycelium metrics traces by-channel --agent=claire-agent --since=1h
+
+# Tool call patterns (which tools, how often, error rate)
+mycelium metrics traces by-tool --agent=claire-agent --since=1h
+
+# Slowest turns (e.g. context assembly blowing up)
+mycelium metrics traces slow --agent=claire-agent --since=1h
+
+# Just the failures
+mycelium metrics traces errors --agent=claire-agent --since=1h
+```
+
+If `mycelium metrics traces ...` reports `traces.db not found`, the OTLP
+receiver isn't running on the hub — see issue #16.
+
+### 16. Deep-Observability Plugin Not Emitting Spans
+
+**Symptom**: `mycelium metrics show` shows OpenClaw activity but `mycelium metrics traces summary` reports zero spans (or only `openclaw.diagnostic.phase` infra spans). The hub gateway log shows `[plugins] loaded 4 plugin(s)` instead of 5.
+
+**Fix**: This means the `openclaw-deep-observability` plugin is configured but the gateway's startup planner is silently excluding it. Re-run the adapter step — it now patches the manifest and the openclaw.json entry with the two undocumented flags the gateway requires:
+
+```bash
+mycelium adapter add openclaw --reinstall --step=deep-observability
+```
+
+After it finishes, verify:
+
+```bash
+# Should report 5 plugins, including openclaw-deep-observability
+journalctl --user -u openclaw-gateway.service --since="2 minutes ago" \
+  | grep "http server listening"
+
+# After triggering a turn, should show non-infra span types like
+# openclaw.agent.turn / openclaw.llm.call / openclaw.tool.execution
+mycelium metrics traces by-name --since=5m
+```
+
+Background: the plugin needs `activation.onCapabilities: ["hook"]` in its
+`openclaw.plugin.json` manifest *and* `hooks.allowConversationAccess: true`
+in its `plugins.entries.openclaw-deep-observability` block. The
+`--step=deep-observability` adapter step writes both automatically (it
+also chains `--step=otel` first, since `diagnostics-otel` is a
+prerequisite).
+
 ## Configuration
 
 Mycelium has two config systems: **config.toml** for CLI settings and **.env** for backend/Docker settings.
