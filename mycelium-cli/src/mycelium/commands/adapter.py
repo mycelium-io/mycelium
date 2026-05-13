@@ -1753,6 +1753,17 @@ def _build_deep_obs_from_git(profile: str | None) -> Path | None:
             text=True,
             capture_output=True,
         )
+        # Pull failure (e.g. private repo without creds on a remote host)
+        # is not fatal — fall back to whatever is already on disk and warn.
+        # The repo will be public soon and this branch becomes a no-op then.
+        if result.returncode != 0:
+            typer.secho(
+                f"  ⚠ git pull failed (exit {result.returncode}); using existing source on disk",
+                fg=typer.colors.YELLOW,
+            )
+            if result.stderr.strip():
+                typer.echo(f"    {result.stderr.strip()[:300]}")
+            result = subprocess.CompletedProcess(args=[], returncode=0)
     else:
         _DEEP_OBS_CLONE_DIR.parent.mkdir(parents=True, exist_ok=True)
         if _DEEP_OBS_CLONE_DIR.exists():
@@ -1763,11 +1774,11 @@ def _build_deep_obs_from_git(profile: str | None) -> Path | None:
             text=True,
             capture_output=True,
         )
-    if result.returncode != 0:
-        typer.secho(f"  ✗ git clone/pull failed (exit {result.returncode})", fg=typer.colors.RED)
-        if result.stderr.strip():
-            typer.echo(f"    {result.stderr.strip()[:300]}")
-        return None
+        if result.returncode != 0:
+            typer.secho(f"  ✗ git clone failed (exit {result.returncode})", fg=typer.colors.RED)
+            if result.stderr.strip():
+                typer.echo(f"    {result.stderr.strip()[:300]}")
+            return None
 
     if not plugin_dir.is_dir():
         typer.secho(
