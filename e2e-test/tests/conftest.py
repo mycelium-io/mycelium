@@ -59,6 +59,7 @@ def _kill_stale_pytest_processes() -> None:
     import subprocess
 
     my_pid = os.getpid()
+    my_ppid = os.getppid()
     try:
         result = subprocess.run(
             ["pgrep", "-f", "pytest.*test_mycelium_e2e"],
@@ -68,7 +69,7 @@ def _kill_stale_pytest_processes() -> None:
         )
         for line in result.stdout.strip().splitlines():
             pid = int(line.strip())
-            if pid == my_pid:
+            if pid in (my_pid, my_ppid):
                 continue
             print(
                 f"  [GUARD] killing stale pytest process {pid} "

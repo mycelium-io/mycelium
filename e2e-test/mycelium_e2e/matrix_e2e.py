@@ -270,13 +270,25 @@ async def run_matrix_e2e_negotiation(
                 json={"agent_handle": handle, "intent": position},
             )
             if r.status_code in (200, 201):
-                data = r.json()
-                if data.get("room_name"):
-                    session_room = data["room_name"]
-                    ctx.session_room_name = session_room
-                log_debug(f"{handle} joined session: {session_room}")
+                log_debug(f"{handle} joined session (status={r.status_code})")
+            else:
+                log_error(f"{handle} failed to join: {r.status_code} {r.text}")
             
             await asyncio.sleep(0.5)
+        
+        # Resolve session room via coordination sessions endpoint
+        coord_r = await http.get(
+            f"{BACKEND_URL}/rooms/{quote(ctx.mycelium_room_name, safe='')}/sessions/coordination",
+        )
+        if coord_r.status_code == 200:
+            coord_sessions = coord_r.json()
+            for cs in coord_sessions:
+                dn = cs.get("display_name")
+                if dn:
+                    session_room = dn
+                    ctx.session_room_name = session_room
+                    break
+        log_debug(f"Resolved session room: {session_room}")
         
         if not session_room:
             log_error("No session room created")
