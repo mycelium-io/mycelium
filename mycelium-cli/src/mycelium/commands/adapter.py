@@ -2038,7 +2038,74 @@ def _configure_deep_observability(
     typer.secho(f"  ✓ {_DEEP_OBS_PLUGIN_ID} enabled in openclaw.json", fg=typer.colors.GREEN)
     typer.echo(f"    endpoint: {endpoint}")
     typer.echo("    traces: true, metrics: true, captureContent: false")
+
+    if not container:
+        _write_deep_obs_systemd_override(endpoint=endpoint, plugin_dir=plugin_dir)
+
     return True
+
+
+def _write_deep_obs_systemd_override(*, endpoint: str, plugin_dir: Path) -> None:
+    """Write a systemd `--user` drop-in for openclaw-gateway.service.
+
+    The drop-in pins the deep-observability plugin's environment so the
+    gateway always starts with:
+
+      - ``OTEL_EXPORTER_OTLP_ENDPOINT`` matching the local collector
+      - ``OTEL_SERVICE_NAME=openclaw-gateway`` so the FastAPI panels can
+        attribute spans correctly
+      - ``OTEL_RESOURCE_ATTRIBUTES`` carrying ``host.name`` and
+        ``service.instance.id`` set to the local hostname. Without these,
+        the deep-obs spans arrive at the hub with no host info and the
+        collector falls back to the source IP — which makes the same
+        physical host show up under multiple labels (oclw-3, oclw3,
+        10.0.50.171) in `mycelium metrics traces` views.
+      - ``NODE_OPTIONS=--import file://.../preload.mjs`` so the
+        plugin's auto-instrumentation hooks (anthropic, bedrock,
+        openai, vertexai SDKs) load before any agent code runs.
+
+    All values are quoted so systemd doesn't split on the inner ``=``
+    (we hit that bug live: ``--import requires an argument``).
+    """
+    import socket
+
+    override_dir = Path.home() / ".config/systemd/user/openclaw-gateway.service.d"
+    override_path = override_dir / "deep-obs.conf"
+    preload_path = plugin_dir / "instrumentation" / "preload.mjs"
+    if not preload_path.exists():
+        typer.secho(
+            f"  ⚠ Preload script not found at {preload_path}; skipping systemd override.",
+            fg=typer.colors.YELLOW,
+        )
+        return
+    hostname = socket.gethostname()
+    body = (
+        "[Service]\n"
+        f'Environment="OTEL_EXPORTER_OTLP_ENDPOINT={endpoint}"\n'
+        'Environment="OTEL_SERVICE_NAME=openclaw-gateway"\n'
+        f'Environment="OTEL_RESOURCE_ATTRIBUTES=host.name={hostname},service.instance.id={hostname}"\n'
+        f'Environment="NODE_OPTIONS=--import file://{preload_path}"\n'
+    )
+    try:
+        override_dir.mkdir(parents=True, exist_ok=True)
+        existing = override_path.read_text() if override_path.exists() else ""
+        if existing == body:
+            return
+        override_path.write_text(body)
+        typer.secho(
+            f"  ✓ wrote systemd override → {override_path}",
+            fg=typer.colors.GREEN,
+        )
+        typer.echo(f"    host.name={hostname}")
+        # daemon-reload so systemctl restart picks up the change
+        subprocess.run(
+            ["systemctl", "--user", "daemon-reload"], check=False, capture_output=True
+        )
+    except OSError as exc:
+        typer.secho(
+            f"  ⚠ Could not write {override_path}: {exc}",
+            fg=typer.colors.YELLOW,
+        )
 
 
 def _restart_gateway_if_needed(profile: str | None, container: str | None) -> None:

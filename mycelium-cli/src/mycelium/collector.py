@@ -105,6 +105,11 @@ CREATE TABLE IF NOT EXISTS spans (
     status       TEXT NOT NULL DEFAULT 'unset',
     status_message TEXT NOT NULL DEFAULT '',
     attributes   TEXT NOT NULL DEFAULT '{}',
+    -- JSON list of OTel span events (timestamped log-like records the
+    -- gateway / instrumentation attached mid-span — exceptions, prompt
+    -- build steps, tool I/O snapshots, etc.). Each entry is
+    -- {"time": iso8601, "name": str, "attributes": {...}}.
+    events       TEXT NOT NULL DEFAULT '[]',
     created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 CREATE INDEX IF NOT EXISTS idx_spans_trace_id ON spans(trace_id);
@@ -129,14 +134,14 @@ class TraceStore:
         conn = sqlite3.connect(str(db_path))
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
-        self._migrate_host_column(conn)
+        self._migrate_columns(conn)
         conn.executescript(_TRACES_SCHEMA)
         conn.close()
         log.info("Trace store opened: %s (retention=%dd)", db_path, retention_days)
 
     @staticmethod
-    def _migrate_host_column(conn: sqlite3.Connection) -> None:
-        """Add `host` column to existing databases that lack it."""
+    def _migrate_columns(conn: sqlite3.Connection) -> None:
+        """Apply additive column migrations to an existing spans table."""
         cursor = conn.execute("PRAGMA table_info(spans)")
         columns = {row[1] for row in cursor.fetchall()}
         if not columns:
@@ -146,6 +151,11 @@ class TraceStore:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_spans_host ON spans(host)")
             conn.commit()
             log.info("Migrated spans table: added 'host' column")
+        if "events" not in columns:
+            # Existing rows get '[]' so downstream code never has to handle NULL.
+            conn.execute("ALTER TABLE spans ADD COLUMN events TEXT NOT NULL DEFAULT '[]'")
+            conn.commit()
+            log.info("Migrated spans table: added 'events' column")
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(str(self._db_path), timeout=10)
@@ -191,8 +201,8 @@ class TraceStore:
                 conn.executemany(
                     "INSERT OR REPLACE INTO spans "
                     "(trace_id, span_id, parent_span_id, name, kind, service, host, "
-                    " start_time, duration_ms, status, status_message, attributes) "
-                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                    " start_time, duration_ms, status, status_message, attributes, events) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     rows,
                 )
                 conn.commit()
@@ -216,6 +226,30 @@ class TraceStore:
         status_code = span.status.code if span.status else 0
         status_msg = span.status.message if span.status else ""
 
+        # Capture OTel span events — these are the closest thing the
+        # protocol has to "log lines attached to a span" and are what
+        # gives users a chance to see *what happened* mid-span. We
+        # deliberately keep the same shape exporters use over the wire so
+        # the JSON is self-describing for ad-hoc SQL.
+        events: list[dict] = []
+        for ev in getattr(span, "events", []) or []:
+            ev_ns = getattr(ev, "time_unix_nano", 0) or 0
+            try:
+                ev_iso = (
+                    datetime.fromtimestamp(ev_ns / 1_000_000_000, tz=UTC).isoformat()
+                    if ev_ns
+                    else ""
+                )
+            except (OverflowError, OSError, ValueError):
+                ev_iso = ""
+            events.append(
+                {
+                    "time": ev_iso,
+                    "name": ev.name,
+                    "attributes": _attrs_dict(ev.attributes),
+                }
+            )
+
         return (
             trace_id,
             span_id,
@@ -229,6 +263,7 @@ class TraceStore:
             _STATUS_MAP.get(status_code, "unknown"),
             status_msg,
             json.dumps(attrs, default=str),
+            json.dumps(events, default=str),
         )
 
     def get_recent_traces(self, limit: int = 100, *, host: str | None = None) -> list[dict]:
@@ -282,6 +317,9 @@ class TraceStore:
             spans_by_trace: dict[str, list[dict]] = {}
             for r in all_rows:
                 span_host = r["host"] or ""
+                # sqlite3.Row supports column lookup via `.keys()`; `in row`
+                # would test against values, so we genuinely need `.keys()`.
+                events_raw = r["events"] if "events" in r.keys() else "[]"  # noqa: SIM118
                 span = {
                     "trace_id": r["trace_id"],
                     "span_id": r["span_id"],
@@ -295,6 +333,7 @@ class TraceStore:
                     "status": r["status"],
                     "status_message": r["status_message"],
                     "attributes": json.loads(r["attributes"]),
+                    "events": json.loads(events_raw or "[]"),
                 }
                 spans_by_trace.setdefault(r["trace_id"], []).append(span)
 

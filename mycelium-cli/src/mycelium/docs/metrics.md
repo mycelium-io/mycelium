@@ -502,8 +502,9 @@ behavior info, so you can pivot on:
 | `mycelium metrics traces errors` | Recent `status=error` spans with message |
 | `mycelium metrics traces slow` | Slowest spans in the window |
 | `mycelium metrics traces list` | Recent spans with the most useful columns inline |
-| `mycelium metrics traces show <trace_id_or_span_id>` | Render one trace as a parent → child tree with model, tokens, tool name, exit code, and error message inlined per span |
-| `mycelium metrics traces show-attrs <span_id>` | Dump the full attribute JSON for one span |
+| `mycelium metrics traces show <trace_id_or_span_id>` | Render one trace as a parent → child tree with model, tokens, tool name, exit code, and error message inlined per span. Pass `--events` to interleave any OTel span events (log-like records) under their parent spans. |
+| `mycelium metrics traces show-attrs <span_id>` | Dump the full attribute JSON (and any captured span events) for one span |
+| `mycelium metrics traces events [trace_or_span_id]` | Show OTel **span events** as a flat, time-ordered log. Span events are the OTel-native way to attach log-like records to a span (exceptions with stack traces, prompt build steps, tool I/O snapshots, etc.). With no argument, lists events across all spans matching the filters in the time window. |
 | `mycelium metrics traces rooms` | Active rooms with span counts and which agents/hosts touched each |
 | `mycelium metrics traces agents` | Per-agent rollup with hosts, rooms, models, tokens, errors |
 | `mycelium metrics traces schema` | Print the SQLite schema and the most common attribute keys (handy when authoring ad-hoc SQL) |
@@ -550,6 +551,77 @@ mycelium metrics traces show 6df3b9b5e3832b7247a2079346ec3dc5
 # Dump everything OpenTelemetry knows about one span
 mycelium metrics traces show-attrs <span_id>
 ```
+
+### Span events ("log lines")
+
+OpenTelemetry spans can carry zero or more **events** — timestamped,
+log-like records the instrumentation attached mid-span (exceptions with
+stack traces, prompt build steps, tool I/O snapshots, etc.). The
+collector persists them into the `events` column of the `spans` table
+as a JSON list (each entry is `{time, name, attributes}`), and the
+viewer surfaces them in two ways:
+
+- `traces show <id> --events` interleaves them inline under their
+  parent spans in the tree view.
+- `traces events [id]` renders them as a flat, time-ordered log,
+  optionally scoped to one trace, agent, room, host, or time window.
+
+Whether and how often events show up is a function of what the
+deep-observability plugin is configured to emit:
+
+- Exceptions are always recorded (OTel convention).
+- LLM prompt / completion content is only attached when the plugin's
+  `captureContent` flag is `true`. The adapter sets this to `false` by
+  default for privacy; flip it in `~/.openclaw/openclaw.json` under
+  `plugins.entries.openclaw-deep-observability.config.captureContent`
+  if you want full prompt visibility.
+
+The OTLP `/v1/logs` endpoint is currently *acked but discarded* — if
+you want general OpenClaw log lines forwarded to the hub, that's a
+follow-up (would require a `LogStore` sibling to `TraceStore`).
+
+### Host normalization
+
+The same physical host can show up in `spans.host` under multiple
+labels:
+
+- `oclw3` — the new canonical name (post-adapter-baked-in
+  `OTEL_RESOURCE_ATTRIBUTES=host.name=…`)
+- `oclw-3` — legacy `service.instance.id` from before the adapter
+  managed the systemd override
+- `10.0.50.171` / `ip-10-0-50-171` — deep-obs spans where `host.name`
+  wasn't set, so the OTLP receiver fell back to the source IP
+
+The viewer normalizes these for display in three layers, in priority
+order:
+
+1. **Explicit overrides** in `~/.mycelium/config.toml`:
+
+   ```toml
+   [metrics.traces.host_aliases]
+   "10.0.50.171"     = "oclw3"
+   "ip-10-0-50-171"  = "oclw3"
+   "10.0.50.142"     = "oclw5"
+   ```
+
+2. **Built-in pattern**: `oclw-N` → `oclwN`.
+3. **Best-effort reverse DNS** for raw IPv4 addresses.
+
+Filtering also follows the alias map: `--host=oclw3` matches every raw
+host label that resolves to `oclw3`, so `traces by-agent --host=oclw3`
+or `traces list --host=oclw3` give you a unified per-machine view even
+across legacy data.
+
+For new spans, the adapter's `--step=deep-observability` writes a
+systemd drop-in (`~/.config/systemd/user/openclaw-gateway.service.d/deep-obs.conf`)
+that sets:
+
+```
+Environment="OTEL_RESOURCE_ATTRIBUTES=host.name=$(hostname),service.instance.id=$(hostname)"
+```
+
+so the gateway's deep-obs spans always carry the canonical hostname
+and the IP-fallback path in the OTLP receiver never fires.
 
 ### Read-only access
 

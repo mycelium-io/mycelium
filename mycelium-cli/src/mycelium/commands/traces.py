@@ -86,6 +86,98 @@ def _open_db() -> sqlite3.Connection:
     return conn
 
 
+# ── Host normalization ────────────────────────────────────────────────────
+#
+# The same physical host can show up under multiple labels in the spans
+# table:
+#
+#   - ``oclw-3``  (legacy diagnostics-otel resource attrs from before
+#                  the adapter started normalizing host.name)
+#   - ``oclw3``   (post-reinstall diagnostics-otel — desired)
+#   - ``10.0.50.171`` (deep-obs spans where host.name wasn't set in
+#                      OTEL_RESOURCE_ATTRIBUTES, so the OTLP collector
+#                      fell back to the source IP)
+#
+# We normalize at display time so historical data is still groupable,
+# while the adapter's new systemd override eliminates the issue for new
+# spans going forward. The map is populated from three sources, in order
+# of precedence:
+#
+#   1. Explicit overrides in ~/.mycelium/config.toml under
+#      ``[metrics.traces.host_aliases]`` — e.g. ``"10.0.50.171" = "oclw3"``
+#   2. Built-in patterns: ``oclw-N`` → ``oclwN``
+#   3. Best-effort reverse DNS for raw IPs
+
+_HOST_ALIAS_CACHE: dict[str, str] | None = None
+
+
+def _builtin_host_alias(host: str) -> str | None:
+    if not host:
+        return None
+    # ``oclw-3`` → ``oclw3`` (and any ``<word>-<digits>`` of similar shape).
+    m = re.match(r"^([A-Za-z]+)-(\d+)$", host)
+    if m:
+        return m.group(1) + m.group(2)
+    return None
+
+
+def _reverse_dns(host: str) -> str | None:
+    # Only attempt reverse DNS for things that look like IPv4 addresses.
+    if not re.match(r"^\d+\.\d+\.\d+\.\d+$", host):
+        return None
+    import socket
+
+    try:
+        name, _, _ = socket.gethostbyaddr(host)
+    except (OSError, socket.herror, socket.gaierror):
+        return None
+    # Strip trailing FQDN bits (oclw3.example.com → oclw3) so the column
+    # stays narrow.
+    return name.split(".", 1)[0]
+
+
+def _user_host_aliases() -> dict[str, str]:
+    """Read overrides from ~/.mycelium/config.toml.
+
+    Honours either ``[metrics.traces.host_aliases]`` or
+    ``[traces.host_aliases]`` for robustness across config layouts.
+    """
+    cfg_path = _data_dir() / "config.toml"
+    if not cfg_path.exists():
+        return {}
+    try:
+        import tomllib
+    except ImportError:  # pragma: no cover — Python <3.11
+        return {}
+    try:
+        data = tomllib.loads(cfg_path.read_text())
+    except (OSError, ValueError):
+        return {}
+    aliases = (
+        data.get("metrics", {}).get("traces", {}).get("host_aliases")
+        or data.get("traces", {}).get("host_aliases")
+        or {}
+    )
+    if not isinstance(aliases, dict):
+        return {}
+    return {str(k): str(v) for k, v in aliases.items()}
+
+
+def _alias_host(host: str) -> str:
+    """Return the canonical display name for *host*, or *host* unchanged."""
+    global _HOST_ALIAS_CACHE
+    if _HOST_ALIAS_CACHE is None:
+        _HOST_ALIAS_CACHE = _user_host_aliases()
+    if not host:
+        return host
+    cached = _HOST_ALIAS_CACHE.get(host)
+    if cached is not None:
+        return cached
+    alias = _builtin_host_alias(host) or _reverse_dns(host) or host
+    _HOST_ALIAS_CACHE[host] = alias
+    return alias
+
+
 # ── Time-window parsing ───────────────────────────────────────────────────
 
 _SINCE_RE = re.compile(r"^(\d+)\s*([smhd])?$")
@@ -127,6 +219,48 @@ def _parse_attrs(raw: str | None) -> dict:
         return d if isinstance(d, dict) else {}
     except (ValueError, TypeError):
         return {}
+
+
+def _parse_events(row: sqlite3.Row) -> list[dict]:
+    """Return the list of OTel span events recorded against this span.
+
+    Older rows (from before the events column existed) decode as []. The
+    schema defaults the column to ``'[]'`` so we should never see NULL,
+    but handle it defensively.
+    """
+    try:
+        # sqlite3.Row needs .keys() here; `in row` tests values, not column names.
+        if "events" not in row.keys():  # noqa: SIM118
+            return []
+    except (IndexError, AttributeError):
+        return []
+    raw = row["events"] or "[]"
+    try:
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, list) else []
+    except (ValueError, TypeError):
+        return []
+
+
+def _event_message(ev: dict) -> str:
+    """Pick the most informative human-readable string from a span event."""
+    attrs = ev.get("attributes") or {}
+    # Standard OTel exception convention; deep-obs follows it.
+    for key in (
+        "exception.message",
+        "exception.stacktrace",
+        "log.message",
+        "message",
+        "body",
+        "openclaw.message",
+    ):
+        v = attrs.get(key)
+        if v:
+            return str(v)
+    if attrs:
+        # Fall back to a compact key=value preview.
+        return ", ".join(f"{k}={v}" for k, v in list(attrs.items())[:3])
+    return ev.get("name") or ""
 
 
 def _attr_first(attrs: dict, *keys: str, default: str = "") -> str:
@@ -204,6 +338,30 @@ def _fmt_time(ts: str | None) -> str:
 # ── Filter construction shared across subcommands ─────────────────────────
 
 
+def _hosts_matching_alias(target: str) -> list[str]:
+    """Return the set of *raw* host values whose alias resolves to *target*.
+
+    Discovered by scanning distinct host strings in the spans table so a
+    --host=oclw3 filter also matches legacy 'oclw-3' and IP-only spans.
+    """
+    target_norm = target.lower()
+    raw_hosts: list[str] = []
+    try:
+        with _open_db() as conn:
+            raw_hosts = [
+                r[0]
+                for r in conn.execute(
+                    "SELECT DISTINCT host FROM spans WHERE host != '';"
+                ).fetchall()
+            ]
+    except sqlite3.Error:
+        return [target]
+    matches = [h for h in raw_hosts if _alias_host(h).lower() == target_norm]
+    if target not in matches and target in raw_hosts:
+        matches.append(target)
+    return matches or [target]
+
+
 def _build_filters(
     since: str | None,
     host: str | None,
@@ -220,8 +378,10 @@ def _build_filters(
     params.extend(p)
 
     if host:
-        where.append("host = ?")
-        params.append(host)
+        host_matches = _hosts_matching_alias(host)
+        placeholders = ",".join("?" for _ in host_matches)
+        where.append(f"host IN ({placeholders})")
+        params.extend(host_matches)
 
     if name_like:
         where.append("name LIKE ?")
@@ -285,7 +445,7 @@ def summary(
 
     total = len(rows)
     errors = sum(1 for r in rows if (r["status"] or "").lower() == "error")
-    hosts = Counter(r["host"] or "-" for r in rows)
+    hosts = Counter(_alias_host(r["host"]) or "-" for r in rows)
     agents: Counter = Counter()
     rooms: Counter = Counter()
     chan_kinds: Counter = Counter()
@@ -419,7 +579,7 @@ def by_host(
 ) -> None:
     """Group spans by source host."""
     rows = _load_filtered_rows(since, None, agent, room)
-    _print_groupby(f"Spans by host (since {since})", rows, lambda r, _a: r["host"] or "-", limit)
+    _print_groupby(f"Spans by host (since {since})", rows, lambda r, _a: _alias_host(r["host"]) or "-", limit)
 
 
 @app.command("by-agent")
@@ -572,7 +732,7 @@ def errors(
         a = _parse_attrs(r["attributes"])
         table.add_row(
             _fmt_time(r["start_time"]),
-            r["host"] or "-",
+            _alias_host(r["host"]) or "-",
             _truncate(_agent_of(a), 18),
             _truncate(r["name"], 32),
             f"{(r['duration_ms'] or 0):.0f}",
@@ -610,7 +770,7 @@ def slow(
         table.add_row(
             f"{(r['duration_ms'] or 0):.0f}",
             _fmt_time(r["start_time"]),
-            r["host"] or "-",
+            _alias_host(r["host"]) or "-",
             _truncate(_agent_of(a), 18),
             _truncate(r["name"], 28),
             _truncate(_model_of(a), 30),
@@ -651,7 +811,7 @@ def list_spans(
         _, _, rid = _split_conversation(_conversation_of(a))
         table.add_row(
             _fmt_time(r["start_time"]),
-            r["host"] or "-",
+            _alias_host(r["host"]) or "-",
             _truncate(_agent_of(a), 18),
             _truncate(r["name"], 30),
             f"{(r['duration_ms'] or 0):.0f}",
@@ -685,6 +845,15 @@ def show_trace(
     trace_or_span: str = typer.Argument(
         ..., help="Trace id or span id (any span in the trace works)."
     ),
+    show_events: bool = typer.Option(
+        False,
+        "--events",
+        help=(
+            "Interleave OTel span events (timestamped log-like records the"
+            " gateway attached mid-span — exceptions, prompt build steps,"
+            " tool I/O snapshots, etc.) under their parent spans."
+        ),
+    ),
 ) -> None:
     """Render a single trace as a tree, parent → children, ordered by time."""
     with _open_db() as conn:
@@ -716,7 +885,12 @@ def show_trace(
     for root in sorted(roots, key=lambda sid: spans_by_id[sid]["start_time"]):
         _walk_trace(spans_by_id, children, root, 0, ordered)
 
-    table = Table(title=f"Trace {trace_id}  ({len(spans)} spans)")
+    total_events = sum(len(_parse_events(s)) for s in spans)
+    title_suffix = f" ({len(spans)} spans"
+    if total_events:
+        title_suffix += f", {total_events} events"
+    title_suffix += ")"
+    table = Table(title=f"Trace {trace_id} {title_suffix}")
     table.add_column("Span")
     table.add_column("Host")
     table.add_column("Agent")
@@ -725,6 +899,7 @@ def show_trace(
     table.add_column("Notes", overflow="fold")
     for depth, s in ordered:
         a = _parse_attrs(s["attributes"])
+        evs = _parse_events(s)
         notes = []
         if (m := _model_of(a)) != "-":
             notes.append(f"model={_truncate(m, 40)}")
@@ -743,16 +918,42 @@ def show_trace(
             st = f"[red]{st}[/red]"
             if s["status_message"]:
                 notes.append(f"err={_truncate(s['status_message'], 80)}")
+        # Always advertise the event count even when not expanding them,
+        # so users discover --events exists when something interesting is
+        # attached.
+        if evs:
+            notes.append(f"events={len(evs)}")
         prefix = ("  " * depth) + ("└─ " if depth else "")
         table.add_row(
             prefix + _truncate(s["name"], 40),
-            s["host"] or "-",
+            _alias_host(s["host"]) or "-",
             _truncate(_agent_of(a), 18),
             f"{(s['duration_ms'] or 0):.0f}",
             st,
             ", ".join(notes) or "-",
         )
+        if show_events and evs:
+            ev_prefix = ("  " * (depth + 1)) + "• "
+            for ev in evs:
+                ev_name = ev.get("name") or "event"
+                msg = _event_message(ev)
+                style = "[yellow]" if "exception" in ev_name.lower() else ""
+                style_close = "[/yellow]" if style else ""
+                table.add_row(
+                    f"{ev_prefix}{style}{_truncate(ev_name, 38)}{style_close}",
+                    "-",
+                    "-",
+                    "-",
+                    "-",
+                    _truncate(msg, 100),
+                )
     console.print(table)
+    if total_events and not show_events:
+        console.print(
+            f"[dim]({total_events} span event(s) attached. Re-run with"
+            f" --events to see them inline, or `mycelium metrics traces"
+            f" events {trace_id}` for a flat log view.)[/dim]"
+        )
 
 
 @app.command("show-attrs")
@@ -780,6 +981,7 @@ def show_attrs(
         "status": row["status"],
         "status_message": row["status_message"],
         "attributes": _parse_attrs(row["attributes"]),
+        "events": _parse_events(row),
     }
     typer.echo(json.dumps(out, indent=2))
 
@@ -804,7 +1006,7 @@ def rooms_overview(
         if agent_id != "-":
             e["agents"].add(agent_id)
         if r["host"]:
-            e["hosts"].add(r["host"])
+            e["hosts"].add(_alias_host(r["host"]))
 
     if not by_room:
         typer.secho(f"No rooms in window (since {since}).", fg=typer.colors.YELLOW)
@@ -855,7 +1057,7 @@ def agents_overview(
         if (r["status"] or "").lower() == "error":
             e["errors"] += 1
         if r["host"]:
-            e["hosts"].add(r["host"])
+            e["hosts"].add(_alias_host(r["host"]))
         _, _, rid = _split_conversation(_conversation_of(a))
         if rid != "-":
             e["rooms"].add(rid)
@@ -888,6 +1090,84 @@ def agents_overview(
             str(len(info["rooms"])),
             _truncate(", ".join(sorted(info["models"])), 50) or "-",
             f"{info['tokens_in']:,}/{info['tokens_out']:,}",
+        )
+    console.print(table)
+
+
+@app.command("events")
+def events_view(
+    trace_or_span: str | None = typer.Argument(
+        None,
+        help=(
+            "Optional trace id or span id. If omitted, list events across"
+            " all spans matching the filters in the time window."
+        ),
+    ),
+    since: str = SinceOpt,
+    host: str | None = HostOpt,
+    agent: str | None = AgentOpt,
+    room: str | None = RoomOpt,
+    name: str | None = NameOpt,
+    limit: int = LimitOpt,
+) -> None:
+    """Show OTel span events as a flat, time-ordered log.
+
+    Span events are the OTel-native way to attach log-like records to a
+    span (exceptions with stack traces, prompt build steps, tool I/O
+    snapshots, etc.). They're the closest thing to "log lines" the
+    traces pipeline carries, and they're indexed against the same
+    trace/span hierarchy as everything else, so you can correlate them
+    to a particular agent turn or tool call.
+    """
+    if trace_or_span:
+        with _open_db() as conn:
+            row = conn.execute(
+                "SELECT trace_id FROM spans WHERE trace_id = ? OR span_id = ? LIMIT 1;",
+                (trace_or_span, trace_or_span),
+            ).fetchone()
+            if row is None:
+                typer.secho(
+                    f"✗ No spans found for {trace_or_span!r}.", fg=typer.colors.RED
+                )
+                raise typer.Exit(1)
+            trace_id = row["trace_id"]
+            spans = conn.execute(
+                "SELECT * FROM spans WHERE trace_id = ? ORDER BY start_time;",
+                (trace_id,),
+            ).fetchall()
+        title = f"Events in trace {trace_id}"
+    else:
+        spans = _load_filtered_rows(since, host, agent, room, name=name)
+        title = f"Events (since {since})"
+
+    rows: list[tuple[str, sqlite3.Row, dict]] = []
+    for s in spans:
+        for ev in _parse_events(s):
+            rows.append((ev.get("time") or s["start_time"], s, ev))
+    rows.sort(key=lambda x: x[0])
+    if not rows:
+        typer.secho("No span events in selection.", fg=typer.colors.YELLOW)
+        return
+
+    table = Table(title=title)
+    table.add_column("Time")
+    table.add_column("Host")
+    table.add_column("Agent")
+    table.add_column("Span")
+    table.add_column("Event")
+    table.add_column("Message", overflow="fold")
+    for ts, span, ev in rows[:limit]:
+        a = _parse_attrs(span["attributes"])
+        ev_name = ev.get("name") or "event"
+        style = "[yellow]" if "exception" in ev_name.lower() else ""
+        style_close = "[/yellow]" if style else ""
+        table.add_row(
+            _fmt_time(ts),
+            _alias_host(span["host"]) or "-",
+            _truncate(_agent_of(a), 18),
+            _truncate(span["name"], 28),
+            f"{style}{_truncate(ev_name, 30)}{style_close}",
+            _truncate(_event_message(ev), 100),
         )
     console.print(table)
 
