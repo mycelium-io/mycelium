@@ -346,13 +346,36 @@ def agent_show(
                 f'mycelium memory set {manifest.notes_key} "..." --room {room_name}[/dim]'
             )
 
-        log_entries = list_memories(room_dir, prefix=f"agents/{handle}/log/", limit=1)
-        if log_entries:
-            log_key, log_meta, log_content = log_entries[0]
-            ts = str(log_meta.get("updated_at", ""))[:19].replace("T", " ")
-            console.print(f"\n[bold]last invocation[/bold]  [dim]{ts}[/dim]")
-            preview = log_content[:400] if log_content else ""
-            console.print(preview + ("..." if log_content and len(log_content) > 400 else ""))
+        from mycelium.daemon.config import daemon_invocation_log_dir
+
+        log_dir = daemon_invocation_log_dir(room_name, manifest.handle)
+        log_files = sorted(log_dir.glob("*.json"), reverse=True)
+        if log_files:
+            try:
+                import json as _json
+
+                entry = _json.loads(log_files[0].read_text())
+                ts = str(entry.get("ts", "")).replace("T", " ").replace("Z", "")
+                console.print(f"\n[bold]last invocation[/bold]  [dim]{ts}[/dim]")
+                console.print(
+                    f"  {entry.get('sender', '?')} → {entry.get('prompt', '')[:120]}"
+                )
+                ok = entry.get("ok")
+                console.print(
+                    f"  [{'green' if ok else 'red'}]"
+                    f"{'ok' if ok else 'error'}[/]"
+                    f" · {entry.get('duration_s', 0)}s · ${entry.get('cost_usd', 0):.4f}"
+                )
+                reply = entry.get("final_message") or ""
+                if reply:
+                    preview = reply[:400]
+                    console.print(
+                        f"  reply: {preview}{'…' if len(reply) > 400 else ''}"
+                    )
+            except (OSError, ValueError):
+                console.print(
+                    f"\n[dim]Last invocation log unreadable at {log_files[0]}[/dim]"
+                )
     except typer.Exit:
         raise
     except Exception as e:

@@ -31,6 +31,52 @@ log = logging.getLogger("mycelium.daemon")
 
 _DEPTH_WINDOW_S = 60.0
 
+
+def _identity_preamble(
+    *, handle: str, room: str, description: str, sender: str, notes: str
+) -> str:
+    """System-prompt preamble injected into every claude -p spawn.
+
+    Without this, the spawned Claude has no idea it's an addressed agent —
+    it tries to explain that it's "actually Claude," asks the user if they
+    meant to route somewhere else, etc. (Mirrors how OpenClaw injects
+    identity via MYCELIUM_AGENT_HANDLE + before_agent_start; cold-start
+    Claude Code has no env channel for that, so we bake it into the prompt.)
+    """
+    desc_block = (
+        f"\n## Your scope\n\n{description.strip()}\n" if description.strip() else ""
+    )
+    notes_block = (
+        f"\n## Your persistent notes\n\n{notes.strip()}\n"
+        if notes.strip()
+        else "\n## Your persistent notes\n\n(none yet — `mycelium memory get agents/"
+        f"{handle}/notes` shows them when they exist)\n"
+    )
+    return f"""\
+# You are @{handle} — a Mycelium-hosted agent
+
+You are operating as the agent **@{handle}** inside the Mycelium room
+**{room}**. Another participant ({sender}) just @-mentioned you with the
+prompt below. Your reply will be posted to that room *as @{handle}*, so:
+
+- Respond in first person as @{handle}.
+- Do NOT explain that you're "actually Claude," ask whether the user
+  meant the chat box, or offer to route them elsewhere — you ARE the
+  routing destination.
+- Do NOT prefix your reply with `@{handle}:` or quote the original
+  message back — just answer.
+- Keep replies tight. The room is a chat surface; long monologues
+  belong in `decisions/` or `work/` memory entries, not the chat.
+- You're cold-started: every invocation is fresh. Anything that should
+  persist between runs goes in your notes (`mycelium memory set
+  agents/{handle}/notes "..."` from your cwd).
+{desc_block}{notes_block}
+## Control verbs
+
+If the prompt is exactly one of `abort`, `cancel`, `stop`, or `status`,
+the daemon handles it before you see it — you'll never receive those.
+"""
+
 # Reserved verbs at the start of an addressed message body. Anything not in
 # this set goes through to claude -p as a normal prompt.
 _CONTROL_ABORT = {"abort", "cancel", "stop"}
@@ -191,6 +237,7 @@ async def spawn_claude(
     handle: str | None = None,
     sender: str | None = None,
     room: str | None = None,
+    description: str = "",
 ) -> dict[str, Any]:
     """Run ``claude -p`` with the agent's notes as system prompt.
 
@@ -228,7 +275,18 @@ async def spawn_claude(
         "--output-format",
         "json",
     ]
-    if notes.strip():
+    # Always inject an identity preamble — cold-started Claude doesn't know
+    # it's been routed to as @handle without it.
+    if handle:
+        preamble = _identity_preamble(
+            handle=handle,
+            room=room or "(unknown)",
+            description=description or "",
+            sender=sender or "(anonymous)",
+            notes=notes,
+        )
+        cmd.extend(["--append-system-prompt", preamble])
+    elif notes.strip():
         cmd.extend(["--append-system-prompt", notes])
 
     started = time.monotonic()
@@ -306,7 +364,7 @@ async def spawn_claude(
 
 
 async def _post_log(
-    config: MyceliumConfig,
+    config: MyceliumConfig,  # noqa: ARG001 — signature kept for symmetry
     room_name: str,
     manifest: AgentManifest,
     *,
@@ -314,53 +372,34 @@ async def _post_log(
     sender_handle: str,
     result: dict[str, Any],
 ) -> None:
-    """Write the invocation transcript to ``agents/<handle>/log/<ts>``.
+    """Write the invocation transcript to a daemon-private log directory.
 
-    Writes to the backend (so it's indexed + visible from other CLIs) AND
-    mirrors locally — the daemon resolves manifests + notes from the local
-    filesystem and we want `mycelium agent show <handle>` to see the log
-    without a round-trip.
+    Logs live OUTSIDE the room's memory namespace (``~/.mycelium/cc-daemon/
+    logs/<room>/<handle>/<ts>.json``) so they don't flood the semantic
+    index, `memory ls` output, or synthesis runs. `mycelium agent show`
+    reads from here. Logs are local-only — they don't sync via git or the
+    backend.
     """
+    from mycelium.daemon.config import daemon_invocation_log_dir
+
     timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%SZ")
     body = {
+        "ts": timestamp,
+        "room": room_name,
+        "handle": manifest.handle,
         "prompt": prompt,
         "sender": sender_handle,
         "ok": result["ok"],
         "duration_s": round(result["duration_s"], 2),
         "cost_usd": round(result["cost_usd"], 4),
+        "final_message": result.get("final_message", ""),
         "transcript": result["transcript"][:16_000],
     }
-    payload = json.dumps(body, indent=2, default=str)
-    key = manifest.log_key(timestamp)
-
-    from mycelium.filesystem import write_memory
-    from mycelium_backend_client import Client
-    from mycelium_backend_client.api.memory import (
-        create_memories_api_rooms_room_name_memory_post as create_api,
-    )
-    from mycelium_backend_client.models import MemoryBatchCreate, MemoryCreate
 
     def _do() -> None:
-        with Client(base_url=config.server.api_url, raise_on_unexpected_status=True) as client:
-            item = MemoryCreate(
-                key=key,
-                value=payload,
-                created_by=manifest.handle,
-                embed=False,
-                content_text=f"[{timestamp}] {prompt[:120]}",
-                tags=["agent-log"],
-            )
-            create_api.sync(
-                room_name=room_name, client=client, body=MemoryBatchCreate(items=[item])
-            )
-        # Mirror locally for fast reads via `mycelium agent show`.
-        write_memory(
-            get_room_dir(room_name),
-            key,
-            payload,
-            created_by=manifest.handle,
-            tags=["agent-log"],
-        )
+        log_dir = daemon_invocation_log_dir(room_name, manifest.handle)
+        path = log_dir / f"{timestamp}.json"
+        path.write_text(json.dumps(body, indent=2, default=str))
 
     await asyncio.to_thread(_do)
 
@@ -582,15 +621,17 @@ async def _dispatch_one(
             shlex.quote(prompt[:60]),
         )
 
+        body = _extract_body(prompt, manifest.handle) or prompt
         result = await spawn_claude(
             claude_binary=daemon_cfg.claude_binary,
             cwd=manifest.cwd,
-            prompt=prompt,
+            prompt=body,
             notes=notes,
             state=state,
             handle=manifest.handle,
             sender=sender_handle,
             room=room_name,
+            description=manifest.description,
         )
 
         if result.get("aborted"):

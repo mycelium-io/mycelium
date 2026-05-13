@@ -29,6 +29,18 @@ def daemon_log_path() -> Path:
     return log_dir / "cc-daemon.log"
 
 
+def daemon_invocation_log_dir(room: str, handle: str) -> Path:
+    """Per-invocation transcript directory for an agent in a room.
+
+    Operational logs live OUTSIDE the room's memory namespace so they don't
+    pollute the semantic index, `memory ls`, synthesis runs, or room sync.
+    Path: ``~/.mycelium/cc-daemon/logs/<room>/<handle>/``.
+    """
+    log_dir = Path.home() / ".mycelium" / "cc-daemon" / "logs" / room / handle
+    log_dir.mkdir(parents=True, exist_ok=True)
+    return log_dir
+
+
 class DaemonConfig(BaseModel):
     """Persisted daemon configuration.
 

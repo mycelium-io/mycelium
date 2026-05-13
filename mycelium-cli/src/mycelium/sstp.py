@@ -202,7 +202,3 @@ class AgentManifest(BaseModel):
     def notes_key(self) -> str:
         """Memory key the agent's persistent notes are stored under."""
         return f"agents/{self.handle}/notes"
-
-    def log_key(self, timestamp: str) -> str:
-        """Memory key for a single invocation log entry."""
-        return f"agents/{self.handle}/log/{timestamp}"
