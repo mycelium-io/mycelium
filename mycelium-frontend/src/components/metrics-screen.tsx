@@ -459,7 +459,7 @@ function AgentActivityTable({ collector }: { collector: CollectorMetrics }) {
           <p className="mt-1.5 max-w-[640px] text-micro leading-relaxed text-text2">
             The collector is online but no OpenClaw agents are exporting traces. Wire it up with{" "}
             <span className="font-mono text-accent">mycelium adapter add openclaw --step=otel</span>{" "}
-            and send a message through Matrix or another channel — per-agent rows appear here as soon as the first trace arrives.
+            and send a message through one of your configured channels — per-agent rows appear here as soon as the first trace arrives.
           </p>
         </div>
       ) : (
