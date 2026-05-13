@@ -47,9 +47,27 @@ from rich.console import Console
 from rich.table import Table
 
 app = typer.Typer(
-    help="View distributed traces collected from OpenClaw deep-observability.",
-    no_args_is_help=True,
+    help=(
+        "View distributed traces collected from OpenClaw deep-observability."
+        " Run with no subcommand to see the rollup summary."
+    ),
+    invoke_without_command=True,
 )
+
+
+@app.callback()
+def _default_summary(ctx: typer.Context) -> None:
+    """If no subcommand was given, default to `summary` over the last hour.
+
+    Most of the time the first thing you want when you type
+    ``mycelium metrics traces`` is the high-level rollup; defaulting to
+    summary saves a guessing step. Pass ``--help`` (or any explicit
+    subcommand) to bypass this.
+    """
+    if ctx.invoked_subcommand is None:
+        # Pass explicit values so Typer's OptionInfo defaults don't leak
+        # through to the underlying function.
+        summary(since="1h", host=None, agent=None, room=None)
 
 console = Console()
 
@@ -100,25 +118,14 @@ def _open_db() -> sqlite3.Connection:
 #
 # We normalize at display time so historical data is still groupable,
 # while the adapter's new systemd override eliminates the issue for new
-# spans going forward. The map is populated from three sources, in order
+# spans going forward. The map is populated from two sources, in order
 # of precedence:
 #
 #   1. Explicit overrides in ~/.mycelium/config.toml under
 #      ``[metrics.traces.host_aliases]`` — e.g. ``"10.0.50.171" = "oclw3"``
-#   2. Built-in patterns: ``oclw-N`` → ``oclwN``
-#   3. Best-effort reverse DNS for raw IPs
+#   2. Best-effort reverse DNS for raw IPs
 
 _HOST_ALIAS_CACHE: dict[str, str] | None = None
-
-
-def _builtin_host_alias(host: str) -> str | None:
-    if not host:
-        return None
-    # ``oclw-3`` → ``oclw3`` (and any ``<word>-<digits>`` of similar shape).
-    m = re.match(r"^([A-Za-z]+)-(\d+)$", host)
-    if m:
-        return m.group(1) + m.group(2)
-    return None
 
 
 def _reverse_dns(host: str) -> str | None:
@@ -173,7 +180,7 @@ def _alias_host(host: str) -> str:
     cached = _HOST_ALIAS_CACHE.get(host)
     if cached is not None:
         return cached
-    alias = _builtin_host_alias(host) or _reverse_dns(host) or host
+    alias = _reverse_dns(host) or host
     _HOST_ALIAS_CACHE[host] = alias
     return alias
 

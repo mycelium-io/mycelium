@@ -577,8 +577,9 @@ deep-observability plugin is configured to emit:
   if you want full prompt visibility.
 
 The OTLP `/v1/logs` endpoint is currently *acked but discarded* — if
-you want general OpenClaw log lines forwarded to the hub, that's a
-follow-up (would require a `LogStore` sibling to `TraceStore`).
+you want general OpenClaw log lines (not just span events) forwarded
+to the hub, that's tracked in the [Trace ingestion follow-ups](#trace-ingestion-follow-ups)
+section of the roadmap below.
 
 ### Host normalization
 
@@ -914,6 +915,39 @@ the features are wired up:
 
 - `get_llm_provider()` in `agents/llm_provider.py` (defined but unused)
 - Multi-device Matrix transport metrics
+
+### Trace ingestion follow-ups
+
+Tracked work for the trace pipeline (the `traces.db` + `mycelium metrics
+traces …` viewer):
+
+- **General OpenClaw log-line ingestion** — the OTLP receiver currently
+  *acks but discards* `/v1/logs` payloads. To forward arbitrary log
+  lines (not just OTel span events) from gateway / agents to the hub
+  we'd need:
+  - A `LogStore` sibling to `TraceStore` in `collector.py`, with its
+    own SQLite table (`logs(timestamp, severity, body, trace_id,
+    span_id, host, service, attributes, …)`) and matching retention.
+  - The deep-observability plugin's `logs: true` flag flipped on (or
+    a separate logs-specific exporter wired into the gateway).
+  - A `mycelium metrics logs` subcommand group mirroring `metrics
+    traces` (tail / list / for-trace) so log lines are queryable on the
+    same axes (host/agent/room/severity) and correlatable to a trace.
+  - A privacy decision on what severity / which categories ship to the
+    hub by default.
+- **Span event content capture** — exception events flow today, but
+  prompt / completion content events only fire when the deep-obs
+  plugin's `captureContent` is `true`. The adapter writes `false` by
+  default for privacy. Worth deciding whether per-room / per-agent
+  opt-in is desirable.
+- **Server-side span filter** — partially done. The `traces` viewer's
+  `errors` / `slow` subcommands skip the gateway's CPU/event-loop
+  watchdog spans (`openclaw.diagnostic.phase`, `openclaw.liveness.warning`)
+  by default, but those rows are still *written* (~47% of all spans
+  in current measurements). A configurable drop list at
+  `TraceStore.ingest_traces` time would cut storage in half without
+  losing anything user-facing — already in progress, see
+  `[metrics.traces.span_filter]` in `config.toml`.
 
 ## Periodic Maintenance Checklist
 
