@@ -1603,32 +1603,29 @@ def _resolve_otlp_endpoint(
     port: int | None = None,
     container: str | None = None,
 ) -> str:
-    """Resolve the OTLP HTTP endpoint for the collector.
+    """Resolve the OTLP HTTP endpoint that OpenClaw should publish to.
 
-    Priority: MyceliumConfig.metrics.collector_url > config collector_port >
-    explicit *port* arg > default 4318.  When running inside a container,
-    uses ``host.docker.internal`` as the host.
+    OpenClaw runs co-located with its collector on every node — the spoke
+    collector then forwards to the hub via its own ``--hub-url`` flag (sourced
+    from ``metrics.collector_url``). So this endpoint is *always* local from
+    OpenClaw's perspective; we deliberately ignore ``metrics.collector_url``
+    here, otherwise spokes would skip their local collector entirely and ship
+    spans straight to the hub, breaking the agent-to-gateway pattern.
+
+    Priority: explicit *port* arg > config ``runtime.collector_port`` >
+    default 4318. When OpenClaw is in a container, uses ``host.docker.internal``.
     """
-    endpoint = None
-    if port is None and not container:
+    resolved_port = port
+    if resolved_port is None:
         try:
             from mycelium.config import MyceliumConfig
 
-            cfg_obj = MyceliumConfig.load()
-            endpoint = cfg_obj.metrics.collector_url or None
-            if endpoint is None:
-                resolved_port = cfg_obj.runtime.collector_port
-                host = "localhost"
-                endpoint = f"http://{host}:{resolved_port}"
+            resolved_port = MyceliumConfig.load().runtime.collector_port
         except Exception:
-            pass
+            resolved_port = 4318
 
-    if endpoint is None:
-        resolved_port = port if port is not None else 4318
-        host = "host.docker.internal" if container else "localhost"
-        endpoint = f"http://{host}:{resolved_port}"
-
-    return endpoint
+    host = "host.docker.internal" if container else "localhost"
+    return f"http://{host}:{resolved_port}"
 
 
 def _configure_otel(
