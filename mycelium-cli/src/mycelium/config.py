@@ -70,6 +70,10 @@ class ServerConfig(BaseModel):
         default=None,
         description="Default MAS UUID (created during install)",
     )
+    database_url: str | None = Field(
+        default=None,
+        description="Database URL override (defaults to backend container default)",
+    )
 
     @field_validator("api_url")
     @classmethod
