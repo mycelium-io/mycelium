@@ -150,3 +150,59 @@ class MemoryLogEntry(BaseModel):
     def key(self) -> str:
         """Full memory key: category/slug."""
         return f"{self.category}/{self.slug}"
+
+
+# ── Agent primitive ──────────────────────────────────────────────────────────
+
+
+# Adapter identifiers known to the daemon dispatch layer. Add to this list
+# when a new adapter learns how to host an agent (see
+# adapters/<name>/daemon/dispatch.py for the claude_code reference impl).
+AGENT_ADAPTERS: frozenset[str] = frozenset({"claude_code"})
+
+
+class AgentManifest(BaseModel):
+    """Typed payload for an ``agents/<handle>`` memory entry.
+
+    Each Mycelium agent is just a memory entry under ``agents/<handle>`` plus a
+    notes blob under ``agents/<handle>/notes``. This model validates the
+    manifest body — the bare minimum the dispatch daemon needs to route an
+    ``@handle`` mention to a spawned runtime.
+
+    The handle slug doubles as the mention target (``@release-agent``), so it
+    must match the same lowercase pattern other memory slugs use.
+    """
+
+    handle: str = Field(..., min_length=1, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    adapter: Literal["claude_code"] = "claude_code"
+    cwd: str = Field(..., min_length=1)
+    description: str = Field(default="", description="One-paragraph purpose statement.")
+    budget_usd_per_month: float = Field(default=5.0, ge=0.0)
+    allow_from: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Sender handles allowed to invoke this agent (e.g. ['@julia', '@docs-agent']). "
+            "Empty list means anyone in the room can invoke."
+        ),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def lowercase_handle(cls, data: dict) -> dict:
+        if isinstance(data, dict) and "handle" in data and isinstance(data["handle"], str):
+            data["handle"] = data["handle"].lower()
+        return data
+
+    @property
+    def memory_key(self) -> str:
+        """Memory key the manifest is stored under."""
+        return f"agents/{self.handle}"
+
+    @property
+    def notes_key(self) -> str:
+        """Memory key the agent's persistent notes are stored under."""
+        return f"agents/{self.handle}/notes"
+
+    def log_key(self, timestamp: str) -> str:
+        """Memory key for a single invocation log entry."""
+        return f"agents/{self.handle}/log/{timestamp}"

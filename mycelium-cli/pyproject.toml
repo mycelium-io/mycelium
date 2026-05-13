@@ -80,6 +80,7 @@ mycelium = [
     "docs/**/*.md",
     "adapters/claude-code/**/*",
     "adapters/openclaw/mycelium/**/*",
+    "daemon/service/*",
     "docker/*",
     "docker/initdb/*",
     "docker/env.defaults",

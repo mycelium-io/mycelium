@@ -237,6 +237,47 @@ Kill switches:
 - `export MYCELIUM_INGEST_ENABLED=0`
 - Flip `[knowledge_ingest] enabled = false` in config.toml
 
+## Agent Mode (when you've been invoked via `@handle`)
+
+When a message in a room is addressed to you with `@<your-handle>`, the
+`mycelium-cc-daemon` spawned this session to handle it. Your **manifest**
+lives at `agents/<your-handle>` and your persistent **notes** live at
+`agents/<your-handle>/notes` — read those before responding to understand
+your scope and accumulated knowledge.
+
+```bash
+mycelium memory get agents/<your-handle>
+mycelium memory get agents/<your-handle>/notes
+```
+
+Notes are your durable brain. Treat them like a runbook: between sessions,
+the *only* thing that travels with you is what's written there. When you
+learn something the next invocation needs to know, update them:
+
+```bash
+mycelium memory set agents/<your-handle>/notes "$(cat <<'EOF'
+... full revised notes including the new lesson ...
+EOF
+)"
+```
+
+**When to update notes** — keep this conservative; they're load-bearing:
+
+- You discovered a non-obvious procedural step (e.g. a flag, a CI quirk,
+  an env var that has to be exported first).
+- You hit a recoverable failure and figured out the fix.
+- Scope expanded or contracted in a way the user explicitly confirmed.
+
+**When NOT to update notes** — these belong in `decisions/` or `work/`,
+not in your own brain:
+
+- One-off facts about the current task (those belong in the conversation).
+- Anything that's already in `CLAUDE.md` or the project README.
+- Speculation about future features.
+
+`mycelium memory set` overwrites — it always upserts a fresh version. So
+when you update, write the full revised notes, not a diff or addendum.
+
 ## Sync (Multi-Machine / Centralized Backend)
 
 When the backend runs on a remote server (EC2, Raspberry Pi, etc.), room files sync via the HTTP API:

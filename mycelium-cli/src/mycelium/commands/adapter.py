@@ -87,6 +87,15 @@ _OPENCLAW_STEPS = {
     "docker-env": "show env vars for Docker-based experiment agents",
 }
 
+# Follow-up steps for the claude-code adapter. `daemon` installs the
+# mycelium-cc-daemon as a user-level service (launchd on macOS, systemd
+# --user on Linux), wiring it to subscribe to room SSE and dispatch
+# `@handle` mentions to claude -p spawns. See
+# `mycelium.daemon` for the dispatch implementation.
+_CLAUDE_CODE_STEPS = {
+    "daemon": "install + register the mycelium-cc-daemon user service",
+}
+
 
 def _check_openclaw_version(container: str | None = None) -> None:
     """Warn if the detected openclaw version is below _OPENCLAW_MIN_VERSION."""
@@ -280,7 +289,17 @@ def add(
         False, "--dry-run", help="Show what would be installed without doing it"
     ),
     step: str | None = typer.Option(
-        None, "--step", help=f"Run a follow-up setup step: {', '.join(_OPENCLAW_STEPS)}"
+        None,
+        "--step",
+        help=(
+            f"Follow-up step. openclaw: {', '.join(_OPENCLAW_STEPS)}. "
+            f"claude-code: {', '.join(_CLAUDE_CODE_STEPS)}."
+        ),
+    ),
+    remove_step: bool = typer.Option(
+        False,
+        "--remove-step",
+        help="Reverse the named --step instead of applying it (e.g. uninstall the daemon service).",
     ),
     reinstall: bool = typer.Option(
         False, "--reinstall", help="Reinstall assets even if adapter is already registered"
@@ -359,23 +378,47 @@ def add(
 
         # ── Follow-up steps run independently of the base install ────────────
         if step is not None:
-            if adapter_type != "openclaw":
-                typer.secho(
-                    "--step is only supported for the 'openclaw' adapter.", fg=typer.colors.RED
-                )
-                raise typer.Exit(1)
-            if step not in _OPENCLAW_STEPS:
-                known_steps = ", ".join(_OPENCLAW_STEPS)
-                typer.secho(
-                    f"Unknown step '{step}'. Known steps: {known_steps}", fg=typer.colors.RED
-                )
-                raise typer.Exit(1)
-            if step == "docker-env":
-                _step_docker_env(config)
-            elif step == "otel":
-                if _configure_otel(profile=openclaw_profile, container=openclaw_container):
-                    _restart_gateway_if_needed(openclaw_profile, openclaw_container)
-            return
+            if adapter_type == "openclaw":
+                if step not in _OPENCLAW_STEPS:
+                    known_steps = ", ".join(_OPENCLAW_STEPS)
+                    typer.secho(
+                        f"Unknown openclaw step '{step}'. Known: {known_steps}",
+                        fg=typer.colors.RED,
+                    )
+                    raise typer.Exit(1)
+                if remove_step:
+                    typer.secho(
+                        "--remove-step is not implemented for openclaw steps yet.",
+                        fg=typer.colors.RED,
+                    )
+                    raise typer.Exit(1)
+                if step == "docker-env":
+                    _step_docker_env(config)
+                elif step == "otel":
+                    if _configure_otel(profile=openclaw_profile, container=openclaw_container):
+                        _restart_gateway_if_needed(openclaw_profile, openclaw_container)
+                return
+
+            if adapter_type == "claude-code":
+                if step not in _CLAUDE_CODE_STEPS:
+                    known_steps = ", ".join(_CLAUDE_CODE_STEPS)
+                    typer.secho(
+                        f"Unknown claude-code step '{step}'. Known: {known_steps}",
+                        fg=typer.colors.RED,
+                    )
+                    raise typer.Exit(1)
+                if step == "daemon":
+                    if remove_step:
+                        _step_claude_daemon_uninstall(verbose=verbose)
+                    else:
+                        _step_claude_daemon_install(verbose=verbose)
+                return
+
+            typer.secho(
+                f"--step is not supported for the '{adapter_type}' adapter.",
+                fg=typer.colors.RED,
+            )
+            raise typer.Exit(1)
 
         # ── Base install ──────────────────────────────────────────────────────
         if adapter_type in config.adapters and not reinstall:
@@ -1849,3 +1892,221 @@ def _check_adapter_status(name: str, info: dict) -> dict:
     details.append(f"api_url: {info.get('api_url', '')}")
 
     return {"ok": ok, "details": details}
+
+
+# ── claude-code --step=daemon ─────────────────────────────────────────────────
+#
+# The daemon mirrors the OpenClaw gateway for Claude Code agents. It runs as a
+# user-level service that subscribes to room SSE, watches for `@handle`
+# mentions of agents registered under `agents/<handle>`, and dispatches them to
+# `claude -p` spawns. See `mycelium.daemon` for the dispatch implementation.
+
+
+_CC_DAEMON_LABEL = "io.mycelium.cc-daemon"
+_CC_DAEMON_RUNNER = "mycelium-cc-daemon"
+
+
+def _cc_daemon_service_paths() -> tuple[Path, Path]:
+    """Return (launchd_plist_path, systemd_service_path) for the current user."""
+    home = Path.home()
+    plist = home / "Library" / "LaunchAgents" / f"{_CC_DAEMON_LABEL}.plist"
+    systemd = home / ".config" / "systemd" / "user" / f"{_CC_DAEMON_RUNNER}.service"
+    return plist, systemd
+
+
+def _render_template(text: str, **vars_: str) -> str:
+    """Tiny `{{ name }}` substitution — keeps Jinja off the daemon path."""
+    out = text
+    for k, v in vars_.items():
+        out = out.replace("{{ " + k + " }}", v)
+    return out
+
+
+def _resolve_python_binary() -> str:
+    """Return an absolute path to the Python that loaded the CLI.
+
+    The daemon runs via `python -m mycelium.daemon`, so we hardcode the
+    Python that currently has `mycelium` installed. This avoids picking up
+    a system Python that doesn't have the package, which was a frequent
+    failure mode for the openclaw plugin's npm-install pattern.
+    """
+    import sys
+
+    return sys.executable
+
+
+def _install_runner_script() -> Path:
+    """Drop a thin runner script at ``~/.local/bin/mycelium-cc-daemon`` for
+    operators who want to launch the daemon outside the service unit (e.g.
+    from a tmux pane during development). Pure convenience — the service
+    invokes the daemon directly via `python -m mycelium.daemon`.
+    """
+    bin_dir = Path.home() / ".local" / "bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    runner = bin_dir / _CC_DAEMON_RUNNER
+    python = _resolve_python_binary()
+    runner.write_text(
+        "#!/usr/bin/env bash\n"
+        f'exec "{python}" -m mycelium.daemon "$@"\n'
+    )
+    runner.chmod(0o755)
+    return runner
+
+
+def _read_service_template(name: str) -> str:
+    """Read a daemon service template bundled inside the mycelium package."""
+    pkg = importlib.resources.files("mycelium.daemon.service")
+    src = Path(str(pkg)) / name
+    if src.exists():
+        return src.read_text()
+    # Non-editable install: extract via importlib.resources
+    ref = pkg / name
+    return ref.read_text()
+
+
+def _wait_for_daemon_health(timeout_s: float = 6.0) -> dict | None:
+    """Poll the daemon's unix-socket /health until it responds, or timeout."""
+    from mycelium.daemon.health import read_health_blocking
+
+    deadline = time.time() + timeout_s
+    last: dict | None = None
+    while time.time() < deadline:
+        last = read_health_blocking(timeout=1.0)
+        if last is not None:
+            return last
+        time.sleep(0.3)
+    return last
+
+
+def _step_claude_daemon_install(verbose: bool = False) -> None:
+    """Install mycelium-cc-daemon as a user-level service.
+
+    Renders the right template (launchd on macOS, systemd --user on Linux),
+    writes the unit file, registers it with the service manager, then polls
+    the daemon's health socket to confirm it actually came up. The runner
+    script (~/.local/bin/mycelium-cc-daemon) is bundled in for convenience.
+    """
+    import platform
+
+    python = _resolve_python_binary()
+    home = str(Path.home())
+    path_env = os.environ.get("PATH") or "/usr/local/bin:/usr/bin:/bin"
+    log_path = str(Path.home() / ".mycelium" / "logs" / "cc-daemon.log")
+    Path(log_path).parent.mkdir(parents=True, exist_ok=True)
+    # Make sure the file exists so launchd/systemd can append to it cleanly.
+    if not Path(log_path).exists():
+        Path(log_path).touch()
+
+    runner = _install_runner_script()
+    typer.secho(f"  runner: {runner}", fg=typer.colors.CYAN)
+
+    plist_dst, systemd_dst = _cc_daemon_service_paths()
+    system = platform.system()
+
+    if system == "Darwin":
+        tmpl = _read_service_template("launchd.plist.j2")
+        rendered = _render_template(
+            tmpl, python_binary=python, home=home, path=path_env, log_path=log_path
+        )
+        plist_dst.parent.mkdir(parents=True, exist_ok=True)
+        # Reload cleanly if a previous version is loaded.
+        subprocess.run(
+            ["launchctl", "bootout", f"gui/{os.getuid()}/{_CC_DAEMON_LABEL}"],
+            capture_output=True,
+        )
+        plist_dst.write_text(rendered)
+        plist_dst.chmod(0o644)
+        typer.secho(f"  unit:   {plist_dst}", fg=typer.colors.CYAN)
+        result = subprocess.run(
+            ["launchctl", "bootstrap", f"gui/{os.getuid()}", str(plist_dst)],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            typer.secho(
+                f"  launchctl bootstrap failed: {result.stderr.strip() or result.stdout.strip()}",
+                fg=typer.colors.RED,
+            )
+            raise typer.Exit(1)
+    elif system == "Linux":
+        tmpl = _read_service_template("systemd.service.j2")
+        rendered = _render_template(
+            tmpl, python_binary=python, home=home, path=path_env, log_path=log_path
+        )
+        systemd_dst.parent.mkdir(parents=True, exist_ok=True)
+        systemd_dst.write_text(rendered)
+        systemd_dst.chmod(0o644)
+        typer.secho(f"  unit:   {systemd_dst}", fg=typer.colors.CYAN)
+        subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
+        result = subprocess.run(
+            ["systemctl", "--user", "enable", "--now", f"{_CC_DAEMON_RUNNER}.service"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            typer.secho(
+                f"  systemctl enable failed: {result.stderr.strip() or result.stdout.strip()}",
+                fg=typer.colors.RED,
+            )
+            raise typer.Exit(1)
+    else:
+        typer.secho(
+            f"  unsupported platform '{system}' — only macOS and Linux are wired up. "
+            f"Run the daemon manually with: {python} -m mycelium.daemon",
+            fg=typer.colors.YELLOW,
+        )
+        return
+
+    health = _wait_for_daemon_health(timeout_s=8.0)
+    if health is None:
+        typer.secho(
+            "  daemon did not respond on the health socket within 8s — "
+            "check logs at ~/.mycelium/logs/cc-daemon.log.",
+            fg=typer.colors.YELLOW,
+        )
+        return
+
+    rooms = health.get("rooms_configured") or []
+    if not rooms:
+        typer.secho(
+            "  ✓ daemon running (no rooms configured yet). "
+            "Subscribe with: mycelium daemon subscribe <room>",
+            fg=typer.colors.GREEN,
+        )
+    else:
+        typer.secho(
+            f"  ✓ daemon running, subscribed to: {', '.join(rooms)}",
+            fg=typer.colors.GREEN,
+        )
+
+
+def _step_claude_daemon_uninstall(verbose: bool = False) -> None:
+    """Reverse a daemon install — stop the service, remove the unit file."""
+    import platform
+
+    plist_dst, systemd_dst = _cc_daemon_service_paths()
+    system = platform.system()
+
+    if system == "Darwin":
+        subprocess.run(
+            ["launchctl", "bootout", f"gui/{os.getuid()}/{_CC_DAEMON_LABEL}"],
+            capture_output=True,
+        )
+        if plist_dst.exists():
+            plist_dst.unlink()
+            typer.secho(f"  removed {plist_dst}", fg=typer.colors.CYAN)
+    elif system == "Linux":
+        subprocess.run(
+            ["systemctl", "--user", "disable", "--now", f"{_CC_DAEMON_RUNNER}.service"],
+            capture_output=True,
+        )
+        if systemd_dst.exists():
+            systemd_dst.unlink()
+            typer.secho(f"  removed {systemd_dst}", fg=typer.colors.CYAN)
+        subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
+
+    runner = Path.home() / ".local" / "bin" / _CC_DAEMON_RUNNER
+    if runner.exists():
+        runner.unlink()
+        typer.secho(f"  removed {runner}", fg=typer.colors.CYAN)
+    typer.secho("  ✓ daemon uninstalled.", fg=typer.colors.GREEN)
