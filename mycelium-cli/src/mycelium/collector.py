@@ -30,6 +30,49 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
+# Mode for shared data directories: rwxrwxr-x with setgid so files created
+# inside inherit the directory's group. Lets the host user (who typically
+# runs ``mycelium metrics ...``) and the in-container collector user share
+# the volume without permission errors.
+_SHARED_DIR_MODE = 0o2775
+# Mode for shared regular files (e.g. traces.db): rw-rw-r--. Group write
+# is the important bit — it lets the same group rotate between the host
+# user and the in-container collector user without root-owned leftovers
+# blocking writes.
+_SHARED_FILE_MODE = 0o664
+
+
+def _ensure_shared_dir(path: Path) -> None:
+    """Create *path* (and parents) and make it group-writable + setgid.
+
+    Also normalises permissions on any regular files already inside *path*
+    to ``0o664``. This unblocks legacy installs where a previous root-mode
+    collector created files (notably ``traces.db``) that the current
+    non-root collector user can't write.
+
+    Safe to call repeatedly; chmod is best-effort and silently ignored if
+    we don't own the entry (e.g. created by another user).
+    """
+    path.mkdir(parents=True, exist_ok=True)
+    try:
+        path.chmod(_SHARED_DIR_MODE)
+    except PermissionError:
+        pass
+    try:
+        for child in path.iterdir():
+            if not child.is_file() or child.is_symlink():
+                continue
+            try:
+                child.chmod(_SHARED_FILE_MODE)
+            except PermissionError:
+                # Owned by another user (typical: legacy root-owned
+                # traces.db). Best-effort only — caller will surface the
+                # follow-on write error if the file truly is unwritable.
+                pass
+    except OSError:
+        pass
+
+
 _MAX_SESSIONS = 200
 _MAX_TRACES = 500
 _MAX_BODY_BYTES = 10 * 1024 * 1024  # 10 MiB guard against oversized payloads
@@ -79,7 +122,7 @@ class TraceStore:
         self._lock = threading.Lock()
         self._last_cleanup = 0.0
 
-        db_path.parent.mkdir(parents=True, exist_ok=True)
+        _ensure_shared_dir(db_path.parent)
         conn = sqlite3.connect(str(db_path))
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
@@ -1066,7 +1109,7 @@ class OTLPHandler(BaseHTTPRequestHandler):
 
     def _flush(self) -> None:
         try:
-            self.output_path.parent.mkdir(parents=True, exist_ok=True)
+            _ensure_shared_dir(self.output_path.parent)
             data = _sanitise_for_json(self.store.to_dict())
             tmp = self.output_path.with_suffix(".tmp")
             tmp.write_text(json.dumps(data, indent=2, default=_json_default))
@@ -1165,7 +1208,7 @@ def run(
         },
     )
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    _ensure_shared_dir(output_path.parent)
 
     # Periodically poll backend metrics + Prometheus scrape targets in
     # one background thread; both share the same 30-second cadence.

@@ -424,6 +424,13 @@ def start(
             base = base + ["--profile", "ui"]
         if metrics:
             base = base + ["--profile", "metrics"]
+            # Pre-create the metrics data dir with group-write perms so the
+            # in-container collector user (uid != root) can write to the
+            # bind-mounted host directory. Without this, fresh installs hit
+            # PermissionError on first start.
+            from mycelium.collector import _ensure_shared_dir
+
+            _ensure_shared_dir(Path.home() / ".mycelium" / "metrics")
         up_args = ["up", "-d", "--remove-orphans"]
         if build:
             up_args.append("--build")

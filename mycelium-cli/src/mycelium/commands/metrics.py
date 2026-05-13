@@ -22,6 +22,8 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from mycelium.collector import _ensure_shared_dir
+
 app = typer.Typer(
     help="Collect and display OpenClaw agent metrics (OTLP receiver + display).",
     no_args_is_help=True,
@@ -407,7 +409,7 @@ def collect(
         raise typer.Exit(1)
 
     output = _metrics_json()
-    output.parent.mkdir(parents=True, exist_ok=True)
+    _ensure_shared_dir(output.parent)
 
     hub_url = _get_collector_url()
 
@@ -836,7 +838,7 @@ def update_pricing(
         },
     }
 
-    _metrics_dir().mkdir(parents=True, exist_ok=True)
+    _ensure_shared_dir(_metrics_dir())
     _user_pricing_json().write_text(json.dumps(output, indent=2) + "\n")
 
     global _pricing_data
