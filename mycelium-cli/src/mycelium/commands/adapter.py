@@ -83,7 +83,7 @@ def adapter_main(ctx: typer.Context) -> None:
 
 _OPENCLAW_STEPS = {
     "otel": "configure OpenClaw diagnostics-otel plugin to export to the OTLP receiver",
-    "deep-observability": "install and configure the openclaw-deep-observability-plugin for hierarchical traces",
+    "deep-observability": "clone, build, and configure the openclaw-deep-observability plugin for hierarchical traces",
     "docker-env": "show env vars for Docker-based experiment agents",
 }
 
@@ -1724,8 +1724,82 @@ def _configure_otel(
     return True
 
 
-_DEEP_OBS_PLUGIN_ID = "openclaw-deep-observability-plugin"
-_DEEP_OBS_CLAWHUB_SPEC = "clawhub:openclaw-deep-observability-plugin"
+_DEEP_OBS_PLUGIN_ID = "openclaw-deep-observability"
+# The openclaw-deep-observability plugin isn't published to ClawHub yet, so we
+# clone, build, and install it from a git repo.
+_DEEP_OBS_GIT_URL = "https://github.com/outshift-open/openclaw-deep-observability"
+_DEEP_OBS_CLONE_DIR = Path.home() / ".mycelium" / "deep-observability-src"
+# Subdirectory of the repo containing the actual plugin (with package.json).
+_DEEP_OBS_PLUGIN_SUBDIR = "observability-plugin"
+
+
+def _build_deep_obs_from_git(profile: str | None) -> Path | None:
+    """Clone (or update) and build the deep-observability plugin from git.
+
+    Returns the absolute path to the built plugin directory, or None on
+    failure.
+    """
+    plugin_dir = _DEEP_OBS_CLONE_DIR / _DEEP_OBS_PLUGIN_SUBDIR
+
+    for tool in ("git", "npm"):
+        if shutil.which(tool) is None:
+            typer.secho(
+                f"  ✗ '{tool}' is required to build the deep-observability plugin from git",
+                fg=typer.colors.RED,
+            )
+            return None
+
+    if (_DEEP_OBS_CLONE_DIR / ".git").exists():
+        typer.echo(f"  Updating {_DEEP_OBS_CLONE_DIR} (git pull)...")
+        result = subprocess.run(
+            ["git", "-C", str(_DEEP_OBS_CLONE_DIR), "pull", "--ff-only"],
+            text=True,
+            capture_output=True,
+        )
+    else:
+        _DEEP_OBS_CLONE_DIR.parent.mkdir(parents=True, exist_ok=True)
+        if _DEEP_OBS_CLONE_DIR.exists():
+            shutil.rmtree(_DEEP_OBS_CLONE_DIR)
+        typer.echo(f"  Cloning {_DEEP_OBS_GIT_URL} → {_DEEP_OBS_CLONE_DIR}...")
+        result = subprocess.run(
+            ["git", "clone", "--depth", "1", _DEEP_OBS_GIT_URL, str(_DEEP_OBS_CLONE_DIR)],
+            text=True,
+            capture_output=True,
+        )
+    if result.returncode != 0:
+        typer.secho(f"  ✗ git clone/pull failed (exit {result.returncode})", fg=typer.colors.RED)
+        if result.stderr.strip():
+            typer.echo(f"    {result.stderr.strip()[:300]}")
+        return None
+
+    if not plugin_dir.is_dir():
+        typer.secho(
+            f"  ✗ Expected plugin subdirectory not found: {plugin_dir}", fg=typer.colors.RED
+        )
+        return None
+
+    typer.echo("  Installing npm dependencies...")
+    result = subprocess.run(
+        ["npm", "install", "--no-audit", "--no-fund"],
+        cwd=plugin_dir,
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        typer.secho(f"  ✗ npm install failed (exit {result.returncode})", fg=typer.colors.RED)
+        if result.stderr.strip():
+            typer.echo(f"    {result.stderr.strip()[:500]}")
+        return None
+
+    typer.echo("  Building plugin (npm run build)...")
+    result = subprocess.run(["npm", "run", "build"], cwd=plugin_dir, text=True, capture_output=True)
+    if result.returncode != 0:
+        typer.secho(f"  ✗ npm run build failed (exit {result.returncode})", fg=typer.colors.RED)
+        if result.stderr.strip():
+            typer.echo(f"    {result.stderr.strip()[:500]}")
+        return None
+
+    return plugin_dir
 
 
 def _configure_deep_observability(
@@ -1733,19 +1807,55 @@ def _configure_deep_observability(
     profile: str | None = None,
     container: str | None = None,
 ) -> bool:
-    """Install and configure the openclaw-deep-observability-plugin.
+    """Install and configure the openclaw-deep-observability plugin.
 
-    1. Runs ``openclaw plugins install`` from ClawhHub (if not already installed)
+    1. Clones + builds the plugin from a git repo (it isn't on ClawHub yet),
+       then runs ``openclaw plugins install`` against the built directory.
     2. Adds the plugin to ``plugins.allow`` and ``plugins.entries`` with
-       OTLP endpoint config matching the collector port
-    3. Patches model cost data (same as --step=otel)
+       OTLP endpoint config matching the collector port.
+    3. Patches model cost data (same as --step=otel).
     """
     endpoint = _resolve_otlp_endpoint(port, container)
 
-    # ── 1. Install via openclaw CLI if not already present ─────────────────
-    typer.echo("  Installing openclaw-deep-observability-plugin from ClawhHub...")
+    # ── 1. Build & install from git ────────────────────────────────────────
+    if container:
+        # Building inside an arbitrary container would require git+node+npm
+        # available there, plus a writable cache. Skip with a clear message
+        # rather than silently mis-installing.
+        typer.secho(
+            "  ✗ --container install of openclaw-deep-observability is not yet supported.",
+            fg=typer.colors.RED,
+        )
+        typer.echo(
+            "    Build the plugin on the host (or inside the container manually)"
+            " and re-run without --container."
+        )
+        return False
+
+    plugin_dir = _build_deep_obs_from_git(profile)
+    if plugin_dir is None:
+        return False
+
+    # Older installs created a symlink at <extensions>/<plugin_id> pointing
+    # outside ~/.openclaw/extensions/. Recent openclaw versions reject any
+    # install whose target lstat is a symlink leaving the extensions dir
+    # ("Invalid path: must stay within extensions directory"). Remove the
+    # symlink (but never a real dir) so the new install can place a regular
+    # directory there.
+    extensions_dir = _openclaw_state_dir(profile) / "extensions"
+    legacy_link = extensions_dir / _DEEP_OBS_PLUGIN_ID
+    try:
+        if legacy_link.is_symlink():
+            typer.echo(f"  Removing legacy symlink at {legacy_link}...")
+            legacy_link.unlink()
+    except OSError as exc:
+        typer.secho(
+            f"  ⚠ Could not remove legacy symlink {legacy_link}: {exc}", fg=typer.colors.YELLOW
+        )
+
+    typer.echo(f"  Installing openclaw-deep-observability plugin from {plugin_dir}...")
     install_cmd = _openclaw_cmd(
-        ["openclaw", "plugins", "install", _DEEP_OBS_CLAWHUB_SPEC],
+        ["openclaw", "plugins", "install", "--force", str(plugin_dir)],
         profile,
         container,
     )
@@ -1761,7 +1871,7 @@ def _configure_deep_observability(
             )
             stderr = (result.stderr or "").strip()
             if stderr:
-                typer.echo(f"    {stderr[:300]}")
+                typer.echo(f"    {stderr[:500]}")
             return False
     else:
         typer.secho("  ✓ plugin installed", fg=typer.colors.GREEN)
@@ -1799,7 +1909,10 @@ def _configure_deep_observability(
             "enabled": True,
             "config": {
                 "endpoint": endpoint,
-                "protocol": "http/protobuf",
+                # The deep-observability plugin's configSchema restricts
+                # protocol to "http" or "grpc" (it picks the protobuf vs
+                # JSON encoding internally based on exporter dependencies).
+                "protocol": "http",
                 "traces": True,
                 "metrics": True,
                 "logs": False,

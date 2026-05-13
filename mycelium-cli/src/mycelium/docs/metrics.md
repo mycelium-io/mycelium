@@ -212,7 +212,7 @@ Up to 200 sessions are retained (oldest evicted).
 
 ### Deep Observability Plugin
 
-The `openclaw-deep-observability-plugin` provides richer, hierarchical OTLP
+The `openclaw-deep-observability` plugin provides richer, hierarchical OTLP
 traces compared to the built-in `diagnostics-otel` plugin. It emits
 parent-child span trees with per-tool timing, LLM call isolation, and
 session lifecycle spans.
@@ -236,25 +236,30 @@ the OpenClaw panels in `mycelium metrics show` will have no data.
 
 The `--step=deep-observability` portion:
 
-1. Installs the plugin from ClawhHub (`openclaw plugins install`)
-2. Adds the plugin to `plugins.allow` and `plugins.entries` in
+1. Clones https://github.com/outshift-open/openclaw-deep-observability into
+   `~/.mycelium/deep-observability-src/` (or updates it with `git pull`).
+2. Runs `npm install && npm run build` in the `observability-plugin/` subdir.
+3. Installs the built plugin via `openclaw plugins install <path> --force`.
+   If a legacy symlink at `~/.openclaw/extensions/openclaw-deep-observability`
+   from a prior `--link` install is present, it's removed first.
+4. Adds the plugin to `plugins.allow` and `plugins.entries` in
    `~/.openclaw/openclaw.json` with the OTLP endpoint matching the
-   collector port
-3. Patches model cost and `compat.supportsUsageInStreaming` settings
-4. Restarts the OpenClaw gateway to pick up the config
+   collector port.
+5. Patches model cost and `compat.supportsUsageInStreaming` settings.
+6. Restarts the OpenClaw gateway to pick up the config.
 
 The resulting `openclaw.json` plugin entry looks like:
 
 ```json
 {
   "plugins": {
-    "allow": ["openclaw-deep-observability-plugin"],
+    "allow": ["openclaw-deep-observability"],
     "entries": {
-      "openclaw-deep-observability-plugin": {
+      "openclaw-deep-observability": {
         "enabled": true,
         "config": {
           "endpoint": "http://localhost:4318",
-          "protocol": "http/protobuf",
+          "protocol": "http",
           "traces": true,
           "metrics": true,
           "logs": false,
