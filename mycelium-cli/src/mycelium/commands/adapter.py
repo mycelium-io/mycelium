@@ -1807,6 +1807,27 @@ def _build_deep_obs_from_git(profile: str | None) -> Path | None:
             typer.echo(f"    {result.stderr.strip()[:500]}")
         return None
 
+    # Upstream's package.json declares the OpenClaw entry as `./index.ts`,
+    # which the gateway's plugin loader rejects ("requires compiled runtime
+    # output for TypeScript entry"). The build step does produce
+    # `./dist/index.js` — point the manifest at it so the gateway actually
+    # loads the plugin instead of silently skipping it.
+    pkg_json_path = plugin_dir / "package.json"
+    try:
+        pkg = json_module.loads(pkg_json_path.read_text())
+        oc = pkg.setdefault("openclaw", {})
+        current = oc.get("extensions") or []
+        target = ["./dist/index.js"]
+        if current != target:
+            oc["extensions"] = target
+            pkg_json_path.write_text(json_module.dumps(pkg, indent=2) + "\n")
+            typer.echo("  Pointed package.json openclaw.extensions → ./dist/index.js")
+    except (OSError, json_module.JSONDecodeError) as exc:
+        typer.secho(
+            f"  ⚠ Could not patch package.json openclaw.extensions: {exc}",
+            fg=typer.colors.YELLOW,
+        )
+
     return plugin_dir
 
 
