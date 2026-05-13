@@ -956,10 +956,6 @@ def _install_openclaw(
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copytree(str(src), str(dst), ignore=_plugin_ignore)
 
-        # Build the plugin after copying so openclaw gets compiled JS.
-        plugin_dst = state_dir / "extensions" / _OPENCLAW_PLUGIN_NAME
-        _build_plugin(plugin_dst)
-
         # Clean up hooks that earlier versions installed.
         for stale in _OPENCLAW_STALE_HOOKS:
             stale_path = state_dir / "hooks" / stale
@@ -969,11 +965,58 @@ def _install_openclaw(
                 shutil.rmtree(stale_path, ignore_errors=True)
 
     plugin_src = _resolve_asset(_MYCELIUM_PLUGIN_SRC)
-    # On a fresh install (not reinstall), build in the source tree before handing
-    # it to openclaw so the compiled dist/ is present when openclaw validates it.
-    if not reinstall:
-        _build_plugin(plugin_src)
-    _run(["openclaw", "plugins", "install", str(plugin_src)], allow_already_exists=tolerate_exists)
+    # Always build in the source tree before handing it to openclaw — openclaw
+    # plugins install reads from this path, and 2026.5+ rejects entries without
+    # a compiled dist/index.js. (Previously the reinstall path built in the
+    # destination but still installed from the unbuilt source.)
+    _build_plugin(plugin_src)
+
+    # Stash an existing channels.mycelium-room block before install — openclaw
+    # validates the existing config *before* loading the plugin that registers
+    # the channel id, so a pre-existing entry causes
+    # "channels.mycelium-room: unknown channel id" and aborts the install.
+    openclaw_cfg_path = _openclaw_state_dir(profile) / "openclaw.json"
+    stashed_channel: dict | None = None
+    if openclaw_cfg_path.exists():
+        try:
+            oc_cfg = json_module.loads(openclaw_cfg_path.read_text())
+            stashed_channel = oc_cfg.get("channels", {}).pop("mycelium-room", None)
+            if stashed_channel is not None:
+                openclaw_cfg_path.write_text(json_module.dumps(oc_cfg, indent=2) + "\n")
+        except (OSError, json_module.JSONDecodeError):
+            stashed_channel = None
+
+    try:
+        _run(
+            ["openclaw", "plugins", "install", str(plugin_src)],
+            allow_already_exists=tolerate_exists,
+        )
+
+        # openclaw plugins install blanket-excludes `dist/` (probably to skip
+        # build output by default), but our plugin needs the compiled
+        # dist/index.js — openclaw.plugin.json's `extensions` field points
+        # at it. Copy it over after install so the channel actually loads.
+        dist_src = plugin_src / "dist"
+        dist_dst = _openclaw_state_dir(profile) / "extensions" / _OPENCLAW_PLUGIN_NAME / "dist"
+        if dist_src.exists():
+            if dist_dst.exists():
+                shutil.rmtree(dist_dst, ignore_errors=True)
+            shutil.copytree(str(dist_src), str(dist_dst))
+    finally:
+        # Restore the channel config so the user's room/agents/etc. survive
+        # the install — the plugin is now registered, so the channel id
+        # resolves cleanly on the next gateway restart.
+        if stashed_channel is not None and openclaw_cfg_path.exists():
+            try:
+                oc_cfg = json_module.loads(openclaw_cfg_path.read_text())
+                oc_cfg.setdefault("channels", {})["mycelium-room"] = stashed_channel
+                openclaw_cfg_path.write_text(json_module.dumps(oc_cfg, indent=2) + "\n")
+            except (OSError, json_module.JSONDecodeError):
+                typer.secho(
+                    "  warning: failed to restore channels.mycelium-room — "
+                    "you may need to re-add it manually",
+                    fg=typer.colors.YELLOW,
+                )
 
     # Add plugin to plugins.allow so openclaw doesn't warn on every command
     _allow_plugin(_OPENCLAW_PLUGIN_NAME, profile=profile)
