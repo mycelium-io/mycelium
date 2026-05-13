@@ -1828,6 +1828,41 @@ def _build_deep_obs_from_git(profile: str | None) -> Path | None:
             fg=typer.colors.YELLOW,
         )
 
+    # The gateway's startup planner only loads "hooks-only" plugins (no
+    # channels/agent harnesses/providers) when the manifest declares
+    # `activation.onCapabilities: ["hook"]`. Without this hint the gateway
+    # silently excludes the plugin from its load list even though
+    # `openclaw plugins list` reports it as enabled. Also ensure
+    # `contracts.tools` declares the `otel_status` tool the plugin
+    # registers at runtime, otherwise `openclaw plugins doctor` rejects it.
+    manifest_path = plugin_dir / "openclaw.plugin.json"
+    try:
+        manifest = json_module.loads(manifest_path.read_text())
+        changed = False
+        activation = manifest.setdefault("activation", {})
+        on_caps = list(activation.get("onCapabilities") or [])
+        if "hook" not in on_caps:
+            on_caps.append("hook")
+            activation["onCapabilities"] = on_caps
+            changed = True
+        contracts = manifest.setdefault("contracts", {})
+        tools = list(contracts.get("tools") or [])
+        if "otel_status" not in tools:
+            tools.append("otel_status")
+            contracts["tools"] = tools
+            changed = True
+        if changed:
+            manifest_path.write_text(json_module.dumps(manifest, indent=2) + "\n")
+            typer.echo(
+                "  Patched openclaw.plugin.json activation.onCapabilities=[hook]"
+                " and contracts.tools=[otel_status]"
+            )
+    except (OSError, json_module.JSONDecodeError) as exc:
+        typer.secho(
+            f"  ⚠ Could not patch openclaw.plugin.json: {exc}",
+            fg=typer.colors.YELLOW,
+        )
+
     return plugin_dir
 
 
@@ -1936,6 +1971,11 @@ def _configure_deep_observability(
         entries = _normalize_plugin_entries(plugins)
         entries[_DEEP_OBS_PLUGIN_ID] = {
             "enabled": True,
+            # Non-bundled plugins that consume llm_input/llm_output/agent_end
+            # need an explicit conversation-access opt-in or the gateway
+            # blocks those typed hooks at registration. Without this the
+            # plugin loads but its LLM/turn spans never fire.
+            "hooks": {"allowConversationAccess": True},
             "config": {
                 "endpoint": endpoint,
                 # The deep-observability plugin's configSchema restricts
