@@ -37,6 +37,7 @@ dependencies = [
     "pyyaml>=6.0.3",
     "opentelemetry-proto>=1.20.0,<2",
     "protobuf>=4.21.0",
+    "rapidfuzz>=3.10.0",
 ]
 
 [project.optional-dependencies]

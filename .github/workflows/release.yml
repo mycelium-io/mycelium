@@ -101,6 +101,15 @@ jobs:
           cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-db:cache
           cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-db:cache,mode=max
 
+      - name: Bump backend pyproject version to match tag
+        # FastAPI reads `version=` from this file at startup (see app/main.py
+        # _read_pkg_version) so /health reports the right release. Without
+        # this step the backend image ships with the placeholder version.
+        working-directory: fastapi-backend
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          sed -i.bak "s/^version = .*/version = \"$VERSION\"/" pyproject.toml && rm -f pyproject.toml.bak
+
       - name: Build and push mycelium-backend
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         with:

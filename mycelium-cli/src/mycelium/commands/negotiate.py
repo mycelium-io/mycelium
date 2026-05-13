@@ -147,7 +147,13 @@ def propose(
             typer.echo("  Error: at least one KEY=VALUE assignment is required.", err=True)
             raise typer.Exit(1)
 
-        # Validate keys against live negotiation state before posting.
+        # Snap keys/values to canonical issue identifiers and option labels
+        # before posting. Mirrors the server-side snap that ships in CFN
+        # engines (Akanksha's offer_validation.py); running it client-side
+        # collapses a 20-30s round-trip — engine would otherwise reject with
+        # offer_validation_failure in the *next* broadcast.
+        from mycelium.negotiate_snap import snap_issue, snap_option
+
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
         session_room = _resolve_active_session_room(config, room_name)
@@ -156,31 +162,65 @@ def propose(
                 f"{config.server.api_url}/api/rooms/{session_room}/negotiation",
                 timeout=5,
             )
-            if resp.status_code == 200:
-                neg = resp.json()
-                current_offer = neg.get("current_offer") or {}
-                if current_offer:
-                    bad_keys = sorted(set(offer) - set(current_offer))
-                    if bad_keys:
-                        typer.echo(
-                            "  Error: counter-offer contains unrecognised issue keys:", err=True
-                        )
-                        for bk in bad_keys:
-                            matches = difflib.get_close_matches(
-                                bk, current_offer.keys(), n=1, cutoff=0.6
-                            )
-                            suggestion = matches[0] if matches else None
-                            hint = f'  →  did you mean "{suggestion}"?' if suggestion else ""
-                            typer.echo(f'    "{bk}"{hint}', err=True)
-                        typer.echo("", err=True)
-                        typer.echo("  Valid keys for this session:", err=True)
-                        for vk in sorted(current_offer):
-                            typer.echo(f'    "{vk}"', err=True)
-                        raise typer.Exit(1)
-        except (httpx.RequestError, typer.Exit):
+        except httpx.RequestError:
             raise
         except Exception:
-            pass  # validation is best-effort; backend enforces authoritatively
+            resp = None
+
+        if resp is not None and resp.status_code == 200:
+            try:
+                neg = resp.json()
+            except Exception:
+                neg = {}
+            valid_issues = sorted((neg.get("current_offer") or {}).keys())
+            issue_options = neg.get("issue_options") or {}
+
+            if valid_issues:
+                snapped: dict[str, str] = {}
+                snap_notes: list[tuple[str, str, str, str]] = []  # (raw_k, k, raw_v, v)
+                bad: list[tuple[str, list[str]]] = []  # (raw_key_or_value, valid_choices)
+
+                for raw_k, raw_v in offer.items():
+                    canonical_k = snap_issue(raw_k, valid_issues)
+                    if canonical_k is None:
+                        bad.append((raw_k, valid_issues))
+                        continue
+                    options = issue_options.get(canonical_k) or []
+                    canonical_v = snap_option(raw_v, options) if options else raw_v
+                    if options and canonical_v is None:
+                        bad.append((raw_v, options))
+                        continue
+                    snapped[canonical_k] = canonical_v if canonical_v is not None else raw_v
+                    if canonical_k != raw_k or (canonical_v is not None and canonical_v != raw_v):
+                        snap_notes.append((raw_k, canonical_k, raw_v, canonical_v or raw_v))
+
+                if bad:
+                    typer.echo(
+                        "  Error: counter-offer contains values that don't match this session:",
+                        err=True,
+                    )
+                    for raw, choices in bad:
+                        matches = difflib.get_close_matches(raw, choices, n=1, cutoff=0.6)
+                        suggestion = matches[0] if matches else None
+                        hint = f'  →  did you mean "{suggestion}"?' if suggestion else ""
+                        typer.echo(f'    "{raw}"{hint}', err=True)
+                    typer.echo("", err=True)
+                    typer.echo("  Valid issue keys:", err=True)
+                    for vk in valid_issues:
+                        opts = issue_options.get(vk) or []
+                        if opts:
+                            typer.echo(f'    "{vk}" = {opts}', err=True)
+                        else:
+                            typer.echo(f'    "{vk}"', err=True)
+                    raise typer.Exit(1)
+
+                if snap_notes:
+                    for raw_k, k, raw_v, v in snap_notes:
+                        raw_pair = f"{raw_k}={raw_v}"
+                        canon_pair = f"{k}={v}"
+                        if raw_pair != canon_pair:
+                            typer.echo(f'  interpreted "{raw_pair}" as "{canon_pair}"')
+                offer = snapped
 
         try:
             reply = ProposeReply(offer=offer)
