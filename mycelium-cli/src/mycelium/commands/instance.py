@@ -105,12 +105,17 @@ def _compose_base_cmd(
     project_name: str | None = None,
     *,
     include_cfn_profile: bool = True,
+    include_metrics_profile: bool = True,
 ) -> list[str]:
     """Build the docker compose prefix with consistent project name.
 
     When *include_cfn_profile* is True (the default) and CFN is enabled in
     the user's .env, ``--profile cfn`` is appended automatically so callers
     don't need to duplicate that logic.
+
+    When *include_metrics_profile* is True (the default) and the collector
+    container is running, ``--profile metrics`` is appended so stop/logs/down
+    commands include it without ad-hoc detection.
     """
     if compose_path is None:
         compose_path = _get_compose_path()
@@ -121,6 +126,8 @@ def _compose_base_cmd(
         cmd += ["--env-file", str(env_path)]
     if include_cfn_profile and _cfn_enabled():
         cmd += ["--profile", "cfn"]
+    if include_metrics_profile and _collector_container_running():
+        cmd += ["--profile", "metrics"]
     return cmd
 
 
@@ -412,7 +419,7 @@ def start(
             typer.echo("Run 'mycelium install' first.")
             raise typer.Exit(1)
 
-        base = _compose_base_cmd(compose_path)
+        base = _compose_base_cmd(compose_path, include_metrics_profile=False)
         if ui:
             base = base + ["--profile", "ui"]
         if metrics:
@@ -511,8 +518,6 @@ def stop(
 
         project = _detect_compose_project()
         base = _compose_base_cmd(compose_path, project_name=project)
-        if _collector_container_running():
-            base = base + ["--profile", "metrics"]
         down_args = ["down", "--remove-orphans"]
         if volumes:
             down_args.append("-v")
@@ -925,8 +930,6 @@ def logs(
 
         project = _detect_compose_project()
         cmd = _compose_base_cmd(project_name=project)
-        if _collector_container_running():
-            cmd += ["--profile", "metrics"]
         cmd += ["logs"]
         if follow:
             cmd.append("-f")

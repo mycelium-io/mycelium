@@ -430,6 +430,14 @@ def _daemonize_collector(port: int, output: Path, hub_url: str | None) -> None:
     """Fork the collector into the background and write a PID file."""
     import signal
 
+    if not hasattr(os, "fork"):
+        typer.secho(
+            "✗ Background daemonization requires os.fork() (macOS/Linux).",
+            fg=typer.colors.RED,
+        )
+        typer.echo("  On Windows, run the collector in the foreground with --foreground.")
+        raise typer.Exit(1)
+
     log_file = _metrics_dir() / "collector.log"
     pid_file = _collector_pid_file()
 

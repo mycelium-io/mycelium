@@ -327,20 +327,27 @@ async def _proxy_collector(path: str):
             return None
         if isinstance(obj, dict):
             return {k: _sanitise(v) for k, v in obj.items()}
-        if isinstance(obj, (list, tuple)):
+        if isinstance(obj, list | tuple):
             return [_sanitise(v) for v in obj]
         return obj
+
+    def _parse_constant(c: str) -> None:
+        """Map non-standard JSON tokens (Infinity, NaN) to None at parse time."""
+        return None
 
     url = f"{settings.COLLECTOR_URL.rstrip('/')}{path}"
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(url)
         if resp.status_code == 200:
-            raw = resp.text.replace("Infinity", "null").replace("NaN", "null")
             try:
-                data = json.loads(raw)
-            except json.JSONDecodeError:
-                data = _sanitise(resp.json())
+                data = json.loads(resp.text, parse_constant=_parse_constant)
+            except (json.JSONDecodeError, ValueError):
+                return JSONResponse(
+                    status_code=502,
+                    content={"detail": "Invalid JSON from collector"},
+                )
+            data = _sanitise(data)
             return Response(
                 content=json.dumps(data, default=str),
                 media_type="application/json",

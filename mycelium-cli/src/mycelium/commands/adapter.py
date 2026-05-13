@@ -1599,6 +1599,38 @@ def _patch_model_cost_and_compat(cfg: dict) -> list[str]:
     return changes
 
 
+def _resolve_otlp_endpoint(
+    port: int | None = None,
+    container: str | None = None,
+) -> str:
+    """Resolve the OTLP HTTP endpoint for the collector.
+
+    Priority: MyceliumConfig.metrics.collector_url > config collector_port >
+    explicit *port* arg > default 4318.  When running inside a container,
+    uses ``host.docker.internal`` as the host.
+    """
+    endpoint = None
+    if port is None and not container:
+        try:
+            from mycelium.config import MyceliumConfig
+
+            cfg_obj = MyceliumConfig.load()
+            endpoint = cfg_obj.metrics.collector_url or None
+            if endpoint is None:
+                resolved_port = cfg_obj.runtime.collector_port
+                host = "localhost"
+                endpoint = f"http://{host}:{resolved_port}"
+        except Exception:
+            pass
+
+    if endpoint is None:
+        resolved_port = port if port is not None else 4318
+        host = "host.docker.internal" if container else "localhost"
+        endpoint = f"http://{host}:{resolved_port}"
+
+    return endpoint
+
+
 def _configure_otel(
     port: int | None = None,
     profile: str | None = None,
@@ -1635,24 +1667,7 @@ def _configure_otel(
             return False
 
     try:
-        endpoint = None
-        if port is None and not container:
-            try:
-                from mycelium.config import MyceliumConfig
-
-                cfg_obj = MyceliumConfig.load()
-                endpoint = cfg_obj.metrics.collector_url or None
-                if endpoint is None:
-                    resolved_port = cfg_obj.runtime.collector_port
-                    host = "localhost"
-                    endpoint = f"http://{host}:{resolved_port}"
-            except Exception:
-                pass
-
-        if endpoint is None:
-            resolved_port = port if port is not None else 4318
-            host = "host.docker.internal" if container else "localhost"
-            endpoint = f"http://{host}:{resolved_port}"
+        endpoint = _resolve_otlp_endpoint(port, container)
 
         diagnostics = cfg.setdefault("diagnostics", {})
         diagnostics["enabled"] = True
@@ -1725,24 +1740,7 @@ def _configure_deep_observability(
        OTLP endpoint config matching the collector port
     3. Patches model cost data (same as --step=otel)
     """
-    endpoint = None
-    if port is None and not container:
-        try:
-            from mycelium.config import MyceliumConfig
-
-            cfg_obj = MyceliumConfig.load()
-            endpoint = cfg_obj.metrics.collector_url or None
-            if endpoint is None:
-                resolved_port = cfg_obj.runtime.collector_port
-                host = "localhost"
-                endpoint = f"http://{host}:{resolved_port}"
-        except Exception:
-            pass
-
-    if endpoint is None:
-        resolved_port = port if port is not None else 4318
-        host = "host.docker.internal" if container else "localhost"
-        endpoint = f"http://{host}:{resolved_port}"
+    endpoint = _resolve_otlp_endpoint(port, container)
 
     # ── 1. Install via openclaw CLI if not already present ─────────────────
     typer.echo("  Installing openclaw-deep-observability-plugin from ClawhHub...")

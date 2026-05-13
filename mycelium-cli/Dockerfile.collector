@@ -4,7 +4,7 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir uv
 
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml ./
 
 RUN uv pip install --system --no-cache \
         "opentelemetry-proto>=1.20.0,<2" \
@@ -19,7 +19,10 @@ RUN uv pip install --system --no-cache \
 COPY src/ src/
 RUN pip install --no-cache-dir --no-deps .
 
+RUN useradd --create-home --shell /bin/false collector
+USER collector
+
 EXPOSE 4318
 
 ENTRYPOINT ["python", "-m", "mycelium.collector_main"]
-CMD ["--port", "4318", "--output", "/root/.mycelium/metrics/metrics.json"]
+CMD ["--port", "4318", "--output", "/home/collector/.mycelium/metrics/metrics.json"]

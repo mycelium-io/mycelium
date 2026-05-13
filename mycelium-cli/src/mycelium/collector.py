@@ -191,140 +191,153 @@ class TraceStore:
         Each trace includes its full list of spans for waterfall rendering.
         When *host* is given, only traces that contain at least one span from
         that host are returned.
+
+        No lock required: SQLite WAL mode supports concurrent readers.
         """
-        with self._lock:
-            conn = self._connect()
-            conn.row_factory = sqlite3.Row
-            try:
-                if host:
-                    trace_ids = [
-                        r[0]
-                        for r in conn.execute(
-                            "SELECT DISTINCT trace_id FROM spans WHERE host = ? "
-                            "ORDER BY start_time DESC LIMIT ?",
-                            (host, limit * 20),
-                        ).fetchall()
-                    ]
-                else:
-                    trace_ids = [
-                        r[0]
-                        for r in conn.execute(
-                            "SELECT DISTINCT trace_id FROM spans ORDER BY start_time DESC LIMIT ?",
-                            (limit * 20,),
-                        ).fetchall()
-                    ]
-                seen: list[str] = []
-                seen_set: set[str] = set()
-                for tid in trace_ids:
-                    if tid not in seen_set:
-                        seen.append(tid)
-                        seen_set.add(tid)
-                    if len(seen) >= limit:
+        conn = self._connect()
+        conn.row_factory = sqlite3.Row
+        try:
+            if host:
+                trace_ids = [
+                    r[0]
+                    for r in conn.execute(
+                        "SELECT DISTINCT trace_id FROM spans WHERE host = ? "
+                        "ORDER BY start_time DESC LIMIT ?",
+                        (host, limit * 20),
+                    ).fetchall()
+                ]
+            else:
+                trace_ids = [
+                    r[0]
+                    for r in conn.execute(
+                        "SELECT DISTINCT trace_id FROM spans ORDER BY start_time DESC LIMIT ?",
+                        (limit * 20,),
+                    ).fetchall()
+                ]
+            seen: list[str] = []
+            seen_set: set[str] = set()
+            for tid in trace_ids:
+                if tid not in seen_set:
+                    seen.append(tid)
+                    seen_set.add(tid)
+                if len(seen) >= limit:
+                    break
+
+            if not seen:
+                return []
+
+            placeholders = ",".join("?" * len(seen))
+            all_rows = conn.execute(
+                f"SELECT * FROM spans WHERE trace_id IN ({placeholders}) "
+                "ORDER BY trace_id, start_time",
+                seen,
+            ).fetchall()
+
+            spans_by_trace: dict[str, list[dict]] = {}
+            for r in all_rows:
+                span_host = r.get("host", "")
+                span = {
+                    "trace_id": r["trace_id"],
+                    "span_id": r["span_id"],
+                    "parent_span_id": r["parent_span_id"],
+                    "name": r["name"],
+                    "kind": r["kind"],
+                    "service": r["service"],
+                    "host": span_host,
+                    "start_time": r["start_time"],
+                    "duration_ms": r["duration_ms"],
+                    "status": r["status"],
+                    "status_message": r["status_message"],
+                    "attributes": json.loads(r["attributes"]),
+                }
+                spans_by_trace.setdefault(r["trace_id"], []).append(span)
+
+            result: list[dict] = []
+            for trace_id in seen:
+                spans = spans_by_trace.get(trace_id, [])
+                if not spans:
+                    continue
+
+                root_spans = [s for s in spans if not s["parent_span_id"]]
+                root = root_spans[0] if root_spans else spans[0]
+                total_duration = max((s["duration_ms"] for s in spans), default=0)
+                has_error = any(s["status"] == "error" for s in spans)
+
+                agent = ""
+                for s in spans:
+                    a = s.get("attributes", {})
+                    agent = (
+                        str(a.get("openclaw.channel", ""))
+                        or str(a.get("openclaw.agent", ""))
+                        or str(a.get("gen_ai.agent", ""))
+                    )
+                    if agent:
                         break
 
-                result: list[dict] = []
-                for trace_id in seen:
-                    rows = conn.execute(
-                        "SELECT * FROM spans WHERE trace_id = ? ORDER BY start_time",
-                        (trace_id,),
-                    ).fetchall()
-                    if not rows:
-                        continue
+                hosts_in_trace = sorted({s["host"] for s in spans if s["host"]})
 
-                    spans = []
-                    for r in rows:
-                        span_host = r.get("host", "")
-                        spans.append(
-                            {
-                                "trace_id": r["trace_id"],
-                                "span_id": r["span_id"],
-                                "parent_span_id": r["parent_span_id"],
-                                "name": r["name"],
-                                "kind": r["kind"],
-                                "service": r["service"],
-                                "host": span_host,
-                                "start_time": r["start_time"],
-                                "duration_ms": r["duration_ms"],
-                                "status": r["status"],
-                                "status_message": r["status_message"],
-                                "attributes": json.loads(r["attributes"]),
-                            }
-                        )
-
-                    root_spans = [s for s in spans if not s["parent_span_id"]]
-                    root = root_spans[0] if root_spans else spans[0]
-                    total_duration = max((s["duration_ms"] for s in spans), default=0)
-                    has_error = any(s["status"] == "error" for s in spans)
-
-                    agent = ""
-                    for s in spans:
-                        a = s.get("attributes", {})
-                        agent = (
-                            str(a.get("openclaw.channel", ""))
-                            or str(a.get("openclaw.agent", ""))
-                            or str(a.get("gen_ai.agent", ""))
-                        )
-                        if agent:
-                            break
-
-                    hosts_in_trace = sorted({s["host"] for s in spans if s["host"]})
-
-                    result.append(
-                        {
-                            "trace_id": trace_id,
-                            "root_span": root["name"],
-                            "service": root.get("service", ""),
-                            "agent": agent,
-                            "host": root.get("host", ""),
-                            "hosts": hosts_in_trace,
-                            "start_time": root["start_time"],
-                            "duration_ms": round(total_duration, 2),
-                            "span_count": len(spans),
-                            "has_error": has_error,
-                            "spans": spans,
-                        }
-                    )
-                return result
-            finally:
-                conn.close()
+                result.append(
+                    {
+                        "trace_id": trace_id,
+                        "root_span": root["name"],
+                        "service": root.get("service", ""),
+                        "agent": agent,
+                        "host": root.get("host", ""),
+                        "hosts": hosts_in_trace,
+                        "start_time": root["start_time"],
+                        "duration_ms": round(total_duration, 2),
+                        "span_count": len(spans),
+                        "has_error": has_error,
+                        "spans": spans,
+                    }
+                )
+            return result
+        finally:
+            conn.close()
 
     def get_hosts(self) -> list[dict]:
-        """Return distinct hosts with span counts and last-seen times."""
-        with self._lock:
-            conn = self._connect()
-            try:
-                rows = conn.execute(
-                    "SELECT host, COUNT(*) AS span_count, MAX(start_time) AS last_seen, "
-                    "COUNT(DISTINCT trace_id) AS trace_count "
-                    "FROM spans WHERE host != '' GROUP BY host ORDER BY last_seen DESC"
-                ).fetchall()
-                result = []
-                for r in rows:
-                    host_val, span_count, last_seen, trace_count = r
-                    agents_rows = conn.execute(
-                        "SELECT DISTINCT json_extract(attributes, '$.\"openclaw.channel\"') AS agent "
-                        "FROM spans WHERE host = ? AND json_extract(attributes, '$.\"openclaw.channel\"') IS NOT NULL "
-                        "AND json_extract(attributes, '$.\"openclaw.channel\"') != ''",
-                        (host_val,),
-                    ).fetchall()
-                    agents = sorted({a[0] for a in agents_rows if a[0]})
-                    error_count = conn.execute(
-                        "SELECT COUNT(*) FROM spans WHERE host = ? AND status = 'error'",
-                        (host_val,),
-                    ).fetchone()[0]
-                    result.append(
-                        {
-                            "host": host_val,
-                            "span_count": span_count,
-                            "trace_count": trace_count,
-                            "last_seen": last_seen,
-                            "agents": agents,
-                            "error_count": error_count,
-                        }
-                    )
-                return result
-            finally:
-                conn.close()
+        """Return distinct hosts with span counts and last-seen times.
+
+        No lock required: SQLite WAL mode supports concurrent readers.
+        """
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                "SELECT host, COUNT(*) AS span_count, MAX(start_time) AS last_seen, "
+                "COUNT(DISTINCT trace_id) AS trace_count, "
+                "SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error_count "
+                "FROM spans WHERE host != '' GROUP BY host ORDER BY last_seen DESC"
+            ).fetchall()
+
+            agents_rows = conn.execute(
+                "SELECT host, json_extract(attributes, '$.\"openclaw.channel\"') AS agent "
+                "FROM spans "
+                "WHERE host != '' "
+                "AND json_extract(attributes, '$.\"openclaw.channel\"') IS NOT NULL "
+                "AND json_extract(attributes, '$.\"openclaw.channel\"') != '' "
+                "GROUP BY host, agent"
+            ).fetchall()
+
+            agents_by_host: dict[str, list[str]] = {}
+            for row in agents_rows:
+                agents_by_host.setdefault(row[0], []).append(row[1])
+
+            result = []
+            for r in rows:
+                host_val, span_count, last_seen, trace_count, error_count = r
+                result.append(
+                    {
+                        "host": host_val,
+                        "span_count": span_count,
+                        "trace_count": trace_count,
+                        "last_seen": last_seen,
+                        "agents": sorted(agents_by_host.get(host_val, [])),
+                        "error_count": error_count,
+                    }
+                )
+            return result
+        finally:
+            conn.close()
 
     def cleanup_old_spans(self) -> int:
         """Delete spans older than the retention period. Returns count deleted."""
@@ -357,26 +370,26 @@ class TraceStore:
                 conn.close()
 
     def get_stats(self) -> dict:
-        """Return storage statistics for diagnostics."""
-        with self._lock:
-            conn = self._connect()
-            try:
-                span_count = conn.execute("SELECT COUNT(*) FROM spans").fetchone()[0]
-                trace_count = conn.execute("SELECT COUNT(DISTINCT trace_id) FROM spans").fetchone()[
-                    0
-                ]
-                oldest = conn.execute("SELECT MIN(created_at) FROM spans").fetchone()[0]
-                newest = conn.execute("SELECT MAX(created_at) FROM spans").fetchone()[0]
-                return {
-                    "span_count": span_count,
-                    "trace_count": trace_count,
-                    "oldest": oldest,
-                    "newest": newest,
-                    "retention_days": self._retention_days,
-                    "db_path": str(self._db_path),
-                }
-            finally:
-                conn.close()
+        """Return storage statistics for diagnostics.
+
+        No lock required: SQLite WAL mode supports concurrent readers.
+        """
+        conn = self._connect()
+        try:
+            span_count = conn.execute("SELECT COUNT(*) FROM spans").fetchone()[0]
+            trace_count = conn.execute("SELECT COUNT(DISTINCT trace_id) FROM spans").fetchone()[0]
+            oldest = conn.execute("SELECT MIN(created_at) FROM spans").fetchone()[0]
+            newest = conn.execute("SELECT MAX(created_at) FROM spans").fetchone()[0]
+            return {
+                "span_count": span_count,
+                "trace_count": trace_count,
+                "oldest": oldest,
+                "newest": newest,
+                "retention_days": self._retention_days,
+                "db_path": str(self._db_path),
+            }
+        finally:
+            conn.close()
 
 
 class MetricsStore:
@@ -868,15 +881,21 @@ class _HubForwarder:
     locally is also POSTed to the hub collector so it can maintain a
     unified cross-host view (by_host metrics, traces).  Failures are
     logged but never block the local ingest path.
+
+    Uses a bounded thread pool (4 workers) to prevent unbounded thread
+    accumulation when the hub is slow or unreachable.
     """
 
     def __init__(self, hub_url: str) -> None:
+        from concurrent.futures import ThreadPoolExecutor
+
         self._base = hub_url.rstrip("/")
+        self._pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="hub-fwd")
         log.info("Hub forwarding enabled → %s", self._base)
 
     def forward(self, path: str, body: bytes, content_type: str) -> None:
-        """POST *body* to hub_url+path in a daemon thread."""
-        threading.Thread(target=self._send, args=(path, body, content_type), daemon=True).start()
+        """POST *body* to hub_url+path via the thread pool."""
+        self._pool.submit(self._send, path, body, content_type)
 
     def _send(self, path: str, body: bytes, content_type: str) -> None:
         url = f"{self._base}{path}"
@@ -922,7 +941,10 @@ class OTLPHandler(BaseHTTPRequestHandler):
             from urllib.parse import parse_qs, urlparse
 
             qs = parse_qs(urlparse(self.path).query)
-            limit = int(qs.get("limit", ["100"])[0])
+            try:
+                limit = int(qs.get("limit", ["100"])[0])
+            except (ValueError, TypeError):
+                limit = 100
             limit = max(1, min(limit, _MAX_TRACES))
             host_filter = qs.get("host", [None])[0]
             traces = self.trace_store.get_recent_traces(limit, host=host_filter)

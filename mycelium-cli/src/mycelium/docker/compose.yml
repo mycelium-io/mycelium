@@ -115,10 +115,10 @@ services:
     ports:
       - "${MYCELIUM_METRICS_PORT:-4318}:4318"
     volumes:
-      - ${MYCELIUM_DATA_DIR:-~/.mycelium}:/root/.mycelium
+      - ${MYCELIUM_DATA_DIR:-~/.mycelium}:/home/collector/.mycelium
     command:
       - "--port=4318"
-      - "--output=/root/.mycelium/metrics/metrics.json"
+      - "--output=/home/collector/.mycelium/metrics/metrics.json"
       - "--backend-url=http://mycelium-backend:8000"
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:4318/health')\" || exit 1"]
