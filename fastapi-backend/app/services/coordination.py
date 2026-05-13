@@ -22,6 +22,7 @@ coordination_error message and the room is set to "failed" state.
 import asyncio
 import json
 import logging
+import re
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -30,6 +31,7 @@ from typing import Literal
 from urllib.parse import urlparse
 
 import asyncpg
+from rapidfuzz import fuzz as _fuzz
 from sqlalchemy import delete, select, update
 
 from app.bus import agent_channel, notify, room_channel
@@ -1348,25 +1350,81 @@ async def on_agent_response(room_name: str, handle: str, content: str) -> None:
         _reset_round_timeout(room_name, cfn)
 
 
+_NORMALISE_RE = re.compile(r"[\s_\-]+")
+
+
+def _normalise(text: str) -> str:
+    """Lowercase, strip, and collapse whitespace/underscores/hyphens to a single space."""
+    return _NORMALISE_RE.sub(" ", str(text).strip().lower())
+
+
+def _snap_issue(raw_key: str, valid_issues: list[str], threshold: float = 80.0) -> str | None:
+    """Return the best-matching valid issue for *raw_key*, or ``None``.
+
+    Mirrors the CLI/engines five-tier snap (tiers 1-4; tier 5 embedding
+    skipped). See ``mycelium.negotiate_snap.snap_issue`` for background.
+    """
+    if raw_key in valid_issues:
+        return raw_key
+    raw_lower = raw_key.lower()
+    for v in valid_issues:
+        if raw_lower == v.lower():
+            return v
+    raw_norm = _normalise(raw_key)
+    for v in valid_issues:
+        if raw_norm == _normalise(v):
+            return v
+    best_score, best_match = 0.0, None
+    for v in valid_issues:
+        score = _fuzz.token_set_ratio(raw_key, v)
+        if score > best_score:
+            best_score, best_match = score, v
+    return best_match if best_score >= threshold else None
+
+
 def _validate_and_fill_offer(handle: str, result: dict, current_offer: dict | None) -> dict:
     """Validate counter_offer keys and silently fill partial offers from the anchor.
 
-    Returns the (possibly mutated) result dict, or an ``invalid_keys`` sentinel if
-    the offer contains keys not present in ``current_offer``.
+    Keys that don't match exactly are snapped to the closest valid key using
+    the same four-tier fuzzy logic as the CLI and CFN engines (case-insensitive,
+    normalised, then token-set ratio).  Only truly unrecognisable keys produce
+    the ``invalid_keys`` sentinel.
     """
     if not current_offer or not result.get("offer"):
         return result
 
     offer = result["offer"]
-    bad_keys = set(offer) - set(current_offer)
-    if bad_keys:
+    valid_keys = list(current_offer)
+
+    # Attempt to snap each unrecognised key to a valid one.
+    remapped: dict[str, str] = {}
+    unresolved: list[str] = []
+    for k in offer:
+        if k in current_offer:
+            continue
+        canonical = _snap_issue(k, valid_keys)
+        if canonical is not None:
+            remapped[k] = canonical
+        else:
+            unresolved.append(k)
+
+    if unresolved:
         return {
             "agent_id": handle,
             "participant_id": handle,
             "action": "invalid_keys",
-            "bad_keys": sorted(bad_keys),
+            "bad_keys": sorted(unresolved),
             "valid_keys": sorted(current_offer),
         }
+
+    if remapped:
+        logger.info(
+            "Agent %s counter_offer keys snapped: %s",
+            handle,
+            {k: v for k, v in remapped.items()},
+        )
+        offer = {remapped.get(k, k): v for k, v in offer.items()}
+        result["offer"] = offer
 
     # Partial offer: fill missing keys from the anchor so CFN sees a complete offer.
     if set(offer) < set(current_offer):
