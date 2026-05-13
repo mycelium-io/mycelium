@@ -309,17 +309,40 @@ async def get_hosts():
 
 
 async def _proxy_collector(path: str):
-    """Forward a GET request to the collector and return the raw JSON response."""
+    """Forward a GET request to the collector and return the raw JSON response.
+
+    Defence-in-depth: sanitise any non-standard JSON tokens (``Infinity``,
+    ``NaN``) that might slip through from upstream before forwarding to the
+    browser.
+    """
+    import json
+    import math
+
     import httpx
     from fastapi.responses import JSONResponse, Response
+
+    def _sanitise(obj: object) -> object:
+        """Replace float inf/nan with None for JSON compliance."""
+        if isinstance(obj, float) and (math.isinf(obj) or math.isnan(obj)):
+            return None
+        if isinstance(obj, dict):
+            return {k: _sanitise(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [_sanitise(v) for v in obj]
+        return obj
 
     url = f"{settings.COLLECTOR_URL.rstrip('/')}{path}"
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(url)
         if resp.status_code == 200:
+            raw = resp.text.replace("Infinity", "null").replace("NaN", "null")
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                data = _sanitise(resp.json())
             return Response(
-                content=resp.content,
+                content=json.dumps(data, default=str),
                 media_type="application/json",
             )
         return JSONResponse(
