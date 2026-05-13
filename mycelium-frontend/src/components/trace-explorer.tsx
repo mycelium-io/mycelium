@@ -168,7 +168,7 @@ function TraceWaterfall({ spans, totalDuration }: { spans: TraceSpan[]; totalDur
               depth={0}
               minStart={minStart}
               totalDuration={totalDuration || 1}
-              selected={selectedSpan?.span_id === node.span.span_id}
+              selectedSpanId={selectedSpan?.span_id ?? null}
               onSelect={setSelectedSpan}
             />
           ))}
@@ -217,16 +217,17 @@ function buildSpanTree(spans: TraceSpan[]): SpanNode[] {
 }
 
 function SpanRow({
-  node, depth, minStart, totalDuration, selected, onSelect,
+  node, depth, minStart, totalDuration, selectedSpanId, onSelect,
 }: {
   node: SpanNode;
   depth: number;
   minStart: number;
   totalDuration: number;
-  selected: boolean;
+  selectedSpanId: string | null;
   onSelect: (s: TraceSpan) => void;
 }) {
   const s = node.span;
+  const isSelected = selectedSpanId === s.span_id;
   const spanStart = new Date(s.start_time).getTime();
   const offset = spanStart - minStart;
   const leftPct = (offset / totalDuration) * 100;
@@ -245,7 +246,7 @@ function SpanRow({
     <>
       <button
         onClick={() => onSelect(s)}
-        className={`flex items-center w-full h-7 hover:bg-surface/40 transition-colors ${selected ? "bg-surface/60" : ""}`}
+        className={`flex items-center w-full h-7 hover:bg-surface/40 transition-colors ${isSelected ? "bg-surface/60" : ""}`}
       >
         {/* Label */}
         <div
@@ -277,7 +278,7 @@ function SpanRow({
           depth={depth + 1}
           minStart={minStart}
           totalDuration={totalDuration}
-          selected={selected}
+          selectedSpanId={selectedSpanId}
           onSelect={onSelect}
         />
       ))}

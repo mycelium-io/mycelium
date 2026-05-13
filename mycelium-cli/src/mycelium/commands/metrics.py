@@ -443,9 +443,18 @@ def _daemonize_collector(port: int, output: Path, hub_url: str | None) -> None:
     log_file = _metrics_dir() / "collector.log"
     pid_file = _collector_pid_file()
 
+    # Pipe for the grandchild daemon to report its PID to the original parent
+    read_fd, write_fd = os.pipe()
+
     child_pid = os.fork()
     if child_pid != 0:
-        typer.secho(f"✓ Spoke collector started (PID {child_pid})", fg=typer.colors.GREEN)
+        os.close(write_fd)
+        # Wait for the intermediate child to exit
+        os.waitpid(child_pid, 0)
+        # Read the daemon (grandchild) PID from the pipe
+        with os.fdopen(read_fd) as f:
+            daemon_pid = f.read().strip()
+        typer.secho(f"✓ Spoke collector started (PID {daemon_pid})", fg=typer.colors.GREEN)
         typer.echo(f"  Port: {port}")
         typer.echo(f"  Data: {output}")
         if hub_url:
@@ -454,14 +463,21 @@ def _daemonize_collector(port: int, output: Path, hub_url: str | None) -> None:
         typer.echo("  Stop: mycelium metrics stop")
         return
 
-    # ── Child process (daemon) ──
+    # ── Child process (intermediate) ──
+    os.close(read_fd)
     os.setsid()
 
     # Second fork to fully detach
     if os.fork() != 0:
+        os.close(write_fd)
         os._exit(0)
 
-    pid_file.write_text(str(os.getpid()))
+    # ── Grandchild (actual daemon) ──
+    daemon_pid_str = str(os.getpid())
+    os.write(write_fd, daemon_pid_str.encode())
+    os.close(write_fd)
+
+    pid_file.write_text(daemon_pid_str)
 
     # Redirect stdio to log file
     sys.stdin.close()

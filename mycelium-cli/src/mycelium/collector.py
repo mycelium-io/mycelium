@@ -30,6 +30,12 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
+
+def _ts_to_epoch_ms(ts: str) -> float:
+    """Parse an ISO-8601 timestamp string to epoch milliseconds."""
+    return datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp() * 1000
+
+
 # Mode for shared data directories: rwxrwxr-x with setgid so files created
 # inside inherit the directory's group. Lets the host user (who typically
 # runs ``mycelium metrics ...``) and the in-container collector user share
@@ -65,9 +71,6 @@ def _ensure_shared_dir(path: Path) -> None:
             try:
                 child.chmod(_SHARED_FILE_MODE)
             except PermissionError:
-                # Owned by another user (typical: legacy root-owned
-                # traces.db). Best-effort only — caller will surface the
-                # follow-on write error if the file truly is unwritable.
                 pass
     except OSError:
         pass
@@ -278,7 +281,7 @@ class TraceStore:
 
             spans_by_trace: dict[str, list[dict]] = {}
             for r in all_rows:
-                span_host = r.get("host", "")
+                span_host = r["host"] or ""
                 span = {
                     "trace_id": r["trace_id"],
                     "span_id": r["span_id"],
@@ -303,7 +306,11 @@ class TraceStore:
 
                 root_spans = [s for s in spans if not s["parent_span_id"]]
                 root = root_spans[0] if root_spans else spans[0]
-                total_duration = max((s["duration_ms"] for s in spans), default=0)
+
+                starts = [_ts_to_epoch_ms(s["start_time"]) for s in spans]
+                ends = [st + s["duration_ms"] for st, s in zip(starts, spans, strict=True)]
+                total_duration = max(ends) - min(starts) if starts else 0
+
                 has_error = any(s["status"] == "error" for s in spans)
 
                 agent = ""
