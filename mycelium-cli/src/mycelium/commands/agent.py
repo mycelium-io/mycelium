@@ -90,7 +90,14 @@ def _load_manifest(room_name: str, handle: str) -> AgentManifest | None:
 def _write_manifest(
     config: MyceliumConfig, room_name: str, manifest: AgentManifest, created_by: str
 ) -> None:
-    """Upsert the manifest into the backend (which writes the file + indexes it)."""
+    """Upsert the manifest into the backend AND mirror it to the local filesystem.
+
+    The daemon resolves manifests by reading the local filesystem (single-machine
+    v0), so the backend write alone isn't enough — we mirror via the same
+    ``filesystem.write_memory`` helper that the rest of the CLI uses for local
+    copies of API-written memories.
+    """
+    from mycelium.filesystem import write_memory
     from mycelium_backend_client.api.memory import (
         create_memories_api_rooms_room_name_memory_post as create_api,
     )
@@ -108,7 +115,22 @@ def _write_manifest(
     )
     batch = MemoryBatchCreate(items=[item])
     with _typed_client(config) as client:
-        create_api.sync(room_name=room_name, client=client, body=batch)
+        result = create_api.sync(room_name=room_name, client=client, body=batch)
+
+    # Mirror locally so `agent ls/show/invoke` + the daemon's filesystem lookup
+    # find the manifest without a round-trip.
+    room_dir = get_room_dir(room_name)
+    version = 1
+    if result and isinstance(result, list) and result:
+        version = getattr(result[0], "version", 1) or 1
+    write_memory(
+        room_dir,
+        manifest.memory_key,
+        yaml_body,
+        created_by=created_by,
+        version=version,
+        tags=["agent-manifest"],
+    )
 
 
 # ── add ──────────────────────────────────────────────────────────────────────

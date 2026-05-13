@@ -135,6 +135,52 @@ def gate_depth(state: DaemonState, sender_handle: str, depth_cap: int) -> bool:
 # ── claude -p spawn ──────────────────────────────────────────────────────────
 
 
+def _parse_claude_output(stdout: str) -> tuple[str, float]:
+    """Pull (final_message, cost_usd) out of `claude -p --output-format json`.
+
+    Claude Code emits a JSON array of stream events: system/init, assistant
+    messages, optional rate_limit_event, and a terminal ``type=="result"``
+    entry that carries the assistant's plain-text answer and ``total_cost_usd``.
+    Older builds may return a single dict with ``result`` at the top level —
+    handle both, and fall back to the raw stdout when neither matches.
+    """
+    try:
+        parsed = json.loads(stdout)
+    except json.JSONDecodeError:
+        return stdout, 0.0
+
+    def _extract_from_obj(obj: dict) -> tuple[str | None, float]:
+        msg = (
+            obj.get("result") or obj.get("final_message") or obj.get("text")
+        )
+        cost = float(obj.get("total_cost_usd") or obj.get("cost_usd") or 0.0)
+        return msg, cost
+
+    if isinstance(parsed, dict):
+        msg, cost = _extract_from_obj(parsed)
+        return msg or stdout, cost
+
+    if isinstance(parsed, list):
+        # Walk back to front — `result` entries land last.
+        for entry in reversed(parsed):
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("type") == "result":
+                msg, cost = _extract_from_obj(entry)
+                if msg is not None:
+                    return msg, cost
+        # Fall back to the most recent assistant message.
+        for entry in reversed(parsed):
+            if not isinstance(entry, dict) or entry.get("type") != "assistant":
+                continue
+            message = entry.get("message") or {}
+            for piece in message.get("content") or []:
+                if isinstance(piece, dict) and piece.get("type") == "text":
+                    return piece.get("text") or stdout, 0.0
+
+    return stdout, 0.0
+
+
 async def spawn_claude(
     *,
     claude_binary: str,
@@ -245,18 +291,7 @@ async def spawn_claude(
             "duration_s": duration,
         }
 
-    # Try JSON, fall back to raw text.
-    final_message = stdout
-    cost_usd = 0.0
-    try:
-        parsed = json.loads(stdout)
-        if isinstance(parsed, dict):
-            final_message = (
-                parsed.get("result") or parsed.get("final_message") or parsed.get("text") or stdout
-            )
-            cost_usd = float(parsed.get("total_cost_usd") or parsed.get("cost_usd") or 0.0)
-    except json.JSONDecodeError:
-        pass
+    final_message, cost_usd = _parse_claude_output(stdout)
 
     return {
         "ok": True,
@@ -279,7 +314,13 @@ async def _post_log(
     sender_handle: str,
     result: dict[str, Any],
 ) -> None:
-    """Write the invocation transcript to ``agents/<handle>/log/<ts>``."""
+    """Write the invocation transcript to ``agents/<handle>/log/<ts>``.
+
+    Writes to the backend (so it's indexed + visible from other CLIs) AND
+    mirrors locally — the daemon resolves manifests + notes from the local
+    filesystem and we want `mycelium agent show <handle>` to see the log
+    without a round-trip.
+    """
     timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%SZ")
     body = {
         "prompt": prompt,
@@ -292,6 +333,7 @@ async def _post_log(
     payload = json.dumps(body, indent=2, default=str)
     key = manifest.log_key(timestamp)
 
+    from mycelium.filesystem import write_memory
     from mycelium_backend_client import Client
     from mycelium_backend_client.api.memory import (
         create_memories_api_rooms_room_name_memory_post as create_api,
@@ -311,6 +353,14 @@ async def _post_log(
             create_api.sync(
                 room_name=room_name, client=client, body=MemoryBatchCreate(items=[item])
             )
+        # Mirror locally for fast reads via `mycelium agent show`.
+        write_memory(
+            get_room_dir(room_name),
+            key,
+            payload,
+            created_by=manifest.handle,
+            tags=["agent-log"],
+        )
 
     await asyncio.to_thread(_do)
 
