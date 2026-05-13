@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 import { fetchRoom } from "@/lib/api";
 import { EventStream } from "@/components/event-stream";
 import { MemoryPanel } from "@/components/memory-panel";
+import { RoomChatBox } from "@/components/room-chat-box";
 import { SessionsRail } from "@/components/sessions-rail";
 import { MainTopBar } from "@/components/main-top-bar";
 import { SubNav, type Crumb } from "@/components/sub-nav";
@@ -64,6 +65,7 @@ export default function RoomPage() {
               <div className="flex-1 overflow-hidden">
                 <EventStream roomName={roomName} onMemoryChanged={handleMemoryChanged} />
               </div>
+              <RoomChatBox roomName={roomName} />
             </main>
           </Panel>
           <PanelResizeHandle
