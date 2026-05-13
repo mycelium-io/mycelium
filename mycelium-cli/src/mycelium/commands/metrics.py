@@ -23,11 +23,14 @@ from rich.console import Console
 from rich.table import Table
 
 from mycelium.collector import _ensure_shared_dir
+from mycelium.commands.traces import app as traces_app
 
 app = typer.Typer(
     help="Collect and display OpenClaw agent metrics (OTLP receiver + display).",
     no_args_is_help=True,
 )
+# Trace-level views over ~/.mycelium/metrics/traces.db.
+app.add_typer(traces_app, name="traces")
 
 _DEFAULT_PORT = 4318
 
