@@ -1873,13 +1873,33 @@ def _configure_deep_observability(
 ) -> bool:
     """Install and configure the openclaw-deep-observability plugin.
 
-    1. Clones + builds the plugin from a git repo (it isn't on ClawHub yet),
+    1. Ensures diagnostics-otel is configured first — deep-observability
+       relies on the same OTLP receiver (and gateway/diagnostics
+       infrastructure) that ``--step=otel`` enables.
+    2. Clones + builds the plugin from a git repo (it isn't on ClawHub yet),
        then runs ``openclaw plugins install`` against the built directory.
-    2. Adds the plugin to ``plugins.allow`` and ``plugins.entries`` with
+    3. Adds the plugin to ``plugins.allow`` and ``plugins.entries`` with
        OTLP endpoint config matching the collector port.
-    3. Patches model cost data (same as --step=otel).
+    4. Patches model cost data (same as --step=otel).
     """
     endpoint = _resolve_otlp_endpoint(port, container)
+
+    # ── 0. Ensure the diagnostics-otel prerequisite is in place ───────────
+    # deep-observability is an additive layer on top of OpenClaw's built-in
+    # diagnostics-otel plugin: it shares the same OTLP receiver / collector
+    # plumbing and assumes diagnostics is enabled. Running --step=otel here
+    # is idempotent — if it's already configured it just re-writes the same
+    # values — and prevents the common failure mode of users running
+    # --step=deep-observability standalone and getting a half-configured
+    # observability stack.
+    typer.secho("  Ensuring diagnostics-otel prerequisite is configured...", dim=True)
+    if not _configure_otel(port=port, profile=profile, container=container):
+        typer.secho(
+            "  ✗ diagnostics-otel prerequisite failed; aborting deep-observability setup.",
+            fg=typer.colors.RED,
+        )
+        return False
+    typer.echo("")
 
     # ── 1. Build & install from git ────────────────────────────────────────
     if container:
