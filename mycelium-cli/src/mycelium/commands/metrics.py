@@ -3214,19 +3214,29 @@ def _render_cost_estimates(
 
 
 def _render_spoke_sites_table(otel: dict | None) -> None:
-    """Show per-host summary table from by_host data in the collector metrics."""
+    """Show per-host summary table from by_host data in the collector metrics.
+
+    Rendered on the hub only. The hub is itself one of the rows (it runs a
+    co-located gateway + collector pair just like every spoke); we tag it
+    as ``(hub)`` to make the topology obvious.
+    """
     by_host = (otel or {}).get("by_host")
     if not by_host:
         return
 
+    import socket
+
+    local_host = socket.gethostname()
+
     table = Table(
-        title="Spoke Sites",
+        title="Sites",
         title_style="bold cyan",
         title_justify="left",
         show_header=True,
         border_style="dim",
     )
     table.add_column("Host", style="bold")
+    table.add_column("Role", style="dim")
     table.add_column("Agents")
     table.add_column("Spans", justify="right")
     table.add_column("Tokens", justify="right")
@@ -3234,6 +3244,11 @@ def _render_spoke_sites_table(otel: dict | None) -> None:
 
     for host_key in sorted(by_host, key=lambda h: by_host[h].get("last_seen", ""), reverse=True):
         data = by_host[host_key]
+        # Match liberally — hostname may be "oclw4" while OTLP host could be
+        # "oclw4.local", "oclw-4", FQDN, etc. Compare normalised forms.
+        norm_local = local_host.lower().split(".")[0].replace("-", "")
+        norm_key = host_key.lower().split(".")[0].replace("-", "")
+        role = "hub" if norm_local == norm_key else "spoke"
         agents = ", ".join(data.get("agents", [])) or "—"
         spans = str(data.get("spans", 0))
         tokens = data.get("tokens", {})
@@ -3248,7 +3263,7 @@ def _render_spoke_sites_table(otel: dict | None) -> None:
                 last_seen = dt.strftime("%H:%M:%S")
             except Exception:
                 pass
-        table.add_row(host_key, agents, spans, tok_str, last_seen)
+        table.add_row(host_key, role, agents, spans, tok_str, last_seen)
 
     console.print(table)
     console.print()
