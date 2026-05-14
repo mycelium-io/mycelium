@@ -30,7 +30,6 @@ import {
   stopSessionSSE,
   subscribedSessionRooms,
 } from "./session-sse.js";
-import { clearAllTickStash, clearTickStashBySessionRoom, stashTick } from "./tick-stash.js";
 
 type Logger = { info: (s: string) => void; warn: (s: string) => void };
 
@@ -119,7 +118,6 @@ export function installChannel(
             startSessionSSE(runtime, cfg, name, _abort!, handleMessage, log);
           } else if (state && TERMINAL_STATES.has(state)) {
             stopSessionSSE(name, log);
-            clearTickStashBySessionRoom(name);
           }
         }
 
@@ -128,7 +126,6 @@ export function installChannel(
         for (const subbed of subscribedSessionRooms()) {
           if (!activeSessionRooms.has(subbed)) {
             stopSessionSSE(subbed, log);
-            clearTickStashBySessionRoom(subbed);
           }
         }
       } catch {
@@ -143,7 +140,6 @@ export function installChannel(
     _abort?.abort();
     _abort = null;
     clearSubscribedSessions();
-    clearAllTickStash();
     log.info(`[${CHANNEL_ID}] gateway stopping — SSE closed`);
   });
 }
@@ -226,10 +222,6 @@ function executeAction(
     }
     case "stash-return-address": {
       stashReturnAddress(action.sessionRoom, action.agentId, log);
-      return;
-    }
-    case "stash-tick": {
-      stashTick(action.agentId, action.sessionRoom, action.payload, log);
       return;
     }
     case "notify-home": {

@@ -29,12 +29,6 @@ export type RouteAction =
   | { kind: "subscribe-session"; roomName: string }
   | { kind: "stash-return-address"; sessionRoom: string; agentId: string }
   | {
-      kind: "stash-tick";
-      sessionRoom: string;
-      agentId: string;
-      payload: any;
-    }
-  | {
       kind: "notify-home";
       sessionRoom: string;
       agentIds: string[];
@@ -103,7 +97,7 @@ export function routeTick(cfg: ChannelConfig, msg: any): RouteAction[] {
     return [{ kind: "ignore", reason: `tick participant_id ${targetAgent} not in channel agents` }];
   }
 
-  const instruction = formatTickInstruction(payload, msg.room_name ?? cfg.room, targetAgent);
+  const instruction = formatTickInstruction(tickData, msg.room_name ?? cfg.room, targetAgent);
 
   const actions: RouteAction[] = [];
 
@@ -117,16 +111,6 @@ export function routeTick(cfg: ChannelConfig, msg: any): RouteAction[] {
       kind: "stash-return-address",
       sessionRoom,
       agentId: targetAgent,
-    });
-    // Stash the raw tick payload so before_agent_start can inject it on the
-    // agent's next turn — the dispatched instruction below is a terse human
-    // summary that omits fields the agent needs (exact offer keys, valid_keys
-    // on error ticks, etc.).
-    actions.push({
-      kind: "stash-tick",
-      sessionRoom,
-      agentId: targetAgent,
-      payload,
     });
   }
 
@@ -142,10 +126,22 @@ export function routeTick(cfg: ChannelConfig, msg: any): RouteAction[] {
 }
 
 export function formatTickInstruction(
-  payload: any,
+  tickData: any,
   roomName: string,
   targetAgent: string,
 ): string {
+  // Two tick shapes from the backend:
+  //  - normal tick: { payload: { round, action, current_offer, ... } }
+  //  - error tick:  { error, valid_keys, bad_keys, instruction, payload: { participant_id } }
+  // formatTickInstruction must render BOTH completely — it is the agent's sole
+  // source of tick information per CLAUDE.md. Don't strip fields that the
+  // agent needs for recovery (e.g. valid_keys on counter_offer_invalid_keys).
+  const errorKind = typeof tickData?.error === "string" ? tickData.error : undefined;
+  if (errorKind) {
+    return formatErrorTick(tickData, roomName, targetAgent);
+  }
+
+  const payload = tickData?.payload ?? tickData;
   const action = payload?.action ?? "respond";
   const canCounter = payload?.can_counter_offer === true;
   const currentOffer = payload?.current_offer ?? {};
@@ -154,6 +150,7 @@ export function formatTickInstruction(
   const yourLastAction = payload?.your_last_action;
   const priorOutcome = payload?.prior_round_outcome;
 
+  const offerKeys = Object.keys(currentOffer);
   const offerSummary = Object.entries(currentOffer)
     .map(([k, v]) => `  ${k}: ${v}`)
     .join("\n");
@@ -203,6 +200,14 @@ export function formatTickInstruction(
     }
   }
 
+  // Valid offer keys: when composing a counter-offer the agent MUST use these
+  // exact keys (case + spacing). Strict enumeration here closes the gap that
+  // used to drive the parallel prependContext injection (#276 / #285).
+  const validKeysLine =
+    canCounter && offerKeys.length > 0
+      ? `Valid offer keys (use exactly these in your counter): ${offerKeys.map((k) => `"${k}"`).join(", ")}`
+      : "";
+
   return [
     roundHeader,
     `You are in a structured negotiation in room ${roomName}.`,
@@ -216,6 +221,7 @@ export function formatTickInstruction(
     "Current offer on the table:",
     offerSummary,
     "",
+    validKeysLine,
     canCounter
       ? `To counter-propose, run: mycelium negotiate propose ISSUE=VALUE ISSUE=VALUE ... --room ${roomName} --handle ${targetAgent}`
       : "",
@@ -226,6 +232,57 @@ export function formatTickInstruction(
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+/**
+ * Render an error tick (e.g. ``counter_offer_invalid_keys``,
+ * ``counter_offer_not_your_turn``). The backend posts these as a
+ * ``coordination_tick`` with top-level ``error`` / ``instruction`` /
+ * ``valid_keys`` / ``bad_keys`` fields (see services/coordination.py
+ * around line 1298). The agent needs ALL of this to recover — especially
+ * ``valid_keys`` for the invalid-keys case — so we render it explicitly here
+ * rather than letting the agent guess.
+ */
+export function formatErrorTick(
+  tickData: any,
+  roomName: string,
+  targetAgent: string,
+): string {
+  const errorKind = String(tickData?.error ?? "unknown_error");
+  const instruction = String(tickData?.instruction ?? "");
+  const validKeys = Array.isArray(tickData?.valid_keys) ? tickData.valid_keys : [];
+  const badKeys = Array.isArray(tickData?.bad_keys) ? tickData.bad_keys : [];
+
+  const lines: string[] = [
+    `[CognitiveEngine — error: ${errorKind}]`,
+    `Room: ${roomName}`,
+  ];
+  if (instruction) lines.push("", instruction);
+  if (badKeys.length > 0) {
+    lines.push("", `Rejected keys: ${badKeys.map((k: string) => `"${k}"`).join(", ")}`);
+  }
+  if (validKeys.length > 0) {
+    lines.push(
+      "",
+      `Valid keys (use exactly these): ${validKeys.map((k: string) => `"${k}"`).join(", ")}`,
+    );
+  }
+  // Recovery command — concrete next step. Most error ticks are recoverable
+  // by re-submitting a counter-offer with the correct keys.
+  if (errorKind === "counter_offer_invalid_keys" && validKeys.length > 0) {
+    const example = validKeys.map((k: string) => `"${k}"=VALUE`).join(" ");
+    lines.push(
+      "",
+      `Recovery: mycelium negotiate propose ${example} --room ${roomName} --handle ${targetAgent}`,
+    );
+  } else if (errorKind === "counter_offer_not_your_turn") {
+    lines.push(
+      "",
+      `Recovery: mycelium negotiate respond accept --room ${roomName} --handle ${targetAgent}`,
+      `      or: mycelium negotiate respond reject --room ${roomName} --handle ${targetAgent}`,
+    );
+  }
+  return lines.join("\n");
 }
 
 // ── Consensus ─────────────────────────────────────────────────────────────

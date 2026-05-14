@@ -176,3 +176,183 @@ async def test_session_display_name_is_not_a_room(client: AsyncClient):
     # Display names don't exist as Room rows — only as CoordinationSession entities.
     resp = await client.get(f"/api/rooms/{session_name}")
     assert resp.status_code == 404
+
+
+# ── Regressions: idempotency + uniqueness guarantees ──────────────────────
+
+
+@pytest.mark.asyncio
+async def test_duplicate_join_same_handle_returns_one_participant(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """Regression #284: joining twice with the same handle MUST NOT create two
+    Participant rows. The SKILL.md protocol tells agents to run
+    ``mycelium session join`` themselves on top of the harness/CLI doing it,
+    which used to double-count and corrupt NegMAS quorum.
+    """
+    from app.models import Participant
+
+    await client.post("/api/rooms", json={"name": "dup-join-ns"})
+
+    r1 = await client.post(
+        "/api/rooms/dup-join-ns/sessions",
+        json={"agent_handle": "bob", "intent": "first"},
+    )
+    r2 = await client.post(
+        "/api/rooms/dup-join-ns/sessions",
+        json={"agent_handle": "bob", "intent": "second-call"},
+    )
+
+    assert r1.status_code == 201
+    assert r2.status_code == 201
+    # Both calls return the SAME participant id — the second is a no-op
+    # upsert that re-fetches the original row instead of inserting.
+    assert r1.json()["id"] == r2.json()["id"]
+
+    from sqlalchemy import select
+
+    rows = (
+        (await db_session.execute(select(Participant).where(Participant.agent_handle == "bob")))
+        .scalars()
+        .all()
+    )
+    assert len(rows) == 1, f"expected one Participant for bob, found {len(rows)}"
+
+
+@pytest.mark.asyncio
+async def test_participant_unique_index_rejects_direct_duplicate_inserts(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """Regression #284: the unique index on
+    ``participants(coordination_session_id, agent_handle)`` is the
+    defense-in-depth backstop. Even bypassing the API guards (via direct
+    ORM inserts in two separate transactions), the index must reject the
+    second insert with IntegrityError.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    from app.models import Participant
+
+    await client.post("/api/rooms", json={"name": "index-ns"})
+    # Seed one participant via the API so a coord session exists.
+    r = await client.post(
+        "/api/rooms/index-ns/sessions",
+        json={"agent_handle": "ada", "intent": "first"},
+    )
+    coord_id = UUID(r.json()["coordination_session_id"])
+
+    dup = Participant(coordination_session_id=coord_id, agent_handle="ada", intent="x")
+    db_session.add(dup)
+    with pytest.raises(IntegrityError):
+        await db_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_multiple_agents_join_same_session_no_fork(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """Regression #280: two different agents joining the same room must land in
+    the SAME CoordinationSession — not fork into two non-terminal sessions.
+
+    True concurrency is hard to exercise under the SQLite test client (one
+    async connection serves overlapping requests, which deadlocks rather than
+    races). The unique-index backstop is covered by the direct-insert test
+    below; this case covers the common sequential SELECT-then-INSERT path
+    that the application code takes for non-racing joins.
+    """
+    from sqlalchemy import select
+
+    await client.post("/api/rooms", json={"name": "no-fork-ns"})
+
+    r1 = await client.post(
+        "/api/rooms/no-fork-ns/sessions",
+        json={"agent_handle": "bob", "intent": "x"},
+    )
+    r2 = await client.post(
+        "/api/rooms/no-fork-ns/sessions",
+        json={"agent_handle": "julie", "intent": "y"},
+    )
+    assert r1.json()["coordination_session_id"] == r2.json()["coordination_session_id"]
+
+    rows = (
+        (
+            await db_session.execute(
+                select(CoordinationSession).where(
+                    CoordinationSession.parent_room_name == "no-fork-ns",
+                    CoordinationSession.state.in_(["idle", "waiting", "negotiating"]),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(rows) == 1, f"expected one non-terminal CoordinationSession, found {len(rows)}"
+
+
+@pytest.mark.asyncio
+async def test_coord_session_partial_unique_index_rejects_direct_fork(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """Regression #280: defense-in-depth — the partial unique index on
+    ``coordination_sessions(parent_room_name) WHERE state IN
+    ('idle','waiting','negotiating')`` rejects a direct INSERT that would
+    fork the room into two non-terminal sessions. Bypasses the API guards
+    to exercise the index itself.
+    """
+    from uuid import uuid4
+
+    from sqlalchemy.exc import IntegrityError
+
+    # Seed one room + one active session via the API.
+    await client.post("/api/rooms", json={"name": "fork-guard-ns"})
+    await client.post(
+        "/api/rooms/fork-guard-ns/sessions",
+        json={"agent_handle": "ada", "intent": "seed"},
+    )
+
+    # Now try to insert a second non-terminal session directly. The partial
+    # unique index must reject it.
+    second = CoordinationSession(
+        parent_room_name="fork-guard-ns",
+        short_id=uuid4().hex[:8],
+        state="idle",
+    )
+    db_session.add(second)
+    with pytest.raises(IntegrityError):
+        await db_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_coord_session_unique_index_allows_post_terminal_replacement(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """The unique index is filtered to non-terminal states. Once a session
+    completes (state=complete/agreed/failed), a NEW non-terminal session can
+    be inserted for the same room. This is what ``test_new_session_after_complete``
+    already validates at the API level; here we assert the index permits it.
+    """
+    from uuid import uuid4
+
+    from sqlalchemy import update as sa_update
+
+    await client.post("/api/rooms", json={"name": "post-term-ns"})
+    await client.post(
+        "/api/rooms/post-term-ns/sessions",
+        json={"agent_handle": "x", "intent": "y"},
+    )
+    # Force the existing session terminal so the partial index no longer
+    # covers it.
+    await db_session.execute(
+        sa_update(CoordinationSession)
+        .where(CoordinationSession.parent_room_name == "post-term-ns")
+        .values(state="complete")
+    )
+    await db_session.commit()
+
+    fresh = CoordinationSession(
+        parent_room_name="post-term-ns",
+        short_id=uuid4().hex[:8],
+        state="idle",
+    )
+    db_session.add(fresh)
+    await db_session.commit()  # must NOT raise — terminal sessions don't block new ones
