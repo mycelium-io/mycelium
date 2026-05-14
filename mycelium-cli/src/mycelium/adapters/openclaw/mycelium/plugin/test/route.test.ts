@@ -312,6 +312,34 @@ describe("routeMessage — coordination_tick", () => {
     expect(actions.some((a) => a.kind === "stash-return-address")).toBe(false);
   });
 
+  it("emits stash-tick carrying the raw tick payload so session/before_agent_start can inject it", () => {
+    const actions = routeMessage(baseCfg, tickMsg("julia-agent"), freshOwnIds());
+    const stash = actions.find((a) => a.kind === "stash-tick") as any;
+    expect(stash).toBeDefined();
+    expect(stash).toMatchObject({
+      kind: "stash-tick",
+      sessionRoom: "test-room:session:abc123",
+      agentId: "julia-agent",
+    });
+    // payload must include the fields the agent needs that aren't in the
+    // dispatched human-readable summary (exact offer keys, can_counter_offer).
+    expect(stash.payload).toMatchObject({
+      participant_id: "julia-agent",
+      round: 3,
+      current_offer: { price: "500", timeline: "30 days" },
+    });
+  });
+
+  it("does NOT emit stash-tick when the tick has no session sub-room name", () => {
+    const msg = {
+      id: "rootless-tick",
+      message_type: "coordination_tick",
+      content: JSON.stringify({ payload: { participant_id: "julia-agent", round: 1, action: "respond", current_offer: {} } }),
+    };
+    const actions = routeMessage(baseCfg, msg, freshOwnIds());
+    expect(actions.some((a) => a.kind === "stash-tick")).toBe(false);
+  });
+
   it("ignores ticks with unparseable content", () => {
     const msg = {
       message_type: "coordination_tick",

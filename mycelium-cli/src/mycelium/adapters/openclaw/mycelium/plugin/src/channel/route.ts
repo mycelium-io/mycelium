@@ -29,6 +29,12 @@ export type RouteAction =
   | { kind: "subscribe-session"; roomName: string }
   | { kind: "stash-return-address"; sessionRoom: string; agentId: string }
   | {
+      kind: "stash-tick";
+      sessionRoom: string;
+      agentId: string;
+      payload: any;
+    }
+  | {
       kind: "notify-home";
       sessionRoom: string;
       agentIds: string[];
@@ -111,6 +117,16 @@ export function routeTick(cfg: ChannelConfig, msg: any): RouteAction[] {
       kind: "stash-return-address",
       sessionRoom,
       agentId: targetAgent,
+    });
+    // Stash the raw tick payload so before_agent_start can inject it on the
+    // agent's next turn — the dispatched instruction below is a terse human
+    // summary that omits fields the agent needs (exact offer keys, valid_keys
+    // on error ticks, etc.).
+    actions.push({
+      kind: "stash-tick",
+      sessionRoom,
+      agentId: targetAgent,
+      payload,
     });
   }
 
