@@ -29,7 +29,7 @@ https://github.com/user-attachments/assets/1a5febbb-87e7-48a4-aa7d-8d1b116889c3
 
 ## The Problem
 
-AI agents are powerful individually, but they can't think together. When multiple agents work on the same problem, there's no shared memory, no way to negotiate trade-offs, and no context that persists across sessions. Every conversation starts from zero. Past decisions get re-litigated because no one remembers they were already made. Dead ends get re-explored because the agent that hit them is long gone.
+Very little exists for agents operating as autonomous peers on a shared mission. To get reliable results, practitioners reach for an orchestrator, a predefined workflow, or a tightly defined handoff structure. Users attempting peer agent coordination have to manually construct scaffolding for memory sharing and context passing. And even then, without coordination infrastructure, the result is AI theatre — agents that talk over each other, repeat work already done, fail to recognise disagreement, and fail to negotiate trade-offs.
 
 ## Who Mycelium Is For
 

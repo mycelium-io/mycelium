@@ -10,10 +10,11 @@ Checks:
   3. Runtime config drift — backend container env matches .env on disk
   4. Docker containers running and healthy
   5. Backend API reachable
-  6. LLM connectivity (real completion probe via backend)
-  7. Workspace ID in sync (CFN mgmt plane vs .env vs config.toml)
-  8. Room MAS IDs present (CFN-enabled installs)
-  9. OpenClaw adapter health (plugin, channel config, agent sandbox)
+  6. Pending migrations — DB revision vs latest alembic file
+  7. LLM connectivity (real completion probe via backend)
+  8. Workspace ID in sync (CFN mgmt plane vs .env vs config.toml)
+  9. Room MAS IDs present (CFN-enabled installs)
+  10. OpenClaw adapter health (plugin, channel config, agent sandbox)
 
 Single-device installs (the default) run the backend locally and exercise
 all checks. In the optional hub-and-spoke deployment mode, spoke nodes
@@ -776,6 +777,107 @@ def _check_room_mas_ids() -> CheckResult:
     )
 
 
+def _check_pending_migrations() -> CheckResult:
+    """Check whether the DB is behind the latest alembic revision."""
+    import importlib.resources
+
+    # Locate fastapi-backend the same way the migrate command does.
+    backend_dir: Path | None = None
+    try:
+        pkg_path = Path(str(importlib.resources.files("mycelium")))
+        for depth in range(2, 7):
+            candidate = pkg_path.parents[depth] / "fastapi-backend"
+            if (candidate / "alembic.ini").exists():
+                backend_dir = candidate
+                break
+    except Exception:
+        pass
+    if backend_dir is None:
+        for fallback in (Path.cwd(), Path.cwd() / "fastapi-backend"):
+            if (fallback / "alembic.ini").exists():
+                backend_dir = fallback
+                break
+
+    if backend_dir is None:
+        return CheckResult(
+            name="Migrations",
+            status="ok",
+            message="Skipped (fastapi-backend not found — installed mode)",
+        )
+
+    # Latest revision on disk: highest numbered file prefix in versions/.
+    versions_dir = backend_dir / "alembic_migrations" / "versions"
+    if not versions_dir.exists():
+        return CheckResult(
+            name="Migrations", status="ok", message="Skipped (versions dir not found)"
+        )
+
+    revision_files = sorted(versions_dir.glob("*.py"))
+    if not revision_files:
+        return CheckResult(name="Migrations", status="ok", message="No migration files found")
+    latest_file = revision_files[-1].stem.split("_")[0]  # e.g. "0015"
+
+    # Current DB revision via `alembic current`.
+    from mycelium.config import MyceliumConfig
+
+    try:
+        cfg = MyceliumConfig.load()
+        db_url = cfg.server.database_url or ""
+    except Exception:
+        db_url = ""
+
+    env = {**__import__("os").environ}
+    if db_url:
+        env["DATABASE_URL"] = db_url
+
+    try:
+        result = subprocess.run(
+            ["uv", "run", "alembic", "current"],
+            cwd=str(backend_dir),
+            capture_output=True,
+            text=True,
+            timeout=15,
+            env=env,
+        )
+        output = result.stdout + result.stderr
+    except Exception as exc:
+        return CheckResult(
+            name="Migrations",
+            status="warning",
+            message=f"Could not run alembic current: {exc}",
+            details=["fix: mycelium migrate"],
+        )
+
+    # "head" in output means DB is current; otherwise extract the revision token.
+    if "head" in output.lower():
+        return CheckResult(
+            name="Migrations",
+            status="ok",
+            message=f"DB at head ({latest_file})",
+        )
+
+    # Parse current revision from output like "abc1234 (head)" or just "abc1234"
+    import re as _re
+
+    rev_match = _re.search(r"([0-9a-f]{4,})", output)
+    current_rev = rev_match.group(1) if rev_match else "unknown"
+
+    if not output.strip() or current_rev == "unknown":
+        return CheckResult(
+            name="Migrations",
+            status="warning",
+            message="Could not determine current DB revision",
+            details=[f"alembic output: {output.strip()[:120]}", "fix: mycelium migrate"],
+        )
+
+    return CheckResult(
+        name="Migrations",
+        status="warning",
+        message=f"DB at {current_rev}, latest is {latest_file} — pending migrations",
+        details=["fix: mycelium migrate"],
+    )
+
+
 # ── OpenClaw adapter checks ───────────────────────────────────────────────────
 #
 # All three openclaw checks are gated on whether the user has opted into the
@@ -1145,6 +1247,7 @@ def doctor(
         if local:
             service_checks.append(_check_docker_containers())
         service_checks.append(_check_backend_reachable(local_backend=local))
+        service_checks.append(_check_pending_migrations())
         service_checks.append(_check_llm_connectivity())
 
         sections: list[tuple[str, list[CheckResult]]] = [

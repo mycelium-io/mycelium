@@ -20,8 +20,9 @@
 
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 
+import { lookupTick } from "../channel/tick-stash.js";
 import { type ChannelConfig, getApiUrl, readMemoryFileContent, resolveHandle } from "../config.js";
-import { apiGet, apiPost, fetchBackendHealth } from "../http.js";
+import { apiPost, fetchBackendHealth } from "../http.js";
 import { MYCELIUM_INSTRUCTIONS } from "../instructions.js";
 
 type Logger = { info: (s: string) => void; warn: (s: string) => void };
@@ -167,20 +168,21 @@ export function installSession(
 
       const contextParts: string[] = [];
 
-      const room = existing?.room;
-      if (room) {
-        const data = (await apiGet(`/api/rooms/${room}/messages?limit=30`, log)) as any;
-        const coord = data?.messages?.find(
-          (m: any) =>
-            m.message_type === "coordination_consensus" ||
-            m.message_type === "coordination_tick",
-        );
-        if (coord) {
-          const label =
-            coord.message_type === "coordination_consensus"
-              ? "[Mycelium — consensus]"
-              : "[Mycelium — coordination tick]";
-          contextParts.push(`${label}\nRoom: ${room}\n\n${coord.content}`);
+      // Coordination context: read the latest tick the channel module stashed
+      // for this agent. The channel sees the raw payload when it dispatches
+      // the formatted instruction; we inject the full JSON here so the agent
+      // has exact offer keys + valid_keys when composing a counter-offer.
+      //
+      // Prior behaviour fetched messages from the parent room — but ticks
+      // attach to the CoordinationSession, never to the parent room, so that
+      // path returned nothing useful (issue #276). Using the stash also keeps
+      // before_agent_start free of HTTP round-trips.
+      if (agentId) {
+        const stashed = lookupTick(agentId);
+        if (stashed) {
+          contextParts.push(
+            `[Mycelium — coordination tick]\nSession: ${stashed.sessionRoom}\n\n${JSON.stringify(stashed.payload, null, 2)}`,
+          );
         }
       }
 

@@ -5,6 +5,12 @@
   "openclaw": {
     "extensions": ["./dist/index.js"]
   },
+  "files": [
+    "dist/",
+    "skills/",
+    "openclaw.plugin.json",
+    "read-mycelium-config.js"
+  ],
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
