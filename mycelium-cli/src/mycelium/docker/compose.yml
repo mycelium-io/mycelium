@@ -98,11 +98,7 @@ services:
   # Opt-in via `mycelium up --metrics`.
 
   mycelium-collector:
-    build:
-      context: ../../../
-      dockerfile: Dockerfile.collector
-    image: mycelium-collector:local
-    pull_policy: never
+    image: ghcr.io/mycelium-io/mycelium-collector:${MYCELIUM_IMAGE_TAG:-latest}
     container_name: mycelium-collector
     restart: unless-stopped
     profiles: [metrics]
