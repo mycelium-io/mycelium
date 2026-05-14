@@ -410,7 +410,7 @@ async def _run_tick(room_name: str, tick: int) -> None:
     if tick != 0:
         return
 
-    if not settings.COGNITION_FABRIC_NODE_URL or mas_id is None or workspace_id is None:
+    if not settings.COGNITION_FABRIC_NODE_URL or not mas_id or not workspace_id:
         logger.error(
             "Coordination requested for %s but CFN not configured (no COGNITION_FABRIC_NODE_URL "
             "or coord_session mas_id/workspace_id not set)",
@@ -1513,6 +1513,14 @@ async def _post_message(room_name: str, message_type: str, content: str) -> None
             if session_id is not None:
                 msg_room_name = None
                 msg_session_id = session_id
+            else:
+                logger.warning(
+                    "Cannot resolve session %r — no matching coordination_session row; "
+                    "dropping message (type=%s)",
+                    room_name,
+                    message_type,
+                )
+                return
         msg = Message(
             room_name=msg_room_name,
             coordination_session_id=msg_session_id,
