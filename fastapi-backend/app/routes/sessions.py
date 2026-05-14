@@ -219,9 +219,10 @@ async def join_room(
         )
     )
     existing_sess = existing_q.scalar_one_or_none()
-    duplicate_join = existing_sess is not None
-    if duplicate_join:
-        sess = existing_sess
+    duplicate_join = False
+    if existing_sess is not None:
+        duplicate_join = True
+        sess: Participant = existing_sess
         logger.info(
             "Duplicate join for handle=%s session=%s; returning existing participant %s",
             payload.agent_handle,
