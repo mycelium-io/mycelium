@@ -202,8 +202,8 @@ hub so it can build a unified cross-host view.
 # Point the spoke's metrics at the hub collector
 mycelium config set metrics.collector_url "http://<hub-ip>:4318"
 
-# Configure OTLP plugins (endpoint defaults to localhost:4318)
-mycelium adapter add openclaw --step=otel --step=deep-observability
+# Configure OTLP plugin (endpoint defaults to localhost:4318)
+mycelium adapter add openclaw --step=otel
 
 # Start the spoke collector (daemonizes into background)
 mycelium metrics collect

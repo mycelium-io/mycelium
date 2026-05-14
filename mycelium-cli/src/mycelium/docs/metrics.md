@@ -12,9 +12,9 @@ HTTP polling) — and writes it to a single JSON file for the CLI to render.
 │   Gateway    │   /v1/metrics           │  (localhost:4318)  │
 │              │   /v1/traces            │                    │
 │  (diagnostics│   /v1/logs              │  ┌──────────────┐  │
-│  -otel  and  │                         │  │ MetricsStore │  │
-│  deep-obs    │                         │  │  (in-memory) │  │
-│  plugins)    │                         │  └──────┬───────┘  │
+│   -otel      │                         │  │ MetricsStore │  │
+│   plugin)    │                         │  │  (in-memory) │  │
+│              │                         │  └──────┬───────┘  │
 └──────────────┘                         │         │ flush    │
                                          │  ┌──────┴───────┐  │
 ┌──────────────┐   GET /api/observability │  │  TraceStore  │  │
@@ -83,11 +83,11 @@ Or via environment variable:
 export MYCELIUM_COLLECTOR_URL="http://<hub-ip>:4318"
 ```
 
-2. Configure the OTLP plugins (the endpoint defaults to `localhost:4318`
+2. Configure the OTLP plugin (the endpoint defaults to `localhost:4318`
 for the local spoke collector):
 
 ```bash
-mycelium adapter add openclaw --step=otel --step=deep-observability
+mycelium adapter add openclaw --step=otel
 ```
 
 3. Start the local spoke collector:
@@ -137,7 +137,7 @@ threads. Logs are written to `$DATA_DIR/metrics/collector.log`.
 | `mycelium metrics show --workspace` | Include per-file workspace breakdowns   |
 | `mycelium metrics show --include-heartbeat` | Include OpenClaw `heartbeat` channel tokens in totals (excluded by default) |
 | `mycelium up --metrics`   | Start the stack with the Dockerized OTLP collector (hub/local mode) |
-| `mycelium adapter add openclaw --step=otel --step=deep-observability` | Configure both OTLP plugins in one command (see below) |
+| `mycelium adapter add openclaw --step=otel` | Configure the OpenClaw `diagnostics-otel` plugin to export to the OTLP receiver |
 | `mycelium metrics traces …` | Query and pivot the trace spans collected in `traces.db` (see [Viewing Traces](#viewing-traces)) |
 
 ## Files Created
@@ -210,76 +210,6 @@ Spans named `openclaw.model.usage` are tracked per session. Fields extracted:
 - Duration, timestamp, cumulative turn count
 
 Up to 200 sessions are retained (oldest evicted).
-
-### Deep Observability Plugin
-
-The `openclaw-deep-observability` plugin provides richer, hierarchical OTLP
-traces compared to the built-in `diagnostics-otel` plugin. It emits
-parent-child span trees with per-tool timing, LLM call isolation, and
-session lifecycle spans.
-
-The plugin works for **root agents** and **peer agents** (independent
-OpenClaw sessions) — which is how Mycelium's agents are structured. It
-does **not** emit traces for internal sub-agent calls within a single
-OpenClaw session.
-
-#### Setup
-
-```bash
-mycelium adapter add openclaw --step=otel --step=deep-observability
-```
-
-Both steps should be run together. `--step=otel` configures the built-in
-`diagnostics-otel` plugin which emits the flat counters and histograms
-that power `mycelium metrics show`. `--step=deep-observability` adds the
-hierarchical trace spans stored in `traces.db`. Without `--step=otel`,
-the OpenClaw panels in `mycelium metrics show` will have no data.
-
-The `--step=deep-observability` portion:
-
-1. Clones https://github.com/outshift-open/openclaw-deep-observability into
-   `~/.mycelium/deep-observability-src/` (or updates it with `git pull`).
-2. Runs `npm install && npm run build` in the `observability-plugin/` subdir.
-3. Installs the built plugin via `openclaw plugins install <path> --force`.
-   If a legacy symlink at `~/.openclaw/extensions/openclaw-deep-observability`
-   from a prior `--link` install is present, it's removed first.
-4. Adds the plugin to `plugins.allow` and `plugins.entries` in
-   `~/.openclaw/openclaw.json` with the OTLP endpoint matching the
-   collector port.
-5. Patches model cost and `compat.supportsUsageInStreaming` settings.
-6. Restarts the OpenClaw gateway to pick up the config.
-
-The resulting `openclaw.json` plugin entry looks like:
-
-```json
-{
-  "plugins": {
-    "allow": ["openclaw-deep-observability"],
-    "entries": {
-      "openclaw-deep-observability": {
-        "enabled": true,
-        "config": {
-          "endpoint": "http://localhost:4318",
-          "protocol": "http",
-          "traces": true,
-          "metrics": true,
-          "logs": false,
-          "captureContent": false,
-          "metricsIntervalMs": 5000
-        }
-      }
-    }
-  }
-}
-```
-
-When running OpenClaw in a Docker container, the endpoint is automatically
-set to `http://host.docker.internal:4318`.
-
-The deep observability plugin and the built-in `diagnostics-otel` plugin
-can run side by side. Both emit to the same collector. The deep plugin's
-traces are richer (hierarchical spans) while `diagnostics-otel` provides
-the flat counter/histogram metrics used by `mycelium metrics show`.
 
 ### Trace Storage (TraceStore)
 
@@ -470,8 +400,8 @@ OpenClaw → Mycelium backend → CFN → opt-in.
 `mycelium metrics traces …` lets you slice the raw spans in
 `$DATA_DIR/metrics/traces.db` by every dimension the spans actually carry.
 
-The deep-observability plugin annotates each span with rich identity and
-behavior info, so you can pivot on:
+OpenClaw's `diagnostics-otel` plugin annotates each span with identity
+and behavior info, so you can pivot on:
 
 | Pivot | Source field(s) | What it tells you |
 |---|---|---|
@@ -566,15 +496,12 @@ viewer surfaces them in two ways:
 - `traces events [id]` renders them as a flat, time-ordered log,
   optionally scoped to one trace, agent, room, host, or time window.
 
-Whether and how often events show up is a function of what the
-deep-observability plugin is configured to emit:
-
-- Exceptions are always recorded (OTel convention).
-- LLM prompt / completion content is only attached when the plugin's
-  `captureContent` flag is `true`. The adapter sets this to `false` by
-  default for privacy; flip it in `~/.openclaw/openclaw.json` under
-  `plugins.entries.openclaw-deep-observability.config.captureContent`
-  if you want full prompt visibility.
+Whether and how often events show up depends on what the OpenClaw
+gateway is configured to emit. Exceptions are always recorded (OTel
+convention). Richer events (LLM prompt / completion content, per-tool
+I/O snapshots) require an OpenClaw extension that publishes them; with
+just the built-in `diagnostics-otel` plugin you'll see exception events
+on errors and not much else.
 
 The OTLP `/v1/logs` endpoint is currently *acked but discarded* — if
 you want general OpenClaw log lines (not just span events) forwarded
@@ -586,12 +513,11 @@ section of the roadmap below.
 The same physical host can show up in `spans.host` under multiple
 labels:
 
-- `oclw3` — the new canonical name (post-adapter-baked-in
-  `OTEL_RESOURCE_ATTRIBUTES=host.name=…`)
-- `oclw-3` — legacy `service.instance.id` from before the adapter
-  managed the systemd override
-- `10.0.50.171` / `ip-10-0-50-171` — deep-obs spans where `host.name`
-  wasn't set, so the OTLP receiver fell back to the source IP
+- `oclw3` — the canonical short hostname OpenClaw normally reports
+- `oclw-3` — legacy `service.instance.id` from older deployments
+- `10.0.50.171` / `ip-10-0-50-171` — spans where `host.name` wasn't set
+  in `OTEL_RESOURCE_ATTRIBUTES`, so the OTLP receiver fell back to the
+  source IP
 
 The viewer normalizes these for display in three layers, in priority
 order:
@@ -613,16 +539,11 @@ host label that resolves to `oclw3`, so `traces by-agent --host=oclw3`
 or `traces list --host=oclw3` give you a unified per-machine view even
 across legacy data.
 
-For new spans, the adapter's `--step=deep-observability` writes a
-systemd drop-in (`~/.config/systemd/user/openclaw-gateway.service.d/deep-obs.conf`)
-that sets:
-
-```
-Environment="OTEL_RESOURCE_ATTRIBUTES=host.name=$(hostname),service.instance.id=$(hostname)"
-```
-
-so the gateway's deep-obs spans always carry the canonical hostname
-and the IP-fallback path in the OTLP receiver never fires.
+If you want to eliminate IP-fallback labels at the source, set
+`OTEL_RESOURCE_ATTRIBUTES=host.name=$(hostname)` in the OpenClaw
+gateway's environment (e.g. via a systemd drop-in for
+`openclaw-gateway.service`). Future OpenClaw extensions that emit OTLP
+should respect this resource attribute and stop the IP fallback.
 
 ### Read-only access
 
@@ -829,7 +750,7 @@ users can run `mycelium metrics reset` to start fresh.
 | File | Role |
 | ---- | ---- |
 | `mycelium-cli/src/mycelium/commands/metrics.py`  | CLI commands, display rendering, pricing lookup |
-| `mycelium-cli/src/mycelium/commands/adapter.py`  | `--step=otel` and `--step=deep-observability` setup |
+| `mycelium-cli/src/mycelium/commands/adapter.py`  | `--step=otel` setup |
 | `mycelium-cli/src/mycelium/commands/instance.py`  | `mycelium up --metrics`, `down`, `logs` with collector awareness |
 | `mycelium-cli/src/mycelium/data/pricing.json`    | Generated model and embedding pricing data |
 | `mycelium-cli/src/mycelium/collector.py`          | OTLP HTTP receiver, MetricsStore, TraceStore, backend poller, hub forwarding |
@@ -928,26 +849,33 @@ traces …` viewer):
   - A `LogStore` sibling to `TraceStore` in `collector.py`, with its
     own SQLite table (`logs(timestamp, severity, body, trace_id,
     span_id, host, service, attributes, …)`) and matching retention.
-  - The deep-observability plugin's `logs: true` flag flipped on (or
-    a separate logs-specific exporter wired into the gateway).
+  - A logs-specific OTLP exporter wired into the OpenClaw gateway (or
+    a future OpenClaw extension that publishes log records).
   - A `mycelium metrics logs` subcommand group mirroring `metrics
     traces` (tail / list / for-trace) so log lines are queryable on the
     same axes (host/agent/room/severity) and correlatable to a trace.
   - A privacy decision on what severity / which categories ship to the
     hub by default.
-- **Span event content capture** — exception events flow today, but
-  prompt / completion content events only fire when the deep-obs
-  plugin's `captureContent` is `true`. The adapter writes `false` by
-  default for privacy. Worth deciding whether per-room / per-agent
-  opt-in is desirable.
-- **Server-side span filter** — partially done. The `traces` viewer's
-  `errors` / `slow` subcommands skip the gateway's CPU/event-loop
-  watchdog spans (`openclaw.diagnostic.phase`, `openclaw.liveness.warning`)
-  by default, but those rows are still *written* (~47% of all spans
-  in current measurements). A configurable drop list at
-  `TraceStore.ingest_traces` time would cut storage in half without
-  losing anything user-facing — already in progress, see
-  `[metrics.traces.span_filter]` in `config.toml`.
+- **Richer trace events** — only exception events flow today via the
+  built-in `diagnostics-otel` plugin. Prompt / completion content,
+  per-tool I/O snapshots, and per-conversation correlation would
+  require an opt-in OpenClaw extension that emits those as span
+  events. Tracked upstream in OpenClaw issue #250 (deep observability
+  integration); when it lands the viewer here will surface the new
+  events automatically.
+- **Span filtering / sampling** — `traces.db` currently stores every
+  span the OTLP receiver accepts. Two known noise sources dominate
+  (~45 % of writes on a typical hub): `openclaw.diagnostic.phase`
+  (gateway phase transitions) and `openclaw.liveness.warning`
+  (event-loop health pings). The viewer hides them from
+  `traces errors` / `traces slow` by default, but they still consume
+  rows. Open question: drop at the source (OpenClaw `diagnostics.otel`
+  knobs are coarse — only `enabled`, `sampleRate`, or signal toggle),
+  add a sidecar `otelcol` per spoke with a `filter` processor, or
+  reintroduce a hub-side write-time drop list. A previous attempt at
+  the latter was reverted; the trade-off was opacity — silent drops
+  are hard to debug after the fact. Revisit when storage or query
+  latency becomes a real pain.
 
 ## Periodic Maintenance Checklist
 
@@ -956,10 +884,6 @@ traces …` viewer):
       `mycelium adapter add openclaw --step=otel` or manually in
       `~/.openclaw/openclaw.json`. Required after adding new models or
       re-running `openclaw configure`.
-- [ ] **Deep observability plugin** — if not yet installed, run
-      `mycelium adapter add openclaw --step=deep-observability` on each
-      machine running an OpenClaw gateway. Verify with
-      `grep deep-observability ~/.openclaw/openclaw.json`.
 - [ ] **Pricing update** — run `mycelium metrics update-pricing` to fetch the
       latest pricing from the LiteLLM API and write `metrics/pricing.json`.
       Any models found in collected metrics that aren't in the built-in list are

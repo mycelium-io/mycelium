@@ -286,35 +286,6 @@ mycelium metrics traces errors --agent=claire-agent --since=1h
 If `mycelium metrics traces ...` reports `traces.db not found`, the OTLP
 receiver isn't running on the hub — see issue #16.
 
-### 16. Deep-Observability Plugin Not Emitting Spans
-
-**Symptom**: `mycelium metrics show` shows OpenClaw activity but `mycelium metrics traces summary` reports zero spans (or only `openclaw.diagnostic.phase` infra spans). The hub gateway log shows `[plugins] loaded 4 plugin(s)` instead of 5.
-
-**Fix**: This means the `openclaw-deep-observability` plugin is configured but the gateway's startup planner is silently excluding it. Re-run the adapter step — it now patches the manifest and the openclaw.json entry with the two undocumented flags the gateway requires:
-
-```bash
-mycelium adapter add openclaw --reinstall --step=deep-observability
-```
-
-After it finishes, verify:
-
-```bash
-# Should report 5 plugins, including openclaw-deep-observability
-journalctl --user -u openclaw-gateway.service --since="2 minutes ago" \
-  | grep "http server listening"
-
-# After triggering a turn, should show non-infra span types like
-# openclaw.agent.turn / openclaw.llm.call / openclaw.tool.execution
-mycelium metrics traces by-name --since=5m
-```
-
-Background: the plugin needs `activation.onCapabilities: ["hook"]` in its
-`openclaw.plugin.json` manifest *and* `hooks.allowConversationAccess: true`
-in its `plugins.entries.openclaw-deep-observability` block. The
-`--step=deep-observability` adapter step writes both automatically (it
-also chains `--step=otel` first, since `diagnostics-otel` is a
-prerequisite).
-
 ## Configuration
 
 Mycelium has two config systems: **config.toml** for CLI settings and **.env** for backend/Docker settings.

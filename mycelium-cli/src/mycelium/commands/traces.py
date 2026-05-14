@@ -5,8 +5,8 @@
 Trace viewer — query and pivot the spans collected in ``~/.mycelium/metrics/traces.db``.
 
 The OTLP receiver in ``mycelium.collector`` writes every span it receives
-from OpenClaw's ``diagnostics-otel`` and ``openclaw-deep-observability``
-plugins into a SQLite table::
+from OpenClaw (typically via the built-in ``diagnostics-otel`` plugin)
+into a SQLite table::
 
     spans(trace_id, span_id, parent_span_id, name, kind, service, host,
           start_time, duration_ms, status, status_message, attributes,
@@ -48,7 +48,7 @@ from rich.table import Table
 
 app = typer.Typer(
     help=(
-        "View distributed traces collected from OpenClaw deep-observability."
+        "View distributed traces collected via OTLP from OpenClaw."
         " Run with no subcommand to see the rollup summary."
     ),
     invoke_without_command=True,
@@ -112,13 +112,12 @@ def _open_db() -> sqlite3.Connection:
 #   - ``oclw-3``  (legacy diagnostics-otel resource attrs from before
 #                  the adapter started normalizing host.name)
 #   - ``oclw3``   (post-reinstall diagnostics-otel — desired)
-#   - ``10.0.50.171`` (deep-obs spans where host.name wasn't set in
+#   - ``10.0.50.171`` (spans where host.name wasn't set in
 #                      OTEL_RESOURCE_ATTRIBUTES, so the OTLP collector
 #                      fell back to the source IP)
 #
-# We normalize at display time so historical data is still groupable,
-# while the adapter's new systemd override eliminates the issue for new
-# spans going forward. The map is populated from two sources, in order
+# We normalize at display time so historical data is still groupable.
+# The map is populated from two sources, in order
 # of precedence:
 #
 #   1. Explicit overrides in ~/.mycelium/config.toml under
@@ -252,7 +251,7 @@ def _parse_events(row: sqlite3.Row) -> list[dict]:
 def _event_message(ev: dict) -> str:
     """Pick the most informative human-readable string from a span event."""
     attrs = ev.get("attributes") or {}
-    # Standard OTel exception convention; deep-obs follows it.
+    # Standard OTel exception convention.
     for key in (
         "exception.message",
         "exception.stacktrace",
