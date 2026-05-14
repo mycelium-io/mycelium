@@ -345,6 +345,16 @@ def _is_spoke_mode() -> bool:
     return host not in ("localhost", "127.0.0.1", "::1", "0.0.0.0", "")
 
 
+def _hub_suffix() -> str:
+    """Return '` (from hub)`' on a spoke, else ''.
+
+    Backend-sourced metrics on a spoke are proxied via the hub collector
+    rather than counted locally; tagging the title makes that clear so
+    a spoke operator doesn't think their node is doing the ingestion.
+    """
+    return " [dim](from hub)[/dim]" if _is_spoke_mode() else ""
+
+
 _AGENT_ROOM_CACHE: dict[str, str] | None = None
 
 
@@ -1154,7 +1164,7 @@ def show(
 
             if not rendered:
                 table = Table(
-                    title="Mycelium Backend",
+                    title=f"Mycelium Backend{_hub_suffix()}",
                     title_style="bold magenta",
                     title_justify="left",
                     show_header=False,
@@ -1233,7 +1243,10 @@ def _render_overview(
         knowledge = be_counters.get("knowledge", {})
         indexer = be_counters.get("indexer", {})
 
-        table.add_row("[magenta]Mycelium Backend[/magenta]", "")
+        be_label = "[magenta]Mycelium Backend[/magenta]"
+        if _is_spoke_mode():
+            be_label += " [dim](from hub)[/dim]"
+        table.add_row(be_label, "")
         has_be_row = False
         if llm.get("calls", 0) > 0:
             table.add_row("  LLM calls", _fmt_num(llm["calls"]))
@@ -1285,7 +1298,10 @@ def _render_overview(
             or cfn_llm.get("calls", 0) > 0
         )
 
-        table.add_row("[blue]CFN[/blue]", "")
+        cfn_label = "[blue]CFN[/blue]"
+        if _is_spoke_mode():
+            cfn_label += " [dim](from hub)[/dim]"
+        table.add_row(cfn_label, "")
         if has_cfn:
             started = coord.get("sessions_started", 0)
             completed = coord.get("sessions_completed", 0)
@@ -2450,7 +2466,7 @@ def _render_knowledge_table(backend: dict | None) -> None:
         return
 
     table = Table(
-        title="Knowledge Ingestion",
+        title=f"Knowledge Ingestion{_hub_suffix()}",
         title_style="bold magenta",
         title_justify="left",
         show_header=False,
@@ -2522,7 +2538,7 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
         return
 
     table = Table(
-        title="Mycelium Backend LLM Usage",
+        title=f"Mycelium Backend LLM Usage{_hub_suffix()}",
         title_style="bold magenta",
         title_justify="left",
         show_header=False,
@@ -2643,7 +2659,7 @@ def _render_data_reuse_table(backend: dict | None) -> None:
         return
 
     table = Table(
-        title="Mycelium Data Reuse",
+        title=f"Mycelium Data Reuse{_hub_suffix()}",
         title_style="bold magenta",
         title_justify="left",
         show_header=False,
@@ -2749,7 +2765,7 @@ def _render_coordination_table(backend: dict | None) -> None:
         return
 
     table = Table(
-        title="CFN Coordination",
+        title=f"CFN Coordination{_hub_suffix()}",
         title_style="bold blue",
         title_justify="left",
         show_header=False,
@@ -2989,7 +3005,7 @@ def _render_cfn_transport_table(backend: dict | None) -> None:
         return
 
     table = Table(
-        title="CFN Transport Health",
+        title=f"CFN Transport Health{_hub_suffix()}",
         title_style="bold blue",
         title_justify="left",
         show_header=False,
