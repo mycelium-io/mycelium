@@ -289,6 +289,7 @@ async def knowledge_ingest(
             duration_ms=cfn_latency,
             error=True,
             estimated_input_tokens=est_tokens,
+            mas_id=mas_id,
         )
         code = exc.status_code or status.HTTP_502_BAD_GATEWAY
         raise HTTPException(status_code=code, detail=str(exc)) from exc
@@ -321,6 +322,7 @@ async def knowledge_ingest(
     record_knowledge_ingestion(
         duration_ms=latency_ms,
         estimated_input_tokens=est_tokens,
+        mas_id=mas_id,
     )
 
     _write_audit_event(db, mas_id)

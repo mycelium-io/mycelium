@@ -345,6 +345,87 @@ def _is_spoke_mode() -> bool:
     return host not in ("localhost", "127.0.0.1", "::1", "0.0.0.0", "")
 
 
+_AGENT_ROOM_CACHE: dict[str, str] | None = None
+
+
+def _resolve_agent_to_room() -> dict[str, str]:
+    """Return ``{agent_id: room_name}`` from local + reachable openclaw.json files.
+
+    The mycelium openclaw plugin's per-host config (``channels.mycelium-room``)
+    is the authoritative agent→room mapping — that's what tells the gateway
+    which OpenClaw agents fan into which Mycelium room. We read the local
+    file directly. In hub-and-spoke deployments, spoke agents won't appear
+    in the hub's config; covering them properly would require collecting
+    each spoke's mapping (future work — for now the local mapping is enough
+    to colour-code single-host deployments correctly and to label the
+    co-located agents on a hub).
+    """
+    global _AGENT_ROOM_CACHE
+    if _AGENT_ROOM_CACHE is not None:
+        return _AGENT_ROOM_CACHE
+    _AGENT_ROOM_CACHE = {}
+    try:
+        oc_json = Path.home() / ".openclaw" / "openclaw.json"
+        if not oc_json.exists():
+            return _AGENT_ROOM_CACHE
+        oc = json.loads(oc_json.read_text())
+        ch = (oc.get("channels") or {}).get("mycelium-room") or {}
+        room = ch.get("room")
+        agents = ch.get("agents") or []
+        if room and isinstance(agents, list):
+            for a in agents:
+                if isinstance(a, str):
+                    _AGENT_ROOM_CACHE[a] = room
+    except Exception:
+        pass
+    return _AGENT_ROOM_CACHE
+
+
+_ROOM_MAP_CACHE: dict[str, str] | None = None
+
+
+def _resolve_room_names_by_mas() -> dict[str, str]:
+    """Return a ``{mas_id: room_name}`` mapping by querying the local backend.
+
+    The result is cached for the lifetime of the CLI process — `metrics show`
+    runs are short-lived, and rooms rarely churn within a single invocation.
+    On any failure (no backend reachable, request error) we return ``{}`` so
+    the caller can fall back to displaying raw mas_ids.
+    """
+    global _ROOM_MAP_CACHE
+    if _ROOM_MAP_CACHE is not None:
+        return _ROOM_MAP_CACHE
+    _ROOM_MAP_CACHE = {}
+    try:
+        from mycelium.config import MyceliumConfig
+
+        api_url = MyceliumConfig.load().server.api_url
+        if not api_url:
+            return _ROOM_MAP_CACHE
+        import httpx
+
+        resp = httpx.get(
+            f"{api_url.rstrip('/')}/api/rooms",
+            headers={"Accept": "application/json"},
+            timeout=2.0,
+        )
+        if resp.status_code != 200:
+            return _ROOM_MAP_CACHE
+        rooms = resp.json()
+        if not isinstance(rooms, list):
+            return _ROOM_MAP_CACHE
+        for r in rooms:
+            mas_id = r.get("mas_id")
+            name = r.get("name")
+            if mas_id and name:
+                _ROOM_MAP_CACHE[str(mas_id)] = str(name)
+    except Exception:
+        # Caching the empty dict is intentional — avoid retrying a
+        # failed lookup repeatedly within the same render pass.
+        pass
+    return _ROOM_MAP_CACHE
+
+
 def _collector_pid_file() -> Path:
     """Path to the spoke collector PID file."""
     return _metrics_dir() / "collector.pid"
@@ -2389,6 +2470,40 @@ def _render_knowledge_table(backend: dict | None) -> None:
     if skipped > 0:
         table.add_row("Skipped (dedupe)", _fmt_num(skipped))
 
+    # Per-MAS / per-room breakdown when the backend has tagged ingestions.
+    # We aggregate into ``{mas_id: {ingestions, errors, tokens}}`` then
+    # resolve mas_id → room name for display where possible.
+    by_mas: dict[str, dict[str, int]] = {}
+    for key, val in knowledge.items():
+        if not key.startswith("by_mas."):
+            continue
+        rest = key.removeprefix("by_mas.")
+        mas_id, _, metric = rest.partition(".")
+        if not mas_id or not metric:
+            continue
+        by_mas.setdefault(mas_id, {"ingestions": 0, "errors": 0, "estimated_input_tokens": 0})
+        if metric in by_mas[mas_id]:
+            by_mas[mas_id][metric] += int(val or 0)
+
+    if by_mas:
+        room_map = _resolve_room_names_by_mas()
+        table.add_section()
+        table.add_row("[dim]By room:[/dim]", "")
+        ranked = sorted(by_mas.items(), key=lambda kv: kv[1].get("ingestions", 0), reverse=True)
+        for mas_id, stats in ranked[:5]:
+            label = room_map.get(mas_id) or f"mas:{mas_id[:8]}"
+            n_ing = stats.get("ingestions", 0)
+            n_err = stats.get("errors", 0)
+            n_tok = stats.get("estimated_input_tokens", 0)
+            parts = [f"{_fmt_num(n_ing)} ingest"]
+            if n_tok > 0:
+                parts.append(f"~{_fmt_num(n_tok)} tok")
+            if n_err > 0:
+                parts.append(f"[red]{n_err} err[/red]")
+            table.add_row(f"  {label}", "  ·  ".join(parts))
+        if len(ranked) > 5:
+            table.add_row(f"  [dim]...and {len(ranked) - 5} more[/dim]", "")
+
     console.print(table)
     console.print()
 
@@ -2697,21 +2812,58 @@ def _render_coordination_table(backend: dict | None) -> None:
         avg = participants["sum"] / participants["count"]
         table.add_row("Avg participants/session", f"{avg:.1f}")
 
-    by_room_keys = sorted(k for k in coord if k.startswith("by_room."))
-    if by_room_keys:
+    # Aggregate per parent room across sessions. The raw counters are
+    # session-scoped (``by_room.<room>:session:<uuid>``); we sum them so a
+    # room with N session sub-rooms shows as a single line. Likewise for
+    # ``completed_by_room``, where we also break out success/failure.
+    def _parent_room(label: str) -> str:
+        return label.split(":session:", 1)[0] if ":session:" in label else label
+
+    rounds_by_room: dict[str, int] = {}
+    for key, val in coord.items():
+        if not key.startswith("by_room."):
+            continue
+        room = _parent_room(key.removeprefix("by_room."))
+        rounds_by_room[room] = rounds_by_room.get(room, 0) + int(val or 0)
+
+    completed_by_room: dict[str, dict[str, int]] = {}
+    for key, val in coord.items():
+        if not key.startswith("completed_by_room."):
+            continue
+        suffix = key.removeprefix("completed_by_room.")
+        # Two shapes: ``<sub-room>`` (total) and ``<sub-room>.<outcome>``.
+        head, _, outcome = suffix.rpartition(".")
+        if outcome in {"success", "failure"} and head:
+            room = _parent_room(head)
+            completed_by_room.setdefault(room, {"total": 0, "success": 0, "failure": 0})[
+                outcome
+            ] += int(val or 0)
+        else:
+            room = _parent_room(suffix)
+            completed_by_room.setdefault(room, {"total": 0, "success": 0, "failure": 0})[
+                "total"
+            ] += int(val or 0)
+
+    if rounds_by_room or completed_by_room:
         table.add_section()
-        table.add_row("[dim]Rounds by room:[/dim]", "")
-        for key in by_room_keys[:5]:
-            label = key.replace("by_room.", "")
-            # Strip ``:session:<uuid>`` suffix — the session id is high-
-            # cardinality noise that bloats the column on 80-col
-            # terminals and forces every histogram row to wrap. The room
-            # name (e.g. ``dist-e2e-18e8b583``) is the meaningful key.
-            if ":session:" in label:
-                label = label.split(":session:", 1)[0]
-            table.add_row(f"  {label}", _fmt_num(coord[key]))
-        if len(by_room_keys) > 5:
-            table.add_row(f"  [dim]...and {len(by_room_keys) - 5} more[/dim]", "")
+        table.add_row("[dim]By room:[/dim]", "")
+        # Sort by total rounds desc so the busiest room leads.
+        ranked = sorted(rounds_by_room.items(), key=lambda kv: kv[1], reverse=True)
+        for room, n_rounds in ranked[:5]:
+            stats = completed_by_room.get(room, {"total": 0, "success": 0, "failure": 0})
+            n_done = stats["total"]
+            n_ok = stats["success"]
+            n_bad = stats["failure"]
+            # ``5 rounds  ·  3 done (3✓ 0✗)`` — only show the breakdown if
+            # we actually have completion stats for the room.
+            parts = [f"{_fmt_num(n_rounds)} rounds"]
+            if n_done > 0:
+                ok_str = f"[green]{n_ok}✓[/green]" if n_ok else f"{n_ok}✓"
+                bad_str = f"[red]{n_bad}✗[/red]" if n_bad else f"{n_bad}✗"
+                parts.append(f"{_fmt_num(n_done)} done ({ok_str} {bad_str})")
+            table.add_row(f"  {room}", "  ·  ".join(parts))
+        if len(ranked) > 5:
+            table.add_row(f"  [dim]...and {len(ranked) - 5} more[/dim]", "")
 
     console.print(table)
     console.print()
@@ -3120,6 +3272,55 @@ def _render_cost_estimates(
             oc_pricing_label,
         )
         total_cost += oc_reported_cost
+
+        # Per-room sub-rows: aggregate session-level tokens by the agent's
+        # configured room (from the local openclaw.json mycelium-room
+        # channel block).  We can't compute per-room cost reliably without
+        # provider-reported cost per session, so we estimate from the
+        # configured CFN model — labelled accordingly.  Sessions whose
+        # agent isn't in the local channel config are bucketed under
+        # ``other``.
+        sessions = (otel or {}).get("sessions", []) if otel else []
+        agent_room = _resolve_agent_to_room()
+        if sessions and agent_room:
+            by_room: dict[str, dict[str, int]] = {}
+            for s in sessions:
+                agent = s.get("agent")
+                tok = s.get("tokens", {}) or {}
+                room = agent_room.get(agent or "", "other")
+                bucket = by_room.setdefault(
+                    room, {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}
+                )
+                for k in ("input", "output", "cache_read", "cache_write"):
+                    bucket[k] += int(tok.get(k, 0) or 0)
+
+            ranked = sorted(
+                by_room.items(),
+                key=lambda kv: (
+                    kv[1]["input"] + kv[1]["output"] + kv[1]["cache_read"] + kv[1]["cache_write"]
+                ),
+                reverse=True,
+            )
+            shown = [(r, b) for r, b in ranked if any(b.values())]
+            if shown:
+                for room, b in shown[:5]:
+                    room_total = b["input"] + b["output"] + b["cache_read"] + b["cache_write"]
+                    if room_total == 0:
+                        continue
+                    room_est = _estimate_cost(
+                        input_tokens=b["input"],
+                        output_tokens=b["output"],
+                        cache_read_tokens=b["cache_read"],
+                        cache_write_tokens=b["cache_write"],
+                        model=cfn_model,
+                    )
+                    label = "other (no channel match)" if room == "other" else room
+                    table.add_row(
+                        f"  [dim]{label}[/dim]",
+                        f"[dim]{_fmt_num(room_total)}[/dim]",
+                        f"[dim]{_fmt_cost(room_est)}[/dim]",
+                        "[dim]est. (local agents only)[/dim]",
+                    )
 
     # ── CFN Engines (estimated from tokens + pricing.json) ─────────────
     be_counters = (backend or {}).get("counters", {})

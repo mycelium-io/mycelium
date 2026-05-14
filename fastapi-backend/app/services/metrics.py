@@ -251,6 +251,7 @@ def record_knowledge_ingestion(
     duration_ms: float = 0.0,
     error: bool = False,
     estimated_input_tokens: int = 0,
+    mas_id: str | None = None,
 ) -> None:
     _inc("knowledge", "ingestions")
     _inc("knowledge", "concepts_extracted", concepts)
@@ -262,6 +263,12 @@ def record_knowledge_ingestion(
     if estimated_input_tokens > 0:
         _inc("knowledge", "estimated_input_tokens", estimated_input_tokens)
         _record_histogram("knowledge.estimated_input_tokens", float(estimated_input_tokens))
+    if mas_id:
+        _inc("knowledge", f"by_mas.{mas_id}.ingestions")
+        if error:
+            _inc("knowledge", f"by_mas.{mas_id}.errors")
+        if estimated_input_tokens > 0:
+            _inc("knowledge", f"by_mas.{mas_id}.estimated_input_tokens", estimated_input_tokens)
 
 
 @_safe
