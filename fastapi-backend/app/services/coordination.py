@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Literal
 from urllib.parse import urlparse
+from uuid import UUID
 
 import asyncpg
 from rapidfuzz import fuzz as _fuzz
@@ -1499,7 +1500,7 @@ async def _post_message(room_name: str, message_type: str, content: str) -> None
     """Insert a coordination message to DB and notify SSE subscribers."""
     async with async_session_maker() as db:
         msg_room_name: str | None = room_name
-        msg_session_id: str | None = None
+        msg_session_id: UUID | None = None
         if ":session:" in room_name:
             parent, _, short_id = room_name.partition(":session:")
             result = await db.execute(
@@ -1511,7 +1512,7 @@ async def _post_message(room_name: str, message_type: str, content: str) -> None
             session_id = result.scalar_one_or_none()
             if session_id is not None:
                 msg_room_name = None
-                msg_session_id = str(session_id)
+                msg_session_id = session_id
         msg = Message(
             room_name=msg_room_name,
             coordination_session_id=msg_session_id,

@@ -102,6 +102,7 @@ async def _spawn_coordination_session(parent_name: str, db: AsyncSession) -> Coo
             CoordinationSession.state.in_(["idle", "waiting", "negotiating"]),
         )
         .order_by(CoordinationSession.created_at.desc())
+        .limit(1)
     )
     existing = result.scalar_one_or_none()
     if existing:
@@ -440,7 +441,11 @@ async def leave_room(
     db: AsyncSession = Depends(get_async_session),
 ):
     """Remove a participant (agent leaves the session)."""
-    result = await db.execute(select(Participant).where(Participant.id == session_id))
+    result = await db.execute(
+        select(Participant)
+        .join(CoordinationSession, Participant.coordination_session_id == CoordinationSession.id)
+        .where(Participant.id == session_id, CoordinationSession.parent_room_name == room_name)
+    )
     participant = result.scalar_one_or_none()
     if not participant:
         raise HTTPException(status_code=404, detail="Participant not found")
