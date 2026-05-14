@@ -20,7 +20,6 @@
 
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 
-import { lookupTick } from "../channel/tick-stash.js";
 import { type ChannelConfig, getApiUrl, readMemoryFileContent, resolveHandle } from "../config.js";
 import { apiPost, fetchBackendHealth } from "../http.js";
 import { MYCELIUM_INSTRUCTIONS } from "../instructions.js";
@@ -168,23 +167,15 @@ export function installSession(
 
       const contextParts: string[] = [];
 
-      // Coordination context: read the latest tick the channel module stashed
-      // for this agent. The channel sees the raw payload when it dispatches
-      // the formatted instruction; we inject the full JSON here so the agent
-      // has exact offer keys + valid_keys when composing a counter-offer.
-      //
-      // Prior behaviour fetched messages from the parent room — but ticks
-      // attach to the CoordinationSession, never to the parent room, so that
-      // path returned nothing useful (issue #276). Using the stash also keeps
-      // before_agent_start free of HTTP round-trips.
-      if (agentId) {
-        const stashed = lookupTick(agentId);
-        if (stashed) {
-          contextParts.push(
-            `[Mycelium — coordination tick]\nSession: ${stashed.sessionRoom}\n\n${JSON.stringify(stashed.payload, null, 2)}`,
-          );
-        }
-      }
+      // Coordination context lives in the formatted instruction dispatched by
+      // the channel module (formatTickInstruction in channel/route.ts). That
+      // string is the agent's sole source of tick information per CLAUDE.md —
+      // we used to *also* inject the raw tick payload here as prependContext
+      // (#279), which produced two competing representations of the same tick
+      // and forced the agent to reconcile (#285). The formatted string now
+      // carries every field the agent needs (valid offer keys on normal ticks,
+      // valid_keys + recovery command on error ticks), so this hook is back to
+      // just memory + system instructions.
 
       const memory = readMemoryFileContent();
       if (memory) {
