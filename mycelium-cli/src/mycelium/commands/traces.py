@@ -69,6 +69,7 @@ def _default_summary(ctx: typer.Context) -> None:
         # through to the underlying function.
         summary(since="1h", host=None, agent=None, room=None)
 
+
 console = Console()
 
 # ── Path helpers ──────────────────────────────────────────────────────────
@@ -421,8 +422,16 @@ def _row_matches_attr_filter(row: sqlite3.Row, agent: str | None, room: str | No
 
 SinceOpt = typer.Option("1h", "--since", help="Time window: 30s, 15m, 2h, 1d.")
 HostOpt = typer.Option(None, "--host", help="Filter to a single host (e.g. oclw3, oclw4).")
-AgentOpt = typer.Option(None, "--agent", help="Filter to a single agent (matched against openclaw.agent / gen_ai.agent.id).")
-RoomOpt = typer.Option(None, "--room", help="Filter to a room id (Matrix room id or mycelium room name; substring match).")
+AgentOpt = typer.Option(
+    None,
+    "--agent",
+    help="Filter to a single agent (matched against openclaw.agent / gen_ai.agent.id).",
+)
+RoomOpt = typer.Option(
+    None,
+    "--room",
+    help="Filter to a room id (Matrix room id or mycelium room name; substring match).",
+)
 NameOpt = typer.Option(None, "--name", help="Filter span name (LIKE pattern, * wildcard).")
 StatusOpt = typer.Option(None, "--status", help="Filter by span status: ok, error, unset.")
 LimitOpt = typer.Option(20, "--limit", "-n", help="Max rows to display.")
@@ -496,7 +505,10 @@ def summary(
     table.add_row("Hosts", str(len(hosts)))
     table.add_row("Agents", str(sum(1 for k in agents if k != "-")))
     table.add_row("Rooms", str(len(rooms)))
-    table.add_row("Channel kinds", ", ".join(f"{k}({n})" for k, n in chan_kinds.most_common() if k != "-") or "-")
+    table.add_row(
+        "Channel kinds",
+        ", ".join(f"{k}({n})" for k, n in chan_kinds.most_common() if k != "-") or "-",
+    )
     table.add_row("Distinct models", str(len(models)))
     table.add_row("Tool-call spans", str(tool_calls))
     table.add_row("Tokens in/out", f"{tokens_in:,} / {tokens_out:,}")
@@ -585,7 +597,9 @@ def by_host(
 ) -> None:
     """Group spans by source host."""
     rows = _load_filtered_rows(since, None, agent, room)
-    _print_groupby(f"Spans by host (since {since})", rows, lambda r, _a: _alias_host(r["host"]) or "-", limit)
+    _print_groupby(
+        f"Spans by host (since {since})", rows, lambda r, _a: _alias_host(r["host"]) or "-", limit
+    )
 
 
 @app.command("by-agent")
@@ -913,9 +927,9 @@ def show_trace(
         toks_out = int(a.get("gen_ai.usage.output_tokens") or 0)
         if toks_in or toks_out:
             notes.append(f"tok={toks_in}/{toks_out}")
-        if (tn := _attr_first(a, "openclaw.toolName", "gen_ai.tool.name")):
+        if tn := _attr_first(a, "openclaw.toolName", "gen_ai.tool.name"):
             notes.append(f"tool={tn}")
-        if (oc := _attr_first(a, "openclaw.outcome")):
+        if oc := _attr_first(a, "openclaw.outcome"):
             notes.append(f"outcome={oc}")
         if (xc := a.get("openclaw.exec.exit_code")) is not None:
             notes.append(f"exit={xc}")
@@ -968,9 +982,7 @@ def show_attrs(
 ) -> None:
     """Dump the full attribute JSON for a single span."""
     with _open_db() as conn:
-        row = conn.execute(
-            "SELECT * FROM spans WHERE span_id = ?;", (span_id,)
-        ).fetchone()
+        row = conn.execute("SELECT * FROM spans WHERE span_id = ?;", (span_id,)).fetchone()
     if row is None:
         typer.secho(f"✗ No span with id {span_id!r}.", fg=typer.colors.RED)
         raise typer.Exit(1)
@@ -1085,9 +1097,7 @@ def agents_overview(
     table.add_column("Models", overflow="fold")
     table.add_column("Tokens in/out", justify="right")
     for agent_id, info in sorted(by_agent.items(), key=lambda kv: -kv[1]["spans"]):
-        err_cell = (
-            f"[red]{info['errors']}[/red]" if info["errors"] else "0"
-        )
+        err_cell = f"[red]{info['errors']}[/red]" if info["errors"] else "0"
         table.add_row(
             agent_id,
             str(info["spans"]),
@@ -1132,9 +1142,7 @@ def events_view(
                 (trace_or_span, trace_or_span),
             ).fetchone()
             if row is None:
-                typer.secho(
-                    f"✗ No spans found for {trace_or_span!r}.", fg=typer.colors.RED
-                )
+                typer.secho(f"✗ No spans found for {trace_or_span!r}.", fg=typer.colors.RED)
                 raise typer.Exit(1)
             trace_id = row["trace_id"]
             spans = conn.execute(
@@ -1201,8 +1209,6 @@ def schema() -> None:
         for k in _parse_attrs(r["attributes"]):
             counts[k] += 1
     typer.echo("")
-    typer.secho(
-        f"Top attribute keys (last hour, sample of {len(rows)} spans):", bold=True
-    )
+    typer.secho(f"Top attribute keys (last hour, sample of {len(rows)} spans):", bold=True)
     for k, n in counts.most_common(40):
         typer.echo(f"  {n:5d}  {k}")

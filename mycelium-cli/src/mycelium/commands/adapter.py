@@ -1757,7 +1757,6 @@ def _configure_otel(
     return True
 
 
-
 def _restart_gateway_if_needed(profile: str | None, container: str | None) -> None:
     """Restart the OpenClaw gateway service to pick up config changes."""
     typer.echo("")
