@@ -51,12 +51,14 @@ class OpenClawAdapter(AgentAdapter):
         openclaw_agent: str | None = None,
         model: str | None = None,
         openclaw_profile: str | None = None,
+        copy_auth_from: str | None = None,
     ) -> None:
         # These are openclaw-only `agent add` flags, threaded in at
-        # construction so build_manifest/register stay uniform across adapters.
+        # construction so the base AddOptions stays adapter-agnostic.
         self._explicit_agent = openclaw_agent
         self._model = model
         self._profile = openclaw_profile
+        self._copy_auth_from = copy_auth_from
 
     # ── path + process helpers ──────────────────────────────────────────────
 
@@ -146,6 +148,46 @@ class OpenClawAdapter(AgentAdapter):
         console.print(
             f"  [green]created[/green] OpenClaw agent [cyan]{agent_id}[/cyan] "
             f"(model: {model_note}, workspace {workspace})"
+        )
+
+        if self._copy_auth_from:
+            self._seed_auth(agent_id=agent_id, source_agent=self._copy_auth_from)
+
+    def _seed_auth(self, *, agent_id: str, source_agent: str) -> None:
+        """Seed the new agent's auth-profiles.json from an existing agent.
+
+        `openclaw agents add --non-interactive` creates an agent with an
+        EMPTY agent dir — no auth-profiles.json — so it can't authenticate
+        its model and every dispatch hangs in `processing` (verified on
+        2026.5.7). OpenClaw's own auth surface (`openclaw models auth`) is
+        per-agent and interactive/one-token-at-a-time; the file format is
+        stable (`{version, profiles:{...}}`), so the robust version-
+        independent fix is to copy the file OpenClaw itself reads. This is
+        opt-in (the user named the source) and intentionally duplicates a
+        secret — log it loudly.
+        """
+        state_dir, _ = self._paths()
+        src = state_dir / "agents" / source_agent / "agent" / "auth-profiles.json"
+        dst = state_dir / "agents" / agent_id / "agent" / "auth-profiles.json"
+        if not src.exists():
+            raise OpenClawError(
+                f"--copy-auth-from {source_agent}: no auth-profiles.json at {src}. "
+                f"Pick an agent that has authed (see ~/.openclaw/agents/*/agent/)."
+            )
+        try:
+            profiles = json.loads(src.read_text()).get("profiles", {})
+        except (OSError, ValueError) as exc:
+            raise OpenClawError(f"{src} is unreadable: {exc}") from exc
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, dst)
+        try:
+            dst.chmod(0o600)
+        except OSError:
+            pass
+        console.print(
+            f"  [yellow]auth[/yellow] copied {len(profiles)} profile(s) "
+            f"[{', '.join(sorted(profiles)) or '—'}] from "
+            f"[cyan]{source_agent}[/cyan] → {dst} [dim](contains secrets)[/dim]"
         )
 
     # ── channel config (rooms[] fan-out) ────────────────────────────────────

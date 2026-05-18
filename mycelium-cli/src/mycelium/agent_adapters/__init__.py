@@ -25,6 +25,7 @@ def get_adapter(
     openclaw_agent: str | None = None,
     model: str | None = None,
     openclaw_profile: str | None = None,
+    copy_auth_from: str | None = None,
 ) -> AgentAdapter:
     """Return an adapter instance for *name*.
 
@@ -40,5 +41,6 @@ def get_adapter(
             openclaw_agent=openclaw_agent,
             model=model,
             openclaw_profile=openclaw_profile,
+            copy_auth_from=copy_auth_from,
         )
     raise ValueError(f"unknown adapter: {name!r}")

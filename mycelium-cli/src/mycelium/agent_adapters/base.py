@@ -33,17 +33,16 @@ if TYPE_CHECKING:
 
 @dataclass
 class AddOptions:
-    """Inputs the command layer collected for `agent add`, passed verbatim.
+    """Adapter-agnostic context for `agent add`.
 
-    Adapters read only the fields they care about. Keeping this a single bag
-    means adding an adapter never changes the command-layer signature.
+    Only fields that are meaningful to *every* adapter live here. Adapter-
+    specific options (cwd, openclaw_agent, model, copy_auth_from, …) are NOT
+    here — they're passed straight to the concrete adapter's constructor via
+    ``get_adapter(...)`` and stored on the instance. That keeps this base
+    type from accreting one field per adapter as runtimes are added.
     """
 
     room: str
-    # openclaw
-    openclaw_agent: str | None = None
-    model: str | None = None
-    openclaw_profile: str | None = None
 
 
 class AgentAdapter(ABC):

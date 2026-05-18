@@ -181,6 +181,15 @@ def agent_add(
         "--openclaw-profile",
         help="openclaw: target a named OpenClaw profile (e.g. 'work' → ~/.openclaw-work/).",
     ),
+    copy_auth_from: str | None = typer.Option(
+        None,
+        "--copy-auth-from",
+        help=(
+            "openclaw create-mode: copy auth-profiles.json from this existing "
+            "OpenClaw agent so the new one can authenticate (it's created with "
+            "no creds otherwise). Duplicates a secret — choose deliberately."
+        ),
+    ),
     room: str | None = typer.Option(
         None, "--room", "-r", help="Room to register in (defaults to active room)."
     ),
@@ -231,13 +240,9 @@ def agent_add(
             openclaw_agent=openclaw_agent,
             model=model,
             openclaw_profile=openclaw_profile,
+            copy_auth_from=copy_auth_from,
         )
-        opts = AddOptions(
-            room=room_name,
-            openclaw_agent=openclaw_agent,
-            model=model,
-            openclaw_profile=openclaw_profile,
-        )
+        opts = AddOptions(room=room_name)
 
         try:
             manifest = impl.build_manifest(
