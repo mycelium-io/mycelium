@@ -32,9 +32,7 @@ log = logging.getLogger("mycelium.daemon")
 _DEPTH_WINDOW_S = 60.0
 
 
-def _identity_preamble(
-    *, handle: str, room: str, description: str, sender: str, notes: str
-) -> str:
+def _identity_preamble(*, handle: str, room: str, description: str, sender: str, notes: str) -> str:
     """System-prompt preamble injected into every claude -p spawn.
 
     Without this, the spawned Claude has no idea it's an addressed agent —
@@ -43,9 +41,7 @@ def _identity_preamble(
     identity via MYCELIUM_AGENT_HANDLE + before_agent_start; cold-start
     Claude Code has no env channel for that, so we bake it into the prompt.)
     """
-    desc_block = (
-        f"\n## Your scope\n\n{description.strip()}\n" if description.strip() else ""
-    )
+    desc_block = f"\n## Your scope\n\n{description.strip()}\n" if description.strip() else ""
     notes_block = (
         f"\n## Your persistent notes\n\n{notes.strip()}\n"
         if notes.strip()
@@ -76,6 +72,7 @@ prompt below. Your reply will be posted to that room *as @{handle}*, so:
 If the prompt is exactly one of `abort`, `cancel`, `stop`, or `status`,
 the daemon handles it before you see it — you'll never receive those.
 """
+
 
 # Reserved verbs at the start of an addressed message body. Anything not in
 # this set goes through to claude -p as a normal prompt.
@@ -196,9 +193,7 @@ def _parse_claude_output(stdout: str) -> tuple[str, float]:
         return stdout, 0.0
 
     def _extract_from_obj(obj: dict) -> tuple[str | None, float]:
-        msg = (
-            obj.get("result") or obj.get("final_message") or obj.get("text")
-        )
+        msg = obj.get("result") or obj.get("final_message") or obj.get("text")
         cost = float(obj.get("total_cost_usd") or obj.get("cost_usd") or 0.0)
         return msg, cost
 

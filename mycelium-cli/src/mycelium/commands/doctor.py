@@ -1072,14 +1072,10 @@ def _check_openclaw_channel_config() -> CheckResult:
     # view that's valid if at least one room is configured anywhere.
     normalized_rooms: list[tuple[str, list]] = []
     if channel.get("room"):
-        normalized_rooms.append(
-            (str(channel["room"]), list(channel.get("agents") or []))
-        )
+        normalized_rooms.append((str(channel["room"]), list(channel.get("agents") or [])))
     for entry in channel.get("rooms") or []:
         if isinstance(entry, dict) and entry.get("room"):
-            normalized_rooms.append(
-                (str(entry["room"]), list(entry.get("agents") or []))
-            )
+            normalized_rooms.append((str(entry["room"]), list(entry.get("agents") or [])))
 
     if not normalized_rooms:
         return CheckResult(
@@ -1121,10 +1117,7 @@ def _check_openclaw_channel_config() -> CheckResult:
     return CheckResult(
         name="channel config",
         status="ok",
-        message=(
-            f"{len(normalized_rooms)} room(s) [{summary}] "
-            f"requireMention={require_mention}"
-        ),
+        message=(f"{len(normalized_rooms)} room(s) [{summary}] requireMention={require_mention}"),
     )
 
 
@@ -1214,9 +1207,7 @@ def _claude_daemon_installed() -> bool:
     if platform.system() == "Darwin":
         return (home / "Library" / "LaunchAgents" / "io.mycelium.cc-daemon.plist").exists()
     if platform.system() == "Linux":
-        return (
-            home / ".config" / "systemd" / "user" / "mycelium-cc-daemon.service"
-        ).exists()
+        return (home / ".config" / "systemd" / "user" / "mycelium-cc-daemon.service").exists()
     return False
 
 
@@ -1293,9 +1284,7 @@ def _check_cc_daemon_running() -> CheckResult:
         name="cc-daemon health",
         status="warning" if errors else "ok",
         message=(
-            "running, no errors"
-            if not errors
-            else f"running, but {errors} error(s) in last hour"
+            "running, no errors" if not errors else f"running, but {errors} error(s) in last hour"
         ),
         details=details,
     )

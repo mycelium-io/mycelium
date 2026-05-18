@@ -227,9 +227,7 @@ class AgentManifest(BaseModel):
     def check_adapter_requirements(self) -> AgentManifest:
         if self.adapter == "claude_code" and not (self.cwd and self.cwd.strip()):
             raise ValueError("claude_code agents require a non-empty cwd")
-        if self.adapter == "openclaw" and not (
-            self.openclaw_agent and self.openclaw_agent.strip()
-        ):
+        if self.adapter == "openclaw" and not (self.openclaw_agent and self.openclaw_agent.strip()):
             raise ValueError("openclaw agents require an openclaw_agent id")
         return self
 

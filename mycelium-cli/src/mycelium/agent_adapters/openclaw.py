@@ -123,15 +123,18 @@ class OpenClawAdapter(AgentAdapter):
         # `--model <string>` writes an unresolvable record and the agent
         # session hangs in `processing` forever with no error).
         cmd = [
-            "openclaw", "agents", "add", agent_id,
-            "--non-interactive", "--workspace", str(workspace),
+            "openclaw",
+            "agents",
+            "add",
+            agent_id,
+            "--non-interactive",
+            "--workspace",
+            str(workspace),
         ]
         if self._model:
             cmd += ["--model", self._model]
 
-        result = subprocess.run(
-            self._oc_cmd(cmd), text=True, capture_output=True
-        )
+        result = subprocess.run(self._oc_cmd(cmd), text=True, capture_output=True)
         combined = ((result.stderr or "") + (result.stdout or "")).lower()
         if result.returncode != 0 and "already exists" not in combined:
             raise OpenClawError(

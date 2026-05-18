@@ -1945,10 +1945,7 @@ def _install_runner_script() -> Path:
     bin_dir.mkdir(parents=True, exist_ok=True)
     runner = bin_dir / _CC_DAEMON_RUNNER
     python = _resolve_python_binary()
-    runner.write_text(
-        "#!/usr/bin/env bash\n"
-        f'exec "{python}" -m mycelium.daemon "$@"\n'
-    )
+    runner.write_text(f'#!/usr/bin/env bash\nexec "{python}" -m mycelium.daemon "$@"\n')
     runner.chmod(0o755)
     return runner
 
