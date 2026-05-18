@@ -188,13 +188,16 @@ def _parse_claude_output(stdout: str) -> tuple[str, float]:
     handle both, and fall back to the raw stdout when neither matches.
     """
     try:
-        parsed = json.loads(stdout)
+        parsed: Any = json.loads(stdout)
     except json.JSONDecodeError:
         return stdout, 0.0
 
-    def _extract_from_obj(obj: dict) -> tuple[str | None, float]:
-        msg = obj.get("result") or obj.get("final_message") or obj.get("text")
-        cost = float(obj.get("total_cost_usd") or obj.get("cost_usd") or 0.0)
+    def _extract_from_obj(obj: Any) -> tuple[str | None, float]:
+        if not isinstance(obj, dict):
+            return None, 0.0
+        o: dict[str, Any] = obj
+        msg = o.get("result") or o.get("final_message") or o.get("text")
+        cost = float(o.get("total_cost_usd") or o.get("cost_usd") or 0.0)
         return msg, cost
 
     if isinstance(parsed, dict):
@@ -202,20 +205,21 @@ def _parse_claude_output(stdout: str) -> tuple[str, float]:
         return msg or stdout, cost
 
     if isinstance(parsed, list):
+        items: list[Any] = list(parsed)
         # Walk back to front — `result` entries land last.
-        for entry in reversed(parsed):
-            if not isinstance(entry, dict):
+        for entry in reversed(items):
+            if not (isinstance(entry, dict) and entry.get("type") == "result"):
                 continue
-            if entry.get("type") == "result":
-                msg, cost = _extract_from_obj(entry)
-                if msg is not None:
-                    return msg, cost
+            msg, cost = _extract_from_obj(entry)
+            if msg is not None:
+                return msg, cost
         # Fall back to the most recent assistant message.
-        for entry in reversed(parsed):
-            if not isinstance(entry, dict) or entry.get("type") != "assistant":
+        for entry in reversed(items):
+            if not (isinstance(entry, dict) and entry.get("type") == "assistant"):
                 continue
-            message = entry.get("message") or {}
-            for piece in message.get("content") or []:
+            message: Any = entry.get("message") or {}
+            content: Any = message.get("content") if isinstance(message, dict) else None
+            for piece in content or []:
                 if isinstance(piece, dict) and piece.get("type") == "text":
                     return piece.get("text") or stdout, 0.0
 
@@ -619,7 +623,11 @@ async def _dispatch_one(
         body = _extract_body(prompt, manifest.handle) or prompt
         result = await spawn_claude(
             claude_binary=daemon_cfg.claude_binary,
-            cwd=manifest.cwd,
+            # cc-daemon only dispatches claude_code manifests, which the
+            # AgentManifest validator guarantees have a cwd. The `or ""`
+            # is a type-safe floor — an empty cwd makes spawn_claude return
+            # its clean "cwd is not a directory" error rather than crash.
+            cwd=manifest.cwd or "",
             prompt=body,
             notes=notes,
             state=state,

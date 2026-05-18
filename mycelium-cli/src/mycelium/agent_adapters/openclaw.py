@@ -23,7 +23,7 @@ import json
 import shutil
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from rich.console import Console
 
@@ -195,9 +195,9 @@ class OpenClawAdapter(AgentAdapter):
 
     # ── channel config (rooms[] fan-out) ────────────────────────────────────
 
-    def _read_block(self) -> tuple[dict, Path]:
+    def _read_block(self) -> tuple[dict[str, Any], Path]:
         _state_dir, oc_json = self._paths()
-        oc = {}
+        oc: dict[str, Any] = {}
         if oc_json.exists():
             try:
                 oc = json.loads(oc_json.read_text())
@@ -206,9 +206,9 @@ class OpenClawAdapter(AgentAdapter):
         return oc, oc_json
 
     @staticmethod
-    def _normalize_rooms(block: dict) -> list[dict]:
+    def _normalize_rooms(block: dict[str, Any]) -> list[dict[str, Any]]:
         """Fold a legacy top-level room/agents into rooms[]; return rooms[]."""
-        rooms: list[dict] = []
+        rooms: list[dict[str, Any]] = []
         seen: set[str] = set()
         legacy_room = block.pop("room", None)
         legacy_agents = block.pop("agents", None)
@@ -237,12 +237,13 @@ class OpenClawAdapter(AgentAdapter):
         block.setdefault("requireMention", True)
 
         rooms = self._normalize_rooms(block)
-        target = next((r for r in rooms if r["room"] == room), None)
+        target: dict[str, Any] | None = next((r for r in rooms if r["room"] == room), None)
         if target is None:
             target = {"room": room, "agents": []}
             rooms.append(target)
-        if agent_id not in target["agents"]:
-            target["agents"].append(agent_id)
+        agents: list[str] = target["agents"]
+        if agent_id not in agents:
+            agents.append(agent_id)
 
         block["rooms"] = rooms
         channels[_CHANNEL_ID] = block
