@@ -18,6 +18,7 @@ from mycelium_e2e.bundle import (
     test_consensus_cli_e2e as section_consensus_cli_e2e,
     test_consensus_negotiation as section_consensus_negotiation,
     test_demo_script_negotiation_coverage as section_demo_script_negotiation,
+    test_doctor_clean as section_doctor_clean,
     test_ioc_cfn as section_ioc_cfn,
     test_ioc_full_path as section_ioc_full_path,
     test_ioc_negotiation_path as section_ioc_negotiation_path,
@@ -27,6 +28,7 @@ from mycelium_e2e.bundle import (
     test_reindex as section_reindex,
     test_room_lifecycle as section_room_lifecycle,
     test_semantic_search as section_semantic_search,
+    test_session_join_idempotency as section_session_join_idempotency,
     test_shared_memory_cli_e2e as section_shared_memory_cli_e2e,
     test_sync_negotiation_cli_e2e as section_sync_negotiation_cli_e2e,
     test_synthesis as section_synthesis,
@@ -93,6 +95,29 @@ def test_05_synthesis(bundle_ctx: TestContext) -> None:
 def test_06_consensus_negotiation(bundle_ctx: TestContext) -> None:
     n = len(bundle_ctx.results)
     section_consensus_negotiation(bundle_ctx)
+    _assert_new_checks(bundle_ctx, n)
+
+
+def test_06b_session_join_idempotency(bundle_ctx: TestContext) -> None:
+    """Regression: PR #286 — session join is idempotent (#280, #284).
+
+    Two simultaneous first-joins to a new room must produce exactly one
+    CoordinationSession (no fork); a handle joining twice must produce one
+    Participant row (no duplicate that breaks NegMAS quorum at 2N).
+    """
+    n = len(bundle_ctx.results)
+    section_session_join_idempotency(bundle_ctx)
+    _assert_new_checks(bundle_ctx, n)
+
+
+def test_06c_doctor_clean(bundle_ctx: TestContext) -> None:
+    """`mycelium doctor` reports no error-level checks.
+
+    Catches stale alembic migrations (PR #273) and adapter drift before
+    downstream tests start failing in confusing ways.
+    """
+    n = len(bundle_ctx.results)
+    section_doctor_clean(bundle_ctx)
     _assert_new_checks(bundle_ctx, n)
 
 
