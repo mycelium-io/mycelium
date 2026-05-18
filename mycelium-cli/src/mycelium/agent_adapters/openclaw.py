@@ -111,39 +111,24 @@ class OpenClawAdapter(AgentAdapter):
     # ── create / adopt ──────────────────────────────────────────────────────
 
     def _create_agent(self, *, agent_id: str, description: str) -> None:
-        state_dir, oc_json = self._paths()
+        state_dir, _oc_json = self._paths()
         workspace = state_dir / "workspaces" / agent_id
 
-        model = self._model
-        if not model and oc_json.exists():
-            try:
-                oc = json.loads(oc_json.read_text())
-                model = oc.get("agents", {}).get("defaults", {}).get("model") or None
-            except (OSError, ValueError):
-                model = None
-        if not model:
-            raise OpenClawError(
-                "No model for the new OpenClaw agent. Pass --model "
-                "(e.g. anthropic/claude-haiku-4-5-20251001) or set "
-                "agents.defaults.model in openclaw.json."
-            )
+        # Only override the model when the user explicitly asked. Otherwise
+        # inherit openclaw's own `agents.defaults.model` — that default is
+        # known-good for the installed openclaw version (it may be the
+        # structured {primary: ...} form on newer builds; passing a bare
+        # `--model <string>` writes an unresolvable record and the agent
+        # session hangs in `processing` forever with no error).
+        cmd = [
+            "openclaw", "agents", "add", agent_id,
+            "--non-interactive", "--workspace", str(workspace),
+        ]
+        if self._model:
+            cmd += ["--model", self._model]
 
         result = subprocess.run(
-            self._oc_cmd(
-                [
-                    "openclaw",
-                    "agents",
-                    "add",
-                    agent_id,
-                    "--non-interactive",
-                    "--workspace",
-                    str(workspace),
-                    "--model",
-                    model,
-                ]
-            ),
-            text=True,
-            capture_output=True,
+            self._oc_cmd(cmd), text=True, capture_output=True
         )
         combined = ((result.stderr or "") + (result.stdout or "")).lower()
         if result.returncode != 0 and "already exists" not in combined:
@@ -157,9 +142,10 @@ class OpenClawAdapter(AgentAdapter):
             workspace.mkdir(parents=True, exist_ok=True)
             (workspace / "SOUL.md").write_text(description.strip() + "\n")
 
+        model_note = self._model or "openclaw default"
         console.print(
             f"  [green]created[/green] OpenClaw agent [cyan]{agent_id}[/cyan] "
-            f"(model {model}, workspace {workspace})"
+            f"(model: {model_note}, workspace {workspace})"
         )
 
     # ── channel config (rooms[] fan-out) ────────────────────────────────────
@@ -254,15 +240,20 @@ class OpenClawAdapter(AgentAdapter):
         return True
 
     def _destroy_agent(self, agent_id: str) -> None:
+        # The subcommand is `agents delete <id>` on openclaw 2026.5.7
+        # (verified via `openclaw agents --help`: "delete — Delete an agent
+        # and prune workspace/state"). It prunes the workspace itself, so the
+        # explicit rmtree below is just a belt-and-suspenders fallback for
+        # custom --workspace paths openclaw might not track.
         result = subprocess.run(
-            self._oc_cmd(["openclaw", "agents", "remove", agent_id, "--non-interactive"]),
+            self._oc_cmd(["openclaw", "agents", "delete", agent_id]),
             text=True,
             capture_output=True,
         )
         combined = ((result.stderr or "") + (result.stdout or "")).lower()
         if result.returncode != 0 and "not found" not in combined and "no such" not in combined:
             console.print(
-                f"  [yellow]openclaw agents remove {agent_id} returned "
+                f"  [yellow]openclaw agents delete {agent_id} returned "
                 f"{result.returncode}[/yellow]: "
                 f"{(result.stderr or result.stdout).strip()[:160]}"
             )
