@@ -30,11 +30,11 @@ from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
 
-from mycelium.agent_adapters import AddOptions, get_adapter
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
 from mycelium.filesystem import get_room_dir, list_memories, read_memory
+from mycelium.integrations import AddOptions, get_adapter
 from mycelium.sstp import AGENT_ADAPTERS, AgentManifest
 
 app = typer.Typer(

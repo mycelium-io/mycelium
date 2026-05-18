@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Julia Valenti
 
-"""Back-compat shim — see ``mycelium.integrations.openclaw``."""
+"""OpenClaw integration — gateway-channel dispatch + (Stage 2) host install."""
 
 from __future__ import annotations
 
-from mycelium.integrations.openclaw import (
+from mycelium.integrations.openclaw.dispatch import (
     OpenClawAdapter,
     OpenClawError,
     OpenClawIntegration,
