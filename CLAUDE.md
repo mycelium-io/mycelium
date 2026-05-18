@@ -36,10 +36,16 @@ mycelium-promo/     HyperFrames promo video — code-defined HTML→MP4 walkthro
 cd fastapi-backend && uv sync --group dev
 uv run pytest tests/ -x -q                    # unit tests (SQLite)
 DATABASE_URL=... uv run pytest tests/ -x -q    # integration tests (AgensGraph)
-uv run ruff check . && uv run ruff format .
+uv run ruff check . && uv run ruff format . && uv run ty check .
 
 # CLI (install globally)
 cd mycelium-cli && uv tool install -e . --with mycelium-backend-client@../mycelium-client --force
+
+# CLI quality gate — run before pushing. CI's "CLI lint" job runs ALL
+# of these (ruff check + ruff format --check + ty); ruff alone is not
+# enough — `ty` (the type checker) gates CI too and is easy to miss.
+cd mycelium-cli && uv run ruff check . && uv run ruff format --check . \
+  && uv run ty check . && uv run pytest tests/ -x -q
 
 # Frontend
 cd mycelium-frontend && pnpm install && pnpm dev
