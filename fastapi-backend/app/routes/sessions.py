@@ -20,7 +20,8 @@ from uuid import UUID, uuid4
 import asyncpg
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bus import notify, room_channel
@@ -94,7 +95,22 @@ async def _spawn_coordination_session(parent_name: str, db: AsyncSession) -> Coo
     backing row in ``rooms``. Display names are synthesized from
     ``parent_room_name + ":session:" + short_id`` so the SSE and messages
     URLs that address sessions by name keep working.
+
+    Concurrency: on Postgres we hold a transaction-scoped advisory lock keyed
+    by ``parent_name`` for the duration of the SELECT-then-INSERT, so two
+    concurrent joins for the same room serialize through here and exactly
+    one INSERT wins (#280). The partial unique index on
+    ``coordination_sessions(parent_room_name) WHERE state IN
+    ('idle','waiting','negotiating')`` is the defense-in-depth backstop: even
+    if the lock is bypassed somehow, the second INSERT fails with
+    IntegrityError and we re-fetch the winning row.
     """
+    if db.bind and db.bind.dialect.name == "postgresql":
+        await db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:k))"),
+            {"k": f"coord_session_spawn:{parent_name}"},
+        )
+
     result = await db.execute(
         select(CoordinationSession)
         .where(
@@ -119,7 +135,29 @@ async def _spawn_coordination_session(parent_name: str, db: AsyncSession) -> Coo
         workspace_id=parent_room.workspace_id if parent_room else None,
     )
     db.add(coord)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        # Lock bypassed (no PG, or pre-existing migration race): re-fetch.
+        await db.rollback()
+        result = await db.execute(
+            select(CoordinationSession)
+            .where(
+                CoordinationSession.parent_room_name == parent_name,
+                CoordinationSession.state.in_(["idle", "waiting", "negotiating"]),
+            )
+            .order_by(CoordinationSession.created_at.desc())
+        )
+        existing = result.scalar_one_or_none()
+        if existing is None:
+            raise
+        logger.info(
+            "Coordination session spawn lost the unique-index race for %s; "
+            "returning the winner (%s)",
+            parent_name,
+            existing.id,
+        )
+        return existing
     logger.info("Spawned coordination session %s in namespace %s", coord.id, parent_name)
     return coord
 
@@ -166,18 +204,77 @@ async def join_room(
     context_files_payload = (
         [cf.model_dump() for cf in payload.context_files] if payload.context_files else None
     )
-    sess = Participant(
-        coordination_session_id=coord_session.id,
-        agent_handle=payload.agent_handle,
-        intent=payload.intent,
-        context_files=context_files_payload,
+    # Idempotent on (coordination_session_id, agent_handle): if the harness/CLI
+    # AND the agent itself both call ``mycelium session join`` for the same
+    # handle (per SKILL.md), the second call must NOT double-count (#284).
+    #
+    # Fast path: SELECT for an existing participant first; if found, return it
+    # without touching state. The partial unique index is the backstop for the
+    # true-concurrent case (two POSTs racing past the SELECT) — we catch the
+    # IntegrityError there with begin_nested so the outer transaction stays
+    # usable for the join-window state machine that runs below.
+    existing_q = await db.execute(
+        select(Participant).where(
+            Participant.coordination_session_id == coord_session.id,
+            Participant.agent_handle == payload.agent_handle,
+        )
     )
-    db.add(sess)
-    await db.commit()
+    existing_sess = existing_q.scalar_one_or_none()
+    duplicate_join = False
+    if existing_sess is not None:
+        duplicate_join = True
+        sess: Participant = existing_sess
+        logger.info(
+            "Duplicate join for handle=%s session=%s; returning existing participant %s",
+            payload.agent_handle,
+            coord_session.id,
+            sess.id,
+        )
+    else:
+        sess = Participant(
+            coordination_session_id=coord_session.id,
+            agent_handle=payload.agent_handle,
+            intent=payload.intent,
+            context_files=context_files_payload,
+        )
+        db.add(sess)
+        try:
+            async with db.begin_nested():
+                await db.flush()
+        except IntegrityError:
+            # Concurrent join slipped through the SELECT — the unique index
+            # caught us. Re-fetch the winner and downgrade to a duplicate join.
+            duplicate_join = True
+            existing_q = await db.execute(
+                select(Participant).where(
+                    Participant.coordination_session_id == coord_session.id,
+                    Participant.agent_handle == payload.agent_handle,
+                )
+            )
+            sess = existing_q.scalar_one()
+            logger.info(
+                "Concurrent join for handle=%s session=%s lost the unique-index race; "
+                "returning the winner (%s)",
+                payload.agent_handle,
+                coord_session.id,
+                sess.id,
+            )
+        await db.commit()
     await db.refresh(sess)
 
-    # Register agent handle in CFN mgmt plane (non-fatal, fire-and-forget)
+    # Register agent handle in CFN mgmt plane (non-fatal, fire-and-forget).
+    # Already idempotent on duplicates — 409 is treated as benign — so fire
+    # this on dup joins too.
     asyncio.ensure_future(_register_agent_cfn(room, payload.agent_handle))
+
+    # The remaining side effects (context-files audit + fan-in, the
+    # coordination_join notification, and the join-window state machine)
+    # MUST run exactly once per real join. A duplicate call from the same
+    # handle re-enters this endpoint but should be a no-op past this point —
+    # otherwise we double-post coordination_join, re-fan context files into
+    # KXP, and bump the join-window deadline twice.
+    if duplicate_join:
+        return sess
 
     # Audit + KXP fan-in for opt-in shared context files. The agent
     # deliberately selected these via --context-files; treat them as room

@@ -312,32 +312,12 @@ describe("routeMessage — coordination_tick", () => {
     expect(actions.some((a) => a.kind === "stash-return-address")).toBe(false);
   });
 
-  it("emits stash-tick carrying the raw tick payload so session/before_agent_start can inject it", () => {
+  it("does not emit a stash-tick action (the tick-stash module was removed in favour of complete formatTickInstruction output — #285)", () => {
     const actions = routeMessage(baseCfg, tickMsg("julia-agent"), freshOwnIds());
-    const stash = actions.find((a) => a.kind === "stash-tick") as any;
-    expect(stash).toBeDefined();
-    expect(stash).toMatchObject({
-      kind: "stash-tick",
-      sessionRoom: "test-room:session:abc123",
-      agentId: "julia-agent",
-    });
-    // payload must include the fields the agent needs that aren't in the
-    // dispatched human-readable summary (exact offer keys, can_counter_offer).
-    expect(stash.payload).toMatchObject({
-      participant_id: "julia-agent",
-      round: 3,
-      current_offer: { price: "500", timeline: "30 days" },
-    });
-  });
-
-  it("does NOT emit stash-tick when the tick has no session sub-room name", () => {
-    const msg = {
-      id: "rootless-tick",
-      message_type: "coordination_tick",
-      content: JSON.stringify({ payload: { participant_id: "julia-agent", round: 1, action: "respond", current_offer: {} } }),
-    };
-    const actions = routeMessage(baseCfg, msg, freshOwnIds());
-    expect(actions.some((a) => a.kind === "stash-tick")).toBe(false);
+    // Regression: this used to coexist with the dispatched formatted string,
+    // producing two competing representations of the same tick that the
+    // agent then had to reconcile.
+    expect(actions.some((a) => (a as any).kind === "stash-tick")).toBe(false);
   });
 
   it("ignores ticks with unparseable content", () => {
@@ -639,6 +619,81 @@ describe("formatTickInstruction", () => {
       "a",
     );
     expect(instruction).not.toContain("Shared context files");
+  });
+
+  it("lists valid offer keys when the agent can counter-propose (#276 / #285 regression)", () => {
+    // Per #276 the agent was guessing key names (snake_case, mangled spacing).
+    // The formatted string now MUST enumerate the exact keys it has to use.
+    const instruction = formatTickInstruction(
+      {
+        round: 1,
+        action: "propose",
+        can_counter_offer: true,
+        current_offer: { "Cache TTL": "600", "Eviction Policy": "LRU" },
+      },
+      "r",
+      "a",
+    );
+    expect(instruction).toContain("Valid offer keys");
+    expect(instruction).toContain('"Cache TTL"');
+    expect(instruction).toContain('"Eviction Policy"');
+  });
+
+  it("omits the valid-keys line when the agent cannot counter-propose", () => {
+    const instruction = formatTickInstruction(
+      {
+        round: 1,
+        action: "respond",
+        can_counter_offer: false,
+        current_offer: { "Cache TTL": "600" },
+      },
+      "r",
+      "a",
+    );
+    expect(instruction).not.toContain("Valid offer keys");
+  });
+
+  it("renders an error tick with instruction + valid_keys + recovery command (#285)", () => {
+    // counter_offer_invalid_keys: the backend posts these with top-level
+    // error/instruction/valid_keys/bad_keys fields. formatTickInstruction
+    // is the agent's sole source of tick info — it MUST surface these so
+    // the agent can recover without parallel raw-JSON injection.
+    const instruction = formatTickInstruction(
+      {
+        error: "counter_offer_invalid_keys",
+        instruction:
+          "Re-submit your counter_offer using only the exact keys listed in valid_keys.",
+        valid_keys: ["Cache TTL", "Eviction Policy"],
+        bad_keys: ["cache_ttl", "eviction_policy"],
+        payload: { participant_id: "julia-agent" },
+      },
+      "my-room",
+      "julia-agent",
+    );
+    expect(instruction).toContain("counter_offer_invalid_keys");
+    expect(instruction).toContain("Re-submit your counter_offer");
+    expect(instruction).toContain('"Cache TTL"');
+    expect(instruction).toContain('"Eviction Policy"');
+    expect(instruction).toContain('"cache_ttl"');
+    expect(instruction).toContain("Recovery: mycelium negotiate propose");
+    expect(instruction).toContain("--room my-room");
+    expect(instruction).toContain("--handle julia-agent");
+  });
+
+  it("renders a not-your-turn error tick with accept/reject recovery commands", () => {
+    const instruction = formatTickInstruction(
+      {
+        error: "counter_offer_not_your_turn",
+        instruction: "It is not your turn to propose.",
+        payload: { participant_id: "julia-agent" },
+      },
+      "r",
+      "julia-agent",
+    );
+    expect(instruction).toContain("counter_offer_not_your_turn");
+    expect(instruction).toContain("It is not your turn to propose.");
+    expect(instruction).toContain("mycelium negotiate respond accept");
+    expect(instruction).toContain("mycelium negotiate respond reject");
   });
 });
 
