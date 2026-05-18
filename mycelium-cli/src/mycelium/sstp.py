@@ -155,10 +155,14 @@ class MemoryLogEntry(BaseModel):
 # ── Agent primitive ──────────────────────────────────────────────────────────
 
 
-# Adapter identifiers known to the daemon dispatch layer. Add to this list
-# when a new adapter learns how to host an agent (see
-# adapters/<name>/daemon/dispatch.py for the claude_code reference impl).
-AGENT_ADAPTERS: frozenset[str] = frozenset({"claude_code"})
+# Adapter identifiers the agent primitive knows how to host. Each maps to a
+# dispatcher:
+#   claude_code → mycelium-cc-daemon (subscribes room SSE, spawns claude -p)
+#   openclaw    → OpenClaw gateway's mycelium-room channel plugin (the agent
+#                 runs inside OpenClaw; we just register it into the channel's
+#                 rooms[] fan-out — no cc-daemon involvement, see dispatch.py
+#                 guard that skips non-claude_code manifests).
+AGENT_ADAPTERS: frozenset[str] = frozenset({"claude_code", "openclaw"})
 
 
 class AgentManifest(BaseModel):
@@ -166,23 +170,49 @@ class AgentManifest(BaseModel):
 
     Each Mycelium agent is just a memory entry under ``agents/<handle>`` plus a
     notes blob under ``agents/<handle>/notes``. This model validates the
-    manifest body — the bare minimum the dispatch daemon needs to route an
-    ``@handle`` mention to a spawned runtime.
+    manifest body — the bare minimum a dispatcher needs to route an
+    ``@handle`` mention to the agent's runtime.
+
+    Two adapters:
+
+    - ``claude_code`` — cold-spawned by the cc-daemon. Requires ``cwd`` (where
+      ``claude -p`` runs).
+    - ``openclaw`` — a long-lived OpenClaw agent. Requires ``openclaw_agent``
+      (the OpenClaw agent id; usually == handle for create-mode). The
+      OpenClaw gateway's channel plugin is the dispatcher; the cc-daemon
+      ignores these manifests entirely.
 
     The handle slug doubles as the mention target (``@release-agent``), so it
     must match the same lowercase pattern other memory slugs use.
     """
 
     handle: str = Field(..., min_length=1, pattern=r"^[a-z0-9][a-z0-9._-]*$")
-    adapter: Literal["claude_code"] = "claude_code"
-    cwd: str = Field(..., min_length=1)
+    adapter: Literal["claude_code", "openclaw"] = "claude_code"
+    cwd: str | None = Field(
+        default=None,
+        description="claude_code: working dir `claude -p` runs in (required for that adapter).",
+    )
+    openclaw_agent: str | None = Field(
+        default=None,
+        description="openclaw: the OpenClaw agent id this handle maps to (required for that adapter).",
+    )
+    openclaw_created: bool = Field(
+        default=False,
+        description=(
+            "openclaw: True if Mycelium created the OpenClaw agent (create-mode), "
+            "False if it adopted a pre-existing one. Gates whether `agent rm --full` "
+            "is allowed to destroy it — adopted agents are never destroyed."
+        ),
+    )
     description: str = Field(default="", description="One-paragraph purpose statement.")
     budget_usd_per_month: float = Field(default=5.0, ge=0.0)
     allow_from: list[str] = Field(
         default_factory=list,
         description=(
             "Sender handles allowed to invoke this agent (e.g. ['@julia', '@docs-agent']). "
-            "Empty list means anyone in the room can invoke."
+            "Empty list means anyone in the room can invoke. "
+            "Enforced by the cc-daemon for claude_code; advisory for openclaw "
+            "(the channel plugin gates on @-mention, not allow_from)."
         ),
     )
 
@@ -192,6 +222,16 @@ class AgentManifest(BaseModel):
         if isinstance(data, dict) and "handle" in data and isinstance(data["handle"], str):
             data["handle"] = data["handle"].lower()
         return data
+
+    @model_validator(mode="after")
+    def check_adapter_requirements(self) -> AgentManifest:
+        if self.adapter == "claude_code" and not (self.cwd and self.cwd.strip()):
+            raise ValueError("claude_code agents require a non-empty cwd")
+        if self.adapter == "openclaw" and not (
+            self.openclaw_agent and self.openclaw_agent.strip()
+        ):
+            raise ValueError("openclaw agents require an openclaw_agent id")
+        return self
 
     @property
     def memory_key(self) -> str:

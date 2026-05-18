@@ -11,8 +11,13 @@
  * module is the executor: it runs each action against the live OpenClaw
  * runtime (dispatch agents, subscribe to session sub-rooms, etc).
  *
- * Call installChannel once from register() after the channel config has
- * been resolved.
+ * Call installChannel once from register() after the channel configs have
+ * been resolved. It accepts a LIST of per-room configs and fans out one
+ * room-SSE subscription per entry, all sharing a single AbortController so
+ * gateway_stop tears every subscription down at once. OpenClaw still only
+ * sees the single `mycelium-room` channel id — the multi-room multiplexing
+ * is internal here, so no plugin-manifest regen / reinstall is needed when
+ * a room is added.
  */
 
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
@@ -35,48 +40,61 @@ type Logger = { info: (s: string) => void; warn: (s: string) => void };
 
 let _abort: AbortController | null = null;
 
+async function ensureRoom(cfg: ChannelConfig, log: Logger): Promise<void> {
+  try {
+    const checkRes = await fetch(
+      `${cfg.backendUrl}/api/rooms/${encodeURIComponent(cfg.room)}`,
+    );
+    if (checkRes.status === 404) {
+      const createRes = await fetch(`${cfg.backendUrl}/api/rooms`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: cfg.room,
+          mode: "coordination",
+          description: `Channel room created by mycelium-room plugin`,
+        }),
+      });
+      if (createRes.ok) {
+        log.info(`[${CHANNEL_ID}] created room "${cfg.room}"`);
+      } else {
+        log.warn(
+          `[${CHANNEL_ID}] failed to create room "${cfg.room}": ${createRes.status}`,
+        );
+      }
+    }
+  } catch (err: any) {
+    log.warn(`[${CHANNEL_ID}] room ensure check failed: ${err?.message ?? err}`);
+  }
+}
+
 export function installChannel(
   api: OpenClawPluginApi,
-  cfg: ChannelConfig,
+  cfgs: ChannelConfig[],
   log: Logger,
 ): void {
   const runtime = api.runtime;
 
+  // Session sub-rooms (coordination ticks) are room-agnostic — the poll loop
+  // discovers them backend-wide. routeTick gates on cfg.agents, so the
+  // session cfg must carry the UNION of every room's agents, or a tick for
+  // an agent in room B would be dropped while we're iterating room A's cfg.
+  const mergedAgents = [...new Set(cfgs.flatMap((c) => c.agents))];
+  const sessionCfg: ChannelConfig = { ...cfgs[0], agents: mergedAgents };
+
   api.on("gateway_start", async () => {
-    log.info(`[${CHANNEL_ID}] gateway started — starting SSE for ${cfg.room}`);
+    log.info(
+      `[${CHANNEL_ID}] gateway started — starting SSE for ${cfgs.length} room(s): [${cfgs
+        .map((c) => c.room)
+        .join(", ")}]`,
+    );
     if (_abort) return;
     _abort = new AbortController();
 
-    // Ensure the configured room exists before subscribing to SSE.
-    try {
-      const checkRes = await fetch(
-        `${cfg.backendUrl}/api/rooms/${encodeURIComponent(cfg.room)}`,
-      );
-      if (checkRes.status === 404) {
-        const createRes = await fetch(`${cfg.backendUrl}/api/rooms`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: cfg.room,
-            mode: "coordination",
-            description: `Channel room created by mycelium-room plugin`,
-          }),
-        });
-        if (createRes.ok) {
-          log.info(`[${CHANNEL_ID}] created room "${cfg.room}"`);
-        } else {
-          log.warn(
-            `[${CHANNEL_ID}] failed to create room "${cfg.room}": ${createRes.status}`,
-          );
-        }
-      }
-    } catch (err: any) {
-      log.warn(
-        `[${CHANNEL_ID}] room ensure check failed: ${err?.message ?? err}`,
-      );
+    for (const cfg of cfgs) {
+      await ensureRoom(cfg, log);
+      startRoomSSE(runtime, cfg, _abort, handleMessage, log);
     }
-
-    startRoomSSE(runtime, cfg, _abort, handleMessage, log);
 
     // Poll for active session sub-rooms (anywhere in the backend) and
     // subscribe to each one's SSE stream. Coordination ticks live in session
@@ -101,7 +119,9 @@ export function installChannel(
         // Poll the first-class coord-sessions endpoint instead of /api/rooms
         // (which no longer surfaces sessions). Display names are returned by
         // the API so the rest of the SSE-by-display-name flow stays the same.
-        const res = await fetch(`${cfg.backendUrl}/api/coordination-sessions?limit=200`);
+        const res = await fetch(
+          `${sessionCfg.backendUrl}/api/coordination-sessions?limit=200`,
+        );
         if (!res.ok) return;
         const sessions: any[] = await res.json();
 
@@ -115,7 +135,7 @@ export function installChannel(
           activeSessionRooms.add(name);
 
           if (state === "waiting" || state === "negotiating") {
-            startSessionSSE(runtime, cfg, name, _abort!, handleMessage, log);
+            startSessionSSE(runtime, sessionCfg, name, _abort!, handleMessage, log);
           } else if (state && TERMINAL_STATES.has(state)) {
             stopSessionSSE(name, log);
           }

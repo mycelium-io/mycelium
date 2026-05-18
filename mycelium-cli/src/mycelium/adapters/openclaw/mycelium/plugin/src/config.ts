@@ -91,41 +91,88 @@ export type ChannelConfig = {
   requireMention: boolean;
 };
 
-/**
- * Read channels.mycelium-room from the OpenClaw config that was passed to the
- * plugin at register time. Returns null if the channel isn't configured —
- * in that case the plugin still installs session lifecycle handlers but
- * doesn't subscribe to any room SSE.
- */
-export function readChannelConfig(openclawConfig: unknown): ChannelConfig | null {
-  const cfg = openclawConfig as { channels?: Record<string, unknown> } | null;
-  const entry = cfg?.channels?.[CHANNEL_ID] as
-    | {
-        backendUrl?: string;
-        room?: string;
-        agents?: unknown[];
-        handle?: string;
-        requireMention?: boolean;
-        enabled?: boolean;
-      }
-    | undefined;
+type RawChannelEntry = {
+  backendUrl?: string;
+  room?: string;
+  agents?: unknown[];
+  handle?: string;
+  requireMention?: boolean;
+  enabled?: boolean;
+  // Multi-room fan-out. When present, each entry becomes its own
+  // ChannelConfig sharing this block's backendUrl + requireMention.
+  // OpenClaw still only ever sees a single channel id (mycelium-room);
+  // the N-room multiplexing is entirely internal to this plugin, which
+  // avoids regenerating the plugin manifest / reinstalling on every room.
+  rooms?: Array<{ room?: string; agents?: unknown[] }>;
+};
 
-  if (!entry?.backendUrl || !entry?.room) return null;
-  if (entry.enabled === false) return null;
-
-  let agents: string[];
+function _agentsOf(
+  entry: { agents?: unknown[]; handle?: string },
+  fallback: string[] = ["main"],
+): string[] {
   if (Array.isArray(entry.agents) && entry.agents.length > 0) {
-    agents = entry.agents.map(String);
-  } else if (entry.handle) {
-    agents = [String(entry.handle)];
-  } else {
-    agents = ["main"];
+    return entry.agents.map(String);
+  }
+  if (entry.handle) return [String(entry.handle)];
+  return fallback;
+}
+
+/**
+ * Read channels.mycelium-room from the OpenClaw config and expand it into one
+ * ChannelConfig per room.
+ *
+ * Three shapes, all supported:
+ *   1. Legacy single-room: { backendUrl, room, agents }            → [1 cfg]
+ *   2. Multi-room fan-out:  { backendUrl, rooms: [{room,agents}] }  → [N cfg]
+ *   3. Mixed: a top-level `room` PLUS `rooms[]`                     → all of them
+ *
+ * Returns [] when the channel is absent, disabled, or has no usable room —
+ * in that case the plugin still installs session lifecycle handlers but
+ * subscribes to no room SSE.
+ */
+export function readChannelConfigs(openclawConfig: unknown): ChannelConfig[] {
+  const cfg = openclawConfig as { channels?: Record<string, unknown> } | null;
+  const entry = cfg?.channels?.[CHANNEL_ID] as RawChannelEntry | undefined;
+
+  if (!entry?.backendUrl) return [];
+  if (entry.enabled === false) return [];
+
+  const backendUrl = String(entry.backendUrl).replace(/\/$/, "");
+  const requireMention = entry.requireMention !== false; // default true
+  const out: ChannelConfig[] = [];
+  const seen = new Set<string>();
+
+  // Top-level single room (legacy + mixed).
+  if (entry.room) {
+    const room = String(entry.room);
+    seen.add(room);
+    out.push({ backendUrl, room, agents: _agentsOf(entry), requireMention });
   }
 
-  return {
-    backendUrl: String(entry.backendUrl).replace(/\/$/, ""),
-    room: String(entry.room),
-    agents,
-    requireMention: entry.requireMention !== false, // default true
-  };
+  // rooms[] fan-out.
+  if (Array.isArray(entry.rooms)) {
+    for (const r of entry.rooms) {
+      if (!r?.room) continue;
+      const room = String(r.room);
+      if (seen.has(room)) continue; // de-dupe against the top-level room
+      seen.add(room);
+      out.push({
+        backendUrl,
+        room,
+        agents: _agentsOf(r, []),
+        requireMention,
+      });
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Back-compat shim for callers that only want the first/legacy single config
+ * (e.g. session lifecycle, which is room-agnostic and only needs backendUrl).
+ * Returns null when nothing is configured.
+ */
+export function readChannelConfig(openclawConfig: unknown): ChannelConfig | null {
+  return readChannelConfigs(openclawConfig)[0] ?? null;
 }

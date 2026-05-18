@@ -30,6 +30,7 @@ from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
 
+from mycelium.agent_adapters import AddOptions, get_adapter
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
@@ -137,11 +138,12 @@ def _write_manifest(
 
 
 @doc_ref(
-    usage="mycelium agent add <handle> --adapter <name> --cwd <path> [--room <room>]",
+    usage="mycelium agent add <handle> --adapter <name> [--cwd <path> | --openclaw-agent <id>]",
     desc=(
         "Register an addressable agent in a room. Writes a manifest under "
-        "<code>agents/&lt;handle&gt;</code>. The daemon dispatches "
-        "<code>@handle</code> mentions to the configured adapter."
+        "<code>agents/&lt;handle&gt;</code>. <code>claude_code</code> agents are "
+        "dispatched by the cc-daemon; <code>openclaw</code> agents run in the "
+        "OpenClaw gateway and are wired into the mycelium-room channel."
     ),
     group="agent",
 )
@@ -156,8 +158,28 @@ def agent_add(
         "--adapter",
         help=f"Adapter that hosts this agent. Known: {', '.join(sorted(AGENT_ADAPTERS))}.",
     ),
-    cwd: str = typer.Option(
-        ..., "--cwd", help="Working directory the adapter spawns the agent in."
+    cwd: str | None = typer.Option(
+        None,
+        "--cwd",
+        help="claude_code: working dir `claude -p` runs in (required for that adapter).",
+    ),
+    openclaw_agent: str | None = typer.Option(
+        None,
+        "--openclaw-agent",
+        help=(
+            "openclaw: adopt an EXISTING OpenClaw agent by id. Omit to CREATE a "
+            "new one named <handle>."
+        ),
+    ),
+    model: str | None = typer.Option(
+        None,
+        "--model",
+        help="openclaw create-mode: model for the new agent (else openclaw default).",
+    ),
+    openclaw_profile: str | None = typer.Option(
+        None,
+        "--openclaw-profile",
+        help="openclaw: target a named OpenClaw profile (e.g. 'work' → ~/.openclaw-work/).",
     ),
     room: str | None = typer.Option(
         None, "--room", "-r", help="Room to register in (defaults to active room)."
@@ -166,7 +188,7 @@ def agent_add(
         "", "--description", "-d", help="One-paragraph statement of what this agent does."
     ),
     budget: float = typer.Option(
-        5.0, "--budget", help="Monthly USD spend cap enforced by the daemon."
+        5.0, "--budget", help="claude_code: monthly USD spend cap enforced by the daemon."
     ),
     allow_from: str | None = typer.Option(
         None,
@@ -180,9 +202,15 @@ def agent_add(
     """Register an addressable agent in a room.
 
     Examples:
+        # claude_code (cold-spawned by the cc-daemon)
         mycelium agent add release-agent --cwd ~/repos/mycelium
-        mycelium agent add docs-agent --cwd ~/repos/docs \\
-            --description "Edits the docs site" --allow-from "@julia"
+
+        # openclaw — adopt an existing OpenClaw agent
+        mycelium agent add planner --adapter openclaw --openclaw-agent planner-bot
+
+        # openclaw — create a fresh OpenClaw agent named @planner
+        mycelium agent add planner --adapter openclaw \\
+            --description "Sprint planner, optimizes for shipping speed"
     """
     try:
         if adapter not in AGENT_ADAPTERS:
@@ -194,38 +222,46 @@ def agent_add(
         if allow_from:
             allow_list = [a.strip() for a in allow_from.split(",") if a.strip()]
 
+        config = MyceliumConfig.load()
+        room_name = _resolve_room(config, room)
+
+        impl = get_adapter(
+            adapter,
+            cwd=cwd,
+            openclaw_agent=openclaw_agent,
+            model=model,
+            openclaw_profile=openclaw_profile,
+        )
+        opts = AddOptions(
+            room=room_name,
+            openclaw_agent=openclaw_agent,
+            model=model,
+            openclaw_profile=openclaw_profile,
+        )
+
         try:
-            manifest = AgentManifest(
+            manifest = impl.build_manifest(
                 handle=handle,
-                adapter=adapter,  # type: ignore[arg-type]
-                cwd=cwd,
+                opts=opts,
                 description=description,
-                budget_usd_per_month=budget,
+                budget=budget,
                 allow_from=allow_list,
             )
         except ValidationError as exc:
             typer.secho(f"Invalid agent manifest: {exc}", fg=typer.colors.RED)
             raise typer.Exit(1) from exc
 
-        config = MyceliumConfig.load()
-        room_name = _resolve_room(config, room)
-
+        # Runtime side effects FIRST — a failure here aborts the add without
+        # leaving a dangling manifest.
+        impl.register(manifest=manifest, config=config, opts=opts)
         _write_manifest(config, room_name, manifest, created_by=handle_flag)
 
         console.print(
-            f"[green]Agent registered:[/green] [cyan]@{manifest.handle}[/cyan] "
+            f"\n[green]Agent registered:[/green] [cyan]@{manifest.handle}[/cyan] "
             f"in room [bold]{room_name}[/bold]"
         )
-        console.print(f"  adapter: {manifest.adapter}")
-        console.print(f"  cwd:     {manifest.cwd}")
-        if manifest.allow_from:
-            console.print(f"  allow:   {', '.join(manifest.allow_from)}")
-        console.print(
-            "\n[dim]Seed the agent's brain (optional):[/dim]\n"
-            f'  mycelium memory set agents/{manifest.handle}/notes "..." --room {room_name}\n'
-            "[dim]Then invoke it:[/dim]\n"
-            f'  mycelium agent invoke {manifest.handle} "..."'
-        )
+        for line in impl.describe(manifest, room=room_name):
+            console.print(line)
     except typer.Exit:
         raise
     except Exception as e:
@@ -357,9 +393,7 @@ def agent_show(
                 entry = _json.loads(log_files[0].read_text())
                 ts = str(entry.get("ts", "")).replace("T", " ").replace("Z", "")
                 console.print(f"\n[bold]last invocation[/bold]  [dim]{ts}[/dim]")
-                console.print(
-                    f"  {entry.get('sender', '?')} → {entry.get('prompt', '')[:120]}"
-                )
+                console.print(f"  {entry.get('sender', '?')} → {entry.get('prompt', '')[:120]}")
                 ok = entry.get("ok")
                 console.print(
                     f"  [{'green' if ok else 'red'}]"
@@ -369,13 +403,9 @@ def agent_show(
                 reply = entry.get("final_message") or ""
                 if reply:
                     preview = reply[:400]
-                    console.print(
-                        f"  reply: {preview}{'…' if len(reply) > 400 else ''}"
-                    )
+                    console.print(f"  reply: {preview}{'…' if len(reply) > 400 else ''}")
             except (OSError, ValueError):
-                console.print(
-                    f"\n[dim]Last invocation log unreadable at {log_files[0]}[/dim]"
-                )
+                console.print(f"\n[dim]Last invocation log unreadable at {log_files[0]}[/dim]")
     except typer.Exit:
         raise
     except Exception as e:
@@ -466,8 +496,12 @@ def agent_invoke(
 
 
 @doc_ref(
-    usage="mycelium agent rm <handle> [--room <room>] [--force]",
-    desc="Unregister an agent. Removes the manifest only — notes and logs are kept.",
+    usage="mycelium agent rm <handle> [--room <room>] [--full] [--force]",
+    desc=(
+        "Unregister an agent. Default keeps the underlying runtime; "
+        "<code>--full</code> also destroys a Mycelium-created OpenClaw agent "
+        "(requires confirmation unless <code>-y</code>)."
+    ),
     group="agent",
 )
 @app.command("rm")
@@ -475,13 +509,29 @@ def agent_rm(
     ctx: typer.Context,
     handle: str = typer.Argument(..., help="Agent handle"),
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
-    force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
+    full: bool = typer.Option(
+        False,
+        "--full",
+        help=(
+            "Destructive: also tear down the underlying runtime. For openclaw "
+            "create-mode agents this runs `openclaw agents remove` + deletes the "
+            "workspace. Adopted agents are never destroyed."
+        ),
+    ),
+    force: bool = typer.Option(False, "--force", "-f", "-y", help="Skip the confirmation prompt."),
 ) -> None:
-    """Unregister an agent (deletes the manifest, keeps notes/logs).
+    """Unregister an agent.
 
-    Notes and logs are preserved so the agent can be re-registered later
-    without losing accumulated knowledge. To wipe everything, delete the
-    `agents/<handle>` namespace manually with `mycelium memory rm`.
+    **Default (safe):** deletes the manifest. For openclaw, also drops the
+    handle from the mycelium-room channel and restarts the gateway — but
+    leaves the OpenClaw agent itself running. Notes/logs are preserved so the
+    agent can be re-registered later.
+
+    **--full (destructive):** additionally destroys the underlying runtime.
+    Only openclaw *create-mode* agents are destroyed (`openclaw agents
+    remove` + workspace delete); agents you *adopted* are never destroyed —
+    --full just unregisters them, same as default. Always prompts unless
+    -y/--force.
     """
     try:
         config = MyceliumConfig.load()
@@ -492,20 +542,47 @@ def agent_rm(
             console.print(f"[red]Not found:[/red] no agent named '{handle}' in room '{room_name}'.")
             raise typer.Exit(1)
 
+        impl = get_adapter(manifest.adapter)
+        will_destroy = impl.will_destroy_runtime(manifest, full=full)
+
         if not force:
-            confirm = typer.confirm(
-                f"Unregister @{handle} from room '{room_name}'? (notes + logs are preserved)"
-            )
-            if not confirm:
+            if will_destroy:
+                console.print(
+                    f"[red]Destructive:[/red] this will [bold]permanently destroy[/bold] "
+                    f"the underlying runtime for [cyan]@{handle}[/cyan] "
+                    f"(adapter: {manifest.adapter}), unregister it, and delete "
+                    f"the manifest."
+                )
+                prompt = f"Destroy @{handle} and its runtime?"
+            elif full and manifest.adapter == "openclaw" and not manifest.openclaw_created:
+                console.print(
+                    f"[yellow]@{handle} was adopted, not created by Mycelium — "
+                    f"--full will NOT destroy OpenClaw agent "
+                    f"'{manifest.openclaw_agent}'.[/yellow] It will only be "
+                    f"unregistered from the channel + manifest."
+                )
+                prompt = f"Unregister @{handle} from room '{room_name}'?"
+            else:
+                prompt = f"Unregister @{handle} from room '{room_name}'? (notes + logs preserved)"
+            if not typer.confirm(prompt):
                 raise typer.Exit(0)
 
+        # 1. Runtime teardown (adapter-specific). No-op for claude_code.
+        impl.destroy(manifest=manifest, config=config, room=room_name, full=full)
+
+        # 2. Delete the manifest (backend + local mirror).
         from mycelium_backend_client.api.memory import (
             delete_memory_api_rooms_room_name_memory_key_delete as delete_api,
         )
 
         with _typed_client(config) as client:
             delete_api.sync_detailed(room_name=room_name, key=manifest.memory_key, client=client)
-        console.print(f"[green]Unregistered:[/green] @{handle} from {room_name}")
+        local = get_room_dir(room_name) / f"{manifest.memory_key}.md"
+        if local.exists():
+            local.unlink()
+
+        verb = "Destroyed" if will_destroy else "Unregistered"
+        console.print(f"[green]{verb}:[/green] @{handle} from {room_name}")
     except typer.Exit:
         raise
     except Exception as e:

@@ -1059,13 +1059,37 @@ def _check_openclaw_channel_config() -> CheckResult:
             message="channels.mycelium-room present but disabled",
         )
 
-    missing = [k for k in ("backendUrl", "room", "agents") if not channel.get(k)]
-    if missing:
+    if not channel.get("backendUrl"):
         return CheckResult(
             name="channel config",
             status="error",
-            message=f"missing required fields: {', '.join(missing)}",
-            details=["fix: set backendUrl, room, and agents in channels.mycelium-room"],
+            message="missing required field: backendUrl",
+            details=["fix: set backendUrl in channels.mycelium-room"],
+        )
+
+    # Room/agents can come from a legacy top-level room+agents block OR the
+    # multi-room rooms:[{room,agents}] fan-out (or both). Build a normalized
+    # view that's valid if at least one room is configured anywhere.
+    normalized_rooms: list[tuple[str, list]] = []
+    if channel.get("room"):
+        normalized_rooms.append(
+            (str(channel["room"]), list(channel.get("agents") or []))
+        )
+    for entry in channel.get("rooms") or []:
+        if isinstance(entry, dict) and entry.get("room"):
+            normalized_rooms.append(
+                (str(entry["room"]), list(entry.get("agents") or []))
+            )
+
+    if not normalized_rooms:
+        return CheckResult(
+            name="channel config",
+            status="error",
+            message="no rooms configured (need top-level room or rooms[])",
+            details=[
+                "fix: `mycelium agent add <h> --adapter openclaw` writes this, "
+                "or set channels.mycelium-room.rooms = [{room, agents}]"
+            ],
         )
 
     # Check backendUrl matches mycelium config.toml's server.api_url
@@ -1092,12 +1116,15 @@ def _check_openclaw_channel_config() -> CheckResult:
     except Exception:
         pass  # non-fatal
 
-    agents = channel.get("agents") or []
     require_mention = channel.get("requireMention", True)
+    summary = ", ".join(f"{r}:{len(a)}" for r, a in normalized_rooms)
     return CheckResult(
         name="channel config",
         status="ok",
-        message=f"room={channel.get('room')} agents={len(agents)} requireMention={require_mention}",
+        message=(
+            f"{len(normalized_rooms)} room(s) [{summary}] "
+            f"requireMention={require_mention}"
+        ),
     )
 
 
@@ -1131,7 +1158,11 @@ def _check_openclaw_agent_sandbox() -> CheckResult:
         )
 
     channel = (oc.get("channels") or {}).get("mycelium-room") or {}
+    # Union of legacy top-level agents + every rooms[] entry's agents.
     channel_agents = set(channel.get("agents") or [])
+    for entry in channel.get("rooms") or []:
+        if isinstance(entry, dict):
+            channel_agents.update(entry.get("agents") or [])
     if not channel_agents:
         return CheckResult(
             name="agent sandbox",

@@ -2,7 +2,7 @@
 // Copyright 2026 Julia Valenti
 
 import { describe, expect, it } from "vitest";
-import { readChannelConfig } from "../src/config.js";
+import { readChannelConfig, readChannelConfigs } from "../src/config.js";
 
 describe("readChannelConfig", () => {
   it("returns null for null input", () => {
@@ -191,5 +191,136 @@ describe("readChannelConfig", () => {
     });
     // Empty array doesn't match the len > 0 guard, so we fall through to handle, then to default
     expect(cfg?.agents).toEqual(["main"]);
+  });
+});
+
+describe("readChannelConfigs (multi-room fan-out)", () => {
+  it("returns [] for null / empty / disabled / no backendUrl", () => {
+    expect(readChannelConfigs(null)).toEqual([]);
+    expect(readChannelConfigs({})).toEqual([]);
+    expect(readChannelConfigs({ channels: { discord: {} } })).toEqual([]);
+    expect(
+      readChannelConfigs({
+        channels: { "mycelium-room": { room: "r" } },
+      }),
+    ).toEqual([]);
+    expect(
+      readChannelConfigs({
+        channels: {
+          "mycelium-room": {
+            enabled: false,
+            backendUrl: "http://localhost:8000",
+            room: "r",
+          },
+        },
+      }),
+    ).toEqual([]);
+  });
+
+  it("legacy single-room block → exactly one config", () => {
+    const cfgs = readChannelConfigs({
+      channels: {
+        "mycelium-room": {
+          backendUrl: "http://localhost:8000",
+          room: "alpha",
+          agents: ["a", "b"],
+        },
+      },
+    });
+    expect(cfgs).toEqual([
+      {
+        backendUrl: "http://localhost:8000",
+        room: "alpha",
+        agents: ["a", "b"],
+        requireMention: true,
+      },
+    ]);
+  });
+
+  it("rooms[] fan-out → one config per room, shared backendUrl/requireMention", () => {
+    const cfgs = readChannelConfigs({
+      channels: {
+        "mycelium-room": {
+          backendUrl: "http://localhost:8000/",
+          requireMention: false,
+          rooms: [
+            { room: "alpha", agents: ["a"] },
+            { room: "beta", agents: ["b", "c"] },
+          ],
+        },
+      },
+    });
+    expect(cfgs).toEqual([
+      {
+        backendUrl: "http://localhost:8000",
+        room: "alpha",
+        agents: ["a"],
+        requireMention: false,
+      },
+      {
+        backendUrl: "http://localhost:8000",
+        room: "beta",
+        agents: ["b", "c"],
+        requireMention: false,
+      },
+    ]);
+  });
+
+  it("mixed: top-level room PLUS rooms[] — all of them, top-level first", () => {
+    const cfgs = readChannelConfigs({
+      channels: {
+        "mycelium-room": {
+          backendUrl: "http://localhost:8000",
+          room: "alpha",
+          agents: ["a"],
+          rooms: [{ room: "beta", agents: ["b"] }],
+        },
+      },
+    });
+    expect(cfgs.map((c) => c.room)).toEqual(["alpha", "beta"]);
+    expect(cfgs[1].agents).toEqual(["b"]);
+  });
+
+  it("de-dupes a room that appears both top-level and in rooms[]", () => {
+    const cfgs = readChannelConfigs({
+      channels: {
+        "mycelium-room": {
+          backendUrl: "http://localhost:8000",
+          room: "alpha",
+          agents: ["a"],
+          rooms: [{ room: "alpha", agents: ["dupe"] }, { room: "beta", agents: ["b"] }],
+        },
+      },
+    });
+    // alpha keeps the top-level definition; the rooms[] dupe is dropped.
+    expect(cfgs.map((c) => c.room)).toEqual(["alpha", "beta"]);
+    expect(cfgs[0].agents).toEqual(["a"]);
+  });
+
+  it("skips rooms[] entries without a room name", () => {
+    const cfgs = readChannelConfigs({
+      channels: {
+        "mycelium-room": {
+          backendUrl: "http://localhost:8000",
+          rooms: [{ agents: ["x"] }, { room: "beta", agents: ["b"] }],
+        },
+      },
+    });
+    expect(cfgs.map((c) => c.room)).toEqual(["beta"]);
+  });
+
+  it("readChannelConfig shim returns the first config (legacy callers)", () => {
+    const cfg = readChannelConfig({
+      channels: {
+        "mycelium-room": {
+          backendUrl: "http://localhost:8000",
+          rooms: [
+            { room: "alpha", agents: ["a"] },
+            { room: "beta", agents: ["b"] },
+          ],
+        },
+      },
+    });
+    expect(cfg?.room).toBe("alpha");
   });
 });
