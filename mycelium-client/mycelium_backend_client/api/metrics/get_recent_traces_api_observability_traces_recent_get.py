@@ -1,25 +1,37 @@
 from http import HTTPStatus
 from typing import Any
-from urllib.parse import quote
 
 import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.http_validation_error import HTTPValidationError
-from ...models.participant_list_response import ParticipantListResponse
-from ...types import Response
+from ...types import UNSET, Response, Unset
 
 
 def _get_kwargs(
-    room_name: str,
+    *,
+    limit: int | Unset = 100,
+    host: None | str | Unset = UNSET,
 ) -> dict[str, Any]:
+
+    params: dict[str, Any] = {}
+
+    params["limit"] = limit
+
+    json_host: None | str | Unset
+    if isinstance(host, Unset):
+        json_host = UNSET
+    else:
+        json_host = host
+    params["host"] = json_host
+
+    params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
 
     _kwargs: dict[str, Any] = {
         "method": "get",
-        "url": "/api/rooms/{room_name}/sessions".format(
-            room_name=quote(str(room_name), safe=""),
-        ),
+        "url": "/api/observability/traces/recent",
+        "params": params,
     }
 
     return _kwargs
@@ -27,10 +39,9 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> HTTPValidationError | ParticipantListResponse | None:
+) -> Any | HTTPValidationError | None:
     if response.status_code == 200:
-        response_200 = ParticipantListResponse.from_dict(response.json())
-
+        response_200 = response.json()
         return response_200
 
     if response.status_code == 422:
@@ -46,7 +57,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[HTTPValidationError | ParticipantListResponse]:
+) -> Response[Any | HTTPValidationError]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -56,31 +67,33 @@ def _build_response(
 
 
 def sync_detailed(
-    room_name: str,
     *,
     client: AuthenticatedClient | Client,
-) -> Response[HTTPValidationError | ParticipantListResponse]:
-    """List Sessions
+    limit: int | Unset = 100,
+    host: None | str | Unset = UNSET,
+) -> Response[Any | HTTPValidationError]:
+    """Get Recent Traces
 
-     List agents participating in a room's coordination session(s).
+     Proxy to the OTLP collector's ``/collector/traces`` endpoint.
 
-    Accepts either a real room name (returns participants across all its
-    coord_sessions) or a legacy ``{parent}:session:{short}`` display name
-    (returns participants of just that one session).
+    Returns recent trace spans from the collector's SQLite store.
+    Returns 502 if the collector is unreachable.
 
     Args:
-        room_name (str):
+        limit (int | Unset):  Default: 100.
+        host (None | str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | ParticipantListResponse]
+        Response[Any | HTTPValidationError]
     """
 
     kwargs = _get_kwargs(
-        room_name=room_name,
+        limit=limit,
+        host=host,
     )
 
     response = client.get_httpx_client().request(
@@ -91,61 +104,65 @@ def sync_detailed(
 
 
 def sync(
-    room_name: str,
     *,
     client: AuthenticatedClient | Client,
-) -> HTTPValidationError | ParticipantListResponse | None:
-    """List Sessions
+    limit: int | Unset = 100,
+    host: None | str | Unset = UNSET,
+) -> Any | HTTPValidationError | None:
+    """Get Recent Traces
 
-     List agents participating in a room's coordination session(s).
+     Proxy to the OTLP collector's ``/collector/traces`` endpoint.
 
-    Accepts either a real room name (returns participants across all its
-    coord_sessions) or a legacy ``{parent}:session:{short}`` display name
-    (returns participants of just that one session).
+    Returns recent trace spans from the collector's SQLite store.
+    Returns 502 if the collector is unreachable.
 
     Args:
-        room_name (str):
+        limit (int | Unset):  Default: 100.
+        host (None | str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | ParticipantListResponse
+        Any | HTTPValidationError
     """
 
     return sync_detailed(
-        room_name=room_name,
         client=client,
+        limit=limit,
+        host=host,
     ).parsed
 
 
 async def asyncio_detailed(
-    room_name: str,
     *,
     client: AuthenticatedClient | Client,
-) -> Response[HTTPValidationError | ParticipantListResponse]:
-    """List Sessions
+    limit: int | Unset = 100,
+    host: None | str | Unset = UNSET,
+) -> Response[Any | HTTPValidationError]:
+    """Get Recent Traces
 
-     List agents participating in a room's coordination session(s).
+     Proxy to the OTLP collector's ``/collector/traces`` endpoint.
 
-    Accepts either a real room name (returns participants across all its
-    coord_sessions) or a legacy ``{parent}:session:{short}`` display name
-    (returns participants of just that one session).
+    Returns recent trace spans from the collector's SQLite store.
+    Returns 502 if the collector is unreachable.
 
     Args:
-        room_name (str):
+        limit (int | Unset):  Default: 100.
+        host (None | str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | ParticipantListResponse]
+        Response[Any | HTTPValidationError]
     """
 
     kwargs = _get_kwargs(
-        room_name=room_name,
+        limit=limit,
+        host=host,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -154,32 +171,34 @@ async def asyncio_detailed(
 
 
 async def asyncio(
-    room_name: str,
     *,
     client: AuthenticatedClient | Client,
-) -> HTTPValidationError | ParticipantListResponse | None:
-    """List Sessions
+    limit: int | Unset = 100,
+    host: None | str | Unset = UNSET,
+) -> Any | HTTPValidationError | None:
+    """Get Recent Traces
 
-     List agents participating in a room's coordination session(s).
+     Proxy to the OTLP collector's ``/collector/traces`` endpoint.
 
-    Accepts either a real room name (returns participants across all its
-    coord_sessions) or a legacy ``{parent}:session:{short}`` display name
-    (returns participants of just that one session).
+    Returns recent trace spans from the collector's SQLite store.
+    Returns 502 if the collector is unreachable.
 
     Args:
-        room_name (str):
+        limit (int | Unset):  Default: 100.
+        host (None | str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | ParticipantListResponse
+        Any | HTTPValidationError
     """
 
     return (
         await asyncio_detailed(
-            room_name=room_name,
             client=client,
+            limit=limit,
+            host=host,
         )
     ).parsed

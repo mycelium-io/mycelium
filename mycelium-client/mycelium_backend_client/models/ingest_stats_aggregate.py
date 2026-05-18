@@ -13,20 +13,20 @@ T = TypeVar("T", bound="IngestStatsAggregate")
 class IngestStatsAggregate:
     """
     Attributes:
-        events (int):
         estimated_cfn_knowledge_input_tokens (int):
+        events (int):
         payload_bytes (int):
     """
 
-    events: int
     estimated_cfn_knowledge_input_tokens: int
+    events: int
     payload_bytes: int
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        events = self.events
-
         estimated_cfn_knowledge_input_tokens = self.estimated_cfn_knowledge_input_tokens
+
+        events = self.events
 
         payload_bytes = self.payload_bytes
 
@@ -34,8 +34,8 @@ class IngestStatsAggregate:
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
-                "events": events,
                 "estimated_cfn_knowledge_input_tokens": estimated_cfn_knowledge_input_tokens,
+                "events": events,
                 "payload_bytes": payload_bytes,
             }
         )
@@ -45,15 +45,15 @@ class IngestStatsAggregate:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        events = d.pop("events")
-
         estimated_cfn_knowledge_input_tokens = d.pop("estimated_cfn_knowledge_input_tokens")
+
+        events = d.pop("events")
 
         payload_bytes = d.pop("payload_bytes")
 
         ingest_stats_aggregate = cls(
-            events=events,
             estimated_cfn_knowledge_input_tokens=estimated_cfn_knowledge_input_tokens,
+            events=events,
             payload_bytes=payload_bytes,
         )
 
