@@ -420,16 +420,23 @@ def _onboard_wizard(
         )
         return
 
-    # Target room first — a manifest only exists inside a room.
-    room_name = room_opt or getattr(config.rooms, "active", None)
-    if not room_name:
-        room_name = questionary.text("Room to add agents to:", default="default").ask()
+    # Target room first — a manifest only exists inside a room. Surface where
+    # the default comes from (the active room in ~/.mycelium/config.toml)
+    # rather than using it silently; let the user override inline.
+    if room_opt:
+        room_name = room_opt
+    else:
+        active = getattr(config.rooms, "active", None)
+        room_name = questionary.text(
+            "Room to add agents to" + (" (your active room — edit to change)" if active else ""),
+            default=active or "default",
+        ).ask()
     if not room_name:
         console.print("[yellow]No room — aborted.[/yellow]")
         return
 
     # Mark agents already registered in this room so they aren't re-added.
-    choices = []
+    choices: list = []
     for a in discovered:
         aid = a["id"]
         already = _load_manifest(room_name, aid) is not None
@@ -441,11 +448,18 @@ def _onboard_wizard(
                 disabled="already in room" if already else None,
             )
         )
+    # Key hint UNDER the list (questionary renders `instruction` on the
+    # question line; a trailing Separator is the only place it shows below
+    # the choices). Suppress the verbose default top instruction.
+    choices.append(
+        questionary.Separator("  ↑/↓ move · space select · a toggle all · enter confirm")
+    )
 
     selected: list[str] = (
         questionary.checkbox(
             f"Select OpenClaw agents to add to room '{room_name}'",
             choices=choices,
+            instruction="",
         ).ask()
         or []
     )
