@@ -421,13 +421,21 @@ def _pick_room(config: MyceliumConfig) -> str | None:
         with _typed_client(config) as client:
             result = list_api.sync(client=client, limit=200)
         if result and not isinstance(result, HTTPValidationError):
-            rooms = sorted(
-                {str(r.to_dict().get("name")) for r in result if r.to_dict().get("name")}
-            )
+            # Backend returns rooms created_at DESC (newest first); preserve
+            # that rather than re-sorting alphabetically (matches the
+            # dashboard's CREATED ordering). Dedupe, keep order.
+            seen: set[str] = set()
+            for r in result:
+                nm = str(r.to_dict().get("name") or "")
+                if nm and nm not in seen:
+                    seen.add(nm)
+                    rooms.append(nm)
     except Exception as exc:  # noqa: BLE001 — backend optional/unreachable
         console.print(f"[yellow]Could not list rooms ({exc}).[/yellow]")
 
     active = getattr(config.rooms, "active", None)
+    if active and active in rooms:  # most likely target → pin to top
+        rooms = [active, *[r for r in rooms if r != active]]
     new_sentinel = "\x00new"
 
     if not rooms:
@@ -447,6 +455,7 @@ def _pick_room(config: MyceliumConfig) -> str | None:
             choices=room_choices,
             default=active if active in rooms else None,
             instruction="",
+            use_pagination=True,  # long room lists scroll a viewport
         ).ask()
         if picked is None:
             return None
@@ -525,6 +534,7 @@ def _onboard_wizard(
             f"Select OpenClaw agents to add to room '{room_name}'",
             choices=choices,
             instruction="",
+            use_pagination=True,  # long agent lists scroll a viewport
         ).ask()
         or []
     )
