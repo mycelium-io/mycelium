@@ -397,6 +397,75 @@ def agent_add(
         raise typer.Exit(1) from None
 
 
+def _pick_room(config: MyceliumConfig) -> str | None:
+    """Fetch rooms from the backend and let the user pick one (or create a
+    new one). Returns a room name guaranteed to exist on the backend, or
+    None if the user aborted.
+
+    Doing this before any side effects also closes the half-applied footgun:
+    the manifest write 404s on a missing room, but only *after* the channel
+    config + gateway restart — guaranteeing existence here avoids that.
+    """
+    import questionary
+
+    from mycelium_backend_client.api.rooms import (
+        create_room_api_rooms_post as create_api,
+    )
+    from mycelium_backend_client.api.rooms import (
+        list_rooms_api_rooms_get as list_api,
+    )
+    from mycelium_backend_client.models import HTTPValidationError, RoomCreate
+
+    rooms: list[str] = []
+    try:
+        with _typed_client(config) as client:
+            result = list_api.sync(client=client, limit=200)
+        if result and not isinstance(result, HTTPValidationError):
+            rooms = sorted(
+                {str(r.to_dict().get("name")) for r in result if r.to_dict().get("name")}
+            )
+    except Exception as exc:  # noqa: BLE001 — backend optional/unreachable
+        console.print(f"[yellow]Could not list rooms ({exc}).[/yellow]")
+
+    active = getattr(config.rooms, "active", None)
+    new_sentinel = "\x00new"
+
+    if not rooms:
+        name = questionary.text(
+            "No rooms yet — name a new room to create:", default="default"
+        ).ask()
+    else:
+        room_choices: list = [
+            questionary.Choice(title=rn + ("  (active)" if rn == active else ""), value=rn)
+            for rn in rooms
+        ]
+        room_choices.append(questionary.Separator())
+        room_choices.append(questionary.Choice(title="＋ create a new room…", value=new_sentinel))
+        room_choices.append(questionary.Separator("  ↑/↓ move · enter select"))
+        picked = questionary.select(
+            "Add agents to which room?",
+            choices=room_choices,
+            default=active if active in rooms else None,
+            instruction="",
+        ).ask()
+        if picked is None:
+            return None
+        if picked != new_sentinel:
+            return picked
+        name = questionary.text("New room name:").ask()
+
+    if not name:
+        return None
+    try:
+        with _typed_client(config) as client:
+            create_api.sync(client=client, body=RoomCreate(name=name))
+        console.print(f"[green]created room[/green] [bold]{name}[/bold]")
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Could not create room '{name}': {exc}[/red]")
+        return None
+    return name
+
+
 def _onboard_wizard(
     ctx: typer.Context,
     *,
@@ -420,17 +489,13 @@ def _onboard_wizard(
         )
         return
 
-    # Target room first — a manifest only exists inside a room. Surface where
-    # the default comes from (the active room in ~/.mycelium/config.toml)
-    # rather than using it silently; let the user override inline.
+    # Target room first — a manifest only exists inside a room. Fetch rooms
+    # from the backend and let the user pick (or create) one; guarantees the
+    # room exists before any side effects.
     if room_opt:
-        room_name = room_opt
+        room_name: str | None = room_opt
     else:
-        active = getattr(config.rooms, "active", None)
-        room_name = questionary.text(
-            "Room to add agents to" + (" (your active room — edit to change)" if active else ""),
-            default=active or "default",
-        ).ask()
+        room_name = _pick_room(config)
     if not room_name:
         console.print("[yellow]No room — aborted.[/yellow]")
         return
