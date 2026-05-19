@@ -701,9 +701,7 @@ async def _fan_out_cfn_messages(
     try:
         from app.services.plan import open_task_summary
 
-        parent_room = (
-            room_name.split(":session:", 1)[0] if ":session:" in room_name else room_name
-        )
+        parent_room = room_name.split(":session:", 1)[0] if ":session:" in room_name else room_name
         plan_summary = open_task_summary(parent_room)
     except Exception as exc:
         logger.debug("plan_summary load skipped for %s: %s", room_name, exc)
