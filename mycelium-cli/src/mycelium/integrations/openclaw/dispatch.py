@@ -102,6 +102,63 @@ class OpenClawIntegration(Integration):
                 "  Config is written; restart manually: openclaw gateway restart"
             )
 
+    # ── discovery (brownfield adopt) ────────────────────────────────────────
+
+    def discover_local_agents(self) -> list[dict[str, str]]:
+        """Enumerate OpenClaw agents defined on this machine.
+
+        Source of truth is ``~/.openclaw[-<profile>]/openclaw.json``'s
+        ``agents.list`` (the same place the install facet's
+        ``_resolve_agent_workspaces`` reads). Returns ``[{id, model,
+        workspace}]`` sorted by id, including the implicit ``main`` agent.
+        Best-effort: a missing/!JSON config yields ``[]`` rather than raising
+        — the wizard treats that as "nothing to adopt".
+        """
+        _state_dir, oc_json = self._paths()
+        if not oc_json.exists():
+            return []
+        try:
+            cfg = json.loads(oc_json.read_text())
+        except (OSError, ValueError):
+            return []
+        agents_block = cfg.get("agents") or {}
+        out: dict[str, dict[str, str]] = {}
+        # The implicit default agent is always addressable even if not in list.
+        out["main"] = {"id": "main", "model": "", "workspace": ""}
+        for entry in agents_block.get("list") or []:
+            if not isinstance(entry, dict):
+                continue
+            aid = str(entry.get("id") or "").strip()
+            if not aid:
+                continue
+            model = entry.get("model")
+            if isinstance(model, dict):  # newer builds use {primary: ...}
+                model = model.get("primary", "")
+            out[aid] = {
+                "id": aid,
+                "model": str(model or ""),
+                "workspace": str(entry.get("workspace") or ""),
+            }
+        return [out[k] for k in sorted(out)]
+
+    def register_adopted_batch(self, handles: list[str], *, room: str, backend_url: str) -> None:
+        """Channel-register several *existing* agents into *room*, restarting
+        the gateway ONCE at the end.
+
+        ``register()`` restarts the gateway per call; adopting N agents that
+        way is N gateway restarts (minutes). The onboarding wizard uses this
+        so the storm collapses to a single restart. Adopt-only: it never
+        creates an OpenClaw agent (the handles already exist) — manifest
+        persistence is the caller's job.
+        """
+        for handle in handles:
+            self._register_channel(
+                room=room,
+                agent_id=handle,
+                backend_url=backend_url,
+            )
+        self.restart_gateway()
+
     # ── manifest ────────────────────────────────────────────────────────────
 
     def build_manifest(
