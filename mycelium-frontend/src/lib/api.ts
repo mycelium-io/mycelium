@@ -64,6 +64,7 @@ export interface PlanFile {
 
 export interface PlanResponse {
   room: string;
+  title: string | null;
   files: PlanFile[];
   tasks: PlanTask[];
   open_count: number;
@@ -72,8 +73,21 @@ export interface PlanResponse {
 
 export async function fetchPlan(roomName: string): Promise<PlanResponse> {
   const res = await fetch(`${API}/api/rooms/${roomName}/plan`, { cache: "no-store" });
-  if (!res.ok) return { room: roomName, files: [], tasks: [], open_count: 0, done_count: 0 };
+  if (!res.ok) {
+    return { room: roomName, title: null, files: [], tasks: [], open_count: 0, done_count: 0 };
+  }
   return res.json();
+}
+
+export async function setPlanTitle(roomName: string, text: string): Promise<string | null> {
+  const res = await fetch(`${API}/api/rooms/${roomName}/plan/title`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.title ?? null;
 }
 
 export async function togglePlanTask(roomName: string, taskId: string, done: boolean): Promise<PlanTask> {

@@ -22,6 +22,7 @@ from app.services.filesystem import get_room_dir, parse_memory
 
 PLAN_DIR = "plan"
 DEFAULT_TASK_FILE = "tasks"  # plan/tasks.md
+TITLE_SLUG = "title"  # plan/title.md — the room's plan title (italic display line)
 
 # Matches a markdown task line, capturing the leading indentation, the
 # checkbox state, and the body text.
@@ -219,6 +220,36 @@ def add_task(room_name: str, text: str, *, slug: str = DEFAULT_TASK_FILE) -> Pla
         text=text.strip(),
         done=False,
     )
+
+
+def get_title(room_name: str) -> str | None:
+    """Return the room's plan title (first non-empty line of plan/title.md)."""
+    path = _plan_dir(room_name) / f"{TITLE_SLUG}.md"
+    if not path.exists():
+        return None
+    _, body = parse_memory(path.read_text(encoding="utf-8"))
+    for line in body.splitlines():
+        stripped = line.strip().lstrip("#").strip()
+        if stripped:
+            return stripped
+    return None
+
+
+def set_title(room_name: str, text: str, *, updated_by: str = "frontend") -> str:
+    """Write the room's plan title to plan/title.md and return it."""
+    from app.services.filesystem import write_memory_file
+
+    base = get_room_dir(room_name)
+    base.mkdir(parents=True, exist_ok=True)
+    cleaned = text.strip()
+    write_memory_file(
+        base,
+        f"{PLAN_DIR}/{TITLE_SLUG}",
+        cleaned,
+        created_by=updated_by,
+        updated_by=updated_by,
+    )
+    return cleaned
 
 
 def open_task_summary(room_name: str, *, limit: int = 20) -> str | None:

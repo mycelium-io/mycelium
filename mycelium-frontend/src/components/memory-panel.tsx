@@ -4,15 +4,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import {
-  fetchMemories,
-  searchMemories,
-  fetchCatchup,
-  fetchPlan,
-  togglePlanTask,
-  addPlanTask,
-  type PlanResponse,
-} from "@/lib/api";
+import { fetchMemories, searchMemories, fetchCatchup } from "@/lib/api";
 import { KnowledgePanel } from "./knowledge-panel";
 import { MarkdownContent } from "./markdown-content";
 
@@ -47,11 +39,10 @@ interface Props {
   refreshTrigger: number;
 }
 
-type Tab = "memories" | "plan" | "synthesis" | "knowledge";
+type Tab = "memories" | "synthesis" | "knowledge";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "memories",  label: "MEMORIES" },
-  { id: "plan",      label: "PLAN" },
   { id: "synthesis", label: "SYNTHESIS" },
   { id: "knowledge", label: "KNOWLEDGE" },
 ];
@@ -63,40 +54,17 @@ export function MemoryPanel({ roomName, masId, refreshTrigger }: Props) {
   const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [tab, setTab] = useState<Tab>("memories");
-  const [plan, setPlan] = useState<PlanResponse | null>(null);
-  const [newTaskText, setNewTaskText] = useState("");
 
   const loadData = useCallback(async () => {
     try {
-      const [mems, cu, pl] = await Promise.all([
+      const [mems, cu] = await Promise.all([
         fetchMemories(roomName),
         fetchCatchup(roomName),
-        fetchPlan(roomName),
       ]);
       setMemories(mems);
       setCatchup(cu);
-      setPlan(pl);
     } catch {}
   }, [roomName]);
-
-  const refreshPlan = useCallback(async () => {
-    try {
-      setPlan(await fetchPlan(roomName));
-    } catch {}
-  }, [roomName]);
-
-  const onToggleTask = async (taskId: string, done: boolean) => {
-    await togglePlanTask(roomName, taskId, done);
-    await refreshPlan();
-  };
-
-  const onAddTask = async () => {
-    const text = newTaskText.trim();
-    if (!text) return;
-    setNewTaskText("");
-    await addPlanTask(roomName, text);
-    await refreshPlan();
-  };
 
   useEffect(() => { loadData(); }, [loadData, refreshTrigger]);
 
@@ -235,85 +203,6 @@ export function MemoryPanel({ roomName, masId, refreshTrigger }: Props) {
             {memories.length === 0 && (
               <div className="text-center caps-mono-sm text-muted italic py-10">
                 no memories yet
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {tab === "plan" && (
-        <div className="flex-1 overflow-y-auto">
-          {/* Add-task row */}
-          <div className="px-4 py-3 border-b border-border bg-paper">
-            <div className="flex gap-2">
-              <input
-                className="flex-1 bg-bg border border-border px-3 py-1.5 text-label font-mono text-text placeholder:text-muted focus:border-accent focus:outline-none transition-colors"
-                placeholder="add a task…"
-                value={newTaskText}
-                onChange={e => setNewTaskText(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && onAddTask()}
-              />
-              <button
-                onClick={onAddTask}
-                disabled={!newTaskText.trim()}
-                className="flex items-center gap-2 px-3 py-1.5 caps-mono-sm border border-accent/40 bg-accent/[0.06] text-accent transition-colors hover:bg-accent/[0.12] hover:border-accent/60 disabled:opacity-50"
-              >
-                ADD
-              </button>
-            </div>
-            <div className="flex items-baseline gap-3 caps-mono-sm text-muted mt-3">
-              <span className="text-text font-semibold tabular">{plan?.open_count ?? 0}</span>
-              <span>open</span>
-              <span className="text-dim">·</span>
-              <span className="text-text font-semibold tabular">{plan?.done_count ?? 0}</span>
-              <span>done</span>
-              <span className="text-dim">·</span>
-              <span className="text-text font-semibold tabular">{plan?.files.length ?? 0}</span>
-              <span>files</span>
-            </div>
-          </div>
-
-          {/* Per-file task groups */}
-          <div>
-            {plan?.files.map(f => (
-              <div key={f.slug} className="border-b border-border last:border-b-0">
-                <div className="px-4 py-2 bg-paper/40 border-b border-border flex items-baseline gap-2">
-                  <span className="font-mono text-label text-accent truncate">{f.slug}</span>
-                  <span className="caps-mono-sm text-muted">{f.title}</span>
-                  <span className="ml-auto caps-mono-sm text-muted tabular">
-                    {f.tasks.filter(t => !t.done).length}/{f.tasks.length}
-                  </span>
-                </div>
-                {f.tasks.length === 0 ? (
-                  <div className="px-4 py-2 caps-mono-sm text-muted italic">no tasks in this file</div>
-                ) : (
-                  f.tasks.map(t => (
-                    <label
-                      key={t.id}
-                      className="flex items-start gap-3 px-4 py-2 border-t border-border/50 cursor-pointer hover:bg-paper/30"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={t.done}
-                        onChange={e => onToggleTask(t.id, e.target.checked)}
-                        className="mt-1 accent-accent"
-                      />
-                      <span
-                        className={
-                          "text-label font-mono " +
-                          (t.done ? "line-through text-muted" : "text-text")
-                        }
-                      >
-                        {t.text}
-                      </span>
-                    </label>
-                  ))
-                )}
-              </div>
-            ))}
-            {(!plan || plan.files.length === 0) && (
-              <div className="text-center caps-mono-sm text-muted italic py-10">
-                no plan yet — add a task above
               </div>
             )}
           </div>

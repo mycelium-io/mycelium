@@ -44,10 +44,16 @@ class PlanFileOut(BaseModel):
 
 class PlanOut(BaseModel):
     room: str
+    title: str | None = None
     files: list[PlanFileOut]
     tasks: list[TaskOut]
     open_count: int
     done_count: int
+
+
+class TitleUpdate(BaseModel):
+    text: str = Field(..., max_length=500)
+    updated_by: str = Field(default="frontend")
 
 
 class TaskCreate(BaseModel):
@@ -69,6 +75,7 @@ async def get_plan(room_name: str) -> PlanOut:
     files, tasks = plan_service.load_plan(room_name)
     return PlanOut(
         room=room_name,
+        title=plan_service.get_title(room_name),
         files=[
             PlanFileOut(
                 slug=f.slug,
@@ -84,6 +91,12 @@ async def get_plan(room_name: str) -> PlanOut:
         open_count=sum(1 for t in tasks if not t.done),
         done_count=sum(1 for t in tasks if t.done),
     )
+
+
+@router.put("/title")
+async def set_title(room_name: str, body: TitleUpdate) -> dict:
+    title = plan_service.set_title(room_name, body.text, updated_by=body.updated_by)
+    return {"title": title}
 
 
 @router.post("/tasks", response_model=TaskOut)

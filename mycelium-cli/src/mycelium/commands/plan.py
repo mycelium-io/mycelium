@@ -190,6 +190,39 @@ def plan_rm(
     memory_rm(key=f"plan/{slug}", room=room, force=force)
 
 
+@doc_ref(
+    usage="mycelium plan title [<text>]",
+    desc=(
+        "Read or set the room's plan title — the italic display line shown above "
+        "room activity. Pass no text to print the current title."
+    ),
+    group="plan",
+)
+@app.command(name="title")
+def plan_title(
+    text: str | None = typer.Argument(None, help="New plan title (omit to read)"),
+    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+) -> None:
+    """Read or set the room's plan title."""
+    cfg = MyceliumConfig.load()
+    room_name = _resolve_room(cfg, room)
+    with httpx.Client(base_url=cfg.server.api_url, timeout=30) as client:
+        if text is None:
+            data = client.get(f"/api/rooms/{room_name}/plan").json()
+            title = data.get("title")
+            if title:
+                console.print(f"[italic]{title}[/italic]")
+            else:
+                console.print("[dim]No plan title set.[/dim]")
+            return
+        resp = client.put(
+            f"/api/rooms/{room_name}/plan/title",
+            json={"text": text},
+        )
+        resp.raise_for_status()
+        console.print(f"[green]Title set:[/green] [italic]{resp.json()['title']}[/italic]")
+
+
 # ── task commands ────────────────────────────────────────────────────────────
 
 

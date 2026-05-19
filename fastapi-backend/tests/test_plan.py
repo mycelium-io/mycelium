@@ -129,6 +129,35 @@ class TestPlanRoutes:
         assert data["open_count"] == 0
         assert data["done_count"] == 1
 
+    async def test_title_roundtrip(self, client: AsyncClient):
+        room = "plan-title"
+        await client.post("/api/rooms", json={"name": room})
+
+        # No title initially
+        resp = await client.get(f"/api/rooms/{room}/plan")
+        assert resp.json()["title"] is None
+
+        # Set it
+        resp = await client.put(
+            f"/api/rooms/{room}/plan/title",
+            json={"text": "Plan the Q3 sprint priorities"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["title"] == "Plan the Q3 sprint priorities"
+
+        # Read back via GET /plan
+        resp = await client.get(f"/api/rooms/{room}/plan")
+        assert resp.json()["title"] == "Plan the Q3 sprint priorities"
+
+        # Clear it
+        resp = await client.put(
+            f"/api/rooms/{room}/plan/title",
+            json={"text": ""},
+        )
+        assert resp.status_code == 200
+        resp = await client.get(f"/api/rooms/{room}/plan")
+        assert resp.json()["title"] is None
+
     async def test_room_creation_includes_plan_dir(self, client: AsyncClient):
         await client.post("/api/rooms", json={"name": "with-plan"})
         plan_dir = get_room_dir("with-plan") / "plan"
