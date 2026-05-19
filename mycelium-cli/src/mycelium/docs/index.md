@@ -8,6 +8,7 @@ Built-in reference for the Mycelium multi-agent coordination system.
 - **quickstart** — Install and create your first room
 - **rooms** — Persistent coordination namespaces
 - **memory** — Persistent key-value store with semantic search
+- **plan** — Title + markdown files + checklist tasks surfaced to every agent
 - **cognitive-engine** — Negotiation and synthesis mediator
 - **knowledge-graph** — LLM-extracted concept graph
 - **cli-reference** — All CLI commands (generated from source)

@@ -50,6 +50,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("rooms.md",                    "rooms",              "learn",     "Concepts",     "Rooms"),
     ("sessions.md",                 "sessions",           "learn",     "Concepts",     "Sessions"),
     ("memory.md",                   "memory",             "learn",     "Concepts",     "Memory"),
+    ("plan.md",                     "plan",               "learn",     "Concepts",     "Plan"),
     ("cognitive-engine.md",         "cognitive-engine",   "learn",     "Concepts",     "CognitiveEngine"),
     ("knowledge-graph.md",          "knowledge-graph",    "learn",     "Concepts",     "Knowledge Graph"),
     ("guides/structured-memory.md", "structured-memory",  "learn",     "Guides",       "Structured Memory"),
@@ -77,6 +78,7 @@ GROUP_CONFIG: list[tuple[str, str, str]] = [
     ("room", "room", "room"),
     ("session", "session", "session"),
     ("memory", "memory", "memory"),
+    ("plan", "plan", "plan"),
     ("negotiate", "negotiate", "negotiate"),
     ("cfn", "cfn", "cfn"),
     ("adapter", "adapter", "adapter"),
@@ -393,18 +395,18 @@ def _all_kept_sections() -> dict[str, str]:
 
 def _generate_cli_reference() -> tuple[str, list[tuple[str, str]]]:
     """Return (content_html, sidebar_entries) for the cli-reference page."""
-    from mycelium.doc_ref import get_registry
-
     import mycelium.commands.adapter  # noqa: F401
     import mycelium.commands.cfn  # noqa: F401
     import mycelium.commands.config  # noqa: F401
     import mycelium.commands.doctor  # noqa: F401
-    import mycelium.commands.instance  # noqa: F401
     import mycelium.commands.install  # noqa: F401
+    import mycelium.commands.instance  # noqa: F401
     import mycelium.commands.memory  # noqa: F401
     import mycelium.commands.negotiate  # noqa: F401
+    import mycelium.commands.plan  # noqa: F401
     import mycelium.commands.room  # noqa: F401
     import mycelium.commands.session  # noqa: F401
+    from mycelium.doc_ref import get_registry
 
     entries = get_registry()
     groups: dict[str, list] = defaultdict(list)
@@ -501,6 +503,7 @@ def _format_toml_value(value: object) -> str:
 def _generate_config_reference() -> tuple[str, list[tuple[str, str]]]:
     """Return (content_html, sidebar_entries) for the configuration page."""
     from pydantic import BaseModel
+
     from mycelium.config import MyceliumConfig
 
     declared = list(MyceliumConfig.model_fields.keys())

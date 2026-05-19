@@ -55,6 +55,7 @@
       <a href="#rooms" class="nav-link sub">Rooms</a>
       <a href="#sessions" class="nav-link sub">Sessions</a>
       <a href="#memory" class="nav-link sub">Memory</a>
+      <a href="#plan" class="nav-link sub">Plan</a>
       <a href="#cognitive-engine" class="nav-link sub">CognitiveEngine</a>
       <a href="#knowledge-graph" class="nav-link sub">Knowledge Graph</a>
     </div>
@@ -231,8 +232,9 @@
       <h2 id="rooms-rooms-are-directories">Rooms are Directories</h2>
       <p>Each room maps to a directory at <code>~/.mycelium/rooms/{room_name}/</code>. Standard subdirectories are created automatically:</p>
       <pre><code>~/.mycelium/rooms/design-review/
-  decisions/   context/   status/
+  decisions/   context/   status/    plan/
   work/        procedures/   log/   failed/</code></pre>
+      <p>The <code>plan/</code> subdir holds the room&#x27;s plan — a free-form set of markdown files plus the <code>- [ ]</code> / <code>- [x]</code> checklist lines those files contain. <code>plan/title.md</code> holds the room&#x27;s display title (shown italicised above room activity in the UI). The rest are arbitrary <code>plan/{slug}.md</code> files containing prose and tasks. See <a href="#"><code>mycelium plan</code></a> for read/write commands and <code>plan task add|done|undo</code> for checkbox edits.</p>
       <p>You can browse, edit, or git-track these directories directly. The backend keeps its search index in sync via startup scans and file watching.</p>
       <h2 id="rooms-session-state-machine">Session State Machine</h2>
       <p>Sessions spawned within rooms follow a state machine:</p>
@@ -390,6 +392,43 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
       <pre><code><span class="comment"># New agent arrives, gets the full context</span>
 <span class="cmd">mycelium catchup</span></code></pre>
       <p>CognitiveEngine synthesizes the room&#x27;s memory into a structured briefing: decisions made, work in progress, blockers, and what failed.</p>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="plan">
+      <h1>Plan</h1>
+      <p>A room&#x27;s <strong>plan</strong> is the place to write down what the room is for and what&#x27;s left to do. It lives in <code>.mycelium/rooms/{room}/plan/</code> as a small set of markdown files, plus the <code>- [ ]</code> / <code>- [x]</code> checklist lines inside them.</p>
+      <p>Plan content is surfaced to every agent in the room — through the synthesis context (async path) and every coordination tick (sync path) — so agents weigh their behaviour against work that&#x27;s already committed.</p>
+      <h2 id="plan-anatomy">Anatomy</h2>
+      <pre><code>.mycelium/rooms/{room}/plan/
+├── title.md          # one-line italic display title (shown above room activity)
+├── tasks.md          # default todo file written by `plan task add`
+└── {slug}.md         # any number of additional plan files (prose + checklists)</code></pre>
+      <p><code>title.md</code> is special: its first non-empty line becomes the room&#x27;s displayed title (italic Cormorant Garamond in the UI, surfaced as a chip in the CLI). All other <code>plan/*.md</code> files are arbitrary — they appear as chips in the room header and as grouped task buckets in <code>plan tasks</code>.</p>
+      <h2 id="plan-cli">CLI</h2>
+      <pre><code><span class="comment"># Title</span>
+<span class="cmd">mycelium plan title</span>                                # read
+<span class="cmd">mycelium plan title</span> <span class="str">&quot;Plan the Q3 sprint priorities&quot;</span>  # set
+
+<span class="comment"># Files (each is a memory file under plan/&lt;slug&gt;)</span>
+<span class="cmd">mycelium plan ls</span>
+<span class="cmd">mycelium plan show</span> sprint
+<span class="cmd">mycelium plan set</span> sprint <span class="str">&quot;# Sprint\n\n- [ ] cut a release branch&quot;</span>
+<span class="cmd">mycelium plan rm</span> sprint
+
+<span class="comment"># Tasks (markdown checklist lines across every plan file)</span>
+<span class="cmd">mycelium plan tasks</span>                  # open tasks only
+<span class="cmd">mycelium plan tasks</span> <span class="flag">--all</span>            # include completed
+<span class="cmd">mycelium plan task</span> add <span class="str">&quot;ship the demo&quot;</span>          # appends to plan/tasks.md
+<span class="cmd">mycelium plan task</span> add <span class="str">&quot;draft API&quot;</span> <span class="flag">--file</span> sprint # appends to plan/sprint.md
+<span class="cmd">mycelium plan task</span> done              # interactive multi-select over open tasks
+<span class="cmd">mycelium plan task</span> done tasks:3 sprint:7
+<span class="cmd">mycelium plan task</span> undo              # interactive multi-select over done tasks</code></pre>
+      <p>Task IDs are <code>&lt;slug&gt;:&lt;line&gt;</code> and stable as long as the file isn&#x27;t reflowed.</p>
+      <h2 id="plan-how-agents-see-it">How agents see it</h2>
+      <p>Plan files share the same memory-style markdown-with-frontmatter convention, so they show up in synthesis grouped under <strong>Plan &amp; Open Tasks</strong> alongside <code>work/</code>, <code>decisions/</code>, etc.</p>
+      <p>During a live coordination tick, the open task list is also rendered into every agent&#x27;s prompt under a dedicated <strong>Open tasks</strong> header — both CLI agents (raw payload field <code>plan_open_tasks</code>) and OpenClaw agents (rendered into the dispatched instruction string).</p>
     </section>
 
     <hr class="divider">
