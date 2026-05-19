@@ -304,9 +304,12 @@ class OpenClawIntegration(Integration):
         # (verified via `openclaw agents --help`: "delete — Delete an agent
         # and prune workspace/state"). It prunes the workspace itself, so the
         # explicit rmtree below is just a belt-and-suspenders fallback for
-        # custom --workspace paths openclaw might not track.
+        # custom --workspace paths openclaw might not track. `--force` is
+        # required: we always run non-interactively, and without it openclaw
+        # refuses with "Non-interactive session. Re-run with --force." —
+        # leaving the agent record orphaned after its workspace is gone.
         result = subprocess.run(
-            self._oc_cmd(["openclaw", "agents", "delete", agent_id]),
+            self._oc_cmd(["openclaw", "agents", "delete", agent_id, "--force"]),
             text=True,
             capture_output=True,
         )
