@@ -111,10 +111,11 @@ def test_unknown_family_raises() -> None:
         get_integration("does-not-exist")
 
 
-def test_agent_adapters_shim_still_re_exports() -> None:
-    """The old import path keeps working until the shim is removed."""
-    from mycelium.agent_adapters import AddOptions, AgentAdapter, get_adapter
+def test_no_legacy_adapter_packages() -> None:
+    """The collision is gone: neither ``agent_adapters`` nor a top-level
+    ``mycelium.adapters`` package exists — one ``integrations`` concept only."""
+    import importlib
 
-    assert AgentAdapter is Integration
-    assert get_adapter("claude_code").name == "claude_code"
-    assert AddOptions(room="r").room == "r"
+    for legacy in ("mycelium.agent_adapters", "mycelium.adapters"):
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module(legacy)

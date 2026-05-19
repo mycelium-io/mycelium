@@ -14,7 +14,7 @@ def resolve_mentions(content: str, handles: list[str]) -> list[str]:
     """Return the subset of ``handles`` that are @-mentioned in ``content``.
 
     Mirrors the TypeScript implementation in
-    ``adapters/openclaw/.../channel/mentions.ts`` exactly so both gateways
+    ``integrations/assets/openclaw/.../channel/mentions.ts`` so both gateways
     agree on which agent a message addresses.
     """
     lower = content.lower()

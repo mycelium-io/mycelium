@@ -191,7 +191,7 @@ class Integration(ABC):
         return False
 
 
-#: Back-compat alias. The dispatch facet was historically ``AgentAdapter`` in
-#: the ``mycelium.agent_adapters`` package; that package is now a thin shim
-#: re-exporting from here. Remove once no out-of-tree importer depends on it.
+#: Readability alias — the contract reads naturally as an "adapter" at some
+#: call sites. (The historical ``mycelium.agent_adapters`` package has been
+#: removed; this is the one concept now.)
 AgentAdapter = Integration

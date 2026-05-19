@@ -34,7 +34,7 @@ If you're documenting how Mycelium works, ground every claim against one of thes
 - [`fastapi-backend/app/services/embedding.py`](fastapi-backend/app/services/embedding.py), [`indexer.py`](fastapi-backend/app/services/indexer.py), [`reindex.py`](fastapi-backend/app/services/reindex.py) — pgvector search index over memory.
 - [`fastapi-backend/app/routes/`](fastapi-backend/app/routes/) — HTTP API surface (rooms, sessions, memory, coordination, CFN proxy, SSE streams).
 - [`mycelium-cli/src/mycelium/commands/`](mycelium-cli/src/mycelium/commands/) — every CLI verb (`memory`, `room`, `session`, `negotiate`, `cfn`, `adapter`, `install`, …).
-- [`mycelium-cli/src/mycelium/adapters/`](mycelium-cli/src/mycelium/adapters/) — adapter integrations: `claude-code/`, `openclaw/`. **Important** — see "Things easy to mis-describe" below.
+- [`mycelium-cli/src/mycelium/integrations/assets/`](mycelium-cli/src/mycelium/integrations/assets/) — adapter integrations: `claude-code/`, `openclaw/`. **Important** — see "Things easy to mis-describe" below.
 
 ## What to emphasize
 
@@ -47,7 +47,7 @@ If you're documenting how Mycelium works, ground every claim against one of thes
 
 - **Two delivery paths for coordination ticks — keep them in sync.** When `coordination_tick` is posted to a session room, agents see it via:
   1. **CLI path** (Claude Code, Cursor, plain shell): the agent runs `mycelium await` (or `mycelium negotiate await`) which streams ticks from the SSE endpoint.
-  2. **OpenClaw path:** the agent does NOT run `mycelium await`. The `mycelium-room` channel plugin in [`mycelium-cli/src/mycelium/adapters/openclaw/`](mycelium-cli/src/mycelium/adapters/openclaw/) subscribes to the SSE on its behalf and dispatches a *human-readable string* into the agent's session via `formatTickInstruction()`.
+  2. **OpenClaw path:** the agent does NOT run `mycelium await`. The `mycelium-room` channel plugin in [`mycelium-cli/src/mycelium/integrations/assets/openclaw/`](mycelium-cli/src/mycelium/integrations/assets/openclaw/) subscribes to the SSE on its behalf and dispatches a *human-readable string* into the agent's session via `formatTickInstruction()`.
 
   Adding a field to the tick payload (`coordination.py:_fan_out_cfn_messages`) is **not enough on its own** — the openclaw flow won't surface it until `formatTickInstruction()` is also updated. Always change both. Mention this whenever you describe ticks or coordination flow.
 - **AgensGraph is PostgreSQL 16, not Neo4j.** It exposes openCypher *on top of* Postgres. Don't conflate it with a separate graph database.

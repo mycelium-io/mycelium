@@ -32,9 +32,9 @@ Run all quality checks on the mycelium codebase. Auto-fix issues where possible.
    cd mycelium-frontend && npx tsc --noEmit && npx next build
    ```
 
-4. **OpenClaw plugin tests** — If any file under `mycelium-cli/src/mycelium/adapters/openclaw/mycelium/plugin/` was changed (source, test, or config), run the plugin's vitest suite:
+4. **OpenClaw plugin tests** — If any file under `mycelium-cli/src/mycelium/integrations/assets/openclaw/mycelium/plugin/` was changed (source, test, or config), run the plugin's vitest suite:
    ```bash
-   cd mycelium-cli/src/mycelium/adapters/openclaw/mycelium/plugin && npm test
+   cd mycelium-cli/src/mycelium/integrations/assets/openclaw/mycelium/plugin && npm test
    ```
    If `node_modules/` is missing, run `npm install --silent` first. Tests cover the pure routing logic (mentions, session-key format, channel config parsing, route decisions). Adding new message types or routing rules should come with tests in `test/route.test.ts`.
 
@@ -65,9 +65,9 @@ Run all quality checks on the mycelium codebase. Auto-fix issues where possible.
    - `docs/demo-script.md` — live demo script
    - `README.md` — quickstart and overview
    - `mycelium-cli/src/mycelium/docs/` — built-in CLI docs
-   - Adapter skills (`mycelium-cli/src/mycelium/adapters/*/skills/`)
+   - Adapter skills (`mycelium-cli/src/mycelium/integrations/assets/*/skills/`)
 
-8. **Doctor sanity check** — If any file under `mycelium-cli/src/mycelium/commands/doctor.py`, `mycelium-cli/src/mycelium/commands/adapter.py`, or `mycelium-cli/src/mycelium/adapters/openclaw/` was changed, run `mycelium doctor` to verify every check still passes against the current install:
+8. **Doctor sanity check** — If any file under `mycelium-cli/src/mycelium/commands/doctor.py`, `mycelium-cli/src/mycelium/commands/adapter.py`, or `mycelium-cli/src/mycelium/integrations/assets/openclaw/` was changed, run `mycelium doctor` to verify every check still passes against the current install:
    ```bash
    mycelium doctor
    ```

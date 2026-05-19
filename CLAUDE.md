@@ -78,7 +78,7 @@ Embeddings: sentence-transformers (all-MiniLM-L6-v2, local, 384 dimensions).
 - **No Ensue references in code** — we took inspiration from their API design but the implementation is independent.
 - **Two delivery paths for coordination ticks — keep them in sync.** When a `coordination_tick` is posted to a session room, agents see it via one of two paths depending on their adapter:
   - **CLI path (Claude Code, Cursor, plain shell):** the agent runs `mycelium await` (or `mycelium negotiate await`) which streams ticks from the SSE endpoint. Formatting is whatever the agent does with the raw JSON tick payload.
-  - **OpenClaw path:** the agent does NOT run `mycelium await`. The `mycelium-room` channel plugin (`mycelium-cli/src/mycelium/adapters/openclaw/mycelium/plugin/src/channel/`) subscribes to the session room's SSE on its behalf and dispatches a *human-readable string* into the agent's session via `formatTickInstruction()` in `route.ts`. The agent only ever sees that formatted string — the raw payload fields are invisible to it.
+  - **OpenClaw path:** the agent does NOT run `mycelium await`. The `mycelium-room` channel plugin (`mycelium-cli/src/mycelium/integrations/assets/openclaw/mycelium/plugin/src/channel/`) subscribes to the session room's SSE on its behalf and dispatches a *human-readable string* into the agent's session via `formatTickInstruction()` in `route.ts`. The agent only ever sees that formatted string — the raw payload fields are invisible to it.
 
   This means that **adding a field to the backend tick payload (`coordination.py:_fan_out_cfn_messages`) is not enough on its own** — the openclaw flow won't surface it until you also update `formatTickInstruction()` to render it into the dispatched string. Always change both.
 

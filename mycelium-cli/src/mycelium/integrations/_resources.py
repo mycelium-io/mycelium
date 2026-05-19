@@ -3,9 +3,10 @@
 
 """Bundled-asset resolution shared by every integration's install facet.
 
-The static assets stay under ``mycelium.adapters.<family>`` (moving them
-would break packaging/CI for no contract benefit); this resolves a real
-filesystem path to them whether the package is editable or zipped.
+The static assets (OpenClaw TS plugin, shell hooks, SKILL.md) live under
+``mycelium.integrations.assets.<family>`` — one concept, the data colocated
+with the package that owns it. This resolves a real filesystem path to them
+whether the package is editable or zipped.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ def _resolve_asset(subpath: str, adapter: str = "openclaw") -> Path:
     For non-editable installs where the package lives inside a zip, extract
     the entire directory tree to a temp dir first.
     """
-    pkg = importlib.resources.files(f"mycelium.adapters.{adapter}")
+    pkg = importlib.resources.files(f"mycelium.integrations.assets.{adapter}")
     parts = subpath.split("/")
     src = Path(str(pkg))
     for part in parts:
