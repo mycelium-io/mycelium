@@ -144,6 +144,30 @@ export async function fetchRoomAgents(roomName: string): Promise<AgentSummary[]>
   return agents;
 }
 
+/**
+ * Read one agent's raw manifest (`agents/<handle>` memory value) for the
+ * detail view. Returns the raw YAML/JSON string, or null if absent.
+ *
+ * Read-only by design: registering or tearing down an agent has spoke-local
+ * side effects (cc-daemon manifest mirror, OpenClaw gateway config) that a
+ * hub backend cannot perform — that path is the daemon-mediated provisioning
+ * protocol tracked separately, not a frontend memory write.
+ */
+export async function fetchAgentManifest(
+  roomName: string,
+  handle: string,
+): Promise<string | null> {
+  const res = await fetch(
+    `${API}/api/rooms/${roomName}/memory/${encodeURIComponent(`agents/${handle}`)}`,
+    { cache: "no-store" },
+  );
+  if (!res.ok) return null;
+  const data = await res.json();
+  const value = (data && (data.value ?? data.content)) ?? null;
+  if (value == null) return null;
+  return typeof value === "string" ? value : JSON.stringify(value, null, 2);
+}
+
 // ── Metrics ──────────────────────────────────────────────────────────────────
 
 export async function fetchBackendMetrics() {

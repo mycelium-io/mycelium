@@ -4,7 +4,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getSSEUrl, fetchMessages } from "@/lib/api";
+import { getSSEUrl, fetchMessages, fetchRoomAgents } from "@/lib/api";
 import { MarkdownContent } from "@/components/markdown-content";
 
 interface Event {
@@ -154,7 +154,26 @@ export function EventStream({ roomName, onMemoryChanged }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
   const [connected, setConnected] = useState(false);
   const [view, setView] = useState<View>("channel");
+  const [agentHandles, setAgentHandles] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Know which senders are registered agents so their replies can be badged.
+  // Self-fetched (mirrors the chat box) so the page doesn't have to thread it.
+  useEffect(() => {
+    let cancelled = false;
+    const load = () =>
+      fetchRoomAgents(roomName)
+        .then((a) => {
+          if (!cancelled) setAgentHandles(new Set(a.map((x) => x.handle)));
+        })
+        .catch(() => {});
+    load();
+    const t = setInterval(load, 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [roomName]);
 
   // Load initial messages
   useEffect(() => {
@@ -255,11 +274,34 @@ export function EventStream({ roomName, onMemoryChanged }: Props) {
         )}
         {view === "channel"
           ? visible.map(ev => (
-              <div key={ev.id} className="px-5 py-3 border-b border-border last:border-b-0">
+              <div
+                key={ev.id}
+                className="px-5 py-3 border-b border-border last:border-b-0"
+                style={
+                  agentHandles.has(ev.sender)
+                    ? { borderLeft: "2px solid var(--green)" }
+                    : undefined
+                }
+              >
                 <div className="flex items-baseline gap-2 mb-1.5">
-                  <span className="font-mono text-label text-accent font-semibold truncate">
+                  <span
+                    className="font-mono text-label font-semibold truncate"
+                    style={{
+                      color: agentHandles.has(ev.sender)
+                        ? "var(--green)"
+                        : "var(--accent)",
+                    }}
+                  >
                     {ev.sender}
                   </span>
+                  {agentHandles.has(ev.sender) && (
+                    <span
+                      className="caps-mono-sm flex-shrink-0"
+                      style={{ color: "var(--green)" }}
+                    >
+                      AGENT
+                    </span>
+                  )}
                   {ev.recipient && (
                     <span className="caps-mono-sm text-muted">→ {ev.recipient}</span>
                   )}

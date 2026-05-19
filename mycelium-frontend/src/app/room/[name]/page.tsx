@@ -6,6 +6,7 @@
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { fetchRoom } from "@/lib/api";
+import { AgentsPanel } from "@/components/agents-panel";
 import { EventStream } from "@/components/event-stream";
 import { MemoryPanel } from "@/components/memory-panel";
 import { RoomChatBox } from "@/components/room-chat-box";
@@ -74,18 +75,33 @@ export default function RoomPage() {
           >
             <span aria-hidden className="absolute inset-y-0 -left-1.5 -right-1.5" />
           </PanelResizeHandle>
-          <Panel id="memory" defaultSize={38} minSize={22} className="overflow-hidden" style={{ minWidth: 0 }}>
+          <Panel id="side" defaultSize={38} minSize={22} className="overflow-hidden" style={{ minWidth: 0 }}>
             <aside className="flex flex-col h-full bg-surface/40 overflow-hidden" style={{ minWidth: 0 }}>
-              <PaneHeader>
-                <span className="caps-mono-sm text-muted">MEMORY</span>
-              </PaneHeader>
-              <div className="flex-1 overflow-hidden">
-                <MemoryPanel
-                  roomName={roomName}
-                  masId={room?.mas_id ?? null}
-                  refreshTrigger={memoryRefresh}
-                />
-              </div>
+              <PanelGroup orientation="vertical" className="flex-1" style={{ height: "100%" }}>
+                <Panel id="agents" defaultSize={40} minSize={15} className="overflow-hidden">
+                  <AgentsPanel roomName={roomName} />
+                </Panel>
+                <PanelResizeHandle
+                  className="h-px bg-border hover:bg-accent transition-colors flex-shrink-0 relative"
+                  style={{ cursor: "row-resize" }}
+                >
+                  <span aria-hidden className="absolute inset-x-0 -top-1.5 -bottom-1.5" />
+                </PanelResizeHandle>
+                <Panel id="memory" defaultSize={60} minSize={20} className="overflow-hidden">
+                  <div className="flex flex-col h-full">
+                    <PaneHeader>
+                      <span className="caps-mono-sm text-muted">MEMORY</span>
+                    </PaneHeader>
+                    <div className="flex-1 overflow-hidden">
+                      <MemoryPanel
+                        roomName={roomName}
+                        masId={room?.mas_id ?? null}
+                        refreshTrigger={memoryRefresh}
+                      />
+                    </div>
+                  </div>
+                </Panel>
+              </PanelGroup>
             </aside>
           </Panel>
         </PanelGroup>
