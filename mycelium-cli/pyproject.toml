@@ -78,8 +78,8 @@ mycelium = [
     "py.typed",
     "data/*.json",
     "docs/**/*.md",
-    "integrations/assets/claude-code/**/*",
-    "integrations/assets/openclaw/mycelium/**/*",
+    "integrations/claude_code/assets/**/*",
+    "integrations/openclaw/assets/mycelium/**/*",
     "daemon/service/*",
     "docker/*",
     "docker/initdb/*",
@@ -92,9 +92,9 @@ mycelium = [
 # the wheel, bloating it by tens of MB. test/ is unit test source that has
 # no runtime purpose on an end user's machine.
 mycelium = [
-    "integrations/assets/openclaw/mycelium/plugin/node_modules/**/*",
-    "integrations/assets/openclaw/mycelium/plugin/test/**/*",
-    "integrations/assets/openclaw/mycelium/plugin/package-lock.json",
+    "integrations/openclaw/assets/mycelium/plugin/node_modules/**/*",
+    "integrations/openclaw/assets/mycelium/plugin/test/**/*",
+    "integrations/openclaw/assets/mycelium/plugin/package-lock.json",
 ]
 
 [tool.pytest.ini_options]

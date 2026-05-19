@@ -38,8 +38,8 @@ PLUGIN_ROOT = (
     / "src"
     / "mycelium"
     / "integrations"
-    / "assets"
     / "openclaw"
+    / "assets"
     / "mycelium"
     / "plugin"
 )

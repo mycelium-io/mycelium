@@ -12,7 +12,7 @@ This package subsumes what used to be three colliding "adapter" things:
   ``integrations/<family>/install.py``; the command layer is now a thin
   registry dispatcher.
 - ``mycelium.adapters`` (the static asset bundle) — relocated to
-  ``mycelium.integrations.assets/<family>/`` so the data lives with the one
+  ``mycelium.integrations.<family>.assets/`` so the data lives with the one
   package that owns it.
 
 One canonical family id is used everywhere internally — the **underscore**

@@ -576,7 +576,7 @@ GITHUB_SVG = (
 
 SKILL_MD_URL = (
     "https://raw.githubusercontent.com/mycelium-io/mycelium/main/"
-    "mycelium-cli/src/mycelium/integrations/assets/openclaw/mycelium/plugin/skills/"
+    "mycelium-cli/src/mycelium/integrations/openclaw/assets/mycelium/plugin/skills/"
     "mycelium/SKILL.md"
 )
 

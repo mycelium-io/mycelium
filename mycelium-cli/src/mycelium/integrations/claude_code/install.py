@@ -76,7 +76,7 @@ def _install_claude_code(verbose: bool = False) -> None:
     claude_dir = Path.home() / ".claude"
 
     # Skill
-    skill_src = _resolve_asset(f"skills/{_CLAUDE_CODE_SKILL_NAME}", adapter="claude-code")
+    skill_src = _resolve_asset(f"skills/{_CLAUDE_CODE_SKILL_NAME}", family="claude_code")
     skill_dst = claude_dir / "skills" / _CLAUDE_CODE_SKILL_NAME
     skill_dst.mkdir(parents=True, exist_ok=True)
     for f in skill_src.iterdir():
@@ -86,7 +86,7 @@ def _install_claude_code(verbose: bool = False) -> None:
             typer.echo(f"  skill: {dest}")
 
     # Hooks
-    hooks_src = _resolve_asset("hooks", adapter="claude-code")
+    hooks_src = _resolve_asset("hooks", family="claude_code")
     hooks_dst = claude_dir / "hooks"
     hooks_dst.mkdir(parents=True, exist_ok=True)
     for hook_name in _CLAUDE_CODE_HOOKS:

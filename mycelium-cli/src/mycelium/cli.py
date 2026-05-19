@@ -81,21 +81,21 @@ def skill(
     Use --claude-code to print the Claude Code adapter skill instead.
     """
     if claude_code:
-        rel = "integrations/assets/claude-code/skills/mycelium/SKILL.md"
+        rel = "integrations/claude_code/assets/skills/mycelium/SKILL.md"
         fallback_parts = (
             "integrations",
+            "claude_code",
             "assets",
-            "claude-code",
             "skills",
             "mycelium",
             "SKILL.md",
         )
     else:
-        rel = "integrations/assets/openclaw/mycelium/plugin/skills/mycelium/SKILL.md"
+        rel = "integrations/openclaw/assets/mycelium/plugin/skills/mycelium/SKILL.md"
         fallback_parts = (
             "integrations",
-            "assets",
             "openclaw",
+            "assets",
             "mycelium",
             "plugin",
             "skills",

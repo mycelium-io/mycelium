@@ -83,12 +83,7 @@ _OPENCLAW_STEPS = {
     "docker-env": "show env vars for Docker-based experiment agents",
 }
 
-# Follow-up steps for the claude-code adapter. `daemon` installs the
-# mycelium-cc-daemon as a user-level service (launchd on macOS, systemd
-# --user on Linux), wiring it to subscribe to room SSE and dispatch
-# `@handle` mentions to claude -p spawns. See
-
-_MYCELIUM_ASSET_ROOT = "mycelium"  # subdir under integrations/assets/openclaw/
+_MYCELIUM_ASSET_ROOT = "mycelium"  # subdir under integrations/openclaw/assets/
 _MYCELIUM_PLUGIN_SRC = f"{_MYCELIUM_ASSET_ROOT}/plugin"
 _MYCELIUM_BOOTSTRAP_HOOK_SRC = f"{_MYCELIUM_ASSET_ROOT}/hooks/{_OPENCLAW_HOOK_NAME}"
 _MYCELIUM_SKILL_SRC = f"{_MYCELIUM_PLUGIN_SRC}/skills/{_OPENCLAW_SKILL_NAME}"
@@ -235,7 +230,7 @@ def _write_container_json(container: str, path: str, data: dict) -> None:
     )
 
 
-# Source tree lives at mycelium-cli/src/mycelium/integrations/assets/openclaw/mycelium/
+# Source tree lives at mycelium-cli/src/mycelium/integrations/openclaw/assets/mycelium/
 # (the "mycelium" umbrella directory grouping plugin + hooks + skills as one
 # logical package). OpenClaw still expects each concern in its canonical
 

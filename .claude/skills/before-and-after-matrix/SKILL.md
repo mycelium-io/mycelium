@@ -54,7 +54,7 @@ curl -sf http://localhost:8008/_matrix/client/v3/login | python3 -m json.tool >/
 
 # 6. Mycelium repo path (we read SKILL.md and verify install paths from here)
 MYCELIUM_REPO=$(pwd)
-ls "$MYCELIUM_REPO/mycelium-cli/src/mycelium/integrations/assets/openclaw/mycelium/plugin/index.ts" 2>/dev/null \
+ls "$MYCELIUM_REPO/mycelium-cli/src/mycelium/integrations/openclaw/assets/mycelium/plugin/index.ts" 2>/dev/null \
   && echo "Repo OK: $MYCELIUM_REPO" \
   || { echo "ERROR: not in the mycelium repo"; exit 1; }
 ```
