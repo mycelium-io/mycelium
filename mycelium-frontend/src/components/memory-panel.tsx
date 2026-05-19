@@ -6,7 +6,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { fetchMemories, searchMemories, fetchCatchup } from "@/lib/api";
 import { KnowledgePanel } from "./knowledge-panel";
-import { MarkdownContent } from "./markdown-content";
 
 interface Memory {
   key: string;
@@ -39,11 +38,10 @@ interface Props {
   refreshTrigger: number;
 }
 
-type Tab = "memories" | "synthesis" | "knowledge";
+type Tab = "memories" | "knowledge";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "memories",  label: "MEMORIES" },
-  { id: "synthesis", label: "SYNTHESIS" },
   { id: "knowledge", label: "KNOWLEDGE" },
 ];
 
@@ -88,8 +86,6 @@ export function MemoryPanel({ roomName, masId, refreshTrigger }: Props) {
     }
     return String(v);
   };
-
-  const synthText = catchup?.latest_synthesis?.content ?? null;
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -206,26 +202,6 @@ export function MemoryPanel({ roomName, masId, refreshTrigger }: Props) {
               </div>
             )}
           </div>
-        </div>
-      )}
-
-      {tab === "synthesis" && (
-        <div className="flex-1 overflow-y-auto px-4 py-4">
-          {synthText ? (
-            <>
-              <div className="caps-mono-sm text-muted mb-3 truncate">
-                {catchup?.latest_synthesis?.key} · {catchup?.latest_synthesis?.created_at?.slice(0, 16)}
-              </div>
-              <MarkdownContent>{synthText}</MarkdownContent>
-            </>
-          ) : (
-            <div className="text-center caps-mono-sm text-muted italic py-10">
-              no synthesis yet
-              <div className="font-mono text-label text-text2 mt-3 normal-case tracking-normal not-italic">
-                run <code className="bg-surface px-1.5 py-0.5 text-accent border border-border">mycelium synthesize</code>
-              </div>
-            </div>
-          )}
         </div>
       )}
 

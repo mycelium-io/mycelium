@@ -54,7 +54,20 @@ export default function RoomPage() {
 
       <div className="flex flex-1 overflow-hidden">
         <aside className="w-[240px] flex-shrink-0 border-r border-border">
-          <SessionsRail roomName={roomName} activeSessionName={null} />
+          <PanelGroup orientation="vertical" className="h-full" style={{ height: "100%" }}>
+            <Panel id="agents" defaultSize={32} minSize={12} className="overflow-hidden">
+              <AgentsPanel roomName={roomName} />
+            </Panel>
+            <PanelResizeHandle
+              className="h-px bg-border hover:bg-accent transition-colors flex-shrink-0 relative"
+              style={{ cursor: "row-resize" }}
+            >
+              <span aria-hidden className="absolute inset-x-0 -top-1.5 -bottom-1.5" />
+            </PanelResizeHandle>
+            <Panel id="sessions" defaultSize={68} minSize={20} className="overflow-hidden">
+              <SessionsRail roomName={roomName} activeSessionName={null} />
+            </Panel>
+          </PanelGroup>
         </aside>
 
         <PanelGroup orientation="horizontal" className="flex-1" style={{ width: "100%", height: "100%" }}>
@@ -75,33 +88,18 @@ export default function RoomPage() {
           >
             <span aria-hidden className="absolute inset-y-0 -left-1.5 -right-1.5" />
           </PanelResizeHandle>
-          <Panel id="side" defaultSize={38} minSize={22} className="overflow-hidden" style={{ minWidth: 0 }}>
+          <Panel id="memory" defaultSize={38} minSize={22} className="overflow-hidden" style={{ minWidth: 0 }}>
             <aside className="flex flex-col h-full bg-surface/40 overflow-hidden" style={{ minWidth: 0 }}>
-              <PanelGroup orientation="vertical" className="flex-1" style={{ height: "100%" }}>
-                <Panel id="agents" defaultSize={40} minSize={15} className="overflow-hidden">
-                  <AgentsPanel roomName={roomName} />
-                </Panel>
-                <PanelResizeHandle
-                  className="h-px bg-border hover:bg-accent transition-colors flex-shrink-0 relative"
-                  style={{ cursor: "row-resize" }}
-                >
-                  <span aria-hidden className="absolute inset-x-0 -top-1.5 -bottom-1.5" />
-                </PanelResizeHandle>
-                <Panel id="memory" defaultSize={60} minSize={20} className="overflow-hidden">
-                  <div className="flex flex-col h-full">
-                    <PaneHeader>
-                      <span className="caps-mono-sm text-muted">MEMORY</span>
-                    </PaneHeader>
-                    <div className="flex-1 overflow-hidden">
-                      <MemoryPanel
-                        roomName={roomName}
-                        masId={room?.mas_id ?? null}
-                        refreshTrigger={memoryRefresh}
-                      />
-                    </div>
-                  </div>
-                </Panel>
-              </PanelGroup>
+              <PaneHeader>
+                <span className="caps-mono-sm text-muted">MEMORY</span>
+              </PaneHeader>
+              <div className="flex-1 overflow-hidden">
+                <MemoryPanel
+                  roomName={roomName}
+                  masId={room?.mas_id ?? null}
+                  refreshTrigger={memoryRefresh}
+                />
+              </div>
             </aside>
           </Panel>
         </PanelGroup>

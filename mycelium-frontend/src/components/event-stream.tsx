@@ -128,6 +128,16 @@ function toneColor(t: "accent" | "ok" | "warn" | "muted" | "ink"): string {
                         : "var(--muted)";
 }
 
+/** Two-letter monogram for a chat avatar (mirrors AgentsPanel). */
+function initials(handle: string): string {
+  const parts = handle.split(/[^a-z0-9]+/i).filter(Boolean);
+  const s =
+    parts.length >= 2
+      ? parts[0][0] + parts[1][0]
+      : (parts[0] ?? handle).slice(0, 2);
+  return s.toUpperCase();
+}
+
 const MENTION_RE = /(@[\w-]+)/g;
 
 function renderWithMentions(text: string): React.ReactNode {
@@ -273,45 +283,53 @@ export function EventStream({ roomName, onMemoryChanged }: Props) {
           </div>
         )}
         {view === "channel"
-          ? visible.map(ev => (
-              <div
-                key={ev.id}
-                className="px-5 py-3 border-b border-border last:border-b-0"
-                style={
-                  agentHandles.has(ev.sender)
-                    ? { borderLeft: "2px solid var(--green)" }
-                    : undefined
-                }
-              >
-                <div className="flex items-baseline gap-2 mb-1.5">
-                  <span
-                    className="font-mono text-label font-semibold truncate"
-                    style={{
-                      color: agentHandles.has(ev.sender)
-                        ? "var(--green)"
-                        : "var(--accent)",
-                    }}
+          ? visible.map(ev => {
+              const isAgent = agentHandles.has(ev.sender);
+              const color = isAgent ? "var(--green)" : "var(--accent)";
+              return (
+                <div
+                  key={ev.id}
+                  className="flex gap-3 px-5 py-3 border-b border-border last:border-b-0"
+                >
+                  <div
+                    className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-surface font-mono text-micro font-bold mt-0.5"
+                    style={{ border: `1.5px solid ${color}`, color }}
+                    aria-hidden
                   >
-                    {ev.sender}
-                  </span>
-                  {agentHandles.has(ev.sender) && (
-                    <span
-                      className="caps-mono-sm flex-shrink-0"
-                      style={{ color: "var(--green)" }}
-                    >
-                      AGENT
-                    </span>
-                  )}
-                  {ev.recipient && (
-                    <span className="caps-mono-sm text-muted">→ {ev.recipient}</span>
-                  )}
-                  <span className="ml-auto text-micro text-muted font-mono tabular">{ev.time}</span>
+                    {initials(ev.sender)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-2 mb-1">
+                      <span
+                        className="font-mono text-label font-semibold truncate"
+                        style={{ color }}
+                      >
+                        {ev.sender}
+                      </span>
+                      {isAgent && (
+                        <span
+                          className="caps-mono-sm flex-shrink-0"
+                          style={{ color: "var(--green)" }}
+                        >
+                          AGENT
+                        </span>
+                      )}
+                      {ev.recipient && (
+                        <span className="caps-mono-sm text-muted">
+                          → {ev.recipient}
+                        </span>
+                      )}
+                      <span className="ml-auto text-micro text-muted font-mono tabular">
+                        {ev.time}
+                      </span>
+                    </div>
+                    <MarkdownContent className="text-body text-text2 leading-relaxed">
+                      {ev.content}
+                    </MarkdownContent>
+                  </div>
                 </div>
-                <MarkdownContent className="text-body text-text2 leading-relaxed">
-                  {ev.content}
-                </MarkdownContent>
-              </div>
-            ))
+              );
+            })
           : visible.map(ev => {
               const style = typeStyles[ev.type] || defaultStyle;
               const color = toneColor(style.tone);

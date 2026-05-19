@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
 @theme {
   --color-bg: #0c0d10;
@@ -175,3 +176,29 @@ body {
 .markdown-body td { color: var(--text2); }
 .markdown-body hr { border: none; border-top: 1px solid var(--border); margin: 0.8em 0; }
 .markdown-body a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+
+/* ── shadcn/ui token bridge — maps shadcn's semantic tokens onto the
+ * existing onyx palette so <Dialog>/<Button> render native-dark. We add
+ * ONLY new token names here; the app's own --color-* (accent, border,
+ * muted, …) are left untouched. ── */
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--text);
+  --color-card: var(--paper);
+  --color-card-foreground: var(--text);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--bg);
+  --color-secondary: var(--paper);
+  --color-secondary-foreground: var(--text);
+  --color-muted-foreground: var(--muted);
+  --color-accent-foreground: var(--text);
+  --color-input: var(--border2);
+  --color-ring: var(--accent);
+  --color-destructive: var(--red, #f87171);
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.625rem;
+  --radius-xl: 0.875rem;
+}

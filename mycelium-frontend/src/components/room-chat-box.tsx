@@ -147,7 +147,7 @@ export function RoomChatBox({ roomName, defaultSender, onSent }: Props) {
           value={sender}
           onChange={(e) => setSender(e.target.value)}
           placeholder="handle"
-          className="text-mono-sm bg-bg border border-border rounded px-2 py-0.5 w-32 focus:outline-none focus:border-accent"
+          className="font-mono text-micro bg-bg border border-border rounded px-2 py-0.5 w-32 focus:outline-none focus:border-accent"
         />
         <span className="caps-mono-sm text-muted ml-auto">
           {agents.length} agent{agents.length === 1 ? "" : "s"}
@@ -171,10 +171,22 @@ export function RoomChatBox({ roomName, defaultSender, onSent }: Props) {
                   i === highlight ? "bg-bg" : "hover:bg-bg/60"
                 }`}
               >
-                <span className="text-mono text-accent">@{a.handle}</span>
-                <span className="caps-mono-sm text-muted">{a.adapter}</span>
+                <span className="font-mono text-label text-accent flex-shrink-0">
+                  @{a.handle}
+                </span>
+                <span
+                  className="caps-mono-sm tabular flex-shrink-0"
+                  style={{
+                    color:
+                      a.adapter === "openclaw" ? "var(--green)" : "var(--muted)",
+                  }}
+                >
+                  {a.adapter}
+                </span>
                 {a.description && (
-                  <span className="text-sm text-muted truncate">— {a.description}</span>
+                  <span className="text-micro text-muted truncate min-w-0">
+                    — {a.description}
+                  </span>
                 )}
               </button>
             ))}
@@ -188,7 +200,7 @@ export function RoomChatBox({ roomName, defaultSender, onSent }: Props) {
           onKeyDown={handleKeyDown}
           placeholder="message the room — @ to mention an agent · ⇧⏎ for newline"
           rows={2}
-          className="w-full resize-none bg-bg border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-accent placeholder:text-muted"
+          className="w-full resize-none bg-bg border border-border rounded px-3 py-2 font-mono text-label focus:outline-none focus:border-accent placeholder:text-muted"
           disabled={sending}
         />
       </div>

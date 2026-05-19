@@ -126,46 +126,38 @@ export async function fetchRoomAgents(roomName: string): Promise<AgentSummary[]>
     const key: string = item.key || "";
     const rest = key.replace(/^agents\//, "");
     if (!rest || rest.includes("/")) continue;
+    // The manifest is YAML. The memory API may hand it back as a raw string,
+    // a structured dict, OR — what the backend actually does — wrapped as
+    // `{text: "<yaml>"}`. Normalize to one YAML string and parse that; the
+    // old code missed the {text} shape and defaulted every agent to
+    // claude_code.
+    const value = item.value;
+    let raw = "";
+    let structured: Record<string, unknown> | null = null;
+    if (typeof value === "string") {
+      raw = value;
+    } else if (value && typeof value === "object") {
+      const v = value as Record<string, unknown>;
+      if (typeof v.text === "string") raw = v.text;
+      else if (typeof v.content === "string") raw = v.content;
+      else structured = v;
+    }
+
     let description = "";
     let adapter = "claude_code";
-    const value = item.value;
-    if (typeof value === "string") {
-      const descMatch = value.match(/description:\s*(.+)/);
+    if (structured) {
+      description = String(structured.description || "");
+      adapter = String(structured.adapter || "claude_code");
+    } else {
+      const descMatch = raw.match(/description:\s*(.+)/);
       if (descMatch) description = descMatch[1].trim().replace(/^["']|["']$/g, "");
-      const adMatch = value.match(/adapter:\s*(\S+)/);
+      const adMatch = raw.match(/adapter:\s*(\S+)/);
       if (adMatch) adapter = adMatch[1].trim();
-    } else if (value && typeof value === "object") {
-      description = String(value.description || "");
-      adapter = String(value.adapter || "claude_code");
     }
     agents.push({ handle: rest, description, adapter });
   }
   agents.sort((a, b) => a.handle.localeCompare(b.handle));
   return agents;
-}
-
-/**
- * Read one agent's raw manifest (`agents/<handle>` memory value) for the
- * detail view. Returns the raw YAML/JSON string, or null if absent.
- *
- * Read-only by design: registering or tearing down an agent has spoke-local
- * side effects (cc-daemon manifest mirror, OpenClaw gateway config) that a
- * hub backend cannot perform — that path is the daemon-mediated provisioning
- * protocol tracked separately, not a frontend memory write.
- */
-export async function fetchAgentManifest(
-  roomName: string,
-  handle: string,
-): Promise<string | null> {
-  const res = await fetch(
-    `${API}/api/rooms/${roomName}/memory/${encodeURIComponent(`agents/${handle}`)}`,
-    { cache: "no-store" },
-  );
-  if (!res.ok) return null;
-  const data = await res.json();
-  const value = (data && (data.value ?? data.content)) ?? null;
-  if (value == null) return null;
-  return typeof value === "string" ? value : JSON.stringify(value, null, 2);
 }
 
 // ── Metrics ──────────────────────────────────────────────────────────────────
