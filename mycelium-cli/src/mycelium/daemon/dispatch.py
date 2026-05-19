@@ -31,6 +31,18 @@ log = logging.getLogger("mycelium.daemon")
 
 _DEPTH_WINDOW_S = 60.0
 
+# The backend SSE endpoint emits a `: keep-alive` comment every ~15s when a
+# room is idle (see fastapi-backend/app/routes/stream.py). So a healthy
+# stream is never silent longer than that. Bounding the read timeout at ~3×
+# that interval means a half-open / stalled connection (peer or NAT/LB
+# dropped it without a FIN — `aiter_text()` would otherwise block forever
+# while the daemon still reports the room "connected") raises
+# httpx.ReadTimeout within ~45s and we reconnect, instead of going silently
+# deaf. Connect is bounded too so an unreachable hub fails fast.
+_SSE_KEEPALIVE_S = 15.0
+_SSE_READ_TIMEOUT_S = 45.0
+_SSE_CONNECT_TIMEOUT_S = 10.0
+
 
 def _identity_preamble(*, handle: str, room: str, description: str, sender: str, notes: str) -> str:
     """System-prompt preamble injected into every claude -p spawn.
@@ -697,10 +709,21 @@ async def subscribe_room(
     """Stay connected to *room_name*'s SSE stream until the daemon stops."""
     url = f"{config.server.api_url}/api/rooms/{room_name}/messages/stream"
 
+    # No total timeout (the stream is long-lived) but a bounded read timeout
+    # so a stalled connection is detected via httpx.ReadTimeout rather than
+    # hanging aiter_text() forever. write/pool bounded too; defensive.
+    timeout = httpx.Timeout(
+        None,
+        connect=_SSE_CONNECT_TIMEOUT_S,
+        read=_SSE_READ_TIMEOUT_S,
+        write=_SSE_CONNECT_TIMEOUT_S,
+        pool=_SSE_CONNECT_TIMEOUT_S,
+    )
+
     while not state.stopping.is_set():
         try:
             async with (
-                httpx.AsyncClient(timeout=None) as client,
+                httpx.AsyncClient(timeout=timeout) as client,
                 client.stream("GET", url, headers={"Accept": "text/event-stream"}) as resp,
             ):
                 if resp.status_code == 404:
@@ -749,6 +772,16 @@ async def subscribe_room(
                                 log.exception("dispatch error in %s: %s", room_name, exc)
         except asyncio.CancelledError:
             raise
+        except (httpx.ReadTimeout, httpx.ConnectTimeout) as exc:
+            # A stalled/half-open stream: no keep-alive for _SSE_READ_TIMEOUT_S
+            # (or the hub didn't accept the connection in time). Distinct log
+            # so operators can tell a deaf socket from a network error.
+            state.record_error(f"sse_stalled[{room_name}]", exc)
+            log.warning(
+                "SSE stalled for %s (no data within %.0fs) — reconnecting in 5s",
+                room_name,
+                _SSE_READ_TIMEOUT_S,
+            )
         except Exception as exc:
             state.record_error(f"sse[{room_name}]", exc)
             log.warning("SSE error for %s: %s — retry in 5s", room_name, exc)
