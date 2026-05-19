@@ -221,6 +221,7 @@ STRUCTURED_CATEGORIES = {
     "context": "Background & Preferences",
     "status": "Current Status",
     "procedures": "Reusable Procedures",
+    "plan": "Plan & Open Tasks",
 }
 
 

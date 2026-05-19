@@ -612,6 +612,31 @@ describe("formatTickInstruction", () => {
     expect(instruction).toContain("I value privacy and clarity.");
   });
 
+  it("renders plan open tasks when the payload carries them", () => {
+    const instruction = formatTickInstruction(
+      {
+        round: 1,
+        action: "respond",
+        current_offer: {},
+        plan_open_tasks: "Open tasks (2):\n- [tasks] write the parser\n- [tasks] ship the demo",
+      },
+      "r",
+      "alpha",
+    );
+    expect(instruction).toContain("Open tasks (2)");
+    expect(instruction).toContain("write the parser");
+    expect(instruction).toContain("ship the demo");
+  });
+
+  it("omits the plan block when there are no open tasks", () => {
+    const instruction = formatTickInstruction(
+      { round: 1, action: "respond", current_offer: {} },
+      "r",
+      "a",
+    );
+    expect(instruction).not.toContain("Open tasks");
+  });
+
   it("omits the shared context block when empty", () => {
     const instruction = formatTickInstruction(
       { round: 1, action: "respond", current_offer: {}, shared_context_files: [] },

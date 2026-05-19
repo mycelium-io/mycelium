@@ -43,6 +43,60 @@ export async function fetchCatchup(roomName: string) {
   return res.json();
 }
 
+// ── Plan ─────────────────────────────────────────────────────────────────────
+
+export interface PlanTask {
+  id: string;
+  slug: string;
+  line: number;
+  text: string;
+  done: boolean;
+}
+
+export interface PlanFile {
+  slug: string;
+  title: string;
+  content: string;
+  updated_at: string | null;
+  updated_by: string | null;
+  tasks: PlanTask[];
+}
+
+export interface PlanResponse {
+  room: string;
+  files: PlanFile[];
+  tasks: PlanTask[];
+  open_count: number;
+  done_count: number;
+}
+
+export async function fetchPlan(roomName: string): Promise<PlanResponse> {
+  const res = await fetch(`${API}/api/rooms/${roomName}/plan`, { cache: "no-store" });
+  if (!res.ok) return { room: roomName, files: [], tasks: [], open_count: 0, done_count: 0 };
+  return res.json();
+}
+
+export async function togglePlanTask(roomName: string, taskId: string, done: boolean): Promise<PlanTask> {
+  const res = await fetch(
+    `${API}/api/rooms/${roomName}/plan/tasks/${encodeURIComponent(taskId)}/toggle`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ done }),
+    },
+  );
+  return res.json();
+}
+
+export async function addPlanTask(roomName: string, text: string, slug = "tasks"): Promise<PlanTask> {
+  const res = await fetch(`${API}/api/rooms/${roomName}/plan/tasks`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, slug }),
+  });
+  return res.json();
+}
+
 export async function reindexRoom(roomName: string) {
   const res = await fetch(`${API}/api/rooms/${roomName}/reindex`, { method: "POST" });
   return res.json();
