@@ -74,7 +74,7 @@ Embeddings: sentence-transformers (all-MiniLM-L6-v2, local, 384 dimensions).
 ## Key design decisions
 
 - **CognitiveEngine mediates** — agents never talk to each other directly. All coordination flows through CE.
-- **Rooms are folders** — `.mycelium/rooms/{name}/` with standard subdirs: `decisions/`, `failed/`, `status/`, `context/`, `work/`, `procedures/`, `log/`.
+- **Rooms are folders** — `.mycelium/rooms/{name}/` with standard subdirs: `decisions/`, `failed/`, `status/`, `context/`, `work/`, `procedures/`, `log/`, `plan/`. The `plan/` namespace holds the room's plan: `plan/title.md` is the room's display title (italic hero in the UI), other `plan/{slug}.md` files carry prose + `- [ ]` checklist tasks surfaced to every agent.
 - **Rooms are always persistent** — rooms are persistent namespaces for memory and coordination. Spawn sessions within rooms for real-time NegMAS negotiation.
 - **The CLI skill is a protocol** — join → wait → respond → consensus. This is the value add, don't change it to an augmentation layer.
 - **memory set always upserts** — `memory set` overwrites existing keys automatically (version increments).

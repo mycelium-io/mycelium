@@ -1266,6 +1266,223 @@
                 }
             }
         },
+        "/api/rooms/{room_name}/plan": {
+            "get": {
+                "tags": [
+                    "plan"
+                ],
+                "summary": "Get Plan",
+                "description": "Read every ``plan/*.md`` and return files + flat task list.",
+                "operationId": "get_plan_api_rooms__room_name__plan_get",
+                "parameters": [
+                    {
+                        "name": "room_name",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Room Name"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PlanOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/rooms/{room_name}/plan/title": {
+            "put": {
+                "tags": [
+                    "plan"
+                ],
+                "summary": "Set Title",
+                "operationId": "set_title_api_rooms__room_name__plan_title_put",
+                "parameters": [
+                    {
+                        "name": "room_name",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Room Name"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/TitleUpdate"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": true,
+                                    "title": "Response Set Title Api Rooms  Room Name  Plan Title Put"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/rooms/{room_name}/plan/tasks": {
+            "post": {
+                "tags": [
+                    "plan"
+                ],
+                "summary": "Add Task",
+                "operationId": "add_task_api_rooms__room_name__plan_tasks_post",
+                "parameters": [
+                    {
+                        "name": "room_name",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Room Name"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/TaskCreate"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/TaskOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/rooms/{room_name}/plan/tasks/{task_id}/toggle": {
+            "post": {
+                "tags": [
+                    "plan"
+                ],
+                "summary": "Toggle Task",
+                "operationId": "toggle_task_api_rooms__room_name__plan_tasks__task_id__toggle_post",
+                "parameters": [
+                    {
+                        "name": "room_name",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Room Name"
+                        }
+                    },
+                    {
+                        "name": "task_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Task Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "anyOf": [
+                                    {
+                                        "$ref": "#/components/schemas/TaskToggle"
+                                    },
+                                    {
+                                        "type": "null"
+                                    }
+                                ],
+                                "title": "Body"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/TaskOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/internal/audit-events": {
             "post": {
                 "tags": [
@@ -3697,6 +3914,109 @@
                 ],
                 "title": "ParticipantRead"
             },
+            "PlanFileOut": {
+                "properties": {
+                    "slug": {
+                        "type": "string",
+                        "title": "Slug"
+                    },
+                    "title": {
+                        "type": "string",
+                        "title": "Title"
+                    },
+                    "content": {
+                        "type": "string",
+                        "title": "Content"
+                    },
+                    "updated_at": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Updated At"
+                    },
+                    "updated_by": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Updated By"
+                    },
+                    "tasks": {
+                        "items": {
+                            "$ref": "#/components/schemas/TaskOut"
+                        },
+                        "type": "array",
+                        "title": "Tasks"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "slug",
+                    "title",
+                    "content",
+                    "tasks"
+                ],
+                "title": "PlanFileOut"
+            },
+            "PlanOut": {
+                "properties": {
+                    "room": {
+                        "type": "string",
+                        "title": "Room"
+                    },
+                    "title": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Title"
+                    },
+                    "files": {
+                        "items": {
+                            "$ref": "#/components/schemas/PlanFileOut"
+                        },
+                        "type": "array",
+                        "title": "Files"
+                    },
+                    "tasks": {
+                        "items": {
+                            "$ref": "#/components/schemas/TaskOut"
+                        },
+                        "type": "array",
+                        "title": "Tasks"
+                    },
+                    "open_count": {
+                        "type": "integer",
+                        "title": "Open Count"
+                    },
+                    "done_count": {
+                        "type": "integer",
+                        "title": "Done Count"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "room",
+                    "files",
+                    "tasks",
+                    "open_count",
+                    "done_count"
+                ],
+                "title": "PlanOut"
+            },
             "QueryRequest": {
                 "properties": {
                     "intent": {
@@ -3977,6 +4297,95 @@
                     "created_at"
                 ],
                 "title": "SubscriptionRead"
+            },
+            "TaskCreate": {
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "maxLength": 2000,
+                        "minLength": 1,
+                        "title": "Text"
+                    },
+                    "slug": {
+                        "type": "string",
+                        "title": "Slug",
+                        "default": "tasks"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "text"
+                ],
+                "title": "TaskCreate"
+            },
+            "TaskOut": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "slug": {
+                        "type": "string",
+                        "title": "Slug"
+                    },
+                    "line": {
+                        "type": "integer",
+                        "title": "Line"
+                    },
+                    "text": {
+                        "type": "string",
+                        "title": "Text"
+                    },
+                    "done": {
+                        "type": "boolean",
+                        "title": "Done"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "slug",
+                    "line",
+                    "text",
+                    "done"
+                ],
+                "title": "TaskOut"
+            },
+            "TaskToggle": {
+                "properties": {
+                    "done": {
+                        "anyOf": [
+                            {
+                                "type": "boolean"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Done"
+                    }
+                },
+                "type": "object",
+                "title": "TaskToggle"
+            },
+            "TitleUpdate": {
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "maxLength": 500,
+                        "title": "Text"
+                    },
+                    "updated_by": {
+                        "type": "string",
+                        "title": "Updated By",
+                        "default": "frontend"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "text"
+                ],
+                "title": "TitleUpdate"
             },
             "ValidationError": {
                 "properties": {

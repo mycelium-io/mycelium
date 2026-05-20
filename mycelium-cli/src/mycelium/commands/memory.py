@@ -24,7 +24,7 @@ from mycelium.filesystem import (
     read_memory,
     write_memory,
 )
-from mycelium.sstp import MEMORY_CATEGORIES, MemoryLogEntry
+from mycelium.protocol import MEMORY_CATEGORIES, MemoryLogEntry
 
 app = typer.Typer(
     help="Read and write persistent memories scoped to rooms. Memories are markdown files in .mycelium/rooms/. Supports semantic vector search via pgvector.",

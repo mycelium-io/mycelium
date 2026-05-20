@@ -38,6 +38,7 @@ dependencies = [
     "opentelemetry-proto>=1.20.0,<2",
     "protobuf>=4.21.0",
     "rapidfuzz>=3.10.0",
+    "questionary>=2.1.1",
 ]
 
 [project.optional-dependencies]

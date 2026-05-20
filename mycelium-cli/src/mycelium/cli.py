@@ -22,6 +22,7 @@ from mycelium.commands import (
     memory,
     metrics,
     negotiate,
+    plan,
     room,
     session,
     ui,
@@ -127,6 +128,7 @@ app.command(name="sync")(memory.memory_sync)
 app.add_typer(room.app, name="room")
 app.add_typer(negotiate.app, name="negotiate")
 app.add_typer(memory.app, name="memory")
+app.add_typer(plan.app, name="plan")
 app.add_typer(config.app, name="config")
 app.add_typer(adapter.app, name="adapter")
 app.add_typer(docs.app, name="docs")
