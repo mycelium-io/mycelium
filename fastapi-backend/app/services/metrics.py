@@ -141,6 +141,7 @@ def record_llm_call(
     *,
     operation: str,
     model: str = "",
+    room: str = "",
     input_tokens: int = 0,
     output_tokens: int = 0,
     cost_usd: float = 0.0,
@@ -153,6 +154,13 @@ def record_llm_call(
     callers (e.g. ``mycelium metrics show mycelium``) can show synthesis-only
     figures without having to assume that other operations (health probes,
     future heartbeats) contribute negligibly. See issue #296.
+
+    Per-room counters are recorded when ``room`` is provided so the
+    ``mycelium metrics show cost`` view can break down spend by the parent
+    mycelium room (see issue #297). Sessions belonging to the same parent
+    room (``mycelium_room:session:<uuid>``) are bucketed by the CLI
+    renderer via the shared ``_parent_room`` helper, matching the rule
+    used for ``cfn_llm.by_room.*``.
     """
     _inc("llm", "calls")
     _inc("llm", f"by_operation.{operation}")
@@ -163,9 +171,16 @@ def record_llm_call(
     _inc("llm", f"by_operation.{operation}.input_tokens", input_tokens)
     _inc("llm", f"by_operation.{operation}.output_tokens", output_tokens)
     _inc("llm", "cost_usd", cost_usd)
+    if room:
+        _inc("llm", f"by_room.{room}.calls")
+        _inc("llm", f"by_room.{room}.input_tokens", input_tokens)
+        _inc("llm", f"by_room.{room}.output_tokens", output_tokens)
+        _inc("llm", f"by_room.{room}.cost_usd", cost_usd)
     if error:
         _inc("llm", "errors")
         _inc("llm", f"by_operation.{operation}.errors")
+        if room:
+            _inc("llm", f"by_room.{room}.errors")
     if duration_ms > 0:
         _record_histogram("llm.latency_ms", duration_ms)
         _record_histogram(f"llm.latency_ms.{operation}", duration_ms)

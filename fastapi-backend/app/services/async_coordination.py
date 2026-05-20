@@ -332,6 +332,7 @@ async def _llm_synthesize(room_name: str, context: str, memory_count: int) -> st
         record_llm_call(
             operation="synthesis",
             model=settings.LLM_MODEL,
+            room=room_name,
             input_tokens=input_tok,
             output_tokens=output_tok,
             cost_usd=cost,
@@ -341,7 +342,9 @@ async def _llm_synthesize(room_name: str, context: str, memory_count: int) -> st
         return response.choices[0].message.content
 
     except litellm.AuthenticationError:
-        record_llm_call(operation="synthesis", model=settings.LLM_MODEL, error=True)
+        record_llm_call(
+            operation="synthesis", model=settings.LLM_MODEL, room=room_name, error=True
+        )
         logger.warning(
             "LLM authentication failed for model %s. Check LLM_API_KEY in ~/.mycelium/.env",
             settings.LLM_MODEL,
@@ -351,7 +354,9 @@ async def _llm_synthesize(room_name: str, context: str, memory_count: int) -> st
             "Check LLM_API_KEY in ~/.mycelium/.env"
         )
     except Exception:
-        record_llm_call(operation="synthesis", model=settings.LLM_MODEL, error=True)
+        record_llm_call(
+            operation="synthesis", model=settings.LLM_MODEL, room=room_name, error=True
+        )
         logger.exception("LLM synthesis failed for room %s", room_name)
         raise
 

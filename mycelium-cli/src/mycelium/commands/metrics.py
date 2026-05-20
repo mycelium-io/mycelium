@@ -1613,6 +1613,32 @@ def _parent_room(label: str) -> str:
     return label.split(":session:", 1)[0] if ":session:" in label else label
 
 
+def _aggregate_by_room(
+    counters: dict[str, int | float], *, prefix: str = "by_room."
+) -> dict[str, dict[str, int | float]]:
+    """Group ``<prefix><room>.<metric>`` counters by parent room.
+
+    Returns ``{room: {metric: total}}`` with sessions of the same parent
+    folded together via :func:`_parent_room`. Used by the cost estimates
+    panel (#297) and any future renderer that needs to roll up a
+    ``by_room`` namespace; centralising the bucketing here means the
+    ``:session:`` rollup rule is applied exactly once and the same way
+    everywhere.
+    """
+    out: dict[str, dict[str, int | float]] = {}
+    for key, val in counters.items():
+        if not key.startswith(prefix):
+            continue
+        rest = key[len(prefix):]
+        if "." not in rest:
+            continue
+        room_part, metric = rest.rsplit(".", 1)
+        room = _parent_room(room_part)
+        bucket = out.setdefault(room, {})
+        bucket[metric] = bucket.get(metric, 0) + (val or 0)
+    return out
+
+
 def _sparkline(min_v: float, avg_v: float, max_v: float, width: int = 8) -> str:
     """Generate a sparkline bar showing min/avg/max position."""
     if max_v == min_v:
@@ -3006,45 +3032,29 @@ def _render_cfn_llm_usage_table(backend: dict | None) -> None:
                 f"{_fmt_num(calls)} calls, {_fmt_num(inp)} in / {_fmt_num(out)} out",
             )
 
-    # By room — aggregated across sessions. Each engine call records counters
-    # at ``by_room.<room>.<metric>`` where ``<room>`` may carry a
-    # ``:session:<uuid>`` suffix (one per coordination session under a parent
-    # mycelium-room). We fold all sessions of the same parent into one bucket
-    # *before* indexing so a busy room renders as a single line with the
-    # correct totals — see #295 for the prior bug where each session got its
-    # own duplicate row because session-stripping happened only at label time.
-    room_keys = sorted(k for k in cfn_llm if k.startswith("by_room."))
-    if room_keys:
-        rooms: dict[str, dict[str, int]] = {}
-        for key in room_keys:
-            parts = key.split(".")
-            if len(parts) < 3:
-                continue
-            room = _parent_room(parts[1])
-            metric = parts[2]
-            bucket = rooms.setdefault(room, {})
-            bucket[metric] = bucket.get(metric, 0) + cfn_llm[key]
-        if rooms:
-            table.add_section()
-            table.add_row("[dim]By room:[/dim]", "")
-            # Rank by total tokens (input + output) so the heaviest room leads;
-            # caps at 5 with a "...and N more" tail to match the coordination
-            # table's UX.
-            ranked = sorted(
-                rooms.items(),
-                key=lambda kv: kv[1].get("input_tokens", 0) + kv[1].get("output_tokens", 0),
-                reverse=True,
+    # By room — aggregated across sessions via the shared ``_aggregate_by_room``
+    # helper, so the session-rollup rule (#295) is identical to what the
+    # cost-estimates panel uses (#297). Heaviest room leads; cap at 5 with
+    # an "...and N more" tail to match the coordination table's UX.
+    rooms = _aggregate_by_room(cfn_llm, prefix="by_room.")
+    if rooms:
+        table.add_section()
+        table.add_row("[dim]By room:[/dim]", "")
+        ranked = sorted(
+            rooms.items(),
+            key=lambda kv: kv[1].get("input_tokens", 0) + kv[1].get("output_tokens", 0),
+            reverse=True,
+        )
+        for room, data in ranked[:5]:
+            calls = data.get("calls", 0)
+            inp = data.get("input_tokens", 0)
+            out = data.get("output_tokens", 0)
+            table.add_row(
+                f"  {room}",
+                f"{_fmt_num(calls)} calls, {_fmt_num(inp)} in / {_fmt_num(out)} out",
             )
-            for room, data in ranked[:5]:
-                calls = data.get("calls", 0)
-                inp = data.get("input_tokens", 0)
-                out = data.get("output_tokens", 0)
-                table.add_row(
-                    f"  {room}",
-                    f"{_fmt_num(calls)} calls, {_fmt_num(inp)} in / {_fmt_num(out)} out",
-                )
-            if len(ranked) > 5:
-                table.add_row(f"  [dim]...and {len(ranked) - 5} more[/dim]", "")
+        if len(ranked) > 5:
+            table.add_row(f"  [dim]...and {len(ranked) - 5} more[/dim]", "")
 
     console.print(table)
     console.print()
@@ -3452,6 +3462,41 @@ def _render_cost_estimates(
                     "",
                 )
 
+        # Per-room breakdown under CFN (#297). Sessions of the same parent
+        # room are folded together via ``_parent_room`` so the bucketing
+        # matches what ``mycelium metrics show cfn`` shows under "By room".
+        # Top 5 only, with "...and N more" tail when truncated.
+        cfn_by_room = _aggregate_by_room(cfn_llm, prefix="by_room.")
+        if cfn_by_room:
+            ranked = sorted(
+                cfn_by_room.items(),
+                key=lambda kv: kv[1].get("input_tokens", 0) + kv[1].get("output_tokens", 0),
+                reverse=True,
+            )
+            for room, data in ranked[:5]:
+                r_prompt = data.get("input_tokens", 0)
+                r_compl = data.get("output_tokens", 0)
+                r_total = r_prompt + r_compl
+                if r_total == 0:
+                    continue
+                r_cost = _estimate_cost(
+                    input_tokens=r_prompt,
+                    output_tokens=r_compl,
+                    cache_read_tokens=0,
+                    cache_write_tokens=0,
+                    model=cfn_model,
+                )
+                table.add_row(
+                    f"  [dim]{room}[/dim]",
+                    f"[dim]{_fmt_num(r_total)}[/dim]",
+                    f"[dim]{_fmt_cost(r_cost)}[/dim]",
+                    "[dim]est. (engine pricing)[/dim]",
+                )
+            if len(ranked) > 5:
+                table.add_row(
+                    f"  [dim]...and {len(ranked) - 5} more[/dim]", "", "", ""
+                )
+
     # ── Mycelium Backend LLM (estimated) ───────────────────────────────
     myc_llm = be_counters.get("llm", {})
     myc_calls = myc_llm.get("calls", 0)
@@ -3486,6 +3531,51 @@ def _render_cost_estimates(
                 f"est. ({model_label})",
             )
             total_cost += myc_est
+
+        # Per-room breakdown under Mycelium LLM (#297). Synthesis sites
+        # started recording ``llm.by_room.<room>.*`` keys in #297; older
+        # backends don't have these keys (we just render nothing in that
+        # case). Prefers provider-reported cost when present, falling back
+        # to estimate. Top 5 only.
+        myc_by_room = _aggregate_by_room(myc_llm, prefix="by_room.")
+        if myc_by_room:
+            ranked = sorted(
+                myc_by_room.items(),
+                key=lambda kv: kv[1].get("input_tokens", 0) + kv[1].get("output_tokens", 0),
+                reverse=True,
+            )
+            for room, data in ranked[:5]:
+                r_prompt = data.get("input_tokens", 0)
+                r_compl = data.get("output_tokens", 0)
+                r_total = r_prompt + r_compl
+                r_reported = data.get("cost_usd", 0.0)
+                if r_total == 0 and r_reported == 0:
+                    continue
+                if r_reported > 0:
+                    table.add_row(
+                        f"  [dim]{room}[/dim]",
+                        f"[dim]{_fmt_num(r_total)}[/dim]",
+                        f"[dim]{_fmt_cost(r_reported)}[/dim]",
+                        "[dim]litellm (provider-reported)[/dim]",
+                    )
+                else:
+                    r_cost = _estimate_cost(
+                        input_tokens=r_prompt,
+                        output_tokens=r_compl,
+                        cache_read_tokens=0,
+                        cache_write_tokens=0,
+                        model=cfn_model,
+                    )
+                    table.add_row(
+                        f"  [dim]{room}[/dim]",
+                        f"[dim]{_fmt_num(r_total)}[/dim]",
+                        f"[dim]{_fmt_cost(r_cost)}[/dim]",
+                        "[dim]est. (synthesis pricing)[/dim]",
+                    )
+            if len(ranked) > 5:
+                table.add_row(
+                    f"  [dim]...and {len(ranked) - 5} more[/dim]", "", "", ""
+                )
 
     # ── Claude Code (placeholder) ──────────────────────────────────────
     # Not yet wired — omit row entirely until data available
