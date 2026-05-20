@@ -100,7 +100,7 @@ mycelium memory set status/deploy "ACTIVE — deployed to vps.example.com"
 ## Type Safety
 
 `memory set` validates category keys against the `MemoryLogEntry` type
-(defined in `mycelium.sstp`). This is the same pattern used for negotiation
+(defined in `mycelium.protocol`). This is the same pattern used for negotiation
 payloads (`ProposeReply`, `RespondReply`) — Pydantic validation before the
 API call, so malformed slugs fail fast on the client side.
 

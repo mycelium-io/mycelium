@@ -8,10 +8,10 @@ import { useCallback, useEffect, useState } from "react";
 import { fetchRoom } from "@/lib/api";
 import { EventStream } from "@/components/event-stream";
 import { MemoryPanel } from "@/components/memory-panel";
+import { RoomPlanHeader } from "@/components/room-plan-header";
 import { SessionsRail } from "@/components/sessions-rail";
 import { MainTopBar } from "@/components/main-top-bar";
 import { SubNav, type Crumb } from "@/components/sub-nav";
-import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from "react-resizable-panels";
 
 interface Room {
   name: string;
@@ -26,6 +26,7 @@ export default function RoomPage() {
   const roomName = params.name as string;
   const [room, setRoom] = useState<Room | null>(null);
   const [memoryRefresh, setMemoryRefresh] = useState(0);
+  const [memoryOpen, setMemoryOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -55,47 +56,41 @@ export default function RoomPage() {
           <SessionsRail roomName={roomName} activeSessionName={null} />
         </aside>
 
-        <PanelGroup orientation="horizontal" className="flex-1" style={{ width: "100%", height: "100%" }}>
-          <Panel id="activity" defaultSize={62} minSize={30} className="overflow-hidden" style={{ minWidth: 0 }}>
-            <main className="flex flex-col h-full overflow-hidden" style={{ minWidth: 0 }}>
-              <PaneHeader>
-                <span className="caps-mono-sm text-muted">ROOM ACTIVITY</span>
-              </PaneHeader>
-              <div className="flex-1 overflow-hidden">
-                <EventStream roomName={roomName} onMemoryChanged={handleMemoryChanged} />
-              </div>
-            </main>
-          </Panel>
-          <PanelResizeHandle
-            className="w-px bg-border hover:bg-accent transition-colors flex-shrink-0 relative"
-            style={{ cursor: "col-resize" }}
-          >
-            <span aria-hidden className="absolute inset-y-0 -left-1.5 -right-1.5" />
-          </PanelResizeHandle>
-          <Panel id="memory" defaultSize={38} minSize={22} className="overflow-hidden" style={{ minWidth: 0 }}>
-            <aside className="flex flex-col h-full bg-surface/40 overflow-hidden" style={{ minWidth: 0 }}>
-              <PaneHeader>
-                <span className="caps-mono-sm text-muted">MEMORY</span>
-              </PaneHeader>
-              <div className="flex-1 overflow-hidden">
-                <MemoryPanel
-                  roomName={roomName}
-                  masId={room?.mas_id ?? null}
-                  refreshTrigger={memoryRefresh}
-                />
-              </div>
-            </aside>
-          </Panel>
-        </PanelGroup>
-      </div>
-    </div>
-  );
-}
+        <main className="flex flex-1 flex-col overflow-hidden">
+          <RoomPlanHeader roomName={roomName} refreshTrigger={memoryRefresh} />
+          <div className="flex-1 overflow-hidden">
+            <EventStream roomName={roomName} onMemoryChanged={handleMemoryChanged} />
+          </div>
+        </main>
 
-function PaneHeader({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex flex-shrink-0 items-center gap-2 border-b border-border bg-paper px-4 py-2.5 min-w-0">
-      {children}
+        {/* Memory: collapsible right rail. Thin always-visible toggle on the edge. */}
+        <aside
+          className="flex flex-shrink-0 border-l border-border bg-surface/40 overflow-hidden transition-[width] duration-200"
+          style={{ width: memoryOpen ? 420 : 36 }}
+        >
+          <button
+            onClick={() => setMemoryOpen(o => !o)}
+            className="w-9 flex-shrink-0 border-r border-border bg-paper hover:bg-paper/70 transition-colors flex items-start justify-center pt-4"
+            aria-label={memoryOpen ? "collapse memory" : "expand memory"}
+          >
+            <span
+              className="caps-mono-sm text-muted hover:text-accent"
+              style={{ writingMode: "vertical-rl", letterSpacing: "0.2em" }}
+            >
+              {memoryOpen ? "× MEMORY" : "MEMORY"}
+            </span>
+          </button>
+          {memoryOpen && (
+            <div className="flex-1 min-w-0 overflow-hidden">
+              <MemoryPanel
+                roomName={roomName}
+                masId={room?.mas_id ?? null}
+                refreshTrigger={memoryRefresh}
+              />
+            </div>
+          )}
+        </aside>
+      </div>
     </div>
   );
 }

@@ -232,7 +232,16 @@ def _cleanup_empty_dirs(directory: Path, stop_at: Path) -> None:
 
 def ensure_room_structure(room_dir: Path) -> None:
     """Ensure standard namespace subdirectories exist for a room."""
-    for subdir in ("decisions", "failed", "status", "context", "work", "procedures", "log"):
+    for subdir in (
+        "decisions",
+        "failed",
+        "status",
+        "context",
+        "work",
+        "procedures",
+        "log",
+        "plan",
+    ):
         (room_dir / subdir).mkdir(parents=True, exist_ok=True)
 
 
