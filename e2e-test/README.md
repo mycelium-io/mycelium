@@ -130,7 +130,7 @@ itself still runs.
 | Tier | Needs |
 |---|---|
 | Local tests (00–22) | Mycelium backend, Matrix Synapse, IOC/CFN services |
-| Matrix E2E (30–32) | OpenClaw gateway running locally |
+| Local-real OpenClaw E2E (30–32) | Local OpenClaw gateway running with `agent-alpha`, `agent-beta`, `agent-gamma` enrolled; `#agents:local` reachable via Matrix |
 | Distributed (40–49, 60) | OpenClaw agents on additional hosts (e.g. oclw3, oclw5) reachable from the backend host, with valid Matrix tokens |
 | Skill verification (50–51) | OpenClaw gateway with the mycelium skill installed (`mycelium adapter add openclaw`) |
 
