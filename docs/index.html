@@ -669,7 +669,7 @@ Latest Synthesis
       <pre><code><span class="comment"># memory set always upserts — just set the new value</span>
 <span class="cmd">mycelium memory set</span> status/deploy <span class="str">&quot;ACTIVE — deployed to vps.example.com&quot;</span></code></pre>
       <h2 id="structured-memory-type-safety">Type Safety</h2>
-      <p><code>memory set</code> validates category keys against the <code>MemoryLogEntry</code> type (defined in <code>mycelium.sstp</code>). This is the same pattern used for negotiation payloads (<code>ProposeReply</code>, <code>RespondReply</code>) — Pydantic validation before the API call, so malformed slugs fail fast on the client side.</p>
+      <p><code>memory set</code> validates category keys against the <code>MemoryLogEntry</code> type (defined in <code>mycelium.protocol</code>). This is the same pattern used for negotiation payloads (<code>ProposeReply</code>, <code>RespondReply</code>) — Pydantic validation before the API call, so malformed slugs fail fast on the client side.</p>
       <p>Valid slugs: lowercase alphanumeric, hyphens, dots, underscores.</p>
       <ul>
         <li><code>work/api-server</code> — valid</li>

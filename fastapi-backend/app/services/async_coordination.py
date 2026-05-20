@@ -213,7 +213,7 @@ async def run_synthesis(room_name: str) -> dict | None:
             return None
 
 
-# Canonical definition: mycelium-cli/src/mycelium/sstp.py STRUCTURED_CATEGORY_LABELS
+# Canonical definition: mycelium-cli/src/mycelium/protocol.py STRUCTURED_CATEGORY_LABELS
 # Keep in sync — these are the same categories used by CLI validation.
 STRUCTURED_CATEGORIES = {
     "work": "Work Done",
