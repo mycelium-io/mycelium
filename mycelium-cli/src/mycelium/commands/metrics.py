@@ -1022,6 +1022,15 @@ def show(
         "--host",
         help="Filter to a specific spoke host (IP or hostname from OTLP resource attributes).",
     ),
+    detail: bool = typer.Option(
+        False,
+        "--detail",
+        help=(
+            "Expand truncated 'By room' / 'By MAS' tables. Without this flag "
+            "those sub-tables show only the top 5 rooms with an "
+            "'...and N more' tail; with --detail every non-zero row renders."
+        ),
+    ),
 ) -> None:
     """
     Display collected metrics with agent metadata and workspace sizes.
@@ -1159,7 +1168,7 @@ def show(
                 _render_mycelium_llm_table(backend_data)
                 rendered = True
             if has_knowledge:
-                _render_knowledge_table(backend_data)
+                _render_knowledge_table(backend_data, detail=detail)
                 rendered = True
 
             if not rendered:
@@ -1179,8 +1188,8 @@ def show(
                 console.print()
 
     if show_cfn:
-        _render_coordination_table(backend_data)
-        _render_cfn_llm_usage_table(backend_data)
+        _render_coordination_table(backend_data, detail=detail)
+        _render_cfn_llm_usage_table(backend_data, detail=detail)
         _render_cfn_transport_table(backend_data)
         _render_cfn_scrape_table((otel_data or {}).get("scrape"))
         if not backend_data and not (otel_data or {}).get("scrape"):
@@ -2490,7 +2499,7 @@ def _render_cost_avoidance_table(backend: dict | None) -> None:
     console.print()
 
 
-def _render_knowledge_table(backend: dict | None) -> None:
+def _render_knowledge_table(backend: dict | None, *, detail: bool = False) -> None:
     """Render a panel showing knowledge ingestion activity."""
     if not backend:
         return
@@ -2542,7 +2551,8 @@ def _render_knowledge_table(backend: dict | None) -> None:
         table.add_section()
         table.add_row("[dim]By room:[/dim]", "")
         ranked = sorted(by_mas.items(), key=lambda kv: kv[1].get("ingestions", 0), reverse=True)
-        for mas_id, stats in ranked[:5]:
+        cap = len(ranked) if detail else 5
+        for mas_id, stats in ranked[:cap]:
             label = room_map.get(mas_id) or f"mas:{mas_id[:8]}"
             n_ing = stats.get("ingestions", 0)
             n_err = stats.get("errors", 0)
@@ -2553,8 +2563,12 @@ def _render_knowledge_table(backend: dict | None) -> None:
             if n_err > 0:
                 parts.append(f"[red]{n_err} err[/red]")
             table.add_row(f"  {label}", "  ·  ".join(parts))
-        if len(ranked) > 5:
-            table.add_row(f"  [dim]...and {len(ranked) - 5} more[/dim]", "")
+        if len(ranked) > cap:
+            table.add_row(
+                f"  [dim]...and {len(ranked) - cap} more "
+                f"(use --detail to expand)[/dim]",
+                "",
+            )
 
     console.print(table)
     console.print()
@@ -2822,7 +2836,7 @@ def _render_data_reuse_table(backend: dict | None) -> None:
     console.print()
 
 
-def _render_coordination_table(backend: dict | None) -> None:
+def _render_coordination_table(backend: dict | None, *, detail: bool = False) -> None:
     """Render a panel showing Mycelium coordination/negotiation metrics."""
     if not backend:
         return
@@ -2933,7 +2947,8 @@ def _render_coordination_table(backend: dict | None) -> None:
         table.add_row("[dim]By room:[/dim]", "")
         # Sort by total rounds desc so the busiest room leads.
         ranked = sorted(rounds_by_room.items(), key=lambda kv: kv[1], reverse=True)
-        for room, n_rounds in ranked[:5]:
+        cap = len(ranked) if detail else 5
+        for room, n_rounds in ranked[:cap]:
             stats = completed_by_room.get(room, {"total": 0, "success": 0, "failure": 0})
             n_done = stats["total"]
             n_ok = stats["success"]
@@ -2946,14 +2961,18 @@ def _render_coordination_table(backend: dict | None) -> None:
                 bad_str = f"[red]{n_bad}✗[/red]" if n_bad else f"{n_bad}✗"
                 parts.append(f"{_fmt_num(n_done)} done ({ok_str} {bad_str})")
             table.add_row(f"  {room}", "  ·  ".join(parts))
-        if len(ranked) > 5:
-            table.add_row(f"  [dim]...and {len(ranked) - 5} more[/dim]", "")
+        if len(ranked) > cap:
+            table.add_row(
+                f"  [dim]...and {len(ranked) - cap} more "
+                f"(use --detail to expand)[/dim]",
+                "",
+            )
 
     console.print(table)
     console.print()
 
 
-def _render_cfn_llm_usage_table(backend: dict | None) -> None:
+def _render_cfn_llm_usage_table(backend: dict | None, *, detail: bool = False) -> None:
     """Render actual LLM token usage reported by the cognition engines via _usage."""
     if not backend:
         return
@@ -3035,7 +3054,8 @@ def _render_cfn_llm_usage_table(backend: dict | None) -> None:
     # By room — aggregated across sessions via the shared ``_aggregate_by_room``
     # helper, so the session-rollup rule (#295) is identical to what the
     # cost-estimates panel uses (#297). Heaviest room leads; cap at 5 with
-    # an "...and N more" tail to match the coordination table's UX.
+    # an "...and N more" tail to match the coordination table's UX (use
+    # --detail to expand to all rooms).
     rooms = _aggregate_by_room(cfn_llm, prefix="by_room.")
     if rooms:
         table.add_section()
@@ -3045,7 +3065,8 @@ def _render_cfn_llm_usage_table(backend: dict | None) -> None:
             key=lambda kv: kv[1].get("input_tokens", 0) + kv[1].get("output_tokens", 0),
             reverse=True,
         )
-        for room, data in ranked[:5]:
+        cap = len(ranked) if detail else 5
+        for room, data in ranked[:cap]:
             calls = data.get("calls", 0)
             inp = data.get("input_tokens", 0)
             out = data.get("output_tokens", 0)
@@ -3053,8 +3074,12 @@ def _render_cfn_llm_usage_table(backend: dict | None) -> None:
                 f"  {room}",
                 f"{_fmt_num(calls)} calls, {_fmt_num(inp)} in / {_fmt_num(out)} out",
             )
-        if len(ranked) > 5:
-            table.add_row(f"  [dim]...and {len(ranked) - 5} more[/dim]", "")
+        if len(ranked) > cap:
+            table.add_row(
+                f"  [dim]...and {len(ranked) - cap} more "
+                f"(use --detail to expand)[/dim]",
+                "",
+            )
 
     console.print(table)
     console.print()
