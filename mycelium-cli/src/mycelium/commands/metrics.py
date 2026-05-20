@@ -1603,6 +1603,16 @@ def _fmt_cost(n: float | None) -> str:
     return f"${n:,.4f}"
 
 
+def _parent_room(label: str) -> str:
+    """Strip ``:session:<uuid>`` suffix so per-session counters roll up to the
+    user-visible parent room. Used by multiple renderers that aggregate
+    session-scoped backend counters; lifted here to keep the bucketing
+    consistent and avoid the bug fixed in #295 where each renderer had to
+    remember to strip *before* keying its dict (not just *while* labelling).
+    """
+    return label.split(":session:", 1)[0] if ":session:" in label else label
+
+
 def _sparkline(min_v: float, avg_v: float, max_v: float, width: int = 8) -> str:
     """Generate a sparkline bar showing min/avg/max position."""
     if max_v == min_v:
@@ -2865,9 +2875,8 @@ def _render_coordination_table(backend: dict | None) -> None:
     # session-scoped (``by_room.<room>:session:<uuid>``); we sum them so a
     # room with N session sub-rooms shows as a single line. Likewise for
     # ``completed_by_room``, where we also break out success/failure.
-    def _parent_room(label: str) -> str:
-        return label.split(":session:", 1)[0] if ":session:" in label else label
-
+    # ``_parent_room`` is shared with the cfn-llm renderer via the module-
+    # level helper so the bucketing rule is consistent across panels.
     rounds_by_room: dict[str, int] = {}
     for key, val in coord.items():
         if not key.startswith("by_room."):
@@ -2997,29 +3006,45 @@ def _render_cfn_llm_usage_table(backend: dict | None) -> None:
                 f"{_fmt_num(calls)} calls, {_fmt_num(inp)} in / {_fmt_num(out)} out",
             )
 
-    # By room
+    # By room — aggregated across sessions. Each engine call records counters
+    # at ``by_room.<room>.<metric>`` where ``<room>`` may carry a
+    # ``:session:<uuid>`` suffix (one per coordination session under a parent
+    # mycelium-room). We fold all sessions of the same parent into one bucket
+    # *before* indexing so a busy room renders as a single line with the
+    # correct totals — see #295 for the prior bug where each session got its
+    # own duplicate row because session-stripping happened only at label time.
     room_keys = sorted(k for k in cfn_llm if k.startswith("by_room."))
     if room_keys:
-        table.add_section()
-        table.add_row("[dim]By room:[/dim]", "")
         rooms: dict[str, dict[str, int]] = {}
         for key in room_keys:
             parts = key.split(".")
-            if len(parts) >= 3:
-                room = parts[1]
-                metric = parts[2]
-                rooms.setdefault(room, {})[metric] = cfn_llm[key]
-        for room, data in sorted(rooms.items()):
-            calls = data.get("calls", 0)
-            inp = data.get("input_tokens", 0)
-            out = data.get("output_tokens", 0)
-            label = room
-            if ":session:" in label:
-                label = label.split(":session:", 1)[0]
-            table.add_row(
-                f"  {label}",
-                f"{_fmt_num(calls)} calls, {_fmt_num(inp)} in / {_fmt_num(out)} out",
+            if len(parts) < 3:
+                continue
+            room = _parent_room(parts[1])
+            metric = parts[2]
+            bucket = rooms.setdefault(room, {})
+            bucket[metric] = bucket.get(metric, 0) + cfn_llm[key]
+        if rooms:
+            table.add_section()
+            table.add_row("[dim]By room:[/dim]", "")
+            # Rank by total tokens (input + output) so the heaviest room leads;
+            # caps at 5 with a "...and N more" tail to match the coordination
+            # table's UX.
+            ranked = sorted(
+                rooms.items(),
+                key=lambda kv: kv[1].get("input_tokens", 0) + kv[1].get("output_tokens", 0),
+                reverse=True,
             )
+            for room, data in ranked[:5]:
+                calls = data.get("calls", 0)
+                inp = data.get("input_tokens", 0)
+                out = data.get("output_tokens", 0)
+                table.add_row(
+                    f"  {room}",
+                    f"{_fmt_num(calls)} calls, {_fmt_num(inp)} in / {_fmt_num(out)} out",
+                )
+            if len(ranked) > 5:
+                table.add_row(f"  [dim]...and {len(ranked) - 5} more[/dim]", "")
 
     console.print(table)
     console.print()
