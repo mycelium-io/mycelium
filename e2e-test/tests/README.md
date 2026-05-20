@@ -58,6 +58,9 @@ Tests operate at different integration levels:
 | Test | Level | Description |
 |------|-------|-------------|
 | `test_06_consensus_negotiation` | CLI | Two agents with differing requirements join session, state positions, verify session tracking. |
+| `test_06b_session_join_idempotency` | CLI | Regression: mycelium PR #286 — duplicate `session join` calls are idempotent (no phantom participant rows, fixes #280 / #284). |
+| `test_06c_doctor_clean` | CLI | Runs `mycelium --json doctor` and asserts no `error`-level checks (catches drift in `.env`/`config.toml` alignment and migration state). |
+| `test_06d_cfn_llm_counters` | CLI + IOC | Regression: `ioc-cognition-fabric-node-svc` ≥ 0.1.5 emits per-call token usage via the litellm success callback and the `cfn_llm.by_pipeline.*` / `cfn_llm.by_room.*` counter dimensions populate end-to-end. |
 | `test_07_matrix_communication` | Matrix API | Resolves `#agents:local` room, sends/receives messages via Matrix, tests agent-to-agent communication. |
 
 ### Section 8-10: IOC/CFN Integration
@@ -107,7 +110,7 @@ True end-to-end tests using OpenClaw agents running on the local machine (oclw4)
 | `test_31_matrix_three_agent_negotiation` | Matrix E2E | Three local agents negotiate release planning. |
 | `test_32_matrix_architecture_decision` | Matrix E2E | Technical architecture decision with local agents. |
 
-### Section 40-47: Distributed E2E (Multi-Machine)
+### Section 40-49: Distributed E2E (Multi-Machine)
 
 True distributed tests with OpenClaw agents on separate physical machines:
 - **oclw4** (10.0.50.125): `agent-alpha` - local machine, runs IOC backend
@@ -124,17 +127,25 @@ True distributed tests with OpenClaw agents on separate physical machines:
 | `test_45_distributed_preexisting_context` | Distributed | alpha + oclw5 | Mobile platform priority with reference to prior Q1 decisions. |
 | `test_46_distributed_feature_prioritization` | Distributed | alpha + claire + oclw5 | Feature backlog prioritization with ranked list output. |
 | `test_47_distributed_cross_device_only` | Distributed | claire + oclw5 | Only remote agents (no oclw4 agent) coordinate through central IOC backend. |
+| `test_48_distributed_backend_resolved_cfn_ids` | Distributed + IOC | leaf-node ingest | Regression for mycelium #139 — leaf nodes ingest knowledge sending only `room_name`; backend resolves `workspace_id` + `mas_id` from the room or falls back to system settings. |
+| `test_49_skill_cross_channel_return_trip` | Cross-channel | alpha + claire + oclw5 | Faithful SKILL.md reproduction (PR #221): 3 agents on 3 devices receive individual DMs, coordinate via a dynamic mycelium room, and replies return through their origin channels. |
 
-### Section 48-49: OpenClaw Skill Verification
+### Section 50-51: OpenClaw Skill Verification
 
 Tests that verify the mycelium skill is properly configured and functional in OpenClaw agents:
 
 | Test | Level | Description |
 |------|-------|-------------|
-| `test_48_openclaw_mycelium_skill` | CLI | Verifies mycelium skill is listed, binary is accessible, and requirements are met. |
-| `test_49_openclaw_agent_mycelium_execution` | CLI | Verifies agents can execute mycelium commands (allowlist, env, PATH, backend connectivity). |
+| `test_50_openclaw_mycelium_skill` | CLI | Verifies the mycelium skill is listed, the binary is accessible, and requirements are met. |
+| `test_51_openclaw_agent_mycelium_execution` | CLI | Verifies agents can execute mycelium commands (allowlist, env, PATH, backend connectivity). |
 
 These tests verify functional behavior rather than relying on OpenClaw's "needs setup" status (which has known false-positive bugs with tilde-path expansion).
+
+### Section 60: Cross-Channel Memory Isolation
+
+| Test | Level | Description |
+|------|-------|-------------|
+| `test_60_cross_channel_memory_isolation` | Cross-channel | Proves cross-channel memory is isolated by default and demonstrates the supported bridging pattern (mycelium room + shared memory namespace). |
 
 ---
 
@@ -150,6 +161,7 @@ These tests verify functional behavior rather than relying on OpenClaw's "needs 
 | `@pytest.mark.matrix_e2e` | Full Matrix E2E with local OpenClaw agents |
 | `@pytest.mark.distributed` | Distributed E2E across oclw3/4/5 |
 | `@pytest.mark.openclaw` | Tests OpenClaw skill configuration and agent execution |
+| `@pytest.mark.cross_channel` | Cross-channel scenarios (return-trip dispatch, memory isolation) |
 
 ---
 
@@ -178,11 +190,14 @@ Logs include:
 - IOC/CFN services running
 - OpenClaw gateway running (for tests 30-32)
 
-### Distributed Tests (40-47)
+### Distributed Tests (40-49, 60)
 - All local prerequisites
 - OpenClaw agents running on oclw3 and oclw5
 - Network connectivity between machines
 - Valid Matrix access tokens for all agents
+
+### Skill Verification Tests (50-51)
+- OpenClaw gateway running with the mycelium skill installed (`mycelium adapter add openclaw`)
 
 ---
 

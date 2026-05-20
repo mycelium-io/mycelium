@@ -28,6 +28,7 @@ from mycelium_e2e.bundle import (
     test_reindex as section_reindex,
     test_room_lifecycle as section_room_lifecycle,
     test_semantic_search as section_semantic_search,
+    test_cfn_llm_counters as section_cfn_llm_counters,
     test_session_join_idempotency as section_session_join_idempotency,
     test_shared_memory_cli_e2e as section_shared_memory_cli_e2e,
     test_sync_negotiation_cli_e2e as section_sync_negotiation_cli_e2e,
@@ -118,6 +119,18 @@ def test_06c_doctor_clean(bundle_ctx: TestContext) -> None:
     """
     n = len(bundle_ctx.results)
     section_doctor_clean(bundle_ctx)
+    _assert_new_checks(bundle_ctx, n)
+
+
+def test_06d_cfn_llm_counters(bundle_ctx: TestContext) -> None:
+    """Regression: ioc-cognition-fabric-node-svc ≥ 0.1.5 emits per-call token usage.
+
+    Spawns a session, snapshots cfn_llm.* counters before/after, and asserts
+    the deltas land in calls / input_tokens / output_tokens / by_room.<session>.
+    Fails loudly on a pre-0.1.5 downgrade or a regressed usage callback.
+    """
+    n = len(bundle_ctx.results)
+    section_cfn_llm_counters(bundle_ctx)
     _assert_new_checks(bundle_ctx, n)
 
 
