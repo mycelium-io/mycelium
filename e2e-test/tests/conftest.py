@@ -108,7 +108,17 @@ def _presuite_sanity_checks() -> None:
     # 4. Trim agent session history on remote hosts too
     _trim_remote_agent_sessions(max_files=5)
 
-    # 5. Wait for any in-flight agent turns to finish
+    # 5. Logical reset of each agent's mycelium-room session via gateway RPC.
+    #    Trimming jsonl files (steps 3 & 4) caps disk usage but does NOT
+    #    clear the live in-memory conversation context — the gateway keeps
+    #    using whatever sessionId is current. Without this step, agents enter
+    #    a fresh suite carrying the prior run's negotiation transcript, which
+    #    can push a 3-agent negotiation past the model's context window
+    #    (observed: agent-alpha at 148k/200k after one suite, causing test_31
+    #    and test_41 to lose the 3rd agent to silent refusal/truncation).
+    _reset_agent_mycelium_sessions()
+
+    # 6. Wait for any in-flight agent turns to finish
     counts = wait_for_agents_idle(timeout=15, poll_interval=2.0)
     busy = {h: c for h, c in counts.items() if c > 0}
     if busy:
@@ -186,6 +196,164 @@ def _trim_remote_agent_sessions(
                     print(f"  [SETUP] {host}: {line}")
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
             pass
+
+
+# Agents per host. Mirrors mycelium_e2e.distributed_e2e.DISTRIBUTED_AGENTS but
+# kept local to avoid coupling conftest to that module's heavier imports
+# (distributed_e2e pulls in httpx, matrix client deps, etc.).
+_AGENTS_BY_HOST: dict[str | None, tuple[str, ...]] = {
+    None: ("agent-alpha", "agent-beta", "agent-gamma", "agent-delta"),  # local oclw4
+    os.environ.get("OCLW3_IP", "10.0.50.171"): ("claire-agent",),
+    os.environ.get("OCLW5_IP", "10.0.50.142"): ("oclw5-agent",),
+}
+
+
+def _run_openclaw(
+    args: list[str],
+    *,
+    host: str | None = None,
+    ssh_key: str = "~/.ssh/ioc.pem",
+    user: str = "ubuntu",
+    timeout: float = 15.0,
+) -> subprocess.CompletedProcess[str] | None:
+    """Run ``openclaw <args>`` locally or via ssh; return CompletedProcess or
+    None on connection failure / missing key. Never raises.
+
+    On remote hosts ``openclaw`` is installed via nvm, which is not on the
+    non-interactive PATH. We source nvm explicitly so the shim resolves
+    without requiring user-level shell config tweaks.
+    """
+    if host is None:
+        try:
+            return subprocess.run(
+                ["openclaw", *args],
+                capture_output=True, text=True, timeout=timeout, check=False,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            return None
+
+    key_path = os.path.expanduser(ssh_key)
+    if not os.path.exists(key_path):
+        return None
+    # Argument-array → single shell command for the remote bash. shlex.quote
+    # each arg to keep the JSON / nested quoting in --params intact.
+    import shlex
+    remote_cmd = " ".join(shlex.quote(a) for a in ["openclaw", *args])
+    full_remote = (
+        '[ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh" >/dev/null 2>&1; '
+        + remote_cmd
+    )
+    cmd = [
+        "ssh", "-i", key_path, "-o", "StrictHostKeyChecking=no",
+        "-o", "ConnectTimeout=5", f"{user}@{host}", full_remote,
+    ]
+    try:
+        return subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout, check=False,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+
+
+def _list_mycelium_sessions(
+    agent_id: str, *, host: str | None = None,
+) -> list[dict[str, Any]]:
+    """List the agent's sessions that involve mycelium-room (the negotiation
+    channel). Returns empty list on any error; safe for best-effort use."""
+    proc = _run_openclaw(
+        ["sessions", "--agent", agent_id, "--json", "--limit", "100"],
+        host=host,
+        timeout=20.0,
+    )
+    if proc is None or proc.returncode != 0 or not proc.stdout.strip():
+        return []
+    try:
+        data = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return []
+    sessions = data if isinstance(data, list) else data.get("sessions", [])
+    # Match the channel namespace prefix that the mycelium-room openclaw
+    # plugin uses for its session keys (see openclaw plugin channel/index.ts).
+    # Examples observed:
+    #   agent:agent-alpha:mycelium-room:group:mycelium_room
+    return [
+        s for s in sessions
+        if "mycelium-room" in (s.get("key") or s.get("sessionKey") or "")
+    ]
+
+
+def _reset_session(key: str, *, host: str | None = None) -> bool:
+    """Call gateway RPC ``sessions.reset`` for a single session key.
+    Returns True on a 0 exit code, False otherwise. Best-effort, never raises."""
+    proc = _run_openclaw(
+        [
+            "gateway", "call", "sessions.reset",
+            "--params", json.dumps({"key": key}),
+        ],
+        host=host,
+        timeout=15.0,
+    )
+    return proc is not None and proc.returncode == 0
+
+
+def _reset_agent_mycelium_sessions(
+    agents_by_host: dict[str | None, tuple[str, ...]] | None = None,
+) -> None:
+    """Logical reset of each agent's mycelium-room session(s) via gateway RPC.
+
+    Why this matters:
+        Trimming .jsonl files (the older approach) caps disk usage but does
+        not clear the live in-memory conversation context the gateway feeds
+        to the LLM. With the e2e suite running ~10 distributed negotiations
+        per pass and each round writing both an `offer` and an `accept`
+        message into the session, accumulated input context grew to ~74%
+        of the model context window in observed runs — directly causing the
+        ``test_31``/``test_41`` silent-3rd-agent failures (refusal or 3-token
+        degenerate output rather than a real reply).
+
+        ``sessions.reset`` is the gateway-supported way to clear that without
+        deleting on-disk transcripts (so forensics survives a reset) or
+        restarting the gateway (which would also drop healthy sessions).
+
+    Best-effort: skips hosts without ssh key, agents without sessions, and
+    individual resets that fail. Suite continues regardless.
+    """
+    targets = agents_by_host or _AGENTS_BY_HOST
+    total_reset = 0
+    total_failed = 0
+
+    for host, agent_ids in targets.items():
+        label = host or "local"
+        for agent_id in agent_ids:
+            sessions = _list_mycelium_sessions(agent_id, host=host)
+            if not sessions:
+                continue
+            for s in sessions:
+                key = s.get("key") or s.get("sessionKey")
+                if not key:
+                    continue
+                tokens = s.get("inputTokens") or s.get("totalTokens") or 0
+                context_cap = s.get("contextTokens") or 0
+                pct = (tokens / context_cap * 100) if context_cap else 0
+                if _reset_session(key, host=host):
+                    total_reset += 1
+                    print(
+                        f"  [SETUP] reset {label}:{agent_id} "
+                        f"({tokens:,} tokens, {pct:.0f}% of ctx)"
+                    )
+                else:
+                    total_failed += 1
+                    print(
+                        f"  [SETUP] reset FAILED {label}:{agent_id} key={key}"
+                    )
+
+    if total_reset == 0 and total_failed == 0:
+        print("  [SETUP] No mycelium-room sessions found to reset")
+    elif total_failed:
+        print(
+            f"  [SETUP] Session reset: {total_reset} ok, "
+            f"{total_failed} failed (suite continues)"
+        )
 
 
 @pytest.fixture(scope="session")
