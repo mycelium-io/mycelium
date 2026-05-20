@@ -458,11 +458,16 @@ def _resolve_mas_by_room_name() -> dict[str, str]:
     return _resolve_room_lookup()[1]
 
 
-def _short_mas(mas_id: str) -> str:
-    """Format a mas_id for display in the narrow MAS column (first 8 chars)."""
+def _format_mas(mas_id: str, *, detail: bool = False) -> str:
+    """Format a mas_id for the MAS column.
+
+    Short 8-char prefix by default (keeps the column narrow); full UUID
+    under ``--detail`` so operators can copy-paste without a second
+    ``/api/rooms`` lookup.
+    """
     if not mas_id:
         return ""
-    return str(mas_id)[:8]
+    return str(mas_id) if detail else str(mas_id)[:8]
 
 
 def _collector_pid_file() -> Path:
@@ -1055,9 +1060,11 @@ def show(
         False,
         "--detail",
         help=(
-            "Expand truncated 'By room' / 'By MAS' tables. Without this flag "
-            "those sub-tables show only the top 5 rooms with an "
-            "'...and N more' tail; with --detail every non-zero row renders."
+            "Expand truncated 'By room' tables and show full mas_id UUIDs. "
+            "Without this flag those sub-tables show only the top 5 rooms "
+            "with an '...and N more' tail and mas_ids are truncated to 8 "
+            "chars; with --detail every non-zero row renders and the MAS "
+            "column shows the full UUID."
         ),
     ),
 ) -> None:
@@ -2601,7 +2608,7 @@ def _render_knowledge_table(backend: dict | None, *, detail: bool = False) -> No
             # Blank room cell when unresolved — the mas_id alone identifies
             # the row, matching the CLI's normal "tombstone" semantics.
             room_cell = f"  {room_label}" if room_label else "  [dim](deleted)[/dim]"
-            table.add_row(room_cell, _short_mas(mas_id), "  ·  ".join(parts))
+            table.add_row(room_cell, _format_mas(mas_id, detail=detail), "  ·  ".join(parts))
         if len(ranked) > cap:
             table.add_row(
                 f"  [dim]...and {len(ranked) - cap} more "
@@ -3011,7 +3018,7 @@ def _render_coordination_table(backend: dict | None, *, detail: bool = False) ->
                 parts.append(f"{_fmt_num(n_done)} done ({ok_str} {bad_str})")
             table.add_row(
                 f"  {room}",
-                _short_mas(name_to_mas.get(room, "")),
+                _format_mas(name_to_mas.get(room, ""), detail=detail),
                 "  ·  ".join(parts),
             )
         if len(ranked) > cap:
@@ -3134,7 +3141,7 @@ def _render_cfn_llm_usage_table(backend: dict | None, *, detail: bool = False) -
             out = data.get("output_tokens", 0)
             table.add_row(
                 f"  {room}",
-                _short_mas(name_to_mas.get(room, "")),
+                _format_mas(name_to_mas.get(room, ""), detail=detail),
                 f"{_fmt_num(calls)} calls, {_fmt_num(inp)} in / {_fmt_num(out)} out",
             )
         if len(ranked) > cap:
