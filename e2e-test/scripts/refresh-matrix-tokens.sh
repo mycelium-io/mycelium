@@ -280,7 +280,7 @@ update_token_local() {
     tmp_file=$(mktemp)
     
     if jq --arg agent "$agent" --arg token "$token" '
-        .integrations.matrix.accounts[$agent].accessToken = $token
+        .channels.matrix.accounts[$agent].accessToken = $token
     ' "$config_file" > "$tmp_file"; then
         mv "$tmp_file" "$config_file"
         log "  Updated token in $config_file"
@@ -312,7 +312,7 @@ fi
 
 tmp_file=\$(mktemp)
 if jq --arg agent "$agent" --arg token "$token" '
-    .integrations.matrix.accounts[\$agent].accessToken = \$token
+    .channels.matrix.accounts[\$agent].accessToken = \$token
 ' "\$config_file" > "\$tmp_file"; then
     mv "\$tmp_file" "\$config_file"
     echo "Updated token for $agent"

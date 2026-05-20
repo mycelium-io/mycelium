@@ -21,7 +21,7 @@ mycelium_e2e/                 Test-harness package
 tests/
   conftest.py                 Shared fixtures (bundle_ctx, leak reaper,
                               CFN round-trace capture)
-  test_mycelium_e2e.py        ~50 numbered tests (test_00 .. test_48)
+  test_mycelium_e2e.py        ~42 numbered tests (test_00 .. test_60)
   analyze_round_traces.py     Standalone analyzer for captured trace JSONs
   README.md                   Per-test inventory and prerequisites
 
@@ -129,8 +129,9 @@ itself still runs.
 
 | Tier | Needs |
 |---|---|
-| Local tests (00–32) | Mycelium backend, Matrix Synapse, IOC/CFN services |
+| Local tests (00–22) | Mycelium backend, Matrix Synapse, IOC/CFN services |
 | Matrix E2E (30–32) | OpenClaw gateway running locally |
-| Distributed (40–48) | OpenClaw agents on additional hosts (e.g. oclw3, oclw5) reachable from the backend host, with valid Matrix tokens |
+| Distributed (40–49, 60) | OpenClaw agents on additional hosts (e.g. oclw3, oclw5) reachable from the backend host, with valid Matrix tokens |
+| Skill verification (50–51) | OpenClaw gateway with the mycelium skill installed (`mycelium adapter add openclaw`) |
 
 See `tests/README.md` § *Prerequisites* and § *Troubleshooting* for details.

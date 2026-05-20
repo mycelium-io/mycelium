@@ -4,7 +4,7 @@
 The conftest hook in tests/conftest.py captures one JSON file per e2e test
 (in ~/.mycelium/e2e-logs/traces/) by scraping the
 /api/internal/coordination/round-traces endpoint after the test completes.
-This script slices that data three ways:
+This script slices that data four ways:
 
   1. Per-test summary       — one line per test JSON: rounds, paths, lags
   2. Per-round breakdown    — every round in the slice, with the timing
@@ -12,6 +12,17 @@ This script slices that data three ways:
   3. Aggregate distribution — median / p95 / max for elapsed_ms,
                               collection time, decide time, per-agent
                               first_response_ms, synthesis rate
+  4. CFN timing envelope    — per-stage distributions from
+                              ``cfn_internal_timing`` (Sites 1–6: wire,
+                              middleware, deps, route, thread wait,
+                              in-thread, post-thread resume, pipeline,
+                              loop lag) plus ``cfn_call_timing`` (httpx
+                              wall, json parse, loop lag headers). This
+                              is what the per-fix smoke runs (PR E v1
+                              through v4-B + KXP profiling) consumed
+                              ad-hoc; promoted here so the same
+                              attribution can be reproduced from any
+                              future trace dir without one-off scripts.
 
 Pure stdlib.  Run as:
 
@@ -20,9 +31,28 @@ Pure stdlib.  Run as:
     python tests/analyze_round_traces.py --glob 'test_41_*'    # by pattern
     python tests/analyze_round_traces.py --file a.json --file b.json  # explicit set
     python tests/analyze_round_traces.py --rounds              # show every round
+    python tests/analyze_round_traces.py --wedges              # attribute long rounds (A/B/C/D)
+    python tests/analyze_round_traces.py --compare-dir DIR     # diff timing vs DIR
     python tests/analyze_round_traces.py --json                # machine-readable
 
 Default trace dir is ``$MYCELIUM_TRACE_DIR`` or ``~/.mycelium/e2e-logs/traces``.
+
+Wedge attribution patterns (see cfn_decide_investigation_history.md):
+
+  A — pure event-loop wedge inside CFN
+      post_thread_resume_ms dominates; thread did its work but the
+      awaiting coroutine couldn't resume. Suspects: litellm async hooks,
+      sync AgensGraph calls, GIL contention from acompletion-on-Bedrock.
+  B — uvicorn accept-queue backup
+      wire_to_middleware_ms dominates; the worker was busy when the
+      request arrived. Almost always downstream of A.
+  C — thread pool starvation
+      thread_wait_ms dominates; default executor was saturated. The
+      original PR E v1 fix (bump CFN_DEFAULT_EXECUTOR_WORKERS) targets
+      this. Should be near-zero on any post-v1 trace.
+  D — real work
+      in_thread_ms dominates; the engines pipeline actually was the slow
+      thing. Rare and informative when it happens.
 """
 
 from __future__ import annotations
@@ -323,6 +353,277 @@ def print_aggregate(runs: list[TestRun]) -> None:
             )
 
 
+# ---------------------------------------------------------------------------
+# CFN timing envelope (cfn_internal_timing + cfn_call_timing)
+#
+# These are the fields the per-fix smoke runs (PR E v1..v4-B, KXP profile)
+# kept reaching for ad-hoc. Promoted here so the attribution is reproducible.
+# ---------------------------------------------------------------------------
+
+# Order matters: this is the order we print the distributions in, and it
+# follows the request lifecycle (outside-in) — the same order the
+# investigation history walked the sites in.
+INTERNAL_TIMING_FIELDS: tuple[str, ...] = (
+    "wire_to_middleware_ms",          # Site 5 — Mycelium send -> CFN middleware
+    "check_workspace_and_mas_ms",     # Site 3 — workspace/MAS dependency
+    "vector_cache_layer_ms",          # Site 3 — vector cache dep
+    "rag_cache_layer_ms",             # Site 3 — RAG cache dep
+    "route_handler_ms",               # Site 3 — total route handler body
+    "thread_wait_ms",                 # Site 2 — queued in default executor
+    "in_thread_ms",                   # Site 2 — actual execute() runtime
+    "post_thread_resume_ms",          # Site 2 — thread done -> coroutine resume
+    "pipeline_ms",                    # Site 1 — pipeline.async_execute total
+    "pipeline_plus_persist_setup_ms", # Site 1 — pipeline + ingest hand-off
+    "to_dict_ms",                     # Site 1 — response serialisation
+)
+
+CALL_TIMING_FIELDS: tuple[str, ...] = (
+    "http_ms",                        # httpx client.post wall time
+    "client_setup_ms",
+    "client_close_ms",
+    "raise_for_status_ms",
+    "json_parse_ms",
+    "decide_call_total_ms",
+    # Loop-lag samples folded into response headers by Site 6.
+    "cfn_loop_lag_p95_ms",
+    "cfn_loop_lag_mean_ms",
+    "cfn_loop_lag_samples_n",
+)
+
+
+def _collect_timing_field(rounds: list[dict], envelope: str, field: str) -> list[float]:
+    """Pull a numeric field out of `cfn_internal_timing` or `cfn_call_timing`.
+
+    Skips rounds where the envelope is missing or the field is None — both
+    happen for rounds that timed out before CFN could emit timing data.
+    """
+    out: list[float] = []
+    for r in rounds:
+        env = r.get(envelope) or {}
+        v = env.get(field)
+        if v is None:
+            continue
+        try:
+            out.append(float(v))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def print_cfn_timing_envelope(runs: list[TestRun]) -> None:
+    """Render distributions for every CFN-side timing field present in the data."""
+    rounds = [r for run in runs for r in run.rounds]
+    n = len(rounds)
+    if not rounds:
+        return
+
+    rounds_with_internal = sum(1 for r in rounds if r.get("cfn_internal_timing"))
+    rounds_with_call = sum(1 for r in rounds if r.get("cfn_call_timing"))
+    if rounds_with_internal == 0 and rounds_with_call == 0:
+        return
+
+    print()
+    print("=" * 100)
+    print(
+        f"CFN TIMING ENVELOPE  "
+        f"(internal={rounds_with_internal}/{n} rounds, call={rounds_with_call}/{n} rounds)"
+    )
+    print("=" * 100)
+    print(
+        "  Sites correspond to cfn_decide_investigation_history.md:\n"
+        "    Site 1 = pipeline / to_dict        Site 2 = thread wait / in / post\n"
+        "    Site 3 = FastAPI deps / route      Site 5 = Mycelium->CFN wire\n"
+        "    Site 6 = loop-lag sampler (per-request headers, see cfn_loop_lag_*)"
+    )
+
+    def block(envelope: str, fields: tuple[str, ...], header: str) -> None:
+        present = [(f, _collect_timing_field(rounds, envelope, f)) for f in fields]
+        present = [(f, vs) for f, vs in present if vs]
+        if not present:
+            return
+        print(f"\n  {header}:")
+        for f, vs in present:
+            q = _quantiles(vs)
+            print(
+                f"    {f:<32}n={len(vs):<4} "
+                f"min={q['min']:>6.0f}  med={q['median']:>6.0f}  "
+                f"mean={q['mean']:>6.0f}  p75={q['p75']:>6.0f}  "
+                f"p95={q['p95']:>6.0f}  max={q['max']:>6.0f}"
+            )
+
+    block("cfn_internal_timing", INTERNAL_TIMING_FIELDS, "cfn_internal_timing (CFN-side)")
+    block("cfn_call_timing", CALL_TIMING_FIELDS, "cfn_call_timing (Mycelium-side)")
+
+
+# ---------------------------------------------------------------------------
+# Wedge attribution
+# ---------------------------------------------------------------------------
+
+WEDGE_THRESHOLD_MS = 10_000  # same threshold the existing "long rounds" block uses
+
+# Each pattern names the timing field it indicts and a short label.
+WEDGE_PATTERNS: tuple[tuple[str, str, str], ...] = (
+    ("A", "post_thread_resume_ms", "loop-wedge"),
+    ("B", "wire_to_middleware_ms", "accept-queue"),
+    ("C", "thread_wait_ms",        "pool-starve"),
+    ("D", "in_thread_ms",          "real-work"),
+)
+
+
+def _classify_wedge(rnd: dict) -> tuple[str, str, float] | None:
+    """Return (pattern_id, label, value_ms) for the dominant wedger, or None.
+
+    "Dominant" = whichever of the four named fields is largest *and* exceeds
+    WEDGE_THRESHOLD_MS / 4. Ties are broken by pattern order (A > B > C > D),
+    which matches the investigation's own naming.
+    """
+    env = rnd.get("cfn_internal_timing") or {}
+    candidates: list[tuple[str, str, float]] = []
+    for pid, field, label in WEDGE_PATTERNS:
+        v = env.get(field)
+        if v is None:
+            continue
+        try:
+            fv = float(v)
+        except (TypeError, ValueError):
+            continue
+        if fv >= WEDGE_THRESHOLD_MS / 4:
+            candidates.append((pid, label, fv))
+    if not candidates:
+        return None
+    # Largest first; ties broken by pattern order in WEDGE_PATTERNS.
+    candidates.sort(key=lambda c: (-c[2], [p[0] for p in WEDGE_PATTERNS].index(c[0])))
+    return candidates[0]
+
+
+def print_wedge_attribution(runs: list[TestRun]) -> None:
+    """For every long round, name the dominant wedger using the timing envelope."""
+    rounds = [r for run in runs for r in run.rounds]
+    long_rounds = [(i, r) for i, run in enumerate(runs, 1) for r in run.rounds
+                   if (r.get("elapsed_ms") or 0) > WEDGE_THRESHOLD_MS]
+    if not long_rounds:
+        return
+
+    print()
+    print("=" * 100)
+    print(f"WEDGE ATTRIBUTION  ({len(long_rounds)} rounds > {WEDGE_THRESHOLD_MS/1000:.0f}s)")
+    print("=" * 100)
+    print(
+        "  A=loop-wedge (post_thread_resume_ms)  "
+        "B=accept-queue (wire_to_middleware_ms)\n"
+        "  C=pool-starve (thread_wait_ms)        "
+        "D=real-work (in_thread_ms)\n"
+        "  ?=no cfn_internal_timing envelope (almost always a watchdog timeout)"
+    )
+
+    counts: dict[str, int] = {}
+    print(
+        f"\n  {'#':<4}{'r':<3}{'elapsed':>10}  {'pattern':<14}{'attributed_ms':>14}"
+        f"  {'cfn_status':<10}{'test':<40}"
+    )
+    print("  " + "-" * 95)
+    for j, (run_idx, r) in enumerate(long_rounds, 1):
+        run = runs[run_idx - 1]
+        cls = _classify_wedge(r)
+        if cls is None:
+            pattern_label = "?-no-envelope"
+            attrib_ms: float | str = "-"
+            counts["?"] = counts.get("?", 0) + 1
+        else:
+            pid, label, ms = cls
+            pattern_label = f"{pid}-{label}"
+            attrib_ms = f"{ms:.0f}"
+            counts[pid] = counts.get(pid, 0) + 1
+        print(
+            f"  {j:<4}{r.get('round_n', '?'):<3}{_fmt_ms(r.get('elapsed_ms'), 10)}  "
+            f"{pattern_label:<14}{attrib_ms:>14}  "
+            f"{(r.get('cfn_status') or '-'):<10}{run.test_name[:39]:<40}"
+        )
+
+    print("\n  Pattern mix:")
+    for pid in [p[0] for p in WEDGE_PATTERNS] + ["?"]:
+        c = counts.get(pid, 0)
+        if c:
+            print(f"    {pid}: {c:>3}  ({100 * c / len(long_rounds):5.1f}%)")
+
+
+# ---------------------------------------------------------------------------
+# Comparison across two trace directories (e.g. pre-fix vs post-fix smoke).
+# ---------------------------------------------------------------------------
+
+def _envelope_quantiles(runs: list[TestRun]) -> dict[str, dict[str, dict[str, float | None]]]:
+    rounds = [r for run in runs for r in run.rounds]
+    out: dict[str, dict[str, dict[str, float | None]]] = {
+        "cfn_internal_timing": {},
+        "cfn_call_timing": {},
+    }
+    for envelope, fields in (
+        ("cfn_internal_timing", INTERNAL_TIMING_FIELDS),
+        ("cfn_call_timing", CALL_TIMING_FIELDS),
+    ):
+        for f in fields:
+            vs = _collect_timing_field(rounds, envelope, f)
+            if vs:
+                out[envelope][f] = _quantiles(vs)
+    # Also include the outer round timings.
+    elapsed = [r["elapsed_ms"] for r in rounds if r.get("elapsed_ms") is not None]
+    out["round"] = {"elapsed_ms": _quantiles(elapsed)}  # type: ignore[assignment]
+    decides = []
+    for r in rounds:
+        _c, d = round_decomposition(r)
+        if d is not None:
+            decides.append(d)
+    out["round"]["cfn_decide_ms"] = _quantiles(decides)
+    return out
+
+
+def print_comparison(label_a: str, runs_a: list[TestRun],
+                     label_b: str, runs_b: list[TestRun]) -> None:
+    """Side-by-side median/p95/max diff for every timing field present in both."""
+    qa = _envelope_quantiles(runs_a)
+    qb = _envelope_quantiles(runs_b)
+    n_a = sum(len(r.rounds) for r in runs_a)
+    n_b = sum(len(r.rounds) for r in runs_b)
+
+    print()
+    print("=" * 100)
+    print(f"COMPARISON  {label_a} (n={n_a}) vs {label_b} (n={n_b})")
+    print("=" * 100)
+
+    def fmt(v: float | None) -> str:
+        return f"{v:>8.0f}" if v is not None else f"{'-':>8}"
+
+    def ratio(a: float | None, b: float | None) -> str:
+        if a is None or b is None or b == 0 or a == 0:
+            return f"{'-':>8}"
+        r = a / b
+        if r < 1:
+            return f"{1/r:>6.1f}x↓"
+        return f"{r:>6.1f}x↑"
+
+    for envelope in ("round", "cfn_internal_timing", "cfn_call_timing"):
+        fields = sorted(set(qa.get(envelope, {}).keys()) | set(qb.get(envelope, {}).keys()))
+        if not fields:
+            continue
+        print(f"\n  {envelope}:")
+        print(
+            f"    {'field':<32}"
+            f"{'A med':>10}{'B med':>10}{'med Δ':>10}  "
+            f"{'A p95':>10}{'B p95':>10}{'p95 Δ':>10}  "
+            f"{'A max':>10}{'B max':>10}"
+        )
+        for f in fields:
+            a = qa.get(envelope, {}).get(f, {})
+            b = qb.get(envelope, {}).get(f, {})
+            print(
+                f"    {f:<32}"
+                f"{fmt(a.get('median'))} {fmt(b.get('median'))} {ratio(a.get('median'), b.get('median'))}  "
+                f"{fmt(a.get('p95'))} {fmt(b.get('p95'))} {ratio(a.get('p95'), b.get('p95'))}  "
+                f"{fmt(a.get('max'))} {fmt(b.get('max'))}"
+            )
+    print("\n  Δ shows direction (B vs A): '↓' = B is faster, '↑' = B is slower.")
+
+
 def to_json_report(runs: list[TestRun]) -> dict[str, Any]:
     rounds = [r for run in runs for r in run.rounds]
     elapsed = [r["elapsed_ms"] for r in rounds if r.get("elapsed_ms") is not None]
@@ -333,6 +634,13 @@ def to_json_report(runs: list[TestRun]) -> dict[str, Any]:
             collections.append(c)
         if d is not None:
             decides.append(d)
+    wedge_counts: dict[str, int] = {}
+    for r in rounds:
+        if (r.get("elapsed_ms") or 0) <= WEDGE_THRESHOLD_MS:
+            continue
+        cls = _classify_wedge(r)
+        key = cls[0] if cls else "?"
+        wedge_counts[key] = wedge_counts.get(key, 0) + 1
     return {
         "tests": [per_test_summary(run) for run in runs],
         "aggregate": {
@@ -341,6 +649,17 @@ def to_json_report(runs: list[TestRun]) -> dict[str, Any]:
             "elapsed_ms": _quantiles(elapsed),
             "collection_ms": _quantiles(collections),
             "cfn_decide_ms": _quantiles(decides),
+            "cfn_internal_timing": {
+                f: _quantiles(_collect_timing_field(rounds, "cfn_internal_timing", f))
+                for f in INTERNAL_TIMING_FIELDS
+                if _collect_timing_field(rounds, "cfn_internal_timing", f)
+            },
+            "cfn_call_timing": {
+                f: _quantiles(_collect_timing_field(rounds, "cfn_call_timing", f))
+                for f in CALL_TIMING_FIELDS
+                if _collect_timing_field(rounds, "cfn_call_timing", f)
+            },
+            "wedge_attribution": wedge_counts,
         },
     }
 
@@ -357,6 +676,12 @@ def main(argv: list[str] | None = None) -> int:
                    help="Take only the most-recent N files after globbing (default: 1 if no glob/file, all otherwise)")
     p.add_argument("--rounds", action="store_true",
                    help="Print per-round breakdown table (verbose)")
+    p.add_argument("--wedges", action="store_true",
+                   help="Attribute every >10s round to wedge pattern A/B/C/D")
+    p.add_argument("--no-envelope", action="store_true",
+                   help="Suppress the CFN timing-envelope block (printed by default when present)")
+    p.add_argument("--compare-dir", type=Path, default=None,
+                   help="Diff timing distributions vs traces in this other directory")
     p.add_argument("--json", action="store_true",
                    help="Emit machine-readable JSON instead of pretty tables")
     args = p.parse_args(argv)
@@ -383,6 +708,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.rounds:
         print_per_round_table(runs)
     print_aggregate(runs)
+    if not args.no_envelope:
+        print_cfn_timing_envelope(runs)
+    if args.wedges:
+        print_wedge_attribution(runs)
+    if args.compare_dir is not None:
+        other_files = discover_files(args.compare_dir, [], None, None)
+        if not other_files:
+            print(f"\n(--compare-dir: no traces in {args.compare_dir})", file=sys.stderr)
+        else:
+            other_runs = [TestRun.load(f) for f in other_files]
+            print_comparison(str(args.dir), runs, str(args.compare_dir), other_runs)
     return 0
 
 
