@@ -391,27 +391,35 @@ def _resolve_agent_to_room() -> dict[str, str]:
     return _AGENT_ROOM_CACHE
 
 
-_ROOM_MAP_CACHE: dict[str, str] | None = None
+_ROOM_LOOKUP_CACHE: tuple[dict[str, str], dict[str, str]] | None = None
 
 
-def _resolve_room_names_by_mas() -> dict[str, str]:
-    """Return a ``{mas_id: room_name}`` mapping by querying the local backend.
+def _resolve_room_lookup() -> tuple[dict[str, str], dict[str, str]]:
+    """Return ``(mas_to_name, name_to_mas)`` from ``GET /api/rooms``.
+
+    A single fetch populates both directions, which keeps the by-room
+    metrics tables consistent: Knowledge Ingestion is counter-keyed by
+    ``mas_id`` (so it needs mas→name to display friendly labels), while
+    CFN tables are counter-keyed by ``room_name`` (so they need
+    name→mas to display the corresponding identifier).
 
     The result is cached for the lifetime of the CLI process — `metrics show`
     runs are short-lived, and rooms rarely churn within a single invocation.
-    On any failure (no backend reachable, request error) we return ``{}`` so
-    the caller can fall back to displaying raw mas_ids.
+    On any failure (no backend reachable, request error) we return two empty
+    dicts so the caller can fall back gracefully.
     """
-    global _ROOM_MAP_CACHE
-    if _ROOM_MAP_CACHE is not None:
-        return _ROOM_MAP_CACHE
-    _ROOM_MAP_CACHE = {}
+    global _ROOM_LOOKUP_CACHE
+    if _ROOM_LOOKUP_CACHE is not None:
+        return _ROOM_LOOKUP_CACHE
+    mas_to_name: dict[str, str] = {}
+    name_to_mas: dict[str, str] = {}
     try:
         from mycelium.config import MyceliumConfig
 
         api_url = MyceliumConfig.load().server.api_url
         if not api_url:
-            return _ROOM_MAP_CACHE
+            _ROOM_LOOKUP_CACHE = (mas_to_name, name_to_mas)
+            return _ROOM_LOOKUP_CACHE
         import httpx
 
         resp = httpx.get(
@@ -420,20 +428,41 @@ def _resolve_room_names_by_mas() -> dict[str, str]:
             timeout=2.0,
         )
         if resp.status_code != 200:
-            return _ROOM_MAP_CACHE
+            _ROOM_LOOKUP_CACHE = (mas_to_name, name_to_mas)
+            return _ROOM_LOOKUP_CACHE
         rooms = resp.json()
         if not isinstance(rooms, list):
-            return _ROOM_MAP_CACHE
+            _ROOM_LOOKUP_CACHE = (mas_to_name, name_to_mas)
+            return _ROOM_LOOKUP_CACHE
         for r in rooms:
             mas_id = r.get("mas_id")
             name = r.get("name")
             if mas_id and name:
-                _ROOM_MAP_CACHE[str(mas_id)] = str(name)
+                mas_to_name[str(mas_id)] = str(name)
+                name_to_mas[str(name)] = str(mas_id)
     except Exception:
-        # Caching the empty dict is intentional — avoid retrying a
+        # Caching the empty result is intentional — avoid retrying a
         # failed lookup repeatedly within the same render pass.
         pass
-    return _ROOM_MAP_CACHE
+    _ROOM_LOOKUP_CACHE = (mas_to_name, name_to_mas)
+    return _ROOM_LOOKUP_CACHE
+
+
+def _resolve_room_names_by_mas() -> dict[str, str]:
+    """Backwards-compatible accessor — returns just the ``mas → name`` map."""
+    return _resolve_room_lookup()[0]
+
+
+def _resolve_mas_by_room_name() -> dict[str, str]:
+    """Return the ``room_name → mas_id`` map (companion to the above)."""
+    return _resolve_room_lookup()[1]
+
+
+def _short_mas(mas_id: str) -> str:
+    """Format a mas_id for display in the narrow MAS column (first 8 chars)."""
+    if not mas_id:
+        return ""
+    return str(mas_id)[:8]
 
 
 def _collector_pid_file() -> Path:
@@ -2518,22 +2547,29 @@ def _render_knowledge_table(backend: dict | None, *, detail: bool = False) -> No
         border_style="dim",
     )
     table.add_column("Metric", style="bold")
+    # MAS column makes the by-room sub-section unambiguous: the counter is
+    # stored by ``mas_id``, so when the room is no longer in the registry
+    # (e.g., transient e2e rooms) the room cell is blank but the mas_id
+    # still anchors the row. For aggregate rows above, this cell is empty.
+    table.add_column("MAS", style="dim", no_wrap=True)
     table.add_column("Value", justify="right")
 
     if ingestions > 0:
-        table.add_row("Ingestions", _fmt_num(ingestions))
+        table.add_row("Ingestions", "", _fmt_num(ingestions))
     if writes > 0:
-        table.add_row("Shared-memory writes", _fmt_num(writes))
+        table.add_row("Shared-memory writes", "", _fmt_num(writes))
     errors = knowledge.get("errors", 0)
     if errors > 0:
-        table.add_row("Errors", f"[red]{_fmt_num(errors)}[/red]")
+        table.add_row("Errors", "", f"[red]{_fmt_num(errors)}[/red]")
     skipped = knowledge.get("skipped", 0)
     if skipped > 0:
-        table.add_row("Skipped (dedupe)", _fmt_num(skipped))
+        table.add_row("Skipped (dedupe)", "", _fmt_num(skipped))
 
     # Per-MAS / per-room breakdown when the backend has tagged ingestions.
     # We aggregate into ``{mas_id: {ingestions, errors, tokens}}`` then
-    # resolve mas_id → room name for display where possible.
+    # resolve mas_id → room name for display where possible. Unresolved
+    # mas_ids (room deleted from /api/rooms) leave the room cell blank
+    # but still appear in the MAS column.
     by_mas: dict[str, dict[str, int]] = {}
     for key, val in knowledge.items():
         if not key.startswith("by_mas."):
@@ -2549,11 +2585,11 @@ def _render_knowledge_table(backend: dict | None, *, detail: bool = False) -> No
     if by_mas:
         room_map = _resolve_room_names_by_mas()
         table.add_section()
-        table.add_row("[dim]By room:[/dim]", "")
+        table.add_row("[dim]By room:[/dim]", "", "")
         ranked = sorted(by_mas.items(), key=lambda kv: kv[1].get("ingestions", 0), reverse=True)
         cap = len(ranked) if detail else 5
         for mas_id, stats in ranked[:cap]:
-            label = room_map.get(mas_id) or f"mas:{mas_id[:8]}"
+            room_label = room_map.get(mas_id, "")
             n_ing = stats.get("ingestions", 0)
             n_err = stats.get("errors", 0)
             n_tok = stats.get("estimated_input_tokens", 0)
@@ -2562,11 +2598,15 @@ def _render_knowledge_table(backend: dict | None, *, detail: bool = False) -> No
                 parts.append(f"~{_fmt_num(n_tok)} tok")
             if n_err > 0:
                 parts.append(f"[red]{n_err} err[/red]")
-            table.add_row(f"  {label}", "  ·  ".join(parts))
+            # Blank room cell when unresolved — the mas_id alone identifies
+            # the row, matching the CLI's normal "tombstone" semantics.
+            room_cell = f"  {room_label}" if room_label else "  [dim](deleted)[/dim]"
+            table.add_row(room_cell, _short_mas(mas_id), "  ·  ".join(parts))
         if len(ranked) > cap:
             table.add_row(
                 f"  [dim]...and {len(ranked) - cap} more "
                 f"(use --detail to expand)[/dim]",
+                "",
                 "",
             )
 
@@ -2855,10 +2895,14 @@ def _render_coordination_table(backend: dict | None, *, detail: bool = False) ->
         border_style="dim",
     )
     table.add_column("Metric", style="bold")
+    # MAS column populated only for the per-room rows below. CFN counters
+    # are keyed by ``room_name``, so we resolve room_name → mas_id at
+    # display time via /api/rooms; deleted rooms get a blank MAS cell.
+    table.add_column("MAS", style="dim", no_wrap=True)
     table.add_column("Value", justify="right")
 
-    table.add_row("Sessions started", _fmt_num(coord.get("sessions_started", 0)))
-    table.add_row("Sessions completed", _fmt_num(coord.get("sessions_completed", 0)))
+    table.add_row("Sessions started", "", _fmt_num(coord.get("sessions_started", 0)))
+    table.add_row("Sessions completed", "", _fmt_num(coord.get("sessions_completed", 0)))
 
     success = coord.get("outcome.success", 0)
     failure = coord.get("outcome.failure", 0)
@@ -2866,12 +2910,12 @@ def _render_coordination_table(backend: dict | None, *, detail: bool = False) ->
     if success + failure > 0:
         table.add_section()
         if success > 0:
-            table.add_row("  consensus reached", f"[green]{_fmt_num(success)}[/green]")
+            table.add_row("  consensus reached", "", f"[green]{_fmt_num(success)}[/green]")
         if failure > 0:
-            table.add_row("  failed", f"[red]{_fmt_num(failure)}[/red]")
+            table.add_row("  failed", "", f"[red]{_fmt_num(failure)}[/red]")
 
     table.add_section()
-    table.add_row("Total rounds", _fmt_num(coord.get("rounds", 0)))
+    table.add_row("Total rounds", "", _fmt_num(coord.get("rounds", 0)))
 
     be_histograms = backend.get("histograms", {})
 
@@ -2880,7 +2924,9 @@ def _render_coordination_table(backend: dict | None, *, detail: bool = False) ->
         avg = rounds_to_consensus["sum"] / rounds_to_consensus["count"]
         min_r = rounds_to_consensus.get("min", avg)
         max_r = rounds_to_consensus.get("max", avg)
-        table.add_row("Rounds to consensus", f"{avg:.1f} (min {min_r:.0f}, max {max_r:.0f})")
+        table.add_row(
+            "Rounds to consensus", "", f"{avg:.1f} (min {min_r:.0f}, max {max_r:.0f})"
+        )
 
     # Pad ``n=`` across the histogram rows so the ``avg`` column lines up
     # vertically even when counts span orders of magnitude
@@ -2898,18 +2944,20 @@ def _render_coordination_table(backend: dict | None, *, detail: bool = False) ->
     if time_to_consensus.get("count", 0) > 0:
         table.add_row(
             "Time to consensus",
+            "",
             _fmt_histogram_s(time_to_consensus, n_width=coord_n_width),
         )
     if round_duration.get("count", 0) > 0:
         table.add_row(
             "Round duration",
+            "",
             _fmt_histogram_s(round_duration, n_width=coord_n_width),
         )
 
     participants = be_histograms.get("coordination.session_participants", {})
     if participants.get("count", 0) > 0:
         avg = participants["sum"] / participants["count"]
-        table.add_row("Avg participants/session", f"{avg:.1f}")
+        table.add_row("Avg participants/session", "", f"{avg:.1f}")
 
     # Aggregate per parent room across sessions. The raw counters are
     # session-scoped (``by_room.<room>:session:<uuid>``); we sum them so a
@@ -2943,8 +2991,9 @@ def _render_coordination_table(backend: dict | None, *, detail: bool = False) ->
             ] += int(val or 0)
 
     if rounds_by_room or completed_by_room:
+        name_to_mas = _resolve_mas_by_room_name()
         table.add_section()
-        table.add_row("[dim]By room:[/dim]", "")
+        table.add_row("[dim]By room:[/dim]", "", "")
         # Sort by total rounds desc so the busiest room leads.
         ranked = sorted(rounds_by_room.items(), key=lambda kv: kv[1], reverse=True)
         cap = len(ranked) if detail else 5
@@ -2960,11 +3009,16 @@ def _render_coordination_table(backend: dict | None, *, detail: bool = False) ->
                 ok_str = f"[green]{n_ok}✓[/green]" if n_ok else f"{n_ok}✓"
                 bad_str = f"[red]{n_bad}✗[/red]" if n_bad else f"{n_bad}✗"
                 parts.append(f"{_fmt_num(n_done)} done ({ok_str} {bad_str})")
-            table.add_row(f"  {room}", "  ·  ".join(parts))
+            table.add_row(
+                f"  {room}",
+                _short_mas(name_to_mas.get(room, "")),
+                "  ·  ".join(parts),
+            )
         if len(ranked) > cap:
             table.add_row(
                 f"  [dim]...and {len(ranked) - cap} more "
                 f"(use --detail to expand)[/dim]",
+                "",
                 "",
             )
 
@@ -2992,28 +3046,33 @@ def _render_cfn_llm_usage_table(backend: dict | None, *, detail: bool = False) -
         border_style="dim",
     )
     table.add_column("Metric", style="bold")
+    # MAS column is populated only for the per-room rows below — CFN
+    # counters are keyed by ``room_name``, so we resolve room_name →
+    # mas_id at display time via /api/rooms. The aggregate, by-pipeline,
+    # and by-operation rows leave this cell blank.
+    table.add_column("MAS", style="dim", no_wrap=True)
     table.add_column("Value", justify="right")
 
-    table.add_row("Total LLM calls (engines)", _fmt_num(total_calls))
-    table.add_row("  input tokens", _fmt_num(cfn_llm.get("input_tokens", 0)))
-    table.add_row("  output tokens", _fmt_num(cfn_llm.get("output_tokens", 0)))
+    table.add_row("Total LLM calls (engines)", "", _fmt_num(total_calls))
+    table.add_row("  input tokens", "", _fmt_num(cfn_llm.get("input_tokens", 0)))
+    table.add_row("  output tokens", "", _fmt_num(cfn_llm.get("output_tokens", 0)))
     total_tokens = cfn_llm.get("total_tokens", 0)
     if total_tokens > 0:
-        table.add_row("  total tokens", _fmt_num(total_tokens))
+        table.add_row("  total tokens", "", _fmt_num(total_tokens))
     cached = cfn_llm.get("cached_tokens", 0)
     if cached > 0:
-        table.add_row("  cached tokens", _fmt_num(cached))
+        table.add_row("  cached tokens", "", _fmt_num(cached))
 
     be_histograms = backend.get("histograms", {})
     lat = be_histograms.get("cfn_llm.latency_ms", {})
     if lat.get("count", 0) > 0:
-        table.add_row("LLM latency (total)", _fmt_histogram_s(lat, _max_n_width(lat)))
+        table.add_row("LLM latency (total)", "", _fmt_histogram_s(lat, _max_n_width(lat)))
 
     # By pipeline rollup
     pipeline_keys = sorted(k for k in cfn_llm if k.startswith("by_pipeline."))
     if pipeline_keys:
         table.add_section()
-        table.add_row("[dim]By pipeline:[/dim]", "")
+        table.add_row("[dim]By pipeline:[/dim]", "", "")
         pipelines: dict[str, dict[str, int]] = {}
         for key in pipeline_keys:
             parts = key.split(".")
@@ -3027,6 +3086,7 @@ def _render_cfn_llm_usage_table(backend: dict | None, *, detail: bool = False) -
             out = data.get("output_tokens", 0)
             table.add_row(
                 f"  {pip}",
+                "",
                 f"{_fmt_num(calls)} calls, {_fmt_num(inp)} in / {_fmt_num(out)} out",
             )
 
@@ -3034,7 +3094,7 @@ def _render_cfn_llm_usage_table(backend: dict | None, *, detail: bool = False) -
     op_keys = sorted(k for k in cfn_llm if k.startswith("by_llm_operation."))
     if op_keys:
         table.add_section()
-        table.add_row("[dim]By operation:[/dim]", "")
+        table.add_row("[dim]By operation:[/dim]", "", "")
         operations: dict[str, dict[str, int]] = {}
         for key in op_keys:
             parts = key.split(".")
@@ -3048,6 +3108,7 @@ def _render_cfn_llm_usage_table(backend: dict | None, *, detail: bool = False) -
             out = data.get("output_tokens", 0)
             table.add_row(
                 f"  {op}",
+                "",
                 f"{_fmt_num(calls)} calls, {_fmt_num(inp)} in / {_fmt_num(out)} out",
             )
 
@@ -3058,8 +3119,9 @@ def _render_cfn_llm_usage_table(backend: dict | None, *, detail: bool = False) -
     # --detail to expand to all rooms).
     rooms = _aggregate_by_room(cfn_llm, prefix="by_room.")
     if rooms:
+        name_to_mas = _resolve_mas_by_room_name()
         table.add_section()
-        table.add_row("[dim]By room:[/dim]", "")
+        table.add_row("[dim]By room:[/dim]", "", "")
         ranked = sorted(
             rooms.items(),
             key=lambda kv: kv[1].get("input_tokens", 0) + kv[1].get("output_tokens", 0),
@@ -3072,12 +3134,14 @@ def _render_cfn_llm_usage_table(backend: dict | None, *, detail: bool = False) -
             out = data.get("output_tokens", 0)
             table.add_row(
                 f"  {room}",
+                _short_mas(name_to_mas.get(room, "")),
                 f"{_fmt_num(calls)} calls, {_fmt_num(inp)} in / {_fmt_num(out)} out",
             )
         if len(ranked) > cap:
             table.add_row(
                 f"  [dim]...and {len(ranked) - cap} more "
                 f"(use --detail to expand)[/dim]",
+                "",
                 "",
             )
 
