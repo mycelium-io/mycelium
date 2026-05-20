@@ -60,6 +60,14 @@ _lock = threading.Lock()
 
 _counters: dict[str, dict[str, int | float]] = {}
 _histograms: dict[str, dict] = {}
+# Room identity registry: ``mas_id -> room_name``. Populated opportunistically
+# by service code whenever the backend learns both at the same time (e.g.,
+# coordination session start, knowledge ingest, CFN negotiation). Survives
+# room deletion from the ``rooms`` table (which is destructive), so the
+# ``mycelium metrics show`` per-room tables can keep displaying friendly
+# names and mas_ids for transient rooms after they're gone. Reset on
+# process restart (in-memory only, same lifecycle as counters/histograms).
+_room_identities: dict[str, str] = {}
 _started_at: str = datetime.now(UTC).isoformat()
 
 
@@ -466,6 +474,33 @@ def record_cfn_llm_usage(
             _inc("cfn_llm", f"by_pipeline.{pipeline}.output_tokens", op_output)
 
 
+@_safe
+def record_room_identity(*, mas_id: str, room_name: str) -> None:
+    """Capture a ``mas_id ↔ room_name`` mapping for the metric snapshot.
+
+    The ``rooms`` table is hard-deleted (see ``models.Room`` — no
+    ``deleted_at`` column), which means once a transient room is gone,
+    neither ``mas_id → name`` nor ``name → mas_id`` can be resolved
+    via ``/api/rooms`` anymore. The CLI's per-room tables then show
+    ``(deleted)`` or blank MAS cells, making it impossible to
+    cross-reference Knowledge Ingestion (keyed by mas_id) against CFN
+    Coordination / CFN LLM Token Usage (keyed by room_name).
+
+    Callers should invoke this whenever they have both values in scope
+    (typically at session start or first activity for a room). It's
+    a write-once cache — re-recording an existing pair is a no-op,
+    and the recorder is permissive about empty inputs (silent skip)
+    to keep service code call sites uncluttered.
+    """
+    if not mas_id or not room_name:
+        return
+    with _lock:
+        # Only set once per mas_id: if a room is somehow renamed in flight,
+        # the first observed name wins. Rooms are not renamable today, so
+        # this is a defensive choice for forward-compat only.
+        _room_identities.setdefault(str(mas_id), str(room_name))
+
+
 def snapshot() -> dict:
     """Return a JSON-serializable snapshot of all metrics."""
     with _lock:
@@ -474,4 +509,6 @@ def snapshot() -> dict:
             "updated_at": datetime.now(UTC).isoformat(),
             "counters": {k: dict(v) for k, v in _counters.items()},
             "histograms": {k: dict(v) for k, v in _histograms.items()},
+            # Survives /api/rooms deletion — see ``record_room_identity``.
+            "room_identities": dict(_room_identities),
         }

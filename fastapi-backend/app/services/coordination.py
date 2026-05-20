@@ -43,6 +43,7 @@ from app.services.metrics import (
     record_consensus,
     record_coordination_round,
     record_coordination_start,
+    record_room_identity,
 )
 
 logger = logging.getLogger(__name__)
@@ -474,6 +475,12 @@ async def _run_cfn_negotiation(
 
     session_start_time = time.monotonic()
     record_coordination_start(participants=len(session_handles))
+    # Capture the room_name ↔ mas_id link in the snapshot so the CLI's
+    # per-room tables can keep displaying both axes after the room is
+    # hard-deleted from /api/rooms. We pass the parent room (room.name)
+    # because the coordination counters bucket by parent room too
+    # (``_parent_room`` strips ``:session:<uuid>`` suffixes downstream).
+    record_room_identity(mas_id=mas_id, room_name=room.name)
 
     await _post_message(
         room_name,

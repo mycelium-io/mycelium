@@ -393,26 +393,63 @@ def _resolve_agent_to_room() -> dict[str, str]:
 
 _ROOM_LOOKUP_CACHE: tuple[dict[str, str], dict[str, str]] | None = None
 
+# Per-invocation handle on the backend snapshot, so ``_resolve_room_lookup``
+# can layer the ``room_identities`` registry on top of ``/api/rooms``. Set
+# by ``show()`` after backend data is loaded, cleared at the end of the
+# invocation. The snapshot's identity entries win — they survive room
+# deletion, while /api/rooms is destructive (see Room model in
+# fastapi-backend/app/models.py — no ``deleted_at`` column).
+_SNAPSHOT_BACKEND_FOR_LOOKUP: dict | None = None
+
+
+def _set_room_lookup_context(backend: dict | None) -> None:
+    """Wire the backend snapshot into the next ``_resolve_room_lookup`` call.
+
+    Also invalidates any cached lookup so the new context takes effect.
+    Safe to call multiple times — the cache is rebuilt lazily on first
+    read after the context changes.
+    """
+    global _SNAPSHOT_BACKEND_FOR_LOOKUP, _ROOM_LOOKUP_CACHE
+    _SNAPSHOT_BACKEND_FOR_LOOKUP = backend
+    _ROOM_LOOKUP_CACHE = None
+
 
 def _resolve_room_lookup() -> tuple[dict[str, str], dict[str, str]]:
-    """Return ``(mas_to_name, name_to_mas)`` from ``GET /api/rooms``.
+    """Return ``(mas_to_name, name_to_mas)`` for the per-room metric tables.
 
-    A single fetch populates both directions, which keeps the by-room
-    metrics tables consistent: Knowledge Ingestion is counter-keyed by
-    ``mas_id`` (so it needs mas→name to display friendly labels), while
-    CFN tables are counter-keyed by ``room_name`` (so they need
-    name→mas to display the corresponding identifier).
+    Sources, merged in priority order (highest first):
+      1. The backend snapshot's ``room_identities`` map (populated by
+         ``record_room_identity`` server-side at write-time). Survives
+         room deletion, so it's the authoritative join for both alive
+         and tombstoned rooms.
+      2. ``GET /api/rooms`` — covers any room registered before the
+         server started tracking identities, but rows vanish on delete.
 
     The result is cached for the lifetime of the CLI process — `metrics show`
     runs are short-lived, and rooms rarely churn within a single invocation.
-    On any failure (no backend reachable, request error) we return two empty
-    dicts so the caller can fall back gracefully.
+    On any failure (no backend reachable, request error) we still return
+    whatever the snapshot gave us; if both are empty, two empty dicts so
+    the caller can fall back gracefully.
     """
     global _ROOM_LOOKUP_CACHE
     if _ROOM_LOOKUP_CACHE is not None:
         return _ROOM_LOOKUP_CACHE
     mas_to_name: dict[str, str] = {}
     name_to_mas: dict[str, str] = {}
+
+    # Source 1: snapshot identities — authoritative for both directions.
+    # These survive room deletion, so they override /api/rooms when both
+    # are present (in practice they'll agree for alive rooms).
+    snap = _SNAPSHOT_BACKEND_FOR_LOOKUP or {}
+    snapshot_ids = snap.get("room_identities") if isinstance(snap, dict) else None
+    if isinstance(snapshot_ids, dict):
+        for mas_id, name in snapshot_ids.items():
+            if mas_id and name:
+                mas_to_name[str(mas_id)] = str(name)
+                name_to_mas[str(name)] = str(mas_id)
+
+    # Source 2: /api/rooms — fills in anything the snapshot missed.
+    # ``setdefault`` semantics ensure snapshot wins on conflicts.
     try:
         from mycelium.config import MyceliumConfig
 
@@ -438,11 +475,12 @@ def _resolve_room_lookup() -> tuple[dict[str, str], dict[str, str]]:
             mas_id = r.get("mas_id")
             name = r.get("name")
             if mas_id and name:
-                mas_to_name[str(mas_id)] = str(name)
-                name_to_mas[str(name)] = str(mas_id)
+                mas_to_name.setdefault(str(mas_id), str(name))
+                name_to_mas.setdefault(str(name), str(mas_id))
     except Exception:
-        # Caching the empty result is intentional — avoid retrying a
-        # failed lookup repeatedly within the same render pass.
+        # Caching the (possibly snapshot-only) result is intentional —
+        # avoid retrying a failed lookup repeatedly within the same
+        # render pass.
         pass
     _ROOM_LOOKUP_CACHE = (mas_to_name, name_to_mas)
     return _ROOM_LOOKUP_CACHE
@@ -1122,6 +1160,7 @@ def show(
     oc_cost = _extract_oc_cost(oc_status)
 
     backend_data = (otel_data or {}).get("backend")
+    _set_room_lookup_context(backend_data)
 
     if json_output:
         combined = {
