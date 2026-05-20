@@ -84,8 +84,8 @@ def test_stalled_stream_reconnects(monkeypatch: pytest.MonkeyPatch) -> None:
     async def run() -> None:
         await asyncio.wait_for(
             dispatch.subscribe_room(
-                config=config,  # type: ignore[arg-type]
-                daemon_cfg=daemon_cfg,  # type: ignore[arg-type]
+                config=config,  # ty: ignore[invalid-argument-type]
+                daemon_cfg=daemon_cfg,  # ty: ignore[invalid-argument-type]
                 state=state,
                 room_name=room,
             ),

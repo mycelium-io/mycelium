@@ -158,7 +158,7 @@ def test_pick_room_returns_existing_without_creating(
     monkeypatch.setattr(questionary, "select", lambda *a, **k: _Ask("beta"))
 
     cfg = type("C", (), {"rooms": type("R", (), {"active": "alpha"})()})()
-    assert _pick_room(cfg) == "beta"
+    assert _pick_room(cfg) == "beta"  # ty: ignore[invalid-argument-type]
     assert created == []  # picked existing → no room created
 
 
@@ -176,7 +176,7 @@ def test_pick_room_creates_new_when_sentinel_chosen(
     monkeypatch.setattr(questionary, "text", lambda *a, **k: _Ask("fresh-room"))
 
     cfg = type("C", (), {"rooms": type("R", (), {"active": None})()})()
-    assert _pick_room(cfg) == "fresh-room"
+    assert _pick_room(cfg) == "fresh-room"  # ty: ignore[invalid-argument-type]
     assert created == ["fresh-room"]  # backend room actually created
 
 
@@ -192,5 +192,5 @@ def test_pick_room_no_rooms_prompts_then_creates(
     monkeypatch.setattr(questionary, "text", lambda *a, **k: _Ask("only-room"))
 
     cfg = type("C", (), {"rooms": type("R", (), {"active": None})()})()
-    assert _pick_room(cfg) == "only-room"
+    assert _pick_room(cfg) == "only-room"  # ty: ignore[invalid-argument-type]
     assert created == ["only-room"]
