@@ -3387,7 +3387,8 @@ def _render_cost_estimates(
             )
             shown = [(r, b) for r, b in ranked if any(b.values())]
             if shown:
-                for room, b in shown[:5]:
+                table.add_row("  [dim italic]By room:[/dim italic]", "", "", "")
+                for room, b in shown:
                     room_total = b["input"] + b["output"] + b["cache_read"] + b["cache_write"]
                     if room_total == 0:
                         continue
@@ -3400,7 +3401,7 @@ def _render_cost_estimates(
                     )
                     label = "other (no channel match)" if room == "other" else room
                     table.add_row(
-                        f"  [dim]{label}[/dim]",
+                        f"    [dim]{label}[/dim]",
                         f"[dim]{_fmt_num(room_total)}[/dim]",
                         f"[dim]{_fmt_cost(room_est)}[/dim]",
                         "[dim]est. (local agents only)[/dim]",
@@ -3433,7 +3434,12 @@ def _render_cost_estimates(
         )
         total_cost += cfn_est_cost
 
-        # Per-pipeline breakdown under CFN
+        # Per-pipeline breakdown under CFN — clearly labelled as a separate
+        # axis from per-room so the two don't visually collide (each row
+        # answers a different question: "what kind of work" vs "for which
+        # workload"; the user feedback that motivated this split was that
+        # mixing them at the same indent felt like a flat union when
+        # they're really orthogonal).
         pipeline_keys = sorted(k for k in cfn_llm if k.startswith("by_pipeline."))
         if pipeline_keys:
             pipelines: dict[str, dict[str, int]] = {}
@@ -3443,29 +3449,34 @@ def _render_cost_estimates(
                     pip = parts[1]
                     metric = parts[2]
                     pipelines.setdefault(pip, {})[metric] = cfn_llm[key]
-            for pip, data in sorted(pipelines.items()):
-                p_prompt = data.get("input_tokens", 0)
-                p_compl = data.get("output_tokens", 0)
-                p_total = p_prompt + p_compl
-                p_cost = _estimate_cost(
-                    input_tokens=p_prompt,
-                    output_tokens=p_compl,
-                    cache_read_tokens=0,
-                    cache_write_tokens=0,
-                    model=cfn_model,
-                )
-                label = pip.replace("_", " ").title()
-                table.add_row(
-                    f"  [dim]{label}[/dim]",
-                    f"[dim]{_fmt_num(p_total)}[/dim]",
-                    f"[dim]{_fmt_cost(p_cost)}[/dim]",
-                    "",
-                )
+            if pipelines:
+                table.add_row("  [dim italic]By pipeline:[/dim italic]", "", "", "")
+                for pip, data in sorted(pipelines.items()):
+                    p_prompt = data.get("input_tokens", 0)
+                    p_compl = data.get("output_tokens", 0)
+                    p_total = p_prompt + p_compl
+                    p_cost = _estimate_cost(
+                        input_tokens=p_prompt,
+                        output_tokens=p_compl,
+                        cache_read_tokens=0,
+                        cache_write_tokens=0,
+                        model=cfn_model,
+                    )
+                    label = pip.replace("_", " ").title()
+                    table.add_row(
+                        f"    [dim]{label}[/dim]",
+                        f"[dim]{_fmt_num(p_total)}[/dim]",
+                        f"[dim]{_fmt_cost(p_cost)}[/dim]",
+                        "",
+                    )
 
         # Per-room breakdown under CFN (#297). Sessions of the same parent
         # room are folded together via ``_parent_room`` so the bucketing
         # matches what ``mycelium metrics show cfn`` shows under "By room".
-        # Top 5 only, with "...and N more" tail when truncated.
+        # All rooms shown (no truncation) since the cost panel exists to
+        # surface where the spend is and a long-tail of leftover e2e rooms
+        # is still useful signal to the operator (they can `rooms delete`
+        # to clean up).
         cfn_by_room = _aggregate_by_room(cfn_llm, prefix="by_room.")
         if cfn_by_room:
             ranked = sorted(
@@ -3473,29 +3484,27 @@ def _render_cost_estimates(
                 key=lambda kv: kv[1].get("input_tokens", 0) + kv[1].get("output_tokens", 0),
                 reverse=True,
             )
-            for room, data in ranked[:5]:
-                r_prompt = data.get("input_tokens", 0)
-                r_compl = data.get("output_tokens", 0)
-                r_total = r_prompt + r_compl
-                if r_total == 0:
-                    continue
-                r_cost = _estimate_cost(
-                    input_tokens=r_prompt,
-                    output_tokens=r_compl,
-                    cache_read_tokens=0,
-                    cache_write_tokens=0,
-                    model=cfn_model,
-                )
-                table.add_row(
-                    f"  [dim]{room}[/dim]",
-                    f"[dim]{_fmt_num(r_total)}[/dim]",
-                    f"[dim]{_fmt_cost(r_cost)}[/dim]",
-                    "[dim]est. (engine pricing)[/dim]",
-                )
-            if len(ranked) > 5:
-                table.add_row(
-                    f"  [dim]...and {len(ranked) - 5} more[/dim]", "", "", ""
-                )
+            shown = [(r, d) for r, d in ranked
+                     if d.get("input_tokens", 0) + d.get("output_tokens", 0) > 0]
+            if shown:
+                table.add_row("  [dim italic]By room:[/dim italic]", "", "", "")
+                for room, data in shown:
+                    r_prompt = data.get("input_tokens", 0)
+                    r_compl = data.get("output_tokens", 0)
+                    r_total = r_prompt + r_compl
+                    r_cost = _estimate_cost(
+                        input_tokens=r_prompt,
+                        output_tokens=r_compl,
+                        cache_read_tokens=0,
+                        cache_write_tokens=0,
+                        model=cfn_model,
+                    )
+                    table.add_row(
+                        f"    [dim]{room}[/dim]",
+                        f"[dim]{_fmt_num(r_total)}[/dim]",
+                        f"[dim]{_fmt_cost(r_cost)}[/dim]",
+                        "[dim]est. (engine pricing)[/dim]",
+                    )
 
     # ── Mycelium Backend LLM (estimated) ───────────────────────────────
     myc_llm = be_counters.get("llm", {})
@@ -3536,7 +3545,7 @@ def _render_cost_estimates(
         # started recording ``llm.by_room.<room>.*`` keys in #297; older
         # backends don't have these keys (we just render nothing in that
         # case). Prefers provider-reported cost when present, falling back
-        # to estimate. Top 5 only.
+        # to estimate. All rooms shown for parity with the CFN section.
         myc_by_room = _aggregate_by_room(myc_llm, prefix="by_room.")
         if myc_by_room:
             ranked = sorted(
@@ -3544,38 +3553,37 @@ def _render_cost_estimates(
                 key=lambda kv: kv[1].get("input_tokens", 0) + kv[1].get("output_tokens", 0),
                 reverse=True,
             )
-            for room, data in ranked[:5]:
-                r_prompt = data.get("input_tokens", 0)
-                r_compl = data.get("output_tokens", 0)
-                r_total = r_prompt + r_compl
-                r_reported = data.get("cost_usd", 0.0)
-                if r_total == 0 and r_reported == 0:
-                    continue
-                if r_reported > 0:
-                    table.add_row(
-                        f"  [dim]{room}[/dim]",
-                        f"[dim]{_fmt_num(r_total)}[/dim]",
-                        f"[dim]{_fmt_cost(r_reported)}[/dim]",
-                        "[dim]litellm (provider-reported)[/dim]",
-                    )
-                else:
-                    r_cost = _estimate_cost(
-                        input_tokens=r_prompt,
-                        output_tokens=r_compl,
-                        cache_read_tokens=0,
-                        cache_write_tokens=0,
-                        model=cfn_model,
-                    )
-                    table.add_row(
-                        f"  [dim]{room}[/dim]",
-                        f"[dim]{_fmt_num(r_total)}[/dim]",
-                        f"[dim]{_fmt_cost(r_cost)}[/dim]",
-                        "[dim]est. (synthesis pricing)[/dim]",
-                    )
-            if len(ranked) > 5:
-                table.add_row(
-                    f"  [dim]...and {len(ranked) - 5} more[/dim]", "", "", ""
-                )
+            shown = [(r, d) for r, d in ranked
+                     if (d.get("input_tokens", 0) + d.get("output_tokens", 0) > 0)
+                     or d.get("cost_usd", 0.0) > 0]
+            if shown:
+                table.add_row("  [dim italic]By room:[/dim italic]", "", "", "")
+                for room, data in shown:
+                    r_prompt = data.get("input_tokens", 0)
+                    r_compl = data.get("output_tokens", 0)
+                    r_total = r_prompt + r_compl
+                    r_reported = data.get("cost_usd", 0.0)
+                    if r_reported > 0:
+                        table.add_row(
+                            f"    [dim]{room}[/dim]",
+                            f"[dim]{_fmt_num(r_total)}[/dim]",
+                            f"[dim]{_fmt_cost(r_reported)}[/dim]",
+                            "[dim]litellm (provider-reported)[/dim]",
+                        )
+                    else:
+                        r_cost = _estimate_cost(
+                            input_tokens=r_prompt,
+                            output_tokens=r_compl,
+                            cache_read_tokens=0,
+                            cache_write_tokens=0,
+                            model=cfn_model,
+                        )
+                        table.add_row(
+                            f"    [dim]{room}[/dim]",
+                            f"[dim]{_fmt_num(r_total)}[/dim]",
+                            f"[dim]{_fmt_cost(r_cost)}[/dim]",
+                            "[dim]est. (synthesis pricing)[/dim]",
+                        )
 
     # ── Claude Code (placeholder) ──────────────────────────────────────
     # Not yet wired — omit row entirely until data available
