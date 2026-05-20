@@ -147,16 +147,25 @@ def record_llm_call(
     duration_ms: float = 0.0,
     error: bool = False,
 ) -> None:
-    """Record a backend LLM call (litellm completion)."""
+    """Record a backend LLM call (litellm completion).
+
+    Per-operation token totals are tracked alongside the grand totals so that
+    callers (e.g. ``mycelium metrics show mycelium``) can show synthesis-only
+    figures without having to assume that other operations (health probes,
+    future heartbeats) contribute negligibly. See issue #296.
+    """
     _inc("llm", "calls")
     _inc("llm", f"by_operation.{operation}")
     if model:
         _inc("llm", f"by_model.{model}")
     _inc("llm", "input_tokens", input_tokens)
     _inc("llm", "output_tokens", output_tokens)
+    _inc("llm", f"by_operation.{operation}.input_tokens", input_tokens)
+    _inc("llm", f"by_operation.{operation}.output_tokens", output_tokens)
     _inc("llm", "cost_usd", cost_usd)
     if error:
         _inc("llm", "errors")
+        _inc("llm", f"by_operation.{operation}.errors")
     if duration_ms > 0:
         _record_histogram("llm.latency_ms", duration_ms)
         _record_histogram(f"llm.latency_ms.{operation}", duration_ms)

@@ -2547,16 +2547,49 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
     table.add_column("Metric", style="bold")
     table.add_column("Value", justify="right")
 
-    table.add_row("Total LLM calls", _fmt_num(llm.get("calls", 0)))
-    table.add_row("  input tokens", _fmt_num(llm.get("input_tokens", 0)))
-    table.add_row("  output tokens", _fmt_num(llm.get("output_tokens", 0)))
-    errors = llm.get("errors", 0)
-    if errors > 0:
-        table.add_row("  errors", f"[red]{_fmt_num(errors)}[/red]")
+    # Top section: synthesis-specific counters. Per-operation tokens were
+    # added in #296 so synthesis-only figures are honest even when other
+    # operations (e.g. ``health_probe``) also fire ``record_llm_call``. On
+    # backends that pre-date #296 the per-operation sub-keys are absent;
+    # we detect this and fall back to the grand totals (which equal
+    # synthesis in practice on those builds since synthesis was the only
+    # instrumented site).
+    is_post_296 = any(
+        k.startswith("by_operation.") and k.count(".") >= 2 for k in llm
+    )
+    synthesis_calls = llm.get("by_operation.synthesis", 0)
+    if is_post_296:
+        synthesis_input = llm.get("by_operation.synthesis.input_tokens", 0)
+        synthesis_output = llm.get("by_operation.synthesis.output_tokens", 0)
+        synthesis_errors = llm.get("by_operation.synthesis.errors", 0)
+    else:
+        synthesis_input = llm.get("input_tokens", 0)
+        synthesis_output = llm.get("output_tokens", 0)
+        synthesis_errors = llm.get("errors", 0)
+    table.add_row("Synthesis LLM calls", _fmt_num(synthesis_calls))
+    table.add_row("  input tokens", _fmt_num(synthesis_input))
+    table.add_row("  output tokens", _fmt_num(synthesis_output))
+    if synthesis_errors > 0:
+        table.add_row("  errors", f"[red]{_fmt_num(synthesis_errors)}[/red]")
 
-    by_op_keys = sorted(k for k in llm if k.startswith("by_operation."))
+    # Bottom section: every non-synthesis operation broken out by its call
+    # count. We deliberately do NOT show per-operation tokens here because
+    # the non-synthesis sites (health_probe today; future heartbeats) are
+    # by design ~zero-token — surfacing the call count is enough to confirm
+    # they're firing without cluttering the table.
+    #
+    # The dotted-key exclusion below filters out the per-operation
+    # token/error sub-keys (e.g. ``by_operation.synthesis.input_tokens``)
+    # added in #296 so we only iterate the base operation counters.
+    by_op_keys = sorted(
+        k for k in llm
+        if k.startswith("by_operation.")
+        and k != "by_operation.synthesis"
+        and k.count(".") == 1  # base counters only; exclude .input_tokens / .output_tokens / .errors
+    )
     if by_op_keys:
         table.add_section()
+        table.add_row("Other backend LLM calls", "")
         for key in by_op_keys:
             label = key.replace("by_operation.", "")
             table.add_row(f"  {label}", _fmt_num(llm[key]))
