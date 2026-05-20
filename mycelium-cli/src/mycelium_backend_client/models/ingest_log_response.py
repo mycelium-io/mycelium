@@ -20,32 +20,32 @@ class IngestLogResponse:
     """
     Attributes:
         buffer_started_at (datetime.datetime):
-        total_events (int):
         events (list[IngestEvent]):
+        total_events (int):
     """
 
     buffer_started_at: datetime.datetime
-    total_events: int
     events: list[IngestEvent]
+    total_events: int
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         buffer_started_at = self.buffer_started_at.isoformat()
-
-        total_events = self.total_events
 
         events = []
         for events_item_data in self.events:
             events_item = events_item_data.to_dict()
             events.append(events_item)
 
+        total_events = self.total_events
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
                 "buffer_started_at": buffer_started_at,
-                "total_events": total_events,
                 "events": events,
+                "total_events": total_events,
             }
         )
 
@@ -58,8 +58,6 @@ class IngestLogResponse:
         d = dict(src_dict)
         buffer_started_at = isoparse(d.pop("buffer_started_at"))
 
-        total_events = d.pop("total_events")
-
         events = []
         _events = d.pop("events")
         for events_item_data in _events:
@@ -67,10 +65,12 @@ class IngestLogResponse:
 
             events.append(events_item)
 
+        total_events = d.pop("total_events")
+
         ingest_log_response = cls(
             buffer_started_at=buffer_started_at,
-            total_events=total_events,
             events=events,
+            total_events=total_events,
         )
 
         ingest_log_response.additional_properties = d

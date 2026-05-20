@@ -12,13 +12,15 @@ def _get_kwargs() -> dict[str, Any]:
 
     _kwargs: dict[str, Any] = {
         "method": "get",
-        "url": "/api/observability",
+        "url": "/api/observability/hosts",
     }
 
     return _kwargs
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | None:
+def _parse_response(
+    *, client: AuthenticatedClient | Client, response: httpx.Response
+) -> Any | None:
     if response.status_code == 200:
         return None
 
@@ -28,7 +30,9 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any]:
+def _build_response(
+    *, client: AuthenticatedClient | Client, response: httpx.Response
+) -> Response[Any]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -41,13 +45,12 @@ def sync_detailed(
     *,
     client: AuthenticatedClient | Client,
 ) -> Response[Any]:
-    """Get Metrics
+    """Get Hosts
 
-     Return a snapshot of backend-collected metrics (embeddings, LLM, indexer, etc.).
+     Proxy to the OTLP collector's ``/collector/hosts`` endpoint.
 
-    Note: served under ``/api/observability`` rather than ``/api/metrics`` because
-    privacy-extension blocklists pattern-match ``/api/metrics*`` as analytics
-    telemetry and silently drop the request in the browser.
+    Returns distinct hosts that have reported OTLP data, with span counts
+    and agent lists.  Returns 502 if the collector is unreachable.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -70,13 +73,12 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient | Client,
 ) -> Response[Any]:
-    """Get Metrics
+    """Get Hosts
 
-     Return a snapshot of backend-collected metrics (embeddings, LLM, indexer, etc.).
+     Proxy to the OTLP collector's ``/collector/hosts`` endpoint.
 
-    Note: served under ``/api/observability`` rather than ``/api/metrics`` because
-    privacy-extension blocklists pattern-match ``/api/metrics*`` as analytics
-    telemetry and silently drop the request in the browser.
+    Returns distinct hosts that have reported OTLP data, with span counts
+    and agent lists.  Returns 502 if the collector is unreachable.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.

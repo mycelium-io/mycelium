@@ -15,6 +15,7 @@ from ...types import Response
 def _get_kwargs(
     session_id: UUID,
 ) -> dict[str, Any]:
+
     _kwargs: dict[str, Any] = {
         "method": "get",
         "url": "/api/coordination-sessions/{session_id}".format(

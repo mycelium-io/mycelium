@@ -9,6 +9,7 @@ from ...types import Response
 
 
 def _get_kwargs() -> dict[str, Any]:
+
     _kwargs: dict[str, Any] = {
         "method": "get",
         "url": "/api/observability/collector",
@@ -42,12 +43,13 @@ def sync_detailed(
 ) -> Response[Any]:
     """Get Collector Metrics
 
-     Return OTLP/scrape metrics written by the CLI collector.
+     Proxy to the OTLP collector's ``/collector/metrics`` endpoint.
 
-    Reads ``~/.mycelium/metrics.json`` and returns the collector-specific
-    keys (counters, histograms, sessions, scrape) — excluding the ``backend``
-    key which duplicates ``GET /observability``.  Returns 404 when the file is
-    absent (collector not running or never started).
+    Returns counters, histograms, sessions, and scrape data directly from the
+    collector's in-memory store.  Returns 502 if the collector is unreachable.
+
+    Configure ``COLLECTOR_URL`` (default ``http://mycelium-collector:4318``)
+    to point at the collector service.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -72,12 +74,13 @@ async def asyncio_detailed(
 ) -> Response[Any]:
     """Get Collector Metrics
 
-     Return OTLP/scrape metrics written by the CLI collector.
+     Proxy to the OTLP collector's ``/collector/metrics`` endpoint.
 
-    Reads ``~/.mycelium/metrics.json`` and returns the collector-specific
-    keys (counters, histograms, sessions, scrape) — excluding the ``backend``
-    key which duplicates ``GET /observability``.  Returns 404 when the file is
-    absent (collector not running or never started).
+    Returns counters, histograms, sessions, and scrape data directly from the
+    collector's in-memory store.  Returns 502 if the collector is unreachable.
+
+    Configure ``COLLECTOR_URL`` (default ``http://mycelium-collector:4318``)
+    to point at the collector service.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
