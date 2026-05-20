@@ -36,7 +36,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from mycelium.config import MyceliumConfig
-    from mycelium.sstp import AgentManifest
+    from mycelium.protocol import AgentManifest
 
 
 @dataclass

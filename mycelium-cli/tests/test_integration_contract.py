@@ -26,7 +26,7 @@ from mycelium.integrations import (
     get_integration,
     normalize_family_id,
 )
-from mycelium.sstp import AGENT_ADAPTERS, AgentManifest
+from mycelium.protocol import AGENT_ADAPTERS, AgentManifest
 
 # Canonical family ids = the persisted spelling. Single source of truth.
 FAMILIES = sorted(AGENT_ADAPTERS)

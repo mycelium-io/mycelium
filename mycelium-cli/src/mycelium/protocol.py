@@ -105,6 +105,7 @@ class MemoryCategory(StrEnum):
     CONTEXT = "context"
     STATUS = "status"
     PROCEDURES = "procedures"
+    PLAN = "plan"
 
 
 MEMORY_CATEGORIES: frozenset[str] = frozenset(c.value for c in MemoryCategory)
@@ -116,6 +117,7 @@ STRUCTURED_CATEGORY_LABELS: dict[str, str] = {
     "decisions": "Decisions Made",
     "context": "Background & Preferences",
     "status": "Current Status",
+    "plan": "Plan & Open Tasks",
 }
 
 
@@ -134,7 +136,7 @@ class MemoryLogEntry(BaseModel):
         MemoryLogEntry(category="decisions", slug="db-choice", content="Chose AgensGraph ...")
     """
 
-    category: Literal["work", "decisions", "context", "status", "procedures"]
+    category: Literal["work", "decisions", "context", "status", "procedures", "plan"]
     slug: str = Field(..., min_length=1, pattern=r"^[a-z0-9][a-z0-9._-]*$")
     content: str = Field(..., min_length=1)
     tags: list[str] | None = None

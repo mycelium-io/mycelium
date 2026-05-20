@@ -40,7 +40,7 @@ from mycelium.error_handler import print_error
 from mycelium.filesystem import get_room_dir, list_memories, read_memory
 from mycelium.integrations import AddOptions, Integration, get_adapter
 from mycelium.integrations.openclaw import OpenClawIntegration
-from mycelium.sstp import AGENT_ADAPTERS, AgentManifest
+from mycelium.protocol import AGENT_ADAPTERS, AgentManifest
 
 app = typer.Typer(
     help=(

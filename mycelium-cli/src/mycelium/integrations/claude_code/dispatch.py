@@ -25,7 +25,7 @@ from mycelium.integrations.claude_code.install import (
     _step_claude_daemon_install,
     _step_claude_daemon_uninstall,
 )
-from mycelium.sstp import AgentManifest
+from mycelium.protocol import AgentManifest
 
 if TYPE_CHECKING:
     from mycelium.config import MyceliumConfig

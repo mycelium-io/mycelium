@@ -25,7 +25,7 @@ from mycelium.daemon.config import DaemonConfig
 from mycelium.daemon.mentions import resolve_mentions
 from mycelium.daemon.state import DaemonState, RunningProc
 from mycelium.filesystem import get_room_dir, list_memories, read_memory
-from mycelium.sstp import AgentManifest
+from mycelium.protocol import AgentManifest
 
 log = logging.getLogger("mycelium.daemon")
 

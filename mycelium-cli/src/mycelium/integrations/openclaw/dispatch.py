@@ -46,7 +46,7 @@ from mycelium.integrations.openclaw.install import (
     _step_docker_env,
     _uninstall_openclaw,
 )
-from mycelium.sstp import AgentManifest
+from mycelium.protocol import AgentManifest
 
 if TYPE_CHECKING:
     from mycelium.config import MyceliumConfig

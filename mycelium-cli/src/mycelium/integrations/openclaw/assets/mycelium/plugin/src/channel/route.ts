@@ -200,6 +200,16 @@ export function formatTickInstruction(
     }
   }
 
+  // Open plan tasks: the parent room's `plan/` namespace contains the active
+  // todo list. Surfaced here so agents weigh their proposals against work that
+  // is already committed.
+  const planOpenTasks =
+    typeof payload?.plan_open_tasks === "string" ? payload.plan_open_tasks : "";
+  const planBlock: string[] = [];
+  if (planOpenTasks) {
+    planBlock.push(planOpenTasks);
+  }
+
   // Valid offer keys: when composing a counter-offer the agent MUST use these
   // exact keys (case + spacing). Strict enumeration here closes the gap that
   // used to drive the parallel prependContext injection (#276 / #285).
@@ -217,6 +227,7 @@ export function formatTickInstruction(
       : "You can only accept or reject.",
     ...(contextLines.length > 0 ? ["", ...contextLines] : []),
     ...(contextFilesBlock.length > 0 ? ["", ...contextFilesBlock] : []),
+    ...(planBlock.length > 0 ? ["", ...planBlock] : []),
     "",
     "Current offer on the table:",
     offerSummary,

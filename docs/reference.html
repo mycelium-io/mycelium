@@ -55,6 +55,7 @@
       <a href="#cli-room" class="nav-link sub">room</a>
       <a href="#cli-session" class="nav-link sub">session</a>
       <a href="#cli-memory" class="nav-link sub">memory</a>
+      <a href="#cli-plan" class="nav-link sub">plan</a>
       <a href="#cli-negotiate" class="nav-link sub">negotiate</a>
       <a href="#cli-cfn" class="nav-link sub">cfn</a>
       <a href="#cli-adapter" class="nav-link sub">adapter</a>
@@ -229,6 +230,20 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium install</span> [<span class="flag">--yes</span>] [<span class="flag">--non-interactive</span>] [<span class="flag">--force</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Interactive installer — Docker check, LLM config, <code>docker compose up</code>, provision workspace.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium upgrade</span> [<span class="flag">--check</span>] [<span class="flag">--version</span> <span class="arg">&lt;version&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Upgrade (or pin) the Mycelium CLI. Pass --version to install a specific release.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
           <code><span class="cmd">mycelium init</span> [<span class="flag">--api-url</span> <span class="arg">&lt;url&gt;</span>] [<span class="flag">--force</span>]</code>
         </div>
         <div class="cmd-ref-body">Initialize CLI configuration. Creates <code>~/.mycelium/config.toml</code>.</div>
@@ -274,20 +289,6 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
           <code><span class="cmd">mycelium pull</span> [<span class="flag">--version</span> <span class="arg">&lt;tag&gt;</span>] [<span class="flag">--no-restart</span>]</code>
         </div>
         <div class="cmd-ref-body">Pull Mycelium Docker images and restart services. Pass --version to pin a preview/specific build.</div>
-      </div>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium install</span> [<span class="flag">--yes</span>] [<span class="flag">--non-interactive</span>] [<span class="flag">--force</span>]</code>
-        </div>
-        <div class="cmd-ref-body">Interactive installer — Docker check, LLM config, <code>docker compose up</code>, provision workspace.</div>
-      </div>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium upgrade</span> [<span class="flag">--check</span>] [<span class="flag">--version</span> <span class="arg">&lt;version&gt;</span>]</code>
-        </div>
-        <div class="cmd-ref-body">Upgrade (or pin) the Mycelium CLI. Pass --version to install a specific release.</div>
       </div>
 
       <h2 id="cli-room">room</h2>
@@ -469,6 +470,71 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
           <code><span class="cmd">mycelium memory procedures</span></code>
         </div>
         <div class="cmd-ref-body">Show reusable how-to steps — filters to <code>procedures/*</code> memories as a table.</div>
+      </div>
+
+      <h2 id="cli-plan">plan</h2>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium plan ls</span></code>
+        </div>
+        <div class="cmd-ref-body">List plan files in the active room.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium plan show</span> <span class="arg">&lt;slug&gt;</span></code>
+        </div>
+        <div class="cmd-ref-body">Print a plan file's body.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium plan set</span> <span class="arg">&lt;slug&gt;</span> <span class="arg">&lt;body&gt;</span></code>
+        </div>
+        <div class="cmd-ref-body">Create or overwrite a plan file. Body is the full markdown.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium plan rm</span> <span class="arg">&lt;slug&gt;</span></code>
+        </div>
+        <div class="cmd-ref-body">Delete a plan file.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium plan title</span> [<span class="arg">&lt;text&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Read or set the room's plan title — the italic display line shown above room activity. Pass no text to print the current title.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium plan tasks</span></code>
+        </div>
+        <div class="cmd-ref-body">List every checkbox task across plan files. Open first, done last.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium plan task</span> add <span class="arg">&lt;text&gt;</span> [<span class="flag">--file</span> <span class="arg">&lt;slug&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Append a new <code>- [ ]</code> line to a plan file (defaults to <code>tasks</code>).</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium plan task</span> done [<span class="arg">&lt;id&gt;</span>...]</code>
+        </div>
+        <div class="cmd-ref-body">Mark task(s) complete. Run without IDs to pick from open tasks interactively.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium plan task</span> undo [<span class="arg">&lt;id&gt;</span>...]</code>
+        </div>
+        <div class="cmd-ref-body">Reopen completed task(s). Run without IDs to pick interactively.</div>
       </div>
 
       <h2 id="cli-negotiate">negotiate</h2>
@@ -671,6 +737,9 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
 
 <span class="comment"># Default MAS UUID (created during install)</span>
 <span class="arg">mas_id</span> = <span class="str">&quot;&quot;</span>
+
+<span class="comment"># Database URL override (defaults to backend container default)</span>
+<span class="arg">database_url</span> = <span class="str">&quot;&quot;</span>
 
 <span class="comment"># LLM configuration (litellm format).</span>
 <span class="cmd" id="config-llm">[llm]</span>
