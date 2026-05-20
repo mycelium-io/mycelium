@@ -9,7 +9,7 @@
 
 set -e
 
-BACKEND_URL="${MYCELIUM_API_URL:-http://localhost:8000}"
+BACKEND_URL="${MYCELIUM_API_URL:-http://localhost:8000/api}"
 PREFIX=""
 DRY_RUN=false
 CLEAN_AGENTS=false
