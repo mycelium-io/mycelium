@@ -18,6 +18,7 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 
 import { CHANNEL_ID, type ChannelConfig } from "../config.js";
+import { enqueueDispatch } from "./dispatch-chain.js";
 import { dispatchToAgent } from "./dispatch.js";
 import { executeNotifyHome } from "./notify-home.js";
 import { _ownMessageIds } from "./post-to-room.js";
@@ -203,14 +204,24 @@ function executeAction(
         );
         log.info(`[${CHANNEL_ID}] addressed to: ${action.agentId}`);
       }
-      void dispatchToAgent(
-        runtime,
-        cfg,
+      // Per-agent serialization: even though `dispatchReplyWithBufferedBlockDispatcher`
+      // is supposed to be safe to call concurrently, openclaw's lane queue has
+      // wedged under bursts (openclaw/openclaw#48488). Holding the queue depth
+      // at ≤ 1 per agent at our layer keeps that bug out of reach. See
+      // dispatch-chain.ts for the full rationale.
+      void enqueueDispatch(
         action.agentId,
-        action.sender,
-        action.content,
-        action.messageId,
-        log,
+        () =>
+          dispatchToAgent(
+            runtime,
+            cfg,
+            action.agentId,
+            action.sender,
+            action.content,
+            action.messageId,
+            log,
+          ),
+        { log },
       );
       return;
     }
