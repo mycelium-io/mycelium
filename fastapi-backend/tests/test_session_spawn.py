@@ -380,7 +380,11 @@ async def test_leave_room_removes_participant(client: AsyncClient, db_session: A
     assert resp.status_code == 204
 
     remaining = (
-        (await db_session.execute(select(Participant).where(Participant.id == UUID(participant_id))))
+        (
+            await db_session.execute(
+                select(Participant).where(Participant.id == UUID(participant_id))
+            )
+        )
         .scalars()
         .all()
     )
@@ -419,7 +423,11 @@ async def test_leave_room_rejects_cross_room_delete(client: AsyncClient, db_sess
     assert resp.status_code == 404
 
     still_there = (
-        (await db_session.execute(select(Participant).where(Participant.id == UUID(participant_id))))
+        (
+            await db_session.execute(
+                select(Participant).where(Participant.id == UUID(participant_id))
+            )
+        )
         .scalars()
         .one_or_none()
     )
