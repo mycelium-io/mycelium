@@ -486,7 +486,27 @@ class MetricsStore:
 
     def __init__(self) -> None:
         self.lock = threading.Lock()
-        self._counters: dict = {
+        # Per-host raw counter buckets. Each host pushes its own cumulative
+        # values via OTLP — overwriting per host is correct, but the
+        # cross-host rollup exposed as ``counters`` in ``to_dict()`` MUST be
+        # a sum across hosts (otherwise the host that pushed last clobbers
+        # everyone else's contribution). See ``_aggregate_counters_locked``.
+        self._counters_by_host: dict[str, dict] = {}
+        # Histograms are emitted by individual hosts as deltas on a
+        # cumulative count/sum; we just keep the latest per-host snapshot
+        # and merge at read time. Same overwriting concern applies.
+        self._histograms_by_host: dict[str, dict] = {}
+        self._sessions: dict[str, dict] = {}
+        self._backend_metrics: dict | None = None
+        self._by_host: dict[str, dict] = {}
+        # Per-target Prometheus scrape state, keyed by config-supplied name.
+        # Populated by `_fetch_scrape_targets` in the collector poller thread.
+        self._scrape_targets: dict[str, dict] = {}
+
+    @staticmethod
+    def _empty_counter_bucket() -> dict:
+        """Empty counter bucket matching the public ``counters`` snapshot shape."""
+        return {
             "tokens": {"by_agent": {}, "by_model": {}, "total": _zero_tokens()},
             "cost_usd": {"by_agent": {}, "by_model": {}, "total": 0.0},
             "messages": {"processed": 0, "queued": 0},
@@ -496,7 +516,11 @@ class MetricsStore:
             "sessions_stuck": 0,
             "run_attempts": 0,
         }
-        self._histograms: dict = {
+
+    @staticmethod
+    def _empty_histogram_bucket() -> dict:
+        """Empty histogram bucket matching the public ``histograms`` snapshot shape."""
+        return {
             "run_duration_ms": _zero_histogram(),
             "message_duration_ms": _zero_histogram(),
             "queue_depth": _zero_histogram(),
@@ -506,12 +530,108 @@ class MetricsStore:
             "session_stuck_age_ms": _zero_histogram(),
             "by_agent": {},
         }
-        self._sessions: dict[str, dict] = {}
-        self._backend_metrics: dict | None = None
-        self._by_host: dict[str, dict] = {}
-        # Per-target Prometheus scrape state, keyed by config-supplied name.
-        # Populated by `_fetch_scrape_targets` in the collector poller thread.
-        self._scrape_targets: dict[str, dict] = {}
+
+    def _ensure_counter_bucket(self, host: str) -> dict:
+        """Return (and lazily create) the per-host counter bucket.
+
+        ``host`` may be empty when the OTLP push has no usable
+        ``host.name``/``service.instance.id`` resource attribute and no
+        source IP. We bucket those under ``"unknown"`` so they still get
+        counted (rather than overwriting each other in a shared global).
+        """
+        key = host or "unknown"
+        if key not in self._counters_by_host:
+            self._counters_by_host[key] = self._empty_counter_bucket()
+        return self._counters_by_host[key]
+
+    def _ensure_histogram_bucket(self, host: str) -> dict:
+        """Return (and lazily create) the per-host histogram bucket."""
+        key = host or "unknown"
+        if key not in self._histograms_by_host:
+            self._histograms_by_host[key] = self._empty_histogram_bucket()
+        return self._histograms_by_host[key]
+
+    @staticmethod
+    def _merge_token_dict(dst: dict, src: dict) -> None:
+        """Sum ``src`` token counts into ``dst`` (input/output/cache_*/total)."""
+        for k, v in src.items():
+            dst[k] = dst.get(k, 0) + v
+
+    def _aggregate_counters_locked(self) -> dict:
+        """Sum the per-host counter buckets into a single rolled-up view.
+
+        Cumulative counters are reported as a running total per host, so
+        the correct cross-host value is the SUM of each host's latest
+        reported value. The previous implementation kept a single shared
+        bucket and simply overwrote on every push, which meant whichever
+        host pushed last clobbered everyone else's contribution — making
+        the headline ``Tokens by Channel`` and ``Cost Estimates`` panels
+        report the value from a single (essentially random) host instead
+        of the cluster total.
+        """
+        if not self._counters_by_host:
+            return self._empty_counter_bucket()
+
+        agg = self._empty_counter_bucket()
+        for bucket in self._counters_by_host.values():
+            # tokens.total / tokens.by_agent / tokens.by_model
+            self._merge_token_dict(agg["tokens"]["total"], bucket["tokens"]["total"])
+            for agent, tk in bucket["tokens"]["by_agent"].items():
+                target = agg["tokens"]["by_agent"].setdefault(agent, _zero_tokens())
+                self._merge_token_dict(target, tk)
+            for model, tk in bucket["tokens"]["by_model"].items():
+                target = agg["tokens"]["by_model"].setdefault(model, _zero_tokens())
+                self._merge_token_dict(target, tk)
+
+            # cost_usd.total / by_agent / by_model
+            agg["cost_usd"]["total"] += bucket["cost_usd"]["total"]
+            for agent, v in bucket["cost_usd"]["by_agent"].items():
+                agg["cost_usd"]["by_agent"][agent] = agg["cost_usd"]["by_agent"].get(agent, 0.0) + v
+            for model, v in bucket["cost_usd"]["by_model"].items():
+                agg["cost_usd"]["by_model"][model] = agg["cost_usd"]["by_model"].get(model, 0.0) + v
+
+            # Simple integer/float gauges that should sum across hosts
+            for key in ("processed", "queued"):
+                agg["messages"][key] += bucket["messages"].get(key, 0)
+            for key in ("received", "errors"):
+                agg["webhooks"][key] += bucket["webhooks"].get(key, 0)
+            for key in ("enqueue", "dequeue"):
+                agg["lanes"][key] += bucket["lanes"].get(key, 0)
+            for state, v in bucket["sessions_state"].items():
+                agg["sessions_state"][state] = agg["sessions_state"].get(state, 0) + v
+            agg["sessions_stuck"] += bucket.get("sessions_stuck", 0)
+            agg["run_attempts"] += bucket.get("run_attempts", 0)
+
+        return agg
+
+    def _aggregate_histograms_locked(self) -> dict:
+        """Merge per-host histogram snapshots into a single rolled-up view.
+
+        Each (count, sum, min, max) is reported per-host; the cross-host
+        merge sums counts/sums and takes the min/max of mins/maxes.
+        """
+        if not self._histograms_by_host:
+            return self._empty_histogram_bucket()
+
+        agg = self._empty_histogram_bucket()
+        flat_keys = [
+            "run_duration_ms",
+            "message_duration_ms",
+            "queue_depth",
+            "queue_wait_ms",
+            "context_tokens",
+            "webhook_duration_ms",
+            "session_stuck_age_ms",
+        ]
+        for bucket in self._histograms_by_host.values():
+            for key in flat_keys:
+                _merge_histogram(agg[key], bucket.get(key) or {})
+            for agent, agent_h in bucket.get("by_agent", {}).items():
+                target = agg["by_agent"].setdefault(agent, {})
+                for key, val in agent_h.items():
+                    target.setdefault(key, _zero_histogram())
+                    _merge_histogram(target[key], val)
+        return agg
 
     def set_backend_metrics(self, data: dict | None) -> None:
         with self.lock:
@@ -541,8 +661,8 @@ class MetricsStore:
             )[:_MAX_SESSIONS]
             result = {
                 "updated_at": datetime.now(UTC).isoformat(),
-                "counters": copy.deepcopy(self._counters),
-                "histograms": copy.deepcopy(self._histograms),
+                "counters": self._aggregate_counters_locked(),
+                "histograms": self._aggregate_histograms_locked(),
                 "sessions": copy.deepcopy(sessions),
             }
             if self._backend_metrics:
@@ -551,6 +671,15 @@ class MetricsStore:
                 result["scrape"] = copy.deepcopy(self._scrape_targets)
             if self._by_host:
                 result["by_host"] = copy.deepcopy(self._by_host)
+            # Per-host counter/histogram buckets, persisted so that a
+            # collector restart can reload them without losing the
+            # cross-host disambiguation. Aggregating them back into a
+            # single ``counters`` view on reload would double-count once
+            # any host pushes its next cumulative sample.
+            if self._counters_by_host:
+                result["counters_by_host"] = copy.deepcopy(self._counters_by_host)
+            if self._histograms_by_host:
+                result["histograms_by_host"] = copy.deepcopy(self._histograms_by_host)
             return result
 
     def ingest_metrics(
@@ -578,7 +707,7 @@ class MetricsStore:
                 )
                 for sm in rm.scope_metrics:
                     for metric in sm.metrics:
-                        self._process_metric(metric)
+                        self._process_metric(metric, host)
                         if host:
                             self._track_host_metric(host, metric)
 
@@ -616,8 +745,20 @@ class MetricsStore:
                         if host:
                             self._track_host_span(host, span)
 
-    def _process_metric(self, metric) -> None:  # noqa: C901
+    def _process_metric(self, metric, host: str = "") -> None:  # noqa: C901
+        """Record a single OTLP metric.
+
+        The ``host`` arg is mandatory for correct cross-host rollups:
+        each host reports its own running cumulative counter, so they
+        must be kept in separate buckets and summed at read time. See
+        ``_aggregate_counters_locked``. If ``host`` is empty (no
+        resource attribute and no source IP), the data is bucketed
+        under ``"unknown"`` rather than silently overwriting other
+        hosts' values.
+        """
         name = metric.name
+        counters = self._ensure_counter_bucket(host)
+        histograms = self._ensure_histogram_bucket(host)
 
         if metric.HasField("sum"):
             for dp in metric.sum.data_points:
@@ -629,59 +770,55 @@ class MetricsStore:
                     agent = attrs.get("openclaw.channel", "")
                     model = attrs.get("openclaw.model", "")
 
-                    if token_type in self._counters["tokens"]["total"]:
-                        self._counters["tokens"]["total"][token_type] = value
+                    if token_type in counters["tokens"]["total"]:
+                        counters["tokens"]["total"][token_type] = value
 
                     if agent:
-                        bucket = self._counters["tokens"]["by_agent"].setdefault(
-                            agent, _zero_tokens()
-                        )
+                        bucket = counters["tokens"]["by_agent"].setdefault(agent, _zero_tokens())
                         if token_type in bucket:
                             bucket[token_type] = value
 
                     if model:
-                        bucket = self._counters["tokens"]["by_model"].setdefault(
-                            model, _zero_tokens()
-                        )
+                        bucket = counters["tokens"]["by_model"].setdefault(model, _zero_tokens())
                         if token_type in bucket:
                             bucket[token_type] = value
 
                 elif name == "openclaw.cost.usd":
                     agent = attrs.get("openclaw.channel", "")
                     model = attrs.get("openclaw.model", "")
-                    self._counters["cost_usd"]["total"] = value
+                    counters["cost_usd"]["total"] = value
                     if agent:
-                        self._counters["cost_usd"]["by_agent"][agent] = value
+                        counters["cost_usd"]["by_agent"][agent] = value
                     if model:
-                        self._counters["cost_usd"]["by_model"][model] = value
+                        counters["cost_usd"]["by_model"][model] = value
 
                 elif name == "openclaw.message.processed":
-                    self._counters["messages"]["processed"] = value
+                    counters["messages"]["processed"] = value
 
                 elif name == "openclaw.message.queued":
-                    self._counters["messages"]["queued"] = value
+                    counters["messages"]["queued"] = value
 
                 elif name == "openclaw.webhook.received":
-                    self._counters["webhooks"]["received"] = value
+                    counters["webhooks"]["received"] = value
 
                 elif name == "openclaw.webhook.error":
-                    self._counters["webhooks"]["errors"] = value
+                    counters["webhooks"]["errors"] = value
 
                 elif name == "openclaw.queue.lane.enqueue":
-                    self._counters["lanes"]["enqueue"] = value
+                    counters["lanes"]["enqueue"] = value
 
                 elif name == "openclaw.queue.lane.dequeue":
-                    self._counters["lanes"]["dequeue"] = value
+                    counters["lanes"]["dequeue"] = value
 
                 elif name == "openclaw.session.state":
                     state = attrs.get("openclaw.state", "unknown")
-                    self._counters["sessions_state"][state] = value
+                    counters["sessions_state"][state] = value
 
                 elif name == "openclaw.session.stuck":
-                    self._counters["sessions_stuck"] = value
+                    counters["sessions_stuck"] = value
 
                 elif name == "openclaw.run.attempt":
-                    self._counters["run_attempts"] = value
+                    counters["run_attempts"] = value
 
         elif metric.HasField("histogram"):
             for dp in metric.histogram.data_points:
@@ -709,10 +846,10 @@ class MetricsStore:
                     key = "session_stuck_age_ms"
 
                 if key:
-                    self._histograms[key] = update
+                    histograms[key] = update
                     agent = attrs.get("openclaw.channel", "")
                     if agent:
-                        agent_h = self._histograms["by_agent"].setdefault(agent, {})
+                        agent_h = histograms["by_agent"].setdefault(agent, {})
                         agent_h[key] = update
 
     def _process_span(self, span) -> None:
@@ -842,6 +979,23 @@ def _zero_tokens() -> dict:
 
 def _zero_histogram() -> dict:
     return {"count": 0, "sum": 0, "min": None, "max": None}
+
+
+def _merge_histogram(dst: dict, src: dict) -> None:
+    """Merge ``src`` histogram into ``dst`` (sum counts/sums, min of mins,
+    max of maxes). ``dst`` is mutated in place; missing fields default to
+    a zero histogram so it is safe to call with sparse data.
+    """
+    if not src:
+        return
+    dst["count"] = dst.get("count", 0) + (src.get("count") or 0)
+    dst["sum"] = dst.get("sum", 0) + (src.get("sum") or 0)
+    src_min = src.get("min")
+    if src_min is not None:
+        dst["min"] = src_min if dst.get("min") is None else min(dst["min"], src_min)
+    src_max = src.get("max")
+    if src_max is not None:
+        dst["max"] = src_max if dst.get("max") is None else max(dst["max"], src_max)
 
 
 def _sanitise_for_json(obj: object) -> object:
@@ -1223,8 +1377,35 @@ def run(
     if output_path.exists():
         try:
             existing = json.loads(output_path.read_text())
-            _deep_merge(store._counters, existing.get("counters", {}))
-            _deep_merge(store._histograms, existing.get("histograms", {}))
+            # Prefer the per-host buckets when present (post-aggregation
+            # snapshots). Each host's bucket holds its own cumulative
+            # values, so reloading them as-is keeps the rollup honest
+            # even as live hosts push their next sample. Older snapshots
+            # only have the aggregated ``counters`` field — fall back to
+            # bucketing those under a synthetic ``"persisted"`` key so
+            # we don't lose data outright. This may cause a one-time
+            # over-count for hosts that immediately push again, but it
+            # is bounded to the contents of the prior aggregated total.
+            counters_by_host = existing.get("counters_by_host") or {}
+            if counters_by_host:
+                for host_key, bucket in counters_by_host.items():
+                    _deep_merge(store._ensure_counter_bucket(host_key), bucket)
+            elif existing.get("counters"):
+                _deep_merge(
+                    store._ensure_counter_bucket("persisted"),
+                    existing["counters"],
+                )
+
+            histograms_by_host = existing.get("histograms_by_host") or {}
+            if histograms_by_host:
+                for host_key, bucket in histograms_by_host.items():
+                    _deep_merge(store._ensure_histogram_bucket(host_key), bucket)
+            elif existing.get("histograms"):
+                _deep_merge(
+                    store._ensure_histogram_bucket("persisted"),
+                    existing["histograms"],
+                )
+
             for s in existing.get("sessions", []):
                 sid = s.get("session_id", "")
                 if sid:
