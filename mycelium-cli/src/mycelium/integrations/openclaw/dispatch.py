@@ -102,6 +102,39 @@ class OpenClawIntegration(Integration):
                 "  Config is written; restart manually: openclaw gateway restart"
             )
 
+    def _allowlist_mycelium(self, agent_id: str) -> None:
+        """Allowlist the ``mycelium`` binary for *agent_id*.
+
+        A wired-in agent has to be able to exec ``mycelium`` (negotiate,
+        memory writes, plan task ops). Without an allowlist entry a
+        sandboxed agent either gets per-call approval prompts or can't run
+        it at all — and reports "mycelium isn't available" mid-conversation.
+        Wiring the agent in is exactly when we know it'll need the binary,
+        so allowlist it here rather than leaving it as a manual step.
+
+        Best-effort: a failure (older openclaw without ``approvals
+        allowlist``, etc.) warns with the manual command rather than
+        aborting the registration.
+        """
+        mycelium_bin = shutil.which("mycelium") or str(Path.home() / ".local" / "bin" / "mycelium")
+        result = subprocess.run(
+            self._oc_cmd(
+                ["openclaw", "approvals", "allowlist", "add", "--agent", agent_id, mycelium_bin]
+            ),
+            text=True,
+            capture_output=True,
+        )
+        combined = ((result.stderr or "") + (result.stdout or "")).lower()
+        if result.returncode == 0 or "already" in combined:
+            console.print(f"  [green]allowlisted[/green] mycelium CLI for [cyan]{agent_id}[/cyan]")
+            return
+        stderr = (result.stderr or result.stdout or "").strip()
+        console.print(
+            f"[yellow]could not allowlist mycelium for {agent_id}[/yellow] {stderr[:160]}\n"
+            f'  Add it manually: openclaw approvals allowlist add --agent "{agent_id}" '
+            f'"{mycelium_bin}"'
+        )
+
     # ── discovery (brownfield adopt) ────────────────────────────────────────
 
     def discover_local_agents(self) -> list[dict[str, str]]:
@@ -157,6 +190,7 @@ class OpenClawIntegration(Integration):
                 agent_id=handle,
                 backend_url=backend_url,
             )
+            self._allowlist_mycelium(handle)
         self.restart_gateway()
 
     # ── manifest ────────────────────────────────────────────────────────────
@@ -400,6 +434,7 @@ class OpenClawIntegration(Integration):
                 f"  [green]adopting[/green] existing OpenClaw agent [cyan]{agent_id}[/cyan]"
             )
         self._register_channel(room=opts.room, agent_id=agent_id, backend_url=config.server.api_url)
+        self._allowlist_mycelium(agent_id)
         self.restart_gateway()
 
     def destroy(
@@ -515,16 +550,9 @@ class OpenClawIntegration(Integration):
         typer.echo("")
         typer.secho("  Next steps:", bold=True)
         typer.echo("")
-        typer.echo(
-            "  1. Allow mycelium CLI execution for each agent that should run mycelium commands"
-        )
-        typer.echo(
-            "     (scope per-agent so only the agents wired into a Mycelium room can exec it):"
-        )
-        typer.secho(
-            '       $ openclaw approvals allowlist add --agent "<agent-id>" "~/.local/bin/mycelium"',
-            fg=typer.colors.CYAN,
-        )
+        typer.echo("  1. Wire agents into a room with `mycelium agent add` / `agent create`.")
+        typer.echo("     Each wired-in agent is allowlisted to exec the mycelium CLI automatically")
+        typer.echo("     (scoped per-agent) — no manual approvals step needed.")
         typer.echo("")
         # Step 2: channel config guidance — only if not already configured.
         # The channel block lives under `channels.mycelium-room` in openclaw.json

@@ -195,6 +195,16 @@ def _create_wizard(
 
     import questionary
 
+    console.print(
+        "\n[bold]Create a Mycelium agent[/bold]\n"
+        "[dim]This will:[/dim]\n"
+        "[dim]  · ask for the agent's handle, adapter, and details[/dim]\n"
+        "[dim]  · register it as a Mycelium agent manifest in a room[/dim]\n"
+        "[dim]  · claude_code: claim cc-daemon ownership of the handle[/dim]\n"
+        "[dim]  · openclaw: create the OpenClaw agent, wire it into the[/dim]\n"
+        "[dim]    room channel, allowlist the mycelium CLI, restart the gateway[/dim]\n"
+    )
+
     handle = questionary.text("Agent handle (lowercase slug, e.g. release-agent):").ask()
     if not handle or not handle.strip():
         return
@@ -574,6 +584,16 @@ def _onboard_wizard(
     """Interactive brownfield onboarding: discover → pick → ensure adapter →
     batch-adopt into a room (one gateway restart)."""
     import questionary
+
+    console.print(
+        "\n[bold]Adopt OpenClaw agents into a Mycelium room[/bold]\n"
+        "[dim]This will:[/dim]\n"
+        "[dim]  · discover the OpenClaw agents on this machine[/dim]\n"
+        "[dim]  · let you pick which to adopt + the room to wire them into[/dim]\n"
+        "[dim]  · register each as a Mycelium agent manifest in that room[/dim]\n"
+        "[dim]  · allowlist the mycelium CLI for each agent[/dim]\n"
+        "[dim]  · restart the OpenClaw gateway once[/dim]\n"
+    )
 
     impl = OpenClawIntegration(openclaw_profile=openclaw_profile)
     discovered = impl.discover_local_agents()
