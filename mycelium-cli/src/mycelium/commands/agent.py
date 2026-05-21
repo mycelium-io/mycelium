@@ -178,11 +178,83 @@ def _persist_and_describe(
     ),
     group="agent",
 )
+def _create_wizard(
+    ctx: typer.Context,
+    *,
+    config: MyceliumConfig,
+    room_opt: str | None,
+    handle_flag: str,
+) -> None:
+    """Interactive `agent create` — prompt for the fields, then build +
+    persist. Greenfield counterpart to `agent add`'s adopt picker.
+
+    The per-adapter prompt (cwd) is a UI flow, not dispatch logic — the
+    wizard simply asks for what the chosen adapter's manifest needs.
+    """
+    import os
+
+    import questionary
+
+    handle = questionary.text("Agent handle (lowercase slug, e.g. release-agent):").ask()
+    if not handle or not handle.strip():
+        return
+    handle = handle.strip()
+
+    adapter = questionary.select(
+        "Adapter that hosts this agent:",
+        choices=sorted(AGENT_ADAPTERS),
+        default="claude_code" if "claude_code" in AGENT_ADAPTERS else None,
+    ).ask()
+    if not adapter:
+        return
+
+    cwd: str | None = None
+    if adapter == "claude_code":
+        cwd = questionary.path(
+            "Working directory the agent runs `claude -p` in:",
+            default=os.getcwd(),
+        ).ask()
+        if not cwd:
+            return
+
+    description = questionary.text("Description (what does this agent do?):").ask() or ""
+
+    room_name = room_opt or _pick_room(config)
+    if not room_name:
+        return
+
+    impl = get_adapter(adapter, cwd=cwd)
+    try:
+        manifest = impl.build_manifest(
+            handle=handle,
+            opts=AddOptions(room=room_name),
+            description=description,
+            budget=5.0,
+            allow_from=[],
+        )
+    except ValidationError as exc:
+        typer.secho(f"Invalid agent manifest: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1) from exc
+
+    _persist_and_describe(
+        impl=impl,
+        manifest=manifest,
+        config=config,
+        room_name=room_name,
+        handle_flag=handle_flag,
+        verb="created",
+    )
+
+
 @app.command("create")
 def agent_create(
     ctx: typer.Context,
-    handle: str = typer.Argument(
-        ..., help="Agent handle (lowercase slug, e.g. 'release-agent'). Used as @-mention target."
+    handle: str | None = typer.Argument(
+        None,
+        help=(
+            "Agent handle (lowercase slug, e.g. 'release-agent'). "
+            "Omit (in a TTY) for the interactive create form."
+        ),
     ),
     adapter: str = typer.Option(
         "claude_code",
@@ -246,6 +318,23 @@ def agent_create(
             --description "Sprint planner, optimizes for shipping speed"
     """
     try:
+        config = MyceliumConfig.load()
+
+        # No handle in a terminal → interactive create form (mirrors the
+        # `agent add` picker). Non-interactive with no handle → actionable
+        # error so scripts/CI fail loud rather than hang on a prompt.
+        if handle is None:
+            if not (sys.stdin.isatty() and sys.stdout.isatty()):
+                typer.secho(
+                    "mycelium agent create needs a handle when non-interactive.\n"
+                    "  Interactive form: run it in a terminal.\n"
+                    "  Scripted: mycelium agent create <handle> --adapter ... [--cwd ...]",
+                    fg=typer.colors.RED,
+                )
+                raise typer.Exit(1)
+            _create_wizard(ctx, config=config, room_opt=room, handle_flag=handle_flag)
+            return
+
         if adapter not in AGENT_ADAPTERS:
             known = ", ".join(sorted(AGENT_ADAPTERS))
             typer.secho(f"Unknown adapter '{adapter}'. Known: {known}.", fg=typer.colors.RED)
@@ -255,7 +344,6 @@ def agent_create(
         if allow_from:
             allow_list = [a.strip() for a in allow_from.split(",") if a.strip()]
 
-        config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
 
         # No openclaw_agent → openclaw_created=True (greenfield) by the
@@ -456,7 +544,6 @@ def _pick_room(config: MyceliumConfig) -> str | None:
             choices=room_choices,
             default=active if active in rooms else None,
             instruction="",
-            use_pagination=True,  # long room lists scroll a viewport
         ).ask()
         if picked is None:
             return None
@@ -535,7 +622,6 @@ def _onboard_wizard(
             f"Select OpenClaw agents to add to room '{room_name}'",
             choices=choices,
             instruction="",
-            use_pagination=True,  # long agent lists scroll a viewport
         ).ask()
         or []
     )
