@@ -112,12 +112,13 @@ def _write_manifest(
 
     body = manifest.model_dump(exclude={"handle"})
     yaml_body = yaml.safe_dump(body, sort_keys=False, default_flow_style=False).strip()
+    # embed=False: a manifest is a registry/config entry, not room knowledge.
+    # Embedding it pollutes `memory search` (and synthesis) with roster noise.
     item = MemoryCreate(
         key=manifest.memory_key,
         value=yaml_body,
         created_by=created_by,
-        embed=True,
-        content_text=f"agent {manifest.handle}: {manifest.description[:200]}",
+        embed=False,
         tags=["agent-manifest"],
     )
     batch = MemoryBatchCreate(items=[item])

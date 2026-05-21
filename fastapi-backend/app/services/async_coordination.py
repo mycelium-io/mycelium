@@ -42,8 +42,15 @@ async def check_trigger(room_name: str) -> None:
 
         min_contributions = config.get("min_contributions", 5)
 
-        # Count memories since last synthesis
-        query = select(func.count()).select_from(Memory).where(Memory.room_name == room_name)
+        # Count memories since last synthesis. Exclude agent manifests — they
+        # aren't contributions, and counting them would trip the threshold and
+        # fire a synthesis that then has nothing new to summarize.
+        query = (
+            select(func.count())
+            .select_from(Memory)
+            .where(Memory.room_name == room_name)
+            .where(Memory.key.not_like("agents/%"))
+        )
         if room.last_synthesis_at:
             query = query.where(Memory.updated_at > room.last_synthesis_at)
 
@@ -86,10 +93,14 @@ async def run_synthesis(room_name: str) -> dict | None:
             if not room:
                 return None
 
+            # Exclude prior syntheses (would compound) and agent manifests
+            # (agents/<handle> is a roster entry — config, not a contribution
+            # to synthesize; it would otherwise land in "Other Contributions").
             query = (
                 select(Memory)
                 .where(Memory.room_name == room_name)
                 .where(Memory.key.not_like("_synthesis/%"))
+                .where(Memory.key.not_like("agents/%"))
             )
             if room.last_synthesis_at:
                 # Use updated_at so upserts count as new contributions
