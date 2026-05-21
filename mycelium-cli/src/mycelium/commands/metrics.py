@@ -2631,7 +2631,7 @@ def _render_knowledge_table(backend: dict | None, *, detail: bool = False) -> No
     if by_mas:
         room_map = _resolve_room_names_by_mas()
         table.add_section()
-        table.add_row("[dim]By room:[/dim]", "", "")
+        table.add_row("[dim]By room:[/dim]", "[dim]MAS id[/dim]", "")
         ranked = sorted(by_mas.items(), key=lambda kv: kv[1].get("ingestions", 0), reverse=True)
         cap = len(ranked) if detail else 5
         for mas_id, stats in ranked[:cap]:
@@ -3039,7 +3039,7 @@ def _render_coordination_table(backend: dict | None, *, detail: bool = False) ->
     if rounds_by_room or completed_by_room:
         name_to_mas = _resolve_mas_by_room_name()
         table.add_section()
-        table.add_row("[dim]By room:[/dim]", "", "")
+        table.add_row("[dim]By room:[/dim]", "[dim]MAS id[/dim]", "")
         # Sort by total rounds desc so the busiest room leads.
         ranked = sorted(rounds_by_room.items(), key=lambda kv: kv[1], reverse=True)
         cap = len(ranked) if detail else 5
@@ -3167,7 +3167,7 @@ def _render_cfn_llm_usage_table(backend: dict | None, *, detail: bool = False) -
     if rooms:
         name_to_mas = _resolve_mas_by_room_name()
         table.add_section()
-        table.add_row("[dim]By room:[/dim]", "", "")
+        table.add_row("[dim]By room:[/dim]", "[dim]MAS id[/dim]", "")
         ranked = sorted(
             rooms.items(),
             key=lambda kv: kv[1].get("input_tokens", 0) + kv[1].get("output_tokens", 0),
