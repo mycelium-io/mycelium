@@ -356,3 +356,85 @@ async def test_coord_session_unique_index_allows_post_terminal_replacement(
     )
     db_session.add(fresh)
     await db_session.commit()  # must NOT raise — terminal sessions don't block new ones
+
+
+# ── leave_room: room-scoped participant removal ──────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_leave_room_removes_participant(client: AsyncClient, db_session: AsyncSession):
+    """Happy path: DELETE with the correct room_name removes the participant."""
+    from sqlalchemy import select
+
+    from app.models import Participant
+
+    await client.post("/api/rooms", json={"name": "leave-room-ns"})
+    join = await client.post(
+        "/api/rooms/leave-room-ns/sessions",
+        json={"agent_handle": "leaver", "intent": "going to leave"},
+    )
+    assert join.status_code == 201
+    participant_id = join.json()["id"]
+
+    resp = await client.delete(f"/api/rooms/leave-room-ns/sessions/{participant_id}")
+    assert resp.status_code == 204
+
+    remaining = (
+        (await db_session.execute(select(Participant).where(Participant.id == UUID(participant_id))))
+        .scalars()
+        .all()
+    )
+    assert remaining == []
+
+
+@pytest.mark.asyncio
+async def test_leave_room_rejects_cross_room_delete(client: AsyncClient, db_session: AsyncSession):
+    """Regression: a DELETE addressed to the wrong room MUST NOT remove a
+    participant that belongs to a different room.
+
+    Before this fix the WHERE clause keyed only on ``Participant.id``, so an
+    attacker (or buggy caller) who knew a participant UUID could remove
+    that participant by posting DELETE to *any* room URL — silently
+    yanking an agent out of a session it had nothing to do with.
+
+    The route now joins through ``CoordinationSession.parent_room_name``
+    so the room_name in the URL must match the participant's actual
+    parent room; mismatches return 404 and leave the row in place.
+    """
+    from sqlalchemy import select
+
+    from app.models import Participant
+
+    await client.post("/api/rooms", json={"name": "leave-victim-ns"})
+    await client.post("/api/rooms", json={"name": "leave-attacker-ns"})
+
+    join = await client.post(
+        "/api/rooms/leave-victim-ns/sessions",
+        json={"agent_handle": "victim", "intent": "stay put"},
+    )
+    participant_id = join.json()["id"]
+
+    # Try to delete the victim's participant row using the wrong room name.
+    resp = await client.delete(f"/api/rooms/leave-attacker-ns/sessions/{participant_id}")
+    assert resp.status_code == 404
+
+    still_there = (
+        (await db_session.execute(select(Participant).where(Participant.id == UUID(participant_id))))
+        .scalars()
+        .one_or_none()
+    )
+    assert still_there is not None, (
+        "leave_room must not delete a participant when the URL's room_name "
+        "differs from the participant's parent CoordinationSession.parent_room_name"
+    )
+
+
+@pytest.mark.asyncio
+async def test_leave_room_unknown_participant_returns_404(client: AsyncClient):
+    """DELETE for an unknown participant id returns 404, not 500."""
+    from uuid import uuid4 as _uuid4
+
+    await client.post("/api/rooms", json={"name": "leave-unknown-ns"})
+
+    resp = await client.delete(f"/api/rooms/leave-unknown-ns/sessions/{_uuid4()}")
+    assert resp.status_code == 404
