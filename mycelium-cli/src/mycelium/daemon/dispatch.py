@@ -561,6 +561,14 @@ async def on_message(
             continue
         if manifest.adapter != "claude_code":
             continue  # another adapter's gateway owns this handle
+        if handle not in daemon_cfg.handles:
+            # A claude_code manifest can reach this machine's filesystem via
+            # room sync, but the agent runs on whichever machine created it.
+            # Ownership is recorded in cc-daemon.toml by `mycelium agent
+            # create`; without that, two daemons subscribed to one room would
+            # both dispatch — and both spawn `claude` in the manifest's cwd.
+            log.debug("skip @%s — not owned by this daemon", handle)
+            continue
 
         if not gate_allow_from(manifest, sender_handle):
             log.info("denied @%s ← %s (allow_from)", handle, sender_handle)

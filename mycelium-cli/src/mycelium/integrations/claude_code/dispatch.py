@@ -60,16 +60,29 @@ class ClaudeCodeIntegration(Integration):
     def register(
         self, *, manifest: AgentManifest, config: MyceliumConfig, opts: AddOptions
     ) -> None:
-        # No-op: the cc-daemon picks the manifest up from the filesystem.
-        return
+        # A claude_code agent is cold-spawned by the cc-daemon on THIS machine
+        # (its cwd is a local path). Claim the handle in cc-daemon.toml so the
+        # local daemon dispatches it — and so another machine that syncs this
+        # room does NOT (its cc-daemon.toml won't list the handle). Without
+        # this, two daemons subscribed to one room both spawn the agent.
+        from mycelium.daemon.config import DaemonConfig
+
+        daemon_cfg = DaemonConfig.load()
+        if daemon_cfg.own_handle(manifest.handle):
+            daemon_cfg.save()
 
     def destroy(
         self, *, manifest: AgentManifest, config: MyceliumConfig, room: str, full: bool
     ) -> None:
         # No external runtime to tear down. `full` is meaningless here — the
         # only artifacts are the manifest (deleted by the command layer) and
-        # notes/logs (deliberately preserved).
-        return
+        # notes/logs (deliberately preserved). Release the cc-daemon ownership
+        # claimed in register().
+        from mycelium.daemon.config import DaemonConfig
+
+        daemon_cfg = DaemonConfig.load()
+        if daemon_cfg.disown_handle(manifest.handle):
+            daemon_cfg.save()
 
     def describe(self, manifest: AgentManifest, *, room: str) -> list[str]:
         lines = [

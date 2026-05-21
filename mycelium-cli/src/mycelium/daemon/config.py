@@ -53,6 +53,14 @@ class DaemonConfig(BaseModel):
         default_factory=list,
         description="Rooms to subscribe to. Use `mycelium daemon subscribe <room>` to add.",
     )
+    handles: list[str] = Field(
+        default_factory=list,
+        description=(
+            "claude_code agent handles this daemon owns. Only these are "
+            "dispatched — a manifest synced from another machine is ignored. "
+            "Populated automatically by `mycelium agent create`."
+        ),
+    )
     depth_cap: int = Field(
         default=5,
         ge=1,
@@ -77,3 +85,17 @@ class DaemonConfig(BaseModel):
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w") as f:
             toml.dump(self.model_dump(), f)
+
+    def own_handle(self, handle: str) -> bool:
+        """Register *handle* as owned by this daemon. True if newly added."""
+        if handle in self.handles:
+            return False
+        self.handles.append(handle)
+        return True
+
+    def disown_handle(self, handle: str) -> bool:
+        """Drop *handle* from this daemon's ownership. True if it was present."""
+        if handle not in self.handles:
+            return False
+        self.handles.remove(handle)
+        return True
