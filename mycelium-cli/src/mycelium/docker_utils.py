@@ -33,6 +33,16 @@ def generate_env_file(config: MyceliumConfig) -> str:
         "# ── Postgres ─────────────────────────────────────────────────────────────",
         f"MYCELIUM_DB_PASSWORD={config.runtime.db_password}",
         f"MYCELIUM_DB_PORT={config.runtime.db_port}",
+        # DATABASE_URL / GRAPH_DB_URL / DATABASE_URL_HOST are materialised here
+        # rather than reassembled in compose.yml so that the connection-string
+        # recipe lives in exactly one place (MyceliumConfig.database_url).
+        #   DATABASE_URL      → backend container (mycelium-db hostname)
+        #   GRAPH_DB_URL      → same, but with the plain psycopg driver
+        #   DATABASE_URL_HOST → host-side tools (alembic / mycelium doctor /
+        #                       mycelium migrate) — resolves localhost:<published port>
+        f"DATABASE_URL={config.database_url()}",
+        f"GRAPH_DB_URL={config.database_url(async_driver=False)}",
+        f"DATABASE_URL_HOST={config.database_url(host_side=True)}",
         "",
         "# ── Backend ──────────────────────────────────────────────────────────────",
         f"MYCELIUM_BACKEND_PORT={config.runtime.backend_port}",
