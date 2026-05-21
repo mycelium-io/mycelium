@@ -80,6 +80,9 @@ class Settings(BaseSettings):
     # Defaults to ~/.mycelium/ so backend and CLI share the same directory.
     MYCELIUM_DATA_DIR: str = str(Path.home() / ".mycelium")
 
+    # Metrics collector (for proxying /api/observability/collector and /traces)
+    COLLECTOR_URL: str = "http://mycelium-collector:4318"
+
     # Embedding (for persistent memory semantic search)
     EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"
     EMBEDDING_DIMENSIONS: int = 384

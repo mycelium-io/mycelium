@@ -348,7 +348,7 @@ def test_build_pricing_entry_no_cache_read_uses_default_discount() -> None:
 
 
 def test_load_pricing_prefers_user_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """When ~/.mycelium/pricing.json exists, it takes priority over bundled."""
+    """When user pricing.json exists, it takes priority over bundled."""
     import mycelium.commands.metrics as mod
 
     user_pricing = tmp_path / "pricing.json"
@@ -378,7 +378,7 @@ def test_load_pricing_prefers_user_cache(tmp_path: Path, monkeypatch: pytest.Mon
         )
     )
 
-    monkeypatch.setattr(mod, "_USER_PRICING_JSON", user_pricing)
+    monkeypatch.setattr(mod, "_user_pricing_json", lambda: user_pricing)
     monkeypatch.setattr(mod, "_pricing_data", None)
 
     data = _load_pricing()
@@ -395,7 +395,7 @@ def test_load_pricing_falls_back_to_bundled(
     import mycelium.commands.metrics as mod
 
     nonexistent = tmp_path / "no-such-file.json"
-    monkeypatch.setattr(mod, "_USER_PRICING_JSON", nonexistent)
+    monkeypatch.setattr(mod, "_user_pricing_json", lambda: nonexistent)
     monkeypatch.setattr(mod, "_pricing_data", None)
 
     data = _load_pricing()
@@ -414,7 +414,7 @@ def test_load_pricing_skips_corrupt_user_cache(
     corrupt = tmp_path / "pricing.json"
     corrupt.write_text("{not valid json!!!")
 
-    monkeypatch.setattr(mod, "_USER_PRICING_JSON", corrupt)
+    monkeypatch.setattr(mod, "_user_pricing_json", lambda: corrupt)
     monkeypatch.setattr(mod, "_pricing_data", None)
 
     data = _load_pricing()
@@ -432,7 +432,7 @@ def test_load_pricing_skips_empty_models_user_cache(
     empty_models = tmp_path / "pricing.json"
     empty_models.write_text(json.dumps({"models": [], "default": {}}))
 
-    monkeypatch.setattr(mod, "_USER_PRICING_JSON", empty_models)
+    monkeypatch.setattr(mod, "_user_pricing_json", lambda: empty_models)
     monkeypatch.setattr(mod, "_pricing_data", None)
 
     data = _load_pricing()
@@ -498,7 +498,7 @@ def test_discover_models_from_metrics_finds_untracked(
     }
     metrics_file = tmp_path / "metrics.json"
     metrics_file.write_text(json.dumps(metrics))
-    monkeypatch.setattr(mod, "_METRICS_JSON", metrics_file)
+    monkeypatch.setattr(mod, "_metrics_json", lambda: metrics_file)
 
     result = _discover_models_from_metrics()
 
@@ -525,7 +525,7 @@ def test_discover_models_from_metrics_empty_when_all_tracked(
     }
     metrics_file = tmp_path / "metrics.json"
     metrics_file.write_text(json.dumps(metrics))
-    monkeypatch.setattr(mod, "_METRICS_JSON", metrics_file)
+    monkeypatch.setattr(mod, "_metrics_json", lambda: metrics_file)
 
     assert _discover_models_from_metrics() == []
 
@@ -536,7 +536,7 @@ def test_discover_models_from_metrics_handles_missing_file(
     """Returns empty when metrics.json doesn't exist."""
     import mycelium.commands.metrics as mod
 
-    monkeypatch.setattr(mod, "_METRICS_JSON", tmp_path / "no-such-file.json")
+    monkeypatch.setattr(mod, "_metrics_json", lambda: tmp_path / "no-such-file.json")
     assert _discover_models_from_metrics() == []
 
 

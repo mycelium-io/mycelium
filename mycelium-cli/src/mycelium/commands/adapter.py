@@ -14,7 +14,6 @@ Planned:
 
 import importlib.resources
 import json as json_module
-import os
 import re
 import shutil
 import subprocess
@@ -279,8 +278,10 @@ def add(
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Show what would be installed without doing it"
     ),
-    step: str | None = typer.Option(
-        None, "--step", help=f"Run a follow-up setup step: {', '.join(_OPENCLAW_STEPS)}"
+    step: list[str] | None = typer.Option(
+        None,
+        "--step",
+        help=f"Run a follow-up setup step (repeatable): {', '.join(_OPENCLAW_STEPS)}",
     ),
     reinstall: bool = typer.Option(
         False, "--reinstall", help="Reinstall assets even if adapter is already registered"
@@ -358,23 +359,28 @@ def add(
         config = MyceliumConfig.load()
 
         # ── Follow-up steps run independently of the base install ────────────
-        if step is not None:
+        if step:
             if adapter_type != "openclaw":
                 typer.secho(
                     "--step is only supported for the 'openclaw' adapter.", fg=typer.colors.RED
                 )
                 raise typer.Exit(1)
-            if step not in _OPENCLAW_STEPS:
-                known_steps = ", ".join(_OPENCLAW_STEPS)
-                typer.secho(
-                    f"Unknown step '{step}'. Known steps: {known_steps}", fg=typer.colors.RED
-                )
-                raise typer.Exit(1)
-            if step == "docker-env":
-                _step_docker_env(config)
-            elif step == "otel":
-                if _configure_otel(profile=openclaw_profile, container=openclaw_container):
-                    _restart_gateway_if_needed(openclaw_profile, openclaw_container)
+            for s in step:
+                if s not in _OPENCLAW_STEPS:
+                    known_steps = ", ".join(_OPENCLAW_STEPS)
+                    typer.secho(
+                        f"Unknown step '{s}'. Known steps: {known_steps}", fg=typer.colors.RED
+                    )
+                    raise typer.Exit(1)
+            needs_restart = False
+            for s in step:
+                if s == "docker-env":
+                    _step_docker_env(config)
+                elif s == "otel":
+                    if _configure_otel(profile=openclaw_profile, container=openclaw_container):
+                        needs_restart = True
+            if needs_restart:
+                _restart_gateway_if_needed(openclaw_profile, openclaw_container)
             return
 
         # ── Base install ──────────────────────────────────────────────────────
@@ -1629,6 +1635,35 @@ def _patch_model_cost_and_compat(cfg: dict) -> list[str]:
     return changes
 
 
+def _resolve_otlp_endpoint(
+    port: int | None = None,
+    container: str | None = None,
+) -> str:
+    """Resolve the OTLP HTTP endpoint that OpenClaw should publish to.
+
+    OpenClaw runs co-located with its collector on every node — the spoke
+    collector then forwards to the hub via its own ``--hub-url`` flag (sourced
+    from ``metrics.collector_url``). So this endpoint is *always* local from
+    OpenClaw's perspective; we deliberately ignore ``metrics.collector_url``
+    here, otherwise spokes would skip their local collector entirely and ship
+    spans straight to the hub, breaking the agent-to-gateway pattern.
+
+    Priority: explicit *port* arg > config ``runtime.collector_port`` >
+    default 4318. When OpenClaw is in a container, uses ``host.docker.internal``.
+    """
+    resolved_port = port
+    if resolved_port is None:
+        try:
+            from mycelium.config import MyceliumConfig
+
+            resolved_port = MyceliumConfig.load().runtime.collector_port
+        except Exception:
+            resolved_port = 4318
+
+    host = "host.docker.internal" if container else "localhost"
+    return f"http://{host}:{resolved_port}"
+
+
 def _configure_otel(
     port: int | None = None,
     profile: str | None = None,
@@ -1665,17 +1700,7 @@ def _configure_otel(
             return False
 
     try:
-        resolved_port = port if port is not None else 4318
-        env_port = os.environ.get("MYCELIUM_METRICS_PORT")
-        if port is None and env_port:
-            try:
-                p = int(env_port)
-                if 1 <= p <= 65535:
-                    resolved_port = p
-            except ValueError:
-                pass
-        host = "host.docker.internal" if container else "localhost"
-        endpoint = f"http://{host}:{resolved_port}"
+        endpoint = _resolve_otlp_endpoint(port, container)
 
         diagnostics = cfg.setdefault("diagnostics", {})
         diagnostics["enabled"] = True

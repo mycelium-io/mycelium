@@ -2613,7 +2613,7 @@
                     "metrics"
                 ],
                 "summary": "Get Metrics",
-                "description": "Return a snapshot of backend-collected metrics (embeddings, LLM, indexer, etc.).\n\nNote: served under ``/observability`` rather than ``/api/metrics`` because\nprivacy-extension blocklists pattern-match ``/api/metrics*`` as analytics\ntelemetry and silently drop the request in the browser.",
+                "description": "Return a snapshot of backend-collected metrics (embeddings, LLM, indexer, etc.).\n\nNote: served under ``/api/observability`` rather than ``/api/metrics`` because\nprivacy-extension blocklists pattern-match ``/api/metrics*`` as analytics\ntelemetry and silently drop the request in the browser.",
                 "operationId": "get_metrics_api_observability_get",
                 "responses": {
                     "200": {
@@ -2633,8 +2633,86 @@
                     "metrics"
                 ],
                 "summary": "Get Collector Metrics",
-                "description": "Return OTLP/scrape metrics written by the CLI collector.\n\nReads ``~/.mycelium/metrics.json`` and returns the collector-specific\nkeys (counters, histograms, sessions, scrape) \u2014 excluding the ``backend``\nkey which duplicates ``GET /observability``.  Returns 404 when the file is\nabsent (collector not running or never started).",
+                "description": "Proxy to the OTLP collector's ``/collector/metrics`` endpoint.\n\nReturns counters, histograms, sessions, and scrape data directly from the\ncollector's in-memory store.  Returns 502 if the collector is unreachable.\n\nConfigure ``COLLECTOR_URL`` (default ``http://mycelium-collector:4318``)\nto point at the collector service.",
                 "operationId": "get_collector_metrics_api_observability_collector_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/observability/traces/recent": {
+            "get": {
+                "tags": [
+                    "metrics"
+                ],
+                "summary": "Get Recent Traces",
+                "description": "Proxy to the OTLP collector's ``/collector/traces`` endpoint.\n\nReturns recent trace spans from the collector's SQLite store.\nReturns 502 if the collector is unreachable.",
+                "operationId": "get_recent_traces_api_observability_traces_recent_get",
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 100,
+                            "title": "Limit"
+                        }
+                    },
+                    {
+                        "name": "host",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Host"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/observability/hosts": {
+            "get": {
+                "tags": [
+                    "metrics"
+                ],
+                "summary": "Get Hosts",
+                "description": "Proxy to the OTLP collector's ``/collector/hosts`` endpoint.\n\nReturns distinct hosts that have reported OTLP data, with span counts\nand agent lists.  Returns 502 if the collector is unreachable.",
+                "operationId": "get_hosts_api_observability_hosts_get",
                 "responses": {
                     "200": {
                         "description": "Successful Response",

@@ -19,6 +19,7 @@ def _get_kwargs(
     mas_id: None | str | Unset = UNSET,
     workspace_id: None | str | Unset = UNSET,
 ) -> dict[str, Any]:
+
     params: dict[str, Any] = {}
 
     json_mas_id: None | str | Unset

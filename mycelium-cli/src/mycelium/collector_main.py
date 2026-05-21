@@ -1,13 +1,19 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Julia Valenti
 
-"""Entry point for running the OTLP collector as a background process."""
+"""Entry point for the OTLP collector (used by Dockerfile.collector)."""
 
 from __future__ import annotations
 
 import argparse
 import logging
+import os
 from pathlib import Path
+
+
+def _default_output() -> str:
+    data_dir = Path(os.environ.get("MYCELIUM_DATA_DIR") or Path.home() / ".mycelium")
+    return str(data_dir / "metrics" / "metrics.json")
 
 
 def main() -> None:
@@ -15,14 +21,24 @@ def main() -> None:
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=4318)
-    parser.add_argument(
-        "--output", type=str, default=str(Path.home() / ".mycelium" / "metrics.json")
-    )
+    parser.add_argument("--output", type=str, default=_default_output())
     parser.add_argument(
         "--backend-url",
         type=str,
         default="http://localhost:8000",
         help="Mycelium backend URL for polling /api/observability",
+    )
+    parser.add_argument(
+        "--no-backend",
+        action="store_true",
+        default=False,
+        help="Skip backend polling and Prometheus scraping (spoke-local OTLP-only mode)",
+    )
+    parser.add_argument(
+        "--hub-url",
+        type=str,
+        default=None,
+        help="Forward OTLP payloads to a hub collector (agent-to-gateway pattern)",
     )
 
     args = parser.parse_args()
@@ -47,6 +63,8 @@ def main() -> None:
         Path(args.output),
         backend_api_url=args.backend_url,
         scrape_targets=scrape_targets,
+        no_backend=args.no_backend,
+        hub_url=args.hub_url,
     )
 
 

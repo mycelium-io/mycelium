@@ -192,6 +192,48 @@ log in again via the Synapse admin API), update the token in
 `channels.<channel>.accounts[agent]` in each node's `openclaw.json`,
 and restart the gateway.
 
+## Step 4: Set up spoke metrics
+
+Each spoke can run a lightweight local collector for OpenClaw telemetry.
+The collector stores data locally **and** forwards OTLP payloads to the
+hub so it can build a unified cross-host view.
+
+```bash
+# Point the spoke's metrics at the hub collector
+mycelium config set metrics.collector_url "http://<hub-ip>:4318"
+
+# Configure OTLP plugin (endpoint defaults to localhost:4318)
+mycelium adapter add openclaw --step=otel
+
+# Start the spoke collector (daemonizes into background)
+mycelium metrics collect
+
+# Stop it later with:
+mycelium metrics stop
+```
+
+`mycelium metrics show` on the spoke merges local OpenClaw data with
+backend/CFN data fetched from the hub. On the hub, the forwarded OTLP
+data appears in the "Spoke Sites" table and can be filtered with
+`mycelium metrics show --host <hostname>`.
+
+For a span-level view of the activity each spoke is forwarding — drill
+down by host, agent, room, channel, model, tool, error, or latency, and
+render any single trace as a parent → child tree — use the trace viewer
+on the hub:
+
+```bash
+mycelium metrics traces summary --since=1h     # rollup
+mycelium metrics traces by-host --since=1h      # per-spoke
+mycelium metrics traces show <trace_id>         # one trace as a tree
+```
+
+See [Viewing Traces](../metrics.md#viewing-traces) for the full command
+list and pivots.
+
+See the [Metrics System docs](../metrics.md#hub-and-spoke-setup) for
+full details.
+
 ## Troubleshooting
 
 ### Spoke can't reach hub

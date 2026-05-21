@@ -44,6 +44,7 @@ _COMPOSE_PROJECT = "mycelium"
 _MANAGED_CONTAINERS = [
     "mycelium-db",
     "mycelium-backend",
+    "mycelium-collector",
     "mycelium-graph-viewer",
     "ioc-cfn-mgmt-plane-svc",
     "ioc-cfn-svc",
@@ -104,12 +105,17 @@ def _compose_base_cmd(
     project_name: str | None = None,
     *,
     include_cfn_profile: bool = True,
+    include_metrics_profile: bool = True,
 ) -> list[str]:
     """Build the docker compose prefix with consistent project name.
 
     When *include_cfn_profile* is True (the default) and CFN is enabled in
     the user's .env, ``--profile cfn`` is appended automatically so callers
     don't need to duplicate that logic.
+
+    When *include_metrics_profile* is True (the default) and the collector
+    container is running, ``--profile metrics`` is appended so stop/logs/down
+    commands include it without ad-hoc detection.
     """
     if compose_path is None:
         compose_path = _get_compose_path()
@@ -120,6 +126,8 @@ def _compose_base_cmd(
         cmd += ["--env-file", str(env_path)]
     if include_cfn_profile and _cfn_enabled():
         cmd += ["--profile", "cfn"]
+    if include_metrics_profile and _collector_container_running():
+        cmd += ["--profile", "metrics"]
     return cmd
 
 
@@ -188,6 +196,21 @@ def _cfn_enabled() -> bool:
 
         val = dotenv_values(env_path).get("CFN_MGMT_URL", "")
         return bool(val and val.strip())
+    except Exception:
+        return False
+
+
+def _collector_container_running() -> bool:
+    """Return True if the mycelium-collector container is running."""
+    try:
+        result = subprocess.run(
+            ["docker", "inspect", "-f", "{{.State.Running}}", "mycelium-collector"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+        return result.returncode == 0 and result.stdout.strip().lower() == "true"
     except Exception:
         return False
 
@@ -316,10 +339,28 @@ def init(
 
         assert api_url is not None
 
+        from mycelium.config import MetricsConfig
+
+        # Auto-derive collector_url for spoke nodes (non-local api_url).
+        metrics_config = MetricsConfig()
+        from urllib.parse import urlparse
+
+        parsed = urlparse(api_url)
+        hub_host = parsed.hostname or ""
+        if hub_host not in ("localhost", "127.0.0.1", "::1", "0.0.0.0", ""):
+            default_collector = f"http://{hub_host}:4318"
+            collector_url = typer.prompt(
+                "Hub collector URL (for metrics)",
+                default=default_collector,
+                show_default=True,
+            )
+            metrics_config = MetricsConfig(collector_url=collector_url)
+
         config = MyceliumConfig(
             server=ServerConfig(
                 api_url=api_url,
-            )
+            ),
+            metrics=metrics_config,
         )
         config.save(config_path)
 
@@ -327,10 +368,17 @@ def init(
         typer.echo("")
         typer.echo("Configuration:")
         typer.echo(f"  API URL: {api_url}")
+        if metrics_config.collector_url:
+            typer.echo(f"  Collector URL: {metrics_config.collector_url}  (hub-centric metrics)")
         typer.echo("")
-        typer.echo("Next steps:")
-        typer.echo("  - Run 'mycelium install' to pull and start all services")
-        typer.echo("  - Run 'mycelium status' to check service health")
+        if metrics_config.collector_url:
+            typer.echo("Next steps:")
+            typer.echo("  - Run 'mycelium adapter add openclaw --step=otel' to configure OTLP")
+            typer.echo("  - Run 'mycelium metrics status' to verify collector connectivity")
+        else:
+            typer.echo("Next steps:")
+            typer.echo("  - Run 'mycelium install' to pull and start all services")
+            typer.echo("  - Run 'mycelium status' to check service health")
 
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
@@ -338,7 +386,7 @@ def init(
 
 
 @doc_ref(
-    usage="mycelium up [--build] [--ui]",
+    usage="mycelium up [--build] [--ui] [--metrics]",
     desc="Start the Mycelium stack via <code>docker compose up</code>.",
     group="setup",
 )
@@ -346,6 +394,9 @@ def start(
     ctx: typer.Context,
     build: bool = typer.Option(False, "--build", help="Rebuild images before starting"),
     ui: bool = typer.Option(False, "--ui", help="Also start the frontend (mycelium-frontend)"),
+    metrics: bool = typer.Option(
+        False, "--metrics", help="Also start the OTLP collector (mycelium-collector)"
+    ),
 ) -> None:
     """
     Start Mycelium services.
@@ -354,9 +405,10 @@ def start(
     ~/.mycelium/.env for configuration.
 
     Examples:
-        mycelium up          # start all services
-        mycelium up --build  # rebuild images first
-        mycelium up --ui     # also start the frontend at http://localhost:3000
+        mycelium up              # start all services
+        mycelium up --build      # rebuild images first
+        mycelium up --ui         # also start the frontend at http://localhost:3000
+        mycelium up --metrics    # also start the OTLP collector on :4318
     """
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
@@ -367,9 +419,18 @@ def start(
             typer.echo("Run 'mycelium install' first.")
             raise typer.Exit(1)
 
-        base = _compose_base_cmd(compose_path)
+        base = _compose_base_cmd(compose_path, include_metrics_profile=False)
         if ui:
             base = base + ["--profile", "ui"]
+        if metrics:
+            base = base + ["--profile", "metrics"]
+            # Pre-create the metrics data dir with group-write perms so the
+            # in-container collector user (uid != root) can write to the
+            # bind-mounted host directory. Without this, fresh installs hit
+            # PermissionError on first start.
+            from mycelium.collector import _ensure_shared_dir
+
+            _ensure_shared_dir(Path.home() / ".mycelium" / "metrics")
         up_args = ["up", "-d", "--remove-orphans"]
         if build:
             up_args.append("--build")
@@ -423,9 +484,11 @@ def start(
                 typer.echo(result.stderr, err=True)
 
         typer.secho("Services started.", fg=typer.colors.GREEN)
-        typer.echo("  mycelium-backend  → http://localhost:8000")
+        typer.echo("  mycelium-backend    → http://localhost:8000")
         if ui:
-            typer.echo("  mycelium-frontend → http://localhost:3000")
+            typer.echo("  mycelium-frontend   → http://localhost:3000")
+        if metrics:
+            typer.echo("  mycelium-collector  → http://localhost:4318")
 
     except typer.Exit:
         raise

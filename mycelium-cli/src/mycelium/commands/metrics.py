@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import json
 import os
-import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -23,27 +22,54 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from mycelium.collector import _ensure_shared_dir
+from mycelium.commands.traces import app as traces_app
+
 app = typer.Typer(
     help="Collect and display OpenClaw agent metrics (OTLP receiver + display).",
     no_args_is_help=True,
 )
+# Trace-level views over ~/.mycelium/metrics/traces.db.
+app.add_typer(traces_app, name="traces")
 
 _DEFAULT_PORT = 4318
-_ENV_PORT = "MYCELIUM_METRICS_PORT"
-_MYCELIUM_DIR = Path.home() / ".mycelium"
-_METRICS_JSON = _MYCELIUM_DIR / "metrics.json"
-_PID_FILE = _MYCELIUM_DIR / "collector.pid"
+
+
+def _config_collector_port() -> int:
+    """Read collector_port from config.toml (falls back to _DEFAULT_PORT)."""
+    try:
+        from mycelium.config import MyceliumConfig
+
+        return MyceliumConfig.load().runtime.collector_port
+    except Exception:
+        return _DEFAULT_PORT
+
+
+def _data_dir() -> Path:
+    """Resolve the Mycelium data directory, respecting MYCELIUM_DATA_DIR."""
+    return Path(os.environ.get("MYCELIUM_DATA_DIR") or Path.home() / ".mycelium")
+
+
+def _metrics_dir() -> Path:
+    """Resolve the metrics subdirectory under the data dir."""
+    return _data_dir() / "metrics"
+
+
+def _metrics_json() -> Path:
+    return _metrics_dir() / "metrics.json"
+
 
 console = Console()
 
 
 def _resolve_port(cli_port: int | None) -> int:
+    """Resolve the collector port: CLI flag > env var > config.toml > 4318."""
     if cli_port is not None:
         if not 1 <= cli_port <= 65535:
             typer.secho(f"✗ Invalid port {cli_port} (must be 1–65535)", fg=typer.colors.RED)
             raise typer.Exit(1)
         return cli_port
-    env = os.environ.get(_ENV_PORT)
+    env = os.environ.get("MYCELIUM_METRICS_PORT")
     if env:
         try:
             p = int(env)
@@ -51,26 +77,22 @@ def _resolve_port(cli_port: int | None) -> int:
                 return p
         except ValueError:
             pass
-    return _DEFAULT_PORT
+    return _config_collector_port()
 
 
-def _read_pid_file() -> tuple[int | None, int]:
-    """Read the PID and port from the collector PID file.
+def _port_in_use(port: int) -> bool:
+    """Return True if *port* is already bound on localhost."""
+    import socket as _sock
 
-    Returns (pid, port).  ``pid`` is None when the file is missing or
-    unparsable; ``port`` falls back to ``_DEFAULT_PORT``.
-    """
-    if not _PID_FILE.exists():
-        return None, _DEFAULT_PORT
+    s = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)
     try:
-        lines = _PID_FILE.read_text().strip().splitlines()
-        if not lines:
-            return None, _DEFAULT_PORT
-        pid = int(lines[0])
-        port = int(lines[1]) if len(lines) >= 2 else _DEFAULT_PORT
-        return pid, port
-    except (OSError, ValueError, IndexError):
-        return None, _DEFAULT_PORT
+        s.settimeout(1)
+        s.connect(("127.0.0.1", port))
+        return True
+    except OSError:
+        return False
+    finally:
+        s.close()
 
 
 def _check_otel_deps() -> bool:
@@ -103,42 +125,59 @@ def status() -> None:
         all_ok = False
 
     # ── Collector process ────────────────────────────────────────────────
-    collector_alive = False
-    collector_pid, collector_port = _read_pid_file()
-    if collector_pid is not None:
-        try:
-            os.kill(collector_pid, 0)
-            collector_alive = True
-        except OSError:
-            collector_alive = False
-    if collector_alive:
-        console.print(
-            f"[green]✓[/green] Collector running  PID {collector_pid}  port {collector_port}"
-        )
-    else:
-        console.print("[red]✗[/red] Collector not running")
-        if _PID_FILE.exists():
-            console.print(
-                "  [dim]Stale PID file exists — run [bold]mycelium metrics stop[/bold] to clean up[/dim]"
-            )
-        all_ok = False
+    collector_url = _get_collector_url()
+    collector_port = _resolve_port(None)
+    spoke = _is_spoke_mode()
 
-    collector_log = _MYCELIUM_DIR / "collector.log"
-    if not collector_alive and collector_log.exists():
-        try:
-            log_lines = collector_log.read_text().strip().splitlines()
-            recent = log_lines[-5:] if len(log_lines) > 5 else log_lines
-            if recent:
-                console.print(f"  [dim]Log ({collector_log}):[/dim]")
-                for ln in recent:
-                    console.print(f"  [dim]  {ln}[/dim]")
-        except OSError:
-            pass
+    if spoke and collector_url:
+        # Spoke mode: show hub (remote) AND local collector state
+        hub_alive = False
+        remote_data = _fetch_remote_metrics(collector_url)
+        if remote_data is not None:
+            hub_alive = True
+            console.print(f"[green]✓[/green] Hub collector      reachable ({collector_url})")
+        else:
+            console.print(f"[red]✗[/red] Hub collector      unreachable ({collector_url})")
+            all_ok = False
+
+        local_pid = _read_collector_pid()
+        local_alive = local_pid is not None or _port_in_use(collector_port)
+        if local_alive:
+            pid_label = f" PID {local_pid}" if local_pid else ""
+            console.print(
+                f"[green]✓[/green] Local collector    running on :{collector_port}{pid_label}"
+            )
+        else:
+            console.print(
+                f"[yellow]⚠[/yellow] Local collector    not running on :{collector_port}\n"
+                "  [dim]Start with [bold]mycelium metrics collect[/bold] for local OpenClaw data[/dim]"
+            )
+
+        collector_alive = hub_alive
+    else:
+        # Hub / local mode
+        collector_alive = False
+        collector_label = ""
+        if _docker_collector_running():
+            collector_alive = True
+            collector_label = "Docker container"
+        elif _port_in_use(collector_port):
+            collector_alive = True
+            collector_label = f"port {collector_port}"
+
+        if collector_alive:
+            console.print(f"[green]✓[/green] Collector running  {collector_label}")
+        else:
+            console.print(
+                "[red]✗[/red] Collector not running\n"
+                "  [dim]Start with [bold]mycelium up --metrics[/bold][/dim]"
+            )
+            all_ok = False
 
     # ── Metrics data file ────────────────────────────────────────────────
-    if _METRICS_JSON.exists():
+    if _metrics_json().exists():
         try:
-            stat = _METRICS_JSON.stat()
+            stat = _metrics_json().stat()
             mtime = datetime.fromtimestamp(stat.st_mtime, tz=UTC)
             age = datetime.now(UTC) - mtime
             age_str = f"{int(age.total_seconds())}s ago"
@@ -147,18 +186,18 @@ def status() -> None:
             elif age.total_seconds() > 60:
                 age_str = f"{int(age.total_seconds() / 60)}m ago"
 
-            data = json.loads(_METRICS_JSON.read_text())
+            data = json.loads(_metrics_json().read_text())
             sessions = data.get("sessions", [])
             counters = data.get("counters", {})
             msgs = counters.get("messages", {}).get("processed", 0)
             total_tok = counters.get("tokens", {}).get("total", {}).get("total", 0)
 
-            console.print(f"[green]✓[/green] Data file          {_METRICS_JSON}")
+            console.print(f"[green]✓[/green] Data file          {_metrics_json()}")
             console.print(
                 f"  [dim]Last updated {age_str}  •  {msgs} messages  •  {len(sessions)} sessions  •  {total_tok:,} tokens[/dim]"
             )
         except Exception:
-            console.print(f"[yellow]⚠[/yellow] Data file exists but unreadable: {_METRICS_JSON}")
+            console.print(f"[yellow]⚠[/yellow] Data file exists but unreadable: {_metrics_json()}")
             all_ok = False
     else:
         console.print("[yellow]⚠[/yellow] No metrics data yet (no messages received)")
@@ -280,193 +319,415 @@ def status() -> None:
         console.print("[bold yellow]Pipeline has issues — see above[/bold yellow]")
 
 
+def _docker_collector_running() -> bool:
+    """Return True if the mycelium-collector Docker container is running."""
+    try:
+        result = subprocess.run(
+            ["docker", "inspect", "-f", "{{.State.Running}}", "mycelium-collector"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+        return result.returncode == 0 and result.stdout.strip().lower() == "true"
+    except Exception:
+        return False
+
+
+def _is_spoke_mode() -> bool:
+    """True when this node is configured as a spoke (collector_url points to a remote host)."""
+    url = _get_collector_url()
+    if not url:
+        return False
+    from urllib.parse import urlparse
+
+    host = urlparse(url).hostname or ""
+    return host not in ("localhost", "127.0.0.1", "::1", "0.0.0.0", "")
+
+
+def _hub_suffix() -> str:
+    """Return '` (from hub)`' on a spoke, else ''.
+
+    Backend-sourced metrics on a spoke are proxied via the hub collector
+    rather than counted locally; tagging the title makes that clear so
+    a spoke operator doesn't think their node is doing the ingestion.
+    """
+    return " [dim](from hub)[/dim]" if _is_spoke_mode() else ""
+
+
+_AGENT_ROOM_CACHE: dict[str, str] | None = None
+
+
+def _resolve_agent_to_room() -> dict[str, str]:
+    """Return ``{agent_id: room_name}`` from local + reachable openclaw.json files.
+
+    The mycelium openclaw plugin's per-host config (``channels.mycelium-room``)
+    is the authoritative agent→room mapping — that's what tells the gateway
+    which OpenClaw agents fan into which Mycelium room. We read the local
+    file directly. In hub-and-spoke deployments, spoke agents won't appear
+    in the hub's config; covering them properly would require collecting
+    each spoke's mapping (future work — for now the local mapping is enough
+    to colour-code single-host deployments correctly and to label the
+    co-located agents on a hub).
+    """
+    global _AGENT_ROOM_CACHE
+    if _AGENT_ROOM_CACHE is not None:
+        return _AGENT_ROOM_CACHE
+    _AGENT_ROOM_CACHE = {}
+    try:
+        oc_json = Path.home() / ".openclaw" / "openclaw.json"
+        if not oc_json.exists():
+            return _AGENT_ROOM_CACHE
+        oc = json.loads(oc_json.read_text())
+        ch = (oc.get("channels") or {}).get("mycelium-room") or {}
+        room = ch.get("room")
+        agents = ch.get("agents") or []
+        if room and isinstance(agents, list):
+            for a in agents:
+                if isinstance(a, str):
+                    _AGENT_ROOM_CACHE[a] = room
+    except Exception:
+        pass
+    return _AGENT_ROOM_CACHE
+
+
+_ROOM_LOOKUP_CACHE: tuple[dict[str, str], dict[str, str]] | None = None
+
+# Per-invocation handle on the backend snapshot, so ``_resolve_room_lookup``
+# can layer the ``room_identities`` registry on top of ``/api/rooms``. Set
+# by ``show()`` after backend data is loaded, cleared at the end of the
+# invocation. The snapshot's identity entries win — they survive room
+# deletion, while /api/rooms is destructive (see Room model in
+# fastapi-backend/app/models.py — no ``deleted_at`` column).
+_SNAPSHOT_BACKEND_FOR_LOOKUP: dict | None = None
+
+
+def _set_room_lookup_context(backend: dict | None) -> None:
+    """Wire the backend snapshot into the next ``_resolve_room_lookup`` call.
+
+    Also invalidates any cached lookup so the new context takes effect.
+    Safe to call multiple times — the cache is rebuilt lazily on first
+    read after the context changes.
+    """
+    global _SNAPSHOT_BACKEND_FOR_LOOKUP, _ROOM_LOOKUP_CACHE
+    _SNAPSHOT_BACKEND_FOR_LOOKUP = backend
+    _ROOM_LOOKUP_CACHE = None
+
+
+def _resolve_room_lookup() -> tuple[dict[str, str], dict[str, str]]:
+    """Return ``(mas_to_name, name_to_mas)`` for the per-room metric tables.
+
+    Sources, merged in priority order (highest first):
+      1. The backend snapshot's ``room_identities`` map (populated by
+         ``record_room_identity`` server-side at write-time). Survives
+         room deletion, so it's the authoritative join for both alive
+         and tombstoned rooms.
+      2. ``GET /api/rooms`` — covers any room registered before the
+         server started tracking identities, but rows vanish on delete.
+
+    The result is cached for the lifetime of the CLI process — `metrics show`
+    runs are short-lived, and rooms rarely churn within a single invocation.
+    On any failure (no backend reachable, request error) we still return
+    whatever the snapshot gave us; if both are empty, two empty dicts so
+    the caller can fall back gracefully.
+    """
+    global _ROOM_LOOKUP_CACHE
+    if _ROOM_LOOKUP_CACHE is not None:
+        return _ROOM_LOOKUP_CACHE
+    mas_to_name: dict[str, str] = {}
+    name_to_mas: dict[str, str] = {}
+
+    # Source 1: snapshot identities — authoritative for both directions.
+    # These survive room deletion, so they override /api/rooms when both
+    # are present (in practice they'll agree for alive rooms).
+    snap = _SNAPSHOT_BACKEND_FOR_LOOKUP or {}
+    snapshot_ids = snap.get("room_identities") if isinstance(snap, dict) else None
+    if isinstance(snapshot_ids, dict):
+        for mas_id, name in snapshot_ids.items():
+            if mas_id and name:
+                mas_to_name[str(mas_id)] = str(name)
+                name_to_mas[str(name)] = str(mas_id)
+
+    # Source 2: /api/rooms — fills in anything the snapshot missed.
+    # ``setdefault`` semantics ensure snapshot wins on conflicts.
+    try:
+        from mycelium.config import MyceliumConfig
+
+        api_url = MyceliumConfig.load().server.api_url
+        if not api_url:
+            _ROOM_LOOKUP_CACHE = (mas_to_name, name_to_mas)
+            return _ROOM_LOOKUP_CACHE
+        import httpx
+
+        resp = httpx.get(
+            f"{api_url.rstrip('/')}/api/rooms",
+            headers={"Accept": "application/json"},
+            timeout=2.0,
+        )
+        if resp.status_code != 200:
+            _ROOM_LOOKUP_CACHE = (mas_to_name, name_to_mas)
+            return _ROOM_LOOKUP_CACHE
+        rooms = resp.json()
+        if not isinstance(rooms, list):
+            _ROOM_LOOKUP_CACHE = (mas_to_name, name_to_mas)
+            return _ROOM_LOOKUP_CACHE
+        for r in rooms:
+            mas_id = r.get("mas_id")
+            name = r.get("name")
+            if mas_id and name:
+                mas_to_name.setdefault(str(mas_id), str(name))
+                name_to_mas.setdefault(str(name), str(mas_id))
+    except Exception:
+        # Caching the (possibly snapshot-only) result is intentional —
+        # avoid retrying a failed lookup repeatedly within the same
+        # render pass.
+        pass
+    _ROOM_LOOKUP_CACHE = (mas_to_name, name_to_mas)
+    return _ROOM_LOOKUP_CACHE
+
+
+def _resolve_room_names_by_mas() -> dict[str, str]:
+    """Backwards-compatible accessor — returns just the ``mas → name`` map."""
+    return _resolve_room_lookup()[0]
+
+
+def _resolve_mas_by_room_name() -> dict[str, str]:
+    """Return the ``room_name → mas_id`` map (companion to the above)."""
+    return _resolve_room_lookup()[1]
+
+
+def _format_mas(mas_id: str, *, detail: bool = False) -> str:
+    """Format a mas_id for the MAS column.
+
+    Short 8-char prefix by default (keeps the column narrow); full UUID
+    under ``--detail`` so operators can copy-paste without a second
+    ``/api/rooms`` lookup.
+    """
+    if not mas_id:
+        return ""
+    return str(mas_id) if detail else str(mas_id)[:8]
+
+
+def _collector_pid_file() -> Path:
+    """Path to the spoke collector PID file."""
+    return _metrics_dir() / "collector.pid"
+
+
+def _read_collector_pid() -> int | None:
+    """Return the PID from the collector PID file, or None."""
+    pf = _collector_pid_file()
+    if not pf.exists():
+        return None
+    try:
+        pid = int(pf.read_text().strip())
+        os.kill(pid, 0)
+        return pid
+    except (ValueError, ProcessLookupError, PermissionError):
+        pf.unlink(missing_ok=True)
+        return None
+
+
 @app.command("collect")
 def collect(
-    port: int | None = typer.Option(
-        None, "--port", "-p", help=f"OTLP receiver port (default: {_DEFAULT_PORT})"
-    ),
-    backend_url: str | None = typer.Option(
-        None,
-        "--backend-url",
-        "-b",
-        help="Mycelium backend URL for polling /api/observability (default: server.api_url from config)",
-    ),
-    fg: bool = typer.Option(
-        False, "--fg", help="Run collector in the foreground (default: background)"
+    port: int | None = typer.Option(None, "--port", "-p", help="OTLP listen port"),
+    foreground: bool = typer.Option(
+        False, "--foreground", "-f", help="Run in the foreground instead of daemonizing"
     ),
 ) -> None:
-    """Start the OTLP HTTP receiver to collect OpenClaw telemetry."""
+    """Start the spoke OTLP collector (background by default).
+
+    Accepts OpenClaw OTLP pushes and writes to the local metrics file.
+    Backend polling and Prometheus scraping are disabled — use this on
+    spoke nodes that fetch hub data via ``collector_url``.
+
+    Stop with ``mycelium metrics stop``.
+    """
+    if not _is_spoke_mode():
+        typer.secho(
+            "✗ 'collect' is for spoke nodes only.\n"
+            "  Set metrics.collector_url in config.toml (or MYCELIUM_COLLECTOR_URL)\n"
+            "  to point at the hub collector, then re-run.\n"
+            "  On hub/local nodes use: mycelium up --metrics",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(1)
+
     if not _check_otel_deps():
         raise typer.Exit(1)
 
-    from mycelium.config import MyceliumConfig
-
     resolved_port = _resolve_port(port)
-    if backend_url is None:
-        backend_url = MyceliumConfig.load().server.api_url
 
-    if not fg:
-        _MYCELIUM_DIR.mkdir(parents=True, exist_ok=True)
-
-        old_pid, old_port = _read_pid_file()
-        if old_pid is not None:
-            try:
-                os.kill(old_pid, 0)
-                typer.secho(
-                    f"Collector already running (PID {old_pid}) on port {old_port}",
-                    fg=typer.colors.YELLOW,
-                )
-                return
-            except OSError:
-                _PID_FILE.unlink(missing_ok=True)
-
-        # Guard: even without a valid PID file, check if the port is busy
-        import socket as _sock
-
-        _probe = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)
-        try:
-            _probe.bind(("127.0.0.1", resolved_port))
-        except OSError:
-            typer.secho(
-                f"Collector already running on port {resolved_port} (stale PID file)",
-                fg=typer.colors.YELLOW,
-            )
-            return
-        finally:
-            _probe.close()
-
-        log_file = _MYCELIUM_DIR / "collector.log"
-        log_fh = open(log_file, "a")  # noqa: SIM115
-
-        proc = subprocess.Popen(
-            [
-                sys.executable,
-                "-m",
-                "mycelium.collector_main",
-                "--port",
-                str(resolved_port),
-                "--backend-url",
-                backend_url,
-            ],
-            stdout=log_fh,
-            stderr=log_fh,
-            start_new_session=True,
+    existing_pid = _read_collector_pid()
+    if existing_pid:
+        typer.secho(
+            f"✗ Spoke collector already running (PID {existing_pid}).\n"
+            "  Stop it first with: mycelium metrics stop",
+            fg=typer.colors.RED,
         )
+        raise typer.Exit(1)
 
-        _PID_FILE.write_text(f"{proc.pid}\n{resolved_port}\n")
+    if _port_in_use(resolved_port):
+        typer.secho(
+            f"✗ Port {resolved_port} is already in use. "
+            "Stop the existing process or choose a different port with --port.",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(1)
 
-        import time as _time
+    output = _metrics_json()
+    _ensure_shared_dir(output.parent)
 
-        _time.sleep(0.5)
-        exit_code = proc.poll()
-        if exit_code is not None:
-            _PID_FILE.unlink(missing_ok=True)
-            typer.secho(
-                f"✗ Collector exited immediately (code {exit_code}). Check {log_file}",
-                fg=typer.colors.RED,
-            )
-            raise typer.Exit(1)
+    hub_url = _get_collector_url()
 
-        typer.secho(f"✓ Collector started (PID {proc.pid})", fg=typer.colors.GREEN)
-        typer.echo(f"  OTLP receiver on port {resolved_port}")
-        typer.echo(f"  Metrics file: {_METRICS_JSON}")
-        typer.echo(f"  Log file: {log_file}")
-    else:
-        # Check if something is already listening on the port
-        import socket
+    if foreground:
+        typer.echo(f"Starting spoke collector on :{resolved_port} (foreground)")
+        typer.echo(f"  Data: {output}")
+        if hub_url:
+            typer.echo(f"  Forwarding OTLP to hub: {hub_url}")
+        typer.echo("  Press Ctrl+C to stop\n")
 
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            sock.bind(("127.0.0.1", resolved_port))
-        except OSError:
-            typer.secho(
-                f"✗ Port {resolved_port} is already in use.",
-                fg=typer.colors.RED,
-            )
-            bg_pid, _ = _read_pid_file()
-            if bg_pid is not None:
-                try:
-                    os.kill(bg_pid, 0)
-                    typer.echo(
-                        f"  A background collector is running (PID {bg_pid}).\n"
-                        f"  Stop it first:  mycelium metrics stop"
-                    )
-                except OSError:
-                    typer.echo("  Another process is using this port.")
-            else:
-                typer.echo("  Another process is using this port.")
-            raise typer.Exit(1)
-        finally:
-            sock.close()
+        from mycelium.collector import run as collector_run
 
+        collector_run(resolved_port, output, no_backend=True, hub_url=hub_url)
+        return
+
+    _daemonize_collector(resolved_port, output, hub_url)
+
+
+def _daemonize_collector(port: int, output: Path, hub_url: str | None) -> None:
+    """Fork the collector into the background and write a PID file."""
+    import signal
+
+    if not hasattr(os, "fork"):
+        typer.secho(
+            "✗ Background daemonization requires os.fork() (macOS/Linux).",
+            fg=typer.colors.RED,
+        )
+        typer.echo("  On Windows, run the collector in the foreground with --foreground.")
+        raise typer.Exit(1)
+
+    log_file = _metrics_dir() / "collector.log"
+    pid_file = _collector_pid_file()
+
+    # Pipe for the grandchild daemon to report its PID to the original parent
+    read_fd, write_fd = os.pipe()
+
+    child_pid = os.fork()
+    if child_pid != 0:
+        os.close(write_fd)
+        # Wait for the intermediate child to exit
+        os.waitpid(child_pid, 0)
+        # Read the daemon (grandchild) PID from the pipe
+        with os.fdopen(read_fd) as f:
+            daemon_pid = f.read().strip()
+        typer.secho(f"✓ Spoke collector started (PID {daemon_pid})", fg=typer.colors.GREEN)
+        typer.echo(f"  Port: {port}")
+        typer.echo(f"  Data: {output}")
+        if hub_url:
+            typer.echo(f"  Forwarding OTLP to hub: {hub_url}")
+        typer.echo(f"  Log:  {log_file}")
+        typer.echo("  Stop: mycelium metrics stop")
+        return
+
+    # ── Child process (intermediate) ──
+    os.close(read_fd)
+    os.setsid()
+
+    # Second fork to fully detach
+    if os.fork() != 0:
+        os.close(write_fd)
+        os._exit(0)
+
+    # ── Grandchild (actual daemon) ──
+    daemon_pid_str = str(os.getpid())
+    os.write(write_fd, daemon_pid_str.encode())
+    os.close(write_fd)
+
+    pid_file.write_text(daemon_pid_str)
+
+    # Redirect stdio to log file
+    sys.stdin.close()
+    fd = os.open(str(log_file), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+    os.dup2(fd, 1)
+    os.dup2(fd, 2)
+    os.close(fd)
+
+    def _cleanup(signum: int, _frame: object) -> None:
+        pid_file.unlink(missing_ok=True)
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, _cleanup)
+    signal.signal(signal.SIGINT, _cleanup)
+
+    try:
         import logging
 
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+        from mycelium.collector import run as collector_run
 
-        typer.echo(f"Starting OTLP collector on port {resolved_port}...")
-        typer.echo("Press Ctrl+C to stop.\n")
-
-        from mycelium.collector import run as run_collector
-
-        scrape_targets = MyceliumConfig.load().resolve_scrape_targets()
-        run_collector(
-            resolved_port,
-            _METRICS_JSON,
-            backend_api_url=backend_url,
-            scrape_targets=scrape_targets,
-        )
+        collector_run(port, output, no_backend=True, hub_url=hub_url)
+    finally:
+        pid_file.unlink(missing_ok=True)
 
 
 @app.command("stop")
-def stop() -> None:
-    """Stop the background OTLP collector."""
-    if not _PID_FILE.exists():
-        typer.secho("No collector running (PID file not found).", fg=typer.colors.YELLOW)
-        raise typer.Exit(0)
+def stop_collector() -> None:
+    """Stop the metrics collector.
 
-    pid, _ = _read_pid_file()
-    if pid is None:
-        typer.secho("Could not read collector PID.", fg=typer.colors.RED)
-        _PID_FILE.unlink(missing_ok=True)
-        return
+    On spoke nodes, stops the background spoke collector process.
+    On hub/local nodes, stops the Dockerized collector container.
+    """
+    import signal
 
-    try:
-        os.kill(pid, signal.SIGTERM)
-    except ProcessLookupError:
-        typer.secho(f"Collector (PID {pid}) already exited.", fg=typer.colors.YELLOW)
-        _PID_FILE.unlink(missing_ok=True)
-        return
-    except OSError as exc:
-        typer.secho(f"Could not stop collector (PID {pid}): {exc}", fg=typer.colors.RED)
-        return
+    spoke = _is_spoke_mode()
 
-    import time as _time
+    if spoke:
+        pid = _read_collector_pid()
+        if pid is None:
+            port = _resolve_port(None)
+            if _port_in_use(port):
+                typer.secho(
+                    f"⚠ Collector appears to be running on :{port} but no PID file found.\n"
+                    "  It may have been started in foreground mode — Ctrl+C it directly.",
+                    fg=typer.colors.YELLOW,
+                )
+                raise typer.Exit(1)
+            typer.echo("Spoke collector is not running.")
+            return
 
-    stopped = False
-    for _ in range(20):
-        _time.sleep(0.1)
         try:
-            os.kill(pid, 0)
+            os.kill(pid, signal.SIGTERM)
+            typer.secho(f"✓ Spoke collector stopped (PID {pid})", fg=typer.colors.GREEN)
         except ProcessLookupError:
-            stopped = True
-            break
-
-    if stopped:
-        typer.secho(f"✓ Collector stopped (PID {pid})", fg=typer.colors.GREEN)
-        _PID_FILE.unlink(missing_ok=True)
+            typer.echo("Spoke collector is not running (stale PID file cleaned up).")
+        _collector_pid_file().unlink(missing_ok=True)
     else:
-        typer.secho(
-            f"⚠ Collector (PID {pid}) still running after SIGTERM. "
-            "It may need to be killed manually.",
-            fg=typer.colors.YELLOW,
+        if not _docker_collector_running():
+            typer.echo("Collector container is not running.")
+            return
+        typer.echo("Stopping collector container...")
+        result = subprocess.run(
+            ["docker", "stop", "mycelium-collector"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
         )
+        if result.returncode == 0:
+            typer.secho("✓ Collector container stopped", fg=typer.colors.GREEN)
+        else:
+            typer.secho(
+                f"✗ Failed to stop collector: {result.stderr.strip()}",
+                fg=typer.colors.RED,
+            )
+            raise typer.Exit(1)
 
 
 @app.command("reset")
 def reset() -> None:
     """Delete collected metrics data."""
-    if _METRICS_JSON.exists():
-        _METRICS_JSON.unlink()
+    if _metrics_json().exists():
+        _metrics_json().unlink()
         typer.secho("✓ Metrics data cleared.", fg=typer.colors.GREEN)
     else:
         typer.echo("No metrics data to clear.")
@@ -594,12 +855,12 @@ def _resolve_litellm_key(model_string: str) -> str:
 def _discover_models_from_metrics() -> list[str]:
     """Extract model names from collected metrics not covered by _TRACKED_MODELS.
 
-    Reads ``~/.mycelium/metrics.json`` and returns model strings from:
+    Reads metrics.json from the metrics directory and returns model strings from:
       - OTLP: ``counters.tokens.by_model`` keys
       - Backend: ``backend.counters.llm.by_model.*`` keys
     """
     try:
-        data = json.loads(_METRICS_JSON.read_text())
+        data = json.loads(_metrics_json().read_text())
     except (OSError, json.JSONDecodeError):
         return []
 
@@ -647,13 +908,13 @@ def update_pricing(
 ) -> None:
     """Fetch latest LLM pricing from the LiteLLM Model Catalog API.
 
-    Writes updated pricing to ~/.mycelium/pricing.json, which is used by
-    ``mycelium metrics show cost`` for cost estimates. Falls back to the
-    bundled pricing.json when the local cache is missing.
+    Writes updated pricing to ``$MYCELIUM_DATA_DIR/metrics/pricing.json``,
+    which is used by ``mycelium metrics show cost`` for cost estimates.
+    Falls back to the bundled pricing.json when the local cache is missing.
 
     Models are sourced from three places (in order):
       1. Built-in tracked models (14 common Anthropic/OpenAI models)
-      2. Auto-discovered models from collected metrics (~/.mycelium/metrics.json)
+      2. Auto-discovered models from collected metrics (metrics/metrics.json)
       3. Manually added models via --add
     """
     from datetime import UTC, datetime
@@ -759,13 +1020,13 @@ def update_pricing(
         },
     }
 
-    _MYCELIUM_DIR.mkdir(parents=True, exist_ok=True)
-    _USER_PRICING_JSON.write_text(json.dumps(output, indent=2) + "\n")
+    _ensure_shared_dir(_metrics_dir())
+    _user_pricing_json().write_text(json.dumps(output, indent=2) + "\n")
 
     global _pricing_data
     _pricing_data = None
 
-    console.print(f"[green]Wrote {_USER_PRICING_JSON}[/green]")
+    console.print(f"[green]Wrote {_user_pricing_json()}[/green]")
 
     if warnings:
         for w in warnings:
@@ -828,6 +1089,22 @@ def show(
         "--include-heartbeat",
         help="Include OpenClaw 'heartbeat' channel tokens in totals (excluded by default).",
     ),
+    host: str | None = typer.Option(
+        None,
+        "--host",
+        help="Filter to a specific spoke host (IP or hostname from OTLP resource attributes).",
+    ),
+    detail: bool = typer.Option(
+        False,
+        "--detail",
+        help=(
+            "Expand truncated 'By room' tables and show full mas_id UUIDs. "
+            "Without this flag those sub-tables show only the top 5 rooms "
+            "with an '...and N more' tail and mas_ids are truncated to 8 "
+            "chars; with --detail every non-zero row renders and the MAS "
+            "column shows the full UUID."
+        ),
+    ),
 ) -> None:
     """
     Display collected metrics with agent metadata and workspace sizes.
@@ -849,13 +1126,33 @@ def show(
     oc_status = _get_openclaw_status()
 
     if otel_data is None and oc_status is None:
-        console.print(
-            "[yellow]No metrics data available.[/yellow]\n\n"
-            "  Start the collector:  [bold]mycelium metrics collect[/bold]\n"
-            "  (runs in background by default; use --fg for foreground)\n\n"
-            "  Make sure OpenClaw's diagnostics-otel plugin is configured:\n"
-            "    [bold]mycelium adapter add openclaw --step=otel[/bold]"
+        spoke = _is_spoke_mode()
+        hub_url = _get_collector_url()
+        collector_up = (
+            _docker_collector_running()
+            or _port_in_use(_resolve_port(None))
+            or (spoke and hub_url is not None and _fetch_remote_metrics(hub_url) is not None)
         )
+        if collector_up:
+            console.print(
+                "[yellow]No metrics data yet.[/yellow]\n\n"
+                "  The collector is running but hasn't received data.\n"
+                "  Make sure agents are active and OpenClaw's diagnostics-otel\n"
+                "  plugin is configured:\n"
+                "    [bold]mycelium adapter add openclaw --step=otel[/bold]"
+            )
+        else:
+            hint = (
+                "  Start the local collector:  [bold]mycelium metrics collect[/bold]"
+                if spoke
+                else "  Start the collector:  [bold]mycelium up --metrics[/bold]"
+            )
+            console.print(
+                f"[yellow]No metrics data available.[/yellow]\n\n"
+                f"{hint}\n\n"
+                "  Make sure OpenClaw's diagnostics-otel plugin is configured:\n"
+                "    [bold]mycelium adapter add openclaw --step=otel[/bold]"
+            )
         raise typer.Exit(0)
 
     agents_meta = _extract_agents(oc_status)
@@ -863,6 +1160,7 @@ def show(
     oc_cost = _extract_oc_cost(oc_status)
 
     backend_data = (otel_data or {}).get("backend")
+    _set_room_lookup_context(backend_data)
 
     if json_output:
         combined = {
@@ -879,6 +1177,9 @@ def show(
         return
 
     # ── Dispatch by section ───────────────────────────────────────────
+    if host and section is None:
+        section = "openclaw"
+
     if section is None:
         _render_overview(otel_data, oc_cost, backend_data, include_heartbeat=include_heartbeat)
         return
@@ -897,23 +1198,33 @@ def show(
         )
 
     if show_openclaw:
-        _render_summary_table(
-            otel_data,
-            oc_status,
-            include_background=include_heartbeat,
-        )
-        _render_cache_efficiency_table(otel_data, include_background=include_heartbeat)
-        _render_agent_table(otel_data, agents_meta)
-        if otel_data and otel_data.get("sessions"):
-            _render_session_table(otel_data["sessions"])
-        if workspace:
-            _render_workspace_tables(agents_meta)
+        if host:
+            _render_host_filtered_view(otel_data, host)
+            return
+        else:
+            _render_summary_table(
+                otel_data,
+                oc_status,
+                include_background=include_heartbeat,
+            )
+            _render_cache_efficiency_table(otel_data, include_background=include_heartbeat)
+            _render_agent_table(otel_data, agents_meta)
+            if otel_data and otel_data.get("sessions"):
+                _render_session_table(otel_data["sessions"])
+            if workspace:
+                _render_workspace_tables(agents_meta)
+            if not _is_spoke_mode():
+                _render_spoke_sites_table(otel_data)
 
     if show_mycelium:
         if not backend_data:
-            console.print(
-                "[dim]Backend metrics not collected (spoke mode or collector not running)[/dim]"
-            )
+            if _is_spoke_mode():
+                console.print(
+                    "[dim]Backend metrics not yet available from hub. "
+                    "Ensure the hub collector is running.[/dim]"
+                )
+            else:
+                console.print("[dim]Backend metrics not collected (collector not running)[/dim]")
             console.print()
         else:
             rendered = False
@@ -932,12 +1243,12 @@ def show(
                 _render_mycelium_llm_table(backend_data)
                 rendered = True
             if has_knowledge:
-                _render_knowledge_table(backend_data)
+                _render_knowledge_table(backend_data, detail=detail)
                 rendered = True
 
             if not rendered:
                 table = Table(
-                    title="Mycelium Backend",
+                    title=f"Mycelium Backend{_hub_suffix()}",
                     title_style="bold magenta",
                     title_justify="left",
                     show_header=False,
@@ -952,8 +1263,8 @@ def show(
                 console.print()
 
     if show_cfn:
-        _render_coordination_table(backend_data)
-        _render_cfn_llm_usage_table(backend_data)
+        _render_coordination_table(backend_data, detail=detail)
+        _render_cfn_llm_usage_table(backend_data, detail=detail)
         _render_cfn_transport_table(backend_data)
         _render_cfn_scrape_table((otel_data or {}).get("scrape"))
         if not backend_data and not (otel_data or {}).get("scrape"):
@@ -1016,7 +1327,10 @@ def _render_overview(
         knowledge = be_counters.get("knowledge", {})
         indexer = be_counters.get("indexer", {})
 
-        table.add_row("[magenta]Mycelium Backend[/magenta]", "")
+        be_label = "[magenta]Mycelium Backend[/magenta]"
+        if _is_spoke_mode():
+            be_label += " [dim](from hub)[/dim]"
+        table.add_row(be_label, "")
         has_be_row = False
         if llm.get("calls", 0) > 0:
             table.add_row("  LLM calls", _fmt_num(llm["calls"]))
@@ -1051,9 +1365,8 @@ def _render_overview(
         if not has_be_row:
             table.add_row("  [dim]No activity yet[/dim]", "")
     else:
-        table.add_row(
-            "[magenta]Mycelium Backend[/magenta]", "[dim]not collected (spoke mode)[/dim]"
-        )
+        label = "[dim]via hub[/dim]" if _is_spoke_mode() else ""
+        table.add_row("[magenta]Mycelium Backend[/magenta]", f"[dim]No activity yet[/dim] {label}")
 
     # ── CFN section ───────────────────────────────────────────────────
     table.add_section()
@@ -1069,7 +1382,10 @@ def _render_overview(
             or cfn_llm.get("calls", 0) > 0
         )
 
-        table.add_row("[blue]CFN[/blue]", "")
+        cfn_label = "[blue]CFN[/blue]"
+        if _is_spoke_mode():
+            cfn_label += " [dim](from hub)[/dim]"
+        table.add_row(cfn_label, "")
         if has_cfn:
             started = coord.get("sessions_started", 0)
             completed = coord.get("sessions_completed", 0)
@@ -1105,24 +1421,120 @@ def _render_overview(
         else:
             table.add_row("  [dim]No CFN activity yet[/dim]", "")
     else:
-        table.add_row("[blue]CFN[/blue]", "[dim]not collected (spoke mode)[/dim]")
+        label = "[dim]via hub[/dim]" if _is_spoke_mode() else ""
+        table.add_row("[blue]CFN[/blue]", f"[dim]No activity yet[/dim] {label}")
 
     console.print(table)
     console.print()
+
+    by_host = (otel or {}).get("by_host", {})
+    is_spoke = _is_spoke_mode()
+    if by_host and not is_spoke:
+        host_table = Table(
+            title="Spoke Sites",
+            title_style="bold cyan",
+            title_justify="left",
+            show_header=True,
+            border_style="dim",
+        )
+        host_table.add_column("Host", style="bold")
+        host_table.add_column("Agents")
+        host_table.add_column("Spans", justify="right")
+        host_table.add_column("Last Seen")
+        for hk in sorted(by_host, key=lambda h: by_host[h].get("last_seen", ""), reverse=True):
+            hd = by_host[hk]
+            agents = ", ".join(hd.get("agents", [])) or "—"
+            spans = str(hd.get("spans", 0))
+            last = hd.get("last_seen", "—")
+            if last and last != "—":
+                try:
+                    from datetime import datetime
+
+                    dt = datetime.fromisoformat(last.replace("Z", "+00:00"))
+                    last = dt.strftime("%H:%M:%S")
+                except Exception:
+                    pass
+            host_table.add_row(hk, agents, spans, last)
+        console.print(host_table)
+        console.print()
+
     console.print("[dim]Detail: mycelium metrics show <openclaw|mycelium|cfn|cost>[/dim]")
+    if by_host and not is_spoke:
+        console.print("[dim]Filter: mycelium metrics show --host <HOST>[/dim]")
     console.print()
 
 
-def _load_metrics_json() -> dict | None:
-    if not _METRICS_JSON.exists():
+def _get_collector_url() -> str | None:
+    """Return the configured remote collector URL, or None for local mode."""
+    try:
+        from mycelium.config import MyceliumConfig
+
+        return MyceliumConfig.load().metrics.collector_url or None
+    except Exception:
+        return None
+
+
+def _fetch_remote_metrics(collector_url: str) -> dict | None:
+    """GET /collector/metrics from a remote collector (best-effort)."""
+    import urllib.request
+
+    url = f"{collector_url.rstrip('/')}/collector/metrics"
+    try:
+        req = urllib.request.Request(url, method="GET")
+        with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
+            return json.loads(resp.read())
+    except Exception:
+        return None
+
+
+def _load_local_metrics() -> dict | None:
+    """Load metrics from the local metrics.json file (if it exists)."""
+    if not _metrics_json().exists():
         return None
     try:
-        return json.loads(_METRICS_JSON.read_text())
+        return json.loads(_metrics_json().read_text())
     except (json.JSONDecodeError, OSError):
         return None
 
 
-_OC_STATUS_CACHE = _MYCELIUM_DIR / "openclaw_status_cache.json"
+def _load_metrics_json() -> dict | None:
+    """Load metrics data, merging local and remote sources in spoke mode.
+
+    Hub / local mode (no ``collector_url`` or it points to localhost):
+      Read only the local ``metrics.json`` — the Docker collector already
+      has everything.
+
+    Spoke mode (``collector_url`` points to a remote hub):
+      1. Fetch backend + CFN data from the hub's ``/collector/metrics``.
+      2. Read local ``metrics.json`` for OpenClaw OTLP data written by
+         the lightweight spoke collector.
+      3. Merge: local OpenClaw counters/histograms/sessions take priority;
+         hub ``backend`` and ``scrape`` sections are overlaid.
+    """
+    if not _is_spoke_mode():
+        return _load_local_metrics()
+
+    hub_url = _get_collector_url()
+    hub_data = _fetch_remote_metrics(hub_url) if hub_url else None
+    local_data = _load_local_metrics()
+
+    if hub_data is None and local_data is None:
+        return None
+    if hub_data is None:
+        return local_data
+    if local_data is None:
+        return hub_data
+
+    merged = dict(local_data)
+    if "backend" in hub_data:
+        merged["backend"] = hub_data["backend"]
+    if "scrape" in hub_data:
+        merged["scrape"] = hub_data["scrape"]
+    merged.setdefault("updated_at", hub_data.get("updated_at", ""))
+    return merged
+
+
+_OC_STATUS_CACHE = _data_dir() / "openclaw_status_cache.json"
 _OC_STATUS_MAX_AGE_S = 60
 
 
@@ -1258,12 +1670,6 @@ def _extract_oc_cost(oc: dict | None) -> dict | None:
     return oc.get("cost")
 
 
-def _get_port() -> int:
-    """Read actual port from PID file (line 2)."""
-    _, port = _read_pid_file()
-    return port
-
-
 def _fmt_num(n: int | float | None) -> str:
     if n is None:
         return "—"
@@ -1279,6 +1685,42 @@ def _fmt_cost(n: float | None) -> str:
     if n is None:
         return "—"
     return f"${n:,.4f}"
+
+
+def _parent_room(label: str) -> str:
+    """Strip ``:session:<uuid>`` suffix so per-session counters roll up to the
+    user-visible parent room. Used by multiple renderers that aggregate
+    session-scoped backend counters; lifted here to keep the bucketing
+    consistent and avoid the bug fixed in #295 where each renderer had to
+    remember to strip *before* keying its dict (not just *while* labelling).
+    """
+    return label.split(":session:", 1)[0] if ":session:" in label else label
+
+
+def _aggregate_by_room(
+    counters: dict[str, int | float], *, prefix: str = "by_room."
+) -> dict[str, dict[str, int | float]]:
+    """Group ``<prefix><room>.<metric>`` counters by parent room.
+
+    Returns ``{room: {metric: total}}`` with sessions of the same parent
+    folded together via :func:`_parent_room`. Used by the cost estimates
+    panel (#297) and any future renderer that needs to roll up a
+    ``by_room`` namespace; centralising the bucketing here means the
+    ``:session:`` rollup rule is applied exactly once and the same way
+    everywhere.
+    """
+    out: dict[str, dict[str, int | float]] = {}
+    for key, val in counters.items():
+        if not key.startswith(prefix):
+            continue
+        rest = key[len(prefix) :]
+        if "." not in rest:
+            continue
+        room_part, metric = rest.rsplit(".", 1)
+        room = _parent_room(room_part)
+        bucket = out.setdefault(room, {})
+        bucket[metric] = bucket.get(metric, 0) + (val or 0)
+    return out
 
 
 def _sparkline(min_v: float, avg_v: float, max_v: float, width: int = 8) -> str:
@@ -1921,7 +2363,12 @@ def _oc_token_totals(
 
 
 _BUNDLED_PRICING_JSON = Path(__file__).resolve().parent.parent / "data" / "pricing.json"
-_USER_PRICING_JSON = _MYCELIUM_DIR / "pricing.json"
+
+
+def _user_pricing_json() -> Path:
+    return _metrics_dir() / "pricing.json"
+
+
 _pricing_data: dict | None = None
 
 
@@ -1929,14 +2376,14 @@ def _load_pricing() -> dict:
     """Load pricing data (cached after first call).
 
     Resolution order:
-      1. ``~/.mycelium/pricing.json`` — written by ``mycelium metrics update-pricing``
+      1. ``$MYCELIUM_DATA_DIR/metrics/pricing.json`` — written by ``mycelium metrics update-pricing``
       2. Bundled ``data/pricing.json`` — shipped with the CLI package
     """
     global _pricing_data
     if _pricing_data is not None:
         return _pricing_data
 
-    for path in (_USER_PRICING_JSON, _BUNDLED_PRICING_JSON):
+    for path in (_user_pricing_json(), _BUNDLED_PRICING_JSON):
         try:
             data = json.loads(path.read_text())
             if data.get("models"):
@@ -2127,7 +2574,7 @@ def _render_cost_avoidance_table(backend: dict | None) -> None:
     console.print()
 
 
-def _render_knowledge_table(backend: dict | None) -> None:
+def _render_knowledge_table(backend: dict | None, *, detail: bool = False) -> None:
     """Render a panel showing knowledge ingestion activity."""
     if not backend:
         return
@@ -2139,25 +2586,74 @@ def _render_knowledge_table(backend: dict | None) -> None:
         return
 
     table = Table(
-        title="Knowledge Ingestion",
+        title=f"Knowledge Ingestion{_hub_suffix()}",
         title_style="bold magenta",
         title_justify="left",
         show_header=False,
         border_style="dim",
     )
     table.add_column("Metric", style="bold")
+    # MAS column makes the by-room sub-section unambiguous: the counter is
+    # stored by ``mas_id``, so when the room is no longer in the registry
+    # (e.g., transient e2e rooms) the room cell is blank but the mas_id
+    # still anchors the row. For aggregate rows above, this cell is empty.
+    table.add_column("MAS", style="dim", no_wrap=True)
     table.add_column("Value", justify="right")
 
     if ingestions > 0:
-        table.add_row("Ingestions", _fmt_num(ingestions))
+        table.add_row("Ingestions", "", _fmt_num(ingestions))
     if writes > 0:
-        table.add_row("Shared-memory writes", _fmt_num(writes))
+        table.add_row("Shared-memory writes", "", _fmt_num(writes))
     errors = knowledge.get("errors", 0)
     if errors > 0:
-        table.add_row("Errors", f"[red]{_fmt_num(errors)}[/red]")
+        table.add_row("Errors", "", f"[red]{_fmt_num(errors)}[/red]")
     skipped = knowledge.get("skipped", 0)
     if skipped > 0:
-        table.add_row("Skipped (dedupe)", _fmt_num(skipped))
+        table.add_row("Skipped (dedupe)", "", _fmt_num(skipped))
+
+    # Per-MAS / per-room breakdown when the backend has tagged ingestions.
+    # We aggregate into ``{mas_id: {ingestions, errors, tokens}}`` then
+    # resolve mas_id → room name for display where possible. Unresolved
+    # mas_ids (room deleted from /api/rooms) leave the room cell blank
+    # but still appear in the MAS column.
+    by_mas: dict[str, dict[str, int]] = {}
+    for key, val in knowledge.items():
+        if not key.startswith("by_mas."):
+            continue
+        rest = key.removeprefix("by_mas.")
+        mas_id, _, metric = rest.partition(".")
+        if not mas_id or not metric:
+            continue
+        by_mas.setdefault(mas_id, {"ingestions": 0, "errors": 0, "estimated_input_tokens": 0})
+        if metric in by_mas[mas_id]:
+            by_mas[mas_id][metric] += int(val or 0)
+
+    if by_mas:
+        room_map = _resolve_room_names_by_mas()
+        table.add_section()
+        table.add_row("[dim]By room:[/dim]", "[dim]MAS id[/dim]", "")
+        ranked = sorted(by_mas.items(), key=lambda kv: kv[1].get("ingestions", 0), reverse=True)
+        cap = len(ranked) if detail else 5
+        for mas_id, stats in ranked[:cap]:
+            room_label = room_map.get(mas_id, "")
+            n_ing = stats.get("ingestions", 0)
+            n_err = stats.get("errors", 0)
+            n_tok = stats.get("estimated_input_tokens", 0)
+            parts = [f"{_fmt_num(n_ing)} ingest"]
+            if n_tok > 0:
+                parts.append(f"~{_fmt_num(n_tok)} tok")
+            if n_err > 0:
+                parts.append(f"[red]{n_err} err[/red]")
+            # Blank room cell when unresolved — the mas_id alone identifies
+            # the row, matching the CLI's normal "tombstone" semantics.
+            room_cell = f"  {room_label}" if room_label else "  [dim](deleted)[/dim]"
+            table.add_row(room_cell, _format_mas(mas_id, detail=detail), "  ·  ".join(parts))
+        if len(ranked) > cap:
+            table.add_row(
+                f"  [dim]...and {len(ranked) - cap} more (use --detail to expand)[/dim]",
+                "",
+                "",
+            )
 
     console.print(table)
     console.print()
@@ -2177,7 +2673,7 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
         return
 
     table = Table(
-        title="Mycelium Backend LLM Usage",
+        title=f"Mycelium Backend LLM Usage{_hub_suffix()}",
         title_style="bold magenta",
         title_justify="left",
         show_header=False,
@@ -2186,16 +2682,49 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
     table.add_column("Metric", style="bold")
     table.add_column("Value", justify="right")
 
-    table.add_row("Total LLM calls", _fmt_num(llm.get("calls", 0)))
-    table.add_row("  input tokens", _fmt_num(llm.get("input_tokens", 0)))
-    table.add_row("  output tokens", _fmt_num(llm.get("output_tokens", 0)))
-    errors = llm.get("errors", 0)
-    if errors > 0:
-        table.add_row("  errors", f"[red]{_fmt_num(errors)}[/red]")
+    # Top section: synthesis-specific counters. Per-operation tokens were
+    # added in #296 so synthesis-only figures are honest even when other
+    # operations (e.g. ``health_probe``) also fire ``record_llm_call``. On
+    # backends that pre-date #296 the per-operation sub-keys are absent;
+    # we detect this and fall back to the grand totals (which equal
+    # synthesis in practice on those builds since synthesis was the only
+    # instrumented site).
+    is_post_296 = any(k.startswith("by_operation.") and k.count(".") >= 2 for k in llm)
+    synthesis_calls = llm.get("by_operation.synthesis", 0)
+    if is_post_296:
+        synthesis_input = llm.get("by_operation.synthesis.input_tokens", 0)
+        synthesis_output = llm.get("by_operation.synthesis.output_tokens", 0)
+        synthesis_errors = llm.get("by_operation.synthesis.errors", 0)
+    else:
+        synthesis_input = llm.get("input_tokens", 0)
+        synthesis_output = llm.get("output_tokens", 0)
+        synthesis_errors = llm.get("errors", 0)
+    table.add_row("Synthesis LLM calls", _fmt_num(synthesis_calls))
+    table.add_row("  input tokens", _fmt_num(synthesis_input))
+    table.add_row("  output tokens", _fmt_num(synthesis_output))
+    if synthesis_errors > 0:
+        table.add_row("  errors", f"[red]{_fmt_num(synthesis_errors)}[/red]")
 
-    by_op_keys = sorted(k for k in llm if k.startswith("by_operation."))
+    # Bottom section: every non-synthesis operation broken out by its call
+    # count. We deliberately do NOT show per-operation tokens here because
+    # the non-synthesis sites (health_probe today; future heartbeats) are
+    # by design ~zero-token — surfacing the call count is enough to confirm
+    # they're firing without cluttering the table.
+    #
+    # The dotted-key exclusion below filters out the per-operation
+    # token/error sub-keys (e.g. ``by_operation.synthesis.input_tokens``)
+    # added in #296 so we only iterate the base operation counters.
+    by_op_keys = sorted(
+        k
+        for k in llm
+        if k.startswith("by_operation.")
+        and k != "by_operation.synthesis"
+        and k.count(".")
+        == 1  # base counters only; exclude .input_tokens / .output_tokens / .errors
+    )
     if by_op_keys:
         table.add_section()
+        table.add_row("Other backend LLM calls", "")
         for key in by_op_keys:
             label = key.replace("by_operation.", "")
             table.add_row(f"  {label}", _fmt_num(llm[key]))
@@ -2298,7 +2827,7 @@ def _render_data_reuse_table(backend: dict | None) -> None:
         return
 
     table = Table(
-        title="Mycelium Data Reuse",
+        title=f"Mycelium Data Reuse{_hub_suffix()}",
         title_style="bold magenta",
         title_justify="left",
         show_header=False,
@@ -2392,7 +2921,7 @@ def _render_data_reuse_table(backend: dict | None) -> None:
     console.print()
 
 
-def _render_coordination_table(backend: dict | None) -> None:
+def _render_coordination_table(backend: dict | None, *, detail: bool = False) -> None:
     """Render a panel showing Mycelium coordination/negotiation metrics."""
     if not backend:
         return
@@ -2404,17 +2933,21 @@ def _render_coordination_table(backend: dict | None) -> None:
         return
 
     table = Table(
-        title="CFN Coordination",
+        title=f"CFN Coordination{_hub_suffix()}",
         title_style="bold blue",
         title_justify="left",
         show_header=False,
         border_style="dim",
     )
     table.add_column("Metric", style="bold")
+    # MAS column populated only for the per-room rows below. CFN counters
+    # are keyed by ``room_name``, so we resolve room_name → mas_id at
+    # display time via /api/rooms; deleted rooms get a blank MAS cell.
+    table.add_column("MAS", style="dim", no_wrap=True)
     table.add_column("Value", justify="right")
 
-    table.add_row("Sessions started", _fmt_num(coord.get("sessions_started", 0)))
-    table.add_row("Sessions completed", _fmt_num(coord.get("sessions_completed", 0)))
+    table.add_row("Sessions started", "", _fmt_num(coord.get("sessions_started", 0)))
+    table.add_row("Sessions completed", "", _fmt_num(coord.get("sessions_completed", 0)))
 
     success = coord.get("outcome.success", 0)
     failure = coord.get("outcome.failure", 0)
@@ -2422,12 +2955,12 @@ def _render_coordination_table(backend: dict | None) -> None:
     if success + failure > 0:
         table.add_section()
         if success > 0:
-            table.add_row("  consensus reached", f"[green]{_fmt_num(success)}[/green]")
+            table.add_row("  consensus reached", "", f"[green]{_fmt_num(success)}[/green]")
         if failure > 0:
-            table.add_row("  failed", f"[red]{_fmt_num(failure)}[/red]")
+            table.add_row("  failed", "", f"[red]{_fmt_num(failure)}[/red]")
 
     table.add_section()
-    table.add_row("Total rounds", _fmt_num(coord.get("rounds", 0)))
+    table.add_row("Total rounds", "", _fmt_num(coord.get("rounds", 0)))
 
     be_histograms = backend.get("histograms", {})
 
@@ -2436,7 +2969,7 @@ def _render_coordination_table(backend: dict | None) -> None:
         avg = rounds_to_consensus["sum"] / rounds_to_consensus["count"]
         min_r = rounds_to_consensus.get("min", avg)
         max_r = rounds_to_consensus.get("max", avg)
-        table.add_row("Rounds to consensus", f"{avg:.1f} (min {min_r:.0f}, max {max_r:.0f})")
+        table.add_row("Rounds to consensus", "", f"{avg:.1f} (min {min_r:.0f}, max {max_r:.0f})")
 
     # Pad ``n=`` across the histogram rows so the ``avg`` column lines up
     # vertically even when counts span orders of magnitude
@@ -2454,40 +2987,88 @@ def _render_coordination_table(backend: dict | None) -> None:
     if time_to_consensus.get("count", 0) > 0:
         table.add_row(
             "Time to consensus",
+            "",
             _fmt_histogram_s(time_to_consensus, n_width=coord_n_width),
         )
     if round_duration.get("count", 0) > 0:
         table.add_row(
             "Round duration",
+            "",
             _fmt_histogram_s(round_duration, n_width=coord_n_width),
         )
 
     participants = be_histograms.get("coordination.session_participants", {})
     if participants.get("count", 0) > 0:
         avg = participants["sum"] / participants["count"]
-        table.add_row("Avg participants/session", f"{avg:.1f}")
+        table.add_row("Avg participants/session", "", f"{avg:.1f}")
 
-    by_room_keys = sorted(k for k in coord if k.startswith("by_room."))
-    if by_room_keys:
+    # Aggregate per parent room across sessions. The raw counters are
+    # session-scoped (``by_room.<room>:session:<uuid>``); we sum them so a
+    # room with N session sub-rooms shows as a single line. Likewise for
+    # ``completed_by_room``, where we also break out success/failure.
+    # ``_parent_room`` is shared with the cfn-llm renderer via the module-
+    # level helper so the bucketing rule is consistent across panels.
+    rounds_by_room: dict[str, int] = {}
+    for key, val in coord.items():
+        if not key.startswith("by_room."):
+            continue
+        room = _parent_room(key.removeprefix("by_room."))
+        rounds_by_room[room] = rounds_by_room.get(room, 0) + int(val or 0)
+
+    completed_by_room: dict[str, dict[str, int]] = {}
+    for key, val in coord.items():
+        if not key.startswith("completed_by_room."):
+            continue
+        suffix = key.removeprefix("completed_by_room.")
+        # Two shapes: ``<sub-room>`` (total) and ``<sub-room>.<outcome>``.
+        head, _, outcome = suffix.rpartition(".")
+        if outcome in {"success", "failure"} and head:
+            room = _parent_room(head)
+            completed_by_room.setdefault(room, {"total": 0, "success": 0, "failure": 0})[
+                outcome
+            ] += int(val or 0)
+        else:
+            room = _parent_room(suffix)
+            completed_by_room.setdefault(room, {"total": 0, "success": 0, "failure": 0})[
+                "total"
+            ] += int(val or 0)
+
+    if rounds_by_room or completed_by_room:
+        name_to_mas = _resolve_mas_by_room_name()
         table.add_section()
-        table.add_row("[dim]Rounds by room:[/dim]", "")
-        for key in by_room_keys[:5]:
-            label = key.replace("by_room.", "")
-            # Strip ``:session:<uuid>`` suffix — the session id is high-
-            # cardinality noise that bloats the column on 80-col
-            # terminals and forces every histogram row to wrap. The room
-            # name (e.g. ``dist-e2e-18e8b583``) is the meaningful key.
-            if ":session:" in label:
-                label = label.split(":session:", 1)[0]
-            table.add_row(f"  {label}", _fmt_num(coord[key]))
-        if len(by_room_keys) > 5:
-            table.add_row(f"  [dim]...and {len(by_room_keys) - 5} more[/dim]", "")
+        table.add_row("[dim]By room:[/dim]", "[dim]MAS id[/dim]", "")
+        # Sort by total rounds desc so the busiest room leads.
+        ranked = sorted(rounds_by_room.items(), key=lambda kv: kv[1], reverse=True)
+        cap = len(ranked) if detail else 5
+        for room, n_rounds in ranked[:cap]:
+            stats = completed_by_room.get(room, {"total": 0, "success": 0, "failure": 0})
+            n_done = stats["total"]
+            n_ok = stats["success"]
+            n_bad = stats["failure"]
+            # ``5 rounds  ·  3 done (3✓ 0✗)`` — only show the breakdown if
+            # we actually have completion stats for the room.
+            parts = [f"{_fmt_num(n_rounds)} rounds"]
+            if n_done > 0:
+                ok_str = f"[green]{n_ok}✓[/green]" if n_ok else f"{n_ok}✓"
+                bad_str = f"[red]{n_bad}✗[/red]" if n_bad else f"{n_bad}✗"
+                parts.append(f"{_fmt_num(n_done)} done ({ok_str} {bad_str})")
+            table.add_row(
+                f"  {room}",
+                _format_mas(name_to_mas.get(room, ""), detail=detail),
+                "  ·  ".join(parts),
+            )
+        if len(ranked) > cap:
+            table.add_row(
+                f"  [dim]...and {len(ranked) - cap} more (use --detail to expand)[/dim]",
+                "",
+                "",
+            )
 
     console.print(table)
     console.print()
 
 
-def _render_cfn_llm_usage_table(backend: dict | None) -> None:
+def _render_cfn_llm_usage_table(backend: dict | None, *, detail: bool = False) -> None:
     """Render actual LLM token usage reported by the cognition engines via _usage."""
     if not backend:
         return
@@ -2507,28 +3088,33 @@ def _render_cfn_llm_usage_table(backend: dict | None) -> None:
         border_style="dim",
     )
     table.add_column("Metric", style="bold")
+    # MAS column is populated only for the per-room rows below — CFN
+    # counters are keyed by ``room_name``, so we resolve room_name →
+    # mas_id at display time via /api/rooms. The aggregate, by-pipeline,
+    # and by-operation rows leave this cell blank.
+    table.add_column("MAS", style="dim", no_wrap=True)
     table.add_column("Value", justify="right")
 
-    table.add_row("Total LLM calls (engines)", _fmt_num(total_calls))
-    table.add_row("  input tokens", _fmt_num(cfn_llm.get("input_tokens", 0)))
-    table.add_row("  output tokens", _fmt_num(cfn_llm.get("output_tokens", 0)))
+    table.add_row("Total LLM calls (engines)", "", _fmt_num(total_calls))
+    table.add_row("  input tokens", "", _fmt_num(cfn_llm.get("input_tokens", 0)))
+    table.add_row("  output tokens", "", _fmt_num(cfn_llm.get("output_tokens", 0)))
     total_tokens = cfn_llm.get("total_tokens", 0)
     if total_tokens > 0:
-        table.add_row("  total tokens", _fmt_num(total_tokens))
+        table.add_row("  total tokens", "", _fmt_num(total_tokens))
     cached = cfn_llm.get("cached_tokens", 0)
     if cached > 0:
-        table.add_row("  cached tokens", _fmt_num(cached))
+        table.add_row("  cached tokens", "", _fmt_num(cached))
 
     be_histograms = backend.get("histograms", {})
     lat = be_histograms.get("cfn_llm.latency_ms", {})
     if lat.get("count", 0) > 0:
-        table.add_row("LLM latency (total)", _fmt_histogram_s(lat, _max_n_width(lat)))
+        table.add_row("LLM latency (total)", "", _fmt_histogram_s(lat, _max_n_width(lat)))
 
     # By pipeline rollup
     pipeline_keys = sorted(k for k in cfn_llm if k.startswith("by_pipeline."))
     if pipeline_keys:
         table.add_section()
-        table.add_row("[dim]By pipeline:[/dim]", "")
+        table.add_row("[dim]By pipeline:[/dim]", "", "")
         pipelines: dict[str, dict[str, int]] = {}
         for key in pipeline_keys:
             parts = key.split(".")
@@ -2542,6 +3128,7 @@ def _render_cfn_llm_usage_table(backend: dict | None) -> None:
             out = data.get("output_tokens", 0)
             table.add_row(
                 f"  {pip}",
+                "",
                 f"{_fmt_num(calls)} calls, {_fmt_num(inp)} in / {_fmt_num(out)} out",
             )
 
@@ -2549,7 +3136,7 @@ def _render_cfn_llm_usage_table(backend: dict | None) -> None:
     op_keys = sorted(k for k in cfn_llm if k.startswith("by_llm_operation."))
     if op_keys:
         table.add_section()
-        table.add_row("[dim]By operation:[/dim]", "")
+        table.add_row("[dim]By operation:[/dim]", "", "")
         operations: dict[str, dict[str, int]] = {}
         for key in op_keys:
             parts = key.split(".")
@@ -2563,31 +3150,40 @@ def _render_cfn_llm_usage_table(backend: dict | None) -> None:
             out = data.get("output_tokens", 0)
             table.add_row(
                 f"  {op}",
+                "",
                 f"{_fmt_num(calls)} calls, {_fmt_num(inp)} in / {_fmt_num(out)} out",
             )
 
-    # By room
-    room_keys = sorted(k for k in cfn_llm if k.startswith("by_room."))
-    if room_keys:
+    # By room — aggregated across sessions via the shared ``_aggregate_by_room``
+    # helper, so the session-rollup rule (#295) is identical to what the
+    # cost-estimates panel uses (#297). Heaviest room leads; cap at 5 with
+    # an "...and N more" tail to match the coordination table's UX (use
+    # --detail to expand to all rooms).
+    rooms = _aggregate_by_room(cfn_llm, prefix="by_room.")
+    if rooms:
+        name_to_mas = _resolve_mas_by_room_name()
         table.add_section()
-        table.add_row("[dim]By room:[/dim]", "")
-        rooms: dict[str, dict[str, int]] = {}
-        for key in room_keys:
-            parts = key.split(".")
-            if len(parts) >= 3:
-                room = parts[1]
-                metric = parts[2]
-                rooms.setdefault(room, {})[metric] = cfn_llm[key]
-        for room, data in sorted(rooms.items()):
+        table.add_row("[dim]By room:[/dim]", "[dim]MAS id[/dim]", "")
+        ranked = sorted(
+            rooms.items(),
+            key=lambda kv: kv[1].get("input_tokens", 0) + kv[1].get("output_tokens", 0),
+            reverse=True,
+        )
+        cap = len(ranked) if detail else 5
+        for room, data in ranked[:cap]:
             calls = data.get("calls", 0)
             inp = data.get("input_tokens", 0)
             out = data.get("output_tokens", 0)
-            label = room
-            if ":session:" in label:
-                label = label.split(":session:", 1)[0]
             table.add_row(
-                f"  {label}",
+                f"  {room}",
+                _format_mas(name_to_mas.get(room, ""), detail=detail),
                 f"{_fmt_num(calls)} calls, {_fmt_num(inp)} in / {_fmt_num(out)} out",
+            )
+        if len(ranked) > cap:
+            table.add_row(
+                f"  [dim]...and {len(ranked) - cap} more (use --detail to expand)[/dim]",
+                "",
+                "",
             )
 
     console.print(table)
@@ -2607,7 +3203,7 @@ def _render_cfn_transport_table(backend: dict | None) -> None:
         return
 
     table = Table(
-        title="CFN Transport Health",
+        title=f"CFN Transport Health{_hub_suffix()}",
         title_style="bold blue",
         title_justify="left",
         show_header=False,
@@ -2810,13 +3406,22 @@ def _render_cfn_scrape_table(scrape: dict | None) -> None:
 
 
 def _estimate_cost(
-    input_tokens: int,
-    output_tokens: int,
-    cache_read_tokens: int,
-    cache_write_tokens: int,
+    input_tokens: float,
+    output_tokens: float,
+    cache_read_tokens: float,
+    cache_write_tokens: float,
     model: str,
 ) -> float:
-    """Estimate cost in USD from token counts and model pricing."""
+    """Estimate cost in USD from token counts and model pricing.
+
+    Token counts are typed as ``float`` rather than ``int`` because the
+    upstream metrics snapshots (``be_counters``/``myc_llm``) are typed as
+    ``dict[str, Any]`` and ``dict.get(..., 0)`` widens to ``int | float``
+    even when the runtime values are whole-number token counts. The
+    arithmetic below is rate * count, which is identical under either
+    type, so widening is a no-op at runtime and avoids forcing every
+    caller to ``int(...)``-cast the dict value.
+    """
     pricing, _ = _get_model_pricing(model)
     input_rate = pricing["input"]
     output_rate = pricing["output"]
@@ -2891,6 +3496,56 @@ def _render_cost_estimates(
         )
         total_cost += oc_reported_cost
 
+        # Per-room sub-rows: aggregate session-level tokens by the agent's
+        # configured room (from the local openclaw.json mycelium-room
+        # channel block).  We can't compute per-room cost reliably without
+        # provider-reported cost per session, so we estimate from the
+        # configured CFN model — labelled accordingly.  Sessions whose
+        # agent isn't in the local channel config are bucketed under
+        # ``other``.
+        sessions = (otel or {}).get("sessions", []) if otel else []
+        agent_room = _resolve_agent_to_room()
+        if sessions and agent_room:
+            by_room: dict[str, dict[str, int]] = {}
+            for s in sessions:
+                agent = s.get("agent")
+                tok = s.get("tokens", {}) or {}
+                room = agent_room.get(agent or "", "other")
+                bucket = by_room.setdefault(
+                    room, {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}
+                )
+                for k in ("input", "output", "cache_read", "cache_write"):
+                    bucket[k] += int(tok.get(k, 0) or 0)
+
+            ranked = sorted(
+                by_room.items(),
+                key=lambda kv: (
+                    kv[1]["input"] + kv[1]["output"] + kv[1]["cache_read"] + kv[1]["cache_write"]
+                ),
+                reverse=True,
+            )
+            shown = [(r, b) for r, b in ranked if any(b.values())]
+            if shown:
+                table.add_row("  [dim italic]By room:[/dim italic]", "", "", "")
+                for room, b in shown:
+                    room_total = b["input"] + b["output"] + b["cache_read"] + b["cache_write"]
+                    if room_total == 0:
+                        continue
+                    room_est = _estimate_cost(
+                        input_tokens=b["input"],
+                        output_tokens=b["output"],
+                        cache_read_tokens=b["cache_read"],
+                        cache_write_tokens=b["cache_write"],
+                        model=cfn_model,
+                    )
+                    label = "other (no channel match)" if room == "other" else room
+                    table.add_row(
+                        f"    [dim]{label}[/dim]",
+                        f"[dim]{_fmt_num(room_total)}[/dim]",
+                        f"[dim]{_fmt_cost(room_est)}[/dim]",
+                        "[dim]est. (local agents only)[/dim]",
+                    )
+
     # ── CFN Engines (estimated from tokens + pricing.json) ─────────────
     be_counters = (backend or {}).get("counters", {})
     cfn_llm = be_counters.get("cfn_llm", {})
@@ -2918,7 +3573,12 @@ def _render_cost_estimates(
         )
         total_cost += cfn_est_cost
 
-        # Per-pipeline breakdown under CFN
+        # Per-pipeline breakdown under CFN — clearly labelled as a separate
+        # axis from per-room so the two don't visually collide (each row
+        # answers a different question: "what kind of work" vs "for which
+        # workload"; the user feedback that motivated this split was that
+        # mixing them at the same indent felt like a flat union when
+        # they're really orthogonal).
         pipeline_keys = sorted(k for k in cfn_llm if k.startswith("by_pipeline."))
         if pipeline_keys:
             pipelines: dict[str, dict[str, int]] = {}
@@ -2928,24 +3588,65 @@ def _render_cost_estimates(
                     pip = parts[1]
                     metric = parts[2]
                     pipelines.setdefault(pip, {})[metric] = cfn_llm[key]
-            for pip, data in sorted(pipelines.items()):
-                p_prompt = data.get("input_tokens", 0)
-                p_compl = data.get("output_tokens", 0)
-                p_total = p_prompt + p_compl
-                p_cost = _estimate_cost(
-                    input_tokens=p_prompt,
-                    output_tokens=p_compl,
-                    cache_read_tokens=0,
-                    cache_write_tokens=0,
-                    model=cfn_model,
-                )
-                label = pip.replace("_", " ").title()
-                table.add_row(
-                    f"  [dim]{label}[/dim]",
-                    f"[dim]{_fmt_num(p_total)}[/dim]",
-                    f"[dim]{_fmt_cost(p_cost)}[/dim]",
-                    "",
-                )
+            if pipelines:
+                table.add_row("  [dim italic]By pipeline:[/dim italic]", "", "", "")
+                for pip, data in sorted(pipelines.items()):
+                    p_prompt = data.get("input_tokens", 0)
+                    p_compl = data.get("output_tokens", 0)
+                    p_total = p_prompt + p_compl
+                    p_cost = _estimate_cost(
+                        input_tokens=p_prompt,
+                        output_tokens=p_compl,
+                        cache_read_tokens=0,
+                        cache_write_tokens=0,
+                        model=cfn_model,
+                    )
+                    label = pip.replace("_", " ").title()
+                    table.add_row(
+                        f"    [dim]{label}[/dim]",
+                        f"[dim]{_fmt_num(p_total)}[/dim]",
+                        f"[dim]{_fmt_cost(p_cost)}[/dim]",
+                        "",
+                    )
+
+        # Per-room breakdown under CFN (#297). Sessions of the same parent
+        # room are folded together via ``_parent_room`` so the bucketing
+        # matches what ``mycelium metrics show cfn`` shows under "By room".
+        # All rooms shown (no truncation) since the cost panel exists to
+        # surface where the spend is and a long-tail of leftover e2e rooms
+        # is still useful signal to the operator (they can `rooms delete`
+        # to clean up).
+        cfn_by_room = _aggregate_by_room(cfn_llm, prefix="by_room.")
+        if cfn_by_room:
+            ranked = sorted(
+                cfn_by_room.items(),
+                key=lambda kv: kv[1].get("input_tokens", 0) + kv[1].get("output_tokens", 0),
+                reverse=True,
+            )
+            shown = [
+                (r, d)
+                for r, d in ranked
+                if d.get("input_tokens", 0) + d.get("output_tokens", 0) > 0
+            ]
+            if shown:
+                table.add_row("  [dim italic]By room:[/dim italic]", "", "", "")
+                for room, data in shown:
+                    r_prompt = data.get("input_tokens", 0)
+                    r_compl = data.get("output_tokens", 0)
+                    r_total = r_prompt + r_compl
+                    r_cost = _estimate_cost(
+                        input_tokens=r_prompt,
+                        output_tokens=r_compl,
+                        cache_read_tokens=0,
+                        cache_write_tokens=0,
+                        model=cfn_model,
+                    )
+                    table.add_row(
+                        f"    [dim]{room}[/dim]",
+                        f"[dim]{_fmt_num(r_total)}[/dim]",
+                        f"[dim]{_fmt_cost(r_cost)}[/dim]",
+                        "[dim]est. (engine pricing)[/dim]",
+                    )
 
     # ── Mycelium Backend LLM (estimated) ───────────────────────────────
     myc_llm = be_counters.get("llm", {})
@@ -2982,6 +3683,53 @@ def _render_cost_estimates(
             )
             total_cost += myc_est
 
+        # Per-room breakdown under Mycelium LLM (#297). Synthesis sites
+        # started recording ``llm.by_room.<room>.*`` keys in #297; older
+        # backends don't have these keys (we just render nothing in that
+        # case). Prefers provider-reported cost when present, falling back
+        # to estimate. All rooms shown for parity with the CFN section.
+        myc_by_room = _aggregate_by_room(myc_llm, prefix="by_room.")
+        if myc_by_room:
+            ranked = sorted(
+                myc_by_room.items(),
+                key=lambda kv: kv[1].get("input_tokens", 0) + kv[1].get("output_tokens", 0),
+                reverse=True,
+            )
+            shown = [
+                (r, d)
+                for r, d in ranked
+                if (d.get("input_tokens", 0) + d.get("output_tokens", 0) > 0)
+                or d.get("cost_usd", 0.0) > 0
+            ]
+            if shown:
+                table.add_row("  [dim italic]By room:[/dim italic]", "", "", "")
+                for room, data in shown:
+                    r_prompt = data.get("input_tokens", 0)
+                    r_compl = data.get("output_tokens", 0)
+                    r_total = r_prompt + r_compl
+                    r_reported = data.get("cost_usd", 0.0)
+                    if r_reported > 0:
+                        table.add_row(
+                            f"    [dim]{room}[/dim]",
+                            f"[dim]{_fmt_num(r_total)}[/dim]",
+                            f"[dim]{_fmt_cost(r_reported)}[/dim]",
+                            "[dim]litellm (provider-reported)[/dim]",
+                        )
+                    else:
+                        r_cost = _estimate_cost(
+                            input_tokens=r_prompt,
+                            output_tokens=r_compl,
+                            cache_read_tokens=0,
+                            cache_write_tokens=0,
+                            model=cfn_model,
+                        )
+                        table.add_row(
+                            f"    [dim]{room}[/dim]",
+                            f"[dim]{_fmt_num(r_total)}[/dim]",
+                            f"[dim]{_fmt_cost(r_cost)}[/dim]",
+                            "[dim]est. (synthesis pricing)[/dim]",
+                        )
+
     # ── Claude Code (placeholder) ──────────────────────────────────────
     # Not yet wired — omit row entirely until data available
 
@@ -3000,6 +3748,112 @@ def _render_cost_estimates(
     if gen_date:
         console.print(f"[dim]  Estimates use litellm pricing data (updated {gen_date})[/dim]")
     console.print()
+
+
+def _render_spoke_sites_table(otel: dict | None) -> None:
+    """Show per-host summary table from by_host data in the collector metrics.
+
+    Rendered on the hub only. The hub is itself one of the rows (it runs a
+    co-located gateway + collector pair just like every spoke); we tag it
+    as ``(hub)`` to make the topology obvious.
+    """
+    by_host = (otel or {}).get("by_host")
+    if not by_host:
+        return
+
+    import socket
+
+    local_host = socket.gethostname()
+
+    table = Table(
+        title="Sites",
+        title_style="bold cyan",
+        title_justify="left",
+        show_header=True,
+        border_style="dim",
+    )
+    table.add_column("Host", style="bold")
+    table.add_column("Role", style="dim")
+    table.add_column("Agents")
+    table.add_column("Spans", justify="right")
+    table.add_column("Tokens", justify="right")
+    table.add_column("Last Seen")
+
+    for host_key in sorted(by_host, key=lambda h: by_host[h].get("last_seen", ""), reverse=True):
+        data = by_host[host_key]
+        # Match liberally — hostname may be "oclw4" while OTLP host could be
+        # "oclw4.local", "oclw-4", FQDN, etc. Compare normalised forms.
+        norm_local = local_host.lower().split(".")[0].replace("-", "")
+        norm_key = host_key.lower().split(".")[0].replace("-", "")
+        role = "hub" if norm_local == norm_key else "spoke"
+        agents = ", ".join(data.get("agents", [])) or "—"
+        spans = str(data.get("spans", 0))
+        tokens = data.get("tokens", {})
+        total_tokens = tokens.get("total", 0)
+        tok_str = f"{total_tokens:,}" if total_tokens else "—"
+        last_seen = data.get("last_seen", "—")
+        if last_seen and last_seen != "—":
+            try:
+                from datetime import datetime
+
+                dt = datetime.fromisoformat(last_seen.replace("Z", "+00:00"))
+                last_seen = dt.strftime("%H:%M:%S")
+            except Exception:
+                pass
+        table.add_row(host_key, role, agents, spans, tok_str, last_seen)
+
+    console.print(table)
+    console.print()
+
+
+def _render_host_filtered_view(otel: dict | None, host: str) -> bool:
+    """Show metrics filtered to a single host. Returns True if data was found."""
+    by_host = (otel or {}).get("by_host", {})
+    data = by_host.get(host)
+    if not data:
+        matching = [h for h in by_host if host in h]
+        if matching:
+            data = by_host[matching[0]]
+            host = matching[0]
+
+    if not data:
+        console.print(f"[yellow]No data found for host '{host}'.[/yellow]")
+        if by_host:
+            console.print(f"[dim]Known hosts: {', '.join(sorted(by_host))}[/dim]")
+        else:
+            console.print(
+                "[dim]No per-host data collected yet. Host tracking starts when "
+                "spoke nodes send OTLP data to the hub collector.[/dim]"
+            )
+        console.print()
+        return False
+
+    table = Table(
+        title=f"OpenClaw · {host}",
+        title_style="bold cyan",
+        title_justify="left",
+        show_header=False,
+        border_style="dim",
+    )
+    table.add_column("Metric", style="bold")
+    table.add_column("Value", justify="right")
+
+    agents = ", ".join(data.get("agents", [])) or "—"
+    tokens = data.get("tokens", {})
+    cost = data.get("cost_usd", 0.0)
+    table.add_row("Agents", agents)
+    table.add_row("Spans", f"{data.get('spans', 0):,}")
+    table.add_row("Messages processed", str(data.get("messages_processed", 0)))
+    table.add_row("Tokens (input)", f"{tokens.get('input', 0):,}")
+    table.add_row("Tokens (output)", f"{tokens.get('output', 0):,}")
+    table.add_row("Tokens (cache read)", f"{tokens.get('cache_read', 0):,}")
+    table.add_row("Tokens (total)", f"{tokens.get('total', 0):,}")
+    table.add_row("Cost (USD)", f"${cost:.4f}" if cost > 0 else "—")
+    table.add_row("Last seen", data.get("last_seen", "—"))
+
+    console.print(table)
+    console.print()
+    return True
 
 
 def _render_field_legend() -> None:
