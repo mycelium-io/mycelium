@@ -87,6 +87,30 @@ class TestOpenTaskSummary:
         assert plan_service.open_task_summary("empty") is None
 
 
+class TestAgentContext:
+    def test_none_when_no_plan(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path))
+        assert plan_service.agent_context("empty") is None
+
+    def test_includes_title_and_open_tasks(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path))
+        plan_service.set_title("r", "Ship the Q3 release")
+        plan_service.add_task("r", "write the parser")
+        plan_service.add_task("r", "ship the demo")
+        ctx = plan_service.agent_context("r")
+        assert ctx is not None
+        assert "Plan: Ship the Q3 release" in ctx
+        assert "Open tasks (2)" in ctx
+        assert "write the parser" in ctx
+
+    def test_title_only_no_tasks(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path))
+        plan_service.set_title("r", "Just a title")
+        ctx = plan_service.agent_context("r")
+        assert ctx is not None
+        assert "Plan: Just a title" in ctx
+
+
 @pytest.mark.asyncio
 class TestPlanRoutes:
     async def test_get_plan_empty(self, client: AsyncClient):
@@ -162,3 +186,23 @@ class TestPlanRoutes:
         await client.post("/api/rooms", json={"name": "with-plan"})
         plan_dir = get_room_dir("with-plan") / "plan"
         assert plan_dir.exists() and plan_dir.is_dir()
+
+    async def test_agent_context_endpoint(self, client: AsyncClient):
+        room = "plan-agentctx"
+        await client.post("/api/rooms", json={"name": room})
+
+        # Empty room → context is null, generated_at still present
+        resp = await client.get(f"/api/rooms/{room}/agent-context")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["context"] is None
+        assert data["generated_at"]
+        assert data["room"] == room
+
+        # Add a task → context surfaces it
+        await client.post(f"/api/rooms/{room}/plan/tasks", json={"text": "do the thing"})
+        resp = await client.get(f"/api/rooms/{room}/agent-context", params={"handle": "alpha"})
+        data = resp.json()
+        assert data["handle"] == "alpha"
+        assert "do the thing" in data["context"]
+        assert "Open tasks (1)" in data["context"]

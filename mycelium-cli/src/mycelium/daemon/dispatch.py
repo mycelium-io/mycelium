@@ -44,7 +44,15 @@ _SSE_READ_TIMEOUT_S = 45.0
 _SSE_CONNECT_TIMEOUT_S = 10.0
 
 
-def _identity_preamble(*, handle: str, room: str, description: str, sender: str, notes: str) -> str:
+def _identity_preamble(
+    *,
+    handle: str,
+    room: str,
+    description: str,
+    sender: str,
+    notes: str,
+    plan_block: str = "",
+) -> str:
     """System-prompt preamble injected into every claude -p spawn.
 
     Without this, the spawned Claude has no idea it's an addressed agent —
@@ -78,7 +86,7 @@ prompt below. Your reply will be posted to that room *as @{handle}*, so:
 - You're cold-started: every invocation is fresh. Anything that should
   persist between runs goes in your notes (`mycelium memory set
   agents/{handle}/notes "..."` from your cwd).
-{desc_block}{notes_block}
+{desc_block}{notes_block}{plan_block}
 ## Control verbs
 
 If the prompt is exactly one of `abort`, `cancel`, `stop`, or `status`,
@@ -151,6 +159,72 @@ def load_notes(room_name: str, handle: str) -> str:
         return ""
     _, content = result
     return content
+
+
+# ── Agent-context (room plan) injection ──────────────────────────────────────
+# GET /api/rooms/{room}/agent-context is read on every dispatch, so it's cached
+# per-room. The staleness line baked into the rendered block tells the agent
+# how old the snapshot is, so a cache hit is still honest.
+_AGENT_CONTEXT_TTL_S = 60.0
+# room -> (fetched_monotonic, context_or_none, generated_at_iso)
+_agent_context_cache: dict[str, tuple[float, str | None, str]] = {}
+
+
+async def _fetch_agent_context(api_url: str, room_name: str, handle: str) -> tuple[str | None, str]:
+    """Return ``(context, generated_at_iso)`` for a room, cached for the TTL.
+
+    Best-effort: a fetch failure never blocks a dispatch. On error a stale
+    cache entry is reused if present, else ``(None, "")`` (block omitted).
+    """
+    now = time.monotonic()
+    cached = _agent_context_cache.get(room_name)
+    if cached is not None and now - cached[0] < _AGENT_CONTEXT_TTL_S:
+        return cached[1], cached[2]
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(
+                f"{api_url}/api/rooms/{room_name}/agent-context",
+                params={"handle": handle},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        entry = (now, data.get("context"), data.get("generated_at") or "")
+        _agent_context_cache[room_name] = entry
+        return entry[1], entry[2]
+    except Exception as exc:
+        log.debug("agent-context fetch failed for %s: %s", room_name, exc)
+        if cached is not None:
+            return cached[1], cached[2]
+        return None, ""
+
+
+def _humanize_age(generated_at_iso: str) -> str:
+    """Render ' (as of HH:MM UTC, ~N min ago)' from an ISO-8601 timestamp."""
+    if not generated_at_iso:
+        return ""
+    try:
+        ts = datetime.fromisoformat(generated_at_iso)
+    except ValueError:
+        return ""
+    age_s = max(0.0, (datetime.now(UTC) - ts).total_seconds())
+    mins = int(age_s // 60)
+    when = ts.strftime("%H:%M UTC")
+    if mins < 1:
+        return f" (as of {when}, just now)"
+    return f" (as of {when}, ~{mins} min ago)"
+
+
+def _render_plan_block(context: str | None, generated_at_iso: str) -> str:
+    """Format the agent-context string into a system-prompt section.
+
+    Returns '' when the room has no plan — callers omit the section entirely.
+    """
+    if not context:
+        return ""
+    return (
+        f"\n## Room plan{_humanize_age(generated_at_iso)}\n\n{context}\n\n"
+        "This snapshot may be stale — run `mycelium plan tasks` for live state.\n"
+    )
 
 
 # ── Gating: allow_from, budget, depth ────────────────────────────────────────
@@ -249,6 +323,7 @@ async def spawn_claude(
     sender: str | None = None,
     room: str | None = None,
     description: str = "",
+    plan_block: str = "",
 ) -> dict[str, Any]:
     """Run ``claude -p`` with the agent's notes as system prompt.
 
@@ -295,6 +370,7 @@ async def spawn_claude(
             description=description or "",
             sender=sender or "(anonymous)",
             notes=notes,
+            plan_block=plan_block,
         )
         cmd.extend(["--append-system-prompt", preamble])
     elif notes.strip():
@@ -633,6 +709,11 @@ async def _dispatch_one(
         )
 
         body = _extract_body(prompt, manifest.handle) or prompt
+        # Room plan briefing — best-effort, cached per-room. The agent sees
+        # the room's title + open tasks so its reply is plan-aware.
+        ctx, generated_at = await _fetch_agent_context(
+            config.server.api_url, room_name, manifest.handle
+        )
         result = await spawn_claude(
             claude_binary=daemon_cfg.claude_binary,
             # cc-daemon only dispatches claude_code manifests, which the
@@ -647,6 +728,7 @@ async def _dispatch_one(
             sender=sender_handle,
             room=room_name,
             description=manifest.description,
+            plan_block=_render_plan_block(ctx, generated_at),
         )
 
         if result.get("aborted"):

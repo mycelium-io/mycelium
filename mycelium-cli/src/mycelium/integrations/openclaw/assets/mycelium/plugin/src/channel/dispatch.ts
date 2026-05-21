@@ -15,6 +15,7 @@ import type { ReplyPayload } from "openclaw/plugin-sdk";
 
 import { CHANNEL_ID, type ChannelConfig } from "../config.js";
 import { buildSessionKey } from "../session-key.js";
+import { fetchAgentContext, renderPlanBlock } from "./agent-context.js";
 import { postToRoom } from "./post-to-room.js";
 
 type Logger = { info: (s: string) => void; warn: (s: string) => void };
@@ -32,9 +33,16 @@ export async function dispatchToAgent(
   const sessionKey = buildSessionKey(agentId, cfg.room);
   const envelopeBody = `[${sender} in ${cfg.room}]: ${content}`;
 
+  // Room plan briefing — best-effort, cached per-room. Prepended to the
+  // agent-facing body so an @-mentioned agent is plan-aware, the same way
+  // a coordination-session agent gets the plan via the tick payload.
+  const plan = await fetchAgentContext(cfg.backendUrl, cfg.room, agentId);
+  const planBlock = renderPlanBlock(plan.context, plan.generatedAt);
+  const bodyForAgent = planBlock ? `${planBlock}${content}` : content;
+
   const ctx = runtime.channel.reply.finalizeInboundContext({
     Body: envelopeBody,
-    BodyForAgent: content,
+    BodyForAgent: bodyForAgent,
     RawBody: content,
     CommandBody: content,
     From: `${CHANNEL_ID}:${sender}`,

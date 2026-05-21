@@ -7,6 +7,7 @@ Plan API — projection over the ``plan/`` namespace of a room.
 GET    /rooms/{room}/plan                  — files + parsed tasks
 POST   /rooms/{room}/plan/tasks            — append a new ``- [ ]`` line
 POST   /rooms/{room}/plan/tasks/{id}/toggle — flip / set checkbox
+GET    /rooms/{room}/agent-context         — compact briefing for agent prompts
 
 Plan files themselves are CRUD'd through the memory API (key ``plan/<slug>``).
 """
@@ -14,6 +15,7 @@ Plan files themselves are CRUD'd through the memory API (key ``plan/<slug>``).
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -23,6 +25,13 @@ from app.services import plan as plan_service
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/rooms/{room_name}/plan", tags=["plan"])
+
+# Agent-context lives at /rooms/{room}/agent-context — a room-scoped resource,
+# not a sub-path of /plan, so it gets its own router. It's the single endpoint
+# every agent-dispatch path (cc-daemon, openclaw channel) hits to learn what
+# the room is for; v1 returns the plan briefing, but the shape is built to
+# grow (claimed tasks, recent activity) without callers changing.
+agent_router = APIRouter(prefix="/rooms/{room_name}", tags=["plan"])
 
 
 class TaskOut(BaseModel):
@@ -112,3 +121,27 @@ async def toggle_task(room_name: str, task_id: str, body: TaskToggle | None = No
     except KeyError as e:
         raise HTTPException(status_code=404, detail=f"Task not found: {task_id}") from e
     return _task_to_out(task)
+
+
+class AgentContextOut(BaseModel):
+    room: str
+    handle: str | None = None
+    generated_at: str  # ISO-8601 UTC — callers render staleness from this
+    context: str | None = None  # None when the room has no plan
+
+
+@agent_router.get("/agent-context", response_model=AgentContextOut)
+async def get_agent_context(room_name: str, handle: str | None = None) -> AgentContextOut:
+    """Compact room briefing injected into an agent's prompt on dispatch.
+
+    Hot path — called on every ``@handle`` dispatch — so it stays a pure
+    filesystem read with no DB round-trip. ``handle`` is accepted now and
+    reserved for per-agent data (claimed tasks) once that lands; v1 ignores
+    it and returns the room-wide plan briefing.
+    """
+    return AgentContextOut(
+        room=room_name,
+        handle=handle,
+        generated_at=datetime.now(UTC).isoformat(),
+        context=plan_service.agent_context(room_name),
+    )

@@ -40,6 +40,7 @@ from app.routes.coordination_sessions import router as coordination_sessions_rou
 from app.routes.knowledge import router as knowledge_router
 from app.routes.memory import router as memory_router
 from app.routes.messages import router as messages_router
+from app.routes.plan import agent_router as agent_context_router
 from app.routes.plan import router as plan_router
 from app.routes.rooms import router as rooms_router
 from app.routes.sessions import router as sessions_router
@@ -189,6 +190,7 @@ app.include_router(sessions_router, prefix="/api")
 app.include_router(stream_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
 app.include_router(plan_router, prefix="/api")
+app.include_router(agent_context_router, prefix="/api")
 
 # CFN routes
 app.include_router(audit_router)

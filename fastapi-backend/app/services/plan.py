@@ -265,3 +265,29 @@ def open_task_summary(room_name: str, *, limit: int = 20) -> str | None:
         return "Plan: no open tasks."
     bullets = "\n".join(f"- [{t.slug}] {t.text}" for t in open_tasks)
     return f"Open tasks ({len(open_tasks)}):\n{bullets}"
+
+
+def agent_context(room_name: str, *, limit: int = 20) -> str | None:
+    """Compact room briefing for injection into an agent's prompt.
+
+    Title + open tasks. ``None`` when the room has neither a plan title nor
+    any plan files — callers omit the block entirely in that case.
+
+    Kept deliberately small: this is read on every agent dispatch, so it
+    stays a filesystem read with no DB round-trip.
+    """
+    files, tasks = load_plan(room_name)
+    title = get_title(room_name)
+    if not files and not title:
+        return None
+
+    parts: list[str] = []
+    if title:
+        parts.append(f"Plan: {title}")
+    open_tasks = [t for t in tasks if not t.done][:limit]
+    if open_tasks:
+        bullets = "\n".join(f"- [{t.slug}] {t.text}" for t in open_tasks)
+        parts.append(f"Open tasks ({len(open_tasks)}):\n{bullets}")
+    elif files:
+        parts.append("No open tasks.")
+    return "\n\n".join(parts) if parts else None
