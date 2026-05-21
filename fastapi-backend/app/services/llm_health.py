@@ -434,41 +434,48 @@ async def probe_completion() -> LLMHealthResult:
     # nothing from llm_health, but keep this lazy for symmetry with litellm).
     from app.services.metrics import record_llm_call
 
+    # Record exactly one health_probe sample per call regardless of which
+    # exception path (or success path) the probe takes, using a single
+    # ``finally`` block. Previously each except branch duplicated the
+    # ``elapsed_ms = ...`` + ``record_llm_call(..., error=True)`` pair,
+    # which made it easy to drift: a new except clause that forgot to
+    # call ``record_llm_call`` would silently undercount errors.
     t0 = time.monotonic()
+    probe_error = False
     try:
-        await litellm.acompletion(**kwargs)
+        try:
+            await litellm.acompletion(**kwargs)
+            result = _result(base, status="ok", message="Completion probe succeeded")
+        except ModuleNotFoundError as exc:
+            probe_error = True
+            # Missing provider SDK extras (boto3, google-cloud-aiplatform, ...).
+            result = _result(
+                base,
+                status="missing_extras",
+                message=f"Missing provider SDK for {provider}: {exc}",
+                remediation=_missing_sdk_remediation(provider, str(exc)),
+            )
+        except ImportError as exc:
+            probe_error = True
+            # litellm raises plain ImportError for some provider deps (e.g. bedrock
+            # when boto3 is missing from its runtime). Treat the same as ModuleNotFoundError.
+            result = _result(
+                base,
+                status="missing_extras",
+                message=f"Missing provider SDK for {provider}: {exc}",
+                remediation=_missing_sdk_remediation(provider, str(exc)),
+            )
+        except Exception as exc:
+            probe_error = True
+            result = _classify_litellm_error(litellm, exc, provider, base)
+    finally:
         elapsed_ms = (time.monotonic() - t0) * 1000
         record_llm_call(
             operation="health_probe",
             model=model,
             duration_ms=elapsed_ms,
+            error=probe_error,
         )
-        result = _result(base, status="ok", message="Completion probe succeeded")
-    except ModuleNotFoundError as exc:
-        elapsed_ms = (time.monotonic() - t0) * 1000
-        record_llm_call(operation="health_probe", model=model, duration_ms=elapsed_ms, error=True)
-        # Missing provider SDK extras (boto3, google-cloud-aiplatform, ...).
-        result = _result(
-            base,
-            status="missing_extras",
-            message=f"Missing provider SDK for {provider}: {exc}",
-            remediation=_missing_sdk_remediation(provider, str(exc)),
-        )
-    except ImportError as exc:
-        elapsed_ms = (time.monotonic() - t0) * 1000
-        record_llm_call(operation="health_probe", model=model, duration_ms=elapsed_ms, error=True)
-        # litellm raises plain ImportError for some provider deps (e.g. bedrock
-        # when boto3 is missing from its runtime). Treat the same as ModuleNotFoundError.
-        result = _result(
-            base,
-            status="missing_extras",
-            message=f"Missing provider SDK for {provider}: {exc}",
-            remediation=_missing_sdk_remediation(provider, str(exc)),
-        )
-    except Exception as exc:
-        elapsed_ms = (time.monotonic() - t0) * 1000
-        record_llm_call(operation="health_probe", model=model, duration_ms=elapsed_ms, error=True)
-        result = _classify_litellm_error(litellm, exc, provider, base)
 
     _cached_completion = result
     _cached_completion_at = now
