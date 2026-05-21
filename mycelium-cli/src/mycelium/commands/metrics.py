@@ -1713,7 +1713,7 @@ def _aggregate_by_room(
     for key, val in counters.items():
         if not key.startswith(prefix):
             continue
-        rest = key[len(prefix):]
+        rest = key[len(prefix) :]
         if "." not in rest:
             continue
         room_part, metric = rest.rsplit(".", 1)
@@ -2650,8 +2650,7 @@ def _render_knowledge_table(backend: dict | None, *, detail: bool = False) -> No
             table.add_row(room_cell, _format_mas(mas_id, detail=detail), "  ·  ".join(parts))
         if len(ranked) > cap:
             table.add_row(
-                f"  [dim]...and {len(ranked) - cap} more "
-                f"(use --detail to expand)[/dim]",
+                f"  [dim]...and {len(ranked) - cap} more (use --detail to expand)[/dim]",
                 "",
                 "",
             )
@@ -2690,9 +2689,7 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
     # we detect this and fall back to the grand totals (which equal
     # synthesis in practice on those builds since synthesis was the only
     # instrumented site).
-    is_post_296 = any(
-        k.startswith("by_operation.") and k.count(".") >= 2 for k in llm
-    )
+    is_post_296 = any(k.startswith("by_operation.") and k.count(".") >= 2 for k in llm)
     synthesis_calls = llm.get("by_operation.synthesis", 0)
     if is_post_296:
         synthesis_input = llm.get("by_operation.synthesis.input_tokens", 0)
@@ -2718,10 +2715,12 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
     # token/error sub-keys (e.g. ``by_operation.synthesis.input_tokens``)
     # added in #296 so we only iterate the base operation counters.
     by_op_keys = sorted(
-        k for k in llm
+        k
+        for k in llm
         if k.startswith("by_operation.")
         and k != "by_operation.synthesis"
-        and k.count(".") == 1  # base counters only; exclude .input_tokens / .output_tokens / .errors
+        and k.count(".")
+        == 1  # base counters only; exclude .input_tokens / .output_tokens / .errors
     )
     if by_op_keys:
         table.add_section()
@@ -2970,9 +2969,7 @@ def _render_coordination_table(backend: dict | None, *, detail: bool = False) ->
         avg = rounds_to_consensus["sum"] / rounds_to_consensus["count"]
         min_r = rounds_to_consensus.get("min", avg)
         max_r = rounds_to_consensus.get("max", avg)
-        table.add_row(
-            "Rounds to consensus", "", f"{avg:.1f} (min {min_r:.0f}, max {max_r:.0f})"
-        )
+        table.add_row("Rounds to consensus", "", f"{avg:.1f} (min {min_r:.0f}, max {max_r:.0f})")
 
     # Pad ``n=`` across the histogram rows so the ``avg`` column lines up
     # vertically even when counts span orders of magnitude
@@ -3062,8 +3059,7 @@ def _render_coordination_table(backend: dict | None, *, detail: bool = False) ->
             )
         if len(ranked) > cap:
             table.add_row(
-                f"  [dim]...and {len(ranked) - cap} more "
-                f"(use --detail to expand)[/dim]",
+                f"  [dim]...and {len(ranked) - cap} more (use --detail to expand)[/dim]",
                 "",
                 "",
             )
@@ -3185,8 +3181,7 @@ def _render_cfn_llm_usage_table(backend: dict | None, *, detail: bool = False) -
             )
         if len(ranked) > cap:
             table.add_row(
-                f"  [dim]...and {len(ranked) - cap} more "
-                f"(use --detail to expand)[/dim]",
+                f"  [dim]...and {len(ranked) - cap} more (use --detail to expand)[/dim]",
                 "",
                 "",
             )
@@ -3628,8 +3623,11 @@ def _render_cost_estimates(
                 key=lambda kv: kv[1].get("input_tokens", 0) + kv[1].get("output_tokens", 0),
                 reverse=True,
             )
-            shown = [(r, d) for r, d in ranked
-                     if d.get("input_tokens", 0) + d.get("output_tokens", 0) > 0]
+            shown = [
+                (r, d)
+                for r, d in ranked
+                if d.get("input_tokens", 0) + d.get("output_tokens", 0) > 0
+            ]
             if shown:
                 table.add_row("  [dim italic]By room:[/dim italic]", "", "", "")
                 for room, data in shown:
@@ -3697,9 +3695,12 @@ def _render_cost_estimates(
                 key=lambda kv: kv[1].get("input_tokens", 0) + kv[1].get("output_tokens", 0),
                 reverse=True,
             )
-            shown = [(r, d) for r, d in ranked
-                     if (d.get("input_tokens", 0) + d.get("output_tokens", 0) > 0)
-                     or d.get("cost_usd", 0.0) > 0]
+            shown = [
+                (r, d)
+                for r, d in ranked
+                if (d.get("input_tokens", 0) + d.get("output_tokens", 0) > 0)
+                or d.get("cost_usd", 0.0) > 0
+            ]
             if shown:
                 table.add_row("  [dim italic]By room:[/dim italic]", "", "", "")
                 for room, data in shown:
