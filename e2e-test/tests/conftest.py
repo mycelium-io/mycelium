@@ -108,14 +108,16 @@ def _presuite_sanity_checks() -> None:
     # 4. Trim agent session history on remote hosts too
     _trim_remote_agent_sessions(max_files=5)
 
-    # 5. Logical reset of each agent's mycelium-room session via gateway RPC.
-    #    Trimming jsonl files (steps 3 & 4) caps disk usage but does NOT
+    # 5. Logical reset of each agent's negotiation-carrying sessions via gateway
+    #    RPC. Trimming jsonl files (steps 3 & 4) caps disk usage but does NOT
     #    clear the live in-memory conversation context — the gateway keeps
     #    using whatever sessionId is current. Without this step, agents enter
     #    a fresh suite carrying the prior run's negotiation transcript, which
     #    can push a 3-agent negotiation past the model's context window
     #    (observed: agent-alpha at 148k/200k after one suite, causing test_31
-    #    and test_41 to lose the 3rd agent to silent refusal/truncation).
+    #    and test_41 to lose the 3rd agent to silent refusal/truncation), and
+    #    can also leave stale "I already joined" history in matrix-channel
+    #    sessions so that the LLM no-ops on the next negotiation trigger.
     _reset_agent_mycelium_sessions()
 
     # 6. Wait for any in-flight agent turns to finish
@@ -255,11 +257,29 @@ def _run_openclaw(
         return None
 
 
+_RESET_SESSION_TAGS: tuple[str, ...] = (
+    # Direct mycelium-room channel that carries CognitiveEngine ticks/replies.
+    "mycelium-room",
+    # Matrix channel where negotiation triggers land for local agents. The
+    # negotiation tests (e.g. ``test_31_local_three_agent_negotiation``) send
+    # the trigger to a Matrix room; if the agent's matrix-channel session is
+    # carrying stale "I already joined" history from earlier suite runs, the
+    # LLM emits a no-op acknowledgement instead of calling ``mycelium session
+    # join`` again, leaving the backend at ``n_agents: 1`` and the test failing
+    # with "Only 1/3 agents responded". Resetting these clears that history.
+    "matrix:channel:",
+)
+
+
 def _list_mycelium_sessions(
     agent_id: str, *, host: str | None = None,
 ) -> list[dict[str, Any]]:
-    """List the agent's sessions that involve mycelium-room (the negotiation
-    channel). Returns empty list on any error; safe for best-effort use."""
+    """List the agent's sessions that carry negotiation traffic.
+
+    Includes both the direct ``mycelium-room`` channel (CognitiveEngine
+    ticks/replies) and the ``matrix:channel:`` sessions where local agents
+    receive negotiation triggers. Returns an empty list on any error; safe
+    for best-effort use."""
     proc = _run_openclaw(
         ["sessions", "--agent", agent_id, "--json", "--limit", "100"],
         host=host,
@@ -272,13 +292,15 @@ def _list_mycelium_sessions(
     except json.JSONDecodeError:
         return []
     sessions = data if isinstance(data, list) else data.get("sessions", [])
-    # Match the channel namespace prefix that the mycelium-room openclaw
-    # plugin uses for its session keys (see openclaw plugin channel/index.ts).
-    # Examples observed:
+    # Session keys observed:
     #   agent:agent-alpha:mycelium-room:group:mycelium_room
+    #   agent:agent-gamma:matrix:channel:!xsqgkkmaxjhhtwqlte:local
     return [
         s for s in sessions
-        if "mycelium-room" in (s.get("key") or s.get("sessionKey") or "")
+        if any(
+            tag in (s.get("key") or s.get("sessionKey") or "")
+            for tag in _RESET_SESSION_TAGS
+        )
     ]
 
 
@@ -299,19 +321,32 @@ def _reset_session(key: str, *, host: str | None = None) -> bool:
 def _reset_agent_mycelium_sessions(
     agents_by_host: dict[str | None, tuple[str, ...]] | None = None,
 ) -> None:
-    """Logical reset of each agent's mycelium-room session(s) via gateway RPC.
+    """Logical reset of each agent's negotiation-carrying session(s) via gateway RPC.
+
+    Covers both the direct ``mycelium-room`` channel (where CognitiveEngine
+    ticks and replies flow) and the ``matrix:channel:`` sessions where local
+    agents receive negotiation triggers — see ``_RESET_SESSION_TAGS``.
 
     Why this matters:
         Trimming .jsonl files (the older approach) caps disk usage but does
         not clear the live in-memory conversation context the gateway feeds
-        to the LLM. With the e2e suite running ~10 distributed negotiations
-        per pass and each round writing both an `offer` and an `accept`
-        message into the session, accumulated input context grew to ~74%
-        of the model context window in observed runs — directly causing the
-        ``test_31``/``test_41`` silent-3rd-agent failures (refusal or 3-token
-        degenerate output rather than a real reply).
+        to the LLM. Two distinct failure modes were observed without this:
 
-        ``sessions.reset`` is the gateway-supported way to clear that without
+        1. Context bloat on the ``mycelium-room`` channel: with the e2e suite
+           running ~10 distributed negotiations per pass and each round
+           writing both an `offer` and an `accept` into the session,
+           accumulated input context grew to ~74% of the model context
+           window — causing ``test_31``/``test_41`` to lose the 3rd agent to
+           silent refusal or 3-token degenerate output.
+
+        2. Stale "I already joined" history on the ``matrix:channel:``
+           session: after a prior trigger in the same suite, the agent's
+           transcript already contains its "Joined." reply. When the next
+           trigger lands, the LLM emits a no-op acknowledgement instead of
+           re-calling ``mycelium session join``, leaving the backend at
+           ``n_agents: 1`` and the negotiation never reaching the 3rd agent.
+
+        ``sessions.reset`` is the gateway-supported way to clear both without
         deleting on-disk transcripts (so forensics survives a reset) or
         restarting the gateway (which would also drop healthy sessions).
 
