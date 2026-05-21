@@ -462,7 +462,21 @@ def _run_migrations() -> None:
 
         env.update({k: v for k, v in dotenv_values(backend_env).items() if v is not None})
 
-    if "DATABASE_URL" not in env:
+    # Migrations run on the host (alembic, not the backend container), so
+    # use the host-side URL.  See the matching note in commands/instance.py
+    # for why we prefer DATABASE_URL_HOST → MyceliumConfig.database_url →
+    # legacy DATABASE_URL in this order.
+    host_url = env.get("DATABASE_URL_HOST")
+    if not host_url:
+        try:
+            from mycelium.config import MyceliumConfig as _Cfg
+
+            host_url = _Cfg.load().database_url(host_side=True)
+        except Exception:
+            host_url = None
+    if host_url:
+        env["DATABASE_URL"] = host_url
+    elif "DATABASE_URL" not in env:
         typer.echo("  ⚠  DATABASE_URL not set — skipping migrations")
         return
 
