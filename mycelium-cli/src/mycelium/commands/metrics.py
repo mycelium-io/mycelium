@@ -3411,13 +3411,22 @@ def _render_cfn_scrape_table(scrape: dict | None) -> None:
 
 
 def _estimate_cost(
-    input_tokens: int,
-    output_tokens: int,
-    cache_read_tokens: int,
-    cache_write_tokens: int,
+    input_tokens: float,
+    output_tokens: float,
+    cache_read_tokens: float,
+    cache_write_tokens: float,
     model: str,
 ) -> float:
-    """Estimate cost in USD from token counts and model pricing."""
+    """Estimate cost in USD from token counts and model pricing.
+
+    Token counts are typed as ``float`` rather than ``int`` because the
+    upstream metrics snapshots (``be_counters``/``myc_llm``) are typed as
+    ``dict[str, Any]`` and ``dict.get(..., 0)`` widens to ``int | float``
+    even when the runtime values are whole-number token counts. The
+    arithmetic below is rate * count, which is identical under either
+    type, so widening is a no-op at runtime and avoids forcing every
+    caller to ``int(...)``-cast the dict value.
+    """
     pricing, _ = _get_model_pricing(model)
     input_rate = pricing["input"]
     output_rate = pricing["output"]
