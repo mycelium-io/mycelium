@@ -72,10 +72,10 @@ def add(
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Show what would be installed without doing it"
     ),
-    step: str | None = typer.Option(
+    step: list[str] | None = typer.Option(
         None,
         "--step",
-        help="Follow-up step. openclaw: otel, docker-env. claude-code: daemon.",
+        help="Follow-up step (repeatable). openclaw: otel, docker-env. claude-code: daemon.",
     ),
     remove_step: bool = typer.Option(
         False,
@@ -161,28 +161,30 @@ def add(
         integ = _resolve_integration(adapter_type)
 
         # ── Follow-up steps run independently of the base install ────────────
-        if step is not None:
+        if step:
             if integ is None:
                 typer.secho(
                     f"--step is not supported for the '{adapter_type}' adapter.",
                     fg=typer.colors.RED,
                 )
                 raise typer.Exit(1)
-            if step not in integ.STEPS:
-                known_steps = ", ".join(integ.STEPS)
-                typer.secho(
-                    f"Unknown {adapter_type} step '{step}'. Known: {known_steps}",
-                    fg=typer.colors.RED,
+            for s in step:
+                if s not in integ.STEPS:
+                    known_steps = ", ".join(integ.STEPS)
+                    typer.secho(
+                        f"Unknown {adapter_type} step '{s}'. Known: {known_steps}",
+                        fg=typer.colors.RED,
+                    )
+                    raise typer.Exit(1)
+            for s in step:
+                integ.run_step(
+                    s,
+                    config=config,
+                    verbose=verbose,
+                    profile=openclaw_profile,
+                    container=openclaw_container,
+                    remove=remove_step,
                 )
-                raise typer.Exit(1)
-            integ.run_step(
-                step,
-                config=config,
-                verbose=verbose,
-                profile=openclaw_profile,
-                container=openclaw_container,
-                remove=remove_step,
-            )
             return
 
         # ── Base install ──────────────────────────────────────────────────────

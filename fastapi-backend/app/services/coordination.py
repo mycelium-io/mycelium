@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Literal
 from urllib.parse import urlparse
+from uuid import UUID
 
 import asyncpg
 from rapidfuzz import fuzz as _fuzz
@@ -42,6 +43,7 @@ from app.services.metrics import (
     record_consensus,
     record_coordination_round,
     record_coordination_start,
+    record_room_identity,
 )
 
 logger = logging.getLogger(__name__)
@@ -409,7 +411,7 @@ async def _run_tick(room_name: str, tick: int) -> None:
     if tick != 0:
         return
 
-    if not settings.COGNITION_FABRIC_NODE_URL or mas_id is None or workspace_id is None:
+    if not settings.COGNITION_FABRIC_NODE_URL or not mas_id or not workspace_id:
         logger.error(
             "Coordination requested for %s but CFN not configured (no COGNITION_FABRIC_NODE_URL "
             "or coord_session mas_id/workspace_id not set)",
@@ -473,6 +475,12 @@ async def _run_cfn_negotiation(
 
     session_start_time = time.monotonic()
     record_coordination_start(participants=len(session_handles))
+    # Capture the room_name ↔ mas_id link in the snapshot so the CLI's
+    # per-room tables can keep displaying both axes after the room is
+    # hard-deleted from /api/rooms. We pass the parent room (room.name)
+    # because the coordination counters bucket by parent room too
+    # (``_parent_room`` strips ``:session:<uuid>`` suffixes downstream).
+    record_room_identity(mas_id=mas_id, room_name=room.name)
 
     await _post_message(
         room_name,
@@ -1512,7 +1520,7 @@ async def _post_message(room_name: str, message_type: str, content: str) -> None
     """Insert a coordination message to DB and notify SSE subscribers."""
     async with async_session_maker() as db:
         msg_room_name: str | None = room_name
-        msg_session_id: str | None = None
+        msg_session_id: UUID | None = None
         if ":session:" in room_name:
             parent, _, short_id = room_name.partition(":session:")
             result = await db.execute(
@@ -1524,7 +1532,15 @@ async def _post_message(room_name: str, message_type: str, content: str) -> None
             session_id = result.scalar_one_or_none()
             if session_id is not None:
                 msg_room_name = None
-                msg_session_id = str(session_id)
+                msg_session_id = session_id
+            else:
+                logger.warning(
+                    "Cannot resolve session %r — no matching coordination_session row; "
+                    "dropping message (type=%s)",
+                    room_name,
+                    message_type,
+                )
+                return
         msg = Message(
             room_name=msg_room_name,
             coordination_session_id=msg_session_id,

@@ -15,24 +15,24 @@ T = TypeVar("T", bound="MessageCreate")
 class MessageCreate:
     """
     Attributes:
-        sender_handle (str): Sender handle (e.g., 'alpha#a8f3')
-        message_type (str): Type: announce, direct, broadcast, or delegate
         content (str):
+        message_type (str): Type: announce, direct, broadcast, or delegate
+        sender_handle (str): Sender handle (e.g., 'alpha#a8f3')
         recipient_handle (None | str | Unset): Recipient handle for direct messages; omit for broadcast
     """
 
-    sender_handle: str
-    message_type: str
     content: str
+    message_type: str
+    sender_handle: str
     recipient_handle: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        sender_handle = self.sender_handle
+        content = self.content
 
         message_type = self.message_type
 
-        content = self.content
+        sender_handle = self.sender_handle
 
         recipient_handle: None | str | Unset
         if isinstance(self.recipient_handle, Unset):
@@ -44,9 +44,9 @@ class MessageCreate:
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
-                "sender_handle": sender_handle,
-                "message_type": message_type,
                 "content": content,
+                "message_type": message_type,
+                "sender_handle": sender_handle,
             }
         )
         if recipient_handle is not UNSET:
@@ -57,11 +57,11 @@ class MessageCreate:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        sender_handle = d.pop("sender_handle")
+        content = d.pop("content")
 
         message_type = d.pop("message_type")
 
-        content = d.pop("content")
+        sender_handle = d.pop("sender_handle")
 
         def _parse_recipient_handle(data: object) -> None | str | Unset:
             if data is None:
@@ -73,9 +73,9 @@ class MessageCreate:
         recipient_handle = _parse_recipient_handle(d.pop("recipient_handle", UNSET))
 
         message_create = cls(
-            sender_handle=sender_handle,
-            message_type=message_type,
             content=content,
+            message_type=message_type,
+            sender_handle=sender_handle,
             recipient_handle=recipient_handle,
         )
 

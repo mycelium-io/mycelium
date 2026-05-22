@@ -90,6 +90,39 @@ services:
     ports:
       - "${MYCELIUM_UI_PORT:-3000}:3000"
 
+  # ── OTLP Collector (profile: metrics) ──────────────────────────────────────
+  #
+  # Lightweight HTTP receiver for OpenClaw diagnostics-otel and deep-
+  # observability traces/metrics. Writes $DATA_DIR/metrics/metrics.json and
+  # traces.db, and polls the backend for coordination metrics.
+  # Opt-in via `mycelium up --metrics`.
+
+  mycelium-collector:
+    image: ghcr.io/mycelium-io/mycelium-collector:${MYCELIUM_IMAGE_TAG:-latest}
+    container_name: mycelium-collector
+    restart: unless-stopped
+    profiles: [metrics]
+    env_file:
+      - path: ../.env
+        required: false
+    depends_on:
+      mycelium-backend:
+        condition: service_healthy
+    ports:
+      - "${MYCELIUM_METRICS_PORT:-4318}:4318"
+    volumes:
+      - ${MYCELIUM_DATA_DIR:-~/.mycelium}:/home/collector/.mycelium
+    command:
+      - "--port=4318"
+      - "--output=/home/collector/.mycelium/metrics/metrics.json"
+      - "--backend-url=http://mycelium-backend:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:4318/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
   # ── Graph Viewer (optional, for development) ─────────────────────────────────
 
   mycelium-graph-viewer:
@@ -147,7 +180,7 @@ services:
 
 
   ioc-cognition-fabric-node-svc:
-    image: ghcr.io/outshift-open/ioc-cognition-fabric-node-svc:0.1.6
+    image: ghcr.io/outshift-open/ioc-cognition-fabric-node-svc:0.1.7
     pull_policy: always
     platform: linux/amd64
     container_name: ioc-cognition-fabric-node-svc

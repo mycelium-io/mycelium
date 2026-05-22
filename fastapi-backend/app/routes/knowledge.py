@@ -34,7 +34,7 @@ from app.services.cfn_knowledge import (
 from app.services.cfn_resolve import resolve_mas_id, resolve_workspace_id
 from app.services.ingest_dedupe import get_cache
 from app.services.ingest_log_buffer import IngestEvent, IngestState, get_buffer
-from app.services.metrics import record_knowledge_ingestion
+from app.services.metrics import record_knowledge_ingestion, record_room_identity
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +149,19 @@ async def knowledge_ingest(
     # ── Resolve CFN routing IDs ───────────────────────────────────────────────
     workspace_id = resolve_workspace_id(data.workspace_id)
     mas_id = await resolve_mas_id(data.mas_id, data.room_name, db)
+    # Capture mas_id ↔ room_name in the metric snapshot when the caller
+    # gave us the name. ``record_room_identity`` is write-once and cheap
+    # (no DB hit), so this is a no-op on hot paths after the first ingest
+    # per room. We normalise ``:session:<short>`` display names to their
+    # parent room so this aligns with how coordination metrics bucket
+    # per-room counters downstream. See ``_parent_room`` in the CLI.
+    if data.room_name:
+        parent_name = (
+            data.room_name.split(":session:", 1)[0]
+            if ":session:" in data.room_name
+            else data.room_name
+        )
+        record_room_identity(mas_id=mas_id, room_name=parent_name)
 
     # ── Gate 1: master kill switch ────────────────────────────────────────────
     if not settings.MYCELIUM_INGEST_ENABLED:
@@ -289,6 +302,7 @@ async def knowledge_ingest(
             duration_ms=cfn_latency,
             error=True,
             estimated_input_tokens=est_tokens,
+            mas_id=mas_id,
         )
         code = exc.status_code or status.HTTP_502_BAD_GATEWAY
         raise HTTPException(status_code=code, detail=str(exc)) from exc
@@ -321,6 +335,7 @@ async def knowledge_ingest(
     record_knowledge_ingestion(
         duration_ms=latency_ms,
         estimated_input_tokens=est_tokens,
+        mas_id=mas_id,
     )
 
     _write_audit_event(db, mas_id)
