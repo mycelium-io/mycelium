@@ -1483,6 +1483,65 @@
                 }
             }
         },
+        "/api/rooms/{room_name}/agent-context": {
+            "get": {
+                "tags": [
+                    "plan"
+                ],
+                "summary": "Get Agent Context",
+                "description": "Compact room briefing injected into an agent's prompt on dispatch.\n\nHot path \u2014 called on every ``@handle`` dispatch \u2014 so it stays a pure\nfilesystem read with no DB round-trip. ``handle`` is accepted now and\nreserved for per-agent data (claimed tasks) once that lands; v1 ignores\nit and returns the room-wide plan briefing.",
+                "operationId": "get_agent_context_api_rooms__room_name__agent_context_get",
+                "parameters": [
+                    {
+                        "name": "room_name",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Room Name"
+                        }
+                    },
+                    {
+                        "name": "handle",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Handle"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/AgentContextOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/internal/audit-events": {
             "post": {
                 "tags": [
@@ -2728,6 +2787,46 @@
     },
     "components": {
         "schemas": {
+            "AgentContextOut": {
+                "properties": {
+                    "room": {
+                        "type": "string",
+                        "title": "Room"
+                    },
+                    "handle": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Handle"
+                    },
+                    "generated_at": {
+                        "type": "string",
+                        "title": "Generated At"
+                    },
+                    "context": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Context"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "room",
+                    "generated_at"
+                ],
+                "title": "AgentContextOut"
+            },
             "AuditEventCreate": {
                 "properties": {
                     "operation_id": {
