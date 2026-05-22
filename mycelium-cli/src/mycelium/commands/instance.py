@@ -186,6 +186,33 @@ def _patch_env_image_tag(env_path: Path, tag: str) -> None:
     env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
 
 
+def _announce_image_tag() -> None:
+    """Print the effective ``MYCELIUM_IMAGE_TAG`` after ``mycelium up``.
+
+    Compose silently falls back to ``:latest`` when the pin is absent, which
+    is a UX trap — users assume the version they last pulled is still running.
+    Surface the resolved tag (and a hint when unpinned) so the next person
+    triaging an image-mismatch bug doesn't have to dig through .env.
+    """
+    env_path = _get_env_path()
+    pinned = None
+    if env_path is not None:
+        from mycelium.docker_utils import read_pinned_image_tag
+
+        pinned = read_pinned_image_tag(env_path)
+
+    if pinned and pinned != "latest":
+        typer.secho(
+            f"  → image tag: {pinned} (pinned via 'mycelium pull --version')",
+            fg=typer.colors.CYAN,
+        )
+    else:
+        typer.secho(
+            "  → image tag: latest (unpinned — run 'mycelium pull --version X' to pin)",
+            fg=typer.colors.YELLOW,
+        )
+
+
 def _cfn_enabled() -> bool:
     """Return True if CFN_MGMT_URL is set in ~/.mycelium/.env."""
     env_path = _get_env_path()
@@ -484,6 +511,7 @@ def start(
                 typer.echo(result.stderr, err=True)
 
         typer.secho("Services started.", fg=typer.colors.GREEN)
+        _announce_image_tag()
         typer.echo("  mycelium-backend    → http://localhost:8000")
         if ui:
             typer.echo("  mycelium-frontend   → http://localhost:3000")
