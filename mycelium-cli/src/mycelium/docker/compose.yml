@@ -171,6 +171,13 @@ services:
       POSTGRES_PASSWORD: ${MYCELIUM_DB_PASSWORD:-password}
       PORT: 9000
       CFN_DEV_MODE: ${CFN_DEV_MODE:-false}
+      # Must match the node-svc's CFN_NAME below — the mgmt plane's
+      # Default-Workspace ↔ CFN auto-association branch (see #308) only
+      # fires when the registering node's cfn_name equals this env var.
+      # If unset, the mgmt plane silently falls back to "My Cognition
+      # Fabric Node", the strings don't match, and workspace.cfn_id stays
+      # NULL forever — breaking every CFN data-plane round trip.
+      CFN_NAME: ${CFN_NAME:-mycelium-cfn}
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9000/health || exit 1"]
       interval: 10s
