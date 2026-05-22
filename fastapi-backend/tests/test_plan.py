@@ -68,6 +68,47 @@ class TestAddAndToggle:
             plan_service.toggle_task("nope", "missing:1")
 
 
+class TestWritePlanFile:
+    """write_plan_file / read_plan_file — the whole-body writer the compiler uses."""
+
+    def test_write_and_read_roundtrip(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path))
+        body = "# Launch plan\n\n- [ ] write the parser\n- [x] sketch the API\n"
+        plan_service.write_plan_file("room-w", body)
+
+        assert plan_service.read_plan_file("room-w") == body.rstrip("\n")
+        # The body must still parse as a plan: load_plan strips the frontmatter
+        # write_memory_file adds, and parse_tasks sees both checkbox states.
+        _, tasks = plan_service.load_plan("room-w")
+        assert [(t.text, t.done) for t in tasks] == [
+            ("write the parser", False),
+            ("sketch the API", True),
+        ]
+
+    def test_write_overwrites(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path))
+        plan_service.write_plan_file("room-o", "# A\n\n- [ ] one\n")
+        plan_service.write_plan_file("room-o", "# B\n\n- [ ] two\n")
+        body = plan_service.read_plan_file("room-o")
+        assert body is not None
+        assert "one" not in body
+        assert "two" in body
+
+    def test_read_missing_returns_none(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path))
+        assert plan_service.read_plan_file("never-created") is None
+
+    def test_toggle_on_compiler_written_file(self, tmp_path, monkeypatch):
+        """A compiler-written file carries frontmatter; toggle_task must still work."""
+        monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path))
+        plan_service.write_plan_file("room-t", "# Plan\n\n- [ ] do the thing\n")
+        _, tasks = plan_service.load_plan("room-t")
+        flipped = plan_service.toggle_task("room-t", tasks[0].id)
+        assert flipped.done is True
+        _, reloaded = plan_service.load_plan("room-t")
+        assert reloaded[0].done is True
+
+
 class TestOpenTaskSummary:
     def test_summary_groups_and_caps(self, tmp_path, monkeypatch):
         monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path))

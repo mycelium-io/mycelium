@@ -252,6 +252,44 @@ def set_title(room_name: str, text: str, *, updated_by: str = "frontend") -> str
     return cleaned
 
 
+def write_plan_file(
+    room_name: str,
+    body: str,
+    *,
+    slug: str = DEFAULT_TASK_FILE,
+    updated_by: str = "CognitiveEngine",
+) -> Path:
+    """Overwrite ``plan/{slug}.md`` with a full markdown body.
+
+    Frontmatter is managed by ``write_memory_file``; ``load_plan`` strips it on
+    read. Used by the plan compiler to materialize a negotiation consensus.
+    """
+    from app.services.filesystem import write_memory_file
+
+    base = get_room_dir(room_name)
+    base.mkdir(parents=True, exist_ok=True)
+    return write_memory_file(
+        base,
+        f"{PLAN_DIR}/{slug}",
+        body.rstrip("\n") + "\n",
+        created_by=updated_by,
+        updated_by=updated_by,
+    )
+
+
+def read_plan_file(room_name: str, *, slug: str = DEFAULT_TASK_FILE) -> str | None:
+    """Return the raw markdown body of ``plan/{slug}.md``, or None if absent.
+
+    Frontmatter is stripped via ``parse_memory``; completed ``- [x]`` lines and
+    prose round-trip verbatim, which is what the re-negotiation merge needs.
+    """
+    path = _plan_dir(room_name) / f"{slug}.md"
+    if not path.exists():
+        return None
+    _, body = parse_memory(path.read_text(encoding="utf-8"))
+    return body
+
+
 def open_task_summary(room_name: str, *, limit: int = 20) -> str | None:
     """Human-readable list of open tasks for injection into agent context.
 

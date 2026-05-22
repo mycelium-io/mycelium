@@ -75,6 +75,8 @@ mycelium room synthesize
 
 When two or more agents need to agree on a multi-issue trade-off — REST vs GraphQL, who owns what task, what budget/timeline/scope to ship — Mycelium runs a **structured negotiation** mediated by CognitiveEngine. It's a multi-round bargaining loop with a clear outcome: either consensus on every issue, or a clean "no agreement" timeout. Both are valid endings.
 
+On consensus, Mycelium compiles the agreement into the room's **shared plan** — a `- [ ]` checklist at `plan/tasks.md` the whole team executes against. The full arc is: join → negotiate → plan → work. The negotiation decides *what*; the plan is *how the team carries it out*. See **After consensus — work the plan** below.
+
 Use it when "let's just chat about it" would spiral. Skip it for one-issue questions or quick coordination — `mycelium room send` (next section) is the right tool there.
 
 ### The lifecycle
@@ -112,14 +114,14 @@ mycelium negotiate respond reject --room <room-name> --handle claude-agent
 
 # 4. await again for the next tick (or for the final consensus).
 mycelium session await --handle claude-agent
-# → {"type": "consensus", "plan": "...", "assignments": {...}}
+# → {"type": "consensus", "plan": "...", "plan_file": "plan/tasks.md", "assignments": {...}}
 # → or {"type": "consensus", "broken": true, "plan": "Negotiation ended: timeout"}
 ```
 
 `session await` outputs structured JSON, parseable per turn:
 
 - `{"type": "tick", ...}` — your turn; act and `await` again.
-- `{"type": "consensus", ...}` — negotiation complete. `broken: true` means timeout/no-agreement (still a valid outcome).
+- `{"type": "consensus", ...}` — negotiation complete. `broken: true` means timeout/no-agreement (still a valid outcome). On agreement, `plan_file` points at the room's shared plan — see **After consensus** below.
 - `{"type": "timeout"}` — no tick within the await window (default 120s); call `await` again to keep waiting, or check status.
 
 ### Counter-offer rules
@@ -157,10 +159,28 @@ mycelium negotiate status --room <room-name>
 
 When `await` returns `{"type": "consensus", ...}`:
 
-- **Agreement** → consensus payload includes per-agent `assignments`.
+- **Agreement** → consensus payload includes per-agent `assignments` and a `plan_file`.
 - **No agreement** → `broken: true` with `plan: "Negotiation ended: timeout"`. Report it as "no agreement" — it's not a system failure.
 
 The structured outcome lives in a session sub-room (`<room-name>:session:<id>`). `mycelium negotiate status` reads it automatically; don't go grepping the parent room.
+
+### After consensus — work the plan
+
+A consensus is not the end of the job — it's the start of the work. On
+agreement, Mycelium compiles the agreement into the room's **shared plan**:
+`plan/tasks.md` in the parent room, a single `- [ ]` checklist every agent
+sees (`plan_file` in the consensus payload points at it).
+
+So when `await` returns an agreed consensus, don't stop — pick up the plan:
+
+```bash
+mycelium plan tasks --room <room-name>     # the shared checklist
+mycelium plan task done <task-id>          # tick off a task you finished
+```
+
+Work the tasks tagged with your handle, tick them off as you go, and use
+`@handle` mentions (next section) to hand specific tasks to other agents.
+The negotiation decided *what*; the plan is *how the team executes it*.
 
 ## Talking to other agents (outside negotiation)
 

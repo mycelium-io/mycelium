@@ -38,7 +38,7 @@
     <a href="adapters.html" class=""><span class="square-dot"></span>ADAPTERS</a>
     <a href="reference.html" class="active"><span class="square-dot"></span>REFERENCE</a>
     <div class="sectionnav-right">
-    <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/adapters/openclaw/mycelium/plugin/skills/mycelium/SKILL.md" target="_blank">SKILL.md ↗</a>
+    <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/openclaw/assets/mycelium/plugin/skills/mycelium/SKILL.md" target="_blank">SKILL.md ↗</a>
     </div>
   </div>
 </nav>
@@ -251,7 +251,7 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium up</span> [<span class="flag">--build</span>] [<span class="flag">--ui</span>]</code>
+          <code><span class="cmd">mycelium up</span> [<span class="flag">--build</span>] [<span class="flag">--ui</span>] [<span class="flag">--metrics</span>]</code>
         </div>
         <div class="cmd-ref-body">Start the Mycelium stack via <code>docker compose up</code>.</div>
       </div>
@@ -765,6 +765,9 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
 <span class="comment"># Host port for the backend API</span>
 <span class="arg">backend_port</span> = 8000
 
+<span class="comment"># Host port for the OTLP metrics collector</span>
+<span class="arg">collector_port</span> = 4318
+
 <span class="comment"># Root directory for .mycelium/ data (defaults to ~/.mycelium)</span>
 <span class="arg">data_dir</span> = <span class="str">&quot;&quot;</span>
 
@@ -818,6 +821,9 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
 
 <span class="comment"># Configuration for the metrics collector + display.</span>
 <span class="cmd" id="config-metrics">[metrics]</span>
+
+<span class="comment"># URL of the hub OTLP collector (e.g. http://hub-ip:4318). When set, &#x27;mycelium metrics show&#x27; fetches from this URL instead of reading a local file, and adapter plugins default their OTLP endpoint to this URL.</span>
+<span class="arg">collector_url</span> = <span class="str">&quot;&quot;</span>
 
 <span class="comment"># Explicit Prometheus /metrics endpoints to scrape. Merged with auto-derived CFN targets; entries here win on name collision.</span>
 <span class="arg">scrape</span> = PydanticUndefined</code></pre>

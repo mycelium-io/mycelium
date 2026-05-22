@@ -75,9 +75,13 @@ function parseEvent(msg: Record<string, unknown>): Event {
     }
     case "coordination_consensus": {
       const plan = raw.plan as string;
+      const planFile = raw.plan_file as string | undefined;
+      const broken = raw.broken === true;
       const assignments = raw.assignments as Record<string, string>;
       content = plan || "";
       if (assignments) content += " " + Object.entries(assignments).map(([k, v]) => `${k}=${v}`).join(", ");
+      // Consensus isn't the end — it compiles into the room's shared plan.
+      if (!broken && planFile) content += ` · compiled → ${planFile}`;
       break;
     }
     case "memory_changed": {
@@ -208,6 +212,11 @@ export function EventStream({ roomName, onMemoryChanged }: Props) {
           const event = parseEvent(msg);
           setEvents(prev => [...prev, event]);
           if (event.type === "memory_changed") onMemoryChanged?.();
+          // A consensus compiles the negotiation into plan/tasks.md — nudge
+          // the plan header to refetch so the checklist surfaces immediately.
+          if (event.type === "coordination_consensus" && event.raw.broken !== true) {
+            onMemoryChanged?.();
+          }
         } catch {}
       };
       es.onerror = () => {

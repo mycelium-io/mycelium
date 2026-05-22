@@ -45,7 +45,12 @@ interface DerivedState {
   proposerId: string | null;
   nextProposerId: string | null;
   state: "negotiating" | "complete" | "broken" | "starting";
-  consensus: { plan: string; assignments: Record<string, string>; broken: boolean } | null;
+  consensus: {
+    plan: string;
+    assignments: Record<string, string>;
+    broken: boolean;
+    planFile: string | null;
+  } | null;
 }
 
 // ─── Parsing ──────────────────────────────────────────────────────────────────
@@ -170,6 +175,7 @@ function deriveState(messages: RawMessage[]): DerivedState {
       plan: String(c.plan ?? ""),
       assignments: (c.assignments as Record<string, string>) ?? {},
       broken: Boolean(c.broken),
+      planFile: typeof c.plan_file === "string" ? c.plan_file : null,
     };
   }
 
@@ -528,6 +534,11 @@ function ConsensusBanner({ derived }: { derived: DerivedState }) {
               <span className="text-text">{String(v)}</span>
             </div>
           ))}
+        </div>
+      )}
+      {!c.broken && c.planFile && (
+        <div className="caps-mono-sm mt-3 pt-2 border-t" style={{ borderColor: color, color }}>
+          compiled into the room plan → {c.planFile}
         </div>
       )}
     </div>

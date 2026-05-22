@@ -760,4 +760,24 @@ describe("formatConsensusSummary", () => {
     expect(summary).toContain("REST");
     expect(summary).toContain("migration");
   });
+
+  it("points at the compiled plan when plan_file is present", () => {
+    const summary = formatConsensusSummary({
+      plan: "ship it",
+      assignments: { julia: "code" },
+      broken: false,
+      plan_file: "plan/tasks.md",
+    });
+    expect(summary).toContain("plan/tasks.md");
+    expect(summary).toContain("mycelium plan tasks");
+  });
+
+  it("omits the plan pointer when plan_file is absent", () => {
+    const summary = formatConsensusSummary({
+      plan: "ship it",
+      assignments: {},
+      broken: false,
+    });
+    expect(summary).not.toContain("mycelium plan tasks");
+  });
 });

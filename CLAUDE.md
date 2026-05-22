@@ -18,7 +18,7 @@ mycelium-frontend/  Next.js frontend (TypeScript, Tailwind)
 docs/               Presentation deck, demo script
 mycelium-promo/     HyperFrames promo video — code-defined HTML→MP4 walkthrough
                     (CLI install → app install → room → adapter → chat → swim
-                    lanes → consensus → return). Renders 1920x1080 H.264.
+                    lanes → consensus → plan → work). Renders 1920x1080 H.264.
                     `cd mycelium-promo && npm run dev` to preview,
                     `npm run render` to export to renders/*.mp4.
                     The README + docs/index.html embed the rendered MP4 via a
@@ -76,8 +76,9 @@ Embeddings: sentence-transformers (all-MiniLM-L6-v2, local, 384 dimensions).
 - **CognitiveEngine mediates** — agents never talk to each other directly. All coordination flows through CE.
 - **Rooms are folders** — `.mycelium/rooms/{name}/` with standard subdirs: `decisions/`, `failed/`, `status/`, `context/`, `work/`, `procedures/`, `log/`, `plan/`. The `plan/` namespace holds the room's plan: `plan/title.md` is the room's display title (italic hero in the UI), other `plan/{slug}.md` files carry prose + `- [ ]` checklist tasks surfaced to every agent.
 - **Rooms are always persistent** — rooms are persistent namespaces for memory and coordination. Spawn sessions within rooms for real-time NegMAS negotiation.
-- **The CLI skill is a protocol** — join → wait → respond → consensus. This is the value add, don't change it to an augmentation layer.
+- **The CLI skill is a protocol** — join → wait → respond → consensus → plan → work. This is the value add, don't change it to an augmentation layer.
 - **memory set always upserts** — `memory set` overwrites existing keys automatically (version increments).
+- **Consensus compiles into the plan** — when a negotiation reaches consensus, `coordination.py:_finish_cfn` hands the agreement to `plan_compiler.py`, an LLM stage that materializes it as `plan/tasks.md` (one shared `- [ ]` checklist) *before* the `coordination_consensus` message is posted (plan-first ordering — `session await` returns once the plan exists). Fail-soft: a compiler outage falls back to writing the raw `issue=value` agreement. The compiler is deliberately **not** a CognitiveEngine step — the CE is the negotiation engine (owned separately); the compiler is a distinct consumer stage that picks up the consensus across an explicit seam. `litellm.acompletion` doesn't work for Bedrock, so the compiler routes Bedrock models through threaded sync `completion`.
 - **Git for sharing** — rooms can be shared via git push/pull.
 - **No Ensue references in code** — we took inspiration from their API design but the implementation is independent.
 - **Two delivery paths for coordination ticks — keep them in sync.** When a `coordination_tick` is posted to a session room, agents see it via one of two paths depending on their adapter:
@@ -85,6 +86,8 @@ Embeddings: sentence-transformers (all-MiniLM-L6-v2, local, 384 dimensions).
   - **OpenClaw path:** the agent does NOT run `mycelium await`. The `mycelium-room` channel plugin (`mycelium-cli/src/mycelium/integrations/openclaw/assets/mycelium/plugin/src/channel/`) subscribes to the session room's SSE on its behalf and dispatches a *human-readable string* into the agent's session via `formatTickInstruction()` in `route.ts`. The agent only ever sees that formatted string — the raw payload fields are invisible to it.
 
   This means that **adding a field to the backend tick payload (`coordination.py:_fan_out_cfn_messages`) is not enough on its own** — the openclaw flow won't surface it until you also update `formatTickInstruction()` to render it into the dispatched string. Always change both.
+
+  The same discipline applies to the **`coordination_consensus`** payload (`coordination.py:_finish_cfn`): the openclaw consensus renderer is `formatConsensusSummary()` in the same `route.ts`. The `plan_file` field on the consensus payload, for instance, is only surfaced to openclaw agents because `formatConsensusSummary()` renders it.
 
 ## Local development
 

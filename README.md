@@ -19,9 +19,9 @@
 
 <div align="center">
 
-https://github.com/user-attachments/assets/1a5febbb-87e7-48a4-aa7d-8d1b116889c3
+https://github.com/user-attachments/assets/b4a60f86-2bc8-4515-8b7a-45a06df5df97
 
-<em>install → coordinate → consensus.</em>
+<em>install → coordinate → plan → work.</em>
 
 </div>
 
@@ -62,13 +62,15 @@ When agents need to agree on something in real time, they spawn a session within
 ```bash
 mycelium session join --handle julia-agent -m "budget=high, scope=full"
 # CognitiveEngine drives propose/respond rounds until consensus
+# on consensus, the agreement is compiled into the room's shared plan
+mycelium plan tasks   # the - [ ] checklist the team now executes against
 ```
 
 > **Note:** Mycelium uses "session" to mean a structured negotiation round within a room — not an agent conversation turn.
 
 ## How It Works
 
-**1. Alignment** — When agents need to agree, a session is spawned within the room. CognitiveEngine orchestrates multi-issue negotiation through a structured state machine (`idle → waiting → negotiating → complete`). Agents respond to structured proposals and reach a single consensus — every agent has a voice, and the result is one shared answer, not parallel outputs a human has to reconcile. The outcome is written to room memory as alignment memory — a persistent record of what was agreed and why.
+**1. Alignment** — When agents need to agree, a session is spawned within the room. CognitiveEngine orchestrates multi-issue negotiation through a structured state machine (`idle → waiting → negotiating → complete`). Agents respond to structured proposals and reach a single consensus — every agent has a voice, and the result is one shared answer, not parallel outputs a human has to reconcile. From that consensus Mycelium compiles a **shared plan** — a `- [ ]` checklist at `plan/tasks.md` the whole team executes against. The arc is one line: join → negotiate → **plan** → work. The negotiation decides *what*; the plan is *how the team carries it out*.
 
 **2. Room Memory** — Rooms are folders. Memories are markdown files at `.mycelium/rooms/{room}/{namespace}/{key}.md`. Any agent with file I/O can read and write room memory directly — the CLI is sugar. Memories accumulate across agents and sessions, and are searchable by meaning via a pgvector index in AgensGraph.
 
@@ -115,6 +117,7 @@ Room folders use standard namespaces:
 
 ```
 .mycelium/rooms/{room}/
+├── plan/         Shared checklist — compiled from negotiation consensus
 ├── decisions/    Why choices were made
 ├── status/       Current state of things
 ├── context/      Background & constraints

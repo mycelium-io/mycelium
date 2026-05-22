@@ -38,7 +38,7 @@
     <a href="adapters.html" class=""><span class="square-dot"></span>ADAPTERS</a>
     <a href="reference.html" class=""><span class="square-dot"></span>REFERENCE</a>
     <div class="sectionnav-right">
-    <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/adapters/openclaw/mycelium/plugin/skills/mycelium/SKILL.md" target="_blank">SKILL.md ↗</a>
+    <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/openclaw/assets/mycelium/plugin/skills/mycelium/SKILL.md" target="_blank">SKILL.md ↗</a>
     </div>
   </div>
 </nav>
@@ -80,14 +80,14 @@
 
       <div class="hero-video" style="margin: 0 0 32px; text-align: center;">
         <video
-          src="https://github.com/user-attachments/assets/1a5febbb-87e7-48a4-aa7d-8d1b116889c3"
+          src="https://github.com/user-attachments/assets/b4a60f86-2bc8-4515-8b7a-45a06df5df97"
           controls
           playsinline
           preload="metadata"
           style="max-width: 100%; width: 800px; border-radius: 8px; border: 1px solid var(--border);"
         ></video>
         <div style="font-size: 0.9rem; color: var(--text2); margin-top: 8px;">
-          <em>install → coordinate → consensus.</em>
+          <em>install → coordinate → plan → work.</em>
         </div>
       </div>
 
@@ -241,7 +241,7 @@
       <pre><code>idle → waiting → negotiating → complete
           ↑         ↓
       (join window fires)</code></pre>
-      <p>Once <code>complete</code>, the room holds the consensus output. Agents read their assigned actions from the final tick returned by <code>room await</code>.</p>
+      <p>Once <code>complete</code>, the consensus is compiled into the room&#x27;s shared plan (<code>plan/tasks.md</code>) — a <code>- [ ]</code> checklist the team works from. The arc is <code>join → negotiate → plan → work</code>; the room and its plan outlive the session.</p>
       <h2 id="rooms-triggers">Triggers</h2>
       <p>Async rooms synthesize when a trigger fires:</p>
       <div class="table-wrap">
@@ -277,8 +277,9 @@
         <li><strong>Join</strong> — Agents join with <code>mycelium session join -m &quot;your position&quot;</code>. The first join starts a 60-second window for others to join.</li>
         <li><strong>Await</strong> — <code>mycelium session await</code> blocks until the CognitiveEngine has an action for your agent (propose, respond, or done).</li>
         <li><strong>Negotiate</strong> — Agents propose and respond in structured rounds mediated by the CognitiveEngine.</li>
-        <li><strong>Complete</strong> — The session reaches consensus. The room persists; the session is done.</li>
+        <li><strong>Complete</strong> — The session reaches consensus. The agreement is compiled into the room&#x27;s <a href="#plan">shared plan</a> (<code>plan/tasks.md</code>); the session is done, the room and its plan persist.</li>
       </ol>
+      <p>The arc doesn&#x27;t stop at consensus — it flows into work: <strong>join → negotiate → plan → work</strong>. A consensus decides *what*; the plan is *how the team carries it out*.</p>
       <h2 id="sessions-state-machine">State Machine</h2>
       <pre><code>idle → waiting → negotiating → complete
           ↑         ↓
@@ -287,7 +288,7 @@
         <li><strong>idle</strong> — Session created, no agents yet.</li>
         <li><strong>waiting</strong> — At least one agent joined. 60-second window for others.</li>
         <li><strong>negotiating</strong> — CognitiveEngine is running the NegMAS pipeline.</li>
-        <li><strong>complete</strong> — Consensus reached. Agents read their actions from the final tick.</li>
+        <li><strong>complete</strong> — Consensus reached and compiled into the room&#x27;s <code>plan/tasks.md</code>. Agents pick up the shared checklist and work it.</li>
       </ul>
       <h2 id="sessions-rooms-vs-sessions">Rooms vs Sessions</h2>
       <div class="table-wrap">
@@ -400,6 +401,7 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
       <h1>Plan</h1>
       <p>A room&#x27;s <strong>plan</strong> is the place to write down what the room is for and what&#x27;s left to do. It lives in <code>.mycelium/rooms/{room}/plan/</code> as a small set of markdown files, plus the <code>- [ ]</code> / <code>- [x]</code> checklist lines inside them.</p>
       <p>Plan content is surfaced to every agent in the room — through the synthesis context (async path) and every coordination tick (sync path) — so agents weigh their behaviour against work that&#x27;s already committed.</p>
+      <p>You can write the plan by hand (<code>plan set</code>, <code>plan task add</code>), but it also fills itself: when a <a href="#sessions">negotiation session</a> reaches consensus, Mycelium compiles the agreement into <code>plan/tasks.md</code> automatically — a <code>- [ ]</code> checklist the whole team then executes against. A re-negotiation updates that same plan, preserving tasks already completed. The arc is <strong>join → negotiate → plan → work</strong>.</p>
       <h2 id="plan-anatomy">Anatomy</h2>
       <pre><code>.mycelium/rooms/{room}/plan/
 ├── title.md          # one-line italic display title (shown above room activity)
@@ -491,6 +493,10 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
         <li>Rounds continue until consensus or the round budget (<code>n_steps_total</code>) is</li>
       </ol>
       <p>exhausted. Consensus requires <strong>all agents</strong> to accept the same offer in the same round. The final tick is <code>coordination_consensus</code> with <code>broken: false</code> and the agreed plan; if no agreement is reached, <code>broken: true</code> is posted and the room moves to <code>failed</code> state.</p>
+      <ol class="steps">
+        <li>On consensus, the agreement is handed to the <strong>plan compiler</strong> — an LLM</li>
+      </ol>
+      <p>stage that turns the raw <code>issue=value</code> agreement into the room&#x27;s <a href="#plan">shared plan</a>, <code>plan/tasks.md</code>, a <code>- [ ]</code> checklist the team executes against. This runs before the <code>coordination_consensus</code> message is posted, so the plan exists by the time <code>session await</code> returns. The compiler is a separate stage that *consumes* the negotiation outcome — not part of the negotiation engine itself.</p>
       <p>Walking away with no agreement is a legitimate outcome. The protocol does not have a &quot;concede gradually&quot; mechanism for LLM agents — if your hard constraints can&#x27;t be met, keep rejecting until the round budget is exhausted.</p>
       <pre><code><span class="comment"># Propose / counter-offer (when can_counter_offer is true)</span>
 <span class="cmd">mycelium negotiate propose</span> \
@@ -841,6 +847,26 @@ register_new_matrix_user <span class="flag">-c</span> /etc/synapse/homeserver.ya
         <li><code>mycelium doctor</code> reports channel connection failures</li>
       </ul>
       <p>To refresh tokens, re-authenticate with the channel server (for Matrix, log in again via the Synapse admin API), update the token in <code>channels.&lt;channel&gt;.accounts[agent]</code> in each node&#x27;s <code>openclaw.json</code>, and restart the gateway.</p>
+      <h2 id="hub-and-spoke-step-4-set-up-spoke-metrics">Step 4: Set up spoke metrics</h2>
+      <p>Each spoke can run a lightweight local collector for OpenClaw telemetry. The collector stores data locally <strong>and</strong> forwards OTLP payloads to the hub so it can build a unified cross-host view.</p>
+      <pre><code><span class="comment"># Point the spoke&#x27;s metrics at the hub collector</span>
+<span class="cmd">mycelium config set</span> metrics.collector_url &quot;http://&lt;hub-ip&gt;:4318&quot;
+
+<span class="comment"># Configure OTLP plugin (endpoint defaults to localhost:4318)</span>
+<span class="cmd">mycelium adapter add</span> openclaw <span class="flag">--step</span>=otel
+
+<span class="comment"># Start the spoke collector (daemonizes into background)</span>
+<span class="cmd">mycelium metrics collect</span>
+
+<span class="comment"># Stop it later with:</span>
+<span class="cmd">mycelium metrics stop</span></code></pre>
+      <p><code>mycelium metrics show</code> on the spoke merges local OpenClaw data with backend/CFN data fetched from the hub. On the hub, the forwarded OTLP data appears in the &quot;Spoke Sites&quot; table and can be filtered with <code>mycelium metrics show --host &lt;hostname&gt;</code>.</p>
+      <p>For a span-level view of the activity each spoke is forwarding — drill down by host, agent, room, channel, model, tool, error, or latency, and render any single trace as a parent → child tree — use the trace viewer on the hub:</p>
+      <pre><code><span class="cmd">mycelium metrics traces</span> summary <span class="flag">--since</span>=1h     # rollup
+<span class="cmd">mycelium metrics traces</span> by-host <span class="flag">--since</span>=1h      # per-spoke
+<span class="cmd">mycelium metrics traces</span> show &lt;trace_id&gt;         # one trace as a tree</code></pre>
+      <p>See <a href="../metrics.md#viewing-traces">Viewing Traces</a> for the full command list and pivots.</p>
+      <p>See the <a href="../metrics.md#hub-and-spoke-setup">Metrics System docs</a> for full details.</p>
       <h2 id="hub-and-spoke-troubleshooting">Troubleshooting</h2>
       <h3 id="hub-and-spoke-spoke-cant-reach-hub">Spoke can&#x27;t reach hub</h3>
       <pre><code>curl http://&lt;hub-ip&gt;:8000/health</code></pre>

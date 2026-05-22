@@ -342,6 +342,8 @@ export function formatConsensusSummary(consensusData: any): string {
   const plan = consensusData?.plan ?? "No plan details";
   const assignments = consensusData?.assignments ?? {};
   const broken = consensusData?.broken === true;
+  const planFile =
+    typeof consensusData?.plan_file === "string" ? consensusData.plan_file : "";
 
   if (broken) {
     return `[CognitiveEngine — Negotiation FAILED]\n${plan}`;
@@ -353,6 +355,16 @@ export function formatConsensusSummary(consensusData: any): string {
     "",
     "Assignments:",
     ...Object.entries(assignments).map(([agent, task]) => `  ${agent}: ${task}`),
+    // The consensus has been compiled into the room's shared plan. Point the
+    // agent at it so the negotiation flows straight into doing the work.
+    ...(planFile
+      ? [
+          "",
+          `The consensus is now the room's shared plan (\`${planFile}\`).`,
+          "Run `mycelium plan tasks` to see the checklist, work your tasks, and",
+          "tick them off with `mycelium plan task done <id>`.",
+        ]
+      : []),
   ].join("\n");
 }
 

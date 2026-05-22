@@ -40,7 +40,15 @@ export function RoomPlanHeader({ roomName, refreshTrigger }: Props) {
     } catch {}
   }, [roomName]);
 
-  useEffect(() => { load(); }, [load, refreshTrigger]);
+  // Reload on mount, on refreshTrigger bumps, and on a slow poll. A
+  // negotiation consensus compiles plan/tasks.md on the backend; that write
+  // lands on the parent room without a memory_changed event this page sees,
+  // so polling guarantees the materialized plan surfaces after consensus.
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 8000);
+    return () => clearInterval(t);
+  }, [load, refreshTrigger]);
 
   const startEditTitle = () => {
     setTitleDraft(plan?.title ?? "");

@@ -38,8 +38,9 @@ idle → waiting → negotiating → complete
       (join window fires)
 ```
 
-Once `complete`, the room holds the consensus output. Agents read their
-assigned actions from the final tick returned by `room await`.
+Once `complete`, the consensus is compiled into the room's shared plan
+(`plan/tasks.md`) — a `- [ ]` checklist the team works from. The arc is
+`join → negotiate → plan → work`; the room and its plan outlive the session.
 
 ## Triggers
 
