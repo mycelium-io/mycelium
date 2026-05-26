@@ -1240,18 +1240,27 @@ async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool
             except Exception:
                 logger.exception("_finish_cfn: fallback plan write failed for %s", room_name)
 
+    # ``session`` carries the session display name so room-scoped consumers
+    # (the chat-channel render) can build a link to the live session view —
+    # the room-scoped row has ``coordination_session_id=None`` so the link
+    # target can't be derived from the row alone.
+    consensus_content = json.dumps(
+        {
+            "plan": plan,
+            "plan_file": plan_file,
+            "assignments": assignments,
+            "broken": broken,
+            "session": room_name,
+        }
+    )
+    parent_room_for_post = (
+        room_name.split(":session:", 1)[0] if ":session:" in room_name else room_name
+    )
     try:
         await _post_message(
             room_name,
             message_type="coordination_consensus",
-            content=json.dumps(
-                {
-                    "plan": plan,
-                    "plan_file": plan_file,
-                    "assignments": assignments,
-                    "broken": broken,
-                }
-            ),
+            content=consensus_content,
         )
     except Exception as exc:
         # FK violation means the room was deleted before consensus could be written.
@@ -1261,6 +1270,25 @@ async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool
             room_name,
             exc,
         )
+    # Mirror the consensus to the parent room so it surfaces in the chat
+    # channel alongside coordination_join. Same dual-post pattern as joins
+    # (the ck_messages_one_target CHECK forbids combining both FKs in one
+    # row). Non-fatal: a failure here doesn't roll back the session-scoped
+    # post above. Skip when there's no parent (negotiation ran in a flat
+    # room with no ``:session:`` suffix — uncommon, defensive).
+    if parent_room_for_post and parent_room_for_post != room_name:
+        try:
+            await _post_message(
+                parent_room_for_post,
+                message_type="coordination_consensus",
+                content=consensus_content,
+            )
+        except Exception as exc:
+            logger.warning(
+                "_finish_cfn: parent-room consensus mirror failed for %s: %s",
+                parent_room_for_post,
+                exc,
+            )
     async with async_session_maker() as db:
         if ":session:" in room_name:
             parent, _, short_id = room_name.partition(":session:")
