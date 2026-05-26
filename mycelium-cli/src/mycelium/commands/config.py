@@ -344,6 +344,13 @@ def _migrate_env_to_config(config: "MyceliumConfig") -> None:
             changed = True
         except ValueError:
             pass
+    env_frontend_port = env.get("MYCELIUM_UI_PORT")
+    if env_frontend_port and config.runtime.frontend_port == 3000:  # still default
+        try:
+            config.runtime.frontend_port = int(env_frontend_port)
+            changed = True
+        except ValueError:
+            pass
 
     # Runtime — passwords
     env_db_pw = env.get("MYCELIUM_DB_PASSWORD")
