@@ -158,11 +158,11 @@ jobs:
           node-version: "22"
 
       - name: Install plugin dev dependencies
-        working-directory: mycelium-cli/src/mycelium/adapters/openclaw/mycelium/plugin
+        working-directory: mycelium-cli/src/mycelium/integrations/openclaw/assets/mycelium/plugin
         run: npm install --no-audit --no-fund --silent
 
       - name: Run unit tests
-        working-directory: mycelium-cli/src/mycelium/adapters/openclaw/mycelium/plugin
+        working-directory: mycelium-cli/src/mycelium/integrations/openclaw/assets/mycelium/plugin
         run: npm test
 
   build-collector:

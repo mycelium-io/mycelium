@@ -13,6 +13,10 @@ import {
   type PlanFile,
 } from "@/lib/api";
 import { MarkdownContent } from "./markdown-content";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Chip } from "@/components/ui/chip";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 interface Props {
   roomName: string;
@@ -31,7 +35,7 @@ export function RoomPlanHeader({ roomName, refreshTrigger }: Props) {
   const [plan, setPlan] = useState<PlanResponse | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
-  const [open, setOpen] = useState<Open>({ kind: "none" });
+  const [open, setOpen] = useState<Open>({ kind: "tasks" });
   const [newTaskText, setNewTaskText] = useState("");
 
   const load = useCallback(async () => {
@@ -40,7 +44,15 @@ export function RoomPlanHeader({ roomName, refreshTrigger }: Props) {
     } catch {}
   }, [roomName]);
 
-  useEffect(() => { load(); }, [load, refreshTrigger]);
+  // Reload on mount, on refreshTrigger bumps, and on a slow poll. A
+  // negotiation consensus compiles plan/tasks.md on the backend; that write
+  // lands on the parent room without a memory_changed event this page sees,
+  // so polling guarantees the materialized plan surfaces after consensus.
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 8000);
+    return () => clearInterval(t);
+  }, [load, refreshTrigger]);
 
   const startEditTitle = () => {
     setTitleDraft(plan?.title ?? "");
@@ -128,9 +140,9 @@ export function RoomPlanHeader({ roomName, refreshTrigger }: Props) {
       {/* Chip row */}
       <div className="px-8 pb-4 flex flex-wrap items-center gap-2">
         <Chip
+          variant="accent"
           active={open.kind === "tasks"}
           onClick={() => toggleOpen({ kind: "tasks" })}
-          accent
         >
           tasks
           {openCount > 0 && (
@@ -165,34 +177,6 @@ export function RoomPlanHeader({ roomName, refreshTrigger }: Props) {
   );
 }
 
-function Chip({
-  children,
-  active,
-  onClick,
-  accent,
-}: {
-  children: React.ReactNode;
-  active: boolean;
-  onClick: () => void;
-  accent?: boolean;
-}) {
-  const border = accent ? "border-accent/40" : "border-border";
-  const bg = active
-    ? accent
-      ? "bg-accent/[0.12]"
-      : "bg-paper"
-    : "bg-transparent";
-  const text = accent ? "text-accent" : active ? "text-text" : "text-text2";
-  return (
-    <button
-      onClick={onClick}
-      className={`caps-mono-sm px-3 py-1.5 border transition-colors hover:bg-paper ${border} ${bg} ${text}`}
-    >
-      {children}
-    </button>
-  );
-}
-
 function TasksDisclosure({
   plan,
   newTaskText,
@@ -210,20 +194,20 @@ function TasksDisclosure({
   return (
     <div className="border-t border-border bg-bg/60 max-h-[44vh] overflow-y-auto">
       <div className="px-8 py-4 flex gap-2 border-b border-border/60">
-        <input
-          className="flex-1 bg-bg border border-border px-3 py-2 text-label font-mono text-text placeholder:text-muted focus:border-accent focus:outline-none transition-colors"
+        <Input
+          className="flex-1"
           placeholder="add a task…"
           value={newTaskText}
           onChange={e => setNewTaskText(e.target.value)}
           onKeyDown={e => e.key === "Enter" && onAddTask()}
         />
-        <button
+        <Button
+          size="lg"
           onClick={() => onAddTask()}
           disabled={!newTaskText.trim()}
-          className="px-4 py-2 caps-mono-sm border border-accent/40 bg-accent/[0.06] text-accent transition-colors hover:bg-accent/[0.12] disabled:opacity-50"
         >
           ADD
-        </button>
+        </Button>
       </div>
       {tasks.length === 0 ? (
         <div className="text-center caps-mono-sm text-muted italic py-8">
@@ -234,11 +218,10 @@ function TasksDisclosure({
           {tasks.map(t => (
             <li key={t.id}>
               <label className="flex items-start gap-3 px-8 py-2 border-b border-border/40 cursor-pointer hover:bg-paper/30">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={t.done}
-                  onChange={e => onToggleTask(t.id, e.target.checked)}
-                  className="mt-1 accent-accent"
+                  onCheckedChange={(checked) => onToggleTask(t.id, checked === true)}
+                  className="mt-0"
                 />
                 <span className={"text-label font-mono flex-1 " + (t.done ? "line-through text-muted" : "text-text")}>
                   {t.text}

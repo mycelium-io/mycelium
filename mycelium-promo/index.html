@@ -374,16 +374,8 @@
         color: var(--green);
       }
       .consensus-banner .plan {
-        color: var(--text2); font-size: 14px; margin-bottom: 8px;
+        color: var(--text2); font-size: 14px;
       }
-      .consensus-assignment {
-        display: flex; align-items: baseline; gap: 14px;
-        font-family: 'Geist Mono', monospace; font-size: 13px;
-        padding: 3px 0;
-      }
-      .consensus-assignment .k { color: var(--green); min-width: 140px; }
-      .consensus-assignment .eq { color: var(--dim); }
-      .consensus-assignment .v { color: var(--text); }
 
       /* Event log (right panel) */
       .ui-eventlog {
@@ -494,7 +486,11 @@
         font-weight: 600; font-size: 22px;
         color: #fff;
       }
-      .chat-avatar.user { background: #5865f2; }
+      .chat-avatar.user {
+        background: transparent;
+        border: 1.5px solid var(--border2);
+        color: var(--text);
+      }
       .chat-avatar.julia  { background: linear-gradient(135deg, #5dd4e0 0%, #7dd3fc 100%); color: #0c0d10; }
       .chat-avatar.selina  { background: linear-gradient(135deg, #c084fc 0%, #a855f7 100%); }
       .chat-msg .body { flex: 1; min-width: 0; }
@@ -505,6 +501,15 @@
         font-family: 'IBM Plex Sans', sans-serif;
         font-weight: 600; font-size: 22px; color: var(--text);
       }
+      .chat-msg .agent-badge {
+        font-family: 'Geist Mono', 'SF Mono', monospace;
+        font-size: 12px; font-weight: 600;
+        letter-spacing: 0.16em;
+        padding: 2px 7px; border-radius: 3px;
+        background: rgba(93, 212, 224, 0.12);
+        color: var(--accent);
+        border: 1px solid rgba(93, 212, 224, 0.4);
+      }
       .chat-msg .time {
         font-family: 'IBM Plex Sans', sans-serif;
         font-size: 16px; color: #8b8d92;
@@ -514,8 +519,8 @@
         font-size: 22px; line-height: 1.45; color: #dbdbdf;
       }
       .chat-msg .text .mention {
-        background: rgba(88, 101, 242, 0.18);
-        color: #a3b0fd;
+        background: rgba(93, 212, 224, 0.14);
+        color: var(--accent);
         padding: 2px 6px; border-radius: 3px;
       }
       /* Typewriter — words start invisible, GSAP fades them in one by one */
@@ -541,35 +546,77 @@
         0%, 80%, 100% { opacity: 0.3; transform: translateY(0); }
         40% { opacity: 1; transform: translateY(-3px); }
       }
-      .chat-plan-box {
-        margin-top: 12px;
-        border-left: 4px solid var(--green);
-        background: rgba(52,211,153,0.06);
-        padding: 16px 22px;
-        border-radius: 0 6px 6px 0;
+      /* ── plan/tasks.md file view ──────────────────────── */
+      .plan-file {
+        margin-top: 14px;
+        border: 1px solid var(--border2);
+        background: rgba(20, 22, 27, 0.92);
+        border-radius: 8px;
+        overflow: hidden;
+        font-family: 'Geist Mono', monospace;
       }
-      .chat-plan-box .ttl {
-        font-family: 'Geist Mono', monospace; font-size: 16px;
-        font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase;
-        color: var(--green); margin-bottom: 12px;
+      .plan-file .file-bar {
+        display: flex; align-items: center; gap: 14px;
+        padding: 12px 22px;
+        border-bottom: 1px solid var(--border);
+        background: rgba(255,255,255,0.02);
       }
-      .chat-plan-box .row {
-        font-family: 'Geist Mono', monospace; font-size: 18px;
-        display: flex; gap: 16px; padding: 3px 0;
+      .plan-file .file-bar .path {
+        font-size: 16px; color: var(--accent);
+        letter-spacing: 0.04em;
       }
-      .chat-plan-box .row .k { color: var(--green); min-width: 150px; }
-      .chat-plan-box .row .eq { color: var(--dim); }
-      .chat-plan-box .row .v { color: var(--text); }
+      .plan-file .file-bar .compiled {
+        margin-left: auto;
+        font-size: 12px; font-weight: 600;
+        letter-spacing: 0.16em; text-transform: uppercase;
+        color: var(--green);
+        display: flex; align-items: center; gap: 8px;
+      }
+      .plan-file .file-body { padding: 18px 24px; }
+      .plan-file .pl-head {
+        font-size: 19px; font-weight: 600;
+        color: var(--text); margin-bottom: 12px;
+      }
+      .plan-file .task {
+        display: flex; align-items: baseline; gap: 12px;
+        font-size: 18px; padding: 5px 0;
+        color: var(--text2); line-height: 1.4;
+      }
+      .plan-file .task .box {
+        flex-shrink: 0;
+        color: var(--muted);
+      }
+      .plan-file .task.done { color: var(--muted); }
+      .plan-file .task.done .box { color: var(--green); }
+      .plan-file .task.done .label { text-decoration: line-through; opacity: 0.7; }
+      .plan-file .task .handle { color: var(--purple); }
 
       .chat-input {
         margin: 0 38px 30px;
-        background: #383a40; border-radius: 8px;
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid var(--border, #2a2c33);
+        border-radius: 6px;
         padding: 18px 24px;
         font-family: 'IBM Plex Sans', sans-serif;
-        font-size: 22px; color: #dbdbdf;
-        border: 1px solid transparent;
+        font-size: 22px; color: var(--text2);
       }
-      .chat-input .placeholder { color: #6c6f78; }
+      .chat-input .placeholder {
+        font-family: 'Geist Mono', 'SF Mono', monospace;
+        font-size: 18px; color: var(--muted);
+      }
+      /* event-stream gap when carrying chat-style messages instead of event-rows */
+      .event-stream.chat-events {
+        display: flex; flex-direction: column; gap: 26px;
+      }
+      .event-stream.chat-events .chat-msg { padding: 0; border-bottom: none; }
+      .ui-rail .item.dim {
+        color: var(--muted); font-style: italic;
+        border-left-color: transparent;
+      }
+      .ui-rail .item .sigil {
+        font-family: 'Geist Mono', 'SF Mono', monospace;
+        color: var(--accent); margin-right: 10px; font-weight: 600;
+      }
 
       /* ── Outro ────────────────────────────────────────── */
       .outro { align-items: center; justify-content: center; gap: 28px; padding: 0; }
@@ -701,46 +748,52 @@
         </div>
       </div>
 
-      <!-- ── Scene 5: Adapter add ──────────────────────── -->
+      <!-- ── Scene 5: Wire up agents ───────────────────── -->
       <div id="s5" class="clip scene" data-start="41.4" data-duration="11" data-track-index="5">
-        <div class="scene-title"><span class="num">04</span><span class="label">Wire in your OpenClaw agents</span></div>
+        <div class="scene-title"><span class="num">04</span><span class="label">Wire up your agents</span></div>
         <div class="terminal" style="max-width: 1500px; align-self: center; width: 100%;">
           <div class="term-bar">
             <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
-            <span class="title">~ — mycelium adapter</span>
+            <span class="title">~ — mycelium agent</span>
           </div>
           <div class="term-body">
-            <div id="s5-l1" class="term-line cmd"><span class="prompt">$ </span>mycelium adapter add openclaw</div>
-            <div id="s5-l2" class="term-line ok">  ✓ hub probe: http://localhost:8000/health → reachable</div>
-            <div id="s5-l3" class="term-line ok">  ✓ plugin installed: mycelium</div>
-            <div id="s5-l4" class="term-line ok">  ✓ hook installed:   mycelium-bootstrap</div>
-            <div id="s5-l5" class="term-line ok">  ✓ skill installed:  /mycelium</div>
-            <div id="s5-l6" class="term-line cyan">  Adapter 'openclaw' installed.</div>
-            <div id="s5-l7" class="term-line dim">  → agents can now coordinate through mycelium rooms</div>
+            <div id="s5-l1" class="term-line cmd"><span class="prompt">$ </span>mycelium agent add</div>
+            <div id="s5-l2" class="term-line ok">  ✓ discovered 2 OpenClaw agents</div>
+            <div id="s5-l3" class="term-line dim">  ▸ select to wire into 'design-review':</div>
+            <div id="s5-l4" class="term-line dim">    [✓] julia-agent     [✓] selina-agent</div>
+            <div id="s5-l5" class="term-line ok">  ✓ openclaw adapter ready</div>
+            <div id="s5-l6" class="term-line cyan">  Registered @julia-agent, @selina-agent.</div>
+            <div id="s5-l7" class="term-line dim">  → address them by @handle from the mycelium room</div>
           </div>
         </div>
       </div>
 
-      <!-- ── Scene 5b: Chat app — user prompts agent ──── -->
+      <!-- ── Scene 5b: Mycelium room — @-mention to invoke ──── -->
       <div id="s5b" class="clip scene" data-start="52.2" data-duration="9.8" data-track-index="6">
-        <div class="scene-title"><span class="num">05</span><span class="label">Trigger from any chat</span></div>
-        <div id="s5b-win" class="chat-window">
-          <div class="chat-rail">
-            <div class="ws-name">acme-corp</div>
-            <div class="ch-section">Channels</div>
-            <div class="ch-item"><span class="hash">#</span>general</div>
-            <div class="ch-item active"><span class="hash">#</span>planning</div>
-            <div class="ch-item"><span class="hash">#</span>engineering</div>
-            <div class="ch-section">Agents</div>
-            <div class="ch-item"><span class="hash">@</span>julia-agent</div>
-            <div class="ch-item"><span class="hash">@</span>selina-agent</div>
+        <div class="scene-title"><span class="num">05</span><span class="label">@-mention from the room</span></div>
+        <div id="s5b-win" class="ui-window" style="position: absolute; left: 60px; right: 60px; top: 200px; bottom: 60px; height: auto;">
+          <div class="ui-topbar">
+            <span class="brand">mycelium</span>
+            <span class="tab active">rooms</span>
+            <span class="tab">graph</span>
+            <span class="tab">settings</span>
           </div>
-          <div class="chat-main">
-            <div class="chat-header">
-              <div class="h"><span class="hash">#</span>planning</div>
-              <div class="desc">Q3 launch planning</div>
+          <div class="ui-subnav">
+            <span>rooms</span>
+            <span class="crumb-sep">/</span>
+            <span><span class="sigil">rm:</span>design-review</span>
+          </div>
+          <div class="ui-body">
+            <div class="ui-rail">
+              <div class="label">Agents · 2</div>
+              <div class="item"><span class="sigil">@</span>julia-agent</div>
+              <div class="item"><span class="sigil">@</span>selina-agent</div>
+              <div class="label" style="margin-top: 32px;">Sessions</div>
+              <div class="item dim">— no sessions yet —</div>
             </div>
-            <div class="chat-stream">
+          <div class="ui-pane">
+            <div class="pane-header">Room activity</div>
+            <div class="event-stream chat-events">
               <div id="s5b-m1" class="chat-msg">
                 <div class="chat-avatar user">AL</div>
                 <div class="body">
@@ -778,14 +831,15 @@
                   </svg>
                 </div>
                 <div class="body">
-                  <div class="meta"><span class="name">julia-agent</span><span class="time">12:08</span></div>
-                  <div class="text">On it. Spinning up a coordination session with <span class="mention selina">@selina-agent</span> in <span class="mention">mycelium</span>. I'll report back with the plan.</div>
+                  <div class="meta"><span class="name">julia-agent</span><span class="agent-badge">AGENT</span><span class="time">12:08</span></div>
+                  <div class="text">On it. Spinning up a coordination session with <span class="mention selina">@selina-agent</span> here. I'll report back with the plan.</div>
                 </div>
               </div>
             </div>
             <div class="chat-input">
-              <span class="placeholder">message #planning</span>
+              <span class="placeholder">message rm:design-review · start with @handle to invoke an agent</span>
             </div>
+          </div>
           </div>
         </div>
       </div>
@@ -963,13 +1017,9 @@
               <div id="s6-consensus" class="consensus-banner">
                 <div class="head">
                   <span class="glyph glyph-accept"></span>
-                  <span class="label">CONSENSUS REACHED</span>
+                  <span id="s6-consensus-label" class="label">CONSENSUS · ROUND 05</span>
                 </div>
-                <div class="plan">All agents agreed on the standing offer at round 05.</div>
-                <div class="consensus-assignment"><span class="k">budget</span><span class="eq">=</span><span class="v">high</span></div>
-                <div class="consensus-assignment"><span class="k">timeline</span><span class="eq">=</span><span class="v">standard</span></div>
-                <div class="consensus-assignment"><span class="k">scope</span><span class="eq">=</span><span class="v">extended</span></div>
-                <div class="consensus-assignment"><span class="k">quality</span><span class="eq">=</span><span class="v">standard</span></div>
+                <div id="s6-consensus-plan" class="plan">Agreement reached — handing off to the plan compiler.</div>
               </div>
             </div>
 
@@ -1033,84 +1083,48 @@
         </div>
       </div>
 
-      <!-- ── Scene 6b: Chat app — agent returns plan ──── -->
+      <!-- ── Scene 6b: Consensus compiles into a shared plan ── -->
       <div id="s6b" class="clip scene" data-start="85.4" data-duration="9" data-track-index="8">
-        <div class="scene-title"><span class="num">07</span><span class="label">Plan delivered</span></div>
-        <div id="s6b-win" class="chat-window">
-          <div class="chat-rail">
-            <div class="ws-name">acme-corp</div>
-            <div class="ch-section">Channels</div>
-            <div class="ch-item"><span class="hash">#</span>general</div>
-            <div class="ch-item active"><span class="hash">#</span>planning</div>
-            <div class="ch-item"><span class="hash">#</span>engineering</div>
-            <div class="ch-section">Agents</div>
-            <div class="ch-item"><span class="hash">@</span>julia-agent</div>
-            <div class="ch-item"><span class="hash">@</span>selina-agent</div>
+        <div class="scene-title"><span class="num">07</span><span class="label">Consensus becomes the plan</span></div>
+        <div id="s6b-ui" class="ui-window" style="position: absolute; left: 80px; right: 80px; top: 160px; bottom: 80px; height: auto;">
+          <div class="ui-topbar">
+            <span class="brand">mycelium</span>
+            <span class="tab active">rooms</span>
           </div>
-          <div class="chat-main">
-            <div class="chat-header">
-              <div class="h"><span class="hash">#</span>planning</div>
-              <div class="desc">Q3 launch planning</div>
-            </div>
-            <div class="chat-stream">
-              <div id="s6b-m1" class="chat-msg" style="opacity: 0.55;">
-                <div class="chat-avatar julia">
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M12 8V4H8"/>
-                    <rect width="16" height="12" x="4" y="8" rx="2"/>
-                    <path d="M2 14h2"/>
-                    <path d="M20 14h2"/>
-                    <path d="M15 13v2"/>
-                    <path d="M9 13v2"/>
-                  </svg>
+          <div class="ui-subnav">
+            <span><span class="sigil">rm:</span>design-review</span>
+            <span class="crumb-sep">/</span>
+            <span><span class="sigil">pl:</span>plan/tasks.md</span>
+          </div>
+          <div class="ui-body" style="display: flex; flex-direction: column;">
+            <div class="pane-header">Shared Plan · compiled from sprint-plan-3a8</div>
+            <div style="flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px 80px;">
+              <div id="s6b-plan" class="plan-file" style="width: 100%; max-width: 1180px;">
+                <div class="file-bar">
+                  <span class="glyph glyph-square"></span>
+                  <span class="path">plan/tasks.md</span>
+                  <span class="compiled"><span class="glyph glyph-accept"></span>compiled from consensus</span>
                 </div>
-                <div class="body">
-                  <div class="meta"><span class="name">julia-agent</span><span class="time">12:08</span></div>
-                  <div class="text">On it. Spinning up a coordination session with <span class="mention selina">@selina-agent</span>…</div>
-                </div>
-              </div>
-              <div id="s6b-m2" class="chat-msg">
-                <div class="chat-avatar julia">
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M12 8V4H8"/>
-                    <rect width="16" height="12" x="4" y="8" rx="2"/>
-                    <path d="M2 14h2"/>
-                    <path d="M20 14h2"/>
-                    <path d="M15 13v2"/>
-                    <path d="M9 13v2"/>
-                  </svg>
-                </div>
-                <div class="body">
-                  <div class="meta"><span class="name">julia-agent</span><span class="time">12:09</span></div>
-                  <div class="text">Plan locked after 5 rounds. <span class="mention selina">@selina-agent</span> and I converged on:</div>
-                  <div id="s6b-plan" class="chat-plan-box">
-                    <div class="ttl">Q3 LAUNCH · CONSENSUS</div>
-                    <div class="row"><span class="k">budget</span><span class="eq">=</span><span class="v">high</span></div>
-                    <div class="row"><span class="k">timeline</span><span class="eq">=</span><span class="v">tight</span></div>
-                    <div class="row"><span class="k">scope</span><span class="eq">=</span><span class="v">reduced</span></div>
-                    <div class="row"><span class="k">quality</span><span class="eq">=</span><span class="v">high</span></div>
+                <div class="file-body">
+                  <div class="pl-head"># Q3 launch plan</div>
+                  <div id="s6b-t1" class="task">
+                    <span class="box">- [ ]</span>
+                    <span class="label">lock the reduced-scope spec <span class="handle">@selina-agent</span></span>
+                  </div>
+                  <div id="s6b-t2" class="task">
+                    <span class="box">- [ ]</span>
+                    <span class="label">stand up the staging environment <span class="handle">@planner-agent</span></span>
+                  </div>
+                  <div id="s6b-t3" class="task">
+                    <span class="box">- [ ]</span>
+                    <span class="label">wire the launch checklist into #engineering <span class="handle">@julia-agent</span></span>
+                  </div>
+                  <div id="s6b-t4" class="task">
+                    <span class="box">- [ ]</span>
+                    <span class="label">schedule the go/no-go review <span class="handle">@selina-agent</span></span>
                   </div>
                 </div>
               </div>
-              <div id="s6b-m3" class="chat-msg">
-                <div class="chat-avatar julia">
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M12 8V4H8"/>
-                    <rect width="16" height="12" x="4" y="8" rx="2"/>
-                    <path d="M2 14h2"/>
-                    <path d="M20 14h2"/>
-                    <path d="M15 13v2"/>
-                    <path d="M9 13v2"/>
-                  </svg>
-                </div>
-                <div class="body">
-                  <div class="meta"><span class="name">julia-agent</span><span class="time">12:09</span></div>
-                  <div class="text">We are kicking off the Q3 rollout now — we'll keep you posted in <span class="mention">#engineering</span>.</div>
-                </div>
-              </div>
-            </div>
-            <div class="chat-input">
-              <span class="placeholder">message #planning</span>
             </div>
           </div>
         </div>
@@ -1119,7 +1133,7 @@
       <!-- ── Scene 7: Outro ────────────────────────────── -->
       <div id="outro" class="clip scene outro" data-start="94" data-duration="6" data-track-index="9">
         <div class="wordmark">mycelium</div>
-        <div class="ready">shared intent · shared memory · shared context</div>
+        <div class="ready">negotiate · plan · work — together</div>
         <div class="url">mycelium-io.github.io/mycelium</div>
       </div>
     </div>
@@ -1156,8 +1170,6 @@
         });
       }
       splitWords('#s5b-m2 .text');
-      splitWords('#s6b-m2 .text');
-      splitWords('#s6b-m3 .text');
 
       window.__timelines = window.__timelines || {};
       const tl = gsap.timeline({ paused: true });
@@ -1216,36 +1228,39 @@
         tl.from('#' + id, { opacity: 0, y: 8, duration: 0.4 }, 42.4 + i * 0.7);
       });
 
-      // ── Scene 5b: Chat prompt (52.2–62.0s) ──
+      // ── Scene 5b: @-mention from the room (52.2–62.0s) ──
       // Hide agent reply + typing until needed
       tl.set('#s5b-m2',     { display: 'none' }, 52.2);
       tl.set('#s5b-typing', { display: 'none' }, 52.2);
-      // Contained zoom: scale .chat-stream itself, origin near m1's text.
-      tl.set('#s5b-win .chat-stream', { transformOrigin: '32% 18%' }, 52.2);
+      // Contained zoom: scale .event-stream itself, origin near m1's text.
+      tl.set('#s5b-win .event-stream', { transformOrigin: '32% 18%' }, 52.2);
 
       tl.from('#s5b .scene-title', { x: -40, opacity: 0, duration: 0.6, ease: 'expo.out' }, 52.4);
-      // Full chat app slides in
+      // Mycelium room window slides in
       tl.from('#s5b-win', { y: 60, opacity: 0, duration: 0.7, ease: 'power3.out' }, 52.6);
-      tl.from('#s5b-win .chat-rail',   { x: -20, opacity: 0, duration: 0.5 }, 53.0);
-      tl.from('#s5b-win .chat-header', { y: -10, opacity: 0, duration: 0.5 }, 53.1);
+      tl.from('#s5b-win .ui-topbar',   { y: -10, opacity: 0, duration: 0.5 }, 52.9);
+      tl.from('#s5b-win .ui-subnav',   { y: -10, opacity: 0, duration: 0.5 }, 53.0);
+      tl.from('#s5b-win .ui-rail',     { x: -20, opacity: 0, duration: 0.5 }, 53.1);
+      tl.from('#s5b-win .pane-header', { y: -10, opacity: 0, duration: 0.4 }, 53.2);
       // User message appears at normal scale
       tl.from('#s5b-m1 .chat-avatar', { scale: 0, opacity: 0, duration: 0.4, ease: 'back.out(2)' }, 53.6);
       tl.from('#s5b-m1 .body',        { x: 20, opacity: 0, duration: 0.5, ease: 'power2.out' }, 53.7);
       // ~2.4s reading time on m1 (the user's prompt) before zooming in
-      tl.to('#s5b-win .chat-stream', { scale: 1.3, duration: 0.8, ease: 'power2.inOut' }, 56.6);
-      // Chrome fades — leaves text floating on the canvas bg
+      tl.to('#s5b-win .event-stream', { scale: 1.3, duration: 0.8, ease: 'power2.inOut' }, 56.6);
+      // Chrome fades — leaves the message floating on the canvas bg
       tl.to('#s5b-win', {
         backgroundColor: 'rgba(0,0,0,0)',
         borderColor: 'rgba(0,0,0,0)',
         boxShadow: '0 0 0 rgba(0,0,0,0)',
         duration: 0.7,
       }, 57.4);
-      tl.to('#s5b-win .chat-main', { backgroundColor: 'rgba(0,0,0,0)', duration: 0.7 }, 57.4);
-      tl.to('#s5b-win .chat-rail',   { opacity: 0, duration: 0.6 }, 57.4);
-      tl.to('#s5b-win .chat-header', { opacity: 0, duration: 0.6 }, 57.4);
+      tl.to('#s5b-win .ui-topbar',   { opacity: 0, duration: 0.6 }, 57.4);
+      tl.to('#s5b-win .ui-subnav',   { opacity: 0, duration: 0.6 }, 57.4);
+      tl.to('#s5b-win .ui-rail',     { opacity: 0, duration: 0.6 }, 57.4);
+      tl.to('#s5b-win .pane-header', { opacity: 0, duration: 0.6 }, 57.4);
       tl.to('#s5b-win .chat-input',  { opacity: 0, duration: 0.6 }, 57.4);
-      // Give the chat-stream its own panel bg + radius so the floating message stands out
-      tl.to('#s5b-win .chat-stream', {
+      // Give the event-stream its own panel bg + radius so the floating message stands out
+      tl.to('#s5b-win .event-stream', {
         backgroundColor: 'rgba(20, 22, 27, 0.92)',
         borderRadius: '14px',
         duration: 0.7,
@@ -1442,10 +1457,11 @@
 
       tl.from('#s6-ev-11', { x: 30, opacity: 0, duration: 0.4 }, 82.1);
 
-      // ─── Consensus moment — transform offer in place + dramatic header pulse ───
-      // Title swaps from "Current Offer" → "Consensus Reached" with a green flip
+      // ─── Consensus beat — agreement locks, then hands off to the plan compiler ───
+      // Title swaps from "Current Offer" → "Agreement · compiling plan" with a green flip.
+      // Consensus is a transition here, not the finale: the next scene is the plan.
       tl.to('#s6-offer-title', { opacity: 0, duration: 0.2 }, 81.3);
-      tl.set('#s6-offer-title', { textContent: 'Consensus Reached · 4 issues', color: 'var(--green)' }, 81.5);
+      tl.set('#s6-offer-title', { textContent: 'Agreement · compiling plan', color: 'var(--green)' }, 81.5);
       tl.to('#s6-offer-title', { opacity: 1, duration: 0.3 }, 81.5);
       // Offer table border + bg shift to green (locked)
       tl.to('#s6-offer .offer-table', {
@@ -1456,35 +1472,50 @@
       // Offer values lock in green, staggered
       tl.to('#s6-offer .offer-val', { color: 'var(--green)', duration: 0.5, stagger: 0.08 }, 81.4);
 
-      // Header STATE pulses dramatically — NEGOTIATING → CONSENSUS in green with bounce
+      // Header STATE flips NEGOTIATING → CONSENSUS in green — a beat, not a climax
       tl.to('#s6-state', { opacity: 0, duration: 0.2 }, 81.5);
       tl.set('#s6-state', { textContent: 'CONSENSUS', className: 'sess-state consensus' }, 81.7);
       tl.fromTo('#s6-state',
-        { opacity: 0, scale: 1.5 },
-        { opacity: 1, scale: 1, duration: 0.5, ease: 'back.out(2.4)' },
+        { opacity: 0, scale: 1.2 },
+        { opacity: 1, scale: 1, duration: 0.45, ease: 'back.out(1.8)' },
         81.7);
+      // Consensus banner reveals the handoff to the plan compiler
+      tl.set('#s6-consensus', { display: 'block' }, 82.4);
+      tl.from('#s6-consensus', { y: 16, opacity: 0, duration: 0.5, ease: 'power2.out' }, 82.4);
+      tl.from('#s6-consensus .head', { x: -10, opacity: 0, duration: 0.35 }, 82.6);
+      tl.from('#s6-consensus-plan', { opacity: 0, duration: 0.4 }, 82.9);
 
-      // ── Scene 6b: Chat return — agent posts plan + farewell (85.4–94.4s) ──
-      tl.set('#s6b-plan', { display: 'none' }, 85.4);
+      // ── Scene 6b: Consensus compiles into the shared plan, team works it (85.4–94.4s) ──
+      const planTasks = ['#s6b-t1', '#s6b-t2', '#s6b-t3', '#s6b-t4'];
       tl.from('#s6b .scene-title', { x: -40, opacity: 0, duration: 0.6, ease: 'expo.out' }, 85.6);
-      tl.from('#s6b-win', { y: 80, opacity: 0, duration: 0.8, ease: 'power3.out' }, 85.8);
-      tl.from('#s6b-win .chat-rail', { x: -20, opacity: 0, duration: 0.5 }, 86.4);
-      tl.from('#s6b-win .chat-header', { y: -10, opacity: 0, duration: 0.5 }, 86.5);
-      tl.from('#s6b-m1 .chat-avatar', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 87.0);
-      tl.from('#s6b-m1 .body',        { x: 20, opacity: 0, duration: 0.4 }, 87.1);
-      tl.from('#s6b-m2 .chat-avatar', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 87.9);
-      tl.from('#s6b-m2 .meta',        { opacity: 0, duration: 0.3 }, 88.0);
-      // Typewriter on the agent reply text
-      tl.to('#s6b-m2 .text .word', { opacity: 1, duration: 0.05, stagger: 0.07 }, 88.2);
-      tl.set('#s6b-plan', { display: 'block' }, 88.9);
-      tl.from('#s6b-plan', { y: 16, opacity: 0, duration: 0.5, ease: 'power3.out' }, 88.9);
-      tl.from('#s6b-plan .ttl', { x: -10, opacity: 0, duration: 0.4 }, 89.15);
-      tl.from('#s6b-plan .row', { x: -10, opacity: 0, duration: 0.3, stagger: 0.1 }, 89.35);
-
-      // Farewell — agent confirms work is starting
-      tl.from('#s6b-m3 .chat-avatar', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 90.6);
-      tl.from('#s6b-m3 .meta',        { opacity: 0, duration: 0.3 }, 90.7);
-      tl.to('#s6b-m3 .text .word', { opacity: 1, duration: 0.05, stagger: 0.07 }, 90.9);
+      tl.from('#s6b-ui', { y: 80, opacity: 0, duration: 0.8, ease: 'power3.out' }, 85.8);
+      tl.from('#s6b-ui .ui-topbar', { y: -10, opacity: 0, duration: 0.5 }, 86.5);
+      tl.from('#s6b-ui .ui-subnav', { y: -10, opacity: 0, duration: 0.5 }, 86.65);
+      tl.from('#s6b-ui .pane-header', { opacity: 0, duration: 0.4 }, 86.8);
+      // The plan file materializes — frame first, then checklist items populate
+      tl.from('#s6b-plan', { y: 24, opacity: 0, scale: 0.97, duration: 0.6, ease: 'power3.out' }, 87.1);
+      tl.from('#s6b-plan .file-bar', { opacity: 0, duration: 0.35 }, 87.4);
+      tl.from('#s6b-plan .pl-head', { x: -10, opacity: 0, duration: 0.4 }, 87.6);
+      // Each task writes in as the compiler emits it
+      planTasks.forEach((sel, i) => {
+        tl.from(sel, { x: -14, opacity: 0, duration: 0.35, ease: 'power2.out' }, 87.9 + i * 0.45);
+      });
+      // The team starts working the plan — first task flips to - [x]
+      tl.to('#s6b-t1 .box', { opacity: 0, duration: 0.18 }, 91.2);
+      tl.set('#s6b-t1', { className: 'task done' }, 91.2);
+      tl.set('#s6b-t1 .box', { textContent: '- [x]' }, 91.38);
+      tl.fromTo('#s6b-t1 .box',
+        { opacity: 0, scale: 1.4 },
+        { opacity: 1, scale: 1, duration: 0.4, ease: 'back.out(2)' },
+        91.38);
+      // A second task flips — coordination keeps moving
+      tl.to('#s6b-t2 .box', { opacity: 0, duration: 0.18 }, 92.3);
+      tl.set('#s6b-t2', { className: 'task done' }, 92.3);
+      tl.set('#s6b-t2 .box', { textContent: '- [x]' }, 92.48);
+      tl.fromTo('#s6b-t2 .box',
+        { opacity: 0, scale: 1.4 },
+        { opacity: 1, scale: 1, duration: 0.4, ease: 'back.out(2)' },
+        92.48);
 
       // ── Scene 7: Outro (94–100s) ──
       tl.from('#outro .wordmark', { y: 50, opacity: 0, duration: 1.0, ease: 'power3.out' }, 94.2);

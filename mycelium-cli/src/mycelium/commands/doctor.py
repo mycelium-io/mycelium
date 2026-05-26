@@ -1059,13 +1059,33 @@ def _check_openclaw_channel_config() -> CheckResult:
             message="channels.mycelium-room present but disabled",
         )
 
-    missing = [k for k in ("backendUrl", "room", "agents") if not channel.get(k)]
-    if missing:
+    if not channel.get("backendUrl"):
         return CheckResult(
             name="channel config",
             status="error",
-            message=f"missing required fields: {', '.join(missing)}",
-            details=["fix: set backendUrl, room, and agents in channels.mycelium-room"],
+            message="missing required field: backendUrl",
+            details=["fix: set backendUrl in channels.mycelium-room"],
+        )
+
+    # Room/agents can come from a legacy top-level room+agents block OR the
+    # multi-room rooms:[{room,agents}] fan-out (or both). Build a normalized
+    # view that's valid if at least one room is configured anywhere.
+    normalized_rooms: list[tuple[str, list]] = []
+    if channel.get("room"):
+        normalized_rooms.append((str(channel["room"]), list(channel.get("agents") or [])))
+    for entry in channel.get("rooms") or []:
+        if isinstance(entry, dict) and entry.get("room"):
+            normalized_rooms.append((str(entry["room"]), list(entry.get("agents") or [])))
+
+    if not normalized_rooms:
+        return CheckResult(
+            name="channel config",
+            status="error",
+            message="no rooms configured (need top-level room or rooms[])",
+            details=[
+                "fix: `mycelium agent add <h> --adapter openclaw` writes this, "
+                "or set channels.mycelium-room.rooms = [{room, agents}]"
+            ],
         )
 
     # Check backendUrl matches mycelium config.toml's server.api_url
@@ -1092,12 +1112,12 @@ def _check_openclaw_channel_config() -> CheckResult:
     except Exception:
         pass  # non-fatal
 
-    agents = channel.get("agents") or []
     require_mention = channel.get("requireMention", True)
+    summary = ", ".join(f"{r}:{len(a)}" for r, a in normalized_rooms)
     return CheckResult(
         name="channel config",
         status="ok",
-        message=f"room={channel.get('room')} agents={len(agents)} requireMention={require_mention}",
+        message=(f"{len(normalized_rooms)} room(s) [{summary}] requireMention={require_mention}"),
     )
 
 
@@ -1131,7 +1151,11 @@ def _check_openclaw_agent_sandbox() -> CheckResult:
         )
 
     channel = (oc.get("channels") or {}).get("mycelium-room") or {}
+    # Union of legacy top-level agents + every rooms[] entry's agents.
     channel_agents = set(channel.get("agents") or [])
+    for entry in channel.get("rooms") or []:
+        if isinstance(entry, dict):
+            channel_agents.update(entry.get("agents") or [])
     if not channel_agents:
         return CheckResult(
             name="agent sandbox",
@@ -1169,6 +1193,100 @@ def _check_openclaw_agent_sandbox() -> CheckResult:
         name="agent sandbox",
         status="ok",
         message=f"all {len(channel_agents)} channel agent(s) have sandbox=off",
+    )
+
+
+# ── Claude Code daemon checks ─────────────────────────────────────────────────
+
+
+def _claude_daemon_installed() -> bool:
+    """True if the daemon service unit exists on this platform."""
+    import platform
+
+    home = Path.home()
+    if platform.system() == "Darwin":
+        return (home / "Library" / "LaunchAgents" / "io.mycelium.cc-daemon.plist").exists()
+    if platform.system() == "Linux":
+        return (home / ".config" / "systemd" / "user" / "mycelium-cc-daemon.service").exists()
+    return False
+
+
+def _check_cc_daemon_service_registered() -> CheckResult:
+    """The unit file is on disk in the right location for the service manager."""
+    import platform
+
+    if not _claude_daemon_installed():
+        return CheckResult(
+            name="cc-daemon service",
+            status="ok",
+            message=(
+                "Claude Code daemon not installed — skipped "
+                "(install with: mycelium adapter add claude-code --step=daemon)"
+            ),
+        )
+    system = platform.system()
+    return CheckResult(
+        name="cc-daemon service",
+        status="ok",
+        message=f"{system} service unit registered",
+    )
+
+
+def _check_cc_daemon_running() -> CheckResult:
+    """The daemon answers on its unix-socket health endpoint."""
+    if not _claude_daemon_installed():
+        return CheckResult(
+            name="cc-daemon health",
+            status="ok",
+            message="not installed — skipped",
+        )
+
+    from mycelium.daemon.health import read_health_blocking
+
+    health = read_health_blocking(timeout=2.0)
+    if health is None:
+        return CheckResult(
+            name="cc-daemon health",
+            status="error",
+            message="service installed but unix-socket /health did not respond",
+            details=[
+                "  socket: ~/.mycelium/cc-daemon.sock",
+                "  logs:   ~/.mycelium/logs/cc-daemon.log",
+                "  fix:    mycelium daemon restart",
+            ],
+        )
+
+    uptime = int(health.get("uptime_s") or 0)
+    rooms_cfg = health.get("rooms_configured") or []
+    rooms_sub = health.get("rooms_subscribed") or []
+    errors = int(health.get("errors_last_hour") or 0)
+
+    details: list[str] = [
+        f"  uptime: {uptime // 3600}h {uptime % 3600 // 60}m",
+        f"  rooms:  {len(rooms_sub)}/{len(rooms_cfg)} connected",
+    ]
+    if not rooms_cfg:
+        details.append("  (no rooms subscribed — `mycelium daemon subscribe <room>`)")
+    last = health.get("last_dispatch")
+    if last:
+        details.append(
+            f"  last run: @{last.get('agent')} in {last.get('room')} "
+            f"({last.get('result')}, {last.get('duration_s', 0):.1f}s)"
+        )
+    if errors:
+        last_err = health.get("last_error") or {}
+        details.append(
+            f"  errors: {errors} in last hour — last: "
+            f"{last_err.get('where')}: {last_err.get('msg')}"
+        )
+
+    return CheckResult(
+        name="cc-daemon health",
+        status="warning" if errors else "ok",
+        message=(
+            "running, no errors" if not errors else f"running, but {errors} error(s) in last hour"
+        ),
+        details=details,
     )
 
 
@@ -1267,6 +1385,8 @@ def doctor(
                     _check_openclaw_mycelium_plugin(),
                     _check_openclaw_channel_config(),
                     _check_openclaw_agent_sandbox(),
+                    _check_cc_daemon_service_registered(),
+                    _check_cc_daemon_running(),
                 ],
             ),
         ]

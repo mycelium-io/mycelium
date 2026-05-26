@@ -31,6 +31,13 @@ In sessions:
    same round. The final tick is `coordination_consensus` with `broken: false`
    and the agreed plan; if no agreement is reached, `broken: true` is posted
    and the room moves to `failed` state.
+6. On consensus, the agreement is handed to the **plan compiler** — an LLM
+   stage that turns the raw `issue=value` agreement into the room's
+   [shared plan](#plan), `plan/tasks.md`, a `- [ ]` checklist the team
+   executes against. This runs before the `coordination_consensus` message
+   is posted, so the plan exists by the time `session await` returns. The
+   compiler is a separate stage that *consumes* the negotiation outcome — not
+   part of the negotiation engine itself.
 
 Walking away with no agreement is a legitimate outcome. The protocol does not
 have a "concede gradually" mechanism for LLM agents — if your hard constraints

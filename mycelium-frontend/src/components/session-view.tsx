@@ -3,9 +3,10 @@
 
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from "react-resizable-panels";
 import { fetchMessages, getSSEUrl } from "@/lib/api";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -19,7 +20,7 @@ interface RawMessage {
   created_at: string;
 }
 
-type Action = "propose" | "counter" | "accept" | "reject" | "tick" | "consensus" | "broken" | "start";
+type Action = "propose" | "counter" | "accept" | "reject" | "tick" | "consensus" | "broken" | "start" | "join";
 
 interface Event {
   id: string;
@@ -45,7 +46,12 @@ interface DerivedState {
   proposerId: string | null;
   nextProposerId: string | null;
   state: "negotiating" | "complete" | "broken" | "starting";
-  consensus: { plan: string; assignments: Record<string, string>; broken: boolean } | null;
+  consensus: {
+    plan: string;
+    assignments: Record<string, string>;
+    broken: boolean;
+    planFile: string | null;
+  } | null;
 }
 
 // ─── Parsing ──────────────────────────────────────────────────────────────────
@@ -73,6 +79,19 @@ function parseEvents(messages: RawMessage[]): Event[] {
         round: (content.round as number) ?? 0,
         action: "start",
         note: `${content.agent_count ?? "?"} agents`,
+        raw: m,
+      });
+      continue;
+    }
+
+    if (m.message_type === "coordination_join") {
+      const handle = String(content.handle ?? m.sender_handle ?? "?");
+      const intent = typeof content.intent === "string" ? content.intent : undefined;
+      out.push({
+        id: m.id, time, iso, agent: handle,
+        round: 0,
+        action: "join",
+        note: intent,
         raw: m,
       });
       continue;
@@ -170,6 +189,7 @@ function deriveState(messages: RawMessage[]): DerivedState {
       plan: String(c.plan ?? ""),
       assignments: (c.assignments as Record<string, string>) ?? {},
       broken: Boolean(c.broken),
+      planFile: typeof c.plan_file === "string" ? c.plan_file : null,
     };
   }
 
@@ -224,6 +244,7 @@ function useSessionMessages(sessionRoom: string) {
 
 const ACTION_META: Record<Action, { label: string; tone: "accent" | "ok" | "warn" | "muted" | "ink" }> = {
   start:     { label: "START",     tone: "muted" },
+  join:      { label: "JOIN",      tone: "accent" },
   tick:      { label: "AWAITING",  tone: "accent" },
   propose:   { label: "PROPOSE",   tone: "ink" },
   counter:   { label: "COUNTER",   tone: "ink" },
@@ -374,23 +395,25 @@ function NegotiationSpace({ derived }: { derived: DerivedState }) {
           {expanded ? "HIDE OPTIONS" : "SHOW ALL OPTIONS"}
         </button>
       </div>
-      <div className="border border-border2" style={{ background: "rgba(255,255,255,0.015)" }}>
+      <div
+        className="border border-border2 grid items-baseline gap-x-3 px-4"
+        style={{ background: "rgba(255,255,255,0.015)", gridTemplateColumns: "max-content 24px 1fr" }}
+      >
         {issues.map((issue, i) => {
           const current = offer[issue];
           const opts = options[issue] ?? [];
           return (
-            <div key={issue} className={`px-4 py-2.5 ${i < issues.length - 1 ? "border-b border-border" : ""}`}>
-              <div className="grid items-baseline gap-3" style={{ gridTemplateColumns: "180px 24px 1fr" }}>
-                <span className="caps-mono-sm text-muted truncate">
-                  {String(i + 1).padStart(2, "0")} · {issue}
-                </span>
-                <span className="text-dim caps-mono-sm text-center">=</span>
-                <span className="font-mono text-body text-accent break-words" style={{ fontWeight: 600 }}>
-                  {current ?? "—"}
-                </span>
-              </div>
+            <Fragment key={issue}>
+              {i > 0 && <div className="border-t border-border" style={{ gridColumn: "1 / -1" }} />}
+              <span className="caps-mono-sm text-muted whitespace-nowrap py-2.5">
+                {String(i + 1).padStart(2, "0")} · {issue}
+              </span>
+              <span className="text-dim caps-mono-sm text-center py-2.5">=</span>
+              <span className="font-mono text-body text-accent break-words py-2.5" style={{ fontWeight: 600 }}>
+                {current ?? "—"}
+              </span>
               {expanded && opts.length > 0 && (
-                <div className="mt-2 ml-[204px] space-y-0.5">
+                <div className="pb-2.5 space-y-0.5" style={{ gridColumn: "3 / -1" }}>
                   {opts.filter(o => o !== current).map(opt => (
                     <div key={opt} className="flex items-start gap-2">
                       <span
@@ -405,7 +428,7 @@ function NegotiationSpace({ derived }: { derived: DerivedState }) {
                   ))}
                 </div>
               )}
-            </div>
+            </Fragment>
           );
         })}
       </div>
@@ -445,9 +468,10 @@ function SwimLanes({ derived }: { derived: DerivedState }) {
   return (
     <div className="px-6 py-4 border-b border-border">
       <div className="caps-mono-sm text-muted mb-2">SWIM LANES · AGENT × ROUND</div>
-      <div className="border border-border2 overflow-x-auto" style={{ background: "rgba(255,255,255,0.015)" }}>
+      <div className="border border-border2" style={{ background: "rgba(255,255,255,0.015)" }}>
+       <ScrollArea className="w-full overflow-hidden">
         {/* Round axis */}
-        <div className="grid border-b border-border2" style={{ gridTemplateColumns: `140px repeat(${rounds}, minmax(0, 1fr))` }}>
+        <div className="grid border-b border-border2" style={{ gridTemplateColumns: `140px repeat(${rounds}, minmax(40px, 1fr))`, minWidth: "max-content" }}>
           <div className="px-3 py-2 caps-mono-sm text-muted">ROUND →</div>
           {Array.from({ length: rounds }).map((_, i) => {
             const r = i + 1;
@@ -469,7 +493,7 @@ function SwimLanes({ derived }: { derived: DerivedState }) {
         {/* Lanes */}
         {agents.map(agent => (
           <div key={agent} className="grid border-b border-border last:border-b-0"
-               style={{ gridTemplateColumns: `140px repeat(${rounds}, minmax(0, 1fr))` }}>
+               style={{ gridTemplateColumns: `140px repeat(${rounds}, minmax(40px, 1fr))`, minWidth: "max-content" }}>
             <div className="px-3 py-2 flex items-center border-r border-border2 min-w-0">
               <span className="font-mono text-label text-text truncate">{agent}</span>
             </div>
@@ -485,8 +509,9 @@ function SwimLanes({ derived }: { derived: DerivedState }) {
             })}
           </div>
         ))}
+       </ScrollArea>
         {/* Legend */}
-        <div className="flex flex-wrap gap-5 px-4 py-2 border-t border-border2 bg-bg/60">
+        <div className="flex gap-5 px-4 py-2 border-t border-border2 bg-bg/60">
           {(["propose", "counter", "accept", "reject"] as Action[]).map(a => (
             <div key={a} className="flex items-center gap-2">
               <ActionGlyph action={a} />
@@ -520,14 +545,22 @@ function ConsensusBanner({ derived }: { derived: DerivedState }) {
       </div>
       {c.plan && <div className="text-body text-text2 mb-2">{c.plan}</div>}
       {Object.keys(c.assignments).length > 0 && (
-        <div className="font-mono text-label space-y-1 mt-2">
+        <div
+          className="font-mono text-label mt-2 grid items-baseline gap-x-3 gap-y-1"
+          style={{ gridTemplateColumns: "max-content max-content 1fr" }}
+        >
           {Object.entries(c.assignments).map(([k, v]) => (
-            <div key={k} className="flex items-baseline gap-3">
-              <span style={{ color, minWidth: 140 }}>{k}</span>
+            <Fragment key={k}>
+              <span style={{ color }}>{k}</span>
               <span className="text-dim">=</span>
               <span className="text-text">{String(v)}</span>
-            </div>
+            </Fragment>
           ))}
+        </div>
+      )}
+      {!c.broken && c.planFile && (
+        <div className="caps-mono-sm mt-3 pt-2 border-t" style={{ borderColor: color, color }}>
+          compiled into the room plan → {c.planFile}
         </div>
       )}
     </div>
@@ -614,12 +647,12 @@ export function SessionView({ sessionRoom }: SessionViewProps) {
       style={{ width: "100%", height: "100%" }}
     >
       <Panel id="main" defaultSize={60} minSize={25} className="overflow-hidden" style={{ minWidth: 0 }}>
-        <div className="h-full overflow-y-auto" style={{ width: "100%", minWidth: 0 }}>
+        <ScrollArea className="h-full w-full" style={{ minWidth: 0 }}>
           <HeaderRow sessionRoom={sessionRoom} derived={derived} />
           <SwimLanes derived={derived} />
           <NegotiationSpace derived={derived} />
           {derived.consensus && <ConsensusBanner derived={derived} />}
-        </div>
+        </ScrollArea>
       </Panel>
       <PanelResizeHandle
         className="w-px bg-border hover:bg-accent transition-colors flex-shrink-0 relative"

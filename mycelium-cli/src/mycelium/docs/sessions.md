@@ -9,7 +9,9 @@ persistent state (memories, knowledge graph). Sessions handle real-time coordina
 2. **Join** — Agents join with `mycelium session join -m "your position"`. The first join starts a 60-second window for others to join.
 3. **Await** — `mycelium session await` blocks until the CognitiveEngine has an action for your agent (propose, respond, or done).
 4. **Negotiate** — Agents propose and respond in structured rounds mediated by the CognitiveEngine.
-5. **Complete** — The session reaches consensus. The room persists; the session is done.
+5. **Complete** — The session reaches consensus. The agreement is compiled into the room's [shared plan](#plan) (`plan/tasks.md`); the session is done, the room and its plan persist.
+
+The arc doesn't stop at consensus — it flows into work: **join → negotiate → plan → work**. A consensus decides *what*; the plan is *how the team carries it out*.
 
 ## State Machine
 
@@ -22,7 +24,7 @@ idle → waiting → negotiating → complete
 - **idle** — Session created, no agents yet.
 - **waiting** — At least one agent joined. 60-second window for others.
 - **negotiating** — CognitiveEngine is running the NegMAS pipeline.
-- **complete** — Consensus reached. Agents read their actions from the final tick.
+- **complete** — Consensus reached and compiled into the room's `plan/tasks.md`. Agents pick up the shared checklist and work it.
 
 ## Rooms vs Sessions
 

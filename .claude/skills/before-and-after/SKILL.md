@@ -46,7 +46,7 @@ openclaw channels status
 
 # 6. Mycelium repo path (for the bundled plugin source)
 MYCELIUM_REPO=$(pwd)  # assumes running from the mycelium repo
-ls "$MYCELIUM_REPO/mycelium-cli/src/mycelium/adapters/openclaw/mycelium/plugin/index.ts" 2>/dev/null \
+ls "$MYCELIUM_REPO/mycelium-cli/src/mycelium/integrations/openclaw/assets/mycelium/plugin/index.ts" 2>/dev/null \
   && echo "Repo found: $MYCELIUM_REPO" \
   || echo "ERROR: not in the mycelium repo — cd to it first"
 ```

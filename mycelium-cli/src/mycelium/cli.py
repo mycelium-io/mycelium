@@ -13,8 +13,10 @@ import typer
 from mycelium import __version__
 from mycelium.commands import (
     adapter,
+    agent,
     cfn,
     config,
+    daemon,
     docs,
     doctor,
     install,
@@ -80,13 +82,21 @@ def skill(
     Use --claude-code to print the Claude Code adapter skill instead.
     """
     if claude_code:
-        rel = "adapters/claude-code/skills/mycelium/SKILL.md"
-        fallback_parts = ("adapters", "claude-code", "skills", "mycelium", "SKILL.md")
-    else:
-        rel = "adapters/openclaw/mycelium/plugin/skills/mycelium/SKILL.md"
+        rel = "integrations/claude_code/assets/skills/mycelium/SKILL.md"
         fallback_parts = (
-            "adapters",
+            "integrations",
+            "claude_code",
+            "assets",
+            "skills",
+            "mycelium",
+            "SKILL.md",
+        )
+    else:
+        rel = "integrations/openclaw/assets/mycelium/plugin/skills/mycelium/SKILL.md"
+        fallback_parts = (
+            "integrations",
             "openclaw",
+            "assets",
             "mycelium",
             "plugin",
             "skills",
@@ -136,6 +146,8 @@ app.add_typer(metrics.app, name="metrics")
 app.add_typer(ui.app, name="ui")
 app.add_typer(session.app, name="session")
 app.add_typer(cfn.app, name="cfn")
+app.add_typer(agent.app, name="agent")
+app.add_typer(daemon.app, name="daemon")
 
 
 if __name__ == "__main__":

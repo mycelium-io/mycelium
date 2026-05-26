@@ -45,6 +45,8 @@ from app.services.metrics import (
     record_coordination_start,
     record_room_identity,
 )
+from app.services.plan import read_plan_file, set_title_from_body_if_absent, write_plan_file
+from app.services.plan_compiler import compile_plan, fallback_body
 
 logger = logging.getLogger(__name__)
 
@@ -259,6 +261,11 @@ class _CfnRoundState:
     # the next tick as ``prior_round_outcome`` so agents stop describing
     # their own offer as "reflected back".
     last_round_outcome: str = "first_round"
+    # Negotiation context captured for the plan compiler (consensus → plan).
+    # _finish_cfn only receives the session room name; the agents' opening
+    # positions and participant handles aren't otherwise reachable there.
+    joined_intents: str = ""
+    session_handles: list[str] = field(default_factory=list)
 
 
 # {room_name: _CfnRoundState}
@@ -516,6 +523,8 @@ async def _run_cfn_negotiation(
         round_start_time=time.monotonic(),
         session_start_time=session_start_time,
         n_steps_total=settings.NEGOTIATION_N_STEPS,
+        joined_intents=joined_intents,
+        session_handles=session_handles[:],
     )
     _cfn_state[room_name] = state
 
@@ -1195,17 +1204,63 @@ async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool
             outcome="failure",
         )
 
+    # Consensus → plan: compile the agreement into the room's shared plan
+    # BEFORE the consensus message goes out (plan-first ordering, so a
+    # ``session await`` returns once the plan exists). Fail-soft — a compiler
+    # outage falls back to the raw agreement and never blocks the outcome.
+    # Gated on ``not broken``: aborted/timeout consensus has no agreement to
+    # compile, and the timeout-task path (always broken=True) must never reach
+    # an LLM await.
+    plan_file: str | None = None
+    if not broken:
+        parent_room = room_name.split(":session:", 1)[0] if ":session:" in room_name else room_name
+        try:
+            existing = read_plan_file(parent_room)
+            body = await compile_plan(
+                room_name=parent_room,
+                assignments=assignments,
+                joined_intents=state.joined_intents if state else "",
+                issue_options=state.issue_options if state else None,
+                existing_plan=existing,
+            )
+            write_plan_file(parent_room, body, updated_by="CognitiveEngine")
+            set_title_from_body_if_absent(parent_room, body, updated_by="CognitiveEngine")
+            plan_file = "plan/tasks.md"
+        except Exception as exc:
+            logger.warning(
+                "_finish_cfn: plan compiler failed for %s, writing raw fallback: %s",
+                room_name,
+                exc,
+            )
+            try:
+                fb_body = fallback_body(assignments)
+                write_plan_file(parent_room, fb_body, updated_by="CognitiveEngine")
+                set_title_from_body_if_absent(parent_room, fb_body, updated_by="CognitiveEngine")
+                plan_file = "plan/tasks.md"
+            except Exception:
+                logger.exception("_finish_cfn: fallback plan write failed for %s", room_name)
+
+    # ``session`` carries the session display name so room-scoped consumers
+    # (the chat-channel render) can build a link to the live session view —
+    # the room-scoped row has ``coordination_session_id=None`` so the link
+    # target can't be derived from the row alone.
+    consensus_content = json.dumps(
+        {
+            "plan": plan,
+            "plan_file": plan_file,
+            "assignments": assignments,
+            "broken": broken,
+            "session": room_name,
+        }
+    )
+    parent_room_for_post = (
+        room_name.split(":session:", 1)[0] if ":session:" in room_name else room_name
+    )
     try:
         await _post_message(
             room_name,
             message_type="coordination_consensus",
-            content=json.dumps(
-                {
-                    "plan": plan,
-                    "assignments": assignments,
-                    "broken": broken,
-                }
-            ),
+            content=consensus_content,
         )
     except Exception as exc:
         # FK violation means the room was deleted before consensus could be written.
@@ -1215,6 +1270,25 @@ async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool
             room_name,
             exc,
         )
+    # Mirror the consensus to the parent room so it surfaces in the chat
+    # channel alongside coordination_join. Same dual-post pattern as joins
+    # (the ck_messages_one_target CHECK forbids combining both FKs in one
+    # row). Non-fatal: a failure here doesn't roll back the session-scoped
+    # post above. Skip when there's no parent (negotiation ran in a flat
+    # room with no ``:session:`` suffix — uncommon, defensive).
+    if parent_room_for_post and parent_room_for_post != room_name:
+        try:
+            await _post_message(
+                parent_room_for_post,
+                message_type="coordination_consensus",
+                content=consensus_content,
+            )
+        except Exception as exc:
+            logger.warning(
+                "_finish_cfn: parent-room consensus mirror failed for %s: %s",
+                parent_room_for_post,
+                exc,
+            )
     async with async_session_maker() as db:
         if ":session:" in room_name:
             parent, _, short_id = room_name.partition(":session:")

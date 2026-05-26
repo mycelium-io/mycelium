@@ -153,6 +153,81 @@ export function getSSEUrl(roomName: string) {
   return `${API}/api/rooms/${roomName}/messages/stream`;
 }
 
+export async function sendRoomMessage(
+  roomName: string,
+  data: { sender_handle: string; content: string; message_type?: string },
+) {
+  const res = await fetch(`${API}/api/rooms/${roomName}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message_type: "broadcast", ...data }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`send failed (${res.status}): ${detail.slice(0, 200)}`);
+  }
+  return res.json();
+}
+
+export interface AgentSummary {
+  handle: string;
+  description: string;
+  adapter: string;
+}
+
+/**
+ * List addressable agents in a room. Each agent is a memory entry under
+ * `agents/<handle>` (without further path segments — `agents/<handle>/notes`
+ * and `agents/<handle>/log/...` are filtered out). Used to drive the
+ * `@`-mention autocomplete in the room chat box.
+ */
+export async function fetchRoomAgents(roomName: string): Promise<AgentSummary[]> {
+  const res = await fetch(
+    `${API}/api/rooms/${roomName}/memory?prefix=agents/&limit=200`,
+    { cache: "no-store" },
+  );
+  if (!res.ok) return [];
+  const data = await res.json();
+  const items = Array.isArray(data) ? data : data.items || data.memories || [];
+  const agents: AgentSummary[] = [];
+  for (const item of items) {
+    const key: string = item.key || "";
+    const rest = key.replace(/^agents\//, "");
+    if (!rest || rest.includes("/")) continue;
+    // The manifest is YAML. The memory API may hand it back as a raw string,
+    // a structured dict, OR — what the backend actually does — wrapped as
+    // `{text: "<yaml>"}`. Normalize to one YAML string and parse that; the
+    // old code missed the {text} shape and defaulted every agent to
+    // claude_code.
+    const value = item.value;
+    let raw = "";
+    let structured: Record<string, unknown> | null = null;
+    if (typeof value === "string") {
+      raw = value;
+    } else if (value && typeof value === "object") {
+      const v = value as Record<string, unknown>;
+      if (typeof v.text === "string") raw = v.text;
+      else if (typeof v.content === "string") raw = v.content;
+      else structured = v;
+    }
+
+    let description = "";
+    let adapter = "claude_code";
+    if (structured) {
+      description = String(structured.description || "");
+      adapter = String(structured.adapter || "claude_code");
+    } else {
+      const descMatch = raw.match(/description:\s*(.+)/);
+      if (descMatch) description = descMatch[1].trim().replace(/^["']|["']$/g, "");
+      const adMatch = raw.match(/adapter:\s*(\S+)/);
+      if (adMatch) adapter = adMatch[1].trim();
+    }
+    agents.push({ handle: rest, description, adapter });
+  }
+  agents.sort((a, b) => a.handle.localeCompare(b.handle));
+  return agents;
+}
+
 // ── Metrics ──────────────────────────────────────────────────────────────────
 
 export async function fetchBackendMetrics() {

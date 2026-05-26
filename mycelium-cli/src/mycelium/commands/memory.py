@@ -427,6 +427,12 @@ def memory_catchup(
         resp = client.get(f"/api/rooms/{room_name}/catchup")
         resp.raise_for_status()
         data = resp.json()
+        try:
+            plan_resp = client.get(f"/api/rooms/{room_name}/plan")
+            plan_resp.raise_for_status()
+            plan_data = plan_resp.json()
+        except httpx.HTTPError:
+            plan_data = None
 
     console.print(
         f"\n[bold]{data['room']}[/bold]  [dim]{data.get('mode', 'public')} room  {data['total_memories']} memories  {len(data['contributors'])} contributors[/dim]\n"
@@ -435,6 +441,22 @@ def memory_catchup(
     # Contributors
     if data["contributors"]:
         console.print(f"[dim]Contributors:[/dim] {', '.join(data['contributors'])}\n")
+
+    # Plan — the room's shared checklist. Negotiation consensus is compiled
+    # into plan/tasks.md, so this is where an arriving agent picks up the work.
+    if plan_data and (plan_data.get("title") or plan_data.get("tasks")):
+        title = plan_data.get("title") or "Plan"
+        console.print(f"[bold magenta]Plan[/bold magenta]  [italic]{title}[/italic]")
+        console.print(
+            f"[dim]{plan_data.get('open_count', 0)} open · "
+            f"{plan_data.get('done_count', 0)} done[/dim]"
+        )
+        open_tasks = [t for t in plan_data.get("tasks", []) if not t.get("done")]
+        for task in open_tasks[:8]:
+            console.print(f"  [ ] {task['text']}")
+        if len(open_tasks) > 8:
+            console.print(f"  [dim]... and {len(open_tasks) - 8} more[/dim]")
+        console.print()
 
     # Latest synthesis
     synth = data.get("latest_synthesis")

@@ -1,0 +1,19 @@
+[Unit]
+Description=Mycelium Claude Code daemon (cc-daemon)
+Documentation=https://github.com/mycelium-io/mycelium
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart={{ python_binary }} -m mycelium.daemon
+Restart=on-failure
+RestartSec=10
+WorkingDirectory={{ home }}
+Environment=HOME={{ home }}
+Environment=PATH={{ path }}
+StandardOutput=append:{{ log_path }}
+StandardError=append:{{ log_path }}
+
+[Install]
+WantedBy=default.target

@@ -3,10 +3,12 @@
 
 """Tests for the plan/ namespace + projection API."""
 
+import json
 from pathlib import Path
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services import plan as plan_service
 from app.services.filesystem import get_room_dir
@@ -68,6 +70,71 @@ class TestAddAndToggle:
             plan_service.toggle_task("nope", "missing:1")
 
 
+class TestSetTitleFromBody:
+    """set_title_from_body_if_absent — auto-name the room from a freshly-compiled plan."""
+
+    def test_sets_title_when_absent(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path))
+        body = "# MVP Delivery Plan\n\n- [ ] do the thing\n"
+        result = plan_service.set_title_from_body_if_absent("room-a", body)
+        assert result == "MVP Delivery Plan"
+        assert plan_service.get_title("room-a") == "MVP Delivery Plan"
+
+    def test_does_not_clobber_existing_title(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path))
+        plan_service.set_title("room-b", "Human Picked", updated_by="julia")
+        result = plan_service.set_title_from_body_if_absent("room-b", "# LLM Pick\n\n- [ ] x\n")
+        assert result is None
+        assert plan_service.get_title("room-b") == "Human Picked"
+
+    def test_no_heading_returns_none(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path))
+        result = plan_service.set_title_from_body_if_absent("room-c", "no heading here\n- [ ] x\n")
+        assert result is None
+        assert plan_service.get_title("room-c") is None
+
+
+class TestWritePlanFile:
+    """write_plan_file / read_plan_file — the whole-body writer the compiler uses."""
+
+    def test_write_and_read_roundtrip(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path))
+        body = "# Launch plan\n\n- [ ] write the parser\n- [x] sketch the API\n"
+        plan_service.write_plan_file("room-w", body)
+
+        assert plan_service.read_plan_file("room-w") == body.rstrip("\n")
+        # The body must still parse as a plan: load_plan strips the frontmatter
+        # write_memory_file adds, and parse_tasks sees both checkbox states.
+        _, tasks = plan_service.load_plan("room-w")
+        assert [(t.text, t.done) for t in tasks] == [
+            ("write the parser", False),
+            ("sketch the API", True),
+        ]
+
+    def test_write_overwrites(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path))
+        plan_service.write_plan_file("room-o", "# A\n\n- [ ] one\n")
+        plan_service.write_plan_file("room-o", "# B\n\n- [ ] two\n")
+        body = plan_service.read_plan_file("room-o")
+        assert body is not None
+        assert "one" not in body
+        assert "two" in body
+
+    def test_read_missing_returns_none(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path))
+        assert plan_service.read_plan_file("never-created") is None
+
+    def test_toggle_on_compiler_written_file(self, tmp_path, monkeypatch):
+        """A compiler-written file carries frontmatter; toggle_task must still work."""
+        monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path))
+        plan_service.write_plan_file("room-t", "# Plan\n\n- [ ] do the thing\n")
+        _, tasks = plan_service.load_plan("room-t")
+        flipped = plan_service.toggle_task("room-t", tasks[0].id)
+        assert flipped.done is True
+        _, reloaded = plan_service.load_plan("room-t")
+        assert reloaded[0].done is True
+
+
 class TestOpenTaskSummary:
     def test_summary_groups_and_caps(self, tmp_path, monkeypatch):
         monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path))
@@ -85,6 +152,30 @@ class TestOpenTaskSummary:
     def test_summary_none_when_no_plan(self, tmp_path, monkeypatch):
         monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path))
         assert plan_service.open_task_summary("empty") is None
+
+
+class TestAgentContext:
+    def test_none_when_no_plan(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path))
+        assert plan_service.agent_context("empty") is None
+
+    def test_includes_title_and_open_tasks(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path))
+        plan_service.set_title("r", "Ship the Q3 release")
+        plan_service.add_task("r", "write the parser")
+        plan_service.add_task("r", "ship the demo")
+        ctx = plan_service.agent_context("r")
+        assert ctx is not None
+        assert "Plan: Ship the Q3 release" in ctx
+        assert "Open tasks (2)" in ctx
+        assert "write the parser" in ctx
+
+    def test_title_only_no_tasks(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path))
+        plan_service.set_title("r", "Just a title")
+        ctx = plan_service.agent_context("r")
+        assert ctx is not None
+        assert "Plan: Just a title" in ctx
 
 
 @pytest.mark.asyncio
@@ -158,7 +249,81 @@ class TestPlanRoutes:
         resp = await client.get(f"/api/rooms/{room}/plan")
         assert resp.json()["title"] is None
 
+    async def test_plan_mutations_emit_plan_updated_events(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        """add_task / toggle / set_title emit ``plan_updated`` Message rows.
+
+        The chat-channel narrates plan edits the same way it narrates joins
+        and consensus. If the API mutation doesn't fire a Message + NOTIFY,
+        the room's event stream goes dark on every plan edit.
+        """
+        from sqlalchemy import select
+
+        from app.models import Message
+
+        room = "plan-events"
+        await client.post("/api/rooms", json={"name": room})
+
+        # 1. add_task → plan_updated/task_added
+        resp = await client.post(f"/api/rooms/{room}/plan/tasks", json={"text": "wire up CI"})
+        task_id = resp.json()["id"]
+
+        # 2. toggle → plan_updated/task_toggled (done=true)
+        await client.post(f"/api/rooms/{room}/plan/tasks/{task_id}/toggle")
+
+        # 3. set_title → plan_updated/title_set
+        await client.put(
+            f"/api/rooms/{room}/plan/title", json={"text": "Q3 Sprint", "updated_by": "julia"}
+        )
+
+        rows = (
+            (
+                await db_session.execute(
+                    select(Message)
+                    .where(Message.message_type == "plan_updated")
+                    .where(Message.room_name == room)
+                    .order_by(Message.created_at)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        kinds = [json.loads(r.content)["kind"] for r in rows]
+        assert kinds == ["task_added", "task_toggled", "title_set"]
+
+        # Spot-check payload shapes — chat-channel render reads these fields.
+        added = json.loads(rows[0].content)
+        assert added["text"] == "wire up CI"
+        assert added["task_id"] == task_id
+        toggled = json.loads(rows[1].content)
+        assert toggled["done"] is True
+        assert toggled["text"] == "wire up CI"
+        title_set = json.loads(rows[2].content)
+        assert title_set["title"] == "Q3 Sprint"
+        assert title_set["updated_by"] == "julia"
+
     async def test_room_creation_includes_plan_dir(self, client: AsyncClient):
         await client.post("/api/rooms", json={"name": "with-plan"})
         plan_dir = get_room_dir("with-plan") / "plan"
         assert plan_dir.exists() and plan_dir.is_dir()
+
+    async def test_agent_context_endpoint(self, client: AsyncClient):
+        room = "plan-agentctx"
+        await client.post("/api/rooms", json={"name": room})
+
+        # Empty room → context is null, generated_at still present
+        resp = await client.get(f"/api/rooms/{room}/agent-context")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["context"] is None
+        assert data["generated_at"]
+        assert data["room"] == room
+
+        # Add a task → context surfaces it
+        await client.post(f"/api/rooms/{room}/plan/tasks", json={"text": "do the thing"})
+        resp = await client.get(f"/api/rooms/{room}/agent-context", params={"handle": "alpha"})
+        data = resp.json()
+        assert data["handle"] == "alpha"
+        assert "do the thing" in data["context"]
+        assert "Open tasks (1)" in data["context"]
