@@ -5,7 +5,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getSSEUrl, fetchMessages, fetchRoomAgents } from "@/lib/api";
+import { getSSEUrl, fetchMessages, fetchRoomAgents, logFetchError } from "@/lib/api";
 import { MarkdownContent } from "@/components/markdown-content";
 import { RoomPlanHeader } from "@/components/room-plan-header";
 
@@ -194,7 +194,7 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
         .then((a) => {
           if (!cancelled) setAgentHandles(new Set(a.map((x) => x.handle)));
         })
-        .catch(() => {});
+        .catch(logFetchError("fetchRoomAgents"));
     load();
     const t = setInterval(load, 30_000);
     return () => {
@@ -208,7 +208,7 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
     fetchMessages(roomName).then(data => {
       const msgs = (data.messages || []).reverse();
       setEvents(msgs.map(parseEvent));
-    }).catch(() => {});
+    }).catch(logFetchError("fetchMessages"));
   }, [roomName]);
 
   // SSE connection

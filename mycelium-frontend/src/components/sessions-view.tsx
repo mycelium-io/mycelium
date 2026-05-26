@@ -4,7 +4,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { fetchChildRooms, fetchMessages, getSSEUrl } from "@/lib/api";
+import { fetchChildRooms, fetchMessages, getSSEUrl, logFetchError } from "@/lib/api";
 
 interface ChildSession {
   name: string;
@@ -300,7 +300,7 @@ function SessionFeed({ sessionName }: { sessionName: string }) {
     fetchMessages(sessionName).then((data) => {
       const msgs = (data.messages || []).reverse();
       setEvents(msgs.map(parseSessionEvent));
-    }).catch(() => {});
+    }).catch(logFetchError("fetchMessages (sessions)"));
   }, [sessionName]);
 
   useEffect(() => {

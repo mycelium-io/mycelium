@@ -4,7 +4,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { fetchRoomAgents, type AgentSummary } from "@/lib/api";
+import { fetchRoomAgents, logFetchError, type AgentSummary } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -55,7 +55,10 @@ export function AgentsPanel({ roomName }: Props) {
         setAgents(a);
         setLoaded(true);
       })
-      .catch(() => setLoaded(true));
+      .catch((err) => {
+        logFetchError("fetchRoomAgents")(err);
+        setLoaded(true);
+      });
   }, [roomName]);
 
   useEffect(() => {

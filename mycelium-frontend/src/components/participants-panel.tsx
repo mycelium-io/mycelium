@@ -4,7 +4,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { fetchSessions } from "@/lib/api";
+import { fetchSessions, logFetchError } from "@/lib/api";
 
 interface Props {
   /** Session display name, e.g. ``my-room:session:abc12345`` */
@@ -47,7 +47,10 @@ export function ParticipantsPanel({ sessionRoom }: Props) {
         setParticipants(data.participants ?? []);
         setLoaded(true);
       })
-      .catch(() => setLoaded(true));
+      .catch((err) => {
+        logFetchError("fetchSessions")(err);
+        setLoaded(true);
+      });
   }, [sessionRoom]);
 
   useEffect(() => {
