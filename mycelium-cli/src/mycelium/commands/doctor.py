@@ -860,16 +860,19 @@ def _check_pending_migrations() -> CheckResult:
     #      out on stdout alone.  This eliminates the regex-vs-traceback class
     #      of false positives entirely; the tightened regex below is just
     #      belt-and-suspenders.
-    from mycelium.config import MyceliumConfig
+    import logging
+
+    from mycelium.docker_utils import resolve_host_database_url
 
     env = {**__import__("os").environ}
-    try:
-        cfg = MyceliumConfig.load()
-        env["DATABASE_URL"] = cfg.database_url(host_side=True)
-    except Exception:
-        # If config load fails (corrupt config.toml, etc.), fall through to
-        # the alembic call and let it produce a real error we can surface.
-        pass
+    host_url = resolve_host_database_url(env)
+    if host_url:
+        env["DATABASE_URL"] = host_url
+    else:
+        logging.getLogger(__name__).debug(
+            "Could not resolve host-side DATABASE_URL from .env or config.toml; "
+            "falling through to alembic with whatever DATABASE_URL is in the environment"
+        )
 
     try:
         result = subprocess.run(

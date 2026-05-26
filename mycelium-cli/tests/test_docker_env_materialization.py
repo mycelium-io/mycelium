@@ -16,8 +16,10 @@ both flowing from the single ``MyceliumConfig.database_url`` recipe.
 
 from __future__ import annotations
 
+import pytest
+
 from mycelium.config import MyceliumConfig
-from mycelium.docker_utils import generate_env_file
+from mycelium.docker_utils import generate_env_file, resolve_host_database_url
 
 
 def _parse_env(blob: str) -> dict[str, str]:
@@ -101,3 +103,42 @@ def test_env_explicit_override_propagates_to_all_url_variants() -> None:
         assert env[key] == "postgresql+asyncpg://rds:secret@db.example.com:5432/prod", (
             f"{key} ignored server.database_url override"
         )
+
+
+# ── resolve_host_database_url ────────────────────────────────────────────────
+
+
+def test_resolve_prefers_database_url_host_from_env() -> None:
+    """Tier 1: materialised DATABASE_URL_HOST wins over config derivation."""
+    env = {"DATABASE_URL_HOST": "postgresql+asyncpg://postgres:pw@localhost:5432/mycelium"}
+    assert resolve_host_database_url(env) == env["DATABASE_URL_HOST"]
+
+
+def test_resolve_falls_back_to_config_when_env_key_absent() -> None:
+    """Tier 2: if .env has no DATABASE_URL_HOST, derive from config.toml."""
+    result = resolve_host_database_url({})
+    assert result is not None
+    assert "localhost" in result
+
+
+def test_resolve_returns_none_when_all_sources_fail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Tier 3: when config can't load, return None so caller can decide."""
+
+    def _boom() -> None:
+        msg = "synthetic config load failure"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(
+        "mycelium.config.MyceliumConfig.load", staticmethod(_boom)
+    )
+    assert resolve_host_database_url({}) is None
+
+
+def test_resolve_ignores_empty_database_url_host() -> None:
+    """An empty string in .env shouldn't short-circuit the fallback chain."""
+    env = {"DATABASE_URL_HOST": ""}
+    result = resolve_host_database_url(env)
+    assert result is not None
+    assert "localhost" in result

@@ -142,6 +142,26 @@ def test_blank_override_is_treated_as_unset() -> None:
     assert "mycelium-db" in url
 
 
+# ─── Password URL-encoding ───────────────────────────────────────────────
+
+
+def test_special_characters_in_password_are_url_encoded() -> None:
+    """Passwords containing @, /, %, or other URI-reserved characters must
+    be percent-encoded so the resulting URL is parseable by asyncpg/psycopg.
+    """
+    cfg = _config(db_password="p@ss/w%rd")
+    url = cfg.database_url()
+    assert "p%40ss%2Fw%25rd" in url, f"password not URL-encoded in: {url}"
+    assert ":p@ss/" not in url, "raw special chars would break URL parsing"
+
+
+def test_plain_alphanumeric_password_is_unchanged() -> None:
+    """URL-encoding should be transparent for typical passwords."""
+    cfg = _config(db_password="simplepass123")
+    url = cfg.database_url()
+    assert ":simplepass123@" in url
+
+
 # ─── Constants stay out of pydantic field set ────────────────────────────
 
 

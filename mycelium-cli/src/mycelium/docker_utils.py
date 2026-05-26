@@ -165,6 +165,32 @@ def generate_env_file(
     return "\n".join(lines) + "\n"
 
 
+def resolve_host_database_url(env: dict[str, str]) -> str | None:
+    """Resolve the host-side DATABASE_URL from the best available source.
+
+    Resolution order:
+      1. ``DATABASE_URL_HOST`` from ``env`` (new architecture — materialised
+         into ``.env`` by ``mycelium config apply``).
+      2. ``MyceliumConfig.database_url(host_side=True)`` (derived from
+         config.toml, works even if the user hasn't run ``config apply``).
+      3. ``None`` — caller decides how to handle (fall back to legacy
+         ``DATABASE_URL`` in ``env``, or error).
+
+    Used by ``mycelium migrate``, ``mycelium install`` (migration step), and
+    ``mycelium doctor`` to ensure alembic always gets a ``localhost:<port>``
+    URL rather than the container-internal ``mycelium-db`` hostname.
+    """
+    host_url = env.get("DATABASE_URL_HOST")
+    if host_url:
+        return host_url
+    try:
+        from mycelium.config import MyceliumConfig
+
+        return MyceliumConfig.load().database_url(host_side=True)
+    except Exception:
+        return None
+
+
 def write_env_file(config: MyceliumConfig, env_path: Path | None = None) -> Path:
     """Write (or overwrite) the .env file derived from config.toml.
 

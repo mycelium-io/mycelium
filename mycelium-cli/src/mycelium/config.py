@@ -632,8 +632,11 @@ class MyceliumConfig(BaseModel):
             host = self.DB_CONTAINER_HOST
             port = self.DB_CONTAINER_PORT
 
+        from urllib.parse import quote
+
         scheme = "postgresql+asyncpg" if async_driver else "postgresql"
-        return f"{scheme}://{self.DB_USER}:{self.runtime.db_password}@{host}:{port}/{self.DB_NAME}"
+        password = quote(self.runtime.db_password, safe="")
+        return f"{scheme}://{self.DB_USER}:{password}@{host}:{port}/{self.DB_NAME}"
 
     def save_to_project(self, project_dir: Path | None = None) -> None:
         """Save room settings to project-local .mycelium/."""

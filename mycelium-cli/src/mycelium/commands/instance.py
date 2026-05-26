@@ -1050,24 +1050,9 @@ def migrate(
 
             env.update({k: v for k, v in dotenv_values(backend_env).items() if v is not None})
 
-        # `mycelium migrate` runs on the host, so the published port on
-        # localhost is the right hostname — NOT mycelium-db (only resolves
-        # inside the compose network).  Prefer DATABASE_URL_HOST when .env
-        # provides it (new architecture), fall back to deriving from
-        # MyceliumConfig (so this works even if the user has never run
-        # `mycelium config apply` on the post-Option-B CLI), and only fall
-        # back to the env's DATABASE_URL when neither is available.  This
-        # last fallback exists for legacy installs whose .env predates the
-        # materialisation and for users running with an explicit external
-        # DATABASE_URL in fastapi-backend/.env.
-        host_url = env.get("DATABASE_URL_HOST")
-        if not host_url:
-            try:
-                from mycelium.config import MyceliumConfig as _Cfg
+        from mycelium.docker_utils import resolve_host_database_url
 
-                host_url = _Cfg.load().database_url(host_side=True)
-            except Exception:
-                host_url = None
+        host_url = resolve_host_database_url(env)
         if host_url:
             env["DATABASE_URL"] = host_url
         elif "DATABASE_URL" not in env:
