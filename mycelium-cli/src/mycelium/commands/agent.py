@@ -28,6 +28,7 @@ import json as json_module
 import logging
 import sys
 from datetime import UTC, datetime
+from pathlib import Path
 
 import typer
 import yaml
@@ -59,6 +60,73 @@ def _typed_client(config: MyceliumConfig):
     from mycelium_backend_client import Client
 
     return Client(base_url=config.server.api_url, raise_on_unexpected_status=True)
+
+
+def _bail_root_owned(target: Path, blocking: Path, owner_name: str) -> None:
+    """Print a chown-guidance error and exit 1.
+
+    Used when writing under ``~/.mycelium/`` would fail because some ancestor
+    of *target* is owned by a different user (typically root, from an earlier
+    sudo step or a containerized side-process). The previous symptom was a
+    raw ``PermissionError`` with no hint about what to do — this surfaces the
+    one-line fix every time it would have happened.
+    """
+    typer.secho(f"\n  ✗ Cannot write to {target}", fg=typer.colors.RED, err=True)
+    typer.echo(f"    {blocking} is owned by {owner_name}, not the current user.", err=True)
+    typer.echo("", err=True)
+    typer.echo(
+        "    This usually happens when an earlier step ran as a different",
+        err=True,
+    )
+    typer.echo(
+        "    user (sudo, a systemd service running as root, or an openclaw",
+        err=True,
+    )
+    typer.echo("    gateway container bind-mounting your home).", err=True)
+    typer.echo("", err=True)
+    typer.echo("    Fix with:", err=True)
+    typer.echo("", err=True)
+    typer.echo("      sudo chown -R $USER ~/.mycelium", err=True)
+    typer.echo("", err=True)
+    raise typer.Exit(1)
+
+
+def _owner_uid(path: Path) -> int | None:
+    """Return st_uid for *path*, or ``None`` if stat fails. Patchable in tests."""
+    try:
+        return path.stat().st_uid
+    except OSError:
+        return None
+
+
+def _check_writable_or_bail(target: Path) -> None:
+    """Bail out with chown guidance if any ancestor of *target* isn't ours.
+
+    Walks up to the closest existing ancestor of *target* and checks its
+    ``st_uid`` against ``os.getuid()``. Mismatch → :func:`_bail_root_owned`.
+    Windows has no uid concept; this no-ops there. Stat failures are
+    swallowed (let the real write raise its own error).
+    """
+    import os
+
+    if os.name == "nt":
+        return
+    uid = os.getuid()
+    p = target
+    while not p.exists():
+        if p.parent == p:
+            return
+        p = p.parent
+    owner_uid = _owner_uid(p)
+    if owner_uid is None or owner_uid == uid:
+        return
+    try:
+        import pwd
+
+        owner_name = pwd.getpwuid(owner_uid).pw_name
+    except (KeyError, ImportError):
+        owner_name = f"uid {owner_uid}"
+    _bail_root_owned(target, p, owner_name)
 
 
 def _resolve_room(config: MyceliumConfig, room: str | None) -> str:
@@ -146,14 +214,22 @@ def _write_manifest(
     version = 1
     if result and isinstance(result, list) and result:
         version = getattr(result[0], "version", 1) or 1
-    write_memory(
-        room_dir,
-        manifest.memory_key,
-        yaml_body,
-        created_by=created_by,
-        version=version,
-        tags=["agent-manifest"],
-    )
+    try:
+        write_memory(
+            room_dir,
+            manifest.memory_key,
+            yaml_body,
+            created_by=created_by,
+            version=version,
+            tags=["agent-manifest"],
+        )
+    except PermissionError:
+        # Pre-check missed it (e.g., correct dir ownership but a stale
+        # root-owned manifest file lurking from a previous run). Surface the
+        # chown guidance the user expects.
+        manifest_path = room_dir / f"{manifest.memory_key}.md"
+        _check_writable_or_bail(manifest_path)
+        raise
 
 
 # ── create (greenfield) ──────────────────────────────────────────────────────
@@ -170,6 +246,12 @@ def _persist_and_describe(
 ) -> None:
     """Shared tail: run runtime side effects, persist the manifest, print."""
     opts = AddOptions(room=room_name)
+    # Permission pre-check BEFORE any side effects — bailing here means we
+    # never allowlist or restart the gateway only to fail at the manifest
+    # write. Closes #13 from the v1.1.0 tracking bug (#326).
+    room_dir = get_room_dir(room_name)
+    manifest_path = room_dir / f"{manifest.memory_key}.md"
+    _check_writable_or_bail(manifest_path)
     # Runtime side effects FIRST — a failure here aborts without leaving a
     # dangling manifest.
     impl.register(manifest=manifest, config=config, opts=opts)
