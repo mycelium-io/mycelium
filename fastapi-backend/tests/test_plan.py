@@ -3,10 +3,12 @@
 
 """Tests for the plan/ namespace + projection API."""
 
+import json
 from pathlib import Path
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services import plan as plan_service
 from app.services.filesystem import get_room_dir
@@ -246,6 +248,60 @@ class TestPlanRoutes:
         assert resp.status_code == 200
         resp = await client.get(f"/api/rooms/{room}/plan")
         assert resp.json()["title"] is None
+
+    async def test_plan_mutations_emit_plan_updated_events(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        """add_task / toggle / set_title emit ``plan_updated`` Message rows.
+
+        The chat-channel narrates plan edits the same way it narrates joins
+        and consensus. If the API mutation doesn't fire a Message + NOTIFY,
+        the room's event stream goes dark on every plan edit.
+        """
+        from sqlalchemy import select
+
+        from app.models import Message
+
+        room = "plan-events"
+        await client.post("/api/rooms", json={"name": room})
+
+        # 1. add_task → plan_updated/task_added
+        resp = await client.post(f"/api/rooms/{room}/plan/tasks", json={"text": "wire up CI"})
+        task_id = resp.json()["id"]
+
+        # 2. toggle → plan_updated/task_toggled (done=true)
+        await client.post(f"/api/rooms/{room}/plan/tasks/{task_id}/toggle")
+
+        # 3. set_title → plan_updated/title_set
+        await client.put(
+            f"/api/rooms/{room}/plan/title", json={"text": "Q3 Sprint", "updated_by": "julia"}
+        )
+
+        rows = (
+            (
+                await db_session.execute(
+                    select(Message)
+                    .where(Message.message_type == "plan_updated")
+                    .where(Message.room_name == room)
+                    .order_by(Message.created_at)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        kinds = [json.loads(r.content)["kind"] for r in rows]
+        assert kinds == ["task_added", "task_toggled", "title_set"]
+
+        # Spot-check payload shapes — chat-channel render reads these fields.
+        added = json.loads(rows[0].content)
+        assert added["text"] == "wire up CI"
+        assert added["task_id"] == task_id
+        toggled = json.loads(rows[1].content)
+        assert toggled["done"] is True
+        assert toggled["text"] == "wire up CI"
+        title_set = json.loads(rows[2].content)
+        assert title_set["title"] == "Q3 Sprint"
+        assert title_set["updated_by"] == "julia"
 
     async def test_room_creation_includes_plan_dir(self, client: AsyncClient):
         await client.post("/api/rooms", json={"name": "with-plan"})

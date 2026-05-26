@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getSSEUrl, fetchMessages, fetchRoomAgents } from "@/lib/api";
 import { MarkdownContent } from "@/components/markdown-content";
+import { RoomPlanHeader } from "@/components/room-plan-header";
 
 interface Event {
   id: string;
@@ -28,6 +29,7 @@ const CHANNEL_VIEW_TYPES = new Set([
   ...CHAT_TYPES,
   "coordination_join",
   "coordination_consensus",
+  "plan_updated",
 ]);
 
 function parseEvent(msg: Record<string, unknown>): Event {
@@ -168,14 +170,15 @@ function renderWithMentions(text: string): React.ReactNode {
   );
 }
 
-type View = "channel" | "events";
+type View = "channel" | "plan";
 
 interface Props {
   roomName: string;
   onMemoryChanged?: () => void;
+  planRefreshTrigger?: number;
 }
 
-export function EventStream({ roomName, onMemoryChanged }: Props) {
+export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
   const [connected, setConnected] = useState(false);
   const [view, setView] = useState<View>("channel");
@@ -242,8 +245,8 @@ export function EventStream({ roomName, onMemoryChanged }: Props) {
   }, [roomName, onMemoryChanged]);
 
   const visible = useMemo(
-    () => (view === "channel" ? events.filter(e => CHANNEL_VIEW_TYPES.has(e.type)) : events),
-    [events, view],
+    () => events.filter(e => CHANNEL_VIEW_TYPES.has(e.type)),
+    [events],
   );
 
   // Auto-scroll when new events arrive
@@ -274,8 +277,8 @@ export function EventStream({ roomName, onMemoryChanged }: Props) {
         </div>
         <div className="ml-auto flex items-stretch">
           {([
-            { id: "channel" as const, label: "CHANNEL", count: channelCount },
-            { id: "events" as const,  label: "EVENTS",  count: events.length },
+            { id: "channel" as const, label: "CHANNEL", count: channelCount as number | null },
+            { id: "plan" as const,    label: "PLAN",    count: null },
           ]).map(t => {
             const active = view === t.id;
             return (
@@ -288,27 +291,92 @@ export function EventStream({ roomName, onMemoryChanged }: Props) {
                 style={{ borderBottom: `2px solid ${active ? "var(--accent)" : "transparent"}` }}
               >
                 {t.label}
-                <span className="text-micro tabular" style={{ color: active ? "var(--accent)" : "var(--muted)" }}>
-                  {t.count}
-                </span>
+                {t.count !== null && (
+                  <span className="text-micro tabular" style={{ color: active ? "var(--accent)" : "var(--muted)" }}>
+                    {t.count}
+                  </span>
+                )}
               </button>
             );
           })}
         </div>
       </div>
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
+        {view === "plan" ? (
+          <RoomPlanHeader roomName={roomName} refreshTrigger={planRefreshTrigger} />
+        ) : (
+          <>
         {visible.length === 0 && (
           <div className="text-center caps-mono-sm text-muted py-16 italic">
-            {view === "channel" ? "no channel messages yet" : "waiting for events…"}
+            no channel messages yet
           </div>
         )}
-        {view === "channel"
-          ? visible.map(ev => {
-              // Coordination lifecycle events render as slim system notices
-              // (NOT chat-bubble rows): a JOIN line per agent join, plus a
-              // CONSENSUS / TIMEOUT line when a session resolves. Each links
-              // out to the live session view by short_id so a click drops
-              // you into the swim-lanes view.
+        {visible.map(ev => {
+              // Coordination + plan lifecycle events render as slim system
+              // notices (NOT chat-bubble rows): a JOIN line per agent join,
+              // a CONSENSUS / TIMEOUT line when a session resolves, and a
+              // PLAN line per plan edit (title set, task add, task toggle).
+              // Each links out where appropriate.
+              if (ev.type === "plan_updated") {
+                const kind = ev.raw.kind as string | undefined;
+                const text = ev.raw.text as string | undefined;
+                const title = ev.raw.title as string | undefined;
+                const done = ev.raw.done === true;
+                const updatedBy = ev.raw.updated_by as string | undefined;
+                let body: React.ReactNode;
+                if (kind === "task_toggled") {
+                  body = (
+                    <>
+                      <span style={{ color: done ? "var(--green)" : "var(--muted)" }}>
+                        {done ? "✓" : "○"}
+                      </span>
+                      <span className="text-text2 truncate">
+                        &ldquo;{text ?? "task"}&rdquo;
+                      </span>
+                      <span className="text-muted">
+                        {done ? "completed" : "reopened"}
+                      </span>
+                    </>
+                  );
+                } else if (kind === "task_added") {
+                  body = (
+                    <>
+                      <span className="text-muted">added</span>
+                      <span className="text-text2 truncate">
+                        &ldquo;{text ?? "task"}&rdquo;
+                      </span>
+                    </>
+                  );
+                } else if (kind === "title_set") {
+                  body = (
+                    <>
+                      <span className="text-muted">title set to</span>
+                      <span className="text-text2 truncate">
+                        &ldquo;{title ?? ""}&rdquo;
+                      </span>
+                      {updatedBy ? (
+                        <span className="text-muted">by @{updatedBy}</span>
+                      ) : null}
+                    </>
+                  );
+                } else {
+                  body = <span className="text-text2">updated</span>;
+                }
+                return (
+                  <div
+                    key={ev.id}
+                    className="flex items-baseline gap-2 px-5 py-2 border-b border-border last:border-b-0 text-body italic text-text2"
+                  >
+                    <span className="caps-mono-sm flex-shrink-0" style={{ color: "var(--accent)" }}>
+                      PLAN
+                    </span>
+                    {body}
+                    <span className="ml-auto text-micro text-muted font-mono tabular flex-shrink-0">
+                      {ev.time}
+                    </span>
+                  </div>
+                );
+              }
               if (ev.type === "coordination_consensus") {
                 const broken = ev.raw.broken === true;
                 const session = ev.raw.session as string | undefined;
@@ -444,28 +512,9 @@ export function EventStream({ roomName, onMemoryChanged }: Props) {
                   </div>
                 </div>
               );
-            })
-          : visible.map(ev => {
-              const style = typeStyles[ev.type] || defaultStyle;
-              const color = toneColor(style.tone);
-              return (
-                <div
-                  key={ev.id}
-                  className="px-5 py-2 border-b border-border hover:bg-white/[0.02]"
-                  style={{ borderLeft: `2px solid ${color}` }}
-                >
-                  <div className="flex items-baseline gap-3">
-                    <span className="caps-mono-sm flex-shrink-0" style={{ color, minWidth: 90 }}>
-                      {style.label}
-                    </span>
-                    <span className="flex-1 text-body text-text2 leading-snug min-w-0 break-words">
-                      {CHAT_TYPES.has(ev.type) ? renderWithMentions(ev.content) : ev.content}
-                    </span>
-                    <span className="text-micro text-muted font-mono tabular flex-shrink-0">{ev.time}</span>
-                  </div>
-                </div>
-              );
             })}
+          </>
+        )}
       </div>
     </div>
   );

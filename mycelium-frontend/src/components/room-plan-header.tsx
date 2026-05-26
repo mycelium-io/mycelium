@@ -13,6 +13,7 @@ import {
   type PlanFile,
 } from "@/lib/api";
 import { MarkdownContent } from "./markdown-content";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface Props {
   roomName: string;
@@ -31,7 +32,7 @@ export function RoomPlanHeader({ roomName, refreshTrigger }: Props) {
   const [plan, setPlan] = useState<PlanResponse | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
-  const [open, setOpen] = useState<Open>({ kind: "none" });
+  const [open, setOpen] = useState<Open>({ kind: "tasks" });
   const [newTaskText, setNewTaskText] = useState("");
 
   const load = useCallback(async () => {
@@ -242,11 +243,10 @@ function TasksDisclosure({
           {tasks.map(t => (
             <li key={t.id}>
               <label className="flex items-start gap-3 px-8 py-2 border-b border-border/40 cursor-pointer hover:bg-paper/30">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={t.done}
-                  onChange={e => onToggleTask(t.id, e.target.checked)}
-                  className="mt-1 accent-accent"
+                  onCheckedChange={(checked) => onToggleTask(t.id, checked === true)}
+                  className="mt-0"
                 />
                 <span className={"text-label font-mono flex-1 " + (t.done ? "line-through text-muted" : "text-text")}>
                   {t.text}
