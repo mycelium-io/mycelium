@@ -36,6 +36,7 @@ def generate_env_file(config: MyceliumConfig) -> str:
         "",
         "# ── Backend ──────────────────────────────────────────────────────────────",
         f"MYCELIUM_BACKEND_PORT={config.runtime.backend_port}",
+        f"MYCELIUM_UI_PORT={config.runtime.frontend_port}",
         f"MYCELIUM_DATA_DIR={config.runtime.data_dir or str(Path.home() / '.mycelium')}",
         "",
         "# ── LLM ──────────────────────────────────────────────────────────────────",
