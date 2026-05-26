@@ -50,10 +50,6 @@
   --dim: #46443e;
 }
 
-html {
-  /* +25% — scales rem-based Tailwind defaults (text-xs/sm/base etc) */
-  font-size: 20px;
-}
 body {
   background: var(--bg);
   color: var(--text);

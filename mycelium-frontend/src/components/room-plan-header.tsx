@@ -14,6 +14,9 @@ import {
 } from "@/lib/api";
 import { MarkdownContent } from "./markdown-content";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Chip } from "@/components/ui/chip";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 interface Props {
   roomName: string;
@@ -137,9 +140,9 @@ export function RoomPlanHeader({ roomName, refreshTrigger }: Props) {
       {/* Chip row */}
       <div className="px-8 pb-4 flex flex-wrap items-center gap-2">
         <Chip
+          variant="accent"
           active={open.kind === "tasks"}
           onClick={() => toggleOpen({ kind: "tasks" })}
-          accent
         >
           tasks
           {openCount > 0 && (
@@ -174,34 +177,6 @@ export function RoomPlanHeader({ roomName, refreshTrigger }: Props) {
   );
 }
 
-function Chip({
-  children,
-  active,
-  onClick,
-  accent,
-}: {
-  children: React.ReactNode;
-  active: boolean;
-  onClick: () => void;
-  accent?: boolean;
-}) {
-  const border = accent ? "border-accent/40" : "border-border";
-  const bg = active
-    ? accent
-      ? "bg-accent/[0.12]"
-      : "bg-paper"
-    : "bg-transparent";
-  const text = accent ? "text-accent" : active ? "text-text" : "text-text2";
-  return (
-    <button
-      onClick={onClick}
-      className={`caps-mono-sm px-3 py-1.5 border transition-colors hover:bg-paper ${border} ${bg} ${text}`}
-    >
-      {children}
-    </button>
-  );
-}
-
 function TasksDisclosure({
   plan,
   newTaskText,
@@ -219,20 +194,20 @@ function TasksDisclosure({
   return (
     <div className="border-t border-border bg-bg/60 max-h-[44vh] overflow-y-auto">
       <div className="px-8 py-4 flex gap-2 border-b border-border/60">
-        <input
-          className="flex-1 bg-bg border border-border px-3 py-2 text-label font-mono text-text placeholder:text-muted focus:border-accent focus:outline-none transition-colors"
+        <Input
+          className="flex-1"
           placeholder="add a task…"
           value={newTaskText}
           onChange={e => setNewTaskText(e.target.value)}
           onKeyDown={e => e.key === "Enter" && onAddTask()}
         />
-        <button
+        <Button
+          size="lg"
           onClick={() => onAddTask()}
           disabled={!newTaskText.trim()}
-          className="px-4 py-2 caps-mono-sm border border-accent/40 bg-accent/[0.06] text-accent transition-colors hover:bg-accent/[0.12] disabled:opacity-50"
         >
           ADD
-        </button>
+        </Button>
       </div>
       {tasks.length === 0 ? (
         <div className="text-center caps-mono-sm text-muted italic py-8">

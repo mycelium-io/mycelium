@@ -19,7 +19,7 @@ export function CollapsibleRail({
   label,
   children,
   expandedWidth = 420,
-  collapsedWidth = 45,
+  collapsedWidth = 36,
   defaultOpen = false,
   open: openProp,
   onOpenChange,
