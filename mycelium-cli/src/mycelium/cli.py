@@ -120,6 +120,7 @@ def skill(
 app.command(name="init")(instance.init)
 app.command(name="install")(install.install)
 app.command(name="upgrade")(install.upgrade)
+app.command(name="_refresh-templates", hidden=True)(install.refresh_templates)
 app.command(name="pull")(instance.pull)
 app.command(name="doctor")(doctor.doctor)
 app.command(name="up")(instance.start)
