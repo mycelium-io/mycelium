@@ -293,19 +293,38 @@ async def join_room(
                 )
             )
 
-    # Persist the join as a Message row so the agent's opening position
+    # Persist the join as Message rows so the agent's opening position
     # (``intent``) is auditable post-hoc — catchup readers (``GET
     # /rooms/<r>/messages``, the frontend on first load) only ever see
     # what's in the message log, not transient SSE NOTIFY payloads. Without
     # this row a later observer can't tell what positions the agents
     # brought into the negotiation.
+    #
+    # We write TWO rows on purpose: one session-scoped (visible in the
+    # session EVENT LOG via the coord-session messages endpoint) and one
+    # room-scoped (visible in the parent room's EVENTS tab via the
+    # standard rooms-messages endpoint). The Message table's
+    # ``ck_messages_one_target`` CHECK enforces room_name XOR
+    # coordination_session_id — they cannot be combined in one row — so the
+    # dual-post is the right way to make a join visible at both levels.
+    # Cascade is fine: each row dies with its respective parent.
+    join_content = json.dumps({"handle": payload.agent_handle, "intent": payload.intent})
     db.add(
         Message(
             room_name=None,
             coordination_session_id=coord_session.id,
             sender_handle="CognitiveEngine",
             message_type="coordination_join",
-            content=json.dumps({"handle": payload.agent_handle, "intent": payload.intent}),
+            content=join_content,
+        )
+    )
+    db.add(
+        Message(
+            room_name=coord_session.parent_room_name,
+            coordination_session_id=None,
+            sender_handle="CognitiveEngine",
+            message_type="coordination_join",
+            content=join_content,
         )
     )
     await db.commit()

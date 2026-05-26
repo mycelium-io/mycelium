@@ -72,11 +72,20 @@ async def test_join_persists_coordination_join_message_with_intent(
         .scalars()
         .all()
     )
-    assert len(rows) == 1
-    payload = json.loads(rows[0].content)
-    assert payload == {"handle": "alice", "intent": "ship a tight scope this quarter"}
-    assert rows[0].coordination_session_id is not None
-    assert rows[0].sender_handle == "CognitiveEngine"
+    # Dual-post: one session-scoped row (visible in the session EVENT LOG)
+    # and one room-scoped row (visible in the parent room's EVENTS tab).
+    # The ck_messages_one_target CHECK forbids combining both in one row.
+    assert len(rows) == 2
+    assert all(
+        json.loads(r.content) == {"handle": "alice", "intent": "ship a tight scope this quarter"}
+        for r in rows
+    )
+    assert all(r.sender_handle == "CognitiveEngine" for r in rows)
+    session_row = next(r for r in rows if r.coordination_session_id is not None)
+    room_row = next(r for r in rows if r.room_name is not None)
+    assert session_row.room_name is None
+    assert room_row.coordination_session_id is None
+    assert room_row.room_name == "audit-ns"
 
 
 @pytest.mark.asyncio

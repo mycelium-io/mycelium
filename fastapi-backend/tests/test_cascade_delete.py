@@ -64,8 +64,9 @@ async def test_delete_room_cascades_to_coord_sessions_participants_messages(
     assert before["rooms"] == 1
     assert before["coord"] == 1
     assert before["participants"] == 2
-    # 4 = 2 coordination_join audit rows (one per join) + 2 direct chat messages.
-    assert before["messages"] == 4
+    # 6 = 4 coordination_join audit rows (two per join — one session-scoped,
+    # one room-scoped, per the dual-post) + 2 direct chat messages.
+    assert before["messages"] == 6
 
     resp = await client.delete("/api/rooms/parent")
     assert resp.status_code == 204
@@ -95,9 +96,10 @@ async def test_delete_room_does_not_cascade_to_unrelated_rooms(
     assert resp.status_code == 204
 
     after = await _counts(db_session)
-    # b plus its coord_session, participant, and bob's coordination_join row
-    # must remain — a's row was reaped, b's was not.
-    assert after == {"rooms": 1, "coord": 1, "participants": 1, "messages": 1}
+    # b plus its coord_session, participant, and bob's TWO coordination_join
+    # rows (session-scoped + room-scoped) must remain — a's rows were reaped,
+    # b's were not.
+    assert after == {"rooms": 1, "coord": 1, "participants": 1, "messages": 2}
 
 
 @pytest.mark.asyncio
@@ -127,8 +129,12 @@ async def test_delete_coord_session_cascades_to_participants_and_messages(
     await db_session.commit()
 
     after = await _counts(db_session)
-    # The room itself stays; its coord_session, participants, messages don't.
-    assert after == {"rooms": 1, "coord": 0, "participants": 0, "messages": 0}
+    # The room itself stays; its coord_session, participants, and the
+    # session-scoped messages cascade away. The room-scoped half of
+    # alice's coordination_join dual-post survives (it FKs to the room,
+    # not the session) — that's the row that keeps the audit trail visible
+    # in the room's EVENTS tab even after the session row is reaped.
+    assert after == {"rooms": 1, "coord": 0, "participants": 0, "messages": 1}
 
 
 @pytest.mark.asyncio
