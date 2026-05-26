@@ -64,7 +64,8 @@ async def test_delete_room_cascades_to_coord_sessions_participants_messages(
     assert before["rooms"] == 1
     assert before["coord"] == 1
     assert before["participants"] == 2
-    assert before["messages"] == 2
+    # 4 = 2 coordination_join audit rows (one per join) + 2 direct chat messages.
+    assert before["messages"] == 4
 
     resp = await client.delete("/api/rooms/parent")
     assert resp.status_code == 204
@@ -94,8 +95,9 @@ async def test_delete_room_does_not_cascade_to_unrelated_rooms(
     assert resp.status_code == 204
 
     after = await _counts(db_session)
-    # b plus its coord_session and participant must remain.
-    assert after == {"rooms": 1, "coord": 1, "participants": 1, "messages": 0}
+    # b plus its coord_session, participant, and bob's coordination_join row
+    # must remain — a's row was reaped, b's was not.
+    assert after == {"rooms": 1, "coord": 1, "participants": 1, "messages": 1}
 
 
 @pytest.mark.asyncio

@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bus import notify, room_channel
 from app.config import settings
 from app.database import get_async_session
-from app.models import AuditEvent, CoordinationSession, Participant, Room
+from app.models import AuditEvent, CoordinationSession, Message, Participant, Room
 from app.routes.rooms import _sync_create_mas
 from app.schemas import (
     ContextFile,
@@ -293,7 +293,24 @@ async def join_room(
                 )
             )
 
-    # Post coordination_join notification on the session display channel.
+    # Persist the join as a Message row so the agent's opening position
+    # (``intent``) is auditable post-hoc — catchup readers (``GET
+    # /rooms/<r>/messages``, the frontend on first load) only ever see
+    # what's in the message log, not transient SSE NOTIFY payloads. Without
+    # this row a later observer can't tell what positions the agents
+    # brought into the negotiation.
+    db.add(
+        Message(
+            room_name=None,
+            coordination_session_id=coord_session.id,
+            sender_handle="CognitiveEngine",
+            message_type="coordination_join",
+            content=json.dumps({"handle": payload.agent_handle, "intent": payload.intent}),
+        )
+    )
+    await db.commit()
+
+    # Fire the live NOTIFY for subscribers connected right now.
     asyncio.ensure_future(
         _notify_join(coord_session.display_name, payload.agent_handle, payload.intent)
     )

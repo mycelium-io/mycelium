@@ -45,7 +45,7 @@ from app.services.metrics import (
     record_coordination_start,
     record_room_identity,
 )
-from app.services.plan import read_plan_file, write_plan_file
+from app.services.plan import read_plan_file, set_title_from_body_if_absent, write_plan_file
 from app.services.plan_compiler import compile_plan, fallback_body
 
 logger = logging.getLogger(__name__)
@@ -1224,6 +1224,7 @@ async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool
                 existing_plan=existing,
             )
             write_plan_file(parent_room, body, updated_by="CognitiveEngine")
+            set_title_from_body_if_absent(parent_room, body, updated_by="CognitiveEngine")
             plan_file = "plan/tasks.md"
         except Exception as exc:
             logger.warning(
@@ -1232,9 +1233,9 @@ async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool
                 exc,
             )
             try:
-                write_plan_file(
-                    parent_room, fallback_body(assignments), updated_by="CognitiveEngine"
-                )
+                fb_body = fallback_body(assignments)
+                write_plan_file(parent_room, fb_body, updated_by="CognitiveEngine")
+                set_title_from_body_if_absent(parent_room, fb_body, updated_by="CognitiveEngine")
                 plan_file = "plan/tasks.md"
             except Exception:
                 logger.exception("_finish_cfn: fallback plan write failed for %s", room_name)

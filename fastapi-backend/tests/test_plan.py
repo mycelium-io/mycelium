@@ -68,6 +68,30 @@ class TestAddAndToggle:
             plan_service.toggle_task("nope", "missing:1")
 
 
+class TestSetTitleFromBody:
+    """set_title_from_body_if_absent — auto-name the room from a freshly-compiled plan."""
+
+    def test_sets_title_when_absent(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path))
+        body = "# MVP Delivery Plan\n\n- [ ] do the thing\n"
+        result = plan_service.set_title_from_body_if_absent("room-a", body)
+        assert result == "MVP Delivery Plan"
+        assert plan_service.get_title("room-a") == "MVP Delivery Plan"
+
+    def test_does_not_clobber_existing_title(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path))
+        plan_service.set_title("room-b", "Human Picked", updated_by="julia")
+        result = plan_service.set_title_from_body_if_absent("room-b", "# LLM Pick\n\n- [ ] x\n")
+        assert result is None
+        assert plan_service.get_title("room-b") == "Human Picked"
+
+    def test_no_heading_returns_none(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path))
+        result = plan_service.set_title_from_body_if_absent("room-c", "no heading here\n- [ ] x\n")
+        assert result is None
+        assert plan_service.get_title("room-c") is None
+
+
 class TestWritePlanFile:
     """write_plan_file / read_plan_file — the whole-body writer the compiler uses."""
 

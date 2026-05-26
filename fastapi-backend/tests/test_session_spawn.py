@@ -3,14 +3,16 @@
 
 """Tests for coordination session spawning."""
 
+import json
 from uuid import UUID
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import CoordinationSession
+from app.models import CoordinationSession, Message
 
 
 async def _coord_for_room(client: AsyncClient, namespace: str) -> dict:
@@ -42,6 +44,39 @@ async def test_join_namespace_auto_spawns_session(client: AsyncClient):
     coord = await _coord_for_room(client, "ns-test")
     assert resp.json()["coordination_session_id"] == coord["id"]
     assert coord["display_name"].startswith("ns-test:session:")
+
+
+@pytest.mark.asyncio
+async def test_join_persists_coordination_join_message_with_intent(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """The join handler writes a coordination_join Message carrying the intent.
+
+    Auditing what positions agents brought into a negotiation has to survive
+    past the live SSE NOTIFY — catchup readers (the messages API, the
+    frontend on first load) only see persisted rows. Without this Message
+    the opening position is unrecoverable after the connect window closes.
+    """
+    await client.post("/api/rooms", json={"name": "audit-ns"})
+    await client.post(
+        "/api/rooms/audit-ns/sessions",
+        json={"agent_handle": "alice", "intent": "ship a tight scope this quarter"},
+    )
+
+    rows = (
+        (
+            await db_session.execute(
+                select(Message).where(Message.message_type == "coordination_join")
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(rows) == 1
+    payload = json.loads(rows[0].content)
+    assert payload == {"handle": "alice", "intent": "ship a tight scope this quarter"}
+    assert rows[0].coordination_session_id is not None
+    assert rows[0].sender_handle == "CognitiveEngine"
 
 
 @pytest.mark.asyncio

@@ -290,6 +290,28 @@ def read_plan_file(room_name: str, *, slug: str = DEFAULT_TASK_FILE) -> str | No
     return body
 
 
+def set_title_from_body_if_absent(
+    room_name: str,
+    body: str,
+    *,
+    updated_by: str = "CognitiveEngine",
+) -> str | None:
+    """Set ``plan/title.md`` from the body's first heading IFF title is absent.
+
+    Used by the plan compiler so a freshly materialized ``plan/tasks.md`` gives
+    the room a sensible display title (``MVP Delivery Plan - Q-End Sprint``)
+    instead of leaving the italic hero blank. Returns the title that was set,
+    or None when the title already exists (we don't clobber human-set titles)
+    or when the body has no heading to lift.
+    """
+    if get_title(room_name) is not None:
+        return None
+    heading = _first_heading(body)
+    if not heading:
+        return None
+    return set_title(room_name, heading, updated_by=updated_by)
+
+
 def open_task_summary(room_name: str, *, limit: int = 20) -> str | None:
     """Human-readable list of open tasks for injection into agent context.
 

@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from "react-resizable-panels";
 import { fetchMessages, getSSEUrl } from "@/lib/api";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -380,18 +381,18 @@ function NegotiationSpace({ derived }: { derived: DerivedState }) {
           {expanded ? "HIDE OPTIONS" : "SHOW ALL OPTIONS"}
         </button>
       </div>
-      <div className="border border-border2" style={{ background: "rgba(255,255,255,0.015)" }}>
+      <ScrollArea className="w-full overflow-hidden border border-border2" style={{ background: "rgba(255,255,255,0.015)" }}>
         {issues.map((issue, i) => {
           const current = offer[issue];
           const opts = options[issue] ?? [];
           return (
-            <div key={issue} className={`px-4 py-2.5 ${i < issues.length - 1 ? "border-b border-border" : ""}`}>
-              <div className="grid items-baseline gap-3" style={{ gridTemplateColumns: "180px 24px 1fr" }}>
-                <span className="caps-mono-sm text-muted truncate">
+            <div key={issue} className={`px-4 py-2.5 ${i < issues.length - 1 ? "border-b border-border" : ""}`} style={{ minWidth: "max-content" }}>
+              <div className="grid items-baseline gap-3" style={{ gridTemplateColumns: "180px 24px max-content" }}>
+                <span className="caps-mono-sm text-muted whitespace-nowrap">
                   {String(i + 1).padStart(2, "0")} · {issue}
                 </span>
                 <span className="text-dim caps-mono-sm text-center">=</span>
-                <span className="font-mono text-body text-accent break-words" style={{ fontWeight: 600 }}>
+                <span className="font-mono text-body text-accent whitespace-nowrap" style={{ fontWeight: 600 }}>
                   {current ?? "—"}
                 </span>
               </div>
@@ -406,7 +407,7 @@ function NegotiationSpace({ derived }: { derived: DerivedState }) {
                           border: "1.5px solid var(--muted)",
                         }}
                       />
-                      <span className="font-mono text-label text-text2 leading-snug break-words">{opt}</span>
+                      <span className="font-mono text-label text-text2 leading-snug whitespace-nowrap">{opt}</span>
                     </div>
                   ))}
                 </div>
@@ -414,7 +415,7 @@ function NegotiationSpace({ derived }: { derived: DerivedState }) {
             </div>
           );
         })}
-      </div>
+      </ScrollArea>
     </div>
   );
 }
@@ -451,9 +452,10 @@ function SwimLanes({ derived }: { derived: DerivedState }) {
   return (
     <div className="px-6 py-4 border-b border-border">
       <div className="caps-mono-sm text-muted mb-2">SWIM LANES · AGENT × ROUND</div>
-      <div className="border border-border2 overflow-x-auto" style={{ background: "rgba(255,255,255,0.015)" }}>
+      <div className="border border-border2" style={{ background: "rgba(255,255,255,0.015)" }}>
+       <ScrollArea className="w-full overflow-hidden">
         {/* Round axis */}
-        <div className="grid border-b border-border2" style={{ gridTemplateColumns: `140px repeat(${rounds}, minmax(0, 1fr))` }}>
+        <div className="grid border-b border-border2" style={{ gridTemplateColumns: `140px repeat(${rounds}, minmax(40px, 1fr))`, minWidth: "max-content" }}>
           <div className="px-3 py-2 caps-mono-sm text-muted">ROUND →</div>
           {Array.from({ length: rounds }).map((_, i) => {
             const r = i + 1;
@@ -475,7 +477,7 @@ function SwimLanes({ derived }: { derived: DerivedState }) {
         {/* Lanes */}
         {agents.map(agent => (
           <div key={agent} className="grid border-b border-border last:border-b-0"
-               style={{ gridTemplateColumns: `140px repeat(${rounds}, minmax(0, 1fr))` }}>
+               style={{ gridTemplateColumns: `140px repeat(${rounds}, minmax(40px, 1fr))`, minWidth: "max-content" }}>
             <div className="px-3 py-2 flex items-center border-r border-border2 min-w-0">
               <span className="font-mono text-label text-text truncate">{agent}</span>
             </div>
@@ -491,8 +493,9 @@ function SwimLanes({ derived }: { derived: DerivedState }) {
             })}
           </div>
         ))}
+       </ScrollArea>
         {/* Legend */}
-        <div className="flex flex-wrap gap-5 px-4 py-2 border-t border-border2 bg-bg/60">
+        <div className="flex gap-5 px-4 py-2 border-t border-border2 bg-bg/60">
           {(["propose", "counter", "accept", "reject"] as Action[]).map(a => (
             <div key={a} className="flex items-center gap-2">
               <ActionGlyph action={a} />
