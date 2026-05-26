@@ -76,10 +76,15 @@ async def test_join_persists_coordination_join_message_with_intent(
     # and one room-scoped row (visible in the parent room's EVENTS tab).
     # The ck_messages_one_target CHECK forbids combining both in one row.
     assert len(rows) == 2
-    assert all(
-        json.loads(r.content) == {"handle": "alice", "intent": "ship a tight scope this quarter"}
-        for r in rows
-    )
+    for r in rows:
+        payload = json.loads(r.content)
+        assert payload["handle"] == "alice"
+        assert payload["intent"] == "ship a tight scope this quarter"
+        # Session display name is included so the chat-channel render can
+        # link to the live session view (the room-scoped row has
+        # coordination_session_id=None, so the link target must come from
+        # the content blob).
+        assert payload["session"].startswith("audit-ns:session:")
     assert all(r.sender_handle == "CognitiveEngine" for r in rows)
     session_row = next(r for r in rows if r.coordination_session_id is not None)
     room_row = next(r for r in rows if r.room_name is not None)

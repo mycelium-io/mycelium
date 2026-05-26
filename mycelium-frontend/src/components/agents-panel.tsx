@@ -125,10 +125,12 @@ export function AgentsPanel({ roomName }: Props) {
           <div className="text-center caps-mono-sm text-muted italic py-10">
             no agents registered
             <div className="font-mono text-label text-text2 mt-3 normal-case tracking-normal not-italic">
-              add one with{" "}
-              <code className="bg-surface px-1.5 py-0.5 text-accent border border-border">
-                mycelium agent add
-              </code>
+              add one with
+              <div className="mt-2">
+                <code className="bg-surface px-1.5 py-0.5 text-accent border border-border whitespace-nowrap">
+                  mycelium agent add
+                </code>
+              </div>
             </div>
           </div>
         )}

@@ -3,6 +3,7 @@
 
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getSSEUrl, fetchMessages, fetchRoomAgents } from "@/lib/api";
 import { MarkdownContent } from "@/components/markdown-content";
@@ -18,6 +19,10 @@ interface Event {
 }
 
 const CHAT_TYPES = new Set(["broadcast", "direct", "announce", "delegate"]);
+// Event types that appear in the chat-channel view alongside real chat. Joins
+// belong here so the room's chat surface shows "alice joined session X" — not
+// just hidden away under EVENTS.
+const CHANNEL_VIEW_TYPES = new Set([...CHAT_TYPES, "coordination_join"]);
 
 function parseEvent(msg: Record<string, unknown>): Event {
   const mtype = (msg.message_type as string) || (msg.type as string) || "unknown";
@@ -231,7 +236,7 @@ export function EventStream({ roomName, onMemoryChanged }: Props) {
   }, [roomName, onMemoryChanged]);
 
   const visible = useMemo(
-    () => (view === "channel" ? events.filter(e => CHAT_TYPES.has(e.type)) : events),
+    () => (view === "channel" ? events.filter(e => CHANNEL_VIEW_TYPES.has(e.type)) : events),
     [events, view],
   );
 
@@ -241,7 +246,7 @@ export function EventStream({ roomName, onMemoryChanged }: Props) {
   }, [visible]);
 
   const channelCount = useMemo(
-    () => events.filter(e => CHAT_TYPES.has(e.type)).length,
+    () => events.filter(e => CHANNEL_VIEW_TYPES.has(e.type)).length,
     [events],
   );
 
@@ -293,6 +298,45 @@ export function EventStream({ roomName, onMemoryChanged }: Props) {
         )}
         {view === "channel"
           ? visible.map(ev => {
+              // Joins render as a slim system notice with a link out to the
+              // session view, NOT as a chat-bubble row.
+              if (ev.type === "coordination_join") {
+                const handle = (ev.raw.handle as string | undefined) ?? ev.sender;
+                const intent = (ev.raw.intent as string | undefined) ?? "";
+                const session = ev.raw.session as string | undefined;
+                const shortId = session ? session.split(":").pop() : undefined;
+                const sessionHref = shortId
+                  ? `/room/${encodeURIComponent(roomName)}/session/${encodeURIComponent(shortId)}`
+                  : null;
+                return (
+                  <div
+                    key={ev.id}
+                    className="flex items-baseline gap-2 px-5 py-2 border-b border-border last:border-b-0 text-body italic text-text2"
+                  >
+                    <span className="caps-mono-sm flex-shrink-0" style={{ color: "var(--muted)" }}>
+                      JOIN
+                    </span>
+                    <span className="font-mono font-semibold" style={{ color: "var(--green)" }}>
+                      @{handle}
+                    </span>
+                    <span className="text-muted">joined</span>
+                    {sessionHref ? (
+                      <Link
+                        href={sessionHref}
+                        className="font-mono text-accent hover:underline"
+                      >
+                        {shortId}
+                      </Link>
+                    ) : null}
+                    {intent ? (
+                      <span className="text-text2 truncate">— &ldquo;{intent}&rdquo;</span>
+                    ) : null}
+                    <span className="ml-auto text-micro text-muted font-mono tabular flex-shrink-0">
+                      {ev.time}
+                    </span>
+                  </div>
+                );
+              }
               const isAgent = agentHandles.has(ev.sender);
               const color = isAgent ? "var(--green)" : "var(--accent)";
               return (

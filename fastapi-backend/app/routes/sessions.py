@@ -308,7 +308,17 @@ async def join_room(
     # coordination_session_id — they cannot be combined in one row — so the
     # dual-post is the right way to make a join visible at both levels.
     # Cascade is fine: each row dies with its respective parent.
-    join_content = json.dumps({"handle": payload.agent_handle, "intent": payload.intent})
+    # ``session`` (display_name) is included so the frontend can link from the
+    # chat-channel rendering of the join out to the live session view — the
+    # room-scoped row has ``coordination_session_id=None`` so the link target
+    # can't be derived from the row alone.
+    join_content = json.dumps(
+        {
+            "handle": payload.agent_handle,
+            "intent": payload.intent,
+            "session": coord_session.display_name,
+        }
+    )
     db.add(
         Message(
             room_name=None,
