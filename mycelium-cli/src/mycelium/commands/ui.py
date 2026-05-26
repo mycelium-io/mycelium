@@ -34,8 +34,15 @@ _DEFAULT_PORT = 3000
 
 
 def _ui_url() -> str:
-    """The URL the user opens in their browser. Honors MYCELIUM_UI_PORT."""
-    port = os.environ.get("MYCELIUM_UI_PORT") or str(_DEFAULT_PORT)
+    """The URL the user opens in their browser. Honors config.toml and MYCELIUM_UI_PORT."""
+    if env_port := os.environ.get("MYCELIUM_UI_PORT"):
+        port = env_port
+    else:
+        try:
+            cfg = MyceliumConfig.load()
+            port = str(cfg.runtime.frontend_port)
+        except Exception:
+            port = str(_DEFAULT_PORT)
     return f"http://localhost:{port}"
 
 
