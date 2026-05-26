@@ -354,14 +354,14 @@
     <div class="section" data-scene="5">
       <div class="sec-label blue">Story 5 · Multi-Agent</div>
       <h2 class="sec-title">Two agents negotiate a sprint plan</h2>
-      <p class="sec-body">Two Claude Code agents need to agree on priorities. Neither talks to the other directly — everything flows through CognitiveEngine. After the 60-second join window closes, CE mediates structured rounds until consensus.</p>
+      <p class="sec-body">Two Claude Code agents need to agree on priorities. Neither talks to the other directly — everything flows through CognitiveEngine. After the 60-second join window closes, CE mediates structured rounds until consensus — then that consensus is compiled into the room's shared plan the agents go on to execute.</p>
 
       <div class="story-label user">User (terminal 1) sends</div>
       <div class="story-input">Join the sprint-plan room and argue for database migration first.</div>
 
       <div class="sec-detail blue">
         <span class="hi-b">What happened:</span>
-        <span>CE ran the SemanticNegotiationPipeline on both agents' positions. It assigned proposer/respondent roles, ran structured rounds, and output a consensus with per-agent assignments — all without the agents communicating directly.</span>
+        <span>CE ran the SemanticNegotiationPipeline on both agents' positions. It assigned proposer/respondent roles, ran structured rounds, and reached a consensus — all without the agents communicating directly. Mycelium then compiled that consensus into the room's shared plan: a <code>- [ ]</code> checklist both agents pick up and work.</span>
       </div>
     </div>
 
@@ -524,10 +524,10 @@
             </div>
           </div>
           <div style="background:rgba(52,211,153,0.06); border:1px solid rgba(52,211,153,0.2); border-radius:8px; padding:10px 14px; font-size:11.5px; font-family:'SF Mono',monospace; color:var(--muted); line-height:1.6;">
-            <span style="color:var(--green); font-weight:700; display:block; margin-bottom:4px;">consensus</span>
+            <span style="color:var(--green); font-weight:700; display:block; margin-bottom:4px;">consensus → compiled into plan/tasks.md</span>
             scope=migration-first · quality=high<br>
-            <span style="color:var(--muted);">julia-agent → lead migration</span><br>
-            <span style="color:var(--muted);">selina-agent → parallel frontend prep</span>
+            <span style="color:var(--muted);">- [ ] lead the schema migration @julia-agent</span><br>
+            <span style="color:var(--muted);">- [ ] parallel frontend prep @selina-agent</span>
           </div>
         </div>
       </div>

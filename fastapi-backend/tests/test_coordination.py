@@ -441,6 +441,228 @@ async def test_timeout_status_posts_broken_consensus():
     _cfn_state.clear()
 
 
+# ── Tests: consensus → plan compiler ──────────────────────────────────────────
+
+
+def _agreed_decide_response(session: str, agreement: list[dict]) -> dict:
+    """A CFN /decide response that terminates the negotiation as agreed."""
+    return {
+        "status": "agreed",
+        "session_id": session,
+        "round": 3,
+        "final_result": {
+            "kind": "commit",
+            "semantic_context": {"session_id": session, "final_agreement": agreement},
+            "payload": {"status": "agreed"},
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_consensus_compiles_plan_before_posting():
+    """Agreed consensus compiles plan/tasks.md and writes it before posting."""
+    from app.services.plan import read_plan_file
+
+    _cfn_state.clear()
+    state = _CfnRoundState(
+        session_id="room-pc",
+        workspace_id="ws",
+        mas_id="mas",
+        agents=["alice", "bob"],
+        pending_replies={"alice": {"agent_id": "alice", "action": "accept"}},
+        joined_intents="- alice: ship fast\n- bob: keep quality high",
+        issue_options={"price": ["lo", "mid", "hi"]},
+    )
+    _cfn_state["room-pc"] = state
+
+    events: list = []
+    compile_calls: list = []
+
+    async def fake_compile(**kwargs):
+        events.append("compile")
+        compile_calls.append(kwargs)
+        return "# Shared plan\n\n- [ ] ship the thing @alice\n"
+
+    posted: list = []
+
+    async def fake_post(room_name, message_type, content):
+        events.append("post")
+        posted.append((message_type, json.loads(content)))
+
+    with (
+        patch(
+            "app.services.cfn_negotiation.decide_negotiation",
+            AsyncMock(
+                return_value=_agreed_decide_response(
+                    "room-pc",
+                    [
+                        {"issue_id": "price", "chosen_option": "mid"},
+                    ],
+                )
+            ),
+        ),
+        patch.object(coord, "compile_plan", new=fake_compile),
+        patch.object(coord, "_post_message", side_effect=fake_post),
+        patch.object(coord, "async_session_maker"),
+    ):
+        await _cfn_decide_round("room-pc")
+
+    # Compiler ran, was fed negotiation context, and ran BEFORE the consensus post.
+    assert len(compile_calls) == 1
+    assert compile_calls[0]["assignments"] == {"price": "mid"}
+    assert compile_calls[0]["joined_intents"] == "- alice: ship fast\n- bob: keep quality high"
+    assert compile_calls[0]["issue_options"] == {"price": ["lo", "mid", "hi"]}
+    assert events.index("compile") < events.index("post")
+
+    # The compiled body is materialized on disk and the message points at it.
+    assert read_plan_file("room-pc") == "# Shared plan\n\n- [ ] ship the thing @alice"
+    consensus = next(p[1] for p in posted if p[0] == "coordination_consensus")
+    assert consensus["plan_file"] == "plan/tasks.md"
+    assert consensus["broken"] is False
+
+    _cfn_state.clear()
+
+
+@pytest.mark.asyncio
+async def test_consensus_fail_soft_falls_back():
+    """A compiler failure must not break the outcome — fall back to the raw agreement."""
+    from app.services.plan import read_plan_file
+
+    _cfn_state.clear()
+    state = _CfnRoundState(
+        session_id="room-fs",
+        workspace_id="ws",
+        mas_id="mas",
+        agents=["alice"],
+        pending_replies={"alice": {"agent_id": "alice", "action": "accept"}},
+    )
+    _cfn_state["room-fs"] = state
+
+    async def boom(**kwargs):
+        raise RuntimeError("LLM down")
+
+    posted: list = []
+
+    async def fake_post(room_name, message_type, content):
+        posted.append((message_type, json.loads(content)))
+
+    with (
+        patch(
+            "app.services.cfn_negotiation.decide_negotiation",
+            AsyncMock(
+                return_value=_agreed_decide_response(
+                    "room-fs",
+                    [
+                        {"issue_id": "price", "chosen_option": "mid"},
+                    ],
+                )
+            ),
+        ),
+        patch.object(coord, "compile_plan", new=boom),
+        patch.object(coord, "_post_message", side_effect=fake_post),
+        patch.object(coord, "async_session_maker"),
+    ):
+        await _cfn_decide_round("room-fs")
+
+    consensus = next(p[1] for p in posted if p[0] == "coordination_consensus")
+    assert consensus["broken"] is False
+    assert consensus["plan_file"] == "plan/tasks.md"
+    # Fallback body is the raw issue=value agreement — lossless, never lost.
+    body = read_plan_file("room-fs")
+    assert body is not None
+    assert "- [ ] price: mid" in body
+
+    _cfn_state.clear()
+
+
+@pytest.mark.asyncio
+async def test_broken_consensus_skips_compiler():
+    """Broken/timeout consensus must never invoke the compiler or write a plan."""
+    from app.services.plan import read_plan_file
+
+    _cfn_state.clear()
+    state = _CfnRoundState(
+        session_id="room-bk",
+        workspace_id="ws",
+        mas_id="mas",
+        agents=["alice"],
+        pending_replies={"alice": None},
+    )
+    _cfn_state["room-bk"] = state
+
+    compiler = AsyncMock()
+    posted: list = []
+
+    async def fake_post(room_name, message_type, content):
+        posted.append((message_type, json.loads(content)))
+
+    with (
+        patch(
+            "app.services.cfn_negotiation.decide_negotiation",
+            AsyncMock(return_value={"status": "timeout", "session_id": "room-bk", "round": 20}),
+        ),
+        patch.object(coord, "compile_plan", new=compiler),
+        patch.object(coord, "_post_message", side_effect=fake_post),
+        patch.object(coord, "async_session_maker"),
+    ):
+        await _cfn_decide_round("room-bk")
+
+    assert compiler.call_count == 0
+    assert read_plan_file("room-bk") is None
+    consensus = next(p[1] for p in posted if p[0] == "coordination_consensus")
+    assert consensus["broken"] is True
+    assert consensus["plan_file"] is None
+
+    _cfn_state.clear()
+
+
+@pytest.mark.asyncio
+async def test_renegotiation_passes_existing_plan_to_compiler():
+    """A re-negotiation hands the existing plan to the compiler so it can merge."""
+    from app.services.plan import write_plan_file
+
+    _cfn_state.clear()
+    write_plan_file("room-re", "# Plan\n\n- [x] shipped earlier\n- [ ] still open\n")
+
+    state = _CfnRoundState(
+        session_id="room-re",
+        workspace_id="ws",
+        mas_id="mas",
+        agents=["alice"],
+        pending_replies={"alice": {"agent_id": "alice", "action": "accept"}},
+    )
+    _cfn_state["room-re"] = state
+
+    compile_calls: list = []
+
+    async def fake_compile(**kwargs):
+        compile_calls.append(kwargs)
+        return "# Plan\n\n- [x] shipped earlier\n- [ ] revised task\n"
+
+    with (
+        patch(
+            "app.services.cfn_negotiation.decide_negotiation",
+            AsyncMock(
+                return_value=_agreed_decide_response(
+                    "room-re",
+                    [
+                        {"issue_id": "scope", "chosen_option": "reduced"},
+                    ],
+                )
+            ),
+        ),
+        patch.object(coord, "compile_plan", new=fake_compile),
+        patch.object(coord, "_post_message", side_effect=AsyncMock()),
+        patch.object(coord, "async_session_maker"),
+    ):
+        await _cfn_decide_round("room-re")
+
+    assert len(compile_calls) == 1
+    assert "shipped earlier" in compile_calls[0]["existing_plan"]
+
+    _cfn_state.clear()
+
+
 # ── teardown_for_namespace ───────────────────────────────────────────────────
 
 

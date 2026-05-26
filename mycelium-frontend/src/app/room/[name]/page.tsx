@@ -6,12 +6,15 @@
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { fetchRoom } from "@/lib/api";
+import { AgentsPanel } from "@/components/agents-panel";
 import { EventStream } from "@/components/event-stream";
+import { CollapsibleRail } from "@/components/collapsible-rail";
 import { MemoryPanel } from "@/components/memory-panel";
-import { RoomPlanHeader } from "@/components/room-plan-header";
+import { RoomChatBox } from "@/components/room-chat-box";
 import { SessionsRail } from "@/components/sessions-rail";
 import { MainTopBar } from "@/components/main-top-bar";
 import { SubNav, type Crumb } from "@/components/sub-nav";
+import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from "react-resizable-panels";
 
 interface Room {
   name: string;
@@ -53,43 +56,40 @@ export default function RoomPage() {
 
       <div className="flex flex-1 overflow-hidden">
         <aside className="w-[240px] flex-shrink-0 border-r border-border">
-          <SessionsRail roomName={roomName} activeSessionName={null} />
+          <PanelGroup orientation="vertical" className="h-full" style={{ height: "100%" }}>
+            <Panel id="agents" defaultSize={32} minSize={12} className="overflow-hidden">
+              <AgentsPanel roomName={roomName} />
+            </Panel>
+            <PanelResizeHandle
+              className="h-px bg-border hover:bg-accent transition-colors flex-shrink-0 relative"
+              style={{ cursor: "row-resize" }}
+            >
+              <span aria-hidden className="absolute inset-x-0 -top-1.5 -bottom-1.5" />
+            </PanelResizeHandle>
+            <Panel id="sessions" defaultSize={68} minSize={20} className="overflow-hidden">
+              <SessionsRail roomName={roomName} activeSessionName={null} />
+            </Panel>
+          </PanelGroup>
         </aside>
 
         <main className="flex flex-1 flex-col overflow-hidden">
-          <RoomPlanHeader roomName={roomName} refreshTrigger={memoryRefresh} />
           <div className="flex-1 overflow-hidden">
-            <EventStream roomName={roomName} onMemoryChanged={handleMemoryChanged} />
+            <EventStream
+              roomName={roomName}
+              onMemoryChanged={handleMemoryChanged}
+              planRefreshTrigger={memoryRefresh}
+            />
           </div>
+          <RoomChatBox roomName={roomName} />
         </main>
 
-        {/* Memory: collapsible right rail. Thin always-visible toggle on the edge. */}
-        <aside
-          className="flex flex-shrink-0 border-l border-border bg-surface/40 overflow-hidden transition-[width] duration-200"
-          style={{ width: memoryOpen ? 420 : 36 }}
-        >
-          <button
-            onClick={() => setMemoryOpen(o => !o)}
-            className="w-9 flex-shrink-0 border-r border-border bg-paper hover:bg-paper/70 transition-colors flex items-start justify-center pt-4"
-            aria-label={memoryOpen ? "collapse memory" : "expand memory"}
-          >
-            <span
-              className="caps-mono-sm text-muted hover:text-accent"
-              style={{ writingMode: "vertical-rl", letterSpacing: "0.2em" }}
-            >
-              {memoryOpen ? "× MEMORY" : "MEMORY"}
-            </span>
-          </button>
-          {memoryOpen && (
-            <div className="flex-1 min-w-0 overflow-hidden">
-              <MemoryPanel
-                roomName={roomName}
-                masId={room?.mas_id ?? null}
-                refreshTrigger={memoryRefresh}
-              />
-            </div>
-          )}
-        </aside>
+        <CollapsibleRail label="MEMORY" open={memoryOpen} onOpenChange={setMemoryOpen}>
+          <MemoryPanel
+            roomName={roomName}
+            masId={room?.mas_id ?? null}
+            refreshTrigger={memoryRefresh}
+          />
+        </CollapsibleRail>
       </div>
     </div>
   );

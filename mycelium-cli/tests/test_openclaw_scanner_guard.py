@@ -37,8 +37,9 @@ PLUGIN_ROOT = (
     / "mycelium-cli"
     / "src"
     / "mycelium"
-    / "adapters"
+    / "integrations"
     / "openclaw"
+    / "assets"
     / "mycelium"
     / "plugin"
 )

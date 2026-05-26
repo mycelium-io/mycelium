@@ -3,14 +3,16 @@
 
 """Tests for coordination session spawning."""
 
+import json
 from uuid import UUID
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import CoordinationSession
+from app.models import CoordinationSession, Message
 
 
 async def _coord_for_room(client: AsyncClient, namespace: str) -> dict:
@@ -42,6 +44,53 @@ async def test_join_namespace_auto_spawns_session(client: AsyncClient):
     coord = await _coord_for_room(client, "ns-test")
     assert resp.json()["coordination_session_id"] == coord["id"]
     assert coord["display_name"].startswith("ns-test:session:")
+
+
+@pytest.mark.asyncio
+async def test_join_persists_coordination_join_message_with_intent(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """The join handler writes a coordination_join Message carrying the intent.
+
+    Auditing what positions agents brought into a negotiation has to survive
+    past the live SSE NOTIFY — catchup readers (the messages API, the
+    frontend on first load) only see persisted rows. Without this Message
+    the opening position is unrecoverable after the connect window closes.
+    """
+    await client.post("/api/rooms", json={"name": "audit-ns"})
+    await client.post(
+        "/api/rooms/audit-ns/sessions",
+        json={"agent_handle": "alice", "intent": "ship a tight scope this quarter"},
+    )
+
+    rows = (
+        (
+            await db_session.execute(
+                select(Message).where(Message.message_type == "coordination_join")
+            )
+        )
+        .scalars()
+        .all()
+    )
+    # Dual-post: one session-scoped row (visible in the session EVENT LOG)
+    # and one room-scoped row (visible in the parent room's EVENTS tab).
+    # The ck_messages_one_target CHECK forbids combining both in one row.
+    assert len(rows) == 2
+    for r in rows:
+        payload = json.loads(r.content)
+        assert payload["handle"] == "alice"
+        assert payload["intent"] == "ship a tight scope this quarter"
+        # Session display name is included so the chat-channel render can
+        # link to the live session view (the room-scoped row has
+        # coordination_session_id=None, so the link target must come from
+        # the content blob).
+        assert payload["session"].startswith("audit-ns:session:")
+    assert all(r.sender_handle == "CognitiveEngine" for r in rows)
+    session_row = next(r for r in rows if r.coordination_session_id is not None)
+    room_row = next(r for r in rows if r.room_name is not None)
+    assert session_row.room_name is None
+    assert room_row.coordination_session_id is None
+    assert room_row.room_name == "audit-ns"
 
 
 @pytest.mark.asyncio

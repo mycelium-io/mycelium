@@ -4,6 +4,8 @@
 "use client";
 
 import { useParams } from "next/navigation";
+import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from "react-resizable-panels";
+import { ParticipantsPanel } from "@/components/participants-panel";
 import { SessionsRail } from "@/components/sessions-rail";
 import { SessionView } from "@/components/session-view";
 import { MainTopBar } from "@/components/main-top-bar";
@@ -32,8 +34,23 @@ export default function SessionPage() {
       <SubNav crumbs={crumbs} />
 
       <div className="flex flex-1 overflow-hidden">
+        {/* Left rail mirrors the room page: participants on top, sessions
+            list below, resizable split. */}
         <aside className="w-[240px] flex-shrink-0 border-r border-border">
-          <SessionsRail roomName={roomName} activeSessionName={sessionRoom} />
+          <PanelGroup orientation="vertical" className="h-full" style={{ height: "100%" }}>
+            <Panel id="participants" defaultSize={32} minSize={12} className="overflow-hidden">
+              <ParticipantsPanel sessionRoom={sessionRoom} />
+            </Panel>
+            <PanelResizeHandle
+              className="h-px bg-border hover:bg-accent transition-colors flex-shrink-0 relative"
+              style={{ cursor: "row-resize" }}
+            >
+              <span aria-hidden className="absolute inset-x-0 -top-1.5 -bottom-1.5" />
+            </PanelResizeHandle>
+            <Panel id="sessions" defaultSize={68} minSize={20} className="overflow-hidden">
+              <SessionsRail roomName={roomName} activeSessionName={sessionRoom} />
+            </Panel>
+          </PanelGroup>
         </aside>
 
         <main className="flex flex-1 flex-col overflow-hidden">

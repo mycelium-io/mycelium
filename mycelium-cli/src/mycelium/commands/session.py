@@ -301,6 +301,7 @@ def await_tick(
                                             "type": "consensus",
                                             "room": msg.get("room_name"),
                                             "plan": data.get("plan"),
+                                            "plan_file": data.get("plan_file"),
                                             "assignments": data.get("assignments"),
                                             "broken": data.get("broken", False),
                                             "replayed": True,
@@ -421,6 +422,7 @@ def await_tick(
                                 "type": "consensus",
                                 "room": msg.get("room_name"),
                                 "plan": data.get("plan"),
+                                "plan_file": data.get("plan_file"),
                                 "assignments": data.get("assignments"),
                                 "broken": data.get("broken", False),
                             }

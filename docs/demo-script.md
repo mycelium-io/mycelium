@@ -184,7 +184,8 @@ Or open `http://localhost:3000/room/friday-demo` in the browser.
    ```bash
    mycelium negotiate respond accept --handle selina-agent
    ```
-5. `await` returns `type: consensus` with the final plan
+5. `await` returns `type: consensus` — the agreement is compiled into the room's shared plan (`plan/tasks.md`)
+6. Both agents pick up the plan: `mycelium plan tasks`, work their tasks, tick them off with `mycelium plan task done <id>`
 
 ### Prompt for the other Claude Code agent
 
@@ -201,7 +202,7 @@ Give this to the second Claude Code instance:
 > When you get a tick, respond based on the action:
 > - `action=propose` → `mycelium negotiate propose budget=medium timeline=express scope=standard quality=premium --handle selina-agent`
 > - `action=respond` → evaluate the offer, then `mycelium negotiate respond accept --handle selina-agent`
-> - `type=consensus` → done, read your assignment
+> - `type=consensus` → the negotiation compiled a shared plan; run `mycelium plan tasks` and work the tasks tagged to you
 >
 > Keep calling `mycelium session await --handle selina-agent` between each response until you get consensus.
 

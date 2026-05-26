@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bus import notify, room_channel
 from app.config import settings
 from app.database import get_async_session
-from app.models import AuditEvent, CoordinationSession, Participant, Room
+from app.models import AuditEvent, CoordinationSession, Message, Participant, Room
 from app.routes.rooms import _sync_create_mas
 from app.schemas import (
     ContextFile,
@@ -293,7 +293,53 @@ async def join_room(
                 )
             )
 
-    # Post coordination_join notification on the session display channel.
+    # Persist the join as Message rows so the agent's opening position
+    # (``intent``) is auditable post-hoc — catchup readers (``GET
+    # /rooms/<r>/messages``, the frontend on first load) only ever see
+    # what's in the message log, not transient SSE NOTIFY payloads. Without
+    # this row a later observer can't tell what positions the agents
+    # brought into the negotiation.
+    #
+    # We write TWO rows on purpose: one session-scoped (visible in the
+    # session EVENT LOG via the coord-session messages endpoint) and one
+    # room-scoped (visible in the parent room's EVENTS tab via the
+    # standard rooms-messages endpoint). The Message table's
+    # ``ck_messages_one_target`` CHECK enforces room_name XOR
+    # coordination_session_id — they cannot be combined in one row — so the
+    # dual-post is the right way to make a join visible at both levels.
+    # Cascade is fine: each row dies with its respective parent.
+    # ``session`` (display_name) is included so the frontend can link from the
+    # chat-channel rendering of the join out to the live session view — the
+    # room-scoped row has ``coordination_session_id=None`` so the link target
+    # can't be derived from the row alone.
+    join_content = json.dumps(
+        {
+            "handle": payload.agent_handle,
+            "intent": payload.intent,
+            "session": coord_session.display_name,
+        }
+    )
+    db.add(
+        Message(
+            room_name=None,
+            coordination_session_id=coord_session.id,
+            sender_handle="CognitiveEngine",
+            message_type="coordination_join",
+            content=join_content,
+        )
+    )
+    db.add(
+        Message(
+            room_name=coord_session.parent_room_name,
+            coordination_session_id=None,
+            sender_handle="CognitiveEngine",
+            message_type="coordination_join",
+            content=join_content,
+        )
+    )
+    await db.commit()
+
+    # Fire the live NOTIFY for subscribers connected right now.
     asyncio.ensure_future(
         _notify_join(coord_session.display_name, payload.agent_handle, payload.intent)
     )

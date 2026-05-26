@@ -252,6 +252,66 @@ def set_title(room_name: str, text: str, *, updated_by: str = "frontend") -> str
     return cleaned
 
 
+def write_plan_file(
+    room_name: str,
+    body: str,
+    *,
+    slug: str = DEFAULT_TASK_FILE,
+    updated_by: str = "CognitiveEngine",
+) -> Path:
+    """Overwrite ``plan/{slug}.md`` with a full markdown body.
+
+    Frontmatter is managed by ``write_memory_file``; ``load_plan`` strips it on
+    read. Used by the plan compiler to materialize a negotiation consensus.
+    """
+    from app.services.filesystem import write_memory_file
+
+    base = get_room_dir(room_name)
+    base.mkdir(parents=True, exist_ok=True)
+    return write_memory_file(
+        base,
+        f"{PLAN_DIR}/{slug}",
+        body.rstrip("\n") + "\n",
+        created_by=updated_by,
+        updated_by=updated_by,
+    )
+
+
+def read_plan_file(room_name: str, *, slug: str = DEFAULT_TASK_FILE) -> str | None:
+    """Return the raw markdown body of ``plan/{slug}.md``, or None if absent.
+
+    Frontmatter is stripped via ``parse_memory``; completed ``- [x]`` lines and
+    prose round-trip verbatim, which is what the re-negotiation merge needs.
+    """
+    path = _plan_dir(room_name) / f"{slug}.md"
+    if not path.exists():
+        return None
+    _, body = parse_memory(path.read_text(encoding="utf-8"))
+    return body
+
+
+def set_title_from_body_if_absent(
+    room_name: str,
+    body: str,
+    *,
+    updated_by: str = "CognitiveEngine",
+) -> str | None:
+    """Set ``plan/title.md`` from the body's first heading IFF title is absent.
+
+    Used by the plan compiler so a freshly materialized ``plan/tasks.md`` gives
+    the room a sensible display title (``MVP Delivery Plan - Q-End Sprint``)
+    instead of leaving the italic hero blank. Returns the title that was set,
+    or None when the title already exists (we don't clobber human-set titles)
+    or when the body has no heading to lift.
+    """
+    if get_title(room_name) is not None:
+        return None
+    heading = _first_heading(body)
+    if not heading:
+        return None
+    return set_title(room_name, heading, updated_by=updated_by)
+
+
 def open_task_summary(room_name: str, *, limit: int = 20) -> str | None:
     """Human-readable list of open tasks for injection into agent context.
 
@@ -265,3 +325,29 @@ def open_task_summary(room_name: str, *, limit: int = 20) -> str | None:
         return "Plan: no open tasks."
     bullets = "\n".join(f"- [{t.slug}] {t.text}" for t in open_tasks)
     return f"Open tasks ({len(open_tasks)}):\n{bullets}"
+
+
+def agent_context(room_name: str, *, limit: int = 20) -> str | None:
+    """Compact room briefing for injection into an agent's prompt.
+
+    Title + open tasks. ``None`` when the room has neither a plan title nor
+    any plan files — callers omit the block entirely in that case.
+
+    Kept deliberately small: this is read on every agent dispatch, so it
+    stays a filesystem read with no DB round-trip.
+    """
+    files, tasks = load_plan(room_name)
+    title = get_title(room_name)
+    if not files and not title:
+        return None
+
+    parts: list[str] = []
+    if title:
+        parts.append(f"Plan: {title}")
+    open_tasks = [t for t in tasks if not t.done][:limit]
+    if open_tasks:
+        bullets = "\n".join(f"- [{t.slug}] {t.text}" for t in open_tasks)
+        parts.append(f"Open tasks ({len(open_tasks)}):\n{bullets}")
+    elif files:
+        parts.append("No open tasks.")
+    return "\n\n".join(parts) if parts else None

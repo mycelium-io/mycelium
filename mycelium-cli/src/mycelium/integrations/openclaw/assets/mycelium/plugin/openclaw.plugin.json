@@ -1,0 +1,68 @@
+{
+  "id": "mycelium",
+  "name": "Mycelium Adapter",
+  "description": "Bridges OpenClaw agents to the Mycelium coordination backend. Covers session lifecycle, pre-turn context injection, and output forwarding.",
+  "version": "0.1.0",
+  "kind": "channel",
+  "channels": ["mycelium-room"],
+  "skills": ["./skills"],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  },
+  "channelConfigs": {
+    "mycelium-room": {
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["backendUrl"],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Set false to disable the channel without removing config."
+          },
+          "backendUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Mycelium backend URL, e.g. http://localhost:8000."
+          },
+          "room": {
+            "type": "string",
+            "description": "Legacy single-room form. A Mycelium room this channel fans messages into and out of. Prefer `rooms` for multi-room; both may be combined."
+          },
+          "agents": {
+            "type": "array",
+            "items": { "type": "string" },
+            "default": [],
+            "description": "Legacy single-room form. OpenClaw agent ids participating in `room`."
+          },
+          "rooms": {
+            "type": "array",
+            "default": [],
+            "description": "Multi-room fan-out. Each entry is its own room + agent list; the plugin opens one SSE subscription per entry. `mycelium agent add --adapter openclaw` maintains this.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["room"],
+              "properties": {
+                "room": { "type": "string" },
+                "agents": {
+                  "type": "array",
+                  "items": { "type": "string" },
+                  "default": []
+                }
+              }
+            }
+          },
+          "requireMention": {
+            "type": "boolean",
+            "default": false,
+            "description": "If true, only deliver messages that explicitly @mention one of the configured agents."
+          }
+        }
+      }
+    }
+  }
+}

@@ -62,6 +62,12 @@ services:
       GRAPH_DB_URL: ${GRAPH_DB_URL:-postgresql://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium}
       API_BASE_URL: http://mycelium-backend:8000
       COORDINATION_TICK_TIMEOUT_SECONDS: ${COORDINATION_TICK_TIMEOUT_SECONDS:-30}
+      # IN-CONTAINER path the backend writes rooms/memory/plans to. MUST match
+      # the bind-mount target below — otherwise writes land in the container's
+      # overlay FS and are lost on recreate. (The host-side MYCELIUM_DATA_DIR
+      # env var is read separately by docker compose to resolve the volume
+      # source path; the two values are different by design.)
+      MYCELIUM_DATA_DIR: /root/.mycelium
     volumes:
       - ${MYCELIUM_DATA_DIR:-~/.mycelium}:/root/.mycelium
     ports:

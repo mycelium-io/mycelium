@@ -8,6 +8,13 @@ Plan content is surfaced to every agent in the room — through the synthesis
 context (async path) and every coordination tick (sync path) — so agents
 weigh their behaviour against work that's already committed.
 
+You can write the plan by hand (`plan set`, `plan task add`), but it also
+fills itself: when a [negotiation session](#sessions) reaches consensus,
+Mycelium compiles the agreement into `plan/tasks.md` automatically — a
+`- [ ]` checklist the whole team then executes against. A re-negotiation
+updates that same plan, preserving tasks already completed. The arc is
+**join → negotiate → plan → work**.
+
 ## Anatomy
 
 ```
