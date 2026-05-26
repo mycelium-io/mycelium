@@ -134,21 +134,32 @@ def list_agent_handles(room_name: str) -> list[str]:
 
 
 def load_manifest(room_name: str, handle: str) -> AgentManifest | None:
+    """Return the agent's manifest, or None if missing / unreadable.
+
+    "Unreadable" (bad YAML, wrong shape, schema violation) is logged at WARNING
+    so a corrupt manifest doesn't masquerade as "agent not registered" — the
+    daemon would otherwise silently ignore every @handle mention with no clue
+    why on the operator's side.
+    """
     room_dir = get_room_dir(room_name)
+    path = room_dir / "agents" / f"{handle}.md"
     result = read_memory(room_dir, f"agents/{handle}")
     if result is None:
         return None
     _, content = result
     try:
         data = yaml.safe_load(content) or {}
-    except yaml.YAMLError:
+    except yaml.YAMLError as exc:
+        log.warning("manifest %s: invalid YAML — %s", path, exc)
         return None
     if not isinstance(data, dict):
+        log.warning("manifest %s: expected a YAML mapping, got %s", path, type(data).__name__)
         return None
     data.setdefault("handle", handle)
     try:
         return AgentManifest(**data)
-    except ValidationError:
+    except ValidationError as exc:
+        log.warning("manifest %s: schema validation failed — %s", path, exc)
         return None
 
 

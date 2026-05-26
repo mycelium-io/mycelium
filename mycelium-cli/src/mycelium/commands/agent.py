@@ -25,6 +25,7 @@ agent that already exists in your OpenClaw gateway, interactively or by id),
 from __future__ import annotations
 
 import json as json_module
+import logging
 import sys
 from datetime import UTC, datetime
 
@@ -74,23 +75,37 @@ def _resolve_room(config: MyceliumConfig, room: str | None) -> str:
     raise typer.Exit(1)
 
 
+_log = logging.getLogger(__name__)
+
+
 def _load_manifest(room_name: str, handle: str) -> AgentManifest | None:
-    """Read the manifest off the local filesystem and rehydrate the model."""
+    """Read the manifest off the local filesystem and rehydrate the model.
+
+    Returns ``None`` for both "file missing" and "file present but unreadable"
+    — callers can't tell the difference from the return value, but a corrupt
+    manifest is logged at WARNING so it never fails silently. Without this,
+    a bad YAML or schema mismatch looks identical to "agent not registered"
+    and the user re-runs ``agent add`` over their own broken file.
+    """
     room_dir = get_room_dir(room_name)
+    path = room_dir / "agents" / f"{handle}.md"
     result = read_memory(room_dir, f"agents/{handle}")
     if result is None:
         return None
     _, content = result
     try:
         data = yaml.safe_load(content) or {}
-    except yaml.YAMLError:
+    except yaml.YAMLError as exc:
+        _log.warning("manifest %s: invalid YAML — %s", path, exc)
         return None
     if not isinstance(data, dict):
+        _log.warning("manifest %s: expected a YAML mapping, got %s", path, type(data).__name__)
         return None
     data.setdefault("handle", handle)
     try:
         return AgentManifest(**data)
-    except ValidationError:
+    except ValidationError as exc:
+        _log.warning("manifest %s: schema validation failed — %s", path, exc)
         return None
 
 
