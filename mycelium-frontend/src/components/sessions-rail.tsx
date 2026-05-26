@@ -5,7 +5,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { fetchChildRooms } from "@/lib/api";
+import { fetchChildRooms, logFetchError } from "@/lib/api";
 
 function sessionIdOf(sessionRoomName: string): string {
   return sessionRoomName.split(":").pop() ?? sessionRoomName;
@@ -69,7 +69,10 @@ export function SessionsRail({ roomName, activeSessionName }: SessionsRailProps)
     const load = () =>
       fetchChildRooms(roomName)
         .then((data: Session[]) => { if (!cancelled) { setSessions(data); setLoaded(true); } })
-        .catch(() => { if (!cancelled) setLoaded(true); });
+        .catch((err) => {
+          logFetchError("fetchChildRooms")(err);
+          if (!cancelled) setLoaded(true);
+        });
     load();
     const t = setInterval(load, 5000);
     return () => { cancelled = true; clearInterval(t); };

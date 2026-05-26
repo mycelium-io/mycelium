@@ -4,7 +4,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { fetchRoomAgents, sendRoomMessage, type AgentSummary } from "@/lib/api";
+import { fetchRoomAgents, logFetchError, sendRoomMessage, type AgentSummary } from "@/lib/api";
 
 interface Props {
   roomName: string;
@@ -38,7 +38,10 @@ export function RoomChatBox({ roomName, defaultSender, onSent }: Props) {
   }, [sender]);
 
   const refreshAgents = useCallback(() => {
-    fetchRoomAgents(roomName).then(setAgents).catch(() => setAgents([]));
+    fetchRoomAgents(roomName).then(setAgents).catch((err) => {
+      logFetchError("fetchRoomAgents")(err);
+      setAgents([]);
+    });
   }, [roomName]);
 
   useEffect(() => {

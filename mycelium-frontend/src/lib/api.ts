@@ -1,20 +1,36 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Julia Valenti
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// All fetches use relative `/api/*` paths. The Next.js server proxies them
+// to the backend (see next.config.ts `rewrites()`), so the browser only ever
+// talks to its own origin — no CORS, no second public port, no build-time
+// URL baking. The internal backend URL is a server-side concern.
+
+/**
+ * Attach to a fetch `.catch` to surface network failures in the browser
+ * console. Replaces the previous `.catch(() => {})` pattern that swallowed
+ * every error and made cloud-install debugging impossible.
+ */
+export const logFetchError =
+  (label: string) =>
+  (err: unknown): undefined => {
+    // eslint-disable-next-line no-console
+    console.error(`[mycelium] fetch failed: ${label}`, err);
+    return undefined;
+  };
 
 export async function fetchRooms() {
-  const res = await fetch(`${API}/api/rooms`, { cache: "no-store" });
+  const res = await fetch(`/api/rooms`, { cache: "no-store" });
   return res.json();
 }
 
 export async function fetchRoom(name: string) {
-  const res = await fetch(`${API}/api/rooms/${name}`, { cache: "no-store" });
+  const res = await fetch(`/api/rooms/${name}`, { cache: "no-store" });
   return res.json();
 }
 
 export async function createRoom(data: { name: string; trigger_config?: object; is_persistent?: boolean }) {
-  const res = await fetch(`${API}/api/rooms`, {
+  const res = await fetch(`/api/rooms`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...data, is_public: true }),
@@ -25,12 +41,12 @@ export async function createRoom(data: { name: string; trigger_config?: object; 
 export async function fetchMemories(roomName: string, prefix?: string) {
   const params = new URLSearchParams({ limit: "50" });
   if (prefix) params.set("prefix", prefix);
-  const res = await fetch(`${API}/api/rooms/${roomName}/memory?${params}`, { cache: "no-store" });
+  const res = await fetch(`/api/rooms/${roomName}/memory?${params}`, { cache: "no-store" });
   return res.json();
 }
 
 export async function searchMemories(roomName: string, query: string) {
-  const res = await fetch(`${API}/api/rooms/${roomName}/memory/search`, {
+  const res = await fetch(`/api/rooms/${roomName}/memory/search`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query, limit: 10 }),
@@ -39,7 +55,7 @@ export async function searchMemories(roomName: string, query: string) {
 }
 
 export async function fetchCatchup(roomName: string) {
-  const res = await fetch(`${API}/api/rooms/${roomName}/catchup`, { cache: "no-store" });
+  const res = await fetch(`/api/rooms/${roomName}/catchup`, { cache: "no-store" });
   return res.json();
 }
 
@@ -72,7 +88,7 @@ export interface PlanResponse {
 }
 
 export async function fetchPlan(roomName: string): Promise<PlanResponse> {
-  const res = await fetch(`${API}/api/rooms/${roomName}/plan`, { cache: "no-store" });
+  const res = await fetch(`/api/rooms/${roomName}/plan`, { cache: "no-store" });
   if (!res.ok) {
     return { room: roomName, title: null, files: [], tasks: [], open_count: 0, done_count: 0 };
   }
@@ -80,7 +96,7 @@ export async function fetchPlan(roomName: string): Promise<PlanResponse> {
 }
 
 export async function setPlanTitle(roomName: string, text: string): Promise<string | null> {
-  const res = await fetch(`${API}/api/rooms/${roomName}/plan/title`, {
+  const res = await fetch(`/api/rooms/${roomName}/plan/title`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text }),
@@ -92,7 +108,7 @@ export async function setPlanTitle(roomName: string, text: string): Promise<stri
 
 export async function togglePlanTask(roomName: string, taskId: string, done: boolean): Promise<PlanTask> {
   const res = await fetch(
-    `${API}/api/rooms/${roomName}/plan/tasks/${encodeURIComponent(taskId)}/toggle`,
+    `/api/rooms/${roomName}/plan/tasks/${encodeURIComponent(taskId)}/toggle`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -103,7 +119,7 @@ export async function togglePlanTask(roomName: string, taskId: string, done: boo
 }
 
 export async function addPlanTask(roomName: string, text: string, slug = "tasks"): Promise<PlanTask> {
-  const res = await fetch(`${API}/api/rooms/${roomName}/plan/tasks`, {
+  const res = await fetch(`/api/rooms/${roomName}/plan/tasks`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text, slug }),
@@ -112,20 +128,20 @@ export async function addPlanTask(roomName: string, text: string, slug = "tasks"
 }
 
 export async function reindexRoom(roomName: string) {
-  const res = await fetch(`${API}/api/rooms/${roomName}/reindex`, { method: "POST" });
+  const res = await fetch(`/api/rooms/${roomName}/reindex`, { method: "POST" });
   return res.json();
 }
 
 export async function fetchMessages(roomName: string, limit?: number) {
   const url = limit
-    ? `${API}/api/rooms/${roomName}/messages?limit=${limit}`
-    : `${API}/api/rooms/${roomName}/messages`;
+    ? `/api/rooms/${roomName}/messages?limit=${limit}`
+    : `/api/rooms/${roomName}/messages`;
   const res = await fetch(url, { cache: "no-store" });
   return res.json();
 }
 
 export async function fetchSessions(roomName: string) {
-  const res = await fetch(`${API}/api/rooms/${roomName}/sessions`, { cache: "no-store" });
+  const res = await fetch(`/api/rooms/${roomName}/sessions`, { cache: "no-store" });
   if (!res.ok) return { sessions: [], total: 0 };
   return res.json();
 }
@@ -135,7 +151,7 @@ export async function fetchChildRooms(parentName: string) {
   // name + state so callers that previously walked rooms by name pattern
   // keep working with minimal changes.
   const res = await fetch(
-    `${API}/api/coordination-sessions?parent_room=${encodeURIComponent(parentName)}&limit=200`,
+    `/api/coordination-sessions?parent_room=${encodeURIComponent(parentName)}&limit=200`,
     { cache: "no-store" },
   );
   if (!res.ok) return [];
@@ -150,14 +166,14 @@ export async function fetchChildRooms(parentName: string) {
 }
 
 export function getSSEUrl(roomName: string) {
-  return `${API}/api/rooms/${roomName}/messages/stream`;
+  return `/api/rooms/${roomName}/messages/stream`;
 }
 
 export async function sendRoomMessage(
   roomName: string,
   data: { sender_handle: string; content: string; message_type?: string },
 ) {
-  const res = await fetch(`${API}/api/rooms/${roomName}/messages`, {
+  const res = await fetch(`/api/rooms/${roomName}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message_type: "broadcast", ...data }),
@@ -183,7 +199,7 @@ export interface AgentSummary {
  */
 export async function fetchRoomAgents(roomName: string): Promise<AgentSummary[]> {
   const res = await fetch(
-    `${API}/api/rooms/${roomName}/memory?prefix=agents/&limit=200`,
+    `/api/rooms/${roomName}/memory?prefix=agents/&limit=200`,
     { cache: "no-store" },
   );
   if (!res.ok) return [];
@@ -231,13 +247,13 @@ export async function fetchRoomAgents(roomName: string): Promise<AgentSummary[]>
 // ── Metrics ──────────────────────────────────────────────────────────────────
 
 export async function fetchBackendMetrics() {
-  const res = await fetch(`${API}/api/observability`, { cache: "no-store" });
+  const res = await fetch(`/api/observability`, { cache: "no-store" });
   if (!res.ok) return null;
   return res.json();
 }
 
 export async function fetchCollectorMetrics() {
-  const res = await fetch(`${API}/api/observability/collector`, { cache: "no-store" });
+  const res = await fetch(`/api/observability/collector`, { cache: "no-store" });
   if (!res.ok) return null;
   return res.json();
 }
@@ -276,7 +292,7 @@ export interface TraceSummary {
 export async function fetchRecentTraces(limit = 100, host?: string): Promise<{ traces: TraceSummary[]; count: number } | null> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (host) params.set("host", host);
-  const res = await fetch(`${API}/api/observability/traces/recent?${params}`, { cache: "no-store" });
+  const res = await fetch(`/api/observability/traces/recent?${params}`, { cache: "no-store" });
   if (!res.ok) return null;
   return res.json();
 }
@@ -291,20 +307,20 @@ export interface HostInfo {
 }
 
 export async function fetchHosts(): Promise<{ hosts: HostInfo[] } | null> {
-  const res = await fetch(`${API}/api/observability/hosts`, { cache: "no-store" });
+  const res = await fetch(`/api/observability/hosts`, { cache: "no-store" });
   if (!res.ok) return null;
   return res.json();
 }
 
 export async function fetchRoundTraces(limit?: number): Promise<{ traces: unknown[]; count: number } | null> {
   const params = limit != null ? `?limit=${limit}` : "";
-  const res = await fetch(`${API}/api/internal/coordination/round-traces${params}`, { cache: "no-store" });
+  const res = await fetch(`/api/internal/coordination/round-traces${params}`, { cache: "no-store" });
   if (!res.ok) return null;
   return res.json();
 }
 
 export async function fetchIngestLog(limit = 50) {
-  const res = await fetch(`${API}/api/knowledge/ingest/log?limit=${limit}`, { cache: "no-store" });
+  const res = await fetch(`/api/knowledge/ingest/log?limit=${limit}`, { cache: "no-store" });
   if (!res.ok) return null;
   return res.json();
 }
@@ -335,7 +351,7 @@ export interface CfnNeighborsResponse {
 
 export async function fetchCfnConcepts(masId: string, limit = 50): Promise<CfnConceptListResponse | null> {
   const params = new URLSearchParams({ mas_id: masId, limit: String(limit) });
-  const res = await fetch(`${API}/api/cfn/knowledge/list?${params}`, { cache: "no-store" });
+  const res = await fetch(`/api/cfn/knowledge/list?${params}`, { cache: "no-store" });
   if (!res.ok) return null;
   return res.json();
 }
@@ -343,7 +359,7 @@ export async function fetchCfnConcepts(masId: string, limit = 50): Promise<CfnCo
 export async function fetchCfnNeighbors(masId: string, conceptId: string): Promise<CfnNeighborsResponse | null> {
   const params = new URLSearchParams({ mas_id: masId });
   const res = await fetch(
-    `${API}/api/cfn/knowledge/concepts/${encodeURIComponent(conceptId)}/neighbors?${params}`,
+    `/api/cfn/knowledge/concepts/${encodeURIComponent(conceptId)}/neighbors?${params}`,
     { cache: "no-store" },
   );
   if (!res.ok) return null;
