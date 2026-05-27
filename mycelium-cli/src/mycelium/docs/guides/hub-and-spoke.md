@@ -52,9 +52,15 @@ On the hub machine, run the standard install:
 
 ```bash
 mycelium install
+mycelium up --metrics            # include --metrics if you want spoke telemetry
 ```
 
 This brings up the backend, database, and provisions a default workspace.
+The `--metrics` flag also starts the dockerized OTLP collector listening
+on `:4318` — required for spokes to forward telemetry into the hub later
+in [Step 4](#hub-and-spoke-step-4-set-up-spoke-metrics). Skip it if you
+only need backend coordination and no cross-host metrics view.
+
 Verify with:
 
 ```bash
@@ -198,14 +204,25 @@ Each spoke can run a lightweight local collector for OpenClaw telemetry.
 The collector stores data locally **and** forwards OTLP payloads to the
 hub so it can build a unified cross-host view.
 
+> **Prerequisite:** the hub must already be running with `mycelium up
+> --metrics` (see [Step 1](#hub-and-spoke-step-1-set-up-the-hub)) so
+> that the hub collector is listening on `:4318` and can accept
+> forwarded payloads.
+> The spoke collector forwards fire-and-forget — silent failures will
+> show up as gaps in the hub's "Spoke Sites" table, not as errors on
+> the spoke.
+
 ```bash
-# Point the spoke's metrics at the hub collector
+# Point the spoke's metrics at the hub collector. Use the hub's
+# collector_port if you remapped it from the 4318 default.
 mycelium config set metrics.collector_url "http://<hub-ip>:4318"
 
 # Configure OTLP plugin (endpoint defaults to localhost:4318)
 mycelium adapter add openclaw --step=otel
 
-# Start the spoke collector (daemonizes into background)
+# Start the spoke collector (daemonizes into background).
+# This is the host-process variant — spokes don't run docker, so the
+# collector runs directly under the user instead of as a container.
 mycelium metrics collect
 
 # Stop it later with:

@@ -78,10 +78,18 @@ lsof -i :8000   # backend
 lsof -i :5432   # database
 ```
 
-Or set alternate ports in `~/.mycelium/.env`:
-```
-MYCELIUM_BACKEND_PORT=8001
-MYCELIUM_DB_PORT=5433
+All four published host ports can be remapped — prefer setting the
+corresponding `runtime.*` config key and re-running `mycelium config
+apply` (which materialises `~/.mycelium/.env`) rather than hand-editing
+the env file:
+
+```bash
+mycelium config set runtime.backend_port 8001     # MYCELIUM_BACKEND_PORT
+mycelium config set runtime.frontend_port 3001    # MYCELIUM_UI_PORT
+mycelium config set runtime.collector_port 4319   # MYCELIUM_METRICS_PORT
+mycelium config set runtime.db_port 5433          # MYCELIUM_DB_PORT
+mycelium config apply
+mycelium down && mycelium up                      # restart to pick up new ports
 ```
 
 ---
@@ -333,8 +341,13 @@ mycelium init --api-url http://<correct-hub-ip>:8000
 | `LLM_API_KEY` | Provider API key | — |
 | `LLM_BASE_URL` | Custom LLM endpoint (Ollama, vLLM) | — |
 | `MYCELIUM_DATA_DIR` | Data directory | `~/.mycelium` |
-| `MYCELIUM_BACKEND_PORT` | Backend port | `8000` |
-| `MYCELIUM_DB_PORT` | Database port | `5432` |
+| `MYCELIUM_BACKEND_PORT` | Backend API host port | `8000` |
+| `MYCELIUM_UI_PORT` | Frontend host port (`--ui`) | `3000` |
+| `MYCELIUM_METRICS_PORT` | OTLP collector host port (`--metrics`) | `4318` |
+| `MYCELIUM_DB_PORT` | Database host port | `5432` |
+
+All of these are written by `mycelium config apply` from the matching
+`runtime.*` config keys — don't edit `.env` by hand.
 
 ---
 

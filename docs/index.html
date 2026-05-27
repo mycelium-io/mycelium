@@ -737,8 +737,10 @@ Latest Synthesis
       <p>The hub runs the full stack. Spokes run only the CLI, agents, and the adapter plugin — no Docker, no database, no channel servers.</p>
       <h2 id="hub-and-spoke-step-1-set-up-the-hub">Step 1: Set up the hub</h2>
       <p>On the hub machine, run the standard install:</p>
-      <pre><code><span class="cmd">mycelium install</span></code></pre>
-      <p>This brings up the backend, database, and provisions a default workspace. Verify with:</p>
+      <pre><code><span class="cmd">mycelium install</span>
+<span class="cmd">mycelium up</span> <span class="flag">--metrics</span>            # include <span class="flag">--metrics</span> if you want spoke telemetry</code></pre>
+      <p>This brings up the backend, database, and provisions a default workspace. The <code>--metrics</code> flag also starts the dockerized OTLP collector listening on <code>:4318</code> — required for spokes to forward telemetry into the hub later in <a href="#hub-and-spoke-step-4-set-up-spoke-metrics">Step 4</a>. Skip it if you only need backend coordination and no cross-host metrics view.</p>
+      <p>Verify with:</p>
       <pre><code><span class="cmd">mycelium doctor</span></code></pre>
       <h3 id="hub-and-spoke-open-ports">Open ports</h3>
       <p>Spokes need to reach the hub on these ports:</p>
@@ -849,13 +851,20 @@ register_new_matrix_user <span class="flag">-c</span> /etc/synapse/homeserver.ya
       <p>To refresh tokens, re-authenticate with the channel server (for Matrix, log in again via the Synapse admin API), update the token in <code>channels.&lt;channel&gt;.accounts[agent]</code> in each node&#x27;s <code>openclaw.json</code>, and restart the gateway.</p>
       <h2 id="hub-and-spoke-step-4-set-up-spoke-metrics">Step 4: Set up spoke metrics</h2>
       <p>Each spoke can run a lightweight local collector for OpenClaw telemetry. The collector stores data locally <strong>and</strong> forwards OTLP payloads to the hub so it can build a unified cross-host view.</p>
-      <pre><code><span class="comment"># Point the spoke&#x27;s metrics at the hub collector</span>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body"><strong>Prerequisite:</strong> the hub must already be running with <code>mycelium up --metrics</code> (see <a href="#hub-and-spoke-step-1-set-up-the-hub">Step 1</a>) so that the hub collector is listening on <code>:4318</code> and can accept forwarded payloads. The spoke collector forwards fire-and-forget — silent failures will show up as gaps in the hub&#x27;s &quot;Spoke Sites&quot; table, not as errors on the spoke.</div>
+      </div>
+      <pre><code><span class="comment"># Point the spoke&#x27;s metrics at the hub collector. Use the hub&#x27;s</span>
+<span class="comment"># collector_port if you remapped it from the 4318 default.</span>
 <span class="cmd">mycelium config set</span> metrics.collector_url &quot;http://&lt;hub-ip&gt;:4318&quot;
 
 <span class="comment"># Configure OTLP plugin (endpoint defaults to localhost:4318)</span>
 <span class="cmd">mycelium adapter add</span> openclaw <span class="flag">--step</span>=otel
 
-<span class="comment"># Start the spoke collector (daemonizes into background)</span>
+<span class="comment"># Start the spoke collector (daemonizes into background).</span>
+<span class="comment"># This is the host-process variant — spokes don&#x27;t run docker, so the</span>
+<span class="comment"># collector runs directly under the user instead of as a container.</span>
 <span class="cmd">mycelium metrics collect</span>
 
 <span class="comment"># Stop it later with:</span>
