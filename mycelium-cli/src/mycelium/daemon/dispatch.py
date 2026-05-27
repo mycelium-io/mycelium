@@ -23,6 +23,7 @@ from pydantic import ValidationError
 from mycelium.config import MyceliumConfig
 from mycelium.daemon.config import DaemonConfig
 from mycelium.daemon.mentions import resolve_mentions
+from mycelium.daemon.preamble import identity_preamble
 from mycelium.daemon.state import DaemonState, RunningProc
 from mycelium.filesystem import get_room_dir, list_memories, read_memory
 from mycelium.protocol import AgentManifest
@@ -42,56 +43,6 @@ _DEPTH_WINDOW_S = 60.0
 _SSE_KEEPALIVE_S = 15.0
 _SSE_READ_TIMEOUT_S = 45.0
 _SSE_CONNECT_TIMEOUT_S = 10.0
-
-
-def _identity_preamble(
-    *,
-    handle: str,
-    room: str,
-    description: str,
-    sender: str,
-    notes: str,
-    plan_block: str = "",
-) -> str:
-    """System-prompt preamble injected into every claude -p spawn.
-
-    Without this, the spawned Claude has no idea it's an addressed agent —
-    it tries to explain that it's "actually Claude," asks the user if they
-    meant to route somewhere else, etc. (Mirrors how OpenClaw injects
-    identity via MYCELIUM_AGENT_HANDLE + before_agent_start; cold-start
-    Claude Code has no env channel for that, so we bake it into the prompt.)
-    """
-    desc_block = f"\n## Your scope\n\n{description.strip()}\n" if description.strip() else ""
-    notes_block = (
-        f"\n## Your persistent notes\n\n{notes.strip()}\n"
-        if notes.strip()
-        else "\n## Your persistent notes\n\n(none yet — `mycelium memory get agents/"
-        f"{handle}/notes` shows them when they exist)\n"
-    )
-    return f"""\
-# You are @{handle} — a Mycelium-hosted agent
-
-You are operating as the agent **@{handle}** inside the Mycelium room
-**{room}**. Another participant ({sender}) just @-mentioned you with the
-prompt below. Your reply will be posted to that room *as @{handle}*, so:
-
-- Respond in first person as @{handle}.
-- Do NOT explain that you're "actually Claude," ask whether the user
-  meant the chat box, or offer to route them elsewhere — you ARE the
-  routing destination.
-- Do NOT prefix your reply with `@{handle}:` or quote the original
-  message back — just answer.
-- Keep replies tight. The room is a chat surface; long monologues
-  belong in `decisions/` or `work/` memory entries, not the chat.
-- You're cold-started: every invocation is fresh. Anything that should
-  persist between runs goes in your notes (`mycelium memory set
-  agents/{handle}/notes "..."` from your cwd).
-{desc_block}{notes_block}{plan_block}
-## Control verbs
-
-If the prompt is exactly one of `abort`, `cancel`, `stop`, or `status`,
-the daemon handles it before you see it — you'll never receive those.
-"""
 
 
 # Reserved verbs at the start of an addressed message body. Anything not in
@@ -375,7 +326,7 @@ async def spawn_claude(
     # Always inject an identity preamble — cold-started Claude doesn't know
     # it's been routed to as @handle without it.
     if handle:
-        preamble = _identity_preamble(
+        preamble = identity_preamble(
             handle=handle,
             room=room or "(unknown)",
             description=description or "",
