@@ -99,3 +99,16 @@ class DaemonConfig(BaseModel):
             return False
         self.handles.remove(handle)
         return True
+
+    def binary_for(self, adapter: str) -> str:
+        """Return the CLI binary this daemon uses for *adapter*'s cold spawns.
+
+        One method instead of a switch in the dispatch loop. Future cold-spawn
+        families (cursor, gemini, codex, aider) add a branch here. Unknown
+        adapters return an empty string — the family's ``spawn`` implementation
+        is responsible for its own default and surfaces a clean "not found"
+        error rather than crashing here.
+        """
+        if adapter == "claude_code":
+            return self.claude_binary
+        return ""

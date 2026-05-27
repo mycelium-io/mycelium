@@ -22,7 +22,8 @@ from mycelium.daemon.config import DaemonConfig
 from mycelium.daemon.mentions import resolve_mentions
 from mycelium.daemon.state import DaemonState
 from mycelium.filesystem import get_room_dir, list_memories, read_memory
-from mycelium.integrations.claude_code.spawn import spawn_claude
+from mycelium.integrations import get_integration
+from mycelium.integrations._spawn_common import SpawnRequest, SpawnResult
 from mycelium.protocol import AgentManifest
 
 log = logging.getLogger("mycelium.daemon")
@@ -239,7 +240,7 @@ async def _post_log(
     *,
     prompt: str,
     sender_handle: str,
-    result: dict[str, Any],
+    result: SpawnResult,
 ) -> None:
     """Write the invocation transcript to a daemon-private log directory.
 
@@ -252,18 +253,22 @@ async def _post_log(
     from mycelium.daemon.config import daemon_invocation_log_dir
 
     timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%SZ")
-    body = {
+    body: dict[str, Any] = {
         "ts": timestamp,
         "room": room_name,
         "handle": manifest.handle,
         "prompt": prompt,
         "sender": sender_handle,
-        "ok": result["ok"],
-        "duration_s": round(result["duration_s"], 2),
-        "cost_usd": round(result["cost_usd"], 4),
-        "final_message": result.get("final_message", ""),
-        "transcript": result["transcript"][:16_000],
+        "ok": result.ok,
+        "duration_s": round(result.duration_s, 2),
+        "cost_usd": round(result.cost_usd, 4),
+        "final_message": result.final_message,
+        "transcript": result.transcript[:16_000],
     }
+    if result.extra:
+        # Family-specific fields (e.g. claude's rate_limit_event); preserved
+        # verbatim under a stable key so log analyzers can opt in.
+        body["extra"] = result.extra
 
     def _do() -> None:
         log_dir = daemon_invocation_log_dir(room_name, manifest.handle)
@@ -341,8 +346,28 @@ async def on_message(
         if manifest is None:
             log.warning("no manifest for @%s in %s", handle, room_name)
             continue
-        if manifest.adapter != "claude_code":
-            continue  # another adapter's gateway owns this handle
+        # Skip families this daemon doesn't dispatch (e.g. openclaw — its own
+        # gateway delivers mentions). The registry is the one source of truth
+        # for which families are cold_spawn vs long_lived_gateway; no more
+        # ``if manifest.adapter == "..."`` branching here.
+        try:
+            integration = get_integration(manifest.adapter)
+        except ValueError:
+            log.warning(
+                "unknown adapter %r on @%s in %s — skipping",
+                manifest.adapter,
+                handle,
+                room_name,
+            )
+            continue
+        if integration.lifecycle != "cold_spawn":
+            log.debug(
+                "skip @%s — adapter=%s lifecycle=%s (owned by external runtime)",
+                handle,
+                manifest.adapter,
+                integration.lifecycle,
+            )
+            continue
         if handle not in daemon_cfg.handles:
             # A claude_code manifest can reach this machine's filesystem via
             # room sync, but the agent runs on whichever machine created it.
@@ -504,24 +529,30 @@ async def _dispatch_one(
         ctx, generated_at = await _fetch_agent_context(
             config.server.api_url, room_name, manifest.handle
         )
-        result = await spawn_claude(
-            claude_binary=daemon_cfg.claude_binary,
-            # cc-daemon only dispatches claude_code manifests, which the
-            # AgentManifest validator guarantees have a cwd. The `or ""`
-            # is a type-safe floor — an empty cwd makes spawn_claude return
-            # its clean "cwd is not a directory" error rather than crash.
+        # Family-agnostic dispatch: the integration owns the CLI invocation
+        # (``claude -p``, ``cursor-agent -p``, future Gemini/Codex/Aider).
+        # The dispatch loop only knows it gets a SpawnResult back.
+        integration = get_integration(manifest.adapter)
+        binary = daemon_cfg.binary_for(manifest.adapter)
+        request = SpawnRequest(
+            handle=manifest.handle,
+            room=room_name,
+            # The AgentManifest validator guarantees cold-spawn families have
+            # a cwd. The ``or ""`` is a type-safe floor — an empty cwd makes
+            # the family's spawn return its clean "cwd is not a directory"
+            # error rather than crash.
             cwd=manifest.cwd or "",
             prompt=body,
-            notes=notes,
-            state=state,
-            handle=manifest.handle,
-            sender=sender_handle,
-            room=room_name,
             description=manifest.description,
+            sender=sender_handle,
+            notes=notes,
             plan_block=_render_plan_block(ctx, generated_at),
+            binary=binary,
+            state=state,
         )
+        result = await integration.spawn(request=request)
 
-        if result.get("aborted"):
+        if result.aborted:
             # Aborted via control verb — the abort handler already posted its
             # own reply, so we just log here and skip the normal log+reply
             # pair. Falling through would post the empty final_message.
@@ -530,22 +561,23 @@ async def _dispatch_one(
                 handle=manifest.handle,
                 room=room_name,
                 result="aborted",
-                duration_s=result["duration_s"],
+                duration_s=result.duration_s,
                 cost_usd=0.0,
             )
             return
 
-        # Track spend in-memory (per-process, per calendar month).
+        # Track spend in-memory (per-process, per calendar month). Families
+        # that don't expose per-call cost (e.g. cursor) return 0.0 here.
         ym = datetime.now(UTC).strftime("%Y-%m")
         state.budget_used_usd[(manifest.handle, ym)] = (
-            state.budget_used_usd.get((manifest.handle, ym), 0.0) + result["cost_usd"]
+            state.budget_used_usd.get((manifest.handle, ym), 0.0) + result.cost_usd
         )
         state.record_dispatch(
             handle=manifest.handle,
             room=room_name,
-            result="ok" if result["ok"] else "error",
-            duration_s=result["duration_s"],
-            cost_usd=result["cost_usd"],
+            result="ok" if result.ok else "error",
+            duration_s=result.duration_s,
+            cost_usd=result.cost_usd,
         )
 
         try:
@@ -562,7 +594,7 @@ async def _dispatch_one(
             log.warning("could not write log entry for @%s: %s", manifest.handle, exc)
 
         try:
-            await _post_reply(config, room_name, manifest, reply=result["final_message"])
+            await _post_reply(config, room_name, manifest, reply=result.final_message)
         except Exception as exc:
             state.record_error("post_reply", exc)
             log.warning("could not post reply for @%s: %s", manifest.handle, exc)
