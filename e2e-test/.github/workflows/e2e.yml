@@ -199,8 +199,7 @@ jobs:
           mkdir -p artifacts
 
           uv run pyats run job "$JOB_FILE" \
-            --html-logs artifacts \
-            || true  # Don't fail the step on test failures
+            --html-logs artifacts
 
       - name: Collect container logs
         if: always()

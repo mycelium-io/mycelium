@@ -54,7 +54,7 @@ class _DistributedBase(aetest.Testcase):
             self.skipped("Matrix not reachable (required for distributed tests)")
 
     @aetest.test
-    def run_distributed_scenario(self, steps, api, room_name, owned_rooms, matrix_url, matrix_config, timeouts=None):
+    def run_distributed_scenario(self, steps, api, room_name, owned_rooms, matrix_url=None, matrix_config=None, timeouts=None):
         t = timeouts or {}
         timeout = t.get("negotiation_wait", 600)
         suffix = uuid.uuid4().hex[:8]
@@ -79,27 +79,30 @@ class _DistributedBase(aetest.Testcase):
             if st not in (200, 201):
                 step.failed(f"Session spawn failed: status={st}")
 
-        with steps.start("Send Matrix trigger message") as step:
-            room_id = matrix_config.get("test_room_id")
-            if not room_id:
-                step.failed("No Matrix room ID configured")
-            trigger = (
-                f"@all Please join the negotiation on '{self.scenario_topic}' "
-                f"in room {test_room}. Use `mycelium session join --room {test_room}`."
-            )
-            token = os.environ.get("MATRIX_TOKEN_AGENT_ALPHA", "")
-            if not token:
-                step.failed("MATRIX_TOKEN_AGENT_ALPHA not set — cannot send trigger")
-            client = MatrixClient(homeserver=matrix_url, access_token=token)
-            try:
-                asyncio.get_event_loop().run_until_complete(
-                    client.send_message(room_id, trigger)
+        if self.local_only:
+            log.info("local_only=True — skipping Matrix trigger (agents are co-located)")
+        else:
+            with steps.start("Send Matrix trigger message") as step:
+                room_id = matrix_config.get("test_room_id")
+                if not room_id:
+                    step.failed("No Matrix room ID configured")
+                trigger = (
+                    f"@all Please join the negotiation on '{self.scenario_topic}' "
+                    f"in room {test_room}. Use `mycelium session join --room {test_room}`."
                 )
-            except Exception as exc:
-                step.failed(f"Failed to send Matrix trigger: {exc}")
-            finally:
-                asyncio.get_event_loop().run_until_complete(client.close())
-            log.info("Matrix trigger sent to %s: %s", room_id, trigger[:80])
+                token = os.environ.get("MATRIX_TOKEN_AGENT_ALPHA", "")
+                if not token:
+                    step.failed("MATRIX_TOKEN_AGENT_ALPHA not set — cannot send trigger")
+                client = MatrixClient(homeserver=matrix_url, access_token=token)
+                try:
+                    asyncio.get_event_loop().run_until_complete(
+                        client.send_message(room_id, trigger)
+                    )
+                except Exception as exc:
+                    step.failed(f"Failed to send Matrix trigger: {exc}")
+                finally:
+                    asyncio.get_event_loop().run_until_complete(client.close())
+                log.info("Matrix trigger sent to %s: %s", room_id, trigger[:80])
 
         with steps.start(f"Wait for consensus (timeout={timeout}s)") as step:
             result = api.wait_for_consensus(test_room, timeout=timeout)
