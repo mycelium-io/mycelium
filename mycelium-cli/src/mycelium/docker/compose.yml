@@ -83,8 +83,8 @@ services:
   #
   # Next.js frontend for browsing rooms, sessions, memory, and live negotiation.
   # Opt-in via `mycelium up --ui` (or `--profile ui` directly). The browser
-  # reads the backend at the URL baked into the image at build time —
-  # http://localhost:<backend_port> for the standard local install.
+  # only ever talks to its own origin (port MYCELIUM_UI_PORT) — the Next.js
+  # server proxies /api/* to the backend internally over the compose network.
 
   mycelium-frontend:
     build:
@@ -98,6 +98,8 @@ services:
     env_file:
       - path: ../.env
         required: false
+    environment:
+      MYCELIUM_INTERNAL_API_URL: http://mycelium-backend:8000
     depends_on:
       mycelium-backend:
         condition: service_healthy

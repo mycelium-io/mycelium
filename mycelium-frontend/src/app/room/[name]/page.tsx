@@ -5,7 +5,7 @@
 
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { fetchRoom } from "@/lib/api";
+import { fetchRoom, logFetchError } from "@/lib/api";
 import { AgentsPanel } from "@/components/agents-panel";
 import { EventStream } from "@/components/event-stream";
 import { CollapsibleRail } from "@/components/collapsible-rail";
@@ -34,7 +34,7 @@ export default function RoomPage() {
   useEffect(() => {
     let cancelled = false;
     const load = () =>
-      fetchRoom(roomName).then((r: Room) => { if (!cancelled) setRoom(r); }).catch(() => {});
+      fetchRoom(roomName).then((r: Room) => { if (!cancelled) setRoom(r); }).catch(logFetchError("fetchRoom"));
     load();
     const t = setInterval(load, 8000);
     return () => { cancelled = true; clearInterval(t); };

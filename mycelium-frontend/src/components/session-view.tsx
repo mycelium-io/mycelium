@@ -5,7 +5,7 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from "react-resizable-panels";
-import { fetchMessages, getSSEUrl } from "@/lib/api";
+import { fetchMessages, getSSEUrl, logFetchError } from "@/lib/api";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -211,7 +211,7 @@ function useSessionMessages(sessionRoom: string) {
       const arr = Array.isArray(data) ? data : (data as { messages?: RawMessage[] })?.messages ?? [];
       // API returns newest-first; reverse to chronological.
       setMessages([...arr].reverse());
-    }).catch(() => {});
+    }).catch(logFetchError("fetchMessages (session initial)"));
 
     const url = getSSEUrl(sessionRoom);
     let es: EventSource | null = null;
@@ -231,7 +231,7 @@ function useSessionMessages(sessionRoom: string) {
         if (cancelled) return;
         const arr = Array.isArray(data) ? data : (data as { messages?: RawMessage[] })?.messages ?? [];
         setMessages([...arr].reverse());
-      }).catch(() => {});
+      }).catch(logFetchError("fetchMessages (session poll)"));
     }, 5000);
 
     return () => { cancelled = true; es?.close(); clearInterval(refetch); };

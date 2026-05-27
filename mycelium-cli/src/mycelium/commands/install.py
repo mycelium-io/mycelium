@@ -306,6 +306,53 @@ def _remove_env_var(env_path: Path, key: str) -> None:
 # ── Docker compose ────────────────────────────────────────────────────────────
 
 
+def _refresh_compose_templates(*, backup: bool = True) -> list[Path]:
+    """Overwrite ``~/.mycelium/docker/`` with the templates bundled in the
+    currently-installed wheel.
+
+    Refreshes ``compose.yml`` and ``initdb/*``. When *backup* is True (the
+    default), the previous ``compose.yml`` is renamed to ``compose.yml.prev``
+    before overwrite — a single rolling backup that covers anyone who has
+    hand-edited the file.
+
+    The currently-running Python process loads ``importlib.resources`` from
+    its own ``site-packages``, so this should only be called from a process
+    running the NEW wheel after an upgrade. ``mycelium upgrade`` does that by
+    invoking ``mycelium _refresh-templates`` as a subprocess of the freshly-
+    installed binary.
+
+    Returns the list of paths that were (re)written.
+    """
+    import importlib.resources
+
+    refreshed: list[Path] = []
+    dest_dir = Path.home() / ".mycelium" / "docker"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    compose_dest = dest_dir / "compose.yml"
+    if backup and compose_dest.exists():
+        prev = dest_dir / "compose.yml.prev"
+        prev.write_bytes(compose_dest.read_bytes())
+    compose_ref = importlib.resources.files("mycelium.docker") / "compose.yml"
+    compose_dest.write_bytes(compose_ref.read_bytes())
+    refreshed.append(compose_dest)
+
+    # initdb/ scripts so Postgres entrypoint creates CFN databases on first
+    # volume init (compose mounts ./initdb as /docker-entrypoint-initdb.d).
+    initdb_dest = dest_dir / "initdb"
+    initdb_dest.mkdir(exist_ok=True)
+    initdb_pkg = importlib.resources.files("mycelium.docker") / "initdb"
+    for item in initdb_pkg.iterdir():
+        if item.name.startswith("_"):
+            continue
+        script_path = initdb_dest / item.name
+        script_path.write_bytes(item.read_bytes())
+        script_path.chmod(0o755)
+        refreshed.append(script_path)
+
+    return refreshed
+
+
 def _get_compose_path() -> Path:
     """
     Resolve the canonical compose file path.
@@ -338,28 +385,10 @@ def _get_compose_path() -> Path:
     except Exception:
         pass
 
-    # Fallback: extract bundled compose (relative build paths will be wrong)
-    compose_ref = importlib.resources.files("mycelium.docker") / "compose.yml"
-    dest = Path.home() / ".mycelium" / "docker" / "compose.yml"
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_bytes(compose_ref.read_bytes())
-
-    # Copy bundled initdb/ scripts so Postgres entrypoint creates CFN databases
-    # on first volume init (compose mounts ./initdb as /docker-entrypoint-initdb.d).
-    try:
-        initdb_dest = dest.parent / "initdb"
-        initdb_dest.mkdir(exist_ok=True)
-        initdb_pkg = importlib.resources.files("mycelium.docker") / "initdb"
-        for item in initdb_pkg.iterdir():
-            if item.name.startswith("_"):
-                continue
-            script_path = initdb_dest / item.name
-            script_path.write_bytes(item.read_bytes())
-            script_path.chmod(0o755)
-    except Exception:
-        pass  # non-fatal: _ensure_cfn_databases() handles it at runtime
-
-    return dest
+    # Fallback: extract bundled compose. No backup here — first-time install,
+    # nothing to preserve.
+    refreshed = _refresh_compose_templates(backup=False)
+    return refreshed[0]  # compose.yml is always first
 
 
 def _image_exists(image: str) -> bool:
@@ -1608,6 +1637,35 @@ def upgrade(
 
         typer.secho(f"  ✓ CLI updated to {latest_tag}", fg=typer.colors.GREEN)
 
+        # Refresh ~/.mycelium/docker/compose.yml + initdb/ to match the new
+        # wheel. The currently-running process still has the OLD package
+        # loaded, so we shell out to the freshly-installed binary — it'll
+        # importlib.resources from the NEW site-packages. Previous
+        # compose.yml is preserved as compose.yml.prev.
+        typer.echo("")
+        typer.echo("  Refreshing compose templates...")
+        try:
+            refresh = subprocess.run(
+                ["mycelium", "_refresh-templates"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if refresh.returncode == 0:
+                if refresh.stdout:
+                    typer.echo(refresh.stdout.rstrip())
+                typer.secho("  ✓ Compose templates refreshed", fg=typer.colors.GREEN)
+            else:
+                typer.secho(
+                    "  ⚠  Template refresh failed — run 'mycelium _refresh-templates' manually.",
+                    fg=typer.colors.YELLOW,
+                )
+                if refresh.stderr:
+                    typer.echo(f"    {refresh.stderr.strip()}")
+        except Exception as exc:
+            typer.secho(f"  ⚠  Template refresh failed: {exc}", fg=typer.colors.YELLOW)
+            typer.echo("    Run 'mycelium _refresh-templates' manually.")
+
         # Remind about containers
         typer.echo("")
         typer.echo("  Containers may also need updating.")
@@ -1615,6 +1673,26 @@ def upgrade(
 
     except typer.Exit:
         raise
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+        raise typer.Exit(1) from None
+
+
+def refresh_templates(ctx: typer.Context) -> None:
+    """Overwrite ~/.mycelium/docker/ templates with the bundled versions.
+
+    Hidden subcommand — invoked by ``mycelium upgrade`` after the new wheel
+    is installed, so the bundled compose.yml + initdb/ scripts on disk match
+    the running CLI. The previous compose.yml is preserved as compose.yml.prev.
+
+    Safe to call manually if the upgrade hook failed (e.g., subprocess
+    timeout) or if you want to revert to the bundled compose.yml.
+    """
+    try:
+        refreshed = _refresh_compose_templates()
+        for path in refreshed:
+            typer.echo(f"  ✓ {path}")
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)

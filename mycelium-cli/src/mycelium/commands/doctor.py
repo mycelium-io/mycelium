@@ -80,6 +80,66 @@ def _check_config_files() -> CheckResult:
     )
 
 
+def _check_mycelium_dir_ownership() -> CheckResult:
+    """Surface files under ``~/.mycelium/`` not owned by the current user.
+
+    Root-owned files in here are a common cloud-install symptom (sudo
+    install + non-sudo agent add, or an openclaw gateway running as root
+    bind-mounting the user's home into a container). They lead to opaque
+    ``PermissionError`` failures in later commands. Detect early and point
+    at the single ``chown`` that fixes it.
+    """
+    import os
+
+    if os.name == "nt":  # Windows has no uid
+        return CheckResult(
+            name="~/.mycelium ownership",
+            status="ok",
+            message="not applicable on this platform",
+        )
+
+    mycelium_dir = Path.home() / ".mycelium"
+    if not mycelium_dir.exists():
+        return CheckResult(
+            name="~/.mycelium ownership",
+            status="ok",
+            message="directory does not exist yet",
+        )
+
+    uid = os.getuid()
+    foreign: list[str] = []
+    # Cap the walk — a pathological room shouldn't make doctor hang.
+    seen = 0
+    for path in mycelium_dir.rglob("*"):
+        seen += 1
+        if seen > 5000:
+            break
+        try:
+            if path.stat().st_uid != uid:
+                # Show paths relative to ~ for readable output.
+                foreign.append(str(path.relative_to(Path.home())))
+        except OSError:
+            continue
+        if len(foreign) >= 5:
+            break
+
+    if not foreign:
+        return CheckResult(
+            name="~/.mycelium ownership",
+            status="ok",
+            message="all files owned by current user",
+        )
+
+    details = [f"~/{p}" for p in foreign]
+    details.append("Fix with: sudo chown -R $USER ~/.mycelium")
+    return CheckResult(
+        name="~/.mycelium ownership",
+        status="error",
+        message=f"{len(foreign)}+ file(s) owned by another user — agent/memory writes will fail",
+        details=details,
+    )
+
+
 def _check_llm_connectivity() -> CheckResult:
     """Probe the backend's LLM with a real ``litellm.completion(max_tokens=1)`` call.
 
@@ -1413,6 +1473,7 @@ def doctor(
         # .env port vs Docker port).
         config_checks: list[CheckResult] = [
             _check_config_files(),
+            _check_mycelium_dir_ownership(),
             _check_config_file_drift(local_backend=local),
         ]
         if local:
