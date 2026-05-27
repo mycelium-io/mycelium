@@ -249,6 +249,20 @@ class CursorIntegration(Integration):
         # adapter status (shared with claude_code). Returning ``ok=True``
         # here lets ``mycelium adapter status`` list cursor as registered
         # without a misleading red ✗.
+        #
+        # Why no pre-flight auth check: the daemon runs without a login
+        # shell, and ``cursor-agent``'s login flow is interactive only
+        # (``cursor-agent login`` opens a browser tab). Probing here would
+        # either spawn an LLM call (cost) or rely on parsing internal cache
+        # paths that the cursor team is free to change between releases.
+        # Same posture as claude_code (which never pre-flight-checks
+        # Claude's auth either). Auth failures are detected on the first
+        # ``@handle`` dispatch — :func:`_detect_auth_required` in
+        # ``cursor/spawn.py`` parses stderr and surfaces a friendlier
+        # ``daemon error`` reply plus a ``log.warning`` daemon-log line
+        # pointing at ``cursor-agent login``. The detail line below
+        # documents the prerequisite so the operator sees it before they
+        # even hit a failure.
         import shutil
 
         details: list[str] = []
@@ -256,6 +270,11 @@ class CursorIntegration(Integration):
         details.append(
             f"  {'✓' if binary_ok else '✗'} cursor-agent on PATH "
             f"(install via https://cursor.com/cli)"
+        )
+        details.append(
+            "  ℹ login prerequisite: run `cursor-agent login` once interactively "
+            "under the user the cc-daemon runs as (no pre-flight check; first "
+            "@handle dispatch surfaces the auth error if it's missing)"
         )
         details.append(
             "  ℹ workspace assets drop at `mycelium agent create --adapter cursor`"
