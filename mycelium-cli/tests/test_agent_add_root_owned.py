@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2026 Julia Valenti
+# Copyright 2026 Mycelium Contributors
 
 """``mycelium agent add`` bails with chown guidance when ~/.mycelium is
 root-owned, instead of raising a raw ``PermissionError`` halfway through.
