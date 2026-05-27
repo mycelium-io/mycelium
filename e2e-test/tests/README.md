@@ -100,15 +100,17 @@ These tests simulate multi-agent negotiations using CLI commands (no actual Open
 |------|-------|-------------|
 | `test_22_reindex` | CLI | Re-indexes room memories via `mycelium memory reindex`. |
 
-### Section 30-32: Matrix E2E (Local Agents)
+### Section 30-32: Local-real OpenClaw E2E (oclw4 only)
 
-True end-to-end tests using OpenClaw agents running on the local machine (oclw4). Test observer sends trigger messages to `#agents:local`, agents respond and coordinate through Mycelium.
+True end-to-end tests using real OpenClaw agents running on the local machine (oclw4) — promoted from the prior stub-agent variants. The test observer sends trigger messages to `#agents:local`; agents are dispatched by the mycelium-room channel plugin into openclaw's runtime and respond via `mycelium negotiate` from within the agent's LLM loop.
+
+These tests share every helper with the 40-series (`trigger_distributed_negotiation`, `wait_for_negotiation_responses`, `wait_for_mycelium_consensus`, `wait_for_return_trip_message`); the only axis that differs is the agent set. They are the canary for openclaw scheduler regressions in a real-local topology and provide the "all-local" data point complementary to the cross-device 40-series.
 
 | Test | Level | Description |
 |------|-------|-------------|
-| `test_30_matrix_two_agent_negotiation` | Matrix E2E | Two local agents negotiate sprint planning via Matrix + Mycelium hooks. |
-| `test_31_matrix_three_agent_negotiation` | Matrix E2E | Three local agents negotiate release planning. |
-| `test_32_matrix_architecture_decision` | Matrix E2E | Technical architecture decision with local agents. |
+| `test_30_local_two_agent_negotiation` | Matrix E2E | `agent-alpha` + `agent-beta` (oclw4) negotiate sprint capacity allocation. Asserts trigger sent, agents responded, session created, consensus reached, consensus substantive, result returned to Matrix. |
+| `test_31_local_three_agent_negotiation` | Matrix E2E | `agent-alpha` + `agent-beta` + `agent-gamma` (oclw4) negotiate Q2 release planning. Asserts all three agents respond, consensus reached with ≥2 assignments, result returned to Matrix. |
+| `test_32_local_architecture_decision` | Matrix E2E | `agent-alpha` + `agent-beta` (oclw4) negotiate database technology selection. Asserts trigger sent, agents respond, technical discussion vocabulary appears in the unified semantic corpus, architecture decision reached, result returned to Matrix. |
 
 ### Section 40-49: Distributed E2E (Multi-Machine)
 

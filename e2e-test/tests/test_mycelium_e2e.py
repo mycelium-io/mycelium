@@ -291,16 +291,30 @@ def test_22_reindex(bundle_ctx: TestContext) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Matrix E2E Tests (true end-to-end via Element/Matrix)
+# Local-real OpenClaw E2E (test_30 / 31 / 32)
+#
+# Promoted from the stub-agent ``matrix_e2e`` variants to drive real local
+# openclaw agents (alpha/beta/gamma on oclw4) through the same trigger /
+# respond / consensus / return-trip path as the cross-device 40-series. This
+# gives us:
+#   - Protection against openclaw scheduler regressions in a real-local
+#     topology (the wedge bug that recurs as test_40→test_41 also reproduces
+#     here).
+#   - The "real-local-only" data point to disambiguate H1 vs H3 for the
+#     mycelium-room dispatch concurrency issue.
+#   - Genuine LLM-driven negotiation outcomes (no hardcoded {"action":
+#     "accept"} like the old stubs).
+#
+# The original ``matrix_e2e`` stub wrappers remain in tree (and importable)
+# for users who explicitly want zero-LLM infrastructure smoke testing of the
+# Matrix room creation + coordination engine wiring, but they are no longer
+# wired into the default pytest suite.
 # ─────────────────────────────────────────────────────────────────────────────
 
-from mycelium_e2e.matrix_e2e import (
-    matrix_two_agent_negotiation,
-    matrix_three_agent_negotiation,
-    matrix_architecture_decision,
-)
-
 from mycelium_e2e.distributed_e2e import (
+    local_two_agent_negotiation,
+    local_three_agent_negotiation,
+    local_architecture_decision,
     distributed_two_agent_negotiation,
     distributed_three_agent_negotiation,
     distributed_architecture_decision,
@@ -317,12 +331,12 @@ from mycelium_e2e.distributed_e2e import (
 @pytest.mark.slow
 @pytest.mark.convergence
 @pytest.mark.matrix_e2e
-def test_30_matrix_two_agent_negotiation(bundle_ctx: TestContext) -> None:
-    """Two OpenClaw agents negotiate through Matrix (true E2E via OpenClaw hooks)."""
+def test_30_local_two_agent_negotiation(bundle_ctx: TestContext) -> None:
+    """Two local openclaw agents (oclw4 alpha + beta) negotiate sprint planning."""
     if bundle_ctx.coordination_blocked_reason:
         pytest.skip(bundle_ctx.coordination_blocked_reason)
     n = len(bundle_ctx.results)
-    matrix_two_agent_negotiation(bundle_ctx)
+    local_two_agent_negotiation(bundle_ctx)
     _assert_new_checks(bundle_ctx, n)
 
 
@@ -330,12 +344,12 @@ def test_30_matrix_two_agent_negotiation(bundle_ctx: TestContext) -> None:
 @pytest.mark.slow
 @pytest.mark.convergence
 @pytest.mark.matrix_e2e
-def test_31_matrix_three_agent_negotiation(bundle_ctx: TestContext) -> None:
-    """Three OpenClaw agents negotiate release planning through Matrix (true E2E)."""
+def test_31_local_three_agent_negotiation(bundle_ctx: TestContext) -> None:
+    """Three local openclaw agents (oclw4 alpha+beta+gamma) negotiate release planning."""
     if bundle_ctx.coordination_blocked_reason:
         pytest.skip(bundle_ctx.coordination_blocked_reason)
     n = len(bundle_ctx.results)
-    matrix_three_agent_negotiation(bundle_ctx)
+    local_three_agent_negotiation(bundle_ctx)
     _assert_new_checks(bundle_ctx, n)
 
 
@@ -343,12 +357,12 @@ def test_31_matrix_three_agent_negotiation(bundle_ctx: TestContext) -> None:
 @pytest.mark.slow
 @pytest.mark.convergence
 @pytest.mark.matrix_e2e
-def test_32_matrix_architecture_decision(bundle_ctx: TestContext) -> None:
-    """Technical architecture decision through Matrix with OpenClaw agents (true E2E)."""
+def test_32_local_architecture_decision(bundle_ctx: TestContext) -> None:
+    """Two local openclaw agents (oclw4 alpha + beta) negotiate database architecture."""
     if bundle_ctx.coordination_blocked_reason:
         pytest.skip(bundle_ctx.coordination_blocked_reason)
     n = len(bundle_ctx.results)
-    matrix_architecture_decision(bundle_ctx)
+    local_architecture_decision(bundle_ctx)
     _assert_new_checks(bundle_ctx, n)
 
 
