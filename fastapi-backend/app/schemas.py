@@ -17,7 +17,6 @@ class RoomCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     description: str | None = Field(None, max_length=500)
     is_public: bool = True
-    trigger_config: dict | None = None
     mas_id: str | None = None
     workspace_id: str | None = None
 
@@ -28,9 +27,6 @@ class RoomRead(BaseModel):
     description: str | None = None
     is_public: bool
     created_at: datetime
-    coordination_state: str = "idle"
-    trigger_config: dict | None = None
-    last_synthesis_at: datetime | None = None
     is_persistent: bool = False
     mas_id: str | None = None
     workspace_id: str | None = None

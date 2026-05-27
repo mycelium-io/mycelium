@@ -275,71 +275,6 @@ async def test_upsert_preserves_embedding(integration_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-@pytest.mark.skipif(
-    not os.environ.get("MYCELIUM_LLM_TESTS"),
-    reason="Set MYCELIUM_LLM_TESTS=1 to enable (costs tokens)",
-)
-async def test_async_room_full_flow(integration_client: AsyncClient):
-    """End-to-end: create async room, write memories, trigger synthesis."""
-    client = integration_client
-
-    # Create room with low threshold for testing
-    resp = await client.post(
-        "/api/rooms",
-        json={
-            "name": "e2e-flow",
-            "trigger_config": {"type": "threshold", "min_contributions": 2},
-            "is_persistent": True,
-        },
-    )
-    assert resp.status_code == 201
-
-    # Agent 1 writes
-    await client.post(
-        "/api/rooms/e2e-flow/memory",
-        json={
-            "items": [
-                {
-                    "key": "agent-a/position",
-                    "value": "We should use GraphQL",
-                    "created_by": "agent-a",
-                    "embed": False,
-                }
-            ]
-        },
-    )
-
-    # Agent 2 writes — this should hit threshold (2)
-    await client.post(
-        "/api/rooms/e2e-flow/memory",
-        json={
-            "items": [
-                {
-                    "key": "agent-b/position",
-                    "value": "REST is simpler for our use case",
-                    "created_by": "agent-b",
-                    "embed": False,
-                }
-            ]
-        },
-    )
-
-    # Give async trigger a moment to fire
-    await asyncio.sleep(1)
-
-    # Check that synthesis was produced
-    resp = await client.get("/api/rooms/e2e-flow/memory", params={"prefix": "_synthesis/"})
-    _data = resp.json()
-    # Synthesis may or may not have fired (depends on timing), so just check the room is still healthy
-    resp = await client.get("/api/rooms/e2e-flow")
-    assert resp.status_code == 200
-
-    # Explicit synthesis — may return 200 (ran) or 409 (auto-trigger already running)
-    resp = await client.post("/api/rooms/e2e-flow/synthesize")
-    assert resp.status_code in (200, 409)
-
-
-@pytest.mark.asyncio
 async def test_sync_room_still_works(integration_client: AsyncClient):
     """Verify joining a namespace room spawns a sync session that enters waiting."""
     client = integration_client
@@ -364,14 +299,14 @@ async def test_sync_room_still_works(integration_client: AsyncClient):
     # The spawned coord session should be in waiting state
     assert coord["state"] == "waiting"
 
-    # The parent namespace should still be idle
+    # The parent namespace exists with no embedded coordination state
     resp = await client.get("/api/rooms/e2e-sync")
-    assert resp.json()["coordination_state"] == "idle"
+    assert resp.status_code == 200
 
 
 @pytest.mark.asyncio
 async def test_namespace_room_stays_idle_after_join(integration_client: AsyncClient):
-    """Verify namespace room stays idle — the spawned session gets the state change."""
+    """Verify the parent namespace remains an inert room after a join."""
     client = integration_client
 
     await client.post("/api/rooms", json={"name": "e2e-ns-join"})
@@ -385,9 +320,9 @@ async def test_namespace_room_stays_idle_after_join(integration_client: AsyncCli
     )
     assert resp.status_code == 201
 
-    # Namespace room should still be idle
+    # Namespace room exists; state lives on the spawned coordination_session
     resp = await client.get("/api/rooms/e2e-ns-join")
-    assert resp.json()["coordination_state"] == "idle"
+    assert resp.status_code == 200
 
 
 # ── Sync CognitiveEngine flow ────────────────────────────────────────────────
@@ -547,9 +482,9 @@ async def test_namespace_room_supports_memory_and_sessions(integration_client: A
     # Coord session should be in waiting state
     assert coord["state"] == "waiting"
 
-    # Namespace room stays idle
+    # Namespace room exists (no embedded coordination state)
     resp = await client.get("/api/rooms/e2e-ns-both")
-    assert resp.json()["coordination_state"] == "idle"
+    assert resp.status_code == 200
 
     # Memory should still be accessible on the namespace
     resp = await client.get("/api/rooms/e2e-ns-both/memory/context/background")

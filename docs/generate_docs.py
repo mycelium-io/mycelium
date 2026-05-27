@@ -83,7 +83,7 @@ GROUP_CONFIG: list[tuple[str, str, str]] = [
     ("cfn", "cfn", "cfn"),
     ("adapter", "adapter", "adapter"),
     ("config", "config", "config"),
-    ("other", "synthesize / catchup / watch", "synthesize / catchup / watch"),
+    ("other", "watch", "watch"),
 ]
 
 # Configuration namespace order.

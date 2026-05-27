@@ -22,48 +22,42 @@ T = TypeVar("T", bound="MemoryRead")
 class MemoryRead:
     """
     Attributes:
-        created_at (datetime.datetime):
-        created_by (str):
         id (UUID):
-        key (str):
         room_name (str):
-        updated_at (datetime.datetime):
+        key (str):
         value (MemoryReadValueType0 | str):
+        created_by (str):
         version (int):
+        created_at (datetime.datetime):
+        updated_at (datetime.datetime):
         content_text (None | str | Unset):
-        file_path (None | str | Unset):
-        tags (list[str] | None | Unset):
         updated_by (None | str | Unset):
+        tags (list[str] | None | Unset):
+        file_path (None | str | Unset):
     """
 
-    created_at: datetime.datetime
-    created_by: str
     id: UUID
-    key: str
     room_name: str
-    updated_at: datetime.datetime
+    key: str
     value: MemoryReadValueType0 | str
+    created_by: str
     version: int
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
     content_text: None | str | Unset = UNSET
-    file_path: None | str | Unset = UNSET
-    tags: list[str] | None | Unset = UNSET
     updated_by: None | str | Unset = UNSET
+    tags: list[str] | None | Unset = UNSET
+    file_path: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         from ..models.memory_read_value_type_0 import MemoryReadValueType0
 
-        created_at = self.created_at.isoformat()
-
-        created_by = self.created_by
-
         id = str(self.id)
-
-        key = self.key
 
         room_name = self.room_name
 
-        updated_at = self.updated_at.isoformat()
+        key = self.key
 
         value: dict[str, Any] | str
         if isinstance(self.value, MemoryReadValueType0):
@@ -71,7 +65,13 @@ class MemoryRead:
         else:
             value = self.value
 
+        created_by = self.created_by
+
         version = self.version
+
+        created_at = self.created_at.isoformat()
+
+        updated_at = self.updated_at.isoformat()
 
         content_text: None | str | Unset
         if isinstance(self.content_text, Unset):
@@ -79,11 +79,11 @@ class MemoryRead:
         else:
             content_text = self.content_text
 
-        file_path: None | str | Unset
-        if isinstance(self.file_path, Unset):
-            file_path = UNSET
+        updated_by: None | str | Unset
+        if isinstance(self.updated_by, Unset):
+            updated_by = UNSET
         else:
-            file_path = self.file_path
+            updated_by = self.updated_by
 
         tags: list[str] | None | Unset
         if isinstance(self.tags, Unset):
@@ -94,34 +94,34 @@ class MemoryRead:
         else:
             tags = self.tags
 
-        updated_by: None | str | Unset
-        if isinstance(self.updated_by, Unset):
-            updated_by = UNSET
+        file_path: None | str | Unset
+        if isinstance(self.file_path, Unset):
+            file_path = UNSET
         else:
-            updated_by = self.updated_by
+            file_path = self.file_path
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
-                "created_at": created_at,
-                "created_by": created_by,
                 "id": id,
-                "key": key,
                 "room_name": room_name,
-                "updated_at": updated_at,
+                "key": key,
                 "value": value,
+                "created_by": created_by,
                 "version": version,
+                "created_at": created_at,
+                "updated_at": updated_at,
             }
         )
         if content_text is not UNSET:
             field_dict["content_text"] = content_text
-        if file_path is not UNSET:
-            field_dict["file_path"] = file_path
-        if tags is not UNSET:
-            field_dict["tags"] = tags
         if updated_by is not UNSET:
             field_dict["updated_by"] = updated_by
+        if tags is not UNSET:
+            field_dict["tags"] = tags
+        if file_path is not UNSET:
+            field_dict["file_path"] = file_path
 
         return field_dict
 
@@ -130,17 +130,11 @@ class MemoryRead:
         from ..models.memory_read_value_type_0 import MemoryReadValueType0
 
         d = dict(src_dict)
-        created_at = isoparse(d.pop("created_at"))
-
-        created_by = d.pop("created_by")
-
         id = UUID(d.pop("id"))
-
-        key = d.pop("key")
 
         room_name = d.pop("room_name")
 
-        updated_at = isoparse(d.pop("updated_at"))
+        key = d.pop("key")
 
         def _parse_value(data: object) -> MemoryReadValueType0 | str:
             try:
@@ -155,7 +149,13 @@ class MemoryRead:
 
         value = _parse_value(d.pop("value"))
 
+        created_by = d.pop("created_by")
+
         version = d.pop("version")
+
+        created_at = isoparse(d.pop("created_at"))
+
+        updated_at = isoparse(d.pop("updated_at"))
 
         def _parse_content_text(data: object) -> None | str | Unset:
             if data is None:
@@ -166,14 +166,14 @@ class MemoryRead:
 
         content_text = _parse_content_text(d.pop("content_text", UNSET))
 
-        def _parse_file_path(data: object) -> None | str | Unset:
+        def _parse_updated_by(data: object) -> None | str | Unset:
             if data is None:
                 return data
             if isinstance(data, Unset):
                 return data
             return cast(None | str | Unset, data)
 
-        file_path = _parse_file_path(d.pop("file_path", UNSET))
+        updated_by = _parse_updated_by(d.pop("updated_by", UNSET))
 
         def _parse_tags(data: object) -> list[str] | None | Unset:
             if data is None:
@@ -192,28 +192,28 @@ class MemoryRead:
 
         tags = _parse_tags(d.pop("tags", UNSET))
 
-        def _parse_updated_by(data: object) -> None | str | Unset:
+        def _parse_file_path(data: object) -> None | str | Unset:
             if data is None:
                 return data
             if isinstance(data, Unset):
                 return data
             return cast(None | str | Unset, data)
 
-        updated_by = _parse_updated_by(d.pop("updated_by", UNSET))
+        file_path = _parse_file_path(d.pop("file_path", UNSET))
 
         memory_read = cls(
-            created_at=created_at,
-            created_by=created_by,
             id=id,
-            key=key,
             room_name=room_name,
-            updated_at=updated_at,
+            key=key,
             value=value,
+            created_by=created_by,
             version=version,
+            created_at=created_at,
+            updated_at=updated_at,
             content_text=content_text,
-            file_path=file_path,
-            tags=tags,
             updated_by=updated_by,
+            tags=tags,
+            file_path=file_path,
         )
 
         memory_read.additional_properties = d

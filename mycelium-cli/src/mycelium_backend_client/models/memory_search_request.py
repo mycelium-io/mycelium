@@ -17,22 +17,20 @@ class MemorySearchRequest:
     Attributes:
         query (str):
         limit (int | Unset):  Default: 10.
-        min_similarity (float | Unset):  Default: 0.0.
         tags_filter (list[str] | None | Unset):
+        min_similarity (float | Unset):  Default: 0.0.
     """
 
     query: str
     limit: int | Unset = 10
-    min_similarity: float | Unset = 0.0
     tags_filter: list[str] | None | Unset = UNSET
+    min_similarity: float | Unset = 0.0
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         query = self.query
 
         limit = self.limit
-
-        min_similarity = self.min_similarity
 
         tags_filter: list[str] | None | Unset
         if isinstance(self.tags_filter, Unset):
@@ -43,6 +41,8 @@ class MemorySearchRequest:
         else:
             tags_filter = self.tags_filter
 
+        min_similarity = self.min_similarity
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
@@ -52,10 +52,10 @@ class MemorySearchRequest:
         )
         if limit is not UNSET:
             field_dict["limit"] = limit
-        if min_similarity is not UNSET:
-            field_dict["min_similarity"] = min_similarity
         if tags_filter is not UNSET:
             field_dict["tags_filter"] = tags_filter
+        if min_similarity is not UNSET:
+            field_dict["min_similarity"] = min_similarity
 
         return field_dict
 
@@ -65,8 +65,6 @@ class MemorySearchRequest:
         query = d.pop("query")
 
         limit = d.pop("limit", UNSET)
-
-        min_similarity = d.pop("min_similarity", UNSET)
 
         def _parse_tags_filter(data: object) -> list[str] | None | Unset:
             if data is None:
@@ -85,11 +83,13 @@ class MemorySearchRequest:
 
         tags_filter = _parse_tags_filter(d.pop("tags_filter", UNSET))
 
+        min_similarity = d.pop("min_similarity", UNSET)
+
         memory_search_request = cls(
             query=query,
             limit=limit,
-            min_similarity=min_similarity,
             tags_filter=tags_filter,
+            min_similarity=min_similarity,
         )
 
         memory_search_request.additional_properties = d

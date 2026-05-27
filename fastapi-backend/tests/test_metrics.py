@@ -10,7 +10,6 @@ Guards the key invariants introduced by feat/simple_metrics:
     both the ``llm`` and ``cfn_llm`` namespaces
   * record_consensus tracks per-room completion
   * record_coordination_round tracks round_num histogram
-  * record_synthesis supports the ``skipped`` signal
 """
 
 from __future__ import annotations
@@ -28,7 +27,6 @@ from app.services.metrics import (
     record_consensus,
     record_coordination_round,
     record_room_identity,
-    record_synthesis,
     snapshot,
 )
 
@@ -145,37 +143,6 @@ def test_record_coordination_round_tracks_round_num() -> None:
     assert h["count"] == 1
     assert h["min"] == 3.0
     assert h["max"] == 3.0
-
-
-# ── record_synthesis skipped ─────────────────────────────────────────
-
-
-def test_record_synthesis_skipped_increments_counter() -> None:
-    """Skipped synthesis must bump runs + skipped counters, not errors."""
-    _reset_metrics()
-    record_synthesis(skipped="no_memories")
-    record_synthesis(skipped="needs_reindex")
-    record_synthesis(duration_ms=1000.0)
-
-    snap = snapshot()
-    synth = snap["counters"]["synthesis"]
-
-    assert synth["runs"] == 3
-    assert synth["skipped"] == 2
-    assert synth["skipped.no_memories"] == 1
-    assert synth["skipped.needs_reindex"] == 1
-    assert "errors" not in synth
-
-
-def test_record_synthesis_error_records_duration() -> None:
-    """Error synthesis must still appear in the duration histogram."""
-    _reset_metrics()
-    record_synthesis(duration_ms=500.0, error=True)
-
-    snap = snapshot()
-    assert snap["counters"]["synthesis"]["errors"] == 1
-    assert "synthesis.duration_ms" in snap["histograms"]
-    assert snap["histograms"]["synthesis.duration_ms"]["count"] == 1
 
 
 # ── record_room_identity ─────────────────────────────────────────────

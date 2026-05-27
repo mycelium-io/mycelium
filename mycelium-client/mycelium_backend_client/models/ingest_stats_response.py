@@ -22,27 +22,23 @@ class IngestStatsResponse:
     """
     Attributes:
         buffer_started_at (datetime.datetime):
-        by_agent (IngestStatsResponseByAgent):
-        by_mas (IngestStatsResponseByMas):
         last_event_at (datetime.datetime | None):
-        last_hour (IngestStatsAggregate):
         total (IngestStatsAggregate):
+        last_hour (IngestStatsAggregate):
+        by_mas (IngestStatsResponseByMas):
+        by_agent (IngestStatsResponseByAgent):
     """
 
     buffer_started_at: datetime.datetime
-    by_agent: IngestStatsResponseByAgent
-    by_mas: IngestStatsResponseByMas
     last_event_at: datetime.datetime | None
-    last_hour: IngestStatsAggregate
     total: IngestStatsAggregate
+    last_hour: IngestStatsAggregate
+    by_mas: IngestStatsResponseByMas
+    by_agent: IngestStatsResponseByAgent
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         buffer_started_at = self.buffer_started_at.isoformat()
-
-        by_agent = self.by_agent.to_dict()
-
-        by_mas = self.by_mas.to_dict()
 
         last_event_at: None | str
         if isinstance(self.last_event_at, datetime.datetime):
@@ -50,20 +46,24 @@ class IngestStatsResponse:
         else:
             last_event_at = self.last_event_at
 
+        total = self.total.to_dict()
+
         last_hour = self.last_hour.to_dict()
 
-        total = self.total.to_dict()
+        by_mas = self.by_mas.to_dict()
+
+        by_agent = self.by_agent.to_dict()
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
                 "buffer_started_at": buffer_started_at,
-                "by_agent": by_agent,
-                "by_mas": by_mas,
                 "last_event_at": last_event_at,
-                "last_hour": last_hour,
                 "total": total,
+                "last_hour": last_hour,
+                "by_mas": by_mas,
+                "by_agent": by_agent,
             }
         )
 
@@ -77,10 +77,6 @@ class IngestStatsResponse:
 
         d = dict(src_dict)
         buffer_started_at = isoparse(d.pop("buffer_started_at"))
-
-        by_agent = IngestStatsResponseByAgent.from_dict(d.pop("by_agent"))
-
-        by_mas = IngestStatsResponseByMas.from_dict(d.pop("by_mas"))
 
         def _parse_last_event_at(data: object) -> datetime.datetime | None:
             if data is None:
@@ -97,17 +93,21 @@ class IngestStatsResponse:
 
         last_event_at = _parse_last_event_at(d.pop("last_event_at"))
 
+        total = IngestStatsAggregate.from_dict(d.pop("total"))
+
         last_hour = IngestStatsAggregate.from_dict(d.pop("last_hour"))
 
-        total = IngestStatsAggregate.from_dict(d.pop("total"))
+        by_mas = IngestStatsResponseByMas.from_dict(d.pop("by_mas"))
+
+        by_agent = IngestStatsResponseByAgent.from_dict(d.pop("by_agent"))
 
         ingest_stats_response = cls(
             buffer_started_at=buffer_started_at,
-            by_agent=by_agent,
-            by_mas=by_mas,
             last_event_at=last_event_at,
-            last_hour=last_hour,
             total=total,
+            last_hour=last_hour,
+            by_mas=by_mas,
+            by_agent=by_agent,
         )
 
         ingest_stats_response.additional_properties = d

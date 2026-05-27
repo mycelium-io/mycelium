@@ -19,20 +19,20 @@ class ContextFile:
     room artifact. Use ``sha256`` for audit/dedupe and ``path`` for display.
 
         Attributes:
-            content (str): File contents at join time
             path (str): Absolute or repo-relative path on the sender's machine
+            content (str): File contents at join time
             sha256 (str): hex sha256 of content for audit and dedupe
     """
 
-    content: str
     path: str
+    content: str
     sha256: str
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        content = self.content
-
         path = self.path
+
+        content = self.content
 
         sha256 = self.sha256
 
@@ -40,8 +40,8 @@ class ContextFile:
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
-                "content": content,
                 "path": path,
+                "content": content,
                 "sha256": sha256,
             }
         )
@@ -51,15 +51,15 @@ class ContextFile:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        content = d.pop("content")
-
         path = d.pop("path")
+
+        content = d.pop("content")
 
         sha256 = d.pop("sha256")
 
         context_file = cls(
-            content=content,
             path=path,
+            content=content,
             sha256=sha256,
         )
 

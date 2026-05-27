@@ -13,30 +13,30 @@ T = TypeVar("T", bound="ContextFileRead")
 class ContextFileRead:
     """
     Attributes:
-        content (str):
         path (str):
         sha256 (str):
+        content (str):
     """
 
-    content: str
     path: str
     sha256: str
+    content: str
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        content = self.content
-
         path = self.path
 
         sha256 = self.sha256
+
+        content = self.content
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
-                "content": content,
                 "path": path,
                 "sha256": sha256,
+                "content": content,
             }
         )
 
@@ -45,16 +45,16 @@ class ContextFileRead:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        content = d.pop("content")
-
         path = d.pop("path")
 
         sha256 = d.pop("sha256")
 
+        content = d.pop("content")
+
         context_file_read = cls(
-            content=content,
             path=path,
             sha256=sha256,
+            content=content,
         )
 
         context_file_read.additional_properties = d

@@ -108,12 +108,6 @@ mycelium memory search "what failed"
 
 # Re-index after direct file writes (updates pgvector search index):
 # POST /rooms/design-review/reindex
-
-# Synthesize — now structure-aware, groups by category
-mycelium synthesize
-
-# Catchup — new agent arrives, gets briefed
-mycelium catchup
 ```
 
 ### Watch in real-time
@@ -138,7 +132,7 @@ git push origin main
 
 # Agent B on another machine picks up context:
 git pull
-mycelium catchup
+mycelium memory search "..."
 ```
 
 ---
@@ -161,7 +155,7 @@ mycelium session await --handle julia-agent
 
 ```bash
 mycelium room use friday-demo
-mycelium session join --handle selina-agent --message "Focus on demo UX — frontend polish, watch output, catchup display. Backend is solid enough."
+mycelium session join --handle selina-agent --message "Focus on demo UX — frontend polish, watch output, the room UI. Backend is solid enough."
 mycelium session await --handle selina-agent
 ```
 
@@ -195,7 +189,7 @@ Give this to the second Claude Code instance:
 >
 > ```bash
 > mycelium room use friday-demo
-> mycelium session join --handle selina-agent --message "Focus on demo UX — frontend polish, watch output, catchup display."
+> mycelium session join --handle selina-agent --message "Focus on demo UX — frontend polish, watch output, the room UI."
 > mycelium session await --handle selina-agent
 > ```
 >
@@ -217,9 +211,9 @@ Give this to the second Claude Code instance:
 2. **IoC three pillars realized**:
    - Cognition State Protocols → CognitiveEngine + NegMAS semantic negotiation
    - Cognition Fabric → Persistent memory + pgvector search index
-   - Cognition Engines → CognitiveEngine synthesis + guardrails
+   - Cognition Engines → consensus compilation into the room's shared plan
 
-4. **The ratchet effect**: Show `mycelium catchup`. A new agent arrives and instantly knows everything the swarm learned. Intelligence compounds across sessions. Synthesis is structure-aware — groups memories by category (work, decisions, status, context) for better briefings.
+4. **The ratchet effect**: A new agent arrives in a room and reads `.mycelium/rooms/{room}/` to instantly inherit decisions, failures, and the open plan. Intelligence compounds across sessions instead of resetting.
 
 5. **Negative results matter**: Show `mycelium memory decisions`. Agents log what didn't work (and why) so others don't repeat dead ends. The structured category convention (`decisions/no-qdrant`) makes failures as discoverable as successes.
 

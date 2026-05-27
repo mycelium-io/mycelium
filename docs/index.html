@@ -135,8 +135,8 @@
       <h2>The Ratchet Effect</h2>
       <p>
         When agents log decisions, failures, and findings to a shared room, any agent that joins
-        later can run <code>mycelium catchup</code> and instantly know everything the swarm learned.
-        Intelligence doesn't reset — it compounds.
+        later can read <code>.mycelium/rooms/{room}/</code> and the room's shared plan to instantly
+        inherit what the swarm learned. Intelligence doesn't reset — it compounds.
       </p>
       <p>
         Negative results matter too. An agent that logs <code>failed/sqlite-testing: can't handle
@@ -205,10 +205,7 @@
 
 <span class="comment"># Browse the namespace</span>
 <span class="cmd">mycelium memory ls</span>
-<span class="cmd">mycelium memory ls</span> decisions/
-
-<span class="comment"># Synthesize everything in the room</span>
-<span class="cmd">mycelium synthesize</span></code></pre>
+<span class="cmd">mycelium memory ls</span> decisions/</code></pre>
       <p>Now try a session — two agents negotiating a plan:</p>
       <pre><code><span class="comment"># Terminal 1 — agent julia</span>
 <span class="cmd">mycelium room create</span> sprint-plan
@@ -242,28 +239,6 @@
           ↑         ↓
       (join window fires)</code></pre>
       <p>Once <code>complete</code>, the consensus is compiled into the room&#x27;s shared plan (<code>plan/tasks.md</code>) — a <code>- [ ]</code> checklist the team works from. The arc is <code>join → negotiate → plan → work</code>; the room and its plan outlive the session.</p>
-      <h2 id="rooms-triggers">Triggers</h2>
-      <p>Async rooms synthesize when a trigger fires:</p>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Trigger</th>
-              <th>Fires when</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><code>threshold:N</code></td>
-              <td>N memories have been written to the room</td>
-            </tr>
-            <tr>
-              <td><code>manual</code></td>
-              <td>You call <code>mycelium synthesize</code> explicitly</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
     </section>
 
     <hr class="divider">
@@ -388,11 +363,6 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
       <pre><code><span class="cmd">mycelium memory search</span> <span class="str">&quot;what database decisions were made&quot;</span>
 <span class="cmd">mycelium memory search</span> <span class="str">&quot;what failed and why&quot;</span>
 <span class="cmd">mycelium memory search</span> <span class="str">&quot;what is the current status&quot;</span></code></pre>
-      <h2 id="memory-catchup">Catchup</h2>
-      <p>When a new agent joins a room that&#x27;s been active, it can instantly get briefed on everything the swarm learned:</p>
-      <pre><code><span class="comment"># New agent arrives, gets the full context</span>
-<span class="cmd">mycelium catchup</span></code></pre>
-      <p>CognitiveEngine synthesizes the room&#x27;s memory into a structured briefing: decisions made, work in progress, blockers, and what failed.</p>
     </section>
 
     <hr class="divider">
@@ -400,7 +370,7 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
     <section class="doc-section" id="plan">
       <h1>Plan</h1>
       <p>A room&#x27;s <strong>plan</strong> is the place to write down what the room is for and what&#x27;s left to do. It lives in <code>.mycelium/rooms/{room}/plan/</code> as a small set of markdown files, plus the <code>- [ ]</code> / <code>- [x]</code> checklist lines inside them.</p>
-      <p>Plan content is surfaced to every agent in the room — through the synthesis context (async path) and every coordination tick (sync path) — so agents weigh their behaviour against work that&#x27;s already committed.</p>
+      <p>Plan content is surfaced to every agent in the room — on every coordination tick (sync path) and in every agent-context briefing (async path) — so agents weigh their behaviour against work that&#x27;s already committed.</p>
       <p>You can write the plan by hand (<code>plan set</code>, <code>plan task add</code>), but it also fills itself: when a <a href="#sessions">negotiation session</a> reaches consensus, Mycelium compiles the agreement into <code>plan/tasks.md</code> automatically — a <code>- [ ]</code> checklist the whole team then executes against. A re-negotiation updates that same plan, preserving tasks already completed. The arc is <strong>join → negotiate → plan → work</strong>.</p>
       <h2 id="plan-anatomy">Anatomy</h2>
       <pre><code>.mycelium/rooms/{room}/plan/
@@ -429,7 +399,7 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
 <span class="cmd">mycelium plan task</span> undo              # interactive multi-select over done tasks</code></pre>
       <p>Task IDs are <code>&lt;slug&gt;:&lt;line&gt;</code> and stable as long as the file isn&#x27;t reflowed.</p>
       <h2 id="plan-how-agents-see-it">How agents see it</h2>
-      <p>Plan files share the same memory-style markdown-with-frontmatter convention, so they show up in synthesis grouped under <strong>Plan &amp; Open Tasks</strong> alongside <code>work/</code>, <code>decisions/</code>, etc.</p>
+      <p>Plan files share the same memory-style markdown-with-frontmatter convention, so they live alongside <code>work/</code>, <code>decisions/</code>, etc. and are readable to anyone opening the room directory.</p>
       <p>During a live coordination tick, the open task list is also rendered into every agent&#x27;s prompt under a dedicated <strong>Open tasks</strong> header — both CLI agents (raw payload field <code>plan_open_tasks</code>) and OpenClaw agents (rendered into the dispatched instruction string).</p>
     </section>
 
@@ -567,13 +537,6 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
         </table>
       </div>
       <p>The round watchdog also extends on each agent&#x27;s first reply per round, so a slow agent doesn&#x27;t stall the round for everyone — only sustained silence (no replies for the full timeout window) ends the round prematurely.</p>
-      <h2 id="cognitive-engine-synthesis">Synthesis</h2>
-      <p>When triggered, CE synthesizes all memories in the room using an LLM. The output is a structured summary readable by any agent.</p>
-      <pre><code><span class="comment"># Trigger synthesis manually</span>
-<span class="cmd">mycelium synthesize</span>
-
-<span class="comment"># Or let the threshold trigger do it automatically</span>
-<span class="cmd">mycelium room create</span> my-project <span class="flag">--trigger</span> threshold:5</code></pre>
     </section>
 
     <hr class="divider">
@@ -655,23 +618,7 @@ procedures/  — Reusable how-to steps (do this again later)</code></pre>
 <span class="cmd">mycelium memory work</span>       # What&#x27;s been built
 <span class="cmd">mycelium memory decisions</span>  # Why things are the way they are
 <span class="cmd">mycelium memory procedures</span> # How to do things again</code></pre>
-      <h3 id="structured-memory-4-catch-up-after-a-break">4. Catch up after a break</h3>
-      <pre><code><span class="cmd">mycelium catchup</span></code></pre>
-      <p>If synthesis has run, you&#x27;ll get a structured briefing:</p>
-      <pre><code>project-x  12 memories  2 contributors
-
-Latest Synthesis
-  _synthesis/20260318T030000Z  2026-03-18 03:00
-
-<span class="comment">  ## What&#x27;s Built</span>
-  API server with 12 endpoints, PostgreSQL with 3 tables...
-
-<span class="comment">  ## Current Status</span>
-  API passing all tests. Deploy blocked on DNS...
-
-<span class="comment">  ## Key Decisions</span>
-  FastAPI for async + types. JWT auth with 1hr expiry...</code></pre>
-      <h3 id="structured-memory-5-update-status-as-things-change">5. Update status as things change</h3>
+      <h3 id="structured-memory-4-update-status-as-things-change">4. Update status as things change</h3>
       <pre><code><span class="comment"># memory set always upserts — just set the new value</span>
 <span class="cmd">mycelium memory set</span> status/deploy <span class="str">&quot;ACTIVE — deployed to vps.example.com&quot;</span></code></pre>
       <h2 id="structured-memory-type-safety">Type Safety</h2>
@@ -687,16 +634,6 @@ Latest Synthesis
         <li><code>custom/anything</code> — passes through, no slug check</li>
         <li><code>research/pgvector-perf</code> — passes through</li>
       </ul>
-      <h2 id="structured-memory-synthesis-awareness">Synthesis Awareness</h2>
-      <p>When you trigger synthesis (<code>mycelium room synthesize</code>), the engine groups memories by category prefix. This produces structured output:</p>
-      <ul>
-        <li><strong>What&#x27;s Built</strong> — from <code>work/*</code> memories</li>
-        <li><strong>Current Status</strong> — from <code>status/*</code> memories</li>
-        <li><strong>Key Decisions</strong> — from <code>decisions/*</code> memories</li>
-        <li><strong>Context</strong> — from <code>context/*</code> memories</li>
-        <li><strong>Reusable Procedures</strong> — from <code>procedures/*</code> memories</li>
-      </ul>
-      <p>Memories without a known category prefix are grouped under &quot;Other&quot;.</p>
     </section>
 
     <hr class="divider">

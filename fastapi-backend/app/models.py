@@ -91,23 +91,6 @@ class Room(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    # Coordination state for async-room synthesis: idle | synthesizing.
-    # Session state lives on coordination_sessions.state; this column applies
-    # to async rooms only.
-    coordination_state: Mapped[str] = mapped_column(
-        VARCHAR(20), nullable=False, server_default="idle"
-    )
-    # Trigger config for async CognitiveEngine activation
-    # e.g. {"type": "threshold", "min_contributions": 5}
-    # or   {"type": "schedule", "cron": "0 */6 * * *"}
-    # or   {"type": "explicit"}
-    trigger_config: Mapped[dict | None] = mapped_column(
-        JSONB().with_variant(JSON(), "sqlite"), nullable=True
-    )
-    # Last time CognitiveEngine ran async synthesis
-    last_synthesis_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
     # Whether room persists after coordination completes
     is_persistent: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)
     # Namespace identifier (defaults to room name)

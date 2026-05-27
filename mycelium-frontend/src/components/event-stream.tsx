@@ -104,9 +104,6 @@ function parseEvent(msg: Record<string, unknown>): Event {
       content = `${key} v${version} by ${by}`;
       break;
     }
-    case "synthesis_complete":
-      content = `→ ${raw.synthesis_key || "?"}`;
-      break;
     default:
       content = (msg.content as string) || JSON.stringify(msg).slice(0, 100);
   }
@@ -133,7 +130,6 @@ const typeStyles: Record<string, { tone: "accent" | "ok" | "warn" | "muted" | "i
   coordination_tick:      { tone: "muted",  label: "TICK" },
   coordination_consensus: { tone: "ok",     label: "CONSENSUS" },
   memory_changed:         { tone: "warn",   label: "MEMORY" },
-  synthesis_complete:     { tone: "ok",     label: "SYNTHESIS" },
 };
 const defaultStyle = { tone: "muted" as const, label: "MSG" };
 

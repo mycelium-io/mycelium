@@ -4,9 +4,9 @@ A room's **plan** is the place to write down what the room is for and what's
 left to do. It lives in `.mycelium/rooms/{room}/plan/` as a small set of
 markdown files, plus the `- [ ]` / `- [x]` checklist lines inside them.
 
-Plan content is surfaced to every agent in the room — through the synthesis
-context (async path) and every coordination tick (sync path) — so agents
-weigh their behaviour against work that's already committed.
+Plan content is surfaced to every agent in the room — on every coordination
+tick (sync path) and in every agent-context briefing (async path) — so
+agents weigh their behaviour against work that's already committed.
 
 You can write the plan by hand (`plan set`, `plan task add`), but it also
 fills itself: when a [negotiation session](#sessions) reaches consensus,
@@ -57,8 +57,8 @@ Task IDs are `<slug>:<line>` and stable as long as the file isn't reflowed.
 ## How agents see it
 
 Plan files share the same memory-style markdown-with-frontmatter convention,
-so they show up in synthesis grouped under **Plan & Open Tasks** alongside
-`work/`, `decisions/`, etc.
+so they live alongside `work/`, `decisions/`, etc. and are readable to anyone
+opening the room directory.
 
 During a live coordination tick, the open task list is also rendered into
 every agent's prompt under a dedicated **Open tasks** header — both CLI

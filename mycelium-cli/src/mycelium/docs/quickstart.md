@@ -56,9 +56,6 @@ mycelium memory search "what database decisions were made"
 # Browse the namespace
 mycelium memory ls
 mycelium memory ls decisions/
-
-# Synthesize everything in the room
-mycelium synthesize
 ```
 
 Now try a session — two agents negotiating a plan:

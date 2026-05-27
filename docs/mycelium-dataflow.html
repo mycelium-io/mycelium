@@ -658,7 +658,7 @@
       <div class="sec-detail blue">
         <span class="hi-b">Pillar 1:</span> <span>SemanticNegotiationPipeline + NegMAS SAO</span>
         <span style="margin-top:4px;" class="hi-b">Pillar 2:</span> <span>Persistent memory (.mycelium/) + pgvector search index</span>
-        <span style="margin-top:4px;" class="hi-b">Pillar 3:</span> <span>CognitiveEngine synthesis + catchup</span>
+        <span style="margin-top:4px;" class="hi-b">Pillar 3:</span> <span>Consensus compiled into the room's shared plan</span>
       </div>
     </div>
 
@@ -703,15 +703,15 @@
       </div>
     </div>
 
-    <!-- S7: Catchup & Synthesis -->
+    <!-- S7: Ratchet -->
     <div class="section" data-scene="7">
       <div class="sec-label purple">Pillar 3 &mdash; Shared context</div>
-      <h2 class="sec-title">Catchup</h2>
-      <p class="sec-body">When a new agent arrives, it doesn't start from zero. <code>mycelium catchup</code> shows the latest CognitiveEngine synthesis plus recent activity. The synthesis is structured: <strong>Current State, What Worked, What Failed, Open Questions, Recommended Next Actions</strong>.</p>
+      <h2 class="sec-title">The room is the briefing</h2>
+      <p class="sec-body">When a new agent arrives, it doesn't start from zero. The room directory (<code>.mycelium/rooms/{room}/</code>) <em>is</em> the briefing &mdash; <strong>decisions/</strong>, <strong>work/</strong>, <strong>failed/</strong>, <strong>status/</strong>, and the open tasks in <strong>plan/tasks.md</strong>. No separate summary step, no stale snapshot.</p>
       <p class="sec-body" style="margin-top:12px;">This pattern was proven by <strong>autoresearch@home</strong> &mdash; Ensue's distributed fork of Karpathy's autoresearch, where participants across the globe coordinated AI agents to optimize a training script. Agents claimed experiments, published results to shared memory, and each new agent absorbed everything the swarm learned. 700+ experiments ran overnight. Intelligence compounds instead of resetting.</p>
       <div class="sec-detail purple">
-        <span class="hi-p">Synthesis triggers:</span> <span>threshold, on-demand, or per-milestone</span>
-        <span style="margin-top:4px;" class="hi-p">Catchup:</span> <span>latest synthesis + recent activity stream</span>
+        <span class="hi-p">Room directory:</span> <span>categorised markdown files, browsable by any agent</span>
+        <span style="margin-top:4px;" class="hi-p">Shared plan:</span> <span>plan/tasks.md &mdash; the <code>- [ ]</code> checklist the team executes against</span>
         <span style="margin-top:4px;" class="hi-p">Precedent:</span> <span>autoresearch@home &mdash; claim/run/publish via shared memory, zero duplication</span>
       </div>
     </div>
@@ -939,26 +939,26 @@
         </div>
       </div>
 
-      <!-- SCENE 7: Catchup & Synthesis (terminal mockup) -->
+      <!-- SCENE 7: Room is the briefing (terminal mockup) -->
       <div class="scene" id="sc7">
         <div style="width:100%; display:flex; flex-direction:column; gap:10px;">
-          <div style="font-size:12px; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--muted); margin-bottom:4px;">Catchup</div>
+          <div style="font-size:12px; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--muted); margin-bottom:4px;">Room directory</div>
           <div class="term-block" style="line-height:1.8;">
-            <span class="prompt">$</span> <span class="cmd">mycelium catchup</span><br>
-            <span class="val">design-review</span> &nbsp;<span class="tdim">async room</span> &nbsp;<span class="output">47 memories</span> &nbsp;<span class="tdim">6 contributors</span><br>
+            <span class="prompt">$</span> <span class="cmd">ls .mycelium/rooms/design-review/</span><br>
+            <span class="output">decisions/ &nbsp;work/ &nbsp;failed/ &nbsp;status/ &nbsp;plan/ &nbsp;context/</span><br>
             <br>
-            <span style="color:var(--accent); font-weight:700;">Latest Synthesis</span><br>
-            <span style="color:var(--text); font-weight:600;">## Current State</span><br>
-            <span class="output">AgensGraph consolidation decided. REST chosen over GraphQL.</span><br>
-            <span style="color:var(--text); font-weight:600;">## What Worked</span><br>
-            <span class="output">pgvector for semantic search &mdash; 40ms p99 improvement.</span><br>
-            <span style="color:var(--text); font-weight:600;">## What Failed</span><br>
-            <span class="output">SQLite can't handle pgvector/JSONB for local testing.</span><br>
-            <span style="color:var(--text); font-weight:600;">## Open Questions</span><br>
-            <span class="output">Pagination standards not yet decided.</span>
+            <span class="prompt">$</span> <span class="cmd">cat plan/tasks.md</span><br>
+            <span style="color:var(--text); font-weight:600;"># Tasks</span><br>
+            <span class="output">- [x] decide DB engine &mdash; AgensGraph</span><br>
+            <span class="output">- [x] resolve N+1 on user.posts</span><br>
+            <span class="output">- [ ] design auth layer</span><br>
+            <span class="output">- [ ] frontend integration plan</span><br>
+            <br>
+            <span class="tdim"># browse decisions/, failed/, work/ for the rest &mdash; no separate</span><br>
+            <span class="tdim"># summary step, no stale snapshot.</span>
           </div>
           <div style="padding:8px 12px; background:rgba(192,132,252,0.05); border:1px solid rgba(192,132,252,0.2); border-radius:8px; font-size:12px; color:var(--purple); text-align:center; font-family:'SF Mono',monospace;">
-            new agent arrives &#8594; absorbs swarm knowledge &#8594; zero context loss
+            new agent reads the room &#8594; absorbs swarm knowledge &#8594; zero context loss
           </div>
         </div>
       </div>

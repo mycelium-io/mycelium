@@ -7,28 +7,44 @@ import httpx
 from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.http_validation_error import HTTPValidationError
-from ...types import Response
+from ...models.task_out import TaskOut
+from ...models.task_toggle import TaskToggle
+from ...types import UNSET, Response, Unset
 
 
 def _get_kwargs(
     room_name: str,
+    task_id: str,
+    *,
+    body: None | TaskToggle | Unset = UNSET,
 ) -> dict[str, Any]:
+    headers: dict[str, Any] = {}
 
     _kwargs: dict[str, Any] = {
         "method": "post",
-        "url": "/api/rooms/{room_name}/synthesize".format(
+        "url": "/api/rooms/{room_name}/plan/tasks/{task_id}/toggle".format(
             room_name=quote(str(room_name), safe=""),
+            task_id=quote(str(task_id), safe=""),
         ),
     }
 
+    if isinstance(body, TaskToggle):
+        _kwargs["json"] = body.to_dict()
+    else:
+        _kwargs["json"] = body
+
+    headers["Content-Type"] = "application/json"
+
+    _kwargs["headers"] = headers
     return _kwargs
 
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Any | HTTPValidationError | None:
+) -> HTTPValidationError | TaskOut | None:
     if response.status_code == 200:
-        response_200 = response.json()
+        response_200 = TaskOut.from_dict(response.json())
+
         return response_200
 
     if response.status_code == 422:
@@ -44,7 +60,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[Any | HTTPValidationError]:
+) -> Response[HTTPValidationError | TaskOut]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -55,26 +71,30 @@ def _build_response(
 
 def sync_detailed(
     room_name: str,
+    task_id: str,
     *,
     client: AuthenticatedClient | Client,
-) -> Response[Any | HTTPValidationError]:
-    """Synthesize Room
-
-     Trigger CognitiveEngine async synthesis for a room.
+    body: None | TaskToggle | Unset = UNSET,
+) -> Response[HTTPValidationError | TaskOut]:
+    """Toggle Task
 
     Args:
         room_name (str):
+        task_id (str):
+        body (None | TaskToggle | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | HTTPValidationError]
+        Response[HTTPValidationError | TaskOut]
     """
 
     kwargs = _get_kwargs(
         room_name=room_name,
+        task_id=task_id,
+        body=body,
     )
 
     response = client.get_httpx_client().request(
@@ -86,52 +106,60 @@ def sync_detailed(
 
 def sync(
     room_name: str,
+    task_id: str,
     *,
     client: AuthenticatedClient | Client,
-) -> Any | HTTPValidationError | None:
-    """Synthesize Room
-
-     Trigger CognitiveEngine async synthesis for a room.
+    body: None | TaskToggle | Unset = UNSET,
+) -> HTTPValidationError | TaskOut | None:
+    """Toggle Task
 
     Args:
         room_name (str):
+        task_id (str):
+        body (None | TaskToggle | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | HTTPValidationError
+        HTTPValidationError | TaskOut
     """
 
     return sync_detailed(
         room_name=room_name,
+        task_id=task_id,
         client=client,
+        body=body,
     ).parsed
 
 
 async def asyncio_detailed(
     room_name: str,
+    task_id: str,
     *,
     client: AuthenticatedClient | Client,
-) -> Response[Any | HTTPValidationError]:
-    """Synthesize Room
-
-     Trigger CognitiveEngine async synthesis for a room.
+    body: None | TaskToggle | Unset = UNSET,
+) -> Response[HTTPValidationError | TaskOut]:
+    """Toggle Task
 
     Args:
         room_name (str):
+        task_id (str):
+        body (None | TaskToggle | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | HTTPValidationError]
+        Response[HTTPValidationError | TaskOut]
     """
 
     kwargs = _get_kwargs(
         room_name=room_name,
+        task_id=task_id,
+        body=body,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -141,27 +169,31 @@ async def asyncio_detailed(
 
 async def asyncio(
     room_name: str,
+    task_id: str,
     *,
     client: AuthenticatedClient | Client,
-) -> Any | HTTPValidationError | None:
-    """Synthesize Room
-
-     Trigger CognitiveEngine async synthesis for a room.
+    body: None | TaskToggle | Unset = UNSET,
+) -> HTTPValidationError | TaskOut | None:
+    """Toggle Task
 
     Args:
         room_name (str):
+        task_id (str):
+        body (None | TaskToggle | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | HTTPValidationError
+        HTTPValidationError | TaskOut
     """
 
     return (
         await asyncio_detailed(
             room_name=room_name,
+            task_id=task_id,
             client=client,
+            body=body,
         )
     ).parsed

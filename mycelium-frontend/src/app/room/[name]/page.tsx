@@ -18,7 +18,6 @@ import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from "reac
 
 interface Room {
   name: string;
-  coordination_state: string;
   mas_id?: string | null;
   is_persistent?: boolean;
   parent_namespace?: string | null;

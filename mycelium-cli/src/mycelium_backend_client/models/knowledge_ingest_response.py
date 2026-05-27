@@ -18,23 +18,23 @@ class KnowledgeIngestResponse:
     """
     Attributes:
         cfn_response_id (str):
-        estimated_cfn_knowledge_input_tokens (int):
         ingested_at (datetime.datetime):
+        estimated_cfn_knowledge_input_tokens (int):
         cfn_message (None | str | Unset):
     """
 
     cfn_response_id: str
-    estimated_cfn_knowledge_input_tokens: int
     ingested_at: datetime.datetime
+    estimated_cfn_knowledge_input_tokens: int
     cfn_message: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         cfn_response_id = self.cfn_response_id
 
-        estimated_cfn_knowledge_input_tokens = self.estimated_cfn_knowledge_input_tokens
-
         ingested_at = self.ingested_at.isoformat()
+
+        estimated_cfn_knowledge_input_tokens = self.estimated_cfn_knowledge_input_tokens
 
         cfn_message: None | str | Unset
         if isinstance(self.cfn_message, Unset):
@@ -47,8 +47,8 @@ class KnowledgeIngestResponse:
         field_dict.update(
             {
                 "cfn_response_id": cfn_response_id,
-                "estimated_cfn_knowledge_input_tokens": estimated_cfn_knowledge_input_tokens,
                 "ingested_at": ingested_at,
+                "estimated_cfn_knowledge_input_tokens": estimated_cfn_knowledge_input_tokens,
             }
         )
         if cfn_message is not UNSET:
@@ -61,9 +61,9 @@ class KnowledgeIngestResponse:
         d = dict(src_dict)
         cfn_response_id = d.pop("cfn_response_id")
 
-        estimated_cfn_knowledge_input_tokens = d.pop("estimated_cfn_knowledge_input_tokens")
-
         ingested_at = isoparse(d.pop("ingested_at"))
+
+        estimated_cfn_knowledge_input_tokens = d.pop("estimated_cfn_knowledge_input_tokens")
 
         def _parse_cfn_message(data: object) -> None | str | Unset:
             if data is None:
@@ -76,8 +76,8 @@ class KnowledgeIngestResponse:
 
         knowledge_ingest_response = cls(
             cfn_response_id=cfn_response_id,
-            estimated_cfn_knowledge_input_tokens=estimated_cfn_knowledge_input_tokens,
             ingested_at=ingested_at,
+            estimated_cfn_knowledge_input_tokens=estimated_cfn_knowledge_input_tokens,
             cfn_message=cfn_message,
         )
 

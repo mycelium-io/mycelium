@@ -157,7 +157,7 @@ def list_rooms(
 
 
 @doc_ref(
-    usage="mycelium room create <name> [--trigger threshold:N]",
+    usage="mycelium room create <name>",
     desc="Create a new persistent coordination room.",
     group="room",
 )
@@ -166,9 +166,6 @@ def create(
     ctx: typer.Context,
     name: str | None = typer.Argument(None, help="Room name"),
     public: bool = typer.Option(True, "--public/--private"),
-    trigger: str | None = typer.Option(
-        None, "--trigger", help="Trigger config (e.g. 'threshold:5' or 'explicit')"
-    ),
 ) -> None:
     """Create a new room."""
     try:
@@ -185,24 +182,12 @@ def create(
             name = typer.prompt("Room name")
 
         from mycelium_backend_client.api.rooms import create_room_api_rooms_post as create_api
-        from mycelium_backend_client.models import RoomCreate, RoomCreateTriggerConfigType0
-
-        # Parse trigger config
-        trigger_config: RoomCreateTriggerConfigType0 | None = None
-        if trigger:
-            trigger_config = RoomCreateTriggerConfigType0()
-            if ":" in trigger:
-                ttype, tval = trigger.split(":", 1)
-                trigger_config["type"] = ttype
-                trigger_config["min_contributions"] = int(tval)
-            else:
-                trigger_config["type"] = trigger
+        from mycelium_backend_client.models import RoomCreate
 
         with _typed_client(config) as client:
             body = RoomCreate(
                 name=name,
                 is_public=public,
-                trigger_config=trigger_config,
             )
             result = create_api.sync(client=client, body=body)
             room_data = result.to_dict() if result and hasattr(result, "to_dict") else {}
@@ -228,64 +213,6 @@ def create(
                 typer.echo(f"  MAS ID:  {room_data.get('mas_id')}")
             typer.echo("")
             typer.echo(f"  Run 'mycelium room use {name}' to make it your active room")
-
-    except Exception as e:
-        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
-        print_error(e, verbose=verbose)
-
-
-@doc_ref(
-    usage="mycelium synthesize",
-    desc="Trigger CE to synthesize all memories in the active room into a structured summary.",
-    group="other",
-)
-@app.command()
-def synthesize(
-    ctx: typer.Context,
-    room_name: str | None = typer.Argument(None, help="Room to synthesize (default: active room)"),
-    room: str | None = typer.Option(
-        None, "--room", "-r", help="Room name (alternative to positional arg)"
-    ),
-) -> None:
-    """Trigger CognitiveEngine synthesis for a room."""
-    try:
-        from rich.console import Console
-
-        console = Console()
-        json_output = ctx.obj.get("json", False) if ctx.obj else False
-        config = MyceliumConfig.load()
-        name = room_name or room or _resolve_room(config)
-
-        from mycelium_backend_client.api.rooms import (
-            synthesize_room_api_rooms_room_name_synthesize_post as synth_api,
-        )
-
-        with (
-            console.status(f"[bold cyan]Synthesizing {name}...[/]", spinner="dots"),
-            _typed_client(config) as client,
-        ):
-            result = synth_api.sync_detailed(room_name=name, client=client)
-            data = (
-                result.parsed.to_dict()
-                if result.parsed and hasattr(result.parsed, "to_dict")
-                else json_module.loads(result.content)
-            )
-
-        if json_output:
-            typer.echo(json_module.dumps(data, indent=2, default=str))
-        else:
-            status = data.get("status", "unknown")
-            if status == "complete":
-                console.print(f"[bold green]Synthesis complete:[/] {data.get('key', '')}")
-                console.print(f"  Memories synthesized: {data.get('memory_count', '?')}")
-            elif status == "needs_reindex":
-                console.print("[yellow]Index out of sync with filesystem[/yellow]")
-                console.print(
-                    f"  Found {data.get('files_on_disk', '?')} files on disk but none in search index."
-                )
-                console.print(f"  Run: [cyan]mycelium reindex {room_name}[/cyan]")
-            else:
-                console.print(f"  {data.get('message', 'No new memories to synthesize')}")
 
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
@@ -483,7 +410,7 @@ def clone_room(
                 "[dim]  Reindex skipped — run 'mycelium memory reindex' when backend is available[/dim]"
             )
 
-        typer.echo(f"\nRoom '{room_name}' is now active. Run 'mycelium catchup' to get briefed.")
+        typer.echo(f"\nRoom '{room_name}' is now active.")
 
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
@@ -751,22 +678,7 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
 
         return None
 
-    # Fetch room metadata for the header
     room_meta = ""
-    try:
-        resp = httpx.get(f"{config.server.api_url}/api/rooms/{room_name}", timeout=5)
-        if resp.status_code == 200:
-            room = resp.json()
-            state = room.get("coordination_state", "idle")
-            trigger = room.get("trigger_config")
-            trigger_str = ""
-            if trigger:
-                trigger_str = f"  trigger={trigger.get('type', '?')}"
-                if trigger.get("min_contributions"):
-                    trigger_str += f":{trigger['min_contributions']}"
-            room_meta = f"[dim]state=[/]{state}{trigger_str}"
-    except Exception:
-        pass
 
     # Header
     header = Table.grid(padding=(0, 2))

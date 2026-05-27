@@ -331,7 +331,7 @@
 
       <div class="sec-detail">
         <span class="hi">What happened:</span>
-        <span>Stored under <code>failed/pgbouncer</code>. Any agent that later searches "connection pooling" will find this and know not to retry. The <code>failed/</code> namespace shows up in catchup briefings as its own section.</span>
+        <span>Stored under <code>failed/pgbouncer</code>. Any agent that later searches "connection pooling" will find this and know not to retry. The <code>failed/</code> namespace is its own section under the room directory, browsable like any other.</span>
       </div>
     </div>
 
@@ -339,14 +339,14 @@
     <div class="section" data-scene="4">
       <div class="sec-label green">Story 4 · Cross-Session</div>
       <h2 class="sec-title">Picking up where you left off</h2>
-      <p class="sec-body">Three days later, a new Claude Code session starts. The agent has no memory of the previous work. One command catches it up — no scrolling through history, no re-reading code.</p>
+      <p class="sec-body">Three days later, a new Claude Code session starts. The agent has no memory of the previous work. The room directory is the briefing — markdown files on disk, organised by category, plus the room's shared plan.</p>
 
       <div class="story-label user">User sends</div>
       <div class="story-input">Continue working on the design-review room. What's the current state?</div>
 
       <div class="sec-detail green">
         <span class="hi-g">What happened:</span>
-        <span><code>catchup</code> pulls the latest CognitiveEngine synthesis (an LLM-generated summary of everything in the room), then appends memories written since that synthesis. The agent is fully briefed in one call.</span>
+        <span>The agent reads <code>.mycelium/rooms/design-review/</code> directly: <code>decisions/</code>, <code>work/</code>, <code>failed/</code>, and the open tasks in <code>plan/tasks.md</code>. Full context, no rerunning code, no scrolling chat.</span>
       </div>
     </div>
 
@@ -380,18 +380,18 @@
       </div>
     </div>
 
-    <!-- S7: SYNTHESIS -->
+    <!-- S7: RATCHET -->
     <div class="section" data-scene="7">
-      <div class="sec-label">Story 7 · Synthesis</div>
+      <div class="sec-label">Story 7 · Ratchet</div>
       <h2 class="sec-title">The ratchet effect</h2>
-      <p class="sec-body">After enough context accumulates, CognitiveEngine synthesizes the room — decisions, failures, open questions — into a structured briefing. Every future agent that joins starts from this summary, not from zero.</p>
+      <p class="sec-body">Decisions, failures, the open plan, the prior negotiation outcomes — none of it disappears between sessions. Every future agent that joins reads the same room and inherits everything the swarm has learned.</p>
 
       <div class="story-label user">User sends</div>
-      <div class="story-input">A new agent is joining. Synthesize everything first so the briefing is fresh.</div>
+      <div class="story-input">A new agent is joining. Bring them up to speed.</div>
 
       <div class="sec-detail">
         <span class="hi">What happened:</span>
-        <span>CE sent all 23 memories to the LLM, which produced a structured summary. That summary is now the entry point for any new agent. Intelligence doesn't reset between sessions — it <strong style="color:var(--accent);">compounds</strong>.</span>
+        <span>The room directory and its compiled plan <em>are</em> the briefing — no separate summary step, no stale snapshot. Intelligence doesn't reset between sessions — it <strong style="color:var(--accent);">compounds</strong>.</span>
       </div>
     </div>
 
@@ -470,33 +470,27 @@
           </div>
           <div style="background:rgba(248,113,113,0.05); border:1px solid rgba(248,113,113,0.2); border-radius:8px; padding:12px 14px; font-size:12px; font-family:'SF Mono',monospace; color:rgba(248,113,113,0.7); line-height:1.55;">
             <span style="font-weight:700; display:block; margin-bottom:4px;">failed/ namespace</span>
-            <span style="color:var(--muted);">Surfaced as "What Failed" in every future<br><code style="background:none;border:none;padding:0;color:rgba(248,113,113,0.7);">mycelium catchup</code>. Prevents duplicate effort.</span>
+            <span style="color:var(--muted);">Browsable to every future agent that opens the room directory. Prevents duplicate effort.</span>
           </div>
         </div>
       </div>
 
-      <!-- SCENE 4: catchup -->
+      <!-- SCENE 4: cross-session -->
       <div class="scene" id="sc4">
         <div style="width:100%; display:flex; flex-direction:column; gap:10px;">
           <div class="term" style="font-size:11.5px;">
-<span class="p">$</span> <span class="c">mycelium catchup</span><br>
+<span class="p">$</span> <span class="c">ls .mycelium/rooms/design-review/</span><br>
+<span class="dim">&nbsp;&nbsp;decisions/  work/  failed/  plan/  status/  context/</span><br>
 <br>
-<span class="hi">── Synthesis (2 days ago) ──────────────</span><br>
+<span class="p">$</span> <span class="c">cat .mycelium/rooms/design-review/plan/tasks.md</span><br>
 <br>
-<span class="em">Current state</span><br>
-<span class="dim">&nbsp;&nbsp;API: REST + OpenAPI. DB: AgensGraph.</span><br>
-<span class="dim">&nbsp;&nbsp;Performance: N+1 resolved. p99 now 28ms.</span><br>
+<span class="em"># Tasks</span><br>
+<span class="dim">&nbsp;&nbsp;- [x] resolve N+1 on user.posts</span><br>
+<span class="dim">&nbsp;&nbsp;- [x] decide DB engine</span><br>
+<span class="dim">&nbsp;&nbsp;- [ ] design auth layer</span><br>
+<span class="dim">&nbsp;&nbsp;- [ ] frontend integration plan</span><br>
 <br>
-<span class="em">What worked</span><br>
-<span class="dim">&nbsp;&nbsp;select_related fixed the N+1.</span><br>
-<br>
-<span class="em">What failed</span><br>
-<span class="dim">&nbsp;&nbsp;PgBouncer — do not retry.</span><br>
-<br>
-<span class="em">Open questions</span><br>
-<span class="dim">&nbsp;&nbsp;Auth layer not designed. Frontend pending.</span><br>
-<br>
-<span class="hi">── Since synthesis (4 new) ─────────────</span><br>
+<span class="hi">── Recent activity ──────────────────────</span><br>
 <span class="dim">&nbsp;&nbsp;work/auth-spike &nbsp;&nbsp;&nbsp;&nbsp;JWT prototype started</span><br>
 <span class="dim">&nbsp;&nbsp;decisions/versioning  /v1/ prefix agreed</span>
           </div>
@@ -563,28 +557,28 @@
         </div>
       </div>
 
-      <!-- SCENE 7: synthesis -->
+      <!-- SCENE 7: ratchet -->
       <div class="scene" id="sc7">
         <div style="width:100%; display:flex; flex-direction:column; gap:10px;">
           <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-            <div style="padding:5px 10px; background:var(--card); border:1px solid var(--border); border-radius:6px; font-size:11px; font-family:'SF Mono',monospace; color:var(--muted);">work/api-layer</div>
             <div style="padding:5px 10px; background:var(--card); border:1px solid var(--border); border-radius:6px; font-size:11px; font-family:'SF Mono',monospace; color:var(--muted);">decisions/db</div>
-            <div style="padding:5px 10px; background:var(--card); border:1px solid var(--border); border-radius:6px; font-size:11px; font-family:'SF Mono',monospace; color:var(--muted);">failed/pgbouncer</div>
-            <div style="padding:5px 10px; background:rgba(248,113,113,0.08); border:1px solid rgba(248,113,113,0.2); border-radius:6px; font-size:11px; font-family:'SF Mono',monospace; color:rgba(248,113,113,0.7);">+ 20 more</div>
+            <div style="padding:5px 10px; background:var(--card); border:1px solid var(--border); border-radius:6px; font-size:11px; font-family:'SF Mono',monospace; color:var(--muted);">work/api-layer</div>
+            <div style="padding:5px 10px; background:rgba(248,113,113,0.08); border:1px solid rgba(248,113,113,0.2); border-radius:6px; font-size:11px; font-family:'SF Mono',monospace; color:rgba(248,113,113,0.7);">failed/pgbouncer</div>
+            <div style="padding:5px 10px; background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.2); border-radius:6px; font-size:11px; font-family:'SF Mono',monospace; color:var(--accent);">plan/tasks.md</div>
           </div>
           <div style="text-align:center; font-size:18px; color:var(--accent);">↓</div>
           <div style="padding:10px 16px; background:rgba(56,189,248,0.06); border:1px solid rgba(56,189,248,0.2); border-radius:8px; font-size:12px; font-family:'SF Mono',monospace; color:var(--accent); text-align:center;">
-            CognitiveEngine · <span style="color:var(--muted);">LLM synthesis</span>
+            <span style="color:var(--muted);">the room directory <em>is</em> the briefing</span>
           </div>
           <div style="text-align:center; font-size:18px; color:var(--accent);">↓</div>
           <div class="term" style="font-size:11px;">
-<span class="em">Current state</span>  <span class="dim">API + frontend complete. Auth in progress.</span><br>
+<span class="em">Built so far</span>   <span class="dim">API + frontend complete. Auth in progress.</span><br>
 <span class="em">Blocked on</span>     <span class="dim">JWT refresh token strategy not decided.</span><br>
 <span class="em">What failed</span>    <span class="dim">PgBouncer — do not retry.</span><br>
-<span class="em">Open questions</span> <span class="dim">Pagination standard TBD.</span>
+<span class="em">Open tasks</span>     <span class="dim">3 open across plan/tasks.md, plan/sprint.md.</span>
           </div>
           <div style="padding:6px 12px; background:rgba(56,189,248,0.05); border:1px solid rgba(56,189,248,0.12); border-radius:6px; font-size:11px; font-family:'SF Mono',monospace; color:var(--muted); text-align:center;">
-            new agent → <code style="background:none;border:none;padding:0;color:var(--accent);">catchup</code> → zero context loss
+            new agent reads the room → zero context loss
           </div>
         </div>
       </div>

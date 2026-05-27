@@ -12,7 +12,7 @@ Agents never communicate directly with each other.
 ## Core Concepts
 
 - **Rooms** are persistent namespaces. They hold memory that accumulates across sessions. Spawn sessions within rooms for real-time negotiation when needed.
-- **CognitiveEngine** mediates all coordination. It drives negotiation rounds and synthesizes accumulated context.
+- **CognitiveEngine** mediates all coordination. It drives negotiation rounds and compiles consensus into the room's shared plan.
 - **Memory** is filesystem-native. Each memory is a markdown file at `~/.mycelium/rooms/{room}/{key}.md` with YAML frontmatter. The database is a search index that auto-syncs via file watcher.
 
 ## Memory as Files
@@ -59,16 +59,13 @@ All memory commands use the active room. Set it with `mycelium room use <name>` 
 # Create rooms
 mycelium room create my-project
 mycelium room create sprint-plan
-mycelium room create design-review --trigger threshold:5   # with synthesis trigger
+mycelium room create design-review
 
 # Set active room
 mycelium room use my-project
 
 # List rooms
 mycelium room ls
-
-# Trigger CognitiveEngine to synthesize accumulated memories
-mycelium room synthesize
 ```
 
 ## Semantic negotiation

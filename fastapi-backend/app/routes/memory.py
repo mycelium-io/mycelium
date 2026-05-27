@@ -277,9 +277,6 @@ async def create_memories(
     for _scope, _embedded in _write_metrics:
         record_memory_write(scope=_scope, embedded=_embedded)
 
-    # Check async trigger after writes
-    asyncio.ensure_future(_check_async_trigger(room_name, len(payload.items)))
-
     # Fan in to KXP. Each written memory is a deliberate room artifact, so
     # ship it to CFN's shared-memories. Best-effort, fire-and-forget.
     from app.services.knowledge_fanin import fan_in
@@ -296,16 +293,6 @@ async def create_memories(
         )
 
     return [MemoryRead.model_validate(m) for m in results]
-
-
-async def _check_async_trigger(room_name: str, new_count: int) -> None:
-    """Check if an async room's trigger condition is met after memory writes."""
-    try:
-        from app.services.async_coordination import check_trigger
-
-        await check_trigger(room_name)
-    except Exception as e:
-        logger.debug("Async trigger check skipped: %s", e)
 
 
 @router.get("")

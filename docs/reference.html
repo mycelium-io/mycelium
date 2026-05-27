@@ -60,7 +60,7 @@
       <a href="#cli-cfn" class="nav-link sub">cfn</a>
       <a href="#cli-adapter" class="nav-link sub">adapter</a>
       <a href="#cli-config" class="nav-link sub">config</a>
-      <a href="#cli-other" class="nav-link sub">synthesize / catchup / watch</a>
+      <a href="#cli-other" class="nav-link sub">watch</a>
     </div>
     <div class="nav-section">
       <div class="nav-section-label">Configuration</div>
@@ -163,7 +163,7 @@
             <tr>
               <td>LLM</td>
               <td>litellm</td>
-              <td>synthesis, extraction, negotiation (100+ providers)</td>
+              <td>extraction, negotiation, plan compilation (100+ providers)</td>
             </tr>
             <tr>
               <td>Backend</td>
@@ -302,7 +302,7 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium room create</span> <span class="arg">&lt;name&gt;</span> [<span class="flag">--trigger</span> threshold:N]</code>
+          <code><span class="cmd">mycelium room create</span> <span class="arg">&lt;name&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Create a new persistent coordination room.</div>
       </div>
@@ -678,27 +678,13 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
         <div class="cmd-ref-body">Regenerate .env from config.toml and optionally restart containers.</div>
       </div>
 
-      <h2 id="cli-other">synthesize / catchup / watch</h2>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium catchup</span></code>
-        </div>
-        <div class="cmd-ref-body">Get a full briefing on everything in the room — reads from <code>.mycelium/rooms/</code> and the latest synthesis.</div>
-      </div>
+      <h2 id="cli-other">watch</h2>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
           <code><span class="cmd">mycelium sync</span> [<span class="flag">--no-reindex</span>]</code>
         </div>
         <div class="cmd-ref-body">Sync the active room with the backend — fetch all memories from the API and write them locally.</div>
-      </div>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium synthesize</span></code>
-        </div>
-        <div class="cmd-ref-body">Trigger CE to synthesize all memories in the active room into a structured summary.</div>
       </div>
 
       <div class="cmd-ref">
@@ -960,18 +946,7 @@ docker exec &lt;container-name&gt; openclaw status
 <span class="cmd">mycelium adapter add</span> openclaw <span class="flag">--openclaw-container</span> &lt;container-name&gt;</code></pre>
       <p>You can also set <code>OPENCLAW_CONTAINER</code> as an environment variable instead of passing <code>--openclaw-container</code> every time.</p>
       <hr class="divider">
-      <h3 id="troubleshooting-14-synthesize-returns-no-memories-but-catchup-shows-memories">14. Synthesize Returns &quot;No Memories&quot; but Catchup Shows Memories</h3>
-      <p><strong>Symptom</strong>: <code>mycelium synthesize</code> says &quot;No new memories&quot; but <code>mycelium catchup</code> shows memories exist.</p>
-      <p><strong>Cause</strong>: The filesystem and search index are out of sync. This happens when:</p>
-      <ul>
-        <li>Files were written directly to <code>.mycelium/rooms/</code> (e.g., via <code>cat &gt;</code> or git pull)</li>
-        <li>A previous API write partially failed</li>
-      </ul>
-      <p><strong>Fix</strong>: Re-index the room to sync filesystem → database:</p>
-      <pre><code><span class="cmd">mycelium reindex</span> &lt;room-name&gt;</code></pre>
-      <p>Then run <code>mycelium synthesize</code> again.</p>
-      <hr class="divider">
-      <h3 id="troubleshooting-15-agents-join-sessions-but-never-respond-expired-channel-tokens">15. Agents Join Sessions but Never Respond (Expired Channel Tokens)</h3>
+      <h3 id="troubleshooting-14-agents-join-sessions-but-never-respond-expired-channel-tokens">14. Agents Join Sessions but Never Respond (Expired Channel Tokens)</h3>
       <p><strong>Symptom</strong>: An agent appears in <code>mycelium room ls</code> as a session participant, but never responds to coordination ticks. No error in <code>mycelium logs</code>.</p>
       <p><strong>Cause</strong>: The agent&#x27;s channel access token (e.g., Matrix) has expired or been invalidated (e.g., after a server restart). The OpenClaw gateway silently drops the channel sync connection without surfacing an error to Mycelium.</p>
       <p><strong>Diagnosis</strong>:</p>
