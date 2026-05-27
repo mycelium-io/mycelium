@@ -45,6 +45,21 @@ def test_family_resolves_to_concrete_integration(family: str) -> None:
 
 
 @pytest.mark.parametrize("family", FAMILIES)
+def test_family_declares_lifecycle(family: str) -> None:
+    """Every family declares whether it cold-spawns or runs a long-lived gateway.
+
+    The daemon dispatch loop branches on this — without a declared lifecycle,
+    a new family silently becomes a long_lived_gateway (skipped by the
+    daemon) or worse, raises mid-dispatch.
+    """
+    cls = type(get_integration(family))
+    assert hasattr(cls, "lifecycle"), f"{family} missing `lifecycle` ClassVar"
+    assert cls.lifecycle in {"cold_spawn", "long_lived_gateway"}, (
+        f"{family} has invalid lifecycle: {cls.lifecycle!r}"
+    )
+
+
+@pytest.mark.parametrize("family", FAMILIES)
 def test_install_facet_is_implemented(family: str) -> None:
     """Both facets of the contract are present on every family.
 

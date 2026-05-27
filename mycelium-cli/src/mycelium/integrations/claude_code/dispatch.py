@@ -33,6 +33,7 @@ if TYPE_CHECKING:
 
 class ClaudeCodeIntegration(Integration):
     name = "claude_code"
+    lifecycle = "cold_spawn"
 
     def __init__(self, *, cwd: str | None = None) -> None:
         # cwd is collected by the command layer (it's a claude_code-only flag)

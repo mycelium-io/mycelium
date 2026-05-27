@@ -32,11 +32,24 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar, Literal
 
 if TYPE_CHECKING:
     from mycelium.config import MyceliumConfig
+    from mycelium.integrations._spawn_common import SpawnRequest, SpawnResult
     from mycelium.protocol import AgentManifest
+
+
+#: Discriminator for how this family's agents come into existence per mention.
+#:
+#: - ``cold_spawn``: the cc-daemon spawns a fresh process per mention
+#:   (``claude -p``, ``cursor-agent -p``, future Gemini/Codex/Aider). The
+#:   family overrides :meth:`Integration.spawn`.
+#: - ``long_lived_gateway``: agents live inside a separate, long-running runtime
+#:   that owns its own mention delivery (currently only ``openclaw``; future
+#:   ``hermes``). The cc-daemon ignores these manifests entirely — the gateway
+#:   is responsible for dispatch.
+LifecycleModel = Literal["cold_spawn", "long_lived_gateway"]
 
 
 @dataclass
@@ -66,6 +79,12 @@ class Integration(ABC):
     #: key. Always the underscore spelling (``claude_code``), since that is the
     #: value persisted in ``agents/<handle>`` manifests.
     name: str
+
+    #: How this family delivers mentions to its agents — drives whether the
+    #: cc-daemon dispatch loop calls :meth:`spawn` on this family or skips it.
+    #: Every subclass MUST declare a value; ``tests/test_integration_contract``
+    #: enforces this.
+    lifecycle: ClassVar[LifecycleModel]
 
     #: Follow-up ``mycelium adapter add <family> --step=<name>`` actions this
     #: family supports, mapped to a one-line description. Empty = no steps.
@@ -182,6 +201,27 @@ class Integration(ABC):
     def describe(self, manifest: AgentManifest, *, room: str) -> list[str]:
         """Lines printed after a successful add. Override per family."""
         return [f"  adapter: {manifest.adapter}"]
+
+    # ── cold-spawn dispatch (per-mention) ───────────────────────────────────
+
+    async def spawn(self, *, request: SpawnRequest) -> SpawnResult:
+        """Cold-spawn this family for one ``@handle`` mention.
+
+        Every ``lifecycle == "cold_spawn"`` family MUST override this. Long-
+        lived gateways (``openclaw``, future ``hermes``) inherit this raise —
+        the daemon dispatch loop checks ``lifecycle`` before calling and
+        never invokes ``spawn`` on a gateway family, so the raise is a
+        safety net for bugs in routing.
+
+        Why not :func:`@abstractmethod`: forcing every long-lived-gateway
+        family to declare a no-op stub buys no safety (the contract test
+        enforces override on cold_spawn families directly) and adds
+        boilerplate to every future gateway integration.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} (lifecycle={getattr(self, 'lifecycle', '?')}) "
+            "does not support cold-spawn dispatch"
+        )
 
     # ── helpers the command layer uses for confirmation copy ────────────────
 

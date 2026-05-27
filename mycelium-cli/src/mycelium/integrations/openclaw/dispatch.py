@@ -62,6 +62,7 @@ class OpenClawError(RuntimeError):
 
 class OpenClawIntegration(Integration):
     name = "openclaw"
+    lifecycle = "long_lived_gateway"
 
     def __init__(
         self,
