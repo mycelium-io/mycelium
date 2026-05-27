@@ -107,7 +107,7 @@ services:
 
   # ── Mycelium Backend ──────────────────────────────────────────────────
   mycelium-backend:
-    image: ghcr.io/mycelium-io/mycelium-backend:${MYCELIUM_IMAGE_TAG:-latest}
+    image: ${MYCELIUM_BACKEND_IMAGE:-ghcr.io/mycelium-io/mycelium-backend:${MYCELIUM_IMAGE_TAG:-latest}}
     container_name: e2e-mycelium-backend
     depends_on:
       mycelium-db:
