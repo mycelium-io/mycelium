@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Copyright 2026 Julia Valenti
+// Copyright 2026 Mycelium Contributors
 
 export function fmtNum(n: number | null | undefined): string {
   if (n == null) return "—";

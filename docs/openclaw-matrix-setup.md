@@ -303,9 +303,21 @@ Install Mycelium following the [Quick Start](../README.md#quick-start) in the re
 
 ```bash
 mycelium adapter add openclaw --step=otel
+mycelium up --metrics
 ```
 
-`--step=otel` configures the `diagnostics-otel` plugin to export telemetry to the Mycelium OTLP receiver. If the adapter was never installed, this command **installs** the plugin/hooks first, then applies the step. This does not replace the Matrix setup above.
+`--step=otel` configures the `diagnostics-otel` plugin to export telemetry to the Mycelium OTLP receiver (defaults to `http://localhost:4318`). If the adapter was never installed, this command **installs** the plugin/hooks first, then applies the step. This does not replace the Matrix setup above.
+
+`mycelium up --metrics` starts the local collector container alongside the rest of the stack — without it OpenClaw will happily push OTLP frames into a port nothing is listening on and `mycelium metrics show` will report no data. The collector's host port comes from `runtime.collector_port` (default `4318`); override it with `mycelium config set runtime.collector_port <port>` and re-run `mycelium config apply` if `4318` is taken.
+
+Verify telemetry is flowing once an agent has done something interesting:
+
+```bash
+mycelium metrics status     # collector reachable + recent ingest timestamp
+mycelium metrics show       # OpenClaw + backend rollup
+```
+
+For a multi-host deployment where each machine should forward telemetry to a central host, see the [hub-and-spoke metrics setup](index.html#hub-and-spoke-step-4-set-up-spoke-metrics).
 
 ---
 

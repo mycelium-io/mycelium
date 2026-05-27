@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2026 Julia Valenti
+# Copyright 2026 Mycelium Contributors
 
 """
 Configuration management for Mycelium CLI.
@@ -18,7 +18,7 @@ Load priority (highest to lowest):
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import toml
 from pydantic import BaseModel, Field, field_validator
@@ -578,6 +578,69 @@ class MyceliumConfig(BaseModel):
         if self.runtime.data_dir:
             return Path(self.runtime.data_dir).expanduser()
         return self.get_global_config_dir()
+
+    # ── Database URL assembly ────────────────────────────────────────────────
+    #
+    # Single source of truth for the Postgres connection URL.  Compose, the
+    # generated ``~/.mycelium/.env``, and host-side tools (alembic, doctor,
+    # migrate) all flow through this method so the URL recipe lives in
+    # exactly one place.  The pieces (password, port) come from
+    # ``config.toml``; user, hostname, dbname, and async driver are
+    # mycelium-architectural and intentionally not user-tunable.
+    #
+    # ``server.database_url`` in config.toml stays as an explicit override
+    # (e.g., pointing at an external Postgres); when set, every consumer
+    # honours it verbatim.
+
+    # Constants that describe mycelium's bundled Postgres deployment.
+    # Centralised here so they can't drift between compose, alembic, and
+    # the CLI helpers.  ClassVar keeps these out of pydantic's field set so
+    # they don't show up in config.toml dumps or model_dump() output.
+    DB_USER: ClassVar[str] = "postgres"
+    DB_NAME: ClassVar[str] = "mycelium"
+    DB_CONTAINER_HOST: ClassVar[str] = "mycelium-db"  # resolves inside the compose network
+    DB_CONTAINER_PORT: ClassVar[int] = 5432  # fixed inside the compose network
+
+    def database_url(self, *, host_side: bool = False, async_driver: bool = True) -> str:
+        """Return the canonical Postgres connection URL.
+
+        Parameters
+        ----------
+        host_side
+            ``True`` → resolve via ``localhost:<published_port>``; appropriate
+            for tools running on the host (alembic, ``mycelium doctor``,
+            ``mycelium migrate``).
+            ``False`` → resolve via ``mycelium-db:5432``; appropriate for
+            services running inside the compose network (the backend
+            container, the graph indexer, etc.).
+        async_driver
+            ``True`` → ``postgresql+asyncpg://`` (SQLAlchemy async, used by
+            the backend and alembic).
+            ``False`` → ``postgresql://`` (psycopg/plain libpq, used by the
+            graph-db URL and any non-async consumer).
+
+        If ``server.database_url`` is set in config.toml, it is returned
+        verbatim (escape hatch for external/managed Postgres).  Callers that
+        need the ``host_side`` vs container distinction lose it in that
+        case; that's intentional — if you've pointed mycelium at an
+        external DB, there is no "container" alternative.
+        """
+        override = (self.server.database_url or "").strip()
+        if override:
+            return override
+
+        if host_side:
+            host = "localhost"
+            port = self.runtime.db_port
+        else:
+            host = self.DB_CONTAINER_HOST
+            port = self.DB_CONTAINER_PORT
+
+        from urllib.parse import quote
+
+        scheme = "postgresql+asyncpg" if async_driver else "postgresql"
+        password = quote(self.runtime.db_password, safe="")
+        return f"{scheme}://{self.DB_USER}:{password}@{host}:{port}/{self.DB_NAME}"
 
     def save_to_project(self, project_dir: Path | None = None) -> None:
         """Save room settings to project-local .mycelium/."""

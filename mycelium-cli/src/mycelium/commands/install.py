@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2026 Julia Valenti
+# Copyright 2026 Mycelium Contributors
 
 """
 Install command for Mycelium CLI.
@@ -491,7 +491,12 @@ def _run_migrations() -> None:
 
         env.update({k: v for k, v in dotenv_values(backend_env).items() if v is not None})
 
-    if "DATABASE_URL" not in env:
+    from mycelium.docker_utils import resolve_host_database_url
+
+    host_url = resolve_host_database_url(env)
+    if host_url:
+        env["DATABASE_URL"] = host_url
+    elif "DATABASE_URL" not in env:
         typer.echo("  ⚠  DATABASE_URL not set — skipping migrations")
         return
 

@@ -50,8 +50,16 @@ services:
         condition: service_healthy
         required: false
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium
-      GRAPH_DB_URL: postgresql://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium
+      # DATABASE_URL / GRAPH_DB_URL are materialised into ../.env by
+      # `mycelium config apply` from a single recipe in
+      # MyceliumConfig.database_url() — see the SSOT note in
+      # mycelium-cli/src/mycelium/docker_utils.py. The nested fallbacks below
+      # use ${MYCELIUM_DB_PASSWORD} so upgraded installs whose .env carries a
+      # custom password (but no materialised DATABASE_URL yet) still
+      # authenticate correctly; running `mycelium config apply` once
+      # regenerates .env with the canonical URLs and the fallbacks become inert.
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium}
+      GRAPH_DB_URL: ${GRAPH_DB_URL:-postgresql://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium}
       API_BASE_URL: http://mycelium-backend:8000
       COORDINATION_TICK_TIMEOUT_SECONDS: ${COORDINATION_TICK_TIMEOUT_SECONDS:-30}
       # IN-CONTAINER path the backend writes rooms/memory/plans to. MUST match

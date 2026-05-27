@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Copyright 2026 Julia Valenti
+// Copyright 2026 Mycelium Contributors
 
 /**
  * Return-address stash: per-(sessionSubRoom, agent) record of where the agent

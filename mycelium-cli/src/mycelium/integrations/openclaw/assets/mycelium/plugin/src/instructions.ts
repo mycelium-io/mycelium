@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Copyright 2026 Julia Valenti
+// Copyright 2026 Mycelium Contributors
 
 /**
  * System-prompt text injected into every agent turn via before_agent_start.
