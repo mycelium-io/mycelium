@@ -511,9 +511,11 @@ def start(
                 typer.echo(result.stderr, err=True)
 
         # Pull the configured ports from .env so the summary matches reality
-        # (MYCELIUM_BACKEND_PORT / MYCELIUM_UI_PORT are written by `config apply`).
+        # (MYCELIUM_BACKEND_PORT / MYCELIUM_UI_PORT / MYCELIUM_METRICS_PORT are
+        # written by `config apply`).
         backend_port = "8000"
         ui_port = "3000"
+        metrics_port = "4318"
         env_path = _get_env_path()
         if env_path and env_path.exists():
             from dotenv import dotenv_values
@@ -521,6 +523,7 @@ def start(
             vals = dotenv_values(env_path)
             backend_port = vals.get("MYCELIUM_BACKEND_PORT") or backend_port
             ui_port = vals.get("MYCELIUM_UI_PORT") or ui_port
+            metrics_port = vals.get("MYCELIUM_METRICS_PORT") or metrics_port
 
         typer.secho("Services started.", fg=typer.colors.GREEN)
         _announce_image_tag()
@@ -528,7 +531,7 @@ def start(
         if ui:
             typer.echo(f"  mycelium-frontend   → http://localhost:{ui_port}")
         if metrics:
-            typer.echo("  mycelium-collector  → http://localhost:4318")
+            typer.echo(f"  mycelium-collector  → http://localhost:{metrics_port}")
 
     except typer.Exit:
         raise

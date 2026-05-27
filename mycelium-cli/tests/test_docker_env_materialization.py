@@ -105,6 +105,35 @@ def test_env_explicit_override_propagates_to_all_url_variants() -> None:
         )
 
 
+# ── service-port materialisation ─────────────────────────────────────────────
+
+
+def test_env_materialises_all_service_ports() -> None:
+    """Backend / UI / metrics ports flow from RuntimeConfig into .env.
+
+    compose.yml port-publishes each service via ``${MYCELIUM_*_PORT:-default}``
+    and `mycelium up`'s post-start summary reads the same keys back out of
+    .env, so any port that isn't written here silently degrades to the
+    compose default and the summary lies to the user.
+    """
+    cfg = MyceliumConfig()
+    cfg.runtime.backend_port = 18000
+    cfg.runtime.frontend_port = 13000
+    cfg.runtime.collector_port = 14318
+    env = _parse_env(generate_env_file(cfg))
+
+    assert env["MYCELIUM_BACKEND_PORT"] == "18000"
+    assert env["MYCELIUM_UI_PORT"] == "13000"
+    assert env["MYCELIUM_METRICS_PORT"] == "14318"
+
+
+def test_env_metrics_port_defaults_to_4318() -> None:
+    """Default config writes MYCELIUM_METRICS_PORT=4318, matching compose.yml."""
+    cfg = MyceliumConfig()
+    env = _parse_env(generate_env_file(cfg))
+    assert env["MYCELIUM_METRICS_PORT"] == "4318"
+
+
 # ── resolve_host_database_url ────────────────────────────────────────────────
 
 
