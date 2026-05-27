@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2026 Julia Valenti
+# Copyright 2026 Mycelium Contributors
 
 """Follow-up fixes surfaced by the cursor manual e2e on oclw3/oclw4/oclw5.
 

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2026 Julia Valenti
+# Copyright 2026 Mycelium Contributors
 
 """Cursor cold-spawn — invokes ``cursor-agent -p`` for one ``@handle`` mention.
 

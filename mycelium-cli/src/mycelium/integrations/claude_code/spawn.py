@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2026 Julia Valenti
+# Copyright 2026 Mycelium Contributors
 
 """Claude Code cold-spawn — invokes ``claude -p`` for one ``@handle`` mention.
 
