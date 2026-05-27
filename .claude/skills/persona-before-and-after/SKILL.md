@@ -770,8 +770,15 @@ Use Mycelium structured negotiation. Do NOT discuss in chat — run CLI commands
      mycelium negotiate respond accept --room ${EXP_ID}-after --handle <your-handle>
      mycelium negotiate respond reject --room ${EXP_ID}-after --handle <your-handle>
 
-Briefly explain your reasoning in chat before each CLI command.
-Your SOUL.md already contains the full negotiation protocol — follow it."
+Briefly explain your reasoning in chat before each CLI command (1–2 sentences max).
+Your SOUL.md already contains the full negotiation protocol — follow it.
+
+IMPORTANT: Never declare consensus yourself in chat. Only CognitiveEngine can
+confirm consensus. Keep responding to ticks until one of two things happens:
+- CognitiveEngine sends a 'consensus' message → negotiation is complete.
+- CognitiveEngine sends a 'timeout' or broken=true message → rounds exhausted
+  without agreement. In that case, post one final message stating the last
+  position you accepted (if any), so the transcript has a readable final state."
 
 curl -sf "$MYCELIUM_API_URL/rooms/${EXP_ID}-after/messages" \
   -H "Content-Type: application/json" \
