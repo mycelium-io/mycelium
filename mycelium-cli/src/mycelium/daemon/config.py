@@ -56,9 +56,11 @@ class DaemonConfig(BaseModel):
     handles: list[str] = Field(
         default_factory=list,
         description=(
-            "claude_code agent handles this daemon owns. Only these are "
-            "dispatched — a manifest synced from another machine is ignored. "
-            "Populated automatically by `mycelium agent create`."
+            "Cold-spawn agent handles this daemon owns (claude_code + cursor). "
+            "Only these are dispatched — a manifest synced from another "
+            "machine is ignored. Populated automatically by `mycelium agent "
+            "create`. Family is recovered from the manifest's ``adapter`` "
+            "field; ownership is family-agnostic."
         ),
     )
     depth_cap: int = Field(
@@ -69,6 +71,15 @@ class DaemonConfig(BaseModel):
     claude_binary: str = Field(
         default="claude",
         description="Path or name of the Claude Code CLI (PATH-resolved by default).",
+    )
+    cursor_binary: str = Field(
+        default="cursor-agent",
+        description=(
+            "Path or name of the Cursor CLI (PATH-resolved by default). The "
+            "daemon-managed install drops a launchd/systemd unit that runs "
+            "without a login shell, so a manual ``cursor-agent login`` is a "
+            "prerequisite — see the cursor adapter docs."
+        ),
     )
 
     @classmethod
@@ -104,11 +115,13 @@ class DaemonConfig(BaseModel):
         """Return the CLI binary this daemon uses for *adapter*'s cold spawns.
 
         One method instead of a switch in the dispatch loop. Future cold-spawn
-        families (cursor, gemini, codex, aider) add a branch here. Unknown
-        adapters return an empty string — the family's ``spawn`` implementation
-        is responsible for its own default and surfaces a clean "not found"
+        families (gemini, codex, aider) add a branch here. Unknown adapters
+        return an empty string — the family's ``spawn`` implementation is
+        responsible for its own default and surfaces a clean "not found"
         error rather than crashing here.
         """
         if adapter == "claude_code":
             return self.claude_binary
+        if adapter == "cursor":
+            return self.cursor_binary
         return ""

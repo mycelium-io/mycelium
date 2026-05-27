@@ -160,11 +160,14 @@ class MemoryLogEntry(BaseModel):
 # Adapter identifiers the agent primitive knows how to host. Each maps to a
 # dispatcher:
 #   claude_code → mycelium-cc-daemon (subscribes room SSE, spawns claude -p)
+#   cursor      → mycelium-cc-daemon (subscribes room SSE, spawns
+#                 cursor-agent -p). Same lifecycle as claude_code; the daemon's
+#                 dispatch loop routes via Integration.lifecycle, not family id.
 #   openclaw    → OpenClaw gateway's mycelium-room channel plugin (the agent
 #                 runs inside OpenClaw; we just register it into the channel's
-#                 rooms[] fan-out — no cc-daemon involvement, see dispatch.py
-#                 guard that skips non-claude_code manifests).
-AGENT_ADAPTERS: frozenset[str] = frozenset({"claude_code", "openclaw"})
+#                 rooms[] fan-out — no cc-daemon involvement, see the daemon
+#                 dispatch loop which skips non-cold_spawn families).
+AGENT_ADAPTERS: frozenset[str] = frozenset({"claude_code", "cursor", "openclaw"})
 
 
 class AgentManifest(BaseModel):
@@ -175,10 +178,12 @@ class AgentManifest(BaseModel):
     manifest body — the bare minimum a dispatcher needs to route an
     ``@handle`` mention to the agent's runtime.
 
-    Two adapters:
+    Three adapters:
 
     - ``claude_code`` — cold-spawned by the cc-daemon. Requires ``cwd`` (where
       ``claude -p`` runs).
+    - ``cursor`` — cold-spawned by the cc-daemon. Requires ``cwd`` (where
+      ``cursor-agent -p`` runs; treated by Cursor as the workspace root).
     - ``openclaw`` — a long-lived OpenClaw agent. Requires ``openclaw_agent``
       (the OpenClaw agent id; usually == handle for create-mode). The
       OpenClaw gateway's channel plugin is the dispatcher; the cc-daemon
@@ -189,10 +194,14 @@ class AgentManifest(BaseModel):
     """
 
     handle: str = Field(..., min_length=1, pattern=r"^[a-z0-9][a-z0-9._-]*$")
-    adapter: Literal["claude_code", "openclaw"] = "claude_code"
+    adapter: Literal["claude_code", "cursor", "openclaw"] = "claude_code"
     cwd: str | None = Field(
         default=None,
-        description="claude_code: working dir `claude -p` runs in (required for that adapter).",
+        description=(
+            "claude_code / cursor: working dir the agent's CLI runs in "
+            "(required for both cold-spawn families). Cursor treats it as the "
+            "workspace root for ``--workspace`` mode."
+        ),
     )
     openclaw_agent: str | None = Field(
         default=None,
@@ -227,8 +236,11 @@ class AgentManifest(BaseModel):
 
     @model_validator(mode="after")
     def check_adapter_requirements(self) -> AgentManifest:
-        if self.adapter == "claude_code" and not (self.cwd and self.cwd.strip()):
-            raise ValueError("claude_code agents require a non-empty cwd")
+        # cwd is required for every cold-spawn family — the daemon launches a
+        # fresh process there per @-mention. Cursor treats it as the workspace
+        # root for --workspace mode; Claude treats it as the project root.
+        if self.adapter in ("claude_code", "cursor") and not (self.cwd and self.cwd.strip()):
+            raise ValueError(f"{self.adapter} agents require a non-empty cwd")
         if self.adapter == "openclaw" and not (self.openclaw_agent and self.openclaw_agent.strip()):
             raise ValueError("openclaw agents require an openclaw_agent id")
         return self
