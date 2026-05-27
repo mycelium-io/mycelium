@@ -88,9 +88,6 @@ parameters:
 # pyATS injects these into Testcase classes matching the key name.
 
 testcases:
-  EnvironmentProbe:
-    uid: "mycelium:e2e:env:001"
-
   RoomLifecycle:
     uid: "mycelium:e2e:core:001"
 

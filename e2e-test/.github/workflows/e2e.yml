@@ -127,20 +127,20 @@ jobs:
           fi
 
       - name: Run E2E tests
+        env:
+          MYCELIUM_DATAFILE: ${{ github.event.inputs.datafile || 'ci_datafile.yaml' }}
         run: |
           SUITE="${{ github.event.inputs.suite || 'weekly_full' }}"
-          DATAFILE="${{ github.event.inputs.datafile || 'ci_datafile.yaml' }}"
           JOB_FILE="jobs/${SUITE}_job.py"
 
           if [ "$SUITE" = "weekly_full" ]; then
             JOB_FILE="jobs/weekly_e2e_job.py"
           fi
 
-          echo "Running: pyats run job $JOB_FILE --datafile data/$DATAFILE"
+          echo "Running: pyats run job $JOB_FILE (MYCELIUM_DATAFILE=$MYCELIUM_DATAFILE)"
           mkdir -p artifacts
 
           uv run pyats run job "$JOB_FILE" \
-            --datafile "data/$DATAFILE" \
             --html-logs artifacts \
             || true  # Don't fail the step on test failures
 
