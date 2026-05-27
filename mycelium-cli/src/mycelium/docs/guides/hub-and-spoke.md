@@ -52,9 +52,19 @@ On the hub machine, run the standard install:
 
 ```bash
 mycelium install
+mycelium up --metrics            # include --metrics if you want spoke telemetry
 ```
 
 This brings up the backend, database, and provisions a default workspace.
+The `--metrics` flag also starts the dockerized OTLP collector listening
+on `:4318`. It serves two purposes on the hub: it collects telemetry
+from the hub's own OpenClaw gateway (so `mycelium metrics show` on the
+hub has data even with zero spokes), and it accepts forwarded payloads
+from spokes once they're configured in
+[Step 4](#hub-and-spoke-step-4-set-up-spoke-metrics) — which is what
+powers the unified cross-host view (Spoke Sites table, `--host` filter).
+Skip the flag only if you don't want metrics at all.
+
 Verify with:
 
 ```bash
@@ -198,19 +208,39 @@ Each spoke can run a lightweight local collector for OpenClaw telemetry.
 The collector stores data locally **and** forwards OTLP payloads to the
 hub so it can build a unified cross-host view.
 
+> **Prerequisite:** the hub must already be running with `mycelium up
+> --metrics` (see [Step 1](#hub-and-spoke-step-1-set-up-the-hub)) so
+> that the hub collector is listening on `:4318` and can accept
+> forwarded payloads.
+> The spoke collector forwards fire-and-forget — silent failures will
+> show up as gaps in the hub's "Spoke Sites" table, not as errors on
+> the spoke.
+
 ```bash
-# Point the spoke's metrics at the hub collector
+# Point the spoke's metrics at the hub collector. Use the hub's
+# collector_port if you remapped it from the 4318 default.
 mycelium config set metrics.collector_url "http://<hub-ip>:4318"
 
 # Configure OTLP plugin (endpoint defaults to localhost:4318)
 mycelium adapter add openclaw --step=otel
 
-# Start the spoke collector (daemonizes into background)
+# Start the spoke collector (daemonizes into background). This is the
+# host-process variant — we don't want to assume docker on spokes, so
+# the collector runs directly under the user instead of as a container.
 mycelium metrics collect
 
 # Stop it later with:
 mycelium metrics stop
 ```
+
+### How the spoke collector works
+
+The spoke pipeline is **OpenClaw → local spoke collector → hub
+collector**, not OpenClaw → hub directly. Three reasons:
+
+1. **No docker assumption on spokes.** `mycelium install` only runs on the hub. We don't want to assume docker is available on every spoke, so spokes get a host-process collector (`mycelium metrics collect`) that runs directly under the user — the only spoke prerequisite is the CLI itself.
+2. **Local survives a hub outage.** Every OTLP payload lands in `~/.mycelium/metrics/metrics.json` (and `traces.db`) on the spoke first, then forwards to the hub. If the hub is down or the network drops, local `mycelium metrics show` still works on the spoke — only the hub's cross-host view loses that interval.
+3. **Forwarding is fire-and-forget.** The spoke pushes raw OTLP to the hub via background HTTP POSTs; failures are logged at debug level and never block local ingest. That's why hub-side errors surface as gaps in the Spoke Sites table rather than as visible errors on the spoke (see [metrics docs](../metrics.md#hub-and-spoke-setup) for the full architecture diagram).
 
 `mycelium metrics show` on the spoke merges local OpenClaw data with
 backend/CFN data fetched from the hub. On the hub, the forwarded OTLP

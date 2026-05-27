@@ -186,6 +186,33 @@ def _patch_env_image_tag(env_path: Path, tag: str) -> None:
     env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
 
 
+def _announce_image_tag() -> None:
+    """Print the effective ``MYCELIUM_IMAGE_TAG`` after ``mycelium up``.
+
+    Compose silently falls back to ``:latest`` when the pin is absent, which
+    is a UX trap — users assume the version they last pulled is still running.
+    Surface the resolved tag (and a hint when unpinned) so the next person
+    triaging an image-mismatch bug doesn't have to dig through .env.
+    """
+    env_path = _get_env_path()
+    pinned = None
+    if env_path is not None:
+        from mycelium.docker_utils import read_pinned_image_tag
+
+        pinned = read_pinned_image_tag(env_path)
+
+    if pinned and pinned != "latest":
+        typer.secho(
+            f"  → image tag: {pinned} (pinned via 'mycelium pull --version')",
+            fg=typer.colors.CYAN,
+        )
+    else:
+        typer.secho(
+            "  → image tag: latest (unpinned — run 'mycelium pull --version X' to pin)",
+            fg=typer.colors.YELLOW,
+        )
+
+
 def _cfn_enabled() -> bool:
     """Return True if CFN_MGMT_URL is set in ~/.mycelium/.env."""
     env_path = _get_env_path()
@@ -484,9 +511,11 @@ def start(
                 typer.echo(result.stderr, err=True)
 
         # Pull the configured ports from .env so the summary matches reality
-        # (MYCELIUM_BACKEND_PORT / MYCELIUM_UI_PORT are written by `config apply`).
+        # (MYCELIUM_BACKEND_PORT / MYCELIUM_UI_PORT / MYCELIUM_METRICS_PORT are
+        # written by `config apply`).
         backend_port = "8000"
         ui_port = "3000"
+        metrics_port = "4318"
         env_path = _get_env_path()
         if env_path and env_path.exists():
             from dotenv import dotenv_values
@@ -494,13 +523,15 @@ def start(
             vals = dotenv_values(env_path)
             backend_port = vals.get("MYCELIUM_BACKEND_PORT") or backend_port
             ui_port = vals.get("MYCELIUM_UI_PORT") or ui_port
+            metrics_port = vals.get("MYCELIUM_METRICS_PORT") or metrics_port
 
         typer.secho("Services started.", fg=typer.colors.GREEN)
+        _announce_image_tag()
         typer.echo(f"  mycelium-backend    → http://localhost:{backend_port}")
         if ui:
             typer.echo(f"  mycelium-frontend   → http://localhost:{ui_port}")
         if metrics:
-            typer.echo("  mycelium-collector  → http://localhost:4318")
+            typer.echo(f"  mycelium-collector  → http://localhost:{metrics_port}")
 
     except typer.Exit:
         raise
@@ -1034,9 +1065,14 @@ def migrate(
 
             env.update({k: v for k, v in dotenv_values(backend_env).items() if v is not None})
 
-        if "DATABASE_URL" not in env:
+        from mycelium.docker_utils import resolve_host_database_url
+
+        host_url = resolve_host_database_url(env)
+        if host_url:
+            env["DATABASE_URL"] = host_url
+        elif "DATABASE_URL" not in env:
             typer.secho("DATABASE_URL not set.", fg=typer.colors.RED)
-            typer.echo("Set it in ~/.mycelium/.env or fastapi-backend/.env")
+            typer.echo("Set it in ~/.mycelium/.env (run `mycelium config apply`)")
             raise typer.Exit(1)
 
         typer.echo(f"Running migrations (target: {revision})...")

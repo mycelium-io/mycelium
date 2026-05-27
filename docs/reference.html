@@ -768,6 +768,9 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
 <span class="comment"># Host port for the OTLP metrics collector</span>
 <span class="arg">collector_port</span> = 4318
 
+<span class="comment"># Host port for the frontend UI</span>
+<span class="arg">frontend_port</span> = 3000
+
 <span class="comment"># Root directory for .mycelium/ data (defaults to ~/.mycelium)</span>
 <span class="arg">data_dir</span> = <span class="str">&quot;&quot;</span>
 
@@ -874,9 +877,13 @@ docker logs mycelium-db <span class="flag">--tail</span> 20</code></pre>
       <p><strong>Symptom</strong>: <code>bind: address already in use</code></p>
       <pre><code>lsof <span class="flag">-i</span> :8000   # backend
 lsof <span class="flag">-i</span> :5432   # database</code></pre>
-      <p>Or set alternate ports in <code>~/.mycelium/.env</code>:</p>
-      <pre><code>MYCELIUM_BACKEND_PORT=8001
-MYCELIUM_DB_PORT=5433</code></pre>
+      <p>All four published host ports can be remapped — prefer setting the corresponding <code>runtime.*</code> config key and re-running <code>mycelium config apply</code> (which materialises <code>~/.mycelium/.env</code>) rather than hand-editing the env file:</p>
+      <pre><code><span class="cmd">mycelium config set</span> runtime.backend_port 8001     # MYCELIUM_BACKEND_PORT
+<span class="cmd">mycelium config set</span> runtime.frontend_port 3001    # MYCELIUM_UI_PORT
+<span class="cmd">mycelium config set</span> runtime.collector_port 4319   # MYCELIUM_METRICS_PORT
+<span class="cmd">mycelium config set</span> runtime.db_port 5433          # MYCELIUM_DB_PORT
+<span class="cmd">mycelium config apply</span>
+<span class="cmd">mycelium down</span> &amp;&amp; <span class="cmd">mycelium up</span>                      # restart to pick up new ports</code></pre>
       <hr class="divider">
       <h3 id="troubleshooting-6-llm-not-configured">6. LLM Not Configured</h3>
       <p><strong>Symptom</strong>: <code>LLM unavailable — no API key configured</code></p>
@@ -1063,17 +1070,28 @@ grep api_url ~/.mycelium/config.toml</code></pre>
             </tr>
             <tr>
               <td><code>MYCELIUM_BACKEND_PORT</code></td>
-              <td>Backend port</td>
+              <td>Backend API host port</td>
               <td><code>8000</code></td>
             </tr>
             <tr>
+              <td><code>MYCELIUM_UI_PORT</code></td>
+              <td>Frontend host port (<code>--ui</code>)</td>
+              <td><code>3000</code></td>
+            </tr>
+            <tr>
+              <td><code>MYCELIUM_METRICS_PORT</code></td>
+              <td>OTLP collector host port (<code>--metrics</code>)</td>
+              <td><code>4318</code></td>
+            </tr>
+            <tr>
               <td><code>MYCELIUM_DB_PORT</code></td>
-              <td>Database port</td>
+              <td>Database host port</td>
               <td><code>5432</code></td>
             </tr>
           </tbody>
         </table>
       </div>
+      <p>All of these are written by <code>mycelium config apply</code> from the matching <code>runtime.*</code> config keys — don&#x27;t edit <code>.env</code> by hand.</p>
       <hr class="divider">
       <h2 id="troubleshooting-log-locations">Log Locations</h2>
       <pre><code><span class="cmd">mycelium logs</span>                       # all services

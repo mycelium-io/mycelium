@@ -837,6 +837,31 @@ def _check_room_mas_ids() -> CheckResult:
     )
 
 
+def _parse_alembic_current(stdout: str) -> str | None:
+    """Extract the current DB revision from ``alembic current`` stdout.
+
+    Returns ``None`` if no revision token can be found.  This is split out so
+    the parse logic can be unit-tested without spinning up a real database;
+    pre-Option-B, the parser lived inline and inherited a class of bugs
+    where substrings of Python tracebacks (e.g., ``aceback`` from
+    ``Traceback``) were mis-identified as revision IDs.
+
+    The contract:
+      * Look only at stdout (alembic emits INFO logs and tracebacks on
+        stderr); the caller must not pass stderr through this function.
+      * Anchor matches to start-of-line in multiline mode so log prefixes
+        like ``INFO  [alembic.runtime.migration]`` can never contribute.
+      * Accept 4–40 hex chars to cover mycelium's 4-digit numeric prefixes
+        (e.g. ``0016``) and stock alembic 12-char hashes (e.g. ``f3a1b2c4d5e6``).
+    """
+    import re
+
+    if not stdout:
+        return None
+    match = re.search(r"^\s*([0-9a-f]{4,40})\b", stdout, re.MULTILINE)
+    return match.group(1) if match else None
+
+
 def _check_pending_migrations() -> CheckResult:
     """Check whether the DB is behind the latest alembic revision."""
     import importlib.resources
@@ -877,18 +902,37 @@ def _check_pending_migrations() -> CheckResult:
         return CheckResult(name="Migrations", status="ok", message="No migration files found")
     latest_file = revision_files[-1].stem.split("_")[0]  # e.g. "0015"
 
-    # Current DB revision via `alembic current`.
-    from mycelium.config import MyceliumConfig
+    # Current DB revision via `alembic current`.  We have to set DATABASE_URL
+    # explicitly because alembic's env.py raises ValueError otherwise — and
+    # this used to be #287's root cause: doctor was reading the never-populated
+    # ``server.database_url`` field, so DATABASE_URL was never set, alembic's
+    # env.py raised "DATABASE_URL environment variable is not set!", and the
+    # resulting Python traceback contained the substring "Traceback" whose
+    # "aceback" hex tail was then parsed (incorrectly) as a DB revision.  Two
+    # fixes below address this end-to-end:
+    #
+    #   1. Source DATABASE_URL from the single MyceliumConfig.database_url
+    #      recipe (host_side=True → localhost:<published port>), so alembic
+    #      always has a real connection string to try.
+    #
+    #   2. Parse alembic stdout *separately* from stderr.  Alembic emits its
+    #      INFO logs and any tracebacks on stderr; the revision token comes
+    #      out on stdout alone.  This eliminates the regex-vs-traceback class
+    #      of false positives entirely; the tightened regex below is just
+    #      belt-and-suspenders.
+    import logging
 
-    try:
-        cfg = MyceliumConfig.load()
-        db_url = cfg.server.database_url or ""
-    except Exception:
-        db_url = ""
+    from mycelium.docker_utils import resolve_host_database_url
 
     env = {**__import__("os").environ}
-    if db_url:
-        env["DATABASE_URL"] = db_url
+    host_url = resolve_host_database_url(env)
+    if host_url:
+        env["DATABASE_URL"] = host_url
+    else:
+        logging.getLogger(__name__).debug(
+            "Could not resolve host-side DATABASE_URL from .env or config.toml; "
+            "falling through to alembic with whatever DATABASE_URL is in the environment"
+        )
 
     try:
         result = subprocess.run(
@@ -899,7 +943,8 @@ def _check_pending_migrations() -> CheckResult:
             timeout=15,
             env=env,
         )
-        output = result.stdout + result.stderr
+        stdout = result.stdout or ""
+        stderr = result.stderr or ""
     except Exception as exc:
         return CheckResult(
             name="Migrations",
@@ -908,26 +953,38 @@ def _check_pending_migrations() -> CheckResult:
             details=["fix: mycelium migrate"],
         )
 
-    # "head" in output means DB is current; otherwise extract the revision token.
-    if "head" in output.lower():
+    # If alembic itself errored out, surface the stderr summary instead of
+    # quietly returning "unknown".  This is what users actually want to see.
+    if result.returncode != 0:
+        err_tail = stderr.strip().splitlines()[-1] if stderr.strip() else "(no error output)"
+        return CheckResult(
+            name="Migrations",
+            status="warning",
+            message=f"alembic current failed (exit {result.returncode})",
+            details=[f"stderr: {err_tail[:160]}", "fix: mycelium migrate"],
+        )
+
+    # "head" only appears in stdout alongside the revision when the DB is at
+    # the latest revision; checking stdout (not stdout+stderr) keeps INFO log
+    # lines mentioning "alembic.runtime" from triggering a false positive.
+    if "head" in stdout.lower():
         return CheckResult(
             name="Migrations",
             status="ok",
             message=f"DB at head ({latest_file})",
         )
 
-    # Parse current revision from output like "abc1234 (head)" or just "abc1234"
-    import re as _re
+    # Revision token: parse stdout via the tested helper.  We never touch
+    # stderr here — alembic's INFO logs and Python tracebacks land there,
+    # and feeding either through a hex-regex was #287's root cause.
+    current_rev = _parse_alembic_current(stdout) or "unknown"
 
-    rev_match = _re.search(r"([0-9a-f]{4,})", output)
-    current_rev = rev_match.group(1) if rev_match else "unknown"
-
-    if not output.strip() or current_rev == "unknown":
+    if not stdout.strip() or current_rev == "unknown":
         return CheckResult(
             name="Migrations",
             status="warning",
             message="Could not determine current DB revision",
-            details=[f"alembic output: {output.strip()[:120]}", "fix: mycelium migrate"],
+            details=[f"alembic stdout: {stdout.strip()[:120]}", "fix: mycelium migrate"],
         )
 
     return CheckResult(
