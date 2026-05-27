@@ -276,9 +276,7 @@ class CursorIntegration(Integration):
             "under the user the cc-daemon runs as (no pre-flight check; first "
             "@handle dispatch surfaces the auth error if it's missing)"
         )
-        details.append(
-            "  ℹ workspace assets drop at `mycelium agent create --adapter cursor`"
-        )
+        details.append("  ℹ workspace assets drop at `mycelium agent create --adapter cursor`")
         details.append(f"api_url: {info.get('api_url', '')}")
         return {"ok": binary_ok, "details": details}
 

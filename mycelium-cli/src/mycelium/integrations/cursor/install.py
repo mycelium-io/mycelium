@@ -107,9 +107,7 @@ def install_workspace_assets(cwd: Path, *, verbose: bool = False) -> list[Path]:
     """
     cwd = Path(cwd).expanduser()
     if not cwd.is_dir():
-        raise NotADirectoryError(
-            f"cursor agent cwd '{cwd}' is not a directory — create it first"
-        )
+        raise NotADirectoryError(f"cursor agent cwd '{cwd}' is not a directory — create it first")
 
     updated: list[Path] = []
 

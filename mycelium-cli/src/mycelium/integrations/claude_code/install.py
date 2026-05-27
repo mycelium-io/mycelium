@@ -327,5 +327,3 @@ def _step_claude_daemon_install(verbose: bool = False) -> None:
 def _step_claude_daemon_uninstall(verbose: bool = False) -> None:
     """Reverse :func:`_step_claude_daemon_install`."""
     uninstall_daemon_service(verbose=verbose)
-
-

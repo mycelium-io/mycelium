@@ -195,9 +195,7 @@ def install_daemon_service(verbose: bool = False) -> None:
         # Reload cleanly if a previous version is loaded. bootout is async, so
         # this waits for teardown then retries bootstrap through the transient
         # "Input/output error 5" window instead of failing the install.
-        rc, err = launchd_reload(
-            CC_DAEMON_LABEL, f"gui/{os.getuid()}", plist_dst, verbose=verbose
-        )
+        rc, err = launchd_reload(CC_DAEMON_LABEL, f"gui/{os.getuid()}", plist_dst, verbose=verbose)
         if rc != 0:
             typer.secho(
                 f"  launchctl bootstrap failed: {err}",

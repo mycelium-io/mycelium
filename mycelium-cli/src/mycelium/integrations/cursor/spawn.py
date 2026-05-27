@@ -254,9 +254,8 @@ async def spawn_cursor(*, request: SpawnRequest) -> SpawnResult:
                 "the cc-daemon runs as, then re-invoke."
             )
         else:
-            final = (
-                f"daemon error: cursor-agent exited {proc.returncode}. "
-                + (f"stderr: {stderr[:400]}" if stderr else "")
+            final = f"daemon error: cursor-agent exited {proc.returncode}. " + (
+                f"stderr: {stderr[:400]}" if stderr else ""
             )
         return SpawnResult(
             ok=False,
