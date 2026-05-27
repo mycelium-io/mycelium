@@ -49,6 +49,12 @@ const allowedDevOrigins =
 const nextConfig: NextConfig = {
   // Standalone output → minimal Docker image (no full node_modules in runtime layer)
   output: "standalone",
+  // Next.js's built-in gzip middleware buffers chunks before flushing, which
+  // breaks SSE — events are held until the compressor decides to flush rather
+  // than delivered immediately. Disabling compression lets each SSE chunk go
+  // straight to the socket. Static assets remain unaffected (served by CDN /
+  // reverse proxy in production anyway).
+  compress: false,
   allowedDevOrigins,
   async rewrites() {
     return [
