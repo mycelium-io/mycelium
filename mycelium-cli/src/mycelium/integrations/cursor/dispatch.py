@@ -20,12 +20,23 @@ couldn't be parametrised over the family.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import typer
 
 from mycelium.integrations._spawn_common import SpawnRequest, SpawnResult
 from mycelium.integrations.base import AddOptions, Integration
+from mycelium.integrations.cursor.install import (
+    _AGENTS_SECTION_END,
+    _AGENTS_SECTION_START,
+    _CURSOR_RULE_FILENAME,
+    _CURSOR_STEPS,
+    _step_cursor_daemon_install,
+    _step_cursor_daemon_uninstall,
+    install_workspace_assets,
+    uninstall_workspace_assets,
+)
 from mycelium.protocol import AgentManifest
 
 if TYPE_CHECKING:
@@ -36,11 +47,7 @@ class CursorIntegration(Integration):
     name = "cursor"
     lifecycle = "cold_spawn"
 
-    #: Follow-up ``mycelium adapter add cursor --step=<name>`` actions. Filled
-    #: in by :mod:`mycelium.integrations.cursor.install` (cursor-pkg) — the
-    #: ``daemon`` step composes :mod:`mycelium.daemon.install` like
-    #: ``claude_code`` does.
-    STEPS: dict[str, str] = {}
+    STEPS = _CURSOR_STEPS
 
     def __init__(self, *, cwd: str | None = None) -> None:
         # Same shape as ClaudeCodeIntegration: cwd is the one family-specific
@@ -71,9 +78,9 @@ class CursorIntegration(Integration):
     def register(
         self, *, manifest: AgentManifest, config: MyceliumConfig, opts: AddOptions
     ) -> None:
-        # Identical ownership semantics to claude_code: a cursor agent is
-        # cold-spawned by THIS machine's cc-daemon (its cwd is local). Claim
-        # the handle in cc-daemon.toml so a sibling daemon that syncs this
+        # Identical handle-ownership semantics to claude_code: a cursor agent
+        # is cold-spawned by THIS machine's cc-daemon (its cwd is local).
+        # Claim the handle in cc-daemon.toml so a sibling daemon syncing this
         # room via git does NOT also dispatch — without ownership two
         # cursor-agent processes would race over the same cwd.
         from mycelium.daemon.config import DaemonConfig
@@ -82,13 +89,29 @@ class CursorIntegration(Integration):
         if daemon_cfg.own_handle(manifest.handle):
             daemon_cfg.save()
 
+        # Drop the workspace-local Cursor rule + AGENTS.md section so the
+        # cold-started cursor-agent immediately sees the mycelium context.
+        # AgentManifest's validator already guarantees ``cwd`` is non-empty
+        # for cursor; the install helper raises NotADirectoryError if the
+        # directory doesn't actually exist — surfaced to the command layer.
+        if manifest.cwd:
+            install_workspace_assets(Path(manifest.cwd), verbose=False)
+
     def destroy(
         self, *, manifest: AgentManifest, config: MyceliumConfig, room: str, full: bool
     ) -> None:
-        # No external runtime to tear down. ``full`` is meaningless here — the
-        # only artifacts are the manifest (deleted by the command layer) and
-        # notes/logs (deliberately preserved). Release the cc-daemon ownership
-        # claimed in :meth:`register`.
+        # ``full`` requests destructive teardown of *this agent's runtime*
+        # — for cursor that means removing the workspace assets we dropped.
+        # Without ``full``, we leave them in place so a re-add picks up where
+        # we left off and the user's project-rules history isn't disturbed.
+        # The agent's manifest and notes/logs are owned by the command layer
+        # and never touched here.
+        if full and manifest.cwd:
+            cwd_path = Path(manifest.cwd)
+            if cwd_path.exists():
+                uninstall_workspace_assets(cwd_path, verbose=False)
+
+        # Release the cc-daemon ownership claimed in :meth:`register`.
         from mycelium.daemon.config import DaemonConfig
 
         daemon_cfg = DaemonConfig.load()
@@ -131,15 +154,14 @@ class CursorIntegration(Integration):
             "(mycelium.integrations.cursor.spawn)"
         )
 
-    # ── install facet (stubs — implemented in the cursor-pkg milestone) ─────
+    # ── install facet ───────────────────────────────────────────────────────
     #
-    # NotImplementedError stubs satisfy ``Integration``'s @abstractmethod
-    # contract (and ``test_integration_contract.test_install_facet_is_implemented``)
-    # without pretending cursor's host install is done. The command layer in
-    # ``commands/adapter.py`` resolves through ``get_integration`` and will
-    # surface the raise verbatim — that's the intended UX until cursor-pkg
-    # lands the real implementations alongside the .cursor/rules/mycelium.mdc
-    # and AGENTS.md assets.
+    # Cursor differs from claude_code: the per-workspace assets
+    # (``.cursor/rules/mycelium.mdc``, AGENTS.md section) drop at agent-create
+    # time inside :meth:`register`, NOT at host install. So
+    # ``mycelium adapter add cursor`` itself is essentially a banner pointing
+    # the user at ``mycelium agent create --adapter cursor`` and surfacing
+    # the ``--step=daemon`` follow-up.
 
     def install(
         self,
@@ -150,24 +172,34 @@ class CursorIntegration(Integration):
         container: str | None,
         reinstall: bool,
     ) -> None:
-        raise NotImplementedError(
-            "cursor install not wired yet — landing in the cursor-pkg milestone"
-        )
+        # No host-level work. The banner printed via :meth:`post_install_banner`
+        # is what the user sees. Reinstall has nothing to refresh either —
+        # the per-workspace assets are owned by the agent's :meth:`register`.
+        return
 
     def uninstall(self, *, record: dict, profile: str | None, container: str | None) -> None:
-        # No external runtime ever — same semantics as claude_code. Real
-        # implementation in cursor-pkg deletes assets the install dropped.
+        # No host-level assets ever installed — symmetry with :meth:`install`.
+        # The cc-daemon, if installed via ``--step=daemon``, is removed via
+        # ``mycelium adapter add cursor --step=daemon --remove-step`` (or the
+        # claude_code equivalent — they share one service).
         return
 
     def reinstall_targets(self, *, profile: str | None, container: str | None) -> list[str]:
-        # Real list lands in cursor-pkg — pointing at <cwd>/.cursor/rules/
-        # mycelium.mdc + <cwd>/AGENTS.md.
+        # Per-workspace assets land at agent-create time; ``adapter add``
+        # has no host file to overwrite. Return an empty list so the
+        # confirmation prompt for ``--reinstall`` is suppressed.
         return []
 
     def dry_run_lines(
         self, *, config: MyceliumConfig, profile: str | None, container: str | None
     ) -> list[str]:
-        return ["  (cursor install not wired yet — see cursor-pkg milestone)"]
+        return [
+            "  (no host-level install for cursor — workspace assets drop at agent create)",
+            "  Per agent:",
+            f"    rule    → <agent-cwd>/.cursor/rules/{_CURSOR_RULE_FILENAME}",
+            "    agents  → <agent-cwd>/AGENTS.md (merged inside",
+            f"             {_AGENTS_SECTION_START}…{_AGENTS_SECTION_END} markers)",
+        ]
 
     def post_install_banner(
         self,
@@ -177,9 +209,28 @@ class CursorIntegration(Integration):
         profile: str | None,
         container: str | None,
     ) -> None:
+        verb = "reinstalled" if reinstall else "installed"
+        typer.secho(f"Adapter 'cursor' {verb}.", fg=typer.colors.GREEN)
+        typer.echo("  (no host-level files — cursor reads workspace-local rules)")
+        typer.echo("")
+        typer.secho("  Next steps:", bold=True)
+        typer.echo("")
+        typer.echo("  1) Install the cc-daemon (one per host, shared with claude_code):")
         typer.secho(
-            "Adapter 'cursor' install not wired yet — see cursor-pkg milestone.",
-            fg=typer.colors.YELLOW,
+            "       $ mycelium adapter add cursor --step=daemon",
+            fg=typer.colors.CYAN,
+        )
+        typer.echo("")
+        typer.echo("  2) Make sure cursor-agent is logged in (the daemon runs without a")
+        typer.echo("     login shell, so auth must be set up interactively first):")
+        typer.secho("       $ cursor-agent login", fg=typer.colors.CYAN)
+        typer.echo("")
+        typer.echo("  3) Create a cursor agent (drops .cursor/rules/mycelium.mdc + the")
+        typer.echo("     mycelium section of AGENTS.md into the agent's workspace cwd):")
+        typer.secho(
+            "       $ mycelium agent create <handle> --adapter cursor "
+            "--cwd <workspace-path> --room <room>",
+            fg=typer.colors.CYAN,
         )
 
     def run_step(
@@ -192,22 +243,37 @@ class CursorIntegration(Integration):
         container: str | None,
         remove: bool,
     ) -> None:
-        raise NotImplementedError(
-            f"cursor --step={step} not wired yet — landing in the cursor-pkg milestone"
-        )
+        if step == "daemon":
+            if remove:
+                _step_cursor_daemon_uninstall(verbose=verbose)
+            else:
+                _step_cursor_daemon_install(verbose=verbose)
 
     def status_check(self, *, name: str, info: dict) -> dict:
-        # The shape ``{ok, details}`` is what ``mycelium adapter status``
-        # consumes — keeping it valid avoids a UI crash on listing installed
-        # adapters before cursor-pkg lands. ``ok=False`` is the truthful
-        # answer: nothing's actually been installed.
-        return {
-            "ok": False,
-            "details": [
-                "  ✗ cursor install not wired yet (see cursor-pkg milestone)",
-                f"api_url: {info.get('api_url', '')}",
-            ],
-        }
+        # No host-level files to probe — the only meaningful per-host check
+        # is whether ``cursor-agent`` is on PATH; the daemon is a separate
+        # adapter status (shared with claude_code). Returning ``ok=True``
+        # here lets ``mycelium adapter status`` list cursor as registered
+        # without a misleading red ✗.
+        import shutil
+
+        details: list[str] = []
+        binary_ok = shutil.which("cursor-agent") is not None
+        details.append(
+            f"  {'✓' if binary_ok else '✗'} cursor-agent on PATH "
+            f"(install via https://cursor.com/cli)"
+        )
+        details.append(
+            "  ℹ workspace assets drop at `mycelium agent create --adapter cursor`"
+        )
+        details.append(f"api_url: {info.get('api_url', '')}")
+        return {"ok": binary_ok, "details": details}
+
+    def will_destroy_runtime(self, manifest: AgentManifest, *, full: bool) -> bool:
+        # ``full`` removes the workspace assets — confirm in the command
+        # layer because users may have committed AGENTS.md and don't expect
+        # ``agent rm --full`` to mutate their git working tree.
+        return bool(full and manifest.cwd)
 
 
 #: Back-compat alias for the historical class-name convention.

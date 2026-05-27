@@ -80,6 +80,8 @@ mycelium = [
     "data/*.json",
     "docs/**/*.md",
     "integrations/claude_code/assets/**/*",
+    "integrations/cursor/assets/*",
+    "integrations/cursor/assets/cursor_rules/*",
     "integrations/openclaw/assets/mycelium/**/*",
     "daemon/service/*",
     "docker/*",
