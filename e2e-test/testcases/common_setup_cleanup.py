@@ -82,6 +82,29 @@ class MyceliumCommonSetup(aetest.CommonSetup):
                  not env.skip_matrix_tests, env.coordination_blocked_reason)
 
     @aetest.subsection
+    def presuite_hygiene(self, testscript, room_prefix="e2e-test"):
+        """Clean stale sessions and trim agent history.
+
+        Must run before create_test_room so we don't delete our own room.
+        """
+        api: MyceliumAPI = testscript.parameters["api"]
+        owned = testscript.parameters.get("owned_rooms", set())
+
+        for prefix in ("e2e-", "dist-e2e-", "mycelium_room:session:"):
+            deleted = api.cleanup_rooms(prefix, exclude=owned)
+            if deleted:
+                log.info("Cleaned %d stale '%s*' rooms", deleted, prefix)
+
+        trimmed = trim_agent_sessions(max_files=5)
+        if trimmed:
+            log.info("Trimmed %d local session files", trimmed)
+
+        remote_hosts = self._get_remote_hosts(testscript)
+        containers = self._get_containers(testscript)
+        if remote_hosts:
+            trim_remote_agent_sessions(remote_hosts, max_files=5, containers=containers)
+
+    @aetest.subsection
     def create_test_room(self, testscript, room_prefix="e2e-test"):
         """Create the session-scoped test room."""
         room_suffix = str(int(time.time()))[-7:]
@@ -94,25 +117,6 @@ class MyceliumCommonSetup(aetest.CommonSetup):
         if status not in (200, 201):
             self.failed(f"Failed to create test room {room_name}: status={status}")
         log.info("Test room created: %s", room_name)
-
-    @aetest.subsection
-    def presuite_hygiene(self, testscript, room_prefix="e2e-test"):
-        """Clean stale sessions and trim agent history."""
-        api: MyceliumAPI = testscript.parameters["api"]
-
-        for prefix in ("e2e-", "dist-e2e-", "mycelium_room:session:"):
-            deleted = api.cleanup_rooms(prefix)
-            if deleted:
-                log.info("Cleaned %d stale '%s*' rooms", deleted, prefix)
-
-        trimmed = trim_agent_sessions(max_files=5)
-        if trimmed:
-            log.info("Trimmed %d local session files", trimmed)
-
-        remote_hosts = self._get_remote_hosts(testscript)
-        containers = self._get_containers(testscript)
-        if remote_hosts:
-            trim_remote_agent_sessions(remote_hosts, max_files=5, containers=containers)
 
     @aetest.subsection
     def reset_agent_sessions(self, testscript):

@@ -17,6 +17,7 @@ import uuid
 from pyats import aetest
 
 from libs.mycelium_api import MyceliumAPI
+from libs.matrix_client import MatrixClient
 from libs.environment import EnvironmentInfo
 
 log = logging.getLogger(__name__)
@@ -86,7 +87,19 @@ class _DistributedBase(aetest.Testcase):
                 f"@all Please join the negotiation on '{self.scenario_topic}' "
                 f"in room {test_room}. Use `mycelium session join --room {test_room}`."
             )
-            log.info("Matrix trigger: %s (room=%s)", trigger[:80], room_id)
+            token = os.environ.get("MATRIX_TOKEN_AGENT_ALPHA", "")
+            if not token:
+                step.failed("MATRIX_TOKEN_AGENT_ALPHA not set — cannot send trigger")
+            client = MatrixClient(homeserver=matrix_url, access_token=token)
+            try:
+                asyncio.get_event_loop().run_until_complete(
+                    client.send_message(room_id, trigger)
+                )
+            except Exception as exc:
+                step.failed(f"Failed to send Matrix trigger: {exc}")
+            finally:
+                asyncio.get_event_loop().run_until_complete(client.close())
+            log.info("Matrix trigger sent to %s: %s", room_id, trigger[:80])
 
         with steps.start(f"Wait for consensus (timeout={timeout}s)") as step:
             result = api.wait_for_consensus(test_room, timeout=timeout)

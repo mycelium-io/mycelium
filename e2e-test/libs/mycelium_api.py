@@ -216,16 +216,20 @@ class MyceliumAPI:
         log.warning("Consensus timeout after %ds for %s", timeout, room_name)
         return None
 
-    def cleanup_rooms(self, prefix: str, max_age_minutes: int = 0) -> int:
-        """Delete rooms matching prefix. Returns count of deleted rooms."""
+    def cleanup_rooms(self, prefix: str, max_age_minutes: int = 0, exclude: set[str] | None = None) -> int:
+        """Delete rooms matching prefix. Returns count of deleted rooms.
+
+        Rooms whose name is in *exclude* are skipped (protects owned rooms).
+        """
         status, data = self.list_rooms()
         if status != 200:
             return 0
         rooms = data if isinstance(data, list) else []
+        skip = exclude or set()
         deleted = 0
         for room in rooms:
             name = room.get("name", "")
-            if name.startswith(prefix):
+            if name.startswith(prefix) and name not in skip:
                 st, _ = self.delete_room(name)
                 if 200 <= st < 300:
                     deleted += 1

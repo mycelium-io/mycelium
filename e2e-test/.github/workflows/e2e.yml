@@ -98,15 +98,35 @@ jobs:
         run: |
           docker compose -f $COMPOSE_FILE run --rm mycelium-bootstrap
 
-      - name: Fetch workspace ID
+      - name: Fetch workspace ID and propagate to backend
         run: |
-          WORKSPACE_ID=$(docker exec e2e-mycelium-bootstrap \
-            cat /shared/mycelium-config.json 2>/dev/null | \
-            python3 -c "import sys,json; print(json.load(sys.stdin).get('workspace_id',''))" 2>/dev/null || echo "")
+          # The bootstrap container wrote config to the e2e-shared volume.
+          # Read it via a one-shot container that mounts the same volume.
+          WORKSPACE_ID=$(docker run --rm \
+            -v mycelium-e2e-test_e2e-shared:/shared:ro \
+            python:3.12-slim \
+            python3 -c "
+          import json, pathlib, sys
+          p = pathlib.Path('/shared/mycelium-config.json')
+          if p.exists():
+              print(json.loads(p.read_text()).get('workspace_id', ''))
+          " 2>/dev/null || echo "")
+
           if [ -n "$WORKSPACE_ID" ]; then
-            echo "Setting WORKSPACE_ID=$WORKSPACE_ID on backend"
-            docker exec e2e-mycelium-backend sh -c \
-              "export WORKSPACE_ID=$WORKSPACE_ID"
+            echo "WORKSPACE_ID=$WORKSPACE_ID"
+            # Inject into the running backend by updating its env and restarting
+            docker compose -f $COMPOSE_FILE stop mycelium-backend
+            export WORKSPACE_ID
+            docker compose -f $COMPOSE_FILE up -d mycelium-backend
+            # Wait for it to come back healthy
+            for i in $(seq 1 30); do
+              status=$(docker inspect --format='{{.State.Health.Status}}' e2e-mycelium-backend 2>/dev/null || echo "missing")
+              [ "$status" = "healthy" ] && break
+              sleep 2
+            done
+            echo "Backend restarted with WORKSPACE_ID=$WORKSPACE_ID (status=$status)"
+          else
+            echo "No workspace ID found — skipping"
           fi
 
       - name: Set up Python and uv
