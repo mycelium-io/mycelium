@@ -13,6 +13,13 @@ entry when the tag is cut.
 ## [1.1.0] - TBD
 
 ### Added
+- **Cursor integration** — `cursor-agent` as a first-class cold-spawn family alongside `claude_code`, sharing the same `mycelium-cc-daemon`
+  - `mycelium adapter add cursor [--step=daemon]` — installs the same daemon that serves claude_code (one user service per host); the adapter itself drops no host-level files
+  - `mycelium agent create --adapter cursor --cwd <workspace>` — drops `<cwd>/.cursor/rules/mycelium.mdc` (owned by mycelium, overwritten on refresh) and merges a `<!-- mycelium:start --> ... <!-- mycelium:end -->` block into `<cwd>/AGENTS.md` (non-destructive — any existing user content is preserved)
+  - Family-agnostic daemon dispatch — the cc-daemon now branches on the `Integration.lifecycle` discriminator (`cold_spawn` vs `long_lived_gateway`), not on the family id, so future Gemini / Codex / Aider integrations route through the same loop the moment their class lands
+  - Identity preamble + room/agent context injected through the positional prompt (cursor-agent has no system-prompt flag) with a `---` separator; `cursor-agent -p --workspace --trust --force --approve-mcps` runs fully headless
+  - Auth-required stderr detection: an unauthenticated `cursor-agent` surfaces a friendly `daemon error: cursor-agent is not authenticated. Run cursor-agent login once interactively...` reply in the room and logs `cursor auth required for @handle` to the daemon log (no pre-flight check, matching claude_code's posture)
+  - Cost note: cursor-agent reports token `usage` but no per-call `$` cost, so the daemon's budget tracker accumulates `$0.00` per cursor invocation (`--budget` is stored on the manifest for symmetry but not enforced); raw `usage` is preserved on `SpawnResult.extra` for future per-model pricing translation
 - **Agent primitive** — define agents within a room and invoke them by handle ([#277](https://github.com/mycelium-io/mycelium/pull/277))
   - `mycelium agent {add,ls,show,invoke,rm}` — register an agent as a manifest + notes entry in the room
   - `mycelium daemon` — persistent SSE subscriber that dispatches `@handle` mentions to `claude -p` spawns with the agent's system prompt and identity preamble
