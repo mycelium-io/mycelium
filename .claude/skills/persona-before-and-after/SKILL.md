@@ -172,38 +172,125 @@ ls "$PERSONAS_DIR/profiles/"
 echo ""
 echo "Usage: run this skill with one of the above scenario names as the argument."
 echo "Example: persona-before-and-after ex07_investment_portfolio"
+echo ""
+echo "To run a mission from missions.yaml on a profile:"
+echo "  persona-before-and-after default --mission \"Hard 01 - AI Model Deployment Policy\""
 ```
 
-Otherwise, set the scenario from the argument:
+Otherwise, parse the scenario and optional `--mission` flag from the argument:
 
 ```bash
-SCENARIO="ex07_investment_portfolio"   # replace with the user's argument
+# Parse: <scenario> [--mission "<mission name>"]
+# Examples:
+#   ex07_investment_portfolio
+#   default --mission "Hard 01 - AI Model Deployment Policy"
+SCENARIO="default"        # replace with the first token of the user's argument
+MISSION_NAME=""           # replace with the value after --mission, or leave empty
+
 PROFILES_DIR="$PERSONAS_DIR/profiles/$SCENARIO"
 
-# Verify it exists
+# Verify the profile exists
 ls "$PROFILES_DIR" || { echo "ERROR: scenario '$SCENARIO' not found. Run with 'list' to see options."; exit 1; }
 
 echo "Agents in this scenario:"
 for f in "$PROFILES_DIR"/*.yaml; do basename "$f" .yaml; done
+
+echo "Mission: ${MISSION_NAME:-(derived from agent domains)}"
+```
+
+---
+
+## Phase 0.65: Load Mission from missions.yaml (when --mission is set)
+
+Skip this phase if `MISSION_NAME` is empty — the prompt will be derived from agent
+domains in Phase 2a as usual.
+
+When `MISSION_NAME` is set, read `missions.yaml` and extract `content_text` and
+`n_steps` for the named mission. These override the Phase 2a prompt derivation and
+the Phase 2c cost-guard threshold.
+
+```python
+python3 << 'PYEOF'
+import yaml, os, sys
+
+mission_name = os.environ.get("MISSION_NAME", "").strip()
+if not mission_name:
+    print("No --mission specified — skipping Phase 0.65")
+    sys.exit(0)
+
+personas_dir = os.environ["PERSONAS_DIR"]
+missions_path = os.path.join(personas_dir, "missions.yaml")
+
+with open(missions_path) as f:
+    data = yaml.safe_load(f)
+
+missions = data.get("missions", [])
+match = next((m for m in missions if m["name"] == mission_name), None)
+if not match:
+    available = [m["name"] for m in missions]
+    print(f"ERROR: mission '{mission_name}' not found in missions.yaml.")
+    print("Available missions:")
+    for n in available:
+        print(f"  - {n}")
+    sys.exit(1)
+
+content_text = match["content_text"].strip()
+n_steps = match.get("n_steps", 30)
+
+# Write to a temp file for subsequent phases to source
+with open("/tmp/exp_mission.env", "w") as f:
+    # shell-safe: single-quote the prompt, escaping any embedded single quotes
+    safe_prompt = content_text.replace("'", "'\\''")
+    f.write(f"SCENARIO_PROMPT='{safe_prompt}'\n")
+    f.write(f"COST_GUARD_STEPS={n_steps}\n")
+
+print(f"Mission loaded: '{mission_name}'")
+print(f"n_steps: {n_steps}")
+print(f"content_text preview: {content_text[:200]}{'...' if len(content_text) > 200 else ''}")
+PYEOF
+```
+
+```bash
+export PERSONAS_DIR MISSION_NAME
+python3 << 'PYEOF'
+# ... (script above)
+PYEOF
+
+# Source the extracted values if the mission file was written
+if [ -f /tmp/exp_mission.env ]; then
+    source /tmp/exp_mission.env
+    export SCENARIO_PROMPT COST_GUARD_STEPS
+    echo "SCENARIO_PROMPT and COST_GUARD_STEPS loaded from mission."
+fi
 ```
 
 ---
 
 ## Phase 0.7: Compose Agent Personas
 
-For each profile YAML in the scenario, resolve `persona_parts` and concatenate the
-referenced files into a single persona string. This is what goes into each agent's
-SOUL.md.
+For each profile YAML in the scenario, resolve `persona_parts` and produce **two
+separate persona sets**:
+
+- **before** — preference parts only (no strategy/negotiate blocks). Agents know who
+  they are and what they want, but have no knowledge of the Mycelium CLI protocol.
+  This is the control: uncontaminated by structured-negotiation instructions.
+- **after** — full persona (preference + strategy). Agents carry the complete
+  negotiation protocol, including the CLI command format and convergence rules.
 
 ```python
 python3 << 'PYEOF'
-import yaml, os, sys
+import yaml, os, sys, json
 
 personas_dir = os.environ["PERSONAS_DIR"]
 scenario     = os.environ["SCENARIO"]
 profiles_dir = os.path.join(personas_dir, "profiles", scenario)
 
-agents = {}
+# Keys whose file content is a negotiation/strategy protocol (not identity)
+STRATEGY_KEYS = {"negotiate", "general"}
+
+agents_before = {}  # preference-only
+agents_after  = {}  # preference + strategy
+
 for profile_file in sorted(os.listdir(profiles_dir)):
     if not profile_file.endswith(".yaml"):
         continue
@@ -211,7 +298,9 @@ for profile_file in sorted(os.listdir(profiles_dir)):
     with open(os.path.join(profiles_dir, profile_file)) as f:
         profile = yaml.safe_load(f)
 
-    parts = []
+    pref_parts     = []
+    strategy_parts = []
+
     for part_path in profile.get("persona_parts", []):
         # part_path is relative to $PERSONAS_DIR, e.g. "personas/preferences/ex07_risk_agent.yaml"
         # strip leading "personas/" since we cloned the repo root (which IS the personas dir)
@@ -221,20 +310,30 @@ for profile_file in sorted(os.listdir(profiles_dir)):
             data = yaml.safe_load(pf)
         # each file has exactly one key (domain, negotiate, general) — extract its value
         for key, value in data.items():
-            parts.append(value.strip())
+            if key in STRATEGY_KEYS:
+                strategy_parts.append(value.strip())
+            else:
+                pref_parts.append(value.strip())
 
-    soul = "\n\n".join(parts)
-    agents[agent_name] = soul
+    soul_before = "\n\n".join(pref_parts)
+    soul_after  = "\n\n".join(pref_parts + strategy_parts)
+
+    agents_before[agent_name] = soul_before
+    agents_after[agent_name]  = soul_after
+
     print(f"--- {agent_name} ---")
-    print(soul[:200], "..." if len(soul) > 200 else "")
+    print(f"  before: {len(soul_before)} chars (preference only)")
+    print(f"  after:  {len(soul_after)} chars (preference + strategy)")
     print()
 
-# Write to a temp file for the next phase to read
-import json
-with open("/tmp/exp_personas.json", "w") as f:
-    json.dump(agents, f, indent=2)
+with open("/tmp/exp_personas_before.json", "w") as f:
+    json.dump(agents_before, f, indent=2)
+with open("/tmp/exp_personas_after.json", "w") as f:
+    json.dump(agents_after, f, indent=2)
 
-print(f"Composed {len(agents)} agent personas → /tmp/exp_personas.json")
+print(f"Composed {len(agents_before)} agent personas")
+print("  /tmp/exp_personas_before.json — preference-only (for before case)")
+print("  /tmp/exp_personas_after.json  — full persona    (for after case)")
 PYEOF
 ```
 
@@ -247,10 +346,10 @@ python3 << 'PYEOF'
 PYEOF
 ```
 
-Verify the output looks right — each agent should have a `domain:` block (who they are,
-red lines, concession order) followed by a `negotiate:` block (the protocol rules and
-JSON reply format). If the strategy block is missing, the profile's `persona_parts` is
-only referencing a preference file; check the profile YAML.
+Verify the output: the `before` soul should contain only the identity/domain block.
+The `after` soul should append the `negotiate:` protocol block. If strategy parts are
+missing from the after set, the profile's `persona_parts` only references preference
+files — check the profile YAML.
 
 ## Phase 0.8: Choose Experiment LLM & API Key
 
@@ -291,7 +390,7 @@ echo "Experiment ID: $EXP_ID"
 Read the agent list from the composed personas:
 
 ```bash
-AGENT_NAMES=$(python3 -c "import json; d=json.load(open('/tmp/exp_personas.json')); print(' '.join(d.keys()))")
+AGENT_NAMES=$(python3 -c "import json; d=json.load(open('/tmp/exp_personas_before.json')); print(' '.join(d.keys()))")
 echo "Agents: $AGENT_NAMES"
 ```
 
@@ -324,16 +423,18 @@ json.dump(cfg, open(p, 'w'), indent=2)
 "
 ```
 
-### 1b. Write Persona SOUL.md Files
+### 1b. Write Persona SOUL.md Files (before-case: preference-only)
 
-Read the composed personas from `/tmp/exp_personas.json` and write each agent's SOUL.md:
+Write the **preference-only** personas for the before case. Agents will know their
+identity, red lines, and goals — but will have no knowledge of the Mycelium CLI
+protocol. This prevents contamination of the control case.
 
 ```python
 python3 << 'PYEOF'
 import json, os
 
 exp_id = os.environ["EXP_ID"]
-agents = json.load(open("/tmp/exp_personas.json"))
+agents = json.load(open("/tmp/exp_personas_before.json"))
 
 for agent_name, soul_text in agents.items():
     exp_agent = f"{exp_id}-{agent_name}"
@@ -342,7 +443,7 @@ for agent_name, soul_text in agents.items():
     soul_path = os.path.join(workspace, "SOUL.md")
     with open(soul_path, "w") as f:
         f.write(soul_text + "\n")
-    print(f"Wrote SOUL.md for {exp_agent} ({len(soul_text)} chars)")
+    print(f"Wrote SOUL.md for {exp_agent} ({len(soul_text)} chars, preference-only)")
 PYEOF
 ```
 
@@ -353,14 +454,9 @@ python3 << 'PYEOF'
 PYEOF
 ```
 
-The SOUL.md for each agent now contains:
-- Their **identity, position, red lines, and concession order** (from the preference file)
-- The **negotiation protocol** they must follow (from the strategy file) — including the
-  exact JSON reply format for `mycelium negotiate propose/respond`
-
-This means both the before and after cases use agents with authentic, structured personas.
-The "after" case agents already know the counter-offer JSON protocol from their SOUL.md —
-you don't need to re-explain it in the seed.
+The SOUL.md at this point contains **only** the identity/domain block — who the agent
+is, their position, red lines, and concession order. The strategy/negotiate block is
+intentionally absent. It will be written in Phase 3a before the after case runs.
 
 ### 1c. Disable the mycelium-bootstrap hook (contamination guard)
 
@@ -413,7 +509,7 @@ backend_url  = mycelium_cfg.get("server", {}).get("api_url", "http://localhost:8
 exp_id    = os.environ["EXP_ID"]
 room_name = os.environ.get("EXP_ROOM", f"{exp_id}-before")
 
-personas   = json.load(open("/tmp/exp_personas.json"))
+personas   = json.load(open("/tmp/exp_personas_before.json"))
 exp_agents = [f"{exp_id}-{name}" for name in personas.keys()]
 
 oc_path = os.path.expanduser("~/.openclaw/openclaw.json")
@@ -472,32 +568,28 @@ grep "mycelium-room.*SSE connected" /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log
 
 ### 2a. Build the Scenario Prompt
 
-The scenario prompt is derived from the chosen persona set. Use the agent identities
-from their preference files to frame the decision they need to reach.
+If `SCENARIO_PROMPT` is already set (loaded from `missions.yaml` in Phase 0.65),
+skip this step — it is ready to use.
 
-For example, for `ex07_investment_portfolio`:
-- Three agents (GrowthAgent, RiskAgent, ExecutionAgent) must agree on a portfolio
-  rebalancing plan — sector weights, volatility limits, and execution timing.
-
-Construct the `SCENARIO_PROMPT` based on what the personas are fighting over. You can
-read the domain blocks to get exact framing:
+Otherwise, derive it from the agent domain blocks:
 
 ```bash
-python3 -c "
+if [ -n "$SCENARIO_PROMPT" ]; then
+    echo "Using mission prompt (Phase 0.65): ${SCENARIO_PROMPT:0:120}..."
+else
+    # Derive from agent identity blocks
+    python3 -c "
 import json
-agents = json.load(open('/tmp/exp_personas.json'))
+agents = json.load(open('/tmp/exp_personas_before.json'))
 for name, soul in agents.items():
-    # print the first paragraph (the domain/identity block)
     print(f'=== {name} ===')
     print(soul.split('\n\n')[0][:300])
     print()
 "
-```
-
-Then set the prompt:
-
-```bash
-SCENARIO_PROMPT="<derive from the agent domains above — what decision do they need to reach?>"
+    # Set the prompt based on what the agents are fighting over:
+    SCENARIO_PROMPT="<derive from the agent domains above — what decision do they need to reach?>"
+    export SCENARIO_PROMPT
+fi
 ```
 
 ### 2b. Seed the Conversation
@@ -506,7 +598,7 @@ The seed must @-mention every agent (channel is `requireMention: true`) and tell
 to @-mention each other to continue:
 
 ```bash
-AGENT_NAMES=$(python3 -c "import json; d=json.load(open('/tmp/exp_personas.json')); print(' '.join(d.keys()))")
+AGENT_NAMES=$(python3 -c "import json; d=json.load(open('/tmp/exp_personas_before.json')); print(' '.join(d.keys()))")
 MENTIONS=$(for n in $AGENT_NAMES; do printf "@${EXP_ID}-${n} "; done)
 
 SEED_BODY="${MENTIONS}
@@ -547,8 +639,9 @@ if isinstance(msgs, list):
 ```
 
 **Cost guard:** Cut the before case if you see ≥3 distinct "consensus" messages with
-different substance, scope creep re-opening settled items, or >30 messages without
-unanimous agreement. To kill it cleanly:
+different substance, scope creep re-opening settled items, or >${COST_GUARD_STEPS:-30}
+messages without unanimous agreement (`n_steps` from `missions.yaml` when a mission is
+loaded, otherwise 30). To kill it cleanly:
 
 ```bash
 python3 -c "
@@ -595,17 +688,45 @@ the fast signal on “did anything blow up here.”
 
 ## Phase 3: Run "After" (Mycelium Structured Negotiation)
 
-### 3a. Re-enable bootstrap hook and switch to the after room
+### 3a. Rewrite SOUL.md with full personas, re-enable bootstrap hook, switch to after room
 
-Re-enable the bootstrap hook and switch the channel to the after room. The
-variable under test is now clearly "with bootstrap context injected" (after)
-vs "without" (before) — same channel plugin, same agents, same scenario.
+Three things happen here in order:
+
+1. **Rewrite SOUL.md** — swap the preference-only SOUL.md for the full persona
+   (preference + strategy). Agents now carry the Mycelium CLI negotiation protocol.
+2. **Re-enable bootstrap hook** (if it was disabled) — agents get `MYCELIUM_ROOM_ID`
+   injected at bootstrap.
+3. **Switch channel to the after room** and restart the gateway.
+
+```python
+# Step 1: rewrite SOUL.md files with full (preference + strategy) personas
+python3 << 'PYEOF'
+import json, os
+
+exp_id = os.environ["EXP_ID"]
+agents = json.load(open("/tmp/exp_personas_after.json"))
+
+for agent_name, soul_text in agents.items():
+    exp_agent = f"{exp_id}-{agent_name}"
+    soul_path = os.path.expanduser(f"~/.openclaw/workspaces/{exp_agent}/SOUL.md")
+    with open(soul_path, "w") as f:
+        f.write(soul_text + "\n")
+    print(f"Rewrote SOUL.md for {exp_agent} ({len(soul_text)} chars, preference + strategy)")
+PYEOF
+```
 
 ```bash
-# Re-enable bootstrap hook — agents now get MYCELIUM_ROOM_ID injected
+export EXP_ID
+python3 << 'PYEOF'
+# ... (script above)
+PYEOF
+```
+
+```bash
+# Step 2: re-enable bootstrap hook — agents now get MYCELIUM_ROOM_ID injected
 openclaw hooks enable mycelium-bootstrap
 
-# Switch channel to after room
+# Step 3: switch channel to after room
 python3 -c "
 import json, os
 oc_path = os.path.expanduser('~/.openclaw/openclaw.json')
@@ -625,9 +746,9 @@ grep "SSE connected.*${EXP_ID}-after" /tmp/openclaw/openclaw-$(date +%Y-%m-%d).l
 
 ### 3b. Seed with Negotiation Instructions
 
-The agents already have the negotiation protocol in their SOUL.md (from the strategy
-file). The seed just needs to activate it — tell them to use `mycelium session join`
-and the CLI protocol rather than chatting:
+The agents now have the negotiation protocol in their SOUL.md (just written in 3a).
+The seed activates it — tell them to use `mycelium session join` and the CLI protocol
+rather than chatting:
 
 ```bash
 MENTIONS=$(for n in $AGENT_NAMES; do printf "@${EXP_ID}-${n} "; done)
@@ -956,7 +1077,7 @@ openclaw hooks enable mycelium-knowledge-extract
 
 # Clean up temp dirs
 rm -rf "$PERSONAS_DIR"
-rm -f /tmp/exp_personas.json
+rm -f /tmp/exp_personas_before.json /tmp/exp_personas_after.json
 
 openclaw gateway restart
 ```
@@ -1023,7 +1144,7 @@ The skill always does `--depth 1` clone so it gets the latest version automatica
 | `git clone` of persona repo fails | No network / repo private | Check connectivity; ensure repo is public at github.com/akanksha276/ioc-cfn-agent-personas |
 | `yaml` module not found | PyYAML not installed | `pip install pyyaml` |
 | Profile YAML has no `persona_parts` | Wrong file or typo | Check `ls $PERSONAS_DIR/profiles/$SCENARIO/` |
-| Strategy block missing from SOUL.md | Profile only refs a preference file | Add a strategy to `persona_parts` in the profile YAML |
+| Strategy block missing from after-case SOUL.md | Profile only refs a preference file | Add a strategy to `persona_parts` in the profile YAML; the before case intentionally omits it |
 | `openclaw agents add` prompts interactively | Missing `--non-interactive` | Add `--non-interactive --workspace <path>` |
 | `mycelium room create` returns 400 | Room name already exists | Use unique `$EXP_ID` prefix or delete existing room first |
 | Agents don't respond in after case | Sandbox blocks `mycelium` CLI | Verify `sandbox: {mode: off}` was patched in Phase 1a |
