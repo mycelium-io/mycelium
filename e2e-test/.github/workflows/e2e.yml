@@ -42,9 +42,9 @@ env:
   MYCELIUM_STUB_EMBEDDINGS: ${{ github.event.inputs.stub_embeddings == 'false' && '0' || '1' }}
   MYCELIUM_DB_PASSWORD: password
   CFN_NAME: mycelium-cfn
-  LLM_MODEL: ${{ secrets.LLM_MODEL || '' }}
-  LLM_API_KEY: ${{ secrets.LLM_API_KEY || '' }}
-  LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || '' }}
+  LLM_MODEL: ${{ secrets.LLM_MODEL || vars.LLM_MODEL || '' }}
+  LLM_API_KEY: ${{ secrets.LLM_API_KEY || vars.LLM_API_KEY || '' }}
+  LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || vars.LLM_BASE_URL || '' }}
 
 jobs:
   e2e:
