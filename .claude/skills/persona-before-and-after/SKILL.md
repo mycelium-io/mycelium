@@ -868,6 +868,26 @@ Compare transcripts. Score each criterion 1–5:
 | 4 | Substantially addressed |
 | 5 | Fully resolved |
 
+Before writing the report, count messages for both cases:
+
+```bash
+python3 - <<'PY'
+import json, pathlib, os
+exp = os.environ["EXP_ID"]
+base = pathlib.Path("~/.mycelium/rooms").expanduser()
+
+for label in ("before", "after"):
+    p = base / f"{exp}-{label}" / "transcript.md"
+    count = p.read_text().count("**") // 2 if p.exists() else "missing"
+    print(f"{label} messages: {count}")
+
+sess = base / f"{exp}-after" / "session-transcript.md"
+if sess.exists():
+    ticks = sess.read_text().count("[tick]")
+    print(f"after ticks (rounds): {ticks}")
+PY
+```
+
 Write the report to `~/.mycelium/rooms/${EXP_ID}/evaluation.md`:
 
 ```markdown
@@ -882,7 +902,8 @@ Write the report to `~/.mycelium/rooms/${EXP_ID}/evaluation.md`:
 | Metric | Before (Channel) | After (Mycelium) |
 |--------|-----------------|-----------------|
 | Consensus reached? | ... | ... |
-| Rounds to resolution | ... | ... |
+| Messages exchanged | ... | ... |
+| Engine ticks (rounds) | n/a | ... |
 | Issues explicitly identified | ... | ... |
 | Issues resolved | ... | ... |
 | Overall score | X/5 | X/5 |
