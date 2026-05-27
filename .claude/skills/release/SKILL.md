@@ -60,7 +60,7 @@ The release pipeline's "promote to latest" steps (Docker `:latest` tags, GH "Lat
 
 7. **Webex notification** — Invoke `/webex` (no confirmation needed). Behavior depends on whether this is a stable or preview release.
 
-   **Stable release** — when `--with-webex` is passed, post a bullet-point changelog summary with the tag and release URL. Each bullet should include the PR link if one exists (e.g. `- feat: description ([#123](https://github.com/mycelium-io/mycelium/pull/123))`). Follow with upgrade instructions using triple-backtick code blocks so they're copyable:
+   **Stable release** — when `--with-webex` is passed, post a bullet-point changelog summary with the tag and release URL. Each bullet should include the PR link if one exists (e.g. `- feat: description ([#123](https://github.com/mycelium-io/mycelium/pull/123))`). End the summary with a markdown link to the full changelog: `[Full changelog](https://github.com/mycelium-io/mycelium/blob/main/CHANGELOG.md)`. Follow with upgrade instructions using triple-backtick code blocks so they're copyable:
    ```
    To upgrade:
    mycelium upgrade && mycelium pull
