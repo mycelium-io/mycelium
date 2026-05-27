@@ -1,0 +1,251 @@
+# E2E CI Docker Compose stack for Mycelium.
+#
+# Self-contained stack for running the full pyATS E2E suite:
+#   mycelium-db → CFN services → mycelium-backend → matrix-synapse
+#
+# Usage:
+#   docker compose -f infra/compose.e2e.yaml up -d
+#   docker compose -f infra/compose.e2e.yaml run --rm matrix-bootstrap
+#   docker compose -f infra/compose.e2e.yaml run --rm mycelium-bootstrap
+#
+# All services use a shared network (mycelium-e2e) and are accessible from
+# the host on their mapped ports. The pyATS runner runs on the host.
+
+x-common-env: &common-env
+  MYCELIUM_DB_PASSWORD: ${MYCELIUM_DB_PASSWORD:-password}
+
+services:
+
+  # ── Database ──────────────────────────────────────────────────────────
+  mycelium-db:
+    image: ghcr.io/mycelium-io/mycelium-db:${MYCELIUM_IMAGE_TAG:-latest}
+    platform: linux/amd64
+    container_name: e2e-mycelium-db
+    command: postgres -c max_locks_per_transaction=256
+    environment:
+      <<: *common-env
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${MYCELIUM_DB_PASSWORD:-password}
+      POSTGRES_DB: mycelium
+    ports:
+      - "${E2E_DB_PORT:-5432}:5432"
+    volumes:
+      - e2e-db-data:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d mycelium"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 15s
+    networks:
+      - mycelium-e2e
+
+  # ── CFN Management Plane ──────────────────────────────────────────────
+  ioc-cfn-mgmt-plane-svc:
+    image: ${CFN_MGMT_IMAGE:-ghcr.io/outshift-open/ioc-cfn-mgmt-plane-svc:0.1.1}
+    container_name: e2e-cfn-mgmt
+    depends_on:
+      mycelium-db:
+        condition: service_healthy
+    environment:
+      <<: *common-env
+      SERVICE_NAME: ioc-cfn-mgmt-plane-svc
+      APPLICATION_VERSION: latest
+      LOG_LEVEL: INFO
+      ADMIN_USER_PASSWORD: ${ADMIN_USER_PASSWORD:-admin}
+      POSTGRES_HOST: mycelium-db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: cfn_mgmt
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${MYCELIUM_DB_PASSWORD:-password}
+      PORT: 9000
+      CFN_DEV_MODE: "true"
+      CFN_NAME: ${CFN_NAME:-mycelium-cfn}
+    ports:
+      - "${E2E_CFN_MGMT_PORT:-9000}:9000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - mycelium-e2e
+
+  # ── CFN Fabric Node ───────────────────────────────────────────────────
+  ioc-cognition-fabric-node-svc:
+    image: ${CFN_NODE_IMAGE:-ghcr.io/outshift-open/ioc-cognition-fabric-node-svc:0.1.7}
+    platform: linux/amd64
+    container_name: e2e-cfn-node
+    depends_on:
+      mycelium-db:
+        condition: service_healthy
+      ioc-cfn-mgmt-plane-svc:
+        condition: service_healthy
+    environment:
+      MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
+      CFN_NAME: ${CFN_NAME:-mycelium-cfn}
+      DB_HOST: mycelium-db
+      DB_PORT: 5432
+      DB_NAME: cfn_cp
+      DB_USER: postgres
+      DB_PASSWORD: ${MYCELIUM_DB_PASSWORD:-password}
+      DB_SSL_MODE: disable
+      PORT: 9002
+      HEARTBEAT_INTERVAL_SECONDS: 10
+    ports:
+      - "${E2E_CFN_NODE_PORT:-9002}:9002"
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:9002/api/internal/diagnostics/health')\" || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    networks:
+      - mycelium-e2e
+
+  # ── Mycelium Backend ──────────────────────────────────────────────────
+  mycelium-backend:
+    image: ghcr.io/mycelium-io/mycelium-backend:${MYCELIUM_IMAGE_TAG:-latest}
+    container_name: e2e-mycelium-backend
+    depends_on:
+      mycelium-db:
+        condition: service_healthy
+      ioc-cfn-mgmt-plane-svc:
+        condition: service_healthy
+      ioc-cognition-fabric-node-svc:
+        condition: service_healthy
+    environment:
+      <<: *common-env
+      DATABASE_URL: "postgresql+asyncpg://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium"
+      GRAPH_DB_URL: "postgresql://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium"
+      API_BASE_URL: http://mycelium-backend:8000
+      CFN_MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
+      COGNITION_FABRIC_NODE_URL: http://ioc-cognition-fabric-node-svc:9002
+      COORDINATION_TICK_TIMEOUT_SECONDS: ${COORDINATION_TICK_TIMEOUT_SECONDS:-30}
+      MYCELIUM_DATA_DIR: /root/.mycelium
+      MYCELIUM_STUB_EMBEDDINGS: "${MYCELIUM_STUB_EMBEDDINGS:-0}"
+      LLM_MODEL: "${LLM_MODEL:-}"
+      LLM_API_KEY: "${LLM_API_KEY:-}"
+      LLM_BASE_URL: "${LLM_BASE_URL:-}"
+      WORKSPACE_ID: "${WORKSPACE_ID:-}"
+    ports:
+      - "${E2E_BACKEND_PORT:-8000}:8000"
+    volumes:
+      - e2e-mycelium-data:/root/.mycelium
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    networks:
+      - mycelium-e2e
+
+  # ── Matrix Synapse ────────────────────────────────────────────────────
+  #
+  # The official Synapse image runs as UID 991 (synapse). The named volume
+  # is owned by root on first creation, so we start as root, fix perms,
+  # copy config, generate the signing key, then exec as the synapse user.
+  matrix-synapse:
+    image: matrixdotorg/synapse:latest
+    container_name: e2e-matrix-synapse
+    user: "0:0"
+    entrypoint:
+      - sh
+      - -c
+      - |
+        chown -R 991:991 /data
+        cp /conf/homeserver.yaml /data/homeserver.yaml
+        cp /conf/log.config /data/log.config
+        exec gosu 991:991 python -m synapse.app.homeserver --config-path /data/homeserver.yaml
+    environment:
+      SYNAPSE_SERVER_NAME: local
+      SYNAPSE_REPORT_STATS: "no"
+    volumes:
+      - e2e-synapse-data:/data
+      - ./synapse/homeserver.yaml:/conf/homeserver.yaml:ro
+      - ./synapse/log.config:/conf/log.config:ro
+    ports:
+      - "${E2E_MATRIX_PORT:-8008}:8008"
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8008/_matrix/client/versions')\" || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 15s
+    networks:
+      - mycelium-e2e
+
+  # ── Bootstrap: Matrix accounts + room ─────────────────────────────────
+  matrix-bootstrap:
+    image: python:3.12-slim
+    container_name: e2e-matrix-bootstrap
+    depends_on:
+      matrix-synapse:
+        condition: service_healthy
+    volumes:
+      - ./scripts:/scripts:ro
+      - e2e-shared:/shared
+    environment:
+      MATRIX_HOMESERVER: http://matrix-synapse:8008
+      MATRIX_SHARED_SECRET: e2e-shared-secret
+    entrypoint: ["python3", "/scripts/bootstrap-matrix.py"]
+    networks:
+      - mycelium-e2e
+    profiles:
+      - bootstrap
+
+  # ── Bootstrap: Mycelium workspace ─────────────────────────────────────
+  mycelium-bootstrap:
+    image: python:3.12-slim
+    container_name: e2e-mycelium-bootstrap
+    depends_on:
+      mycelium-backend:
+        condition: service_healthy
+      ioc-cfn-mgmt-plane-svc:
+        condition: service_healthy
+    volumes:
+      - ./scripts:/scripts:ro
+      - e2e-shared:/shared
+    environment:
+      BACKEND_URL: http://mycelium-backend:8000
+      CFN_MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
+    entrypoint: ["python3", "/scripts/bootstrap-mycelium.py"]
+    networks:
+      - mycelium-e2e
+    profiles:
+      - bootstrap
+
+  # ── pyATS Runner ──────────────────────────────────────────────────────
+  #
+  # Runs easypy jobs inside Linux (avoids macOS fork-safety crashes).
+  # Not started by `docker compose up -d`; invoke explicitly:
+  #   docker compose -f infra/compose.e2e.yaml run --rm pyats-runner \
+  #       pyats run job jobs/integration_job.py
+  pyats-runner:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.pyats
+    container_name: e2e-pyats-runner
+    working_dir: /tests
+    environment:
+      MYCELIUM_API_URL: http://mycelium-backend:8000
+      MATRIX_HOMESERVER: http://matrix-synapse:8008
+    volumes:
+      - ../artifacts:/tests/artifacts
+    networks:
+      - mycelium-e2e
+    profiles:
+      - runner
+
+volumes:
+  e2e-db-data:
+  e2e-synapse-data:
+  e2e-mycelium-data:
+  e2e-shared:
+
+networks:
+  mycelium-e2e:
+    name: mycelium-e2e

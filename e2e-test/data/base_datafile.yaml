@@ -1,0 +1,259 @@
+---
+# Base datafile for Mycelium E2E tests.
+#
+# Defines the service topology and default test parameters.
+# Environment-specific overrides live in lab_datafile.yaml / local_datafile.yaml
+# and use pyATS `extends:` to inherit from this file.
+#
+# All URLs/IPs can be overridden via environment variables at runtime.
+
+parameters:
+
+  # ── Service Topology ────────────────────────────────────────────────────
+  topology:
+    backend:
+      base_url: "%ENV{MYCELIUM_BACKEND_URL, http://localhost:8000}"
+      api_path: "/api"
+      health_path: "/health"
+
+    cfn_mgmt:
+      base_url: "%ENV{CFN_MGMT_URL, http://localhost:9000}"
+      health_path: "/health"
+
+    cfn_node_svc:
+      base_url: "%ENV{CFN_SVC_URL, http://localhost:9002}"
+      health_path: "/api/internal/diagnostics/health"
+
+    matrix:
+      base_url: "%ENV{MATRIX_URL, http://localhost:8008}"
+      health_path: "/_matrix/client/versions"
+      shared_secret: "%ENV{MATRIX_SHARED_SECRET}"
+      test_room_alias: "#agents:local"
+      test_room_id: "%ENV{E2E_MATRIX_ROOM_ID, !XSQgKkMAXJHhTwQLTE:local}"
+
+  # ── Agent Definitions ───────────────────────────────────────────────────
+  agents:
+    local:
+      agent-alpha:
+        display_name: "Alpha"
+        matrix_token_env: "MATRIX_TOKEN_AGENT_ALPHA"
+      agent-beta:
+        display_name: "Beta"
+        matrix_token_env: "MATRIX_TOKEN_AGENT_BETA"
+      agent-gamma:
+        display_name: "Gamma"
+        matrix_token_env: "MATRIX_TOKEN_AGENT_GAMMA"
+      agent-delta:
+        display_name: "Delta"
+        matrix_token_env: "MATRIX_TOKEN_AGENT_DELTA"
+
+  # ── Shared Test Parameters ──────────────────────────────────────────────
+  room_prefix: "e2e-test"
+  shared_mycelium_room: "%ENV{E2E_MYCELIUM_ROOM, mycelium_room}"
+
+  # Timeouts (seconds)
+  timeouts:
+    http_default: 10
+    cli_default: 30
+    negotiation_wait: 600
+    convergence_poll: 5
+    agent_idle_wait: 20
+    session_spawn_wait: 60
+
+  # Logging
+  log_dir: "%ENV{MYCELIUM_E2E_LOG_DIR, ~/.mycelium/e2e-logs}"
+  trace_dir: "%ENV{MYCELIUM_TRACE_DIR, ~/.mycelium/e2e-logs/traces}"
+
+  # SSH configuration for remote hosts
+  ssh:
+    key_path: "~/.ssh/ioc.pem"
+    user: "ubuntu"
+    connect_timeout: 5
+
+  # OpenClaw configuration
+  openclaw:
+    max_session_files: 5
+    session_reset_tags:
+      - "mycelium-room"
+      - "matrix:channel:"
+
+  # ── Convergence Scenario Defaults ───────────────────────────────────────
+  convergence:
+    default_topic: "Sprint planning for Q3 release"
+    max_rounds: 15
+    consensus_timeout: 600
+    poll_interval: 5
+
+# ── Per-Testcase Parameters ─────────────────────────────────────────────
+# pyATS injects these into Testcase classes matching the key name.
+
+testcases:
+  EnvironmentProbe:
+    uid: "mycelium:e2e:env:001"
+
+  RoomLifecycle:
+    uid: "mycelium:e2e:core:001"
+
+  MultiAgentMemory:
+    uid: "mycelium:e2e:core:002"
+    parameters:
+      memories:
+        - agent: "alpha"
+          key: "decisions/database"
+          content: "Decided to use PostgreSQL for persistence. SQLite considered but rejected for concurrency."
+        - agent: "alpha"
+          key: "decisions/llm"
+          content: "Using Claude Haiku for synthesis, Sonnet for complex reasoning. Cost/quality tradeoff."
+        - agent: "beta"
+          key: "status/frontend"
+          content: "React 19 migration complete. Server components working. HMR fixed."
+        - agent: "beta"
+          key: "work/tailwind-v4"
+          content: "Upgraded to Tailwind v4. Removed autoprefixer (now built-in). Fixed JIT issues."
+        - agent: "gamma"
+          key: "context/dep-updates"
+          content: "Dependabot PRs: 3 pending (lodash, axios, typescript). lodash is security-critical."
+        - agent: "gamma"
+          key: "decisions/no-autoprefixer"
+          content: "Dropped autoprefixer from deps. Tailwind v4 includes it. Saves 2MB bundle."
+        - agent: "delta"
+          key: "status/backend-deps"
+          content: "All backend deps up to date. LiteLLM pinned to 1.55.3 due to breaking change in 1.56."
+        - agent: "delta"
+          key: "decisions/litellm-pin"
+          content: "Pinned LiteLLM to 1.55.3. Version 1.56 broke streaming. Issue filed upstream."
+
+  MemoryReads:
+    uid: "mycelium:e2e:core:003"
+
+  SemanticSearch:
+    uid: "mycelium:e2e:core:004"
+
+  Synthesis:
+    uid: "mycelium:e2e:core:005"
+
+  ConsensusNegotiation:
+    uid: "mycelium:e2e:core:006"
+
+  SessionJoinIdempotency:
+    uid: "mycelium:e2e:core:006b"
+
+  DoctorClean:
+    uid: "mycelium:e2e:core:006c"
+
+  CfnLlmCounters:
+    uid: "mycelium:e2e:core:006d"
+
+  MatrixCommunication:
+    uid: "mycelium:e2e:matrix:007"
+
+  IocCfn:
+    uid: "mycelium:e2e:cfn:008"
+
+  IocFullPath:
+    uid: "mycelium:e2e:cfn:009"
+
+  IocNegotiationPath:
+    uid: "mycelium:e2e:cfn:010"
+
+  SharedMemoryCliE2E:
+    uid: "mycelium:e2e:core:011"
+
+  ConsensusCliE2E:
+    uid: "mycelium:e2e:core:012"
+
+  SyncNegotiationCliE2E:
+    uid: "mycelium:e2e:core:013"
+
+  DemoScriptNegotiation:
+    uid: "mycelium:e2e:core:014"
+
+  ThreeAgentNegotiation:
+    uid: "mycelium:e2e:convergence:015"
+
+  ArchitectureDecision:
+    uid: "mycelium:e2e:convergence:016"
+
+  ResourceAllocation:
+    uid: "mycelium:e2e:convergence:017"
+
+  AsymmetricStakes:
+    uid: "mycelium:e2e:convergence:018"
+
+  PreexistingContext:
+    uid: "mycelium:e2e:convergence:019"
+
+  FeaturePrioritization:
+    uid: "mycelium:e2e:convergence:020"
+
+  ConsensusStability:
+    uid: "mycelium:e2e:convergence:021"
+
+  Reindex:
+    uid: "mycelium:e2e:core:022"
+
+  LocalTwoAgentNegotiation:
+    uid: "mycelium:e2e:local:030"
+
+  LocalThreeAgentNegotiation:
+    uid: "mycelium:e2e:local:031"
+
+  LocalArchitectureDecision:
+    uid: "mycelium:e2e:local:032"
+
+  DistributedTwoAgent:
+    uid: "mycelium:e2e:dist:040"
+
+  DistributedThreeAgent:
+    uid: "mycelium:e2e:dist:041"
+
+  DistributedArchitecture:
+    uid: "mycelium:e2e:dist:042"
+
+  DistributedResourceAllocation:
+    uid: "mycelium:e2e:dist:043"
+
+  DistributedAsymmetricStakes:
+    uid: "mycelium:e2e:dist:044"
+
+  DistributedPreexistingContext:
+    uid: "mycelium:e2e:dist:045"
+
+  DistributedFeaturePrioritization:
+    uid: "mycelium:e2e:dist:046"
+
+  DistributedCrossDeviceOnly:
+    uid: "mycelium:e2e:dist:047"
+
+  DistributedBackendResolvedCfnIds:
+    uid: "mycelium:e2e:dist:048"
+
+  SkillCrossChannelReturnTrip:
+    uid: "mycelium:e2e:dist:049"
+
+  OpenClawMyceliumSkill:
+    uid: "mycelium:e2e:openclaw:050"
+
+  OpenClawAgentExecution:
+    uid: "mycelium:e2e:openclaw:051"
+
+  CrossChannelMemoryIsolation:
+    uid: "mycelium:e2e:xchannel:060"
+
+  ClaudeCodeSkillInstall:
+    uid: "mycelium:e2e:integration:070"
+
+  ClaudeCodeAdapterStatus:
+    uid: "mycelium:e2e:integration:071"
+
+  ClaudeCodeAdapterRemove:
+    uid: "mycelium:e2e:integration:072"
+
+  ClaudeCodeDaemonHealth:
+    uid: "mycelium:e2e:integration:073"
+
+  ClaudeCodeAgentLifecycle:
+    uid: "mycelium:e2e:integration:074"
+
+  CursorAdapterPlanned:
+    uid: "mycelium:e2e:integration:075"

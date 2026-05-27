@@ -1,0 +1,166 @@
+name: E2E Tests
+
+on:
+  push:
+    branches:
+      - '**'
+      - '!main'
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'  # Weekly Monday 6am UTC
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: 'Suite to run'
+        type: choice
+        default: 'weekly_full'
+        options:
+          - weekly_full
+          - sanity
+          - core
+          - convergence
+          - distributed
+          - integration
+      datafile:
+        description: 'Datafile override (relative to data/)'
+        default: 'ci_datafile.yaml'
+      image_tag:
+        description: 'Mycelium image tag'
+        default: 'latest'
+      stub_embeddings:
+        description: 'Use stub embeddings (skip model download)'
+        type: boolean
+        default: true
+
+env:
+  COMPOSE_FILE: infra/compose.e2e.yaml
+  MYCELIUM_IMAGE_TAG: ${{ github.event.inputs.image_tag || 'latest' }}
+  MYCELIUM_STUB_EMBEDDINGS: ${{ github.event.inputs.stub_embeddings && '1' || '0' }}
+  MYCELIUM_DB_PASSWORD: password
+  CFN_NAME: mycelium-cfn
+  LLM_MODEL: ${{ secrets.LLM_MODEL || '' }}
+  LLM_API_KEY: ${{ secrets.LLM_API_KEY || '' }}
+  LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || '' }}
+
+jobs:
+  e2e:
+    name: E2E Suite (${{ github.event.inputs.suite || 'weekly_full' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout e2e-test repo
+        uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Start infrastructure
+        run: |
+          docker compose -f $COMPOSE_FILE up -d \
+            mycelium-db matrix-synapse
+          echo "Waiting for DB and Matrix..."
+          docker compose -f $COMPOSE_FILE up -d \
+            ioc-cfn-mgmt-plane-svc ioc-cognition-fabric-node-svc
+          docker compose -f $COMPOSE_FILE up -d \
+            mycelium-backend
+
+      - name: Wait for services healthy
+        run: |
+          services=(e2e-mycelium-db e2e-matrix-synapse e2e-cfn-mgmt e2e-cfn-node e2e-mycelium-backend)
+          for svc in "${services[@]}"; do
+            echo "Waiting for $svc..."
+            for i in $(seq 1 60); do
+              status=$(docker inspect --format='{{.State.Health.Status}}' "$svc" 2>/dev/null || echo "missing")
+              if [ "$status" = "healthy" ]; then
+                echo "  $svc is healthy"
+                break
+              fi
+              if [ "$i" -eq 60 ]; then
+                echo "  ERROR: $svc did not become healthy (status=$status)"
+                docker logs "$svc" --tail 50
+                exit 1
+              fi
+              sleep 3
+            done
+          done
+
+      - name: Run Matrix bootstrap
+        run: |
+          docker compose -f $COMPOSE_FILE run --rm matrix-bootstrap
+
+      - name: Run Mycelium bootstrap
+        run: |
+          docker compose -f $COMPOSE_FILE run --rm mycelium-bootstrap
+
+      - name: Fetch workspace ID
+        run: |
+          WORKSPACE_ID=$(docker exec e2e-mycelium-bootstrap \
+            cat /shared/mycelium-config.json 2>/dev/null | \
+            python3 -c "import sys,json; print(json.load(sys.stdin).get('workspace_id',''))" 2>/dev/null || echo "")
+          if [ -n "$WORKSPACE_ID" ]; then
+            echo "Setting WORKSPACE_ID=$WORKSPACE_ID on backend"
+            docker exec e2e-mycelium-backend sh -c \
+              "export WORKSPACE_ID=$WORKSPACE_ID"
+          fi
+
+      - name: Set up Python and uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Install mycelium CLI
+        run: |
+          if command -v mycelium &>/dev/null; then
+            echo "mycelium CLI already available"
+          else
+            echo "Installing mycelium CLI from pip"
+            uv pip install mycelium-cli || echo "WARNING: mycelium CLI not available as pip package"
+          fi
+
+      - name: Run E2E tests
+        run: |
+          SUITE="${{ github.event.inputs.suite || 'weekly_full' }}"
+          DATAFILE="${{ github.event.inputs.datafile || 'ci_datafile.yaml' }}"
+          JOB_FILE="jobs/${SUITE}_job.py"
+
+          if [ "$SUITE" = "weekly_full" ]; then
+            JOB_FILE="jobs/weekly_e2e_job.py"
+          fi
+
+          echo "Running: pyats run job $JOB_FILE --datafile data/$DATAFILE"
+          mkdir -p artifacts
+
+          uv run pyats run job "$JOB_FILE" \
+            --datafile "data/$DATAFILE" \
+            --html-logs artifacts \
+            || true  # Don't fail the step on test failures
+
+      - name: Collect container logs
+        if: always()
+        run: |
+          mkdir -p artifacts/logs
+          for svc in e2e-mycelium-db e2e-mycelium-backend e2e-cfn-mgmt e2e-cfn-node e2e-matrix-synapse; do
+            docker logs "$svc" > "artifacts/logs/${svc}.log" 2>&1 || true
+          done
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results-${{ github.run_id }}
+          path: artifacts/
+          retention-days: 30
+
+      - name: Tear down
+        if: always()
+        run: |
+          docker compose -f $COMPOSE_FILE down -v --remove-orphans

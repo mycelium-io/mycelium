@@ -1,0 +1,32 @@
+---
+# Lab environment datafile — overrides for the oclw3/4/5 topology.
+extends: base_datafile.yaml
+
+parameters:
+  topology:
+    backend:
+      base_url: "%ENV{MYCELIUM_BACKEND_URL, http://10.0.50.125:8000}"
+
+    cfn_mgmt:
+      base_url: "%ENV{CFN_MGMT_URL, http://10.0.50.125:9000}"
+
+    cfn_node_svc:
+      base_url: "%ENV{CFN_SVC_URL, http://10.0.50.125:9002}"
+
+    matrix:
+      base_url: "%ENV{MATRIX_URL, http://10.0.50.125:8008}"
+
+  # Remote hosts for distributed tests
+  remote_hosts:
+    oclw3:
+      ip: "%ENV{OCLW3_IP, 10.0.50.171}"
+      agents:
+        claire-agent:
+          display_name: "Claire (oclw3)"
+          matrix_token_env: "MATRIX_TOKEN_CLAIRE"
+    oclw5:
+      ip: "%ENV{OCLW5_IP, 10.0.50.142}"
+      agents:
+        oclw5-agent:
+          display_name: "OCLW5 Agent (oclw5)"
+          matrix_token_env: "MATRIX_TOKEN_OCLW5"

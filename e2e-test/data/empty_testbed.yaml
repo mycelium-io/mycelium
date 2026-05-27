@@ -1,0 +1,4 @@
+---
+testbed:
+  name: mycelium-e2e
+devices: {}

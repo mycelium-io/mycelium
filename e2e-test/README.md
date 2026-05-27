@@ -1,137 +1,138 @@
 # mycelium-e2e-test
 
-End-to-end and distributed test harness for [Mycelium](https://github.com/mycelium-io/mycelium).
+pyATS-based end-to-end test suite for [Mycelium](https://github.com/mycelium-io/mycelium), a multi-agent coordination platform.
 
-This repository is an **operator-side** harness: the tests drive a running
-Mycelium backend (and, for distributed tests, OpenClaw agents on multiple
-machines) over its public HTTP and CLI surfaces. None of the backend or CLI
-code lives here — it is exercised externally.
+This repository is an **operator-side** harness: tests drive a running Mycelium backend (and, for distributed tests, OpenClaw agents on multiple machines) over its public HTTP and CLI surfaces.
 
-## Layout
+## Architecture
+
+The suite follows pyATS conventions with a hub-and-spoke design:
 
 ```
-mycelium_e2e/                 Test-harness package
-  bundle.py                   TestContext, env detection, cleanup helpers
-  config.py                   BACKEND_URL, ROOM_PREFIX, etc. (env-driven)
-  distributed_e2e.py          Distributed scenario implementations
-  matrix_e2e.py               Matrix-channel scenario implementations
-  cross_channel_e2e.py        Cross-channel scenario implementations
-  main.py                     Standalone CLI entry point
+jobs/                           Easypy job files (orchestration)
+  weekly_e2e_job.py             Full weekly long-running E2E
+  sanity_job.py                 Quick smoke test
+  core_job.py                   Core tests only
+  convergence_job.py            Multi-agent convergence
+  distributed_job.py            Cross-device distributed tests
+  _common.py                    Shared job utilities
 
-tests/
-  conftest.py                 Shared fixtures (bundle_ctx, leak reaper,
-                              CFN round-trace capture)
-  test_mycelium_e2e.py        ~42 numbered tests (test_00 .. test_60)
-  analyze_round_traces.py     Standalone analyzer for captured trace JSONs
-  README.md                   Per-test inventory and prerequisites
+suites/                         Thin AEtest scripts (class declarations)
+  weekly_full_suite.py          All 42 tests
+  sanity_suite.py               ~7 fast tests
+  core_suite.py                 Tests 01-14, 22
+  convergence_suite.py          Tests 15-21
+  distributed_suite.py          Tests 30-49
 
-scripts/
-  cleanup-sessions.sh         Reap stale negotiating sessions
-  refresh-matrix-tokens.sh    Rotate Matrix access tokens across nodes
+testcases/                      Reusable AEtest testcase classes
+  common_setup_cleanup.py       CommonSetup/Cleanup (env detection, hygiene)
+  core_tests.py                 Rooms, memory, CLI, sessions, search
+  cfn_tests.py                  IOC/CFN integration
+  matrix_tests.py               Matrix communication
+  convergence_tests.py          Simulated multi-agent convergence
+  distributed_tests.py          Real agent cross-device tests
+  openclaw_tests.py             Skill verification
+  cross_channel_tests.py        Cross-channel memory isolation
 
-pytest.ini                    Marker registry + testpaths
-requirements-test.txt         pytest>=8.0  (otherwise stdlib-only)
+libs/                           Shared libraries
+  mycelium_api.py               Backend HTTP REST client
+  mycelium_cli.py               CLI subprocess wrapper
+  cfn_api.py                    CFN management + node-svc client
+  matrix_client.py              Matrix Synapse async client
+  openclaw.py                   OpenClaw gateway helpers
+  environment.py                Environment detection & health probes
+
+data/                           pyATS datafiles (YAML config)
+  base_datafile.yaml            Common topology + test parameters
+  lab_datafile.yaml             Lab overrides (oclw3/4/5 topology)
+  local_datafile.yaml           Local dev overrides
+
+scripts/                        Operator utility scripts
+docs/                           Historical investigation docs
 ```
 
-## Quick start
+## Quick Start
+
+### Install
 
 ```bash
-git clone https://github.com/sfph/mycelium-e2e-test.git
-cd mycelium-e2e-test
+# Create venv and install dependencies
+uv venv && source .venv/bin/activate
+uv pip install -e ".[dev]"
+
+# Or with pip
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements-test.txt
-
-# Point at a running Mycelium backend (default is http://localhost:8000)
-export MYCELIUM_BACKEND_URL=http://oclw4:8000
-
-# Matrix tests need access tokens — never commit these. One env var per agent:
-#   MATRIX_TOKEN_<AGENT_UPPER_WITH_UNDERSCORES>
-export MATRIX_TOKEN_AGENT_ALPHA=syt_...
-export MATRIX_TOKEN_AGENT_BETA=syt_...
-export MATRIX_TOKEN_AGENT_GAMMA=syt_...
-# (use scripts/refresh-matrix-tokens.sh to rotate)
-
-# Run only the fast subset
-pytest -m "not slow"
-
-# Run the full distributed matrix
-pytest -m distributed
+pip install -e ".[dev]"
 ```
 
-See `tests/README.md` for a per-test inventory and the marker glossary.
-
-## CFN round-trace instrumentation
-
-Tests marked `distributed`, `matrix_e2e`, or `convergence` automatically
-scrape the backend's in-memory round-trace ring buffer
-(`/api/internal/coordination/round-traces`) before and after each test, and
-write a JSON file per test under
-`$MYCELIUM_TRACE_DIR` (default `~/.mycelium/e2e-logs/traces/`).
-
-Each trace decomposes a CFN negotiation round into:
-
-| Field | Meaning |
-|---|---|
-| `elapsed_ms` | Total round wall time (open → close) |
-| `last_reply_received_ms` | When the final agent reply landed |
-| `cfn_decide_started_ms` | When `/decide` was invoked |
-| `cfn_decide_ms` | Duration of the `/decide` call itself |
-| `decision_path` | `all_replied` · `watchdog_fired` · `hard_cap` · `aborted` |
-| `per_agent[].first_response_ms` | Per-agent reply latency |
-| `per_agent[].was_synthesised` | True when the watchdog filled in a reject |
-
-This lets observers tell *agent latency* apart from *CFN decide latency*,
-which a single elapsed-time field cannot answer.
-
-### Analyzer
-
-`tests/analyze_round_traces.py` aggregates one or more captured JSONs:
+### Run
 
 ```bash
-# Most recent capture (per-test summary + aggregate distribution)
-python tests/analyze_round_traces.py
+# Quick sanity check (local backend on localhost)
+pyats run job jobs/sanity_job.py
 
-# Per-round breakdown table too
-python tests/analyze_round_traces.py --rounds
+# Core tests against lab
+pyats run job jobs/core_job.py --datafile data/lab_datafile.yaml
 
-# Last N captures
-python tests/analyze_round_traces.py --last 5
+# Full weekly E2E (long-running, all tiers)
+pyats run job jobs/weekly_e2e_job.py --datafile data/lab_datafile.yaml
 
-# Pattern within the trace dir
-python tests/analyze_round_traces.py --glob 'test_41_*.json'
+# Distributed tests only
+pyats run job jobs/distributed_job.py --datafile data/lab_datafile.yaml
 
-# Explicit set
-python tests/analyze_round_traces.py --file a.json --file b.json
+# Specific tests via TESTCASES filter
+TESTCASES="test_01_room_lifecycle, test_02_multi_agent_memory" \
+    pyats run job jobs/weekly_e2e_job.py
 
-# Machine-readable
-python tests/analyze_round_traces.py --json
+# With HTML report
+pyats run job jobs/weekly_e2e_job.py --html-logs
+
+# Standalone script execution (no job)
+python suites/sanity_suite.py --datafile data/local_datafile.yaml
+
+# View logs from last run
+pyats logs view
 ```
 
-### Run analyzer automatically after pytest
+### Environment Variables
 
-Pass `--analyze-traces` to pytest and the analyzer runs at session end on
-exactly the files captured during that session:
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `MYCELIUM_BACKEND_URL` | `http://localhost:8000` | Backend base URL |
+| `CFN_MGMT_URL` | `http://localhost:9000` | CFN management plane |
+| `CFN_SVC_URL` | `http://localhost:9002` | CFN node service |
+| `MATRIX_URL` | `http://localhost:8008` | Matrix Synapse |
+| `OCLW3_IP` | `10.0.50.171` | Remote host (claire-agent) |
+| `OCLW4_IP` | `10.0.50.125` | Hub host (backend + local agents) |
+| `OCLW5_IP` | `10.0.50.142` | Remote host (oclw5-agent) |
+| `MATRIX_TOKEN_AGENT_ALPHA` | — | Matrix access tokens per agent |
+| `MATRIX_SHARED_SECRET` | — | Synapse admin registration secret |
+| `E2E_MYCELIUM_ROOM` | `mycelium_room` | Shared Mycelium room name |
+| `MYCELIUM_DATAFILE` | `base_datafile.yaml` | Override datafile from env |
+| `TESTCASES` | — | Comma-separated test filter |
 
-```bash
-pytest -m distributed --analyze-traces
-```
+## Test Tiers
 
-## Backend requirements
+| Tier | Tests | Groups | Requirements |
+|------|-------|--------|-------------|
+| **Sanity** | 01-04, 06c, 11, 22 | `core`, `sanity` | Backend only |
+| **Core** | 01-14, 22 | `core` | Backend + CFN + LLM (some) |
+| **CFN** | 08-10 | `cfn` | CFN stack |
+| **Matrix** | 07 | `matrix` | Synapse |
+| **Convergence** | 15-21 | `convergence` | Backend + CFN + LLM |
+| **Local-Real** | 30-32 | `local_e2e` | OpenClaw + Matrix + local agents |
+| **Distributed** | 40-49 | `distributed` | Remote agents on oclw3/oclw5 |
+| **OpenClaw** | 50-51 | `openclaw` | OpenClaw with mycelium adapter |
+| **Cross-Channel** | 60 | `cross_channel` | LLM + Matrix |
 
-The instrumentation endpoint and decomposed timing fields require a Mycelium
-backend that includes the changes from
-[mycelium-io/mycelium#162](https://github.com/mycelium-io/mycelium/issues/162)
-(round trace instrumentation + decide-latency decomposition). With an older
-backend the trace capture fixture will get back empty payloads but the suite
-itself still runs.
+## pyATS Concepts
 
-## Prerequisites
+- **Job file**: Orchestrates which suites run and with what parameters
+- **Suite file**: Thin AEtest script with CommonSetup + Testcases + CommonCleanup
+- **Testcase class**: Reusable test logic with `@aetest.setup/test/cleanup`
+- **Datafile**: YAML-driven parameters injected into tests at runtime
+- **Steps**: Fine-grained sub-results within each test for debuggability
 
-| Tier | Needs |
-|---|---|
-| Local tests (00–22) | Mycelium backend, Matrix Synapse, IOC/CFN services |
-| Local-real OpenClaw E2E (30–32) | Local OpenClaw gateway running with `agent-alpha`, `agent-beta`, `agent-gamma` enrolled; `#agents:local` reachable via Matrix |
-| Distributed (40–49, 60) | OpenClaw agents on additional hosts (e.g. oclw3, oclw5) reachable from the backend host, with valid Matrix tokens |
-| Skill verification (50–51) | OpenClaw gateway with the mycelium skill installed (`mycelium adapter add openclaw`) |
+## Legacy Compatibility
 
-See `tests/README.md` § *Prerequisites* and § *Troubleshooting* for details.
+The original pytest-based suite remains in `mycelium_e2e/` and `tests/` for reference. The pyATS suite in `suites/`, `testcases/`, `libs/`, `jobs/`, and `data/` is the new primary test framework.

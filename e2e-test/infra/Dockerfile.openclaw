@@ -1,0 +1,28 @@
+# Pre-configured OpenClaw gateway for E2E CI.
+#
+# Build:
+#   docker build -f infra/Dockerfile.openclaw -t e2e-openclaw .
+#
+# Run with role selection:
+#   docker run -e OPENCLAW_ROLE=hub   e2e-openclaw
+#   docker run -e OPENCLAW_ROLE=spoke1 e2e-openclaw
+#   docker run -e OPENCLAW_ROLE=spoke2 e2e-openclaw
+
+FROM node:22-slim
+
+RUN npm install -g openclaw@latest && \
+    mkdir -p /openclaw /shared && \
+    chown -R node:node /openclaw /shared
+
+COPY infra/scripts/openclaw-entrypoint.sh /openclaw/entrypoint.sh
+RUN chmod +x /openclaw/entrypoint.sh
+
+WORKDIR /openclaw
+
+ENV OPENCLAW_ROLE=hub \
+    MATRIX_HOMESERVER=http://matrix-synapse:8008 \
+    MYCELIUM_BACKEND_URL=http://mycelium-backend:8000 \
+    MATRIX_SHARED_SECRET=e2e-shared-secret \
+    TOKEN_FILE=/shared/matrix-tokens.json
+
+ENTRYPOINT ["/openclaw/entrypoint.sh"]
