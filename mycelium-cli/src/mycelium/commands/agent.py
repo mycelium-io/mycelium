@@ -256,6 +256,16 @@ def _persist_and_describe(
     # dangling manifest.
     impl.register(manifest=manifest, config=config, opts=opts)
     _write_manifest(config, room_name, manifest, created_by=handle_flag)
+    # Cold-spawn adapters (claude_code, cursor) need the cc-daemon to
+    # re-read ``cc-daemon.toml`` to pick up the newly-claimed handle —
+    # otherwise the agent appears registered but mentions silently drop
+    # until the next manual ``mycelium daemon restart``. No-op when the
+    # daemon service isn't installed on this host (e.g. openclaw-only
+    # boxes, or before ``--step=daemon`` ran).
+    if getattr(impl, "lifecycle", None) == "cold_spawn":
+        from mycelium.daemon.install import restart_daemon_service
+
+        restart_daemon_service(verbose=False)
     console.print(
         f"\n[green]Agent {verb}:[/green] [cyan]@{manifest.handle}[/cyan] "
         f"in room [bold]{room_name}[/bold]"
@@ -471,6 +481,11 @@ def agent_create(
             _create_wizard(ctx, config=config, room_opt=room, handle_flag=handle_flag)
             return
 
+        # `mycelium adapter add` accepts the kebab-case spelling
+        # (``claude-code``); accept the same spelling here so users don't have
+        # to remember which command uses which casing. The canonical id in
+        # ``AGENT_ADAPTERS`` (and on the manifest) is the underscore form.
+        adapter = adapter.replace("-", "_")
         if adapter not in AGENT_ADAPTERS:
             known = ", ".join(sorted(AGENT_ADAPTERS))
             typer.secho(f"Unknown adapter '{adapter}'. Known: {known}.", fg=typer.colors.RED)
@@ -1157,6 +1172,14 @@ def agent_rm(
         local = get_room_dir(room_name) / f"{manifest.memory_key}.md"
         if local.exists():
             local.unlink()
+
+        # Kick the daemon for the same reason as ``agent create``: the
+        # cold-spawn handle just got released from ``cc-daemon.toml`` and a
+        # running daemon will keep firing on stale entries until restart.
+        if getattr(impl, "lifecycle", None) == "cold_spawn":
+            from mycelium.daemon.install import restart_daemon_service
+
+            restart_daemon_service(verbose=False)
 
         verb = "Destroyed" if will_destroy else "Unregistered"
         console.print(f"[green]{verb}:[/green] @{handle} from {room_name}")

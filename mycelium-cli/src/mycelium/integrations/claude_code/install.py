@@ -83,20 +83,28 @@ def _install_claude_code(verbose: bool = False) -> None:
             typer.echo(f"  skill: {dest}")
 
     # Hooks
-    hooks_src = _resolve_asset("hooks", family="claude_code")
-    hooks_dst = claude_dir / "hooks"
-    hooks_dst.mkdir(parents=True, exist_ok=True)
-    for hook_name in _CLAUDE_CODE_HOOKS:
-        src_file = hooks_src / hook_name
-        if not src_file.exists():
+    # When the live hook list is empty (the current state — earlier
+    # ``settings.json`` hook wiring was pulled out for privacy/clarity),
+    # the bundled ``assets/hooks/`` directory is intentionally absent. Bail
+    # out *before* calling :func:`_resolve_asset`, which would otherwise
+    # crash on the missing-resource branch when the package is editable.
+    # The cleanup loop further down still removes any pre-existing hook
+    # files left over from older installs.
+    if _CLAUDE_CODE_HOOKS:
+        hooks_src = _resolve_asset("hooks", family="claude_code")
+        hooks_dst = claude_dir / "hooks"
+        hooks_dst.mkdir(parents=True, exist_ok=True)
+        for hook_name in _CLAUDE_CODE_HOOKS:
+            src_file = hooks_src / hook_name
+            if not src_file.exists():
+                if verbose:
+                    typer.echo(f"  skip (not found): {hook_name}")
+                continue
+            dst_file = hooks_dst / hook_name
+            dst_file.write_bytes(src_file.read_bytes())
+            dst_file.chmod(0o755)
             if verbose:
-                typer.echo(f"  skip (not found): {hook_name}")
-            continue
-        dst_file = hooks_dst / hook_name
-        dst_file.write_bytes(src_file.read_bytes())
-        dst_file.chmod(0o755)
-        if verbose:
-            typer.echo(f"  hook: {dst_file}")
+                typer.echo(f"  hook: {dst_file}")
 
     # Snapshot the user's settings.json before any mutation. Incrementally
     # numbered so prior backups are never overwritten. We tell the user

@@ -256,6 +256,61 @@ def install_daemon_service(verbose: bool = False) -> None:
         )
 
 
+def restart_daemon_service(*, verbose: bool = False) -> bool:
+    """Kick the running daemon so it re-reads ``cc-daemon.toml``.
+
+    The daemon snapshots ``DaemonConfig`` (rooms + handles) at startup, so
+    any change made by ``mycelium agent create``/``rm`` or ``mycelium daemon
+    subscribe`` is invisible until the service restarts. Returns ``True``
+    when a restart was actually issued, ``False`` when the daemon isn't
+    installed on this host (silent no-op so callers can use it as a "kick
+    if present" primitive).
+    """
+    import platform
+
+    system = platform.system()
+    plist_dst, systemd_dst = cc_daemon_service_paths()
+
+    if system == "Darwin":
+        if not plist_dst.exists():
+            if verbose:
+                typer.secho(
+                    "daemon service not installed (no launchd unit); skipping restart",
+                    fg=typer.colors.YELLOW,
+                )
+            return False
+        target = f"gui/{os.getuid()}/{CC_DAEMON_LABEL}"
+        subprocess.run(  # noqa: S603,S607
+            ["launchctl", "kickstart", "-k", target], capture_output=True
+        )
+        if verbose:
+            typer.secho(f"  kicked launchd service {CC_DAEMON_LABEL}", fg=typer.colors.GREEN)
+        return True
+
+    if system == "Linux":
+        if not systemd_dst.exists():
+            if verbose:
+                typer.secho(
+                    "daemon service not installed (no systemd unit); skipping restart",
+                    fg=typer.colors.YELLOW,
+                )
+            return False
+        subprocess.run(  # noqa: S603,S607
+            ["systemctl", "--user", "restart", f"{CC_DAEMON_RUNNER}.service"],
+            capture_output=True,
+        )
+        if verbose:
+            typer.secho(f"  restarted systemd service {CC_DAEMON_RUNNER}", fg=typer.colors.GREEN)
+        return True
+
+    if verbose:
+        typer.secho(
+            f"daemon restart not wired up for platform '{system}' — restart manually",
+            fg=typer.colors.YELLOW,
+        )
+    return False
+
+
 def uninstall_daemon_service(verbose: bool = False) -> None:  # noqa: ARG001
     """Reverse a daemon install — stop the service, remove the unit file."""
     import platform

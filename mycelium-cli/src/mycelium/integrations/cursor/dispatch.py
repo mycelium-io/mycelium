@@ -79,24 +79,28 @@ class CursorIntegration(Integration):
     def register(
         self, *, manifest: AgentManifest, config: MyceliumConfig, opts: AddOptions
     ) -> None:
-        # Identical handle-ownership semantics to claude_code: a cursor agent
-        # is cold-spawned by THIS machine's cc-daemon (its cwd is local).
-        # Claim the handle in cc-daemon.toml so a sibling daemon syncing this
-        # room via git does NOT also dispatch — without ownership two
+        # Order matters here. ``install_workspace_assets`` raises
+        # ``NotADirectoryError`` when ``manifest.cwd`` doesn't exist, and we
+        # surface that to the command layer as a clean validation error. If
+        # we claimed the cc-daemon handle *before* the cwd check, a failed
+        # ``mycelium agent create`` would still persist the handle into
+        # ``~/.mycelium/cc-daemon.toml`` — leaking ownership of a name that
+        # never materialised as an agent. So: drop the workspace-local Cursor
+        # rule + AGENTS.md section first (this validates cwd as a side
+        # effect), THEN claim ownership.
+        if manifest.cwd:
+            install_workspace_assets(Path(manifest.cwd), verbose=False)
+
+        # Same handle-ownership semantics as claude_code: a cursor agent is
+        # cold-spawned by THIS machine's cc-daemon (its cwd is local). Claim
+        # the handle in cc-daemon.toml so a sibling daemon syncing this room
+        # via git does NOT also dispatch — without ownership two
         # cursor-agent processes would race over the same cwd.
         from mycelium.daemon.config import DaemonConfig
 
         daemon_cfg = DaemonConfig.load()
         if daemon_cfg.own_handle(manifest.handle):
             daemon_cfg.save()
-
-        # Drop the workspace-local Cursor rule + AGENTS.md section so the
-        # cold-started cursor-agent immediately sees the mycelium context.
-        # AgentManifest's validator already guarantees ``cwd`` is non-empty
-        # for cursor; the install helper raises NotADirectoryError if the
-        # directory doesn't actually exist — surfaced to the command layer.
-        if manifest.cwd:
-            install_workspace_assets(Path(manifest.cwd), verbose=False)
 
     def destroy(
         self, *, manifest: AgentManifest, config: MyceliumConfig, room: str, full: bool

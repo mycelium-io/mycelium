@@ -14,11 +14,9 @@ from __future__ import annotations
 
 import json as json_module
 import os
-import platform
 import subprocess
 import sys
 import time
-from pathlib import Path
 
 import typer
 from rich.console import Console
@@ -37,9 +35,6 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 console = Console()
-
-_DAEMON_LABEL = "io.mycelium.cc-daemon"
-_DAEMON_SERVICE = "mycelium-cc-daemon"
 
 
 def _format_age(ts: float | None) -> str:
@@ -317,38 +312,17 @@ def run(
 def _restart_service_quiet(verbose: bool = False) -> None:
     """Restart the daemon via the platform's service manager.
 
-    No-op (with a hint) when the service isn't installed, so callers can
-    use it as a "kick the daemon" primitive without first checking install
-    state.
+    Thin wrapper around :func:`mycelium.daemon.install.restart_daemon_service`
+    so command modules don't each carry their own copy of the launchctl /
+    systemctl plumbing. Silent no-op when the service isn't installed —
+    callers can use it as a "kick the daemon" primitive without first
+    checking install state.
     """
-    system = platform.system()
-    if system == "Darwin":
-        plist = Path.home() / "Library" / "LaunchAgents" / f"{_DAEMON_LABEL}.plist"
-        if not plist.exists():
-            if verbose:
-                console.print(
-                    "[yellow]Daemon service not installed (no launchd unit found).[/yellow]\n"
-                    "  Install with: mycelium adapter add claude-code --step=daemon"
-                )
-            return
-        target = f"gui/{os.getuid()}/{_DAEMON_LABEL}"
-        subprocess.run(["launchctl", "kickstart", "-k", target], capture_output=True)
-        if verbose:
-            console.print(f"[green]Kicked[/green] launchd service {_DAEMON_LABEL}")
-    elif system == "Linux":
-        unit = Path.home() / ".config" / "systemd" / "user" / f"{_DAEMON_SERVICE}.service"
-        if not unit.exists():
-            if verbose:
-                console.print(
-                    "[yellow]Daemon service not installed (no systemd unit found).[/yellow]\n"
-                    "  Install with: mycelium adapter add claude-code --step=daemon"
-                )
-            return
-        subprocess.run(
-            ["systemctl", "--user", "restart", f"{_DAEMON_SERVICE}.service"],
-            capture_output=True,
+    from mycelium.daemon.install import restart_daemon_service
+
+    restarted = restart_daemon_service(verbose=False)
+    if not restarted and verbose:
+        console.print(
+            "[yellow]Daemon service not installed.[/yellow]\n"
+            "  Install with: mycelium adapter add claude-code --step=daemon"
         )
-        if verbose:
-            console.print(f"[green]Restarted[/green] systemd service {_DAEMON_SERVICE}")
-    else:
-        console.print(f"[yellow]Service restart not wired up for platform '{system}'.[/yellow]")
