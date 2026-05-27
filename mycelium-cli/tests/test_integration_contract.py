@@ -60,6 +60,31 @@ def test_family_declares_lifecycle(family: str) -> None:
 
 
 @pytest.mark.parametrize("family", FAMILIES)
+def test_spawn_override_matches_lifecycle(family: str) -> None:
+    """Cold-spawn families override ``Integration.spawn``; long-lived gateways
+    do not.
+
+    The daemon dispatch loop checks ``lifecycle`` before invoking, but a
+    missing override on a cold_spawn family means a routing bug surfaces as
+    ``NotImplementedError`` instead of silent skip. Conversely, a long-lived
+    gateway that overrides ``spawn`` is a category error: its agents are
+    delivered by its own runtime, not the cc-daemon.
+    """
+    cls = type(get_integration(family))
+    if cls.lifecycle == "cold_spawn":
+        assert cls.spawn is not Integration.spawn, (
+            f"{family} declares lifecycle=cold_spawn but does not override "
+            "Integration.spawn (would raise NotImplementedError on dispatch)"
+        )
+    else:
+        assert cls.spawn is Integration.spawn, (
+            f"{family} declares lifecycle={cls.lifecycle} but overrides "
+            "spawn() — long-lived gateways shouldn't have spawn logic "
+            "(their own runtime owns mention delivery)"
+        )
+
+
+@pytest.mark.parametrize("family", FAMILIES)
 def test_install_facet_is_implemented(family: str) -> None:
     """Both facets of the contract are present on every family.
 

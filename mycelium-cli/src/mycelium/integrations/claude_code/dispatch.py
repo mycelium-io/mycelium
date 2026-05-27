@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 import typer
 
+from mycelium.integrations._spawn_common import SpawnRequest, SpawnResult
 from mycelium.integrations.base import AddOptions, Integration
 from mycelium.integrations.claude_code.install import (
     _CLAUDE_CODE_HOOKS,
@@ -25,6 +26,7 @@ from mycelium.integrations.claude_code.install import (
     _step_claude_daemon_install,
     _step_claude_daemon_uninstall,
 )
+from mycelium.integrations.claude_code.spawn import spawn_claude
 from mycelium.protocol import AgentManifest
 
 if TYPE_CHECKING:
@@ -101,6 +103,43 @@ class ClaudeCodeIntegration(Integration):
             f'  mycelium agent invoke {manifest.handle} "..."'
         )
         return lines
+
+    # ── cold-spawn dispatch ─────────────────────────────────────────────────
+
+    async def spawn(self, *, request: SpawnRequest) -> SpawnResult:
+        """Cold-spawn ``claude -p`` for one ``@handle`` mention.
+
+        Thin adapter from the family-agnostic :class:`SpawnRequest` /
+        :class:`SpawnResult` shape into the existing ``spawn_claude(...)``
+        helper. The helper still returns a plain dict (its shape is widely
+        used elsewhere in the daemon log path); we convert here.
+
+        ``request.binary`` is the resolved claude binary path (the daemon
+        passes ``DaemonConfig.claude_binary``). ``RunningProc`` registration
+        currently lives inside ``spawn_claude`` for backward compatibility;
+        the daemon-core milestone will move it up into the dispatch loop so
+        every cold-spawn family inherits abort/status uniformly.
+        """
+        result = await spawn_claude(
+            claude_binary=request.binary or "claude",
+            cwd=request.cwd,
+            prompt=request.prompt,
+            notes=request.notes,
+            state=request.state,
+            handle=request.handle,
+            sender=request.sender,
+            room=request.room,
+            description=request.description,
+            plan_block=request.plan_block,
+        )
+        return SpawnResult(
+            ok=bool(result.get("ok")),
+            final_message=result.get("final_message", ""),
+            transcript=result.get("transcript", ""),
+            cost_usd=float(result.get("cost_usd", 0.0)),
+            duration_s=float(result.get("duration_s", 0.0)),
+            aborted=bool(result.get("aborted", False)),
+        )
 
     # ── install facet ───────────────────────────────────────────────────────
     # Behaviour relocated verbatim from the old ``commands/adapter.py`` add/
