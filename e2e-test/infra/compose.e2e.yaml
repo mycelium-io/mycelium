@@ -231,8 +231,10 @@ services:
     container_name: e2e-pyats-runner
     working_dir: /tests
     environment:
-      MYCELIUM_API_URL: http://mycelium-backend:8000
-      MATRIX_HOMESERVER: http://matrix-synapse:8008
+      MYCELIUM_BACKEND_URL: http://mycelium-backend:8000
+      CFN_MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
+      CFN_SVC_URL: http://ioc-cognition-fabric-node-svc:9002
+      MATRIX_URL: http://matrix-synapse:8008
     volumes:
       - ../artifacts:/tests/artifacts
     networks:

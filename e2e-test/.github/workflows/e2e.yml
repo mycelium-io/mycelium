@@ -32,11 +32,14 @@ on:
         description: 'Use stub embeddings (skip model download)'
         type: boolean
         default: true
+      mycelium_ref:
+        description: 'Mycelium repo branch/tag/SHA for CLI install'
+        default: 'main'
 
 env:
   COMPOSE_FILE: infra/compose.e2e.yaml
   MYCELIUM_IMAGE_TAG: ${{ github.event.inputs.image_tag || 'latest' }}
-  MYCELIUM_STUB_EMBEDDINGS: ${{ github.event.inputs.stub_embeddings && '1' || '0' }}
+  MYCELIUM_STUB_EMBEDDINGS: ${{ github.event.inputs.stub_embeddings == 'false' && '0' || '1' }}
   MYCELIUM_DB_PASSWORD: password
   CFN_NAME: mycelium-cfn
   LLM_MODEL: ${{ secrets.LLM_MODEL || '' }}
@@ -101,12 +104,15 @@ jobs:
       - name: Fetch workspace ID and propagate to backend
         run: |
           # The bootstrap container wrote config to the e2e-shared volume.
-          # Read it via a one-shot container that mounts the same volume.
+          # Derive the compose project name to get the correct volume prefix.
+          PROJECT=$(docker compose -f $COMPOSE_FILE config --format json | python3 -c "import sys,json; print(json.load(sys.stdin).get('name','infra'))")
+          VOLUME="${PROJECT}_e2e-shared"
+          echo "Reading workspace ID from volume: $VOLUME"
           WORKSPACE_ID=$(docker run --rm \
-            -v mycelium-e2e-test_e2e-shared:/shared:ro \
+            -v "${VOLUME}:/shared:ro" \
             python:3.12-slim \
             python3 -c "
-          import json, pathlib, sys
+          import json, pathlib
           p = pathlib.Path('/shared/mycelium-config.json')
           if p.exists():
               print(json.loads(p.read_text()).get('workspace_id', ''))
@@ -137,14 +143,18 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
+      - name: Checkout mycelium repo (for CLI)
+        uses: actions/checkout@v4
+        with:
+          repository: mycelium-io/mycelium
+          ref: ${{ github.event.inputs.mycelium_ref || 'main' }}
+          path: mycelium
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Install mycelium CLI
         run: |
-          if command -v mycelium &>/dev/null; then
-            echo "mycelium CLI already available"
-          else
-            echo "Installing mycelium CLI from pip"
-            uv pip install mycelium-cli || echo "WARNING: mycelium CLI not available as pip package"
-          fi
+          uv tool install ./mycelium/mycelium-cli --force --link-mode=copy
+          mycelium --version || mycelium --help | head -5
 
       - name: Run E2E tests
         env:
