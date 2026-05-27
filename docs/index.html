@@ -739,7 +739,7 @@ Latest Synthesis
       <p>On the hub machine, run the standard install:</p>
       <pre><code><span class="cmd">mycelium install</span>
 <span class="cmd">mycelium up</span> <span class="flag">--metrics</span>            # include <span class="flag">--metrics</span> if you want spoke telemetry</code></pre>
-      <p>This brings up the backend, database, and provisions a default workspace. The <code>--metrics</code> flag also starts the dockerized OTLP collector listening on <code>:4318</code> — required for spokes to forward telemetry into the hub later in <a href="#hub-and-spoke-step-4-set-up-spoke-metrics">Step 4</a>. Skip it if you only need backend coordination and no cross-host metrics view.</p>
+      <p>This brings up the backend, database, and provisions a default workspace. The <code>--metrics</code> flag also starts the dockerized OTLP collector listening on <code>:4318</code>. It serves two purposes on the hub: it collects telemetry from the hub&#x27;s own OpenClaw gateway (so <code>mycelium metrics show</code> on the hub has data even with zero spokes), and it accepts forwarded payloads from spokes once they&#x27;re configured in <a href="#hub-and-spoke-step-4-set-up-spoke-metrics">Step 4</a> — which is what powers the unified cross-host view (Spoke Sites table, <code>--host</code> filter). Skip the flag only if you don&#x27;t want metrics at all.</p>
       <p>Verify with:</p>
       <pre><code><span class="cmd">mycelium doctor</span></code></pre>
       <h3 id="hub-and-spoke-open-ports">Open ports</h3>
