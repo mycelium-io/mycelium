@@ -37,6 +37,7 @@ from mycelium.integrations.cursor.install import (
     install_workspace_assets,
     uninstall_workspace_assets,
 )
+from mycelium.integrations.cursor.spawn import spawn_cursor
 from mycelium.protocol import AgentManifest
 
 if TYPE_CHECKING:
@@ -140,19 +141,12 @@ class CursorIntegration(Integration):
     async def spawn(self, *, request: SpawnRequest) -> SpawnResult:
         """Cold-spawn ``cursor-agent -p`` for one ``@handle`` mention.
 
-        Stub until the ``cursor-cli`` milestone wires
-        :mod:`mycelium.integrations.cursor.spawn`. Overrides
-        :meth:`Integration.spawn` so the contract test
-        ``test_spawn_override_matches_lifecycle`` passes; the daemon dispatch
-        loop will still call this and surface the raise verbatim in the
-        invocation log if anyone tries to ``@-mention`` a cursor agent before
-        the CLI is wired (the agent create wizard refuses to create cursor
-        manifests at the wizard milestone unless ``cursor-agent`` is on PATH).
+        Pass-through to :func:`mycelium.integrations.cursor.spawn.spawn_cursor`
+        — kept here as a method so the daemon dispatch loop's
+        ``integration.spawn(...)`` call resolves through one consistent
+        surface across families (claude_code does the same).
         """
-        raise NotImplementedError(
-            "cursor spawn not wired yet — landing in the cursor-cli milestone "
-            "(mycelium.integrations.cursor.spawn)"
-        )
+        return await spawn_cursor(request=request)
 
     # ── install facet ───────────────────────────────────────────────────────
     #
