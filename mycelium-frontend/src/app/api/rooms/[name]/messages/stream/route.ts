@@ -28,13 +28,20 @@ export async function GET(
 
   const res = await fetch(upstream, {
     headers: { Accept: "text/event-stream", "Cache-Control": "no-cache" },
+    // Prevent Next.js fetch cache from buffering the response
+    cache: "no-store",
   });
 
   if (!res.ok || !res.body) {
     return new Response("upstream SSE unavailable", { status: 502 });
   }
 
-  return new Response(res.body, {
+  // Pipe through a TransformStream so each chunk is enqueued and flushed
+  // immediately rather than waiting for Next.js to decide when to flush.
+  const { readable, writable } = new TransformStream();
+  res.body.pipeTo(writable).catch(() => {/* client disconnect */});
+
+  return new Response(readable, {
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-transform",
