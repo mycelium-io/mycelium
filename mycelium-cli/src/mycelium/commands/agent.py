@@ -264,11 +264,23 @@ def _persist_and_describe(
         console.print(line)
 
 
+#: CLI label per adapter for the wizard's cwd prompt. Cold-spawn families
+#: both need a cwd, but the wording differs — claude_code runs ``claude -p``
+#: while cursor opens the cwd as a workspace for ``cursor-agent --workspace``.
+#: Single source of truth so the wizard prompt and ``--cwd`` flag help stay
+#: in sync.
+_CWD_PROMPT_BY_ADAPTER: dict[str, str] = {
+    "claude_code": "Working directory the agent runs `claude -p` in:",
+    "cursor": "Workspace directory for `cursor-agent` (also drop site for .cursor/rules/mycelium.mdc + AGENTS.md):",
+}
+
+
 @doc_ref(
     usage="mycelium agent create <handle> --adapter <name> [--cwd <path>]",
     desc=(
         "Create a new, Mycelium-controlled agent in a room (greenfield). "
-        "<code>claude_code</code> agents are cold-spawned by the cc-daemon; "
+        "<code>claude_code</code> and <code>cursor</code> agents are cold-"
+        "spawned by the cc-daemon (one daemon serves both); "
         "<code>openclaw</code> agents are newly created in the OpenClaw "
         "gateway. To adopt an agent that already exists, use "
         "<code>mycelium agent add</code>."
@@ -298,6 +310,8 @@ def _create_wizard(
         "[dim]  · ask for the agent's handle, adapter, and details[/dim]\n"
         "[dim]  · register it as a Mycelium agent manifest in a room[/dim]\n"
         "[dim]  · claude_code: claim cc-daemon ownership of the handle[/dim]\n"
+        "[dim]  · cursor: claim cc-daemon ownership of the handle and drop[/dim]\n"
+        "[dim]    .cursor/rules/mycelium.mdc + AGENTS.md into the workspace[/dim]\n"
         "[dim]  · openclaw: create the OpenClaw agent, wire it into the[/dim]\n"
         "[dim]    room channel, allowlist the mycelium CLI, restart the gateway[/dim]\n"
     )
@@ -316,11 +330,9 @@ def _create_wizard(
         return
 
     cwd: str | None = None
-    if adapter == "claude_code":
-        cwd = questionary.path(
-            "Working directory the agent runs `claude -p` in:",
-            default=os.getcwd(),
-        ).ask()
+    prompt_label = _CWD_PROMPT_BY_ADAPTER.get(adapter)
+    if prompt_label is not None:
+        cwd = questionary.path(prompt_label, default=os.getcwd()).ask()
         if not cwd:
             return
 
@@ -371,7 +383,12 @@ def agent_create(
     cwd: str | None = typer.Option(
         None,
         "--cwd",
-        help="claude_code: working dir `claude -p` runs in (required for that adapter).",
+        help=(
+            "claude_code / cursor: working dir the agent's CLI runs in "
+            "(required for both cold-spawn families). For cursor it's also "
+            "where .cursor/rules/mycelium.mdc + AGENTS.md (mycelium section) "
+            "are dropped."
+        ),
     ),
     model: str | None = typer.Option(
         None,
@@ -399,7 +416,14 @@ def agent_create(
         "", "--description", "-d", help="One-paragraph statement of what this agent does."
     ),
     budget: float = typer.Option(
-        5.0, "--budget", help="claude_code: monthly USD spend cap enforced by the daemon."
+        5.0,
+        "--budget",
+        help=(
+            "claude_code: monthly USD spend cap enforced by the daemon. "
+            "cursor: stored but not enforced — cursor-agent doesn't report "
+            "per-call $ cost (token counts only), so the daemon can't sum "
+            "spend reliably; cap your Cursor account separately."
+        ),
     ),
     allow_from: str | None = typer.Option(
         None,
@@ -419,6 +443,11 @@ def agent_create(
     Examples:
         # claude_code (cold-spawned by the cc-daemon)
         mycelium agent create release-agent --cwd ~/repos/mycelium
+
+        # cursor (cold-spawned by the cc-daemon; same daemon as claude_code)
+        mycelium agent create design-agent --adapter cursor \\
+            --cwd ~/repos/my-frontend \\
+            --description "Owns the design system; pings @julia on ambiguity"
 
         # openclaw — create a fresh OpenClaw agent named @planner
         mycelium agent create planner --adapter openclaw \\
