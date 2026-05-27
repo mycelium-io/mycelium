@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2026 Julia Valenti
+# Copyright 2026 Mycelium Contributors
 
 """`mycelium agent add` brownfield onboarding: discovery, batch-adopt, the
 non-interactive guard, and the create/add split."""

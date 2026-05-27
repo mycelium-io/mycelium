@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Copyright 2026 Julia Valenti
+// Copyright 2026 Mycelium Contributors
 
 // All fetches use relative `/api/*` paths. The Next.js server proxies them
 // to the backend (see next.config.ts `rewrites()`), so the browser only ever
