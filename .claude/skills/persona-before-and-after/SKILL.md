@@ -610,7 +610,12 @@ How to work together in this room:
   Messages without an @mention are ignored.
 - Keep each message to 2–3 paragraphs.
 - Aim for consensus. When you agree, @-mention the others and say 'I agree' with
-  the final decision explicitly stated."
+  the final decision explicitly stated.
+
+IMPORTANT: This is a plain-text chat room. Do NOT use any CLI tools, shell
+commands, or negotiation protocols. Do NOT reference CognitiveEngine, mycelium
+session join, or any structured negotiation framework. Respond only in plain
+conversational text."
 
 curl -sf "$MYCELIUM_API_URL/rooms/${EXP_ID}-before/messages" \
   -H "Content-Type: application/json" \
@@ -872,21 +877,54 @@ Before writing the report, count messages for both cases:
 
 ```bash
 python3 - <<'PY'
-import json, pathlib, os
+import pathlib, os, re
 exp = os.environ["EXP_ID"]
 base = pathlib.Path("~/.mycelium/rooms").expanduser()
 
-for label in ("before", "after"):
+def count_room_msgs(label):
     p = base / f"{exp}-{label}" / "transcript.md"
-    count = p.read_text().count("**") // 2 if p.exists() else "missing"
-    print(f"{label} messages: {count}")
+    if not p.exists():
+        return "missing"
+    # Count lines that are sender headers: start with ** and end with **:
+    return sum(1 for l in p.read_text().splitlines()
+               if l.startswith("**") and l.rstrip().endswith(":**"))
 
-sess = base / f"{exp}-after" / "session-transcript.md"
-if sess.exists():
-    ticks = sess.read_text().count("[tick]")
-    print(f"after ticks (rounds): {ticks}")
+def count_session_msgs(transcript):
+    # Count by message type from [type] prefix lines
+    counts = {}
+    for l in transcript.splitlines():
+        m = re.match(r'^\[([^\]]+)\]', l)
+        if m:
+            t = m.group(1)
+            counts[t] = counts.get(t, 0) + 1
+    return counts
+
+before_chat = count_room_msgs("before")
+after_chat  = count_room_msgs("after")
+print(f"before — room chat messages (= negotiation moves): {before_chat}")
+print(f"after  — room chat messages (narration only):      {after_chat}")
+
+sess_path = base / f"{exp}-after" / "session-transcript.md"
+if sess_path.exists():
+    sc = count_session_msgs(sess_path.read_text())
+    direct = sc.get("direct", 0)
+    ticks  = sc.get("coordination_tick", 0)
+    joins  = sc.get("coordination_join", 0)
+    rounds = ticks // max(sc.get("coordination_join", 1), 1)  # ticks / n_agents
+    print(f"after  — session direct responses (= negotiation moves): {direct}")
+    print(f"after  — CE ticks (protocol overhead): {ticks}  joins: {joins}")
+    print(f"after  — rounds (ticks / n_agents): {ticks // joins if joins else '?'}")
 PY
 ```
+
+**What these numbers mean for the Summary table:**
+- `before room chat messages` ≈ negotiation moves (every chat turn is a decision)
+- `after session direct responses` = negotiation moves (the JSON accept/reject/counter-offer actions)
+- `after room chat messages` = narration overhead only — agents explain reasoning before running CLI
+- CE ticks are protocol infrastructure, not comparable to anything in the before case
+
+Use `before room chat` vs `after session direct` as the apples-to-apples move count.
+Use `after room chat` as a separate "narration overhead" metric if desired.
 
 Write the report to `~/.mycelium/rooms/${EXP_ID}/evaluation.md`:
 
@@ -902,8 +940,9 @@ Write the report to `~/.mycelium/rooms/${EXP_ID}/evaluation.md`:
 | Metric | Before (Channel) | After (Mycelium) |
 |--------|-----------------|-----------------|
 | Consensus reached? | ... | ... |
-| Messages exchanged | ... | ... |
-| Engine ticks (rounds) | n/a | ... |
+| Negotiation moves | {before room msgs} | {after session direct responses} |
+| Chat/reasoning messages | {before room msgs} | {after room msgs} |
+| CE protocol overhead | n/a | {ticks} ticks / {rounds} rounds |
 | Issues explicitly identified | ... | ... |
 | Issues resolved | ... | ... |
 | Overall score | X/5 | X/5 |
