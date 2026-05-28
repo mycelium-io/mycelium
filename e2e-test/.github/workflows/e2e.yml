@@ -278,13 +278,56 @@ jobs:
           uv run pyats run job "$JOB_FILE" \
             --html-logs artifacts
 
-      - name: Collect container logs
+      - name: Print pyATS results summary
         if: always()
         run: |
-          mkdir -p artifacts/logs
+          echo "=== pyATS Results ==="
+          uv run pyats logs list 2>/dev/null | head -20 || true
+
+          # Find the most recent archive directory
+          LATEST=$(ls -td ~/.pyats/archive/*/ 2>/dev/null | head -1)
+          if [ -z "$LATEST" ]; then
+            echo "No pyATS archive found"
+            exit 0
+          fi
+          echo "Archive: $LATEST"
+
+          # Print the TaskLog (plain text version)
+          for logfile in "$LATEST"/TaskLog.rst "$LATEST"/TaskLog; do
+            if [ -f "$logfile" ]; then
+              echo ""
+              echo "=== TaskLog ==="
+              cat "$logfile"
+              break
+            fi
+          done
+
+          # Print results summary if available
+          if [ -f "$LATEST/results.json" ]; then
+            echo ""
+            echo "=== Results JSON ==="
+            python3 -c "
+          import json, sys
+          with open('$LATEST/results.json') as f:
+              data = json.load(f)
+          json.dump(data, sys.stdout, indent=2)
+          " 2>/dev/null || cat "$LATEST/results.json"
+          fi
+
+      - name: Collect container logs and pyATS archive
+        if: always()
+        run: |
+          mkdir -p artifacts/logs artifacts/pyats-archive
           for svc in e2e-mycelium-db e2e-mycelium-backend e2e-cfn-mgmt e2e-cfn-node e2e-matrix-synapse; do
             docker logs "$svc" > "artifacts/logs/${svc}.log" 2>&1 || true
           done
+
+          # Copy the full pyATS archive into artifacts
+          LATEST=$(ls -td ~/.pyats/archive/*/ 2>/dev/null | head -1)
+          if [ -n "$LATEST" ]; then
+            cp -r "$LATEST" artifacts/pyats-archive/ 2>/dev/null || true
+            echo "Copied pyATS archive: $(du -sh artifacts/pyats-archive/ | cut -f1)"
+          fi
 
       - name: Upload test results
         if: always()
