@@ -143,11 +143,12 @@ def main(runtime):
 Setup runs in subsection order. Each subsection populates `testscript.parameters`:
 
 1. `initialize_clients` — creates API/CLI client instances
-2. `detect_environment` — probes backend, CFN, Matrix, sets skip flags
-3. `create_test_room` — creates session-scoped test room
-4. `presuite_hygiene` — cleans stale sessions, trims agent history
-5. `reset_agent_sessions` — gateway RPC reset of negotiation sessions
-6. `wait_agents_idle` — polls until agents finish in-flight turns
+2. `configure_cli` — runs `mycelium init --api-url` and sets default room
+3. `detect_environment` — probes backend, CFN, Matrix, sets skip flags
+4. `create_test_room` — creates session-scoped test room
+5. `presuite_hygiene` — cleans stale sessions, trims agent history
+6. `reset_agent_sessions` — gateway RPC reset of negotiation sessions
+7. `wait_agents_idle` — polls until agents finish in-flight turns
 
 ### 9. Groups for Selective Execution
 

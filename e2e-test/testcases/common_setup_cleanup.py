@@ -64,6 +64,30 @@ class MyceliumCommonSetup(aetest.CommonSetup):
                  backend_url, cfn_mgmt_url, cfn_svc_url, matrix_url)
 
     @aetest.subsection
+    def configure_cli(self, testscript, shared_mycelium_room="mycelium_room"):
+        """Ensure the mycelium CLI config points at the correct backend.
+
+        Runs ``mycelium init --api-url <backend>`` to create
+        ``~/.mycelium/config.toml`` if absent, then sets the default room.
+        """
+        cli: MyceliumCLI = testscript.parameters["cli"]
+        backend_url: str = testscript.parameters["backend_url"]
+        room = self._resolve_env(shared_mycelium_room)
+
+        r = cli.run("init", "--api-url", backend_url)
+        if not r.ok:
+            log.debug("mycelium init returned rc=%d (may already be initialized)", r.returncode)
+            r = cli.config_set("backend_url", backend_url)
+            if not r.ok:
+                log.warning("Failed to set CLI backend_url: %s", r.error_message)
+
+        r = cli.config_set("room", room)
+        if not r.ok:
+            log.warning("Failed to set CLI room: %s", r.error_message)
+
+        log.info("CLI configured: backend_url=%s room=%s", backend_url, room)
+
+    @aetest.subsection
     def detect_environment(self, testscript, room_prefix="e2e-test"):
         """Probe all services and set skip flags."""
         api: MyceliumAPI = testscript.parameters["api"]
