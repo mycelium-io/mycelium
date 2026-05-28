@@ -23,6 +23,7 @@ class EnvironmentInfo:
         self.backend_status: Optional[str] = None
         self.backend_health: dict = {}
         self.llm_available: bool = False
+        self.llm_detail: Optional[str] = None
         self.cfn_mgmt_reachable: bool = False
         self.cfn_node_svc_reachable: bool = False
         self.cfn_primary_workspace_id: Optional[str] = None
@@ -46,6 +47,7 @@ class EnvironmentInfo:
             "backend_reachable": self.backend_reachable,
             "backend_status": self.backend_status,
             "llm_available": self.llm_available,
+            "llm_detail": self.llm_detail,
             "cfn_mgmt_reachable": self.cfn_mgmt_reachable,
             "cfn_node_svc_reachable": self.cfn_node_svc_reachable,
             "cfn_primary_workspace_id": self.cfn_primary_workspace_id,
@@ -80,18 +82,27 @@ def detect_environment(
             env.llm_available = (
                 bool(status_val) and status_val not in _LLM_FAILURE_STATUSES
             )
+            env.llm_detail = (
+                f"status={status_val} model={llm_status.get('model', '?')} "
+                f"base_url={'set' if llm_status.get('base_url') else 'NOT SET'}"
+            )
         elif isinstance(llm_status, str):
             env.llm_available = (
                 bool(llm_status) and llm_status not in _LLM_FAILURE_STATUSES
             )
+            env.llm_detail = f"status={llm_status}"
         else:
             env.llm_available = False
+            env.llm_detail = f"unexpected type: {type(llm_status).__name__}"
         log.info(
-            "Backend: reachable=%s llm=%s (raw=%r)",
+            "Backend: reachable=%s llm=%s (%s) raw=%r",
             env.backend_reachable,
             "available" if env.llm_available else "unavailable",
+            env.llm_detail,
             llm_status,
         )
+
+        _check_llm_env_vars(env)
     else:
         env.backend_status = "unreachable"
         log.warning("Backend unreachable")
@@ -117,6 +128,32 @@ def detect_environment(
         _probe_workspace_alignment(backend, cfn_mgmt, env, room_prefix)
 
     return env
+
+
+def _check_llm_env_vars(env: EnvironmentInfo) -> None:
+    """Warn if the host-side LLM env vars look incomplete.
+
+    The backend reads LLM_API_KEY / LLM_BASE_URL / LLM_MODEL from its own
+    container environment, but logging the host-side state helps diagnose
+    CI misconfigurations where the vars never reached the container.
+    """
+    key_set = bool(os.environ.get("LLM_API_KEY"))
+    url_set = bool(os.environ.get("LLM_BASE_URL"))
+    model_set = bool(os.environ.get("LLM_MODEL"))
+
+    if key_set and not url_set:
+        log.warning(
+            "LLM_API_KEY is set but LLM_BASE_URL is empty — the backend "
+            "will use its default endpoint which may not match the key's provider"
+        )
+    if not key_set:
+        log.info("LLM_API_KEY not set on host; LLM tests will depend on backend-side config")
+    else:
+        log.info(
+            "Host LLM env: API_KEY=set BASE_URL=%s MODEL=%s",
+            "set" if url_set else "NOT SET",
+            os.environ.get("LLM_MODEL", "NOT SET"),
+        )
 
 
 def _probe_workspace_alignment(

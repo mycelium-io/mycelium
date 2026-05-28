@@ -92,6 +92,21 @@ jobs:
             -f mycelium/mycelium-cli/Dockerfile.collector mycelium/mycelium-cli/
           echo "MYCELIUM_BACKEND_IMAGE=mycelium-backend:dev" >> "$GITHUB_ENV"
 
+      - name: Verify LLM configuration
+        run: |
+          echo "=== LLM environment check ==="
+          [ -n "$LLM_API_KEY" ]   && echo "LLM_API_KEY:   set (${#LLM_API_KEY} chars)" \
+                                   || echo "LLM_API_KEY:   *** NOT SET ***"
+          [ -n "$LLM_BASE_URL" ]  && echo "LLM_BASE_URL:  set (${#LLM_BASE_URL} chars)" \
+                                   || echo "LLM_BASE_URL:  *** NOT SET ***"
+          [ -n "$LLM_MODEL" ]     && echo "LLM_MODEL:     $LLM_MODEL" \
+                                   || echo "LLM_MODEL:     *** NOT SET ***"
+          if [ -z "$LLM_API_KEY" ] || [ -z "$LLM_BASE_URL" ]; then
+            echo ""
+            echo "WARNING: LLM-dependent tests (synthesis, catchup, convergence) will"
+            echo "be skipped unless all three vars are set in GitHub secrets or vars."
+          fi
+
       - name: Start infrastructure
         run: |
           docker compose -f $COMPOSE_FILE up -d \
@@ -164,6 +179,31 @@ jobs:
             echo "No workspace ID found — skipping"
           fi
 
+      - name: Verify backend container environment
+        run: |
+          echo "=== Backend container env check ==="
+          for var in LLM_API_KEY LLM_BASE_URL LLM_MODEL WORKSPACE_ID; do
+            val=$(docker exec e2e-mycelium-backend printenv "$var" 2>/dev/null || echo "")
+            if [ -n "$val" ]; then
+              if [ "$var" = "LLM_API_KEY" ]; then
+                echo "  $var: set (${#val} chars)"
+              else
+                echo "  $var: $val"
+              fi
+            else
+              echo "  $var: *** NOT SET ***"
+            fi
+          done
+
+          echo ""
+          echo "=== Backend /health LLM status ==="
+          curl -sf http://localhost:8000/health | python3 -c "
+          import sys, json
+          h = json.load(sys.stdin)
+          llm = h.get('llm', 'missing')
+          print(json.dumps(llm, indent=2) if isinstance(llm, dict) else f'llm: {llm}')
+          " 2>/dev/null || echo "Could not fetch /health"
+
       - name: Set up Python and uv
         uses: astral-sh/setup-uv@v4
         with:
@@ -200,8 +240,18 @@ jobs:
           fi
           mycelium config set server.api_url http://localhost:8000 2>/dev/null || true
           mycelium config set rooms.active mycelium_room 2>/dev/null || true
-          echo "CLI config:"
+
+          echo "=== CLI config.toml ==="
           cat ~/.mycelium/config.toml
+
+          echo ""
+          echo "=== CLI config verification ==="
+          echo "server.api_url = $(mycelium config get server.api_url 2>/dev/null || echo 'FAILED TO READ')"
+          echo "rooms.active   = $(mycelium config get rooms.active 2>/dev/null || echo 'FAILED TO READ')"
+
+          echo ""
+          echo "=== CLI doctor ==="
+          mycelium doctor 2>&1 || true
 
       - name: Run E2E tests
         env:

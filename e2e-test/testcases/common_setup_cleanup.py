@@ -67,9 +67,10 @@ class MyceliumCommonSetup(aetest.CommonSetup):
     def configure_cli(self, testscript, shared_mycelium_room="mycelium_room"):
         """Ensure the mycelium CLI config points at the correct backend.
 
-        Runs ``mycelium init --api-url <backend>`` to create
-        ``~/.mycelium/config.toml`` if absent, then sets the API URL
-        and active room via ``config set``.
+        Runs ``mycelium init --api-url <backend>`` to seed
+        ``~/.mycelium/config.toml`` if absent, then unconditionally sets
+        the API URL and active room via ``config set`` and verifies the
+        values were persisted correctly.
 
         Config keys (from mycelium CLI's ``MyceliumConfig``):
           - ``server.api_url`` — backend URL
@@ -82,13 +83,27 @@ class MyceliumCommonSetup(aetest.CommonSetup):
         r = cli.run("init", "--api-url", backend_url)
         if not r.ok:
             log.debug("mycelium init returned rc=%d (may already be initialized)", r.returncode)
-            r = cli.config_set("server.api_url", backend_url)
-            if not r.ok:
-                log.warning("Failed to set CLI server.api_url: %s", r.error_message)
 
-        r = cli.config_set("rooms.active", room)
-        if not r.ok:
-            log.warning("Failed to set CLI rooms.active: %s", r.error_message)
+        expected = {"server.api_url": backend_url, "rooms.active": room}
+        for key, value in expected.items():
+            r = cli.config_set(key, value)
+            if not r.ok:
+                log.warning("Failed to set CLI %s: %s", key, r.error_message)
+
+        errors = []
+        for key, value in expected.items():
+            r = cli.config_get(key)
+            actual = r.stdout.strip() if r.ok else None
+            if actual != value:
+                errors.append(f"{key}: expected={value!r} got={actual!r}")
+        if errors:
+            log.warning("CLI config verification failed: %s", "; ".join(errors))
+
+        r = cli.doctor()
+        if r.ok:
+            log.info("CLI doctor: %s", r.stdout.strip()[:200])
+        else:
+            log.warning("CLI doctor failed (rc=%d): %s", r.returncode, r.error_message[:200])
 
         log.info("CLI configured: server.api_url=%s rooms.active=%s", backend_url, room)
 
