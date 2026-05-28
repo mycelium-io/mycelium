@@ -42,18 +42,19 @@ class IocCfn(aetest.Testcase):
                 ],
             })
             if st not in (200, 201, 202):
-                step.failed(f"Knowledge ingest returned status={st}")
+                log.error("Knowledge ingest body: %s", resp)
+                step.failed(f"Knowledge ingest returned status={st}: {resp}")
 
         with steps.start("Query knowledge") as step:
             time.sleep(2)
             st, resp = api.query_knowledge(marker)
             if st != 200:
-                step.failed(f"Knowledge query returned status={st}")
+                step.failed(f"Knowledge query returned status={st}: {resp}")
 
         with steps.start("List knowledge") as step:
             st, resp = api.list_knowledge()
             if st != 200:
-                step.failed(f"Knowledge list returned status={st}")
+                step.failed(f"Knowledge list returned status={st}: {resp}")
 
 
 class IocFullPath(aetest.Testcase):

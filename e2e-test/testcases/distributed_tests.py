@@ -240,7 +240,8 @@ class DistributedBackendResolvedCfnIds(aetest.Testcase):
                 ],
             })
             if st not in (200, 201, 202):
-                step.failed(f"Ingest failed: status={st}")
+                log.error("Knowledge ingest body: %s", resp)
+                step.failed(f"Ingest failed: status={st}: {resp}")
 
     @aetest.cleanup
     def cleanup(self, api, room_name):

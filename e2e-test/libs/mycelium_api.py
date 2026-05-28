@@ -219,6 +219,9 @@ class MyceliumAPI:
     def cleanup_rooms(self, prefix: str, max_age_minutes: int = 0, exclude: set[str] | None = None) -> int:
         """Delete rooms matching prefix. Returns count of deleted rooms.
 
+        When *max_age_minutes* > 0, only rooms whose ``created_at``
+        timestamp is older than that threshold are deleted — this avoids
+        interfering with concurrent test runs.
         Rooms whose name is in *exclude* are skipped (protects owned rooms).
         """
         status, data = self.list_rooms()
@@ -227,10 +230,30 @@ class MyceliumAPI:
         rooms = data if isinstance(data, list) else []
         skip = exclude or set()
         deleted = 0
+
+        if max_age_minutes > 0:
+            from datetime import datetime, timezone
+            cutoff_seconds = max_age_minutes * 60
+            now = datetime.now(timezone.utc)
+
         for room in rooms:
             name = room.get("name", "")
-            if name.startswith(prefix) and name not in skip:
-                st, _ = self.delete_room(name)
-                if 200 <= st < 300:
-                    deleted += 1
+            if not name.startswith(prefix) or name in skip:
+                continue
+
+            if max_age_minutes > 0:
+                created_at = room.get("created_at")
+                if created_at:
+                    try:
+                        created = datetime.fromisoformat(
+                            created_at.replace("Z", "+00:00")
+                        )
+                        if (now - created).total_seconds() < cutoff_seconds:
+                            continue
+                    except (ValueError, TypeError):
+                        pass
+
+            st, _ = self.delete_room(name)
+            if 200 <= st < 300:
+                deleted += 1
         return deleted
