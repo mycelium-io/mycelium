@@ -169,8 +169,11 @@ class MyceliumAPI:
     def ingest_knowledge(self, data: dict) -> tuple[int, Any]:
         return self.post_json("/knowledge/ingest", data, timeout=30)
 
-    def query_knowledge(self, query: str) -> tuple[int, Any]:
-        return self.post_json("/cfn/knowledge/query", {"intent": query})
+    def query_knowledge(self, query: str, mas_id: str | None = None) -> tuple[int, Any]:
+        payload: dict[str, Any] = {"intent": query}
+        if mas_id:
+            payload["mas_id"] = mas_id
+        return self.post_json("/cfn/knowledge/query", payload)
 
     def list_knowledge(self) -> tuple[int, Any]:
         return self.get_json("/cfn/knowledge/list")

@@ -72,6 +72,30 @@ class CfnMgmtAPI:
             return None
         return workspaces[0].get("id") or workspaces[0].get("workspace_id")
 
+    def get_primary_mas_id(self, workspace_id: str) -> Optional[str]:
+        """Return the first MAS ID for *workspace_id*, or ``None``."""
+        status, data = self.list_mas(workspace_id)
+        if status != 200 or not data:
+            return None
+        items = data if isinstance(data, list) else data.get("items", data.get("multi_agentic_systems", []))
+        if not items:
+            return None
+        return items[0].get("id") or items[0].get("mas_id")
+
+    def create_mas(self, workspace_id: str, name: str) -> Optional[str]:
+        """Create a MAS in the given workspace. Returns the new MAS ID or ``None``."""
+        enc = urllib.parse.quote(workspace_id, safe="")
+        url = f"{self.base_url}/api/workspaces/{enc}/multi-agentic-systems"
+        try:
+            body = json.dumps({"name": name}).encode()
+            req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read().decode())
+                return data.get("id") or data.get("mas_id")
+        except Exception as exc:
+            log.warning("Failed to create MAS '%s': %s", name, exc)
+            return None
+
 
 class CfnNodeSvcAPI:
     """Client for the CFN node service (ioc-cognition-fabric-node-svc)."""

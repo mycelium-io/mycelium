@@ -27,6 +27,7 @@ class EnvironmentInfo:
         self.cfn_mgmt_reachable: bool = False
         self.cfn_node_svc_reachable: bool = False
         self.cfn_primary_workspace_id: Optional[str] = None
+        self.cfn_primary_mas_id: Optional[str] = None
         self.matrix_reachable: bool = False
         self.coordination_blocked_reason: Optional[str] = None
 

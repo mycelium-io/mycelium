@@ -75,6 +75,40 @@ def get_workspace_id():
     return ws_id
 
 
+def get_mas_id(workspace_id):
+    """Fetch the first MAS ID for *workspace_id* from CFN mgmt plane."""
+    if not workspace_id:
+        return None
+    enc = urllib.parse.quote(workspace_id, safe="")
+    status, data = _get(f"{CFN_MGMT_URL}/api/workspaces/{enc}/multi-agentic-systems")
+    if status != 200:
+        print(f"  Could not list MAS: {status}", file=sys.stderr)
+        return None
+    items = data if isinstance(data, list) else data.get("items", data.get("multi_agentic_systems", []))
+    if not items:
+        print("  No MAS found — creating default MAS")
+        try:
+            body = json.dumps({"name": "e2e-default"}).encode()
+            req = urllib.request.Request(
+                f"{CFN_MGMT_URL}/api/workspaces/{enc}/multi-agentic-systems",
+                data=body,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                created = json.loads(resp.read().decode())
+                mas_id = created.get("id") or created.get("mas_id")
+                if mas_id:
+                    print(f"  Created MAS: {mas_id}")
+                    return mas_id
+        except Exception as exc:
+            print(f"  Failed to create MAS: {exc}", file=sys.stderr)
+        return None
+    mas_id = items[0].get("id") or items[0].get("mas_id")
+    print(f"  Found MAS: {mas_id}")
+    return mas_id
+
+
 def main():
     print("Waiting for services...")
     if not wait_for_service("Backend", f"{BACKEND_URL}/health"):
@@ -85,6 +119,9 @@ def main():
     print("\nFetching workspace ID...")
     workspace_id = get_workspace_id()
 
+    print("\nFetching MAS ID...")
+    mas_id = get_mas_id(workspace_id)
+
     print("\nBackend health:")
     status, health = _get(f"{BACKEND_URL}/health")
     print(json.dumps(health, indent=2) if isinstance(health, dict) else f"  status={status}")
@@ -93,6 +130,7 @@ def main():
         "backend_url": BACKEND_URL,
         "cfn_mgmt_url": CFN_MGMT_URL,
         "workspace_id": workspace_id or "",
+        "mas_id": mas_id or "",
         "health": health if isinstance(health, dict) else {},
     }
 
@@ -103,7 +141,8 @@ def main():
 
     if workspace_id:
         print(f"\nWORKSPACE_ID={workspace_id}")
-        print("Set this in the backend container's env if not already configured.")
+    if mas_id:
+        print(f"MAS_ID={mas_id}")
 
     print("\nBootstrap complete.")
 

@@ -133,6 +133,7 @@ services:
       LLM_API_KEY: "${LLM_API_KEY:-}"
       LLM_BASE_URL: "${LLM_BASE_URL:-}"
       WORKSPACE_ID: "${WORKSPACE_ID:-}"
+      MAS_ID: "${MAS_ID:-}"
     ports:
       - "${E2E_BACKEND_PORT:-8000}:8000"
     volumes:

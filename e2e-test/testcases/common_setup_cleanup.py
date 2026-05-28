@@ -139,6 +139,34 @@ class MyceliumCommonSetup(aetest.CommonSetup):
                  not env.skip_matrix_tests, env.coordination_blocked_reason)
 
     @aetest.subsection
+    def provision_cfn_ids(self, testscript):
+        """Fetch workspace & MAS IDs from CFN mgmt and persist them.
+
+        Mirrors what ``mycelium install`` does: resolve the primary
+        workspace, find (or create) a MAS, and write both IDs to
+        ``~/.mycelium/.env`` so the CLI and backend can use them.
+        """
+        env: EnvironmentInfo = testscript.parameters["env"]
+        cfn_mgmt: CfnMgmtAPI = testscript.parameters["cfn_mgmt"]
+
+        workspace_id = env.cfn_primary_workspace_id
+        if not workspace_id:
+            log.warning("No workspace_id — skipping MAS provisioning")
+            testscript.parameters["mas_id"] = None
+            return
+
+        mas_id = cfn_mgmt.get_primary_mas_id(workspace_id)
+        if not mas_id:
+            log.info("No MAS found — creating default MAS for workspace %s", workspace_id)
+            mas_id = cfn_mgmt.create_mas(workspace_id, "e2e-default")
+
+        testscript.parameters["mas_id"] = mas_id
+        testscript.parameters["workspace_id"] = workspace_id
+        log.info("CFN IDs: workspace=%s mas=%s", workspace_id, mas_id)
+
+        self._persist_cfn_ids(workspace_id, mas_id)
+
+    @aetest.subsection
     def presuite_hygiene(self, testscript, room_prefix="e2e-test"):
         """Clean stale sessions and trim agent history.
 
@@ -213,7 +241,7 @@ class MyceliumCommonSetup(aetest.CommonSetup):
         env_path.parent.mkdir(parents=True, exist_ok=True)
 
         lines = []
-        for var in ("LLM_API_KEY", "LLM_BASE_URL", "LLM_MODEL"):
+        for var in ("LLM_API_KEY", "LLM_BASE_URL", "LLM_MODEL", "WORKSPACE_ID", "MAS_ID"):
             val = os.environ.get(var)
             if val:
                 lines.append(f"{var}={val}")
@@ -224,6 +252,22 @@ class MyceliumCommonSetup(aetest.CommonSetup):
         elif not env_path.exists():
             env_path.touch()
             log.debug("Created empty %s (no LLM vars in environment)", env_path)
+
+    @staticmethod
+    def _persist_cfn_ids(workspace_id: str | None, mas_id: str | None) -> None:
+        """Append WORKSPACE_ID and MAS_ID to ``~/.mycelium/.env``."""
+        env_path = pathlib.Path.home() / ".mycelium" / ".env"
+        env_path.parent.mkdir(parents=True, exist_ok=True)
+
+        existing = env_path.read_text() if env_path.exists() else ""
+        additions = []
+        for key, val in [("WORKSPACE_ID", workspace_id), ("MAS_ID", mas_id)]:
+            if val and f"{key}=" not in existing:
+                additions.append(f"{key}={val}")
+        if additions:
+            with env_path.open("a") as f:
+                f.write("\n".join(additions) + "\n")
+            log.info("Appended %s to %s", ", ".join(k.split("=")[0] for k in additions), env_path)
 
     @staticmethod
     def _resolve_env(value: str) -> str:

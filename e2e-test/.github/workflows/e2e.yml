@@ -145,46 +145,47 @@ jobs:
         run: |
           docker compose -f $COMPOSE_FILE run --rm mycelium-bootstrap
 
-      - name: Fetch workspace ID and propagate to backend
+      - name: Fetch workspace/MAS IDs and propagate to backend
         run: |
           # The bootstrap container wrote config to the e2e-shared volume.
           # Derive the compose project name to get the correct volume prefix.
           PROJECT=$(docker compose -f $COMPOSE_FILE config --format json | python3 -c "import sys,json; print(json.load(sys.stdin).get('name','infra'))")
           VOLUME="${PROJECT}_e2e-shared"
-          echo "Reading workspace ID from volume: $VOLUME"
-          WORKSPACE_ID=$(docker run --rm \
+          echo "Reading IDs from volume: $VOLUME"
+          eval "$(docker run --rm \
             -v "${VOLUME}:/shared:ro" \
             python:3.12-slim \
             python3 -c "
           import json, pathlib
           p = pathlib.Path('/shared/mycelium-config.json')
           if p.exists():
-              v = json.loads(p.read_text()).get('workspace_id')
-              if v:
-                  print(v)
-          " 2>/dev/null || echo "")
+              cfg = json.loads(p.read_text())
+              for key in ('workspace_id', 'mas_id'):
+                  v = cfg.get(key, '')
+                  if v:
+                      print(f'{key.upper()}={v}')
+          " 2>/dev/null)"
 
-          if [ -n "$WORKSPACE_ID" ]; then
+          if [ -n "$WORKSPACE_ID" ] || [ -n "$MAS_ID" ]; then
             echo "WORKSPACE_ID=$WORKSPACE_ID"
-            # Inject into the running backend by updating its env and restarting
+            echo "MAS_ID=$MAS_ID"
             docker compose -f $COMPOSE_FILE stop mycelium-backend
-            export WORKSPACE_ID
+            export WORKSPACE_ID MAS_ID
             docker compose -f $COMPOSE_FILE up -d mycelium-backend
-            # Wait for it to come back healthy
             for i in $(seq 1 30); do
               status=$(docker inspect --format='{{.State.Health.Status}}' e2e-mycelium-backend 2>/dev/null || echo "missing")
               [ "$status" = "healthy" ] && break
               sleep 2
             done
-            echo "Backend restarted with WORKSPACE_ID=$WORKSPACE_ID (status=$status)"
+            echo "Backend restarted with WORKSPACE_ID=$WORKSPACE_ID MAS_ID=$MAS_ID (status=$status)"
           else
-            echo "No workspace ID found — skipping"
+            echo "No workspace/MAS ID found — skipping"
           fi
 
       - name: Verify backend container environment
         run: |
           echo "=== Backend container env check ==="
-          for var in LLM_API_KEY LLM_BASE_URL LLM_MODEL WORKSPACE_ID; do
+          for var in LLM_API_KEY LLM_BASE_URL LLM_MODEL WORKSPACE_ID MAS_ID; do
             val=$(docker exec e2e-mycelium-backend printenv "$var" 2>/dev/null || echo "")
             if [ -n "$val" ]; then
               if [ "$var" = "LLM_API_KEY" ]; then
