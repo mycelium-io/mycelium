@@ -43,11 +43,6 @@ class MatrixCommunication(aetest.Testcase):
         room_id = matrix_config.get("test_room_id")
         shared_secret = matrix_config.get("shared_secret", "")
 
-        with steps.start("Verify agent room configured") as step:
-            if not room_id:
-                step.failed("No test_room_id configured")
-            log.info("Matrix room: alias=%s id=%s", room_alias, room_id)
-
         with steps.start("Obtain observer token") as step:
             if not shared_secret:
                 step.failed("No Matrix shared_secret configured — cannot create observer")
@@ -56,6 +51,22 @@ class MatrixCommunication(aetest.Testcase):
                 log.info("Observer token obtained")
             except Exception as exc:
                 step.failed(f"Observer token acquisition failed: {exc}")
+
+        with steps.start("Resolve agent room") as step:
+            if room_alias:
+                resolved = asyncio.run(
+                    _resolve_alias(matrix_url, token, room_alias)
+                )
+                if resolved:
+                    if room_id and resolved != room_id:
+                        log.info(
+                            "Alias %s resolved to %s (overriding configured %s)",
+                            room_alias, resolved, room_id,
+                        )
+                    room_id = resolved
+            if not room_id:
+                step.failed("No room_id configured and alias resolution failed")
+            log.info("Matrix room: alias=%s id=%s", room_alias, room_id)
 
         with steps.start("Send and verify test message") as step:
             marker = f"e2e-matrix-{uuid.uuid4().hex[:8]}"
@@ -74,6 +85,17 @@ class MatrixCommunication(aetest.Testcase):
                 log.info("Matrix round-trip verified: marker=%s", marker)
             except Exception as exc:
                 step.failed(f"Matrix round-trip failed: {exc}")
+
+
+async def _resolve_alias(homeserver: str, token: str, alias: str) -> str | None:
+    """Resolve a Matrix room alias to its room ID."""
+    from libs.matrix_client import MatrixClient
+
+    client = MatrixClient(homeserver, token)
+    try:
+        return await client.resolve_room_alias(alias)
+    finally:
+        await client.close()
 
 
 async def _matrix_roundtrip(
