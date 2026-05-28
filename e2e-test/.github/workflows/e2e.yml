@@ -184,6 +184,13 @@ jobs:
           uv tool install ./mycelium/mycelium-cli --force --link-mode=copy
           mycelium --version || mycelium --help | head -5
 
+      - name: Initialize mycelium CLI config
+        run: |
+          mycelium init 2>/dev/null || mkdir -p ~/.mycelium
+          mycelium config set backend_url http://localhost:8000 2>/dev/null || true
+          mycelium config set room mycelium_room 2>/dev/null || true
+          echo "CLI config initialized"
+
       - name: Run E2E tests
         env:
           MYCELIUM_DATAFILE: ${{ github.event.inputs.datafile || 'ci_datafile.yaml' }}

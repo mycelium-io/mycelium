@@ -42,9 +42,15 @@ class _ConvergenceBase(aetest.Testcase):
         owned_rooms.add(test_room)
 
         with steps.start("Create convergence room") as step:
-            r = cli.room_create(test_room)
-            if not r.ok:
-                step.failed(r.error_message)
+            st, _ = api.create_room(test_room, description=self.topic)
+            if st not in (200, 201):
+                step.failed(f"Room creation failed: status={st}")
+
+        with steps.start("Spawn negotiation session") as step:
+            agents = [h for h, _, _ in self.agent_configs]
+            st, _ = api.spawn_session(test_room, {"topic": self.topic, "agents": agents})
+            if st not in (200, 201):
+                step.failed(f"Session spawn failed: status={st}")
 
         for handle, bias, position in self.agent_configs:
             with steps.start(f"Agent {handle} ({bias}) joins") as step:

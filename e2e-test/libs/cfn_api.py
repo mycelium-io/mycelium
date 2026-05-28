@@ -62,8 +62,15 @@ class CfnMgmtAPI:
         status, data = self.list_workspaces()
         if status != 200 or not data:
             return None
-        workspaces = data.get("workspaces", []) if isinstance(data, dict) else []
-        return workspaces[0].get("id") if workspaces else None
+        if isinstance(data, list):
+            workspaces = data
+        elif isinstance(data, dict):
+            workspaces = data.get("workspaces", data.get("items", []))
+        else:
+            return None
+        if not workspaces:
+            return None
+        return workspaces[0].get("id") or workspaces[0].get("workspace_id")
 
 
 class CfnNodeSvcAPI:

@@ -61,7 +61,6 @@ class _DistributedBase(aetest.Testcase):
         prefix = "e2e" if self.local_only else "dist-e2e"
         test_room = f"{prefix}-{suffix}"
         owned_rooms.add(test_room)
-        shared_room = os.environ.get("E2E_MYCELIUM_ROOM", "mycelium_room")
 
         with steps.start("Verify agents are configured") as step:
             for agent_id in self.scenario_agents:
@@ -70,12 +69,17 @@ class _DistributedBase(aetest.Testcase):
             agent_names = [DISTRIBUTED_AGENTS[a]["display_name"] for a in self.scenario_agents]
             log.info("Scenario agents: %s", agent_names)
 
+        with steps.start("Create session room") as step:
+            st, _ = api.create_room(test_room, description=self.scenario_topic)
+            if st not in (200, 201):
+                step.failed(f"Room creation failed: status={st}")
+
         with steps.start("Spawn session via backend") as step:
             session_data = {
                 "topic": self.scenario_topic,
                 "agents": self.scenario_agents,
             }
-            st, resp = api.spawn_session(shared_room, session_data)
+            st, resp = api.spawn_session(test_room, session_data)
             if st not in (200, 201):
                 step.failed(f"Session spawn failed: status={st}")
 

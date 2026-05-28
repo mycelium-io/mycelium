@@ -113,9 +113,10 @@ class MyceliumCLI:
 
     def session_join(self, room: str, handle: str, position: str = "") -> CLIResult:
         args = ["session", "join", "--room", room, "--handle", handle]
-        if position:
-            args.extend(["--position", position])
-        return self.run(*args, timeout=60)
+        result = self.run(*args, timeout=60)
+        if result.ok and position:
+            self.message_send(room, handle, position)
+        return result
 
     def session_ls(self, room: str) -> CLIResult:
         return self.run("session", "ls", "--room", room)
@@ -129,10 +130,12 @@ class MyceliumCLI:
     # ── Negotiation commands ──────────────────────────────────────────────
 
     def negotiate_propose(self, room: str, handle: str, topic: str) -> CLIResult:
-        return self.run("negotiate", "propose", "--room", room, "--handle", handle, topic, timeout=60)
+        return self.run("negotiate", "propose", "--room", room, "--handle", handle,
+                        f"topic={topic}", timeout=60)
 
     def negotiate_respond(self, room: str, handle: str, response: str) -> CLIResult:
-        return self.run("negotiate", "respond", "--room", room, "--handle", handle, response, timeout=60)
+        return self.run("negotiate", "respond", "--room", room, "--handle", handle,
+                        f"response={response}", timeout=60)
 
     def negotiate_query(self, room: str) -> CLIResult:
         return self.run("negotiate", "query", "--room", room, timeout=30)
