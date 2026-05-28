@@ -33,9 +33,7 @@ from mycelium.integrations import Integration, get_integration
 
 @pytest.fixture(autouse=True)
 def _tmp_daemon_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        daemon_config, "daemon_config_path", lambda: tmp_path / "cc-daemon.toml"
-    )
+    monkeypatch.setattr(daemon_config, "daemon_config_path", lambda: tmp_path / "cc-daemon.toml")
 
 
 # ── DaemonConfig.binary_for ──────────────────────────────────────────────────
@@ -117,10 +115,9 @@ def test_dispatch_loop_does_not_hard_code_family_names() -> None:
     """Guard against a regression: the daemon dispatch loop must NOT
     contain ``if manifest.adapter == "claude_code"`` or ``== "cursor"``
     style branches. The lifecycle discriminator is the only routing key."""
-    src = (
-        Path(__file__).resolve().parents[1]
-        / "src/mycelium/daemon/dispatch.py"
-    ).read_text(encoding="utf-8")
+    src = (Path(__file__).resolve().parents[1] / "src/mycelium/daemon/dispatch.py").read_text(
+        encoding="utf-8"
+    )
     forbidden_patterns = [
         'manifest.adapter == "claude_code"',
         'manifest.adapter == "cursor"',

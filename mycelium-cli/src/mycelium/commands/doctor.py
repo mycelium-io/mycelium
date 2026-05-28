@@ -1372,10 +1372,27 @@ def _check_cursor_agent_binary() -> CheckResult:
 def _check_cursor_login() -> CheckResult:
     """Verify ``cursor-agent`` is authenticated so the daemon can spawn it headlessly.
 
-    ``cursor-agent`` keeps its session token in ``~/.cursor/cli-config.json``
-    under the ``preferences.tokenInfo`` field. The spawn helper already
-    surfaces a friendly error when this is missing, but the user typically
-    only finds out at first-mention time — doctor catches it during setup.
+    The ``cursor-agent`` CLI persists its session in two places, depending
+    on version:
+
+    1. **Primary (current schema)**: ``~/.config/cursor/auth.json`` holds
+       ``accessToken`` / ``refreshToken`` at the top level. This is what
+       ``cursor-agent`` itself reads on startup. Verified empirically on
+       2026.05 builds — moving this file aside reproduces the
+       ``Authentication required.`` error path; moving any other file does
+       not.
+    2. **Fallback signal**: ``~/.cursor/cli-config.json`` carries
+       ``authInfo.email`` once the user has logged in. The token isn't
+       there (anymore — older schemas put it under
+       ``preferences.tokenInfo`` and that field has since been removed)
+       but a populated ``authInfo`` block is a reliable "user has been
+       through the login flow" indicator if for some reason auth.json
+       isn't readable.
+
+    The spawn helper still surfaces a friendly error at first-mention
+    time, but doctor catches it during setup. Returns ``ok`` if either
+    signal is present (auth.json wins); ``warning`` only when both look
+    unauthenticated.
     """
     if not _cursor_adapter_registered():
         return CheckResult(
@@ -1386,42 +1403,70 @@ def _check_cursor_login() -> CheckResult:
 
     import json
 
-    config_path = Path.home() / ".cursor" / "cli-config.json"
-    if not config_path.exists():
+    auth_path = Path.home() / ".config" / "cursor" / "auth.json"
+    cli_config_path = Path.home() / ".cursor" / "cli-config.json"
+
+    has_access_token = False
+    has_auth_info = False
+    parse_errors: list[str] = []
+
+    if auth_path.exists():
+        try:
+            auth_data = json.loads(auth_path.read_text(encoding="utf-8"))
+            if isinstance(auth_data, dict) and auth_data.get("accessToken"):
+                has_access_token = True
+        except Exception as exc:  # noqa: BLE001 — best effort; fall through to fallback signal
+            parse_errors.append(f"auth.json: {exc}")
+
+    if not has_access_token and cli_config_path.exists():
+        try:
+            cli_data = json.loads(cli_config_path.read_text(encoding="utf-8"))
+            auth_info = (
+                cli_data.get("authInfo")
+                if isinstance(cli_data, dict) and isinstance(cli_data.get("authInfo"), dict)
+                else None
+            )
+            if auth_info and auth_info.get("email"):
+                has_auth_info = True
+        except Exception as exc:  # noqa: BLE001
+            parse_errors.append(f"cli-config.json: {exc}")
+
+    if has_access_token or has_auth_info:
+        return CheckResult(
+            name="cursor-agent login",
+            status="ok",
+            message="authenticated",
+        )
+
+    # Neither signal is present — figure out which message is most useful.
+    if not auth_path.exists() and not cli_config_path.exists():
         return CheckResult(
             name="cursor-agent login",
             status="warning",
             message="cursor-agent has not been run on this host",
             details=[
-                f"expected: {config_path}",
+                f"expected: {auth_path}",
                 "fix: run `cursor-agent login` and complete the browser flow",
             ],
         )
 
-    try:
-        data = json.loads(config_path.read_text(encoding="utf-8"))
-    except Exception as exc:
+    if parse_errors:
         return CheckResult(
             name="cursor-agent login",
             status="warning",
-            message=f"cli-config.json could not be parsed: {exc}",
-        )
-
-    token_info = (
-        ((data.get("preferences") or {}).get("tokenInfo") or {}) if isinstance(data, dict) else {}
-    )
-    if not token_info.get("accessToken"):
-        return CheckResult(
-            name="cursor-agent login",
-            status="warning",
-            message="cursor-agent is not authenticated",
-            details=["fix: run `cursor-agent login` and complete the browser flow"],
+            message="cursor-agent config files could not be parsed",
+            details=[*parse_errors, "fix: run `cursor-agent login` to refresh credentials"],
         )
 
     return CheckResult(
         name="cursor-agent login",
-        status="ok",
-        message="authenticated",
+        status="warning",
+        message="cursor-agent is not authenticated",
+        details=[
+            f"checked: {auth_path}",
+            f"checked: {cli_config_path}",
+            "fix: run `cursor-agent login` and complete the browser flow",
+        ],
     )
 
 

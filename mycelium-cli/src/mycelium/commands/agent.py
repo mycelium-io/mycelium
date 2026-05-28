@@ -177,6 +177,62 @@ def _load_manifest(room_name: str, handle: str) -> AgentManifest | None:
         return None
 
 
+def _load_manifest_remote(client, room_name: str, handle: str) -> AgentManifest | None:
+    """Fetch a manifest from the backend memory API and rehydrate the model.
+
+    Used as a fall-through when the local mirror doesn't have it — typically
+    a hub→spoke (or spoke→hub) cross-host invocation, where the agent was
+    registered on a different machine and this host hasn't materialized
+    the manifest into its local room directory yet.
+
+    The manifest is stored at ``agents/<handle>`` as a YAML body (see
+    ``_write_manifest``), so we just need to download the memory entry and
+    re-parse it. Returns ``None`` for "not on the backend either" or any
+    transient error — the caller re-uses the same friendly "no agent named
+    …" message that fires for a true missing agent.
+    """
+    from mycelium_backend_client.api.memory import (
+        get_memory_api_rooms_room_name_memory_key_get as get_api,
+    )
+
+    try:
+        result = get_api.sync(
+            room_name=room_name,
+            key=f"agents/{handle}",
+            client=client,
+        )
+    except Exception as exc:  # noqa: BLE001 — log and treat as "not found"
+        _log.warning("backend manifest fetch failed for %s/%s: %s", room_name, handle, exc)
+        return None
+
+    if result is None:
+        return None
+    # The endpoint returns ``HTTPValidationError | MemoryRead | None`` for
+    # 200/404/422; only ``MemoryRead`` carries a usable ``value``.
+    value = getattr(result, "value", None)
+    if not isinstance(value, str):
+        return None
+
+    try:
+        data = yaml.safe_load(value) or {}
+    except yaml.YAMLError as exc:
+        _log.warning("remote manifest agents/%s: invalid YAML — %s", handle, exc)
+        return None
+    if not isinstance(data, dict):
+        _log.warning(
+            "remote manifest agents/%s: expected a YAML mapping, got %s",
+            handle,
+            type(data).__name__,
+        )
+        return None
+    data.setdefault("handle", handle)
+    try:
+        return AgentManifest(**data)
+    except ValidationError as exc:
+        _log.warning("remote manifest agents/%s: schema validation failed — %s", handle, exc)
+        return None
+
+
 def _write_manifest(
     config: MyceliumConfig, room_name: str, manifest: AgentManifest, created_by: str
 ) -> None:
@@ -1043,23 +1099,28 @@ def agent_invoke(
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
 
-        manifest = _load_manifest(room_name, handle)
-        if manifest is None:
-            console.print(
-                f"[red]Not found:[/red] no agent named '{handle}' in room '{room_name}'.\n"
-                f"  Create one with: mycelium agent create {handle} --cwd <path> --room {room_name}"
-            )
-            raise typer.Exit(1)
-
-        sender_handle = handle_flag or config.get_current_identity()
-        content = f"@{manifest.handle} {prompt}"
-
         from mycelium_backend_client.api.messages import (
             send_message_api_rooms_room_name_messages_post as send_api,
         )
         from mycelium_backend_client.models import MessageCreate
 
         with _typed_client(config) as client:
+            manifest = _load_manifest(room_name, handle)
+            if manifest is None:
+                # Cross-host case: the agent may be registered on a different
+                # machine that hasn't mirrored its manifest down to ours yet.
+                # Fall through to the backend (source of truth) before failing.
+                manifest = _load_manifest_remote(client, room_name, handle)
+            if manifest is None:
+                console.print(
+                    f"[red]Not found:[/red] no agent named '{handle}' in room '{room_name}'.\n"
+                    f"  Create one with: mycelium agent create {handle} --cwd <path> --room {room_name}"
+                )
+                raise typer.Exit(1)
+
+            sender_handle = handle_flag or config.get_current_identity()
+            content = f"@{manifest.handle} {prompt}"
+
             body = MessageCreate(
                 sender_handle=sender_handle,
                 message_type="broadcast",
@@ -1194,5 +1255,6 @@ def agent_rm(
 # Re-export for completeness — daemon and doctor reuse these.
 __all__ = [
     "_load_manifest",
+    "_load_manifest_remote",
     "app",
 ]

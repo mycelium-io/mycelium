@@ -24,11 +24,13 @@ Before any phase runs, confirm:
 which cursor-agent
 cursor-agent --version
 
-# 2. Authenticated on this host
-ls ~/.cursor/cli-config.json
-python3 -c "import json; j=json.load(open('$HOME/.cursor/cli-config.json')); print('authenticated' if (j.get('preferences',{}).get('tokenInfo',{}).get('accessToken')) else 'NOT LOGGED IN')"
+# 2. Authenticated on this host. cursor-agent stores its access/refresh tokens
+#    at ~/.config/cursor/auth.json (NOT ~/.cursor/cli-config.json — that file
+#    holds session metadata only, the token field there has been removed).
+ls ~/.config/cursor/auth.json
+python3 -c "import json,os; p=os.path.expanduser('~/.config/cursor/auth.json'); j=json.load(open(p)); print('authenticated' if j.get('accessToken') else 'NOT LOGGED IN')"
 
-# 3. Mycelium backend reachable
+# 3. Mycelium backend reachable + cursor doctor checks ok
 mycelium doctor --mode auto
 ```
 
@@ -60,11 +62,13 @@ grep -q "<!-- mycelium:start -->" /tmp/cursor-e2e-workspace/AGENTS.md && echo "m
 grep -A 5 '\[handles\]' ~/.mycelium/cc-daemon.toml | grep cursor-x
 
 # Invoke via the daemon
-mycelium agent invoke cursor-x "Reply with just the string OK so I know you got this."
+mycelium agent invoke cursor-x "Reply with just the string OK so I know you got this." --room cursor-e2e
 
 # Wait for response (cursor cold-spawn is ~10-30s)
 sleep 30
-mycelium catchup --room cursor-e2e --limit 5
+# `mycelium catchup` shows synthesis/memory snapshots, NOT chat messages.
+# To inspect actual chat messages, hit the backend list endpoint directly:
+curl -s "http://localhost:8000/api/rooms/cursor-e2e/messages?limit=5" | python3 -m json.tool
 ```
 
 **Fail criteria**:
@@ -93,13 +97,14 @@ This is also mine.
 EOF
 
 # Force a re-register by removing + re-creating the agent
-mycelium agent rm cursor-x --room cursor-e2e --yes
+mycelium agent rm cursor-x --room cursor-e2e -y
 mycelium agent create cursor-x --adapter cursor --cwd /tmp/cursor-e2e-workspace --room cursor-e2e
 
 # Verify: my content preserved, mycelium block refreshed
 grep -c "This is content I wrote myself" /tmp/cursor-e2e-workspace/AGENTS.md
 grep -c "More of my content" /tmp/cursor-e2e-workspace/AGENTS.md
-grep -c "Mycelium operating context" /tmp/cursor-e2e-workspace/AGENTS.md
+# The mycelium-managed block opens with `# Mycelium Agent` (asset header)
+grep -c "# Mycelium Agent" /tmp/cursor-e2e-workspace/AGENTS.md
 
 # Now nuke the .cursor dir and check that doctor surfaces the drift
 rm -rf /tmp/cursor-e2e-workspace/.cursor
@@ -116,33 +121,28 @@ mycelium doctor --mode auto 2>&1 | grep -A 2 "cursor workspace assets"
 Simulate "user installed `cursor-agent` but never ran `cursor-agent login`" and verify the daemon posts an actionable error rather than a stack trace.
 
 ```bash
-# Backup current token state
-cp ~/.cursor/cli-config.json /tmp/cli-config.backup.json
+# Backup the auth file (this is where cursor-agent reads its tokens from at
+# spawn time — not ~/.cursor/cli-config.json, that one only holds session
+# metadata).
+cp ~/.config/cursor/auth.json /tmp/auth.backup.json
 
-# Strip the access token
-python3 -c "
-import json
-p = '$HOME/.cursor/cli-config.json'
-j = json.load(open(p))
-j.setdefault('preferences', {}).setdefault('tokenInfo', {})['accessToken'] = ''
-json.dump(j, open(p, 'w'))
-"
+# Move auth.json aside so cursor-agent fails to authenticate.
+rm ~/.config/cursor/auth.json
 
-# Try to invoke — should post a friendly message in the room, NOT crash the daemon
-mycelium agent invoke cursor-x "Anything"
+# Try to invoke — should post a friendly message in the room, NOT crash the daemon.
+mycelium agent invoke cursor-x "Anything" --room cursor-e2e
 sleep 15
-mycelium catchup --room cursor-e2e --limit 3
+curl -s "http://localhost:8000/api/rooms/cursor-e2e/messages?limit=3" | python3 -m json.tool
 
-# Restore auth
-mv /tmp/cli-config.backup.json ~/.cursor/cli-config.json
-
-# Confirm doctor catches the bad state when it's bad
-# (re-strip briefly just for the doctor check, then restore)
-python3 -c "import json,os; p=os.path.expanduser('~/.cursor/cli-config.json'); j=json.load(open(p)); j.setdefault('preferences',{}).setdefault('tokenInfo',{})['accessToken']=''; json.dump(j,open(p,'w'))"
+# Confirm doctor catches the bad state while it's still bad
 mycelium doctor --mode auto 2>&1 | grep -A 2 "cursor-agent login"
-mv /tmp/cli-config.backup.json ~/.cursor/cli-config.json 2>/dev/null || \
-  python3 -c "import json,os; p=os.path.expanduser('~/.cursor/cli-config.json'); j=json.load(open(p)); j['preferences']['tokenInfo']['accessToken']='RESTORE_ME_MANUALLY'; json.dump(j,open(p,'w'))" 
-# If the restore line above fires, log in again manually:
+
+# Restore auth — if the file got recreated, this overwrites it; otherwise mv is fine
+cp /tmp/auth.backup.json ~/.config/cursor/auth.json
+rm /tmp/auth.backup.json
+# Verify
+mycelium doctor --mode auto 2>&1 | grep "cursor-agent login"
+# If for any reason the restore left auth in a weird state, run:
 #   cursor-agent login
 ```
 
@@ -181,11 +181,14 @@ EOF
 # From the hub: subscribe locally + invoke the spoke agent
 mycelium daemon subscribe $ROOM
 sleep 3
-mycelium room post $ROOM --agent operator \
-  --response "@cursor-spoke please reply with the hostname you're running on"
+# Cross-host invoke works because agent invoke falls through to the backend
+# when the agent isn't in the local mirror (the hub didn't register cursor-spoke).
+mycelium agent invoke cursor-spoke \
+  "please reply with the hostname you're running on" \
+  --room $ROOM
 
 sleep 60  # cursor-agent cold start is slow
-mycelium catchup --room $ROOM --limit 5
+curl -s "http://localhost:8000/api/rooms/$ROOM/messages?limit=5" | python3 -m json.tool
 # Expect: a message FROM cursor-spoke containing the spoke host's hostname
 ```
 
@@ -228,16 +231,16 @@ ssh $SPOKE_HOST mycelium session join --handle designer -m "Optimise for design 
 
 ```bash
 # Hub
-mycelium agent rm cursor-x --room cursor-e2e --full --yes 2>/dev/null
-mycelium agent rm planner --room cursor-ioc-e2e --full --yes 2>/dev/null
+mycelium agent rm cursor-x --room cursor-e2e --full -y 2>/dev/null
+mycelium agent rm planner --room cursor-ioc-e2e --full -y 2>/dev/null
 mycelium daemon unsubscribe cursor-e2e 2>/dev/null
 mycelium daemon unsubscribe cursor-multi-e2e 2>/dev/null
 mycelium daemon unsubscribe cursor-ioc-e2e 2>/dev/null
 rm -rf /tmp/cursor-e2e-workspace
 
 # Spoke (if --multi-host ran)
-ssh $SPOKE_HOST mycelium agent rm cursor-spoke --room cursor-multi-e2e --full --yes 2>/dev/null
-ssh $SPOKE_HOST mycelium agent rm designer --room cursor-ioc-e2e --full --yes 2>/dev/null
+ssh $SPOKE_HOST mycelium agent rm cursor-spoke --room cursor-multi-e2e --full -y 2>/dev/null
+ssh $SPOKE_HOST mycelium agent rm designer --room cursor-ioc-e2e --full -y 2>/dev/null
 ssh $SPOKE_HOST rm -rf /tmp/cursor-spoke-ws
 
 # Drop rooms
@@ -254,7 +257,7 @@ curl -s -X DELETE http://localhost:8000/api/rooms/cursor-ioc-e2e
 | Daemon log shows `not owned by this daemon` | handle missing from `cc-daemon.toml` | `mycelium agent create` didn't trigger restart — re-run on this host |
 | "agent created" but @-mentions silently drop | daemon snapshot stale | restart daemon manually; verify `restart_daemon_service` is being called |
 | Workspace AGENTS.md double-merged | `_strip_agents_md_section` regex regression | re-run cursor install tests, esp. `test_cursor_install.py::test_marker_merge_*` |
-| `Cursor login expired` in room | token expired — `cursor-agent login` again | check `~/.cursor/cli-config.json` `tokenInfo.accessToken` |
+| `Cursor login expired` in room | token expired — `cursor-agent login` again | check `~/.config/cursor/auth.json` `accessToken` |
 | Cross-host mention not delivered | spoke daemon not subscribed to room | `mycelium daemon ls` on spoke must show the room |
 | Cross-family negotiation never starts | session/room mas_id not set | `mycelium doctor` flags Room MAS IDs |
 

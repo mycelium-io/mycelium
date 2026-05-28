@@ -54,10 +54,13 @@ not that the cursor surface is broken.
 from __future__ import annotations
 
 import asyncio
+import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import ANY, MagicMock, Mock, patch
 
 import pytest
+from typer.testing import CliRunner
 
 from mycelium.config import MyceliumConfig
 from mycelium.daemon import config as daemon_config
@@ -300,8 +303,11 @@ def test_cursor_agent_binary_check_errors_when_missing(
 def test_cursor_login_check_warns_when_no_config(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """When ``~/.cursor/cli-config.json`` doesn't exist the user has never
-    completed ``cursor-agent login`` on this host — doctor warns.
+    """When neither ``~/.config/cursor/auth.json`` nor
+    ``~/.cursor/cli-config.json`` exist, the user has never completed
+    ``cursor-agent login`` on this host — doctor warns with the
+    expected-path hint pointing at auth.json (the file ``cursor-agent``
+    actually reads).
     """
     from mycelium.commands import doctor
 
@@ -310,6 +316,100 @@ def test_cursor_login_check_warns_when_no_config(
 
     result = doctor._check_cursor_login()
     assert result.status == "warning"
+    assert "has not been run" in result.message.lower()
+    assert any("cursor-agent login" in detail for detail in (result.details or []))
+    # The hint must point at the *current* config location (~/.config/cursor/auth.json),
+    # not the stale ~/.cursor/cli-config.json schema we used to read.
+    assert any("/.config/cursor/auth.json" in d for d in (result.details or []))
+
+
+def test_cursor_login_check_ok_with_auth_json_access_token(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``cursor-agent`` actually persists its session at
+    ``~/.config/cursor/auth.json`` (top-level ``accessToken`` /
+    ``refreshToken``). If that file holds a token, the user is logged in
+    — even when ``~/.cursor/cli-config.json`` is missing or has no
+    ``preferences.tokenInfo`` block (the schema doctor used to read).
+
+    Pins F1 from the cursor-e2e walkthrough — doctor was reporting a
+    false-negative ``not authenticated`` warning despite a fully working
+    ``cursor-agent`` because it was inspecting the wrong file.
+    """
+    import json
+
+    from mycelium.commands import doctor
+
+    monkeypatch.setattr(doctor, "_cursor_adapter_registered", lambda: True)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)  # type: ignore[arg-type]
+
+    auth_dir = tmp_path / ".config" / "cursor"
+    auth_dir.mkdir(parents=True)
+    (auth_dir / "auth.json").write_text(
+        json.dumps({"accessToken": "tok", "refreshToken": "ref"}),
+        encoding="utf-8",
+    )
+
+    result = doctor._check_cursor_login()
+    assert result.status == "ok"
+    assert "authenticated" in result.message.lower()
+
+
+def test_cursor_login_check_ok_via_cli_config_authinfo_fallback(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Fallback signal: if ``auth.json`` is missing/unparseable but
+    ``cli-config.json`` carries an ``authInfo.email`` block, the user has
+    been through the login flow at some point. We accept that as
+    "logged in" rather than nag them with a false negative.
+    """
+    import json
+
+    from mycelium.commands import doctor
+
+    monkeypatch.setattr(doctor, "_cursor_adapter_registered", lambda: True)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)  # type: ignore[arg-type]
+
+    cursor_dir = tmp_path / ".cursor"
+    cursor_dir.mkdir()
+    (cursor_dir / "cli-config.json").write_text(
+        json.dumps({"authInfo": {"email": "selina@cisco.com"}}),
+        encoding="utf-8",
+    )
+
+    result = doctor._check_cursor_login()
+    assert result.status == "ok"
+
+
+def test_cursor_login_check_warns_when_neither_signal_present(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Both files exist but have NO auth payload (e.g. user opened
+    cursor-agent once, generated empty configs, then quit without
+    finishing the browser flow). Doctor must still warn so they know to
+    re-run ``cursor-agent login``.
+    """
+    import json
+
+    from mycelium.commands import doctor
+
+    monkeypatch.setattr(doctor, "_cursor_adapter_registered", lambda: True)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)  # type: ignore[arg-type]
+
+    auth_dir = tmp_path / ".config" / "cursor"
+    auth_dir.mkdir(parents=True)
+    (auth_dir / "auth.json").write_text(json.dumps({}), encoding="utf-8")
+
+    cursor_dir = tmp_path / ".cursor"
+    cursor_dir.mkdir()
+    (cursor_dir / "cli-config.json").write_text(
+        json.dumps({"version": 1, "permissions": {}}),
+        encoding="utf-8",
+    )
+
+    result = doctor._check_cursor_login()
+    assert result.status == "warning"
+    assert "not authenticated" in result.message.lower()
     assert any("cursor-agent login" in detail for detail in (result.details or []))
 
 
@@ -421,3 +521,189 @@ def test_restart_daemon_service_no_op_when_uninstalled(monkeypatch: pytest.Monke
     )
 
     assert daemon_install.restart_daemon_service(verbose=False) is False
+
+
+# ── 7. agent invoke falls through to backend for cross-host invocations ──────
+
+
+def test_load_manifest_remote_returns_parsed_manifest() -> None:
+    """The cross-host fall-through helper round-trips an
+    ``agents/<handle>`` memory entry from the backend ``MemoryRead`` shape
+    back into an ``AgentManifest``. The backend stores manifests as
+    yaml-as-string (see ``_write_manifest``), so the helper must
+    ``yaml.safe_load`` the ``value`` field — not assume it's a dict.
+    """
+    import yaml
+
+    from mycelium.commands.agent import _load_manifest_remote
+
+    handle = "designer"
+    manifest_body = yaml.safe_dump(
+        {
+            "adapter": "cursor",
+            "memory_key": f"agents/{handle}",
+            "description": "spoke-side cursor agent",
+            "cwd": "/tmp/cursor-spoke-ws",
+        },
+        sort_keys=False,
+    ).strip()
+
+    fake_memory = SimpleNamespace(value=manifest_body)
+    fake_get_api = SimpleNamespace(sync=Mock(return_value=fake_memory))
+
+    fake_module = SimpleNamespace(get_memory_api_rooms_room_name_memory_key_get=fake_get_api)
+    with patch.dict(
+        sys.modules,
+        {"mycelium_backend_client.api.memory": fake_module},
+    ):
+        manifest = _load_manifest_remote(client=Mock(), room_name="cursor-e2e", handle=handle)
+
+    assert manifest is not None
+    assert manifest.handle == handle
+    assert manifest.adapter == "cursor"
+    assert manifest.memory_key == f"agents/{handle}"
+    fake_get_api.sync.assert_called_once_with(
+        room_name="cursor-e2e",
+        key=f"agents/{handle}",
+        client=ANY,
+    )
+
+
+def test_load_manifest_remote_returns_none_for_missing_or_error() -> None:
+    """When the backend memory endpoint returns ``None`` (404) or raises a
+    transport error, the helper must fall through to ``None`` so the
+    caller can surface the same friendly "no agent named …" message used
+    for genuinely-missing agents — never a stack trace.
+    """
+    from mycelium.commands.agent import _load_manifest_remote
+
+    # Case 1: backend returns None → not found
+    fake_module_404 = SimpleNamespace(
+        get_memory_api_rooms_room_name_memory_key_get=SimpleNamespace(sync=Mock(return_value=None))
+    )
+    with patch.dict(sys.modules, {"mycelium_backend_client.api.memory": fake_module_404}):
+        assert _load_manifest_remote(client=Mock(), room_name="r", handle="ghost") is None
+
+    # Case 2: backend raises (timeout, network error) → swallow + return None
+    fake_module_boom = SimpleNamespace(
+        get_memory_api_rooms_room_name_memory_key_get=SimpleNamespace(
+            sync=Mock(side_effect=ConnectionError("backend down"))
+        )
+    )
+    with patch.dict(sys.modules, {"mycelium_backend_client.api.memory": fake_module_boom}):
+        assert _load_manifest_remote(client=Mock(), room_name="r", handle="ghost") is None
+
+
+def test_agent_invoke_falls_through_to_backend_when_local_mirror_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pins F2 from the cursor-e2e walkthrough.
+
+    Before the fix, ``mycelium agent invoke <handle>`` checked the local
+    filesystem mirror for ``agents/<handle>`` and bailed with
+    ``Not found: no agent named …`` if the manifest hadn't been
+    materialised on this host. That blocked every cross-host invocation
+    (hub invoking a spoke-registered agent or vice-versa).
+
+    The fix calls ``_load_manifest`` first (cheap local read) and falls
+    through to ``_load_manifest_remote`` (backend memory API) only when
+    local returns ``None``. This test forces that fall-through path and
+    asserts the message is sent.
+    """
+    import importlib
+
+    from mycelium.commands import agent as agent_cmd
+    from mycelium.protocol import AgentManifest
+
+    monkeypatch.setattr(agent_cmd, "_load_manifest", lambda _r, _h: None)
+
+    remote_manifest = AgentManifest(
+        handle="cursor-spoke",
+        adapter="cursor",
+        memory_key="agents/cursor-spoke",
+        description="lives on the spoke",
+        cwd="/tmp/cursor-spoke-ws",
+    )
+    monkeypatch.setattr(agent_cmd, "_load_manifest_remote", lambda _c, _r, _h: remote_manifest)
+
+    fake_config = SimpleNamespace(
+        server=SimpleNamespace(api_url="http://localhost:8000"),
+        get_current_identity=lambda: "operator",
+    )
+    monkeypatch.setattr(agent_cmd.MyceliumConfig, "load", classmethod(lambda _cls: fake_config))
+    monkeypatch.setattr(agent_cmd, "_resolve_room", lambda _c, _r: "cursor-multi-e2e")
+
+    fake_client_cm = MagicMock()
+    fake_client_cm.__enter__.return_value = Mock(name="client")
+    fake_client_cm.__exit__.return_value = None
+    monkeypatch.setattr(agent_cmd, "_typed_client", lambda _c: fake_client_cm)
+
+    send_api_sync = Mock()
+    fake_send_module = SimpleNamespace(
+        send_message_api_rooms_room_name_messages_post=SimpleNamespace(sync=send_api_sync)
+    )
+    fake_models_module = SimpleNamespace(MessageCreate=lambda **kw: SimpleNamespace(**kw))
+
+    with patch.dict(
+        sys.modules,
+        {
+            "mycelium_backend_client.api.messages": fake_send_module,
+            "mycelium_backend_client.models": fake_models_module,
+        },
+    ):
+        # Re-import not needed — the import is inside agent_invoke.
+        importlib.reload  # noqa: B018 — keep import-side-effect free
+        runner = CliRunner()
+        result = runner.invoke(
+            agent_cmd.app,
+            [
+                "invoke",
+                "cursor-spoke",
+                "please reply with hostname",
+                "--room",
+                "cursor-multi-e2e",
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    assert send_api_sync.called, (
+        "agent invoke must reach the messages send API after the backend "
+        "fall-through resolves the manifest"
+    )
+    body = send_api_sync.call_args.kwargs["body"]
+    assert body.content.startswith("@cursor-spoke ")
+    assert body.sender_handle == "operator"
+
+
+def test_agent_invoke_errors_when_neither_local_nor_remote_resolves(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If the manifest is missing locally AND the backend returns nothing,
+    we still want the original friendly error — not a fall-through that
+    silently sends a message to a non-existent handle.
+    """
+    from mycelium.commands import agent as agent_cmd
+
+    monkeypatch.setattr(agent_cmd, "_load_manifest", lambda _r, _h: None)
+    monkeypatch.setattr(agent_cmd, "_load_manifest_remote", lambda _c, _r, _h: None)
+
+    fake_config = SimpleNamespace(
+        server=SimpleNamespace(api_url="http://localhost:8000"),
+        get_current_identity=lambda: "operator",
+    )
+    monkeypatch.setattr(agent_cmd.MyceliumConfig, "load", classmethod(lambda _cls: fake_config))
+    monkeypatch.setattr(agent_cmd, "_resolve_room", lambda _c, _r: "cursor-e2e")
+
+    fake_client_cm = MagicMock()
+    fake_client_cm.__enter__.return_value = Mock(name="client")
+    fake_client_cm.__exit__.return_value = None
+    monkeypatch.setattr(agent_cmd, "_typed_client", lambda _c: fake_client_cm)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        agent_cmd.app,
+        ["invoke", "ghost", "anything", "--room", "cursor-e2e"],
+    )
+
+    assert result.exit_code == 1
+    assert "no agent named 'ghost'" in result.output

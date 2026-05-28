@@ -46,9 +46,7 @@ def _tmp_daemon_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     Mirrors ``test_daemon_ownership.py``'s autouse fixture so register /
     destroy don't read or mutate the user's real config.
     """
-    monkeypatch.setattr(
-        daemon_config, "daemon_config_path", lambda: tmp_path / "cc-daemon.toml"
-    )
+    monkeypatch.setattr(daemon_config, "daemon_config_path", lambda: tmp_path / "cc-daemon.toml")
 
 
 def _manifest(handle: str, cwd: str) -> AgentManifest:
