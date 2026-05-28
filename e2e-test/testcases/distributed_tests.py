@@ -219,7 +219,14 @@ class DistributedCrossDeviceOnly(_DistributedBase):
 class DistributedBackendResolvedCfnIds(aetest.Testcase):
     """Test 48: Leaf nodes ingest knowledge with room_name only (Issue #139)."""
 
-    groups = ["distributed", "cfn"]
+    groups = ["distributed", "cfn", "llm"]
+
+    @aetest.setup
+    def check_prerequisites(self, env):
+        if env.skip_cfn_tests:
+            self.skipped("CFN not reachable")
+        if env.skip_llm_tests:
+            self.skipped("LLM not available (knowledge ingest requires embeddings)")
 
     @aetest.test
     def backend_resolved_ids(self, steps, api, room_name):
