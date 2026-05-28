@@ -38,7 +38,7 @@ class IocCfn(aetest.Testcase):
                 "room_name": room_name,
                 "agent_id": "e2e-test-agent",
                 "records": [
-                    {"response": f"E2E test knowledge marker: {marker}. The weather is sunny."}
+                    {"response": f"E2E knowledge {marker}: The capital of France is Paris."}
                 ],
             })
             if st not in (200, 201, 202):
@@ -46,10 +46,13 @@ class IocCfn(aetest.Testcase):
                 step.failed(f"Knowledge ingest returned status={st}: {resp}")
 
         with steps.start("Query knowledge") as step:
-            time.sleep(2)
-            st, resp = api.query_knowledge(marker, mas_id=mas_id)
+            time.sleep(3)
+            st, resp = api.query_knowledge(
+                "What is the capital of France?", mas_id=mas_id,
+            )
             if st != 200:
                 step.failed(f"Knowledge query returned status={st}: {resp}")
+            log.info("Knowledge query response: %s", resp)
 
         with steps.start("List knowledge") as step:
             st, resp = api.list_knowledge()
