@@ -303,11 +303,10 @@ def test_cursor_agent_binary_check_errors_when_missing(
 def test_cursor_login_check_warns_when_no_config(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """When neither ``~/.config/cursor/auth.json`` nor
-    ``~/.cursor/cli-config.json`` exist, the user has never completed
-    ``cursor-agent login`` on this host — doctor warns with the
-    expected-path hint pointing at auth.json (the file ``cursor-agent``
-    actually reads).
+    """When ``~/.config/cursor/auth.json`` doesn't exist the user has
+    never completed ``cursor-agent login`` on this host — doctor warns
+    with a hint pointing at that path (the file ``cursor-agent``
+    actually reads at spawn time).
     """
     from mycelium.commands import doctor
 
@@ -328,9 +327,7 @@ def test_cursor_login_check_ok_with_auth_json_access_token(
 ) -> None:
     """``cursor-agent`` actually persists its session at
     ``~/.config/cursor/auth.json`` (top-level ``accessToken`` /
-    ``refreshToken``). If that file holds a token, the user is logged in
-    — even when ``~/.cursor/cli-config.json`` is missing or has no
-    ``preferences.tokenInfo`` block (the schema doctor used to read).
+    ``refreshToken``). If that file holds a token, the user is logged in.
 
     Pins F1 from the cursor-e2e walkthrough — doctor was reporting a
     false-negative ``not authenticated`` warning despite a fully working
@@ -355,13 +352,19 @@ def test_cursor_login_check_ok_with_auth_json_access_token(
     assert "authenticated" in result.message.lower()
 
 
-def test_cursor_login_check_ok_via_cli_config_authinfo_fallback(
+def test_cursor_login_check_warns_when_auth_json_missing_even_if_cli_config_has_authinfo(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Fallback signal: if ``auth.json`` is missing/unparseable but
-    ``cli-config.json`` carries an ``authInfo.email`` block, the user has
-    been through the login flow at some point. We accept that as
-    "logged in" rather than nag them with a false negative.
+    """Pins F1b. ``cli-config.json`` ``authInfo.email`` is biographical —
+    it persists across logout and lingers as a stale "user X used to be
+    logged in" breadcrumb. We do NOT treat it as a "currently
+    authenticated" signal, because doing so would let doctor green-light
+    a host where ``cursor-agent`` will fail to spawn.
+
+    Reproducer from the post-fix e2e rerun: with auth.json moved aside,
+    the daemon correctly posted a friendly "cursor-agent is not
+    authenticated" error, but doctor — using a previous version of this
+    check that included the cli-config fallback — reported "authenticated".
     """
     import json
 
@@ -370,24 +373,24 @@ def test_cursor_login_check_ok_via_cli_config_authinfo_fallback(
     monkeypatch.setattr(doctor, "_cursor_adapter_registered", lambda: True)
     monkeypatch.setattr(Path, "home", lambda: tmp_path)  # type: ignore[arg-type]
 
+    # cli-config.json has authInfo populated (logged in ages ago) ...
     cursor_dir = tmp_path / ".cursor"
     cursor_dir.mkdir()
     (cursor_dir / "cli-config.json").write_text(
         json.dumps({"authInfo": {"email": "selina@cisco.com"}}),
         encoding="utf-8",
     )
+    # ... but auth.json is gone (logged out / cache wiped).
 
     result = doctor._check_cursor_login()
-    assert result.status == "ok"
+    assert result.status == "warning"
 
 
-def test_cursor_login_check_warns_when_neither_signal_present(
+def test_cursor_login_check_warns_when_auth_json_has_no_token(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Both files exist but have NO auth payload (e.g. user opened
-    cursor-agent once, generated empty configs, then quit without
-    finishing the browser flow). Doctor must still warn so they know to
-    re-run ``cursor-agent login``.
+    """``auth.json`` exists but ``accessToken`` is missing/empty
+    (interrupted login flow). Must warn so the user knows to retry.
     """
     import json
 
@@ -400,17 +403,31 @@ def test_cursor_login_check_warns_when_neither_signal_present(
     auth_dir.mkdir(parents=True)
     (auth_dir / "auth.json").write_text(json.dumps({}), encoding="utf-8")
 
-    cursor_dir = tmp_path / ".cursor"
-    cursor_dir.mkdir()
-    (cursor_dir / "cli-config.json").write_text(
-        json.dumps({"version": 1, "permissions": {}}),
-        encoding="utf-8",
-    )
-
     result = doctor._check_cursor_login()
     assert result.status == "warning"
     assert "not authenticated" in result.message.lower()
-    assert any("cursor-agent login" in detail for detail in (result.details or []))
+    assert any("cursor-agent login" in d for d in (result.details or []))
+
+
+def test_cursor_login_check_warns_when_auth_json_unparseable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Malformed JSON in ``auth.json`` (concurrent write, disk corruption,
+    truncated file) must surface as a warning with the parse error in
+    the details — never as a hard crash inside doctor.
+    """
+    from mycelium.commands import doctor
+
+    monkeypatch.setattr(doctor, "_cursor_adapter_registered", lambda: True)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)  # type: ignore[arg-type]
+
+    auth_dir = tmp_path / ".config" / "cursor"
+    auth_dir.mkdir(parents=True)
+    (auth_dir / "auth.json").write_text("{not-json", encoding="utf-8")
+
+    result = doctor._check_cursor_login()
+    assert result.status == "warning"
+    assert "could not be parsed" in result.message.lower()
 
 
 # ── 6. daemon graceful-shutdown spawn cleanup ────────────────────────────────
@@ -531,7 +548,13 @@ def test_load_manifest_remote_returns_parsed_manifest() -> None:
     ``agents/<handle>`` memory entry from the backend ``MemoryRead`` shape
     back into an ``AgentManifest``. The backend stores manifests as
     yaml-as-string (see ``_write_manifest``), so the helper must
-    ``yaml.safe_load`` the ``value`` field — not assume it's a dict.
+    ``yaml.safe_load`` the body — not assume any particular field name.
+
+    Backend serialisation is non-deterministic between client versions:
+    sometimes the YAML lands in ``content_text`` (top-level convenience
+    field), sometimes in ``value`` as a plain string, and sometimes
+    inside a ``MemoryReadValueType0`` wrapper as ``value.text``. All
+    three shapes must round-trip — exercise each below.
     """
     import yaml
 
@@ -541,32 +564,54 @@ def test_load_manifest_remote_returns_parsed_manifest() -> None:
     manifest_body = yaml.safe_dump(
         {
             "adapter": "cursor",
-            "memory_key": f"agents/{handle}",
             "description": "spoke-side cursor agent",
             "cwd": "/tmp/cursor-spoke-ws",
         },
         sort_keys=False,
     ).strip()
 
-    fake_memory = SimpleNamespace(value=manifest_body)
-    fake_get_api = SimpleNamespace(sync=Mock(return_value=fake_memory))
-
-    fake_module = SimpleNamespace(get_memory_api_rooms_room_name_memory_key_get=fake_get_api)
-    with patch.dict(
-        sys.modules,
-        {"mycelium_backend_client.api.memory": fake_module},
-    ):
-        manifest = _load_manifest_remote(client=Mock(), room_name="cursor-e2e", handle=handle)
-
-    assert manifest is not None
-    assert manifest.handle == handle
-    assert manifest.adapter == "cursor"
-    assert manifest.memory_key == f"agents/{handle}"
-    fake_get_api.sync.assert_called_once_with(
-        room_name="cursor-e2e",
-        key=f"agents/{handle}",
-        client=ANY,
+    # Shape 1: content_text populated (the realistic backend response we
+    # observed during the cursor-e2e Phase 4 rerun).
+    fake_memory_a = SimpleNamespace(
+        content_text=manifest_body,
+        value=SimpleNamespace(),  # MemoryReadValueType0 placeholder, ignored
     )
+    # Shape 2: value is a raw YAML string.
+    fake_memory_b = SimpleNamespace(content_text=None, value=manifest_body)
+
+    # Shape 3: value is a MemoryReadValueType0 (dict-like with __contains__/
+    # __getitem__) carrying the YAML inside a "text" key.
+    class _ValueType0:
+        def __init__(self, text: str) -> None:
+            self._d = {"text": text}
+
+        def __contains__(self, k: str) -> bool:
+            return k in self._d
+
+        def __getitem__(self, k: str) -> str:
+            return self._d[k]
+
+    fake_memory_c = SimpleNamespace(content_text=None, value=_ValueType0(manifest_body))
+
+    for label, fake in (
+        ("content_text", fake_memory_a),
+        ("value-as-str", fake_memory_b),
+        ("value.text-wrapper", fake_memory_c),
+    ):
+        fake_get_api = SimpleNamespace(sync=Mock(return_value=fake))
+        fake_module = SimpleNamespace(get_memory_api_rooms_room_name_memory_key_get=fake_get_api)
+        with patch.dict(sys.modules, {"mycelium_backend_client.api.memory": fake_module}):
+            manifest = _load_manifest_remote(client=Mock(), room_name="cursor-e2e", handle=handle)
+
+        assert manifest is not None, f"shape {label!r} failed to round-trip"
+        assert manifest.handle == handle
+        assert manifest.adapter == "cursor"
+        assert manifest.memory_key == f"agents/{handle}"
+        fake_get_api.sync.assert_called_once_with(
+            room_name="cursor-e2e",
+            key=f"agents/{handle}",
+            client=ANY,
+        )
 
 
 def test_load_manifest_remote_returns_none_for_missing_or_error() -> None:
@@ -620,7 +665,6 @@ def test_agent_invoke_falls_through_to_backend_when_local_mirror_empty(
     remote_manifest = AgentManifest(
         handle="cursor-spoke",
         adapter="cursor",
-        memory_key="agents/cursor-spoke",
         description="lives on the spoke",
         cwd="/tmp/cursor-spoke-ws",
     )

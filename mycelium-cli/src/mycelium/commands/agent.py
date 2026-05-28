@@ -208,13 +208,37 @@ def _load_manifest_remote(client, room_name: str, handle: str) -> AgentManifest 
     if result is None:
         return None
     # The endpoint returns ``HTTPValidationError | MemoryRead | None`` for
-    # 200/404/422; only ``MemoryRead`` carries a usable ``value``.
-    value = getattr(result, "value", None)
-    if not isinstance(value, str):
+    # 200/404/422; only ``MemoryRead`` carries a usable manifest body.
+    #
+    # The body itself can land in any of three shapes depending on how the
+    # backend serialised it (and whether the generated client kept the
+    # convenience ``content_text`` field): prefer ``content_text`` (the
+    # already-flattened YAML string), fall back to ``value`` if it's a
+    # plain ``str``, and finally peek inside ``MemoryReadValueType0``
+    # (a dict-like with ``text`` populated by the backend).
+    yaml_body: str | None = None
+    content_text = getattr(result, "content_text", None)
+    if isinstance(content_text, str) and content_text:
+        yaml_body = content_text
+    if yaml_body is None:
+        value = getattr(result, "value", None)
+        if isinstance(value, str):
+            yaml_body = value
+        elif value is not None:
+            try:
+                # MemoryReadValueType0 is dict-like (__contains__/__getitem__)
+                # via attrs ``additional_properties`` but doesn't implement
+                # ``.get()`` — so we can't use the SIM401 form here.
+                inner = value["text"] if "text" in value else None  # noqa: SIM401
+            except Exception:  # noqa: BLE001
+                inner = None
+            if isinstance(inner, str) and inner:
+                yaml_body = inner
+    if not yaml_body:
         return None
 
     try:
-        data = yaml.safe_load(value) or {}
+        data = yaml.safe_load(yaml_body) or {}
     except yaml.YAMLError as exc:
         _log.warning("remote manifest agents/%s: invalid YAML — %s", handle, exc)
         return None
