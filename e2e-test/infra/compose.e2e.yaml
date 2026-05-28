@@ -94,6 +94,9 @@ services:
       DB_SSL_MODE: disable
       PORT: 9002
       HEARTBEAT_INTERVAL_SECONDS: 10
+      LLM_MODEL: "${LLM_MODEL:-}"
+      LLM_API_KEY: "${LLM_API_KEY:-}"
+      LLM_BASE_URL: "${LLM_BASE_URL:-}"
     ports:
       - "${E2E_CFN_NODE_PORT:-9002}:9002"
     healthcheck:
