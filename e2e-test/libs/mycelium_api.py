@@ -166,14 +166,16 @@ class MyceliumAPI:
 
     # ── Knowledge / CFN proxy ─────────────────────────────────────────────
 
-    def ingest_knowledge(self, data: dict) -> tuple[int, Any]:
-        return self.post_json("/knowledge/ingest", data, timeout=30)
+    def ingest_knowledge(self, data: dict, timeout: int = 180) -> tuple[int, Any]:
+        return self.post_json("/knowledge/ingest", data, timeout=timeout)
 
-    def query_knowledge(self, query: str, mas_id: str | None = None) -> tuple[int, Any]:
+    def query_knowledge(
+        self, query: str, mas_id: str | None = None, timeout: int = 180,
+    ) -> tuple[int, Any]:
         payload: dict[str, Any] = {"intent": query}
         if mas_id:
             payload["mas_id"] = mas_id
-        return self.post_json("/cfn/knowledge/query", payload)
+        return self.post_json("/cfn/knowledge/query", payload, timeout=timeout)
 
     def list_knowledge(self) -> tuple[int, Any]:
         return self.get_json("/cfn/knowledge/list")
