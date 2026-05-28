@@ -47,13 +47,17 @@ def main(runtime):
 
     datafile = common.get_datafile(default="lab_datafile.yaml")
     suite = common.get_suite_path("weekly_full_suite.py")
+    max_failures = common.get_max_failures(datafile)
 
     log.info("Datafile: %s", datafile)
     log.info("Suite: %s", suite)
+    log.info("Max failures: %s", max_failures or "unlimited")
 
     kwargs = {"testscript": suite, "datafile": datafile}
     if uids:
         kwargs["uids"] = uids
         log.info("Filtering to testcases: %s", testcases_filter)
+    if max_failures:
+        kwargs["max_failures"] = max_failures
 
     run(**kwargs)

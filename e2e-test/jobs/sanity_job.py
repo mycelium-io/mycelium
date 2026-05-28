@@ -25,5 +25,7 @@ def main(runtime):
 
     datafile = common.get_datafile(default="local_datafile.yaml")
     suite = common.get_suite_path("sanity_suite.py")
+    max_failures = common.get_max_failures(datafile)
 
-    run(testscript=suite, datafile=datafile)
+    log.info("Max failures: %s", max_failures or "unlimited")
+    run(testscript=suite, datafile=datafile, max_failures=max_failures)

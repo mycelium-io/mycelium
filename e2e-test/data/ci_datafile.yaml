@@ -37,3 +37,6 @@ parameters:
     negotiation_wait: 900
     agent_idle_wait: 30
     session_spawn_wait: 90
+
+  # Abort early in CI to save runner minutes and LLM credits
+  max_failures: 3

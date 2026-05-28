@@ -37,9 +37,14 @@ def main(runtime):
 
     datafile = common.get_datafile(default="lab_datafile.yaml")
     suite = common.get_suite_path("distributed_suite.py")
+    max_failures = common.get_max_failures(datafile)
+
+    log.info("Max failures: %s", max_failures or "unlimited")
 
     kwargs = {"testscript": suite, "datafile": datafile}
     if uids:
         kwargs["uids"] = uids
+    if max_failures:
+        kwargs["max_failures"] = max_failures
 
     run(**kwargs)

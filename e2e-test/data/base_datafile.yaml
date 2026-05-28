@@ -60,6 +60,12 @@ parameters:
     agent_idle_wait: 20
     session_spawn_wait: 60
 
+  # ── Failure Thresholds ──────────────────────────────────────────────────
+  # pyATS max_failures: abort the suite after this many testcase failures.
+  # Prevents burning CI minutes and LLM credits when infra is broken.
+  # Set to null/0 to disable (run all tests regardless).
+  max_failures: 5
+
   # Logging
   log_dir: "%ENV{MYCELIUM_E2E_LOG_DIR, ~/.mycelium/e2e-logs}"
   trace_dir: "%ENV{MYCELIUM_TRACE_DIR, ~/.mycelium/e2e-logs/traces}"
