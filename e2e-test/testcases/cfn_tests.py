@@ -22,14 +22,12 @@ log = logging.getLogger(__name__)
 class IocCfn(aetest.Testcase):
     """Test 08: Knowledge graph ingest/query via backend CFN API."""
 
-    groups = ["cfn", "llm"]
+    groups = ["cfn"]
 
     @aetest.setup
     def check_cfn(self, env):
         if env.skip_cfn_tests:
             self.skipped("CFN management plane not reachable")
-        if env.skip_llm_tests:
-            self.skipped("LLM not available (knowledge ingest requires embeddings)")
 
     @aetest.test
     def knowledge_ingest_and_query(self, steps, api, room_name):
