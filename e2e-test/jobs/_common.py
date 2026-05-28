@@ -40,14 +40,42 @@ def get_max_failures(datafile_path: str | None = None) -> int | None:
             pass
 
     if datafile_path and os.path.isfile(datafile_path):
-        import yaml
-        try:
-            with open(datafile_path) as f:
-                data = yaml.safe_load(f)
-            val = (data or {}).get("parameters", {}).get("max_failures")
-            if val and int(val) > 0:
-                return int(val)
-        except Exception:
-            pass
+        val = _read_datafile_param(datafile_path, "max_failures")
+        if val is not None:
+            try:
+                n = int(val)
+                return n if n > 0 else None
+            except (ValueError, TypeError):
+                pass
+
+    return None
+
+
+def _read_datafile_param(datafile_path: str, key: str, _depth: int = 0):
+    """Read a parameter from a datafile, following ``extends:`` directives.
+
+    pyATS datafiles support ``extends: base.yaml`` for inheritance, but
+    ``yaml.safe_load()`` doesn't resolve it.  Walk the chain (max 5 deep)
+    and return the first matching ``parameters.<key>`` value found.
+    """
+    if _depth > 5 or not os.path.isfile(datafile_path):
+        return None
+
+    import yaml
+
+    try:
+        with open(datafile_path) as f:
+            data = yaml.safe_load(f) or {}
+    except Exception:
+        return None
+
+    val = data.get("parameters", {}).get(key)
+    if val is not None:
+        return val
+
+    extends = data.get("extends")
+    if extends:
+        parent = os.path.join(os.path.dirname(datafile_path), extends)
+        return _read_datafile_param(parent, key, _depth + 1)
 
     return None

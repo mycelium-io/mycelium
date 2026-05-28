@@ -65,7 +65,10 @@ class MyceliumCommonSetup(aetest.CommonSetup):
             )
 
         testscript.parameters["matrix_url"] = matrix_url
-        testscript.parameters["matrix_config"] = matrix_cfg
+        testscript.parameters["matrix_config"] = {
+            k: self._resolve_env(v) if isinstance(v, str) else v
+            for k, v in matrix_cfg.items()
+        }
         testscript.parameters["backend_url"] = backend_url
 
         log.info("Clients initialized: backend=%s cfn_mgmt=%s cfn_svc=%s matrix=%s",

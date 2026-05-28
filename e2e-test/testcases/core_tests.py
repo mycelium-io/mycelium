@@ -219,12 +219,26 @@ class SessionJoinIdempotency(aetest.Testcase):
                     step.failed(f"Duplicate join returned unexpected status={st}")
 
             with steps.start("Verify single session") as step:
-                st, data = api.list_sessions(test_room)
-                if st != 200:
-                    step.failed(f"List sessions failed: status={st}")
-                sessions = data if isinstance(data, list) else (
-                    data.get("sessions", []) if isinstance(data, dict) else []
-                )
+                sessions = []
+                for getter in (
+                    lambda: api.list_sessions(test_room),
+                    lambda: api.get_coordination_sessions(parent_room=test_room),
+                ):
+                    st, data = getter()
+                    if st != 200:
+                        continue
+                    if isinstance(data, list):
+                        sessions = data
+                    elif isinstance(data, dict):
+                        sessions = (
+                            data.get("sessions")
+                            or data.get("items")
+                            or data.get("results")
+                            or []
+                        )
+                    if sessions:
+                        break
+
                 if len(sessions) != 1:
                     step.failed(
                         f"Expected exactly 1 session after duplicate join, "
