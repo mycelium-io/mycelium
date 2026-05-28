@@ -241,6 +241,14 @@ jobs:
           mycelium config set server.api_url http://localhost:8000 2>/dev/null || true
           mycelium config set rooms.active mycelium_room 2>/dev/null || true
 
+          # Write .env with LLM credentials so CLI commands can use them
+          {
+            [ -n "$LLM_API_KEY" ]  && echo "LLM_API_KEY=$LLM_API_KEY"
+            [ -n "$LLM_BASE_URL" ] && echo "LLM_BASE_URL=$LLM_BASE_URL"
+            [ -n "$LLM_MODEL" ]    && echo "LLM_MODEL=$LLM_MODEL"
+          } > ~/.mycelium/.env
+          echo "Wrote ~/.mycelium/.env ($(wc -l < ~/.mycelium/.env) lines)"
+
           echo "=== CLI config.toml ==="
           cat ~/.mycelium/config.toml
 

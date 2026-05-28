@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import os
+import pathlib
 import time
 
 from pyats import aetest
@@ -89,6 +90,8 @@ class MyceliumCommonSetup(aetest.CommonSetup):
             r = cli.config_set(key, value)
             if not r.ok:
                 log.warning("Failed to set CLI %s: %s", key, r.error_message)
+
+        self._ensure_dotenv()
 
         errors = []
         for key, value in expected.items():
@@ -184,6 +187,30 @@ class MyceliumCommonSetup(aetest.CommonSetup):
             log.info("All agents idle")
 
     # ── Helpers ───────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _ensure_dotenv() -> None:
+        """Write ``~/.mycelium/.env`` with LLM credentials from the environment.
+
+        The CLI reads this file for LLM_API_KEY, LLM_BASE_URL, and
+        LLM_MODEL when running commands like ``synthesize`` and ``catchup``.
+        ``mycelium init`` may not create it, so we ensure it exists.
+        """
+        env_path = pathlib.Path.home() / ".mycelium" / ".env"
+        env_path.parent.mkdir(parents=True, exist_ok=True)
+
+        lines = []
+        for var in ("LLM_API_KEY", "LLM_BASE_URL", "LLM_MODEL"):
+            val = os.environ.get(var)
+            if val:
+                lines.append(f"{var}={val}")
+
+        if lines:
+            env_path.write_text("\n".join(lines) + "\n")
+            log.info("Wrote %s (%d vars)", env_path, len(lines))
+        elif not env_path.exists():
+            env_path.touch()
+            log.debug("Created empty %s (no LLM vars in environment)", env_path)
 
     @staticmethod
     def _resolve_env(value: str) -> str:
