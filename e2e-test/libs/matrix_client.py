@@ -94,6 +94,10 @@ class MatrixClient:
         return None
 
 
+_OBSERVER_USERNAME = "test-observer"
+_OBSERVER_PASSWORD = "agent-e2e-pass"
+
+
 async def get_observer_token(
     homeserver: str,
     shared_secret: Optional[str] = None,
@@ -103,14 +107,18 @@ async def get_observer_token(
     Handles the M_USER_IN_USE race: if registration fails because the user
     already exists (e.g., from a prior CI run on the same Synapse volume),
     falls back to password login.
-    """
-    username = "test-observer"
-    password = "observer123"
 
+    The password must match what ``bootstrap-matrix.py`` uses for all agent
+    accounts (``agent-e2e-pass``).
+    """
     async with httpx.AsyncClient(timeout=30.0) as client:
         r = await client.post(
             f"{homeserver}/_matrix/client/v3/login",
-            json={"type": "m.login.password", "user": username, "password": password},
+            json={
+                "type": "m.login.password",
+                "identifier": {"type": "m.id.user", "user": _OBSERVER_USERNAME},
+                "password": _OBSERVER_PASSWORD,
+            },
         )
         if r.status_code == 200:
             return r.json()["access_token"]
@@ -125,9 +133,9 @@ async def get_observer_token(
         mac = hmac.new(secret.encode(), digestmod=hashlib.sha1)
         mac.update(nonce.encode())
         mac.update(b"\x00")
-        mac.update(username.encode())
+        mac.update(_OBSERVER_USERNAME.encode())
         mac.update(b"\x00")
-        mac.update(password.encode())
+        mac.update(_OBSERVER_PASSWORD.encode())
         mac.update(b"\x00")
         mac.update(b"notadmin")
 
@@ -135,8 +143,8 @@ async def get_observer_token(
             f"{homeserver}/_synapse/admin/v1/register",
             json={
                 "nonce": nonce,
-                "username": username,
-                "password": password,
+                "username": _OBSERVER_USERNAME,
+                "password": _OBSERVER_PASSWORD,
                 "admin": False,
                 "mac": mac.hexdigest(),
             },
@@ -149,7 +157,11 @@ async def get_observer_token(
             log.info("Observer user already exists — retrying login")
             retry = await client.post(
                 f"{homeserver}/_matrix/client/v3/login",
-                json={"type": "m.login.password", "user": username, "password": password},
+                json={
+                    "type": "m.login.password",
+                    "identifier": {"type": "m.id.user", "user": _OBSERVER_USERNAME},
+                    "password": _OBSERVER_PASSWORD,
+                },
             )
             if retry.status_code == 200:
                 return retry.json()["access_token"]
