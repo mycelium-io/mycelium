@@ -5,7 +5,9 @@ Maps to original test 07.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import uuid
 
 from pyats import aetest
 
@@ -26,16 +28,75 @@ class MatrixCommunication(aetest.Testcase):
 
     @aetest.test
     def matrix_messaging(self, steps, api, matrix_url, matrix_config):
-        """Verify Matrix room is reachable and messages can be read."""
-        from libs.matrix_client import check_matrix_reachable
+        """Verify Matrix room is reachable and a message round-trip works."""
+        from libs.matrix_client import (
+            MatrixClient,
+            check_matrix_reachable,
+            get_observer_token,
+        )
 
         with steps.start("Verify Matrix reachable") as step:
             if not check_matrix_reachable(matrix_url):
                 step.failed("Matrix homeserver not reachable")
 
-        with steps.start("Verify agent room exists") as step:
-            room_alias = matrix_config.get("test_room_alias", "#agents:local")
-            room_id = matrix_config.get("test_room_id")
+        room_alias = matrix_config.get("test_room_alias", "#agents:local")
+        room_id = matrix_config.get("test_room_id")
+        shared_secret = matrix_config.get("shared_secret", "")
+
+        with steps.start("Verify agent room configured") as step:
             if not room_id:
                 step.failed("No test_room_id configured")
             log.info("Matrix room: alias=%s id=%s", room_alias, room_id)
+
+        with steps.start("Obtain observer token") as step:
+            if not shared_secret:
+                step.failed("No Matrix shared_secret configured — cannot create observer")
+            try:
+                token = asyncio.run(get_observer_token(matrix_url, shared_secret))
+                log.info("Observer token obtained")
+            except Exception as exc:
+                step.failed(f"Observer token acquisition failed: {exc}")
+
+        with steps.start("Send and verify test message") as step:
+            marker = f"e2e-matrix-{uuid.uuid4().hex[:8]}"
+            try:
+                sent, messages = asyncio.run(
+                    _matrix_roundtrip(matrix_url, token, room_id, marker)
+                )
+                if not sent:
+                    step.failed("Failed to send test message to Matrix room")
+                found = any(marker in m.get("body", "") for m in messages)
+                if not found:
+                    step.failed(
+                        f"Test marker '{marker}' not found in last "
+                        f"{len(messages)} messages"
+                    )
+                log.info("Matrix round-trip verified: marker=%s", marker)
+            except Exception as exc:
+                step.failed(f"Matrix round-trip failed: {exc}")
+
+
+async def _matrix_roundtrip(
+    homeserver: str, token: str, room_id: str, marker: str,
+) -> tuple[bool, list[dict]]:
+    """Join room, send a message, read it back."""
+    from libs.matrix_client import MatrixClient
+    import httpx
+
+    async with httpx.AsyncClient(
+        base_url=homeserver,
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=15.0,
+    ) as http:
+        await http.post(
+            f"/_matrix/client/v3/join/{room_id}",
+            json={},
+        )
+
+    client = MatrixClient(homeserver, token)
+    try:
+        await client.send_message(room_id, f"[e2e-test] ping {marker}")
+        messages, _ = await client.read_messages(room_id, limit=10)
+        return True, messages
+    finally:
+        await client.close()

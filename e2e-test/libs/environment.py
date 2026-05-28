@@ -64,23 +64,33 @@ def detect_environment(
     """Probe all services and return a populated EnvironmentInfo."""
     env = EnvironmentInfo()
 
+    _LLM_FAILURE_STATUSES = frozenset({
+        "auth_error", "unavailable", "error", "misconfigured", "not_configured",
+    })
+
     # Backend health
     health = backend.health_json()
     if health:
         env.backend_reachable = True
         env.backend_status = "ok"
         env.backend_health = health
-        llm_status = health.get("llm", {})
+        llm_status = health.get("llm")
         if isinstance(llm_status, dict):
-            env.llm_available = llm_status.get("status") != "auth_error"
+            status_val = llm_status.get("status", "")
+            env.llm_available = (
+                bool(status_val) and status_val not in _LLM_FAILURE_STATUSES
+            )
         elif isinstance(llm_status, str):
-            env.llm_available = llm_status != "auth_error"
+            env.llm_available = (
+                bool(llm_status) and llm_status not in _LLM_FAILURE_STATUSES
+            )
         else:
-            env.llm_available = True
+            env.llm_available = False
         log.info(
-            "Backend: reachable=%s llm=%s",
+            "Backend: reachable=%s llm=%s (raw=%r)",
             env.backend_reachable,
             "available" if env.llm_available else "unavailable",
+            llm_status,
         )
     else:
         env.backend_status = "unreachable"

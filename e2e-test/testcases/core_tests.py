@@ -210,9 +210,17 @@ class SessionJoinIdempotency(aetest.Testcase):
                     step.failed(f"Duplicate join returned unexpected status={st}")
 
             with steps.start("Verify single session") as step:
-                st, sessions = api.list_sessions(test_room)
+                st, data = api.list_sessions(test_room)
                 if st != 200:
                     step.failed(f"List sessions failed: status={st}")
+                sessions = data if isinstance(data, list) else (
+                    data.get("sessions", []) if isinstance(data, dict) else []
+                )
+                if len(sessions) != 1:
+                    step.failed(
+                        f"Expected exactly 1 session after duplicate join, "
+                        f"got {len(sessions)}"
+                    )
         finally:
             api.delete_room(test_room)
 
@@ -248,21 +256,53 @@ class CfnLlmCounters(aetest.Testcase):
             st_before, obs_before = api.observability()
             if st_before != 200:
                 step.failed(f"Observability endpoint returned status={st_before}")
+            before_total = _extract_llm_token_total(obs_before)
+            log.info("LLM token total before: %s", before_total)
 
         with steps.start("Spawn a session to generate LLM activity") as step:
             test_room = f"{room_name}-counters"
             api.create_room(test_room, description="counter test")
             try:
-                api.spawn_session(test_room, {"handle": "counter-agent", "position": "test position"})
+                st, resp = api.spawn_session(
+                    test_room, {"handle": "counter-agent", "position": "test position"},
+                )
+                if st not in (200, 201):
+                    step.failed(f"Session spawn failed: status={st}")
                 time.sleep(5)
             finally:
                 api.delete_room(test_room)
 
-        with steps.start("Snapshot counters after") as step:
+        with steps.start("Verify counters changed") as step:
             st_after, obs_after = api.observability()
             if st_after != 200:
                 step.failed(f"Post observability returned status={st_after}")
-            log.info("Counters before/after captured for analysis")
+            after_total = _extract_llm_token_total(obs_after)
+            log.info("LLM token total after: %s (before: %s)", after_total, before_total)
+            if before_total is not None and after_total is not None:
+                if after_total <= before_total:
+                    step.failed(
+                        f"LLM token counters did not increase: "
+                        f"before={before_total}, after={after_total}"
+                    )
+            elif after_total is None:
+                log.warning("Could not extract LLM token totals from observability response")
+
+
+def _extract_llm_token_total(obs: Any) -> int | None:
+    """Sum all LLM token counters from the observability response."""
+    if not isinstance(obs, dict):
+        return None
+    llm = obs.get("llm", obs.get("llm_usage", obs.get("tokens", {})))
+    if isinstance(llm, dict):
+        total = llm.get("total_tokens", llm.get("total"))
+        if isinstance(total, (int, float)):
+            return int(total)
+        prompt = llm.get("prompt_tokens", llm.get("input_tokens", 0))
+        completion = llm.get("completion_tokens", llm.get("output_tokens", 0))
+        if isinstance(prompt, (int, float)) and isinstance(completion, (int, float)):
+            s = int(prompt) + int(completion)
+            return s if s > 0 else None
+    return None
 
 
 class SharedMemoryCliE2E(aetest.Testcase):
@@ -370,19 +410,27 @@ class DemoScriptNegotiation(aetest.Testcase):
     def demo_script_flow(self, steps, cli, room_name):
         test_room = f"{room_name}-demo"
         with steps.start("Create and populate room") as step:
-            cli.room_create(test_room)
-            cli.memory_set(test_room, "demo-lead", "context/goal", "Ship v2.0 by end of quarter")
+            r = cli.room_create(test_room)
+            if not r.ok:
+                step.failed(f"room create failed: {r.error_message}")
+            r = cli.memory_set(test_room, "demo-lead", "context/goal", "Ship v2.0 by end of quarter")
+            if not r.ok:
+                step.failed(f"memory set failed: {r.error_message}")
 
         with steps.start("Start negotiation") as step:
-            cli.negotiate_propose(test_room, "demo-lead", "Release planning for v2.0")
+            r = cli.negotiate_propose(test_room, "demo-lead", "Release planning for v2.0")
+            if not r.ok:
+                step.failed(f"negotiate propose failed: {r.error_message}")
 
         with steps.start("Agent responds") as step:
-            cli.negotiate_respond(test_room, "demo-eng", "Need 2 more weeks for testing")
+            r = cli.negotiate_respond(test_room, "demo-eng", "Need 2 more weeks for testing")
+            if not r.ok:
+                step.failed(f"negotiate respond failed: {r.error_message}")
 
         with steps.start("Query negotiation state") as step:
             r = cli.negotiate_query(test_room)
             if not r.ok:
-                log.warning("Negotiate query: %s", r.error_message)
+                step.failed(f"negotiate query failed: {r.error_message}")
 
 
 class Reindex(aetest.Testcase):
