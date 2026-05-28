@@ -19,7 +19,11 @@ log = logging.getLogger(__name__)
 
 
 class RoomLifecycle(aetest.Testcase):
-    """Test 01: Room create, use, list via CLI."""
+    """Test 01: Room create, use, list, delete via CLI.
+
+    Creates a dedicated room (``{room_name}-lifecycle``) so it does not
+    collide with the session-scoped room from CommonSetup.
+    """
 
     groups = ["core", "sanity"]
 
@@ -27,19 +31,19 @@ class RoomLifecycle(aetest.Testcase):
     def setup(self, api, cli, room_name):
         self.api = api
         self.cli = cli
-        self.room_name = room_name
+        self.test_room = f"{room_name}-lifecycle"
 
     @aetest.test
     def create_room(self, steps):
         with steps.start("Create room via CLI") as step:
-            r = self.cli.room_create(self.room_name)
+            r = self.cli.room_create(self.test_room)
             if not r.ok:
                 step.failed(f"room create failed: {r.error_message}")
 
     @aetest.test
     def use_room(self, steps):
         with steps.start("Set active room via CLI") as step:
-            r = self.cli.room_use(self.room_name)
+            r = self.cli.room_use(self.test_room)
             if not r.ok:
                 step.failed(f"room use failed: {r.error_message}")
 
@@ -49,8 +53,13 @@ class RoomLifecycle(aetest.Testcase):
             r = self.cli.room_ls()
             if not r.ok:
                 step.failed(f"room ls failed: {r.error_message}")
-            if self.room_name not in r.stdout:
-                step.failed(f"Room {self.room_name} not found in ls output")
+            if self.test_room not in r.stdout:
+                step.failed(f"Room {self.test_room} not found in ls output")
+
+    @aetest.cleanup
+    def cleanup(self):
+        self.api.delete_room(self.test_room)
+        log.info("Deleted lifecycle test room: %s", self.test_room)
 
 
 class MultiAgentMemory(aetest.Testcase):
