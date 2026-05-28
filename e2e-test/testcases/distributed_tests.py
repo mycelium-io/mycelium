@@ -233,9 +233,11 @@ class DistributedBackendResolvedCfnIds(aetest.Testcase):
 
         with steps.start("Ingest knowledge with room_name only") as step:
             st, resp = api.ingest_knowledge({
-                "content": f"Backend-resolved test: {marker}",
-                "source": "e2e-leaf-node",
                 "room_name": test_room,
+                "agent_id": "e2e-leaf-node",
+                "records": [
+                    {"response": f"Backend-resolved test: {marker}"}
+                ],
             })
             if st not in (200, 201, 202):
                 step.failed(f"Ingest failed: status={st}")

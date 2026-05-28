@@ -30,14 +30,16 @@ class IocCfn(aetest.Testcase):
             self.skipped("CFN management plane not reachable")
 
     @aetest.test
-    def knowledge_ingest_and_query(self, steps, api):
+    def knowledge_ingest_and_query(self, steps, api, room_name):
         marker = f"e2e-test-{uuid.uuid4().hex[:8]}"
 
         with steps.start("Ingest knowledge") as step:
             st, resp = api.ingest_knowledge({
-                "content": f"Test knowledge entry: {marker}",
-                "source": "e2e-test",
-                "room_name": "e2e-cfn-test",
+                "room_name": room_name,
+                "agent_id": "e2e-test-agent",
+                "records": [
+                    {"response": f"E2E test knowledge marker: {marker}. The weather is sunny."}
+                ],
             })
             if st not in (200, 201, 202):
                 step.failed(f"Knowledge ingest returned status={st}")
