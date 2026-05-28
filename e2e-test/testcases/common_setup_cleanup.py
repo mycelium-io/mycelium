@@ -53,10 +53,17 @@ class MyceliumCommonSetup(aetest.CommonSetup):
         matrix_url = self._resolve_env(matrix_cfg.get("base_url", "http://localhost:8008"))
         api_path = backend_cfg.get("api_path", "/api")
 
-        testscript.parameters["api"] = MyceliumAPI(base_url=backend_url, api_path=api_path)
-        testscript.parameters["cli"] = MyceliumCLI()
-        testscript.parameters["cfn_mgmt"] = CfnMgmtAPI(base_url=cfn_mgmt_url)
-        testscript.parameters["cfn_node_svc"] = CfnNodeSvcAPI(base_url=cfn_svc_url)
+        try:
+            testscript.parameters["api"] = MyceliumAPI(base_url=backend_url, api_path=api_path)
+            testscript.parameters["cli"] = MyceliumCLI()
+            testscript.parameters["cfn_mgmt"] = CfnMgmtAPI(base_url=cfn_mgmt_url)
+            testscript.parameters["cfn_node_svc"] = CfnNodeSvcAPI(base_url=cfn_svc_url)
+        except Exception as exc:
+            self.failed(
+                f"Client initialization failed: {exc}",
+                goto=["common_cleanup"],
+            )
+
         testscript.parameters["matrix_url"] = matrix_url
         testscript.parameters["matrix_config"] = matrix_cfg
         testscript.parameters["backend_url"] = backend_url
@@ -122,7 +129,7 @@ class MyceliumCommonSetup(aetest.CommonSetup):
         testscript.parameters["env"] = env
 
         if not env.backend_reachable:
-            self.failed("Backend unreachable — cannot proceed", goto=["exit"])
+            self.failed("Backend unreachable — cannot proceed", goto=["common_cleanup"])
 
         log.info("Environment: llm=%s cfn=%s matrix=%s blocked=%s",
                  not env.skip_llm_tests, not env.skip_cfn_tests,
@@ -162,7 +169,10 @@ class MyceliumCommonSetup(aetest.CommonSetup):
         api: MyceliumAPI = testscript.parameters["api"]
         status, data = api.create_room(room_name, description="pyATS E2E test room")
         if status not in (200, 201):
-            self.failed(f"Failed to create test room {room_name}: status={status}")
+            self.failed(
+                f"Failed to create test room {room_name}: status={status}",
+                goto=["common_cleanup"],
+            )
         log.info("Test room created: %s", room_name)
 
     @aetest.subsection
