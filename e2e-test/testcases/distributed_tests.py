@@ -97,15 +97,12 @@ class _DistributedBase(aetest.Testcase):
                 token = os.environ.get("MATRIX_TOKEN_AGENT_ALPHA", "")
                 if not token:
                     step.failed("MATRIX_TOKEN_AGENT_ALPHA not set — cannot send trigger")
-                client = MatrixClient(homeserver=matrix_url, access_token=token)
                 try:
-                    asyncio.get_event_loop().run_until_complete(
-                        client.send_message(room_id, trigger)
+                    asyncio.run(
+                        _send_matrix_trigger(matrix_url, token, room_id, trigger)
                     )
                 except Exception as exc:
                     step.failed(f"Failed to send Matrix trigger: {exc}")
-                finally:
-                    asyncio.get_event_loop().run_until_complete(client.close())
                 log.info("Matrix trigger sent to %s: %s", room_id, trigger[:80])
 
         with steps.start(f"Wait for consensus (timeout={timeout}s)") as step:
@@ -118,6 +115,17 @@ class _DistributedBase(aetest.Testcase):
     @aetest.cleanup
     def cleanup(self, api, room_name):
         pass
+
+
+async def _send_matrix_trigger(
+    homeserver: str, token: str, room_id: str, body: str,
+) -> None:
+    """Send a single Matrix message, then close the client."""
+    client = MatrixClient(homeserver=homeserver, access_token=token)
+    try:
+        await client.send_message(room_id, body)
+    finally:
+        await client.close()
 
 
 # ─── Local-Real Tests (test_30-32) ───────────────────────────────────────────
