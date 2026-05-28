@@ -129,7 +129,8 @@ class IocCfn(aetest.Testcase):
             log.info("Knowledge query response: %s", resp)
 
         with steps.start("List knowledge") as step:
-            st, resp = api.list_knowledge()
+            list_mas = resolved_mas_id or mas_id
+            st, resp = api.list_knowledge(mas_id=list_mas)
             if st != 200:
                 step.failed(f"Knowledge list returned status={st}: {resp}")
 

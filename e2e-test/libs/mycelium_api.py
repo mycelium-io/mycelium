@@ -177,8 +177,9 @@ class MyceliumAPI:
             payload["mas_id"] = mas_id
         return self.post_json("/cfn/knowledge/query", payload, timeout=timeout)
 
-    def list_knowledge(self) -> tuple[int, Any]:
-        return self.get_json("/cfn/knowledge/list")
+    def list_knowledge(self, mas_id: str | None = None) -> tuple[int, Any]:
+        qs = f"?mas_id={mas_id}" if mas_id else ""
+        return self.get_json(f"/cfn/knowledge/list{qs}")
 
     # ── Round Traces ──────────────────────────────────────────────────────
 
