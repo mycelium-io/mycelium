@@ -159,7 +159,9 @@ jobs:
           import json, pathlib
           p = pathlib.Path('/shared/mycelium-config.json')
           if p.exists():
-              print(json.loads(p.read_text()).get('workspace_id', ''))
+              v = json.loads(p.read_text()).get('workspace_id')
+              if v:
+                  print(v)
           " 2>/dev/null || echo "")
 
           if [ -n "$WORKSPACE_ID" ]; then

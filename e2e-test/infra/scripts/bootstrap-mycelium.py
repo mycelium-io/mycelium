@@ -92,7 +92,7 @@ def main():
     config = {
         "backend_url": BACKEND_URL,
         "cfn_mgmt_url": CFN_MGMT_URL,
-        "workspace_id": workspace_id,
+        "workspace_id": workspace_id or "",
         "health": health if isinstance(health, dict) else {},
     }
 
