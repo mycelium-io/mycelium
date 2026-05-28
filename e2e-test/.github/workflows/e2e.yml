@@ -187,16 +187,19 @@ jobs:
       - name: Initialize mycelium CLI config
         run: |
           mkdir -p ~/.mycelium
-          mycelium init 2>/dev/null || true
+          mycelium init --api-url http://localhost:8000 2>/dev/null || true
           if [ ! -f ~/.mycelium/config.toml ]; then
             echo "mycelium init did not create config.toml — writing manually"
             cat > ~/.mycelium/config.toml <<'TOML'
-          backend_url = "http://localhost:8000"
-          room = "mycelium_room"
+          [server]
+          api_url = "http://localhost:8000"
+
+          [rooms]
+          active = "mycelium_room"
           TOML
           fi
-          mycelium config set backend_url http://localhost:8000 2>/dev/null || true
-          mycelium config set room mycelium_room 2>/dev/null || true
+          mycelium config set server.api_url http://localhost:8000 2>/dev/null || true
+          mycelium config set rooms.active mycelium_room 2>/dev/null || true
           echo "CLI config:"
           cat ~/.mycelium/config.toml
 

@@ -113,18 +113,9 @@ class MyceliumCLI:
 
     def session_join(self, room: str, handle: str, position: str = "") -> CLIResult:
         args = ["session", "join", "--room", room, "--handle", handle]
-        result = self.run(*args, timeout=60)
-        if result.ok and position:
-            pos_result = self.message_send(room, handle, position)
-            if not pos_result.ok:
-                return CLIResult(
-                    pos_result.returncode,
-                    result.stdout,
-                    f"Join succeeded but position delivery failed: {pos_result.error_message}",
-                    result.elapsed_ms + pos_result.elapsed_ms,
-                    result.cmd + pos_result.cmd,
-                )
-        return result
+        if position:
+            args.extend(["--message", position])
+        return self.run(*args, timeout=60)
 
     def session_ls(self, room: str) -> CLIResult:
         return self.run("session", "ls", "--room", room)
@@ -141,9 +132,9 @@ class MyceliumCLI:
         return self.run("negotiate", "propose", "--room", room, "--handle", handle,
                         f"topic={topic}", timeout=60)
 
-    def negotiate_respond(self, room: str, handle: str, response: str) -> CLIResult:
-        return self.run("negotiate", "respond", "--room", room, "--handle", handle,
-                        f"response={response}", timeout=60)
+    def negotiate_respond(self, room: str, handle: str, action: str) -> CLIResult:
+        return self.run("negotiate", "respond", action,
+                        "--room", room, "--handle", handle, timeout=60)
 
     def negotiate_query(self, room: str) -> CLIResult:
         return self.run("negotiate", "query", "--room", room, timeout=30)
@@ -167,7 +158,3 @@ class MyceliumCLI:
     def doctor(self) -> CLIResult:
         return self.run("doctor", json_mode=True, timeout=30)
 
-    # ── Message ───────────────────────────────────────────────────────────
-
-    def message_send(self, room: str, handle: str, content: str) -> CLIResult:
-        return self.run("message", "send", "--room", room, "--handle", handle, content)

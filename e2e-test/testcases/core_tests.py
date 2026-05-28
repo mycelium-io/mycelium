@@ -359,7 +359,7 @@ class ConsensusCliE2E(aetest.Testcase):
                 step.failed(r.error_message)
 
         with steps.start("Agent B responds") as step:
-            r = cli.negotiate_respond(test_room, "agent-b", "I prefer gRPC for internal services")
+            r = cli.negotiate_respond(test_room, "agent-b", "accept")
             if not r.ok:
                 step.failed(r.error_message)
 
@@ -423,7 +423,7 @@ class DemoScriptNegotiation(aetest.Testcase):
                 step.failed(f"negotiate propose failed: {r.error_message}")
 
         with steps.start("Agent responds") as step:
-            r = cli.negotiate_respond(test_room, "demo-eng", "Need 2 more weeks for testing")
+            r = cli.negotiate_respond(test_room, "demo-eng", "accept")
             if not r.ok:
                 step.failed(f"negotiate respond failed: {r.error_message}")
 

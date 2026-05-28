@@ -68,7 +68,12 @@ class MyceliumCommonSetup(aetest.CommonSetup):
         """Ensure the mycelium CLI config points at the correct backend.
 
         Runs ``mycelium init --api-url <backend>`` to create
-        ``~/.mycelium/config.toml`` if absent, then sets the default room.
+        ``~/.mycelium/config.toml`` if absent, then sets the API URL
+        and active room via ``config set``.
+
+        Config keys (from mycelium CLI's ``MyceliumConfig``):
+          - ``server.api_url`` — backend URL
+          - ``rooms.active``   — default room name
         """
         cli: MyceliumCLI = testscript.parameters["cli"]
         backend_url: str = testscript.parameters["backend_url"]
@@ -77,15 +82,15 @@ class MyceliumCommonSetup(aetest.CommonSetup):
         r = cli.run("init", "--api-url", backend_url)
         if not r.ok:
             log.debug("mycelium init returned rc=%d (may already be initialized)", r.returncode)
-            r = cli.config_set("backend_url", backend_url)
+            r = cli.config_set("server.api_url", backend_url)
             if not r.ok:
-                log.warning("Failed to set CLI backend_url: %s", r.error_message)
+                log.warning("Failed to set CLI server.api_url: %s", r.error_message)
 
-        r = cli.config_set("room", room)
+        r = cli.config_set("rooms.active", room)
         if not r.ok:
-            log.warning("Failed to set CLI room: %s", r.error_message)
+            log.warning("Failed to set CLI rooms.active: %s", r.error_message)
 
-        log.info("CLI configured: backend_url=%s room=%s", backend_url, room)
+        log.info("CLI configured: server.api_url=%s rooms.active=%s", backend_url, room)
 
     @aetest.subsection
     def detect_environment(self, testscript, room_prefix="e2e-test"):

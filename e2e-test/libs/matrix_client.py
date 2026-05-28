@@ -98,11 +98,19 @@ async def get_observer_token(
     homeserver: str,
     shared_secret: Optional[str] = None,
 ) -> str:
-    """Get or create an observer Matrix account for watching agent interactions."""
+    """Get or create an observer Matrix account for watching agent interactions.
+
+    Handles the M_USER_IN_USE race: if registration fails because the user
+    already exists (e.g., from a prior CI run on the same Synapse volume),
+    falls back to password login.
+    """
+    username = "test-observer"
+    password = "observer123"
+
     async with httpx.AsyncClient(timeout=30.0) as client:
         r = await client.post(
             f"{homeserver}/_matrix/client/v3/login",
-            json={"type": "m.login.password", "user": "test-observer", "password": "observer123"},
+            json={"type": "m.login.password", "user": username, "password": password},
         )
         if r.status_code == 200:
             return r.json()["access_token"]
@@ -114,12 +122,7 @@ async def get_observer_token(
         nonce_resp = await client.get(f"{homeserver}/_synapse/admin/v1/register")
         nonce = nonce_resp.json()["nonce"]
 
-        username = "test-observer"
-        password = "observer123"
-        mac = hmac.new(
-            secret.encode(),
-            digestmod=hashlib.sha1,
-        )
+        mac = hmac.new(secret.encode(), digestmod=hashlib.sha1)
         mac.update(nonce.encode())
         mac.update(b"\x00")
         mac.update(username.encode())
@@ -140,6 +143,20 @@ async def get_observer_token(
         )
         if reg_resp.status_code in (200, 201):
             return reg_resp.json()["access_token"]
+
+        reg_body = reg_resp.json() if reg_resp.headers.get("content-type", "").startswith("application/json") else {}
+        if reg_body.get("errcode") == "M_USER_IN_USE":
+            log.info("Observer user already exists — retrying login")
+            retry = await client.post(
+                f"{homeserver}/_matrix/client/v3/login",
+                json={"type": "m.login.password", "user": username, "password": password},
+            )
+            if retry.status_code == 200:
+                return retry.json()["access_token"]
+            raise RuntimeError(
+                f"Observer exists but login failed: {retry.status_code} {retry.text}"
+            )
+
         raise RuntimeError(f"Observer registration failed: {reg_resp.status_code} {reg_resp.text}")
 
 
