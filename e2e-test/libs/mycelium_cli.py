@@ -115,7 +115,15 @@ class MyceliumCLI:
         args = ["session", "join", "--room", room, "--handle", handle]
         result = self.run(*args, timeout=60)
         if result.ok and position:
-            self.message_send(room, handle, position)
+            pos_result = self.message_send(room, handle, position)
+            if not pos_result.ok:
+                return CLIResult(
+                    pos_result.returncode,
+                    result.stdout,
+                    f"Join succeeded but position delivery failed: {pos_result.error_message}",
+                    result.elapsed_ms + pos_result.elapsed_ms,
+                    result.cmd + pos_result.cmd,
+                )
         return result
 
     def session_ls(self, room: str) -> CLIResult:
