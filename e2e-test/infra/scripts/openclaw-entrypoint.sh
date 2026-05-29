@@ -10,7 +10,7 @@ set -euo pipefail
 
 ROLE="${OPENCLAW_ROLE:-hub}"
 TOKEN_FILE="${TOKEN_FILE:-/shared/matrix-tokens.json}"
-CONFIG_DIR="/openclaw/config"
+CONFIG_DIR="$HOME/.openclaw"
 
 echo "[openclaw-entrypoint] Role: $ROLE"
 echo "[openclaw-entrypoint] Waiting for token file..."
@@ -64,8 +64,27 @@ node -e "
   const tokens = JSON.parse(fs.readFileSync('$TOKEN_FILE', 'utf8')).tokens || {};
   const agents = '${AGENTS}'.split(' ').filter(Boolean);
   const model = process.env.LLM_MODEL || 'anthropic/claude-sonnet-4-20250514';
+  const baseUrl = process.env.LLM_BASE_URL || '';
+  const apiKey = process.env.LLM_API_KEY || '';
+
   const cfg = {
-    gateway: { port: 3100 },
+    gateway: { port: 18789 },
+    providers: {
+      litellm: {
+        baseUrl,
+        apiKey,
+        api: 'openai-completions',
+        models: [
+          {
+            id: model,
+            reasoning: false,
+            input: ['text'],
+            contextWindow: 200000,
+            maxTokens: 8096
+          }
+        ]
+      }
+    },
     channels: {
       matrix: {
         homeserverUrl: '$MATRIX_HOMESERVER',
@@ -74,6 +93,9 @@ node -e "
       }
     },
     plugins: {
+      matrix: {
+        enabled: true
+      },
       mycelium: {
         enabled: true,
         backendUrl: '$MYCELIUM_BACKEND_URL'
@@ -92,10 +114,23 @@ node -e "
         matrixAccessToken: tokens[id]
       }))
   };
+
   fs.mkdirSync('$CONFIG_DIR', { recursive: true });
   fs.writeFileSync('$CONFIG_DIR/openclaw.json', JSON.stringify(cfg, null, 2));
+
+  // Write gateway.systemd.env so openclaw picks up LLM credentials at runtime
+  const envLines = [
+    'LLM_API_KEY=' + apiKey,
+    'LLM_BASE_URL=' + baseUrl,
+    'LLM_MODEL=' + model,
+    ''
+  ].join('\n');
+  fs.writeFileSync('$CONFIG_DIR/gateway.systemd.env', envLines);
+
   console.log('[openclaw-entrypoint] Config written to $CONFIG_DIR/openclaw.json');
+  console.log('[openclaw-entrypoint] Env written to $CONFIG_DIR/gateway.systemd.env');
   console.log('[openclaw-entrypoint] Agents: ' + cfg.agents.map(a => a.id).join(', '));
+  console.log('[openclaw-entrypoint] Provider: litellm / ' + model);
 "
 
 echo "[openclaw-entrypoint] Starting gateway..."

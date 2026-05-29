@@ -249,9 +249,9 @@ services:
     volumes:
       - e2e-shared:/shared:ro
     ports:
-      - "${E2E_OPENCLAW_PORT:-3100}:3100"
+      - "${E2E_OPENCLAW_PORT:-18789}:18789"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3100/health 2>/dev/null || pgrep -f 'openclaw' > /dev/null"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:18789/health 2>/dev/null || pgrep -f 'openclaw' > /dev/null"]
       interval: 5s
       timeout: 5s
       retries: 15

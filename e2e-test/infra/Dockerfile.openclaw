@@ -13,6 +13,7 @@ FROM node:22-alpine
 
 RUN apk add --no-cache bash wget && \
     npm install -g openclaw@latest && \
+    openclaw plugins install @openclaw/matrix && \
     npm cache clean --force && \
     rm -rf /tmp/* /root/.npm && \
     mkdir -p /openclaw /shared && \
