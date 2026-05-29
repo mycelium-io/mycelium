@@ -181,13 +181,13 @@ class ConsensusNegotiation(aetest.Testcase):
 
     @aetest.test
     def negotiate_session(self, steps, cli, room_name):
-        with steps.start("Agent A joins session") as step:
-            r = cli.session_join(room_name, "agent-a", position="I prefer PostgreSQL")
+        with steps.start("Agent Alpha joins session") as step:
+            r = cli.session_join(room_name, "agent-alpha", position="I prefer PostgreSQL")
             if not r.ok:
                 step.failed(r.error_message)
 
-        with steps.start("Agent B joins session") as step:
-            r = cli.session_join(room_name, "agent-b", position="I prefer MongoDB")
+        with steps.start("Agent Beta joins session") as step:
+            r = cli.session_join(room_name, "agent-beta", position="I prefer MongoDB")
             if not r.ok:
                 step.failed(r.error_message)
 
@@ -379,13 +379,13 @@ class ConsensusCliE2E(aetest.Testcase):
             if not r.ok:
                 step.failed(r.error_message)
 
-        with steps.start("Agent A proposes topic") as step:
-            r = cli.negotiate_propose(test_room, "agent-a", "Should we use REST or gRPC?")
+        with steps.start("Agent Alpha proposes topic") as step:
+            r = cli.negotiate_propose(test_room, "agent-alpha", "Should we use REST or gRPC?")
             if not r.ok:
                 step.failed(r.error_message)
 
-        with steps.start("Agent B responds") as step:
-            r = cli.negotiate_respond(test_room, "agent-b", "accept")
+        with steps.start("Agent Beta responds") as step:
+            r = cli.negotiate_respond(test_room, "agent-beta", "accept")
             if not r.ok:
                 step.failed(r.error_message)
 
@@ -409,8 +409,8 @@ class SyncNegotiationCliE2E(aetest.Testcase):
         test_room = f"{room_name}-sync-neg"
         with steps.start("Create room and join agents") as step:
             cli.room_create(test_room)
-            cli.session_join(test_room, "sync-a", position="I want fast iteration cycles")
-            cli.session_join(test_room, "sync-b", position="I want thorough testing")
+            cli.session_join(test_room, "agent-alpha", position="I want fast iteration cycles")
+            cli.session_join(test_room, "agent-beta", position="I want thorough testing")
 
         with steps.start("Wait for coordination") as step:
             result = api.wait_for_consensus(test_room, timeout=timeout)
@@ -439,17 +439,17 @@ class DemoScriptNegotiation(aetest.Testcase):
             r = cli.room_create(test_room)
             if not r.ok:
                 step.failed(f"room create failed: {r.error_message}")
-            r = cli.memory_set(test_room, "demo-lead", "context/goal", "Ship v2.0 by end of quarter")
+            r = cli.memory_set(test_room, "agent-alpha", "context/goal", "Ship v2.0 by end of quarter")
             if not r.ok:
                 step.failed(f"memory set failed: {r.error_message}")
 
         with steps.start("Start negotiation") as step:
-            r = cli.negotiate_propose(test_room, "demo-lead", "Release planning for v2.0")
+            r = cli.negotiate_propose(test_room, "agent-alpha", "Release planning for v2.0")
             if not r.ok:
                 step.failed(f"negotiate propose failed: {r.error_message}")
 
         with steps.start("Agent responds") as step:
-            r = cli.negotiate_respond(test_room, "demo-eng", "accept")
+            r = cli.negotiate_respond(test_room, "agent-beta", "accept")
             if not r.ok:
                 step.failed(f"negotiate respond failed: {r.error_message}")
 

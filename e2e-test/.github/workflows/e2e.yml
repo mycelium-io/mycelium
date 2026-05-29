@@ -182,6 +182,23 @@ jobs:
             echo "No workspace/MAS ID found — skipping"
           fi
 
+      - name: Start OpenClaw gateway
+        run: |
+          docker compose -f $COMPOSE_FILE up -d openclaw-hub
+          echo "Waiting for OpenClaw hub to start..."
+          for i in $(seq 1 90); do
+            status=$(docker inspect --format='{{.State.Health.Status}}' e2e-openclaw-hub 2>/dev/null || echo "missing")
+            if [ "$status" = "healthy" ]; then
+              echo "  OpenClaw hub is healthy"
+              break
+            fi
+            if [ "$i" -eq 90 ]; then
+              echo "  WARNING: OpenClaw hub did not become healthy (status=$status)"
+              docker logs e2e-openclaw-hub --tail 30
+            fi
+            sleep 2
+          done
+
       - name: Verify backend container environment
         run: |
           echo "=== Backend container env check ==="
@@ -346,7 +363,7 @@ jobs:
         if: always()
         run: |
           mkdir -p artifacts/logs
-          for svc in e2e-mycelium-db e2e-mycelium-backend e2e-cfn-mgmt e2e-cfn-node e2e-matrix-synapse; do
+          for svc in e2e-mycelium-db e2e-mycelium-backend e2e-cfn-mgmt e2e-cfn-node e2e-matrix-synapse e2e-openclaw-hub; do
             docker logs "$svc" > "artifacts/logs/${svc}.log" 2>&1 || true
           done
 

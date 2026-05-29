@@ -4,6 +4,8 @@
 # Reads Matrix tokens from /shared/matrix-tokens.json (written by the
 # matrix-bootstrap container), configures agents based on OPENCLAW_ROLE,
 # and starts the gateway.
+#
+# Uses node (not python) for JSON parsing to keep the Alpine image small.
 set -euo pipefail
 
 ROLE="${OPENCLAW_ROLE:-hub}"
@@ -27,23 +29,27 @@ if [ ! -f "$TOKEN_FILE" ]; then
     exit 1
 fi
 
-ROOM_ID=$(python3 -c "import json; print(json.load(open('$TOKEN_FILE'))['room_id'])" 2>/dev/null || echo "")
-
-get_token() {
-    python3 -c "import json; print(json.load(open('$TOKEN_FILE'))['tokens']['$1'])" 2>/dev/null || echo ""
+json_get() {
+    node -e "
+      const d = JSON.parse(require('fs').readFileSync('$TOKEN_FILE','utf8'));
+      const v = $1;
+      if (v !== undefined && v !== null) process.stdout.write(String(v));
+    " 2>/dev/null || true
 }
+
+ROOM_ID=$(json_get "d.room_id")
 
 mkdir -p "$CONFIG_DIR"
 
 case "$ROLE" in
     hub)
-        AGENTS='["agent-alpha","agent-beta","agent-gamma","agent-delta"]'
+        AGENTS="agent-alpha agent-beta agent-gamma agent-delta"
         ;;
     spoke1)
-        AGENTS='["claire-agent"]'
+        AGENTS="claire-agent"
         ;;
     spoke2)
-        AGENTS='["oclw5-agent"]'
+        AGENTS="oclw5-agent"
         ;;
     *)
         echo "[openclaw-entrypoint] ERROR: Unknown role: $ROLE" >&2
@@ -51,51 +57,46 @@ case "$ROLE" in
         ;;
 esac
 
-# Build openclaw.json dynamically
-AGENT_CONFIGS=""
-for agent in $(echo "$AGENTS" | python3 -c "import sys,json; [print(a) for a in json.load(sys.stdin)]"); do
-    TOKEN=$(get_token "$agent")
-    if [ -z "$TOKEN" ]; then
-        echo "[openclaw-entrypoint] WARNING: No token for $agent" >&2
-        continue
-    fi
-    if [ -n "$AGENT_CONFIGS" ]; then
-        AGENT_CONFIGS="$AGENT_CONFIGS,"
-    fi
-    AGENT_CONFIGS="$AGENT_CONFIGS
-    {
-      \"id\": \"$agent\",
-      \"name\": \"$agent\",
-      \"model\": \"${LLM_MODEL:-anthropic/claude-sonnet-4-20250514}\",
-      \"matrixUserId\": \"@$agent:local\",
-      \"matrixAccessToken\": \"$TOKEN\"
-    }"
-done
+# Build the agents array for openclaw.json via node to avoid
+# shell quoting issues with JSON construction.
+node -e "
+  const fs = require('fs');
+  const tokens = JSON.parse(fs.readFileSync('$TOKEN_FILE', 'utf8')).tokens || {};
+  const agents = '${AGENTS}'.split(' ').filter(Boolean);
+  const model = process.env.LLM_MODEL || 'anthropic/claude-sonnet-4-20250514';
+  const cfg = {
+    gateway: { port: 3100 },
+    channels: {
+      matrix: {
+        homeserverUrl: '$MATRIX_HOMESERVER',
+        requireMention: true,
+        rooms: ['$ROOM_ID']
+      }
+    },
+    plugins: {
+      mycelium: {
+        enabled: true,
+        backendUrl: '$MYCELIUM_BACKEND_URL'
+      }
+    },
+    agents: agents
+      .filter(id => {
+        if (!tokens[id]) console.error('[openclaw-entrypoint] WARNING: No token for ' + id);
+        return !!tokens[id];
+      })
+      .map(id => ({
+        id,
+        name: id,
+        model,
+        matrixUserId: '@' + id + ':local',
+        matrixAccessToken: tokens[id]
+      }))
+  };
+  fs.mkdirSync('$CONFIG_DIR', { recursive: true });
+  fs.writeFileSync('$CONFIG_DIR/openclaw.json', JSON.stringify(cfg, null, 2));
+  console.log('[openclaw-entrypoint] Config written to $CONFIG_DIR/openclaw.json');
+  console.log('[openclaw-entrypoint] Agents: ' + cfg.agents.map(a => a.id).join(', '));
+"
 
-cat > "$CONFIG_DIR/openclaw.json" <<EOCFG
-{
-  "gateway": {
-    "port": 3100
-  },
-  "channels": {
-    "matrix": {
-      "homeserverUrl": "$MATRIX_HOMESERVER",
-      "requireMention": true,
-      "rooms": ["$ROOM_ID"]
-    }
-  },
-  "plugins": {
-    "mycelium": {
-      "enabled": true,
-      "backendUrl": "$MYCELIUM_BACKEND_URL"
-    }
-  },
-  "agents": [$AGENT_CONFIGS
-  ]
-}
-EOCFG
-
-echo "[openclaw-entrypoint] Config written to $CONFIG_DIR/openclaw.json"
 echo "[openclaw-entrypoint] Starting gateway..."
-
 exec openclaw gateway start --config "$CONFIG_DIR/openclaw.json"

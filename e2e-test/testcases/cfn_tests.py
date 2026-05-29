@@ -140,7 +140,7 @@ class IocCfn(aetest.Testcase):
         st, data = api.list_rooms()
         if st != 200:
             return
-        rooms = data if isinstance(data, list) else []
+        rooms = data if isinstance(data, list) else data.get("rooms", []) if isinstance(data, dict) else []
         for room in rooms:
             name = room.get("name", "")
             if name.endswith("-alt") and name.startswith("e2e-test-"):
@@ -208,7 +208,7 @@ class IocNegotiationPath(aetest.Testcase):
             if st not in (200, 201):
                 step.failed(f"Room creation failed: status={st}")
             st, _ = api.spawn_session(test_room, {
-                "handle": "cfn-agent-a",
+                "handle": "agent-alpha",
                 "position": "Prefer microservices architecture",
             })
             if st not in (200, 201):

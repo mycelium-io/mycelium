@@ -222,6 +222,43 @@ services:
     profiles:
       - bootstrap
 
+  # ── OpenClaw Gateway (Hub) ──────────────────────────────────────────
+  #
+  # Pre-built image from GHCR (see .github/workflows/build-openclaw.yml).
+  # Reads Matrix tokens from the shared volume written by matrix-bootstrap,
+  # then starts the gateway with agents alpha/beta/gamma/delta.
+  # Start AFTER both bootstraps have run:
+  #   docker compose -f infra/compose.e2e.yaml up -d openclaw-hub
+  openclaw-hub:
+    image: ghcr.io/mycelium-io/mycelium-openclaw:latest
+    container_name: e2e-openclaw-hub
+    depends_on:
+      mycelium-backend:
+        condition: service_healthy
+      matrix-synapse:
+        condition: service_healthy
+    environment:
+      OPENCLAW_ROLE: hub
+      MATRIX_HOMESERVER: http://matrix-synapse:8008
+      MYCELIUM_BACKEND_URL: http://mycelium-backend:8000
+      MATRIX_SHARED_SECRET: e2e-shared-secret
+      TOKEN_FILE: /shared/matrix-tokens.json
+      LLM_MODEL: "${LLM_MODEL:-}"
+      LLM_API_KEY: "${LLM_API_KEY:-}"
+      LLM_BASE_URL: "${LLM_BASE_URL:-}"
+    volumes:
+      - e2e-shared:/shared:ro
+    ports:
+      - "${E2E_OPENCLAW_PORT:-3100}:3100"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3100/health 2>/dev/null || pgrep -f 'openclaw' > /dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 45s
+    networks:
+      - mycelium-e2e
+
   # ── pyATS Runner ──────────────────────────────────────────────────────
   #
   # Runs easypy jobs inside Linux (avoids macOS fork-safety crashes).
