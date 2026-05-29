@@ -19,12 +19,22 @@ log = logging.getLogger("mycelium.daemon")
 
 
 def _setup_logging(foreground: bool) -> None:
-    handlers: list[logging.Handler] = [logging.StreamHandler()]
-    if not foreground:
+    if foreground:
+        handlers: list[logging.Handler] = [logging.StreamHandler()]
+    else:
+        # Under systemd/launchd the unit file already routes stdout+stderr to
+        # `daemon_log_path()` via `StandardOutput=append:` /
+        # `StandardOutPath`. If we *also* attach a Python ``FileHandler`` for
+        # the same path every record lands in the file twice — once via the
+        # supervisor's stdout capture (the StreamHandler) and once via the
+        # FileHandler. Pick exactly one sink: write through the FileHandler
+        # and let the supervisor's stdout/stderr append be a no-op. If the
+        # file can't be opened (e.g. permission denied) we fall back to
+        # stderr so the operator still sees the failure.
         try:
-            handlers.append(logging.FileHandler(daemon_log_path()))
+            handlers = [logging.FileHandler(daemon_log_path())]
         except OSError:
-            pass
+            handlers = [logging.StreamHandler()]
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
