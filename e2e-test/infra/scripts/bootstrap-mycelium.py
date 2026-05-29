@@ -105,8 +105,8 @@ def get_mas_id(workspace_id):
             if exc.code == 409:
                 print("  MAS already exists — re-listing")
                 status2, data2 = _get(f"{CFN_MGMT_URL}/api/workspaces/{enc}/multi-agentic-systems")
-                if status2 == 200 and isinstance(data2, dict):
-                    items2 = data2.get("systems", data2.get("items", []))
+                if status2 == 200 and data2 is not None:
+                    items2 = data2 if isinstance(data2, list) else data2.get("systems", data2.get("items", []))
                     if items2:
                         return items2[0].get("id") or items2[0].get("mas_id")
                 return None
