@@ -451,7 +451,7 @@ class DemoScriptNegotiation(aetest.Testcase):
                 step.failed(f"negotiate respond failed: {r.error_message}")
 
         with steps.start("Query negotiation state") as step:
-            r = cli.negotiate_query(test_room)
+            r = cli.negotiate_query(test_room, "Release planning for v2.0")
             if not r.ok:
                 step.failed(f"negotiate query failed: {r.error_message}")
 

@@ -136,8 +136,8 @@ class MyceliumCLI:
         return self.run("negotiate", "respond", action,
                         "--room", room, "--handle", handle, timeout=60)
 
-    def negotiate_query(self, room: str) -> CLIResult:
-        return self.run("negotiate", "query", "--room", room, timeout=30)
+    def negotiate_query(self, room: str, text: str = "status") -> CLIResult:
+        return self.run("negotiate", "query", text, "--room", room, timeout=30)
 
     # ── Synthesis / Catchup ───────────────────────────────────────────────
 
