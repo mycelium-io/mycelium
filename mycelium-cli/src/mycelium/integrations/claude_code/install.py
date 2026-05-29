@@ -121,13 +121,14 @@ def _install_claude_code(verbose: bool = False) -> None:
     _register_claude_code_hooks(claude_dir, verbose=verbose)
 
 
-# Maps hook script name → Claude Code hook event name. The knowledge-extract
-# python script is NOT registered directly: it's invoked by the stop /
-# session-end shell hooks which forward stdin to it.
-_CLAUDE_CODE_HOOK_EVENTS: list[tuple[str, str]] = [
-    ("mycelium-stop.sh", "Stop"),
-    ("mycelium-session-end.sh", "SessionEnd"),
-]
+# Maps hook script name → Claude Code hook event name. Must stay aligned
+# with ``_CLAUDE_CODE_HOOKS`` above: registering a hook in settings.json
+# without a matching script file results in Claude Code aborting with
+# ``SessionEnd hook ... not found`` on every spawn — which is exactly what
+# trips up cold-spawned agents the moment they try to honour an autonomous
+# coordination_tick. Currently the live hook list is empty, so this list
+# is empty too.
+_CLAUDE_CODE_HOOK_EVENTS: list[tuple[str, str]] = []
 
 
 def _register_claude_code_hooks(claude_dir: Path, verbose: bool = False) -> None:

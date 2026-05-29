@@ -30,6 +30,22 @@ log = logging.getLogger("mycelium.daemon")
 
 _DEPTH_WINDOW_S = 60.0
 
+# CognitiveEngine posts coordination_tick / coordination_consensus into
+# session sub-rooms (``r:session:abc``), not parent rooms — and the live
+# Postgres NOTIFY for those events fires only on the sub-room channel. A
+# daemon subscribed to the parent room therefore never sees them via SSE.
+# Mirroring the openclaw plugin (``index.ts``), we periodically poll the
+# coordination-sessions endpoint and fan out an SSE listener for each active
+# session. The poll cadence is intentionally aggressive so a fresh session
+# starts dispatching ticks within a single round trip; the shape is small
+# (id + display_name + state) so it's cheap.
+_SESSION_POLL_INTERVAL_S = 5.0
+_SESSION_POLL_LIMIT = 200
+# Sessions in these states are alive; we keep an SSE subscription up. Any
+# other state is terminal-or-not-yet-started — drop the subscription if we
+# had one so we don't pin connections on completed negotiations.
+_SESSION_LIVE_STATES = frozenset({"waiting", "negotiating"})
+
 # The backend SSE endpoint emits a `: keep-alive` comment every ~15s when a
 # room is idle (see fastapi-backend/app/routes/stream.py). So a healthy
 # stream is never silent longer than that. Bounding the read timeout at ~3×
@@ -47,6 +63,12 @@ _SSE_CONNECT_TIMEOUT_S = 10.0
 # this set goes through to claude -p as a normal prompt.
 _CONTROL_ABORT = {"abort", "cancel", "stop"}
 _CONTROL_STATUS = {"status"}
+
+# CognitiveEngine is the trusted system sender for coordination_tick /
+# coordination_consensus messages. We attribute autonomous spawns to it so
+# logs and depth-buckets distinguish CFN-driven dispatches from agent-driven
+# @-mentions.
+_CFN_SENDER = "CognitiveEngine"
 
 
 def _extract_body(content: str, handle: str) -> str:
@@ -307,6 +329,232 @@ async def _post_reply(
 # ── Per-message dispatch ─────────────────────────────────────────────────────
 
 
+# CognitiveEngine emits ``coordination_tick`` and ``coordination_consensus``
+# messages addressed to specific participants in a session sub-room. The
+# openclaw plugin handles these via ``routeTick`` / ``routeConsensus`` in
+# ``integrations/openclaw/.../channel/route.ts``; cold-spawn families need the
+# equivalent so cursor / claude_code agents autonomously invoke
+# ``mycelium negotiate respond accept`` etc. instead of waiting for an
+# operator-driven accept loop. The two helpers below port
+# ``formatTickInstruction`` and ``formatConsensusSummary`` faithfully so the
+# prompt the agent sees is identical regardless of family.
+
+
+def _format_tick_instruction(
+    tick_data: dict[str, Any],
+    room_name: str,
+    target_handle: str,
+) -> str:
+    """Render a ``coordination_tick`` payload as a self-contained agent prompt.
+
+    Mirrors ``formatTickInstruction`` in the openclaw plugin (see
+    ``route.ts``). Surfaces the round header, current offer, valid keys (when
+    counter-proposing), shared context files, the parent-room plan tasks, and
+    the exact ``mycelium negotiate ...`` commands the agent should invoke.
+    Walking away with no agreement is explicitly named as a legitimate
+    outcome so an agent with hard constraints doesn't feel pressured to
+    accept.
+    """
+    error_kind = tick_data.get("error") if isinstance(tick_data.get("error"), str) else None
+    if error_kind:
+        return _format_error_tick(tick_data, room_name, target_handle)
+
+    payload_raw = tick_data.get("payload")
+    payload: dict[str, Any] = payload_raw if isinstance(payload_raw, dict) else tick_data
+    if not isinstance(payload, dict):
+        payload = {}
+
+    action = payload.get("action") or "respond"
+    can_counter = payload.get("can_counter_offer") is True
+    current_offer_raw = payload.get("current_offer")
+    current_offer: dict[str, Any] = current_offer_raw if isinstance(current_offer_raw, dict) else {}
+    round_no = payload.get("round", "?")
+    n_steps_total = payload.get("n_steps_total")
+    your_last_action = payload.get("your_last_action")
+    prior_outcome = payload.get("prior_round_outcome")
+
+    offer_keys = list(current_offer.keys())
+    offer_summary = "\n".join(f"  {k}: {v}" for k, v in current_offer.items())
+
+    if isinstance(n_steps_total, int) and n_steps_total > 0:
+        round_header = f"[CognitiveEngine — Round {round_no} of {n_steps_total}]"
+    else:
+        round_header = f"[CognitiveEngine — Round {round_no}]"
+
+    context_lines: list[str] = []
+    if prior_outcome and prior_outcome != "first_round":
+        if isinstance(prior_outcome, str) and prior_outcome.startswith("rejected_by_"):
+            who = prior_outcome.removeprefix("rejected_by_")
+            context_lines.append(f"Last round: {who} rejected the standing offer.")
+        elif prior_outcome == "proposer_countered":
+            context_lines.append(
+                "Last round: the designated proposer countered with a new offer (shown below)."
+            )
+        elif prior_outcome == "agreed":
+            context_lines.append("Last round: all agents accepted.")
+        else:
+            context_lines.append(f"Last round: {str(prior_outcome).replace('_', ' ')}.")
+    if your_last_action:
+        context_lines.append(f"Your last action: {your_last_action}.")
+
+    shared = payload.get("shared_context_files")
+    context_files_block: list[str] = []
+    if isinstance(shared, list) and shared:
+        context_files_block.append("Shared context files (opt-in by participants):")
+        for cf in shared:
+            if not isinstance(cf, dict):
+                continue
+            path = cf.get("path") or "(unknown)"
+            sharer = cf.get("shared_by") or "?"
+            content = cf.get("content") or ""
+            context_files_block.append(f"--- {path} (shared by {sharer}) ---")
+            context_files_block.append(content)
+            context_files_block.append("--- end ---")
+
+    plan_open_tasks = payload.get("plan_open_tasks")
+    plan_block: list[str] = []
+    if isinstance(plan_open_tasks, str) and plan_open_tasks:
+        plan_block.append(plan_open_tasks)
+
+    valid_keys_line = (
+        "Valid offer keys (use exactly these in your counter): "
+        + ", ".join(f'"{k}"' for k in offer_keys)
+        if can_counter and offer_keys
+        else ""
+    )
+
+    lines: list[str] = [
+        round_header,
+        f"You are in a structured negotiation in room {room_name}.",
+        f"Action required: {action}",
+        "You CAN propose a counter-offer." if can_counter else "You can only accept or reject.",
+    ]
+    if context_lines:
+        lines.append("")
+        lines.extend(context_lines)
+    if context_files_block:
+        lines.append("")
+        lines.extend(context_files_block)
+    if plan_block:
+        lines.append("")
+        lines.extend(plan_block)
+    lines.append("")
+    lines.append("Current offer on the table:")
+    lines.append(offer_summary)
+    lines.append("")
+    if valid_keys_line:
+        lines.append(valid_keys_line)
+    if can_counter:
+        lines.append(
+            "To counter-propose, run: mycelium negotiate propose ISSUE=VALUE ISSUE=VALUE ... "
+            f"--room {room_name} --handle {target_handle}"
+        )
+    lines.append(
+        f"To accept: mycelium negotiate respond accept --room {room_name} --handle {target_handle}"
+    )
+    lines.append(
+        f"To reject: mycelium negotiate respond reject --room {room_name} --handle {target_handle}"
+    )
+    lines.append("")
+    lines.append(
+        "Explain your reasoning before running the command. Walking away with no agreement is "
+        "a legitimate outcome — keep rejecting until the session ends if your hard constraints "
+        "can't be met."
+    )
+    return "\n".join(lines)
+
+
+def _format_error_tick(
+    tick_data: dict[str, Any],
+    room_name: str,
+    target_handle: str,
+) -> str:
+    """Render an error-shaped tick (e.g. ``counter_offer_invalid_keys``).
+
+    The backend posts these as ``coordination_tick`` messages with top-level
+    ``error`` / ``instruction`` / ``valid_keys`` / ``bad_keys`` fields. The
+    agent needs all of it (especially ``valid_keys``) to recover, so we
+    surface it explicitly with a concrete recovery command.
+    """
+    error_kind = str(tick_data.get("error") or "unknown_error")
+    instruction = str(tick_data.get("instruction") or "")
+    valid_keys_raw = tick_data.get("valid_keys")
+    valid_keys: list[Any] = valid_keys_raw if isinstance(valid_keys_raw, list) else []
+    bad_keys_raw = tick_data.get("bad_keys")
+    bad_keys: list[Any] = bad_keys_raw if isinstance(bad_keys_raw, list) else []
+
+    lines: list[str] = [
+        f"[CognitiveEngine — error: {error_kind}]",
+        f"Room: {room_name}",
+    ]
+    if instruction:
+        lines.append("")
+        lines.append(instruction)
+    if bad_keys:
+        lines.append("")
+        lines.append("Rejected keys: " + ", ".join(f'"{k}"' for k in bad_keys))
+    if valid_keys:
+        lines.append("")
+        lines.append("Valid keys (use exactly these): " + ", ".join(f'"{k}"' for k in valid_keys))
+    if error_kind == "counter_offer_invalid_keys" and valid_keys:
+        example = " ".join(f'"{k}"=VALUE' for k in valid_keys)
+        lines.append("")
+        lines.append(
+            f"Recovery: mycelium negotiate propose {example} "
+            f"--room {room_name} --handle {target_handle}"
+        )
+    elif error_kind == "counter_offer_not_your_turn":
+        lines.append("")
+        lines.append(
+            f"Recovery: mycelium negotiate respond accept "
+            f"--room {room_name} --handle {target_handle}"
+        )
+        lines.append(
+            f"      or: mycelium negotiate respond reject "
+            f"--room {room_name} --handle {target_handle}"
+        )
+    return "\n".join(lines)
+
+
+def _format_consensus_summary(consensus_data: dict[str, Any]) -> str:
+    """Render a ``coordination_consensus`` payload as an agent prompt.
+
+    Mirrors ``formatConsensusSummary`` in the openclaw plugin. On success,
+    surfaces the plan, per-agent assignments, and the ``plan_file`` pointer
+    so the agent can flow straight into doing the work. On a broken
+    negotiation, reports the failure plainly with the available context.
+    """
+    plan = consensus_data.get("plan") or "No plan details"
+    assignments_raw = consensus_data.get("assignments")
+    assignments: dict[str, Any] = assignments_raw if isinstance(assignments_raw, dict) else {}
+    broken = consensus_data.get("broken") is True
+    plan_file_raw = consensus_data.get("plan_file")
+    plan_file = plan_file_raw if isinstance(plan_file_raw, str) else ""
+
+    if broken:
+        return f"[CognitiveEngine — Negotiation FAILED]\n{plan}"
+
+    plan_text = plan if isinstance(plan, str) else json.dumps(plan, indent=2)
+    lines: list[str] = [
+        "[CognitiveEngine — Consensus Reached!]",
+        "",
+        plan_text,
+        "",
+        "Assignments:",
+    ]
+    lines.extend(f"  {agent}: {task}" for agent, task in assignments.items())
+    if plan_file:
+        lines.extend(
+            [
+                "",
+                f"The consensus is now the room's shared plan (`{plan_file}`).",
+                "Run `mycelium plan tasks` to see the checklist, work your tasks, and",
+                "tick them off with `mycelium plan task done <id>`.",
+            ]
+        )
+    return "\n".join(lines)
+
+
 async def on_message(
     *,
     config: MyceliumConfig,
@@ -321,6 +569,36 @@ async def on_message(
         if msg_id in state.seen_message_ids:
             return
         state.seen_message_ids.append(msg_id)
+
+    message_type = str(msg.get("message_type") or "broadcast")
+    if message_type == "coordination_tick":
+        await _handle_tick(
+            config=config,
+            daemon_cfg=daemon_cfg,
+            state=state,
+            room_name=room_name,
+            msg=msg,
+        )
+        return
+    if message_type == "coordination_consensus":
+        await _handle_consensus(
+            config=config,
+            daemon_cfg=daemon_cfg,
+            state=state,
+            room_name=room_name,
+            msg=msg,
+        )
+        return
+    if message_type in {"coordination_join", "coordination_start"}:
+        # Discover session sub-rooms — ticks live there, not in the parent
+        # room. Mirrors the openclaw plugin's ``subscribe-session`` action.
+        await _handle_join(
+            config=config,
+            daemon_cfg=daemon_cfg,
+            state=state,
+            msg=msg,
+        )
+        return
 
     content = str(msg.get("content") or "")
     sender_handle = str(msg.get("sender_handle") or "")
@@ -435,6 +713,242 @@ async def on_message(
 
 
 # ── Control verbs ────────────────────────────────────────────────────────────
+
+
+async def _handle_tick(
+    *,
+    config: MyceliumConfig,
+    daemon_cfg: DaemonConfig,
+    state: DaemonState,
+    room_name: str,
+    msg: dict[str, Any],
+) -> None:
+    """Cold-spawn the addressed participant in response to a CFN tick.
+
+    The CognitiveEngine targets one agent per tick via
+    ``payload.participant_id``. We mirror the openclaw plugin's ``routeTick``:
+    parse the tick JSON, format a complete instruction (round / current
+    offer / valid keys / accept-or-reject CLI commands), and dispatch the
+    owned handle through the same ``_dispatch_one`` path as a normal
+    @-mention so the agent autonomously runs ``mycelium negotiate respond``.
+    Without this branch every cold-spawn family would fall back to
+    operator-driven accept loops, which is the gap that surfaced in the
+    cursor-e2e Phase 5 walkthrough.
+    """
+    raw = str(msg.get("content") or "")
+    if not raw:
+        return
+    try:
+        tick_data = json.loads(raw)
+    except json.JSONDecodeError:
+        log.warning("coordination_tick in %s: unparseable JSON content", room_name)
+        return
+    if not isinstance(tick_data, dict):
+        return
+
+    payload = tick_data.get("payload") if isinstance(tick_data.get("payload"), dict) else tick_data
+    target_handle = payload.get("participant_id") if isinstance(payload, dict) else None
+    if not isinstance(target_handle, str) or not target_handle:
+        log.debug("coordination_tick in %s: missing participant_id", room_name)
+        return
+
+    if target_handle not in daemon_cfg.handles:
+        # Sibling daemons share the SSE stream — only the owning daemon
+        # spawns. Without this guard, two daemons would both cold-spawn the
+        # same handle and race on the workspace.
+        log.debug(
+            "skip tick → @%s in %s — not owned by this daemon",
+            target_handle,
+            room_name,
+        )
+        return
+
+    # Ticks always arrive in a session sub-room (``parent:session:<id>``)
+    # because that's the only channel CognitiveEngine NOTIFY's on. Manifests
+    # are mirrored under the *parent* room, so derive that for the lookup —
+    # otherwise every tick lands as "no manifest in local mirror" even
+    # though the agent is registered correctly.
+    parent_room = room_name.split(":session:", 1)[0] if ":session:" in room_name else room_name
+    manifest = load_manifest(parent_room, target_handle)
+    if manifest is None:
+        log.warning(
+            "coordination_tick @%s in %s: no manifest in local mirror (parent=%s) — skipping",
+            target_handle,
+            room_name,
+            parent_room,
+        )
+        return
+
+    try:
+        integration = get_integration(manifest.adapter)
+    except ValueError:
+        log.warning(
+            "coordination_tick @%s: unknown adapter %r — skipping",
+            target_handle,
+            manifest.adapter,
+        )
+        return
+    if integration.lifecycle != "cold_spawn":
+        # ``long_lived_gateway`` families (openclaw) handle ticks in their
+        # own runtime; cold-spawn families are the daemon's responsibility.
+        log.debug(
+            "skip tick → @%s — adapter=%s lifecycle=%s",
+            target_handle,
+            manifest.adapter,
+            integration.lifecycle,
+        )
+        return
+
+    if not gate_budget(state, manifest):
+        log.warning("denied tick → @%s (budget exceeded)", target_handle)
+        return
+    # Ticks are server-driven, not chained by another agent's reply, so the
+    # depth cap doesn't apply here. ``allow_from`` is also bypassed: the
+    # CognitiveEngine is the trusted protocol partner, not a peer agent.
+
+    instruction = _format_tick_instruction(tick_data, room_name, target_handle)
+    log.info(
+        "coordination_tick @%s in %s — round=%s action=%s",
+        target_handle,
+        room_name,
+        (tick_data.get("payload") or {}).get("round")
+        if isinstance(tick_data.get("payload"), dict)
+        else tick_data.get("round"),
+        (tick_data.get("payload") or {}).get("action")
+        if isinstance(tick_data.get("payload"), dict)
+        else tick_data.get("action"),
+    )
+    asyncio.create_task(
+        _dispatch_one(
+            config=config,
+            daemon_cfg=daemon_cfg,
+            state=state,
+            room_name=room_name,
+            manifest=manifest,
+            sender_handle=_CFN_SENDER,
+            prompt=instruction,
+        )
+    )
+
+
+async def _handle_consensus(
+    *,
+    config: MyceliumConfig,
+    daemon_cfg: DaemonConfig,
+    state: DaemonState,
+    room_name: str,
+    msg: dict[str, Any],
+) -> None:
+    """Cold-spawn every owned handle in *room_name* with the consensus summary.
+
+    Mirrors ``routeConsensus`` in the openclaw plugin: every agent that
+    participated in the negotiation (or could have) sees the final plan and
+    assignments, so the negotiation flows straight into doing the work
+    rather than a silent ``type=consensus`` event the agent never observes.
+    """
+    raw = str(msg.get("content") or "")
+    if not raw:
+        return
+    try:
+        consensus_data = json.loads(raw)
+    except json.JSONDecodeError:
+        log.warning("coordination_consensus in %s: unparseable JSON content", room_name)
+        return
+    if not isinstance(consensus_data, dict):
+        return
+
+    summary = _format_consensus_summary(consensus_data)
+    # Ticks/consensus arrive in the session sub-room; agent manifests live
+    # under the parent room. Look up handles + manifests there, but keep
+    # ``room_name`` (the sub-room) for the spawn so the agent's reply lands
+    # back in the session, not the parent room.
+    parent_room = room_name.split(":session:", 1)[0] if ":session:" in room_name else room_name
+    handles = list_agent_handles(parent_room)
+    for handle in handles:
+        if handle not in daemon_cfg.handles:
+            continue
+        manifest = load_manifest(parent_room, handle)
+        if manifest is None:
+            continue
+        try:
+            integration = get_integration(manifest.adapter)
+        except ValueError:
+            continue
+        if integration.lifecycle != "cold_spawn":
+            continue
+        if not gate_budget(state, manifest):
+            log.warning("denied consensus → @%s (budget exceeded)", handle)
+            continue
+        log.info("coordination_consensus → @%s in %s", handle, room_name)
+        asyncio.create_task(
+            _dispatch_one(
+                config=config,
+                daemon_cfg=daemon_cfg,
+                state=state,
+                room_name=room_name,
+                manifest=manifest,
+                sender_handle=_CFN_SENDER,
+                prompt=summary,
+            )
+        )
+
+
+async def _handle_join(
+    *,
+    config: MyceliumConfig,
+    daemon_cfg: DaemonConfig,
+    state: DaemonState,
+    msg: dict[str, Any],
+) -> None:
+    """Dynamically subscribe to a session sub-room when an agent joins it.
+
+    CognitiveEngine posts ticks/consensus into ``r:session:abc`` sub-rooms,
+    not the parent room. The cc-daemon's static SSE subscriptions (from
+    ``cc-daemon.toml``) only cover parent rooms, so without this branch the
+    daemon would observe the join + nothing else and fall back to the
+    operator-driven accept loop. We mirror the openclaw plugin's
+    ``subscribe-session`` action: discover the sub-room, fire a ``subscribe_room``
+    task, and rely on the idempotent task map so duplicate joins (or
+    coordination_start events) don't create competing listeners.
+
+    Discovery sources, in priority order:
+      - ``msg.room_name`` — already a session sub-room (e.g. when this is a
+        join echo from inside the sub-room itself)
+      - ``content.session`` — the session pointer the engine attaches to
+        every coordination_join broadcast in the parent room
+    """
+    room_name = msg.get("room_name") if isinstance(msg.get("room_name"), str) else ""
+    target: str | None = None
+    if isinstance(room_name, str) and ":session:" in room_name:
+        target = room_name
+    else:
+        raw = str(msg.get("content") or "")
+        if raw:
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                data = None
+            if isinstance(data, dict):
+                session = data.get("session")
+                if isinstance(session, str) and ":session:" in session:
+                    target = session
+
+    if not target:
+        return
+    if target in state.session_room_tasks:
+        return
+
+    log.info("dynamic subscribe → %s (session sub-room)", target)
+    task = asyncio.create_task(
+        subscribe_room(
+            config=config,
+            daemon_cfg=daemon_cfg,
+            state=state,
+            room_name=target,
+        ),
+        name=f"sse[{target}]",
+    )
+    state.session_room_tasks[target] = task
 
 
 async def _handle_abort(
@@ -598,6 +1112,92 @@ async def _dispatch_one(
         except Exception as exc:
             state.record_error("post_reply", exc)
             log.warning("could not post reply for @%s: %s", manifest.handle, exc)
+
+
+# ── Coordination-session discovery (poller) ─────────────────────────────────
+
+
+async def poll_coordination_sessions(
+    *,
+    config: MyceliumConfig,
+    daemon_cfg: DaemonConfig,
+    state: DaemonState,
+) -> None:
+    """Maintain dynamic SSE subscriptions for every active coordination session.
+
+    The CognitiveEngine emits ticks / consensus into the session sub-room's
+    NOTIFY channel, never the parent room's. A daemon subscribed only to
+    parent rooms (``cc-daemon.toml`` lists those) would observe a join in
+    the database but no live updates afterwards. We solve this the same way
+    the openclaw plugin does (``integrations/openclaw/.../channel/index.ts``):
+    poll ``/api/coordination-sessions`` every few seconds, subscribe to any
+    session in a live state, and tear down subscriptions for sessions that
+    have completed (or were deleted). Idempotent on
+    ``state.session_room_tasks`` so duplicate poll ticks don't create
+    competing listeners.
+    """
+    url = f"{config.server.api_url}/api/coordination-sessions"
+    while not state.stopping.is_set():
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(url, params={"limit": _SESSION_POLL_LIMIT})
+                resp.raise_for_status()
+                payload = resp.json()
+        except Exception as exc:
+            # Polling failure is non-fatal — log once and try again next tick.
+            # Without this guard a transient backend hiccup would blow up the
+            # whole daemon's coordination discovery.
+            log.debug("coordination-sessions poll failed: %s", exc)
+            payload = []
+
+        active: set[str] = set()
+        if isinstance(payload, list):
+            for item in payload:
+                if not isinstance(item, dict):
+                    continue
+                display_name = item.get("display_name")
+                session_state = item.get("state")
+                if not isinstance(display_name, str) or ":session:" not in display_name:
+                    continue
+                if session_state not in _SESSION_LIVE_STATES:
+                    continue
+                active.add(display_name)
+                if display_name in state.session_room_tasks:
+                    existing = state.session_room_tasks[display_name]
+                    if not getattr(existing, "done", lambda: False)():
+                        continue
+                    # The previous task finished (peer disconnect, server
+                    # restart, etc.) but the session is still live —
+                    # restart it.
+                log.info("dynamic subscribe → %s (coordination session)", display_name)
+                state.session_room_tasks[display_name] = asyncio.create_task(
+                    subscribe_room(
+                        config=config,
+                        daemon_cfg=daemon_cfg,
+                        state=state,
+                        room_name=display_name,
+                    ),
+                    name=f"sse[{display_name}]",
+                )
+
+        # Drop subscriptions for sessions that left the active set so we
+        # don't pin SSE connections on completed negotiations forever.
+        for tracked in list(state.session_room_tasks.keys()):
+            if tracked in active:
+                continue
+            task = state.session_room_tasks.pop(tracked)
+            log.info("dynamic unsubscribe → %s (session no longer active)", tracked)
+            task.cancel()
+
+        try:
+            await asyncio.wait_for(
+                state.stopping.wait(),
+                timeout=_SESSION_POLL_INTERVAL_S,
+            )
+        except TimeoutError:
+            continue
+        # state.stopping is set — fall through and exit the loop.
+        return
 
 
 # ── SSE subscription per room ────────────────────────────────────────────────

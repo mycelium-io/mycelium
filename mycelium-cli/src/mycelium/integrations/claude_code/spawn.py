@@ -132,6 +132,16 @@ async def spawn_claude(
         prompt,
         "--output-format",
         "json",
+        # Headless prerequisites: cold-spawn means there's no human in front
+        # of the terminal to approve tool calls (the cursor adapter solves
+        # the same problem via ``--trust --force --approve-mcps``). Without
+        # this bypass, autonomous coordination flows — where the daemon
+        # expects the agent to run ``mycelium negotiate respond`` itself in
+        # response to a coordination_tick — stall on Claude's interactive
+        # permission prompt and the negotiation runs out the round budget
+        # waiting for an operator who isn't there.
+        "--permission-mode",
+        "bypassPermissions",
     ]
     # Always inject an identity preamble — cold-started Claude doesn't know
     # it's been routed to as @handle without it.

@@ -11,7 +11,7 @@ import signal
 
 from mycelium.config import MyceliumConfig
 from mycelium.daemon.config import DaemonConfig, daemon_log_path
-from mycelium.daemon.dispatch import subscribe_room
+from mycelium.daemon.dispatch import poll_coordination_sessions, subscribe_room
 from mycelium.daemon.health import start_health_server
 from mycelium.daemon.state import DaemonState
 
@@ -72,13 +72,43 @@ async def _amain(foreground: bool) -> int:
         for room in daemon_cfg.rooms
     ]
 
+    # Coordination ticks/consensus events are NOTIFY'd only on the session
+    # sub-room channel, never on parent rooms. The poller below discovers
+    # active sessions and dynamically attaches an SSE listener to each one
+    # — mirrors the openclaw plugin's ``setInterval`` strategy. Without it
+    # the daemon misses every coordination_tick after a join.
+    session_poller = asyncio.create_task(
+        poll_coordination_sessions(
+            config=mycelium_cfg,
+            daemon_cfg=daemon_cfg,
+            state=state,
+        ),
+        name="coordination-session-poller",
+    )
+
     try:
         await state.stopping.wait()
     finally:
         log.info("shutting down")
+        session_poller.cancel()
+        try:
+            await session_poller
+        except (asyncio.CancelledError, Exception):
+            pass
         for task in sse_tasks:
             task.cancel()
         for task in sse_tasks:
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+        # Cancel dynamic session sub-room subscriptions discovered at runtime
+        # (started by the coordination-session poller). Mirrors the
+        # static-task cleanup above so shutdown is symmetric and the
+        # daemon doesn't leak SSE connections.
+        for task in list(state.session_room_tasks.values()):
+            task.cancel()
+        for task in list(state.session_room_tasks.values()):
             try:
                 await task
             except (asyncio.CancelledError, Exception):

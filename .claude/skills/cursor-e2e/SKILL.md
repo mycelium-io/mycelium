@@ -199,33 +199,78 @@ curl -s "http://localhost:8000/api/rooms/$ROOM/messages?limit=5" | python3 -m js
 
 ## Phase 5: Cross-family negotiation (requires --multi-host)
 
-Confirm a cursor agent and an openclaw (or claude_code) agent on different hosts can negotiate via IOC.
+Confirm a cursor agent and a counterparty (`openclaw` or `claude_code`) on different hosts can negotiate via IOC, **autonomously** — i.e. without an operator running `mycelium negotiate respond` between rounds. The cc-daemon gained this autonomous-coordination path in 2026-05: the daemon polls `/api/coordination-sessions`, dynamically subscribes SSE to each active session sub-room, and on every `coordination_tick` cold-spawns the owned agent which then calls `mycelium negotiate respond …` itself.
 
 ```bash
 ROOM=cursor-ioc-e2e
 
-# Hub: create room, register openclaw agent locally
+# Hub: create room, register the counterparty locally.
+# (claude_code is the recommended counterparty when openclaw isn't running;
+# the autonomous flow is identical for both adapters.)
 mycelium room create $ROOM
-mycelium agent create planner --adapter openclaw --room $ROOM \
-  --description "negotiation counterparty"
+mkdir -p /tmp/claude-hub-ws
+mycelium agent create planner --adapter claude_code \
+  --cwd /tmp/claude-hub-ws --room $ROOM \
+  --description "ship-date-focused negotiation counterparty"
 
-# Spoke: register cursor agent
+# Spoke: register cursor agent (auth must already be in place — cursor-agent
+# stores tokens at ~/.config/cursor/auth.json on the spoke host).
 ssh $SPOKE_HOST mycelium agent create designer --adapter cursor \
   --cwd /tmp/cursor-spoke-ws --room $ROOM \
-  --description "cursor side of the negotiation"
+  --description "design-polish-focused cursor side of the negotiation"
 
-# Trigger negotiation
+# Trigger negotiation (operator's only role: create + join × N).
 mycelium session create -r $ROOM
 mycelium session join --handle planner -m "Optimise for ship date" -r $ROOM
 ssh $SPOKE_HOST mycelium session join --handle designer -m "Optimise for design polish" -r $ROOM
 
-# Drive accept loop until consensus (see general e2e SKILL.md, Phase 3)
-# Expect: type=consensus with assignments populated, no broken=true
+# Watch the autonomous flow play out. Within ~5s of each join the
+# corresponding cc-daemon's poller logs:
+#   "dynamic subscribe → cursor-ioc-e2e:session:<short_id> (coordination session)"
+# Within ~30s of join-window close, ticks arrive in the sub-room and the
+# daemon dispatches:
+#   "coordination_tick @planner — round=1 action=respond"
+#   "dispatch @planner ← CognitiveEngine"
+# Same on the spoke for @designer. Rounds advance every 10–30s as each
+# agent posts a {"action":"accept"} / "reject" / {"offer":{...}}.
+
+# Poll for terminal state. Typical converging session lands in 6–15 rounds
+# (1–4 minutes); the cap is 20 rounds.
+for i in $(seq 1 30); do
+  STATE=$(curl -s "http://localhost:8000/api/coordination-sessions?limit=20" \
+    | python3 -c "import sys,json
+data=json.load(sys.stdin)
+for s in data:
+    if s['parent_room_name']=='$ROOM' and s['state'] in ('complete','failed'):
+        print(s['state']); break
+else: print('negotiating')")
+  echo "[$i] state=$STATE"
+  [ "$STATE" = "complete" ] || [ "$STATE" = "failed" ] && break
+  sleep 15
+done
+
+# Inspect the consensus message
+SHORT=$(curl -s "http://localhost:8000/api/coordination-sessions?limit=20" \
+  | python3 -c "import sys,json
+for s in json.load(sys.stdin):
+    if s['parent_room_name']=='$ROOM' and s['state']=='complete':
+        print(s['short_id']); break")
+curl -s "http://localhost:8000/api/rooms/$ROOM:session:$SHORT/messages?limit=200" \
+  | python3 -c "import sys,json
+for m in json.load(sys.stdin)['messages']:
+    if m['message_type']=='coordination_consensus':
+        print(m['content']); break"
+# Expect: {\"plan\":\"...\",\"assignments\":{...},\"broken\":false}
 ```
 
-**Fail criteria**: same as the general e2e Phase 3 — but additionally:
-- Cursor agent never produces a counter_offer / accept → `cursor-agent` isn't seeing the mycelium rules (workspace assets missing on spoke)
-- Negotiation hangs at "waiting for designer" → spoke daemon dispatch broken; check spoke logs
+**Fail criteria**:
+- No `dynamic subscribe` log on either daemon within 10s of join → cc-daemon didn't reach the poller branch (deployment regression — verify the installed `dispatch.py` contains `poll_coordination_sessions`)
+- `dynamic subscribe` fires but no `dispatch @<handle>` on tick → handle not in this daemon's `cc-daemon.toml.handles` (sibling daemon owns it on a different host); confirm with `mycelium daemon ls`
+- `dispatch` fires but spawn exits 1 with `Credit balance is too low` (claude) → counterparty's API key is unfunded; switch counterparty or top up
+- `dispatch` fires but spawn exits 1 with `SessionEnd hook ... not found` (claude) → stale `~/.claude/settings.json` from an older mycelium-cli; rerun `mycelium adapter add claude-code --reinstall`
+- Cursor agent never produces a counter_offer / accept → `cursor-agent` isn't seeing the mycelium rules (workspace assets missing on spoke); rerun `mycelium agent create designer …` to redrop them
+- `broken: true` in consensus after 20 rounds → opposing personas locked on incompatible positions; an agent-prompt issue, not coordination — re-run with less polarised intent strings or a higher `n_steps` budget on the CFN side
+- `counter_offer_not_your_turn` loops → agent ignored the per-round `allowed_actions` in the tick payload; agent-prompt issue
 
 ## Cleanup
 

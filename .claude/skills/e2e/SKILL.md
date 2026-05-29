@@ -91,45 +91,66 @@ cat ~/.mycelium/rooms/e2e-test-room/decisions/test-db.md
 
 Test the full coordination pipeline: session create → join → tick → respond → consensus.
 
+For cold-spawn families (`cursor`, `claude_code`) the operator no longer needs to drive an accept loop. The cc-daemon polls `/api/coordination-sessions` every 5s, dynamically subscribes to each active session sub-room's SSE stream, and on every `coordination_tick` cold-spawns the owned agent with a formatted instruction. The agent then runs `mycelium negotiate respond accept|reject|counter_offer …` itself. CognitiveEngine drives rounds until consensus or a 20-round timeout. (For `openclaw`, the long-lived gateway plugin handles the same wakeup; see Phase 5.)
+
 ```bash
 # Create session
 mycelium session create -r e2e-test-room
 # Expect: session ID, CFN enabled (if IoC)
 
-# Two agents join
+# Two agents join (these MUST be agents the cc-daemon owns — i.e. they were
+# created via `mycelium agent create` on a host whose daemon subscribes to
+# this room. ``mycelium agent invoke @h ping`` first to confirm dispatch is
+# alive end-to-end.)
 mycelium session join --handle agent-alpha -m "Prioritize performance" -r e2e-test-room
 mycelium session join --handle agent-beta -m "Prioritize developer experience" -r e2e-test-room
 
-# Wait for join timer (~30s) + CFN start
-sleep 40
+# That's it. Wait for the autonomous flow.
+# Expect within ~15s of joins:
+#   tail ~/.mycelium/logs/cc-daemon.log → "dynamic subscribe → e2e-test-room:session:<id>"
+# Expect within join-window + ~30s:
+#   "coordination_tick @agent-alpha — round=1 action=respond"
+#   "dispatch @agent-alpha ← CognitiveEngine"
+# Expect repeatedly per round, until consensus or timeout.
 
-# Check state
-curl -s http://localhost:8000/api/rooms/e2e-test-room | python3 -c "import sys,json; [print(f'{r[\"name\"]}: {r[\"coordination_state\"]}') for r in json.load(sys.stdin)] if isinstance(json.load(open('/dev/stdin')), list) else None" 2>/dev/null
-# Or check session room directly from session create output
+# Poll session state (5–10 min cap typical for converging negotiations)
+SESSION_ID=$(mycelium session ls -r e2e-test-room --json 2>/dev/null \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['id'])" 2>/dev/null)
+curl -s "http://localhost:8000/api/coordination-sessions" \
+  | python3 -c "import sys,json,os
+sid=os.environ.get('SESSION_ID')
+for s in json.load(sys.stdin):
+    if s['id']==sid: print(s['state']); break"
+# Expect terminal value: "complete" (consensus) or "failed" (timeout / broken)
 
-# Await first tick
-mycelium session await --handle agent-alpha -r e2e-test-room
-# Expect: JSON with type=tick, round>=1, action=respond, issue_options present
-
-# Accept loop — repeat until consensus is returned
-# Use `mycelium negotiate respond accept` (NOT `mycelium session respond` — that doesn't exist)
-# Both agents must accept each round before CFN advances
-mycelium negotiate respond accept --room e2e-test-room --handle agent-alpha
-mycelium negotiate respond accept --room e2e-test-room --handle agent-beta
-mycelium session await --handle agent-alpha -r e2e-test-room
-# Repeat above 3 lines until type=consensus
-
-# To propose a counter-offer instead of accepting:
-#   mycelium negotiate propose ISSUE=VALUE ISSUE=VALUE --room e2e-test-room --handle agent-alpha
-
-# Verify consensus
+# Inspect the consensus
+curl -s "http://localhost:8000/api/rooms/e2e-test-room:session:<short_id>/messages?limit=200" \
+  | python3 -c "import sys,json
+for m in json.load(sys.stdin)['messages']:
+    if m['message_type']=='coordination_consensus':
+        print(m['content']); break"
 # Expect: type=consensus, assignments dict populated, broken=false
+```
+
+**Manual override** (operator playing an agent role, e.g. when only one side is daemon-owned, debugging, or simulating a non-mycelium counterparty):
+
+```bash
+# Use these only when the agent at this handle is NOT being dispatched by a
+# cc-daemon — otherwise you'll race the daemon's own respond and may post a
+# duplicate / out-of-turn action.
+mycelium session await --handle agent-alpha -r e2e-test-room
+mycelium negotiate respond accept --room e2e-test-room --handle agent-alpha
+# or:  mycelium negotiate propose ISSUE=VALUE … --room e2e-test-room --handle agent-alpha
+# or:  mycelium negotiate respond reject --room e2e-test-room --handle agent-alpha
 ```
 
 **Fail criteria**:
 - No ticks after 60s → CFN not configured or join timer didn't fire
-- Ticks arrive but state never reaches complete → check `_expand_slim` and CFN `/decide` logs
-- `broken: true` in consensus → CFN returned error status
+- Ticks arrive but no `dispatch @<handle> ← CognitiveEngine` in the daemon log → handle not in `cc-daemon.toml.handles`, or daemon doesn't own it on this host (sibling daemon owns it instead)
+- `dispatch` fires but spawn exits 1 with credit / auth errors → adapter LLM provider not funded or not authed (this is what the autonomous flow exposes that the operator-driven loop used to mask). Top up credits, re-auth, or route through a different provider before retrying.
+- Counter_offer_not_your_turn loops in the room → agent ignored the per-round permission set in the tick payload; an agent-side prompt issue, not coordination
+- `broken: true` in consensus → 20-round budget elapsed without mutual accept → typically opposing personas locked on incompatible positions
+- `_expand_slim` DB session leak → check `pg_stat_activity` for idle-in-transaction
 
 ## Phase 4: Multi-Session (same room)
 
@@ -144,7 +165,9 @@ mycelium session create -r e2e-test-room
 mycelium session join --handle agent-gamma -m "Ship fast" -r e2e-test-room
 mycelium session join --handle agent-delta -m "Ship safe" -r e2e-test-room
 
-# Drive to consensus (same accept loop as Phase 3)
+# Same autonomous flow as Phase 3 — cc-daemon dispatches both agents on
+# every tick. (Use the Phase 3 manual-override block only if you're
+# simulating an agent role yourself.)
 # Expect: consensus reached without stale participant errors
 ```
 
