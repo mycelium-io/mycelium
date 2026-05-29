@@ -276,27 +276,46 @@ jobs:
           fi
 
           echo "Running: pyats run job $JOB_FILE (MYCELIUM_DATAFILE=$MYCELIUM_DATAFILE)"
-          mkdir -p artifacts
+          mkdir -p artifacts/pyats-runinfo artifacts/pyats-archive
 
           uv run pyats run job "$JOB_FILE" \
-            --html-logs artifacts
+            --html-logs artifacts \
+            --runinfo-dir artifacts/pyats-runinfo \
+            --archive-dir artifacts/pyats-archive \
+            --no-archive-subdir
 
       - name: Print pyATS results summary
         if: always()
         run: |
           echo "=== pyATS Results ==="
-          uv run pyats logs list 2>/dev/null | head -20 || true
 
-          # Find the most recent archive directory
-          LATEST=$(ls -td ~/.pyats/archive/*/ 2>/dev/null | head -1)
-          if [ -z "$LATEST" ]; then
-            echo "No pyATS archive found"
+          # Find the runinfo directory (uncompressed run data)
+          RUNINFO=$(ls -td artifacts/pyats-runinfo/*/ 2>/dev/null | head -1)
+          if [ -z "$RUNINFO" ]; then
+            echo "No pyATS runinfo directory found — trying archive ZIP fallback"
+            ZIP=$(ls -t artifacts/pyats-archive/*.zip 2>/dev/null | head -1)
+            if [ -n "$ZIP" ]; then
+              echo "Extracting archive: $ZIP"
+              RUNINFO="artifacts/pyats-runinfo/_extracted"
+              mkdir -p "$RUNINFO"
+              python3 -c "
+          import zipfile, sys
+          with zipfile.ZipFile('$ZIP') as z:
+              z.extractall('$RUNINFO')
+          " 2>/dev/null || unzip -qo "$ZIP" -d "$RUNINFO" 2>/dev/null || true
+            fi
+          fi
+
+          if [ -z "$RUNINFO" ] || [ ! -d "$RUNINFO" ]; then
+            echo "No pyATS archive or runinfo found"
+            echo "Contents of artifacts/:"
+            find artifacts/ -maxdepth 3 -type f 2>/dev/null | head -30 || true
             exit 0
           fi
-          echo "Archive: $LATEST"
+          echo "Runinfo: $RUNINFO"
 
-          # Print the TaskLog (plain text version)
-          for logfile in "$LATEST"/TaskLog.rst "$LATEST"/TaskLog; do
+          # Print the TaskLog
+          for logfile in "$RUNINFO"/TaskLog.rst "$RUNINFO"/TaskLog; do
             if [ -f "$logfile" ]; then
               echo ""
               echo "=== TaskLog ==="
@@ -306,31 +325,36 @@ jobs:
           done
 
           # Print results summary if available
-          if [ -f "$LATEST/results.json" ]; then
+          RESULTS=$(find "$RUNINFO" -name "results.json" -type f 2>/dev/null | head -1)
+          if [ -n "$RESULTS" ]; then
             echo ""
             echo "=== Results JSON ==="
             python3 -c "
           import json, sys
-          with open('$LATEST/results.json') as f:
+          with open('$RESULTS') as f:
               data = json.load(f)
           json.dump(data, sys.stdout, indent=2)
-          " 2>/dev/null || cat "$LATEST/results.json"
+          " 2>/dev/null || cat "$RESULTS"
           fi
 
-      - name: Collect container logs and pyATS archive
+          # List archive contents for debugging
+          echo ""
+          echo "=== Archive contents ==="
+          ls -lhR artifacts/pyats-archive/ 2>/dev/null | head -20 || echo "No archive files"
+
+      - name: Collect container logs
         if: always()
         run: |
-          mkdir -p artifacts/logs artifacts/pyats-archive
+          mkdir -p artifacts/logs
           for svc in e2e-mycelium-db e2e-mycelium-backend e2e-cfn-mgmt e2e-cfn-node e2e-matrix-synapse; do
             docker logs "$svc" > "artifacts/logs/${svc}.log" 2>&1 || true
           done
 
-          # Copy the full pyATS archive into artifacts
-          LATEST=$(ls -td ~/.pyats/archive/*/ 2>/dev/null | head -1)
-          if [ -n "$LATEST" ]; then
-            cp -r "$LATEST" artifacts/pyats-archive/ 2>/dev/null || true
-            echo "Copied pyATS archive: $(du -sh artifacts/pyats-archive/ | cut -f1)"
-          fi
+          echo "=== Artifact summary ==="
+          echo "pyats-archive: $(ls artifacts/pyats-archive/*.zip 2>/dev/null | wc -l) ZIP(s)"
+          echo "pyats-runinfo: $(ls -d artifacts/pyats-runinfo/*/ 2>/dev/null | wc -l) run(s)"
+          echo "container logs: $(ls artifacts/logs/*.log 2>/dev/null | wc -l) file(s)"
+          echo "Total: $(du -sh artifacts/ | cut -f1)"
 
       - name: Upload test results
         if: always()
