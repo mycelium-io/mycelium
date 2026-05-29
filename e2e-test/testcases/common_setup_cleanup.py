@@ -363,7 +363,7 @@ class MyceliumCommonCleanup(aetest.CommonCleanup):
             return
 
         leaked_states = ("negotiating", "waiting", "synthesizing")
-        room_list = rooms if isinstance(rooms, list) else []
+        room_list = rooms if isinstance(rooms, list) else rooms.get("rooms", []) if isinstance(rooms, dict) else []
         reaped = 0
         for room in room_list:
             name = room.get("name", "")

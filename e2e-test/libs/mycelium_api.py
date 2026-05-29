@@ -233,7 +233,7 @@ class MyceliumAPI:
         status, data = self.list_rooms()
         if status != 200:
             return 0
-        rooms = data if isinstance(data, list) else []
+        rooms = data if isinstance(data, list) else data.get("rooms", []) if isinstance(data, dict) else []
         skip = exclude or set()
         deleted = 0
 
