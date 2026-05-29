@@ -169,6 +169,10 @@ jobs:
           if [ -n "$WORKSPACE_ID" ] || [ -n "$MAS_ID" ]; then
             echo "WORKSPACE_ID=$WORKSPACE_ID"
             echo "MAS_ID=$MAS_ID"
+            # Persist to GITHUB_ENV so subsequent steps (e.g. openclaw-hub)
+            # don't cause Compose to recreate the backend with empty values.
+            echo "WORKSPACE_ID=$WORKSPACE_ID" >> "$GITHUB_ENV"
+            echo "MAS_ID=$MAS_ID" >> "$GITHUB_ENV"
             docker compose -f $COMPOSE_FILE stop mycelium-backend
             export WORKSPACE_ID MAS_ID
             docker compose -f $COMPOSE_FILE up -d mycelium-backend
@@ -184,7 +188,7 @@ jobs:
 
       - name: Start OpenClaw gateway
         run: |
-          docker compose -f $COMPOSE_FILE up -d openclaw-hub
+          docker compose -f $COMPOSE_FILE up -d --no-recreate openclaw-hub
           echo "Waiting for OpenClaw hub to start..."
           for i in $(seq 1 90); do
             status=$(docker inspect --format='{{.State.Health.Status}}' e2e-openclaw-hub 2>/dev/null || echo "missing")
