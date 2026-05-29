@@ -84,7 +84,7 @@ def get_mas_id(workspace_id):
     if status != 200:
         print(f"  Could not list MAS: {status}", file=sys.stderr)
         return None
-    items = data if isinstance(data, list) else data.get("items", data.get("multi_agentic_systems", []))
+    items = data if isinstance(data, list) else data.get("systems", data.get("items", []))
     if not items:
         print("  No MAS found — creating default MAS")
         try:
@@ -101,6 +101,11 @@ def get_mas_id(workspace_id):
                 if mas_id:
                     print(f"  Created MAS: {mas_id}")
                     return mas_id
+        except urllib.error.HTTPError as exc:
+            if exc.code == 409:
+                print("  MAS already exists — re-listing")
+                return get_mas_id(workspace_id)
+            print(f"  Failed to create MAS: {exc}", file=sys.stderr)
         except Exception as exc:
             print(f"  Failed to create MAS: {exc}", file=sys.stderr)
         return None

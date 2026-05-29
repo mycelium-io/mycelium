@@ -73,17 +73,29 @@ class CfnMgmtAPI:
         return workspaces[0].get("id") or workspaces[0].get("workspace_id")
 
     def get_primary_mas_id(self, workspace_id: str) -> Optional[str]:
-        """Return the first MAS ID for *workspace_id*, or ``None``."""
+        """Return the first MAS ID for *workspace_id*, or ``None``.
+
+        CFN mgmt returns ``{"systems": [{"id": "..."}]}`` for the MAS list.
+        """
         status, data = self.list_mas(workspace_id)
         if status != 200 or not data:
             return None
-        items = data if isinstance(data, list) else data.get("items", data.get("multi_agentic_systems", []))
+        if isinstance(data, list):
+            items = data
+        elif isinstance(data, dict):
+            items = data.get("systems", data.get("items", []))
+        else:
+            return None
         if not items:
             return None
         return items[0].get("id") or items[0].get("mas_id")
 
     def create_mas(self, workspace_id: str, name: str) -> Optional[str]:
-        """Create a MAS in the given workspace. Returns the new MAS ID or ``None``."""
+        """Create a MAS in the given workspace. Returns the new MAS ID or ``None``.
+
+        On 409 Conflict (MAS already exists), falls back to listing and
+        returning the existing one.
+        """
         enc = urllib.parse.quote(workspace_id, safe="")
         url = f"{self.base_url}/api/workspaces/{enc}/multi-agentic-systems"
         try:
@@ -92,6 +104,12 @@ class CfnMgmtAPI:
             with urllib.request.urlopen(req, timeout=15) as resp:
                 data = json.loads(resp.read().decode())
                 return data.get("id") or data.get("mas_id")
+        except urllib.error.HTTPError as exc:
+            if exc.code == 409:
+                log.info("MAS '%s' already exists — fetching existing ID", name)
+                return self.get_primary_mas_id(workspace_id)
+            log.warning("Failed to create MAS '%s': %s", name, exc)
+            return None
         except Exception as exc:
             log.warning("Failed to create MAS '%s': %s", name, exc)
             return None
