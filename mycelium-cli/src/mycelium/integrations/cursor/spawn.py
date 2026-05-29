@@ -132,7 +132,15 @@ async def spawn_cursor(*, request: SpawnRequest) -> SpawnResult:
     ``spawn_claude``) because the subprocess handle is family-internal.
     The daemon dispatch loop owns the per-handle serial lock; this
     function owns "let an abort verb SIGTERM me mid-flight".
+
+    A wall-clock timeout (``DaemonConfig.spawn_timeout_s``, default 10 min)
+    bounds how long a single invocation may hold the per-handle lock. If
+    exceeded, the process is SIGTERMed (then SIGKILLed after a grace
+    period) and the result reports a timeout. Without this guard, a hung
+    ``cursor-agent`` blocks all future dispatches for that handle
+    indefinitely.
     """
+    from mycelium.daemon.config import DaemonConfig
     from mycelium.daemon.state import RunningProc
 
     binary = request.binary or "cursor-agent"
@@ -219,8 +227,32 @@ async def spawn_cursor(*, request: SpawnRequest) -> SpawnResult:
             sender=request.sender or "",
             room=request.room or "",
         )
+
+    timeout_s = DaemonConfig.load().spawn_timeout_s
+    timed_out = False
     try:
-        stdout_b, stderr_b = await proc.communicate()
+        stdout_b, stderr_b = await asyncio.wait_for(
+            proc.communicate(), timeout=timeout_s
+        )
+    except asyncio.TimeoutError:
+        timed_out = True
+        log.warning(
+            "cursor-agent @%s exceeded spawn timeout (%.0fs) — killing",
+            request.handle,
+            timeout_s,
+        )
+        try:
+            proc.terminate()
+        except ProcessLookupError:
+            pass
+        # Grace period for clean shutdown before SIGKILL.
+        try:
+            stdout_b, stderr_b = await asyncio.wait_for(
+                proc.communicate(), timeout=5.0
+            )
+        except asyncio.TimeoutError:
+            proc.kill()
+            stdout_b, stderr_b = await proc.communicate()
     finally:
         if request.state is not None and request.handle:
             request.state.running.pop(request.handle, None)
@@ -229,6 +261,18 @@ async def spawn_cursor(*, request: SpawnRequest) -> SpawnResult:
     stdout = stdout_b.decode("utf-8", errors="replace").strip()
     stderr = stderr_b.decode("utf-8", errors="replace").strip()
     transcript = stdout + ("\n" + stderr if stderr else "")
+
+    if timed_out:
+        return SpawnResult(
+            ok=False,
+            final_message=(
+                f"daemon error: cursor-agent timed out after {int(timeout_s)}s — "
+                "the invocation was killed. If this recurs, consider splitting the "
+                "task or raising `spawn_timeout_s` in cc-daemon.toml."
+            ),
+            transcript=transcript,
+            duration_s=duration,
+        )
 
     # Negative return code → terminated by signal (SIGTERM from abort verb).
     if proc.returncode is not None and proc.returncode < 0:

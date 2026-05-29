@@ -428,6 +428,11 @@ def _format_tick_instruction(
         f"You are in a structured negotiation in room {room_name}.",
         f"Action required: {action}",
         "You CAN propose a counter-offer." if can_counter else "You can only accept or reject.",
+        "",
+        "IMPORTANT: You MUST respond by running one of the `mycelium negotiate` shell",
+        "commands listed below. Do NOT post messages to the room directly, do NOT",
+        "compose JSON payloads yourself, and do NOT use any other tool to respond.",
+        "The ONLY valid way to act is to execute the exact shell command.",
     ]
     if context_lines:
         lines.append("")
@@ -460,6 +465,12 @@ def _format_tick_instruction(
         "Explain your reasoning before running the command. Walking away with no agreement is "
         "a legitimate outcome — keep rejecting until the session ends if your hard constraints "
         "can't be met."
+    )
+    lines.append("")
+    lines.append(
+        "REMINDER: Run EXACTLY ONE of the shell commands above. Do not post messages, "
+        "send JSON, or use any other mechanism. Your ONLY output that matters is the "
+        "`mycelium negotiate ...` command execution."
     )
     return "\n".join(lines)
 

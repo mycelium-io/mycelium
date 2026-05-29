@@ -81,6 +81,16 @@ class DaemonConfig(BaseModel):
             "prerequisite — see the cursor adapter docs."
         ),
     )
+    spawn_timeout_s: float = Field(
+        default=600.0,
+        ge=30.0,
+        description=(
+            "Maximum wall-clock seconds a single cold-spawn invocation may run "
+            "before the daemon SIGTERMs it. Guards against stuck processes "
+            "blocking all future dispatches for a handle (the per-handle serial "
+            "lock is held for the duration of a spawn). Default: 10 minutes."
+        ),
+    )
 
     @classmethod
     def load(cls) -> DaemonConfig:

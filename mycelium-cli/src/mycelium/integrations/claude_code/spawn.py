@@ -187,8 +187,33 @@ async def spawn_claude(
             sender=sender or "",
             room=room or "",
         )
+
+    from mycelium.daemon.config import DaemonConfig
+
+    timeout_s = DaemonConfig.load().spawn_timeout_s
+    timed_out = False
     try:
-        stdout_b, stderr_b = await proc.communicate()
+        stdout_b, stderr_b = await asyncio.wait_for(
+            proc.communicate(), timeout=timeout_s
+        )
+    except asyncio.TimeoutError:
+        timed_out = True
+        log.warning(
+            "claude @%s exceeded spawn timeout (%.0fs) — killing",
+            handle,
+            timeout_s,
+        )
+        try:
+            proc.terminate()
+        except ProcessLookupError:
+            pass
+        try:
+            stdout_b, stderr_b = await asyncio.wait_for(
+                proc.communicate(), timeout=5.0
+            )
+        except asyncio.TimeoutError:
+            proc.kill()
+            stdout_b, stderr_b = await proc.communicate()
     finally:
         if state is not None and handle is not None:
             state.running.pop(handle, None)
@@ -196,6 +221,19 @@ async def spawn_claude(
     duration = time.monotonic() - started
     stdout = stdout_b.decode("utf-8", errors="replace").strip()
     stderr = stderr_b.decode("utf-8", errors="replace").strip()
+
+    if timed_out:
+        return {
+            "ok": False,
+            "final_message": (
+                f"daemon error: claude timed out after {int(timeout_s)}s — "
+                "the invocation was killed. If this recurs, consider splitting the "
+                "task or raising `spawn_timeout_s` in cc-daemon.toml."
+            ),
+            "transcript": stdout + ("\n" + stderr if stderr else ""),
+            "cost_usd": 0.0,
+            "duration_s": duration,
+        }
 
     if proc.returncode is not None and proc.returncode < 0:
         # Negative return code → terminated by signal (SIGTERM from abort verb).
