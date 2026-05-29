@@ -301,14 +301,17 @@ class CfnLlmCounters(aetest.Testcase):
                 step.failed(f"Post observability returned status={st_after}")
             after_total = _extract_llm_token_total(obs_after)
             log.info("LLM token total after: %s (before: %s)", after_total, before_total)
-            if before_total is not None and after_total is not None:
-                if after_total <= before_total:
-                    step.failed(
-                        f"LLM token counters did not increase: "
-                        f"before={before_total}, after={after_total}"
-                    )
-            elif after_total is None:
-                log.warning("Could not extract LLM token totals from observability response")
+            if after_total is None:
+                step.failed(
+                    "Could not extract LLM token totals from "
+                    "observability response (before=%s, after=%s)"
+                    % (before_total, after_total)
+                )
+            if before_total is not None and after_total <= before_total:
+                step.failed(
+                    f"LLM token counters did not increase: "
+                    f"before={before_total}, after={after_total}"
+                )
 
 
 def _extract_llm_token_total(obs: Any) -> int | None:
