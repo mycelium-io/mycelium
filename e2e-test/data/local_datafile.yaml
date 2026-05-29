@@ -1,0 +1,18 @@
+---
+# Local development datafile — all services on localhost.
+extends: base_datafile.yaml
+
+parameters:
+  topology:
+    backend:
+      base_url: "http://localhost:8000"
+    cfn_mgmt:
+      base_url: "http://localhost:9000"
+    cfn_node_svc:
+      base_url: "http://localhost:9002"
+    matrix:
+      base_url: "http://localhost:8008"
+
+  timeouts:
+    negotiation_wait: 300
+    agent_idle_wait: 10

@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "matrix": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory", "tools/matrix-mcp-server",
+        "python", "-m", "matrix_mcp.server"
+      ],
+      "env": {
+        "MATRIX_HOMESERVER": "http://localhost:8008",
+        "MATRIX_ACCESS_TOKEN": ""
+      }
+    }
+  }
+}

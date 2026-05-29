@@ -1,0 +1,42 @@
+---
+# CI datafile — container-aware topology for GitHub Actions or local compose.
+#
+# All services run on localhost (host-mapped ports from compose.e2e.yaml).
+# OpenClaw spokes are containers reachable via Docker DNS names.
+extends: base_datafile.yaml
+
+parameters:
+  topology:
+    backend:
+      base_url: "http://localhost:8000"
+    cfn_mgmt:
+      base_url: "http://localhost:9000"
+    cfn_node_svc:
+      base_url: "http://localhost:9002"
+    matrix:
+      base_url: "http://localhost:8008"
+      shared_secret: "e2e-shared-secret"
+
+  remote_hosts:
+    spoke1:
+      ip: "openclaw-spoke1"
+      transport: docker
+      container: e2e-openclaw-spoke1
+      agents:
+        claire-agent:
+          display_name: "Claire (spoke1)"
+    spoke2:
+      ip: "openclaw-spoke2"
+      transport: docker
+      container: e2e-openclaw-spoke2
+      agents:
+        oclw5-agent:
+          display_name: "OCLW5 Agent (spoke2)"
+
+  timeouts:
+    negotiation_wait: 900
+    agent_idle_wait: 30
+    session_spawn_wait: 90
+
+  # Abort early in CI to save runner minutes and LLM credits
+  max_failures: 3

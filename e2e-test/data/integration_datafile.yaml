@@ -1,0 +1,36 @@
+---
+# Integration adapter tests — Claude Code skill/daemon + Cursor stubs.
+#
+# Only the parameters and testcases relevant to tests 70-75.
+# Does not extend the full base_datafile to avoid section mismatches.
+
+parameters:
+
+  topology:
+    backend:
+      base_url: "%ENV{MYCELIUM_BACKEND_URL, http://localhost:8000}"
+      api_path: "/api"
+      health_path: "/health"
+
+  timeouts:
+    http_default: 10
+    cli_default: 30
+
+testcases:
+  ClaudeCodeSkillInstall:
+    uid: "mycelium:e2e:integration:070"
+
+  ClaudeCodeAdapterStatus:
+    uid: "mycelium:e2e:integration:071"
+
+  ClaudeCodeAdapterRemove:
+    uid: "mycelium:e2e:integration:072"
+
+  ClaudeCodeDaemonHealth:
+    uid: "mycelium:e2e:integration:073"
+
+  ClaudeCodeAgentLifecycle:
+    uid: "mycelium:e2e:integration:074"
+
+  CursorAdapterPlanned:
+    uid: "mycelium:e2e:integration:075"
