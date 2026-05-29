@@ -111,6 +111,10 @@ class _DistributedBase(aetest.Testcase):
                 step.failed(f"Consensus not reached within {timeout}s")
             state = result.get("coordination_state") if isinstance(result, dict) else None
             log.info("Distributed %s: state=%s", self.__class__.__name__, state)
+            if state in ("failed", "aborted"):
+                step.failed(f"Negotiation ended with state={state}")
+            if state != "complete":
+                step.failed(f"Unexpected coordination state: {state}")
 
     @aetest.cleanup
     def cleanup(self, api, room_name):

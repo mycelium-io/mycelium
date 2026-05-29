@@ -216,8 +216,14 @@ class IocNegotiationPath(aetest.Testcase):
 
         with steps.start("Wait for negotiation outcome") as step:
             result = api.wait_for_consensus(test_room, timeout=timeout)
+            if not result:
+                step.failed(f"Consensus not reached within {timeout}s")
             state = result.get("coordination_state") if isinstance(result, dict) else None
             log.info("CFN negotiation path: state=%s", state)
+            if state in ("failed", "aborted"):
+                step.failed(f"Negotiation ended with state={state}")
+            if state != "complete":
+                step.failed(f"Unexpected coordination state: {state}")
 
     @aetest.cleanup
     def cleanup(self, api, room_name):
