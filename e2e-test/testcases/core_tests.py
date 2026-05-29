@@ -209,12 +209,12 @@ class SessionJoinIdempotency(aetest.Testcase):
 
         try:
             with steps.start("First join") as step:
-                st, _ = api.spawn_session(test_room, {"handle": "test-agent", "position": "test"})
+                st, _ = api.spawn_session(test_room, {"handle": "agent-alpha", "position": "test"})
                 if st not in (200, 201):
                     step.failed(f"First join failed: status={st}")
 
             with steps.start("Duplicate join") as step:
-                st, _ = api.spawn_session(test_room, {"handle": "test-agent", "position": "test"})
+                st, _ = api.spawn_session(test_room, {"handle": "agent-alpha", "position": "test"})
                 if st not in (200, 201, 409):
                     step.failed(f"Duplicate join returned unexpected status={st}")
 
@@ -287,7 +287,7 @@ class CfnLlmCounters(aetest.Testcase):
             api.create_room(test_room, description="counter test")
             try:
                 st, resp = api.spawn_session(
-                    test_room, {"handle": "counter-agent", "position": "test position"},
+                    test_room, {"handle": "agent-alpha", "position": "test position"},
                 )
                 if st not in (200, 201):
                     step.failed(f"Session spawn failed: status={st}")

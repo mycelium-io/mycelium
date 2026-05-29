@@ -79,9 +79,9 @@ class ThreeAgentNegotiation(_ConvergenceBase):
 
     topic = "Sprint planning for Q3 release"
     agent_configs = [
-        ("speed-agent", "speed", "Ship fast, cut scope if needed. MVP by Friday."),
-        ("quality-agent", "quality", "No shortcuts. Full test coverage. Ship when ready."),
-        ("cost-agent", "cost", "Minimize spend. Use existing infra. No new hires."),
+        ("agent-alpha", "speed", "Ship fast, cut scope if needed. MVP by Friday."),
+        ("agent-beta", "quality", "No shortcuts. Full test coverage. Ship when ready."),
+        ("agent-gamma", "cost", "Minimize spend. Use existing infra. No new hires."),
     ]
 
 
@@ -90,8 +90,8 @@ class ArchitectureDecision(_ConvergenceBase):
 
     topic = "Database selection for new microservice"
     agent_configs = [
-        ("pg-advocate", "relational", "PostgreSQL: ACID, mature, great extensions."),
-        ("mongo-advocate", "document", "MongoDB: flexible schema, horizontal scale, JSON-native."),
+        ("agent-alpha", "relational", "PostgreSQL: ACID, mature, great extensions."),
+        ("agent-beta", "document", "MongoDB: flexible schema, horizontal scale, JSON-native."),
     ]
 
 
@@ -100,9 +100,9 @@ class ResourceAllocation(_ConvergenceBase):
 
     topic = "How to split 40 story points between features and bug fixes"
     agent_configs = [
-        ("feature-lead", "features", "70% features, 30% bugs. Users need new capabilities."),
-        ("support-lead", "stability", "60% bugs, 40% features. Tech debt is killing velocity."),
-        ("pm-agent", "balanced", "50/50 split. Both are important for retention."),
+        ("agent-alpha", "features", "70% features, 30% bugs. Users need new capabilities."),
+        ("agent-beta", "stability", "60% bugs, 40% features. Tech debt is killing velocity."),
+        ("agent-gamma", "balanced", "50/50 split. Both are important for retention."),
     ]
 
 
@@ -111,8 +111,8 @@ class AsymmetricStakes(_ConvergenceBase):
 
     topic = "Release timeline for security patch vs feature release"
     agent_configs = [
-        ("security-lead", "urgent", "Security patch must ship by EOD. CVE is public."),
-        ("feature-lead", "flexible", "Feature can wait. But customers are asking daily."),
+        ("agent-alpha", "urgent", "Security patch must ship by EOD. CVE is public."),
+        ("agent-beta", "flexible", "Feature can wait. But customers are asking daily."),
     ]
 
 
@@ -121,8 +121,8 @@ class PreexistingContext(_ConvergenceBase):
 
     topic = "Revisiting the CI/CD pipeline decision from last sprint"
     agent_configs = [
-        ("devops-agent", "automation", "GitHub Actions worked. Expand to staging deploys."),
-        ("platform-agent", "control", "Need ArgoCD for GitOps. GHA is fire-and-forget."),
+        ("agent-alpha", "automation", "GitHub Actions worked. Expand to staging deploys."),
+        ("agent-beta", "control", "Need ArgoCD for GitOps. GHA is fire-and-forget."),
     ]
 
 
@@ -131,9 +131,9 @@ class FeaturePrioritization(_ConvergenceBase):
 
     topic = "Q4 feature prioritization"
     agent_configs = [
-        ("sales-agent", "revenue", "SSO and audit logs. Enterprise deals depend on it."),
-        ("eng-agent", "technical", "API v2 and rate limiting. Current API won't scale."),
-        ("product-agent", "user-value", "Onboarding flow. 60% of signups drop at step 3."),
+        ("agent-alpha", "revenue", "SSO and audit logs. Enterprise deals depend on it."),
+        ("agent-beta", "technical", "API v2 and rate limiting. Current API won't scale."),
+        ("agent-gamma", "user-value", "Onboarding flow. 60% of signups drop at step 3."),
     ]
 
 
@@ -142,6 +142,6 @@ class ConsensusStability(_ConvergenceBase):
 
     topic = "Confirm prior agreement on deployment strategy"
     agent_configs = [
-        ("ops-agent", "conservative", "Blue-green is working. Don't change."),
-        ("dev-agent", "progressive", "Canary deploys would catch issues earlier."),
+        ("agent-alpha", "conservative", "Blue-green is working. Don't change."),
+        ("agent-beta", "progressive", "Canary deploys would catch issues earlier."),
     ]
