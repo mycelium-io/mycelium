@@ -149,6 +149,7 @@ class EvalMetrics:
     after_f1_options: Optional[float] = None
     before_issues_found: list = field(default_factory=list)
     after_issues_found: list = field(default_factory=list)
+    verdict: str = ""
 
 
 def _clean_cell(s: str) -> str:
@@ -244,6 +245,14 @@ def parse_evaluation_md(content: str) -> EvalMetrics:
     if tok_re:
         m.before_tokens = _clean_cell(tok_re.group(1))
         m.after_tokens = _clean_cell(tok_re.group(2))
+
+    # Verdict — text after "### Verdict" heading
+    verdict_match = re.search(
+        r"#{1,3}\s+Verdict\s*\n+([\s\S]+?)(?=\n#{1,3}\s|\Z)",
+        content, re.IGNORECASE
+    )
+    if verdict_match:
+        m.verdict = verdict_match.group(1).strip()
 
     # Fallback rounds label
     if not m.before_rounds:
@@ -702,17 +711,14 @@ def build_report(results: list[EvalMetrics], total_inputs: int) -> str:
 
     lines.append("")
 
-    # --- Per-experiment issue detail ---
-    lines.append("## Per-Experiment Issue Coverage\n")
+    # --- Verdicts ---
+    lines.append("## Verdicts\n")
     for m in results:
-        lines.append(f"### {m.exp_id} — {m.scenario}  (gold: `{m.gold_id}`)\n")
-        bi = ", ".join(f"`{i}`" for i in m.before_issues_found) or "_none detected_"
-        ai_list = m.after_issues_found
-        ai = ", ".join(f"`{i}`" for i in ai_list[:20]) or "_none detected_"
-        if len(ai_list) > 20:
-            ai += f" _(+{len(ai_list) - 20} more)_"
-        lines.append(f"**Before issues found ({len(m.before_issues_found)}):** {bi}\n")
-        lines.append(f"**After issues found ({len(m.after_issues_found)}):** {ai}\n")
+        lines.append(f"### {m.exp_id} — {m.scenario}\n")
+        if m.verdict:
+            lines.append(m.verdict + "\n")
+        else:
+            lines.append("_No verdict found in evaluation.md_\n")
 
     return "\n".join(lines)
 
