@@ -551,9 +551,31 @@ def process_gist(gist_url: str, gold: dict) -> Optional[EvalMetrics]:
             except (json.JSONDecodeError, KeyError):
                 pass
 
+    # Negotiation moves — computed directly from transcripts (more reliable than eval.md table)
+    before_transcript_content = pick_file(files, "before-transcript") or ""
+    after_session_content = pick_file(files, "after-session-transcript", "session-transcript") or ""
+    after_transcript_content = pick_file(files, "after-transcript") or ""
+
+    # Before: every chat message is a negotiation move
+    before_move_count = sum(
+        1 for line in before_transcript_content.splitlines()
+        if line.startswith("**") and line.rstrip().endswith(":**")
+        and "facilitator" not in line
+    )
+    if before_move_count:
+        m.before_negotiation_moves = str(before_move_count)
+
+    # After: count 'direct' messages in session transcript (agent accept/reject/propose actions)
+    after_direct_count = sum(
+        1 for line in after_session_content.splitlines()
+        if line.startswith("[direct]")
+    )
+    if after_direct_count:
+        m.after_negotiation_moves = str(after_direct_count)
+
     # After case — structured session transcript preferred
-    after_session = pick_file(files, "after-session-transcript", "session-transcript")
-    after_transcript = pick_file(files, "after-transcript")
+    after_session = after_session_content
+    after_transcript = after_transcript_content
     after_source = after_session or after_transcript or ""
 
     after_issues = extract_issues_from_session_transcript(after_source)
@@ -561,7 +583,7 @@ def process_gist(gist_url: str, gold: dict) -> Optional[EvalMetrics]:
     m.after_issues_found = after_issues
 
     # Before case — keyword search in free-chat transcript
-    before_source = pick_file(files, "before-transcript") or ""
+    before_source = before_transcript_content
     before_issues = extract_issues_from_before_transcript(before_source, gold_issues)
     before_options = extract_options_from_before_transcript(before_source, gold_options)
     m.before_issues_found = before_issues
