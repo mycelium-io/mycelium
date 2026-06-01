@@ -136,6 +136,8 @@ class EvalMetrics:
     after_tokens: str = ""
     before_issues_count: str = ""
     after_issues_count: str = ""
+    before_negotiation_moves: str = ""
+    after_negotiation_moves: str = ""
     gold_id: str = ""
     before_recall_issues: Optional[float] = None
     before_f1_issues: Optional[float] = None
@@ -224,6 +226,9 @@ def parse_evaluation_md(content: str) -> EvalMetrics:
             elif ("rounds" in key or "messages to" in key) and not m.before_rounds:
                 m.before_rounds = before_val
                 m.after_rounds = after_val
+            elif "negotiation moves" in key or ("negotiation" in key and "move" in key):
+                m.before_negotiation_moves = before_val
+                m.after_negotiation_moves = after_val
             elif "overall score" in key or ("overall" in key and "score" in key):
                 m.before_score = before_val
                 m.after_score = after_val
@@ -422,8 +427,21 @@ def _jaccard(a: str, b: str) -> float:
     return len(aw & bw) / len(aw | bw)
 
 
-def _fuzzy_match(candidate: str, gold_list: list[str], threshold: float = 0.5) -> bool:
-    return any(_jaccard(candidate, g) >= threshold for g in gold_list)
+def _contains_match(candidate: str, gold: str) -> bool:
+    """True if all significant words of the shorter string appear in the longer."""
+    cw = set(_normalise(candidate).split())
+    gw = set(_normalise(gold).split())
+    sig = {w for w in gw if len(w) > 3}
+    if not sig:
+        return False
+    return sum(1 for w in sig if w in cw) / len(sig) >= 0.8
+
+
+def _fuzzy_match(candidate: str, gold_list: list[str], threshold: float = 0.3) -> bool:
+    return any(
+        _contains_match(candidate, g) or _jaccard(candidate, g) >= threshold
+        for g in gold_list
+    )
 
 
 def compute_issue_metrics(
@@ -516,6 +534,23 @@ def process_gist(gist_url: str, gold: dict) -> Optional[EvalMetrics]:
     gold_issues = gold_entry["gold_issues"]
     gold_options = gold_entry.get("gold_options", {})
 
+    # Parse ingest events directly from stats JSON files in the gist
+    for label in ("before", "after"):
+        stats_content = pick_file(files, f"{label}-ingest-stats")
+        if stats_content:
+            try:
+                stats = json.loads(stats_content)
+                t = stats.get("total", {})
+                events = str(t.get("events", ""))
+                tokens = t.get("estimated_cfn_knowledge_input_tokens", 0)
+                val = f"{events} ({tokens:,} tokens)" if events else ""
+                if label == "before":
+                    m.before_ingest_events = val
+                else:
+                    m.after_ingest_events = val
+            except (json.JSONDecodeError, KeyError):
+                pass
+
     # After case — structured session transcript preferred
     after_session = pick_file(files, "after-session-transcript", "session-transcript")
     after_transcript = pick_file(files, "after-transcript")
@@ -582,8 +617,8 @@ def build_report(results: list[EvalMetrics], total_inputs: int) -> str:
         "Gold ID",
         "Before Consensus",
         "After Consensus",
-        "Before Rounds",
-        "After Rounds",
+        "Before Negotiation Moves",
+        "After Negotiation Moves",
         "Before Score",
         "After Score",
         "Before Ingest Events",
@@ -610,8 +645,8 @@ def build_report(results: list[EvalMetrics], total_inputs: int) -> str:
             m.gold_id,
             _fmt(m.before_consensus),
             _fmt(m.after_consensus),
-            _fmt(m.before_rounds),
-            _fmt(m.after_rounds),
+            _fmt(m.before_negotiation_moves, 10),
+            _fmt(m.after_negotiation_moves, 10),
             _fmt(m.before_score, 10),
             _fmt(m.after_score, 10),
             _fmt(m.before_ingest_events, 15),
