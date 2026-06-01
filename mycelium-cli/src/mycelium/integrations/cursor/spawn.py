@@ -231,9 +231,7 @@ async def spawn_cursor(*, request: SpawnRequest) -> SpawnResult:
     timeout_s = DaemonConfig.load().spawn_timeout_s
     timed_out = False
     try:
-        stdout_b, stderr_b = await asyncio.wait_for(
-            proc.communicate(), timeout=timeout_s
-        )
+        stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
     except TimeoutError:
         timed_out = True
         log.warning(
@@ -247,9 +245,7 @@ async def spawn_cursor(*, request: SpawnRequest) -> SpawnResult:
             pass
         # Grace period for clean shutdown before SIGKILL.
         try:
-            stdout_b, stderr_b = await asyncio.wait_for(
-                proc.communicate(), timeout=5.0
-            )
+            stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=5.0)
         except TimeoutError:
             proc.kill()
             stdout_b, stderr_b = await proc.communicate()

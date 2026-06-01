@@ -469,10 +469,10 @@ def _format_tick_instruction(
                 f"--room {room_name} --handle {target_handle}"
             )
         lines.append(
-            "  (Each pair is quoted as \"key=value\". Use the EXACT issue keys shown above.)"
+            '  (Each pair is quoted as "key=value". Use the EXACT issue keys shown above.)'
         )
         lines.append(
-            "  Do NOT compose JSON or post {\"offer\": ...} — that format is NOT recognized."
+            '  Do NOT compose JSON or post {"offer": ...} — that format is NOT recognized.'
         )
     lines.append(
         f"To accept: mycelium negotiate respond accept --room {room_name} --handle {target_handle}"

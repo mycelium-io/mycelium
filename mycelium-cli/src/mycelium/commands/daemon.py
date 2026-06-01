@@ -126,9 +126,9 @@ def subscribe(
 ) -> None:
     """Tell the daemon to subscribe to ``room``.
 
-    Writes the room into ``~/.mycelium/cc-daemon.toml`` and triggers a restart
-    so the new subscription takes effect. Idempotent — adding the same room
-    twice is a no-op.
+    Writes the room into ``~/.mycelium/cc-daemon.toml`` and sends SIGHUP
+    so the daemon hot-reloads its subscriptions without restarting.
+    Idempotent — adding the same room twice is a no-op.
     """
     try:
         cfg = DaemonConfig.load()
@@ -139,7 +139,7 @@ def subscribe(
         cfg.save()
         console.print(f"[green]Added[/green] {room} to daemon subscriptions.")
         _restart_service_quiet()
-        console.print("[dim]Restarted daemon. Verify with: mycelium daemon status[/dim]")
+        console.print("[dim]Reloaded daemon. Verify with: mycelium daemon status[/dim]")
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)
@@ -310,18 +310,17 @@ def run(
 
 
 def _restart_service_quiet(verbose: bool = False) -> None:
-    """Restart the daemon via the platform's service manager.
+    """Reload the daemon via SIGHUP so it picks up config changes.
 
-    Thin wrapper around :func:`mycelium.daemon.install.restart_daemon_service`
-    so command modules don't each carry their own copy of the launchctl /
-    systemctl plumbing. Silent no-op when the service isn't installed —
-    callers can use it as a "kick the daemon" primitive without first
-    checking install state.
+    Thin wrapper around :func:`mycelium.daemon.install.reload_daemon_service`
+    so command modules don't each carry their own copy of the signal/systemctl
+    plumbing. Silent no-op when the service isn't installed — callers can use
+    it as a "kick the daemon" primitive without first checking install state.
     """
-    from mycelium.daemon.install import restart_daemon_service
+    from mycelium.daemon.install import reload_daemon_service
 
-    restarted = restart_daemon_service(verbose=False)
-    if not restarted and verbose:
+    reloaded = reload_daemon_service(verbose=False)
+    if not reloaded and verbose:
         console.print(
             "[yellow]Daemon service not installed.[/yellow]\n"
             "  Install with: mycelium adapter add claude-code --step=daemon"

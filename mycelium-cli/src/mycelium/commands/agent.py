@@ -343,9 +343,9 @@ def _persist_and_describe(
     # daemon service isn't installed on this host (e.g. openclaw-only
     # boxes, or before ``--step=daemon`` ran).
     if getattr(impl, "lifecycle", None) == "cold_spawn":
-        from mycelium.daemon.install import restart_daemon_service
+        from mycelium.daemon.install import reload_daemon_service
 
-        restart_daemon_service(verbose=False)
+        reload_daemon_service(verbose=False)
     console.print(
         f"\n[green]Agent {verb}:[/green] [cyan]@{manifest.handle}[/cyan] "
         f"in room [bold]{room_name}[/bold]"
@@ -1260,11 +1260,11 @@ def agent_rm(
 
         # Kick the daemon for the same reason as ``agent create``: the
         # cold-spawn handle just got released from ``cc-daemon.toml`` and a
-        # running daemon will keep firing on stale entries until restart.
+        # running daemon will keep firing on stale entries until reload.
         if getattr(impl, "lifecycle", None) == "cold_spawn":
-            from mycelium.daemon.install import restart_daemon_service
+            from mycelium.daemon.install import reload_daemon_service
 
-            restart_daemon_service(verbose=False)
+            reload_daemon_service(verbose=False)
 
         verb = "Destroyed" if will_destroy else "Unregistered"
         console.print(f"[green]{verb}:[/green] @{handle} from {room_name}")

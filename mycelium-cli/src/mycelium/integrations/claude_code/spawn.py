@@ -193,9 +193,7 @@ async def spawn_claude(
     timeout_s = DaemonConfig.load().spawn_timeout_s
     timed_out = False
     try:
-        stdout_b, stderr_b = await asyncio.wait_for(
-            proc.communicate(), timeout=timeout_s
-        )
+        stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
     except TimeoutError:
         timed_out = True
         log.warning(
@@ -208,9 +206,7 @@ async def spawn_claude(
         except ProcessLookupError:
             pass
         try:
-            stdout_b, stderr_b = await asyncio.wait_for(
-                proc.communicate(), timeout=5.0
-            )
+            stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=5.0)
         except TimeoutError:
             proc.kill()
             stdout_b, stderr_b = await proc.communicate()

@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import importlib.resources
 import os
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -309,6 +310,89 @@ def restart_daemon_service(*, verbose: bool = False) -> bool:
             fg=typer.colors.YELLOW,
         )
     return False
+
+
+def reload_daemon_service(*, verbose: bool = False) -> bool:
+    """Send SIGHUP to the daemon so it hot-reloads room subscriptions.
+
+    Unlike :func:`restart_daemon_service` this does NOT terminate the process.
+    The daemon's SIGHUP handler re-reads ``cc-daemon.toml`` and dynamically
+    adds/removes SSE room tasks — no downtime, no systemd rate-limit risk.
+
+    Falls back to :func:`restart_daemon_service` on platforms without SIGHUP
+    support or when the PID cannot be determined.
+    """
+    import platform
+
+    system = platform.system()
+
+    if system not in ("Linux", "Darwin"):
+        return restart_daemon_service(verbose=verbose)
+
+    pid = _get_daemon_pid()
+    if pid is None:
+        if verbose:
+            typer.secho(
+                "daemon PID not found; falling back to full restart",
+                fg=typer.colors.YELLOW,
+            )
+        return restart_daemon_service(verbose=verbose)
+
+    try:
+        os.kill(pid, signal.SIGHUP)
+    except ProcessLookupError:
+        if verbose:
+            typer.secho(
+                f"daemon PID {pid} gone; falling back to full restart",
+                fg=typer.colors.YELLOW,
+            )
+        return restart_daemon_service(verbose=verbose)
+    except OSError as exc:
+        if verbose:
+            typer.secho(
+                f"SIGHUP failed ({exc}); falling back to full restart", fg=typer.colors.YELLOW
+            )
+        return restart_daemon_service(verbose=verbose)
+
+    if verbose:
+        typer.secho(f"  sent SIGHUP to daemon (pid {pid})", fg=typer.colors.GREEN)
+    return True
+
+
+def _get_daemon_pid() -> int | None:
+    """Read the daemon PID from systemd or the health socket."""
+    import platform
+
+    system = platform.system()
+
+    if system == "Linux":
+        result = subprocess.run(  # noqa: S603,S607
+            ["systemctl", "--user", "show", f"{CC_DAEMON_RUNNER}.service", "--property=MainPID"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                if line.startswith("MainPID="):
+                    pid = int(line.split("=", 1)[1])
+                    if pid > 0:
+                        return pid
+
+    if system == "Darwin":
+        result = subprocess.run(  # noqa: S603,S607
+            ["launchctl", "list", CC_DAEMON_LABEL],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                if '"PID"' in line or "PID" in line:
+                    parts = line.strip().strip(";").split()
+                    for part in parts:
+                        if part.isdigit():
+                            return int(part)
+
+    return None
 
 
 def uninstall_daemon_service(verbose: bool = False) -> None:  # noqa: ARG001

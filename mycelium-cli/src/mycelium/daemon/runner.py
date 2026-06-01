@@ -43,6 +43,73 @@ def _setup_logging(foreground: bool) -> None:
     )
 
 
+async def _reconcile_rooms(
+    *,
+    mycelium_cfg: MyceliumConfig,
+    state: DaemonState,
+    sse_tasks: dict[str, asyncio.Task[None]],
+) -> None:
+    """Add/remove SSE tasks to match the current DaemonConfig on disk.
+
+    Also refreshes the handles list so newly created agents are dispatched
+    without a full daemon restart.
+    """
+    daemon_cfg = DaemonConfig.load()
+    desired = set(daemon_cfg.rooms)
+    current = set(sse_tasks.keys())
+
+    # Refresh handles on the live daemon_cfg so dispatch sees new agents
+    if state.daemon_cfg is not None:
+        state.daemon_cfg.handles = daemon_cfg.handles
+        state.daemon_cfg.rooms = daemon_cfg.rooms
+
+    for room in desired - current:
+        log.info("hot-reload: subscribing to %s", room)
+        sse_tasks[room] = asyncio.create_task(
+            subscribe_room(
+                config=mycelium_cfg,
+                daemon_cfg=state.daemon_cfg or daemon_cfg,
+                state=state,
+                room_name=room,
+            ),
+            name=f"sse[{room}]",
+        )
+
+    for room in current - desired:
+        log.info("hot-reload: unsubscribing from %s", room)
+        task = sse_tasks.pop(room)
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):
+            pass
+        state.rooms_connected.discard(room)
+
+    state.rooms_configured = list(daemon_cfg.rooms)
+    log.info(
+        "hot-reload complete: rooms=%d, handles=%d", len(daemon_cfg.rooms), len(daemon_cfg.handles)
+    )
+
+
+async def _reload_watcher(
+    *,
+    mycelium_cfg: MyceliumConfig,
+    state: DaemonState,
+    sse_tasks: dict[str, asyncio.Task[None]],
+) -> None:
+    """Wait for reload_requested events and reconcile room subscriptions."""
+    while not state.stopping.is_set():
+        await state.reload_requested.wait()
+        state.reload_requested.clear()
+        if state.stopping.is_set():
+            break
+        await _reconcile_rooms(
+            mycelium_cfg=mycelium_cfg,
+            state=state,
+            sse_tasks=sse_tasks,
+        )
+
+
 async def _amain(foreground: bool) -> int:
     _setup_logging(foreground)
 
@@ -51,6 +118,7 @@ async def _amain(foreground: bool) -> int:
 
     state = DaemonState()
     state.rooms_configured = list(daemon_cfg.rooms)
+    state.daemon_cfg = daemon_cfg
 
     if not daemon_cfg.rooms:
         log.warning(
@@ -63,14 +131,18 @@ async def _amain(foreground: bool) -> int:
         try:
             loop.add_signal_handler(sig, state.stopping.set)
         except NotImplementedError:
-            # Windows or unusual environment — fall through to KeyboardInterrupt.
             pass
+
+    try:
+        loop.add_signal_handler(signal.SIGHUP, state.reload_requested.set)
+    except (NotImplementedError, AttributeError):
+        pass
 
     server = await start_health_server(state)
     log.info("mycelium-cc-daemon started (rooms=%d)", len(daemon_cfg.rooms))
 
-    sse_tasks = [
-        asyncio.create_task(
+    sse_tasks: dict[str, asyncio.Task[None]] = {
+        room: asyncio.create_task(
             subscribe_room(
                 config=mycelium_cfg,
                 daemon_cfg=daemon_cfg,
@@ -80,13 +152,8 @@ async def _amain(foreground: bool) -> int:
             name=f"sse[{room}]",
         )
         for room in daemon_cfg.rooms
-    ]
+    }
 
-    # Coordination ticks/consensus events are NOTIFY'd only on the session
-    # sub-room channel, never on parent rooms. The poller below discovers
-    # active sessions and dynamically attaches an SSE listener to each one
-    # — mirrors the openclaw plugin's ``setInterval`` strategy. Without it
-    # the daemon misses every coordination_tick after a join.
     session_poller = asyncio.create_task(
         poll_coordination_sessions(
             config=mycelium_cfg,
@@ -96,26 +163,36 @@ async def _amain(foreground: bool) -> int:
         name="coordination-session-poller",
     )
 
+    reload_task = asyncio.create_task(
+        _reload_watcher(
+            mycelium_cfg=mycelium_cfg,
+            state=state,
+            sse_tasks=sse_tasks,
+        ),
+        name="reload-watcher",
+    )
+
     try:
         await state.stopping.wait()
     finally:
         log.info("shutting down")
+        reload_task.cancel()
+        try:
+            await reload_task
+        except (asyncio.CancelledError, Exception):
+            pass
         session_poller.cancel()
         try:
             await session_poller
         except (asyncio.CancelledError, Exception):
             pass
-        for task in sse_tasks:
+        for task in sse_tasks.values():
             task.cancel()
-        for task in sse_tasks:
+        for task in sse_tasks.values():
             try:
                 await task
             except (asyncio.CancelledError, Exception):
                 pass
-        # Cancel dynamic session sub-room subscriptions discovered at runtime
-        # (started by the coordination-session poller). Mirrors the
-        # static-task cleanup above so shutdown is symmetric and the
-        # daemon doesn't leak SSE connections.
         for task in list(state.session_room_tasks.values()):
             task.cancel()
         for task in list(state.session_room_tasks.values()):
@@ -123,14 +200,6 @@ async def _amain(foreground: bool) -> int:
                 await task
             except (asyncio.CancelledError, Exception):
                 pass
-        # Reap any in-flight cold-spawn subprocesses BEFORE we close the
-        # health socket so the operator gets an accurate count in the log.
-        # systemd's default ``KillMode=control-group`` covers ``systemctl
-        # stop`` (the cgroup kill propagates to children), but an operator
-        # who SIGTERM/SIGINTs the daemon's PID directly — or a launchd
-        # bootout outside the cgroup — would otherwise leave running
-        # cursor-agent / claude processes wandering. Send SIGTERM, give
-        # them a couple of seconds, then SIGKILL whatever's left.
         await _terminate_in_flight_spawns(state)
         server.close()
         await server.wait_closed()

@@ -52,6 +52,8 @@ class DaemonState:
     # how many sub-rooms we're following.
     session_room_tasks: dict[str, Any] = field(default_factory=dict)
     stopping: asyncio.Event = field(default_factory=asyncio.Event)
+    reload_requested: asyncio.Event = field(default_factory=asyncio.Event)
+    daemon_cfg: Any = field(default=None)  # DaemonConfig — set by runner after load
 
     def lock_for(self, handle: str) -> asyncio.Lock:
         lock = self.handle_locks.get(handle)
