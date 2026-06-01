@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Regression: cc-daemon log lines were being written twice.
+"""Regression: mycelium-daemon log lines were being written twice.
 
 Both the systemd unit template (``StandardOutput=append:<log>`` /
 ``StandardError=append:<log>``) and the launchd plist (``StandardOutPath`` /
@@ -9,7 +9,7 @@ Both the systemd unit template (``StandardOutput=append:<log>`` /
 ``daemon_log_path()``. Earlier the daemon *also* attached a
 ``logging.FileHandler`` for the same path, so every record landed in the file
 twice — once via the supervisor's stdout capture (the StreamHandler) and once
-via the FileHandler. ``cc-daemon.log`` ended up with ~50% adjacent-duplicate
+via the FileHandler. ``daemon.log`` ended up with ~50% adjacent-duplicate
 lines and an inflated row count.
 
 The fix in ``_setup_logging`` picks exactly one sink per mode: stdout in
@@ -54,7 +54,7 @@ def test_foreground_uses_only_stdout(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     """Foreground (interactive) runs must not open the daemon log file —
     that would race against a separately-running supervised daemon and
     surprise developers debugging at the terminal."""
-    log_path = tmp_path / "cc-daemon.log"
+    log_path = tmp_path / "daemon.log"
     monkeypatch.setattr(runner, "daemon_log_path", lambda: log_path)
 
     runner._setup_logging(foreground=True)
@@ -70,7 +70,7 @@ def test_background_uses_only_filehandler(monkeypatch: pytest.MonkeyPatch, tmp_p
     """Under systemd/launchd the supervisor already routes stdout+stderr to
     the same file. Attaching a StreamHandler here would double every line.
     Pin the FileHandler-only contract."""
-    log_path = tmp_path / "cc-daemon.log"
+    log_path = tmp_path / "daemon.log"
     monkeypatch.setattr(runner, "daemon_log_path", lambda: log_path)
 
     runner._setup_logging(foreground=False)
@@ -101,7 +101,7 @@ def test_background_falls_back_to_stderr_if_file_unopenable(
     read-only mount, etc.) we must still emit *somewhere* so the operator
     can see the failure — even if that "somewhere" is just stderr captured
     by the supervisor."""
-    bogus_path = tmp_path / "no-such-dir" / "cc-daemon.log"
+    bogus_path = tmp_path / "no-such-dir" / "daemon.log"
     monkeypatch.setattr(runner, "daemon_log_path", lambda: bogus_path)
 
     runner._setup_logging(foreground=False)

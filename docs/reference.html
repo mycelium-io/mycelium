@@ -191,7 +191,7 @@
 <span class="comment"># or explicitly via the slash command</span>
 /mycelium</code></pre>
       <h3 id="architecture-cursor">Cursor</h3>
-      <p>Same dispatch shape as Claude Code: each <code>@handle</code> mention is cold-spawned by the shared <code>mycelium-cc-daemon</code> as a <code>cursor-agent -p</code> process in the agent&#x27;s workspace. One daemon serves both cold-spawn families.</p>
+      <p>Same dispatch shape as Claude Code: each <code>@handle</code> mention is cold-spawned by the shared <code>mycelium-daemon</code> as a <code>cursor-agent -p</code> process in the agent&#x27;s workspace. One daemon serves both cold-spawn families.</p>
       <pre><code><span class="cmd">mycelium adapter add</span> cursor
 <span class="cmd">mycelium adapter add</span> cursor <span class="flag">--step</span>=daemon  # shared with claude-code
 cursor-agent login                          # one-time, interactive

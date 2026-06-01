@@ -13,20 +13,20 @@ from pydantic import BaseModel, Field
 
 
 def daemon_config_path() -> Path:
-    """Return the path to ~/.mycelium/cc-daemon.toml (created on first write)."""
-    return Path.home() / ".mycelium" / "cc-daemon.toml"
+    """Return the path to ~/.mycelium/daemon.toml (created on first write)."""
+    return Path.home() / ".mycelium" / "daemon.toml"
 
 
 def daemon_socket_path() -> Path:
     """Unix-socket path the health endpoint binds to."""
-    return Path.home() / ".mycelium" / "cc-daemon.sock"
+    return Path.home() / ".mycelium" / "daemon.sock"
 
 
 def daemon_log_path() -> Path:
     """Daemon stdout/stderr log path (the service unit redirects here)."""
     log_dir = Path.home() / ".mycelium" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
-    return log_dir / "cc-daemon.log"
+    return log_dir / "daemon.log"
 
 
 def daemon_invocation_log_dir(room: str, handle: str) -> Path:
@@ -34,9 +34,9 @@ def daemon_invocation_log_dir(room: str, handle: str) -> Path:
 
     Operational logs live OUTSIDE the room's memory namespace so they don't
     pollute the semantic index, `memory ls`, synthesis runs, or room sync.
-    Path: ``~/.mycelium/cc-daemon/logs/<room>/<handle>/``.
+    Path: ``~/.mycelium/daemon/logs/<room>/<handle>/``.
     """
-    log_dir = Path.home() / ".mycelium" / "cc-daemon" / "logs" / room / handle
+    log_dir = Path.home() / ".mycelium" / "daemon" / "logs" / room / handle
     log_dir.mkdir(parents=True, exist_ok=True)
     return log_dir
 
@@ -44,7 +44,7 @@ def daemon_invocation_log_dir(room: str, handle: str) -> Path:
 class DaemonConfig(BaseModel):
     """Persisted daemon configuration.
 
-    Loaded from ``~/.mycelium/cc-daemon.toml``. Tracks the explicit list of
+    Loaded from ``~/.mycelium/daemon.toml``. Tracks the explicit list of
     rooms the daemon is subscribed to (per the v0 decision against
     auto-discovery) and a few runtime knobs.
     """

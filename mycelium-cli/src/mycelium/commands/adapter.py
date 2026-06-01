@@ -40,7 +40,7 @@ ADAPTER_TYPES = {
     "openclaw": "plugin-based — installs mycelium via `openclaw plugins install`",
     "claude-code": "skill + hooks — copies SKILL.md and lifecycle hooks into ~/.claude/",
     "cursor": (
-        "cc-daemon-dispatched — drops .cursor/rules/mycelium.mdc + AGENTS.md "
+        "daemon-dispatched — drops .cursor/rules/mycelium.mdc + AGENTS.md "
         "into each cursor agent's workspace at `mycelium agent create` time"
     ),
 }
@@ -81,7 +81,7 @@ def add(
         "--step",
         help=(
             "Follow-up step (repeatable). openclaw: otel, docker-env. "
-            "claude-code / cursor: daemon (the cc-daemon is shared across "
+            "claude-code / cursor: daemon (the daemon is shared across "
             "both cold-spawn families — one service per host)."
         ),
     ),
@@ -127,7 +127,7 @@ def add(
         mycelium adapter add openclaw --step=otel
         mycelium adapter add openclaw --step=docker-env
 
-        # claude-code and cursor share one cc-daemon — install it under whichever
+        # claude-code and cursor share one daemon — install it under whichever
         # adapter you reach first; the other adapter then reuses the same service.
         mycelium adapter add claude-code
         mycelium adapter add claude-code --step=daemon

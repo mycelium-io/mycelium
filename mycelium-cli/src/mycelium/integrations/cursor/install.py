@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Cursor install facet — workspace assets + cc-daemon composition.
+"""Cursor install facet — workspace assets + daemon composition.
 
 Unlike claude_code (which installs host-level skills/hooks into
 ``~/.claude/``), cursor's reading surfaces are workspace-local:
@@ -21,7 +21,7 @@ These drops happen per-agent in :class:`CursorIntegration.register` (called
 by ``mycelium agent create``), NOT in :meth:`Integration.install`. Cursor
 has no single host-level state dir, so ``mycelium adapter add cursor``
 itself is informational — it points the user at the agent-create path and
-optionally installs the cc-daemon via ``--step=daemon`` (composed from the
+optionally installs the daemon via ``--step=daemon`` (composed from the
 family-agnostic :mod:`mycelium.daemon.install`).
 """
 
@@ -61,10 +61,10 @@ _AGENTS_SECTION_START = "<!-- mycelium:start -->"
 _AGENTS_SECTION_END = "<!-- mycelium:end -->"
 
 #: ``mycelium adapter add cursor --step=<step>`` follow-up actions. Only
-#: ``daemon`` is supported — the cc-daemon install/uninstall is family-
+#: ``daemon`` is supported — the daemon install/uninstall is family-
 #: agnostic and shared with claude_code via :mod:`mycelium.daemon.install`.
 _CURSOR_STEPS = {
-    "daemon": "install + register the mycelium-cc-daemon user service",
+    "daemon": "install + register the mycelium-daemon user service",
 }
 
 
@@ -242,14 +242,14 @@ def _strip_agents_md_section(content: str) -> str | None:
     return pattern.sub("", content)
 
 
-# ── cc-daemon user-service install / uninstall ──────────────────────────────
+# ── daemon user-service install / uninstall ──────────────────────────────
 #
 # Identical to claude_code's ``--step=daemon`` flow — the daemon is shared
 # infrastructure. One service per host services every cold-spawn family.
 
 
 def _step_cursor_daemon_install(verbose: bool = False) -> None:
-    """Install the cc-daemon — cursor's ``--step=daemon`` entrypoint.
+    """Install the daemon — cursor's ``--step=daemon`` entrypoint.
 
     Thin pass-through to the shared family-agnostic helper. Kept as a
     separate function so any future cursor-specific daemon setup (e.g.

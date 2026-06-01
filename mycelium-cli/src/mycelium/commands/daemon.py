@@ -2,7 +2,7 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Daemon commands — manage the mycelium-cc-daemon service.
+Daemon commands — manage the mycelium-daemon service.
 
 The daemon subscribes to room SSE and dispatches ``@handle`` mentions to
 Claude Code spawns. It is installed via
@@ -29,7 +29,7 @@ from mycelium.error_handler import print_error
 
 app = typer.Typer(
     help=(
-        "Manage the mycelium-cc-daemon — the userlevel service that dispatches "
+        "Manage the mycelium-daemon — the userlevel service that dispatches "
         "@handle mentions to Claude Code agents."
     ),
     no_args_is_help=True,
@@ -126,7 +126,7 @@ def subscribe(
 ) -> None:
     """Tell the daemon to subscribe to ``room``.
 
-    Writes the room into ``~/.mycelium/cc-daemon.toml`` and sends SIGHUP
+    Writes the room into ``~/.mycelium/daemon.toml`` and sends SIGHUP
     so the daemon hot-reloads its subscriptions without restarting.
     Idempotent — adding the same room twice is a no-op.
     """
@@ -228,7 +228,7 @@ def logs(
     follow: bool = typer.Option(False, "--follow", "-f", help="Follow the log (tail -f)."),
     lines: int = typer.Option(50, "--lines", "-n", help="Number of trailing lines to show."),
 ) -> None:
-    """Print the daemon's log file at ``~/.mycelium/logs/cc-daemon.log``."""
+    """Print the daemon's log file at ``~/.mycelium/logs/daemon.log``."""
     try:
         path = daemon_log_path()
         if not path.exists():

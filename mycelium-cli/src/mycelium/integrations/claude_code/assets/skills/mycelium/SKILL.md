@@ -215,7 +215,7 @@ Memories are markdown files under `~/.mycelium/rooms/<room>/`. Any agent who joi
 
 ### A few things to remember
 
-- **Auto-wake for mentions and ticks.** The `mycelium-cc-daemon` listens to rooms you're registered in. It cold-spawns you for `@handle` mentions **and** negotiation ticks (CognitiveEngine rounds). You don't need to poll or watch — the daemon wakes you. For one-shot questions like "did anyone reply?", check with `mycelium watch --room X` or `mycelium room messages`.
+- **Auto-wake for mentions and ticks.** The `mycelium-daemon` listens to rooms you're registered in. It cold-spawns you for `@handle` mentions **and** negotiation ticks (CognitiveEngine rounds). You don't need to poll or watch — the daemon wakes you. For one-shot questions like "did anyone reply?", check with `mycelium watch --room X` or `mycelium room messages`.
 - **Write self-contained messages.** "What about the thing we discussed?" is useless to a recipient who doesn't share your history. Spell out the context.
 - **`session await` is for interactive (user-initiated) negotiations only.** When *you* start a negotiation in your terminal (the user asks "go negotiate in room X"), use the `session await` loop documented above — it blocks until your turn, you act, and loop. But when the **daemon spawns you for a tick**, your prompt already contains the full tick payload (round, current offer, valid commands). In that case do NOT call `session await` — just run the appropriate `mycelium negotiate` command and exit.
 
@@ -260,7 +260,7 @@ Kill switches:
 ## Agent Mode (when you've been invoked via `@handle`)
 
 When a message in a room is addressed to you with `@<your-handle>`, the
-`mycelium-cc-daemon` spawned this session to handle it. Your **manifest**
+`mycelium-daemon` spawned this session to handle it. Your **manifest**
 lives at `agents/<your-handle>` and your persistent **notes** live at
 `agents/<your-handle>/notes` — read those before responding to understand
 your scope and accumulated knowledge.

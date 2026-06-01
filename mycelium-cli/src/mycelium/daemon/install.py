@@ -3,7 +3,7 @@
 
 """Daemon service install/uninstall helpers — family-agnostic.
 
-There is one cold-spawn daemon (``mycelium-cc-daemon``) per host, regardless
+There is one cold-spawn daemon (``mycelium-daemon``) per host, regardless
 of how many cold-spawn families (claude_code, cursor, future Gemini/Codex/…)
 are installed. This module owns the service-unit install/teardown logic that
 all of those families consume via composition:
@@ -20,11 +20,6 @@ all of those families consume via composition:
 
 The two families both end up calling the same shared helper — the daemon
 service unit is identical regardless of who asked for it.
-
-Relocated verbatim from ``integrations/claude_code/install.py`` (L316-557)
-on the feat/cursor-integration branch. The canonical on-disk names
-(``io.mycelium.cc-daemon``, ``mycelium-cc-daemon``) stay; a future PR may
-rename them to ``mycelium-daemon`` but that's a separate change.
 """
 
 from __future__ import annotations
@@ -39,15 +34,15 @@ from pathlib import Path
 import typer
 
 #: launchd label / systemd service stem for the daemon.
-CC_DAEMON_LABEL = "io.mycelium.cc-daemon"
-CC_DAEMON_RUNNER = "mycelium-cc-daemon"
+DAEMON_LABEL = "io.mycelium.daemon"
+DAEMON_RUNNER = "mycelium-daemon"
 
 
-def cc_daemon_service_paths() -> tuple[Path, Path]:
+def daemon_service_paths() -> tuple[Path, Path]:
     """Return (launchd_plist_path, systemd_service_path) for the current user."""
     home = Path.home()
-    plist = home / "Library" / "LaunchAgents" / f"{CC_DAEMON_LABEL}.plist"
-    systemd = home / ".config" / "systemd" / "user" / f"{CC_DAEMON_RUNNER}.service"
+    plist = home / "Library" / "LaunchAgents" / f"{DAEMON_LABEL}.plist"
+    systemd = home / ".config" / "systemd" / "user" / f"{DAEMON_RUNNER}.service"
     return plist, systemd
 
 
@@ -73,14 +68,14 @@ def resolve_python_binary() -> str:
 
 
 def install_runner_script() -> Path:
-    """Drop a thin runner script at ``~/.local/bin/mycelium-cc-daemon`` for
+    """Drop a thin runner script at ``~/.local/bin/mycelium-daemon`` for
     operators who want to launch the daemon outside the service unit (e.g.
     from a tmux pane during development). Pure convenience — the service
     invokes the daemon directly via `python -m mycelium.daemon`.
     """
     bin_dir = Path.home() / ".local" / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
-    runner = bin_dir / CC_DAEMON_RUNNER
+    runner = bin_dir / DAEMON_RUNNER
     python = resolve_python_binary()
     runner.write_text(f'#!/usr/bin/env bash\nexec "{python}" -m mycelium.daemon "$@"\n')
     runner.chmod(0o755)
@@ -157,12 +152,12 @@ def launchd_reload(
 
 
 def install_daemon_service(verbose: bool = False) -> None:
-    """Install mycelium-cc-daemon as a user-level service.
+    """Install mycelium-daemon as a user-level service.
 
     Renders the right template (launchd on macOS, systemd --user on Linux),
     writes the unit file, registers it with the service manager, then polls
     the daemon's health socket to confirm it actually came up. The runner
-    script (``~/.local/bin/mycelium-cc-daemon``) is bundled in for convenience.
+    script (``~/.local/bin/mycelium-daemon``) is bundled in for convenience.
 
     Family-agnostic — called by any cold-spawn family's ``--step=daemon`` flow
     (claude_code, cursor, future families). All of them want the same daemon.
@@ -172,7 +167,7 @@ def install_daemon_service(verbose: bool = False) -> None:
     python = resolve_python_binary()
     home = str(Path.home())
     path_env = os.environ.get("PATH") or "/usr/local/bin:/usr/bin:/bin"
-    log_path = str(Path.home() / ".mycelium" / "logs" / "cc-daemon.log")
+    log_path = str(Path.home() / ".mycelium" / "logs" / "daemon.log")
     Path(log_path).parent.mkdir(parents=True, exist_ok=True)
     # Make sure the file exists so launchd/systemd can append to it cleanly.
     if not Path(log_path).exists():
@@ -181,7 +176,7 @@ def install_daemon_service(verbose: bool = False) -> None:
     runner = install_runner_script()
     typer.secho(f"  runner: {runner}", fg=typer.colors.CYAN)
 
-    plist_dst, systemd_dst = cc_daemon_service_paths()
+    plist_dst, systemd_dst = daemon_service_paths()
     system = platform.system()
 
     if system == "Darwin":
@@ -196,7 +191,7 @@ def install_daemon_service(verbose: bool = False) -> None:
         # Reload cleanly if a previous version is loaded. bootout is async, so
         # this waits for teardown then retries bootstrap through the transient
         # "Input/output error 5" window instead of failing the install.
-        rc, err = launchd_reload(CC_DAEMON_LABEL, f"gui/{os.getuid()}", plist_dst, verbose=verbose)
+        rc, err = launchd_reload(DAEMON_LABEL, f"gui/{os.getuid()}", plist_dst, verbose=verbose)
         if rc != 0:
             typer.secho(
                 f"  launchctl bootstrap failed: {err}",
@@ -216,7 +211,7 @@ def install_daemon_service(verbose: bool = False) -> None:
             ["systemctl", "--user", "daemon-reload"], check=False
         )
         result = subprocess.run(  # noqa: S603,S607
-            ["systemctl", "--user", "enable", "--now", f"{CC_DAEMON_RUNNER}.service"],
+            ["systemctl", "--user", "enable", "--now", f"{DAEMON_RUNNER}.service"],
             capture_output=True,
             text=True,
         )
@@ -238,7 +233,7 @@ def install_daemon_service(verbose: bool = False) -> None:
     if health is None:
         typer.secho(
             "  daemon did not respond on the health socket within 8s — "
-            "check logs at ~/.mycelium/logs/cc-daemon.log.",
+            "check logs at ~/.mycelium/logs/daemon.log.",
             fg=typer.colors.YELLOW,
         )
         return
@@ -258,7 +253,7 @@ def install_daemon_service(verbose: bool = False) -> None:
 
 
 def restart_daemon_service(*, verbose: bool = False) -> bool:
-    """Kick the running daemon so it re-reads ``cc-daemon.toml``.
+    """Kick the running daemon so it re-reads ``daemon.toml``.
 
     The daemon snapshots ``DaemonConfig`` (rooms + handles) at startup, so
     any change made by ``mycelium agent create``/``rm`` or ``mycelium daemon
@@ -270,7 +265,7 @@ def restart_daemon_service(*, verbose: bool = False) -> bool:
     import platform
 
     system = platform.system()
-    plist_dst, systemd_dst = cc_daemon_service_paths()
+    plist_dst, systemd_dst = daemon_service_paths()
 
     if system == "Darwin":
         if not plist_dst.exists():
@@ -280,12 +275,12 @@ def restart_daemon_service(*, verbose: bool = False) -> bool:
                     fg=typer.colors.YELLOW,
                 )
             return False
-        target = f"gui/{os.getuid()}/{CC_DAEMON_LABEL}"
+        target = f"gui/{os.getuid()}/{DAEMON_LABEL}"
         subprocess.run(  # noqa: S603,S607
             ["launchctl", "kickstart", "-k", target], capture_output=True
         )
         if verbose:
-            typer.secho(f"  kicked launchd service {CC_DAEMON_LABEL}", fg=typer.colors.GREEN)
+            typer.secho(f"  kicked launchd service {DAEMON_LABEL}", fg=typer.colors.GREEN)
         return True
 
     if system == "Linux":
@@ -297,11 +292,11 @@ def restart_daemon_service(*, verbose: bool = False) -> bool:
                 )
             return False
         subprocess.run(  # noqa: S603,S607
-            ["systemctl", "--user", "restart", f"{CC_DAEMON_RUNNER}.service"],
+            ["systemctl", "--user", "restart", f"{DAEMON_RUNNER}.service"],
             capture_output=True,
         )
         if verbose:
-            typer.secho(f"  restarted systemd service {CC_DAEMON_RUNNER}", fg=typer.colors.GREEN)
+            typer.secho(f"  restarted systemd service {DAEMON_RUNNER}", fg=typer.colors.GREEN)
         return True
 
     if verbose:
@@ -316,7 +311,7 @@ def reload_daemon_service(*, verbose: bool = False) -> bool:
     """Send SIGHUP to the daemon so it hot-reloads room subscriptions.
 
     Unlike :func:`restart_daemon_service` this does NOT terminate the process.
-    The daemon's SIGHUP handler re-reads ``cc-daemon.toml`` and dynamically
+    The daemon's SIGHUP handler re-reads ``daemon.toml`` and dynamically
     adds/removes SSE room tasks — no downtime, no systemd rate-limit risk.
 
     Falls back to :func:`restart_daemon_service` on platforms without SIGHUP
@@ -367,7 +362,7 @@ def _get_daemon_pid() -> int | None:
 
     if system == "Linux":
         result = subprocess.run(  # noqa: S603,S607
-            ["systemctl", "--user", "show", f"{CC_DAEMON_RUNNER}.service", "--property=MainPID"],
+            ["systemctl", "--user", "show", f"{DAEMON_RUNNER}.service", "--property=MainPID"],
             capture_output=True,
             text=True,
         )
@@ -380,7 +375,7 @@ def _get_daemon_pid() -> int | None:
 
     if system == "Darwin":
         result = subprocess.run(  # noqa: S603,S607
-            ["launchctl", "list", CC_DAEMON_LABEL],
+            ["launchctl", "list", DAEMON_LABEL],
             capture_output=True,
             text=True,
         )
@@ -399,12 +394,12 @@ def uninstall_daemon_service(verbose: bool = False) -> None:  # noqa: ARG001
     """Reverse a daemon install — stop the service, remove the unit file."""
     import platform
 
-    plist_dst, systemd_dst = cc_daemon_service_paths()
+    plist_dst, systemd_dst = daemon_service_paths()
     system = platform.system()
 
     if system == "Darwin":
         subprocess.run(  # noqa: S603,S607
-            ["launchctl", "bootout", f"gui/{os.getuid()}/{CC_DAEMON_LABEL}"],
+            ["launchctl", "bootout", f"gui/{os.getuid()}/{DAEMON_LABEL}"],
             capture_output=True,
         )
         if plist_dst.exists():
@@ -412,7 +407,7 @@ def uninstall_daemon_service(verbose: bool = False) -> None:  # noqa: ARG001
             typer.secho(f"  removed {plist_dst}", fg=typer.colors.CYAN)
     elif system == "Linux":
         subprocess.run(  # noqa: S603,S607
-            ["systemctl", "--user", "disable", "--now", f"{CC_DAEMON_RUNNER}.service"],
+            ["systemctl", "--user", "disable", "--now", f"{DAEMON_RUNNER}.service"],
             capture_output=True,
         )
         if systemd_dst.exists():
@@ -422,7 +417,7 @@ def uninstall_daemon_service(verbose: bool = False) -> None:  # noqa: ARG001
             ["systemctl", "--user", "daemon-reload"], check=False
         )
 
-    runner = Path.home() / ".local" / "bin" / CC_DAEMON_RUNNER
+    runner = Path.home() / ".local" / "bin" / DAEMON_RUNNER
     if runner.exists():
         runner.unlink()
         typer.secho(f"  removed {runner}", fg=typer.colors.CYAN)

@@ -42,12 +42,12 @@ if TYPE_CHECKING:
 
 #: Discriminator for how this family's agents come into existence per mention.
 #:
-#: - ``cold_spawn``: the cc-daemon spawns a fresh process per mention
+#: - ``cold_spawn``: the daemon spawns a fresh process per mention
 #:   (``claude -p``, ``cursor-agent -p``, future Gemini/Codex/Aider). The
 #:   family overrides :meth:`Integration.spawn`.
 #: - ``long_lived_gateway``: agents live inside a separate, long-running runtime
 #:   that owns its own mention delivery (currently only ``openclaw``; future
-#:   ``hermes``). The cc-daemon ignores these manifests entirely — the gateway
+#:   ``hermes``). The daemon ignores these manifests entirely — the gateway
 #:   is responsible for dispatch.
 LifecycleModel = Literal["cold_spawn", "long_lived_gateway"]
 
@@ -81,7 +81,7 @@ class Integration(ABC):
     name: str
 
     #: How this family delivers mentions to its agents — drives whether the
-    #: cc-daemon dispatch loop calls :meth:`spawn` on this family or skips it.
+    #: daemon dispatch loop calls :meth:`spawn` on this family or skips it.
     #: Every subclass MUST declare a value; ``tests/test_integration_contract``
     #: enforces this.
     lifecycle: ClassVar[LifecycleModel]

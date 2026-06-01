@@ -23,14 +23,14 @@ not that the cursor surface is broken.
 
 3. ``test_cursor_register_does_not_leak_handle_when_cwd_missing``
    The cursor ``register()`` previously claimed the handle in
-   ``cc-daemon.toml`` BEFORE calling ``install_workspace_assets``. If the
+   ``daemon.toml`` BEFORE calling ``install_workspace_assets``. If the
    cwd didn't exist, the asset drop raised but the handle was already
    persisted — a leak. The fix swaps the order so cwd validation runs
    first.
 
 4. ``test_persist_and_describe_kicks_daemon_for_cold_spawn`` /
    ``test_persist_and_describe_skips_kick_for_long_lived``
-   ``mycelium agent create`` writes the handle to ``cc-daemon.toml`` but
+   ``mycelium agent create`` writes the handle to ``daemon.toml`` but
    the running daemon only re-reads that file on restart. The fix calls
    ``restart_daemon_service`` from the create/destroy tail for cold-spawn
    adapters only (no-op when no daemon is installed, openclaw doesn't need
@@ -73,13 +73,13 @@ from mycelium.protocol import AgentManifest
 
 @pytest.fixture(autouse=True)
 def _isolated_daemon_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Every test gets a fresh ``cc-daemon.toml`` in a tmp dir.
+    """Every test gets a fresh ``daemon.toml`` in a tmp dir.
 
     Mirrors the autouse fixture in ``test_cursor_dispatch.py`` so we don't
     pollute the developer's real config when the test suite is run from a
     workstation with the daemon installed.
     """
-    monkeypatch.setattr(daemon_config, "daemon_config_path", lambda: tmp_path / "cc-daemon.toml")
+    monkeypatch.setattr(daemon_config, "daemon_config_path", lambda: tmp_path / "daemon.toml")
 
 
 # ── 1. claude_code hooks-asset crash ─────────────────────────────────────────
@@ -153,7 +153,7 @@ def test_agent_create_accepts_kebab_case_adapter() -> None:
 def test_cursor_register_does_not_leak_handle_when_cwd_missing(tmp_path: Path) -> None:
     """If ``manifest.cwd`` points at a nonexistent directory,
     ``install_workspace_assets`` raises ``NotADirectoryError`` and the
-    handle must NOT have been persisted to ``cc-daemon.toml``.
+    handle must NOT have been persisted to ``daemon.toml``.
 
     Before the fix the handle was claimed first and the asset drop ran
     second, so the failure path left orphan ownership behind.
@@ -172,7 +172,7 @@ def test_cursor_register_does_not_leak_handle_when_cwd_missing(tmp_path: Path) -
     with pytest.raises(NotADirectoryError):
         integ.register(manifest=manifest, config=MyceliumConfig(), opts=AddOptions(room="r"))
 
-    # The handle must NOT appear in cc-daemon.toml. Note we use a fresh
+    # The handle must NOT appear in daemon.toml. Note we use a fresh
     # ``.load()`` so we read whatever was actually persisted to disk.
     persisted = DaemonConfig.load()
     assert "design-agent" not in persisted.handles, (
@@ -180,7 +180,7 @@ def test_cursor_register_does_not_leak_handle_when_cwd_missing(tmp_path: Path) -
     )
 
 
-# ── 4. agent create/destroy kicks the cc-daemon for cold-spawn adapters ─────
+# ── 4. agent create/destroy kicks the mycelium-daemon for cold-spawn adapters ─────
 
 
 def _fake_persist_inputs(tmp_path: Path) -> dict:
@@ -214,7 +214,7 @@ def test_persist_and_describe_kicks_daemon_for_cold_spawn(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Cold-spawn adapters (cursor, claude_code) need the daemon to
-    re-read ``cc-daemon.toml`` after a new handle is registered."""
+    re-read ``daemon.toml`` after a new handle is registered."""
     from mycelium.commands import agent as agent_cmd
 
     # Stub out everything other than the restart call so we don't hit the
@@ -229,13 +229,13 @@ def test_persist_and_describe_kicks_daemon_for_cold_spawn(
     with patch("mycelium.daemon.install.restart_daemon_service", return_value=True) as mock_restart:
         agent_cmd._persist_and_describe(impl=impl, **_fake_persist_inputs(tmp_path))
 
-    assert mock_restart.called, "cold-spawn adapter create must kick the cc-daemon"
+    assert mock_restart.called, "cold-spawn adapter create must kick the mycelium-daemon"
 
 
 def test_persist_and_describe_skips_kick_for_long_lived(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Openclaw (long_lived_gateway) doesn't go through the cc-daemon;
+    """Openclaw (long_lived_gateway) doesn't go through the mycelium-daemon;
     kicking it on every agent add would be wasted noise.
     """
     from mycelium.commands import agent as agent_cmd
@@ -251,7 +251,7 @@ def test_persist_and_describe_skips_kick_for_long_lived(
         agent_cmd._persist_and_describe(impl=impl, **_fake_persist_inputs(tmp_path))
 
     assert not mock_restart.called, (
-        "long-lived-gateway adapter (openclaw) must not trigger a cc-daemon restart"
+        "long-lived-gateway adapter (openclaw) must not trigger a mycelium-daemon restart"
     )
 
 
@@ -533,7 +533,7 @@ def test_restart_daemon_service_no_op_when_uninstalled(monkeypatch: pytest.Monke
     monkeypatch.setattr(platform, "system", lambda: "Linux")
     monkeypatch.setattr(
         daemon_install,
-        "cc_daemon_service_paths",
+        "daemon_service_paths",
         lambda: (Path("/nonexistent/plist"), Path("/nonexistent/service")),
     )
 

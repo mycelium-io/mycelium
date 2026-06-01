@@ -58,8 +58,8 @@ ls /tmp/cursor-e2e-workspace/.cursor/rules/mycelium.mdc
 ls /tmp/cursor-e2e-workspace/AGENTS.md
 grep -q "<!-- mycelium:start -->" /tmp/cursor-e2e-workspace/AGENTS.md && echo "marker present"
 
-# Verify handle owned in cc-daemon.toml
-grep -A 5 '\[handles\]' ~/.mycelium/cc-daemon.toml | grep cursor-x
+# Verify handle owned in daemon.toml
+grep -A 5 '\[handles\]' ~/.mycelium/daemon.toml | grep cursor-x
 
 # Invoke via the daemon
 mycelium agent invoke cursor-x "Reply with just the string OK so I know you got this." --room cursor-e2e
@@ -72,9 +72,9 @@ curl -s "http://localhost:8000/api/rooms/cursor-e2e/messages?limit=5" | python3 
 ```
 
 **Fail criteria**:
-- No response in room within 60s → check `~/.mycelium/logs/cc-daemon.log` for `dispatch @cursor-x` lines
+- No response in room within 60s → check `~/.mycelium/logs/daemon.log` for `dispatch @cursor-x` lines
 - "cursor-agent not authenticated" in logs → user needs to re-login
-- Handle missing from cc-daemon.toml → `mycelium agent create` didn't persist; check `CursorIntegration.register`
+- Handle missing from daemon.toml → `mycelium agent create` didn't persist; check `CursorIntegration.register`
 - Workspace assets missing → `install_workspace_assets` raised silently; check for `NotADirectoryError`
 
 ## Phase 2: Workspace asset drift
@@ -147,7 +147,7 @@ mycelium doctor --mode auto 2>&1 | grep "cursor-agent login"
 ```
 
 **Fail criteria**:
-- Daemon crashed (check `systemctl --user status mycelium-cc-daemon`) → auth detection raised instead of returning a SpawnResult
+- Daemon crashed (check `systemctl --user status mycelium-daemon`) → auth detection raised instead of returning a SpawnResult
 - Room shows a Python traceback → `_detect_auth_required` regression
 - Doctor didn't flag the missing token → cursor login check not reading the right field
 
@@ -199,7 +199,7 @@ curl -s "http://localhost:8000/api/rooms/$ROOM/messages?limit=5" | python3 -m js
 
 ## Phase 5: Cross-family negotiation (requires --multi-host)
 
-Confirm a cursor agent and a counterparty (`openclaw` or `claude_code`) on different hosts can negotiate via IOC, **autonomously** — i.e. without an operator running `mycelium negotiate respond` between rounds. The cc-daemon gained this autonomous-coordination path in 2026-05: the daemon polls `/api/coordination-sessions`, dynamically subscribes SSE to each active session sub-room, and on every `coordination_tick` cold-spawns the owned agent which then calls `mycelium negotiate respond …` itself.
+Confirm a cursor agent and a counterparty (`openclaw` or `claude_code`) on different hosts can negotiate via IOC, **autonomously** — i.e. without an operator running `mycelium negotiate respond` between rounds. The daemon gained this autonomous-coordination path in 2026-05: the daemon polls `/api/coordination-sessions`, dynamically subscribes SSE to each active session sub-room, and on every `coordination_tick` cold-spawns the owned agent which then calls `mycelium negotiate respond …` itself.
 
 ```bash
 ROOM=cursor-ioc-e2e
@@ -225,7 +225,7 @@ mycelium session join --handle planner -m "Optimise for ship date" -r $ROOM
 ssh $SPOKE_HOST mycelium session join --handle designer -m "Optimise for design polish" -r $ROOM
 
 # Watch the autonomous flow play out. Within ~5s of each join the
-# corresponding cc-daemon's poller logs:
+# corresponding daemon's poller logs:
 #   "dynamic subscribe → cursor-ioc-e2e:session:<short_id> (coordination session)"
 # Within ~30s of join-window close, ticks arrive in the sub-room and the
 # daemon dispatches:
@@ -264,8 +264,8 @@ for m in json.load(sys.stdin)['messages']:
 ```
 
 **Fail criteria**:
-- No `dynamic subscribe` log on either daemon within 10s of join → cc-daemon didn't reach the poller branch (deployment regression — verify the installed `dispatch.py` contains `poll_coordination_sessions`)
-- `dynamic subscribe` fires but no `dispatch @<handle>` on tick → handle not in this daemon's `cc-daemon.toml.handles` (sibling daemon owns it on a different host); confirm with `mycelium daemon ls`
+- No `dynamic subscribe` log on either daemon within 10s of join → daemon didn't reach the poller branch (deployment regression — verify the installed `dispatch.py` contains `poll_coordination_sessions`)
+- `dynamic subscribe` fires but no `dispatch @<handle>` on tick → handle not in this daemon's `daemon.toml.handles` (sibling daemon owns it on a different host); confirm with `mycelium daemon ls`
 - `dispatch` fires but spawn exits 1 with `Credit balance is too low` (claude) → counterparty's API key is unfunded; switch counterparty or top up
 - `dispatch` fires but spawn exits 1 with `SessionEnd hook ... not found` (claude) → stale `~/.claude/settings.json` from an older mycelium-cli; rerun `mycelium adapter add claude-code --reinstall`
 - Cursor agent never produces a counter_offer / accept → `cursor-agent` isn't seeing the mycelium rules (workspace assets missing on spoke); rerun `mycelium agent create designer …` to redrop them
@@ -298,8 +298,8 @@ curl -s -X DELETE http://localhost:8000/api/rooms/cursor-ioc-e2e
 
 | Symptom | Likely cause | Check |
 |---------|-------------|-------|
-| `cursor-agent: command not found` in daemon log | binary not on daemon's PATH | restart daemon under correct env: `systemctl --user restart mycelium-cc-daemon` |
-| Daemon log shows `not owned by this daemon` | handle missing from `cc-daemon.toml` | `mycelium agent create` didn't trigger restart — re-run on this host |
+| `cursor-agent: command not found` in daemon log | binary not on daemon's PATH | restart daemon under correct env: `systemctl --user restart mycelium-daemon` |
+| Daemon log shows `not owned by this daemon` | handle missing from `daemon.toml` | `mycelium agent create` didn't trigger restart — re-run on this host |
 | "agent created" but @-mentions silently drop | daemon snapshot stale | restart daemon manually; verify `restart_daemon_service` is being called |
 | Workspace AGENTS.md double-merged | `_strip_agents_md_section` regex regression | re-run cursor install tests, esp. `test_cursor_install.py::test_marker_merge_*` |
 | `Cursor login expired` in room | token expired — `cursor-agent login` again | check `~/.config/cursor/auth.json` `accessToken` |

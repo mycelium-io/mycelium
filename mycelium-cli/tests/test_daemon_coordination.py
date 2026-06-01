@@ -4,7 +4,7 @@
 """Daemon-side ``coordination_tick`` / ``coordination_consensus`` handling.
 
 Pins the autonomous-negotiation invariant for cold-spawn families: when the
-CognitiveEngine emits a tick or consensus message, the cc-daemon spawns the
+CognitiveEngine emits a tick or consensus message, the mycelium-daemon spawns the
 addressed agent with a self-contained instruction so it can run
 ``mycelium negotiate respond accept`` (or the propose/reject equivalents)
 itself — no operator-driven accept loop required.
@@ -36,7 +36,7 @@ from mycelium.protocol import AgentManifest
 
 @pytest.fixture(autouse=True)
 def _tmp_daemon_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(daemon_config, "daemon_config_path", lambda: tmp_path / "cc-daemon.toml")
+    monkeypatch.setattr(daemon_config, "daemon_config_path", lambda: tmp_path / "daemon.toml")
 
 
 def _config() -> MyceliumConfig:
@@ -410,7 +410,7 @@ async def test_on_message_skips_tick_for_long_lived_gateway_family(
     _patched_dispatch: dict[str, MagicMock],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Openclaw agents have their own runtime tick handler; cc-daemon must
+    """Openclaw agents have their own runtime tick handler; mycelium-daemon must
     not also spawn — that would race with the gateway."""
     openclaw_manifest = AgentManifest(
         handle="planner",
@@ -680,7 +680,7 @@ async def test_handle_tick_looks_up_manifest_under_parent_room_not_subroom(
     are mirrored under the *parent* room, so the lookup must derive the
     parent — otherwise every tick stalls with "no manifest in local mirror"
     even though the agent is registered correctly. This was the live failure
-    mode that surfaced when the cc-daemon first started subscribing to
+    mode that surfaced when the mycelium-daemon first started subscribing to
     session sub-rooms in 2026-05.
     """
     seen_rooms: list[str] = []

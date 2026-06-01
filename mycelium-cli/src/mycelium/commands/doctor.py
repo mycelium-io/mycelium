@@ -1335,9 +1335,9 @@ def _cursor_adapter_registered() -> bool:
 
 
 def _check_cursor_agent_binary() -> CheckResult:
-    """Verify ``cursor-agent`` is reachable on PATH for the cc-daemon to spawn.
+    """Verify ``cursor-agent`` is reachable on PATH for the daemon to spawn.
 
-    The cc-daemon shells out via ``asyncio.create_subprocess_exec("cursor-agent",
+    The daemon shells out via ``asyncio.create_subprocess_exec("cursor-agent",
     ...)`` — without the binary on PATH every mention silently fails with a
     daemon-side ``FileNotFoundError``. Surfacing this early avoids the "I
     @-mentioned my cursor agent and nothing happened" debugging spiral.
@@ -1522,7 +1522,7 @@ def _check_cursor_workspace_assets() -> CheckResult:
     )
 
 
-# ── Claude Code daemon checks ─────────────────────────────────────────────────
+# ── Agent daemon checks ───────────────────────────────────────────────────────
 
 
 def _claude_daemon_installed() -> bool:
@@ -1531,38 +1531,38 @@ def _claude_daemon_installed() -> bool:
 
     home = Path.home()
     if platform.system() == "Darwin":
-        return (home / "Library" / "LaunchAgents" / "io.mycelium.cc-daemon.plist").exists()
+        return (home / "Library" / "LaunchAgents" / "io.mycelium.daemon.plist").exists()
     if platform.system() == "Linux":
-        return (home / ".config" / "systemd" / "user" / "mycelium-cc-daemon.service").exists()
+        return (home / ".config" / "systemd" / "user" / "mycelium-daemon.service").exists()
     return False
 
 
-def _check_cc_daemon_service_registered() -> CheckResult:
+def _check_daemon_service_registered() -> CheckResult:
     """The unit file is on disk in the right location for the service manager."""
     import platform
 
     if not _claude_daemon_installed():
         return CheckResult(
-            name="cc-daemon service",
+            name="daemon service",
             status="ok",
             message=(
-                "Claude Code daemon not installed — skipped "
+                "agent daemon not installed — skipped "
                 "(install with: mycelium adapter add claude-code --step=daemon)"
             ),
         )
     system = platform.system()
     return CheckResult(
-        name="cc-daemon service",
+        name="daemon service",
         status="ok",
         message=f"{system} service unit registered",
     )
 
 
-def _check_cc_daemon_running() -> CheckResult:
+def _check_daemon_running() -> CheckResult:
     """The daemon answers on its unix-socket health endpoint."""
     if not _claude_daemon_installed():
         return CheckResult(
-            name="cc-daemon health",
+            name="daemon health",
             status="ok",
             message="not installed — skipped",
         )
@@ -1572,12 +1572,12 @@ def _check_cc_daemon_running() -> CheckResult:
     health = read_health_blocking(timeout=2.0)
     if health is None:
         return CheckResult(
-            name="cc-daemon health",
+            name="daemon health",
             status="error",
             message="service installed but unix-socket /health did not respond",
             details=[
-                "  socket: ~/.mycelium/cc-daemon.sock",
-                "  logs:   ~/.mycelium/logs/cc-daemon.log",
+                "  socket: ~/.mycelium/daemon.sock",
+                "  logs:   ~/.mycelium/logs/daemon.log",
                 "  fix:    mycelium daemon restart",
             ],
         )
@@ -1607,7 +1607,7 @@ def _check_cc_daemon_running() -> CheckResult:
         )
 
     return CheckResult(
-        name="cc-daemon health",
+        name="daemon health",
         status="warning" if errors else "ok",
         message=(
             "running, no errors" if not errors else f"running, but {errors} error(s) in last hour"
@@ -1715,8 +1715,8 @@ def doctor(
                     _check_cursor_agent_binary(),
                     _check_cursor_login(),
                     _check_cursor_workspace_assets(),
-                    _check_cc_daemon_service_registered(),
-                    _check_cc_daemon_running(),
+                    _check_daemon_service_registered(),
+                    _check_daemon_running(),
                 ],
             ),
         ]

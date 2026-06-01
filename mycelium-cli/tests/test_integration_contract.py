@@ -68,7 +68,7 @@ def test_spawn_override_matches_lifecycle(family: str) -> None:
     missing override on a cold_spawn family means a routing bug surfaces as
     ``NotImplementedError`` instead of silent skip. Conversely, a long-lived
     gateway that overrides ``spawn`` is a category error: its agents are
-    delivered by its own runtime, not the cc-daemon.
+    delivered by its own runtime, not the mycelium-daemon.
     """
     cls = type(get_integration(family))
     if cls.lifecycle == "cold_spawn":

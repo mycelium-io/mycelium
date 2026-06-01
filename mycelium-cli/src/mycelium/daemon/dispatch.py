@@ -266,7 +266,7 @@ async def _post_log(
 ) -> None:
     """Write the invocation transcript to a daemon-private log directory.
 
-    Logs live OUTSIDE the room's memory namespace (``~/.mycelium/cc-daemon/
+    Logs live OUTSIDE the room's memory namespace (``~/.mycelium/daemon/
     logs/<room>/<handle>/<ts>.json``) so they don't flood the semantic
     index, `memory ls` output, or synthesis runs. `mycelium agent show`
     reads from here. Logs are local-only — they don't sync via git or the
@@ -680,7 +680,7 @@ async def on_message(
         if handle not in daemon_cfg.handles:
             # A claude_code manifest can reach this machine's filesystem via
             # room sync, but the agent runs on whichever machine created it.
-            # Ownership is recorded in cc-daemon.toml by `mycelium agent
+            # Ownership is recorded in daemon.toml by `mycelium agent
             # create`; without that, two daemons subscribed to one room would
             # both dispatch — and both spawn `claude` in the manifest's cwd.
             log.debug("skip @%s — not owned by this daemon", handle)
@@ -934,8 +934,8 @@ async def _handle_join(
     """Dynamically subscribe to a session sub-room when an agent joins it.
 
     CognitiveEngine posts ticks/consensus into ``r:session:abc`` sub-rooms,
-    not the parent room. The cc-daemon's static SSE subscriptions (from
-    ``cc-daemon.toml``) only cover parent rooms, so without this branch the
+    not the parent room. The daemon's static SSE subscriptions (from
+    ``daemon.toml``) only cover parent rooms, so without this branch the
     daemon would observe the join + nothing else and fall back to the
     operator-driven accept loop. We mirror the openclaw plugin's
     ``subscribe-session`` action: discover the sub-room, fire a ``subscribe_room``
@@ -1158,7 +1158,7 @@ async def poll_coordination_sessions(
 
     The CognitiveEngine emits ticks / consensus into the session sub-room's
     NOTIFY channel, never the parent room's. A daemon subscribed only to
-    parent rooms (``cc-daemon.toml`` lists those) would observe a join in
+    parent rooms (``daemon.toml`` lists those) would observe a join in
     the database but no live updates afterwards. We solve this the same way
     the openclaw plugin does (``integrations/openclaw/.../channel/index.ts``):
     poll ``/api/coordination-sessions`` every few seconds, subscribe to any

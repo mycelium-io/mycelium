@@ -1,12 +1,12 @@
 ---
 name: claude-code-e2e
-description: Run end-to-end smoke tests for the Mycelium claude_code adapter. Verifies claude CLI prereqs, daemon installation, single-host cold-spawn dispatch, multi-room ownership semantics, notes persistence across spawns, control verbs (status/abort), budget gating, concurrent dispatch serialization, and (with funded API credits) autonomous coordination via cc-daemon coordination_tick handling. Use when validating the claude_code adapter after changes to `integrations/claude_code/**`, the cc-daemon, or after upgrading the `claude` CLI itself.
+description: Run end-to-end smoke tests for the Mycelium claude_code adapter. Verifies claude CLI prereqs, daemon installation, single-host cold-spawn dispatch, multi-room ownership semantics, notes persistence across spawns, control verbs (status/abort), budget gating, concurrent dispatch serialization, and (with funded API credits) autonomous coordination via mycelium-daemon coordination_tick handling. Use when validating the claude_code adapter after changes to `integrations/claude_code/**`, the daemon, or after upgrading the `claude` CLI itself.
 argument-hint: "[--quick | --full | --concurrent | --coord]"
 ---
 
 # Claude Code Adapter End-to-End Testing
 
-Validate the claude_code adapter by exercising the cold-spawn path on real `claude -p` invocations. The general `e2e` skill covers stack health, memory, and negotiation; this one focuses on the claude_code-specific surface: cc-daemon dispatch, the SKILL.md + hooks install (when re-enabled), the per-handle serialisation invariant, and (Phase 6) the autonomous coordination flow where cc-daemon wakes the agent on every `coordination_tick`.
+Validate the claude_code adapter by exercising the cold-spawn path on real `claude -p` invocations. The general `e2e` skill covers stack health, memory, and negotiation; this one focuses on the claude_code-specific surface: daemon dispatch, the SKILL.md + hooks install (when re-enabled), the per-handle serialisation invariant, and (Phase 6) the autonomous coordination flow where the daemon wakes the agent on every `coordination_tick`.
 
 ## Arguments
 
@@ -26,11 +26,11 @@ claude --version
 # 2. Authenticated (claude stores its session under ~/.claude/.credentials.json)
 ls ~/.claude/.credentials.json && echo "claude credentials present"
 
-# 3. cc-daemon installed for this user
-ls ~/.config/systemd/user/mycelium-cc-daemon.service 2>/dev/null \
-  || ls ~/Library/LaunchAgents/io.mycelium.cc-daemon.plist 2>/dev/null
-systemctl --user status mycelium-cc-daemon 2>/dev/null | grep -E "Active|Loaded" \
-  || launchctl print "gui/$(id -u)/io.mycelium.cc-daemon" 2>/dev/null | head -5
+# 3. Daemon installed for this user
+ls ~/.config/systemd/user/mycelium-daemon.service 2>/dev/null \
+  || ls ~/Library/LaunchAgents/io.mycelium.daemon.plist 2>/dev/null
+systemctl --user status mycelium-daemon 2>/dev/null | grep -E "Active|Loaded" \
+  || launchctl print "gui/$(id -u)/io.mycelium.daemon" 2>/dev/null | head -5
 
 # 4. Mycelium backend reachable
 mycelium doctor --mode auto
@@ -56,7 +56,7 @@ mycelium agent create cc-x \
   --budget 1.00
 
 # Verify handle owned (so this daemon, not a sibling, dispatches it)
-grep -A 5 '\[handles\]' ~/.mycelium/cc-daemon.toml | grep cc-x
+grep -A 5 '\[handles\]' ~/.mycelium/daemon.toml | grep cc-x
 
 # Daemon picked up the new handle?
 mycelium daemon status | grep cc-x || echo "WARN: handle not in daemon view"
@@ -68,8 +68,8 @@ mycelium catchup --room cc-e2e --limit 5
 ```
 
 **Fail criteria**:
-- No reply in 60s → check `~/.mycelium/logs/cc-daemon.log` for `dispatch @cc-x`
-- "not owned by this daemon" in logs → handle missing from `cc-daemon.toml`; `agent create` didn't kick the daemon
+- No reply in 60s → check `~/.mycelium/logs/daemon.log` for `dispatch @cc-x`
+- "not owned by this daemon" in logs → handle missing from `daemon.toml`; `agent create` didn't kick the daemon
 - "claude: command not found" → daemon's PATH doesn't include the claude install; `systemctl --user import-environment PATH` then restart daemon
 
 ## Phase 2: Notes persistence across spawns
@@ -146,7 +146,7 @@ sleep 30
 # Second invoke should be denied at the daemon
 mycelium agent invoke cc-broke "Write another one."
 sleep 5
-grep "budget exceeded" ~/.mycelium/logs/cc-daemon.log | tail -2
+grep "budget exceeded" ~/.mycelium/logs/daemon.log | tail -2
 # Expect: at least one budget-denied log line
 
 mycelium catchup --room cc-e2e --limit 5
@@ -185,7 +185,7 @@ mycelium catchup --room cc-e2e --limit 10
 #         then cc-a's second reply lands AFTER cc-a's first reply
 
 # Cross-check with daemon log: per-handle lock acquire/release for cc-a
-grep -E "lock|dispatch @cc-a" ~/.mycelium/logs/cc-daemon.log | tail -10
+grep -E "lock|dispatch @cc-a" ~/.mycelium/logs/daemon.log | tail -10
 ```
 
 **Fail criteria**:
@@ -194,7 +194,7 @@ grep -E "lock|dispatch @cc-a" ~/.mycelium/logs/cc-daemon.log | tail -10
 
 ## Phase 6: Autonomous coordination (requires funded API credits)
 
-Validate that cc-daemon dispatches `claude_code` agents on every `coordination_tick` and that the agent runs `mycelium negotiate respond …` itself — no operator in the loop. This is the autonomous-coordination path the cc-daemon gained in 2026-05; it pairs with the `claude_code/spawn.py` `--permission-mode bypassPermissions` flag added at the same time. Together they let cold-spawned claude run shell commands without an interactive approver.
+Validate that the daemon dispatches `claude_code` agents on every `coordination_tick` and that the agent runs `mycelium negotiate respond …` itself — no operator in the loop. This is the autonomous-coordination path the daemon gained in 2026-05; it pairs with the `claude_code/spawn.py` `--permission-mode bypassPermissions` flag added at the same time. Together they let cold-spawned claude run shell commands without an interactive approver.
 
 **Prerequisite credit check** — claude's `-p` mode does not fall back gracefully when the API account is empty; spawns exit 1 with `{"is_error":true,"api_error_status":400,"result":"Credit balance is too low"}` and the negotiation runs out the round budget posting daemon errors. Verify credits are present before starting:
 
@@ -239,7 +239,7 @@ mycelium session join --handle polisher -m "Optimise for design polish" -r $ROOM
 # agent on every tick, the agent runs ``mycelium negotiate respond …``
 # inside the spawn, and the negotiation converges (or hits the 20-round cap).
 
-tail -F ~/.mycelium/logs/cc-daemon.log | grep -E "dynamic subscribe|coordination_tick|dispatch @"
+tail -F ~/.mycelium/logs/daemon.log | grep -E "dynamic subscribe|coordination_tick|dispatch @"
 
 # In another shell, poll the session for terminal state:
 for i in $(seq 1 30); do
@@ -259,8 +259,8 @@ done
 - `claude -p exited 1. stderr: SessionEnd hook ... not found` → stale `~/.claude/settings.json` from an older mycelium-cli that registered hook scripts the current install doesn't ship. Run `mycelium adapter add claude-code --reinstall` to prune the dead `Stop` / `SessionEnd` entries.
 - `claude -p exited 1` with `Credit balance is too low` → API account empty; top up or route to a different LLM provider before retrying.
 - `dispatch @<handle>` fires but `mycelium negotiate respond …` never appears in the room → claude's permission layer blocked the shell call. Confirm the spawn line in `claude_code/spawn.py` includes `--permission-mode bypassPermissions`. Without it the agent posts apologetic "command needs approval" broadcasts every round but never moves the negotiation forward.
-- `dynamic subscribe` log missing within 10s of the join → daemon doesn't have the coordination-session poller. Reinstall: `cd mycelium-cli && uv tool install . --force --reinstall && systemctl --user restart mycelium-cc-daemon`.
-- `dispatch @<handle>` log missing on tick → handle not owned by this daemon. Check `cc-daemon.toml.handles`; if `mycelium agent create` didn't refresh it, run `mycelium daemon restart`.
+- `dynamic subscribe` log missing within 10s of the join → daemon doesn't have the coordination-session poller. Reinstall: `cd mycelium-cli && uv tool install . --force --reinstall && systemctl --user restart mycelium-daemon`.
+- `dispatch @<handle>` log missing on tick → handle not owned by this daemon. Check `daemon.toml.handles`; if `mycelium agent create` didn't refresh it, run `mycelium daemon restart`.
 - `broken: true` after 20 rounds → personas locked on incompatible positions; an agent-prompt issue, not coordination.
 
 ## Cleanup
@@ -293,7 +293,7 @@ curl -s -X DELETE http://localhost:8000/api/rooms/cc-ioc-e2e
 | `SessionEnd hook ... not found` on every spawn | stale `~/.claude/settings.json` from older mycelium-cli (Phase 6) | `mycelium adapter add claude-code --reinstall` to prune dead `Stop`/`SessionEnd` entries |
 | `Credit balance is too low` on every spawn (Phase 6) | API account empty | top up credits or route to a different LLM provider |
 | Agent posts "command needs approval" but never runs `mycelium negotiate respond …` (Phase 6) | spawn missing `--permission-mode bypassPermissions` | confirm the flag in `claude_code/spawn.py`, reinstall CLI, restart daemon |
-| `dynamic subscribe` log missing on session create (Phase 6) | daemon predates the coordination-session poller | `cd mycelium-cli && uv tool install . --force --reinstall && systemctl --user restart mycelium-cc-daemon` |
+| `dynamic subscribe` log missing on session create (Phase 6) | daemon predates the coordination-session poller | `cd mycelium-cli && uv tool install . --force --reinstall && systemctl --user restart mycelium-daemon` |
 
 ## When to Update This Skill
 
@@ -301,5 +301,5 @@ curl -s -X DELETE http://localhost:8000/api/rooms/cc-ioc-e2e
 - Notes schema changes → update Phase 2 to assert against the new key shape
 - Budget enforcement gains a new tier or persistence layer → expand Phase 4
 - New per-handle invariant (e.g. CPU caps, network egress controls) → add a phase
-- New autonomous-coordination signal (e.g. cc-daemon gains a `coordination_X` handler) → extend Phase 6
+- New autonomous-coordination signal (e.g. daemon gains a `coordination_X` handler) → extend Phase 6
 - Claude CLI changes the permission-mode flag or default → re-validate Phase 6 and update `claude_code/spawn.py`

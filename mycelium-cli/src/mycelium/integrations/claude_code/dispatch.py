@@ -3,7 +3,7 @@
 
 """ClaudeCode dispatch facet — the manifest IS the registration.
 
-The cc-daemon discovers ``agents/<handle>`` manifests off the filesystem and
+The daemon discovers ``agents/<handle>`` manifests off the filesystem and
 dispatches ``@handle`` mentions to ``claude -p`` spawns. So register/destroy
 have no runtime side effects — there's no external service to wire up. This
 exists so the command layer has a uniform contract, not because it does work.
@@ -63,10 +63,10 @@ class ClaudeCodeIntegration(Integration):
     def register(
         self, *, manifest: AgentManifest, config: MyceliumConfig, opts: AddOptions
     ) -> None:
-        # A claude_code agent is cold-spawned by the cc-daemon on THIS machine
-        # (its cwd is a local path). Claim the handle in cc-daemon.toml so the
+        # A claude_code agent is cold-spawned by the daemon on THIS machine
+        # (its cwd is a local path). Claim the handle in daemon.toml so the
         # local daemon dispatches it — and so another machine that syncs this
-        # room does NOT (its cc-daemon.toml won't list the handle). Without
+        # room does NOT (its daemon.toml won't list the handle). Without
         # this, two daemons subscribed to one room both spawn the agent.
         from mycelium.daemon.config import DaemonConfig
 
@@ -79,7 +79,7 @@ class ClaudeCodeIntegration(Integration):
     ) -> None:
         # No external runtime to tear down. `full` is meaningless here — the
         # only artifacts are the manifest (deleted by the command layer) and
-        # notes/logs (deliberately preserved). Release the cc-daemon ownership
+        # notes/logs (deliberately preserved). Release the daemon ownership
         # claimed in register().
         from mycelium.daemon.config import DaemonConfig
 

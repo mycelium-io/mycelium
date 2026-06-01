@@ -159,13 +159,13 @@ class MemoryLogEntry(BaseModel):
 
 # Adapter identifiers the agent primitive knows how to host. Each maps to a
 # dispatcher:
-#   claude_code → mycelium-cc-daemon (subscribes room SSE, spawns claude -p)
-#   cursor      → mycelium-cc-daemon (subscribes room SSE, spawns
+#   claude_code → mycelium-daemon (subscribes room SSE, spawns claude -p)
+#   cursor      → mycelium-daemon (subscribes room SSE, spawns
 #                 cursor-agent -p). Same lifecycle as claude_code; the daemon's
 #                 dispatch loop routes via Integration.lifecycle, not family id.
 #   openclaw    → OpenClaw gateway's mycelium-room channel plugin (the agent
 #                 runs inside OpenClaw; we just register it into the channel's
-#                 rooms[] fan-out — no cc-daemon involvement, see the daemon
+#                 rooms[] fan-out — no daemon involvement, see the daemon
 #                 dispatch loop which skips non-cold_spawn families).
 AGENT_ADAPTERS: frozenset[str] = frozenset({"claude_code", "cursor", "openclaw"})
 
@@ -180,13 +180,13 @@ class AgentManifest(BaseModel):
 
     Three adapters:
 
-    - ``claude_code`` — cold-spawned by the cc-daemon. Requires ``cwd`` (where
+    - ``claude_code`` — cold-spawned by the daemon. Requires ``cwd`` (where
       ``claude -p`` runs).
-    - ``cursor`` — cold-spawned by the cc-daemon. Requires ``cwd`` (where
+    - ``cursor`` — cold-spawned by the daemon. Requires ``cwd`` (where
       ``cursor-agent -p`` runs; treated by Cursor as the workspace root).
     - ``openclaw`` — a long-lived OpenClaw agent. Requires ``openclaw_agent``
       (the OpenClaw agent id; usually == handle for create-mode). The
-      OpenClaw gateway's channel plugin is the dispatcher; the cc-daemon
+      OpenClaw gateway's channel plugin is the dispatcher; the daemon
       ignores these manifests entirely.
 
     The handle slug doubles as the mention target (``@release-agent``), so it
@@ -222,7 +222,7 @@ class AgentManifest(BaseModel):
         description=(
             "Sender handles allowed to invoke this agent (e.g. ['@julia', '@docs-agent']). "
             "Empty list means anyone in the room can invoke. "
-            "Enforced by the cc-daemon for claude_code; advisory for openclaw "
+            "Enforced by the daemon for claude_code; advisory for openclaw "
             "(the channel plugin gates on @-mention, not allow_from)."
         ),
     )

@@ -14,7 +14,7 @@ talk to each other directly — they post to rooms, write memories, and
 
 When the user asks you to "coordinate", "negotiate", "share memory",
 "check on what other agents have decided", or you find yourself spawned by
-the `mycelium-cc-daemon` to answer an `@your-handle` mention, the patterns
+the `mycelium-daemon` to answer an `@your-handle` mention, the patterns
 below are your toolbelt.
 
 ## Core concepts
@@ -146,7 +146,7 @@ mycelium plan task done <task-id>          # tick off a task you finished
 ## Agent mode (you've been spawned via `@handle`)
 
 If a message in a room was addressed to you with `@<your-handle>`, the
-`mycelium-cc-daemon` spawned this `cursor-agent -p` invocation to handle
+`mycelium-daemon` spawned this `cursor-agent -p` invocation to handle
 it. Your **manifest** lives at `agents/<your-handle>` and your persistent
 **notes** live at `agents/<your-handle>/notes`. The notes are the only
 thing that travels between cold spawns — read them before responding:
@@ -229,5 +229,5 @@ files into the workspace root:
 | `<workspace>/AGENTS.md` (Mycelium section only) | Agent-readable preamble between `<!-- mycelium:start -->` markers; merges with any existing AGENTS.md the project has. |
 
 `mycelium adapter add cursor --step=daemon` installs the
-`mycelium-cc-daemon` user service that dispatches `@handle` mentions to
+`mycelium-daemon` user service that dispatches `@handle` mentions to
 `cursor-agent -p` spawns.

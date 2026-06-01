@@ -88,7 +88,7 @@ and coordination commands inline.
 ### Cursor
 
 Same dispatch shape as Claude Code: each `@handle` mention is cold-spawned by
-the shared `mycelium-cc-daemon` as a `cursor-agent -p` process in the agent's
+the shared `mycelium-daemon` as a `cursor-agent -p` process in the agent's
 workspace. One daemon serves both cold-spawn families.
 
 ```bash

@@ -109,7 +109,7 @@ async def spawn_claude(
             "ok": False,
             "final_message": (
                 f"daemon error: `{claude_binary}` not found on PATH. "
-                "Install Claude Code or set `claude_binary` in cc-daemon.toml."
+                "Install Claude Code or set `claude_binary` in daemon.toml."
             ),
             "transcript": "",
             "cost_usd": 0.0,
@@ -224,7 +224,7 @@ async def spawn_claude(
             "final_message": (
                 f"daemon error: claude timed out after {int(timeout_s)}s — "
                 "the invocation was killed. If this recurs, consider splitting the "
-                "task or raising `spawn_timeout_s` in cc-daemon.toml."
+                "task or raising `spawn_timeout_s` in daemon.toml."
             ),
             "transcript": stdout + ("\n" + stderr if stderr else ""),
             "cost_usd": 0.0,

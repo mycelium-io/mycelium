@@ -10,7 +10,7 @@ An agent is just two memory entries plus an adapter route:
     <room>/agents/<handle>/notes      ← persistent brain, agent-curated
     <room>/agents/<handle>/log/<ts>   ← per-invocation transcript (daemon writes)
 
-The corresponding daemon (``mycelium-cc-daemon``, installed via
+The corresponding daemon (``mycelium-daemon``, installed via
 ``mycelium adapter add claude-code --step=daemon``) watches each room's SSE
 stream, dispatches ``@handle`` mentions to the right runtime, and posts the
 reply back to the room as ``@handle``.
@@ -336,8 +336,8 @@ def _persist_and_describe(
     # dangling manifest.
     impl.register(manifest=manifest, config=config, opts=opts)
     _write_manifest(config, room_name, manifest, created_by=handle_flag)
-    # Cold-spawn adapters (claude_code, cursor) need the cc-daemon to
-    # re-read ``cc-daemon.toml`` to pick up the newly-claimed handle —
+    # Cold-spawn adapters (claude_code, cursor) need the daemon to
+    # re-read ``daemon.toml`` to pick up the newly-claimed handle —
     # otherwise the agent appears registered but mentions silently drop
     # until the next manual ``mycelium daemon restart``. No-op when the
     # daemon service isn't installed on this host (e.g. openclaw-only
@@ -370,7 +370,7 @@ _CWD_PROMPT_BY_ADAPTER: dict[str, str] = {
     desc=(
         "Create a new, Mycelium-controlled agent in a room (greenfield). "
         "<code>claude_code</code> and <code>cursor</code> agents are cold-"
-        "spawned by the cc-daemon (one daemon serves both); "
+        "spawned by the daemon (one daemon serves both); "
         "<code>openclaw</code> agents are newly created in the OpenClaw "
         "gateway. To adopt an agent that already exists, use "
         "<code>mycelium agent add</code>."
@@ -399,8 +399,8 @@ def _create_wizard(
         "[dim]This will:[/dim]\n"
         "[dim]  · ask for the agent's handle, adapter, and details[/dim]\n"
         "[dim]  · register it as a Mycelium agent manifest in a room[/dim]\n"
-        "[dim]  · claude_code: claim cc-daemon ownership of the handle[/dim]\n"
-        "[dim]  · cursor: claim cc-daemon ownership of the handle and drop[/dim]\n"
+        "[dim]  · claude_code: claim daemon ownership of the handle[/dim]\n"
+        "[dim]  · cursor: claim daemon ownership of the handle and drop[/dim]\n"
         "[dim]    .cursor/rules/mycelium.mdc + AGENTS.md into the workspace[/dim]\n"
         "[dim]  · openclaw: create the OpenClaw agent, wire it into the[/dim]\n"
         "[dim]    room channel, allowlist the mycelium CLI, restart the gateway[/dim]\n"
@@ -531,10 +531,10 @@ def agent_create(
     ``mycelium agent add`` (interactive picker) instead.
 
     Examples:
-        # claude_code (cold-spawned by the cc-daemon)
+        # claude_code (cold-spawned by the daemon)
         mycelium agent create release-agent --cwd ~/repos/mycelium
 
-        # cursor (cold-spawned by the cc-daemon; same daemon as claude_code)
+        # cursor (cold-spawned by the daemon; same daemon as claude_code)
         mycelium agent create design-agent --adapter cursor \\
             --cwd ~/repos/my-frontend \\
             --description "Owns the design system; pings @julia on ambiguity"
@@ -1259,7 +1259,7 @@ def agent_rm(
             local.unlink()
 
         # Kick the daemon for the same reason as ``agent create``: the
-        # cold-spawn handle just got released from ``cc-daemon.toml`` and a
+        # cold-spawn handle just got released from ``daemon.toml`` and a
         # running daemon will keep firing on stale entries until reload.
         if getattr(impl, "lifecycle", None) == "cold_spawn":
             from mycelium.daemon.install import reload_daemon_service

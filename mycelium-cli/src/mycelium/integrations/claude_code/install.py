@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Claude Code install facet — skill/hooks install + cc-daemon service core.
+"""Claude Code install facet — skill/hooks install + daemon service core.
 
 Relocated verbatim from ``commands/adapter.py`` so the single ``Integration``
 contract (see ``integrations/base.py``) owns both the dispatch and install
@@ -44,7 +44,7 @@ _CLAUDE_CODE_STALE_SCRIPTS = [
 ]
 
 _CLAUDE_CODE_STEPS = {
-    "daemon": "install + register the mycelium-cc-daemon user service",
+    "daemon": "install + register the mycelium-daemon user service",
 }
 
 
@@ -309,7 +309,7 @@ def _cleanup_stale_claude_code_assets(claude_dir: Path, verbose: bool = False) -
                 typer.echo(f"  warning: could not rewrite settings.json: {e}")
 
 
-# ── cc-daemon user-service install / uninstall ───────────────────────────────
+# ── daemon user-service install / uninstall ───────────────────────────────
 #
 # The daemon mirrors the OpenClaw gateway for Claude Code agents. It runs as a
 # user-level service that subscribes to room SSE, watches for `@handle`
@@ -323,7 +323,7 @@ def _cleanup_stale_claude_code_assets(claude_dir: Path, verbose: bool = False) -
 
 
 def _step_claude_daemon_install(verbose: bool = False) -> None:
-    """Install the cc-daemon — claude_code's ``--step=daemon`` entrypoint.
+    """Install the daemon — claude_code's ``--step=daemon`` entrypoint.
 
     Currently a thin pass-through to the shared family-agnostic helper.
     Kept as a separate function so any future claude_code-specific daemon

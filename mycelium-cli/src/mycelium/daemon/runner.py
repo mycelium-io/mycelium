@@ -139,7 +139,7 @@ async def _amain(foreground: bool) -> int:
         pass
 
     server = await start_health_server(state)
-    log.info("mycelium-cc-daemon started (rooms=%d)", len(daemon_cfg.rooms))
+    log.info("mycelium-daemon started (rooms=%d)", len(daemon_cfg.rooms))
 
     sse_tasks: dict[str, asyncio.Task[None]] = {
         room: asyncio.create_task(

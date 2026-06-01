@@ -151,7 +151,7 @@ async def spawn_cursor(*, request: SpawnRequest) -> SpawnResult:
             final_message=(
                 f"daemon error: `{binary}` not found on PATH. "
                 "Install Cursor CLI (https://cursor.com/cli) or set "
-                "`cursor_binary` in cc-daemon.toml."
+                "`cursor_binary` in daemon.toml."
             ),
             transcript="",
         )
@@ -264,7 +264,7 @@ async def spawn_cursor(*, request: SpawnRequest) -> SpawnResult:
             final_message=(
                 f"daemon error: cursor-agent timed out after {int(timeout_s)}s — "
                 "the invocation was killed. If this recurs, consider splitting the "
-                "task or raising `spawn_timeout_s` in cc-daemon.toml."
+                "task or raising `spawn_timeout_s` in daemon.toml."
             ),
             transcript=transcript,
             duration_s=duration,
@@ -291,7 +291,7 @@ async def spawn_cursor(*, request: SpawnRequest) -> SpawnResult:
             final = (
                 "daemon error: `cursor-agent` is not authenticated. "
                 "Run `cursor-agent login` once interactively under the user "
-                "the cc-daemon runs as, then re-invoke."
+                "the daemon runs as, then re-invoke."
             )
         else:
             final = f"daemon error: cursor-agent exited {proc.returncode}. " + (

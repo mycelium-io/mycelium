@@ -36,7 +36,7 @@ router = APIRouter(prefix="/rooms/{room_name}/plan", tags=["plan"])
 
 # Agent-context lives at /rooms/{room}/agent-context — a room-scoped resource,
 # not a sub-path of /plan, so it gets its own router. It's the single endpoint
-# every agent-dispatch path (cc-daemon, openclaw channel) hits to learn what
+# every agent-dispatch path (mycelium-daemon, openclaw channel) hits to learn what
 # the room is for; v1 returns the plan briefing, but the shape is built to
 # grow (claimed tasks, recent activity) without callers changing.
 agent_router = APIRouter(prefix="/rooms/{room_name}", tags=["plan"])

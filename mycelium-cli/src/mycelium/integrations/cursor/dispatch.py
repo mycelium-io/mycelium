@@ -3,10 +3,10 @@
 
 """Cursor dispatch facet — manifest IS the registration (same shape as claude_code).
 
-Cursor agents are cold-spawned by the cc-daemon: every ``@handle`` mention
+Cursor agents are cold-spawned by the daemon: every ``@handle`` mention
 fires a fresh ``cursor-agent -p`` in the manifest's ``cwd`` (Cursor's workspace
 root). So register/destroy have no external runtime to wire up — they only
-claim/release the handle in ``cc-daemon.toml`` so two daemons subscribed to
+claim/release the handle in ``daemon.toml`` so two daemons subscribed to
 the same room don't both dispatch.
 
 The install facet methods land in :mod:`mycelium.integrations.cursor.install`
@@ -82,9 +82,9 @@ class CursorIntegration(Integration):
         # Order matters here. ``install_workspace_assets`` raises
         # ``NotADirectoryError`` when ``manifest.cwd`` doesn't exist, and we
         # surface that to the command layer as a clean validation error. If
-        # we claimed the cc-daemon handle *before* the cwd check, a failed
+        # we claimed the daemon handle *before* the cwd check, a failed
         # ``mycelium agent create`` would still persist the handle into
-        # ``~/.mycelium/cc-daemon.toml`` — leaking ownership of a name that
+        # ``~/.mycelium/daemon.toml`` — leaking ownership of a name that
         # never materialised as an agent. So: drop the workspace-local Cursor
         # rule + AGENTS.md section first (this validates cwd as a side
         # effect), THEN claim ownership.
@@ -92,8 +92,8 @@ class CursorIntegration(Integration):
             install_workspace_assets(Path(manifest.cwd), verbose=False)
 
         # Same handle-ownership semantics as claude_code: a cursor agent is
-        # cold-spawned by THIS machine's cc-daemon (its cwd is local). Claim
-        # the handle in cc-daemon.toml so a sibling daemon syncing this room
+        # cold-spawned by THIS machine's daemon (its cwd is local). Claim
+        # the handle in daemon.toml so a sibling daemon syncing this room
         # via git does NOT also dispatch — without ownership two
         # cursor-agent processes would race over the same cwd.
         from mycelium.daemon.config import DaemonConfig
@@ -116,7 +116,7 @@ class CursorIntegration(Integration):
             if cwd_path.exists():
                 uninstall_workspace_assets(cwd_path, verbose=False)
 
-        # Release the cc-daemon ownership claimed in :meth:`register`.
+        # Release the daemon ownership claimed in :meth:`register`.
         from mycelium.daemon.config import DaemonConfig
 
         daemon_cfg = DaemonConfig.load()
@@ -177,7 +177,7 @@ class CursorIntegration(Integration):
 
     def uninstall(self, *, record: dict, profile: str | None, container: str | None) -> None:
         # No host-level assets ever installed — symmetry with :meth:`install`.
-        # The cc-daemon, if installed via ``--step=daemon``, is removed via
+        # The daemon, if installed via ``--step=daemon``, is removed via
         # ``mycelium adapter add cursor --step=daemon --remove-step`` (or the
         # claude_code equivalent — they share one service).
         return
@@ -213,7 +213,7 @@ class CursorIntegration(Integration):
         typer.echo("")
         typer.secho("  Next steps:", bold=True)
         typer.echo("")
-        typer.echo("  1) Install the cc-daemon (one per host, shared with claude_code):")
+        typer.echo("  1) Install the daemon (one per host, shared with claude_code):")
         typer.secho(
             "       $ mycelium adapter add cursor --step=daemon",
             fg=typer.colors.CYAN,
@@ -277,7 +277,7 @@ class CursorIntegration(Integration):
         )
         details.append(
             "  ℹ login prerequisite: run `cursor-agent login` once interactively "
-            "under the user the cc-daemon runs as (no pre-flight check; first "
+            "under the user the daemon runs as (no pre-flight check; first "
             "@handle dispatch surfaces the auth error if it's missing)"
         )
         details.append("  ℹ workspace assets drop at `mycelium agent create --adapter cursor`")

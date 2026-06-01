@@ -3,7 +3,7 @@
 
 """Claude Code cold-spawn — argv invariants for headless / autonomous use.
 
-The cc-daemon spawns ``claude -p`` per ``@handle`` mention or per
+The mycelium-daemon spawns ``claude -p`` per ``@handle`` mention or per
 ``coordination_tick``. Both flows are headless: there is nobody at a
 terminal to answer ``Permission required to run Bash``. Without an
 explicit bypass the spawn stalls on the first tool call and the agent
@@ -69,7 +69,7 @@ def test_spawn_claude_invokes_permission_mode_bypass(
     2. ``--permission-mode bypassPermissions`` — skip the interactive
        approval prompt for every Bash / Edit / Read tool call.
 
-    Drop either of these and the cc-daemon's autonomous dispatch path
+    Drop either of these and the mycelium-daemon's autonomous dispatch path
     silently regresses to the operator-driven accept loop (or worse,
     posts "command needs approval" forever). Pin both.
     """

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Daemon dispatch routing — cursor + claude_code share one cc-daemon.
+"""Daemon dispatch routing — cursor + claude_code share one mycelium-daemon.
 
 Pins three integration-level invariants the daemon-core refactor introduced:
 
@@ -12,10 +12,10 @@ Pins three integration-level invariants the daemon-core refactor introduced:
 2. Lifecycle dispatch is family-agnostic: ``cold_spawn`` integrations
    override ``Integration.spawn``, ``long_lived_gateway`` integrations
    don't (and the daemon dispatch loop skips them). Without this
-   invariant, ``mycelium-cc-daemon`` could try to cold-spawn an OpenClaw
+   invariant, ``mycelium-daemon`` could try to cold-spawn an OpenClaw
    agent — race condition with the OpenClaw gateway, double-replies.
 
-3. Handle ownership in ``cc-daemon.toml`` is family-blind: a single
+3. Handle ownership in ``daemon.toml`` is family-blind: a single
    ``handles`` list serves both cursor and claude_code so a sibling
    daemon syncing a room via git doesn't double-dispatch either family.
 """
@@ -33,7 +33,7 @@ from mycelium.integrations import Integration, get_integration
 
 @pytest.fixture(autouse=True)
 def _tmp_daemon_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(daemon_config, "daemon_config_path", lambda: tmp_path / "cc-daemon.toml")
+    monkeypatch.setattr(daemon_config, "daemon_config_path", lambda: tmp_path / "daemon.toml")
 
 
 # ── DaemonConfig.binary_for ──────────────────────────────────────────────────
@@ -55,7 +55,7 @@ def test_binary_for_honours_override_and_round_trips() -> None:
 
 def test_binary_for_long_lived_gateway_family_returns_empty_string() -> None:
     """openclaw is dispatched by its own gateway, never cold-spawned by
-    the cc-daemon. ``binary_for`` returns an empty string so a programming
+    the mycelium-daemon. ``binary_for`` returns an empty string so a programming
     bug that calls into it for the wrong family fails loudly rather than
     spawning ``claude`` against an openclaw manifest."""
     assert DaemonConfig().binary_for("openclaw") == ""
@@ -93,7 +93,7 @@ def test_long_lived_gateway_family_is_skipped_by_daemon() -> None:
 
 
 def test_own_handle_serves_both_families() -> None:
-    """A single ``handles`` list in cc-daemon.toml works for both cursor
+    """A single ``handles`` list in daemon.toml works for both cursor
     and claude_code — the daemon doesn't need to know which family
     each handle belongs to (it discovers that by reading the agent
     manifest off disk at dispatch time)."""

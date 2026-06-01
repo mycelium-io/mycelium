@@ -7,7 +7,7 @@ Pins the dispatch-facet contract for the cursor family:
 
 - ``build_manifest`` produces a valid ``AgentManifest(adapter="cursor")``
   with the cwd threaded through from the integration constructor.
-- ``register`` claims handle ownership in ``cc-daemon.toml`` AND drops the
+- ``register`` claims handle ownership in ``daemon.toml`` AND drops the
   workspace-local assets (``.cursor/rules/mycelium.mdc`` + the mycelium
   section of ``AGENTS.md``). Both side effects must land together — a
   half-applied register would leave a daemon dispatching to an agent
@@ -41,12 +41,12 @@ from mycelium.protocol import AgentManifest
 
 @pytest.fixture(autouse=True)
 def _tmp_daemon_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Each test gets a fresh, isolated cc-daemon.toml in a tmp dir.
+    """Each test gets a fresh, isolated daemon.toml in a tmp dir.
 
     Mirrors ``test_daemon_ownership.py``'s autouse fixture so register /
     destroy don't read or mutate the user's real config.
     """
-    monkeypatch.setattr(daemon_config, "daemon_config_path", lambda: tmp_path / "cc-daemon.toml")
+    monkeypatch.setattr(daemon_config, "daemon_config_path", lambda: tmp_path / "daemon.toml")
 
 
 def _manifest(handle: str, cwd: str) -> AgentManifest:
