@@ -209,20 +209,12 @@ def parse_evaluation_md(content: str) -> EvalMetrics:
             after_val = _clean_cell(cells[2])
 
             if "consensus reached" in key or "consensus broken" in key:
-                # "consensus broken? No / No" → invert polarity to "reached"
-                if "broken" in key:
-                    def _invert(v: str) -> str:
-                        v_lower = v.lower()
-                        if "no" in v_lower:
-                            return "Yes (not broken)"
-                        if "yes" in v_lower:
-                            return "No (broken)"
-                        return v
-                    m.before_consensus = _invert(before_val)
-                    m.after_consensus = _invert(after_val)
-                else:
-                    m.before_consensus = before_val
-                    m.after_consensus = after_val
+                def _to_yes_no(v: str, invert: bool = False) -> str:
+                    v_lower = v.lower()
+                    is_yes = v_lower.startswith("yes") or (invert and v_lower.startswith("no"))
+                    return "Yes" if is_yes else "No"
+                m.before_consensus = _to_yes_no(before_val, invert="broken" in key)
+                m.after_consensus = _to_yes_no(after_val, invert="broken" in key)
             elif ("rounds" in key or "messages to" in key) and not m.before_rounds:
                 m.before_rounds = before_val
                 m.after_rounds = after_val
