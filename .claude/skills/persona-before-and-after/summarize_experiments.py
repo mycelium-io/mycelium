@@ -712,13 +712,16 @@ def build_report(results: list[EvalMetrics], total_inputs: int) -> str:
     lines.append("")
 
     # --- Verdicts ---
-    lines.append("## Verdicts\n")
-    for m in results:
-        lines.append(f"### {m.exp_id} — {m.scenario}\n")
-        if m.verdict:
-            lines.append(m.verdict + "\n")
-        else:
-            lines.append("_No verdict found in evaluation.md_\n")
+    lines.append("## Verdict\n")
+    verdicts = [m.verdict for m in results if m.verdict]
+    if verdicts:
+        combined = " ".join(
+            f"**{m.exp_id} ({m.scenario}):** {m.verdict}"
+            for m in results if m.verdict
+        )
+        lines.append(combined + "\n")
+    else:
+        lines.append("_No verdicts found in evaluation files._\n")
 
     return "\n".join(lines)
 
