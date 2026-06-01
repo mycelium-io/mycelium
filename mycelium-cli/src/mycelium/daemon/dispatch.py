@@ -451,8 +451,28 @@ def _format_tick_instruction(
         lines.append(valid_keys_line)
     if can_counter:
         lines.append(
-            "To counter-propose, run: mycelium negotiate propose ISSUE=VALUE ISSUE=VALUE ... "
-            f"--room {room_name} --handle {target_handle}"
+            "To counter-propose, run this shell command (pick values from issue_options above):"
+        )
+        if offer_keys:
+            example_pairs = " ".join(
+                f'"{k}={current_offer.get(k, "YOUR_CHOICE")}"' for k in offer_keys[:3]
+            )
+            if len(offer_keys) > 3:
+                example_pairs += " ..."
+            lines.append(
+                f"  mycelium negotiate propose {example_pairs} "
+                f"--room {room_name} --handle {target_handle}"
+            )
+        else:
+            lines.append(
+                f"  mycelium negotiate propose ISSUE=VALUE ISSUE=VALUE ... "
+                f"--room {room_name} --handle {target_handle}"
+            )
+        lines.append(
+            "  (Each pair is quoted as \"key=value\". Use the EXACT issue keys shown above.)"
+        )
+        lines.append(
+            "  Do NOT compose JSON or post {\"offer\": ...} — that format is NOT recognized."
         )
     lines.append(
         f"To accept: mycelium negotiate respond accept --room {room_name} --handle {target_handle}"
