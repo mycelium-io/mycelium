@@ -535,7 +535,8 @@ def process_gist(gist_url: str, gold: dict) -> Optional[EvalMetrics]:
                 t = stats.get("total", {})
                 events = str(t.get("events", ""))
                 tokens = t.get("estimated_cfn_knowledge_input_tokens", 0)
-                val = f"{events} ({tokens:,} tokens)" if events else ""
+                tokens_str = f"{round(tokens / 1000)}k" if tokens >= 1000 else str(tokens)
+                val = f"{events} ({tokens_str} tokens)" if events else ""
                 if label == "before":
                     m.before_ingest_events = val
                 else:
