@@ -1077,15 +1077,21 @@ Stage everything under unique names to avoid filename collisions, then push as a
 
 ```bash
 STAGE=$(mktemp -d)
-cp ~/.mycelium/rooms/${EXP_ID}/evaluation.md               "$STAGE/evaluation.md"
-cp ~/.mycelium/rooms/${EXP_ID}-before/transcript.md        "$STAGE/before-transcript.md"
-cp ~/.mycelium/rooms/${EXP_ID}-after/transcript.md         "$STAGE/after-transcript.md"
-cp ~/.mycelium/rooms/${EXP_ID}-after/session-transcript.md "$STAGE/after-session-transcript.md"
-# Ingest logs — skip silently if a snapshot is missing (e.g. ran --before-only)
-cp ~/.mycelium/rooms/${EXP_ID}-before/ingest-log.json      "$STAGE/before-ingest-log.json" 2>/dev/null || true
-cp ~/.mycelium/rooms/${EXP_ID}-before/ingest-stats.json    "$STAGE/before-ingest-stats.json" 2>/dev/null || true
-cp ~/.mycelium/rooms/${EXP_ID}-after/ingest-log.json       "$STAGE/after-ingest-log.json" 2>/dev/null || true
-cp ~/.mycelium/rooms/${EXP_ID}-after/ingest-stats.json     "$STAGE/after-ingest-stats.json" 2>/dev/null || true
+EVAL_DIR=~/.mycelium/rooms/${EXP_ID}
+cp "$EVAL_DIR/evaluation.md" "$STAGE/evaluation.md"
+# Transcripts — prefer copies in eval dir (written by Phase 5), fall back to live room dirs
+for label in before after; do
+  for fname in transcript.md session-transcript.md ingest-log.json ingest-stats.json; do
+    src_eval="$EVAL_DIR/${label}-${fname}"
+    src_room=~/.mycelium/rooms/${EXP_ID}-${label}/${fname}
+    dest="$STAGE/${label}-${fname}"
+    if [ -f "$src_eval" ]; then
+      cp "$src_eval" "$dest"
+    elif [ -f "$src_room" ]; then
+      cp "$src_room" "$dest"
+    fi
+  done
+done
 # Knowledge graph artifacts
 cp /tmp/cfn-knowledge-graph.md       "$STAGE/cfn-knowledge-graph.md" 2>/dev/null || true
 cp /tmp/cfn-query-decisions.txt      "$STAGE/cfn-query-decisions.txt" 2>/dev/null || true
@@ -1134,9 +1140,22 @@ print('Cleaned openclaw config')
 rm -rf ~/.openclaw/workspaces/${EXP_ID}-*
 rm -rf ~/.openclaw/agents/${EXP_ID}-*
 
+# Preserve transcripts into evaluation dir before deleting rooms
+# (required by summarize_experiments.py for issue recall/F1 scoring)
+mkdir -p ~/.mycelium/rooms/${EXP_ID}
+for label in before after; do
+  src=~/.mycelium/rooms/${EXP_ID}-${label}
+  dst=~/.mycelium/rooms/${EXP_ID}
+  [ -f "$src/transcript.md" ]         && cp "$src/transcript.md"         "$dst/${label}-transcript.md"
+  [ -f "$src/session-transcript.md" ] && cp "$src/session-transcript.md" "$dst/${label}-session-transcript.md"
+  [ -f "$src/ingest-log.json" ]       && cp "$src/ingest-log.json"       "$dst/${label}-ingest-log.json"
+  [ -f "$src/ingest-stats.json" ]     && cp "$src/ingest-stats.json"     "$dst/${label}-ingest-stats.json"
+done
+echo "Transcripts preserved in ~/.mycelium/rooms/${EXP_ID}/"
+
 # Delete rooms
-curl -sf -X DELETE "$MYCELIUM_API_URL/rooms/${EXP_ID}-before"
-curl -sf -X DELETE "$MYCELIUM_API_URL/rooms/${EXP_ID}-after"
+mycelium room delete "${EXP_ID}-before" -f 2>/dev/null || curl -sf -X DELETE "$MYCELIUM_API_URL/rooms/${EXP_ID}-before"
+mycelium room delete "${EXP_ID}-after"  -f 2>/dev/null || curl -sf -X DELETE "$MYCELIUM_API_URL/rooms/${EXP_ID}-after"
 
 # Ensure hooks are back to their normal state
 openclaw hooks enable mycelium-bootstrap
