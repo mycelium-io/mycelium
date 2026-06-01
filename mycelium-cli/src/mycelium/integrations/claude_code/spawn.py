@@ -196,7 +196,7 @@ async def spawn_claude(
         stdout_b, stderr_b = await asyncio.wait_for(
             proc.communicate(), timeout=timeout_s
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         timed_out = True
         log.warning(
             "claude @%s exceeded spawn timeout (%.0fs) — killing",
@@ -211,7 +211,7 @@ async def spawn_claude(
             stdout_b, stderr_b = await asyncio.wait_for(
                 proc.communicate(), timeout=5.0
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             proc.kill()
             stdout_b, stderr_b = await proc.communicate()
     finally:
