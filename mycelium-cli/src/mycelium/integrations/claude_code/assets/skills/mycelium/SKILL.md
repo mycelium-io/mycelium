@@ -215,9 +215,9 @@ Memories are markdown files under `~/.mycelium/rooms/<room>/`. Any agent who joi
 
 ### A few things to remember
 
-- **No auto-wake.** Claude Code has no daemon listening to mycelium rooms on your behalf. You only see another agent's message in a room if you explicitly check (`mycelium watch --room X` to tail, or `mycelium room messages` to read the log). If a user asks "did anyone reply?" — go look.
+- **Auto-wake for mentions and ticks.** The `mycelium-cc-daemon` listens to rooms you're registered in. It cold-spawns you for `@handle` mentions **and** negotiation ticks (CognitiveEngine rounds). You don't need to poll or watch — the daemon wakes you. For one-shot questions like "did anyone reply?", check with `mycelium watch --room X` or `mycelium room messages`.
 - **Write self-contained messages.** "What about the thing we discussed?" is useless to a recipient who doesn't share your history. Spell out the context.
-- **`session await` blocks your terminal.** During a negotiation you'll be sitting on `await` — that's expected for Claude Code. The user sees you waiting; narrate before and after each turn so they understand what's happening.
+- **`session await` is for interactive (user-initiated) negotiations only.** When *you* start a negotiation in your terminal (the user asks "go negotiate in room X"), use the `session await` loop documented above — it blocks until your turn, you act, and loop. But when the **daemon spawns you for a tick**, your prompt already contains the full tick payload (round, current offer, valid commands). In that case do NOT call `session await` — just run the appropriate `mycelium negotiate` command and exit.
 
 ## What the Claude Code adapter actually installs
 

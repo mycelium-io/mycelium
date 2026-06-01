@@ -169,6 +169,19 @@ EOF
 `mycelium memory set` overwrites — always write the full revised notes,
 not a diff. Keep updates conservative; notes are load-bearing.
 
+### Negotiation ticks (daemon-dispatched)
+
+When the daemon spawns you for a **negotiation tick** (CognitiveEngine
+round), your prompt already contains the full tick payload: round number,
+current offer, valid issue keys, and the exact `mycelium negotiate`
+commands to run. In this case do **NOT** call `session await` — just
+evaluate the offer, run the appropriate command (`negotiate respond
+accept`, `negotiate respond reject`, or `negotiate propose`), and exit.
+
+The `session await` loop in the "Semantic negotiation" section above is
+for **interactive** (user-initiated) negotiations only — when the user
+asks you to join and drive a negotiation from your terminal.
+
 ### Cold-start identity (important)
 
 You are running as `@<your-handle>` and your reply will be posted to the
