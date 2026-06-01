@@ -31,6 +31,57 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 
+def _llm_summarize_verdicts(verdicts: list[tuple[str, str, str]]) -> str:
+    """
+    Call the LiteLLM proxy to synthesize per-experiment verdicts into one paragraph.
+    verdicts: list of (exp_id, scenario, verdict_text)
+    Falls back to concatenation if the call fails.
+    """
+    base_url = os.environ.get("ANTHROPIC_BASE_URL", "https://litellm.prod.outshift.ai")
+    api_key  = os.environ.get("ANTHROPIC_AUTH_TOKEN", "")
+    model    = os.environ.get("SUMMARY_MODEL", "bedrock/global.anthropic.claude-haiku-4-5-20251001-v1:0")
+
+    bullet_list = "\n".join(
+        f"- **{exp_id} ({scenario}):** {verdict}"
+        for exp_id, scenario, verdict in verdicts
+    )
+    prompt = (
+        "You are summarizing results from a multi-agent negotiation experiment. "
+        "Below are per-experiment verdicts. Write a single cohesive paragraph (4-6 sentences) "
+        "that synthesizes the key findings across all experiments. Focus on patterns, "
+        "differences between models/scenarios, and what the results mean for Mycelium's value. "
+        "Do not use bullet points or headers — prose only.\n\n"
+        f"{bullet_list}"
+    )
+
+    try:
+        payload = json.dumps({
+            "model": model,
+            "max_tokens": 300,
+            "messages": [{"role": "user", "content": prompt}],
+        }).encode()
+        req = urllib.request.Request(
+            f"{base_url}/v1/chat/completions",
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+        )
+        resp = json.loads(urllib.request.urlopen(req, timeout=30).read())
+        text = resp["choices"][0]["message"]["content"].strip()
+        # Strip any markdown headers the LLM may have added
+        text = re.sub(r"^#{1,3}\s+.*\n+", "", text).strip()
+        return text
+    except Exception as e:
+        print(f"  WARNING: LLM verdict synthesis failed ({e}), falling back to concatenation.",
+              file=sys.stderr)
+        return " ".join(
+            f"**{exp_id} ({scenario}):** {verdict}"
+            for exp_id, scenario, verdict in verdicts
+        )
+
+
 # ---------------------------------------------------------------------------
 # Ground truth source
 # ---------------------------------------------------------------------------
@@ -687,38 +738,12 @@ def build_report(results: list[EvalMetrics], total_inputs: int) -> str:
 
     lines.append("")
 
-    # --- Aggregate stats ---
-    lines.append("## Aggregate Statistics\n")
-    lines.append("| Metric | Value |")
-    lines.append("|--------|-------|")
-
-    def avg(attr: str) -> Optional[float]:
-        vals = [getattr(r, attr) for r in results if getattr(r, attr) is not None]
-        return sum(vals) / len(vals) if vals else None
-
-    agg = [
-        ("After issue recall (avg)", avg("after_recall_issues")),
-        ("After issue F1 (avg)", avg("after_f1_issues")),
-        ("Before issue recall (avg)", avg("before_recall_issues")),
-        ("Before issue F1 (avg)", avg("before_f1_issues")),
-        ("After option recall (avg)", avg("after_recall_options")),
-        ("After option F1 (avg)", avg("after_f1_options")),
-        ("Before option recall (avg)", avg("before_recall_options")),
-        ("Before option F1 (avg)", avg("before_f1_options")),
-    ]
-    for label, val in agg:
-        lines.append(f"| {label} | {_pct(val)} |")
-
-    lines.append("")
-
     # --- Verdicts ---
     lines.append("## Verdict\n")
-    verdicts = [m.verdict for m in results if m.verdict]
-    if verdicts:
-        combined = " ".join(
-            f"**{m.exp_id} ({m.scenario}):** {m.verdict}"
-            for m in results if m.verdict
-        )
+    verdict_inputs = [(m.exp_id, m.scenario, m.verdict) for m in results if m.verdict]
+    if verdict_inputs:
+        print("  Synthesizing verdicts with LLM ...", file=sys.stderr)
+        combined = _llm_summarize_verdicts(verdict_inputs)
         lines.append(combined + "\n")
     else:
         lines.append("_No verdicts found in evaluation files._\n")
