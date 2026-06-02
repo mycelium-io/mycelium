@@ -1,0 +1,47 @@
+# Spoke device image: OpenClaw gateway + Mycelium CLI + cc-daemon + metrics collector.
+#
+# Published to ghcr.io/mycelium-io/mycelium-spoke:latest by the
+# build-openclaw workflow.  For source builds, the workflow pre-builds
+# a CLI wheel and passes it via --build-arg MYCELIUM_CLI_WHL.
+#
+# Usage:
+#   docker run -e OPENCLAW_ROLE=spoke1 ghcr.io/mycelium-io/mycelium-spoke
+#   docker run -e OPENCLAW_ROLE=spoke2 ghcr.io/mycelium-io/mycelium-spoke
+
+FROM node:22-alpine
+
+# Install system deps: bash/wget for entrypoint, python3 for mycelium CLI
+RUN apk add --no-cache bash wget python3 py3-pip && \
+    npm install -g openclaw@latest && \
+    openclaw plugins install @openclaw/matrix && \
+    openclaw plugins enable matrix && \
+    npm cache clean --force && \
+    rm -rf /tmp/* /root/.npm
+
+# Install mycelium CLI.
+# In release mode the install script is fetched at runtime by the entrypoint.
+# In source-build mode CI copies a pre-built wheel into /tmp and sets the arg.
+ARG MYCELIUM_CLI_WHL=""
+RUN if [ -n "$MYCELIUM_CLI_WHL" ]; then \
+        pip install --no-cache-dir --break-system-packages "$MYCELIUM_CLI_WHL" && \
+        rm -f "$MYCELIUM_CLI_WHL"; \
+    fi
+
+RUN mkdir -p /openclaw /shared && \
+    adduser -D -h /home/spoke spoke && \
+    chown -R spoke:spoke /openclaw /shared /home/spoke
+
+COPY --chown=spoke:spoke infra/scripts/spoke-entrypoint.sh /openclaw/entrypoint.sh
+RUN chmod +x /openclaw/entrypoint.sh
+
+WORKDIR /openclaw
+USER spoke
+
+ENV OPENCLAW_ROLE=spoke1 \
+    MATRIX_HOMESERVER=http://matrix-synapse:8008 \
+    MYCELIUM_BACKEND_URL=http://mycelium-backend:8000 \
+    COLLECTOR_HUB_URL=http://mycelium-collector:4318 \
+    MATRIX_SHARED_SECRET=e2e-shared-secret \
+    TOKEN_FILE=/shared/matrix-tokens.json
+
+ENTRYPOINT ["/openclaw/entrypoint.sh"]

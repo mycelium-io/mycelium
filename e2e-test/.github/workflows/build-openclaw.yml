@@ -1,15 +1,18 @@
-name: Build OpenClaw Gateway Image
+name: Build OpenClaw & Spoke Images
 
 on:
   push:
     branches: [main]
     paths:
       - 'infra/Dockerfile.openclaw'
+      - 'infra/Dockerfile.spoke'
       - 'infra/scripts/openclaw-entrypoint.sh'
+      - 'infra/scripts/spoke-entrypoint.sh'
   workflow_dispatch:
 
 env:
-  IMAGE: ghcr.io/${{ github.repository_owner }}/mycelium-openclaw
+  HUB_IMAGE: ghcr.io/${{ github.repository_owner }}/mycelium-openclaw
+  SPOKE_IMAGE: ghcr.io/${{ github.repository_owner }}/mycelium-spoke
 
 jobs:
   build:
@@ -29,12 +32,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
+      - name: Build and push hub image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: infra/Dockerfile.openclaw
           push: true
           tags: |
-            ${{ env.IMAGE }}:latest
-            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.HUB_IMAGE }}:latest
+            ${{ env.HUB_IMAGE }}:${{ github.sha }}
+
+      - name: Build and push spoke image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/Dockerfile.spoke
+          push: true
+          tags: |
+            ${{ env.SPOKE_IMAGE }}:latest
+            ${{ env.SPOKE_IMAGE }}:${{ github.sha }}

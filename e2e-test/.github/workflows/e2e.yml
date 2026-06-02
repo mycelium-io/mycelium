@@ -90,7 +90,20 @@ jobs:
             -f mycelium/fastapi-backend/Dockerfile mycelium/fastapi-backend/
           docker build -t mycelium-collector:dev \
             -f mycelium/mycelium-cli/Dockerfile.collector mycelium/mycelium-cli/
+
+          # Build a CLI wheel so the spoke image can install the same branch
+          pip install --quiet build
+          python -m build --wheel --outdir /tmp/cli-wheel mycelium/mycelium-cli/
+          CLI_WHL=$(ls /tmp/cli-wheel/*.whl | head -1)
+          cp "$CLI_WHL" infra/mycelium_cli.whl
+
+          docker build -t mycelium-spoke:dev \
+            --build-arg MYCELIUM_CLI_WHL=/tmp/mycelium_cli.whl \
+            -f infra/Dockerfile.spoke .
+
           echo "MYCELIUM_BACKEND_IMAGE=mycelium-backend:dev" >> "$GITHUB_ENV"
+          echo "MYCELIUM_COLLECTOR_IMAGE=mycelium-collector:dev" >> "$GITHUB_ENV"
+          echo "MYCELIUM_SPOKE_IMAGE=mycelium-spoke:dev" >> "$GITHUB_ENV"
 
       - name: Verify LLM configuration
         run: |
@@ -186,8 +199,17 @@ jobs:
             echo "No workspace/MAS ID found — skipping"
           fi
 
-      - name: Start OpenClaw gateway
+      - name: Start collector and OpenClaw gateway
         run: |
+          docker compose -f $COMPOSE_FILE up -d --no-recreate mycelium-collector
+          echo "Waiting for collector..."
+          for i in $(seq 1 30); do
+            status=$(docker inspect --format='{{.State.Health.Status}}' e2e-mycelium-collector 2>/dev/null || echo "missing")
+            [ "$status" = "healthy" ] && break
+            sleep 2
+          done
+          echo "  Collector: $status"
+
           docker compose -f $COMPOSE_FILE up -d --no-recreate openclaw-hub
           echo "Waiting for OpenClaw hub to start..."
           for i in $(seq 1 90); do
@@ -201,6 +223,25 @@ jobs:
               docker logs e2e-openclaw-hub --tail 30
             fi
             sleep 2
+          done
+
+      - name: Start spoke devices
+        run: |
+          docker compose -f $COMPOSE_FILE up -d --no-recreate openclaw-spoke1 openclaw-spoke2
+          echo "Waiting for spokes to start..."
+          for svc in e2e-openclaw-spoke1 e2e-openclaw-spoke2; do
+            for i in $(seq 1 90); do
+              status=$(docker inspect --format='{{.State.Health.Status}}' "$svc" 2>/dev/null || echo "missing")
+              if [ "$status" = "healthy" ]; then
+                echo "  $svc is healthy"
+                break
+              fi
+              if [ "$i" -eq 90 ]; then
+                echo "  WARNING: $svc did not become healthy (status=$status)"
+                docker logs "$svc" --tail 30
+              fi
+              sleep 2
+            done
           done
 
       - name: Register OpenClaw adapter
@@ -377,7 +418,7 @@ jobs:
         if: always()
         run: |
           mkdir -p artifacts/logs
-          for svc in e2e-mycelium-db e2e-mycelium-backend e2e-cfn-mgmt e2e-cfn-node e2e-matrix-synapse e2e-openclaw-hub; do
+          for svc in e2e-mycelium-db e2e-mycelium-backend e2e-cfn-mgmt e2e-cfn-node e2e-matrix-synapse e2e-mycelium-collector e2e-openclaw-hub e2e-openclaw-spoke1 e2e-openclaw-spoke2; do
             docker logs "$svc" > "artifacts/logs/${svc}.log" 2>&1 || true
           done
 

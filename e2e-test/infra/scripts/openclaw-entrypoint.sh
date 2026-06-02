@@ -69,20 +69,22 @@ node -e "
 
   const cfg = {
     gateway: { port: 18789 },
-    providers: {
-      litellm: {
-        baseUrl,
-        apiKey,
-        api: 'openai-completions',
-        models: [
-          {
-            id: model,
-            reasoning: false,
-            input: ['text'],
-            contextWindow: 200000,
-            maxTokens: 8096
-          }
-        ]
+    models: {
+      providers: {
+        litellm: {
+          baseUrl,
+          apiKey,
+          api: 'openai-completions',
+          models: [
+            {
+              id: model,
+              reasoning: false,
+              input: ['text'],
+              contextWindow: 200000,
+              maxTokens: 8192
+            }
+          ]
+        }
       }
     },
     channels: {
