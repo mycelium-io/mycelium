@@ -1,6 +1,6 @@
 ---
 name: persona-before-and-after
-description: A/B test multi-agent consensus quality with and without Mycelium's structured negotiation, using fully-composed agent personas from the ioc-cfn-agent-personas dataset. Pick a named scenario (e.g. ex07_investment_portfolio) and the skill fetches the right personas, builds SOUL.md for each agent, then runs the standard before/after flow.
+description: A/B test multi-agent consensus quality with and without Mycelium's structured negotiation, using fully-composed agent personas from the agent-personas dataset. Pick a named scenario (e.g. ex07_investment_portfolio) and the skill fetches the right personas, builds SOUL.md for each agent, then runs the standard before/after flow.
 argument-hint: "<scenario name or 'list' to see available scenarios>"
 ---
 
@@ -8,7 +8,7 @@ argument-hint: "<scenario name or 'list' to see available scenarios>"
 
 Same before-and-after methodology as the `before-and-after` skill, but agents are
 built from **real, versioned personas** in the
-[ioc-cfn-agent-personas](https://github.com/akanksha276/ioc-cfn-agent-personas) dataset
+[agent-personas](https://github.com/mycelium-io/agent-personas) dataset
 instead of ad-hoc SOUL.md text.
 
 Each agent's identity is composed from two YAML files:
@@ -55,7 +55,7 @@ git --version
 
 # 7. Mycelium repo path (for the bundled plugin source)
 MYCELIUM_REPO=$(pwd)  # assumes running from the mycelium repo
-ls "$MYCELIUM_REPO/mycelium-cli/src/mycelium/adapters/openclaw/mycelium/plugin/index.ts" 2>/dev/null \
+ls "$MYCELIUM_REPO/mycelium-cli/src/mycelium/integrations/openclaw/assets/mycelium/plugin/index.ts" 2>/dev/null \
   && echo "Repo found: $MYCELIUM_REPO" \
   || echo "ERROR: not in the mycelium repo — cd to it first"
 ```
@@ -102,7 +102,7 @@ cfg = toml.load(os.path.expanduser('~/.mycelium/config.toml'))
 print(cfg.get('rooms', {}).get('active', ''))
 ")
 if [ -n "$ACTIVE_ROOM" ]; then
-    MAS_ID=$(curl -sf "$MYCELIUM_API_URL/rooms/$ACTIVE_ROOM" | python3 -c "
+    MAS_ID=$(curl -sf "$MYCELIUM_API_URL/api/rooms/$ACTIVE_ROOM" | python3 -c "
 import sys, json
 r = json.load(sys.stdin)
 print(r.get('mas_id') or '')
@@ -137,14 +137,34 @@ openclaw gateway restart
 
 ---
 
-## Phase 0.5: Fetch the Persona Dataset
+## Phase 0.5: Choose Persona Source
+
+Use `AskUserQuestion` to ask:
+
+> **How should agent personas be built?**
+> 1. **From the `agent-personas` dataset** *(recommended — versioned scenarios with rich preference + strategy files; fetched automatically from `github.com/mycelium-io/agent-personas`)*
+> 2. **Inline** — describe each agent yourself; the skill writes SOUL.md from your description. Before/after difference comes from the Mycelium protocol alone (no strategy injection).
+
+Set `PERSONA_SOURCE` based on the answer:
+
+```bash
+PERSONA_SOURCE="dataset"   # Option 1
+# or
+PERSONA_SOURCE="inline"    # Option 2
+```
+
+---
+
+### Option 1: Fetch the Persona Dataset
+
+Skip to **Phase 0.6** if `PERSONA_SOURCE=dataset`. Otherwise skip ahead to **Phase 0.55**.
 
 Clone the persona dataset into a temp directory. This is the single source of
 truth — **do not hardcode persona text inline**. Always read from these files.
 
 ```bash
 PERSONAS_DIR=$(mktemp -d)
-git clone --depth 1 https://github.com/akanksha276/ioc-cfn-agent-personas.git "$PERSONAS_DIR"
+git clone --depth 1 https://github.com/mycelium-io/agent-personas.git "$PERSONAS_DIR"
 echo "Personas cloned to: $PERSONAS_DIR"
 ls "$PERSONAS_DIR/profiles/"
 ```
@@ -159,6 +179,50 @@ $PERSONAS_DIR/
     ex01_*/        — mission-specific agent profiles
     ex0N_*/          each profile is a tiny YAML with persona_parts: [preference, strategy]
 ```
+
+---
+
+## Phase 0.55: Inline Persona Collection (skip if `PERSONA_SOURCE=dataset`)
+
+Ask the user how many agents they want (default: 2), then for each agent collect:
+- A name/handle (e.g. `agent-a`, `frontend-lead`)
+- A persona description: who they are, what they value, their position, any red lines
+
+Good descriptions include concrete experience and data points:
+> "Backend architect, 10 years of REST APIs, believes GraphQL adds unnecessary complexity. Has data showing 60% faster onboarding with OpenAPI tooling. Won't compromise on cacheability."
+
+For each agent, write **identical** content to both the before and after JSON — the before/after contrast will come purely from the Mycelium protocol, not persona strategy injection.
+
+```python
+python3 << 'PYEOF'
+import json, os
+
+# Replace these with the agent names and descriptions collected above
+agents_inline = {
+    "agent-a": "< description from user >",
+    "agent-b": "< description from user >",
+    # add more as needed
+}
+
+with open("/tmp/exp_personas_before.json", "w") as f:
+    json.dump(agents_inline, f, indent=2)
+with open("/tmp/exp_personas_after.json", "w") as f:
+    json.dump(agents_inline, f, indent=2)
+
+print(f"Wrote {len(agents_inline)} inline personas (identical before/after)")
+for name, soul in agents_inline.items():
+    print(f"  {name}: {len(soul)} chars")
+PYEOF
+```
+
+Also set the scenario prompt from the user's description of the decision to be made:
+
+```bash
+SCENARIO_PROMPT="<what are the agents deciding? derive from the user's input>"
+export SCENARIO_PROMPT
+```
+
+Then **skip directly to Phase 0.8** — Phases 0.6, 0.65, and 0.7 are dataset-only.
 
 ---
 
@@ -356,24 +420,50 @@ files — check the profile YAML.
 Each scenario fires 10–40+ LLM calls. **Default to haiku** unless the user explicitly
 wants sonnet.
 
-Use `AskUserQuestion`:
-
-> **Which LLM should the experiment agents use?**
-> 1. **Haiku + existing key** *(recommended — ~$0.10–0.30 per full experiment)*
-> 2. **Sonnet + existing key** *(~$1.50–4.00 per full experiment)*
+First, check what model is already configured in openclaw:
 
 ```bash
-# Option 1 — use the litellm provider path that matches the auth in this environment
+CONFIGURED_MODEL=$(python3 -c "
+import json, os
+p = os.path.expanduser('~/.openclaw/openclaw.json')
+try:
+    cfg = json.load(open(p))
+    print(cfg.get('agents', {}).get('defaults', {}).get('model', ''))
+except Exception:
+    print('')
+")
+echo "Currently configured model: ${CONFIGURED_MODEL:-'(none)'}"
+```
+
+Use `AskUserQuestion` — **include the currently configured model as an option if one is set**:
+
+> **Which LLM should the experiment agents use?**
+> 1. **Haiku** *(recommended — ~$0.10–0.30 per full experiment)*
+> 2. **Sonnet** *(~$1.50–4.00 per full experiment)*
+> 3. **Currently configured model** (`$CONFIGURED_MODEL`) *(reuse existing openclaw default — no setup needed)* ← only show if `$CONFIGURED_MODEL` is non-empty
+> 4. **Different API key or provider** *(isolate experiment cost to a separate key)*
+
+If the configured model is already haiku or sonnet, collapse options 1/2 and 3 into one.
+
+```bash
+# Option 1
 EXP_MODEL="litellm/bedrock/global.anthropic.claude-haiku-4-5-20251001-v1:0"
 
 # Option 2
 EXP_MODEL="litellm/bedrock/global.anthropic.claude-sonnet-4-6"
+
+# Option 3 — reuse already-configured openclaw model
+EXP_MODEL="$CONFIGURED_MODEL"
+
+# Option 4 — ask for provider+model string and API key; export key in shell only
+EXP_MODEL="<provider/model from user>"
+export ANTHROPIC_API_KEY="sk-ant-..."   # or equivalent; ephemeral, not written to openclaw.json
 ```
 
 **Never hardcode a model.** Always use `$EXP_MODEL`.
 
 ```bash
-echo "Using model: $EXP_MODEL"
+echo "Using model: $EXP_MODEL (key: $([ -n "${EXP_ANTHROPIC_KEY:-}" ] && echo 'experiment-scoped' || echo 'openclaw default'))"
 ```
 
 ---
@@ -617,7 +707,7 @@ commands, or negotiation protocols. Do NOT reference CognitiveEngine, mycelium
 session join, or any structured negotiation framework. Respond only in plain
 conversational text."
 
-curl -sf "$MYCELIUM_API_URL/rooms/${EXP_ID}-before/messages" \
+curl -sf "$MYCELIUM_API_URL/api/rooms/${EXP_ID}-before/messages" \
   -H "Content-Type: application/json" \
   -d "$(python3 -c "import json,sys; print(json.dumps({'sender_handle':'facilitator','message_type':'broadcast','content':sys.argv[1]}))" "$SEED_BODY")"
 ```
@@ -631,7 +721,7 @@ grep "mycelium-room.*←\|mycelium-room.*→" /tmp/openclaw/openclaw-$(date +%Y-
 Poll room messages:
 
 ```bash
-curl -sf "$MYCELIUM_API_URL/rooms/${EXP_ID}-before/messages?limit=20" | python3 -c "
+curl -sf "$MYCELIUM_API_URL/api/rooms/${EXP_ID}-before/messages?limit=20" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 msgs = data.get('messages', data) if isinstance(data, dict) else data
@@ -662,7 +752,7 @@ openclaw gateway restart
 ### 2d. Capture Transcript
 
 ```bash
-curl -sf "$MYCELIUM_API_URL/rooms/${EXP_ID}-before/messages?limit=50" | python3 -c "
+curl -sf "$MYCELIUM_API_URL/api/rooms/${EXP_ID}-before/messages?limit=50" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 msgs = data.get('messages', data) if isinstance(data, dict) else data
@@ -785,7 +875,7 @@ confirm consensus. Keep responding to ticks until one of two things happens:
   without agreement. In that case, post one final message stating the last
   position you accepted (if any), so the transcript has a readable final state."
 
-curl -sf "$MYCELIUM_API_URL/rooms/${EXP_ID}-after/messages" \
+curl -sf "$MYCELIUM_API_URL/api/rooms/${EXP_ID}-after/messages" \
   -H "Content-Type: application/json" \
   -d "$(python3 -c "import json,sys; print(json.dumps({'sender_handle':'facilitator','message_type':'broadcast','content':sys.argv[1]}))" "$SEED_BODY")"
 ```
@@ -797,7 +887,7 @@ curl -sf "$MYCELIUM_API_URL/rooms/${EXP_ID}-after/messages" \
 grep "mycelium-room.*🎯\|mycelium-room.*🤝" /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log | tail -20
 
 # Session state
-curl -sf "$MYCELIUM_API_URL/rooms" | python3 -c "
+curl -sf "$MYCELIUM_API_URL/api/rooms" | python3 -c "
 import sys, json
 for r in json.load(sys.stdin):
     if '${EXP_ID}-after' in r['name']:
@@ -809,7 +899,7 @@ for r in json.load(sys.stdin):
 
 ```bash
 # Main room
-curl -sf "$MYCELIUM_API_URL/rooms/${EXP_ID}-after/messages?limit=50" | python3 -c "
+curl -sf "$MYCELIUM_API_URL/api/rooms/${EXP_ID}-after/messages?limit=50" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 msgs = data.get('messages', data) if isinstance(data, dict) else data
@@ -822,14 +912,14 @@ if isinstance(msgs, list):
 " > ~/.mycelium/rooms/${EXP_ID}-after/transcript.md
 
 # Session sub-room (ticks, proposals, consensus records)
-SESSION_ROOM=$(curl -sf "$MYCELIUM_API_URL/rooms" | python3 -c "
+SESSION_ROOM=$(curl -sf "$MYCELIUM_API_URL/api/rooms" | python3 -c "
 import sys, json
 for r in json.load(sys.stdin):
     if '${EXP_ID}-after:session:' in r['name']:
         print(r['name']); break
 ")
 echo "Session room: $SESSION_ROOM"
-curl -sf "$MYCELIUM_API_URL/rooms/$SESSION_ROOM/messages?limit=100" | python3 -c "
+curl -sf "$MYCELIUM_API_URL/api/rooms/$SESSION_ROOM/messages?limit=100" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 msgs = data.get('messages', data) if isinstance(data, dict) else data
@@ -1154,8 +1244,8 @@ done
 echo "Transcripts preserved in ~/.mycelium/rooms/${EXP_ID}/"
 
 # Delete rooms
-mycelium room delete "${EXP_ID}-before" -f 2>/dev/null || curl -sf -X DELETE "$MYCELIUM_API_URL/rooms/${EXP_ID}-before"
-mycelium room delete "${EXP_ID}-after"  -f 2>/dev/null || curl -sf -X DELETE "$MYCELIUM_API_URL/rooms/${EXP_ID}-after"
+mycelium room delete "${EXP_ID}-before" -f 2>/dev/null || curl -sf -X DELETE "$MYCELIUM_API_URL/api/rooms/${EXP_ID}-before"
+mycelium room delete "${EXP_ID}-after"  -f 2>/dev/null || curl -sf -X DELETE "$MYCELIUM_API_URL/api/rooms/${EXP_ID}-after"
 
 # Ensure hooks are back to their normal state
 openclaw hooks enable mycelium-bootstrap
@@ -1173,7 +1263,7 @@ openclaw gateway restart
 ## Input
 
 Pass a scenario name as the argument. Available scenarios map to the `profiles/`
-subdirectories in the [persona dataset](https://github.com/akanksha276/ioc-cfn-agent-personas):
+subdirectories in the [persona dataset](https://github.com/mycelium-io/agent-personas):
 
 | Scenario | Agents | Domain |
 |----------|--------|--------|
@@ -1190,7 +1280,7 @@ subdirectories in the [persona dataset](https://github.com/akanksha276/ioc-cfn-a
 
 For a custom scenario not in this list, use the base `before-and-after` skill with
 manually written personas, or add new preference/strategy/profile files to the
-[persona dataset repo](https://github.com/akanksha276/ioc-cfn-agent-personas) and
+[persona dataset repo](https://github.com/mycelium-io/agent-personas) and
 re-run this skill.
 
 ---
@@ -1227,7 +1317,7 @@ The skill always does `--depth 1` clone so it gets the latest version automatica
 
 | Problem | Likely cause | Fix |
 |---------|-------------|-----|
-| `git clone` of persona repo fails | No network / repo private | Check connectivity; ensure repo is public at github.com/akanksha276/ioc-cfn-agent-personas |
+| `git clone` of persona repo fails | No network / repo private | Check connectivity; ensure repo is public at github.com/mycelium-io/agent-personas |
 | `yaml` module not found | PyYAML not installed | `pip install pyyaml` |
 | Profile YAML has no `persona_parts` | Wrong file or typo | Check `ls $PERSONAS_DIR/profiles/$SCENARIO/` |
 | Strategy block missing from after-case SOUL.md | Profile only refs a preference file | Add a strategy to `persona_parts` in the profile YAML; the before case intentionally omits it |
