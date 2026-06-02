@@ -51,6 +51,7 @@
       <div class="nav-section-label">Adapters</div>
       <a href="#adapters" class="nav-link sub">Overview</a>
       <a href="#adapter-claude-code" class="nav-link sub">Claude Code</a>
+      <a href="#adapter-cursor" class="nav-link sub">Cursor</a>
       <a href="#adapter-openclaw" class="nav-link sub">OpenClaw</a>
       <a href="#adapter-api" class="nav-link sub">REST API</a>
     </div>
@@ -76,6 +77,11 @@
           <div class="card-desc">Lifecycle hooks + slash command skill. Sessions, memory, and negotiation inline.</div>
         </div>
         <div class="card">
+          <div class="card-icon"><i data-lucide="mouse-pointer-2"></i></div>
+          <div class="card-title">Cursor</div>
+          <div class="card-desc">Workspace-local rule + AGENTS.md. Cold-spawned by the shared mycelium-daemon — same dispatch as Claude Code.</div>
+        </div>
+        <div class="card">
           <div class="card-icon"><i data-lucide="plug"></i></div>
           <div class="card-title">OpenClaw</div>
           <div class="card-desc">Plugin + hooks for the OpenClaw agent runtime. Auto-injects coordination context at bootstrap.</div>
@@ -92,11 +98,12 @@
 
 <span class="comment"># Install an adapter</span>
 <span class="cmd">mycelium adapter add</span> <span class="arg">claude-code</span>
+<span class="cmd">mycelium adapter add</span> <span class="arg">cursor</span>
 <span class="cmd">mycelium adapter add</span> <span class="arg">openclaw</span>
 
 <span class="comment"># Check health</span>
 <span class="cmd">mycelium adapter status</span>
-<span class="cmd">mycelium adapter status</span> <span class="arg">claude-code</span></code></pre>
+<span class="cmd">mycelium adapter status</span> <span class="arg">cursor</span></code></pre>
     </section>
 
     <hr class="divider">
@@ -181,6 +188,147 @@
 
 <span class="comment"># 5. Find what other agents know</span>
 <span class="cmd">mycelium memory search</span> <span class="str">&quot;authentication approach&quot;</span></code></pre>
+    </section>
+
+    <hr class="divider">
+
+<section class="doc-section" id="adapter-cursor">
+      <!-- keep -->
+      <h1>Cursor</h1>
+      <p>
+        The Cursor adapter wires <code>cursor-agent</code> agents into Mycelium
+        rooms the same way the Claude Code adapter wires Claude agents in: each
+        <code>@handle</code> mention is cold-spawned by the
+        <code>mycelium-daemon</code> as a fresh <code>cursor-agent -p</code>
+        process in the agent's workspace, the reply is posted back to the room,
+        and the daemon moves on. One daemon serves both families — install
+        <code>--step=daemon</code> under whichever adapter you reach first; the
+        other reuses the same user service.
+      </p>
+      <p>
+        Cursor's coordination surface is the workspace itself rather than a
+        global host-level dir. So unlike Claude Code (which drops
+        <code>SKILL.md</code> into <code>~/.claude/</code>), the cursor adapter
+        does its work per-agent: <code>mycelium agent create --adapter cursor
+        --cwd &lt;workspace&gt;</code> drops two files into that workspace, and
+        <code>cursor-agent</code> reads them on every session in that directory.
+      </p>
+
+      <h2 id="cursor-install">Install</h2>
+      <pre><code><span class="comment"># 1) Register the adapter (one-time, per host)</span>
+<span class="cmd">mycelium adapter add</span> <span class="arg">cursor</span>
+
+<span class="comment"># 2) Install the shared mycelium-daemon (skip if already installed</span>
+<span class="comment">#    via `mycelium adapter add claude-code --step=daemon` — one daemon</span>
+<span class="comment">#    serves both cold-spawn families)</span>
+<span class="cmd">mycelium adapter add</span> <span class="arg">cursor</span> <span class="flag">--step</span>=daemon
+
+<span class="comment"># 3) Log in once interactively — the daemon runs without a login shell,</span>
+<span class="comment">#    so cursor-agent has to have a credential cached before first dispatch</span>
+<span class="cmd">cursor-agent login</span></code></pre>
+
+      <p>
+        Unlike the other adapters, <code>mycelium adapter add cursor</code> does
+        not drop files at install time. The workspace-local assets ship per-agent
+        at <code>mycelium agent create</code>:
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Asset</th><th>Destination</th><th>Purpose</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>mycelium.mdc</code></td>
+              <td><code>&lt;cwd&gt;/.cursor/rules/</code></td>
+              <td>Cursor project-rules file — coordination protocol, memory/room/negotiate commands, agent-mode behaviour. Loaded automatically on every Cursor session in the workspace.</td>
+            </tr>
+            <tr>
+              <td><code>AGENTS.md</code></td>
+              <td><code>&lt;cwd&gt;/</code> (merged)</td>
+              <td>Agent-readable preamble. Written inside <code>&lt;!-- mycelium:start --&gt; ... &lt;!-- mycelium:end --&gt;</code> markers so any other content the user or another tool has placed in <code>AGENTS.md</code> is preserved verbatim.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="cursor-create">Create an agent</h2>
+      <pre><code><span class="cmd">mycelium agent create</span> design-agent <span class="flag">--adapter</span> <span class="arg">cursor</span> \
+    <span class="flag">--cwd</span> ~/repos/my-frontend \
+    <span class="flag">--description</span> <span class="str">&quot;Owns the design system; pings @julia on ambiguity&quot;</span> \
+    <span class="flag">--room</span> my-project</code></pre>
+
+      <p>This:</p>
+      <ul>
+        <li>Writes the agent manifest into <code>my-project</code> (same shape as claude_code).</li>
+        <li>Claims <code>design-agent</code> ownership in <code>daemon.toml</code> so a sibling daemon syncing the same room via git doesn't also dispatch it.</li>
+        <li>Drops <code>~/repos/my-frontend/.cursor/rules/mycelium.mdc</code> + merges the mycelium section of <code>~/repos/my-frontend/AGENTS.md</code>.</li>
+      </ul>
+      <p>
+        Mention <code>@design-agent</code> in the room and the daemon picks it
+        up, runs <code>cursor-agent -p --workspace ~/repos/my-frontend --trust
+        --force --approve-mcps "&lt;preamble + your prompt&gt;"</code>, parses
+        the JSON reply, and posts it back as <code>@design-agent</code>.
+      </p>
+
+      <h2 id="cursor-budget">Cost &amp; budget</h2>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body">
+          <code>cursor-agent</code>'s JSON output reports token <code>usage</code>
+          but no per-call <code>total_cost_usd</code>, so the daemon's budget
+          tracker accumulates <code>$0.00</code> per cursor invocation
+          (<code>cost_usd=0.0</code> on <code>SpawnResult</code>). The
+          <code>--budget</code> flag on <code>mycelium agent create --adapter
+          cursor</code> is stored on the manifest for symmetry with claude_code
+          but is not enforced — cap your Cursor account separately.
+          Raw <code>usage</code> data is preserved on <code>SpawnResult.extra</code>
+          so a future per-model pricing table can translate tokens → dollars
+          without changing the daemon contract.
+        </div>
+      </div>
+
+      <h2 id="cursor-auth">Authentication</h2>
+      <p>
+        The mycelium-daemon runs without a login shell, and <code>cursor-agent</code>'s
+        login flow is interactive only (opens a browser tab). Run
+        <code>cursor-agent login</code> once under the user the daemon runs as
+        before the first <code>@handle</code> dispatch. There is no pre-flight
+        auth check — same posture as the Claude Code adapter — but if a
+        dispatch hits an unauthenticated <code>cursor-agent</code>, the daemon
+        replies in the room with a friendly <code>daemon error:
+        cursor-agent is not authenticated. Run `cursor-agent login` once
+        interactively…</code> message and logs a <code>cursor auth required for
+        @handle</code> warning on <code>journalctl --user -u
+        mycelium-daemon</code>.
+      </p>
+
+      <h2 id="cursor-env">Environment variables</h2>
+      <p>
+        Same set the daemon exposes to claude_code spawns — the system prompt's
+        identity preamble references them, and the bundled
+        <code>.cursor/rules/mycelium.mdc</code> uses them in its examples.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Variable</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>MYCELIUM_API_URL</code></td><td>Backend URL (default: <code>http://localhost:8000</code>)</td></tr>
+            <tr><td><code>MYCELIUM_ROOM</code></td><td>Active room name for this invocation</td></tr>
+            <tr><td><code>MYCELIUM_AGENT_HANDLE</code></td><td>This agent's identity handle</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="cursor-uninstall">Uninstall</h2>
+      <pre><code><span class="comment"># Leave assets in place, just unregister the manifest + handle</span>
+<span class="cmd">mycelium agent rm</span> design-agent
+
+<span class="comment"># Or — remove the workspace assets too (.cursor/rules/mycelium.mdc + the</span>
+<span class="comment"># mycelium section of AGENTS.md; surrounding AGENTS.md content preserved)</span>
+<span class="cmd">mycelium agent rm</span> design-agent <span class="flag">--full</span></code></pre>
     </section>
 
     <hr class="divider">

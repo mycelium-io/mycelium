@@ -42,7 +42,7 @@ function adapterColor(adapter: string): string {
  * register → list → invoke → reply loop visible in the UI.
  *
  * Registration / teardown are intentionally NOT here: both have spoke-local
- * side effects (cc-daemon manifest mirror, OpenClaw gateway config + restart)
+ * side effects (mycelium-daemon manifest mirror, OpenClaw gateway config + restart)
  * that the hub cannot perform. Use `mycelium agent add` / `create` / `rm`.
  */
 export function AgentsPanel({ roomName }: Props) {

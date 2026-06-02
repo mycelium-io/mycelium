@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Tests for cc-daemon handle ownership.
+"""Tests for mycelium-daemon handle ownership.
 
-A claude_code agent is cold-spawned by the cc-daemon on the machine where it
-was created. Ownership is recorded in cc-daemon.toml so a second machine that
+A claude_code agent is cold-spawned by the mycelium-daemon on the machine where it
+was created. Ownership is recorded in daemon.toml so a second machine that
 syncs the room does not also dispatch it.
 """
 
@@ -20,8 +20,8 @@ from mycelium.daemon.config import DaemonConfig
 
 @pytest.fixture(autouse=True)
 def _tmp_daemon_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Redirect cc-daemon.toml to a temp file for each test."""
-    monkeypatch.setattr(daemon_config, "daemon_config_path", lambda: tmp_path / "cc-daemon.toml")
+    """Redirect daemon.toml to a temp file for each test."""
+    monkeypatch.setattr(daemon_config, "daemon_config_path", lambda: tmp_path / "daemon.toml")
 
 
 # ── DaemonConfig.own_handle / disown_handle ──────────────────────────────────

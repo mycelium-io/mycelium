@@ -13,20 +13,20 @@ from pydantic import BaseModel, Field
 
 
 def daemon_config_path() -> Path:
-    """Return the path to ~/.mycelium/cc-daemon.toml (created on first write)."""
-    return Path.home() / ".mycelium" / "cc-daemon.toml"
+    """Return the path to ~/.mycelium/daemon.toml (created on first write)."""
+    return Path.home() / ".mycelium" / "daemon.toml"
 
 
 def daemon_socket_path() -> Path:
     """Unix-socket path the health endpoint binds to."""
-    return Path.home() / ".mycelium" / "cc-daemon.sock"
+    return Path.home() / ".mycelium" / "daemon.sock"
 
 
 def daemon_log_path() -> Path:
     """Daemon stdout/stderr log path (the service unit redirects here)."""
     log_dir = Path.home() / ".mycelium" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
-    return log_dir / "cc-daemon.log"
+    return log_dir / "daemon.log"
 
 
 def daemon_invocation_log_dir(room: str, handle: str) -> Path:
@@ -34,9 +34,9 @@ def daemon_invocation_log_dir(room: str, handle: str) -> Path:
 
     Operational logs live OUTSIDE the room's memory namespace so they don't
     pollute the semantic index, `memory ls`, synthesis runs, or room sync.
-    Path: ``~/.mycelium/cc-daemon/logs/<room>/<handle>/``.
+    Path: ``~/.mycelium/daemon/logs/<room>/<handle>/``.
     """
-    log_dir = Path.home() / ".mycelium" / "cc-daemon" / "logs" / room / handle
+    log_dir = Path.home() / ".mycelium" / "daemon" / "logs" / room / handle
     log_dir.mkdir(parents=True, exist_ok=True)
     return log_dir
 
@@ -44,7 +44,7 @@ def daemon_invocation_log_dir(room: str, handle: str) -> Path:
 class DaemonConfig(BaseModel):
     """Persisted daemon configuration.
 
-    Loaded from ``~/.mycelium/cc-daemon.toml``. Tracks the explicit list of
+    Loaded from ``~/.mycelium/daemon.toml``. Tracks the explicit list of
     rooms the daemon is subscribed to (per the v0 decision against
     auto-discovery) and a few runtime knobs.
     """
@@ -56,9 +56,11 @@ class DaemonConfig(BaseModel):
     handles: list[str] = Field(
         default_factory=list,
         description=(
-            "claude_code agent handles this daemon owns. Only these are "
-            "dispatched — a manifest synced from another machine is ignored. "
-            "Populated automatically by `mycelium agent create`."
+            "Cold-spawn agent handles this daemon owns (claude_code + cursor). "
+            "Only these are dispatched — a manifest synced from another "
+            "machine is ignored. Populated automatically by `mycelium agent "
+            "create`. Family is recovered from the manifest's ``adapter`` "
+            "field; ownership is family-agnostic."
         ),
     )
     depth_cap: int = Field(
@@ -69,6 +71,25 @@ class DaemonConfig(BaseModel):
     claude_binary: str = Field(
         default="claude",
         description="Path or name of the Claude Code CLI (PATH-resolved by default).",
+    )
+    cursor_binary: str = Field(
+        default="cursor-agent",
+        description=(
+            "Path or name of the Cursor CLI (PATH-resolved by default). The "
+            "daemon-managed install drops a launchd/systemd unit that runs "
+            "without a login shell, so a manual ``cursor-agent login`` is a "
+            "prerequisite — see the cursor adapter docs."
+        ),
+    )
+    spawn_timeout_s: float = Field(
+        default=600.0,
+        ge=30.0,
+        description=(
+            "Maximum wall-clock seconds a single cold-spawn invocation may run "
+            "before the daemon SIGTERMs it. Guards against stuck processes "
+            "blocking all future dispatches for a handle (the per-handle serial "
+            "lock is held for the duration of a spawn). Default: 10 minutes."
+        ),
     )
 
     @classmethod
@@ -99,3 +120,18 @@ class DaemonConfig(BaseModel):
             return False
         self.handles.remove(handle)
         return True
+
+    def binary_for(self, adapter: str) -> str:
+        """Return the CLI binary this daemon uses for *adapter*'s cold spawns.
+
+        One method instead of a switch in the dispatch loop. Future cold-spawn
+        families (gemini, codex, aider) add a branch here. Unknown adapters
+        return an empty string — the family's ``spawn`` implementation is
+        responsible for its own default and surfaces a clean "not found"
+        error rather than crashing here.
+        """
+        if adapter == "claude_code":
+            return self.claude_binary
+        if adapter == "cursor":
+            return self.cursor_binary
+        return ""

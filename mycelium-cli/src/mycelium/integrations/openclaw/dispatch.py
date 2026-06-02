@@ -3,7 +3,7 @@
 
 """OpenClaw dispatch facet — agent runs in the OpenClaw gateway.
 
-OpenClaw agents aren't dispatched by the cc-daemon. They live inside the
+OpenClaw agents aren't dispatched by the daemon. They live inside the
 OpenClaw gateway; the bundled ``mycelium-room`` channel plugin subscribes to
 each configured room's SSE and delivers ``@handle`` mentions to the agent's
 session. So registration is:
@@ -62,6 +62,7 @@ class OpenClawError(RuntimeError):
 
 class OpenClawIntegration(Integration):
     name = "openclaw"
+    lifecycle = "long_lived_gateway"
 
     def __init__(
         self,
@@ -459,7 +460,7 @@ class OpenClawIntegration(Integration):
             f"  adapter:        openclaw ({mode})",
             f"  openclaw_agent: {manifest.openclaw_agent}",
             "\n[dim]OpenClaw agents are dispatched by the gateway's "
-            "mycelium-room channel, not the cc-daemon.[/dim]\n"
+            "mycelium-room channel, not the mycelium-daemon.[/dim]\n"
             f'[dim]Invoke:[/dim] mycelium agent invoke {manifest.handle} "..."',
         ]
 

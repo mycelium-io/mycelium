@@ -159,9 +159,7 @@ def test_resolve_returns_none_when_all_sources_fail(
         msg = "synthetic config load failure"
         raise RuntimeError(msg)
 
-    monkeypatch.setattr(
-        "mycelium.config.MyceliumConfig.load", staticmethod(_boom)
-    )
+    monkeypatch.setattr("mycelium.config.MyceliumConfig.load", staticmethod(_boom))
     assert resolve_host_database_url({}) is None
 
 

@@ -10,8 +10,9 @@ lives behind the single ``Integration`` contract
 via ``get_integration(...)`` — there is no ``if adapter_type ==`` branching
 left (that asymmetry was the disease tracked as #173).
 
-Supported families: ``openclaw``, ``claude-code``. ``cursor`` is a known
-planned family with no integration yet.
+Supported families: ``openclaw``, ``claude-code``, ``cursor``. Every family
+that has an entry in ``ADAPTER_TYPES`` below is also wired through
+:func:`mycelium.integrations.get_integration`.
 """
 
 from __future__ import annotations
@@ -38,7 +39,10 @@ app = typer.Typer(
 ADAPTER_TYPES = {
     "openclaw": "plugin-based — installs mycelium via `openclaw plugins install`",
     "claude-code": "skill + hooks — copies SKILL.md and lifecycle hooks into ~/.claude/",
-    "cursor": "sdk-based — generates CFN harness for Cursor agents (planned)",
+    "cursor": (
+        "daemon-dispatched — drops .cursor/rules/mycelium.mdc + AGENTS.md "
+        "into each cursor agent's workspace at `mycelium agent create` time"
+    ),
 }
 
 
@@ -62,7 +66,7 @@ def _resolve_integration(adapter_type: str) -> Integration | None:
 
 @doc_ref(
     usage="mycelium adapter add <type> [--openclaw-profile NAME] [--openclaw-container NAME] [--dry-run] [--force]",
-    desc="Install an agent framework adapter (openclaw, claude-code).",
+    desc="Install an agent framework adapter (openclaw, claude-code, cursor).",
     group="adapter",
 )
 @app.command("add")
@@ -75,7 +79,11 @@ def add(
     step: list[str] | None = typer.Option(
         None,
         "--step",
-        help="Follow-up step (repeatable). openclaw: otel, docker-env. claude-code: daemon.",
+        help=(
+            "Follow-up step (repeatable). openclaw: otel, docker-env. "
+            "claude-code / cursor: daemon (the daemon is shared across "
+            "both cold-spawn families — one service per host)."
+        ),
     ),
     remove_step: bool = typer.Option(
         False,
@@ -118,6 +126,13 @@ def add(
         mycelium adapter add openclaw --openclaw-container openclaw
         mycelium adapter add openclaw --step=otel
         mycelium adapter add openclaw --step=docker-env
+
+        # claude-code and cursor share one daemon — install it under whichever
+        # adapter you reach first; the other adapter then reuses the same service.
+        mycelium adapter add claude-code
+        mycelium adapter add claude-code --step=daemon
+        mycelium adapter add cursor
+        mycelium adapter add cursor --step=daemon
     """
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False

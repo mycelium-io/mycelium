@@ -10,7 +10,7 @@ An agent is just two memory entries plus an adapter route:
     <room>/agents/<handle>/notes      ← persistent brain, agent-curated
     <room>/agents/<handle>/log/<ts>   ← per-invocation transcript (daemon writes)
 
-The corresponding daemon (``mycelium-cc-daemon``, installed via
+The corresponding daemon (``mycelium-daemon``, installed via
 ``mycelium adapter add claude-code --step=daemon``) watches each room's SSE
 stream, dispatches ``@handle`` mentions to the right runtime, and posts the
 reply back to the room as ``@handle``.
@@ -177,6 +177,86 @@ def _load_manifest(room_name: str, handle: str) -> AgentManifest | None:
         return None
 
 
+def _load_manifest_remote(client, room_name: str, handle: str) -> AgentManifest | None:
+    """Fetch a manifest from the backend memory API and rehydrate the model.
+
+    Used as a fall-through when the local mirror doesn't have it — typically
+    a hub→spoke (or spoke→hub) cross-host invocation, where the agent was
+    registered on a different machine and this host hasn't materialized
+    the manifest into its local room directory yet.
+
+    The manifest is stored at ``agents/<handle>`` as a YAML body (see
+    ``_write_manifest``), so we just need to download the memory entry and
+    re-parse it. Returns ``None`` for "not on the backend either" or any
+    transient error — the caller re-uses the same friendly "no agent named
+    …" message that fires for a true missing agent.
+    """
+    from mycelium_backend_client.api.memory import (
+        get_memory_api_rooms_room_name_memory_key_get as get_api,
+    )
+
+    try:
+        result = get_api.sync(
+            room_name=room_name,
+            key=f"agents/{handle}",
+            client=client,
+        )
+    except Exception as exc:  # noqa: BLE001 — log and treat as "not found"
+        _log.warning("backend manifest fetch failed for %s/%s: %s", room_name, handle, exc)
+        return None
+
+    if result is None:
+        return None
+    # The endpoint returns ``HTTPValidationError | MemoryRead | None`` for
+    # 200/404/422; only ``MemoryRead`` carries a usable manifest body.
+    #
+    # The body itself can land in any of three shapes depending on how the
+    # backend serialised it (and whether the generated client kept the
+    # convenience ``content_text`` field): prefer ``content_text`` (the
+    # already-flattened YAML string), fall back to ``value`` if it's a
+    # plain ``str``, and finally peek inside ``MemoryReadValueType0``
+    # (a dict-like with ``text`` populated by the backend).
+    yaml_body: str | None = None
+    content_text = getattr(result, "content_text", None)
+    if isinstance(content_text, str) and content_text:
+        yaml_body = content_text
+    if yaml_body is None:
+        value = getattr(result, "value", None)
+        if isinstance(value, str):
+            yaml_body = value
+        elif value is not None:
+            try:
+                # MemoryReadValueType0 is dict-like (__contains__/__getitem__)
+                # via attrs ``additional_properties`` but doesn't implement
+                # ``.get()`` — so we can't use the SIM401 form here.
+                inner = value["text"] if "text" in value else None  # noqa: SIM401
+            except Exception:  # noqa: BLE001
+                inner = None
+            if isinstance(inner, str) and inner:
+                yaml_body = inner
+    if not yaml_body:
+        return None
+
+    try:
+        data = yaml.safe_load(yaml_body) or {}
+    except yaml.YAMLError as exc:
+        _log.warning("remote manifest agents/%s: invalid YAML — %s", handle, exc)
+        return None
+    if not isinstance(data, dict):
+        _log.warning(
+            "remote manifest agents/%s: expected a YAML mapping, got %s",
+            handle,
+            type(data).__name__,
+        )
+        return None
+    data.setdefault("handle", handle)
+    try:
+        return AgentManifest(**data)
+    except ValidationError as exc:
+        _log.warning("remote manifest agents/%s: schema validation failed — %s", handle, exc)
+        return None
+
+
 def _write_manifest(
     config: MyceliumConfig, room_name: str, manifest: AgentManifest, created_by: str
 ) -> None:
@@ -256,6 +336,16 @@ def _persist_and_describe(
     # dangling manifest.
     impl.register(manifest=manifest, config=config, opts=opts)
     _write_manifest(config, room_name, manifest, created_by=handle_flag)
+    # Cold-spawn adapters (claude_code, cursor) need the daemon to
+    # re-read ``daemon.toml`` to pick up the newly-claimed handle —
+    # otherwise the agent appears registered but mentions silently drop
+    # until the next manual ``mycelium daemon restart``. No-op when the
+    # daemon service isn't installed on this host (e.g. openclaw-only
+    # boxes, or before ``--step=daemon`` ran).
+    if getattr(impl, "lifecycle", None) == "cold_spawn":
+        from mycelium.daemon.install import reload_daemon_service
+
+        reload_daemon_service(verbose=False)
     console.print(
         f"\n[green]Agent {verb}:[/green] [cyan]@{manifest.handle}[/cyan] "
         f"in room [bold]{room_name}[/bold]"
@@ -264,11 +354,23 @@ def _persist_and_describe(
         console.print(line)
 
 
+#: CLI label per adapter for the wizard's cwd prompt. Cold-spawn families
+#: both need a cwd, but the wording differs — claude_code runs ``claude -p``
+#: while cursor opens the cwd as a workspace for ``cursor-agent --workspace``.
+#: Single source of truth so the wizard prompt and ``--cwd`` flag help stay
+#: in sync.
+_CWD_PROMPT_BY_ADAPTER: dict[str, str] = {
+    "claude_code": "Working directory the agent runs `claude -p` in:",
+    "cursor": "Workspace directory for `cursor-agent` (also drop site for .cursor/rules/mycelium.mdc + AGENTS.md):",
+}
+
+
 @doc_ref(
     usage="mycelium agent create <handle> --adapter <name> [--cwd <path>]",
     desc=(
         "Create a new, Mycelium-controlled agent in a room (greenfield). "
-        "<code>claude_code</code> agents are cold-spawned by the cc-daemon; "
+        "<code>claude_code</code> and <code>cursor</code> agents are cold-"
+        "spawned by the daemon (one daemon serves both); "
         "<code>openclaw</code> agents are newly created in the OpenClaw "
         "gateway. To adopt an agent that already exists, use "
         "<code>mycelium agent add</code>."
@@ -297,7 +399,9 @@ def _create_wizard(
         "[dim]This will:[/dim]\n"
         "[dim]  · ask for the agent's handle, adapter, and details[/dim]\n"
         "[dim]  · register it as a Mycelium agent manifest in a room[/dim]\n"
-        "[dim]  · claude_code: claim cc-daemon ownership of the handle[/dim]\n"
+        "[dim]  · claude_code: claim daemon ownership of the handle[/dim]\n"
+        "[dim]  · cursor: claim daemon ownership of the handle and drop[/dim]\n"
+        "[dim]    .cursor/rules/mycelium.mdc + AGENTS.md into the workspace[/dim]\n"
         "[dim]  · openclaw: create the OpenClaw agent, wire it into the[/dim]\n"
         "[dim]    room channel, allowlist the mycelium CLI, restart the gateway[/dim]\n"
     )
@@ -316,11 +420,9 @@ def _create_wizard(
         return
 
     cwd: str | None = None
-    if adapter == "claude_code":
-        cwd = questionary.path(
-            "Working directory the agent runs `claude -p` in:",
-            default=os.getcwd(),
-        ).ask()
+    prompt_label = _CWD_PROMPT_BY_ADAPTER.get(adapter)
+    if prompt_label is not None:
+        cwd = questionary.path(prompt_label, default=os.getcwd()).ask()
         if not cwd:
             return
 
@@ -371,7 +473,12 @@ def agent_create(
     cwd: str | None = typer.Option(
         None,
         "--cwd",
-        help="claude_code: working dir `claude -p` runs in (required for that adapter).",
+        help=(
+            "claude_code / cursor: working dir the agent's CLI runs in "
+            "(required for both cold-spawn families). For cursor it's also "
+            "where .cursor/rules/mycelium.mdc + AGENTS.md (mycelium section) "
+            "are dropped."
+        ),
     ),
     model: str | None = typer.Option(
         None,
@@ -399,7 +506,14 @@ def agent_create(
         "", "--description", "-d", help="One-paragraph statement of what this agent does."
     ),
     budget: float = typer.Option(
-        5.0, "--budget", help="claude_code: monthly USD spend cap enforced by the daemon."
+        5.0,
+        "--budget",
+        help=(
+            "claude_code: monthly USD spend cap enforced by the daemon. "
+            "cursor: stored but not enforced — cursor-agent doesn't report "
+            "per-call $ cost (token counts only), so the daemon can't sum "
+            "spend reliably; cap your Cursor account separately."
+        ),
     ),
     allow_from: str | None = typer.Option(
         None,
@@ -417,8 +531,13 @@ def agent_create(
     ``mycelium agent add`` (interactive picker) instead.
 
     Examples:
-        # claude_code (cold-spawned by the cc-daemon)
+        # claude_code (cold-spawned by the daemon)
         mycelium agent create release-agent --cwd ~/repos/mycelium
+
+        # cursor (cold-spawned by the daemon; same daemon as claude_code)
+        mycelium agent create design-agent --adapter cursor \\
+            --cwd ~/repos/my-frontend \\
+            --description "Owns the design system; pings @julia on ambiguity"
 
         # openclaw — create a fresh OpenClaw agent named @planner
         mycelium agent create planner --adapter openclaw \\
@@ -442,6 +561,11 @@ def agent_create(
             _create_wizard(ctx, config=config, room_opt=room, handle_flag=handle_flag)
             return
 
+        # `mycelium adapter add` accepts the kebab-case spelling
+        # (``claude-code``); accept the same spelling here so users don't have
+        # to remember which command uses which casing. The canonical id in
+        # ``AGENT_ADAPTERS`` (and on the manifest) is the underscore form.
+        adapter = adapter.replace("-", "_")
         if adapter not in AGENT_ADAPTERS:
             known = ", ".join(sorted(AGENT_ADAPTERS))
             typer.secho(f"Unknown adapter '{adapter}'. Known: {known}.", fg=typer.colors.RED)
@@ -999,23 +1123,28 @@ def agent_invoke(
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
 
-        manifest = _load_manifest(room_name, handle)
-        if manifest is None:
-            console.print(
-                f"[red]Not found:[/red] no agent named '{handle}' in room '{room_name}'.\n"
-                f"  Create one with: mycelium agent create {handle} --cwd <path> --room {room_name}"
-            )
-            raise typer.Exit(1)
-
-        sender_handle = handle_flag or config.get_current_identity()
-        content = f"@{manifest.handle} {prompt}"
-
         from mycelium_backend_client.api.messages import (
             send_message_api_rooms_room_name_messages_post as send_api,
         )
         from mycelium_backend_client.models import MessageCreate
 
         with _typed_client(config) as client:
+            manifest = _load_manifest(room_name, handle)
+            if manifest is None:
+                # Cross-host case: the agent may be registered on a different
+                # machine that hasn't mirrored its manifest down to ours yet.
+                # Fall through to the backend (source of truth) before failing.
+                manifest = _load_manifest_remote(client, room_name, handle)
+            if manifest is None:
+                console.print(
+                    f"[red]Not found:[/red] no agent named '{handle}' in room '{room_name}'.\n"
+                    f"  Create one with: mycelium agent create {handle} --cwd <path> --room {room_name}"
+                )
+                raise typer.Exit(1)
+
+            sender_handle = handle_flag or config.get_current_identity()
+            content = f"@{manifest.handle} {prompt}"
+
             body = MessageCreate(
                 sender_handle=sender_handle,
                 message_type="broadcast",
@@ -1129,6 +1258,14 @@ def agent_rm(
         if local.exists():
             local.unlink()
 
+        # Kick the daemon for the same reason as ``agent create``: the
+        # cold-spawn handle just got released from ``daemon.toml`` and a
+        # running daemon will keep firing on stale entries until reload.
+        if getattr(impl, "lifecycle", None) == "cold_spawn":
+            from mycelium.daemon.install import reload_daemon_service
+
+            reload_daemon_service(verbose=False)
+
         verb = "Destroyed" if will_destroy else "Unregistered"
         console.print(f"[green]{verb}:[/green] @{handle} from {room_name}")
     except typer.Exit:
@@ -1142,5 +1279,6 @@ def agent_rm(
 # Re-export for completeness — daemon and doctor reuse these.
 __all__ = [
     "_load_manifest",
+    "_load_manifest_remote",
     "app",
 ]
