@@ -211,29 +211,4 @@ class ClaudeCodeAgentLifecycle(aetest.Testcase):
         r = self.cli.run("agent", "rm", self.handle, "--force", timeout=10)
 
 
-class CursorAdapterPlanned(aetest.Testcase):
-    """Test 75: Cursor adapter reports 'planned but not yet implemented'."""
-
-    groups = ["integration", "cursor"]
-
-    @aetest.setup
-    def setup(self, cli=None):
-        self.cli = cli or MyceliumCLI()
-
-    @aetest.test
-    def cursor_not_implemented(self, steps):
-        with steps.start("mycelium adapter add cursor exits with 'not implemented'") as step:
-            r = self.cli.run("adapter", "add", "cursor", timeout=15)
-            combined = (r.stdout + r.stderr).lower()
-            if r.ok:
-                step.passx("cursor adapter is now implemented — update tests!")
-            if "planned" not in combined and "not yet implemented" not in combined:
-                step.failed(f"Unexpected output for cursor adapter: {combined[:300]}")
-            log.info("Cursor adapter correctly reports: not yet implemented")
-
-    @aetest.test
-    def cursor_not_in_ls(self, steps):
-        with steps.start("Cursor does not appear as registered adapter") as step:
-            r = self.cli.run("adapter", "ls", timeout=15)
-            if "cursor" in r.stdout.lower().split():
-                step.failed("Cursor appears as a registered adapter but should not be")
+# CursorAdapterPlanned removed — replaced by real tests in testcases/cursor_tests.py (75-80)

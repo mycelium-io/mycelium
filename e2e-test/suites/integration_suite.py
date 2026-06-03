@@ -27,7 +27,14 @@ from testcases.integration_tests import (
     ClaudeCodeAdapterRemove,
     ClaudeCodeDaemonHealth,
     ClaudeCodeAgentLifecycle,
-    CursorAdapterPlanned,
+)
+from testcases.cursor_tests import (
+    CursorBasicDispatch,
+    CursorWorkspaceDrift,
+    CursorAuthFailure,
+    CursorMultiHostDispatch,
+    CursorCrossFamilyCursor,
+    CursorCrossFamilyOpenClaw,
 )
 
 
@@ -56,7 +63,22 @@ class test_73_claude_code_daemon_health(ClaudeCodeDaemonHealth):
 class test_74_claude_code_agent_lifecycle(ClaudeCodeAgentLifecycle):
     pass
 
-class test_75_cursor_adapter_planned(CursorAdapterPlanned):
+class test_75_cursor_basic_dispatch(CursorBasicDispatch):
+    pass
+
+class test_76_cursor_workspace_drift(CursorWorkspaceDrift):
+    pass
+
+class test_77_cursor_auth_failure(CursorAuthFailure):
+    pass
+
+class test_78_cursor_multi_host_dispatch(CursorMultiHostDispatch):
+    pass
+
+class test_79_cursor_cross_family_cursor(CursorCrossFamilyCursor):
+    pass
+
+class test_80_cursor_cross_family_openclaw(CursorCrossFamilyOpenClaw):
     pass
 
 

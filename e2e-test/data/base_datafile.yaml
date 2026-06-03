@@ -83,6 +83,16 @@ parameters:
       - "mycelium-room"
       - "matrix:channel:"
 
+  # ── Cursor Adapter Configuration ────────────────────────────────────────
+  cursor:
+    hub_host: "%ENV{CURSOR_HUB_HOST, 10.0.50.125}"
+    spoke_hosts:
+      oclw3: "%ENV{OCLW3_IP, 10.0.50.171}"
+      oclw5: "%ENV{OCLW5_IP, 10.0.50.142}"
+    openclaw_counterpart: "claire-agent"
+    dispatch_timeout: 120
+    negotiation_timeout: 600
+
   # ── Convergence Scenario Defaults ───────────────────────────────────────
   convergence:
     default_topic: "Sprint planning for Q3 release"
@@ -258,5 +268,20 @@ testcases:
   ClaudeCodeAgentLifecycle:
     uid: "mycelium:e2e:integration:074"
 
-  CursorAdapterPlanned:
-    uid: "mycelium:e2e:integration:075"
+  CursorBasicDispatch:
+    uid: "mycelium:e2e:cursor:075"
+
+  CursorWorkspaceDrift:
+    uid: "mycelium:e2e:cursor:076"
+
+  CursorAuthFailure:
+    uid: "mycelium:e2e:cursor:077"
+
+  CursorMultiHostDispatch:
+    uid: "mycelium:e2e:cursor:078"
+
+  CursorCrossFamilyCursor:
+    uid: "mycelium:e2e:cursor:079"
+
+  CursorCrossFamilyOpenClaw:
+    uid: "mycelium:e2e:cursor:080"

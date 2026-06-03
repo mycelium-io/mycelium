@@ -33,8 +33,8 @@ from testcases.core_tests import (
 from testcases.integration_tests import (
     ClaudeCodeSkillInstall,
     ClaudeCodeAdapterStatus,
-    CursorAdapterPlanned,
 )
+from testcases.cursor_tests import CursorBasicDispatch
 
 
 class CommonSetup(MyceliumCommonSetup):
@@ -67,7 +67,7 @@ class test_70_claude_code_skill_install(ClaudeCodeSkillInstall):
 class test_71_claude_code_adapter_status(ClaudeCodeAdapterStatus):
     pass
 
-class test_75_cursor_adapter_planned(CursorAdapterPlanned):
+class test_75_cursor_basic_dispatch(CursorBasicDispatch):
     pass
 
 class CommonCleanup(MyceliumCommonCleanup):

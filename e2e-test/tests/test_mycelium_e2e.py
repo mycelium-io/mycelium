@@ -542,6 +542,15 @@ from mycelium_e2e.cross_channel_e2e import (
     cross_channel_memory_isolation,
 )
 
+from mycelium_e2e.cursor_e2e import (
+    cursor_basic_dispatch,
+    cursor_workspace_drift,
+    cursor_auth_failure,
+    cursor_multi_host_dispatch,
+    cursor_cross_family_cursor,
+    cursor_cross_family_openclaw,
+)
+
 
 @pytest.mark.llm
 @pytest.mark.slow
@@ -553,4 +562,63 @@ def test_60_cross_channel_memory_isolation(bundle_ctx: TestContext) -> None:
         pytest.skip(bundle_ctx.coordination_blocked_reason)
     n = len(bundle_ctx.results)
     cross_channel_memory_isolation(bundle_ctx)
+    _assert_new_checks(bundle_ctx, n)
+
+
+# ── Cursor Adapter Tests (75-80) ────────────────────────────────────────────
+
+
+@pytest.mark.cursor
+def test_75_cursor_basic_dispatch(bundle_ctx: TestContext) -> None:
+    """Phase 1: Single-host cursor agent dispatch via cc-daemon."""
+    n = len(bundle_ctx.results)
+    cursor_basic_dispatch(bundle_ctx)
+    _assert_new_checks(bundle_ctx, n)
+
+
+@pytest.mark.cursor
+def test_76_cursor_workspace_drift(bundle_ctx: TestContext) -> None:
+    """Phase 2: AGENTS.md healing and mycelium doctor drift detection."""
+    n = len(bundle_ctx.results)
+    cursor_workspace_drift(bundle_ctx)
+    _assert_new_checks(bundle_ctx, n)
+
+
+@pytest.mark.cursor
+def test_77_cursor_auth_failure(bundle_ctx: TestContext) -> None:
+    """Phase 3: Missing auth produces friendly error, no crash."""
+    n = len(bundle_ctx.results)
+    cursor_auth_failure(bundle_ctx)
+    _assert_new_checks(bundle_ctx, n)
+
+
+@pytest.mark.cursor
+@pytest.mark.distributed
+def test_78_cursor_multi_host_dispatch(bundle_ctx: TestContext) -> None:
+    """Phase 4: Hub mentions cursor agent on spoke; spoke responds."""
+    n = len(bundle_ctx.results)
+    cursor_multi_host_dispatch(bundle_ctx)
+    _assert_new_checks(bundle_ctx, n)
+
+
+@pytest.mark.cursor
+@pytest.mark.distributed
+@pytest.mark.slow
+@pytest.mark.convergence
+def test_79_cursor_cross_family_cursor(bundle_ctx: TestContext) -> None:
+    """Phase 5a: Cursor vs cursor cross-host negotiation via mycelium-room."""
+    n = len(bundle_ctx.results)
+    cursor_cross_family_cursor(bundle_ctx)
+    _assert_new_checks(bundle_ctx, n)
+
+
+@pytest.mark.cursor
+@pytest.mark.distributed
+@pytest.mark.slow
+@pytest.mark.convergence
+@pytest.mark.openclaw
+def test_80_cursor_cross_family_openclaw(bundle_ctx: TestContext) -> None:
+    """Phase 5b: Cursor vs openclaw cross-family negotiation via mycelium-room."""
+    n = len(bundle_ctx.results)
+    cursor_cross_family_openclaw(bundle_ctx)
     _assert_new_checks(bundle_ctx, n)
