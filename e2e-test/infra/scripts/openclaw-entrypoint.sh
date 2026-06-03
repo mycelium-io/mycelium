@@ -119,11 +119,10 @@ node -e "
       }
     },
     plugins: {
-      allow: ['litellm', 'matrix', 'mycelium'],
+      allow: ['litellm', 'matrix'],
       entries: {
         matrix: { enabled: true },
-        litellm: { enabled: true },
-        mycelium: { enabled: true }
+        litellm: { enabled: true }
       }
     },
     agents: {
@@ -158,4 +157,4 @@ node -e "
 "
 
 echo "[openclaw-entrypoint] Starting gateway..."
-exec openclaw gateway start
+exec openclaw gateway run --force --verbose
