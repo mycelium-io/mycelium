@@ -85,8 +85,16 @@ node -e "
     };
   }
 
+  const gatewayToken = require('crypto').randomBytes(24).toString('hex');
+
   const cfg = {
-    gateway: { port: 18789, mode: 'local' },
+    gateway: {
+      port: 18789,
+      mode: 'local',
+      bind: 'loopback',
+      auth: { mode: 'token', token: gatewayToken },
+      controlUi: { allowInsecureAuth: true }
+    },
     models: {
       providers: {
         litellm: {
@@ -157,4 +165,4 @@ node -e "
 "
 
 echo "[openclaw-entrypoint] Starting gateway..."
-exec openclaw gateway run --force --verbose
+exec openclaw gateway run --force --verbose --bind lan
