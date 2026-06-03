@@ -336,11 +336,11 @@ jobs:
 
           mycelium adapter add openclaw \
             --openclaw-container e2e-openclaw-hub \
-            --yes
+            --yes 2>&1 || echo "WARNING: adapter add failed (non-fatal, gateway already running)"
           mycelium adapter add openclaw \
             --openclaw-container e2e-openclaw-hub \
             --step=otel \
-            --yes 2>&1 || echo "otel step skipped (non-fatal)"
+            --yes 2>&1 || echo "WARNING: otel step skipped (non-fatal)"
 
       - name: Run E2E tests
         env:
