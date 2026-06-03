@@ -108,7 +108,7 @@ node -e "
   }
 
   const cfg = {
-    gateway: { port: 18789 },
+    gateway: { port: 18789, mode: 'local' },
     models: {
       providers: {
         litellm: {
