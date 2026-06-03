@@ -244,16 +244,6 @@ jobs:
             done
           done
 
-      - name: Register OpenClaw adapter
-        run: |
-          mycelium adapter add openclaw \
-            --openclaw-container e2e-openclaw-hub \
-            --yes
-          mycelium adapter add openclaw \
-            --openclaw-container e2e-openclaw-hub \
-            --step=otel \
-            --yes 2>&1 || echo "otel step skipped (non-fatal)"
-
       - name: Verify backend container environment
         run: |
           echo "=== Backend container env check ==="
@@ -335,6 +325,16 @@ jobs:
           echo ""
           echo "=== CLI doctor ==="
           mycelium doctor 2>&1 || true
+
+      - name: Register OpenClaw adapter
+        run: |
+          mycelium adapter add openclaw \
+            --openclaw-container e2e-openclaw-hub \
+            --yes
+          mycelium adapter add openclaw \
+            --openclaw-container e2e-openclaw-hub \
+            --step=otel \
+            --yes 2>&1 || echo "otel step skipped (non-fatal)"
 
       - name: Run E2E tests
         env:
