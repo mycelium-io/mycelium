@@ -157,10 +157,51 @@ class HermesIntegration(Integration):
             agents.append(handle)
         target["agents"] = agents
         extra["rooms"] = rooms
+        self._set_home_channel(data, room=room, handle=handle)
         path = _write_config_yaml(data, self._profile)
         console.print(
             f"  [green]registered[/green] {path} → room [cyan]{room}[/cyan] agents={agents}"
         )
+
+    @staticmethod
+    def _set_home_channel(data: dict[str, Any], *, room: str, handle: str) -> None:
+        """Pin the platform's ``home_channel`` to the freshly-registered handle.
+
+        Hermes's ``send_message`` tool falls back to the per-platform
+        ``home_channel`` whenever the model invokes it with a bare
+        ``target="mycelium-room"`` (no ``:chat_id`` suffix) — and models do
+        that intermittently when responding to a message they could equally
+        just return text for. Without a home channel set, the tool errors
+        out with ``"No home channel set for mycelium-room …"`` and the
+        agent's reply never reaches the room.
+
+        We pin the channel to ``<room>:<handle>`` so the adapter's
+        :meth:`MyceliumRoomAdapter.send` ``rpartition`` extracts the room
+        slug and uses the handle as the ``sender_handle``. With multiple
+        handles registered, last-write-wins; this is the same shape hermes
+        uses for its other platforms (one ``HOME_CHANNEL`` env var per
+        platform — Slack, Telegram, Matrix, …), so the UX is consistent.
+
+        Schema mirrors ``HomeChannel.from_dict`` in hermes-agent's
+        ``gateway/config.py:230`` — a ``{platform, chat_id, name}`` dict
+        under the platform block, alongside ``enabled``/``extra``. The
+        ``platform`` field is mandatory: ``PlatformConfig.from_dict``
+        loads the home_channel via ``HomeChannel.from_dict`` which
+        unconditionally reads ``data["platform"]`` and KeyErrors without
+        it (hermes-agent gateway/config.py:323 → 230). Crashes the
+        gateway boot, so we always include it.
+        """
+        platforms = data.setdefault("platforms", {})
+        if not isinstance(platforms, dict):
+            return
+        block = platforms.get(_HERMES_PLATFORM_ID)
+        if not isinstance(block, dict):
+            return
+        block["home_channel"] = {
+            "platform": _HERMES_PLATFORM_ID,
+            "chat_id": f"{room}:{handle}",
+            "name": f"{room}/{handle}",
+        }
 
     def _unregister_room(self, *, room: str, handle: str) -> bool:
         try:

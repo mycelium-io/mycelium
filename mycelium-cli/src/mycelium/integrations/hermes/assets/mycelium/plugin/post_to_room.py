@@ -16,12 +16,33 @@ anything new.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
 import aiohttp
 
 logger = logging.getLogger(__name__)
+
+
+async def _do_post(
+    *,
+    session: aiohttp.ClientSession,
+    url: str,
+    payload: dict[str, Any],
+    headers: dict[str, str],
+) -> str | None:
+    async with session.post(url, json=payload, headers=headers) as resp:
+        if resp.status >= 400:
+            body = (await resp.text())[:240]
+            logger.warning("mycelium room POST failed: %s %s — %s", resp.status, url, body)
+            return None
+        data = await resp.json(content_type=None)
+        if isinstance(data, dict):
+            mid = data.get("id")
+            if isinstance(mid, str):
+                return mid
+    return None
 
 
 async def post_to_room(
@@ -39,6 +60,16 @@ async def post_to_room(
     Best-effort: a transport error logs and returns ``None`` so the agent
     loop can decide whether to retry or surface the failure — we never
     raise out of the platform send path.
+
+    Timeouts via ``asyncio.wait_for`` rather than ``aiohttp.ClientTimeout``.
+    aiohttp's per-call ``timeout`` arg uses ``asyncio.timeout()`` under the
+    hood, which RuntimeErrors with "Timeout context manager should be used
+    inside a task" when the call enters from a code path that hasn't
+    established a task scope — and the hermes tool_executor invokes us via
+    exactly that kind of edge (the ``send_message`` tool runs the adapter
+    send under a thread executor → loop bridge). ``asyncio.wait_for`` is
+    task-agnostic and works under both paths, so use it consistently
+    rather than depending on aiohttp's internals.
     """
     url = f"{backend_url.rstrip('/')}/api/rooms/{room}/messages"
     headers: dict[str, str] = {"Content-Type": "application/json"}
@@ -56,21 +87,14 @@ async def post_to_room(
         "message_type": "broadcast",
     }
     try:
-        async with session.post(
-            url,
-            json=payload,
-            headers=headers,
-            timeout=aiohttp.ClientTimeout(total=timeout),
-        ) as resp:
-            if resp.status >= 400:
-                body = (await resp.text())[:240]
-                logger.warning("mycelium room POST failed: %s %s — %s", resp.status, url, body)
-                return None
-            data = await resp.json(content_type=None)
-            if isinstance(data, dict):
-                mid = data.get("id")
-                if isinstance(mid, str):
-                    return mid
+        return await asyncio.wait_for(
+            _do_post(session=session, url=url, payload=payload, headers=headers),
+            timeout=timeout,
+        )
     except (aiohttp.ClientError, TimeoutError) as exc:
+        # asyncio.TimeoutError is aliased to the builtin TimeoutError on
+        # Python 3.11+, so the single ``TimeoutError`` catches both the
+        # ``asyncio.wait_for`` timeout and any underlying transport
+        # timeout — ruff (UP041) confirms the alias collapse.
         logger.warning("mycelium room POST transport error: %s — %s", url, exc)
     return None
