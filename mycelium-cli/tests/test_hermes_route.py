@@ -115,6 +115,9 @@ def test_format_tick_instruction_normal(route_module) -> None:
     out = route_module.format_tick_instruction(tick, "demo", "alice")
     assert "[CognitiveEngine — Round 2 of 5]" in out
     assert "structured negotiation in room demo" in out
+    # The handle is folded into the header line so the agent knows which
+    # ``--handle`` to use in any CLI command it issues during the round.
+    assert "You are @alice" in out
     assert "Action required: respond" in out
     assert "You CAN propose a counter-offer." in out
     assert "Current offer on the table:" in out
@@ -197,6 +200,9 @@ def test_format_tick_instruction_error_invalid_keys(route_module) -> None:
     }
     out = route_module.format_tick_instruction(tick, "demo", "alice")
     assert "[CognitiveEngine — error: counter_offer_invalid_keys]" in out
+    # Error ticks also surface the agent's handle so the recovery commands
+    # below are unambiguous.
+    assert "You are @alice in room demo." in out
     assert 'Rejected keys: "apistyle"' in out
     assert 'Valid keys (use exactly these): "api_style", "timeline"' in out
     assert (
@@ -313,11 +319,23 @@ def test_route_message_consensus_fans_out(route_module) -> None:
     actions = route_module.route_message(cfg, msg, set())
     dispatches = [a for a in actions if isinstance(a, route_module.Dispatch)]
     assert {d.agent_id for d in dispatches} == {"alice", "bob"}
+    # Each recipient's content gets a personalized identity preamble.
+    by_agent = {d.agent_id: d.content for d in dispatches}
+    assert by_agent["alice"].startswith(
+        "[mycelium-room] You are @alice in room demo:session:42.\n\n"
+    )
+    assert by_agent["bob"].startswith("[mycelium-room] You are @bob in room demo:session:42.\n\n")
+    # The consensus summary itself is still in the content (preserved
+    # after the preamble).
+    assert "shared plan" in by_agent["alice"]
     notify = [a for a in actions if isinstance(a, route_module.NotifyHome)]
     assert len(notify) == 1
     assert notify[0].session_room == "demo:session:42"
     assert set(notify[0].agent_ids) == {"alice", "bob"}
     assert "shared plan" in notify[0].consensus_summary
+    # NotifyHome carries the un-prefixed summary because the home-channel
+    # delivery is for the human user, not for the hermes agent loop.
+    assert not notify[0].consensus_summary.startswith("[mycelium-room]")
 
 
 def test_route_message_consensus_in_parent_does_not_notify_home(route_module) -> None:
@@ -369,6 +387,10 @@ def test_route_message_broadcast_require_mention_gates(route_module) -> None:
     actions = route_module.route_message(cfg, msg, set())
     dispatches = [a for a in actions if isinstance(a, route_module.Dispatch)]
     assert [d.agent_id for d in dispatches] == ["alice"]
+    # Identity preamble is prepended so the agent knows what handle to use
+    # in any CLI command it issues in response.
+    assert dispatches[0].content.startswith("[mycelium-room] You are @alice in room demo.\n\n")
+    assert dispatches[0].content.endswith("@alice the deployment is done")
 
 
 def test_route_message_broadcast_open_mode_excludes_sender(route_module) -> None:
@@ -385,6 +407,8 @@ def test_route_message_broadcast_open_mode_excludes_sender(route_module) -> None
     actions = route_module.route_message(cfg, msg, set())
     dispatches = [a for a in actions if isinstance(a, route_module.Dispatch)]
     assert [d.agent_id for d in dispatches] == ["bob"]
+    # Open mode still personalizes the dispatch per recipient.
+    assert dispatches[0].content.startswith("[mycelium-room] You are @bob in room demo.\n\n")
 
 
 # ── mentions ────────────────────────────────────────────────────────────────

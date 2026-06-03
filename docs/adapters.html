@@ -646,25 +646,115 @@ hermes gateway restart
         </div>
       </div>
 
-      <div class="callout callout-note">
-        <div class="callout-bar"></div>
-        <div class="callout-body">
-          <strong>First-class multi-profile support is on hold until
-            <a href="https://github.com/NousResearch/hermes-agent/pull/25660">hermes-agent#25660</a>
-            (<em>"single gateway, multiple agents (MVP)"</em>) lands.</strong>
-          When that PR merges, one Hermes gateway will host N agents
-          in-process, routed by an explicit <code>routes:</code> block in
-          <code>config.yaml</code> using <code>platform</code> +
-          <code>chat_id</code> match-keys. The chat_id shape Mycelium already
-          dispatches under (<code>&lt;room&gt;:&lt;agent&gt;</code>) maps
-          directly onto that scheme. At that point the adapter will be
-          re-examined — almost certainly by auto-writing
-          <code>routes:</code> for each registered handle under a single
-          gateway, replacing the per-profile-deployment pattern entirely.
-          Until then, the export-and-install workflow above is the supported
-          path.
-        </div>
-      </div>
+      <h3 id="hr-roadmap">Roadmap — post-<a href="https://github.com/NousResearch/hermes-agent/pull/25660">hermes-agent#25660</a></h3>
+      <p>
+        <a href="https://github.com/NousResearch/hermes-agent/pull/25660">hermes-agent#25660</a>
+        (<em>"single gateway, multiple agents (MVP)"</em>) replaces the
+        one-gateway-per-persona model with an in-process agent registry. When
+        it lands the Mycelium adapter will be re-examined; this section
+        captures the plan so the migration isn't a discovery exercise later.
+      </p>
+
+      <p><strong>What #25660 changes upstream.</strong></p>
+      <ul>
+        <li>Adds top-level <code>agents:</code>, <code>routes:</code>, and
+        <code>default_agent:</code> blocks to
+        <code>~/.hermes/config.yaml</code>. Each entry under
+        <code>agents:</code> is keyed by an <strong><code>agent_id</code>
+        </strong> (e.g. <code>coder</code>, <code>research</code>) and can
+        override <code>model</code>, <code>provider</code>,
+        <code>home_dir</code>, <code>enabled_toolsets</code>, etc.</li>
+
+        <li>Inbound messages are routed to an <code>agent_id</code> by the
+        first matching <code>routes:</code> entry. Match keys are
+        <code>platform</code> + <code>chat_id</code> +
+        <code>thread_id</code> + <code>user_id</code> + <code>guild_id</code>
+        + <code>parent_chat_id</code> (string equality only in the MVP).</li>
+
+        <li>Each <code>agent_id</code> with a distinct <code>home_dir</code>
+        gets fully isolated <code>SOUL.md</code>, <code>memory/</code>,
+        <code>skills/</code>, and <code>cron/jobs.json</code>. Sessions live
+        in the shared <code>state.db</code> with an <code>agent_id</code>
+        column.</li>
+
+        <li>A new <code>hermes agent list / show / add / remove</code> CLI
+        manages the registry. A <code>select_agent</code> plugin hook lets
+        plugins override the routes table programmatically.</li>
+      </ul>
+
+      <p><strong>What this means for the Mycelium adapter.</strong></p>
+      <ul>
+        <li><strong>The routing identity is <code>agent_id</code>, not
+        <code>branding.agent_name</code>.</strong> The latter is purely a
+        skin/TUI cosmetic — banner title, response-box label, status
+        display — and is never read by the gateway dispatch. Don't rely on
+        it for routing; don't surface it in <code>mycelium agent add</code>
+        flows.</li>
+
+        <li><strong>Mycelium handle ↔ hermes <code>agent_id</code> becomes
+        a one-to-one mapping.</strong> The chat_id shape we already
+        dispatch under (<code>&lt;room&gt;:&lt;handle&gt;</code>) maps
+        directly onto a <code>routes:</code> entry like:
+<pre><code>routes:
+  - match: { platform: mycelium-room, chat_id: <span class="arg">"demo:alice"</span> }
+    agent: <span class="arg">alice</span></code></pre>
+        i.e. one Hermes gateway hosts N agents, and each Mycelium handle
+        wakes its own agent with its own <code>SOUL.md</code>, model, and
+        memory. The per-profile-gateway pattern documented above goes away
+        entirely — one gateway, one config, N agents.</li>
+
+        <li><strong><code>_register_room()</code> will start auto-writing
+        <code>routes:</code> entries.</strong> Today it appends to
+        <code>platforms.mycelium-room.extra.rooms[]</code> and pins
+        <code>home_channel</code>; post-#25660 it will <em>also</em> append
+        a route. The two surfaces can coexist (extra.rooms[] tells the
+        plugin which rooms to subscribe to; routes[] tells the gateway
+        which agent_id to wake for an inbound message).</li>
+
+        <li><strong>Mycelium discovers existing <code>agent_id</code>s by
+        reading <code>~/.hermes/config.yaml</code> directly.</strong> We
+        already own that file (<code>_read_config_yaml()</code>); the
+        top-level <code>agents:</code> map is the source of truth. No new
+        IPC, no shelling out to <code>hermes agent list</code>. Validation
+        at <code>mycelium agent add</code> time becomes "if there's a
+        <code>routes:</code> conflict or the agent_id is missing from
+        <code>agents:</code>, prompt or auto-create."</li>
+
+        <li><strong>Auto-create vs adopt mirrors OpenClaw.</strong> If the
+        agent_id doesn't exist, <code>mycelium agent add</code> can either
+        create it (shell <code>hermes agent add &lt;handle&gt;</code>) or
+        require an explicit <code>--adopt</code> flag — same shape as
+        OpenClaw's create-vs-adopt distinction. Default behaviour is a
+        decision for the re-examination PR.</li>
+
+        <li><strong>The <code>home_channel</code> hack goes away.</strong>
+        We currently pin <code>home_channel</code> per-platform as a
+        fallback for bare <code>send_message("mycelium-room")</code> calls
+        (single platform → single chat_id). With routes-based dispatch,
+        each agent_id has unambiguous identity baked in, so
+        <code>send_message</code> with no chat_id can target the agent's
+        own routing entry directly. We'd remove the home_channel write
+        from <code>_set_home_channel()</code> when the gateway version
+        supports it.</li>
+      </ul>
+
+      <p><strong>What stays the same.</strong></p>
+      <ul>
+        <li>The <code>mycelium-room</code> platform plugin keeps owning SSE
+        subscription, mention parsing, and tick formatting. <code>route.py</code>
+        already injects the agent's mycelium handle into every dispatch
+        (see <em>Hermes quirks</em> in the bundled <code>SKILL.md</code>),
+        which translates cleanly to the post-#25660 model: the handle is
+        the agent_id.</li>
+        <li>The CLI surface (<code>mycelium adapter add hermes</code>,
+        <code>mycelium agent add &lt;handle&gt; --adapter hermes</code>)
+        doesn't change. Only what we write under the hood does.</li>
+      </ul>
+
+      <p>
+        Until #25660 merges, the export-<code>HERMES_HOME</code>
+        workflow above is the supported path for multi-persona setups.
+      </p>
 
       <div class="callout callout-note">
         <div class="callout-bar"></div>

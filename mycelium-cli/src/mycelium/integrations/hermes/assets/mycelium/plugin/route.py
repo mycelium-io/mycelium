@@ -244,7 +244,12 @@ def format_tick_instruction(tick_data: dict[str, Any], room_name: str, target_ag
 
     parts: list[str] = [
         round_header,
-        f"You are in a structured negotiation in room {room_name}.",
+        # The handle is repeated in the ``--handle`` CLI fragments below, but
+        # surfacing it at the top of the tick is the one place every hermes
+        # agent reliably sees "this is who you are in this room" — the SKILL
+        # uses ``<your-handle>`` placeholders and the hermes runtime
+        # doesn't otherwise plumb the mycelium handle into the persona.
+        f"You are @{target_agent} in a structured negotiation in room {room_name}.",
         f"Action required: {action}",
         "You CAN propose a counter-offer." if can_counter else "You can only accept or reject.",
     ]
@@ -298,7 +303,7 @@ def _format_error_tick(tick_data: dict[str, Any], room_name: str, target_agent: 
 
     lines: list[str] = [
         f"[CognitiveEngine — error: {error_kind}]",
-        f"Room: {room_name}",
+        f"You are @{target_agent} in room {room_name}.",
     ]
     if instruction:
         lines.extend(["", instruction])
@@ -334,6 +339,18 @@ def _format_error_tick(tick_data: dict[str, Any], room_name: str, target_agent: 
 # ── consensus ────────────────────────────────────────────────────────────────
 
 
+def _identity_preamble(agent_id: str, room_name: str) -> str:
+    """One-line identity header prepended to dispatches without a built-in
+    handle reference.
+
+    ``format_tick_instruction`` weaves the handle into its own header line,
+    so tick dispatches don't go through here; consensus and broadcast
+    paths do. Keeps the rule simple: every Dispatch hermes sees mentions
+    the agent's mycelium handle exactly once, near the top.
+    """
+    return f"[mycelium-room] You are @{agent_id} in room {room_name}."
+
+
 def _route_consensus(cfg: RoomConfig, msg: dict[str, Any]) -> list[RouteAction]:
     raw = msg.get("content")
     try:
@@ -344,11 +361,12 @@ def _route_consensus(cfg: RoomConfig, msg: dict[str, Any]) -> list[RouteAction]:
         return [Ignore("consensus payload not a dict")]
 
     summary = format_consensus_summary(data)
+    session_room_name = msg.get("room_name") or cfg.room
     actions: list[RouteAction] = [
         Dispatch(
             agent_id=aid,
             sender="CognitiveEngine",
-            content=summary,
+            content=f"{_identity_preamble(aid, session_room_name)}\n\n{summary}",
             message_id=msg.get("id"),
         )
         for aid in cfg.agents
@@ -444,7 +462,7 @@ def _route_broadcast(cfg: RoomConfig, msg: dict[str, Any]) -> list[RouteAction]:
         Dispatch(
             agent_id=aid,
             sender=sender,
-            content=content,
+            content=f"{_identity_preamble(aid, cfg.room)}\n\n{content}",
             message_id=msg.get("id"),
         )
         for aid in recipients
