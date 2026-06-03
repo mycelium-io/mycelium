@@ -35,7 +35,7 @@ RUN chmod +x /openclaw/entrypoint.sh
 WORKDIR /openclaw
 USER spoke
 
-RUN openclaw plugins install clawhub:@openclaw/matrix && \
+RUN openclaw plugins install @openclaw/matrix && \
     openclaw plugins enable matrix
 
 ENV OPENCLAW_ROLE=spoke1 \
