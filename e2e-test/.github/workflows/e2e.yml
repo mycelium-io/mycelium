@@ -328,6 +328,12 @@ jobs:
 
       - name: Register OpenClaw adapter
         run: |
+          echo "Preparing staging directory in hub container..."
+          docker exec e2e-openclaw-hub sh -c "mkdir -p /tmp/mycelium-stage/extensions" || true
+
+          echo "Hub container status:"
+          docker inspect --format='{{.State.Status}} (health={{.State.Health.Status}})' e2e-openclaw-hub || true
+
           mycelium adapter add openclaw \
             --openclaw-container e2e-openclaw-hub \
             --yes
