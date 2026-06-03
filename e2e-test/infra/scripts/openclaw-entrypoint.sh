@@ -136,4 +136,4 @@ node -e "
 "
 
 echo "[openclaw-entrypoint] Starting gateway..."
-exec openclaw gateway start --config "$CONFIG_DIR/openclaw.json"
+exec openclaw gateway start

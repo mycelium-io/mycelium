@@ -178,4 +178,4 @@ trap cleanup EXIT INT TERM
 
 # ── Start OpenClaw gateway (foreground) ───────────────────────────────
 echo "[spoke-entrypoint] Starting gateway..."
-exec openclaw gateway start --config "$CONFIG_DIR/openclaw.json"
+exec openclaw gateway start
