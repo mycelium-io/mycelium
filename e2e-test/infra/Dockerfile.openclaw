@@ -13,18 +13,19 @@ FROM node:22-alpine
 
 RUN apk add --no-cache bash wget && \
     npm install -g openclaw@latest && \
-    openclaw plugins install @openclaw/matrix && \
-    openclaw plugins enable matrix && \
     npm cache clean --force && \
     rm -rf /tmp/* /root/.npm && \
     mkdir -p /openclaw /shared && \
-    chown -R node:node /openclaw /shared
+    chown -R node:node /openclaw /shared /home/node
 
 COPY --chown=node:node infra/scripts/openclaw-entrypoint.sh /openclaw/entrypoint.sh
 RUN chmod +x /openclaw/entrypoint.sh
 
 WORKDIR /openclaw
 USER node
+
+RUN openclaw plugins install clawhub:@openclaw/matrix && \
+    openclaw plugins enable matrix
 
 ENV OPENCLAW_ROLE=hub \
     MATRIX_HOMESERVER=http://matrix-synapse:8008 \

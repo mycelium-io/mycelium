@@ -4,7 +4,7 @@
 # Runs three processes:
 #   1. mycelium metrics collect (spoke OTLP collector, forwards to hub)
 #   2. mycelium daemon run      (cc-daemon, dispatches @handle mentions)
-#   3. openclaw gateway start   (foreground, spoke role)
+#   3. openclaw gateway run     (foreground, spoke role)
 #
 # Expects the same shared volume as the hub entrypoint for Matrix tokens.
 set -euo pipefail
@@ -141,11 +141,10 @@ node -e "
       }
     },
     plugins: {
-      allow: ['litellm', 'matrix', 'mycelium'],
+      allow: ['litellm', 'matrix'],
       entries: {
         matrix: { enabled: true },
-        litellm: { enabled: true },
-        mycelium: { enabled: true }
+        litellm: { enabled: true }
       }
     },
     agents: {
@@ -203,4 +202,4 @@ trap cleanup EXIT INT TERM
 
 # ── Start OpenClaw gateway (foreground) ───────────────────────────────
 echo "[spoke-entrypoint] Starting gateway..."
-exec openclaw gateway start
+exec openclaw gateway run --force --verbose
