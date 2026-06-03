@@ -33,6 +33,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import tempfile
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -270,6 +271,66 @@ def _foreground_banner() -> None:
     typer.echo("    hermes gateway install        # ... or install as a service")
 
 
+class _GatewayCmdResult:
+    """Tiny result tuple from :func:`_run_hermes_gateway_cmd`.
+
+    Carrying the merged ``output`` instead of separate ``stdout``/``stderr``
+    is enough for this caller — we only show a snippet on failure.
+    """
+
+    __slots__ = ("output", "returncode", "timed_out")
+
+    def __init__(self, *, returncode: int, output: str, timed_out: bool) -> None:
+        self.returncode = returncode
+        self.output = output
+        self.timed_out = timed_out
+
+
+def _run_hermes_gateway_cmd(
+    args: list[str], *, env: dict[str, str], timeout: float = 30.0
+) -> _GatewayCmdResult:
+    """Run a ``hermes gateway …`` subcommand without the daemon-handoff hang.
+
+    ``hermes gateway restart`` (on a host with the gateway installed as a
+    systemd service) spawns a detached "planned-restart helper" that
+    inherits the CLI's stdout/stderr fds. The CLI itself exits promptly,
+    but the helper keeps the pipe write-ends open — which means a plain
+    ``subprocess.run(..., capture_output=True, timeout=…)`` deadlocks:
+    ``Popen.communicate()`` blocks on EOF that never comes, and the
+    ``TimeoutExpired`` cleanup re-enters ``communicate()`` *without* a
+    timeout under the (here-false) assumption that "the child is dead so
+    reads should EOF immediately."
+
+    Fix: redirect to a temp file instead of capturing through pipes. The
+    detached helper inherits the *file fd*, which closes cleanly when we
+    do, and we still get the diagnostic output for failure messages.
+    """
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as buf:
+        try:
+            proc = subprocess.run(
+                args,
+                stdin=subprocess.DEVNULL,
+                stdout=buf,
+                stderr=subprocess.STDOUT,
+                env=env,
+                timeout=timeout,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            buf.seek(0)
+            return _GatewayCmdResult(
+                returncode=-1,
+                output=buf.read(),
+                timed_out=True,
+            )
+        buf.seek(0)
+        return _GatewayCmdResult(
+            returncode=proc.returncode,
+            output=buf.read(),
+            timed_out=False,
+        )
+
+
 def _restart_gateway(profile: str | None = None) -> None:
     """``hermes gateway restart`` — service-only, with a foreground banner.
 
@@ -287,15 +348,8 @@ def _restart_gateway(profile: str | None = None) -> None:
 
     # Service exists — restart it. Cap the call so a misbehaving systemd
     # unit can't wedge the installer.
-    try:
-        result = subprocess.run(
-            ["hermes", "gateway", "restart"],
-            text=True,
-            capture_output=True,
-            env=env,
-            timeout=30,
-        )
-    except subprocess.TimeoutExpired:
+    result = _run_hermes_gateway_cmd(["hermes", "gateway", "restart"], env=env, timeout=30.0)
+    if result.timed_out:
         typer.secho(
             "  hermes gateway restart timed out after 30s — restart manually:",
             fg=typer.colors.YELLOW,
@@ -306,17 +360,10 @@ def _restart_gateway(profile: str | None = None) -> None:
     if result.returncode == 0:
         return
 
-    stderr_low = (result.stderr or result.stdout or "").lower()
-    if "not running" in stderr_low or "no gateway" in stderr_low:
-        try:
-            start = subprocess.run(
-                ["hermes", "gateway", "start"],
-                text=True,
-                capture_output=True,
-                env=env,
-                timeout=30,
-            )
-        except subprocess.TimeoutExpired:
+    output_low = result.output.lower()
+    if "not running" in output_low or "no gateway" in output_low:
+        start = _run_hermes_gateway_cmd(["hermes", "gateway", "start"], env=env, timeout=30.0)
+        if start.timed_out:
             typer.secho(
                 "  hermes gateway start timed out after 30s — start manually:",
                 fg=typer.colors.YELLOW,
@@ -325,18 +372,16 @@ def _restart_gateway(profile: str | None = None) -> None:
             return
         if start.returncode == 0:
             return
-        stderr = (start.stderr or start.stdout or "").strip()
         typer.secho(
-            f"  hermes gateway start returned {start.returncode}: {stderr[:160]}",
+            f"  hermes gateway start returned {start.returncode}: {start.output.strip()[:160]}",
             fg=typer.colors.YELLOW,
         )
         typer.echo("  Plugin and config are written; start the gateway manually:")
         typer.echo("    hermes gateway start")
         return
 
-    stderr = (result.stderr or result.stdout or "").strip()
     typer.secho(
-        f"  hermes gateway restart returned {result.returncode}: {stderr[:160]}",
+        f"  hermes gateway restart returned {result.returncode}: {result.output.strip()[:160]}",
         fg=typer.colors.YELLOW,
     )
     typer.echo("  Plugin and config are written; restart the gateway manually:")
