@@ -64,16 +64,11 @@ class HermesIntegration(Integration):
     name = "hermes"
     lifecycle = "long_lived_gateway"
 
-    def __init__(self, *, hermes_profile: str | None = None) -> None:
-        # hermes-only `agent add` flag. None == default ``~/.hermes/``.
-        self._profile = hermes_profile
-
     # ── path helpers ────────────────────────────────────────────────────────
 
     def _paths(self) -> tuple:
         """(state_dir, config_yaml) — shared with install facet."""
-        home = _hermes_home(self._profile)
-        return home, _hermes_config_yaml(self._profile)
+        return _hermes_home(), _hermes_config_yaml()
 
     # ── manifest ────────────────────────────────────────────────────────────
 
@@ -89,7 +84,6 @@ class HermesIntegration(Integration):
         return AgentManifest(
             handle=handle,
             adapter="hermes",
-            hermes_profile=self._profile,
             description=description,
             budget_usd_per_month=budget,
             allow_from=allow_from,
@@ -127,7 +121,7 @@ class HermesIntegration(Integration):
         means ``adapter add hermes`` has not run on this host yet.
         """
         try:
-            data = _read_config_yaml(self._profile)
+            data = _read_config_yaml()
         except HermesConfigError as exc:
             raise HermesError(str(exc)) from exc
         platforms = data.get("platforms") or {}
@@ -158,7 +152,7 @@ class HermesIntegration(Integration):
         target["agents"] = agents
         extra["rooms"] = rooms
         self._set_home_channel(data, room=room, handle=handle)
-        path = _write_config_yaml(data, self._profile)
+        path = _write_config_yaml(data)
         console.print(
             f"  [green]registered[/green] {path} → room [cyan]{room}[/cyan] agents={agents}"
         )
@@ -222,7 +216,7 @@ class HermesIntegration(Integration):
         if not changed:
             return False
         extra["rooms"] = pruned
-        path = _write_config_yaml(data, self._profile)
+        path = _write_config_yaml(data)
         console.print(
             f"  [green]unregistered[/green] [cyan]{handle}[/cyan] "
             f"from room [cyan]{room}[/cyan] in {path}"
@@ -239,7 +233,7 @@ class HermesIntegration(Integration):
         opts: AddOptions,  # noqa: ARG002
     ) -> None:
         self._register_room(room=opts.room, handle=manifest.handle)
-        _restart_gateway(self._profile)
+        _restart_gateway()
 
     def destroy(
         self,
@@ -251,16 +245,15 @@ class HermesIntegration(Integration):
     ) -> None:
         changed = self._unregister_room(room=room, handle=manifest.handle)
         if changed:
-            _restart_gateway(self._profile)
+            _restart_gateway()
 
     def will_destroy_runtime(self, manifest: AgentManifest, *, full: bool) -> bool:  # noqa: ARG002
         # hermes-side identity isn't owned by mycelium — `--full` has no effect.
         return False
 
-    def describe(self, manifest: AgentManifest, *, room: str) -> list[str]:
+    def describe(self, manifest: AgentManifest, *, room: str) -> list[str]:  # noqa: ARG002
         return [
             "  adapter: hermes",
-            f"  profile: {manifest.hermes_profile or '<default>'}",
             "\n[dim]Hermes agents are dispatched by the gateway's "
             f"{_HERMES_PLATFORM_ID} platform plugin, not the mycelium-daemon.[/dim]\n"
             f'[dim]Invoke:[/dim] mycelium agent invoke {manifest.handle} "..."',
@@ -275,17 +268,16 @@ class HermesIntegration(Integration):
         *,
         config: MyceliumConfig,
         verbose: bool,
-        profile: str | None,
+        profile: str | None,  # noqa: ARG002 - hermes always uses the active profile
         container: str | None,  # noqa: ARG002 - containerised hermes is a v2 followup
         reinstall: bool,
     ) -> None:
-        # Resolve profile lazily — the typer command layer reuses
-        # `--openclaw-profile`/`--openclaw-container` as generic family knobs
-        # since both hermes and openclaw are long-lived-gateway families.
-        # We override the constructor profile when typer passes one.
-        if profile is not None:
-            self._profile = profile
-
+        # Profile selection is deliberately ignored: Mycelium targets whichever
+        # hermes profile is active on the host (``$HERMES_HOME`` or
+        # ``~/.hermes/``). First-class multi-profile support is on hold until
+        # ``hermes-agent#25660`` — once handle-level routing inside one
+        # gateway lands, this whole profile-as-deployment-unit branch goes
+        # away anyway.
         from mycelium.integrations.hermes.install import _probe_hub_reachable
 
         api_url = config.server.api_url
@@ -302,43 +294,39 @@ class HermesIntegration(Integration):
                 "  The hermes plugin will start once the backend is reachable. "
                 "Verify [server].api_url in ~/.mycelium/config.toml."
             )
-        _install_hermes(verbose=verbose, profile=self._profile, config=config, reinstall=reinstall)
+        _install_hermes(verbose=verbose, config=config, reinstall=reinstall)
 
     def uninstall(
         self,
         *,
         record: dict,
-        profile: str | None,
+        profile: str | None,  # noqa: ARG002
         container: str | None,  # noqa: ARG002
     ) -> None:
-        if profile is not None:
-            self._profile = profile
-        _uninstall_hermes(record, profile=self._profile)
+        _uninstall_hermes(record)
 
     def reinstall_targets(
         self,
         *,
-        profile: str | None,
+        profile: str | None,  # noqa: ARG002
         container: str | None,  # noqa: ARG002
     ) -> list[str]:
-        prof = profile if profile is not None else self._profile
         return [
-            f"  • {_hermes_plugin_dst(prof)}",
-            f"  • {_hermes_config_yaml(prof)} (plugins.enabled, platforms.{_HERMES_PLATFORM_ID}.*)",
+            f"  • {_hermes_plugin_dst()}",
+            f"  • {_hermes_config_yaml()} (plugins.enabled, platforms.{_HERMES_PLATFORM_ID}.*)",
         ]
 
     def dry_run_lines(
         self,
         *,
         config: MyceliumConfig,
-        profile: str | None,
+        profile: str | None,  # noqa: ARG002
         container: str | None,  # noqa: ARG002
     ) -> list[str]:
-        prof = profile if profile is not None else self._profile
         plugin_src = _resolve_asset(_MYCELIUM_PLUGIN_SRC, family="hermes")
         return [
-            f"  stage plugin: {plugin_src} → {_hermes_plugin_dst(prof)}",
-            f"  patch:        {_hermes_config_yaml(prof)}",
+            f"  stage plugin: {plugin_src} → {_hermes_plugin_dst()}",
+            f"  patch:        {_hermes_config_yaml()}",
             f"                  plugins.enabled += {_HERMES_PLUGIN_NAME}",
             f"                  platforms.{_HERMES_PLATFORM_ID}.enabled = true",
             f"                  platforms.{_HERMES_PLATFORM_ID}.extra.backend_url = {config.server.api_url}",
@@ -350,14 +338,13 @@ class HermesIntegration(Integration):
         *,
         config: MyceliumConfig,
         reinstall: bool,
-        profile: str | None,
+        profile: str | None,  # noqa: ARG002
         container: str | None,  # noqa: ARG002
     ) -> None:
-        prof = profile if profile is not None else self._profile
         verb = "reinstalled" if reinstall else "installed"
         typer.secho(f"Adapter 'hermes' {verb}.", fg=typer.colors.GREEN)
-        typer.echo(f"  plugin: {_hermes_plugin_dst(prof)}")
-        typer.echo(f"  config: {_hermes_config_yaml(prof)}")
+        typer.echo(f"  plugin: {_hermes_plugin_dst()}")
+        typer.echo(f"  config: {_hermes_config_yaml()}")
         typer.echo("")
         typer.secho("  Next steps:", bold=True)
         typer.echo("")
@@ -398,9 +385,7 @@ class HermesIntegration(Integration):
         details: list[str] = []
         ok = True
 
-        prof = info.get("hermes_profile")
-
-        plugin_yaml = _hermes_plugin_dst(prof) / "plugin.yaml"
+        plugin_yaml = _hermes_plugin_dst() / "plugin.yaml"
         plugin_ok = plugin_yaml.exists()
         details.append(f"  {'✓' if plugin_ok else '✗'} plugin:{_HERMES_PLUGIN_NAME}")
         if not plugin_ok:
@@ -410,7 +395,7 @@ class HermesIntegration(Integration):
         config_ok = False
         platform_ok = False
         try:
-            data = _read_config_yaml(prof)
+            data = _read_config_yaml()
         except HermesConfigError:
             data = {}
         plugins_block = data.get("plugins") if isinstance(data, dict) else None
@@ -435,7 +420,7 @@ class HermesIntegration(Integration):
         # `kill -0` (signal 0) is a permission probe; it doesn't actually
         # signal the process — POSIX-standard idiom for "is this PID alive".
         gateway_ok = False
-        pid_path = _hermes_gateway_pid(prof)
+        pid_path = _hermes_gateway_pid()
         if pid_path.exists():
             try:
                 pid_text = pid_path.read_text().strip().splitlines()[0]

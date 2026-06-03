@@ -1353,28 +1353,20 @@ def _hermes_adapter_registered() -> bool:
     return "hermes" in (cfg.adapters or {})
 
 
-def _hermes_paths(profile: str | None) -> tuple[Path, Path, Path]:
-    """(home, plugin_dir, config_yaml) for the configured profile."""
+def _hermes_paths() -> tuple[Path, Path, Path]:
+    """(home, plugin_dir, config_yaml) for the active hermes profile.
+
+    Mycelium always targets whichever profile is active via ``HERMES_HOME``
+    (or ``~/.hermes/``); per-profile multi-tenancy is on hold until
+    hermes-agent#25660. See ``_hermes_home`` for the resolution rule.
+    """
     from mycelium.integrations.hermes.install import (
         _hermes_config_yaml,
         _hermes_home,
         _hermes_plugin_dst,
     )
 
-    return _hermes_home(profile), _hermes_plugin_dst(profile), _hermes_config_yaml(profile)
-
-
-def _hermes_recorded_profile() -> str | None:
-    """Return the profile recorded in ``config.adapters['hermes']``, if any."""
-    from mycelium.config import MyceliumConfig
-
-    try:
-        cfg = MyceliumConfig.load()
-    except Exception:
-        return None
-    record = (cfg.adapters or {}).get("hermes") or {}
-    profile = record.get("hermes_profile") or record.get("openclaw_profile")
-    return profile if isinstance(profile, str) and profile else None
+    return _hermes_home(), _hermes_plugin_dst(), _hermes_config_yaml()
 
 
 def _check_hermes_plugin() -> CheckResult:
@@ -1392,8 +1384,7 @@ def _check_hermes_plugin() -> CheckResult:
             message="hermes adapter not registered — skipped",
         )
 
-    profile = _hermes_recorded_profile()
-    _, plugin_dir, _ = _hermes_paths(profile)
+    _, plugin_dir, _ = _hermes_paths()
     plugin_yaml = plugin_dir / "plugin.yaml"
     adapter_py = plugin_dir / "adapter.py"
 
@@ -1465,8 +1456,7 @@ def _check_hermes_config_yaml() -> CheckResult:
             message="hermes adapter not registered — skipped",
         )
 
-    profile = _hermes_recorded_profile()
-    _, _, config_yaml = _hermes_paths(profile)
+    _, _, config_yaml = _hermes_paths()
 
     if not config_yaml.exists():
         return CheckResult(
@@ -1580,10 +1570,9 @@ def _check_hermes_gateway_running() -> CheckResult:
             message="hermes adapter not registered — skipped",
         )
 
-    profile = _hermes_recorded_profile()
     from mycelium.integrations.hermes.install import _hermes_gateway_pid
 
-    pid_path = _hermes_gateway_pid(profile)
+    pid_path = _hermes_gateway_pid()
     if not pid_path.exists():
         return CheckResult(
             name="hermes gateway",

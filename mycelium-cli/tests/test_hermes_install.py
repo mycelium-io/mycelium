@@ -52,11 +52,11 @@ def _isolated_hermes_home(tmp_path, monkeypatch):
     # so the dispatch namespace holds a separate reference. Patch both.
     monkeypatch.setattr(
         "mycelium.integrations.hermes.install._restart_gateway",
-        lambda profile=None: None,
+        lambda: None,
     )
     monkeypatch.setattr(
         "mycelium.integrations.hermes.dispatch._restart_gateway",
-        lambda profile=None: None,
+        lambda: None,
     )
     monkeypatch.setattr(
         "mycelium.integrations.hermes.install._check_hermes_binary",
@@ -149,19 +149,18 @@ def test_install_stages_plugin_and_patches_config(
 ) -> None:
     _install_hermes(
         verbose=False,
-        profile=None,
         config=fake_mycelium_config,
         reinstall=False,
     )
 
-    plugin_dst = _hermes_plugin_dst(None)
+    plugin_dst = _hermes_plugin_dst()
     assert plugin_dst.exists(), "plugin tree was not staged"
     assert (plugin_dst / "plugin.yaml").exists()
     assert (plugin_dst / "adapter.py").exists()
     assert (plugin_dst / "route.py").exists()
     assert (plugin_dst / "skills" / "mycelium" / "SKILL.md").exists()
 
-    cfg_path = _hermes_config_yaml(None)
+    cfg_path = _hermes_config_yaml()
     assert cfg_path.exists(), "config.yaml was not written"
     data = _read_yaml(cfg_path)
     assert "mycelium" in data["plugins"]["enabled"]
@@ -174,13 +173,13 @@ def test_install_stages_plugin_and_patches_config(
 def test_install_is_idempotent(_isolated_hermes_home, fake_mycelium_config) -> None:
     """Re-running install on a clean tree is a no-op — same content, no
     duplicate plugin entries, ``rooms`` not clobbered."""
-    _install_hermes(verbose=False, profile=None, config=fake_mycelium_config, reinstall=False)
-    cfg_path = _hermes_config_yaml(None)
+    _install_hermes(verbose=False, config=fake_mycelium_config, reinstall=False)
+    cfg_path = _hermes_config_yaml()
     data = _read_yaml(cfg_path)
     data["platforms"]["mycelium-room"]["extra"]["rooms"] = [{"room": "demo", "agents": ["alice"]}]
     _write_config_yaml(data)
 
-    _install_hermes(verbose=False, profile=None, config=fake_mycelium_config, reinstall=False)
+    _install_hermes(verbose=False, config=fake_mycelium_config, reinstall=False)
     data2 = _read_yaml(cfg_path)
     assert data2["plugins"]["enabled"].count("mycelium") == 1
     # Existing room fan-out survives a re-install — critical for the
@@ -191,10 +190,10 @@ def test_install_is_idempotent(_isolated_hermes_home, fake_mycelium_config) -> N
 
 
 def test_uninstall_removes_tree_and_disables(_isolated_hermes_home, fake_mycelium_config) -> None:
-    _install_hermes(verbose=False, profile=None, config=fake_mycelium_config, reinstall=False)
-    _uninstall_hermes({}, profile=None)
-    assert not _hermes_plugin_dst(None).exists()
-    data = _read_yaml(_hermes_config_yaml(None))
+    _install_hermes(verbose=False, config=fake_mycelium_config, reinstall=False)
+    _uninstall_hermes({})
+    assert not _hermes_plugin_dst().exists()
+    data = _read_yaml(_hermes_config_yaml())
     assert "mycelium" not in data["plugins"]["enabled"]
     # We disable the platform block but DO NOT delete it, so a subsequent
     # re-install doesn't lose any per-room fan-out a user had configured.
@@ -215,7 +214,7 @@ def _build_manifest(handle: str = "alice") -> AgentManifest:
 
 
 def test_register_appends_room_entry(_isolated_hermes_home, fake_mycelium_config) -> None:
-    _install_hermes(verbose=False, profile=None, config=fake_mycelium_config, reinstall=False)
+    _install_hermes(verbose=False, config=fake_mycelium_config, reinstall=False)
     integ = HermesIntegration()
     from mycelium.integrations.base import AddOptions
 
@@ -224,7 +223,7 @@ def test_register_appends_room_entry(_isolated_hermes_home, fake_mycelium_config
         config=fake_mycelium_config,
         opts=AddOptions(room="demo"),
     )
-    data = _read_yaml(_hermes_config_yaml(None))
+    data = _read_yaml(_hermes_config_yaml())
     rooms = data["platforms"]["mycelium-room"]["extra"]["rooms"]
     assert rooms == [{"room": "demo", "agents": ["alice"]}]
 
@@ -233,7 +232,7 @@ def test_register_appends_room_entry(_isolated_hermes_home, fake_mycelium_config
         config=fake_mycelium_config,
         opts=AddOptions(room="demo"),
     )
-    data = _read_yaml(_hermes_config_yaml(None))
+    data = _read_yaml(_hermes_config_yaml())
     rooms = data["platforms"]["mycelium-room"]["extra"]["rooms"]
     assert rooms == [{"room": "demo", "agents": ["alice", "bob"]}]
 
@@ -243,7 +242,7 @@ def test_register_appends_room_entry(_isolated_hermes_home, fake_mycelium_config
         config=fake_mycelium_config,
         opts=AddOptions(room="demo"),
     )
-    data = _read_yaml(_hermes_config_yaml(None))
+    data = _read_yaml(_hermes_config_yaml())
     assert data["platforms"]["mycelium-room"]["extra"]["rooms"][0]["agents"] == [
         "alice",
         "bob",
@@ -264,7 +263,7 @@ def test_register_pins_home_channel_to_latest_handle(
     back into the right room + handle. Last-write-wins mirrors hermes's
     own UX for other platforms (single ``HOME_CHANNEL`` env var).
     """
-    _install_hermes(verbose=False, profile=None, config=fake_mycelium_config, reinstall=False)
+    _install_hermes(verbose=False, config=fake_mycelium_config, reinstall=False)
     integ = HermesIntegration()
     from mycelium.integrations.base import AddOptions
 
@@ -273,7 +272,7 @@ def test_register_pins_home_channel_to_latest_handle(
         config=fake_mycelium_config,
         opts=AddOptions(room="demo"),
     )
-    block = _read_yaml(_hermes_config_yaml(None))["platforms"]["mycelium-room"]
+    block = _read_yaml(_hermes_config_yaml())["platforms"]["mycelium-room"]
     # The ``platform`` key is mandatory — without it hermes's
     # ``HomeChannel.from_dict`` KeyErrors and the gateway fails to boot.
     assert block["home_channel"] == {
@@ -288,7 +287,7 @@ def test_register_pins_home_channel_to_latest_handle(
         config=fake_mycelium_config,
         opts=AddOptions(room="demo"),
     )
-    block = _read_yaml(_hermes_config_yaml(None))["platforms"]["mycelium-room"]
+    block = _read_yaml(_hermes_config_yaml())["platforms"]["mycelium-room"]
     assert block["home_channel"] == {
         "platform": "mycelium-room",
         "chat_id": "demo:bob",
@@ -299,7 +298,7 @@ def test_register_pins_home_channel_to_latest_handle(
 def test_destroy_removes_handle_and_prunes_empty_room(
     _isolated_hermes_home, fake_mycelium_config
 ) -> None:
-    _install_hermes(verbose=False, profile=None, config=fake_mycelium_config, reinstall=False)
+    _install_hermes(verbose=False, config=fake_mycelium_config, reinstall=False)
     integ = HermesIntegration()
     from mycelium.integrations.base import AddOptions
 
@@ -316,7 +315,7 @@ def test_destroy_removes_handle_and_prunes_empty_room(
         room="demo",
         full=False,
     )
-    data = _read_yaml(_hermes_config_yaml(None))
+    data = _read_yaml(_hermes_config_yaml())
     rooms = data["platforms"]["mycelium-room"]["extra"]["rooms"]
     assert rooms == [{"room": "demo", "agents": ["bob"]}]
 
@@ -326,35 +325,19 @@ def test_destroy_removes_handle_and_prunes_empty_room(
         room="demo",
         full=False,
     )
-    data = _read_yaml(_hermes_config_yaml(None))
+    data = _read_yaml(_hermes_config_yaml())
     # The now-empty room entry is dropped, matching openclaw behaviour.
     assert data["platforms"]["mycelium-room"]["extra"]["rooms"] == []
 
 
-def test_build_manifest_carries_profile() -> None:
-    """The hermes_profile passed to the integration constructor lands on
-    the manifest so a later ``destroy`` can target the right hermes home."""
-    integ = HermesIntegration(hermes_profile="work")
-    from mycelium.integrations.base import AddOptions
-
-    manifest = integ.build_manifest(
-        handle="alice",
-        opts=AddOptions(room="demo"),
-        description="",
-        budget=5.0,
-        allow_from=[],
-    )
-    assert manifest.adapter == "hermes"
-    assert manifest.hermes_profile == "work"
-
-
 def test_hermes_home_respects_env(monkeypatch, tmp_path) -> None:
     """``$HERMES_HOME`` always wins — required so tests + containers can
-    redirect without setting a profile."""
+    redirect cleanly. Profile-aware path resolution was stripped in favour
+    of always honouring the active hermes home; see hermes-agent#25660 for
+    the upstream direction on per-handle profile routing."""
     target = tmp_path / "alt"
     monkeypatch.setenv("HERMES_HOME", str(target))
     assert _hermes_home() == target
-    assert _hermes_home("work") == target  # env still wins over profile
 
 
 def test_status_check_reports_missing_install(_isolated_hermes_home) -> None:

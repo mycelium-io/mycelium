@@ -61,42 +61,45 @@ _HERMES_STEPS: dict[str, str] = {}
 # ── paths ────────────────────────────────────────────────────────────────────
 
 
-def _hermes_home(profile: str | None = None) -> Path:
-    """Return the hermes home directory for *profile* (default ``~/.hermes``).
+def _hermes_home() -> Path:
+    """Return the hermes home directory.
 
     Mirrors hermes's own resolution (``hermes_constants.get_hermes_home()``):
     honour the ``HERMES_HOME`` env var first so containerised / test setups
-    can redirect, otherwise fall back to ``~/.hermes`` or the per-profile
-    ``~/.hermes/profiles/<name>/`` shape.
+    can redirect, otherwise fall back to ``~/.hermes``. Multi-profile
+    targeting is intentionally not supported here — Mycelium follows the
+    user's active hermes profile via ``HERMES_HOME``. First-class
+    per-handle profile selection lives upstream behind hermes-agent#25660
+    (single gateway, multiple agents) and will be re-examined once that
+    pattern lands; until then, multi-profile setups install Mycelium
+    per-profile manually by re-exporting ``HERMES_HOME`` before each run.
     """
     env_home = os.environ.get("HERMES_HOME")
     if env_home:
         return Path(env_home)
-    if profile and profile.lower() != "default":
-        return Path.home() / ".hermes" / "profiles" / profile
     return Path.home() / ".hermes"
 
 
-def _hermes_plugin_dst(profile: str | None = None) -> Path:
-    return _hermes_home(profile) / "plugins" / _HERMES_PLUGIN_NAME
+def _hermes_plugin_dst() -> Path:
+    return _hermes_home() / "plugins" / _HERMES_PLUGIN_NAME
 
 
-def _hermes_config_yaml(profile: str | None = None) -> Path:
-    return _hermes_home(profile) / "config.yaml"
+def _hermes_config_yaml() -> Path:
+    return _hermes_home() / "config.yaml"
 
 
-def _hermes_gateway_pid(profile: str | None = None) -> Path:
-    return _hermes_home(profile) / "gateway.pid"
+def _hermes_gateway_pid() -> Path:
+    return _hermes_home() / "gateway.pid"
 
 
 # ── YAML config helpers ──────────────────────────────────────────────────────
 
 
-def _read_config_yaml(profile: str | None = None) -> dict[str, Any]:
+def _read_config_yaml() -> dict[str, Any]:
     """Return the parsed ``config.yaml`` (empty dict if missing/empty)."""
     import yaml
 
-    cfg_path = _hermes_config_yaml(profile)
+    cfg_path = _hermes_config_yaml()
     if not cfg_path.exists():
         return {}
     try:
@@ -112,7 +115,7 @@ def _read_config_yaml(profile: str | None = None) -> dict[str, Any]:
     return data
 
 
-def _write_config_yaml(data: dict[str, Any], profile: str | None = None) -> Path:
+def _write_config_yaml(data: dict[str, Any]) -> Path:
     """Write *data* back to ``config.yaml`` atomically.
 
     Uses ``yaml.safe_dump`` with ``sort_keys=False`` so we preserve key order
@@ -121,7 +124,7 @@ def _write_config_yaml(data: dict[str, Any], profile: str | None = None) -> Path
     """
     import yaml
 
-    cfg_path = _hermes_config_yaml(profile)
+    cfg_path = _hermes_config_yaml()
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = cfg_path.with_suffix(cfg_path.suffix + ".tmp")
     tmp.write_text(
@@ -244,9 +247,11 @@ def _gateway_service_installed(env: dict[str, str]) -> bool:
     """
     if shutil.which("systemctl") is None:
         return False
-    # Match hermes_cli/gateway.py: profile-aware service name like
-    # ``hermes-gateway`` or ``hermes-gateway-<profile>``. Probe both
-    # ``--user`` and system scopes; either presence counts.
+    # Mycelium targets whichever hermes profile is active on the host, so we
+    # only ever probe the canonical ``hermes-gateway`` unit. (Per-profile
+    # unit names like ``hermes-gateway-<profile>`` exist in hermes-agent but
+    # we don't bind to a specific profile here — see ``_hermes_home``.)
+    # Probe both ``--user`` and system scopes; either presence counts.
     candidates = ("hermes-gateway", "hermes-gateway.service")
     for scope in (("--user",), ()):
         for name in candidates:
@@ -331,7 +336,7 @@ def _run_hermes_gateway_cmd(
         )
 
 
-def _restart_gateway(profile: str | None = None) -> None:
+def _restart_gateway() -> None:
     """``hermes gateway restart`` — service-only, with a foreground banner.
 
     Best-effort: a non-zero exit code or a missing service is a warning,
@@ -339,8 +344,7 @@ def _restart_gateway(profile: str | None = None) -> None:
     the user can restart manually.
     """
     env = os.environ.copy()
-    home = _hermes_home(profile)
-    env["HERMES_HOME"] = str(home)
+    env["HERMES_HOME"] = str(_hermes_home())
 
     if not _gateway_service_installed(env):
         _foreground_banner()
@@ -417,7 +421,6 @@ def _probe_hub_reachable(api_url: str, timeout: float = 3.0) -> tuple[bool, str]
 def _install_hermes(
     *,
     verbose: bool,
-    profile: str | None,
     config: MyceliumConfig,
     reinstall: bool,
 ) -> None:
@@ -427,7 +430,7 @@ def _install_hermes(
     _check_hermes_binary()
 
     plugin_src = _resolve_asset(_MYCELIUM_PLUGIN_SRC, family="hermes")
-    plugin_dst = _hermes_plugin_dst(profile)
+    plugin_dst = _hermes_plugin_dst()
 
     if reinstall and plugin_dst.exists():
         shutil.rmtree(plugin_dst)
@@ -438,7 +441,7 @@ def _install_hermes(
         typer.echo(f"  staged plugin: {plugin_src} → {plugin_dst}")
 
     # Patch config.yaml
-    data = _read_config_yaml(profile)
+    data = _read_config_yaml()
     plugin_changed = _enable_plugin(data)
     platform_changed = _ensure_platform_block(
         data,
@@ -446,7 +449,7 @@ def _install_hermes(
         api_token=None,
     )
     if plugin_changed or platform_changed:
-        path = _write_config_yaml(data, profile)
+        path = _write_config_yaml(data)
         if verbose:
             typer.echo(f"  patched: {path}")
             if plugin_changed:
@@ -454,28 +457,26 @@ def _install_hermes(
             if platform_changed:
                 typer.echo(f"    platforms.{_HERMES_PLATFORM_ID}.enabled = true")
     elif verbose:
-        typer.echo(f"  config.yaml already configured: {_hermes_config_yaml(profile)}")
+        typer.echo(f"  config.yaml already configured: {_hermes_config_yaml()}")
 
-    _restart_gateway(profile)
+    _restart_gateway()
 
 
 def _uninstall_hermes(
     record: dict,  # noqa: ARG001 - record is the persisted adapter info; unused for hermes today
-    *,
-    profile: str | None,
 ) -> None:
     """Reverse :func:`_install_hermes` — remove plugin tree, disable in config."""
-    plugin_dst = _hermes_plugin_dst(profile)
+    plugin_dst = _hermes_plugin_dst()
     if plugin_dst.exists():
         shutil.rmtree(plugin_dst, ignore_errors=True)
 
     try:
-        data = _read_config_yaml(profile)
+        data = _read_config_yaml()
     except HermesConfigError:
         return  # malformed config, nothing safe to do here
     plugin_changed = _disable_plugin(data)
     platform_changed = _disable_platform_block(data)
     if plugin_changed or platform_changed:
-        _write_config_yaml(data, profile)
+        _write_config_yaml(data)
 
-    _restart_gateway(profile)
+    _restart_gateway()

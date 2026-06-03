@@ -68,15 +68,13 @@ def get_integration(
     model: str | None = None,
     openclaw_profile: str | None = None,
     copy_auth_from: str | None = None,
-    hermes_profile: str | None = None,
 ) -> Integration:
     """Return an integration instance for *name* (any accepted spelling).
 
     Family-specific `agent add` flags are passed through and bound to the
     instance so ``build_manifest``/``register`` keep a uniform signature. For
     non-add call sites (e.g. ``agent rm``) the extra kwargs are simply omitted
-    — only ``openclaw_profile`` / ``hermes_profile`` matter there and default
-    to None.
+    — only ``openclaw_profile`` matters there and defaults to None.
     """
     canonical = normalize_family_id(name)
     if canonical == "claude_code":
@@ -95,13 +93,12 @@ def get_integration(
             copy_auth_from=copy_auth_from,
         )
     if canonical == "hermes":
-        # Hermes accepts only ``hermes_profile`` today; other long-lived-
-        # gateway knobs (containerised gateway, model overrides) are v2
-        # work. ``openclaw_profile`` falls through as an alias when the user
-        # has not set ``--hermes-profile`` separately, since the adapter
-        # command surface reuses one ``--profile``-shaped flag for both
-        # long-lived-gateway families.
-        return HermesIntegration(hermes_profile=hermes_profile or openclaw_profile)
+        # Hermes always targets whichever profile is active on the host
+        # (``$HERMES_HOME`` or ``~/.hermes/``). First-class multi-profile
+        # selection is on hold until ``hermes-agent#25660`` (single gateway,
+        # multiple agents) lands — at which point handle-level routing
+        # replaces per-profile gateways entirely.
+        return HermesIntegration()
     raise ValueError(f"unknown integration: {name!r}")
 
 

@@ -192,8 +192,11 @@ class AgentManifest(BaseModel):
       (``hermes gateway run``). The bundled ``mycelium-room`` platform
       plugin under ``integrations/hermes/assets/`` subscribes to the
       configured rooms and dispatches into the hermes agent loop, so the
-      daemon ignores these manifests as it does for ``openclaw``. Optional
-      ``hermes_profile`` targets a non-default ``~/.hermes/profiles/<name>/``.
+      daemon ignores these manifests as it does for ``openclaw``. Mycelium
+      always targets whichever hermes profile is active on the host (i.e.
+      ``$HERMES_HOME`` or ``~/.hermes/``); first-class multi-profile
+      support is on hold until ``hermes-agent#25660`` (single gateway,
+      multiple agents) lands.
 
     The handle slug doubles as the mention target (``@release-agent``), so it
     must match the same lowercase pattern other memory slugs use.
@@ -219,15 +222,6 @@ class AgentManifest(BaseModel):
             "openclaw: True if Mycelium created the OpenClaw agent (create-mode), "
             "False if it adopted a pre-existing one. Gates whether `agent rm --full` "
             "is allowed to destroy it — adopted agents are never destroyed."
-        ),
-    )
-    hermes_profile: str | None = Field(
-        default=None,
-        description=(
-            "hermes: optional profile name targeting `~/.hermes/profiles/<name>/`. "
-            "None or 'default' uses the root `~/.hermes/`. Plumbed through to the "
-            "install facet so the same handle can address different long-lived "
-            "gateways on one host."
         ),
     )
     description: str = Field(default="", description="One-paragraph purpose statement.")

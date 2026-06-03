@@ -612,17 +612,59 @@ hermes gateway restart
 
       <h2 id="hr-profiles">Profiles</h2>
       <p>
-        Hermes supports per-profile homes (<code>~/.hermes/profiles/&lt;name&gt;/</code>).
-        Pass <code>--hermes-profile</code> to target a non-default install — useful when
-        the same host runs more than one long-lived gateway:
+        Hermes supports per-profile homes
+        (<code>~/.hermes/profiles/&lt;name&gt;/</code>) — fully isolated
+        installs with their own <code>config.yaml</code>, <code>.env</code>,
+        <code>SOUL.md</code>, sessions, skills, gateway, and persona. Mycelium
+        does <em>not</em> select between them: every install targets whichever
+        profile is currently active on the host
+        (<code>$HERMES_HOME</code> or <code>~/.hermes/</code>). To run
+        Mycelium against a non-default profile, export
+        <code>HERMES_HOME</code> before each
+        <code>mycelium adapter add</code>/<code>agent add</code>:
       </p>
-      <pre><code><span class="cmd">mycelium adapter add</span> hermes <span class="flag">--hermes-profile</span> <span class="arg">work</span>
-<span class="cmd">mycelium agent add</span> alice <span class="flag">--room</span> demo <span class="flag">--adapter</span> hermes <span class="flag">--hermes-profile</span> <span class="arg">work</span></code></pre>
-      <p>
-        <code>$HERMES_HOME</code> still wins over <code>--hermes-profile</code>, matching
-        Hermes's own resolution order. Leaving the flag off uses the root
-        <code>~/.hermes/</code>.
-      </p>
+      <pre><code><span class="comment"># Run mycelium against the 'work' profile</span>
+<span class="cmd">hermes profile create</span> <span class="arg">work</span>
+<span class="cmd">hermes</span> <span class="flag">-p</span> <span class="arg">work</span> setup
+
+<span class="cmd">export</span> HERMES_HOME=<span class="arg">~/.hermes/profiles/work</span>
+<span class="cmd">mycelium adapter add</span> hermes
+<span class="cmd">mycelium agent add</span> alice <span class="flag">--room</span> demo <span class="flag">--adapter</span> hermes</code></pre>
+
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body">
+          <strong>One gateway per profile, one persona per gateway.</strong>
+          Hermes today doesn't have first-class named agents inside a single
+          gateway process — a profile <em>is</em> the agent identity. Two
+          distinct personas in the same Mycelium room means two profiles plus
+          two
+          <code>hermes -p &lt;name&gt; gateway install</code> setups. The
+          handles you register through <code>mycelium agent add</code> are
+          routing labels — the persona is whatever the active profile's
+          <code>SOUL.md</code> + <code>agent.system_prompt</code> say.
+        </div>
+      </div>
+
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body">
+          <strong>First-class multi-profile support is on hold until
+            <a href="https://github.com/NousResearch/hermes-agent/pull/25660">hermes-agent#25660</a>
+            (<em>"single gateway, multiple agents (MVP)"</em>) lands.</strong>
+          When that PR merges, one Hermes gateway will host N agents
+          in-process, routed by an explicit <code>routes:</code> block in
+          <code>config.yaml</code> using <code>platform</code> +
+          <code>chat_id</code> match-keys. The chat_id shape Mycelium already
+          dispatches under (<code>&lt;room&gt;:&lt;agent&gt;</code>) maps
+          directly onto that scheme. At that point the adapter will be
+          re-examined — almost certainly by auto-writing
+          <code>routes:</code> for each registered handle under a single
+          gateway, replacing the per-profile-deployment pattern entirely.
+          Until then, the export-and-install workflow above is the supported
+          path.
+        </div>
+      </div>
 
       <div class="callout callout-note">
         <div class="callout-bar"></div>
