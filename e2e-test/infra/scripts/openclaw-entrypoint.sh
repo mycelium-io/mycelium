@@ -67,6 +67,24 @@ node -e "
   const baseUrl = process.env.LLM_BASE_URL || '';
   const apiKey = process.env.LLM_API_KEY || '';
 
+  const validAgents = agents.filter(id => {
+    if (!tokens[id]) console.error('[openclaw-entrypoint] WARNING: No token for ' + id);
+    return !!tokens[id];
+  });
+
+  const matrixAccounts = {};
+  for (const id of validAgents) {
+    matrixAccounts[id] = {
+      userId: '@' + id + ':local',
+      accessToken: tokens[id],
+      homeserver: '$MATRIX_HOMESERVER',
+      agentId: id,
+      groups: { '$ROOM_ID': { requireMention: true } },
+      dm: { allowFrom: ['*'] },
+      allowFrom: ['*']
+    };
+  }
+
   const cfg = {
     gateway: { port: 18789 },
     models: {
@@ -78,6 +96,7 @@ node -e "
           models: [
             {
               id: model,
+              name: model.split('/').pop(),
               reasoning: false,
               input: ['text'],
               contextWindow: 200000,
@@ -89,38 +108,41 @@ node -e "
     },
     channels: {
       matrix: {
-        homeserverUrl: '$MATRIX_HOMESERVER',
-        requireMention: true,
-        rooms: ['$ROOM_ID']
+        enabled: true,
+        homeserver: '$MATRIX_HOMESERVER',
+        initialSyncLimit: 0,
+        groupPolicy: 'open',
+        accounts: matrixAccounts,
+        dm: { allowFrom: ['*'] },
+        groupAllowFrom: ['*'],
+        network: { dangerouslyAllowPrivateNetwork: true }
       }
     },
     plugins: {
-      matrix: {
-        enabled: true
-      },
-      mycelium: {
-        enabled: true,
-        backendUrl: '$MYCELIUM_BACKEND_URL'
+      allow: ['litellm', 'matrix', 'mycelium'],
+      entries: {
+        matrix: { enabled: true },
+        litellm: { enabled: true },
+        mycelium: { enabled: true }
       }
     },
-    agents: agents
-      .filter(id => {
-        if (!tokens[id]) console.error('[openclaw-entrypoint] WARNING: No token for ' + id);
-        return !!tokens[id];
-      })
-      .map(id => ({
+    agents: {
+      defaults: {
+        model,
+        compaction: { mode: 'safeguard' }
+      },
+      list: validAgents.map(id => ({
         id,
         name: id,
         model,
-        matrixUserId: '@' + id + ':local',
-        matrixAccessToken: tokens[id]
+        workspace: '$CONFIG_DIR/workspace-' + id
       }))
+    }
   };
 
   fs.mkdirSync('$CONFIG_DIR', { recursive: true });
   fs.writeFileSync('$CONFIG_DIR/openclaw.json', JSON.stringify(cfg, null, 2));
 
-  // Write gateway.systemd.env so openclaw picks up LLM credentials at runtime
   const envLines = [
     'LLM_API_KEY=' + apiKey,
     'LLM_BASE_URL=' + baseUrl,
@@ -131,7 +153,7 @@ node -e "
 
   console.log('[openclaw-entrypoint] Config written to $CONFIG_DIR/openclaw.json');
   console.log('[openclaw-entrypoint] Env written to $CONFIG_DIR/gateway.systemd.env');
-  console.log('[openclaw-entrypoint] Agents: ' + cfg.agents.map(a => a.id).join(', '));
+  console.log('[openclaw-entrypoint] Agents: ' + validAgents.join(', '));
   console.log('[openclaw-entrypoint] Provider: litellm / ' + model);
 "
 
