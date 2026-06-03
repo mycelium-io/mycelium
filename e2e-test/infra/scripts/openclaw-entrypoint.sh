@@ -63,7 +63,8 @@ node -e "
   const fs = require('fs');
   const tokens = JSON.parse(fs.readFileSync('$TOKEN_FILE', 'utf8')).tokens || {};
   const agents = '${AGENTS}'.split(' ').filter(Boolean);
-  const model = process.env.LLM_MODEL || 'anthropic/claude-sonnet-4-20250514';
+  const rawModel = process.env.LLM_MODEL || 'anthropic/claude-sonnet-4-20250514';
+  const model = rawModel.startsWith('openai/') ? 'litellm/' + rawModel.slice(7) : rawModel;
   const baseUrl = process.env.LLM_BASE_URL || '';
   const apiKey = process.env.LLM_API_KEY || '';
 
