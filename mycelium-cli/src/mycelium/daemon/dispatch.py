@@ -820,8 +820,8 @@ async def _handle_tick(
         )
         return
     if integration.lifecycle != "cold_spawn":
-        # ``long_lived_gateway`` families (openclaw) handle ticks in their
-        # own runtime; cold-spawn families are the daemon's responsibility.
+        # ``long_lived_gateway`` families (openclaw, hermes) handle ticks in
+        # their own runtime; cold-spawn families are the daemon's responsibility.
         log.debug(
             "skip tick → @%s — adapter=%s lifecycle=%s",
             target_handle,

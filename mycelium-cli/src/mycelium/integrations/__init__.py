@@ -29,6 +29,7 @@ from __future__ import annotations
 from mycelium.integrations.base import AddOptions, AgentAdapter, Integration
 from mycelium.integrations.claude_code import ClaudeCodeIntegration
 from mycelium.integrations.cursor import CursorIntegration
+from mycelium.integrations.hermes import HermesIntegration
 from mycelium.integrations.openclaw import OpenClawIntegration
 
 __all__ = [
@@ -67,13 +68,15 @@ def get_integration(
     model: str | None = None,
     openclaw_profile: str | None = None,
     copy_auth_from: str | None = None,
+    hermes_profile: str | None = None,
 ) -> Integration:
     """Return an integration instance for *name* (any accepted spelling).
 
     Family-specific `agent add` flags are passed through and bound to the
     instance so ``build_manifest``/``register`` keep a uniform signature. For
     non-add call sites (e.g. ``agent rm``) the extra kwargs are simply omitted
-    — only ``openclaw_profile`` matters there and defaults to None.
+    — only ``openclaw_profile`` / ``hermes_profile`` matter there and default
+    to None.
     """
     canonical = normalize_family_id(name)
     if canonical == "claude_code":
@@ -91,6 +94,14 @@ def get_integration(
             openclaw_profile=openclaw_profile,
             copy_auth_from=copy_auth_from,
         )
+    if canonical == "hermes":
+        # Hermes accepts only ``hermes_profile`` today; other long-lived-
+        # gateway knobs (containerised gateway, model overrides) are v2
+        # work. ``openclaw_profile`` falls through as an alias when the user
+        # has not set ``--hermes-profile`` separately, since the adapter
+        # command surface reuses one ``--profile``-shaped flag for both
+        # long-lived-gateway families.
+        return HermesIntegration(hermes_profile=hermes_profile or openclaw_profile)
     raise ValueError(f"unknown integration: {name!r}")
 
 

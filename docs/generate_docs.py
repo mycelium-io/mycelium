@@ -32,8 +32,8 @@ PAGES: list[tuple[str, str, str, str, str, str, str]] = [
      "LRN-001", "LEARN · OVERVIEW · QUICKSTART · CONCEPTS · GUIDES",
      "Coordination layer for multi-agent systems. Semantic negotiation, persistent memory, collective intelligence."),
     ("adapters", "adapters.html", "Adapters — mycelium", "Adapters",
-     "ADP-001", "ADAPTERS · CLAUDE CODE · OPENCLAW · REST API",
-     "Connect Claude Code, OpenClaw, or any HTTP client to the Mycelium coordination layer."),
+     "ADP-001", "ADAPTERS · CLAUDE CODE · OPENCLAW · HERMES · REST API",
+     "Connect Claude Code, OpenClaw, Hermes, or any HTTP client to the Mycelium coordination layer."),
     ("reference", "reference.html", "Reference — mycelium", "Reference",
      "REF-001", "REFERENCE · ARCHITECTURE · CLI · CONFIG · HELP",
      "Architecture, CLI reference, configuration, and troubleshooting for Mycelium."),
@@ -60,6 +60,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     (None,                          "adapter-claude-code","adapters",  "Adapters",     "Claude Code"),
     (None,                          "adapter-cursor",     "adapters",  "Adapters",     "Cursor"),
     (None,                          "adapter-openclaw",   "adapters",  "Adapters",     "OpenClaw"),
+    (None,                          "adapter-hermes",     "adapters",  "Adapters",     "Hermes"),
     (None,                          "adapter-api",        "adapters",  "Adapters",     "REST API"),
     # ── reference (reference.html) ──
     ("architecture.md",             "architecture",       "reference", "Architecture", "Architecture"),
@@ -70,7 +71,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
 # IDs that should be looked up in kept HTML (have <!-- keep --> markers, or rescued by id).
 _KEPT_IDS: set[str] = {
     "overview", "quickstart",
-    "adapters", "adapter-claude-code", "adapter-cursor", "adapter-openclaw", "adapter-api",
+    "adapters", "adapter-claude-code", "adapter-cursor", "adapter-openclaw", "adapter-hermes", "adapter-api",
 }
 
 # CLI groups for the cli-reference page.
