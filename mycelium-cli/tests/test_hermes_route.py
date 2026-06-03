@@ -369,6 +369,44 @@ def test_route_message_join_subscribes_session_room(route_module) -> None:
     assert stashes[0].agent_id == "alice"
 
 
+def test_route_message_join_extracts_session_from_parent_payload(route_module) -> None:
+    """When a coordination_join is delivered via the parent-room SSE, the
+    session sub-room name lives in the JSON ``session`` field, not in
+    ``room_name``. The router must still emit SubscribeSession so the
+    adapter opens the sub-room stream. (Note: the backend currently
+    NOTIFY's joins only on the session sub-room channel — this path is a
+    defensive backstop that costs nothing if the schema ever changes.)"""
+    cfg = route_module.RoomConfig(room="demo", agents=("alice",), require_mention=True)
+    msg = {
+        "id": "j2",
+        "room_name": "demo",  # parent room — no `:session:` here
+        "message_type": "coordination_join",
+        "sender_handle": "alice",
+        "content": '{"handle": "alice", "intent": "x", "session": "demo:session:99"}',
+    }
+    actions = route_module.route_message(cfg, msg, set())
+    subs = [a for a in actions if isinstance(a, route_module.SubscribeSession)]
+    stashes = [a for a in actions if isinstance(a, route_module.StashReturnAddress)]
+    assert len(subs) == 1
+    assert subs[0].room_name == "demo:session:99"
+    assert len(stashes) == 1
+    assert stashes[0].session_room == "demo:session:99"
+    assert stashes[0].agent_id == "alice"
+
+
+def test_route_message_join_ignored_when_no_session_anywhere(route_module) -> None:
+    cfg = route_module.RoomConfig(room="demo", agents=("alice",), require_mention=True)
+    msg = {
+        "id": "j3",
+        "room_name": "demo",
+        "message_type": "coordination_join",
+        "sender_handle": "alice",
+        "content": '{"handle": "alice"}',  # no `session` key, no session sub-room
+    }
+    actions = route_module.route_message(cfg, msg, set())
+    assert all(isinstance(a, route_module.Ignore) for a in actions)
+
+
 def test_route_message_broadcast_require_mention_gates(route_module) -> None:
     """With require_mention=True, broadcasts without an @-mention are
     ignored, mirroring openclaw's defaults."""

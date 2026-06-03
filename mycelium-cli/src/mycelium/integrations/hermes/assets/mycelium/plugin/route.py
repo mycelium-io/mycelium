@@ -428,13 +428,30 @@ def format_consensus_summary(data: dict[str, Any]) -> str:
 
 
 def _route_join(msg: dict[str, Any]) -> list[RouteAction]:
-    room_name = msg.get("room_name")
-    if not (isinstance(room_name, str) and ":session:" in room_name):
+    # Joins are dual-published: once on the session sub-room and once on the
+    # parent room. The parent-room copy carries the session sub-room name in
+    # the JSON payload's ``session`` field; the session sub-room copy has it
+    # as ``room_name``. Either source is sufficient for discovery.
+    room_name = msg.get("room_name") or ""
+    session_room: str | None = None
+    if isinstance(room_name, str) and ":session:" in room_name:
+        session_room = room_name
+    else:
+        raw_content = msg.get("content")
+        try:
+            payload = json.loads(raw_content) if isinstance(raw_content, str) else raw_content
+        except (TypeError, ValueError, json.JSONDecodeError):
+            payload = None
+        if isinstance(payload, dict):
+            candidate = payload.get("session")
+            if isinstance(candidate, str) and ":session:" in candidate:
+                session_room = candidate
+    if session_room is None:
         return [Ignore("join without session sub-room")]
-    actions: list[RouteAction] = [SubscribeSession(room_name=room_name)]
+    actions: list[RouteAction] = [SubscribeSession(room_name=session_room)]
     sender = msg.get("sender_handle") if msg.get("message_type") == "coordination_join" else None
     if isinstance(sender, str) and sender:
-        actions.append(StashReturnAddress(session_room=room_name, agent_id=sender))
+        actions.append(StashReturnAddress(session_room=session_room, agent_id=sender))
     return actions
 
 

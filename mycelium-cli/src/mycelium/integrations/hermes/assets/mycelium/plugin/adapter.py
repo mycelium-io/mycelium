@@ -143,6 +143,19 @@ class MyceliumRoomAdapter(BasePlatformAdapter):
                 name=f"mycelium-room:{rcfg.room}",
             )
             self._sse_tasks.append(task)
+        # Coordination joins are dual-persisted (session sub-room + parent
+        # room) but the live NOTIFY only fires on the session sub-room
+        # channel. The parent-room SSE never sees coordination_join, so we
+        # can't bootstrap session sub-room subscriptions from join events.
+        # Mirror the openclaw plugin's pattern: poll
+        # ``/api/coordination-sessions`` and (re-)subscribe to every active
+        # session sub-room. ``_spawn_session_sub`` is idempotent.
+        if self._rooms:
+            poll_task = asyncio.create_task(
+                self._poll_active_sessions(),
+                name="mycelium-room:session-poller",
+            )
+            self._sse_tasks.append(poll_task)
         self._mark_connected()
         logger.info(
             "mycelium-room: connected to %s — subscribed to %d room(s)",
@@ -150,6 +163,79 @@ class MyceliumRoomAdapter(BasePlatformAdapter):
             len(self._rooms),
         )
         return True
+
+    _POLL_INTERVAL_S: float = 5.0
+    _TERMINAL_STATES: frozenset[str] = frozenset(("agreed", "failed", "idle"))
+
+    async def _poll_active_sessions(self) -> None:
+        """Discover and subscribe to every active session sub-room.
+
+        Polls ``/api/coordination-sessions`` every ``_POLL_INTERVAL_S`` and:
+
+        - opens a session sub-room SSE for any session in state
+          ``waiting`` or ``negotiating`` we're not yet subscribed to
+        - cancels subscriptions for sessions in terminal states
+        - matches the session to one of our configured rooms by the
+          ``<parent>:session:<short>`` prefix so the dispatch routes ticks
+          to the right :class:`RoomConfig`'s agent list
+
+        Polling failures (network blips, backend restarts) are logged at
+        DEBUG and retried on the next tick — we never let one bad poll
+        kill the task.
+        """
+        rooms_by_parent = {rcfg.room: rcfg for rcfg in self._rooms}
+        url = f"{self._backend_url.rstrip('/')}/api/coordination-sessions?limit=200"
+        headers: dict[str, str] = {}
+        if self._api_token:
+            headers["Authorization"] = f"Bearer {self._api_token}"
+        while True:
+            try:
+                await asyncio.sleep(self._POLL_INTERVAL_S)
+                if self._session is None:
+                    return
+                try:
+                    async with self._session.get(url, headers=headers) as resp:
+                        if resp.status != 200:
+                            logger.debug("mycelium-room: session poll → HTTP %s", resp.status)
+                            continue
+                        sessions = await resp.json()
+                except (aiohttp.ClientError, TimeoutError, OSError) as exc:
+                    logger.debug("mycelium-room: session poll failed: %s", exc)
+                    continue
+                if not isinstance(sessions, list):
+                    continue
+                active: set[str] = set()
+                for entry in sessions:
+                    if not isinstance(entry, dict):
+                        continue
+                    display_name = entry.get("display_name")
+                    state = entry.get("state")
+                    parent = entry.get("parent_room_name")
+                    if not (
+                        isinstance(display_name, str)
+                        and ":session:" in display_name
+                        and isinstance(parent, str)
+                        and parent in rooms_by_parent
+                    ):
+                        continue
+                    if state in ("waiting", "negotiating"):
+                        active.add(display_name)
+                        if display_name not in self._session_sub_tasks:
+                            self._spawn_session_sub(rooms_by_parent[parent], display_name)
+                    elif isinstance(state, str) and state in self._TERMINAL_STATES:
+                        existing = self._session_sub_tasks.pop(display_name, None)
+                        if existing is not None:
+                            existing.cancel()
+                # Stop subscriptions for sessions no longer in the active list.
+                for stale in list(self._session_sub_tasks.keys()):
+                    if stale not in active:
+                        task = self._session_sub_tasks.pop(stale, None)
+                        if task is not None:
+                            task.cancel()
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 — never let polling die silently
+                logger.exception("mycelium-room: session poller hit unexpected error")
 
     async def disconnect(self) -> None:
         for task in list(self._sse_tasks):
