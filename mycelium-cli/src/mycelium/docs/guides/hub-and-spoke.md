@@ -8,6 +8,10 @@ memory, rooms, and coordination state from a single backend.
 > channels (Discord, Slack, etc.) and adapters — substitute the
 > relevant names and config paths.
 
+> For a Hermes-specific walkthrough — one operator per spoke,
+> per-spoke `hermes-gateway`, no central channel server — see
+> [Hub & Spoke (Hermes)](#hub-and-spoke-hermes).
+
 ## When to use this
 
 Use hub-and-spoke when multiple people (or multiple machines) need to

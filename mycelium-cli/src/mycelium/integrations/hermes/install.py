@@ -31,9 +31,11 @@ Helpers live here so ``dispatch.py`` can import the small surface it needs
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import tempfile
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -336,6 +338,83 @@ def _run_hermes_gateway_cmd(
         )
 
 
+_SUBSCRIBE_RE = re.compile(
+    r"hermes_plugins\.mycelium\.adapter: mycelium-room: connected to .* "
+    r"subscribed to (\d+) room\(s\)"
+)
+
+
+def _await_gateway_subscribed(log_offset: int, *, timeout: float = 20.0) -> None:
+    """Watch ``~/.hermes/logs/agent.log`` for the plugin's startup subscription
+    line and report success or a clear actionable warning.
+
+    Why: ``hermes gateway restart`` returns as soon as the systemd restart is
+    *scheduled*, not when the new process is up. The mycelium plugin's
+    "subscribed to N room(s)" INFO line lands in ``agent.log``, not on stderr
+    or journalctl, which makes it non-obvious whether the config patch took
+    effect. Without this wait the operator typically sees ``mycelium agent
+    create`` exit cleanly and then has to grep the log to confirm — and on
+    a multi-step config change (e.g. ``adapter add`` followed by ``agent
+    create``) it's easy to look at a *stale* "no rooms configured" warning
+    from a prior boot and assume the new restart didn't take.
+
+    ``log_offset`` is the file size captured *before* the restart was
+    issued, so we only consider lines emitted by the post-restart process.
+    """
+    log_path = _hermes_home() / "logs" / "agent.log"
+    typer.echo("  Waiting for hermes-gateway to (re)connect...")
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if log_path.exists():
+            try:
+                with log_path.open(encoding="utf-8", errors="replace") as fh:
+                    fh.seek(log_offset)
+                    new_text = fh.read()
+            except OSError:
+                new_text = ""
+            # Walk all matches in the new text and keep the last — multiple
+            # restarts in quick succession can leave several subscription
+            # lines and we want the freshest.
+            last_match = None
+            for match in _SUBSCRIBE_RE.finditer(new_text):
+                last_match = match
+            if last_match is not None:
+                n_rooms = last_match.group(1)
+                typer.secho(
+                    f"  ✓ hermes-gateway subscribed to {n_rooms} room(s)",
+                    fg=typer.colors.GREEN,
+                )
+                return
+        time.sleep(0.5)
+
+    typer.secho(
+        f"  hermes-gateway didn't report a fresh 'subscribed to N room(s)' line "
+        f"within {int(timeout)}s. Check the log:",
+        fg=typer.colors.YELLOW,
+    )
+    typer.echo(f"    tail -50 {log_path} | grep mycelium-room")
+    typer.echo(
+        "  If the plugin still reports 'no rooms configured', force a clean restart:",
+    )
+    typer.echo(
+        "    systemctl --user kill --signal=SIGKILL hermes-gateway"
+        " && systemctl --user start hermes-gateway",
+    )
+
+
+def _agent_log_offset() -> int:
+    """Capture the current ``agent.log`` size (or 0 if it doesn't exist yet).
+
+    Used as the anchor for :func:`_await_gateway_subscribed`, so we only
+    scan lines written *after* a restart we initiated.
+    """
+    log_path = _hermes_home() / "logs" / "agent.log"
+    try:
+        return log_path.stat().st_size
+    except FileNotFoundError:
+        return 0
+
+
 def _restart_gateway() -> None:
     """``hermes gateway restart`` — service-only, with a foreground banner.
 
@@ -350,6 +429,10 @@ def _restart_gateway() -> None:
         _foreground_banner()
         return
 
+    # Anchor the log scan before issuing the restart so we ignore stale
+    # "subscribed to ..." lines from earlier boots.
+    log_offset = _agent_log_offset()
+
     # Service exists — restart it. Cap the call so a misbehaving systemd
     # unit can't wedge the installer.
     result = _run_hermes_gateway_cmd(["hermes", "gateway", "restart"], env=env, timeout=30.0)
@@ -362,10 +445,12 @@ def _restart_gateway() -> None:
         return
 
     if result.returncode == 0:
+        _await_gateway_subscribed(log_offset)
         return
 
     output_low = result.output.lower()
     if "not running" in output_low or "no gateway" in output_low:
+        start_offset = _agent_log_offset()
         start = _run_hermes_gateway_cmd(["hermes", "gateway", "start"], env=env, timeout=30.0)
         if start.timed_out:
             typer.secho(
@@ -375,6 +460,7 @@ def _restart_gateway() -> None:
             typer.echo("    hermes gateway start")
             return
         if start.returncode == 0:
+            _await_gateway_subscribed(start_offset)
             return
         typer.secho(
             f"  hermes gateway start returned {start.returncode}: {start.output.strip()[:160]}",

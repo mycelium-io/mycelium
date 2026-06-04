@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import html
 import re
+import sys
 from collections import defaultdict
 from pathlib import Path
 
@@ -55,6 +56,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("knowledge-graph.md",          "knowledge-graph",    "learn",     "Concepts",     "Knowledge Graph"),
     ("guides/structured-memory.md", "structured-memory",  "learn",     "Guides",       "Structured Memory"),
     ("guides/hub-and-spoke.md",     "hub-and-spoke",      "learn",     "Guides",       "Hub & Spoke"),
+    ("guides/hub-and-spoke-hermes.md", "hub-and-spoke-hermes", "learn", "Guides",      "Hub & Spoke (Hermes)"),
     # ── adapters (adapters.html) — all hand-coded ──
     (None,                          "adapters",           "adapters",  "Adapters",     "Overview"),
     (None,                          "adapter-claude-code","adapters",  "Adapters",     "Claude Code"),
@@ -110,6 +112,7 @@ def _md_to_html(md: str, section_id: str) -> str:
 
     while i < len(lines):
         line = lines[i]
+        progress_i = i  # forward-progress guard (see end of loop body)
 
         if line.strip() == "---":
             out.append('      <hr class="divider">')
@@ -185,12 +188,30 @@ def _md_to_html(md: str, section_id: str) -> str:
             i += 1
             continue
 
-        if line.startswith("> "):
+        # H4–H6 collapse to <h4> so deeper hierarchies don't fall through to
+        # the paragraph collector (which would spin since lines beginning with
+        # '#' are excluded from paragraph collection).
+        m = re.match(r"^(#{4,6})\s+(.*)$", line)
+        if m:
+            text = m.group(2).strip()
+            anchor = _slugify(text)
+            out.append(f'      <h4 id="{section_id}-{anchor}">{_inline(text)}</h4>')
+            i += 1
+            continue
+
+        # Blockquote: collect any consecutive lines starting with '>' (with or
+        # without a trailing space). A bare '>' is a paragraph separator inside
+        # a blockquote in standard markdown; we render the whole run as one
+        # callout.
+        if line.startswith(">"):
             quote_lines = []
-            while i < len(lines) and lines[i].startswith("> "):
-                quote_lines.append(lines[i][2:])
+            while i < len(lines) and lines[i].startswith(">"):
+                content = lines[i][1:]
+                if content.startswith(" "):
+                    content = content[1:]
+                quote_lines.append(content)
                 i += 1
-            quote_text = " ".join(ln.strip() for ln in quote_lines)
+            quote_text = " ".join(ln.strip() for ln in quote_lines if ln.strip())
             out.append('      <div class="callout callout-note">')
             out.append('        <div class="callout-bar"></div>')
             out.append(f'        <div class="callout-body">{_inline(quote_text)}</div>')
@@ -234,6 +255,17 @@ def _md_to_html(md: str, section_id: str) -> str:
             i += 1
         if para_lines:
             out.append(f"      <p>{_inline(' '.join(para_lines))}</p>")
+        # Forward-progress guard: if no branch advanced `i`, the line matched
+        # no rule and would have spun the outer loop forever. Skip it with a
+        # visible warning so the offending input is reported, not silently
+        # eaten.
+        if i == progress_i:
+            print(
+                f"WARNING: unhandled markdown line in section '{section_id}' "
+                f"(line {i + 1}): {lines[i]!r} — skipping",
+                file=sys.stderr,
+            )
+            i += 1
         continue
 
     return "\n".join(out)

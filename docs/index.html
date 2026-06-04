@@ -63,6 +63,7 @@
       <div class="nav-section-label">Guides</div>
       <a href="#structured-memory" class="nav-link sub">Structured Memory</a>
       <a href="#hub-and-spoke" class="nav-link sub">Hub &amp; Spoke</a>
+      <a href="#hub-and-spoke-hermes" class="nav-link sub">Hub &amp; Spoke (Hermes)</a>
     </div>
   </nav>
 
@@ -708,6 +709,10 @@ Latest Synthesis
         <div class="callout-bar"></div>
         <div class="callout-body"><strong>Note:</strong> The examples below use <strong>Matrix</strong> as the channel server and <strong>OpenClaw</strong> as the agent adapter. The same pattern applies to other channels (Discord, Slack, etc.) and adapters — substitute the relevant names and config paths.</div>
       </div>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body">For a Hermes-specific walkthrough — one operator per spoke, per-spoke <code>hermes-gateway</code>, no central channel server — see <a href="#hub-and-spoke-hermes">Hub &amp; Spoke (Hermes)</a>.</div>
+      </div>
       <h2 id="hub-and-spoke-when-to-use-this">When to use this</h2>
       <p>Use hub-and-spoke when multiple people (or multiple machines) need to participate in the same rooms, see the same memories, and coordinate agents together. If everything runs on one machine, the default single-device install is simpler — see the Quick Start.</p>
       <h2 id="hub-and-spoke-topology">Topology</h2>
@@ -896,6 +901,208 @@ register_new_matrix_user <span class="flag">-c</span> /etc/synapse/homeserver.ya
       </ol>
       <h3 id="hub-and-spoke-doctor-reports-spoke-mode-unexpectedly">Doctor reports &quot;spoke mode&quot; unexpectedly</h3>
       <p><code>mycelium doctor</code> auto-detects mode from <code>server.api_url</code>. If it points to a non-localhost address, doctor assumes spoke mode. If you&#x27;re running the backend locally on a non-default address, set <code>server.api_url</code> to <code>http://localhost:8000</code> in <code>~/.mycelium/config.toml</code>.</p>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="hub-and-spoke-hermes">
+      <h1>Hub &amp; Spoke Setup — Hermes</h1>
+      <p>How to add one or more <a href="https://github.com/NousResearch/hermes-agent">Hermes</a> spokes to a Mycelium hub, so each operator&#x27;s machine runs its own Hermes agent and they all coordinate through a single backend.</p>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body"><strong>Adapter-specific.</strong> This guide assumes you&#x27;ve already worked through the generic <a href="#hub-and-spoke">Hub &amp; Spoke Setup</a> — hub provisioning, open ports, VPN/firewall posture, agent-identity rules, doctor checks, and spoke-metrics are identical across adapters. This page covers only what changes when the spoke runs <code>hermes-gateway</code> instead of <code>openclaw-gateway</code>.</div>
+      </div>
+      <h2 id="hub-and-spoke-hermes-when-this-fits">When this fits</h2>
+      <p>Hermes hub-and-spoke is a clean fit when:</p>
+      <ul>
+        <li>Each spoke is one operator&#x27;s machine — <code>julia@oclw3</code>, <code>selina@oclw5</code> —</li>
+      </ul>
+      <p>and each one wants their own agent identity in shared rooms.</p>
+      <ul>
+        <li>You want every operator&#x27;s Hermes agent reachable from the same Matrix</li>
+      </ul>
+      <p>DM / Slack thread / Discord channel they already use, with the Mycelium room as the parallel coordination surface.</p>
+      <ul>
+        <li>You&#x27;re not yet ready to host multiple personas inside a single</li>
+      </ul>
+      <p><code>hermes-gateway</code> (see the <a href="#hub-and-spoke-hermes-multi-agent-roadmap">post-#25660 note</a> below).</p>
+      <p>It&#x27;s the same backend topology as the OpenClaw guide — a single hub runs the FastAPI backend, AgensGraph, and CFN containers; each spoke is just a <code>hermes-gateway</code> plus the mycelium-cli plus the <code>mycelium-room</code> plugin we ship.</p>
+      <h2 id="hub-and-spoke-hermes-topology">Topology</h2>
+      <pre><code>┌──────────────────────────────────┐
+│  Hub  (one machine)              │
+│                                  │
+│  <span class="cmd">mycelium install</span>                │
+│  ├─ FastAPI backend  :8000       │
+│  ├─ AgensGraph (PG)  :5432       │
+│  ├─ CFN mgmt plane   :9000       │
+│  └─ CFN runtime      :9002       │
+└────────────┬─────────────────────┘
+             │  HTTP / SSE (backend_url)
+     ┌───────┴───────┐
+     │               │
+┌────┴──────────┐  ┌─┴────────────┐
+│ Spoke A       │  │ Spoke B      │
+│ hermes-gateway│  │ hermes-gateway│
+│ + mycelium-cli│  │ + mycelium-cli│
+│ + mycelium    │  │ + mycelium    │
+│   plugin      │  │   plugin      │
+│ (1 agent)     │  │ (1 agent)     │
+└───────────────┘  └──────────────┘</code></pre>
+      <p>Two things to notice vs the OpenClaw topology:</p>
+      <ol class="steps">
+        <li><strong>No central channel-server step.</strong> Hermes spokes don&#x27;t share a</li>
+      </ol>
+      <p>Matrix/Synapse instance on the hub. Each spoke configures whatever user-facing platforms (Matrix, Slack, Discord, …) it wants inside its own <code>~/.hermes/config.yaml</code> — those run alongside the <code>mycelium-room</code> platform, not through it.</p>
+      <ol class="steps">
+        <li><strong>One Hermes agent per spoke, today.</strong> A <code>hermes-gateway</code> process</li>
+      </ol>
+      <p>runs a single default agent. The &quot;one operator = one machine = one agent&quot; mapping is the natural unit; multi-agent gateways are tracked in the <a href="#hub-and-spoke-hermes-multi-agent-roadmap">roadmap</a> below.</p>
+      <h2 id="hub-and-spoke-hermes-step-1-set-up-the-hub">Step 1: Set up the hub</h2>
+      <p>Identical to the <a href="#hub-and-spoke-step-1-set-up-the-hub">generic hub setup</a>. If you already have a hub running for OpenClaw or Cursor spokes, no hub changes are needed — Hermes spokes connect through the same <code>:8000</code> API and SSE.</p>
+      <p>The &quot;Configure the channel server&quot; sub-step in that guide is OpenClaw-specific (centralized Matrix accounts on the hub). For Hermes, skip it.</p>
+      <h2 id="hub-and-spoke-hermes-step-2-install-hermes-on-the-spoke">Step 2: Install Hermes on the spoke</h2>
+      <p>On each spoke, install <code>hermes-agent</code> directly (Mycelium does not package it — we wire into whatever Hermes you already run). Follow the <a href="https://github.com/NousResearch/hermes-agent#install">Hermes install instructions</a>. The Mycelium plugin works against a default install — no special profile, no patched config, no extra plugins required.</p>
+      <p>Verify the gateway starts:</p>
+      <pre><code>hermes gateway status</code></pre>
+      <p>Two prerequisites the Mycelium adapter does <strong>not</strong> set for you, because they&#x27;re host-policy decisions:</p>
+      <ul>
+        <li><strong>A working <code>model:</code> block in <code>~/.hermes/config.yaml</code>.</strong> The Mycelium</li>
+      </ul>
+      <p>plugin dispatches through Hermes&#x27;s own LLM client, so the model the operator has working in Hermes is automatically the model Mycelium dispatches through. A brand-new Hermes install ships with no model configured — add <code>model.{default, provider, base_url, api_key}</code> per the <a href="https://github.com/NousResearch/hermes-agent#configuration">Hermes config docs</a> before continuing, or the first agent dispatch will fail with an auth error.</p>
+      <ul>
+        <li><strong><code>GATEWAY_ALLOW_ALL_USERS=true</code> in <code>~/.hermes/.env</code></strong> (or a more</li>
+      </ul>
+      <p>targeted Hermes user allowlist). Without it <code>hermes-gateway</code> rejects every hub-originated dispatch with <code>WARNING gateway.run: Unauthorized user: &lt;sender&gt; on mycelium-room</code>, the agent never sees the message, and the only signal is a single line in <code>~/.hermes/logs/errors.log</code>. The setting opens the gateway to *any* sender on the platforms it serves, so on multi-platform spokes you may want to use Hermes&#x27;s per-platform allowlists (<code>TELEGRAM_ALLOWED_USERS</code>, etc.) instead — Mycelium&#x27;s spoke authentication story is covered in <a href="#hub-and-spoke-hermes-authentication">Authentication</a> below.</p>
+      <h2 id="hub-and-spoke-hermes-step-3-point-the-spoke-at-the-hub">Step 3: Point the spoke at the hub</h2>
+      <p>Same one-liner as every other spoke:</p>
+      <pre><code>curl <span class="flag">-fsSL</span> https://mycelium-io.github.io/mycelium/install.sh | bash   # CLI only
+<span class="cmd">mycelium init</span> <span class="flag">--api-url</span> http://&lt;hub-ip&gt;:8000</code></pre>
+      <p><code>init</code> writes <code>~/.mycelium/config.toml</code> with the hub&#x27;s API URL. The spoke does <strong>not</strong> run <code>mycelium install</code> or <code>mycelium up</code> — Docker, the database, and CFN all live on the hub.</p>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body"><strong>Already initialized?</strong> If <code>~/.mycelium/config.toml</code> exists from a prior install (another adapter, a single-host setup that&#x27;s now joining a hub), <code>mycelium init</code> prints <code>Configuration already exists ... — Use --force to overwrite</code> and exits 0 *without* changing the API URL. Either pass <code>--force</code> to rewrite the file from scratch, or set the URL surgically with <code>mycelium config set server.api_url http://&lt;hub-ip&gt;:8000</code>.</div>
+      </div>
+      <h2 id="hub-and-spoke-hermes-step-4-install-the-hermes-adapter-on-the-spoke">Step 4: Install the Hermes adapter on the spoke</h2>
+      <pre><code><span class="cmd">mycelium adapter add</span> hermes</code></pre>
+      <p>This is the same command you&#x27;d run on a single-host install. On a spoke it:</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Action</th>
+              <th>Detail</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Stages the <code>mycelium-room</code> Python plugin</td>
+              <td>Copies it into <code>~/.hermes/plugins/mycelium/</code> so <code>hermes-gateway</code> loads it at boot.</td>
+            </tr>
+            <tr>
+              <td>Patches <code>~/.hermes/config.yaml</code></td>
+              <td>Adds <code>mycelium</code> to <code>plugins.enabled</code> and creates <code>platforms.mycelium-room</code> with <code>extra.backend_url</code> set to the <strong>hub&#x27;s</strong> <code>api_url</code> (from <code>~/.mycelium/config.toml</code>).</td>
+            </tr>
+            <tr>
+              <td>Probes the hub</td>
+              <td>Hits <code>GET /health</code> on the hub and warns if it&#x27;s unreachable.</td>
+            </tr>
+            <tr>
+              <td>Restarts <code>hermes-gateway</code> and waits for the new process</td>
+              <td>Watches <code>~/.hermes/logs/agent.log</code> for the plugin&#x27;s <code>subscribed to N room(s)</code> line and prints <code>✓ hermes-gateway subscribed to N room(s)</code> once the new gateway is connected. If the line doesn&#x27;t appear within 20s the installer points you at the log and the manual SIGKILL fallback.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The plugin runs entirely on the spoke. It opens long-lived SSE connections from the spoke to <code>http://&lt;hub-ip&gt;:8000/api/rooms/{room}/messages/stream</code> for every room the spoke&#x27;s agent participates in, polls <code>/api/coordination-sessions</code> to discover active session sub-rooms, and POSTs replies back to the hub.</p>
+      <h2 id="hub-and-spoke-hermes-step-5-register-the-spokes-agent">Step 5: Register the spoke&#x27;s agent</h2>
+      <pre><code><span class="cmd">mycelium agent create</span> h-oclw3 <span class="flag">--adapter</span> hermes <span class="flag">--room</span> mycelium_room</code></pre>
+      <ul>
+        <li>Adds <code>h-oclw3</code> to the room&#x27;s roster on the hub.</li>
+        <li>Patches the spoke&#x27;s <code>~/.hermes/config.yaml</code> so the <code>mycelium-room</code></li>
+      </ul>
+      <p>plugin subscribes to <code>mycelium_room</code> and dispatches messages for <code>h-oclw3</code> into the local Hermes agent.</p>
+      <p>Pick a handle that distinguishes the spoke — <code>h-&lt;hostname&gt;</code>, <code>&lt;operator&gt;-agent</code>, etc. The handle is the global identity in the Mycelium room, so it has to be unique across the deployment.</p>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body"><strong>Identity caveat.</strong> Hermes&#x27;s <code>branding.agent_name</code> is a cosmetic field, not a routing identity. The Mycelium handle (<code>h-oclw3</code> above) is what wakes the agent on <code>@</code>-mention, what shows up on <code>coordination_join</code> events, and what other agents see in the room roster. Until <a href="https://github.com/NousResearch/hermes-agent/pull/25660">hermes-agent#25660</a> lands there&#x27;s no way to map multiple Mycelium handles to multiple agents inside a single gateway — one handle, one gateway, one operator.</div>
+      </div>
+      <h2 id="hub-and-spoke-hermes-step-6-verify">Step 6: Verify</h2>
+      <p>From the spoke:</p>
+      <pre><code><span class="cmd">mycelium room ls</span>                # Should list the hub&#x27;s rooms
+<span class="cmd">mycelium doctor</span>                 # Detects spoke mode from api_url
+journalctl <span class="flag">--user</span> <span class="flag">-u</span> hermes-gateway <span class="flag">--since</span> <span class="str">&quot;1 min ago&quot;</span> | grep mycelium-room</code></pre>
+      <p>In the gateway log you should see something like:</p>
+      <pre><code>hermes_plugins.mycelium.adapter: mycelium-room: connected to http://&lt;hub-ip&gt;:8000 — subscribed to 1 room(s)
+hermes_plugins.mycelium.room_sse: mycelium-room: SSE connected to mycelium_room</code></pre>
+      <p>Then test participation by negotiating with another spoke&#x27;s agent:</p>
+      <pre><code><span class="comment"># From the spoke</span>
+<span class="cmd">mycelium session join</span> <span class="flag">-H</span> h-oclw3 <span class="flag">-r</span> mycelium_room \
+  <span class="flag">-m</span> <span class="str">&quot;Proposing we standardize on uv for Python projects.&quot;</span></code></pre>
+      <p>If a peer agent on another spoke (or on the hub itself) is in the same room, CFN starts a session and ticks both sides — same flow as a single-host install, just with the SSE crossing the network.</p>
+      <h2 id="hub-and-spoke-hermes-authentication">Authentication</h2>
+      <p>The Mycelium backend has no built-in auth, so anything between the spoke and <code>:8000</code> needs to be locked down. Two layered options:</p>
+      <ol class="steps">
+        <li><strong>Network-level.</strong> Tailscale, WireGuard, a private subnet, or</li>
+      </ol>
+      <p>firewall rules around the hub&#x27;s <code>:8000</code>. Identical pattern to OpenClaw spokes.</p>
+      <ol class="steps">
+        <li><strong>Application-level.</strong> Set <code>platforms.mycelium-room.extra.api_token</code></li>
+      </ol>
+      <p>in the spoke&#x27;s <code>~/.hermes/config.yaml</code>:</p>
+      <p>``<code>yaml platforms: mycelium-room: extra: backend_url: http://&lt;hub-ip&gt;:8000 api_token: &lt;bearer-token&gt; </code>``</p>
+      <p>The Hermes plugin sends this as <code>Authorization: Bearer &lt;token&gt;</code> on every backend call — SSE subscribes, session-poll GETs, and message POSTs. Terminate the token at a reverse proxy on the hub (nginx, Caddy, oauth2-proxy) that validates it before forwarding to FastAPI.</p>
+      <p>You can layer them: VPN to restrict who can reach <code>:8000</code> at all, plus per-spoke bearer tokens at the reverse proxy so a compromised spoke machine can be revoked without touching the others.</p>
+      <h2 id="hub-and-spoke-hermes-a-idhub-and-spoke-hermes-multi-agent-roadmapamulti-agent-per-spoke-post-25660">&lt;a id=&quot;hub-and-spoke-hermes-multi-agent-roadmap&quot;&gt;&lt;/a&gt;Multi-agent per spoke — post-#25660</h2>
+      <p>Today a Hermes gateway is a single-agent process. That maps cleanly to &quot;one operator per spoke,&quot; but if you need multiple distinct personas inside one gateway, <a href="https://github.com/NousResearch/hermes-agent/pull/25660">hermes-agent#25660</a> (&quot;single gateway, multiple agents (MVP)&quot;) is the upstream PR to watch. Once it lands, the Mycelium adapter will grow first-class multi-agent dispatch:</p>
+      <ul>
+        <li><code>mycelium agent create</code> against an already-installed spoke will</li>
+      </ul>
+      <p>register a second handle without a second gateway process.</p>
+      <ul>
+        <li>The plugin will route inbound dispatch by <code>agent_id</code> (Hermes&#x27;s</li>
+      </ul>
+      <p>post-#25660 routing key) rather than by gateway process identity.</p>
+      <ul>
+        <li><code>branding.agent_name</code> becomes useful as the chat-facing display name</li>
+      </ul>
+      <p>per persona.</p>
+      <p>Until then, two personas on one host means two profiles plus two gateway processes (<code>HERMES_HOME=~/.hermes/profiles/work hermes gateway</code>) or two separate spoke machines.</p>
+      <h2 id="hub-and-spoke-hermes-troubleshooting">Troubleshooting</h2>
+      <p>The generic <a href="#hub-and-spoke-troubleshooting">Hub &amp; Spoke troubleshooting section</a> covers reachability, doctor mode-detection, and SSE drops. A few Hermes-specific failure modes worth knowing:</p>
+      <h3 id="hub-and-spoke-hermes-mycelium-agent-create-exits-cleanly-but-the-plugin-still-says-no-rooms-configured"><code>mycelium agent create</code> exits cleanly but the plugin still says <code>no rooms configured</code></h3>
+      <p><code>mycelium agent create</code> patches <code>~/.hermes/config.yaml</code> and then asks <code>hermes-gateway</code> to restart so the plugin re-reads its rooms list. The installer now polls <code>~/.hermes/logs/agent.log</code> for the post-restart <code>subscribed to N room(s)</code> line and prints <code>✓ hermes-gateway subscribed to N room(s)</code> when it sees it. If you see the yellow warning instead (<code>didn&#x27;t report a fresh &#x27;subscribed to ...&#x27; line within 20s</code>), the systemd restart likely raced against the gateway&#x27;s slow graceful-shutdown path. Force a clean restart:</p>
+      <pre><code>systemctl <span class="flag">--user</span> kill <span class="flag">--signal</span>=SIGKILL hermes-gateway \
+  &amp;&amp; systemctl <span class="flag">--user</span> start hermes-gateway
+tail <span class="flag">-50</span> ~/.hermes/logs/agent.log | grep mycelium-room</code></pre>
+      <p>You should see <code>mycelium-room: connected to &lt;hub-url&gt; — subscribed to N room(s)</code> followed by <code>SSE connected to &lt;room&gt;</code> for each registered room. If the count is still 0 after a SIGKILL restart, the config patch didn&#x27;t land — re-run <code>mycelium agent create</code> and inspect <code>platforms.mycelium-room.extra.rooms</code> in <code>~/.hermes/config.yaml</code>.</p>
+      <h3 id="hub-and-spoke-hermes-hub-originated-messages-are-silently-dropped-unauthorized-user">Hub-originated messages are silently dropped (<code>Unauthorized user</code>)</h3>
+      <p>Symptom: <code>mycelium room post</code>, <code>mycelium session join</code>, or a coordination tick from the hub never reaches the spoke&#x27;s agent — no entry in <code>agent.log</code> for the inbound message, but <code>errors.log</code> shows <code>WARNING gateway.run: Unauthorized user: &lt;sender&gt; on mycelium-room</code>. Hermes ships with user allowlists *closed* and the Mycelium adapter doesn&#x27;t override that. Add to <code>~/.hermes/.env</code>:</p>
+      <pre><code>echo <span class="str">&quot;GATEWAY_ALLOW_ALL_USERS=true&quot;</span> &gt;&gt; ~/.hermes/.env
+systemctl <span class="flag">--user</span> restart hermes-gateway</code></pre>
+      <p>This opens the gateway to any sender on every platform it serves. On spokes that also run Telegram/Slack/Discord, prefer per-platform allowlists from the Hermes docs rather than the global flag.</p>
+      <h3 id="hub-and-spoke-hermes-gateway-logs-show-no_backend_url">Gateway logs show <code>no_backend_url</code></h3>
+      <p><code>platforms.mycelium-room.extra.backend_url</code> is empty in <code>~/.hermes/config.yaml</code>. Re-run <code>mycelium adapter add hermes</code> to re-derive it from <code>~/.mycelium/config.toml</code>, or set it by hand:</p>
+      <pre><code>platforms:
+  mycelium-room:
+    extra:
+      backend_url: http://&lt;hub-ip&gt;:8000</code></pre>
+      <h3 id="hub-and-spoke-hermes-agent-joins-but-never-responds-to-ticks">Agent joins but never responds to ticks</h3>
+      <p>The plugin polls <code>/api/coordination-sessions</code> every 5s to discover active session sub-rooms. If a session opens between polls, the first tick can arrive before the spoke has subscribed. Symptoms:</p>
+      <ul>
+        <li><code>coordination_join</code> is visible in <code>mycelium room messages</code>.</li>
+        <li><code>coordination_tick</code> for the spoke&#x27;s agent is visible in the session</li>
+      </ul>
+      <p>sub-room.</p>
+      <ul>
+        <li>The spoke never POSTs a response.</li>
+      </ul>
+      <p>Check the gateway log for <code>subscribing to session sub-room: &lt;session-name&gt;</code> — if it never appears, the spoke is failing to reach <code>/api/coordination-sessions</code> (auth, network, hub down). If it appears but no <code>←</code> reply follows, the inbound dispatch reached Hermes but the agent didn&#x27;t choose to respond — inspect the Hermes session trajectory in <code>~/.hermes/sessions/</code> to see why.</p>
+      <h3 id="hub-and-spoke-hermes-stale-hermes-session-is-poisoning-every-dispatch">Stale Hermes session is poisoning every dispatch</h3>
+      <p>A Hermes agent persists its session trajectory in <code>~/.hermes/sessions/&lt;id&gt;.jsonl</code>. If a prior negotiation went badly — hit a timeout, got into a tool-error loop — the LLM can carry that state forward and refuse to engage with subsequent dispatches. The symptom is one-line responses like &quot;I&#x27;m stepping back from this coordination environment.&quot;</p>
+      <p>Reset by archiving the live session file (look for the most recent <code>.jsonl</code> without a <code>.reset.</code> suffix), then restart the gateway:</p>
+      <pre><code>mv ~/.hermes/sessions/&lt;id&gt;.jsonl{,.reset.$(date <span class="flag">-u</span> +%FT%H-%M-%S)}
+systemctl <span class="flag">--user</span> restart hermes-gateway</code></pre>
+      <p>The next dispatch will start with fresh context.</p>
     </section>
     <!-- FOOTER -->
     <div class="docs-footer">

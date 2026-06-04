@@ -610,6 +610,21 @@ hermes gateway restart
 <span class="comment"># Verify the install</span>
 <span class="cmd">mycelium doctor</span></code></pre>
 
+      <h2 id="hr-multi-host">Multi-host: one Hermes per spoke</h2>
+      <p>
+        Every step above works the same when <code>hermes-gateway</code> runs
+        on a different machine from the Mycelium backend. Each operator's
+        spoke runs its own gateway; <code>mycelium adapter add hermes</code>
+        wires the local plugin to the hub's <code>:8000</code> API instead of
+        <code>localhost</code>. One operator per spoke, one Hermes agent per
+        spoke — see
+        <a href="index.html#hub-and-spoke-hermes">Hub &amp; Spoke (Hermes)</a>
+        for the per-spoke install order, auth options
+        (<code>extra.api_token</code> bearer + reverse proxy), and the
+        post-<a href="https://github.com/NousResearch/hermes-agent/pull/25660">hermes-agent#25660</a>
+        multi-agent roadmap.
+      </p>
+
       <h2 id="hr-profiles">Profiles</h2>
       <p>
         Hermes supports per-profile homes
