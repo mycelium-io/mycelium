@@ -367,6 +367,19 @@ jobs:
             --step=otel \
             --yes 2>&1 || echo "WARNING: otel step skipped (non-fatal)"
 
+          echo "Restarting OpenClaw hub to load new plugin/config..."
+          docker restart e2e-openclaw-hub
+          echo "Waiting for hub to become healthy..."
+          for i in $(seq 1 30); do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' e2e-openclaw-hub 2>/dev/null || echo "unknown")
+            if [ "$STATUS" = "healthy" ]; then
+              echo "Hub healthy after ~${i}s"
+              break
+            fi
+            sleep 1
+          done
+          docker inspect --format='{{.State.Status}} (health={{.State.Health.Status}})' e2e-openclaw-hub
+
       - name: Run E2E tests
         env:
           MYCELIUM_DATAFILE: ${{ github.event.inputs.datafile || 'ci_datafile.yaml' }}
