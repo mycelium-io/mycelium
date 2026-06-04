@@ -11,10 +11,18 @@ import time
 from pyats import aetest
 
 from libs.mycelium_api import MyceliumAPI
-from libs.mycelium_cli import MyceliumCLI
+from libs.mycelium_cli import CLIResult, MyceliumCLI
 from libs.environment import EnvironmentInfo
 
 log = logging.getLogger(__name__)
+
+
+def _parse_session_room(result: CLIResult) -> str | None:
+    """Extract session_room from ``mycelium --json session create`` output."""
+    data = result.json
+    if isinstance(data, dict):
+        return data.get("session_room") or data.get("display_name")
+    return None
 
 
 class RoomLifecycle(aetest.Testcase):
@@ -295,27 +303,41 @@ class CfnLlmCounters(aetest.Testcase):
             r = cli.session_create(test_room)
             if not r.ok:
                 step.failed(f"session create failed: {r.error_message}")
-            r = cli.session_join(test_room, "agent-alpha", position="Prioritize low latency")
+            session_room = _parse_session_room(r)
+            r = cli.session_join(
+                test_room,
+                "agent-alpha",
+                position="Low-latency primary; batch processing acceptable for analytics; hard limit: p99 < 50ms for user-facing calls",
+            )
             if not r.ok:
                 step.failed(f"agent-alpha join failed: {r.error_message}")
-            r = cli.session_join(test_room, "agent-beta", position="Prioritize throughput")
+            r = cli.session_join(
+                test_room,
+                "agent-beta",
+                position="Throughput primary; willing to relax latency for non-interactive paths; hard limit: sustain 10k req/s",
+            )
             if not r.ok:
                 step.failed(f"agent-beta join failed: {r.error_message}")
 
-        with steps.start("Wait for coordination_start (Phase 1, 60s)") as step:
-            session_room = None
+        with steps.start("Resolve session room and wait for coordination_start (60s)") as step:
+            if not session_room:
+                for _ in range(20):
+                    session_room = api.find_session_room(test_room)
+                    if session_room:
+                        break
+                    time.sleep(0.5)
+            if not session_room:
+                step.failed("Could not resolve session sub-room")
+            log.info("Session room: %s", session_room)
             deadline = time.time() + 60
             while time.time() < deadline:
-                if not session_room:
-                    session_room = api.find_session_room(test_room)
-                if session_room:
-                    _, msgs = api.get_room_messages(session_room)
-                    if any(m.get("message_type") == "coordination_start" for m in msgs):
-                        log.info("coordination_start seen in %s", session_room)
-                        break
+                _, msgs = api.get_room_messages(session_room)
+                if any(m.get("message_type") == "coordination_start" for m in msgs):
+                    log.info("coordination_start seen in %s", session_room)
+                    break
                 time.sleep(2)
             else:
-                step.failed("No coordination_start within 60s — backend join-window timer may not have fired")
+                step.failed("No coordination_start within 60s")
 
         with steps.start("Wait for cfn_llm.calls to advance (Phase 2, 240s)") as step:
             deadline = time.time() + 240
@@ -457,16 +479,25 @@ class SyncNegotiationCliE2E(aetest.Testcase):
             r = cli.session_create(test_room)
             if not r.ok:
                 step.failed(f"session create failed: {r.error_message}")
-            cli.session_join(test_room, "agent-alpha", position="I want fast iteration cycles")
-            cli.session_join(test_room, "agent-beta", position="I want thorough testing")
+            session_room = _parse_session_room(r)
+            cli.session_join(
+                test_room,
+                "agent-alpha",
+                position="Fast iteration primary; 2-week sprints; hard limit: ship MVP within 6 weeks",
+            )
+            cli.session_join(
+                test_room,
+                "agent-beta",
+                position="Thorough testing primary; 90%+ coverage; hard limit: no release without integration tests",
+            )
 
         with steps.start("Resolve session room") as step:
-            session_room = None
-            for _ in range(20):
-                session_room = api.find_session_room(test_room)
-                if session_room:
-                    break
-                time.sleep(0.5)
+            if not session_room:
+                for _ in range(20):
+                    session_room = api.find_session_room(test_room)
+                    if session_room:
+                        break
+                    time.sleep(0.5)
             if not session_room:
                 step.failed("Could not find session child room")
             log.info("Session room: %s", session_room)

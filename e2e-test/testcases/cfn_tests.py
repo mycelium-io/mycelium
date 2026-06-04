@@ -15,7 +15,6 @@ Key design lessons ported from mycelium_e2e/bundle.py test_ioc_cfn:
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 import time
@@ -26,9 +25,18 @@ from pyats import aetest
 from libs.cfn_api import CfnMgmtAPI, CfnNodeSvcAPI
 from libs.environment import EnvironmentInfo
 from libs.mycelium_api import MyceliumAPI
-from libs.mycelium_cli import MyceliumCLI
+from libs.mycelium_cli import CLIResult, MyceliumCLI
 
 log = logging.getLogger(__name__)
+
+
+def _parse_session_room(result: CLIResult) -> str | None:
+    """Extract session_room from ``mycelium --json session create`` output."""
+    data = result.json
+    if isinstance(data, dict):
+        return data.get("session_room") or data.get("display_name")
+    return None
+
 
 _INGEST_TIMEOUT = 180
 _QUERY_TIMEOUT = 180
@@ -218,20 +226,29 @@ class IocNegotiationPath(aetest.Testcase):
             r = cli.session_create(test_room)
             if not r.ok:
                 step.failed(f"session create failed: {r.error_message}")
-            r = cli.session_join(test_room, "agent-alpha", position="Prefer microservices architecture")
+            session_room = _parse_session_room(r)
+            r = cli.session_join(
+                test_room,
+                "agent-alpha",
+                position="Microservices primary; independent deploy cycles; hard limit: no shared database between services",
+            )
             if not r.ok:
                 step.failed(f"agent-alpha join failed: {r.error_message}")
-            r = cli.session_join(test_room, "agent-beta", position="Prefer monolith for simplicity")
+            r = cli.session_join(
+                test_room,
+                "agent-beta",
+                position="Monolith primary; single deploy artifact; hard limit: sub-100ms internal latency",
+            )
             if not r.ok:
                 step.failed(f"agent-beta join failed: {r.error_message}")
 
         with steps.start("Resolve session room") as step:
-            session_room = None
-            for _ in range(20):
-                session_room = api.find_session_room(test_room)
-                if session_room:
-                    break
-                time.sleep(0.5)
+            if not session_room:
+                for _ in range(20):
+                    session_room = api.find_session_room(test_room)
+                    if session_room:
+                        break
+                    time.sleep(0.5)
             if not session_room:
                 step.failed("Could not find session child room")
             log.info("Session room: %s", session_room)
