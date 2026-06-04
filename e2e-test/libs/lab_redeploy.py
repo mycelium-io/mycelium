@@ -99,6 +99,10 @@ class DeviceResult:
     The ``logs`` field is a structured list of (phase, ok, detail)
     tuples so callers can pretty-print a progress report without
     re-parsing stdout.
+
+    ``workspace_id`` and ``mas_id`` are only populated on the hub
+    redeploy (the source of truth for those IDs); the orchestrator
+    propagates them to spoke calls.
     """
 
     device_name: str
@@ -106,6 +110,8 @@ class DeviceResult:
     success: bool
     error: str | None = None
     logs: list[tuple[str, bool, str]] = field(default_factory=list)
+    workspace_id: str | None = None
+    mas_id: str | None = None
 
 
 # ── role detection ─────────────────────────────────────────────────────
@@ -175,8 +181,15 @@ _COMPOSE_DOWN = (
 
 _DATA_DIRS_WIPE = (
     # Only touch known mycelium-managed paths under $HOME/.mycelium.
+    # We also reclaim ownership of the parent directory because the
+    # systemd-managed daemon (or pre-redeploy compose containers) may
+    # have written files as root; those would otherwise survive into
+    # the next deploy and trip ``mycelium doctor``'s ownership check.
+    "if [ -d $HOME/.mycelium ]; then sudo chown -R $USER:$USER $HOME/.mycelium 2>/dev/null || "
+    "chown -R $USER:$USER $HOME/.mycelium 2>/dev/null || true; fi; "
     "[ -d $HOME/.mycelium/rooms ] && rm -rf $HOME/.mycelium/rooms; "
     "[ -d $HOME/.mycelium/data ] && rm -rf $HOME/.mycelium/data; "
+    "[ -d $HOME/.mycelium/logs ] && rm -rf $HOME/.mycelium/logs; "
     "true"
 )
 
@@ -422,15 +435,202 @@ def verify_spoke_reachable(device: Any, hub_url: str, result: DeviceResult) -> b
     return ok
 
 
+# ── workspace + MAS provisioning ──────────────────────────────────────
+
+
+# A tiny Python program that calls the backend's workspace + MAS APIs
+# the same way ``mycelium install`` does (see
+# ``mycelium-cli/src/mycelium/commands/install.py:_provision_backend``).
+# It's idempotent — creates the default workspace/MAS if they don't
+# exist, or fetches the existing first entry if creation returns
+# 400/409. Output is two lines: ``WORKSPACE_ID=<uuid>`` and
+# ``MAS_ID=<uuid>`` so the caller can grep both back out cleanly.
+#
+# We embed it as a heredoc rather than scp-ing a file because the lab
+# spokes don't necessarily have a writable temp dir we control.
+_PROVISION_PY = r"""
+import json, sys, urllib.request, urllib.error
+
+api_url = sys.argv[1]
+
+def _get(path):
+    req = urllib.request.Request(api_url + path,
+                                 headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return json.loads(r.read())
+
+def _post(path, body):
+    data = json.dumps(body).encode()
+    req = urllib.request.Request(api_url + path, data=data,
+                                 headers={"Content-Type": "application/json"},
+                                 method="POST")
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return json.loads(r.read())
+
+# workspace ---------------------------------------------------------
+try:
+    ws = _post("/api/workspaces", {"name": "default"})
+except urllib.error.HTTPError as e:
+    if e.code in (400, 409):
+        wss = _get("/api/workspaces")
+        ws = next((w for w in wss if w.get("name") == "default"),
+                  wss[0] if wss else None)
+        if ws is None:
+            print("ERR: no workspaces returned by backend", file=sys.stderr)
+            sys.exit(1)
+    else:
+        raise
+ws_id = ws["id"]
+
+# MAS ---------------------------------------------------------------
+try:
+    mas = _post(f"/api/workspaces/{ws_id}/mas", {"name": "default"})
+except urllib.error.HTTPError as e:
+    if e.code in (400, 409):
+        mas_list = _get(f"/api/workspaces/{ws_id}/mas")
+        if not mas_list:
+            print("ERR: no MAS returned by backend", file=sys.stderr)
+            sys.exit(1)
+        mas = mas_list[0]
+    else:
+        raise
+mas_id = mas["id"]
+
+print(f"WORKSPACE_ID={ws_id}")
+print(f"MAS_ID={mas_id}")
+"""
+
+
+def _parse_provisioned_ids(stdout: str) -> tuple[str, str] | None:
+    """Extract WORKSPACE_ID + MAS_ID from the provisioning script's stdout.
+
+    Returns ``None`` if either line is missing or malformed — callers
+    treat that as a provisioning failure.
+    """
+    ws_id = mas_id = ""
+    for line in stdout.splitlines():
+        if line.startswith("WORKSPACE_ID="):
+            ws_id = line.split("=", 1)[1].strip()
+        elif line.startswith("MAS_ID="):
+            mas_id = line.split("=", 1)[1].strip()
+    if not ws_id or not mas_id:
+        return None
+    return ws_id, mas_id
+
+
+def provision_workspace_and_mas(device: Any, hub_url: str, result: DeviceResult) -> tuple[str, str] | None:
+    """Create (or fetch) the default workspace + MAS on the hub.
+
+    Returns ``(workspace_id, mas_id)`` on success, ``None`` on failure
+    (already recorded in ``result``).
+    """
+    # Heredoc the script via stdin so we don't have to worry about
+    # quoting / writing it to disk. ``python3 -`` reads from stdin.
+    # The script reads its API URL from argv[1].
+    cmd = f"python3 - {hub_url} <<'PYEOF'{_PROVISION_PY}PYEOF"
+    ok, out = _sh(device, cmd, timeout=60)
+    if not ok:
+        _record(result, "provision workspace + MAS", False, out)
+        return None
+
+    parsed = _parse_provisioned_ids(out)
+    if parsed is None:
+        _record(result, "provision workspace + MAS", False, f"malformed output: {out[:200]}")
+        return None
+
+    ws_id, mas_id = parsed
+    _record(
+        result,
+        "provision workspace + MAS",
+        True,
+        f"workspace={ws_id[:8]}… mas={mas_id[:8]}…",
+    )
+    return ws_id, mas_id
+
+
+# Container-internal CFN URLs — same constants ``mycelium install``
+# writes when the IOC stack is enabled (install.py:_patch_env_vars).
+# The backend container reaches CFN services by docker-network hostname,
+# so these don't change between deployments.
+_CFN_MGMT_URL_INTERNAL = "http://ioc-cfn-mgmt-plane-svc:9000"
+_COGNITION_FABRIC_NODE_URL_INTERNAL = "http://ioc-cognition-fabric-node-svc:9002"
+
+_PERSIST_HUB_IDS = (
+    # Persist the provisioned IDs + CFN URLs via the CLI. ``config
+    # set`` writes ``~/.mycelium/config.toml``; ``config apply`` then
+    # renders the matching ``~/.mycelium/.env`` (which the backend
+    # container picks up via the compose-dev env_file mount).
+    "mycelium config set server.workspace_id {ws} && "
+    "mycelium config set server.mas_id {mas} && "
+    "mycelium config set runtime.cfn_mgmt_url {cfn_mgmt} && "
+    "mycelium config set runtime.cognition_fabric_node_url {cognition} && "
+    "mycelium config apply"
+)
+
+_PERSIST_SPOKE_IDS = (
+    # Spokes don't run CFN containers locally — they don't need the
+    # CFN_*_URL vars set. We only push workspace + MAS so the spoke
+    # CLI can address the hub's MAS in API calls.
+    "mycelium config set server.workspace_id {ws} && mycelium config set server.mas_id {mas} && mycelium config apply"
+)
+
+
+def persist_workspace_and_mas(
+    device: Any,
+    workspace_id: str,
+    mas_id: str,
+    result: DeviceResult,
+    *,
+    is_hub: bool = False,
+) -> bool:
+    """Write the IDs into the device's config via the mycelium CLI.
+
+    On the hub, also writes ``CFN_MGMT_URL`` and
+    ``COGNITION_FABRIC_NODE_URL`` so the backend container can reach
+    the cognition fabric services (without these, ``mycelium doctor
+    --mode hub`` reports a CFN config warning and negotiations fail).
+    """
+    # Basic UUID-ish validation. We don't need strict UUID format
+    # (some backends use shorter / longer IDs), but we DO want to
+    # reject anything containing shell metacharacters.
+    for label, val in (("workspace_id", workspace_id), ("mas_id", mas_id)):
+        if not val or any(c in val for c in " \t\n;|&`$<>"):
+            _record(result, f"persist {label}", False, f"refused unsafe value: {val!r}")
+            return False
+
+    template = _PERSIST_HUB_IDS if is_hub else _PERSIST_SPOKE_IDS
+    cmd = template.format(
+        ws=workspace_id,
+        mas=mas_id,
+        cfn_mgmt=_CFN_MGMT_URL_INTERNAL,
+        cognition=_COGNITION_FABRIC_NODE_URL_INTERNAL,
+    )
+    ok, out = _sh(device, cmd, timeout=30)
+    label = "persist workspace + MAS + CFN URLs" if is_hub else "persist workspace + MAS"
+    _record(result, f"{label} to config", ok, out)
+    return ok
+
+
 # ── top-level orchestration ────────────────────────────────────────────
 
 
-def redeploy_device(device: Any, cfg: LabRedeployConfig, hub_url: str | None = None) -> DeviceResult:
+def redeploy_device(
+    device: Any,
+    cfg: LabRedeployConfig,
+    hub_url: str | None = None,
+    *,
+    provisioned_ids: tuple[str, str] | None = None,
+) -> DeviceResult:
     """Redeploy ``device`` per ``cfg``.
 
     ``hub_url`` is only consulted on spokes — defaulted from
     ``device.custom.mycelium_backend_url`` when not supplied. Hubs
     derive their own URL from the device record.
+
+    ``provisioned_ids`` is ``(workspace_id, mas_id)`` from the hub's
+    provisioning step. When supplied (typically by
+    :func:`redeploy_testbed` for spokes) the spoke writes the same
+    IDs into its CLI config so it can talk to the same backend.
 
     Returns a :class:`DeviceResult` (never raises for routine failures
     — the structured result is the contract).
@@ -439,7 +639,13 @@ def redeploy_device(device: Any, cfg: LabRedeployConfig, hub_url: str | None = N
     role = _role(device)
     result = DeviceResult(device_name=name, role=role, success=False)
 
-    log.info("=== redeploy %s (role=%s, ref=%s, mode=%s) ===", name, role, cfg.ref, cfg.cleanup_mode.value)
+    log.info(
+        "=== redeploy %s (role=%s, ref=%s, mode=%s) ===",
+        name,
+        role,
+        cfg.ref,
+        cfg.cleanup_mode.value,
+    )
 
     # 1. Cleanup
     if not cleanup_device(device, cfg, result):
@@ -451,7 +657,7 @@ def redeploy_device(device: Any, cfg: LabRedeployConfig, hub_url: str | None = N
         result.error = "CLI install failed"
         return result
 
-    # 3. Hub-only: source clone + image build + bring stack up + env overrides
+    # 3. Hub-only: source clone + image build + bring stack up + provision IDs
     if role == "hub":
         if not fetch_source(device, cfg, result):
             result.error = "source clone failed"
@@ -471,7 +677,38 @@ def redeploy_device(device: Any, cfg: LabRedeployConfig, hub_url: str | None = N
             result.error = "backend health check failed"
             return result
 
-    # 4. Spoke: just point the CLI at the hub
+        # Provision workspace + MAS against the freshly booted backend
+        # (the DB was wiped, so any old IDs in config.toml are stale).
+        # Persist the new IDs locally before signalling success so the
+        # hub's mycelium CLI is also in sync.
+        ids = provision_workspace_and_mas(device, hub_url_local, result)
+        if ids is None:
+            result.error = "workspace/MAS provisioning failed"
+            return result
+        ws_id, mas_id = ids
+        result.workspace_id = ws_id
+        result.mas_id = mas_id
+        if not persist_workspace_and_mas(device, ws_id, mas_id, result, is_hub=True):
+            result.error = "could not persist workspace/MAS to hub config"
+            return result
+
+        # Restart the backend so it picks up the freshly written
+        # WORKSPACE_ID / MAS_ID / CFN_MGMT_URL / COGNITION_FABRIC_NODE_URL
+        # from the rendered .env. Without this restart the backend
+        # keeps its boot-time env (empty values) and ``mycelium
+        # doctor`` reports CFN config warnings.
+        ok, out = _sh(
+            device,
+            f"cd {cfg.source_dir}/mycelium-cli/src/mycelium/docker && "
+            "docker compose -f compose.yml -f compose-dev.yml "
+            "--profile cfn --profile metrics restart mycelium-backend",
+            timeout=120,
+        )
+        if not _record(result, "restart backend (pick up new env)", ok, out):
+            result.error = "could not restart backend after provisioning"
+            return result
+
+    # 4. Spoke: point CLI at hub, then persist the same workspace/MAS
     else:
         target = hub_url or _backend_url(device)
         if not target:
@@ -484,6 +721,11 @@ def redeploy_device(device: Any, cfg: LabRedeployConfig, hub_url: str | None = N
         if not verify_spoke_reachable(device, target, result):
             result.error = "spoke cannot reach hub"
             return result
+        if provisioned_ids is not None:
+            ws_id, mas_id = provisioned_ids
+            if not persist_workspace_and_mas(device, ws_id, mas_id, result):
+                result.error = "could not persist workspace/MAS to spoke config"
+                return result
 
     result.success = True
     log.info("=== redeploy %s OK ===", name)
@@ -495,7 +737,8 @@ def redeploy_testbed(testbed: Any, cfg: LabRedeployConfig) -> list[DeviceResult]
 
     ``testbed`` is anything exposing a ``devices`` mapping — a pyATS
     Testbed or a plain dict works. Hubs are redeployed first because
-    spokes need the hub's backend URL.
+    spokes need both the hub's backend URL **and** the workspace/MAS
+    IDs that get provisioned during the hub redeploy.
     """
     devices_map = getattr(testbed, "devices", None) or testbed.get("devices", {})  # type: ignore[union-attr]
     devices = list(devices_map.values())
@@ -521,7 +764,11 @@ def redeploy_testbed(testbed: Any, cfg: LabRedeployConfig) -> list[DeviceResult]
         return results
 
     hub_url = _backend_url(hub)
+    provisioned_ids: tuple[str, str] | None = None
+    if hub_result.workspace_id and hub_result.mas_id:
+        provisioned_ids = (hub_result.workspace_id, hub_result.mas_id)
+
     for spoke in spokes:
-        results.append(redeploy_device(spoke, cfg, hub_url=hub_url))
+        results.append(redeploy_device(spoke, cfg, hub_url=hub_url, provisioned_ids=provisioned_ids))
 
     return results

@@ -26,12 +26,15 @@ from libs.lab_redeploy import (
     LabCleanupMode,
     LabRedeployConfig,
     _backend_url,
+    _parse_provisioned_ids,
     _role,
     _uv_install_cmd,
     apply_env_overrides,
     cleanup_device,
     configure_spoke,
     install_cli,
+    persist_workspace_and_mas,
+    provision_workspace_and_mas,
     redeploy_device,
     redeploy_testbed,
 )
@@ -269,8 +272,42 @@ class TestConfigureSpoke:
 # ── redeploy_device orchestration ─────────────────────────────────────
 
 
+def _hub_phase_results(provisioned: bool = True) -> list[subprocess.CompletedProcess[str]]:
+    """Return CompletedProcess entries for every hub phase.
+
+    Hub pipeline order (after our provisioning + restart additions):
+      1 compose down
+      2 data wipe
+      3 uv install
+      4 mycelium --version
+      5 clone
+      6 docker build
+      7 compose up
+      8 /health
+      9 provision workspace + MAS  (returns stdout with IDs)
+      10 persist workspace + MAS + CFN URLs to config
+      11 restart backend
+    """
+    pre_provision = [_completed(rc=0) for _ in range(8)]
+    if not provisioned:
+        return pre_provision
+    provision_stdout = (
+        "WORKSPACE_ID=00000000-0000-0000-0000-000000000001\nMAS_ID=00000000-0000-0000-0000-000000000002\n"
+    )
+    return [
+        *pre_provision,
+        _completed(rc=0, stdout=provision_stdout),
+        _completed(rc=0),  # persist
+        _completed(rc=0),  # backend restart
+    ]
+
+
 class TestRedeployDeviceFlow:
     def test_hub_runs_full_pipeline(self, fake_exec: FakeExec) -> None:
+        # Inject results for every phase, including the provisioning
+        # call that needs WORKSPACE_ID/MAS_ID lines on stdout.
+        fake_exec.results.extend(_hub_phase_results())
+
         hub = _device(
             "hub",
             role="hub",
@@ -280,9 +317,6 @@ class TestRedeployDeviceFlow:
         result = redeploy_device(hub, cfg)
 
         assert result.success, result.error
-        # Expected hub phases: compose down, data wipe, uv install,
-        # version, clone, build, compose up, health (apply_env_overrides
-        # is a no-op when overrides={}).
         phases = [phase for phase, *_ in result.logs]
         assert "compose down" in phases
         assert any("uv tool install" in p for p in phases)
@@ -290,6 +324,13 @@ class TestRedeployDeviceFlow:
         assert any("docker build" in p for p in phases)
         assert any("compose up" in p for p in phases)
         assert any("/health" in p for p in phases)
+        # New post-provisioning phases must be present.
+        assert any("provision workspace" in p for p in phases)
+        assert any("persist workspace" in p for p in phases)
+        assert any("restart backend" in p for p in phases)
+        # IDs must be threaded into the result for the orchestrator.
+        assert result.workspace_id == "00000000-0000-0000-0000-000000000001"
+        assert result.mas_id == "00000000-0000-0000-0000-000000000002"
 
     def test_spoke_skips_image_build(self, fake_exec: FakeExec) -> None:
         spoke = _device(
@@ -355,6 +396,34 @@ class TestRedeployDeviceFlow:
         assert result.success is False
         assert result.error == "backend health check failed"
 
+    def test_provisioning_failure_fails_redeploy(self, fake_exec: FakeExec) -> None:
+        # 8 calls succeed (through health check), then provisioning
+        # fails with non-zero exit code.
+        for _ in range(8):
+            fake_exec.results.append(_completed(rc=0))
+        fake_exec.results.append(_completed(rc=1, stderr="CFN mgmt unreachable"))
+
+        hub = _device("hub", role="hub", mycelium_backend_url="http://10.0.0.1:8000")
+        result = redeploy_device(hub, LabRedeployConfig())
+
+        assert result.success is False
+        assert result.error == "workspace/MAS provisioning failed"
+        # ID fields stay None on failure.
+        assert result.workspace_id is None
+        assert result.mas_id is None
+
+    def test_provisioning_malformed_output_fails(self, fake_exec: FakeExec) -> None:
+        # Provisioning script exits 0 but emits garbage — we must still fail.
+        for _ in range(8):
+            fake_exec.results.append(_completed(rc=0))
+        fake_exec.results.append(_completed(rc=0, stdout="WORKSPACE_ID=\nfoo"))
+
+        hub = _device("hub", role="hub", mycelium_backend_url="http://10.0.0.1:8000")
+        result = redeploy_device(hub, LabRedeployConfig())
+
+        assert result.success is False
+        assert result.error == "workspace/MAS provisioning failed"
+
 
 # ── redeploy_testbed ──────────────────────────────────────────────────
 
@@ -370,11 +439,36 @@ class TestRedeployTestbed:
         )
 
     def test_runs_hub_first_then_spokes(self, fake_exec: FakeExec) -> None:
+        # Hub needs the full 11-call sequence (with provisioning
+        # stdout); spokes default to rc=0 stdout="" which is fine for
+        # the simple spoke phases.
+        fake_exec.results.extend(_hub_phase_results())
+
         testbed = self._make_testbed()
         results = redeploy_testbed(testbed, LabRedeployConfig())
 
         assert [r.device_name for r in results] == ["hub", "spoke1", "spoke2"]
         assert all(r.success for r in results)
+
+    def test_propagates_provisioned_ids_to_spokes(self, fake_exec: FakeExec) -> None:
+        """Workspace + MAS IDs from the hub must flow into each spoke's persist call."""
+        fake_exec.results.extend(_hub_phase_results())
+
+        testbed = self._make_testbed()
+        results = redeploy_testbed(testbed, LabRedeployConfig())
+
+        assert all(r.success for r in results)
+        # Find the spoke persist commands and confirm they carry the
+        # hub-provisioned IDs.
+        persist_cmds = [
+            cmd
+            for _, cmd in fake_exec.calls
+            if "mycelium config set server.workspace_id" in cmd and "00000000-0000-0000-0000-000000000001" in cmd
+        ]
+        # Two spokes should each get one persist call carrying both IDs.
+        assert len(persist_cmds) >= 2
+        for cmd in persist_cmds:
+            assert "00000000-0000-0000-0000-000000000002" in cmd
 
     def test_skips_spokes_when_hub_fails(self, fake_exec: FakeExec) -> None:
         # Fail the hub's very first call (compose down)
@@ -407,6 +501,103 @@ class TestRedeployTestbed:
         )
         with pytest.raises(ValueError, match="2 hubs"):
             redeploy_testbed(testbed, LabRedeployConfig())
+
+
+# ── provisioning helpers ──────────────────────────────────────────────
+
+
+class TestParseProvisionedIds:
+    def test_parses_clean_output(self) -> None:
+        out = "WORKSPACE_ID=abc\nMAS_ID=def\n"
+        assert _parse_provisioned_ids(out) == ("abc", "def")
+
+    def test_extracts_from_noisy_output(self) -> None:
+        # Tolerates extra log lines around the IDs.
+        out = "logging stuff\nWORKSPACE_ID=ws-1\nmore noise\nMAS_ID=mas-1\n"
+        assert _parse_provisioned_ids(out) == ("ws-1", "mas-1")
+
+    def test_missing_workspace_returns_none(self) -> None:
+        assert _parse_provisioned_ids("MAS_ID=mas\n") is None
+
+    def test_missing_mas_returns_none(self) -> None:
+        assert _parse_provisioned_ids("WORKSPACE_ID=ws\n") is None
+
+    def test_empty_value_treated_as_missing(self) -> None:
+        # Anchors against the live observed failure mode (backend
+        # returns empty string for the id).
+        assert _parse_provisioned_ids("WORKSPACE_ID=\nMAS_ID=\n") is None
+
+
+class TestProvisionWorkspaceAndMas:
+    def test_invokes_python3_with_url(self, fake_exec: FakeExec) -> None:
+        fake_exec.results.append(_completed(stdout="WORKSPACE_ID=w1\nMAS_ID=m1\n"))
+        result = DeviceResult(device_name="hub", role="hub", success=False)
+
+        out = provision_workspace_and_mas(_device("hub"), "http://localhost:9000", result)
+        assert out == ("w1", "m1")
+
+        cmd = fake_exec.calls[0][1]
+        # Calls the embedded python script over heredoc with the URL as argv[1].
+        assert "python3 - http://localhost:9000" in cmd
+        assert "WORKSPACE_ID" in cmd  # script body present
+
+    def test_non_zero_exit_returns_none(self, fake_exec: FakeExec) -> None:
+        fake_exec.results.append(_completed(rc=1, stderr="connection refused"))
+        result = DeviceResult(device_name="hub", role="hub", success=False)
+
+        assert provision_workspace_and_mas(_device("hub"), "http://localhost:9000", result) is None
+        # Failure is recorded with full stderr for debugging.
+        last_phase = result.logs[-1]
+        assert last_phase[1] is False  # ok=False
+
+
+class TestPersistWorkspaceAndMas:
+    def test_hub_writes_cfn_urls(self, fake_exec: FakeExec) -> None:
+        result = DeviceResult(device_name="hub", role="hub", success=False)
+        ok = persist_workspace_and_mas(_device("hub"), "ws-1", "mas-1", result, is_hub=True)
+        assert ok is True
+
+        cmd = fake_exec.calls[0][1]
+        # Hub flavour sets all four keys.
+        assert "server.workspace_id ws-1" in cmd
+        assert "server.mas_id mas-1" in cmd
+        assert "runtime.cfn_mgmt_url http://ioc-cfn-mgmt-plane-svc:9000" in cmd
+        assert "runtime.cognition_fabric_node_url http://ioc-cognition-fabric-node-svc:9002" in cmd
+        assert "mycelium config apply" in cmd
+
+    def test_spoke_skips_cfn_urls(self, fake_exec: FakeExec) -> None:
+        result = DeviceResult(device_name="spoke1", role="spoke", success=False)
+        ok = persist_workspace_and_mas(_device("spoke1"), "ws-1", "mas-1", result)
+        assert ok is True
+
+        cmd = fake_exec.calls[0][1]
+        # Spokes don't run CFN locally — those keys must NOT be set
+        # (would otherwise point the spoke CLI at hostnames it can't
+        # resolve).
+        assert "cfn_mgmt_url" not in cmd
+        assert "cognition_fabric_node_url" not in cmd
+        # But workspace + MAS must be there.
+        assert "server.workspace_id ws-1" in cmd
+        assert "server.mas_id mas-1" in cmd
+
+    @pytest.mark.parametrize(
+        "bad_id",
+        [
+            "",  # empty
+            "ws id with space",  # whitespace
+            "ws-1; rm -rf /",  # shell metachar
+            "ws-1`evil`",  # backticks
+            "ws-1$(payload)",  # command substitution
+        ],
+    )
+    def test_rejects_unsafe_values(self, fake_exec: FakeExec, bad_id: str) -> None:
+        # Defence-in-depth: even though we control the IDs we get back
+        # from CFN mgmt, refuse anything that could escape ``mycelium
+        # config set <key> <value>`` into a shell.
+        result = DeviceResult(device_name="hub", role="hub", success=False)
+        ok = persist_workspace_and_mas(_device("hub"), bad_id, "mas-1", result)
+        assert ok is False
+        assert fake_exec.calls == []  # no shell call attempted
 
 
 # ── env_overrides safety contract ─────────────────────────────────────
