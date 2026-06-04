@@ -26,13 +26,25 @@ def _load_openclaw() -> Provisioner:
     return OpenClawProvisioner()
 
 
+def _load_cursor() -> Provisioner:
+    from libs.provisioners.cursor import CursorProvisioner
+
+    return CursorProvisioner()
+
+
+def _load_hermes() -> Provisioner:
+    from libs.provisioners.hermes import HermesProvisioner
+
+    return HermesProvisioner()
+
+
 # Lazy: importing every adapter module up front would force optional
 # dependencies (e.g. cursor SSH helpers, hermes-specific config) onto
 # every test run even when those adapters aren't used.
 _REGISTRY: dict[str, Callable[[], Provisioner]] = {
     "openclaw": _load_openclaw,
-    # "cursor":  _load_cursor,   # stage 2
-    # "hermes":  _load_hermes,   # stage 2
+    "cursor": _load_cursor,
+    "hermes": _load_hermes,
 }
 
 

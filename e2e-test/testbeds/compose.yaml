@@ -10,10 +10,10 @@
 #   docker compose -f infra/compose.e2e.yaml up -d
 #   pyats run job jobs/pr_job.py --testbed-file testbeds/compose.yaml
 #
-# Container names track the rename in Layer 4 of the plan
-# (openclaw-hub -> mycelium-hub, etc.). Until that rename lands the
-# `MYCELIUM_E2E_<role>_CONTAINER` env vars below let stage 1 reuse
-# the current names without code changes.
+# Container names default to the existing ``e2e-openclaw-{hub,spoke1,
+# spoke2}`` form (kept for backwards-compat with the GitHub Actions
+# workflow and ci_datafile.yaml). ``MYCELIUM_E2E_<role>_CONTAINER`` env
+# vars override per-run when needed.
 
 testbed:
   name: mycelium-compose

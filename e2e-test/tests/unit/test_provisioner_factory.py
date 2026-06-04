@@ -13,19 +13,23 @@ from libs.provisioners import (
 )
 
 
-def test_openclaw_is_registered():
-    assert "openclaw" in registered_adapters()
+def test_all_three_adapters_are_registered():
+    adapters = registered_adapters()
+    assert "openclaw" in adapters
+    assert "cursor" in adapters
+    assert "hermes" in adapters
 
 
-def test_get_provisioner_returns_openclaw_instance():
-    prov = get_provisioner("openclaw")
-    assert prov.name == "openclaw"
-    assert isinstance(prov, Provisioner)
+def test_get_provisioner_returns_correct_instances():
+    for name in ("openclaw", "cursor", "hermes"):
+        prov = get_provisioner(name)
+        assert prov.name == name
+        assert isinstance(prov, Provisioner)
 
 
 def test_get_provisioner_unknown_raises_with_known_list():
-    with pytest.raises(KeyError, match="cursor"):
-        get_provisioner("cursor")
+    with pytest.raises(KeyError, match="matrix"):
+        get_provisioner("matrix")
 
 
 def test_agent_ref_metadata_defaults_to_dict():
