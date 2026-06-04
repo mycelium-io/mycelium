@@ -328,7 +328,14 @@ jobs:
 
       - name: Build mycelium OpenClaw plugin
         run: |
-          PLUGIN_DIR=$(uv run python -c "
+          MYCELIUM_REAL=$(readlink -f "$(which mycelium)")
+          MYCELIUM_PYTHON="$(dirname "$MYCELIUM_REAL")/python3"
+          if [ ! -f "$MYCELIUM_PYTHON" ]; then
+            MYCELIUM_PYTHON="$(dirname "$MYCELIUM_REAL")/python"
+          fi
+          echo "mycelium binary: $MYCELIUM_REAL"
+          echo "mycelium python: $MYCELIUM_PYTHON"
+          PLUGIN_DIR=$("$MYCELIUM_PYTHON" -c "
           import importlib.resources, pathlib
           pkg = importlib.resources.files('mycelium.integrations.openclaw.assets')
           print(pathlib.Path(str(pkg)) / 'mycelium' / 'plugin')
