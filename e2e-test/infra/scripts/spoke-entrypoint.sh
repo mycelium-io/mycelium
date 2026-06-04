@@ -105,7 +105,9 @@ node -e "
       agentId: id,
       groups: { '$ROOM_ID': { requireMention: true } },
       dm: { allowFrom: ['*'] },
-      allowFrom: ['*']
+      dmPolicy: 'open',
+      allowFrom: ['*'],
+      groupAllowFrom: ['*']
     };
   }
 
@@ -157,6 +159,10 @@ node -e "
         litellm: { enabled: true }
       }
     },
+    bindings: validAgents.map(id => ({
+      agentId: id,
+      match: { channel: 'matrix', accountId: id }
+    })),
     agents: {
       defaults: {
         model: agentModel,
@@ -166,7 +172,8 @@ node -e "
         id,
         name: id,
         model: agentModel,
-        workspace: '$CONFIG_DIR/workspace-' + id
+        workspace: '$CONFIG_DIR/workspace-' + id,
+        sandbox: { mode: 'off' }
       }))
     }
   };
