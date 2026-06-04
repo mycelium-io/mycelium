@@ -5,7 +5,6 @@ Maps to original tests 01-06, 06b-06d, 11-14, 22.
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 
@@ -230,20 +229,12 @@ class SessionJoinIdempotency(aetest.Testcase):
                     if isinstance(data, list):
                         sessions = data
                     elif isinstance(data, dict):
-                        sessions = (
-                            data.get("sessions")
-                            or data.get("items")
-                            or data.get("results")
-                            or []
-                        )
+                        sessions = data.get("sessions") or data.get("items") or data.get("results") or []
                     if sessions:
                         break
 
                 if len(sessions) != 1:
-                    step.failed(
-                        f"Expected exactly 1 session after duplicate join, "
-                        f"got {len(sessions)}"
-                    )
+                    step.failed(f"Expected exactly 1 session after duplicate join, got {len(sessions)}")
         finally:
             api.delete_room(test_room)
 
@@ -269,66 +260,109 @@ class DoctorClean(aetest.Testcase):
 
 
 class CfnLlmCounters(aetest.Testcase):
-    """Test 06d: CFN LLM token counters via /observability."""
+    """Test 06d: CFN LLM token counters via /observability.
 
-    groups = ["core", "cfn"]
+    Aligned with bundle.py ``test_cfn_llm_counters``: counters live under
+    ``counters.cfn_llm.by_pipeline.<name>.<key>`` (node-svc >= 0.1.5).
+
+    Two-phase wait:
+      Phase 1 — ``coordination_start`` posted to session room (60s).
+      Phase 2 — ``cfn_llm.calls`` counter advances (240s).
+    """
+
+    groups = ["core", "cfn", "llm"]
+
+    @aetest.setup
+    def check_prerequisites(self, env):
+        if env.skip_llm_tests:
+            self.skipped("LLM not available")
+        if env.coordination_blocked_reason:
+            self.skipped(env.coordination_blocked_reason)
 
     @aetest.test
-    def verify_counters(self, steps, api, room_name):
+    def verify_counters(self, steps, cli, api, room_name):
+        test_room = f"{room_name}-cfn-llm"
+
         with steps.start("Snapshot counters before") as step:
-            st_before, obs_before = api.observability()
-            if st_before != 200:
-                step.failed(f"Observability endpoint returned status={st_before}")
-            before_total = _extract_llm_token_total(obs_before)
-            log.info("LLM token total before: %s", before_total)
+            before = _fetch_cfn_llm_counters(api)
+            calls_before = _cfn_llm_counter(before, "calls")
+            log.info("cfn_llm.calls before: %d", calls_before)
 
-        with steps.start("Spawn a session to generate LLM activity") as step:
-            test_room = f"{room_name}-counters"
-            api.create_room(test_room, description="counter test")
+        with steps.start("Create room and join two agents") as step:
+            st, _ = api.create_room(test_room, description="cfn-llm counter test")
+            if st not in (200, 201):
+                step.failed(f"Room creation failed: status={st}")
+            r = cli.session_join(test_room, "agent-alpha", position="Prioritize low latency")
+            if not r.ok:
+                step.failed(f"agent-alpha join failed: {r.error_message}")
+            r = cli.session_join(test_room, "agent-beta", position="Prioritize throughput")
+            if not r.ok:
+                step.failed(f"agent-beta join failed: {r.error_message}")
+
+        with steps.start("Wait for coordination_start (Phase 1, 60s)") as step:
+            session_room = None
+            deadline = time.time() + 60
+            while time.time() < deadline:
+                if not session_room:
+                    session_room = api.find_session_room(test_room)
+                if session_room:
+                    _, msgs = api.get_room_messages(session_room)
+                    if any(m.get("message_type") == "coordination_start" for m in msgs):
+                        log.info("coordination_start seen in %s", session_room)
+                        break
+                time.sleep(2)
+            else:
+                step.failed("No coordination_start within 60s — backend join-window timer may not have fired")
+
+        with steps.start("Wait for cfn_llm.calls to advance (Phase 2, 240s)") as step:
+            deadline = time.time() + 240
+            after = before
+            while time.time() < deadline:
+                time.sleep(3)
+                after = _fetch_cfn_llm_counters(api)
+                if _cfn_llm_counter(after, "calls") > calls_before:
+                    break
+
+            calls_after = _cfn_llm_counter(after, "calls")
+            in_after = _cfn_llm_counter(after, "input_tokens")
+            out_after = _cfn_llm_counter(after, "output_tokens")
+            calls_delta = calls_after - calls_before
+            log.info(
+                "cfn_llm counters: calls=%d→%d (Δ%d), input_tokens=%d, output_tokens=%d",
+                calls_before,
+                calls_after,
+                calls_delta,
+                in_after,
+                out_after,
+            )
+            if calls_delta <= 0:
+                step.failed(f"cfn_llm.calls did not advance: before={calls_before}, after={calls_after}")
+
+    @aetest.cleanup
+    def cleanup(self, api, room_name):
+        api.delete_room(f"{room_name}-cfn-llm")
+
+
+def _fetch_cfn_llm_counters(api) -> dict:
+    """GET /observability and return the ``counters`` dict."""
+    st, obs = api.observability()
+    if st != 200 or not isinstance(obs, dict):
+        return {}
+    return obs.get("counters") or {}
+
+
+def _cfn_llm_counter(counters: dict, key: str) -> int:
+    """Sum cfn_llm.by_pipeline.<pipeline>.<key> across all pipelines."""
+    grp = counters.get("cfn_llm") or {}
+    suffix = f".{key}"
+    total = 0
+    for k, v in grp.items():
+        if k.startswith("by_pipeline.") and k.endswith(suffix):
             try:
-                st, resp = api.spawn_session(
-                    test_room, {"handle": "agent-alpha", "position": "test position"},
-                )
-                if st not in (200, 201):
-                    step.failed(f"Session spawn failed: status={st}")
-                time.sleep(5)
-            finally:
-                api.delete_room(test_room)
-
-        with steps.start("Verify counters changed") as step:
-            st_after, obs_after = api.observability()
-            if st_after != 200:
-                step.failed(f"Post observability returned status={st_after}")
-            after_total = _extract_llm_token_total(obs_after)
-            log.info("LLM token total after: %s (before: %s)", after_total, before_total)
-            if after_total is None:
-                step.failed(
-                    "Could not extract LLM token totals from "
-                    "observability response (before=%s, after=%s)"
-                    % (before_total, after_total)
-                )
-            if before_total is not None and after_total <= before_total:
-                step.failed(
-                    f"LLM token counters did not increase: "
-                    f"before={before_total}, after={after_total}"
-                )
-
-
-def _extract_llm_token_total(obs: Any) -> int | None:
-    """Sum all LLM token counters from the observability response."""
-    if not isinstance(obs, dict):
-        return None
-    llm = obs.get("llm", obs.get("llm_usage", obs.get("tokens", {})))
-    if isinstance(llm, dict):
-        total = llm.get("total_tokens", llm.get("total"))
-        if isinstance(total, (int, float)):
-            return int(total)
-        prompt = llm.get("prompt_tokens", llm.get("input_tokens", 0))
-        completion = llm.get("completion_tokens", llm.get("output_tokens", 0))
-        if isinstance(prompt, (int, float)) and isinstance(completion, (int, float)):
-            s = int(prompt) + int(completion)
-            return s if s > 0 else None
-    return None
+                total += int(v)
+            except (TypeError, ValueError):
+                continue
+    return total
 
 
 class SharedMemoryCliE2E(aetest.Testcase):
@@ -391,7 +425,14 @@ class ConsensusCliE2E(aetest.Testcase):
 
 
 class SyncNegotiationCliE2E(aetest.Testcase):
-    """Test 13: CLI + IOC coordination_tick polling."""
+    """Test 13: CLI + IOC coordination via session sub-room.
+
+    Aligned with bundle.py ``test_sync_negotiation_cli_e2e``:
+    1. Create room, two session joins
+    2. Poll session-room messages for coordination_tick (240s)
+    3. CLI negotiate respond accept for each agent on the session room
+    4. Poll for coordination_consensus message
+    """
 
     groups = ["core", "cfn", "llm", "slow"]
 
@@ -403,21 +444,62 @@ class SyncNegotiationCliE2E(aetest.Testcase):
             self.skipped(env.coordination_blocked_reason)
 
     @aetest.test
-    def sync_negotiation(self, steps, cli, api, room_name, timeouts=None):
-        t = timeouts or {}
-        timeout = t.get("negotiation_wait", 600)
+    def sync_negotiation(self, steps, cli, api, room_name):
         test_room = f"{room_name}-sync-neg"
+
         with steps.start("Create room and join agents") as step:
-            cli.room_create(test_room)
+            r = cli.room_create(test_room)
+            if not r.ok:
+                step.failed(f"room create failed: {r.error_message}")
             cli.session_join(test_room, "agent-alpha", position="I want fast iteration cycles")
             cli.session_join(test_room, "agent-beta", position="I want thorough testing")
 
-        with steps.start("Wait for coordination") as step:
-            result = api.wait_for_consensus(test_room, timeout=timeout)
-            if not result:
-                step.failed(f"Consensus not reached within {timeout}s")
-            state = result.get("coordination_state") if isinstance(result, dict) else None
-            log.info("Sync negotiation result: state=%s", state)
+        with steps.start("Resolve session room") as step:
+            session_room = None
+            for _ in range(20):
+                session_room = api.find_session_room(test_room)
+                if session_room:
+                    break
+                time.sleep(0.5)
+            if not session_room:
+                step.failed("Could not find session child room")
+            log.info("Session room: %s", session_room)
+
+        with steps.start("Wait for coordination_tick (240s)") as step:
+            tick_seen = False
+            for _ in range(48):
+                _, msgs = api.get_room_messages(session_room)
+                if any(m.get("message_type") == "coordination_tick" for m in msgs):
+                    tick_seen = True
+                    break
+                time.sleep(5)
+            if not tick_seen:
+                step.failed("No coordination_tick within 240s")
+
+        with steps.start("Agents accept negotiation") as step:
+            r = cli.negotiate_respond(session_room, "agent-alpha", "accept")
+            if not r.ok:
+                log.warning("agent-alpha accept: %s", r.error_message)
+            time.sleep(2)
+            r = cli.negotiate_respond(session_room, "agent-beta", "accept")
+            if not r.ok:
+                log.warning("agent-beta accept: %s", r.error_message)
+
+        with steps.start("Wait for coordination_consensus (240s)") as step:
+            consensus_seen = False
+            for _ in range(48):
+                _, msgs = api.get_room_messages(session_room)
+                if any(m.get("message_type") == "coordination_consensus" for m in msgs):
+                    consensus_seen = True
+                    break
+                time.sleep(5)
+            if not consensus_seen:
+                step.failed("No coordination_consensus within 240s after accepts")
+            log.info("Sync negotiation: consensus reached in %s", session_room)
+
+    @aetest.cleanup
+    def cleanup(self, api, room_name):
+        api.delete_room(f"{room_name}-sync-neg")
 
 
 class DemoScriptNegotiation(aetest.Testcase):

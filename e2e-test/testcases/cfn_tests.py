@@ -23,9 +23,10 @@ import uuid
 
 from pyats import aetest
 
-from libs.mycelium_api import MyceliumAPI
 from libs.cfn_api import CfnMgmtAPI, CfnNodeSvcAPI
 from libs.environment import EnvironmentInfo
+from libs.mycelium_api import MyceliumAPI
+from libs.mycelium_cli import MyceliumCLI
 
 log = logging.getLogger(__name__)
 
@@ -79,13 +80,16 @@ class IocCfn(aetest.Testcase):
         resolved_mas_id = None
 
         with steps.start("Ingest knowledge (room_name only)") as step:
-            st, resp = api.ingest_knowledge({
-                "room_name": room_name,
-                "agent_id": "e2e-test-agent",
-                "records": [
-                    {"response": f"E2E test knowledge marker: {marker}. The weather is sunny in the city."}
-                ],
-            }, timeout=_INGEST_TIMEOUT)
+            st, resp = api.ingest_knowledge(
+                {
+                    "room_name": room_name,
+                    "agent_id": "e2e-test-agent",
+                    "records": [
+                        {"response": f"E2E test knowledge marker: {marker}. The weather is sunny in the city."}
+                    ],
+                },
+                timeout=_INGEST_TIMEOUT,
+            )
             if st not in (200, 201, 202):
                 log.error("Knowledge ingest body: %s", resp)
                 step.failed(f"Knowledge ingest returned status={st}: {resp}")
@@ -103,13 +107,14 @@ class IocCfn(aetest.Testcase):
             st, _ = api.create_room(alt_room, description="alt-room for per-room MAS test")
             if st not in (200, 201):
                 step.failed(f"Alt room creation failed: status={st}")
-            st, resp = api.ingest_knowledge({
-                "room_name": alt_room,
-                "agent_id": "e2e-test-agent-alt",
-                "records": [
-                    {"response": f"E2E alt-room test: {marker}. Temperature is warm today."}
-                ],
-            }, timeout=_INGEST_TIMEOUT)
+            st, resp = api.ingest_knowledge(
+                {
+                    "room_name": alt_room,
+                    "agent_id": "e2e-test-agent-alt",
+                    "records": [{"response": f"E2E alt-room test: {marker}. Temperature is warm today."}],
+                },
+                timeout=_INGEST_TIMEOUT,
+            )
             if st not in (200, 201, 202):
                 log.error("Alt-room ingest body: %s", resp)
                 step.failed(f"Alt-room ingest returned status={st}: {resp}")
@@ -184,7 +189,12 @@ class IocFullPath(aetest.Testcase):
 
 
 class IocNegotiationPath(aetest.Testcase):
-    """Test 10: Full CFN semantic negotiation via node-svc."""
+    """Test 10: Full CFN semantic negotiation path.
+
+    Aligned with bundle.py ``test_sync_negotiation_cli_e2e``:
+    two agents join, wait for coordination_tick on the session sub-room,
+    then drive negotiate respond accept, and poll for coordination_consensus.
+    """
 
     groups = ["cfn", "llm", "slow"]
 
@@ -198,32 +208,65 @@ class IocNegotiationPath(aetest.Testcase):
             self.skipped(env.coordination_blocked_reason)
 
     @aetest.test
-    def full_cfn_negotiation(self, steps, api, cfn_node_svc, env, room_name, timeouts=None):
-        t = timeouts or {}
-        timeout = t.get("negotiation_wait", 600)
+    def full_cfn_negotiation(self, steps, api, cli, cfn_node_svc, env, room_name):
         test_room = f"{room_name}-cfn-neg"
 
-        with steps.start("Create room and spawn session") as step:
+        with steps.start("Create room and join two agents") as step:
             st, _ = api.create_room(test_room, description="CFN negotiation path test")
             if st not in (200, 201):
                 step.failed(f"Room creation failed: status={st}")
-            st, _ = api.spawn_session(test_room, {
-                "handle": "agent-alpha",
-                "position": "Prefer microservices architecture",
-            })
-            if st not in (200, 201):
-                step.failed(f"Session spawn failed: status={st}")
+            r = cli.session_join(test_room, "agent-alpha", position="Prefer microservices architecture")
+            if not r.ok:
+                step.failed(f"agent-alpha join failed: {r.error_message}")
+            r = cli.session_join(test_room, "agent-beta", position="Prefer monolith for simplicity")
+            if not r.ok:
+                step.failed(f"agent-beta join failed: {r.error_message}")
 
-        with steps.start("Wait for negotiation outcome") as step:
-            result = api.wait_for_consensus(test_room, timeout=timeout)
-            if not result:
-                step.failed(f"Consensus not reached within {timeout}s")
-            state = result.get("coordination_state") if isinstance(result, dict) else None
-            log.info("CFN negotiation path: state=%s", state)
-            if state in ("failed", "aborted"):
-                step.failed(f"Negotiation ended with state={state}")
-            if state != "complete":
-                step.failed(f"Unexpected coordination state: {state}")
+        with steps.start("Resolve session room") as step:
+            session_room = None
+            for _ in range(20):
+                session_room = api.find_session_room(test_room)
+                if session_room:
+                    break
+                time.sleep(0.5)
+            if not session_room:
+                step.failed("Could not find session child room")
+            log.info("Session room: %s", session_room)
+
+        with steps.start("Wait for coordination_tick (240s)") as step:
+            tick_seen = False
+            for _ in range(48):
+                _, msgs = api.get_room_messages(session_room)
+                if any(m.get("message_type") == "coordination_tick" for m in msgs):
+                    tick_seen = True
+                    break
+                time.sleep(5)
+            if not tick_seen:
+                step.failed("No coordination_tick within 240s — check backend/CFN/LLM logs")
+
+        with steps.start("Agents accept negotiation") as step:
+            r = cli.negotiate_respond(session_room, "agent-alpha", "accept")
+            if not r.ok:
+                log.warning("agent-alpha accept: %s", r.error_message)
+            time.sleep(2)
+            r = cli.negotiate_respond(session_room, "agent-beta", "accept")
+            if not r.ok:
+                log.warning("agent-beta accept: %s", r.error_message)
+
+        with steps.start("Wait for coordination_consensus (240s)") as step:
+            consensus_seen = False
+            for _ in range(48):
+                _, msgs = api.get_room_messages(session_room)
+                for m in msgs:
+                    if m.get("message_type") == "coordination_consensus":
+                        consensus_seen = True
+                        break
+                if consensus_seen:
+                    break
+                time.sleep(5)
+            if not consensus_seen:
+                step.failed("No coordination_consensus within 240s after accepts")
+            log.info("CFN negotiation path: consensus reached in %s", session_room)
 
     @aetest.cleanup
     def cleanup(self, api, room_name):
