@@ -244,16 +244,6 @@ jobs:
             done
           done
 
-      - name: Register OpenClaw adapter
-        run: |
-          mycelium adapter add openclaw \
-            --openclaw-container e2e-openclaw-hub \
-            --yes
-          mycelium adapter add openclaw \
-            --openclaw-container e2e-openclaw-hub \
-            --step=otel \
-            --yes 2>&1 || echo "otel step skipped (non-fatal)"
-
       - name: Verify backend container environment
         run: |
           echo "=== Backend container env check ==="
@@ -335,6 +325,40 @@ jobs:
           echo ""
           echo "=== CLI doctor ==="
           mycelium doctor 2>&1 || true
+
+      - name: Build mycelium OpenClaw plugin
+        run: |
+          PLUGIN_DIR=$(python3 -c "
+          import importlib.resources, pathlib
+          pkg = importlib.resources.files('mycelium.integrations.openclaw.assets')
+          print(pathlib.Path(str(pkg)) / 'mycelium' / 'plugin')
+          ")
+          echo "Plugin source: $PLUGIN_DIR"
+          if [ -f "$PLUGIN_DIR/package.json" ]; then
+            echo "Building plugin (npm install + tsc)..."
+            cd "$PLUGIN_DIR"
+            npm install --prefer-offline --silent
+            npm run build
+            echo "dist/index.js exists: $([ -f dist/index.js ] && echo YES || echo NO)"
+          else
+            echo "WARNING: plugin package.json not found at $PLUGIN_DIR"
+          fi
+
+      - name: Register OpenClaw adapter
+        run: |
+          echo "Preparing staging directory in hub container..."
+          docker exec e2e-openclaw-hub sh -c "mkdir -p /tmp/mycelium-stage/extensions" || true
+
+          echo "Hub container status:"
+          docker inspect --format='{{.State.Status}} (health={{.State.Health.Status}})' e2e-openclaw-hub || true
+
+          mycelium adapter add openclaw \
+            --openclaw-container e2e-openclaw-hub \
+            --yes
+          mycelium adapter add openclaw \
+            --openclaw-container e2e-openclaw-hub \
+            --step=otel \
+            --yes 2>&1 || echo "WARNING: otel step skipped (non-fatal)"
 
       - name: Run E2E tests
         env:
