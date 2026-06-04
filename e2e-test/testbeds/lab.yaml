@@ -1,0 +1,65 @@
+---
+# Lab testbed - real hardware (oclw3/4/5) reached via SSH.
+#
+# Usage:
+#   pyats run job jobs/pr_job.py --testbed-file testbeds/lab.yaml
+#
+# Devices use logical names (hub/spoke1/spoke2) that match
+# data/scenarios.yaml so the same matrix runs unchanged in any
+# environment. Per-device `custom.transport` selects how libs/host_exec
+# dispatches commands.
+
+testbed:
+  name: mycelium-lab
+  credentials:
+    default:
+      username: "%ENV{SSH_USER, ubuntu}"
+
+devices:
+  hub:
+    type: linux
+    os: linux
+    # `connections:` is required by the pyATS schema even though we
+    # dispatch via libs/host_exec rather than unicon. Keep it as a
+    # placeholder so testbed loading succeeds.
+    connections:
+      ssh:
+        protocol: ssh
+        ip: 10.0.50.125
+    custom:
+      role: hub
+      transport: ssh
+      ssh_ip: "%ENV{OCLW4_IP, 10.0.50.125}"
+      ssh_user: "%ENV{SSH_USER, ubuntu}"
+      ssh_key: "%ENV{SSH_KEY_PATH, ~/.ssh/ioc.pem}"
+      mycelium_backend_url: "%ENV{MYCELIUM_BACKEND_URL, http://10.0.50.125:8000}"
+
+  spoke1:
+    type: linux
+    os: linux
+    connections:
+      ssh:
+        protocol: ssh
+        ip: 10.0.50.171
+    custom:
+      role: spoke
+      transport: ssh
+      ssh_ip: "%ENV{OCLW3_IP, 10.0.50.171}"
+      ssh_user: "%ENV{SSH_USER, ubuntu}"
+      ssh_key: "%ENV{SSH_KEY_PATH, ~/.ssh/ioc.pem}"
+      mycelium_backend_url: "%ENV{MYCELIUM_BACKEND_URL, http://10.0.50.125:8000}"
+
+  spoke2:
+    type: linux
+    os: linux
+    connections:
+      ssh:
+        protocol: ssh
+        ip: 10.0.50.142
+    custom:
+      role: spoke
+      transport: ssh
+      ssh_ip: "%ENV{OCLW5_IP, 10.0.50.142}"
+      ssh_user: "%ENV{SSH_USER, ubuntu}"
+      ssh_key: "%ENV{SSH_KEY_PATH, ~/.ssh/ioc.pem}"
+      mycelium_backend_url: "%ENV{MYCELIUM_BACKEND_URL, http://10.0.50.125:8000}"

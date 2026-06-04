@@ -1,0 +1,62 @@
+---
+# Compose testbed - docker-emulated 3-device topology.
+#
+# Maps the same logical hub/spoke1/spoke2 names used by the lab
+# testbed onto the docker compose services from
+# infra/compose.e2e.yaml. Commands dispatch via `docker exec` so the
+# runner can stay on the host (or inside the pyats-runner container).
+#
+# Usage:
+#   docker compose -f infra/compose.e2e.yaml up -d
+#   pyats run job jobs/pr_job.py --testbed-file testbeds/compose.yaml
+#
+# Container names track the rename in Layer 4 of the plan
+# (openclaw-hub -> mycelium-hub, etc.). Until that rename lands the
+# `MYCELIUM_E2E_<role>_CONTAINER` env vars below let stage 1 reuse
+# the current names without code changes.
+
+testbed:
+  name: mycelium-compose
+
+devices:
+  hub:
+    type: linux
+    os: linux
+    # `connections:` is required by the pyATS schema even though we
+    # dispatch via libs/host_exec rather than unicon. The connection
+    # is a no-op placeholder; the real transport hint lives in custom.
+    connections:
+      docker:
+        protocol: docker
+        ip: 127.0.0.1
+    custom:
+      role: hub
+      transport: docker
+      container: "%ENV{MYCELIUM_E2E_HUB_CONTAINER, e2e-openclaw-hub}"
+      mycelium_backend_url: http://mycelium-backend:8000
+
+  spoke1:
+    type: linux
+    os: linux
+    connections:
+      docker:
+        protocol: docker
+        ip: 127.0.0.1
+    custom:
+      role: spoke
+      transport: docker
+      container: "%ENV{MYCELIUM_E2E_SPOKE1_CONTAINER, e2e-openclaw-spoke1}"
+      mycelium_backend_url: http://mycelium-backend:8000
+
+  spoke2:
+    type: linux
+    os: linux
+    connections:
+      docker:
+        protocol: docker
+        ip: 127.0.0.1
+    custom:
+      role: spoke
+      transport: docker
+      container: "%ENV{MYCELIUM_E2E_SPOKE2_CONTAINER, e2e-openclaw-spoke2}"
+      mycelium_backend_url: http://mycelium-backend:8000
