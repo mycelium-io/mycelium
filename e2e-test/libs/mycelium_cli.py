@@ -111,6 +111,9 @@ class MyceliumCLI:
 
     # ── Session commands ──────────────────────────────────────────────────
 
+    def session_create(self, room: str) -> CLIResult:
+        return self.run("--json", "session", "create", "--room", room, timeout=60)
+
     def session_join(self, room: str, handle: str, position: str = "") -> CLIResult:
         args = ["session", "join", "--room", room, "--handle", handle]
         if position:
@@ -129,12 +132,10 @@ class MyceliumCLI:
     # ── Negotiation commands ──────────────────────────────────────────────
 
     def negotiate_propose(self, room: str, handle: str, topic: str) -> CLIResult:
-        return self.run("negotiate", "propose", "--room", room, "--handle", handle,
-                        f"topic={topic}", timeout=60)
+        return self.run("negotiate", "propose", "--room", room, "--handle", handle, f"topic={topic}", timeout=60)
 
     def negotiate_respond(self, room: str, handle: str, action: str) -> CLIResult:
-        return self.run("negotiate", "respond", action,
-                        "--room", room, "--handle", handle, timeout=60)
+        return self.run("negotiate", "respond", action, "--room", room, "--handle", handle, timeout=60)
 
     def negotiate_query(self, room: str, text: str = "status") -> CLIResult:
         return self.run("negotiate", "query", text, "--room", room, timeout=30)
@@ -157,4 +158,3 @@ class MyceliumCLI:
 
     def doctor(self) -> CLIResult:
         return self.run("doctor", json_mode=True, timeout=30)
-

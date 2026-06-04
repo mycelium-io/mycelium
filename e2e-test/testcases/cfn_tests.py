@@ -211,10 +211,13 @@ class IocNegotiationPath(aetest.Testcase):
     def full_cfn_negotiation(self, steps, api, cli, cfn_node_svc, env, room_name):
         test_room = f"{room_name}-cfn-neg"
 
-        with steps.start("Create room and join two agents") as step:
+        with steps.start("Create room, session, and join two agents") as step:
             st, _ = api.create_room(test_room, description="CFN negotiation path test")
             if st not in (200, 201):
                 step.failed(f"Room creation failed: status={st}")
+            r = cli.session_create(test_room)
+            if not r.ok:
+                step.failed(f"session create failed: {r.error_message}")
             r = cli.session_join(test_room, "agent-alpha", position="Prefer microservices architecture")
             if not r.ok:
                 step.failed(f"agent-alpha join failed: {r.error_message}")

@@ -288,10 +288,13 @@ class CfnLlmCounters(aetest.Testcase):
             calls_before = _cfn_llm_counter(before, "calls")
             log.info("cfn_llm.calls before: %d", calls_before)
 
-        with steps.start("Create room and join two agents") as step:
+        with steps.start("Create room, session, and join two agents") as step:
             st, _ = api.create_room(test_room, description="cfn-llm counter test")
             if st not in (200, 201):
                 step.failed(f"Room creation failed: status={st}")
+            r = cli.session_create(test_room)
+            if not r.ok:
+                step.failed(f"session create failed: {r.error_message}")
             r = cli.session_join(test_room, "agent-alpha", position="Prioritize low latency")
             if not r.ok:
                 step.failed(f"agent-alpha join failed: {r.error_message}")
@@ -447,10 +450,13 @@ class SyncNegotiationCliE2E(aetest.Testcase):
     def sync_negotiation(self, steps, cli, api, room_name):
         test_room = f"{room_name}-sync-neg"
 
-        with steps.start("Create room and join agents") as step:
+        with steps.start("Create room, session, and join agents") as step:
             r = cli.room_create(test_room)
             if not r.ok:
                 step.failed(f"room create failed: {r.error_message}")
+            r = cli.session_create(test_room)
+            if not r.ok:
+                step.failed(f"session create failed: {r.error_message}")
             cli.session_join(test_room, "agent-alpha", position="I want fast iteration cycles")
             cli.session_join(test_room, "agent-beta", position="I want thorough testing")
 
