@@ -64,7 +64,12 @@ node -e "
   const tokens = JSON.parse(fs.readFileSync('$TOKEN_FILE', 'utf8')).tokens || {};
   const agents = '${AGENTS}'.split(' ').filter(Boolean);
   const rawModel = process.env.LLM_MODEL || 'anthropic/claude-sonnet-4-20250514';
-  const model = rawModel.startsWith('openai/') ? 'litellm/' + rawModel.slice(7) : rawModel;
+  // Strip openai/ prefix — it's a LiteLLM routing hint the backend uses,
+  // not understood by OpenClaw's native openai plugin.
+  const bareModel = rawModel.startsWith('openai/') ? rawModel.slice(7) : rawModel;
+  // For agent model refs, prefix with litellm/ so OpenClaw routes through
+  // the litellm provider rather than its built-in openai plugin.
+  const agentModel = 'litellm/' + bareModel;
   const baseUrl = process.env.LLM_BASE_URL || '';
   const apiKey = process.env.LLM_API_KEY || '';
 
@@ -104,8 +109,8 @@ node -e "
           api: 'openai-completions',
           models: [
             {
-              id: model,
-              name: model.split('/').pop(),
+              id: bareModel,
+              name: bareModel.split('/').pop(),
               reasoning: false,
               input: ['text'],
               contextWindow: 200000,
@@ -136,13 +141,13 @@ node -e "
     },
     agents: {
       defaults: {
-        model,
+        model: agentModel,
         compaction: { mode: 'safeguard' }
       },
       list: validAgents.map(id => ({
         id,
         name: id,
-        model,
+        model: agentModel,
         workspace: '$CONFIG_DIR/workspace-' + id
       }))
     }
@@ -154,7 +159,7 @@ node -e "
   const envLines = [
     'LLM_API_KEY=' + apiKey,
     'LLM_BASE_URL=' + baseUrl,
-    'LLM_MODEL=' + model,
+    'LLM_MODEL=' + bareModel,
     ''
   ].join('\n');
   fs.writeFileSync('$CONFIG_DIR/gateway.systemd.env', envLines);
@@ -162,7 +167,8 @@ node -e "
   console.log('[openclaw-entrypoint] Config written to $CONFIG_DIR/openclaw.json');
   console.log('[openclaw-entrypoint] Env written to $CONFIG_DIR/gateway.systemd.env');
   console.log('[openclaw-entrypoint] Agents: ' + validAgents.join(', '));
-  console.log('[openclaw-entrypoint] Provider: litellm / ' + model);
+  console.log('[openclaw-entrypoint] Provider model ID: ' + bareModel);
+  console.log('[openclaw-entrypoint] Agent model ref: ' + agentModel);
 "
 
 echo "[openclaw-entrypoint] Starting gateway..."

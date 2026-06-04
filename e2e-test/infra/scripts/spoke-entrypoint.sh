@@ -86,7 +86,8 @@ node -e "
   const tokens = JSON.parse(fs.readFileSync('$TOKEN_FILE', 'utf8')).tokens || {};
   const agents = '${AGENTS}'.split(' ').filter(Boolean);
   const rawModel = process.env.LLM_MODEL || 'anthropic/claude-sonnet-4-20250514';
-  const model = rawModel.startsWith('openai/') ? 'litellm/' + rawModel.slice(7) : rawModel;
+  const bareModel = rawModel.startsWith('openai/') ? rawModel.slice(7) : rawModel;
+  const agentModel = 'litellm/' + bareModel;
   const baseUrl = process.env.LLM_BASE_URL || '';
   const apiKey = process.env.LLM_API_KEY || '';
 
@@ -126,8 +127,8 @@ node -e "
           api: 'openai-completions',
           models: [
             {
-              id: model,
-              name: model.split('/').pop(),
+              id: bareModel,
+              name: bareModel.split('/').pop(),
               reasoning: false,
               input: ['text'],
               contextWindow: 200000,
@@ -158,13 +159,13 @@ node -e "
     },
     agents: {
       defaults: {
-        model,
+        model: agentModel,
         compaction: { mode: 'safeguard' }
       },
       list: validAgents.map(id => ({
         id,
         name: id,
-        model,
+        model: agentModel,
         workspace: '$CONFIG_DIR/workspace-' + id
       }))
     }
@@ -176,7 +177,7 @@ node -e "
   const envLines = [
     'LLM_API_KEY=' + apiKey,
     'LLM_BASE_URL=' + baseUrl,
-    'LLM_MODEL=' + model,
+    'LLM_MODEL=' + bareModel,
     ''
   ].join('\n');
   fs.writeFileSync('$CONFIG_DIR/gateway.systemd.env', envLines);
