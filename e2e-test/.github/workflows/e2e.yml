@@ -1,5 +1,46 @@
 name: E2E Tests
 
+# This workflow tests the **mycelium** product end-to-end. There are
+# three trigger paths:
+#
+# 1. Local CI for changes to this repo (e2e tooling): push to any
+#    non-main branch + PRs into main. These default to the `pr` suite.
+#
+# 2. Schedule:
+#    - 05:00 UTC daily → `nightly` suite (pr + nightly tiers)
+#    - 06:00 UTC Monday → `weekly_full` suite (legacy comprehensive)
+#
+# 3. **Cross-repo dispatch from the mycelium repo.** A mycelium PR or
+#    branch CI fires a ``repository_dispatch`` event into this repo and
+#    we run the matrix against the requested mycelium ref. Convention:
+#    mycelium PR branches are named ``PR<n>`` (e.g. ``PR123``).
+#
+#    From the mycelium repo:
+#
+#        - uses: peter-evans/repository-dispatch@v3
+#          with:
+#            token: ${{ secrets.E2E_REPO_PAT }}
+#            repository: mycelium-io/mycelium-e2e-test
+#            event-type: mycelium-pr-test
+#            client-payload: |
+#              {
+#                "mycelium_ref": "${{ github.event.pull_request.head.sha }}",
+#                "pr_number": "${{ github.event.pull_request.number }}",
+#                "suite": "pr"
+#              }
+#
+#    Event types:
+#    - ``mycelium-pr-test``   → defaults to suite=`pr`     (~30min budget)
+#    - ``mycelium-nightly``   → defaults to suite=`nightly`
+#    - ``mycelium-full-test`` → defaults to suite=`weekly_full`
+#
+#    Payload fields (all optional except mycelium_ref):
+#    - ``mycelium_ref``    (required) branch / tag / SHA in mycelium repo
+#    - ``pr_number``       displayed in job name for traceability
+#    - ``suite``           overrides the event-type default
+#    - ``spoke_adapters``  e.g. ``"openclaw,cursor,hermes"``
+#    - ``datafile``        relative to data/
+
 on:
   push:
     branches:
@@ -8,15 +49,25 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    - cron: '0 6 * * 1'  # Weekly Monday 6am UTC
+    # Nightly @ 05:00 UTC — runs the `pr,nightly` tier set.
+    - cron: '0 5 * * *'
+    # Weekly Monday @ 06:00 UTC — runs the legacy full suite.
+    - cron: '0 6 * * 1'
+  repository_dispatch:
+    types:
+      - mycelium-pr-test
+      - mycelium-nightly
+      - mycelium-full-test
   workflow_dispatch:
     inputs:
       suite:
         description: 'Suite to run'
         type: choice
-        default: 'weekly_full'
+        default: 'pr'
         options:
-          - weekly_full
+          - pr          # three-axis matrix, pr tier only (~30min budget)
+          - nightly     # three-axis matrix, pr+nightly tiers
+          - weekly_full # legacy full suite (core/distributed/convergence/integration/cursor)
           - sanity
           - core
           - convergence
@@ -35,22 +86,41 @@ on:
       mycelium_ref:
         description: 'Mycelium repo ref — leave empty or "main" to use release install; set a branch/tag/SHA to build from source'
         default: ''
+      spoke_adapters:
+        description: 'Comma-separated adapters to start on each spoke (openclaw,cursor,hermes)'
+        default: 'openclaw'
 
 env:
   COMPOSE_FILE: infra/compose.e2e.yaml
-  MYCELIUM_IMAGE_TAG: ${{ github.event.inputs.image_tag || 'latest' }}
+  MYCELIUM_IMAGE_TAG: ${{ github.event.inputs.image_tag || github.event.client_payload.image_tag || 'latest' }}
   MYCELIUM_STUB_EMBEDDINGS: ${{ github.event.inputs.stub_embeddings == 'false' && '0' || '1' }}
   MYCELIUM_DB_PASSWORD: password
   CFN_NAME: mycelium-cfn
   LLM_MODEL: ${{ secrets.LLM_MODEL || vars.LLM_MODEL || '' }}
   LLM_API_KEY: ${{ secrets.LLM_API_KEY || vars.LLM_API_KEY || '' }}
   LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || vars.LLM_BASE_URL || '' }}
+  # Spokes default to openclaw-only for legacy parity; PR / nightly /
+  # full runs from the mycelium repo can override via the
+  # ``spoke_adapters`` workflow input or client_payload field.
+  SPOKE_ADAPTERS: ${{ github.event.inputs.spoke_adapters || github.event.client_payload.spoke_adapters || 'openclaw' }}
 
 jobs:
   e2e:
-    name: E2E Suite (${{ github.event.inputs.suite || 'weekly_full' }})
+    # Effective suite selection (cascaded; first match wins):
+    #   1. workflow_dispatch input  → user-chosen via UI
+    #   2. repository_dispatch.client_payload.suite override → mycelium CI explicit choice
+    #   3. repository_dispatch event type default:
+    #         mycelium-pr-test    → pr
+    #         mycelium-nightly    → nightly
+    #         mycelium-full-test  → weekly_full
+    #   4. schedule cron string    → nightly (05:00) or weekly_full (06:00 Mon)
+    #   5. fallback (push / PR)    → pr
+    #
+    # Job-level timeout is the kill-switch; per-tier wall-clock is
+    # capped tighter by `compute_timeout_seconds` in scenarios.py.
+    name: ${{ format('E2E {0}{1}', github.event.inputs.suite || github.event.client_payload.suite || (github.event.action == 'mycelium-pr-test' && 'pr') || (github.event.action == 'mycelium-nightly' && 'nightly') || (github.event.action == 'mycelium-full-test' && 'weekly_full') || (github.event_name == 'schedule' && github.event.schedule == '0 6 * * 1' && 'weekly_full') || (github.event_name == 'schedule' && 'nightly') || 'pr', github.event.client_payload.pr_number && format(' (mycelium #{0})', github.event.client_payload.pr_number) || '') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: ${{ fromJSON('{"pr":40,"nightly":90,"weekly_full":130,"sanity":40,"core":90,"convergence":60,"distributed":90,"integration":90}')[github.event.inputs.suite || github.event.client_payload.suite || (github.event.action == 'mycelium-pr-test' && 'pr') || (github.event.action == 'mycelium-nightly' && 'nightly') || (github.event.action == 'mycelium-full-test' && 'weekly_full') || (github.event_name == 'schedule' && github.event.schedule == '0 6 * * 1' && 'weekly_full') || (github.event_name == 'schedule' && 'nightly') || 'pr'] }}
 
     steps:
       - name: Checkout e2e-test repo
@@ -63,9 +133,62 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Determine build mode
+      # Centralised "what is this run?" resolution. Every downstream
+      # step references ``steps.resolve.outputs.{suite,mycelium_ref,
+      # pr_number,datafile}`` so the cascading expression isn't
+      # repeated in 5 different places.
+      - name: Resolve run parameters
+        id: resolve
+        env:
+          INPUT_SUITE: ${{ github.event.inputs.suite }}
+          INPUT_REF: ${{ github.event.inputs.mycelium_ref }}
+          INPUT_DATAFILE: ${{ github.event.inputs.datafile }}
+          PAYLOAD_SUITE: ${{ github.event.client_payload.suite }}
+          PAYLOAD_REF: ${{ github.event.client_payload.mycelium_ref }}
+          PAYLOAD_DATAFILE: ${{ github.event.client_payload.datafile }}
+          PAYLOAD_PR: ${{ github.event.client_payload.pr_number }}
+          DISPATCH_ACTION: ${{ github.event.action }}
+          EVENT_SCHED: ${{ github.event.schedule }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          REF="${{ github.event.inputs.mycelium_ref }}"
+          # ── suite ───────────────────────────────────────────────────
+          if [ -n "$INPUT_SUITE" ]; then
+            SUITE="$INPUT_SUITE"
+          elif [ -n "$PAYLOAD_SUITE" ]; then
+            SUITE="$PAYLOAD_SUITE"
+          elif [ "$DISPATCH_ACTION" = "mycelium-pr-test" ]; then
+            SUITE="pr"
+          elif [ "$DISPATCH_ACTION" = "mycelium-nightly" ]; then
+            SUITE="nightly"
+          elif [ "$DISPATCH_ACTION" = "mycelium-full-test" ]; then
+            SUITE="weekly_full"
+          elif [ "$EVENT_NAME" = "schedule" ] && [ "$EVENT_SCHED" = "0 6 * * 1" ]; then
+            SUITE="weekly_full"
+          elif [ "$EVENT_NAME" = "schedule" ]; then
+            SUITE="nightly"
+          else
+            SUITE="pr"
+          fi
+
+          # ── mycelium_ref ────────────────────────────────────────────
+          MYCELIUM_REF="${INPUT_REF:-$PAYLOAD_REF}"
+
+          # ── datafile ────────────────────────────────────────────────
+          DATAFILE="${INPUT_DATAFILE:-${PAYLOAD_DATAFILE:-ci_datafile.yaml}}"
+
+          # ── PR number (only for cross-repo dispatch from mycelium) ─
+          PR_NUMBER="$PAYLOAD_PR"
+
+          echo "suite=$SUITE"          | tee -a "$GITHUB_OUTPUT"
+          echo "mycelium_ref=$MYCELIUM_REF" | tee -a "$GITHUB_OUTPUT"
+          echo "datafile=$DATAFILE"    | tee -a "$GITHUB_OUTPUT"
+          echo "pr_number=$PR_NUMBER"  | tee -a "$GITHUB_OUTPUT"
+          [ -n "$PR_NUMBER" ] && echo "ℹ️  Triggered from mycelium PR #$PR_NUMBER"
+
+      - name: Determine build mode
+        env:
+          REF: ${{ steps.resolve.outputs.mycelium_ref }}
+        run: |
           if [ -n "$REF" ] && [ "$REF" != "main" ]; then
             echo "BUILD_FROM_SOURCE=true" >> "$GITHUB_ENV"
             echo "Building mycelium from source (ref=$REF)"
@@ -79,7 +202,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: mycelium-io/mycelium
-          ref: ${{ github.event.inputs.mycelium_ref }}
+          ref: ${{ steps.resolve.outputs.mycelium_ref }}
           path: mycelium
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -390,19 +513,43 @@ jobs:
 
       - name: Run E2E tests
         env:
-          MYCELIUM_DATAFILE: ${{ github.event.inputs.datafile || 'ci_datafile.yaml' }}
+          MYCELIUM_DATAFILE: ${{ steps.resolve.outputs.datafile }}
+          SUITE: ${{ steps.resolve.outputs.suite }}
         run: |
-          SUITE="${{ github.event.inputs.suite || 'weekly_full' }}"
-          JOB_FILE="jobs/${SUITE}_job.py"
+          # Map suite → job file + tier env + testbed file. New
+          # matrix-driven suites (pr, nightly) use scenarios_suite.py
+          # via dedicated job files; legacy suites keep their existing
+          # ``jobs/<suite>_job.py`` wiring.
+          TESTBED_ARGS=()
+          case "$SUITE" in
+            pr)
+              JOB_FILE="jobs/pr_job.py"
+              export MYCELIUM_E2E_TIERS=pr
+              TESTBED_ARGS=(--testbed-file testbeds/compose.yaml)
+              ;;
+            nightly)
+              JOB_FILE="jobs/nightly_e2e_job.py"
+              export MYCELIUM_E2E_TIERS=pr,nightly
+              TESTBED_ARGS=(--testbed-file testbeds/compose.yaml)
+              ;;
+            weekly_full)
+              JOB_FILE="jobs/weekly_e2e_job.py"
+              ;;
+            *)
+              JOB_FILE="jobs/${SUITE}_job.py"
+              ;;
+          esac
 
-          if [ "$SUITE" = "weekly_full" ]; then
-            JOB_FILE="jobs/weekly_e2e_job.py"
-          fi
+          echo "Suite:    $SUITE"
+          echo "Job file: $JOB_FILE"
+          echo "Datafile: $MYCELIUM_DATAFILE"
+          [ -n "${MYCELIUM_E2E_TIERS:-}" ] && echo "Tiers:    $MYCELIUM_E2E_TIERS"
+          [ ${#TESTBED_ARGS[@]} -gt 0 ] && echo "Testbed:  ${TESTBED_ARGS[*]}"
 
-          echo "Running: pyats run job $JOB_FILE (MYCELIUM_DATAFILE=$MYCELIUM_DATAFILE)"
           mkdir -p artifacts/pyats-runinfo artifacts/pyats-archive
 
           uv run pyats run job "$JOB_FILE" \
+            "${TESTBED_ARGS[@]}" \
             --html-logs artifacts \
             --runinfo-dir artifacts/pyats-runinfo \
             --archive-dir artifacts/pyats-archive \

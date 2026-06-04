@@ -25,6 +25,54 @@ def get_datafile(env_var: str = "MYCELIUM_DATAFILE", default: str = "base_datafi
     return datafile
 
 
+def get_testbed_file(
+    env_var: str = "MYCELIUM_TESTBED_FILE",
+    default: str | None = None,
+) -> str | None:
+    """Resolve the pyATS testbed file path from env var or default.
+
+    Returns ``None`` when neither the env var nor the default is set —
+    pyATS treats a missing testbed as "no devices" which is fine for
+    legacy jobs that don't need device resolution. The new scenario
+    suite always passes a testbed file via CLI (``--testbed-file``)
+    so this helper is mostly used for documentation / fallback paths.
+
+    A bare filename (no ``/``) is resolved against ``testbeds/`` so
+    callers can pass ``"compose.yaml"`` interchangeably with
+    ``"testbeds/compose.yaml"``.
+    """
+    raw = os.environ.get(env_var, default)
+    if not raw:
+        return None
+    if os.path.isabs(raw):
+        return raw
+    if os.sep in raw or raw.startswith("testbeds/"):
+        return os.path.join(_ROOT, raw)
+    return os.path.join(_ROOT, "testbeds", raw)
+
+
+def ensure_tier_env(default: str = "all") -> str:
+    """Ensure ``MYCELIUM_E2E_TIERS`` is set; return the effective value.
+
+    Job files use this to *set* the tier when one isn't provided by
+    the workflow (``pr_job.py`` defaults to ``"pr"``,
+    ``nightly_e2e_job.py`` defaults to ``"pr,nightly"``) — the env var
+    is the source of truth used by
+    :func:`testcases.scenarios.active_tiers` so the import-time class
+    generation in :mod:`suites.scenarios_suite` picks up the right
+    rows.
+
+    Setting via env (rather than passing through ``run()``) keeps the
+    contract symmetrical between job-driven and ad-hoc runs (``pyats
+    run job …`` and ``MYCELIUM_E2E_TIERS=pr pyats run job …``).
+    """
+    existing = os.environ.get("MYCELIUM_E2E_TIERS")
+    if existing:
+        return existing
+    os.environ["MYCELIUM_E2E_TIERS"] = default
+    return default
+
+
 def get_max_failures(datafile_path: str | None = None) -> int | None:
     """Read max_failures from the datafile or MAX_FAILURES env var.
 
