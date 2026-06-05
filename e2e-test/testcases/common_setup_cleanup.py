@@ -241,8 +241,27 @@ class MyceliumCommonSetup(aetest.CommonSetup):
         import subprocess
 
         for label, cmd in [
-            ("openclaw.json", ["docker", "exec", "e2e-openclaw-hub", "cat", "/root/.openclaw/openclaw.json"]),
-            ("openclaw status", ["docker", "exec", "e2e-openclaw-hub", "openclaw", "status"]),
+            (
+                "openclaw.json",
+                [
+                    "docker",
+                    "exec",
+                    "e2e-openclaw-hub",
+                    "sh",
+                    "-c",
+                    "cat $HOME/.openclaw/openclaw.json",
+                ],
+            ),
+            (
+                "openclaw status",
+                [
+                    "docker",
+                    "exec",
+                    "e2e-openclaw-hub",
+                    "openclaw",
+                    "status",
+                ],
+            ),
         ]:
             try:
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
