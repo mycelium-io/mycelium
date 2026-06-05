@@ -15,10 +15,10 @@ import time
 
 from pyats import aetest
 
-from libs.mycelium_api import MyceliumAPI
-from libs.mycelium_cli import MyceliumCLI
 from libs.cfn_api import CfnMgmtAPI, CfnNodeSvcAPI
 from libs.environment import EnvironmentInfo, detect_environment
+from libs.mycelium_api import MyceliumAPI
+from libs.mycelium_cli import MyceliumCLI
 from libs.openclaw import (
     reset_agent_sessions,
     trim_agent_sessions,
@@ -66,13 +66,17 @@ class MyceliumCommonSetup(aetest.CommonSetup):
 
         testscript.parameters["matrix_url"] = matrix_url
         testscript.parameters["matrix_config"] = {
-            k: self._resolve_env(v) if isinstance(v, str) else v
-            for k, v in matrix_cfg.items()
+            k: self._resolve_env(v) if isinstance(v, str) else v for k, v in matrix_cfg.items()
         }
         testscript.parameters["backend_url"] = backend_url
 
-        log.info("Clients initialized: backend=%s cfn_mgmt=%s cfn_svc=%s matrix=%s",
-                 backend_url, cfn_mgmt_url, cfn_svc_url, matrix_url)
+        log.info(
+            "Clients initialized: backend=%s cfn_mgmt=%s cfn_svc=%s matrix=%s",
+            backend_url,
+            cfn_mgmt_url,
+            cfn_svc_url,
+            matrix_url,
+        )
 
     @aetest.subsection
     def configure_cli(self, testscript, shared_mycelium_room="mycelium_room"):
@@ -134,9 +138,13 @@ class MyceliumCommonSetup(aetest.CommonSetup):
         if not env.backend_reachable:
             self.failed("Backend unreachable — cannot proceed", goto=["common_cleanup"])
 
-        log.info("Environment: llm=%s cfn=%s matrix=%s blocked=%s",
-                 not env.skip_llm_tests, not env.skip_cfn_tests,
-                 not env.skip_matrix_tests, env.coordination_blocked_reason)
+        log.info(
+            "Environment: llm=%s cfn=%s matrix=%s blocked=%s",
+            not env.skip_llm_tests,
+            not env.skip_cfn_tests,
+            not env.skip_matrix_tests,
+            env.coordination_blocked_reason,
+        )
 
     @aetest.subsection
     def provision_cfn_ids(self, testscript):
@@ -226,6 +234,22 @@ class MyceliumCommonSetup(aetest.CommonSetup):
             log.warning("Agents still busy after 15s: %s", busy)
         else:
             log.info("All agents idle")
+
+    @aetest.subsection
+    def dump_openclaw_diagnostics(self, testscript):
+        """Print openclaw.json and gateway status for debug visibility."""
+        import subprocess
+
+        for label, cmd in [
+            ("openclaw.json", ["docker", "exec", "e2e-openclaw-hub", "cat", "/root/.openclaw/openclaw.json"]),
+            ("openclaw status", ["docker", "exec", "e2e-openclaw-hub", "openclaw", "status"]),
+        ]:
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+                output = result.stdout.strip() or result.stderr.strip()
+                log.info("=== %s ===\n%s", label, output[:4000])
+            except Exception as exc:
+                log.warning("Could not get %s: %s", label, exc)
 
     # ── Helpers ───────────────────────────────────────────────────────────
 
