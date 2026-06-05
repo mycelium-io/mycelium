@@ -367,18 +367,6 @@ jobs:
             --step=otel \
             --yes 2>&1 || echo "WARNING: otel step skipped (non-fatal)"
 
-          echo "Restarting OpenClaw hub to pick up adapter plugin..."
-          docker restart e2e-openclaw-hub
-          echo "Waiting for hub to become healthy..."
-          for i in $(seq 1 30); do
-            STATUS=$(docker inspect --format='{{.State.Health.Status}}' e2e-openclaw-hub 2>/dev/null || echo "unknown")
-            if [ "$STATUS" = "healthy" ]; then
-              echo "Hub healthy after ~${i}s"
-              break
-            fi
-            sleep 1
-          done
-
           echo "Patching openclaw.json with mycelium plugin + channel..."
           docker exec e2e-openclaw-hub node -e '
             const fs = require("fs");
@@ -408,16 +396,9 @@ jobs:
             console.log("Patched: channels=" + Object.keys(cfg.channels).join(", "));
           '
 
-          echo "Restarting gateway to load patched config..."
-          docker exec e2e-openclaw-hub openclaw gateway restart 2>&1 || docker restart e2e-openclaw-hub
-          for i in $(seq 1 30); do
-            STATUS=$(docker inspect --format='{{.State.Health.Status}}' e2e-openclaw-hub 2>/dev/null || echo "unknown")
-            if [ "$STATUS" = "healthy" ]; then
-              echo "Hub healthy after second restart (~${i}s)"
-              break
-            fi
-            sleep 1
-          done
+          echo "Restarting gateway process (not container) to load patched config..."
+          docker exec e2e-openclaw-hub openclaw gateway restart
+          sleep 5
           docker inspect --format='{{.State.Status}} (health={{.State.Health.Status}})' e2e-openclaw-hub
 
       - name: Run E2E tests
