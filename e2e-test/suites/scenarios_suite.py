@@ -32,10 +32,16 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
+from libs.host_exec import HostExecError  # noqa: E402 - sys.path tweak first
 from libs.lab_redeploy import (  # noqa: E402 - sys.path tweak first
     LabCleanupMode,
     LabRedeployConfig,
     redeploy_testbed,
+)
+from libs.provisioners import (  # noqa: E402 - sys.path tweak first
+    AgentRef,
+    PrereqMissing,
+    get_provisioner,
 )
 from testcases.scenarios import (  # noqa: E402 - sys.path tweak first
     active_tiers,
@@ -120,14 +126,23 @@ def _redeploy_config_from_env() -> LabRedeployConfig:
 
 
 class LabRedeployCommonSetup(aetest.CommonSetup):
-    """Opt-in pre-suite lab redeploy.
+    """Pre-suite setup: optional lab redeploy + matrix-agent provisioning.
 
-    Fires only when ``MYCELIUM_LAB_REDEPLOY=1`` is set. When inactive
-    the single subsection short-circuits with ``self.skipped(...)`` —
-    cheap enough to leave wired up on the compose path. When active,
-    iterates the testbed hub-first and runs the full reset/install
-    flow; a single device failure marks the entire suite skipped (we
-    can't run scenarios against half a stack)."""
+    Subsections, in order:
+
+    1. ``redeploy_lab`` — opt-in (``MYCELIUM_LAB_REDEPLOY=1``).
+       Wipes and reinstalls the Mycelium stack on every device in the
+       testbed. Compose paths skip this; only used against persistent
+       lab hardware.
+    2. ``provision_matrix_agents`` — always runs (unless explicitly
+       disabled). Walks ``_ACTIVE_ROWS``, collects unique
+       ``(adapter, handle, host)`` tuples, and calls
+       ``Provisioner.ensure_runtime`` on each. The resulting
+       :class:`AgentRef` map is stashed in
+       ``testscript.parameters['matrix_agents_provisioned']`` so
+       per-test setup can do the lightweight ``register_in_room``
+       step instead of repeating the heavy spawn each scenario.
+    """
 
     @aetest.subsection
     def redeploy_lab(self, testscript, testbed=None):
@@ -164,6 +179,177 @@ class LabRedeployCommonSetup(aetest.CommonSetup):
         if failed:
             details = "; ".join(f"{r.device_name}={r.error}" for r in failed)
             self.failed(f"Lab redeploy failed on {len(failed)} device(s): {details}")
+
+    @aetest.subsection
+    def provision_matrix_agents(self, testscript, testbed=None):
+        """Idempotently provision every agent the active rows need.
+
+        For each unique ``(adapter, handle, host)`` in
+        ``_ACTIVE_ROWS``:
+
+        - Resolve the host name to a pyATS Device on the testbed.
+        - ``check_prereqs(device)`` — surface missing adapters as
+          a single skipped subsection rather than a swarm of
+          per-scenario skips later.
+        - ``ensure_runtime(device, handle)`` — heavyweight idempotent
+          create. Defaults to no-op for cursor/hermes; openclaw
+          actually spawns the OpenClaw runtime + writes a manifest
+          in the bootstrap room.
+
+        Stashes a ``(adapter, handle, host) -> AgentRef`` map in
+        ``testscript.parameters['matrix_agents_provisioned']``.
+
+        Opt out via ``MYCELIUM_E2E_SKIP_AGENT_PROVISIONING=1`` for
+        environments where agents are pre-baked and creating them
+        again would fail (e.g. running scenarios against a shared
+        prod-like environment for smoke-testing).
+        """
+        if os.environ.get("MYCELIUM_E2E_SKIP_AGENT_PROVISIONING", "").lower() in {
+            "1",
+            "true",
+            "yes",
+        }:
+            log.info("provision_matrix_agents: skipped via env opt-out")
+            testscript.parameters["matrix_agents_provisioned"] = {}
+            self.skipped("MYCELIUM_E2E_SKIP_AGENT_PROVISIONING set")
+
+        if testbed is None:
+            self.skipped(
+                "no testbed available; provision_matrix_agents requires host -> device resolution",
+            )
+
+        if not _ACTIVE_ROWS:
+            log.info("provision_matrix_agents: no active rows; nothing to do")
+            testscript.parameters["matrix_agents_provisioned"] = {}
+            return
+
+        # Build a deduped set of (adapter, handle, host) tuples
+        # across every active row. ``ensure_runtime`` is idempotent
+        # so re-running for the same handle is fine, but
+        # de-duplicating here keeps the subsection logs scannable.
+        wants: set[tuple[str, str, str]] = set()
+        for row in _ACTIVE_ROWS:
+            for ag in row.get("agents", []):
+                wants.add((ag["adapter"], ag["handle"], ag["host"]))
+
+        log.info(
+            "provision_matrix_agents: ensuring %d unique agent(s) across %d row(s)",
+            len(wants),
+            len(_ACTIVE_ROWS),
+        )
+
+        provisioned: dict[tuple[str, str, str], AgentRef] = {}
+        failures: list[str] = []
+        for adapter, handle, host in sorted(wants):
+            device = testbed.devices.get(host)
+            if device is None:
+                failures.append(f"{handle}@{host}: testbed has no device named {host!r}")
+                continue
+
+            try:
+                provisioner = get_provisioner(adapter)
+            except KeyError as exc:
+                failures.append(f"{handle}@{host}: {exc}")
+                continue
+
+            try:
+                provisioner.check_prereqs(device)
+            except (PrereqMissing, HostExecError) as exc:
+                failures.append(f"{handle}@{host} ({adapter}): prereq missing — {exc}")
+                continue
+
+            try:
+                ref = provisioner.ensure_runtime(device, handle)
+            except PrereqMissing as exc:
+                failures.append(f"{handle}@{host} ({adapter}): ensure_runtime — {exc}")
+                continue
+            except HostExecError as exc:
+                failures.append(f"{handle}@{host} ({adapter}): transport — {exc}")
+                continue
+
+            provisioned[(adapter, handle, host)] = ref
+            log.info(
+                "  ✓ %s/%s on %s (pre_existing=%s)",
+                adapter,
+                handle,
+                host,
+                ref.metadata.get("pre_existing", "n/a"),
+            )
+
+        testscript.parameters["matrix_agents_provisioned"] = provisioned
+
+        if failures:
+            # Bail noisily — scenarios that depend on these agents
+            # would skip with confusing errors otherwise. Listing
+            # them all in one go is friendlier than 30 separate
+            # "prereq missing" skips downstream.
+            joined = "\n  ".join(failures)
+            self.failed(f"provision_matrix_agents: {len(failures)} agent(s) could not be ensured:\n  {joined}")
+
+
+class MatrixCommonCleanup(aetest.CommonCleanup):
+    """Suite-level teardown for matrix-provisioned agents.
+
+    Gates on ``MYCELIUM_E2E_KEEP_AGENTS`` — devs iterating on a
+    flaky scenario want their OpenClaw agents to stick around between
+    runs so they don't pay the spawn cost over and over. The lab CI
+    job leaves the env var unset and runs full teardown so successive
+    runs don't accumulate stale gateway-side state.
+    """
+
+    @aetest.subsection
+    def teardown_matrix_agents(self, testscript, testbed=None):
+        if os.environ.get("MYCELIUM_E2E_KEEP_AGENTS", "").lower() in {
+            "1",
+            "true",
+            "yes",
+        }:
+            self.skipped(
+                "MYCELIUM_E2E_KEEP_AGENTS set — leaving runtime agents alive",
+            )
+
+        if testbed is None:
+            self.skipped("no testbed; runtime teardown needs device handles")
+
+        provisioned: dict[tuple[str, str, str], AgentRef] = testscript.parameters.get("matrix_agents_provisioned") or {}
+        if not provisioned:
+            log.info("teardown_matrix_agents: nothing to tear down")
+            return
+
+        for (adapter, handle, host), ref in sorted(provisioned.items()):
+            device = testbed.devices.get(host)
+            if device is None:
+                log.warning(
+                    "teardown_matrix_agents: %s/%s — device %r vanished, skipping",
+                    adapter,
+                    handle,
+                    host,
+                )
+                continue
+            try:
+                provisioner = get_provisioner(adapter)
+            except KeyError:
+                # An adapter that was loadable in setup but isn't
+                # now would be a very weird state — log and move on
+                # rather than blocking teardown.
+                log.warning(
+                    "teardown_matrix_agents: %s/%s — provisioner %r gone, skipping",
+                    adapter,
+                    handle,
+                    adapter,
+                )
+                continue
+
+            try:
+                provisioner.teardown_runtime(device, ref)
+                log.info("  ✓ tore down %s/%s on %s", adapter, handle, host)
+            except Exception as exc:  # noqa: BLE001 - teardown is best-effort
+                log.warning(
+                    "  ✗ %s/%s teardown failed (ignored): %s",
+                    adapter,
+                    handle,
+                    exc,
+                )
 
 
 # Inject generated classes into the module namespace so pyATS's class

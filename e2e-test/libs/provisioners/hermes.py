@@ -19,13 +19,22 @@ from typing import Any, ClassVar
 
 from libs import host_exec
 from libs.host_exec import HostExecError
-from libs.provisioners.base import AgentRef, PrereqMissing
+from libs.provisioners.base import ABCProvisioner, AgentRef, PrereqMissing
 
 log = logging.getLogger(__name__)
 
 
-class HermesProvisioner:
-    """Provisioner for the hermes adapter."""
+class HermesProvisioner(ABCProvisioner):
+    """Provisioner for the hermes adapter.
+
+    Hermes agents are created on demand by the gateway plugin and
+    auto-attend any coordination session they're subscribed to;
+    there's no separate runtime to spawn. The two-phase lifecycle
+    therefore collapses to ``ensure_runtime`` = no-op (inherited),
+    and ``register_in_room`` / ``unregister_from_room`` forward to
+    legacy ``create_agent`` / ``cleanup_agent`` via the defaults in
+    :class:`ABCProvisioner`.
+    """
 
     name: ClassVar[str] = "hermes"
 

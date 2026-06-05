@@ -1,9 +1,12 @@
 """Unit tests for :mod:`libs.provisioners.openclaw`.
 
-Covers prereq checks, idempotent create_agent (verify-only in stage 1),
-the wake_agent role gate, and cleanup best-effort semantics. All
-subprocess calls are stubbed via :mod:`unittest.mock` so the tests run
-without any infrastructure.
+Covers the two-phase lifecycle introduced in the matrix refactor:
+``ensure_runtime`` (heavy, idempotent, suite-level) and
+``register_in_room`` (lightweight, per-test), plus
+``unregister_from_room``, ``teardown_runtime``, the wake_agent role
+gate, and cleanup best-effort semantics. All subprocess calls are
+stubbed via :mod:`unittest.mock` so the tests run without any
+infrastructure.
 """
 
 from __future__ import annotations
@@ -15,6 +18,7 @@ from unittest.mock import patch
 import pytest
 
 from libs.provisioners import PrereqMissing
+from libs.provisioners.base import BOOTSTRAP_ROOM, AgentRef
 from libs.provisioners.openclaw import OpenClawProvisioner
 
 
@@ -27,8 +31,8 @@ def _ok(stdout: str = "", stderr: str = "") -> subprocess.CompletedProcess:
     return subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr=stderr)
 
 
-def _fail(stderr: str = "boom") -> subprocess.CompletedProcess:
-    return subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr=stderr)
+def _fail(stderr: str = "boom", rc: int = 1) -> subprocess.CompletedProcess:
+    return subprocess.CompletedProcess(args=[], returncode=rc, stdout="", stderr=stderr)
 
 
 # ── check_prereqs ───────────────────────────────────────────────────
@@ -47,31 +51,140 @@ def test_check_prereqs_raises_when_cli_missing():
             prov.check_prereqs(_device())
 
 
-# ── create_agent ────────────────────────────────────────────────────
+# ── ensure_runtime ──────────────────────────────────────────────────
 
 
-def test_create_agent_returns_ref_when_handle_present():
+def test_ensure_runtime_short_circuits_when_agent_already_present():
+    """Idempotent fast path: if `agent ls` shows the handle, no
+    create call is issued. This is the steady-state for repeated
+    suite runs."""
     prov = OpenClawProvisioner()
-    listing = "agent-alpha   openclaw   ready\nagent-beta    openclaw   ready"
-    with patch("libs.host_exec.execute", return_value=_ok(listing)) as mock_exec:
-        ref = prov.create_agent(_device(), handle="agent-alpha", room="r1")
-    assert ref.handle == "agent-alpha"
+
+    calls: list[list[str]] = []
+
+    def fake_execute(_device, argv, **_kwargs):
+        calls.append(list(argv))
+        if argv[:3] == ["mycelium", "room", "create"]:
+            return _ok()
+        if argv[:3] == ["mycelium", "agent", "ls"]:
+            return _ok("agent-alpha   openclaw   ready\nagent-beta   openclaw   ready")
+        # If we reach here the test caught a regression — log enough to debug.
+        raise AssertionError(f"unexpected call in fast path: {argv}")
+
+    with patch("libs.host_exec.execute", side_effect=fake_execute):
+        ref = prov.ensure_runtime(_device(), handle="agent-alpha")
+
     assert ref.adapter == "openclaw"
+    assert ref.handle == "agent-alpha"
+    assert ref.metadata["bootstrap_room"] == BOOTSTRAP_ROOM
+    assert ref.metadata["pre_existing"] is True
+    # Specifically: no `agent create` call was made.
+    assert not any(c[:3] == ["mycelium", "agent", "create"] for c in calls)
+
+
+def test_ensure_runtime_creates_when_agent_absent(monkeypatch):
+    """Slow path: agent missing from bootstrap room → run
+    ``mycelium agent create``. Seed agent (for --copy-auth-from)
+    pulled from the canonical env var."""
+    monkeypatch.setenv("MYCELIUM_E2E_OPENCLAW_SEED_AGENT", "seed-agent")
+
+    prov = OpenClawProvisioner()
+    calls: list[list[str]] = []
+
+    def fake_execute(_device, argv, **_kwargs):
+        calls.append(list(argv))
+        if argv[:3] == ["mycelium", "room", "create"]:
+            return _ok()
+        if argv[:3] == ["mycelium", "agent", "ls"]:
+            return _ok("")  # nothing in the bootstrap room
+        if argv[:3] == ["mycelium", "agent", "create"]:
+            return _ok("created")
+        raise AssertionError(f"unexpected call: {argv}")
+
+    with patch("libs.host_exec.execute", side_effect=fake_execute):
+        ref = prov.ensure_runtime(_device(), handle="agent-alpha")
+
+    assert ref.metadata["pre_existing"] is False
+    create_calls = [c for c in calls if c[:3] == ["mycelium", "agent", "create"]]
+    assert len(create_calls) == 1
+    create_argv = create_calls[0]
+    # Sanity: handle + adapter + bootstrap room + seed flag are all on the argv.
+    assert "agent-alpha" in create_argv
+    assert "--adapter" in create_argv and "openclaw" in create_argv
+    assert "--room" in create_argv and BOOTSTRAP_ROOM in create_argv
+    assert "--copy-auth-from" in create_argv and "seed-agent" in create_argv
+
+
+def test_ensure_runtime_propagates_create_failure(monkeypatch):
+    monkeypatch.delenv("MYCELIUM_E2E_OPENCLAW_SEED_AGENT", raising=False)
+    prov = OpenClawProvisioner()
+
+    def fake_execute(_device, argv, **_kwargs):
+        if argv[:3] == ["mycelium", "room", "create"]:
+            return _ok()
+        if argv[:3] == ["mycelium", "agent", "ls"]:
+            return _ok("")
+        if argv[:3] == ["mycelium", "agent", "create"]:
+            return _fail("LLM auth missing", rc=2)
+        return _ok()
+
+    with patch("libs.host_exec.execute", side_effect=fake_execute):
+        with pytest.raises(PrereqMissing, match="agent create failed"):
+            prov.ensure_runtime(_device(), handle="agent-alpha")
+
+
+# ── register_in_room ────────────────────────────────────────────────
+
+
+def test_register_in_room_calls_agent_add_with_room():
+    prov = OpenClawProvisioner()
+    with patch("libs.host_exec.execute", return_value=_ok("added")) as mock_exec:
+        ref = prov.register_in_room(_device(), handle="agent-alpha", room="r1")
+
+    assert ref.handle == "agent-alpha"
     assert ref.metadata["room"] == "r1"
     # Matrix token env follows the canonical convention
     assert ref.metadata["matrix_token_env"] == "MATRIX_TOKEN_AGENT_ALPHA"
-    # Regression: must pass --room so ``mycelium agent ls`` doesn't
-    # exit 1 with "No room specified" on a device with no active room.
+
     argv = mock_exec.call_args[0][1]
-    assert "--room" in argv
-    assert "r1" in argv
+    assert argv[:3] == ["mycelium", "agent", "add"]
+    assert "agent-alpha" in argv
+    assert "--room" in argv and "r1" in argv
 
 
-def test_create_agent_raises_when_handle_absent():
+def test_register_in_room_raises_on_failure():
     prov = OpenClawProvisioner()
-    with patch("libs.host_exec.execute", return_value=_ok("only-other-agent")):
-        with pytest.raises(PrereqMissing, match="agent-alpha"):
-            prov.create_agent(_device(), handle="agent-alpha", room="r1")
+    with patch("libs.host_exec.execute", return_value=_fail("agent not found")):
+        with pytest.raises(PrereqMissing, match="agent add"):
+            prov.register_in_room(_device(), handle="agent-alpha", room="r1")
+
+
+# ── legacy create_agent ─────────────────────────────────────────────
+
+
+def test_create_agent_chains_ensure_runtime_and_register():
+    """The legacy one-shot calls both phases so old callers keep
+    working without knowing about the split."""
+    prov = OpenClawProvisioner()
+    seen: list[list[str]] = []
+
+    def fake_execute(_device, argv, **_kwargs):
+        seen.append(list(argv))
+        if argv[:3] == ["mycelium", "room", "create"]:
+            return _ok()
+        if argv[:3] == ["mycelium", "agent", "ls"]:
+            return _ok("agent-alpha   openclaw   ready")  # already present
+        if argv[:3] == ["mycelium", "agent", "add"]:
+            return _ok("added")
+        raise AssertionError(f"unexpected: {argv}")
+
+    with patch("libs.host_exec.execute", side_effect=fake_execute):
+        ref = prov.create_agent(_device(), handle="agent-alpha", room="r1")
+
+    assert ref.metadata["room"] == "r1"
+    # Both ensure_runtime (room+ls, no create) and register_in_room (add) ran.
+    assert any(c[:3] == ["mycelium", "agent", "ls"] for c in seen)
+    assert any(c[:3] == ["mycelium", "agent", "add"] for c in seen)
 
 
 # ── wake_agent role gate ────────────────────────────────────────────
@@ -122,7 +235,99 @@ def test_wake_agent_posts_matrix_dm_when_spoke_and_env_set(monkeypatch):
     run.assert_called_once()
 
 
-# ── cleanup_agent ───────────────────────────────────────────────────
+# ── unregister_from_room ─────────────────────────────────────────────
+
+
+def test_unregister_from_room_calls_agent_rm_then_session_reset():
+    """The new unregister combines the legacy ``cleanup_agent``
+    session-reset with the manifest drop. Both should fire."""
+    prov = OpenClawProvisioner()
+    ref = _make_ref()
+
+    seen: list[list[str]] = []
+
+    def fake_execute(_device, argv, **_kwargs):
+        seen.append(list(argv))
+        if argv[:3] == ["mycelium", "agent", "rm"]:
+            return _ok("removed")
+        if argv[:2] == ["openclaw", "sessions"]:
+            return _ok('[{"key": "mycelium-room:r1:session:abc"}]')
+        if argv[:2] == ["openclaw", "gateway"]:
+            return _ok("ok")
+        return _ok()
+
+    with patch("libs.host_exec.execute", side_effect=fake_execute):
+        prov.unregister_from_room(_device(), ref, room="r1")
+
+    # 1) manifest drop ran
+    rm_calls = [c for c in seen if c[:3] == ["mycelium", "agent", "rm"]]
+    assert len(rm_calls) == 1
+    assert "--room" in rm_calls[0] and "r1" in rm_calls[0]
+
+    # 2) session reset ran for the mycelium-room session
+    reset_calls = [c for c in seen if c[:2] == ["openclaw", "gateway"]]
+    assert len(reset_calls) == 1
+    assert "mycelium-room:r1:session:abc" in reset_calls[0][-1]
+
+
+def test_unregister_from_room_swallows_rm_failure(caplog):
+    """If the manifest drop fails we still try the session reset."""
+    prov = OpenClawProvisioner()
+    ref = _make_ref()
+
+    def fake_execute(_device, argv, **_kwargs):
+        if argv[:3] == ["mycelium", "agent", "rm"]:
+            return _fail("not found")
+        if argv[:2] == ["openclaw", "sessions"]:
+            return _ok("[]")
+        return _ok()
+
+    with patch("libs.host_exec.execute", side_effect=fake_execute):
+        # Should not raise even though manifest drop "failed".
+        prov.unregister_from_room(_device(), ref, room="r1")
+
+    assert any("exited" in rec.message for rec in caplog.records)
+
+
+# ── teardown_runtime ────────────────────────────────────────────────
+
+
+def test_teardown_runtime_skips_pre_existing_agent():
+    prov = OpenClawProvisioner()
+    ref = AgentRef(
+        handle="agent-alpha",
+        adapter="openclaw",
+        device_name="hub",
+        metadata={"pre_existing": True, "bootstrap_room": BOOTSTRAP_ROOM},
+    )
+
+    with patch("libs.host_exec.execute") as mock_exec:
+        prov.teardown_runtime(_device(), ref)
+
+    # Pre-existing agents are operator-owned; we must NOT destroy them.
+    mock_exec.assert_not_called()
+
+
+def test_teardown_runtime_runs_full_rm_for_owned_agent():
+    prov = OpenClawProvisioner()
+    ref = AgentRef(
+        handle="agent-alpha",
+        adapter="openclaw",
+        device_name="hub",
+        metadata={"pre_existing": False, "bootstrap_room": BOOTSTRAP_ROOM},
+    )
+
+    with patch("libs.host_exec.execute", return_value=_ok("destroyed")) as mock_exec:
+        prov.teardown_runtime(_device(), ref)
+
+    argv = mock_exec.call_args[0][1]
+    assert argv[:3] == ["mycelium", "agent", "rm"]
+    assert "--full" in argv
+    assert "--force" in argv
+    assert "--room" in argv and BOOTSTRAP_ROOM in argv
+
+
+# ── legacy cleanup_agent ────────────────────────────────────────────
 
 
 def test_cleanup_agent_swallows_dispatch_failures(caplog):
@@ -172,8 +377,6 @@ def test_cleanup_agent_resets_listed_sessions():
 
 
 def _make_ref():
-    from libs.provisioners.base import AgentRef
-
     return AgentRef(
         handle="agent-alpha",
         adapter="openclaw",

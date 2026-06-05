@@ -25,13 +25,22 @@ from typing import Any, ClassVar
 
 from libs import host_exec
 from libs.host_exec import HostExecError
-from libs.provisioners.base import AgentRef, PrereqMissing
+from libs.provisioners.base import ABCProvisioner, AgentRef, PrereqMissing
 
 log = logging.getLogger(__name__)
 
 
-class CursorProvisioner:
-    """Provisioner for the cursor adapter."""
+class CursorProvisioner(ABCProvisioner):
+    """Provisioner for the cursor adapter.
+
+    Cursor doesn't carry cross-scenario runtime state — every test
+    gets a fresh workspace — so the two-phase lifecycle collapses to:
+    ``ensure_runtime`` is a no-op (inherited from
+    :class:`ABCProvisioner`), and ``register_in_room`` /
+    ``unregister_from_room`` forward to the legacy
+    ``create_agent`` / ``cleanup_agent`` methods. The defaults in
+    :class:`ABCProvisioner` make this wiring automatic.
+    """
 
     name: ClassVar[str] = "cursor"
 
