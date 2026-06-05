@@ -367,14 +367,22 @@ jobs:
             --step=otel \
             --yes 2>&1 || echo "WARNING: otel step skipped (non-fatal)"
 
-          echo "Restarting hub so mounted entrypoint regenerates config with mycelium channel..."
+          echo "Copying updated entrypoint into hub container..."
+          docker cp infra/scripts/openclaw-entrypoint.sh e2e-openclaw-hub:/openclaw/entrypoint.sh
+          docker exec e2e-openclaw-hub chmod +x /openclaw/entrypoint.sh
+
+          echo "Restarting hub so updated entrypoint regenerates config with mycelium channel..."
           docker restart e2e-openclaw-hub
           echo "Waiting for hub to become healthy..."
-          for i in $(seq 1 30); do
+          for i in $(seq 1 60); do
             STATUS=$(docker inspect --format='{{.State.Health.Status}}' e2e-openclaw-hub 2>/dev/null || echo "unknown")
             if [ "$STATUS" = "healthy" ]; then
               echo "Hub healthy after ~${i}s"
               break
+            fi
+            if [ "$i" -eq 60 ]; then
+              echo "WARNING: Hub not healthy after 60s, dumping logs..."
+              docker logs e2e-openclaw-hub --tail 40
             fi
             sleep 1
           done
