@@ -39,7 +39,12 @@ log = logging.getLogger(__name__)
 
 _DEFAULT_TIERS = "pr"
 _DEFAULT_TESTBED = "testbeds/compose.yaml"
-_DEFAULT_DATAFILE = "ci_datafile.yaml"
+# ``scenarios_datafile.yaml`` carries only the parameter blocks the
+# matrix-generated testcases consume. Using ``base_datafile.yaml`` (or
+# anything that extends it) errors because pyATS treats its legacy
+# ``testcases:`` block as authoritative and the matrix's dynamic class
+# names (``TwoAgentConsensus_oc_oc`` etc.) don't match those entries.
+_DEFAULT_DATAFILE = "scenarios_datafile.yaml"
 
 
 def main(runtime):

@@ -53,13 +53,18 @@ def test_check_prereqs_raises_when_cli_missing():
 def test_create_agent_returns_ref_when_handle_present():
     prov = OpenClawProvisioner()
     listing = "agent-alpha   openclaw   ready\nagent-beta    openclaw   ready"
-    with patch("libs.host_exec.execute", return_value=_ok(listing)):
+    with patch("libs.host_exec.execute", return_value=_ok(listing)) as mock_exec:
         ref = prov.create_agent(_device(), handle="agent-alpha", room="r1")
     assert ref.handle == "agent-alpha"
     assert ref.adapter == "openclaw"
     assert ref.metadata["room"] == "r1"
     # Matrix token env follows the canonical convention
     assert ref.metadata["matrix_token_env"] == "MATRIX_TOKEN_AGENT_ALPHA"
+    # Regression: must pass --room so ``mycelium agent ls`` doesn't
+    # exit 1 with "No room specified" on a device with no active room.
+    argv = mock_exec.call_args[0][1]
+    assert "--room" in argv
+    assert "r1" in argv
 
 
 def test_create_agent_raises_when_handle_absent():

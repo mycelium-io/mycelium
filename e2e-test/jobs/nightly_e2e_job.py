@@ -35,7 +35,9 @@ log = logging.getLogger(__name__)
 
 _DEFAULT_TIERS = "pr,nightly"
 _DEFAULT_TESTBED = "testbeds/compose.yaml"
-_DEFAULT_DATAFILE = "ci_datafile.yaml"
+# Matrix suite uses parameters-only datafile — see comment in
+# ``pr_job.py`` for the rationale.
+_DEFAULT_DATAFILE = "scenarios_datafile.yaml"
 
 
 def main(runtime):

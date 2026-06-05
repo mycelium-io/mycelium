@@ -168,7 +168,18 @@ class LabRedeployCommonSetup(aetest.CommonSetup):
 
 # Inject generated classes into the module namespace so pyATS's class
 # discovery picks them up. Names look like ``TwoAgentConsensus_oc_cu``.
+#
+# pyATS discovers testcase classes by walking the testscript's
+# ``__dict__`` and filtering on ``cls.__module__ == testscript_module``.
+# Our classes were created via ``type(name, (_ConsensusBase,), ...)``
+# inside ``testcases.scenarios.make_scenarios``, so they inherit that
+# module name and would otherwise be silently rejected. Rebrand each
+# class to this module so discovery (and downstream reporting) treats
+# them as native suite members.
 globals().update(_CLASSES)
+for _cls in _CLASSES.values():
+    _cls.__module__ = __name__
+    _cls.__qualname__ = _cls.__name__
 
 
 # ── direct-run entrypoint ───────────────────────────────────────────

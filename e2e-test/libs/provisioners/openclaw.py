@@ -77,20 +77,28 @@ class OpenClawProvisioner:
         them to be pre-configured. ``raise PrereqMissing`` if the
         handle is unknown so scenarios skip rather than fail.
         """
+        # Always scope to the target room. ``mycelium agent ls`` with
+        # no ``--room`` flag and no active room set exits 1 with a
+        # "No room specified" message — which we mistakenly took as a
+        # missing-agent signal until we noticed the scenario suite
+        # never sets ``rooms.active`` on the test device.
         try:
             result = host_exec.execute(
                 device,
-                ["mycelium", "agent", "ls"],
+                ["mycelium", "agent", "ls", "--room", room],
                 timeout=15.0,
             )
         except HostExecError as exc:
             raise PrereqMissing(f"openclaw: dispatch failed: {exc}") from exc
         if result.returncode != 0:
-            raise PrereqMissing(f"openclaw: `mycelium agent ls` exited {result.returncode}")
+            raise PrereqMissing(
+                f"openclaw: `mycelium agent ls --room {room}` exited "
+                f"{result.returncode}: {result.stderr.strip() or result.stdout.strip()}"
+            )
         if handle not in result.stdout:
             raise PrereqMissing(
                 f"openclaw: agent {handle!r} not found on "
-                f"{host_exec.describe(device)} - "
+                f"{host_exec.describe(device)} in room {room!r} — "
                 "stage 1 expects pre-configured agents"
             )
 

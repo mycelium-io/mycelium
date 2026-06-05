@@ -65,7 +65,12 @@ def test_pr_job_constants() -> None:
 
     assert pr_job._DEFAULT_TIERS == "pr"
     assert pr_job._DEFAULT_TESTBED == "testbeds/compose.yaml"
-    assert pr_job._DEFAULT_DATAFILE == "ci_datafile.yaml"
+    # ``scenarios_datafile.yaml`` (parameters only — no legacy
+    # ``testcases:`` block) is required because the matrix-generated
+    # class names (``TwoAgentConsensus_oc_oc`` etc.) don't match the
+    # entries in ``base_datafile.yaml`` / ``ci_datafile.yaml`` and
+    # pyATS errors on the mismatch.
+    assert pr_job._DEFAULT_DATAFILE == "scenarios_datafile.yaml"
 
 
 def test_nightly_job_constants() -> None:
@@ -74,7 +79,7 @@ def test_nightly_job_constants() -> None:
     # Nightly is a strict superset of PR.
     assert nightly_e2e_job._DEFAULT_TIERS == "pr,nightly"
     assert nightly_e2e_job._DEFAULT_TESTBED == "testbeds/compose.yaml"
-    assert nightly_e2e_job._DEFAULT_DATAFILE == "ci_datafile.yaml"
+    assert nightly_e2e_job._DEFAULT_DATAFILE == "scenarios_datafile.yaml"
 
 
 # ── main() wiring with easypy mocked out ──────────────────────────────
@@ -102,7 +107,7 @@ def test_pr_job_main_sets_tier_and_passes_suite(clean_tier_env: None) -> None:
     assert isinstance(kwargs["testscript"], str)
     assert kwargs["testscript"].endswith("/suites/scenarios_suite.py")
     assert isinstance(kwargs["datafile"], str)
-    assert kwargs["datafile"].endswith("/data/ci_datafile.yaml")
+    assert kwargs["datafile"].endswith("/data/scenarios_datafile.yaml")
 
 
 def test_nightly_job_main_sets_tier_and_passes_suite(clean_tier_env: None) -> None:

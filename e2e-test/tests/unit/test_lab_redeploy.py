@@ -541,6 +541,34 @@ class TestProvisionWorkspaceAndMas:
         assert "python3 - http://localhost:9000" in cmd
         assert "WORKSPACE_ID" in cmd  # script body present
 
+    def test_orchestrator_passes_cfn_mgmt_url_not_backend(self, fake_exec: FakeExec) -> None:
+        """Regression: provisioning must hit :9000 (CFN mgmt), never :8000 (backend)."""
+        fake_exec.results.extend(_hub_phase_results())
+
+        hub = _device("hub", role="hub", mycelium_backend_url="http://10.0.50.125:8000")
+        result = redeploy_device(hub, LabRedeployConfig())
+        assert result.success, result.error
+
+        # Find the provisioning shell call.
+        provision_call = next(
+            (cmd for _, cmd in fake_exec.calls if "python3 - " in cmd),
+            None,
+        )
+        assert provision_call is not None, "no provision call recorded"
+        assert ":9000" in provision_call, f"provision must target CFN mgmt plane :9000, got: {provision_call[:200]}"
+        assert ":8000" not in provision_call, (
+            "provision must NOT target the backend :8000 — it doesn't serve POST /api/workspaces"
+        )
+
+    def test_cfn_mgmt_url_from_helper(self) -> None:
+        from libs.lab_redeploy import _cfn_mgmt_url_from
+
+        assert _cfn_mgmt_url_from("http://10.0.50.125:8000") == "http://10.0.50.125:9000"
+        # Trailing path and query strings are stripped (we only need scheme+host).
+        assert _cfn_mgmt_url_from("https://example.com:8000/api/v1") == "https://example.com:9000"
+        # Bare hostnames default scheme/port behaviour.
+        assert _cfn_mgmt_url_from("http://localhost") == "http://localhost:9000"
+
     def test_non_zero_exit_returns_none(self, fake_exec: FakeExec) -> None:
         fake_exec.results.append(_completed(rc=1, stderr="connection refused"))
         result = DeviceResult(device_name="hub", role="hub", success=False)

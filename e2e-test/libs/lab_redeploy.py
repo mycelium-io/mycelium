@@ -438,63 +438,89 @@ def verify_spoke_reachable(device: Any, hub_url: str, result: DeviceResult) -> b
 # ── workspace + MAS provisioning ──────────────────────────────────────
 
 
-# A tiny Python program that calls the backend's workspace + MAS APIs
-# the same way ``mycelium install`` does (see
-# ``mycelium-cli/src/mycelium/commands/install.py:_provision_backend``).
-# It's idempotent — creates the default workspace/MAS if they don't
-# exist, or fetches the existing first entry if creation returns
-# 400/409. Output is two lines: ``WORKSPACE_ID=<uuid>`` and
-# ``MAS_ID=<uuid>`` so the caller can grep both back out cleanly.
+# Tiny Python program that provisions a default workspace + MAS via
+# the CFN mgmt plane (port 9000). Mirrors the flow in
+# ``libs/cfn_api.py``: workspaces are auto-created on CFN boot so we
+# just take the first one; MAS we create if missing.
 #
-# We embed it as a heredoc rather than scp-ing a file because the lab
-# spokes don't necessarily have a writable temp dir we control.
+# Output: two lines (``WORKSPACE_ID=<uuid>`` / ``MAS_ID=<uuid>``)
+# parsed by :func:`_parse_provisioned_ids`. The script writes to
+# stderr on hard failure and exits non-zero so the calling
+# host_exec.execute reports a non-zero return code.
+#
+# NOTE: This is NOT the backend's contract. The backend at :8000
+# would POST /api/workspaces, but CFN mgmt at :9000 only serves GETs
+# on /api/workspaces (POST → 405). For the MAS endpoint, CFN mgmt
+# uses ``multi-agentic-systems`` (full noun), not ``mas`` (abbrev).
 _PROVISION_PY = r"""
 import json, sys, urllib.request, urllib.error
 
-api_url = sys.argv[1]
+cfn_mgmt_url = sys.argv[1]
 
 def _get(path):
-    req = urllib.request.Request(api_url + path,
+    req = urllib.request.Request(cfn_mgmt_url + path,
                                  headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=15) as r:
         return json.loads(r.read())
 
 def _post(path, body):
     data = json.dumps(body).encode()
-    req = urllib.request.Request(api_url + path, data=data,
+    req = urllib.request.Request(cfn_mgmt_url + path, data=data,
                                  headers={"Content-Type": "application/json"},
                                  method="POST")
     with urllib.request.urlopen(req, timeout=15) as r:
         return json.loads(r.read())
 
 # workspace ---------------------------------------------------------
-try:
-    ws = _post("/api/workspaces", {"name": "default"})
-except urllib.error.HTTPError as e:
-    if e.code in (400, 409):
-        wss = _get("/api/workspaces")
-        ws = next((w for w in wss if w.get("name") == "default"),
-                  wss[0] if wss else None)
-        if ws is None:
-            print("ERR: no workspaces returned by backend", file=sys.stderr)
-            sys.exit(1)
-    else:
-        raise
-ws_id = ws["id"]
+# CFN mgmt creates a default workspace on first boot; we just take
+# the first entry. The response may be a bare list or wrapped
+# ``{"workspaces": [...]}`` / ``{"items": [...]}`` depending on
+# version, so we tolerate all three shapes.
+data = _get("/api/workspaces")
+wss = data if isinstance(data, list) else (
+    data.get("workspaces") or data.get("items") or []
+)
+if not wss:
+    print("ERR: no workspaces in CFN mgmt", file=sys.stderr)
+    sys.exit(1)
+ws = wss[0]
+ws_id = ws.get("id") or ws.get("workspace_id")
+if not ws_id:
+    print(f"ERR: workspace missing id: {ws}", file=sys.stderr)
+    sys.exit(1)
 
 # MAS ---------------------------------------------------------------
-try:
-    mas = _post(f"/api/workspaces/{ws_id}/mas", {"name": "default"})
-except urllib.error.HTTPError as e:
-    if e.code in (400, 409):
-        mas_list = _get(f"/api/workspaces/{ws_id}/mas")
-        if not mas_list:
-            print("ERR: no MAS returned by backend", file=sys.stderr)
-            sys.exit(1)
-        mas = mas_list[0]
-    else:
-        raise
-mas_id = mas["id"]
+# CFN mgmt uses the full ``multi-agentic-systems`` noun in URLs (not
+# the ``mas`` abbreviation used by the backend). Response may be a
+# bare list or wrapped under ``systems`` / ``multi_agentic_systems``
+# / ``items``.
+mas_path = f"/api/workspaces/{ws_id}/multi-agentic-systems"
+data = _get(mas_path)
+mas_list = data if isinstance(data, list) else (
+    data.get("systems") or data.get("multi_agentic_systems") or data.get("items") or []
+)
+if mas_list:
+    mas = mas_list[0]
+else:
+    try:
+        mas = _post(mas_path, {"name": "default"})
+    except urllib.error.HTTPError as e:
+        if e.code == 409:
+            data = _get(mas_path)
+            mas_list = data if isinstance(data, list) else (
+                data.get("systems") or []
+            )
+            if not mas_list:
+                print("ERR: MAS POST returned 409 but list is empty", file=sys.stderr)
+                sys.exit(1)
+            mas = mas_list[0]
+        else:
+            raise
+
+mas_id = mas.get("id") or mas.get("mas_id")
+if not mas_id:
+    print(f"ERR: MAS missing id: {mas}", file=sys.stderr)
+    sys.exit(1)
 
 print(f"WORKSPACE_ID={ws_id}")
 print(f"MAS_ID={mas_id}")
@@ -518,8 +544,29 @@ def _parse_provisioned_ids(stdout: str) -> tuple[str, str] | None:
     return ws_id, mas_id
 
 
-def provision_workspace_and_mas(device: Any, hub_url: str, result: DeviceResult) -> tuple[str, str] | None:
+def _cfn_mgmt_url_from(backend_url: str) -> str:
+    """Derive the CFN mgmt plane URL from the backend URL.
+
+    Backend listens on :8000, CFN mgmt plane on :9000 (same host).
+    Provisioning targets the CFN mgmt plane, not the backend — calling
+    ``POST /api/workspaces`` on the backend returns 404 because the
+    backend only serves nested workspace/MAS sub-resources.
+    """
+    from urllib.parse import urlparse
+
+    parsed = urlparse(backend_url)
+    host = parsed.hostname or "localhost"
+    # IPv6 literals need bracketing in the URL form.
+    host_part = f"[{host}]" if ":" in host and not host.startswith("[") else host
+    return f"{parsed.scheme or 'http'}://{host_part}:9000"
+
+
+def provision_workspace_and_mas(device: Any, cfn_mgmt_url: str, result: DeviceResult) -> tuple[str, str] | None:
     """Create (or fetch) the default workspace + MAS on the hub.
+
+    ``cfn_mgmt_url`` MUST point at the CFN mgmt plane (port 9000) —
+    not the backend (port 8000). Use :func:`_cfn_mgmt_url_from` to
+    derive it from a backend URL.
 
     Returns ``(workspace_id, mas_id)`` on success, ``None`` on failure
     (already recorded in ``result``).
@@ -527,7 +574,7 @@ def provision_workspace_and_mas(device: Any, hub_url: str, result: DeviceResult)
     # Heredoc the script via stdin so we don't have to worry about
     # quoting / writing it to disk. ``python3 -`` reads from stdin.
     # The script reads its API URL from argv[1].
-    cmd = f"python3 - {hub_url} <<'PYEOF'{_PROVISION_PY}PYEOF"
+    cmd = f"python3 - {cfn_mgmt_url} <<'PYEOF'{_PROVISION_PY}PYEOF"
     ok, out = _sh(device, cmd, timeout=60)
     if not ok:
         _record(result, "provision workspace + MAS", False, out)
@@ -677,11 +724,13 @@ def redeploy_device(
             result.error = "backend health check failed"
             return result
 
-        # Provision workspace + MAS against the freshly booted backend
-        # (the DB was wiped, so any old IDs in config.toml are stale).
-        # Persist the new IDs locally before signalling success so the
-        # hub's mycelium CLI is also in sync.
-        ids = provision_workspace_and_mas(device, hub_url_local, result)
+        # Provision workspace + MAS against the freshly booted CFN
+        # mgmt plane (the DB was wiped, so any old IDs in config.toml
+        # are stale). Persist the new IDs locally before signalling
+        # success so the hub's mycelium CLI is also in sync. Note:
+        # provisioning targets :9000 (CFN mgmt), not :8000 (backend).
+        cfn_mgmt_url = _cfn_mgmt_url_from(hub_url_local)
+        ids = provision_workspace_and_mas(device, cfn_mgmt_url, result)
         if ids is None:
             result.error = "workspace/MAS provisioning failed"
             return result

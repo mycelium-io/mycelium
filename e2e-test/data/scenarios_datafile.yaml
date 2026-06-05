@@ -1,0 +1,61 @@
+---
+# Scenarios datafile — used by the three-axis matrix suite
+# (``suites/scenarios_suite.py``) and its dynamically generated
+# testcase classes (``TwoAgentConsensus_oc_oc`` etc.).
+#
+# Unlike ``base_datafile.yaml``, this file deliberately has NO
+# ``testcases:`` block — the matrix generates its own class names at
+# import time and pyATS errors on any ``testcases:`` entry that
+# doesn't match a class in the loaded testscript. Per-row parameters
+# live in ``data/scenarios.yaml`` and are wired into each generated
+# class via ``_row``.
+#
+# Environment-specific overrides (compose / lab) sit on top via
+# pyATS ``extends:`` — see ``ci_datafile.yaml`` / ``lab_datafile.yaml``.
+
+parameters:
+  # ── Service Topology ──────────────────────────────────────────────
+  topology:
+    backend:
+      base_url: "%ENV{MYCELIUM_BACKEND_URL, http://localhost:8000}"
+      api_path: "/api"
+      health_path: "/health"
+
+    cfn_mgmt:
+      base_url: "%ENV{CFN_MGMT_URL, http://localhost:9000}"
+      health_path: "/health"
+
+    cfn_node_svc:
+      base_url: "%ENV{CFN_SVC_URL, http://localhost:9002}"
+      health_path: "/api/internal/diagnostics/health"
+
+    matrix:
+      base_url: "%ENV{MATRIX_URL, http://localhost:8008}"
+      health_path: "/_matrix/client/versions"
+      shared_secret: "%ENV{MATRIX_SHARED_SECRET}"
+      test_room_alias: "#agents:local"
+      test_room_id: "%ENV{E2E_MATRIX_ROOM_ID, !XSQgKkMAXJHhTwQLTE:local}"
+
+  # ── Shared Test Parameters ────────────────────────────────────────
+  room_prefix: "e2e-test"
+  shared_mycelium_room: "%ENV{E2E_MYCELIUM_ROOM, mycelium_room}"
+
+  timeouts:
+    http_default: 10
+    cli_default: 30
+    negotiation_wait: 600
+    convergence_poll: 5
+    agent_idle_wait: 20
+    session_spawn_wait: 60
+
+  # Abort early to save runner minutes and LLM credits when infra
+  # is broken. Scenarios suite respects this via the easypy harness.
+  max_failures: 3
+
+  log_dir: "%ENV{MYCELIUM_E2E_LOG_DIR, ~/.mycelium/e2e-logs}"
+  trace_dir: "%ENV{MYCELIUM_TRACE_DIR, ~/.mycelium/e2e-logs/traces}"
+
+  ssh:
+    key_path: "~/.ssh/ioc.pem"
+    user: "ubuntu"
+    connect_timeout: 5
