@@ -367,38 +367,17 @@ jobs:
             --step=otel \
             --yes 2>&1 || echo "WARNING: otel step skipped (non-fatal)"
 
-          echo "Patching openclaw.json with mycelium plugin + channel..."
-          docker exec e2e-openclaw-hub node -e '
-            const fs = require("fs");
-            const cfgPath = process.env.HOME + "/.openclaw/openclaw.json";
-            const cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
-
-            if (!cfg.plugins) cfg.plugins = {};
-            if (!cfg.plugins.allow) cfg.plugins.allow = [];
-            if (!cfg.plugins.allow.includes("mycelium")) cfg.plugins.allow.push("mycelium");
-            if (!cfg.plugins.entries) cfg.plugins.entries = {};
-            if (!cfg.plugins.entries.mycelium) cfg.plugins.entries.mycelium = { enabled: true };
-
-            if (!cfg.channels) cfg.channels = {};
-            if (!cfg.channels["mycelium-room"]) {
-              const agents = (cfg.agents && cfg.agents.list || []).map(a => a.id);
-              cfg.channels["mycelium-room"] = {
-                enabled: true,
-                backendUrl: process.env.MYCELIUM_BACKEND_URL || "http://mycelium-backend:8000",
-                requireMention: true,
-                room: "mycelium_room",
-                agents: agents
-              };
-            }
-
-            fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
-            console.log("Patched: plugins.allow=" + JSON.stringify(cfg.plugins.allow));
-            console.log("Patched: channels=" + Object.keys(cfg.channels).join(", "));
-          '
-
-          echo "Restarting gateway process (not container) to load patched config..."
-          docker exec e2e-openclaw-hub openclaw gateway restart
-          sleep 5
+          echo "Restarting hub so mounted entrypoint regenerates config with mycelium channel..."
+          docker restart e2e-openclaw-hub
+          echo "Waiting for hub to become healthy..."
+          for i in $(seq 1 30); do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' e2e-openclaw-hub 2>/dev/null || echo "unknown")
+            if [ "$STATUS" = "healthy" ]; then
+              echo "Hub healthy after ~${i}s"
+              break
+            fi
+            sleep 1
+          done
           docker inspect --format='{{.State.Status}} (health={{.State.Health.Status}})' e2e-openclaw-hub
 
       - name: Run E2E tests
