@@ -142,10 +142,11 @@ node -e "
       }
     },
     plugins: {
-      allow: ['litellm', 'matrix'],
+      allow: ['litellm', 'matrix', 'mycelium'],
       entries: {
         matrix: { enabled: true },
-        litellm: { enabled: true }
+        litellm: { enabled: true },
+        mycelium: { enabled: true }
       }
     },
     bindings: validAgents.map(id => ({

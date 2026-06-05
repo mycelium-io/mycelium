@@ -266,7 +266,7 @@ class MyceliumCommonSetup(aetest.CommonSetup):
             try:
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
                 output = result.stdout.strip() or result.stderr.strip()
-                log.info("=== %s ===\n%s", label, output[:4000])
+                log.info("=== %s ===\n%s", label, output[:16000])
             except Exception as exc:
                 log.warning("Could not get %s: %s", label, exc)
 
