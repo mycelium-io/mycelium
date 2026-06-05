@@ -132,6 +132,13 @@ node -e "
         dm: { allowFrom: ['*'] },
         groupAllowFrom: ['*'],
         network: { dangerouslyAllowPrivateNetwork: true }
+      },
+      'mycelium-room': {
+        enabled: true,
+        backendUrl: '${MYCELIUM_BACKEND_URL:-http://mycelium-backend:8000}',
+        requireMention: true,
+        room: 'mycelium_room',
+        agents: validAgents
       }
     },
     plugins: {
