@@ -369,7 +369,7 @@ jobs:
 
           echo "Copying updated entrypoint into hub container..."
           docker cp infra/scripts/openclaw-entrypoint.sh e2e-openclaw-hub:/openclaw/entrypoint.sh
-          docker exec e2e-openclaw-hub chmod +x /openclaw/entrypoint.sh
+          docker exec -u 0 e2e-openclaw-hub chmod +x /openclaw/entrypoint.sh
 
           echo "Restarting hub so updated entrypoint regenerates config with mycelium channel..."
           docker restart e2e-openclaw-hub
