@@ -290,7 +290,7 @@ def parse_evaluation_md(content: str) -> EvalMetrics:
         m.after_ingest_events = _clean_cell(cfn_re.group(2))
 
     tok_re = re.search(
-        r"\|\s*Est\.?\s*input tokens\s*\|\s*([^|]+)\|\s*([^|]+)\|",
+        r"\|\s*Est\.?\s*input tokens[^|]*\|\s*([^|]+)\|\s*([^|]+)\|",
         content, re.IGNORECASE,
     )
     if tok_re:
