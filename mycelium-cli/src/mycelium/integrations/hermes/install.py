@@ -94,6 +94,30 @@ def _hermes_gateway_pid() -> Path:
     return _hermes_home() / "gateway.pid"
 
 
+def _read_gateway_pid() -> int | None:
+    """Parse the gateway pid file; return the PID or None on any failure.
+
+    Hermes writes a JSON record ``{"pid": <int>, ...}``; older builds wrote
+    a plain integer. Honour both so callers don't break across version skew.
+    """
+    import json
+
+    pid_path = _hermes_gateway_pid()
+    try:
+        raw = pid_path.read_text().strip()
+    except OSError:
+        return None
+    try:
+        payload = json.loads(raw)
+        return int(payload["pid"])
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+        pass
+    try:
+        return int(raw.splitlines()[0])
+    except (ValueError, IndexError):
+        return None
+
+
 # ── YAML config helpers ──────────────────────────────────────────────────────
 
 

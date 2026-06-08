@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections import deque
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
@@ -38,7 +39,7 @@ from gateway.platforms.base import (
 )
 
 from .post_to_room import post_to_room
-from .return_address import HomeAddress, ReturnAddressBook
+from .return_address import ReturnAddressBook, stash_return_address
 from .room_sse import subscribe_room
 from .route import (
     Dispatch,
@@ -81,6 +82,7 @@ class MyceliumRoomAdapter(BasePlatformAdapter):
         self._sse_tasks: list[asyncio.Task] = []
         self._session_sub_tasks: dict[str, asyncio.Task] = {}
         self._own_message_ids: set[str] = set()
+        self._own_message_id_queue: deque[str] = deque()
         self._return_addresses = ReturnAddressBook()
 
     # ── config coercion ─────────────────────────────────────────────────────
@@ -184,7 +186,7 @@ class MyceliumRoomAdapter(BasePlatformAdapter):
         kill the task.
         """
         rooms_by_parent = {rcfg.room: rcfg for rcfg in self._rooms}
-        url = f"{self._backend_url.rstrip('/')}/api/coordination-sessions?limit=200"
+        url = f"{self._backend_url}/api/coordination-sessions?limit=200"
         headers: dict[str, str] = {}
         if self._api_token:
             headers["Authorization"] = f"Bearer {self._api_token}"
@@ -303,10 +305,9 @@ class MyceliumRoomAdapter(BasePlatformAdapter):
             )
         # Loop suppression: the SSE will echo this message back at us.
         self._own_message_ids.add(message_id)
-        # Trim if it grows pathologically — we only need to recognise the
-        # very-recent past, the backend never replays old ids.
-        if len(self._own_message_ids) > 1024:
-            self._own_message_ids = set(list(self._own_message_ids)[-512:])
+        self._own_message_id_queue.append(message_id)
+        while len(self._own_message_ids) > 1024:
+            self._own_message_ids.discard(self._own_message_id_queue.popleft())
         return SendResult(success=True, message_id=message_id)
 
     async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
@@ -354,23 +355,11 @@ class MyceliumRoomAdapter(BasePlatformAdapter):
                 self._spawn_session_sub(rcfg, action.room_name)
                 continue
             if isinstance(action, StashReturnAddress):
-                # The home address is the SessionSource hermes saw the
-                # *first* time the agent's home channel spoke to it —
-                # but the plugin only sees the room SSE side. So we
-                # stash a Mycelium-room-shaped HomeAddress; the
-                # GatewayRunner is responsible for binding the cross-
-                # channel pointer when an agent first crosses into a
-                # mycelium room. Until that wiring lands (followup), the
-                # consensus posts back into the same mycelium room,
-                # which is still useful for the negotiation participants.
-                self._return_addresses.stash(
+                stash_return_address(
+                    self._return_addresses,
                     session_room=action.session_room,
                     agent_id=action.agent_id,
-                    address=HomeAddress(
-                        platform=PLATFORM_NAME,
-                        chat_id=rcfg.room,
-                        raw_source=None,
-                    ),
+                    log=logger,
                 )
                 continue
             if isinstance(action, NotifyHome):

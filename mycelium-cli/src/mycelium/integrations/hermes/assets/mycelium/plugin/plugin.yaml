@@ -14,4 +14,4 @@ description: >-
   shared plan. Registers the ``mycelium-room`` platform adapter.
 author: Mycelium Contributors
 kind: platform
-provides_hooks: []
+provides_hooks: [pre_gateway_dispatch]

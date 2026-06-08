@@ -39,11 +39,11 @@ from mycelium.integrations.hermes.install import (
     _MYCELIUM_PLUGIN_SRC,
     HermesConfigError,
     _hermes_config_yaml,
-    _hermes_gateway_pid,
     _hermes_home,
     _hermes_plugin_dst,
     _install_hermes,
     _read_config_yaml,
+    _read_gateway_pid,
     _restart_gateway,
     _uninstall_hermes,
     _write_config_yaml,
@@ -420,16 +420,14 @@ class HermesIntegration(Integration):
         # `kill -0` (signal 0) is a permission probe; it doesn't actually
         # signal the process — POSIX-standard idiom for "is this PID alive".
         gateway_ok = False
-        pid_path = _hermes_gateway_pid()
-        if pid_path.exists():
+        pid = _read_gateway_pid()
+        if pid is not None:
             try:
-                pid_text = pid_path.read_text().strip().splitlines()[0]
-                pid = int(pid_text)
                 import os
 
                 os.kill(pid, 0)
                 gateway_ok = True
-            except (ValueError, OSError, IndexError):
+            except OSError:
                 gateway_ok = False
         details.append(f"  {'✓' if gateway_ok else '✗'} gateway:hermes-gateway-pid")
         if not gateway_ok:

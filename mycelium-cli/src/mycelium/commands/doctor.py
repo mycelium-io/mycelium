@@ -1570,7 +1570,9 @@ def _check_hermes_gateway_running() -> CheckResult:
             message="hermes adapter not registered — skipped",
         )
 
-    from mycelium.integrations.hermes.install import _hermes_gateway_pid
+    import os
+
+    from mycelium.integrations.hermes.install import _hermes_gateway_pid, _read_gateway_pid
 
     pid_path = _hermes_gateway_pid()
     if not pid_path.exists():
@@ -1585,36 +1587,18 @@ def _check_hermes_gateway_running() -> CheckResult:
             ],
         )
 
-    import json
-    import os
-
-    # Hermes writes the pid file as a JSON record (``{"pid": <int>, "kind":
-    # "hermes-gateway", "argv": [...], "start_time": <jiffies>}``). Older
-    # builds wrote a plain integer; honour both so doctor doesn't break
-    # against either side of the version skew.
-    raw = ""
-    try:
-        raw = pid_path.read_text().strip()
-        try:
-            payload = json.loads(raw)
-            pid = int(payload["pid"])
-        except (json.JSONDecodeError, KeyError, TypeError):
-            pid = int(raw.splitlines()[0])
-    except (OSError, ValueError, IndexError):
+    pid = _read_gateway_pid()
+    if pid is None:
         return CheckResult(
             name="hermes gateway",
             status="warning",
             message="gateway pid file is unreadable",
             details=[
                 f"path: {pid_path}",
-                f"contents: {raw[:120] if raw else '(empty)'}",
                 "fix: restart with `hermes gateway restart`",
             ],
         )
     try:
-        # POSIX-standard "is this PID alive" idiom; signal 0 doesn't actually
-        # signal — it's a permission probe that returns success iff the pid
-        # exists and the caller is allowed to signal it.
         os.kill(pid, 0)
     except (OSError, ProcessLookupError):
         return CheckResult(
