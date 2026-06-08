@@ -273,6 +273,9 @@ def parse_evaluation_md(content: str) -> EvalMetrics:
             elif "negotiation moves" in key or ("negotiation" in key and "move" in key):
                 m.before_negotiation_moves = before_val
                 m.after_negotiation_moves = after_val
+            elif "agent messages" in key and not m.after_negotiation_moves:
+                m.before_negotiation_moves = m.before_negotiation_moves or before_val
+                m.after_negotiation_moves = after_val
             elif "overall score" in key or ("overall" in key and "score" in key):
                 m.before_score = before_val
                 m.after_score = after_val
