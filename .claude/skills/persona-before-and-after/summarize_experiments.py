@@ -274,7 +274,7 @@ def parse_evaluation_md(content: str) -> EvalMetrics:
                 m.before_negotiation_moves = before_val
                 m.after_negotiation_moves = after_val
             elif "agent messages" in key and not m.after_negotiation_moves:
-                m.before_negotiation_moves = m.before_negotiation_moves or before_val
+                m.before_negotiation_moves = before_val
                 m.after_negotiation_moves = after_val
             elif "overall score" in key or ("overall" in key and "score" in key):
                 m.before_score = before_val
@@ -612,11 +612,16 @@ def process_gist(gist_url: str, gold: dict) -> Optional[EvalMetrics]:
     after_session_content = pick_file(files, "after-session-transcript", "session-transcript") or ""
     after_transcript_content = pick_file(files, "after-transcript") or ""
 
-    # Before: every chat message is a negotiation move
+    # Before: every agent chat message is a negotiation move.
+    # Supports two heading formats:
+    #   **AgentName:**                     (bold inline label, older experiments)
+    #   ### [timestamp] exp-XXXX-agent    (timestamp heading, newer experiments)
     before_move_count = sum(
         1 for line in before_transcript_content.splitlines()
-        if line.startswith("**") and line.rstrip().endswith(":**")
-        and "facilitator" not in line
+        if (
+            re.match(r"^\*\*exp-[^*]+\*\*:$", line.rstrip())
+            or re.match(r"^#{2,3}\s+\[\d{4}-\d{2}-\d{2}.*\]\s+exp-", line)
+        )
     )
     if before_move_count:
         m.before_negotiation_moves = str(before_move_count)
