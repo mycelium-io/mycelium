@@ -24,7 +24,9 @@ COPY . .
 ENV FASTEMBED_CACHE_PATH=/opt/fastembed
 RUN python3 -c "from fastembed import TextEmbedding; TextEmbedding(model_name='BAAI/bge-small-en-v1.5', cache_dir='/opt/fastembed')" || true
 
-RUN chmod +x start.sh
+RUN chmod +x start.sh \
+    && mkdir -p logs && chown -R 1000:1000 logs \
+    && chmod 755 /root
 
 EXPOSE 8000
 CMD ["./start.sh"]
