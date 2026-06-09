@@ -829,12 +829,37 @@ def _check_room_mas_ids() -> CheckResult:
             message=f"All {len(top_level)} room(s) have MAS IDs",
         )
 
+    def _fix_missing_mas() -> None:
+        import httpx
+
+        fixed, failed = [], []
+        for room_name in missing:
+            try:
+                with httpx.Client(base_url=api_url, timeout=15) as client:
+                    resp = client.post(f"/api/rooms/{room_name}/sync-mas")
+                    resp.raise_for_status()
+                    data = resp.json()
+                mas = data.get("mas_id") or "(unknown)"
+                typer.echo(f"    Registered {room_name}: MAS ID = {mas}")
+                fixed.append(room_name)
+            except Exception as exc:
+                typer.echo(f"    Failed {room_name}: {exc}")
+                failed.append(room_name)
+        if fixed:
+            typer.secho(f"  Registered {len(fixed)} room(s) with CFN.", fg=typer.colors.GREEN)
+        if failed:
+            typer.secho(
+                f"  {len(failed)} room(s) could not be registered — check that CFN is running.",
+                fg=typer.colors.YELLOW,
+            )
+
     return CheckResult(
         name="Room MAS IDs",
         status="warning",
         message=f"{len(missing)} room(s) missing MAS ID",
         details=[f"  {name}" for name in missing]
-        + ["Fix: run 'mycelium doctor --fix' after workspace ID is synced"],
+        + ["Fix: run 'mycelium doctor --fix' to register with CFN"],
+        fix_fn=_fix_missing_mas,
     )
 
 
