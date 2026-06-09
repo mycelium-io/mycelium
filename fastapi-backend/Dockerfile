@@ -1,5 +1,11 @@
 FROM python:3.12-slim
 
+# Create a dedicated app user. UID 1000 matches the default host ubuntu user,
+# which keeps bind-mount ownership consistent without needing chown at runtime.
+RUN useradd -r -u 1000 -g 0 -s /sbin/nologin -d /home/mycelium mycelium \
+    && mkdir -p /home/mycelium \
+    && chown mycelium /home/mycelium
+
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -25,8 +31,10 @@ ENV FASTEMBED_CACHE_PATH=/opt/fastembed
 RUN python3 -c "from fastembed import TextEmbedding; TextEmbedding(model_name='BAAI/bge-small-en-v1.5', cache_dir='/opt/fastembed')" || true
 
 RUN chmod +x start.sh \
-    && mkdir -p logs && chown -R 1000:1000 logs \
-    && chmod 755 /root
+    && mkdir -p logs \
+    && chown -R mycelium /app
+
+USER mycelium
 
 EXPOSE 8000
 CMD ["./start.sh"]
