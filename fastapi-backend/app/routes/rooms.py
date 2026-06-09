@@ -26,6 +26,19 @@ router = APIRouter(prefix="/rooms", tags=["rooms"])
 RESERVED_ROOMS: frozenset[str] = frozenset()
 
 
+async def _fetch_mas_id_by_name(room_name: str) -> str | None:
+    """GET the MAS list and return the id for the entry matching room_name, or None."""
+    url = f"{settings.CFN_MGMT_URL}/api/workspaces/{settings.WORKSPACE_ID}/multi-agentic-systems"
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.get(url)
+        resp.raise_for_status()
+        data = resp.json()
+    for system in data.get("systems", []):
+        if system.get("name") == room_name:
+            return system.get("id")
+    return None
+
+
 async def _sync_create_mas(db_room: Room, session: AsyncSession) -> None:
     """Create a MAS in CFN mgmt plane and store mas_id on the room. Non-fatal."""
     from app.services.metrics import record_cfn_call
@@ -65,6 +78,44 @@ async def _sync_create_mas(db_room: Room, session: AsyncSession) -> None:
             error=True,
         )
         logger.warning("CFN create MAS failed for room %s: %s", db_room.name, exc)
+
+
+async def _ensure_mas(db_room: Room, session: AsyncSession) -> str | None:
+    """Register room with CFN mgmt plane, handling the case where it already exists.
+
+    Returns the mas_id on success, None if CFN is not configured or the call fails.
+    On 409 (name already registered), fetches the existing id from the GET list.
+    """
+    if not settings.CFN_MGMT_URL or not settings.WORKSPACE_ID:
+        return None
+
+    base_url = f"{settings.CFN_MGMT_URL}/api/workspaces/{settings.WORKSPACE_ID}/multi-agentic-systems"
+    mas_id: str | None = None
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(base_url, json={"name": db_room.name})
+            if resp.status_code == 409:
+                mas_id = await _fetch_mas_id_by_name(db_room.name)
+            else:
+                resp.raise_for_status()
+                data = resp.json()
+                mas_id = data.get("id") or data.get("mas_id")
+    except Exception as exc:
+        logger.warning("CFN ensure MAS failed for room %s: %s", db_room.name, exc)
+        return None
+
+    if mas_id:
+        await session.execute(
+            update(Room)
+            .where(Room.name == db_room.name)
+            .values(mas_id=str(mas_id), workspace_id=settings.WORKSPACE_ID)
+        )
+        await session.commit()
+        await session.refresh(db_room)
+        logger.info("CFN MAS ensured for room %s: %s", db_room.name, mas_id)
+
+    return mas_id
 
 
 async def _sync_delete_mas(room: Room) -> None:
@@ -308,6 +359,35 @@ async def reindex_room(
 
     stats = await index_room(room_name, session)
     return {"status": "complete", **stats}
+
+
+@router.post("/{room_name}/sync-mas", response_model=RoomRead, status_code=200)
+async def sync_room_mas(
+    room_name: str,
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Register (or re-register) a room with the CFN mgmt plane.
+
+    Idempotent: if the MAS already exists in CFN, fetches its id from the list
+    endpoint rather than erroring. Updates the room's mas_id and workspace_id.
+    Returns 409 if CFN is not configured.
+    """
+    result = await session.execute(select(Room).where(Room.name == room_name))
+    room = result.scalar_one_or_none()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    if not settings.CFN_MGMT_URL or not settings.WORKSPACE_ID:
+        raise HTTPException(
+            status_code=409,
+            detail="CFN not configured — set CFN_MGMT_URL and WORKSPACE_ID",
+        )
+
+    mas_id = await _ensure_mas(room, session)
+    if not mas_id:
+        raise HTTPException(status_code=502, detail="CFN registration failed — check backend logs")
+
+    return room
 
 
 @router.delete("/{room_name}", status_code=204)
