@@ -167,7 +167,7 @@ class MemoryLogEntry(BaseModel):
 #                 runs inside OpenClaw; we just register it into the channel's
 #                 rooms[] fan-out — no daemon involvement, see the daemon
 #                 dispatch loop which skips non-cold_spawn families).
-AGENT_ADAPTERS: frozenset[str] = frozenset({"claude_code", "cursor", "openclaw"})
+AGENT_ADAPTERS: frozenset[str] = frozenset({"claude_code", "cursor", "openclaw", "hermes"})
 
 
 class AgentManifest(BaseModel):
@@ -178,7 +178,7 @@ class AgentManifest(BaseModel):
     manifest body — the bare minimum a dispatcher needs to route an
     ``@handle`` mention to the agent's runtime.
 
-    Three adapters:
+    Four adapters:
 
     - ``claude_code`` — cold-spawned by the daemon. Requires ``cwd`` (where
       ``claude -p`` runs).
@@ -188,13 +188,17 @@ class AgentManifest(BaseModel):
       (the OpenClaw agent id; usually == handle for create-mode). The
       OpenClaw gateway's channel plugin is the dispatcher; the daemon
       ignores these manifests entirely.
+    - ``hermes`` — a handle exposed through a long-lived hermes gateway. The
+      bundled ``mycelium-room`` hermes plugin subscribes to the configured
+      rooms and dispatches into the hermes agent loop; the daemon ignores
+      these manifests entirely.
 
     The handle slug doubles as the mention target (``@release-agent``), so it
     must match the same lowercase pattern other memory slugs use.
     """
 
     handle: str = Field(..., min_length=1, pattern=r"^[a-z0-9][a-z0-9._-]*$")
-    adapter: Literal["claude_code", "cursor", "openclaw"] = "claude_code"
+    adapter: Literal["claude_code", "cursor", "openclaw", "hermes"] = "claude_code"
     cwd: str | None = Field(
         default=None,
         description=(
@@ -223,7 +227,7 @@ class AgentManifest(BaseModel):
             "Sender handles allowed to invoke this agent (e.g. ['@julia', '@docs-agent']). "
             "Empty list means anyone in the room can invoke. "
             "Enforced by the daemon for claude_code; advisory for openclaw "
-            "(the channel plugin gates on @-mention, not allow_from)."
+            "and hermes (the gateway plugin gates on @-mention, not allow_from)."
         ),
     )
 
