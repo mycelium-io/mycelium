@@ -82,6 +82,7 @@ mycelium = [
     "integrations/claude_code/assets/**/*",
     "integrations/cursor/assets/**/*",
     "integrations/openclaw/assets/mycelium/**/*",
+    "integrations/hermes/assets/**/*",
     "daemon/service/*",
     "docker/*",
     "docker/initdb/*",
