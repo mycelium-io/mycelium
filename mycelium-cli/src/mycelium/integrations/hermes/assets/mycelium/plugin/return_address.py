@@ -17,10 +17,13 @@ join and consensus drops the proactive notification (same as openclaw).
 
 Home discovery (no hermes core changes):
 
-1. ``pre_gateway_dispatch`` hook writes the latest non-mycelium
+1. The gateway's explicitly configured home channel per platform
+   (e.g. ``MATRIX_HOME_ROOM`` → ``config.platforms.matrix.home_channel``),
+   resolved via the live gateway runner. Explicit config always wins.
+2. ``pre_gateway_dispatch`` hook writes the latest non-mycelium
    ``SessionSource`` to ``$HERMES_HOME/.mycelium-return-origin.json``.
-2. At stash time we prefer that file, then fall back to scanning
-   ``$HERMES_HOME/sessions/sessions.json`` for the most recently updated
+   Used when no home channel is explicitly configured.
+3. ``$HERMES_HOME/sessions/sessions.json`` scan for the most recently updated
    session whose platform is not ``mycelium-room`` (openclaw parity).
 """
 
@@ -231,8 +234,47 @@ def read_last_origin_sidecar(log: logging.Logger | None = None) -> HomeAddress |
     return None
 
 
+def _read_configured_home_channel(log: logging.Logger | None = None) -> HomeAddress | None:
+    """Return the gateway's explicitly configured home channel, if any."""
+    try:
+        from gateway.run import _gateway_runner_ref  # type: ignore[import]
+        runner = _gateway_runner_ref()
+        if runner is not None:
+            from gateway.platforms.base import Platform  # type: ignore[import]
+            for platform in Platform:
+                home = runner.config.get_home_channel(platform)
+                if home and home.chat_id:
+                    if log:
+                        log.info(
+                            "return-address: using gateway home channel %s:%s",
+                            platform.value, home.chat_id,
+                        )
+                    return HomeAddress(
+                        platform=platform.value,
+                        chat_id=str(home.chat_id),
+                        thread_id=str(home.thread_id) if home.thread_id else None,
+                    )
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
 def read_home_address(log: logging.Logger | None = None) -> HomeAddress | None:
-    """Resolve the agent's home channel for consensus postback."""
+    """Resolve the agent's home channel for consensus postback.
+
+    Resolution order:
+    1. The gateway's explicitly configured home channel (e.g. ``MATRIX_HOME_ROOM``
+       → ``config.platforms.matrix.home_channel``). Explicit configuration always
+       beats cached/inferred state.
+    2. ``$HERMES_HOME/.mycelium-return-origin.json`` sidecar (written by
+       ``pre_gateway_dispatch`` hook — tracks where the user last spoke, used
+       when no home channel is explicitly configured).
+    3. ``$HERMES_HOME/sessions/sessions.json`` scan for the most recently
+       active non-mycelium session.
+    """
+    configured = _read_configured_home_channel(log)
+    if configured is not None:
+        return configured
     sidecar = read_last_origin_sidecar(log)
     if sidecar is not None:
         return sidecar
