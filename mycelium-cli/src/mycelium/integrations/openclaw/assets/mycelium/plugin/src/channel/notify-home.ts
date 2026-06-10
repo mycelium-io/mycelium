@@ -6,11 +6,11 @@
  *
  * When a coordination negotiation reaches consensus (or times out) in a
  * mycelium-room session sub-room, the agents that participated may have a
- * "home" session elsewhere — e.g., a Matrix DM or Discord channel where
- * their human asked them to coordinate. This module delivers a one-shot
- * summary back to that home session via OpenClaw's outbound adapter API,
- * so the user sees the result in their own chat rather than having to come
- * find it in mycelium.
+ * "home" session elsewhere — typically the Mycelium room, but possibly an
+ * external channel like Discord where their human asked them to coordinate.
+ * This module delivers a one-shot summary back to that home session via
+ * OpenClaw's outbound adapter API, so the user sees the result in their own
+ * chat rather than having to come find it in mycelium.
  *
  * The home address is captured at the moment the agent joins the negotiation
  * (see ./return-address.ts) — frozen there to avoid drift between join and

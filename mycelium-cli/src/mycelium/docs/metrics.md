@@ -319,7 +319,7 @@ OpenClaw → Mycelium backend → CFN → opt-in.
 3. **OpenClaw Agents** — per-agent token breakdown, session/turn counts, cost,
    average run duration, and workspace size. Plus a "Tokens by Channel"
    sub-table that breaks tokens out by `openclaw.channel` (heartbeat,
-   matrix, webhook, etc.) — so heartbeat traffic is always visible here
+   mycelium-room, webhook, etc.) — so heartbeat traffic is always visible here
    even when excluded from headline panels.
 
 4. **OpenClaw Recent Sessions** — last 20 OTLP session spans with agent, model,
@@ -407,8 +407,8 @@ and behavior info, so you can pivot on:
 |---|---|---|
 | **Host** | `host` column | Which OpenClaw machine emitted the span |
 | **Agent** | `openclaw.agent`, `gen_ai.agent.id`, `ioa_observe.entity.name` | Which agent did the work |
-| **Room** | parsed from `gen_ai.conversation.id` / `openclaw.session.key` (`agent:<a>:<chan-kind>:<chan-type>:<room-id>`) | Matrix room id _or_ Mycelium room name — both are first-class |
-| **Channel kind** | parsed from same key, plus `openclaw.channel` | `matrix` vs `mycelium-room` (lets you tell coordination spans from chat spans) |
+| **Room** | parsed from `gen_ai.conversation.id` / `openclaw.session.key` (`agent:<a>:<chan-kind>:<chan-type>:<room-id>`) | The room id / Mycelium room name — first-class |
+| **Channel kind** | parsed from same key, plus `openclaw.channel` | `mycelium-room` (the default) vs external kinds like `discord` / `slack` (lets you tell coordination spans from chat spans) |
 | **Session** | `session.id`, `openclaw.session.key` | One conversation/turn lifecycle |
 | **Model** | `gen_ai.request.model`, `gen_ai.response.model` | Which LLM was called |
 | **Tool** | `openclaw.toolName`, `gen_ai.tool.name`, `openclaw.exec.exit_code` | Which tool was invoked and its exit code |
@@ -424,8 +424,8 @@ and behavior info, so you can pivot on:
 | `mycelium metrics traces summary` | Total spans, errors, hosts, agents, rooms, channel kinds, models, tool calls, tokens, span p50/p95/p99 |
 | `mycelium metrics traces by-host` | Group by source host (spans, errors, avg/p95 latency, tokens) |
 | `mycelium metrics traces by-agent` | Group by agent |
-| `mycelium metrics traces by-room` | Group by Matrix room id or Mycelium room name |
-| `mycelium metrics traces by-channel` | Group by channel kind (`matrix`, `mycelium-room`, …) |
+| `mycelium metrics traces by-room` | Group by room id / Mycelium room name |
+| `mycelium metrics traces by-channel` | Group by channel kind (`mycelium-room`, `discord`, `slack`, …) |
 | `mycelium metrics traces by-model` | Group by LLM model |
 | `mycelium metrics traces by-name` | Group by span name (`openclaw.agent.turn`, `openclaw.tool.execution`, …) |
 | `mycelium metrics traces by-tool` | Group tool-call spans by tool name |
@@ -448,7 +448,7 @@ Most pivot subcommands accept the same filter set:
 | `--since 30s\|15m\|2h\|1d` | Time window (default `1h`). Bare numbers are minutes. |
 | `--host <name>` | Filter to one host (e.g. `--host oclw3`) |
 | `--agent <id>` | Filter to one agent |
-| `--room <id_substring>` | Filter to a Matrix room id or Mycelium room name (substring match) |
+| `--room <id_substring>` | Filter to a room id / Mycelium room name (substring match) |
 | `--name '<glob>'` | Filter span name (`*` wildcard) |
 | `--status ok\|error\|unset` | Filter by span status |
 | `--limit N` / `-n N` | Cap the number of rows |
@@ -835,7 +835,6 @@ These exist in ARCHITECTURE.md or as stubs — metrics will follow once
 the features are wired up:
 
 - `get_llm_provider()` in `agents/llm_provider.py` (defined but unused)
-- Multi-device Matrix transport metrics
 
 ### Trace ingestion follow-ups
 

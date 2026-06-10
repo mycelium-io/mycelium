@@ -3,10 +3,11 @@
 How to run Mycelium across multiple machines so a small team shares
 memory, rooms, and coordination state from a single backend.
 
-> **Note:** The examples below use **Matrix** as the channel server and
-> **OpenClaw** as the agent adapter. The same pattern applies to other
-> channels (Discord, Slack, etc.) and adapters — substitute the
-> relevant names and config paths.
+> **Note:** The examples below use the **mycelium-room** channel (the
+> Mycelium room UI) as the agent surface and **OpenClaw** as the agent
+> adapter. The same pattern applies to external channels (Discord, Slack,
+> etc.) and other adapters — substitute the relevant names and config
+> paths.
 
 ## When to use this
 
@@ -24,12 +25,11 @@ single-device install is simpler — see the Quick Start.
 │  mycelium install                │
 │  ├─ FastAPI backend  :8000       │
 │  ├─ AgensGraph (PG)  :5432       │
-│  ├─ Channel server   :8008       │
 │  ├─ CFN mgmt plane   :9000       │
 │  └─ CFN runtime      :9002       │
 │                                  │
-│  Channel servers                 │
-│  All agent accounts defined here │
+│  OpenClaw gateway                │
+│  All agents added here           │
 └────────────┬─────────────────────┘
              │  HTTPS / SSE
      ┌───────┴───────┐
@@ -44,7 +44,7 @@ single-device install is simpler — see the Quick Start.
 ```
 
 The hub runs the full stack. Spokes run only the CLI, agents, and the
-adapter plugin — no Docker, no database, no channel servers.
+adapter plugin — no Docker, no database, no separate channel server.
 
 ## Step 1: Set up the hub
 
@@ -78,27 +78,30 @@ Spokes need to reach the hub on these ports:
 | Port | Service | Required |
 |------|---------|----------|
 | 8000 | Mycelium backend (API + SSE) | Yes |
-| 8008 | Channel server (Matrix/Synapse in this example) | If using a channel server |
 | 9000 | CFN management plane | If using CognitiveEngine |
 | 9002 | CFN runtime | If using CognitiveEngine |
 
 Use a VPN, Tailscale, or firewall rules to restrict access — these
 services have no built-in authentication.
 
-### Configure the channel server
+### Add agents on the hub
 
-Run the channel server on the hub and create accounts for every agent
-across all spokes. For Matrix, this means running Synapse on the hub
-and registering each agent:
+Agents talk through the **mycelium-room** channel — the chat box and live
+message stream in the Mycelium room UI, served by the Mycelium backend.
+There is no separate channel server and no per-agent chat account to
+provision. Add every agent (across all spokes) on the hub:
 
 ```bash
-# Register agent accounts on the hub's Synapse instance
-register_new_matrix_user -c /etc/synapse/homeserver.yaml http://localhost:8008
+# Add an agent and auto-wire the OpenClaw mycelium-room channel
+mycelium agent add agent-alpha
 ```
 
-Add all agent accounts to `channels.matrix.accounts` in the hub's
+`mycelium agent add` (or `mycelium agent create`) registers the agent and
+auto-wires the OpenClaw `mycelium-room` channel into the hub's
 `~/.openclaw/openclaw.json`. The hub's gateway manages all channel
-connections — spokes do not run their own channel clients.
+connections — spokes do not run their own channel clients. (To wire in an
+*external* channel like Discord or Slack, add it under
+`channels.<channel>.accounts` instead.)
 
 ## Step 2: Set up each spoke
 
@@ -183,8 +186,10 @@ is set by:
 2. The `MYCELIUM_AGENT_HANDLE` environment variable
 3. The `--handle` flag on CLI commands
 
-Agent handles should match their channel user IDs. For Matrix, use the
-localpart before the colon: `@agent-alpha:local` → `agent-alpha`.
+For the mycelium-room channel, the handle *is* the agent's identity in the
+room UI — `mycelium agent add agent-alpha` uses `agent-alpha` directly. For
+an external channel, the handle should match that channel's user ID for the
+agent.
 
 ## Token management
 
@@ -197,10 +202,12 @@ Signs of expired tokens:
 - Gateway logs show sync errors or 401/unauthorized responses
 - `mycelium doctor` reports channel connection failures
 
-To refresh tokens, re-authenticate with the channel server (for Matrix,
-log in again via the Synapse admin API), update the token in
-`channels.<channel>.accounts[agent]` in each node's `openclaw.json`,
-and restart the gateway.
+To refresh tokens, re-authenticate the agent with the channel, update the
+token in `channels.<channel>.accounts[agent]` in each node's
+`openclaw.json`, and restart the gateway. (The mycelium-room channel
+authenticates through the Mycelium backend and has no separate channel
+token to rotate — this applies to external channels like Discord or
+Slack.)
 
 ## Step 4: Set up spoke metrics
 

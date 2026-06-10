@@ -12,8 +12,6 @@
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="https://mycelium-io.github.io/mycelium/og.png">
-<link rel="icon" type="image/png" href="logo.png">
-<link rel="apple-touch-icon" href="logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="mycelium.css">
 </head>
@@ -190,15 +188,69 @@
       <pre><code><span class="cmd">mycelium upgrade</span>   <span class="comment"># update the CLI binary</span>
 <span class="cmd">mycelium pull</span>      <span class="comment"># pull latest images and restart services</span>
 <span class="cmd">mycelium doctor</span>    <span class="comment"># diagnose and fix configuration issues</span></code></pre>
-      <h2 id="first-room">First Room</h2>
-      <p>Create a persistent room and start sharing context:</p>
-      <pre><code><span class="comment"># Create a persistent room</span>
+      <h2 id="open-the-ui">Open the UI</h2>
+      <p>
+        The Mycelium room view is where you do everything from here — watch the live
+        message stream, add agents, chat with them, and track the shared plan. Open it:
+      </p>
+      <pre><code><span class="cmd">mycelium ui open</span>   <span class="comment"># starts the frontend if it isn&#x27;t running, then opens it</span></code></pre>
+      <div class="callout callout-info">
+        <div class="callout-bar"></div>
+        <div class="callout-body">Everything below can be driven from the UI or the CLI — they act on the same
+        rooms. The commands are shown so you can script or follow along in a terminal.</div>
+      </div>
+
+      <h2 id="create-a-room">Create a room</h2>
+      <p>A room is a persistent namespace for memory, agents, and coordination:</p>
+      <pre><code><span class="comment"># Create a room and make it active</span>
 <span class="cmd">mycelium room create</span> my-project
+<span class="cmd">mycelium room use</span> my-project</code></pre>
+      <p>Open <code>my-project</code> in the UI — it&#x27;s empty for now. Next we&#x27;ll add agents and start talking to them.</p>
 
-<span class="comment"># Set it as your active room</span>
-<span class="cmd">mycelium room use</span> my-project
+      <h2 id="add-agents">Add agents</h2>
+      <p>
+        The <strong>agent primitive</strong> registers an addressable agent in the room.
+        Mycelium wires up the underlying adapter for you — there&#x27;s no per-agent chat
+        account or homeserver to configure; agents coordinate through the room&#x27;s own
+        message stream.
+      </p>
+      <pre><code><span class="comment"># Greenfield — provision a brand-new agent</span>
+<span class="cmd">mycelium agent create</span> planner <span class="flag">--adapter</span> openclaw <span class="flag">--description</span> <span class="str">&quot;Sprint planner, optimizes for shipping speed&quot;</span>
 
-<span class="comment"># Share context</span>
+<span class="comment"># Brownfield — adopt agents that already exist in your OpenClaw gateway</span>
+<span class="cmd">mycelium agent add</span>
+
+<span class="comment"># See who&#x27;s in the room</span>
+<span class="cmd">mycelium agent ls</span></code></pre>
+      <p>
+        <code>claude_code</code> and <code>cursor</code> agents are cold-spawned by the
+        Mycelium daemon and need no chat platform at all — see the
+        <a href="adapters.html">Adapters</a> guide for the full list.
+      </p>
+
+      <h2 id="coordinate">Coordinate</h2>
+      <p>
+        In the UI room view, type in the chat box and <strong><code>@</code>-mention</strong>
+        an agent — it replies in the live message stream. The same message can be sent
+        from the CLI:
+      </p>
+      <pre><code><span class="comment"># Send an @-addressed message to a registered agent</span>
+<span class="cmd">mycelium agent invoke</span> planner <span class="str">&quot;draft a plan for the Q3 migration&quot;</span></code></pre>
+      <p>
+        When you ask multiple agents to reach a decision, Mycelium&#x27;s CognitiveEngine
+        runs a structured negotiation. On consensus, the agreement compiles into the
+        room&#x27;s shared plan — visible in the <strong>PLAN</strong> tab in the UI, or from
+        the CLI:
+      </p>
+      <pre><code><span class="cmd">mycelium plan ls</span>          <span class="comment"># the room&#x27;s shared task list</span></code></pre>
+      <p>The result lands back in the same room stream — no need to go hunting for it in a separate chat.</p>
+
+      <h2 id="share-memory">Share memory</h2>
+      <p>
+        Rooms are also persistent memory. Anything you write is searchable by meaning
+        and visible to every agent in the room:
+      </p>
+      <pre><code><span class="comment"># Share context</span>
 <span class="cmd">mycelium memory set</span> <span class="str">&quot;decisions/db&quot;</span> <span class="str">&quot;PostgreSQL with pgvector&quot;</span>
 <span class="cmd">mycelium memory set</span> <span class="str">&quot;decisions/api&quot;</span> <span class="str">&quot;REST with generated OpenAPI client&quot;</span>
 
@@ -211,18 +263,12 @@
 
 <span class="comment"># Synthesize everything in the room</span>
 <span class="cmd">mycelium synthesize</span></code></pre>
-      <p>Now try a session — two agents negotiating a plan:</p>
-      <pre><code><span class="comment"># Terminal 1 — agent julia</span>
-<span class="cmd">mycelium room create</span> sprint-plan
-<span class="cmd">mycelium session create</span> <span class="flag">-r</span> sprint-plan
-<span class="cmd">mycelium session join</span> <span class="flag">--handle</span> julia-agent <span class="flag">-m</span> <span class="str">&quot;Prioritize the database migration first&quot;</span> <span class="flag">-r</span> sprint-plan
-<span class="cmd">mycelium session await</span> <span class="flag">--handle</span> julia-agent <span class="flag">-r</span> sprint-plan
-
-<span class="comment"># Terminal 2 — agent selina</span>
-<span class="cmd">mycelium session join</span> <span class="flag">--handle</span> selina-agent <span class="flag">-m</span> <span class="str">&quot;Focus on frontend polish, backend is solid&quot;</span> <span class="flag">-r</span> sprint-plan
-<span class="cmd">mycelium session await</span> <span class="flag">--handle</span> selina-agent <span class="flag">-r</span> sprint-plan
-
-<span class="comment"># CognitiveEngine runs negotiation — await returns ticks with actions</span></code></pre>
+      <div class="callout callout-info">
+        <div class="callout-bar"></div>
+        <div class="callout-body">Prefer to script the low-level negotiation directly? The
+        <code>mycelium session join</code> / <code>session await</code> commands drive the
+        CognitiveEngine from the terminal — see the <a href="#sessions">Sessions</a> reference.</div>
+      </div>
     </section>
 
     <hr class="divider">
@@ -708,7 +754,7 @@ Latest Synthesis
       <p>How to run Mycelium across multiple machines so a small team shares memory, rooms, and coordination state from a single backend.</p>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body"><strong>Note:</strong> The examples below use <strong>Matrix</strong> as the channel server and <strong>OpenClaw</strong> as the agent adapter. The same pattern applies to other channels (Discord, Slack, etc.) and adapters — substitute the relevant names and config paths.</div>
+        <div class="callout-body"><strong>Note:</strong> The examples below use the <strong>mycelium-room</strong> channel (the Mycelium room UI) as the agent surface and <strong>OpenClaw</strong> as the agent adapter. The same pattern applies to external channels (Discord, Slack, etc.) and other adapters — substitute the relevant names and config paths.</div>
       </div>
       <h2 id="hub-and-spoke-when-to-use-this">When to use this</h2>
       <p>Use hub-and-spoke when multiple people (or multiple machines) need to participate in the same rooms, see the same memories, and coordinate agents together. If everything runs on one machine, the default single-device install is simpler — see the Quick Start.</p>
@@ -719,12 +765,11 @@ Latest Synthesis
 │  <span class="cmd">mycelium install</span>                │
 │  ├─ FastAPI backend  :8000       │
 │  ├─ AgensGraph (PG)  :5432       │
-│  ├─ Channel server   :8008       │
 │  ├─ CFN mgmt plane   :9000       │
 │  └─ CFN runtime      :9002       │
 │                                  │
-│  Channel servers                 │
-│  All agent accounts defined here │
+│  OpenClaw gateway                │
+│  All agents added here           │
 └────────────┬─────────────────────┘
              │  HTTPS / SSE
      ┌───────┴───────┐
@@ -736,7 +781,7 @@ Latest Synthesis
 │ + agents │   │ + agents │
 │ No Docker│   │ No Docker│
 └──────────┘   └──────────┘</code></pre>
-      <p>The hub runs the full stack. Spokes run only the CLI, agents, and the adapter plugin — no Docker, no database, no channel servers.</p>
+      <p>The hub runs the full stack. Spokes run only the CLI, agents, and the adapter plugin — no Docker, no database, no separate channel server.</p>
       <h2 id="hub-and-spoke-step-1-set-up-the-hub">Step 1: Set up the hub</h2>
       <p>On the hub machine, run the standard install:</p>
       <pre><code><span class="cmd">mycelium install</span>
@@ -762,11 +807,6 @@ Latest Synthesis
               <td>Yes</td>
             </tr>
             <tr>
-              <td>8008</td>
-              <td>Channel server (Matrix/Synapse in this example)</td>
-              <td>If using a channel server</td>
-            </tr>
-            <tr>
               <td>9000</td>
               <td>CFN management plane</td>
               <td>If using CognitiveEngine</td>
@@ -780,11 +820,11 @@ Latest Synthesis
         </table>
       </div>
       <p>Use a VPN, Tailscale, or firewall rules to restrict access — these services have no built-in authentication.</p>
-      <h3 id="hub-and-spoke-configure-the-channel-server">Configure the channel server</h3>
-      <p>Run the channel server on the hub and create accounts for every agent across all spokes. For Matrix, this means running Synapse on the hub and registering each agent:</p>
-      <pre><code><span class="comment"># Register agent accounts on the hub&#x27;s Synapse instance</span>
-register_new_matrix_user <span class="flag">-c</span> /etc/synapse/homeserver.yaml http://localhost:8008</code></pre>
-      <p>Add all agent accounts to <code>channels.matrix.accounts</code> in the hub&#x27;s <code>~/.openclaw/openclaw.json</code>. The hub&#x27;s gateway manages all channel connections — spokes do not run their own channel clients.</p>
+      <h3 id="hub-and-spoke-add-agents-on-the-hub">Add agents on the hub</h3>
+      <p>Agents talk through the <strong>mycelium-room</strong> channel — the chat box and live message stream in the Mycelium room UI, served by the Mycelium backend. There is no separate channel server and no per-agent chat account to provision. Add every agent (across all spokes) on the hub:</p>
+      <pre><code><span class="comment"># Add an agent and auto-wire the OpenClaw mycelium-room channel</span>
+<span class="cmd">mycelium agent add</span> agent-alpha</code></pre>
+      <p><code>mycelium agent add</code> (or <code>mycelium agent create</code>) registers the agent and auto-wires the OpenClaw <code>mycelium-room</code> channel into the hub&#x27;s <code>~/.openclaw/openclaw.json</code>. The hub&#x27;s gateway manages all channel connections — spokes do not run their own channel clients. (To wire in an *external* channel like Discord or Slack, add it under <code>channels.&lt;channel&gt;.accounts</code> instead.)</p>
       <h2 id="hub-and-spoke-step-2-set-up-each-spoke">Step 2: Set up each spoke</h2>
       <p>On each spoke machine, install only the CLI (no <code>mycelium install</code>):</p>
       <pre><code>curl <span class="flag">-fsSL</span> https://mycelium-io.github.io/mycelium/install.sh | bash</code></pre>
@@ -841,7 +881,7 @@ register_new_matrix_user <span class="flag">-c</span> /etc/synapse/homeserver.ya
         <li>The <code>MYCELIUM_AGENT_HANDLE</code> environment variable</li>
         <li>The <code>--handle</code> flag on CLI commands</li>
       </ol>
-      <p>Agent handles should match their channel user IDs. For Matrix, use the localpart before the colon: <code>@agent-alpha:local</code> → <code>agent-alpha</code>.</p>
+      <p>For the mycelium-room channel, the handle *is* the agent&#x27;s identity in the room UI — <code>mycelium agent add agent-alpha</code> uses <code>agent-alpha</code> directly. For an external channel, the handle should match that channel&#x27;s user ID for the agent.</p>
       <h2 id="hub-and-spoke-token-management">Token management</h2>
       <p>Channel access tokens can expire or become invalid after server restarts. When this happens, agents silently stop receiving messages.</p>
       <p>Signs of expired tokens:</p>
@@ -850,7 +890,7 @@ register_new_matrix_user <span class="flag">-c</span> /etc/synapse/homeserver.ya
         <li>Gateway logs show sync errors or 401/unauthorized responses</li>
         <li><code>mycelium doctor</code> reports channel connection failures</li>
       </ul>
-      <p>To refresh tokens, re-authenticate with the channel server (for Matrix, log in again via the Synapse admin API), update the token in <code>channels.&lt;channel&gt;.accounts[agent]</code> in each node&#x27;s <code>openclaw.json</code>, and restart the gateway.</p>
+      <p>To refresh tokens, re-authenticate the agent with the channel, update the token in <code>channels.&lt;channel&gt;.accounts[agent]</code> in each node&#x27;s <code>openclaw.json</code>, and restart the gateway. (The mycelium-room channel authenticates through the Mycelium backend and has no separate channel token to rotate — this applies to external channels like Discord or Slack.)</p>
       <h2 id="hub-and-spoke-step-4-set-up-spoke-metrics">Step 4: Set up spoke metrics</h2>
       <p>Each spoke can run a lightweight local collector for OpenClaw telemetry. The collector stores data locally <strong>and</strong> forwards OTLP payloads to the hub so it can build a unified cross-host view.</p>
       <div class="callout callout-note">
