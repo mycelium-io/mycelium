@@ -337,17 +337,115 @@ def _normalise(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
+def _extract_issues_from_ce_consensus(content: str) -> set[str]:
+    """
+    Extract issue keys from CognitiveEngine consensus/plan lines.
+
+    Handles three transcript formats:
+      1. [coordination_consensus] CognitiveEngine:\n{...}   (ex01/ex03/ex09 style)
+      2. [CognitiveEngine] {...}                             (ex09 inline style)
+      3. **CognitiveEngine:**\n{...}                        (exp-4919 markdown style)
+
+    The consensus JSON often has an "assignments": {issue: value} dict and/or a
+    "plan": "issue=value; issue=value" string. Both are 500-char hard-truncated
+    when stored, so we use regex key extraction rather than full JSON parsing.
+    """
+    issues: set[str] = set()
+
+    lines = content.splitlines()
+    for i, line in enumerate(lines):
+        # Identify lines that are CE consensus/plan payloads
+        is_ce_json_line = (
+            re.match(r'\[coordination_consensus\]', line)
+            or re.match(r'\[CognitiveEngine\]\s*\{', line)
+            or (re.match(r'\*\*CognitiveEngine:\*\*', line) and i + 1 < len(lines))
+        )
+        if not is_ce_json_line:
+            continue
+
+        # The JSON is either on this line (inline) or the next line
+        json_line = line
+        if re.match(r'\[coordination_consensus\]', line):
+            # May be: "[coordination_consensus] CognitiveEngine: {JSON}" (inline)
+            # or: "[coordination_consensus] CognitiveEngine:\n{JSON}" (next line)
+            inline = re.sub(r'^\[coordination_consensus\]\s*CognitiveEngine:\s*', '', line).strip()
+            if inline.startswith('{'):
+                json_line = inline
+            elif i + 1 < len(lines) and lines[i + 1].strip().startswith('{'):
+                json_line = lines[i + 1]
+            else:
+                continue
+        elif re.match(r'\*\*CognitiveEngine:\*\*', line):
+            if i + 1 < len(lines):
+                json_line = lines[i + 1]
+            else:
+                continue
+        elif re.match(r'\[CognitiveEngine\]\s*\{', line):
+            json_line = re.sub(r'^\[CognitiveEngine\]\s*', '', line)
+
+        if not json_line.strip().startswith('{'):
+            continue
+
+        # Strategy A: try full JSON parse (works when not truncated)
+        try:
+            obj = json.loads(json_line)
+            if isinstance(obj.get('assignments'), dict):
+                issues.update(
+                    k for k in obj['assignments']
+                    if k.lower() not in _META_KEYS
+                )
+                continue  # assignments is authoritative — skip plan string
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        # Strategy B: truncated line — extract from "assignments": { ... } block via regex
+        # Match "key": "value" pairs within the assignments value
+        assign_block = re.search(r'"assignments"\s*:\s*\{([^}]*)', json_line)
+        if assign_block:
+            for key_match in re.finditer(r'"([^"]{2,80})":', assign_block.group(1)):
+                k = key_match.group(1)
+                if k.lower() not in _META_KEYS:
+                    issues.add(k)
+            if issues:
+                continue  # found assignments keys — skip plan string
+
+        # Strategy C: extract from "plan": "key=value; key=value" string
+        # The plan string format is: issue_name=resolved_value; issue_name=...
+        plan_match = re.search(r'"plan"\s*:\s*"([^"]*)', json_line)
+        if plan_match:
+            plan_str = plan_match.group(1)
+            # Each segment is: issue_label=resolved_value (separated by semicolons)
+            for segment in plan_str.split(';'):
+                segment = segment.strip()
+                if '=' in segment:
+                    key = segment.split('=', 1)[0].strip()
+                    if 2 < len(key) <= 80 and key.lower() not in _META_KEYS:
+                        issues.add(key)
+
+    return issues
+
+
 def extract_issues_from_session_transcript(content: str) -> list[str]:
     """
     Extract negotiation issue keys from a Mycelium session transcript.
 
-    Looks for `current_offer`/`offer`/`assignments` dict keys in JSON payloads.
-    Handles truncated lines (stored at 500-char hard limit) by also extracting
-    keys from partial JSON using a key-pattern regex fallback.
+    Priority order:
+      1. CognitiveEngine consensus/plan lines (assignments dict or plan string) —
+         these are the definitive resolved issue set from a completed CE session.
+      2. Offer JSON objects (current_offer / offer dicts from tick messages) —
+         used when consensus lines are absent or parse to nothing.
+      3. Truncated-line regex fallback on offer lines.
     """
     issues: set[str] = set()
 
-    # Strategy 1: parse complete JSON objects
+    # Strategy 1: CE consensus/plan lines (most reliable — explicit final issue set)
+    ce_issues = _extract_issues_from_ce_consensus(content)
+    if ce_issues:
+        issues.update(ce_issues)
+        # Still continue to pick up offer-tick keys in case consensus was partial/truncated
+        # but CE consensus is the primary signal
+
+    # Strategy 2: parse complete JSON objects (tick payloads, offer responses)
     for raw in _iter_json_objects(content):
         try:
             obj = json.loads(raw)
@@ -357,19 +455,16 @@ def extract_issues_from_session_transcript(content: str) -> list[str]:
             for offer in _find_offers(obj):
                 issues.update(k for k in offer if k.lower() not in _META_KEYS)
 
-    # Strategy 2: for truncated lines, extract keys via regex from known offer blocks
-    # Lines starting with {"offer": or containing "current_offer": may be cut off
+    # Strategy 3: for truncated lines, extract keys via regex from known offer blocks
     for line in content.splitlines():
         if not line.startswith("{"):
             continue
-        # Pull all JSON string keys that appear before a string or nested-object value
-        # Pattern: "key": "value"  or  "key": {
         for key_match in re.finditer(r'"([^"]{2,80})":\s*"', line):
             key = key_match.group(1)
             if key.lower() not in _META_KEYS:
                 issues.add(key)
 
-    # Filter out keys that look like metadata values, not issue descriptions
+    # Filter metadata keys
     issues = {
         k for k in issues
         if not re.match(
@@ -471,6 +566,101 @@ def extract_options_from_before_transcript(
 
 
 # ---------------------------------------------------------------------------
+# Embedding similarity (BAAI/bge-small-en-v1.5 via fastembed)
+# ---------------------------------------------------------------------------
+
+class _EmbedMatcher:
+    """
+    Lazily loads fastembed from the Mycelium backend venv and caches cosine
+    similarity lookups.  Falls back to Jaccard if fastembed is unavailable.
+
+    The backend venv path is auto-detected, or can be overridden with
+    MYCELIUM_EMBED_VENV=/path/to/.venv.
+    """
+
+    _VENV_CANDIDATES = [
+        os.path.expanduser("~/mycelium/fastapi-backend/.venv"),
+        "/home/ubuntu/mycelium/fastapi-backend/.venv",
+    ]
+    _MODEL_NAME = "BAAI/bge-small-en-v1.5"
+    _CACHE_DIR   = os.path.expanduser("~/.cache/fastembed")
+    _THRESHOLD   = 0.70
+
+    def __init__(self) -> None:
+        self._model = None            # fastembed TextEmbedding or None if unavailable
+        self._vec_cache: dict[str, list[float]] = {}
+        self._available: bool | None = None   # None = untried
+
+    def _try_load(self) -> bool:
+        if self._available is not None:
+            return self._available
+        # 1. Try direct import first (script may already be running in a venv that has it)
+        try:
+            from fastembed import TextEmbedding  # noqa: PLC0415
+            self._model = TextEmbedding(
+                model_name=self._MODEL_NAME,
+                cache_dir=self._CACHE_DIR,
+            )
+            self._available = True
+            return True
+        except (ImportError, Exception):
+            pass
+        # 2. Inject the backend venv's site-packages into sys.path
+        venv_root = os.environ.get("MYCELIUM_EMBED_VENV", "")
+        candidates = [venv_root] if venv_root else self._VENV_CANDIDATES
+        for venv in candidates:
+            sp = os.path.join(venv, "lib", "python3.12", "site-packages")
+            if not os.path.isdir(sp):
+                continue
+            if sp not in sys.path:
+                sys.path.insert(0, sp)
+            try:
+                from fastembed import TextEmbedding  # noqa: PLC0415
+                self._model = TextEmbedding(
+                    model_name=self._MODEL_NAME,
+                    cache_dir=self._CACHE_DIR,
+                )
+                self._available = True
+                return True
+            except (ImportError, Exception):
+                if sp in sys.path:
+                    sys.path.remove(sp)
+        self._available = False
+        return False
+
+    def _embed(self, texts: list[str]) -> list[list[float]]:
+        """Embed a batch, using the cache for already-seen strings."""
+        new_texts = [t for t in texts if t not in self._vec_cache]
+        if new_texts:
+            vecs = list(self._model.embed(new_texts))
+            for t, v in zip(new_texts, vecs):
+                self._vec_cache[t] = v.tolist() if hasattr(v, "tolist") else list(v)
+        return [self._vec_cache[t] for t in texts]
+
+    @staticmethod
+    def _cosine(a: list[float], b: list[float]) -> float:
+        dot = sum(x * y for x, y in zip(a, b))
+        na  = sum(x * x for x in a) ** 0.5
+        nb  = sum(x * x for x in b) ** 0.5
+        return dot / (na * nb) if na and nb else 0.0
+
+    def best_similarity(self, candidate: str, gold_list: list[str]) -> float:
+        """Return the highest cosine similarity between candidate and any gold label."""
+        if not self._try_load() or not gold_list:
+            return 0.0
+        vecs = self._embed([candidate, *gold_list])
+        cv = vecs[0]
+        return max(self._cosine(cv, gv) for gv in vecs[1:])
+
+    def matches(self, candidate: str, gold_list: list[str]) -> bool:
+        sim = self.best_similarity(candidate, gold_list)
+        return sim >= self._THRESHOLD
+
+
+_embed_matcher = _EmbedMatcher()
+
+
+# ---------------------------------------------------------------------------
 # Recall / F1
 # ---------------------------------------------------------------------------
 
@@ -493,6 +683,10 @@ def _contains_match(candidate: str, gold: str) -> bool:
 
 
 def _fuzzy_match(candidate: str, gold_list: list[str], threshold: float = 0.3) -> bool:
+    # Try embedding similarity first (semantically richer, handles label paraphrasing)
+    if _embed_matcher._available is not False and _embed_matcher.matches(candidate, gold_list):
+        return True
+    # Jaccard / word-overlap fallback (works without fastembed)
     return any(
         _contains_match(candidate, g) or _jaccard(candidate, g) >= threshold
         for g in gold_list
@@ -596,14 +790,12 @@ def process_gist(gist_url: str, gold: dict) -> Optional[EvalMetrics]:
             try:
                 stats = json.loads(stats_content)
                 t = stats.get("total", {})
-                events = str(t.get("events", ""))
                 tokens = t.get("estimated_cfn_knowledge_input_tokens", 0)
                 tokens_str = f"{round(tokens / 1000)}k" if tokens >= 1000 else str(tokens)
-                val = f"{events} ({tokens_str} tokens)" if events else ""
                 if label == "before":
-                    m.before_ingest_events = val
+                    m.before_tokens = tokens_str
                 else:
-                    m.after_ingest_events = val
+                    m.after_tokens = tokens_str
             except (json.JSONDecodeError, KeyError):
                 pass
 
@@ -614,7 +806,7 @@ def process_gist(gist_url: str, gold: dict) -> Optional[EvalMetrics]:
 
     # Before: every agent chat message is a negotiation move.
     # Supports two heading formats:
-    #   **AgentName:**                     (bold inline label, older experiments)
+    #   **exp-XXXX-agent:**                (bold inline label, older experiments)
     #   ### [timestamp] exp-XXXX-agent    (timestamp heading, newer experiments)
     before_move_count = sum(
         1 for line in before_transcript_content.splitlines()
@@ -698,12 +890,12 @@ def build_report(results: list[EvalMetrics], total_inputs: int) -> str:
         "Exp",
         "Scenario",
         "Gold ID",
-        "Before Consensus",
-        "After Consensus",
+        "Before Consensus Reached?",
+        "After Consensus Reached?",
         "Before Negotiation Moves",
         "After Negotiation Moves",
-        "Before Ingest Events",
-        "After Ingest Events",
+        "Before #Tokens",
+        "After #Tokens",
         "Before Issues Found",
         "After Issues Found",
         "Before Issue Recall",
@@ -728,8 +920,8 @@ def build_report(results: list[EvalMetrics], total_inputs: int) -> str:
             _fmt(m.after_consensus),
             _fmt(m.before_negotiation_moves, 10),
             _fmt(m.after_negotiation_moves, 10),
-            _fmt(m.before_ingest_events, 15),
-            _fmt(m.after_ingest_events, 15),
+            _fmt(m.before_tokens, 15),
+            _fmt(m.after_tokens, 15),
             str(len(m.before_issues_found)),
             str(len(m.after_issues_found)),
             _pct(m.before_recall_issues),
