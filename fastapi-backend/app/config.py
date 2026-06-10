@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2026 Julia Valenti
+# Copyright 2026 Mycelium Contributors
 
 from pathlib import Path
 
@@ -79,6 +79,9 @@ class Settings(BaseSettings):
     # Root directory for .mycelium/ data (rooms, config)
     # Defaults to ~/.mycelium/ so backend and CLI share the same directory.
     MYCELIUM_DATA_DIR: str = str(Path.home() / ".mycelium")
+
+    # Metrics collector (for proxying /api/observability/collector and /traces)
+    COLLECTOR_URL: str = "http://mycelium-collector:4318"
 
     # Embedding (for persistent memory semantic search)
     EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"

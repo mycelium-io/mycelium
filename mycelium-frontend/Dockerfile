@@ -2,17 +2,16 @@
 #
 # Mycelium frontend — Next.js production build.
 #
-# The browser-side bundle has the backend URL baked in at build time
-# (NEXT_PUBLIC_API_URL is replaced by Next during `next build`). For the
-# default `mycelium install` path the browser runs on the host and reaches
-# the backend at http://localhost:<backend_port>, so that's the bake-time
-# default. Override at build time for non-default setups:
+# The browser never talks to the backend directly. All `/api/*` requests are
+# proxied by the Next.js server (see next.config.ts `rewrites()`) so the
+# image is portable across deployments — no build-time URL baking.
 #
-#   docker build --build-arg API_URL=http://my-backend.internal:8000 .
+# At runtime, the Next.js server reaches the backend via
+# `MYCELIUM_INTERNAL_API_URL` (defaults to `http://mycelium-backend:8000`,
+# the compose service name). For host-mode deployments, override at
+# container start:
 #
-# This is the cheapest possible "ship the UI to users" path. A future PR
-# can add runtime URL injection (server-side /api/_config endpoint that
-# reads the env at request time) for users with remote backends.
+#   docker run -e MYCELIUM_INTERNAL_API_URL=http://host.docker.internal:8000 ...
 
 # ─── deps ─────────────────────────────────────────────────────────────────────
 FROM node:22-alpine AS deps
@@ -24,9 +23,6 @@ RUN npm ci
 # ─── build ────────────────────────────────────────────────────────────────────
 FROM node:22-alpine AS builder
 WORKDIR /app
-
-ARG API_URL=http://localhost:8000
-ENV NEXT_PUBLIC_API_URL=${API_URL}
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -40,6 +36,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
+# Default proxy target — matches the compose service name. Override at
+# container start for non-compose deployments.
+ENV MYCELIUM_INTERNAL_API_URL=http://mycelium-backend:8000
 
 RUN addgroup --system --gid 1001 nodejs \
  && adduser --system --uid 1001 nextjs

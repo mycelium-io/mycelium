@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2026 Julia Valenti
+# Copyright 2026 Mycelium Contributors
 
 """
 Doctor command — diagnose and fix common Mycelium configuration issues.
@@ -10,10 +10,11 @@ Checks:
   3. Runtime config drift — backend container env matches .env on disk
   4. Docker containers running and healthy
   5. Backend API reachable
-  6. LLM connectivity (real completion probe via backend)
-  7. Workspace ID in sync (CFN mgmt plane vs .env vs config.toml)
-  8. Room MAS IDs present (CFN-enabled installs)
-  9. OpenClaw adapter health (plugin, channel config, agent sandbox)
+  6. Pending migrations — DB revision vs latest alembic file
+  7. LLM connectivity (real completion probe via backend)
+  8. Workspace ID in sync (CFN mgmt plane vs .env vs config.toml)
+  9. Room MAS IDs present (CFN-enabled installs)
+  10. OpenClaw adapter health (plugin, channel config, agent sandbox)
 
 Single-device installs (the default) run the backend locally and exercise
 all checks. In the optional hub-and-spoke deployment mode, spoke nodes
@@ -76,6 +77,66 @@ def _check_config_files() -> CheckResult:
         name="Config files",
         status="ok",
         message="~/.mycelium/.env and config.toml present",
+    )
+
+
+def _check_mycelium_dir_ownership() -> CheckResult:
+    """Surface files under ``~/.mycelium/`` not owned by the current user.
+
+    Root-owned files in here are a common cloud-install symptom (sudo
+    install + non-sudo agent add, or an openclaw gateway running as root
+    bind-mounting the user's home into a container). They lead to opaque
+    ``PermissionError`` failures in later commands. Detect early and point
+    at the single ``chown`` that fixes it.
+    """
+    import os
+
+    if os.name == "nt":  # Windows has no uid
+        return CheckResult(
+            name="~/.mycelium ownership",
+            status="ok",
+            message="not applicable on this platform",
+        )
+
+    mycelium_dir = Path.home() / ".mycelium"
+    if not mycelium_dir.exists():
+        return CheckResult(
+            name="~/.mycelium ownership",
+            status="ok",
+            message="directory does not exist yet",
+        )
+
+    uid = os.getuid()
+    foreign: list[str] = []
+    # Cap the walk — a pathological room shouldn't make doctor hang.
+    seen = 0
+    for path in mycelium_dir.rglob("*"):
+        seen += 1
+        if seen > 5000:
+            break
+        try:
+            if path.stat().st_uid != uid:
+                # Show paths relative to ~ for readable output.
+                foreign.append(str(path.relative_to(Path.home())))
+        except OSError:
+            continue
+        if len(foreign) >= 5:
+            break
+
+    if not foreign:
+        return CheckResult(
+            name="~/.mycelium ownership",
+            status="ok",
+            message="all files owned by current user",
+        )
+
+    details = [f"~/{p}" for p in foreign]
+    details.append("Fix with: sudo chown -R $USER ~/.mycelium")
+    return CheckResult(
+        name="~/.mycelium ownership",
+        status="error",
+        message=f"{len(foreign)}+ file(s) owned by another user — agent/memory writes will fail",
+        details=details,
     )
 
 
@@ -776,6 +837,164 @@ def _check_room_mas_ids() -> CheckResult:
     )
 
 
+def _parse_alembic_current(stdout: str) -> str | None:
+    """Extract the current DB revision from ``alembic current`` stdout.
+
+    Returns ``None`` if no revision token can be found.  This is split out so
+    the parse logic can be unit-tested without spinning up a real database;
+    pre-Option-B, the parser lived inline and inherited a class of bugs
+    where substrings of Python tracebacks (e.g., ``aceback`` from
+    ``Traceback``) were mis-identified as revision IDs.
+
+    The contract:
+      * Look only at stdout (alembic emits INFO logs and tracebacks on
+        stderr); the caller must not pass stderr through this function.
+      * Anchor matches to start-of-line in multiline mode so log prefixes
+        like ``INFO  [alembic.runtime.migration]`` can never contribute.
+      * Accept 4–40 hex chars to cover mycelium's 4-digit numeric prefixes
+        (e.g. ``0016``) and stock alembic 12-char hashes (e.g. ``f3a1b2c4d5e6``).
+    """
+    import re
+
+    if not stdout:
+        return None
+    match = re.search(r"^\s*([0-9a-f]{4,40})\b", stdout, re.MULTILINE)
+    return match.group(1) if match else None
+
+
+def _check_pending_migrations() -> CheckResult:
+    """Check whether the DB is behind the latest alembic revision."""
+    import importlib.resources
+
+    # Locate fastapi-backend the same way the migrate command does.
+    backend_dir: Path | None = None
+    try:
+        pkg_path = Path(str(importlib.resources.files("mycelium")))
+        for depth in range(2, 7):
+            candidate = pkg_path.parents[depth] / "fastapi-backend"
+            if (candidate / "alembic.ini").exists():
+                backend_dir = candidate
+                break
+    except Exception:
+        pass
+    if backend_dir is None:
+        for fallback in (Path.cwd(), Path.cwd() / "fastapi-backend"):
+            if (fallback / "alembic.ini").exists():
+                backend_dir = fallback
+                break
+
+    if backend_dir is None:
+        return CheckResult(
+            name="Migrations",
+            status="ok",
+            message="Skipped (fastapi-backend not found — installed mode)",
+        )
+
+    # Latest revision on disk: highest numbered file prefix in versions/.
+    versions_dir = backend_dir / "alembic_migrations" / "versions"
+    if not versions_dir.exists():
+        return CheckResult(
+            name="Migrations", status="ok", message="Skipped (versions dir not found)"
+        )
+
+    revision_files = sorted(versions_dir.glob("*.py"))
+    if not revision_files:
+        return CheckResult(name="Migrations", status="ok", message="No migration files found")
+    latest_file = revision_files[-1].stem.split("_")[0]  # e.g. "0015"
+
+    # Current DB revision via `alembic current`.  We have to set DATABASE_URL
+    # explicitly because alembic's env.py raises ValueError otherwise — and
+    # this used to be #287's root cause: doctor was reading the never-populated
+    # ``server.database_url`` field, so DATABASE_URL was never set, alembic's
+    # env.py raised "DATABASE_URL environment variable is not set!", and the
+    # resulting Python traceback contained the substring "Traceback" whose
+    # "aceback" hex tail was then parsed (incorrectly) as a DB revision.  Two
+    # fixes below address this end-to-end:
+    #
+    #   1. Source DATABASE_URL from the single MyceliumConfig.database_url
+    #      recipe (host_side=True → localhost:<published port>), so alembic
+    #      always has a real connection string to try.
+    #
+    #   2. Parse alembic stdout *separately* from stderr.  Alembic emits its
+    #      INFO logs and any tracebacks on stderr; the revision token comes
+    #      out on stdout alone.  This eliminates the regex-vs-traceback class
+    #      of false positives entirely; the tightened regex below is just
+    #      belt-and-suspenders.
+    import logging
+
+    from mycelium.docker_utils import resolve_host_database_url
+
+    env = {**__import__("os").environ}
+    host_url = resolve_host_database_url(env)
+    if host_url:
+        env["DATABASE_URL"] = host_url
+    else:
+        logging.getLogger(__name__).debug(
+            "Could not resolve host-side DATABASE_URL from .env or config.toml; "
+            "falling through to alembic with whatever DATABASE_URL is in the environment"
+        )
+
+    try:
+        result = subprocess.run(
+            ["uv", "run", "alembic", "current"],
+            cwd=str(backend_dir),
+            capture_output=True,
+            text=True,
+            timeout=15,
+            env=env,
+        )
+        stdout = result.stdout or ""
+        stderr = result.stderr or ""
+    except Exception as exc:
+        return CheckResult(
+            name="Migrations",
+            status="warning",
+            message=f"Could not run alembic current: {exc}",
+            details=["fix: mycelium migrate"],
+        )
+
+    # If alembic itself errored out, surface the stderr summary instead of
+    # quietly returning "unknown".  This is what users actually want to see.
+    if result.returncode != 0:
+        err_tail = stderr.strip().splitlines()[-1] if stderr.strip() else "(no error output)"
+        return CheckResult(
+            name="Migrations",
+            status="warning",
+            message=f"alembic current failed (exit {result.returncode})",
+            details=[f"stderr: {err_tail[:160]}", "fix: mycelium migrate"],
+        )
+
+    # "head" only appears in stdout alongside the revision when the DB is at
+    # the latest revision; checking stdout (not stdout+stderr) keeps INFO log
+    # lines mentioning "alembic.runtime" from triggering a false positive.
+    if "head" in stdout.lower():
+        return CheckResult(
+            name="Migrations",
+            status="ok",
+            message=f"DB at head ({latest_file})",
+        )
+
+    # Revision token: parse stdout via the tested helper.  We never touch
+    # stderr here — alembic's INFO logs and Python tracebacks land there,
+    # and feeding either through a hex-regex was #287's root cause.
+    current_rev = _parse_alembic_current(stdout) or "unknown"
+
+    if not stdout.strip() or current_rev == "unknown":
+        return CheckResult(
+            name="Migrations",
+            status="warning",
+            message="Could not determine current DB revision",
+            details=[f"alembic stdout: {stdout.strip()[:120]}", "fix: mycelium migrate"],
+        )
+
+    return CheckResult(
+        name="Migrations",
+        status="warning",
+        message=f"DB at {current_rev}, latest is {latest_file} — pending migrations",
+        details=["fix: mycelium migrate"],
+    )
+
+
 # ── OpenClaw adapter checks ───────────────────────────────────────────────────
 #
 # All three openclaw checks are gated on whether the user has opted into the
@@ -957,13 +1176,33 @@ def _check_openclaw_channel_config() -> CheckResult:
             message="channels.mycelium-room present but disabled",
         )
 
-    missing = [k for k in ("backendUrl", "room", "agents") if not channel.get(k)]
-    if missing:
+    if not channel.get("backendUrl"):
         return CheckResult(
             name="channel config",
             status="error",
-            message=f"missing required fields: {', '.join(missing)}",
-            details=["fix: set backendUrl, room, and agents in channels.mycelium-room"],
+            message="missing required field: backendUrl",
+            details=["fix: set backendUrl in channels.mycelium-room"],
+        )
+
+    # Room/agents can come from a legacy top-level room+agents block OR the
+    # multi-room rooms:[{room,agents}] fan-out (or both). Build a normalized
+    # view that's valid if at least one room is configured anywhere.
+    normalized_rooms: list[tuple[str, list]] = []
+    if channel.get("room"):
+        normalized_rooms.append((str(channel["room"]), list(channel.get("agents") or [])))
+    for entry in channel.get("rooms") or []:
+        if isinstance(entry, dict) and entry.get("room"):
+            normalized_rooms.append((str(entry["room"]), list(entry.get("agents") or [])))
+
+    if not normalized_rooms:
+        return CheckResult(
+            name="channel config",
+            status="error",
+            message="no rooms configured (need top-level room or rooms[])",
+            details=[
+                "fix: `mycelium agent add <h> --adapter openclaw` writes this, "
+                "or set channels.mycelium-room.rooms = [{room, agents}]"
+            ],
         )
 
     # Check backendUrl matches mycelium config.toml's server.api_url
@@ -990,12 +1229,12 @@ def _check_openclaw_channel_config() -> CheckResult:
     except Exception:
         pass  # non-fatal
 
-    agents = channel.get("agents") or []
     require_mention = channel.get("requireMention", True)
+    summary = ", ".join(f"{r}:{len(a)}" for r, a in normalized_rooms)
     return CheckResult(
         name="channel config",
         status="ok",
-        message=f"room={channel.get('room')} agents={len(agents)} requireMention={require_mention}",
+        message=(f"{len(normalized_rooms)} room(s) [{summary}] requireMention={require_mention}"),
     )
 
 
@@ -1029,7 +1268,11 @@ def _check_openclaw_agent_sandbox() -> CheckResult:
         )
 
     channel = (oc.get("channels") or {}).get("mycelium-room") or {}
+    # Union of legacy top-level agents + every rooms[] entry's agents.
     channel_agents = set(channel.get("agents") or [])
+    for entry in channel.get("rooms") or []:
+        if isinstance(entry, dict):
+            channel_agents.update(entry.get("agents") or [])
     if not channel_agents:
         return CheckResult(
             name="agent sandbox",
@@ -1067,6 +1310,309 @@ def _check_openclaw_agent_sandbox() -> CheckResult:
         name="agent sandbox",
         status="ok",
         message=f"all {len(channel_agents)} channel agent(s) have sandbox=off",
+    )
+
+
+# ── Cursor adapter checks ─────────────────────────────────────────────────────
+#
+# Mirrors the openclaw pattern: gate every check on whether the user has
+# opted into the cursor adapter (via ``mycelium adapter add cursor``).  A
+# fresh mycelium install that has never touched Cursor — and a user who
+# happens to have ``cursor-agent`` on PATH for unrelated reasons — should
+# both see all cursor checks cleanly skipped.  We surface health only after
+# the user has explicitly asked for the adapter.
+
+
+def _cursor_adapter_registered() -> bool:
+    """True if the user has run ``mycelium adapter add cursor`` at least once."""
+    from mycelium.config import MyceliumConfig
+
+    try:
+        cfg = MyceliumConfig.load()
+    except Exception:
+        return False
+    return "cursor" in (cfg.adapters or {})
+
+
+def _check_cursor_agent_binary() -> CheckResult:
+    """Verify ``cursor-agent`` is reachable on PATH for the daemon to spawn.
+
+    The daemon shells out via ``asyncio.create_subprocess_exec("cursor-agent",
+    ...)`` — without the binary on PATH every mention silently fails with a
+    daemon-side ``FileNotFoundError``. Surfacing this early avoids the "I
+    @-mentioned my cursor agent and nothing happened" debugging spiral.
+    """
+    if not _cursor_adapter_registered():
+        return CheckResult(
+            name="cursor-agent binary",
+            status="ok",
+            message="cursor adapter not registered — skipped",
+        )
+
+    import shutil
+
+    binary = shutil.which("cursor-agent")
+    if binary is None:
+        return CheckResult(
+            name="cursor-agent binary",
+            status="error",
+            message="cursor-agent not on PATH — mentions will fail",
+            details=[
+                "install Cursor + the cursor CLI from https://cursor.com,",
+                "then run `cursor-agent login` to authenticate this host.",
+            ],
+        )
+    return CheckResult(
+        name="cursor-agent binary",
+        status="ok",
+        message=f"installed at {binary}",
+    )
+
+
+def _check_cursor_login() -> CheckResult:
+    """Verify ``cursor-agent`` is authenticated so the daemon can spawn it headlessly.
+
+    ``cursor-agent`` persists its session at ``~/.config/cursor/auth.json``
+    (top-level ``accessToken`` / ``refreshToken``) — that's the file
+    ``cursor-agent`` itself reads on startup. Verified empirically on
+    2026.05 builds: moving that file aside reproduces the
+    ``Authentication required.`` error path; nothing else does. The
+    older ``~/.cursor/cli-config.json`` ``preferences.tokenInfo`` schema
+    is gone in current builds, and ``cli-config.json`` ``authInfo``
+    (email/displayName) is a *biographical* breadcrumb that survives
+    logout — so we deliberately do NOT consider it a "logged in"
+    signal. Doctor must report what ``cursor-agent`` will actually do at
+    spawn time, not what the user ever did.
+
+    The spawn helper still surfaces a friendly error at first-mention
+    time, but doctor catches it during setup. Returns ``ok`` only when
+    auth.json carries a non-empty ``accessToken``.
+    """
+    if not _cursor_adapter_registered():
+        return CheckResult(
+            name="cursor-agent login",
+            status="ok",
+            message="cursor adapter not registered — skipped",
+        )
+
+    import json
+
+    auth_path = Path.home() / ".config" / "cursor" / "auth.json"
+
+    if not auth_path.exists():
+        return CheckResult(
+            name="cursor-agent login",
+            status="warning",
+            message="cursor-agent has not been run on this host",
+            details=[
+                f"expected: {auth_path}",
+                "fix: run `cursor-agent login` and complete the browser flow",
+            ],
+        )
+
+    try:
+        auth_data = json.loads(auth_path.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001 — malformed JSON shouldn't crash doctor
+        return CheckResult(
+            name="cursor-agent login",
+            status="warning",
+            message=f"auth.json could not be parsed: {exc}",
+            details=[
+                f"checked: {auth_path}",
+                "fix: run `cursor-agent login` to refresh credentials",
+            ],
+        )
+
+    if not isinstance(auth_data, dict) or not auth_data.get("accessToken"):
+        return CheckResult(
+            name="cursor-agent login",
+            status="warning",
+            message="cursor-agent is not authenticated",
+            details=[
+                f"checked: {auth_path}",
+                "fix: run `cursor-agent login` and complete the browser flow",
+            ],
+        )
+
+    return CheckResult(
+        name="cursor-agent login",
+        status="ok",
+        message="authenticated",
+    )
+
+
+def _check_cursor_workspace_assets() -> CheckResult:
+    """Verify each registered cursor agent's workspace has the mycelium assets.
+
+    ``mycelium agent create --adapter cursor`` drops
+    ``.cursor/rules/mycelium.mdc`` + the mycelium-marked block of
+    ``AGENTS.md`` into the agent's cwd. A user manually wiping ``.cursor``
+    (or moving the workspace directory) leaves the manifest registered but
+    the spawned ``cursor-agent`` blind to mycelium context. Doctor catches
+    that drift.
+    """
+    if not _cursor_adapter_registered():
+        return CheckResult(
+            name="cursor workspace",
+            status="ok",
+            message="cursor adapter not registered — skipped",
+        )
+
+    # Walk every room's agent manifests; collect (handle, cwd) tuples for
+    # cursor-family agents. We deliberately read the manifest files directly
+    # rather than hitting the backend so doctor stays functional on spokes
+    # whose backend is down.
+    from mycelium.commands.agent import _load_manifest
+
+    rooms_dir = Path.home() / ".mycelium" / "rooms"
+    if not rooms_dir.exists():
+        return CheckResult(
+            name="cursor workspace",
+            status="ok",
+            message="no rooms on disk — skipped",
+        )
+
+    cursor_agents: list[tuple[str, str, Path]] = []
+    for room_dir in rooms_dir.iterdir():
+        if not room_dir.is_dir():
+            continue
+        agents_dir = room_dir / "agents"
+        if not agents_dir.exists():
+            continue
+        for manifest_file in agents_dir.glob("*.md"):
+            try:
+                manifest = _load_manifest(room_dir.name, manifest_file.stem)
+            except Exception:
+                continue
+            if manifest is None or manifest.adapter != "cursor" or not manifest.cwd:
+                continue
+            cursor_agents.append((manifest.handle, room_dir.name, Path(manifest.cwd).expanduser()))
+
+    if not cursor_agents:
+        return CheckResult(
+            name="cursor workspace",
+            status="ok",
+            message="no cursor agents registered — skipped",
+        )
+
+    missing: list[str] = []
+    for handle, room, cwd in cursor_agents:
+        rule = cwd / ".cursor" / "rules" / "mycelium.mdc"
+        agents_md = cwd / "AGENTS.md"
+        if not cwd.is_dir():
+            missing.append(f"  @{handle} ({room}): cwd {cwd} does not exist")
+            continue
+        if not rule.exists():
+            missing.append(f"  @{handle} ({room}): missing {rule}")
+        if not agents_md.exists():
+            missing.append(f"  @{handle} ({room}): missing {agents_md}")
+
+    if missing:
+        return CheckResult(
+            name="cursor workspace",
+            status="warning",
+            message=f"{len(missing)} drift item(s) across {len(cursor_agents)} agent(s)",
+            details=[*missing, "fix: `mycelium agent rm <handle> && mycelium agent create ...`"],
+        )
+
+    return CheckResult(
+        name="cursor workspace",
+        status="ok",
+        message=f"all {len(cursor_agents)} cursor agent(s) have current workspace assets",
+    )
+
+
+# ── Agent daemon checks ───────────────────────────────────────────────────────
+
+
+def _claude_daemon_installed() -> bool:
+    """True if the daemon service unit exists on this platform."""
+    import platform
+
+    home = Path.home()
+    if platform.system() == "Darwin":
+        return (home / "Library" / "LaunchAgents" / "io.mycelium.daemon.plist").exists()
+    if platform.system() == "Linux":
+        return (home / ".config" / "systemd" / "user" / "mycelium-daemon.service").exists()
+    return False
+
+
+def _check_daemon_service_registered() -> CheckResult:
+    """The unit file is on disk in the right location for the service manager."""
+    import platform
+
+    if not _claude_daemon_installed():
+        return CheckResult(
+            name="daemon service",
+            status="ok",
+            message=(
+                "agent daemon not installed — skipped "
+                "(install with: mycelium adapter add claude-code --step=daemon)"
+            ),
+        )
+    system = platform.system()
+    return CheckResult(
+        name="daemon service",
+        status="ok",
+        message=f"{system} service unit registered",
+    )
+
+
+def _check_daemon_running() -> CheckResult:
+    """The daemon answers on its unix-socket health endpoint."""
+    if not _claude_daemon_installed():
+        return CheckResult(
+            name="daemon health",
+            status="ok",
+            message="not installed — skipped",
+        )
+
+    from mycelium.daemon.health import read_health_blocking
+
+    health = read_health_blocking(timeout=2.0)
+    if health is None:
+        return CheckResult(
+            name="daemon health",
+            status="error",
+            message="service installed but unix-socket /health did not respond",
+            details=[
+                "  socket: ~/.mycelium/daemon.sock",
+                "  logs:   ~/.mycelium/logs/daemon.log",
+                "  fix:    mycelium daemon restart",
+            ],
+        )
+
+    uptime = int(health.get("uptime_s") or 0)
+    rooms_cfg = health.get("rooms_configured") or []
+    rooms_sub = health.get("rooms_subscribed") or []
+    errors = int(health.get("errors_last_hour") or 0)
+
+    details: list[str] = [
+        f"  uptime: {uptime // 3600}h {uptime % 3600 // 60}m",
+        f"  rooms:  {len(rooms_sub)}/{len(rooms_cfg)} connected",
+    ]
+    if not rooms_cfg:
+        details.append("  (no rooms subscribed — `mycelium daemon subscribe <room>`)")
+    last = health.get("last_dispatch")
+    if last:
+        details.append(
+            f"  last run: @{last.get('agent')} in {last.get('room')} "
+            f"({last.get('result')}, {last.get('duration_s', 0):.1f}s)"
+        )
+    if errors:
+        last_err = health.get("last_error") or {}
+        details.append(
+            f"  errors: {errors} in last hour — last: "
+            f"{last_err.get('where')}: {last_err.get('msg')}"
+        )
+
+    return CheckResult(
+        name="daemon health",
+        status="warning" if errors else "ok",
+        message=(
+            "running, no errors" if not errors else f"running, but {errors} error(s) in last hour"
+        ),
+        details=details,
     )
 
 
@@ -1136,6 +1682,7 @@ def doctor(
         # .env port vs Docker port).
         config_checks: list[CheckResult] = [
             _check_config_files(),
+            _check_mycelium_dir_ownership(),
             _check_config_file_drift(local_backend=local),
         ]
         if local:
@@ -1145,6 +1692,7 @@ def doctor(
         if local:
             service_checks.append(_check_docker_containers())
         service_checks.append(_check_backend_reachable(local_backend=local))
+        service_checks.append(_check_pending_migrations())
         service_checks.append(_check_llm_connectivity())
 
         sections: list[tuple[str, list[CheckResult]]] = [
@@ -1164,6 +1712,11 @@ def doctor(
                     _check_openclaw_mycelium_plugin(),
                     _check_openclaw_channel_config(),
                     _check_openclaw_agent_sandbox(),
+                    _check_cursor_agent_binary(),
+                    _check_cursor_login(),
+                    _check_cursor_workspace_assets(),
+                    _check_daemon_service_registered(),
+                    _check_daemon_running(),
                 ],
             ),
         ]

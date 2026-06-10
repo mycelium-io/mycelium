@@ -9,6 +9,7 @@ from ...types import Response
 
 
 def _get_kwargs() -> dict[str, Any]:
+
     _kwargs: dict[str, Any] = {
         "method": "get",
         "url": "/api/observability",
@@ -44,7 +45,7 @@ def sync_detailed(
 
      Return a snapshot of backend-collected metrics (embeddings, LLM, indexer, etc.).
 
-    Note: served under ``/observability`` rather than ``/api/metrics`` because
+    Note: served under ``/api/observability`` rather than ``/api/metrics`` because
     privacy-extension blocklists pattern-match ``/api/metrics*`` as analytics
     telemetry and silently drop the request in the browser.
 
@@ -73,7 +74,7 @@ async def asyncio_detailed(
 
      Return a snapshot of backend-collected metrics (embeddings, LLM, indexer, etc.).
 
-    Note: served under ``/observability`` rather than ``/api/metrics`` because
+    Note: served under ``/api/observability`` rather than ``/api/metrics`` because
     privacy-extension blocklists pattern-match ``/api/metrics*`` as analytics
     telemetry and silently drop the request in the browser.
 

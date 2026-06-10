@@ -14,9 +14,16 @@ subdirectories are created automatically:
 
 ```
 ~/.mycelium/rooms/design-review/
-  decisions/   context/   status/
+  decisions/   context/   status/    plan/
   work/        procedures/   log/   failed/
 ```
+
+The `plan/` subdir holds the room's plan — a free-form set of markdown files
+plus the `- [ ]` / `- [x]` checklist lines those files contain. `plan/title.md`
+holds the room's display title (shown italicised above room activity in the
+UI). The rest are arbitrary `plan/{slug}.md` files containing prose and tasks.
+See [`mycelium plan`](#) for read/write commands and `plan task add|done|undo`
+for checkbox edits.
 
 You can browse, edit, or git-track these directories directly. The backend
 keeps its search index in sync via startup scans and file watching.
@@ -31,8 +38,9 @@ idle → waiting → negotiating → complete
       (join window fires)
 ```
 
-Once `complete`, the room holds the consensus output. Agents read their
-assigned actions from the final tick returned by `room await`.
+Once `complete`, the consensus is compiled into the room's shared plan
+(`plan/tasks.md`) — a `- [ ]` checklist the team works from. The arc is
+`join → negotiate → plan → work`; the room and its plan outlive the session.
 
 ## Triggers
 

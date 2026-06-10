@@ -1,0 +1,28 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir uv
+
+COPY pyproject.toml ./
+
+RUN uv pip install --system --no-cache \
+        "opentelemetry-proto>=1.20.0,<2" \
+        "protobuf>=4.21.0" \
+        "pydantic>=2.13.0" \
+        "pydantic-settings>=2.13.1" \
+        "python-dotenv>=1.0.0" \
+        "toml>=0.10.2" \
+        "pyyaml>=6.0.3" \
+    && pip uninstall -y uv
+
+COPY src/ src/
+RUN pip install --no-cache-dir --no-deps .
+
+RUN useradd --create-home --shell /bin/false collector
+USER collector
+
+EXPOSE 4318
+
+ENTRYPOINT ["python", "-m", "mycelium.collector_main"]
+CMD ["--port", "4318", "--output", "/home/collector/.mycelium/metrics/metrics.json"]

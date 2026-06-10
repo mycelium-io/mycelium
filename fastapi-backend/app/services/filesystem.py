@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2026 Julia Valenti
+# Copyright 2026 Mycelium Contributors
 
 """
 Memory storage — markdown files with YAML frontmatter.
@@ -231,8 +231,24 @@ def _cleanup_empty_dirs(directory: Path, stop_at: Path) -> None:
 
 
 def ensure_room_structure(room_dir: Path) -> None:
-    """Ensure standard namespace subdirectories exist for a room."""
-    for subdir in ("decisions", "failed", "status", "context", "work", "procedures", "log"):
+    """Ensure standard namespace subdirectories exist for a room.
+
+    These are the structured *memory* namespaces. Note ``agents/`` is
+    deliberately absent: agent manifests live under ``agents/`` in the room
+    dir, but it's room *storage*, not an indexed knowledge surface — it's
+    excluded from embedding and synthesis, and is created lazily by
+    ``mycelium agent create`` rather than pre-seeded here.
+    """
+    for subdir in (
+        "decisions",
+        "failed",
+        "status",
+        "context",
+        "work",
+        "procedures",
+        "log",
+        "plan",
+    ):
         (room_dir / subdir).mkdir(parents=True, exist_ok=True)
 
 

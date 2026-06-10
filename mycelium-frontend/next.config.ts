@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Copyright 2026 Julia Valenti
+// Copyright 2026 Mycelium Contributors
 
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -7,20 +7,23 @@ import { join } from "node:path";
 import type { NextConfig } from "next";
 
 /**
- * Resolve the backend URL with the same precedence the rest of the project uses:
- *   1. NEXT_PUBLIC_API_URL  (.env.local override / CI / prod)
- *   2. server.api_url from ~/.mycelium/config.toml  (matches the CLI + adapters)
- *   3. http://localhost:8000  (mycelium install default)
+ * Internal backend URL used by the Next.js server to proxy `/api/*` requests.
  *
- * Config-toml read is best-effort and only happens at `next dev` / `next build`
- * — failures fall through silently to the default.
+ * The browser never sees this URL — it only talks to its own origin. The
+ * Next.js Node process is the one that reaches the backend, so this is a
+ * server-side concern resolved at startup with the following precedence:
+ *
+ *   1. MYCELIUM_INTERNAL_API_URL (preferred — set by compose / runtime env)
+ *   2. server.api_url from ~/.mycelium/config.toml (matches the CLI)
+ *   3. http://localhost:8000 (mycelium install default)
+ *
+ * Config-toml read is best-effort — failures fall through to the default.
  */
-function resolveApiUrl(): string {
-  if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
+function resolveInternalApiUrl(): string {
+  if (process.env.MYCELIUM_INTERNAL_API_URL) return process.env.MYCELIUM_INTERNAL_API_URL;
   try {
     const path = join(homedir(), ".mycelium", "config.toml");
     const text = readFileSync(path, "utf8");
-    // Match `api_url = "..."` under any section. Prefer [server].api_url if present.
     const serverMatch = text.match(/\[server\][\s\S]*?\n\s*api_url\s*=\s*"([^"]+)"/);
     if (serverMatch) return serverMatch[1];
     const anyMatch = text.match(/^\s*api_url\s*=\s*"([^"]+)"/m);
@@ -31,15 +34,32 @@ function resolveApiUrl(): string {
   return "http://localhost:8000";
 }
 
-const apiUrl = resolveApiUrl();
+const internalApiUrl = resolveInternalApiUrl();
 // eslint-disable-next-line no-console
-console.log(`[mycelium-frontend] backend → ${apiUrl}`);
+console.log(`[mycelium-frontend] proxy /api/* → ${internalApiUrl}`);
+
+// `next dev` blocks cross-origin requests by default; opt-in via env when
+// running dev mode behind a public IP. The Docker production path doesn't
+// need this — the browser only ever hits its own origin.
+const allowedDevOrigins =
+  process.env.MYCELIUM_ALLOWED_DEV_ORIGINS?.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean) ?? [];
 
 const nextConfig: NextConfig = {
   // Standalone output → minimal Docker image (no full node_modules in runtime layer)
   output: "standalone",
-  env: {
-    NEXT_PUBLIC_API_URL: apiUrl,
+  // Next.js's built-in gzip middleware buffers chunks before flushing, which
+  // breaks SSE — events are held until the compressor decides to flush rather
+  // than delivered immediately. Disabling compression lets each SSE chunk go
+  // straight to the socket. Static assets remain unaffected (served by CDN /
+  // reverse proxy in production anyway).
+  compress: false,
+  allowedDevOrigins,
+  async rewrites() {
+    return [
+      { source: "/api/:path*", destination: `${internalApiUrl}/api/:path*` },
+    ];
   },
 };
 

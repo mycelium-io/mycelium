@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2026 Julia Valenti
+# Copyright 2026 Mycelium Contributors
 
 """
 Mycelium data models.
@@ -41,11 +41,13 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy import Uuid as GenericUuid
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -125,6 +127,17 @@ class CoordinationSession(Base):
     """
 
     __tablename__ = "coordination_sessions"
+    # At most one non-terminal session per room. Defense in depth against the
+    # SELECT-then-INSERT race in ``_spawn_coordination_session`` (#280).
+    __table_args__ = (
+        Index(
+            "ix_coord_sessions_one_active_per_room",
+            "parent_room_name",
+            unique=True,
+            postgresql_where=text("state IN ('idle', 'waiting', 'negotiating')"),
+            sqlite_where=text("state IN ('idle', 'waiting', 'negotiating')"),
+        ),
+    )
 
     id: Mapped[UUID_Type] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     parent_room_name: Mapped[str] = mapped_column(
@@ -196,6 +209,16 @@ class Participant(Base):
     """
 
     __tablename__ = "participants"
+    # One participant row per (session, handle). Prevents agent_count
+    # double-counting when both the harness/CLI AND the agent itself call
+    # ``mycelium session join`` for the same handle (#284).
+    __table_args__ = (
+        UniqueConstraint(
+            "coordination_session_id",
+            "agent_handle",
+            name="ix_participants_unique_handle_per_session",
+        ),
+    )
 
     id: Mapped[UUID_Type] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     coordination_session_id: Mapped[UUID_Type] = mapped_column(

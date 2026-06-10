@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2026 Julia Valenti
+# Copyright 2026 Mycelium Contributors
 
 """
 Lightweight in-process metrics store for Mycelium backend.
@@ -60,6 +60,14 @@ _lock = threading.Lock()
 
 _counters: dict[str, dict[str, int | float]] = {}
 _histograms: dict[str, dict] = {}
+# Room identity registry: ``mas_id -> room_name``. Populated opportunistically
+# by service code whenever the backend learns both at the same time (e.g.,
+# coordination session start, knowledge ingest, CFN negotiation). Survives
+# room deletion from the ``rooms`` table (which is destructive), so the
+# ``mycelium metrics show`` per-room tables can keep displaying friendly
+# names and mas_ids for transient rooms after they're gone. Reset on
+# process restart (in-memory only, same lifecycle as counters/histograms).
+_room_identities: dict[str, str] = {}
 _started_at: str = datetime.now(UTC).isoformat()
 
 
@@ -141,22 +149,46 @@ def record_llm_call(
     *,
     operation: str,
     model: str = "",
+    room: str = "",
     input_tokens: int = 0,
     output_tokens: int = 0,
     cost_usd: float = 0.0,
     duration_ms: float = 0.0,
     error: bool = False,
 ) -> None:
-    """Record a backend LLM call (litellm completion)."""
+    """Record a backend LLM call (litellm completion).
+
+    Per-operation token totals are tracked alongside the grand totals so that
+    callers (e.g. ``mycelium metrics show mycelium``) can show synthesis-only
+    figures without having to assume that other operations (health probes,
+    future heartbeats) contribute negligibly. See issue #296.
+
+    Per-room counters are recorded when ``room`` is provided so the
+    ``mycelium metrics show cost`` view can break down spend by the parent
+    mycelium room (see issue #297). Sessions belonging to the same parent
+    room (``mycelium_room:session:<uuid>``) are bucketed by the CLI
+    renderer via the shared ``_parent_room`` helper, matching the rule
+    used for ``cfn_llm.by_room.*``.
+    """
     _inc("llm", "calls")
     _inc("llm", f"by_operation.{operation}")
     if model:
         _inc("llm", f"by_model.{model}")
     _inc("llm", "input_tokens", input_tokens)
     _inc("llm", "output_tokens", output_tokens)
+    _inc("llm", f"by_operation.{operation}.input_tokens", input_tokens)
+    _inc("llm", f"by_operation.{operation}.output_tokens", output_tokens)
     _inc("llm", "cost_usd", cost_usd)
+    if room:
+        _inc("llm", f"by_room.{room}.calls")
+        _inc("llm", f"by_room.{room}.input_tokens", input_tokens)
+        _inc("llm", f"by_room.{room}.output_tokens", output_tokens)
+        _inc("llm", f"by_room.{room}.cost_usd", cost_usd)
     if error:
         _inc("llm", "errors")
+        _inc("llm", f"by_operation.{operation}.errors")
+        if room:
+            _inc("llm", f"by_room.{room}.errors")
     if duration_ms > 0:
         _record_histogram("llm.latency_ms", duration_ms)
         _record_histogram(f"llm.latency_ms.{operation}", duration_ms)
@@ -251,6 +283,7 @@ def record_knowledge_ingestion(
     duration_ms: float = 0.0,
     error: bool = False,
     estimated_input_tokens: int = 0,
+    mas_id: str | None = None,
 ) -> None:
     _inc("knowledge", "ingestions")
     _inc("knowledge", "concepts_extracted", concepts)
@@ -262,6 +295,12 @@ def record_knowledge_ingestion(
     if estimated_input_tokens > 0:
         _inc("knowledge", "estimated_input_tokens", estimated_input_tokens)
         _record_histogram("knowledge.estimated_input_tokens", float(estimated_input_tokens))
+    if mas_id:
+        _inc("knowledge", f"by_mas.{mas_id}.ingestions")
+        if error:
+            _inc("knowledge", f"by_mas.{mas_id}.errors")
+        if estimated_input_tokens > 0:
+            _inc("knowledge", f"by_mas.{mas_id}.estimated_input_tokens", estimated_input_tokens)
 
 
 @_safe
@@ -435,6 +474,33 @@ def record_cfn_llm_usage(
             _inc("cfn_llm", f"by_pipeline.{pipeline}.output_tokens", op_output)
 
 
+@_safe
+def record_room_identity(*, mas_id: str, room_name: str) -> None:
+    """Capture a ``mas_id ↔ room_name`` mapping for the metric snapshot.
+
+    The ``rooms`` table is hard-deleted (see ``models.Room`` — no
+    ``deleted_at`` column), which means once a transient room is gone,
+    neither ``mas_id → name`` nor ``name → mas_id`` can be resolved
+    via ``/api/rooms`` anymore. The CLI's per-room tables then show
+    ``(deleted)`` or blank MAS cells, making it impossible to
+    cross-reference Knowledge Ingestion (keyed by mas_id) against CFN
+    Coordination / CFN LLM Token Usage (keyed by room_name).
+
+    Callers should invoke this whenever they have both values in scope
+    (typically at session start or first activity for a room). It's
+    a write-once cache — re-recording an existing pair is a no-op,
+    and the recorder is permissive about empty inputs (silent skip)
+    to keep service code call sites uncluttered.
+    """
+    if not mas_id or not room_name:
+        return
+    with _lock:
+        # Only set once per mas_id: if a room is somehow renamed in flight,
+        # the first observed name wins. Rooms are not renamable today, so
+        # this is a defensive choice for forward-compat only.
+        _room_identities.setdefault(str(mas_id), str(room_name))
+
+
 def snapshot() -> dict:
     """Return a JSON-serializable snapshot of all metrics."""
     with _lock:
@@ -443,4 +509,6 @@ def snapshot() -> dict:
             "updated_at": datetime.now(UTC).isoformat(),
             "counters": {k: dict(v) for k, v in _counters.items()},
             "histograms": {k: dict(v) for k, v in _histograms.items()},
+            # Survives /api/rooms deletion — see ``record_room_identity``.
+            "room_identities": dict(_room_identities),
         }

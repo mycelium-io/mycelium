@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2026 Julia Valenti
+# Copyright 2026 Mycelium Contributors
 
 """
 Multi-agent coordination service.
@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Literal
 from urllib.parse import urlparse
+from uuid import UUID
 
 import asyncpg
 from rapidfuzz import fuzz as _fuzz
@@ -42,7 +43,10 @@ from app.services.metrics import (
     record_consensus,
     record_coordination_round,
     record_coordination_start,
+    record_room_identity,
 )
+from app.services.plan import read_plan_file, set_title_from_body_if_absent, write_plan_file
+from app.services.plan_compiler import compile_plan, fallback_body
 
 logger = logging.getLogger(__name__)
 
@@ -257,6 +261,11 @@ class _CfnRoundState:
     # the next tick as ``prior_round_outcome`` so agents stop describing
     # their own offer as "reflected back".
     last_round_outcome: str = "first_round"
+    # Negotiation context captured for the plan compiler (consensus → plan).
+    # _finish_cfn only receives the session room name; the agents' opening
+    # positions and participant handles aren't otherwise reachable there.
+    joined_intents: str = ""
+    session_handles: list[str] = field(default_factory=list)
 
 
 # {room_name: _CfnRoundState}
@@ -409,7 +418,7 @@ async def _run_tick(room_name: str, tick: int) -> None:
     if tick != 0:
         return
 
-    if not settings.COGNITION_FABRIC_NODE_URL or mas_id is None or workspace_id is None:
+    if not settings.COGNITION_FABRIC_NODE_URL or not mas_id or not workspace_id:
         logger.error(
             "Coordination requested for %s but CFN not configured (no COGNITION_FABRIC_NODE_URL "
             "or coord_session mas_id/workspace_id not set)",
@@ -473,6 +482,12 @@ async def _run_cfn_negotiation(
 
     session_start_time = time.monotonic()
     record_coordination_start(participants=len(session_handles))
+    # Capture the room_name ↔ mas_id link in the snapshot so the CLI's
+    # per-room tables can keep displaying both axes after the room is
+    # hard-deleted from /api/rooms. We pass the parent room (room.name)
+    # because the coordination counters bucket by parent room too
+    # (``_parent_room`` strips ``:session:<uuid>`` suffixes downstream).
+    record_room_identity(mas_id=mas_id, room_name=room.name)
 
     await _post_message(
         room_name,
@@ -508,6 +523,8 @@ async def _run_cfn_negotiation(
         round_start_time=time.monotonic(),
         session_start_time=session_start_time,
         n_steps_total=settings.NEGOTIATION_N_STEPS,
+        joined_intents=joined_intents,
+        session_handles=session_handles[:],
     )
     _cfn_state[room_name] = state
 
@@ -695,6 +712,17 @@ async def _fan_out_cfn_messages(
     except Exception as exc:
         logger.debug("shared_context_files load skipped for %s: %s", room_name, exc)
         shared_context = []
+
+    # Open tasks from the parent room's plan/ namespace — surfaced to every
+    # agent so the negotiated outcome stays aligned with the active plan.
+    try:
+        from app.services.plan import open_task_summary
+
+        parent_room = room_name.split(":session:", 1)[0] if ":session:" in room_name else room_name
+        plan_summary = open_task_summary(parent_room)
+    except Exception as exc:
+        logger.debug("plan_summary load skipped for %s: %s", room_name, exc)
+        plan_summary = None
     # Read state once so each tick in this batch sees the same prior-round
     # snapshot; _cfn_decide_round overwrites these fields immediately before
     # calling us so the values describe what just happened.
@@ -743,6 +771,7 @@ async def _fan_out_cfn_messages(
                                 "n_steps_total": n_steps_total,
                                 "your_last_action": last_actions.get(handle),
                                 "prior_round_outcome": prior_round_outcome,
+                                "plan_open_tasks": plan_summary,
                             }
                         }
                     ),
@@ -769,6 +798,7 @@ async def _fan_out_cfn_messages(
                             "your_last_action": last_actions.get(participant_id),
                             "prior_round_outcome": prior_round_outcome,
                             "shared_context_files": shared_context,
+                            "plan_open_tasks": plan_summary,
                         }
                     }
                 ),
@@ -1174,17 +1204,63 @@ async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool
             outcome="failure",
         )
 
+    # Consensus → plan: compile the agreement into the room's shared plan
+    # BEFORE the consensus message goes out (plan-first ordering, so a
+    # ``session await`` returns once the plan exists). Fail-soft — a compiler
+    # outage falls back to the raw agreement and never blocks the outcome.
+    # Gated on ``not broken``: aborted/timeout consensus has no agreement to
+    # compile, and the timeout-task path (always broken=True) must never reach
+    # an LLM await.
+    plan_file: str | None = None
+    if not broken:
+        parent_room = room_name.split(":session:", 1)[0] if ":session:" in room_name else room_name
+        try:
+            existing = read_plan_file(parent_room)
+            body = await compile_plan(
+                room_name=parent_room,
+                assignments=assignments,
+                joined_intents=state.joined_intents if state else "",
+                issue_options=state.issue_options if state else None,
+                existing_plan=existing,
+            )
+            write_plan_file(parent_room, body, updated_by="CognitiveEngine")
+            set_title_from_body_if_absent(parent_room, body, updated_by="CognitiveEngine")
+            plan_file = "plan/tasks.md"
+        except Exception as exc:
+            logger.warning(
+                "_finish_cfn: plan compiler failed for %s, writing raw fallback: %s",
+                room_name,
+                exc,
+            )
+            try:
+                fb_body = fallback_body(assignments)
+                write_plan_file(parent_room, fb_body, updated_by="CognitiveEngine")
+                set_title_from_body_if_absent(parent_room, fb_body, updated_by="CognitiveEngine")
+                plan_file = "plan/tasks.md"
+            except Exception:
+                logger.exception("_finish_cfn: fallback plan write failed for %s", room_name)
+
+    # ``session`` carries the session display name so room-scoped consumers
+    # (the chat-channel render) can build a link to the live session view —
+    # the room-scoped row has ``coordination_session_id=None`` so the link
+    # target can't be derived from the row alone.
+    consensus_content = json.dumps(
+        {
+            "plan": plan,
+            "plan_file": plan_file,
+            "assignments": assignments,
+            "broken": broken,
+            "session": room_name,
+        }
+    )
+    parent_room_for_post = (
+        room_name.split(":session:", 1)[0] if ":session:" in room_name else room_name
+    )
     try:
         await _post_message(
             room_name,
             message_type="coordination_consensus",
-            content=json.dumps(
-                {
-                    "plan": plan,
-                    "assignments": assignments,
-                    "broken": broken,
-                }
-            ),
+            content=consensus_content,
         )
     except Exception as exc:
         # FK violation means the room was deleted before consensus could be written.
@@ -1194,6 +1270,25 @@ async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool
             room_name,
             exc,
         )
+    # Mirror the consensus to the parent room so it surfaces in the chat
+    # channel alongside coordination_join. Same dual-post pattern as joins
+    # (the ck_messages_one_target CHECK forbids combining both FKs in one
+    # row). Non-fatal: a failure here doesn't roll back the session-scoped
+    # post above. Skip when there's no parent (negotiation ran in a flat
+    # room with no ``:session:`` suffix — uncommon, defensive).
+    if parent_room_for_post and parent_room_for_post != room_name:
+        try:
+            await _post_message(
+                parent_room_for_post,
+                message_type="coordination_consensus",
+                content=consensus_content,
+            )
+        except Exception as exc:
+            logger.warning(
+                "_finish_cfn: parent-room consensus mirror failed for %s: %s",
+                parent_room_for_post,
+                exc,
+            )
     async with async_session_maker() as db:
         if ":session:" in room_name:
             parent, _, short_id = room_name.partition(":session:")
@@ -1499,7 +1594,7 @@ async def _post_message(room_name: str, message_type: str, content: str) -> None
     """Insert a coordination message to DB and notify SSE subscribers."""
     async with async_session_maker() as db:
         msg_room_name: str | None = room_name
-        msg_session_id: str | None = None
+        msg_session_id: UUID | None = None
         if ":session:" in room_name:
             parent, _, short_id = room_name.partition(":session:")
             result = await db.execute(
@@ -1511,7 +1606,15 @@ async def _post_message(room_name: str, message_type: str, content: str) -> None
             session_id = result.scalar_one_or_none()
             if session_id is not None:
                 msg_room_name = None
-                msg_session_id = str(session_id)
+                msg_session_id = session_id
+            else:
+                logger.warning(
+                    "Cannot resolve session %r — no matching coordination_session row; "
+                    "dropping message (type=%s)",
+                    room_name,
+                    message_type,
+                )
+                return
         msg = Message(
             room_name=msg_room_name,
             coordination_session_id=msg_session_id,

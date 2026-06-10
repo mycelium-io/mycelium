@@ -1,0 +1,63 @@
+# Keep the build context lean so `COPY src/ src/` in Dockerfile.collector
+# doesn't sweep in hundreds of MB of dev artifacts. The collector image
+# itself only needs five Python files under src/mycelium/, but the
+# `pip install --no-deps .` step needs the full package tree on disk —
+# we just don't want it carrying ballast.
+#
+# Measured impact at the time of writing:
+#   - src/mycelium/adapters/openclaw/.../node_modules: 543 MB
+#   - .venv:                                          219 MB
+#   - build/:                                           2.5 MB
+#   - tests/:                                           0.2 MB
+# Reducing the `COPY src/` layer from ~545 MB to ~2 MB also reduces
+# build context transfer time on every rebuild.
+
+# ── Local Python environments (never belong in an image) ────────────
+.venv/
+venv/
+env/
+*.egg-info/
+*.egg
+build/
+dist/
+.tox/
+
+# ── Bytecode and caches ─────────────────────────────────────────────
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ty_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# ── Node tooling for the OpenClaw plugin (543 MB!) ──────────────────
+# The plugin's runtime dist/ stays; node_modules is dev-only and is
+# already excluded from the wheel via `[tool.setuptools.exclude-package-data]`
+# in pyproject.toml. We need the same exclusion at COPY time.
+**/node_modules/
+**/package-lock.json
+
+# Plugin unit tests and IDE config — no runtime purpose
+**/plugin/test/
+**/plugin/.vitest/
+
+# ── VCS / IDE / editor noise ────────────────────────────────────────
+.git/
+.gitignore
+.gitattributes
+.github/
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# ── Docs / changelogs (not used at runtime by the collector) ────────
+docs/
+CHANGELOG.md
+README.md
+LICENSE

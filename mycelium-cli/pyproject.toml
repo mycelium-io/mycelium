@@ -38,6 +38,7 @@ dependencies = [
     "opentelemetry-proto>=1.20.0,<2",
     "protobuf>=4.21.0",
     "rapidfuzz>=3.10.0",
+    "questionary>=2.1.1",
 ]
 
 [project.optional-dependencies]
@@ -78,8 +79,10 @@ mycelium = [
     "py.typed",
     "data/*.json",
     "docs/**/*.md",
-    "adapters/claude-code/**/*",
-    "adapters/openclaw/mycelium/**/*",
+    "integrations/claude_code/assets/**/*",
+    "integrations/cursor/assets/**/*",
+    "integrations/openclaw/assets/mycelium/**/*",
+    "daemon/service/*",
     "docker/*",
     "docker/initdb/*",
     "docker/env.defaults",
@@ -91,9 +94,9 @@ mycelium = [
 # the wheel, bloating it by tens of MB. test/ is unit test source that has
 # no runtime purpose on an end user's machine.
 mycelium = [
-    "adapters/openclaw/mycelium/plugin/node_modules/**/*",
-    "adapters/openclaw/mycelium/plugin/test/**/*",
-    "adapters/openclaw/mycelium/plugin/package-lock.json",
+    "integrations/openclaw/assets/mycelium/plugin/node_modules/**/*",
+    "integrations/openclaw/assets/mycelium/plugin/test/**/*",
+    "integrations/openclaw/assets/mycelium/plugin/package-lock.json",
 ]
 
 [tool.pytest.ini_options]
@@ -133,5 +136,9 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
-"tests/**/*.py" = ["ARG001", "ARG002"]
+# Integration contract methods: base/no-op implementations legitimately don't
+# use every parameter the contract defines (e.g. ClaudeCodeIntegration.register
+# ignores opts because the manifest IS the registration).
+"src/mycelium/integrations/**/*.py" = ["ARG002"]
+"tests/**/*.py" = ["ARG001", "ARG002", "ARG005"]
 "src/mycelium_backend_client/**/*.py" = ["UP", "E", "W", "F", "B", "C4", "I", "ARG", "SIM"]

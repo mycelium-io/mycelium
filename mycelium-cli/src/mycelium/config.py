@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2026 Julia Valenti
+# Copyright 2026 Mycelium Contributors
 
 """
 Configuration management for Mycelium CLI.
@@ -18,7 +18,7 @@ Load priority (highest to lowest):
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import toml
 from pydantic import BaseModel, Field, field_validator
@@ -70,6 +70,10 @@ class ServerConfig(BaseModel):
         default=None,
         description="Default MAS UUID (created during install)",
     )
+    database_url: str | None = Field(
+        default=None,
+        description="Database URL override (defaults to backend container default)",
+    )
 
     @field_validator("api_url")
     @classmethod
@@ -109,6 +113,14 @@ class RuntimeConfig(BaseModel):
     backend_port: int = Field(
         default=8000,
         description="Host port for the backend API",
+    )
+    collector_port: int = Field(
+        default=4318,
+        description="Host port for the OTLP metrics collector",
+    )
+    frontend_port: int = Field(
+        default=3000,
+        description="Host port for the frontend UI",
     )
     data_dir: str | None = Field(
         default=None,
@@ -221,7 +233,7 @@ class ScrapeTarget(BaseModel):
 
     The collector polls every target on the same 30s cadence as the backend
     and stores results under the top-level ``scrape`` key in
-    ``~/.mycelium/metrics.json``. Targets unreachable at scrape time are
+    ``$MYCELIUM_DATA_DIR/metrics/metrics.json``. Targets unreachable at scrape time are
     preserved with ``data: null`` so the display panel can show "degraded"
     rather than silently dropping them.
     """
@@ -251,8 +263,22 @@ class MetricsConfig(BaseModel):
     scrape targets from those runtime URLs. Use ``[[metrics.scrape]]`` only
     to add *additional* targets (e.g. a user's own Prometheus-instrumented
     service) or to override an auto-derived target by matching its ``name``.
+
+    On spoke nodes, set ``collector_url`` to the hub's collector address
+    (e.g. ``http://hub-ip:4318``). This makes ``mycelium metrics show``
+    fetch data from the hub and sets the default OTLP endpoint for
+    adapter plugins — no local collector needed.
     """
 
+    collector_url: str | None = Field(
+        default=None,
+        description=(
+            "URL of the hub OTLP collector (e.g. http://hub-ip:4318). "
+            "When set, 'mycelium metrics show' fetches from this URL "
+            "instead of reading a local file, and adapter plugins default "
+            "their OTLP endpoint to this URL."
+        ),
+    )
     scrape: list[ScrapeTarget] = Field(
         default_factory=list,
         description=(
@@ -380,6 +406,7 @@ class MyceliumConfig(BaseModel):
             "llm": {},
             "runtime": {},
             "knowledge_ingest": {},
+            "metrics": {},
         }
 
         if api_url := os.getenv("MYCELIUM_API_URL"):
@@ -422,6 +449,10 @@ class MyceliumConfig(BaseModel):
                 env_config["knowledge_ingest"]["max_tool_content_bytes"] = int(v)
             except ValueError:
                 pass
+
+        # Metrics overrides
+        if collector_url := os.getenv("MYCELIUM_COLLECTOR_URL"):
+            env_config["metrics"]["collector_url"] = collector_url
 
         return env_config
 
@@ -547,6 +578,69 @@ class MyceliumConfig(BaseModel):
         if self.runtime.data_dir:
             return Path(self.runtime.data_dir).expanduser()
         return self.get_global_config_dir()
+
+    # ── Database URL assembly ────────────────────────────────────────────────
+    #
+    # Single source of truth for the Postgres connection URL.  Compose, the
+    # generated ``~/.mycelium/.env``, and host-side tools (alembic, doctor,
+    # migrate) all flow through this method so the URL recipe lives in
+    # exactly one place.  The pieces (password, port) come from
+    # ``config.toml``; user, hostname, dbname, and async driver are
+    # mycelium-architectural and intentionally not user-tunable.
+    #
+    # ``server.database_url`` in config.toml stays as an explicit override
+    # (e.g., pointing at an external Postgres); when set, every consumer
+    # honours it verbatim.
+
+    # Constants that describe mycelium's bundled Postgres deployment.
+    # Centralised here so they can't drift between compose, alembic, and
+    # the CLI helpers.  ClassVar keeps these out of pydantic's field set so
+    # they don't show up in config.toml dumps or model_dump() output.
+    DB_USER: ClassVar[str] = "postgres"
+    DB_NAME: ClassVar[str] = "mycelium"
+    DB_CONTAINER_HOST: ClassVar[str] = "mycelium-db"  # resolves inside the compose network
+    DB_CONTAINER_PORT: ClassVar[int] = 5432  # fixed inside the compose network
+
+    def database_url(self, *, host_side: bool = False, async_driver: bool = True) -> str:
+        """Return the canonical Postgres connection URL.
+
+        Parameters
+        ----------
+        host_side
+            ``True`` → resolve via ``localhost:<published_port>``; appropriate
+            for tools running on the host (alembic, ``mycelium doctor``,
+            ``mycelium migrate``).
+            ``False`` → resolve via ``mycelium-db:5432``; appropriate for
+            services running inside the compose network (the backend
+            container, the graph indexer, etc.).
+        async_driver
+            ``True`` → ``postgresql+asyncpg://`` (SQLAlchemy async, used by
+            the backend and alembic).
+            ``False`` → ``postgresql://`` (psycopg/plain libpq, used by the
+            graph-db URL and any non-async consumer).
+
+        If ``server.database_url`` is set in config.toml, it is returned
+        verbatim (escape hatch for external/managed Postgres).  Callers that
+        need the ``host_side`` vs container distinction lose it in that
+        case; that's intentional — if you've pointed mycelium at an
+        external DB, there is no "container" alternative.
+        """
+        override = (self.server.database_url or "").strip()
+        if override:
+            return override
+
+        if host_side:
+            host = "localhost"
+            port = self.runtime.db_port
+        else:
+            host = self.DB_CONTAINER_HOST
+            port = self.DB_CONTAINER_PORT
+
+        from urllib.parse import quote
+
+        scheme = "postgresql+asyncpg" if async_driver else "postgresql"
+        password = quote(self.runtime.db_password, safe="")
+        return f"{scheme}://{self.DB_USER}:{password}@{host}:{port}/{self.DB_NAME}"
 
     def save_to_project(self, project_dir: Path | None = None) -> None:
         """Save room settings to project-local .mycelium/."""

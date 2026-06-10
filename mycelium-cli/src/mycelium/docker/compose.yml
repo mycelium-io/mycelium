@@ -50,10 +50,24 @@ services:
         condition: service_healthy
         required: false
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium
-      GRAPH_DB_URL: postgresql://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium
+      # DATABASE_URL / GRAPH_DB_URL are materialised into ../.env by
+      # `mycelium config apply` from a single recipe in
+      # MyceliumConfig.database_url() — see the SSOT note in
+      # mycelium-cli/src/mycelium/docker_utils.py. The nested fallbacks below
+      # use ${MYCELIUM_DB_PASSWORD} so upgraded installs whose .env carries a
+      # custom password (but no materialised DATABASE_URL yet) still
+      # authenticate correctly; running `mycelium config apply` once
+      # regenerates .env with the canonical URLs and the fallbacks become inert.
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium}
+      GRAPH_DB_URL: ${GRAPH_DB_URL:-postgresql://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium}
       API_BASE_URL: http://mycelium-backend:8000
       COORDINATION_TICK_TIMEOUT_SECONDS: ${COORDINATION_TICK_TIMEOUT_SECONDS:-30}
+      # IN-CONTAINER path the backend writes rooms/memory/plans to. MUST match
+      # the bind-mount target below — otherwise writes land in the container's
+      # overlay FS and are lost on recreate. (The host-side MYCELIUM_DATA_DIR
+      # env var is read separately by docker compose to resolve the volume
+      # source path; the two values are different by design.)
+      MYCELIUM_DATA_DIR: /root/.mycelium
     volumes:
       - ${MYCELIUM_DATA_DIR:-~/.mycelium}:/root/.mycelium
     ports:
@@ -69,8 +83,8 @@ services:
   #
   # Next.js frontend for browsing rooms, sessions, memory, and live negotiation.
   # Opt-in via `mycelium up --ui` (or `--profile ui` directly). The browser
-  # reads the backend at the URL baked into the image at build time —
-  # http://localhost:<backend_port> for the standard local install.
+  # only ever talks to its own origin (port MYCELIUM_UI_PORT) — the Next.js
+  # server proxies /api/* to the backend internally over the compose network.
 
   mycelium-frontend:
     build:
@@ -84,11 +98,46 @@ services:
     env_file:
       - path: ../.env
         required: false
+    environment:
+      MYCELIUM_INTERNAL_API_URL: http://mycelium-backend:8000
     depends_on:
       mycelium-backend:
         condition: service_healthy
     ports:
       - "${MYCELIUM_UI_PORT:-3000}:3000"
+
+  # ── OTLP Collector (profile: metrics) ──────────────────────────────────────
+  #
+  # Lightweight HTTP receiver for OpenClaw diagnostics-otel and deep-
+  # observability traces/metrics. Writes $DATA_DIR/metrics/metrics.json and
+  # traces.db, and polls the backend for coordination metrics.
+  # Opt-in via `mycelium up --metrics`.
+
+  mycelium-collector:
+    image: ghcr.io/mycelium-io/mycelium-collector:${MYCELIUM_IMAGE_TAG:-latest}
+    container_name: mycelium-collector
+    restart: unless-stopped
+    profiles: [metrics]
+    env_file:
+      - path: ../.env
+        required: false
+    depends_on:
+      mycelium-backend:
+        condition: service_healthy
+    ports:
+      - "${MYCELIUM_METRICS_PORT:-4318}:4318"
+    volumes:
+      - ${MYCELIUM_DATA_DIR:-~/.mycelium}:/home/collector/.mycelium
+    command:
+      - "--port=4318"
+      - "--output=/home/collector/.mycelium/metrics/metrics.json"
+      - "--backend-url=http://mycelium-backend:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:4318/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
   # ── Graph Viewer (optional, for development) ─────────────────────────────────
 
@@ -138,6 +187,13 @@ services:
       POSTGRES_PASSWORD: ${MYCELIUM_DB_PASSWORD:-password}
       PORT: 9000
       CFN_DEV_MODE: ${CFN_DEV_MODE:-false}
+      # Must match the node-svc's CFN_NAME below — the mgmt plane's
+      # Default-Workspace ↔ CFN auto-association branch (see #308) only
+      # fires when the registering node's cfn_name equals this env var.
+      # If unset, the mgmt plane silently falls back to "My Cognition
+      # Fabric Node", the strings don't match, and workspace.cfn_id stays
+      # NULL forever — breaking every CFN data-plane round trip.
+      CFN_NAME: ${CFN_NAME:-mycelium-cfn}
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9000/health || exit 1"]
       interval: 10s
@@ -147,7 +203,7 @@ services:
 
 
   ioc-cognition-fabric-node-svc:
-    image: ghcr.io/outshift-open/ioc-cognition-fabric-node-svc:0.1.4
+    image: ghcr.io/outshift-open/ioc-cognition-fabric-node-svc:0.1.7
     pull_policy: always
     platform: linux/amd64
     container_name: ioc-cognition-fabric-node-svc

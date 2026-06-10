@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2026 Julia Valenti
+# Copyright 2026 Mycelium Contributors
 
 """
 Mycelium FastAPI backend.
@@ -40,6 +40,8 @@ from app.routes.coordination_sessions import router as coordination_sessions_rou
 from app.routes.knowledge import router as knowledge_router
 from app.routes.memory import router as memory_router
 from app.routes.messages import router as messages_router
+from app.routes.plan import agent_router as agent_context_router
+from app.routes.plan import router as plan_router
 from app.routes.rooms import router as rooms_router
 from app.routes.sessions import router as sessions_router
 from app.routes.stream import router as stream_router
@@ -187,6 +189,8 @@ app.include_router(messages_router, prefix="/api")
 app.include_router(sessions_router, prefix="/api")
 app.include_router(stream_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
+app.include_router(plan_router, prefix="/api")
+app.include_router(agent_context_router, prefix="/api")
 
 # CFN routes
 app.include_router(audit_router)
@@ -261,7 +265,7 @@ async def root(
 async def get_metrics():
     """Return a snapshot of backend-collected metrics (embeddings, LLM, indexer, etc.).
 
-    Note: served under ``/observability`` rather than ``/api/metrics`` because
+    Note: served under ``/api/observability`` rather than ``/api/metrics`` because
     privacy-extension blocklists pattern-match ``/api/metrics*`` as analytics
     telemetry and silently drop the request in the browser.
     """
@@ -272,39 +276,105 @@ async def get_metrics():
 
 @app.get("/api/observability/collector", tags=["metrics"])
 async def get_collector_metrics():
-    """Return OTLP/scrape metrics written by the CLI collector.
+    """Proxy to the OTLP collector's ``/collector/metrics`` endpoint.
 
-    Reads ``~/.mycelium/metrics.json`` and returns the collector-specific
-    keys (counters, histograms, sessions, scrape) — excluding the ``backend``
-    key which duplicates ``GET /observability``.  Returns 404 when the file is
-    absent (collector not running or never started).
+    Returns counters, histograms, sessions, and scrape data directly from the
+    collector's in-memory store.  Returns 502 if the collector is unreachable.
+
+    Configure ``COLLECTOR_URL`` (default ``http://mycelium-collector:4318``)
+    to point at the collector service.
+    """
+    return await _proxy_collector("/collector/metrics")
+
+
+@app.get("/api/observability/traces/recent", tags=["metrics"])
+async def get_recent_traces(limit: int = 100, host: str | None = None):
+    """Proxy to the OTLP collector's ``/collector/traces`` endpoint.
+
+    Returns recent trace spans from the collector's SQLite store.
+    Returns 502 if the collector is unreachable.
+    """
+    path = f"/collector/traces?limit={limit}"
+    if host:
+        from urllib.parse import quote
+
+        path += f"&host={quote(host)}"
+    return await _proxy_collector(path)
+
+
+@app.get("/api/observability/hosts", tags=["metrics"])
+async def get_hosts():
+    """Proxy to the OTLP collector's ``/collector/hosts`` endpoint.
+
+    Returns distinct hosts that have reported OTLP data, with span counts
+    and agent lists.  Returns 502 if the collector is unreachable.
+    """
+    return await _proxy_collector("/collector/hosts")
+
+
+async def _proxy_collector(path: str):
+    """Forward a GET request to the collector and return the raw JSON response.
+
+    Defence-in-depth: sanitise any non-standard JSON tokens (``Infinity``,
+    ``NaN``) that might slip through from upstream before forwarding to the
+    browser.
     """
     import json
-    from pathlib import Path
+    import math
 
-    from fastapi.responses import JSONResponse
+    import httpx
+    from fastapi.responses import JSONResponse, Response
 
-    metrics_path = Path.home() / ".mycelium" / "metrics.json"
-    if not metrics_path.exists():
-        return JSONResponse(
-            status_code=404,
-            content={"detail": "Collector metrics file not found. Run: mycelium metrics collect"},
-        )
+    def _sanitise(obj: object) -> object:
+        """Replace float inf/nan with None for JSON compliance."""
+        if isinstance(obj, float) and (math.isinf(obj) or math.isnan(obj)):
+            return None
+        if isinstance(obj, dict):
+            return {k: _sanitise(v) for k, v in obj.items()}
+        if isinstance(obj, list | tuple):
+            return [_sanitise(v) for v in obj]
+        return obj
+
+    def _parse_constant(c: str) -> None:
+        """Map non-standard JSON tokens (Infinity, NaN) to None at parse time."""
+        return None
+
+    url = f"{settings.COLLECTOR_URL.rstrip('/')}{path}"
     try:
-        raw = json.loads(metrics_path.read_text())
-    except Exception:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(url)
+        if resp.status_code == 200:
+            try:
+                data = json.loads(resp.text, parse_constant=_parse_constant)
+            except (json.JSONDecodeError, ValueError):
+                return JSONResponse(
+                    status_code=502,
+                    content={"detail": "Invalid JSON from collector"},
+                )
+            data = _sanitise(data)
+            return Response(
+                content=json.dumps(data, default=str),
+                media_type="application/json",
+            )
         return JSONResponse(
-            status_code=500,
-            content={"detail": "Failed to read collector metrics file"},
+            status_code=resp.status_code,
+            content=resp.json()
+            if resp.headers.get("content-type", "").startswith("application/json")
+            else {"detail": resp.text},
         )
-    result = {
-        "updated_at": raw.get("updated_at"),
-        "counters": raw.get("counters", {}),
-        "histograms": raw.get("histograms", {}),
-        "sessions": raw.get("sessions", []),
-        "scrape": raw.get("scrape", {}),
-    }
-    return result
+    except httpx.ConnectError:
+        return JSONResponse(
+            status_code=502,
+            content={
+                "detail": f"Collector unreachable at {settings.COLLECTOR_URL}. Run: mycelium up --metrics"
+            },
+        )
+    except Exception as exc:
+        logger.warning("Collector proxy failed: %s", exc)
+        return JSONResponse(
+            status_code=502,
+            content={"detail": f"Collector proxy error: {type(exc).__name__}"},
+        )
 
 
 async def _check_database(session: AsyncSession) -> dict:

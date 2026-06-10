@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
-// Copyright 2026 Julia Valenti
+// Copyright 2026 Mycelium Contributors
 
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getSSEUrl, fetchMessages } from "@/lib/api";
+import { getSSEUrl, fetchMessages, fetchRoomAgents, logFetchError } from "@/lib/api";
 import { MarkdownContent } from "@/components/markdown-content";
+import { RoomPlanHeader } from "@/components/room-plan-header";
 
 interface Event {
   id: string;
@@ -18,6 +20,17 @@ interface Event {
 }
 
 const CHAT_TYPES = new Set(["broadcast", "direct", "announce", "delegate"]);
+// Event types that appear in the chat-channel view alongside real chat.
+// Joins + consensus belong here so the room's chat surface narrates the
+// negotiation lifecycle — "alice joined session X", "CONSENSUS in session X
+// → plan/tasks.md", "TIMEOUT in session X — no agreement" — instead of
+// burying it all under the EVENTS tab.
+const CHANNEL_VIEW_TYPES = new Set([
+  ...CHAT_TYPES,
+  "coordination_join",
+  "coordination_consensus",
+  "plan_updated",
+]);
 
 function parseEvent(msg: Record<string, unknown>): Event {
   const mtype = (msg.message_type as string) || (msg.type as string) || "unknown";
@@ -75,9 +88,13 @@ function parseEvent(msg: Record<string, unknown>): Event {
     }
     case "coordination_consensus": {
       const plan = raw.plan as string;
+      const planFile = raw.plan_file as string | undefined;
+      const broken = raw.broken === true;
       const assignments = raw.assignments as Record<string, string>;
       content = plan || "";
       if (assignments) content += " " + Object.entries(assignments).map(([k, v]) => `${k}=${v}`).join(", ");
+      // Consensus isn't the end — it compiles into the room's shared plan.
+      if (!broken && planFile) content += ` · compiled → ${planFile}`;
       break;
     }
     case "memory_changed": {
@@ -128,6 +145,16 @@ function toneColor(t: "accent" | "ok" | "warn" | "muted" | "ink"): string {
                         : "var(--muted)";
 }
 
+/** Two-letter monogram for a chat avatar (mirrors AgentsPanel). */
+function initials(handle: string): string {
+  const parts = handle.split(/[^a-z0-9]+/i).filter(Boolean);
+  const s =
+    parts.length >= 2
+      ? parts[0][0] + parts[1][0]
+      : (parts[0] ?? handle).slice(0, 2);
+  return s.toUpperCase();
+}
+
 const MENTION_RE = /(@[\w-]+)/g;
 
 function renderWithMentions(text: string): React.ReactNode {
@@ -143,25 +170,45 @@ function renderWithMentions(text: string): React.ReactNode {
   );
 }
 
-type View = "channel" | "events";
+type View = "channel" | "plan";
 
 interface Props {
   roomName: string;
   onMemoryChanged?: () => void;
+  planRefreshTrigger?: number;
 }
 
-export function EventStream({ roomName, onMemoryChanged }: Props) {
+export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
   const [connected, setConnected] = useState(false);
   const [view, setView] = useState<View>("channel");
+  const [agentHandles, setAgentHandles] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Know which senders are registered agents so their replies can be badged.
+  // Self-fetched (mirrors the chat box) so the page doesn't have to thread it.
+  useEffect(() => {
+    let cancelled = false;
+    const load = () =>
+      fetchRoomAgents(roomName)
+        .then((a) => {
+          if (!cancelled) setAgentHandles(new Set(a.map((x) => x.handle)));
+        })
+        .catch(logFetchError("fetchRoomAgents"));
+    load();
+    const t = setInterval(load, 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [roomName]);
 
   // Load initial messages
   useEffect(() => {
     fetchMessages(roomName).then(data => {
       const msgs = (data.messages || []).reverse();
       setEvents(msgs.map(parseEvent));
-    }).catch(() => {});
+    }).catch(logFetchError("fetchMessages"));
   }, [roomName]);
 
   // SSE connection
@@ -179,6 +226,11 @@ export function EventStream({ roomName, onMemoryChanged }: Props) {
           const event = parseEvent(msg);
           setEvents(prev => [...prev, event]);
           if (event.type === "memory_changed") onMemoryChanged?.();
+          // A consensus compiles the negotiation into plan/tasks.md — nudge
+          // the plan header to refetch so the checklist surfaces immediately.
+          if (event.type === "coordination_consensus" && event.raw.broken !== true) {
+            onMemoryChanged?.();
+          }
         } catch {}
       };
       es.onerror = () => {
@@ -193,8 +245,8 @@ export function EventStream({ roomName, onMemoryChanged }: Props) {
   }, [roomName, onMemoryChanged]);
 
   const visible = useMemo(
-    () => (view === "channel" ? events.filter(e => CHAT_TYPES.has(e.type)) : events),
-    [events, view],
+    () => events.filter(e => CHANNEL_VIEW_TYPES.has(e.type)),
+    [events],
   );
 
   // Auto-scroll when new events arrive
@@ -203,7 +255,7 @@ export function EventStream({ roomName, onMemoryChanged }: Props) {
   }, [visible]);
 
   const channelCount = useMemo(
-    () => events.filter(e => CHAT_TYPES.has(e.type)).length,
+    () => events.filter(e => CHANNEL_VIEW_TYPES.has(e.type)).length,
     [events],
   );
 
@@ -225,8 +277,8 @@ export function EventStream({ roomName, onMemoryChanged }: Props) {
         </div>
         <div className="ml-auto flex items-stretch">
           {([
-            { id: "channel" as const, label: "CHANNEL", count: channelCount },
-            { id: "events" as const,  label: "EVENTS",  count: events.length },
+            { id: "channel" as const, label: "CHANNEL", count: channelCount as number | null },
+            { id: "plan" as const,    label: "PLAN",    count: null },
           ]).map(t => {
             const active = view === t.id;
             return (
@@ -239,58 +291,230 @@ export function EventStream({ roomName, onMemoryChanged }: Props) {
                 style={{ borderBottom: `2px solid ${active ? "var(--accent)" : "transparent"}` }}
               >
                 {t.label}
-                <span className="text-micro tabular" style={{ color: active ? "var(--accent)" : "var(--muted)" }}>
-                  {t.count}
-                </span>
+                {t.count !== null && (
+                  <span className="text-micro tabular" style={{ color: active ? "var(--accent)" : "var(--muted)" }}>
+                    {t.count}
+                  </span>
+                )}
               </button>
             );
           })}
         </div>
       </div>
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
+        {view === "plan" ? (
+          <RoomPlanHeader roomName={roomName} refreshTrigger={planRefreshTrigger} />
+        ) : (
+          <>
         {visible.length === 0 && (
           <div className="text-center caps-mono-sm text-muted py-16 italic">
-            {view === "channel" ? "no channel messages yet" : "waiting for events…"}
+            no channel messages yet
           </div>
         )}
-        {view === "channel"
-          ? visible.map(ev => (
-              <div key={ev.id} className="px-5 py-3 border-b border-border last:border-b-0">
-                <div className="flex items-baseline gap-2 mb-1.5">
-                  <span className="font-mono text-label text-accent font-semibold truncate">
-                    {ev.sender}
-                  </span>
-                  {ev.recipient && (
-                    <span className="caps-mono-sm text-muted">→ {ev.recipient}</span>
-                  )}
-                  <span className="ml-auto text-micro text-muted font-mono tabular">{ev.time}</span>
-                </div>
-                <MarkdownContent className="text-body text-text2 leading-relaxed">
-                  {ev.content}
-                </MarkdownContent>
-              </div>
-            ))
-          : visible.map(ev => {
-              const style = typeStyles[ev.type] || defaultStyle;
-              const color = toneColor(style.tone);
+        {visible.map(ev => {
+              // Coordination + plan lifecycle events render as slim system
+              // notices (NOT chat-bubble rows): a JOIN line per agent join,
+              // a CONSENSUS / TIMEOUT line when a session resolves, and a
+              // PLAN line per plan edit (title set, task add, task toggle).
+              // Each links out where appropriate.
+              if (ev.type === "plan_updated") {
+                const kind = ev.raw.kind as string | undefined;
+                const text = ev.raw.text as string | undefined;
+                const title = ev.raw.title as string | undefined;
+                const done = ev.raw.done === true;
+                const updatedBy = ev.raw.updated_by as string | undefined;
+                let body: React.ReactNode;
+                if (kind === "task_toggled") {
+                  body = (
+                    <>
+                      <span style={{ color: done ? "var(--green)" : "var(--muted)" }}>
+                        {done ? "✓" : "○"}
+                      </span>
+                      <span className="text-text2 truncate">
+                        &ldquo;{text ?? "task"}&rdquo;
+                      </span>
+                      <span className="text-muted">
+                        {done ? "completed" : "reopened"}
+                      </span>
+                    </>
+                  );
+                } else if (kind === "task_added") {
+                  body = (
+                    <>
+                      <span className="text-muted">added</span>
+                      <span className="text-text2 truncate">
+                        &ldquo;{text ?? "task"}&rdquo;
+                      </span>
+                    </>
+                  );
+                } else if (kind === "title_set") {
+                  body = (
+                    <>
+                      <span className="text-muted">title set to</span>
+                      <span className="text-text2 truncate">
+                        &ldquo;{title ?? ""}&rdquo;
+                      </span>
+                      {updatedBy ? (
+                        <span className="text-muted">by @{updatedBy}</span>
+                      ) : null}
+                    </>
+                  );
+                } else {
+                  body = <span className="text-text2">updated</span>;
+                }
+                return (
+                  <div
+                    key={ev.id}
+                    className="flex items-baseline gap-2 px-5 py-2 border-b border-border last:border-b-0 text-body italic text-text2"
+                  >
+                    <span className="caps-mono-sm flex-shrink-0" style={{ color: "var(--accent)" }}>
+                      PLAN
+                    </span>
+                    {body}
+                    <span className="ml-auto text-micro text-muted font-mono tabular flex-shrink-0">
+                      {ev.time}
+                    </span>
+                  </div>
+                );
+              }
+              if (ev.type === "coordination_consensus") {
+                const broken = ev.raw.broken === true;
+                const session = ev.raw.session as string | undefined;
+                const shortId = session ? session.split(":").pop() : undefined;
+                const sessionHref = shortId
+                  ? `/room/${encodeURIComponent(roomName)}/session/${encodeURIComponent(shortId)}`
+                  : null;
+                const planFile = ev.raw.plan_file as string | undefined;
+                const assignments = ev.raw.assignments as Record<string, string> | undefined;
+                const issueCount = assignments ? Object.keys(assignments).length : 0;
+                const label = broken ? "TIMEOUT" : "CONSENSUS";
+                const tone = broken ? "var(--yellow)" : "var(--green)";
+                return (
+                  <div
+                    key={ev.id}
+                    className="flex items-baseline gap-2 px-5 py-2 border-b border-border last:border-b-0 text-body italic text-text2"
+                  >
+                    <span className="caps-mono-sm flex-shrink-0" style={{ color: tone }}>
+                      {label}
+                    </span>
+                    <span className="text-muted">in</span>
+                    {sessionHref ? (
+                      <Link
+                        href={sessionHref}
+                        className="font-mono text-accent hover:underline"
+                      >
+                        {shortId}
+                      </Link>
+                    ) : (
+                      <span className="font-mono text-text2">session</span>
+                    )}
+                    {broken ? (
+                      <span className="text-text2">— no agreement</span>
+                    ) : (
+                      <>
+                        <span className="text-muted">·</span>
+                        <span className="text-text2">
+                          {issueCount} issue{issueCount === 1 ? "" : "s"} agreed
+                        </span>
+                        {planFile ? (
+                          <>
+                            <span className="text-muted">→</span>
+                            <span className="font-mono text-accent">{planFile}</span>
+                          </>
+                        ) : null}
+                      </>
+                    )}
+                    <span className="ml-auto text-micro text-muted font-mono tabular flex-shrink-0">
+                      {ev.time}
+                    </span>
+                  </div>
+                );
+              }
+              if (ev.type === "coordination_join") {
+                const handle = (ev.raw.handle as string | undefined) ?? ev.sender;
+                const intent = (ev.raw.intent as string | undefined) ?? "";
+                const session = ev.raw.session as string | undefined;
+                const shortId = session ? session.split(":").pop() : undefined;
+                const sessionHref = shortId
+                  ? `/room/${encodeURIComponent(roomName)}/session/${encodeURIComponent(shortId)}`
+                  : null;
+                return (
+                  <div
+                    key={ev.id}
+                    className="flex items-baseline gap-2 px-5 py-2 border-b border-border last:border-b-0 text-body italic text-text2"
+                  >
+                    <span className="caps-mono-sm flex-shrink-0" style={{ color: "var(--muted)" }}>
+                      JOIN
+                    </span>
+                    <span className="font-mono font-semibold" style={{ color: "var(--green)" }}>
+                      @{handle}
+                    </span>
+                    <span className="text-muted">joined</span>
+                    {sessionHref ? (
+                      <Link
+                        href={sessionHref}
+                        className="font-mono text-accent hover:underline"
+                      >
+                        {shortId}
+                      </Link>
+                    ) : null}
+                    {intent ? (
+                      <span className="text-text2 truncate">— &ldquo;{intent}&rdquo;</span>
+                    ) : null}
+                    <span className="ml-auto text-micro text-muted font-mono tabular flex-shrink-0">
+                      {ev.time}
+                    </span>
+                  </div>
+                );
+              }
+              const isAgent = agentHandles.has(ev.sender);
+              const color = isAgent ? "var(--green)" : "var(--accent)";
               return (
                 <div
                   key={ev.id}
-                  className="px-5 py-2 border-b border-border hover:bg-white/[0.02]"
-                  style={{ borderLeft: `2px solid ${color}` }}
+                  className="flex gap-3 px-5 py-3 border-b border-border last:border-b-0"
                 >
-                  <div className="flex items-baseline gap-3">
-                    <span className="caps-mono-sm flex-shrink-0" style={{ color, minWidth: 90 }}>
-                      {style.label}
-                    </span>
-                    <span className="flex-1 text-body text-text2 leading-snug min-w-0 break-words">
-                      {CHAT_TYPES.has(ev.type) ? renderWithMentions(ev.content) : ev.content}
-                    </span>
-                    <span className="text-micro text-muted font-mono tabular flex-shrink-0">{ev.time}</span>
+                  <div
+                    className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-surface font-mono text-micro font-bold mt-0.5"
+                    style={{ border: `1.5px solid ${color}`, color }}
+                    aria-hidden
+                  >
+                    {initials(ev.sender)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-2 mb-1">
+                      <span
+                        className="font-mono text-label font-semibold truncate"
+                        style={{ color }}
+                      >
+                        {ev.sender}
+                      </span>
+                      {isAgent && (
+                        <span
+                          className="caps-mono-sm flex-shrink-0"
+                          style={{ color: "var(--green)" }}
+                        >
+                          AGENT
+                        </span>
+                      )}
+                      {ev.recipient && (
+                        <span className="caps-mono-sm text-muted">
+                          → {ev.recipient}
+                        </span>
+                      )}
+                      <span className="ml-auto text-micro text-muted font-mono tabular">
+                        {ev.time}
+                      </span>
+                    </div>
+                    <MarkdownContent className="text-body text-text2 leading-relaxed">
+                      {ev.content}
+                    </MarkdownContent>
                   </div>
                 </div>
               );
             })}
+          </>
+        )}
       </div>
     </div>
   );

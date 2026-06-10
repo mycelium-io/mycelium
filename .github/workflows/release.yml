@@ -72,6 +72,9 @@ jobs:
               echo "frontend<<EOF"
               echo "ghcr.io/$OWNER/mycelium-frontend:$VERSION"
               echo "EOF"
+              echo "collector<<EOF"
+              echo "ghcr.io/$OWNER/mycelium-collector:$VERSION"
+              echo "EOF"
             } >> "$GITHUB_OUTPUT"
           else
             {
@@ -86,6 +89,10 @@ jobs:
               echo "frontend<<EOF"
               echo "ghcr.io/$OWNER/mycelium-frontend:latest"
               echo "ghcr.io/$OWNER/mycelium-frontend:$VERSION"
+              echo "EOF"
+              echo "collector<<EOF"
+              echo "ghcr.io/$OWNER/mycelium-collector:latest"
+              echo "ghcr.io/$OWNER/mycelium-collector:$VERSION"
               echo "EOF"
             } >> "$GITHUB_OUTPUT"
           fi
@@ -136,6 +143,20 @@ jobs:
           tags: ${{ steps.tags.outputs.frontend }}
           cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-frontend:cache
           cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-frontend:cache,mode=max
+
+      - name: Build and push mycelium-collector
+        # Receives OTLP from openclaw's diagnostics-otel + deep-observability
+        # plugins. Build context is the CLI dir because Dockerfile.collector
+        # COPYs ./pyproject.toml and ./src/ from there.
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: mycelium-cli
+          file: mycelium-cli/Dockerfile.collector
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.collector }}
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-collector:cache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-collector:cache,mode=max
 
   build-binaries:
     needs: publish-images
@@ -343,4 +364,4 @@ jobs:
           curl -fsSL -X POST https://clawhub.ai/api/v1/skills \
             -H "Authorization: Bearer ${{ secrets.CLAWHUB_TOKEN }}" \
             -F "payload={\"slug\":\"mycelium-io\",\"displayName\":\"Mycelium\",\"version\":\"${{ steps.version.outputs.version }}\",\"changelog\":\"See https://github.com/mycelium-io/mycelium/releases/tag/${{ github.ref_name }}\",\"acceptLicenseTerms\":true,\"tags\":[\"latest\"]}" \
-            -F "files=@mycelium-cli/src/mycelium/adapters/openclaw/mycelium/plugin/skills/mycelium/SKILL.md;type=text/markdown;filename=SKILL.md"
+            -F "files=@mycelium-cli/src/mycelium/integrations/openclaw/assets/mycelium/plugin/skills/mycelium/SKILL.md;type=text/markdown;filename=SKILL.md"

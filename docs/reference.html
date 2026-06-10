@@ -12,6 +12,8 @@
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="https://mycelium-io.github.io/mycelium/og.png">
+<link rel="icon" type="image/png" href="logo.png">
+<link rel="apple-touch-icon" href="logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="mycelium.css">
 </head>
@@ -38,7 +40,7 @@
     <a href="adapters.html" class=""><span class="square-dot"></span>ADAPTERS</a>
     <a href="reference.html" class="active"><span class="square-dot"></span>REFERENCE</a>
     <div class="sectionnav-right">
-    <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/adapters/openclaw/mycelium/plugin/skills/mycelium/SKILL.md" target="_blank">SKILL.md ↗</a>
+    <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/openclaw/assets/mycelium/plugin/skills/mycelium/SKILL.md" target="_blank">SKILL.md ↗</a>
     </div>
   </div>
 </nav>
@@ -55,6 +57,7 @@
       <a href="#cli-room" class="nav-link sub">room</a>
       <a href="#cli-session" class="nav-link sub">session</a>
       <a href="#cli-memory" class="nav-link sub">memory</a>
+      <a href="#cli-plan" class="nav-link sub">plan</a>
       <a href="#cli-negotiate" class="nav-link sub">negotiate</a>
       <a href="#cli-cfn" class="nav-link sub">cfn</a>
       <a href="#cli-adapter" class="nav-link sub">adapter</a>
@@ -189,6 +192,15 @@
       <pre><code><span class="comment"># The skill is invoked automatically in Claude Code sessions</span>
 <span class="comment"># or explicitly via the slash command</span>
 /mycelium</code></pre>
+      <h3 id="architecture-cursor">Cursor</h3>
+      <p>Same dispatch shape as Claude Code: each <code>@handle</code> mention is cold-spawned by the shared <code>mycelium-daemon</code> as a <code>cursor-agent -p</code> process in the agent&#x27;s workspace. One daemon serves both cold-spawn families.</p>
+      <pre><code><span class="cmd">mycelium adapter add</span> cursor
+<span class="cmd">mycelium adapter add</span> cursor <span class="flag">--step</span>=daemon  # shared with claude-code
+cursor-agent login                          # one-time, interactive
+
+<span class="comment"># Per agent: drops workspace-local rule + AGENTS.md section</span>
+<span class="cmd">mycelium agent create</span> design-agent <span class="flag">--adapter</span> cursor \
+    <span class="flag">--cwd</span> ~/repos/my-frontend <span class="flag">--room</span> my-project</code></pre>
       <h3 id="architecture-openclaw">OpenClaw</h3>
       <p>Plugin + hooks for the OpenClaw agent runtime. Same coordination model, same memory API.</p>
       <pre><code><span class="cmd">mycelium adapter add</span> openclaw
@@ -229,6 +241,20 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium install</span> [<span class="flag">--yes</span>] [<span class="flag">--non-interactive</span>] [<span class="flag">--force</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Interactive installer — Docker check, LLM config, <code>docker compose up</code>, provision workspace.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium upgrade</span> [<span class="flag">--check</span>] [<span class="flag">--version</span> <span class="arg">&lt;version&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Upgrade (or pin) the Mycelium CLI. Pass --version to install a specific release.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
           <code><span class="cmd">mycelium init</span> [<span class="flag">--api-url</span> <span class="arg">&lt;url&gt;</span>] [<span class="flag">--force</span>]</code>
         </div>
         <div class="cmd-ref-body">Initialize CLI configuration. Creates <code>~/.mycelium/config.toml</code>.</div>
@@ -236,7 +262,7 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium up</span> [<span class="flag">--build</span>] [<span class="flag">--ui</span>]</code>
+          <code><span class="cmd">mycelium up</span> [<span class="flag">--build</span>] [<span class="flag">--ui</span>] [<span class="flag">--metrics</span>]</code>
         </div>
         <div class="cmd-ref-body">Start the Mycelium stack via <code>docker compose up</code>.</div>
       </div>
@@ -274,20 +300,6 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
           <code><span class="cmd">mycelium pull</span> [<span class="flag">--version</span> <span class="arg">&lt;tag&gt;</span>] [<span class="flag">--no-restart</span>]</code>
         </div>
         <div class="cmd-ref-body">Pull Mycelium Docker images and restart services. Pass --version to pin a preview/specific build.</div>
-      </div>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium install</span> [<span class="flag">--yes</span>] [<span class="flag">--non-interactive</span>] [<span class="flag">--force</span>]</code>
-        </div>
-        <div class="cmd-ref-body">Interactive installer — Docker check, LLM config, <code>docker compose up</code>, provision workspace.</div>
-      </div>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium upgrade</span> [<span class="flag">--check</span>] [<span class="flag">--version</span> <span class="arg">&lt;version&gt;</span>]</code>
-        </div>
-        <div class="cmd-ref-body">Upgrade (or pin) the Mycelium CLI. Pass --version to install a specific release.</div>
       </div>
 
       <h2 id="cli-room">room</h2>
@@ -471,6 +483,71 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
         <div class="cmd-ref-body">Show reusable how-to steps — filters to <code>procedures/*</code> memories as a table.</div>
       </div>
 
+      <h2 id="cli-plan">plan</h2>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium plan ls</span></code>
+        </div>
+        <div class="cmd-ref-body">List plan files in the active room.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium plan show</span> <span class="arg">&lt;slug&gt;</span></code>
+        </div>
+        <div class="cmd-ref-body">Print a plan file's body.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium plan set</span> <span class="arg">&lt;slug&gt;</span> <span class="arg">&lt;body&gt;</span></code>
+        </div>
+        <div class="cmd-ref-body">Create or overwrite a plan file. Body is the full markdown.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium plan rm</span> <span class="arg">&lt;slug&gt;</span></code>
+        </div>
+        <div class="cmd-ref-body">Delete a plan file.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium plan title</span> [<span class="arg">&lt;text&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Read or set the room's plan title — the italic display line shown above room activity. Pass no text to print the current title.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium plan tasks</span></code>
+        </div>
+        <div class="cmd-ref-body">List every checkbox task across plan files. Open first, done last.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium plan task</span> add <span class="arg">&lt;text&gt;</span> [<span class="flag">--file</span> <span class="arg">&lt;slug&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Append a new <code>- [ ]</code> line to a plan file (defaults to <code>tasks</code>).</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium plan task</span> done [<span class="arg">&lt;id&gt;</span>...]</code>
+        </div>
+        <div class="cmd-ref-body">Mark task(s) complete. Run without IDs to pick from open tasks interactively.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium plan task</span> undo [<span class="arg">&lt;id&gt;</span>...]</code>
+        </div>
+        <div class="cmd-ref-body">Reopen completed task(s). Run without IDs to pick interactively.</div>
+      </div>
+
       <h2 id="cli-negotiate">negotiate</h2>
 
       <div class="cmd-ref">
@@ -558,7 +635,7 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
         <div class="cmd-ref-header">
           <code><span class="cmd">mycelium adapter add</span> <span class="arg">&lt;type&gt;</span> [<span class="flag">--openclaw-profile</span> <span class="arg">NAME</span>] [<span class="flag">--openclaw-container</span> <span class="arg">NAME</span>] [<span class="flag">--dry-run</span>] [<span class="flag">--force</span>]</code>
         </div>
-        <div class="cmd-ref-body">Install an agent framework adapter (openclaw, claude-code).</div>
+        <div class="cmd-ref-body">Install an agent framework adapter (openclaw, claude-code, cursor).</div>
       </div>
 
       <div class="cmd-ref">
@@ -672,6 +749,9 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
 <span class="comment"># Default MAS UUID (created during install)</span>
 <span class="arg">mas_id</span> = <span class="str">&quot;&quot;</span>
 
+<span class="comment"># Database URL override (defaults to backend container default)</span>
+<span class="arg">database_url</span> = <span class="str">&quot;&quot;</span>
+
 <span class="comment"># LLM configuration (litellm format).</span>
 <span class="cmd" id="config-llm">[llm]</span>
 
@@ -695,6 +775,12 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
 
 <span class="comment"># Host port for the backend API</span>
 <span class="arg">backend_port</span> = 8000
+
+<span class="comment"># Host port for the OTLP metrics collector</span>
+<span class="arg">collector_port</span> = 4318
+
+<span class="comment"># Host port for the frontend UI</span>
+<span class="arg">frontend_port</span> = 3000
 
 <span class="comment"># Root directory for .mycelium/ data (defaults to ~/.mycelium)</span>
 <span class="arg">data_dir</span> = <span class="str">&quot;&quot;</span>
@@ -750,6 +836,9 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
 <span class="comment"># Configuration for the metrics collector + display.</span>
 <span class="cmd" id="config-metrics">[metrics]</span>
 
+<span class="comment"># URL of the hub OTLP collector (e.g. http://hub-ip:4318). When set, &#x27;mycelium metrics show&#x27; fetches from this URL instead of reading a local file, and adapter plugins default their OTLP endpoint to this URL.</span>
+<span class="arg">collector_url</span> = <span class="str">&quot;&quot;</span>
+
 <span class="comment"># Explicit Prometheus /metrics endpoints to scrape. Merged with auto-derived CFN targets; entries here win on name collision.</span>
 <span class="arg">scrape</span> = PydanticUndefined</code></pre>
     </section>
@@ -799,9 +888,13 @@ docker logs mycelium-db <span class="flag">--tail</span> 20</code></pre>
       <p><strong>Symptom</strong>: <code>bind: address already in use</code></p>
       <pre><code>lsof <span class="flag">-i</span> :8000   # backend
 lsof <span class="flag">-i</span> :5432   # database</code></pre>
-      <p>Or set alternate ports in <code>~/.mycelium/.env</code>:</p>
-      <pre><code>MYCELIUM_BACKEND_PORT=8001
-MYCELIUM_DB_PORT=5433</code></pre>
+      <p>All four published host ports can be remapped — prefer setting the corresponding <code>runtime.*</code> config key and re-running <code>mycelium config apply</code> (which materialises <code>~/.mycelium/.env</code>) rather than hand-editing the env file:</p>
+      <pre><code><span class="cmd">mycelium config set</span> runtime.backend_port 8001     # MYCELIUM_BACKEND_PORT
+<span class="cmd">mycelium config set</span> runtime.frontend_port 3001    # MYCELIUM_UI_PORT
+<span class="cmd">mycelium config set</span> runtime.collector_port 4319   # MYCELIUM_METRICS_PORT
+<span class="cmd">mycelium config set</span> runtime.db_port 5433          # MYCELIUM_DB_PORT
+<span class="cmd">mycelium config apply</span>
+<span class="cmd">mycelium down</span> &amp;&amp; <span class="cmd">mycelium up</span>                      # restart to pick up new ports</code></pre>
       <hr class="divider">
       <h3 id="troubleshooting-6-llm-not-configured">6. LLM Not Configured</h3>
       <p><strong>Symptom</strong>: <code>LLM unavailable — no API key configured</code></p>
@@ -988,17 +1081,28 @@ grep api_url ~/.mycelium/config.toml</code></pre>
             </tr>
             <tr>
               <td><code>MYCELIUM_BACKEND_PORT</code></td>
-              <td>Backend port</td>
+              <td>Backend API host port</td>
               <td><code>8000</code></td>
             </tr>
             <tr>
+              <td><code>MYCELIUM_UI_PORT</code></td>
+              <td>Frontend host port (<code>--ui</code>)</td>
+              <td><code>3000</code></td>
+            </tr>
+            <tr>
+              <td><code>MYCELIUM_METRICS_PORT</code></td>
+              <td>OTLP collector host port (<code>--metrics</code>)</td>
+              <td><code>4318</code></td>
+            </tr>
+            <tr>
               <td><code>MYCELIUM_DB_PORT</code></td>
-              <td>Database port</td>
+              <td>Database host port</td>
               <td><code>5432</code></td>
             </tr>
           </tbody>
         </table>
       </div>
+      <p>All of these are written by <code>mycelium config apply</code> from the matching <code>runtime.*</code> config keys — don&#x27;t edit <code>.env</code> by hand.</p>
       <hr class="divider">
       <h2 id="troubleshooting-log-locations">Log Locations</h2>
       <pre><code><span class="cmd">mycelium logs</span>                       # all services

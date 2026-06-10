@@ -13,8 +13,8 @@ Use this when you want a **clean slate** on a dev machine. **Order:** stop servi
 systemctl --user stop openclaw-gateway
 systemctl --user disable openclaw-gateway   # optional
 
-# Mycelium metrics collector (if running)
-mycelium metrics stop 2>/dev/null || true
+# Mycelium metrics collector (Docker — if running)
+docker stop mycelium-collector 2>/dev/null && docker rm mycelium-collector 2>/dev/null || true
 ```
 
 ---

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2026 Julia Valenti
+# Copyright 2026 Mycelium Contributors
 
 """
 Unit tests for the in-process metrics store.
@@ -23,19 +23,22 @@ from app.services.metrics import (
     _counters,
     _histograms,
     _lock,
+    _room_identities,
     record_cfn_llm_usage,
     record_consensus,
     record_coordination_round,
+    record_room_identity,
     record_synthesis,
     snapshot,
 )
 
 
 def _reset_metrics() -> None:
-    """Clear all counters and histograms between tests."""
+    """Clear all counters, histograms, and the room identity registry."""
     with _lock:
         _counters.clear()
         _histograms.clear()
+        _room_identities.clear()
 
 
 # ── @_safe logging ────────────────────────────────────────────────────
@@ -173,3 +176,55 @@ def test_record_synthesis_error_records_duration() -> None:
     assert snap["counters"]["synthesis"]["errors"] == 1
     assert "synthesis.duration_ms" in snap["histograms"]
     assert snap["histograms"]["synthesis.duration_ms"]["count"] == 1
+
+
+# ── record_room_identity ─────────────────────────────────────────────
+
+
+def test_record_room_identity_populates_snapshot() -> None:
+    """``record_room_identity`` must surface mas_id↔name in the snapshot.
+
+    Critical for the ``mycelium metrics show`` per-room tables: this is
+    the only path that preserves the link after a room is hard-deleted
+    from the ``rooms`` table.
+    """
+    _reset_metrics()
+    record_room_identity(mas_id="abc-123", room_name="mycelium_room")
+    record_room_identity(mas_id="def-456", room_name="e2e-matrix-xyz")
+
+    snap = snapshot()
+    assert snap["room_identities"] == {
+        "abc-123": "mycelium_room",
+        "def-456": "e2e-matrix-xyz",
+    }
+
+
+def test_record_room_identity_is_write_once() -> None:
+    """First name wins — rooms aren't renamable, so this is a stability guarantee."""
+    _reset_metrics()
+    record_room_identity(mas_id="abc-123", room_name="original_name")
+    record_room_identity(mas_id="abc-123", room_name="renamed")
+
+    assert snapshot()["room_identities"] == {"abc-123": "original_name"}
+
+
+def test_record_room_identity_skips_empty_inputs() -> None:
+    """Empty mas_id or name should silently no-op (keeps call sites uncluttered)."""
+    _reset_metrics()
+    record_room_identity(mas_id="", room_name="x")
+    record_room_identity(mas_id="x", room_name="")
+    record_room_identity(mas_id="", room_name="")
+
+    assert snapshot()["room_identities"] == {}
+
+
+def test_snapshot_always_includes_room_identities_key() -> None:
+    """The snapshot schema must include ``room_identities`` even when empty.
+
+    The CLI reads this key unconditionally — guarantees no KeyError on
+    a fresh backend with no recorded activity yet.
+    """
+    _reset_metrics()
+    snap = snapshot()
+    assert "room_identities" in snap
+    assert snap["room_identities"] == {}

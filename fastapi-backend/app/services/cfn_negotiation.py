@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2026 Julia Valenti
+# Copyright 2026 Mycelium Contributors
 
 """
 Async client for the CFN cognitive agents semantic negotiation API.
@@ -24,7 +24,7 @@ import httpx
 
 from app.config import settings
 from app.services._cfn_call_timing import cfn_timing_stage, cfn_timing_stamp
-from app.services.metrics import record_cfn_call, record_cfn_llm_usage
+from app.services.metrics import record_cfn_call, record_cfn_llm_usage, record_room_identity
 from ioc_cfn_svc_api_client import Client
 from ioc_cfn_svc_api_client.api.semantic_negotiation import (
     decide_negotiation_api_workspaces_workspace_id_multi_agentic_systems_mas_id_semantic_negotiation_decide_post as decide_api,
@@ -97,8 +97,16 @@ def _raise_if_validation_error(
     return result
 
 
-def _extract_cfn_usage(result: dict[str, Any], operation: str, *, room: str = "") -> None:
-    """Extract ``_usage`` from a CFN response and record it as metrics."""
+def _extract_cfn_usage(
+    result: dict[str, Any], operation: str, *, room: str = "", mas_id: str = ""
+) -> None:
+    """Extract ``_usage`` from a CFN response and record it as metrics.
+
+    ``mas_id`` is captured alongside ``room`` into the snapshot's
+    ``room_identities`` map so the CLI can keep displaying the
+    room ↔ mas_id link even after the room is hard-deleted.
+    """
+    record_room_identity(mas_id=mas_id, room_name=room)
     usage = result.pop("_usage", None)
     if not isinstance(usage, dict):
         return
@@ -220,7 +228,7 @@ async def start_negotiation(
         status_code=resp.status_code,
     )
     result = _raise_if_validation_error(resp.parsed, "start_negotiation")
-    _extract_cfn_usage(result, "start_negotiation", room=room)
+    _extract_cfn_usage(result, "start_negotiation", room=room, mas_id=mas_id)
     return result
 
 

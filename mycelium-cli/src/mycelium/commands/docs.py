@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2026 Julia Valenti
+# Copyright 2026 Mycelium Contributors
 
 """
 Documentation commands for Mycelium CLI.
@@ -28,6 +28,7 @@ SECTIONS: list[tuple[str, str]] = [
     ("rooms", "Rooms"),
     ("sessions", "Sessions"),
     ("memory", "Memory"),
+    ("plan", "Plan"),
     ("cognitive-engine", "CognitiveEngine"),
     ("knowledge-graph", "Knowledge Graph"),
     ("cli-reference", "CLI Reference"),

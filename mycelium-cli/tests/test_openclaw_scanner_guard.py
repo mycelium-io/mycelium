@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2026 Julia Valenti
+# Copyright 2026 Mycelium Contributors
 
 """
 Static guard against OpenClaw's plugin security scanner.
@@ -37,8 +37,9 @@ PLUGIN_ROOT = (
     / "mycelium-cli"
     / "src"
     / "mycelium"
-    / "adapters"
+    / "integrations"
     / "openclaw"
+    / "assets"
     / "mycelium"
     / "plugin"
 )

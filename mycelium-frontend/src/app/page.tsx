@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-// Copyright 2026 Julia Valenti
+// Copyright 2026 Mycelium Contributors
 
 "use client";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { fetchRooms } from "@/lib/api";
+import { fetchRooms, logFetchError } from "@/lib/api";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
 import { MainTopBar } from "@/components/main-top-bar";
 import { IDChip } from "@/components/id-chip";
@@ -39,7 +39,7 @@ export default function Dashboard() {
   const load = () =>
     fetchRooms()
       .then((data: Room[]) => setRooms(data))
-      .catch(() => {});
+      .catch(logFetchError("fetchRooms"));
 
   useEffect(() => {
     load();

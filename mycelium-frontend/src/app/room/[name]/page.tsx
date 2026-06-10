@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
-// Copyright 2026 Julia Valenti
+// Copyright 2026 Mycelium Contributors
 
 "use client";
 
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { fetchRoom } from "@/lib/api";
+import { fetchRoom, logFetchError } from "@/lib/api";
+import { AgentsPanel } from "@/components/agents-panel";
 import { EventStream } from "@/components/event-stream";
+import { CollapsibleRail } from "@/components/collapsible-rail";
 import { MemoryPanel } from "@/components/memory-panel";
+import { RoomChatBox } from "@/components/room-chat-box";
 import { SessionsRail } from "@/components/sessions-rail";
 import { MainTopBar } from "@/components/main-top-bar";
 import { SubNav, type Crumb } from "@/components/sub-nav";
@@ -26,11 +29,12 @@ export default function RoomPage() {
   const roomName = params.name as string;
   const [room, setRoom] = useState<Room | null>(null);
   const [memoryRefresh, setMemoryRefresh] = useState(0);
+  const [memoryOpen, setMemoryOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     const load = () =>
-      fetchRoom(roomName).then((r: Room) => { if (!cancelled) setRoom(r); }).catch(() => {});
+      fetchRoom(roomName).then((r: Room) => { if (!cancelled) setRoom(r); }).catch(logFetchError("fetchRoom"));
     load();
     const t = setInterval(load, 8000);
     return () => { cancelled = true; clearInterval(t); };
@@ -52,50 +56,41 @@ export default function RoomPage() {
 
       <div className="flex flex-1 overflow-hidden">
         <aside className="w-[240px] flex-shrink-0 border-r border-border">
-          <SessionsRail roomName={roomName} activeSessionName={null} />
+          <PanelGroup orientation="vertical" className="h-full" style={{ height: "100%" }}>
+            <Panel id="agents" defaultSize={32} minSize={12} className="overflow-hidden">
+              <AgentsPanel roomName={roomName} />
+            </Panel>
+            <PanelResizeHandle
+              className="h-px bg-border hover:bg-accent transition-colors flex-shrink-0 relative"
+              style={{ cursor: "row-resize" }}
+            >
+              <span aria-hidden className="absolute inset-x-0 -top-1.5 -bottom-1.5" />
+            </PanelResizeHandle>
+            <Panel id="sessions" defaultSize={68} minSize={20} className="overflow-hidden">
+              <SessionsRail roomName={roomName} activeSessionName={null} />
+            </Panel>
+          </PanelGroup>
         </aside>
 
-        <PanelGroup orientation="horizontal" className="flex-1" style={{ width: "100%", height: "100%" }}>
-          <Panel id="activity" defaultSize={62} minSize={30} className="overflow-hidden" style={{ minWidth: 0 }}>
-            <main className="flex flex-col h-full overflow-hidden" style={{ minWidth: 0 }}>
-              <PaneHeader>
-                <span className="caps-mono-sm text-muted">ROOM ACTIVITY</span>
-              </PaneHeader>
-              <div className="flex-1 overflow-hidden">
-                <EventStream roomName={roomName} onMemoryChanged={handleMemoryChanged} />
-              </div>
-            </main>
-          </Panel>
-          <PanelResizeHandle
-            className="w-px bg-border hover:bg-accent transition-colors flex-shrink-0 relative"
-            style={{ cursor: "col-resize" }}
-          >
-            <span aria-hidden className="absolute inset-y-0 -left-1.5 -right-1.5" />
-          </PanelResizeHandle>
-          <Panel id="memory" defaultSize={38} minSize={22} className="overflow-hidden" style={{ minWidth: 0 }}>
-            <aside className="flex flex-col h-full bg-surface/40 overflow-hidden" style={{ minWidth: 0 }}>
-              <PaneHeader>
-                <span className="caps-mono-sm text-muted">MEMORY</span>
-              </PaneHeader>
-              <div className="flex-1 overflow-hidden">
-                <MemoryPanel
-                  roomName={roomName}
-                  masId={room?.mas_id ?? null}
-                  refreshTrigger={memoryRefresh}
-                />
-              </div>
-            </aside>
-          </Panel>
-        </PanelGroup>
-      </div>
-    </div>
-  );
-}
+        <main className="flex flex-1 flex-col overflow-hidden">
+          <div className="flex-1 overflow-hidden">
+            <EventStream
+              roomName={roomName}
+              onMemoryChanged={handleMemoryChanged}
+              planRefreshTrigger={memoryRefresh}
+            />
+          </div>
+          <RoomChatBox roomName={roomName} />
+        </main>
 
-function PaneHeader({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex flex-shrink-0 items-center gap-2 border-b border-border bg-paper px-4 py-2.5 min-w-0">
-      {children}
+        <CollapsibleRail label="MEMORY" open={memoryOpen} onOpenChange={setMemoryOpen}>
+          <MemoryPanel
+            roomName={roomName}
+            masId={room?.mas_id ?? null}
+            refreshTrigger={memoryRefresh}
+          />
+        </CollapsibleRail>
+      </div>
     </div>
   );
 }

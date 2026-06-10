@@ -15,6 +15,7 @@ def _get_kwargs(
     room_name: str,
     key: str,
 ) -> dict[str, Any]:
+
     _kwargs: dict[str, Any] = {
         "method": "get",
         "url": "/api/rooms/{room_name}/memory/{key}".format(

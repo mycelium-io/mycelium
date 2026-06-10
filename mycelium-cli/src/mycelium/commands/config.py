@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2026 Julia Valenti
+# Copyright 2026 Mycelium Contributors
 
 """Config commands for Mycelium CLI."""
 
@@ -341,6 +341,13 @@ def _migrate_env_to_config(config: "MyceliumConfig") -> None:
     if env_backend_port and config.runtime.backend_port == 8000:  # still default
         try:
             config.runtime.backend_port = int(env_backend_port)
+            changed = True
+        except ValueError:
+            pass
+    env_frontend_port = env.get("MYCELIUM_UI_PORT")
+    if env_frontend_port and config.runtime.frontend_port == 3000:  # still default
+        try:
+            config.runtime.frontend_port = int(env_frontend_port)
             changed = True
         except ValueError:
             pass

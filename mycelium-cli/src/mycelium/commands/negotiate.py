@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2026 Julia Valenti
+# Copyright 2026 Mycelium Contributors
 
 """
 Structured negotiation commands for Mycelium CLI.
@@ -16,7 +16,7 @@ so `coordination.on_agent_response` sees the reply.
 For cross-agent chat messages (not negotiation), use `mycelium room send`.
 
 Uses the generated OpenAPI client for type-safe API access. Outgoing
-payloads are validated against SSTP wire-format models (mycelium.sstp)
+payloads are validated against SSTP wire-format models (mycelium.protocol)
 before posting, so the CLI is statically forced to adhere to the protocol.
 """
 
@@ -30,7 +30,7 @@ from pydantic import ValidationError
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
-from mycelium.sstp import ProposeReply, RespondReply
+from mycelium.protocol import ProposeReply, RespondReply
 
 app = typer.Typer(
     help="Respond to CognitiveEngine during structured negotiation (propose/respond/query).",

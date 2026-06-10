@@ -158,12 +158,65 @@ jobs:
           node-version: "22"
 
       - name: Install plugin dev dependencies
-        working-directory: mycelium-cli/src/mycelium/adapters/openclaw/mycelium/plugin
+        working-directory: mycelium-cli/src/mycelium/integrations/openclaw/assets/mycelium/plugin
         run: npm install --no-audit --no-fund --silent
 
       - name: Run unit tests
-        working-directory: mycelium-cli/src/mycelium/adapters/openclaw/mycelium/plugin
+        working-directory: mycelium-cli/src/mycelium/integrations/openclaw/assets/mycelium/plugin
         run: npm test
+
+  build-collector:
+    # Smoke-build the OTLP collector image so PRs that touch the collector
+    # source / Dockerfile fail fast in CI rather than at the next release.
+    # Skipped on PRs that don't touch the collector — checked via the
+    # paths-filter step rather than top-level workflow paths so the job
+    # still runs on push to main (where path filters are less reliable
+    # across rebases).
+    name: Collector docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 2
+
+      - name: Detect collector-relevant changes
+        id: changed
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            base="HEAD~1"
+          else
+            base="origin/${{ github.base_ref }}"
+            git fetch --depth=1 origin "${{ github.base_ref }}"
+          fi
+          if git diff --name-only "$base"...HEAD | grep -E '^(mycelium-cli/Dockerfile\.collector|mycelium-cli/src/mycelium/(collector(_main)?\.py|docker/compose(-dev)?\.yml)|mycelium-cli/pyproject\.toml|\.github/workflows/(ci|release)\.yml)$' > /dev/null; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No collector-relevant files changed; skipping image build."
+          fi
+
+      - name: Set up Docker Buildx
+        if: steps.changed.outputs.run == 'true'
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4
+
+      - name: Build mycelium-collector image (no push)
+        if: steps.changed.outputs.run == 'true'
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: mycelium-cli
+          file: mycelium-cli/Dockerfile.collector
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: mycelium-collector:ci
+          cache-from: type=gha,scope=collector
+          cache-to: type=gha,scope=collector,mode=max
+
+      - name: Smoke-test collector entrypoint
+        if: steps.changed.outputs.run == 'true'
+        run: |
+          # `--help` exits 0 if the image's Python deps and entrypoint resolve.
+          docker run --rm --entrypoint python mycelium-collector:ci -m mycelium.collector_main --help
 
   build-frontend:
     name: Frontend typecheck + build

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2026 Julia Valenti
+# Copyright 2026 Mycelium Contributors
 
 """
 Async CognitiveEngine — synthesis for namespace rooms.
@@ -42,8 +42,15 @@ async def check_trigger(room_name: str) -> None:
 
         min_contributions = config.get("min_contributions", 5)
 
-        # Count memories since last synthesis
-        query = select(func.count()).select_from(Memory).where(Memory.room_name == room_name)
+        # Count memories since last synthesis. Exclude agent manifests — they
+        # aren't contributions, and counting them would trip the threshold and
+        # fire a synthesis that then has nothing new to summarize.
+        query = (
+            select(func.count())
+            .select_from(Memory)
+            .where(Memory.room_name == room_name)
+            .where(Memory.key.not_like("agents/%"))
+        )
         if room.last_synthesis_at:
             query = query.where(Memory.updated_at > room.last_synthesis_at)
 
@@ -86,10 +93,14 @@ async def run_synthesis(room_name: str) -> dict | None:
             if not room:
                 return None
 
+            # Exclude prior syntheses (would compound) and agent manifests
+            # (agents/<handle> is a roster entry — config, not a contribution
+            # to synthesize; it would otherwise land in "Other Contributions").
             query = (
                 select(Memory)
                 .where(Memory.room_name == room_name)
                 .where(Memory.key.not_like("_synthesis/%"))
+                .where(Memory.key.not_like("agents/%"))
             )
             if room.last_synthesis_at:
                 # Use updated_at so upserts count as new contributions
@@ -213,7 +224,7 @@ async def run_synthesis(room_name: str) -> dict | None:
             return None
 
 
-# Canonical definition: mycelium-cli/src/mycelium/sstp.py STRUCTURED_CATEGORY_LABELS
+# Canonical definition: mycelium-cli/src/mycelium/protocol.py STRUCTURED_CATEGORY_LABELS
 # Keep in sync — these are the same categories used by CLI validation.
 STRUCTURED_CATEGORIES = {
     "work": "Work Done",
@@ -221,6 +232,7 @@ STRUCTURED_CATEGORIES = {
     "context": "Background & Preferences",
     "status": "Current Status",
     "procedures": "Reusable Procedures",
+    "plan": "Plan & Open Tasks",
 }
 
 
@@ -331,6 +343,7 @@ async def _llm_synthesize(room_name: str, context: str, memory_count: int) -> st
         record_llm_call(
             operation="synthesis",
             model=settings.LLM_MODEL,
+            room=room_name,
             input_tokens=input_tok,
             output_tokens=output_tok,
             cost_usd=cost,
@@ -340,7 +353,7 @@ async def _llm_synthesize(room_name: str, context: str, memory_count: int) -> st
         return response.choices[0].message.content
 
     except litellm.AuthenticationError:
-        record_llm_call(operation="synthesis", model=settings.LLM_MODEL, error=True)
+        record_llm_call(operation="synthesis", model=settings.LLM_MODEL, room=room_name, error=True)
         logger.warning(
             "LLM authentication failed for model %s. Check LLM_API_KEY in ~/.mycelium/.env",
             settings.LLM_MODEL,
@@ -350,7 +363,7 @@ async def _llm_synthesize(room_name: str, context: str, memory_count: int) -> st
             "Check LLM_API_KEY in ~/.mycelium/.env"
         )
     except Exception:
-        record_llm_call(operation="synthesis", model=settings.LLM_MODEL, error=True)
+        record_llm_call(operation="synthesis", model=settings.LLM_MODEL, room=room_name, error=True)
         logger.exception("LLM synthesis failed for room %s", room_name)
         raise
 

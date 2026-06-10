@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2026 Julia Valenti
+# Copyright 2026 Mycelium Contributors
 
 """
 `mycelium ui` — manage the optional frontend.
@@ -34,8 +34,15 @@ _DEFAULT_PORT = 3000
 
 
 def _ui_url() -> str:
-    """The URL the user opens in their browser. Honors MYCELIUM_UI_PORT."""
-    port = os.environ.get("MYCELIUM_UI_PORT") or str(_DEFAULT_PORT)
+    """The URL the user opens in their browser. Honors config.toml and MYCELIUM_UI_PORT."""
+    if env_port := os.environ.get("MYCELIUM_UI_PORT"):
+        port = env_port
+    else:
+        try:
+            cfg = MyceliumConfig.load()
+            port = str(cfg.runtime.frontend_port)
+        except Exception:
+            port = str(_DEFAULT_PORT)
     return f"http://localhost:{port}"
 
 
@@ -52,27 +59,43 @@ def _container_running(name: str) -> bool:
 
 
 @doc_ref(
-    usage="mycelium ui open",
+    usage="mycelium ui open [-y]",
     desc="Open the frontend in your default browser.",
     group="setup",
 )
-def ui_open() -> None:
+def ui_open(
+    ctx: typer.Context,
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="Skip the confirmation prompt and start the frontend if it isn't running",
+    ),
+) -> None:
     """Open the frontend in your default browser.
 
-    Tries to launch the OS default browser at http://localhost:<port>.
-    Doesn't check whether the frontend container is actually up — use
-    `mycelium ui status` for that.
+    If the frontend container isn't running, offers to start it with
+    `mycelium up --ui` first. Pass `-y` to skip the prompt and start it
+    automatically.
 
     Examples:
         mycelium ui open
+        mycelium ui open -y
     """
     url = _ui_url()
     if not _container_running(_FRONTEND_CONTAINER):
         typer.secho(
-            f"⚠ {_FRONTEND_CONTAINER} is not running — opening anyway.",
+            f"⚠ {_FRONTEND_CONTAINER} is not running.",
             fg=typer.colors.YELLOW,
         )
-        typer.echo("  Start it with: mycelium up --ui")
+        if not yes and not typer.confirm("Start it now with 'mycelium up --ui'?", default=True):
+            typer.echo("  Start it later with: mycelium up --ui")
+            return
+        # Proxy to `mycelium up --ui`. Imported lazily to avoid a circular
+        # import between the commands modules.
+        from mycelium.commands import instance
+
+        instance.start(ctx, build=False, ui=True)
     typer.echo(f"Opening {url}")
     webbrowser.open(url)
 
