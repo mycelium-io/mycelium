@@ -591,9 +591,9 @@ class HermesNotifyHomeGatewayRunner(aetest.Testcase):
         """Run a he-he negotiation, wait for consensus, then verify the
         notify-home delivery arrived in the Matrix room."""
 
-        hub_position = "agreed"
-        spoke_position = "agreed"
-        topic = "confirm notify-home routing"
+        hub_position = "Blue-green deployment with a 10-minute canary window before full cutover."
+        spoke_position = "Blue-green deployment with a 5-minute canary window before full cutover."
+        topic = "canary window duration for the next blue-green release"
 
         with steps.start("Announce negotiation topic to Matrix room") as step:
             if self.matrix_observer_token and self.matrix_room_id:
