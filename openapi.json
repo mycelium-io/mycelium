@@ -329,6 +329,49 @@
                 }
             }
         },
+        "/api/rooms/{room_name}/sync-mas": {
+            "post": {
+                "tags": [
+                    "rooms"
+                ],
+                "summary": "Sync Room Mas",
+                "description": "Register (or re-register) a room with the CFN mgmt plane.\n\nIdempotent: if the MAS already exists in CFN, fetches its id from the list\nendpoint rather than erroring. Updates the room's mas_id and workspace_id.\nReturns 409 if CFN is not configured.",
+                "operationId": "sync_room_mas_api_rooms__room_name__sync_mas_post",
+                "parameters": [
+                    {
+                        "name": "room_name",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Room Name"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/RoomRead"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/rooms/{room_name}/negotiation": {
             "get": {
                 "tags": [

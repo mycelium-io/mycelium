@@ -67,9 +67,9 @@ services:
       # overlay FS and are lost on recreate. (The host-side MYCELIUM_DATA_DIR
       # env var is read separately by docker compose to resolve the volume
       # source path; the two values are different by design.)
-      MYCELIUM_DATA_DIR: /root/.mycelium
+      MYCELIUM_DATA_DIR: /home/mycelium/.mycelium
     volumes:
-      - ${MYCELIUM_DATA_DIR:-~/.mycelium}:/root/.mycelium
+      - ${MYCELIUM_DATA_DIR:-~/.mycelium}:/home/mycelium/.mycelium
     ports:
       - "${MYCELIUM_BACKEND_PORT:-8000}:8000"
     healthcheck:
