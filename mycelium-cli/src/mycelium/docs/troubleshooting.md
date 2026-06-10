@@ -264,8 +264,8 @@ Then run `mycelium synthesize` again.
 participant, but never responds to coordination ticks. No error in
 `mycelium logs`.
 
-**Cause**: The agent's channel access token (e.g., Matrix) has expired or
-been invalidated (e.g., after a server restart). The OpenClaw gateway
+**Cause**: The agent's channel access token has expired or been
+invalidated (e.g., after a server restart). The OpenClaw gateway
 silently drops the channel sync connection without surfacing an error to
 Mycelium.
 

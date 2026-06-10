@@ -12,8 +12,6 @@
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="https://mycelium-io.github.io/mycelium/og.png">
-<link rel="icon" type="image/png" href="logo.png">
-<link rel="apple-touch-icon" href="logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="mycelium.css">
 </head>
@@ -357,9 +355,9 @@
         chat platform), and cross-channel return-trip delivery for structured
         negotiations — when consensus is reached in a Mycelium negotiation,
         the plugin posts a one-shot summary back to whichever channel session
-        each agent was active on when they joined (Matrix DM, Discord DM, etc.),
-        so the user sees the result in their own chat instead of having to come
-        find it.
+        each agent was active on when they joined (the Mycelium room, or an
+        external channel), so the user sees the result in their own chat instead
+        of having to come find it.
       </p>
 
       <h2 id="oc-install">Install</h2>
@@ -407,8 +405,8 @@
 
       <h3 id="oc-return-trip">Cross-channel return trip</h3>
       <p>
-        When a user kicks off a Mycelium negotiation from their home chat (Matrix DM,
-        Discord DM, etc.), the agent is woken in a parallel mycelium-room session to
+        When a user kicks off a Mycelium negotiation from their home chat (the
+        Mycelium room, or an external channel), the agent is woken in a parallel mycelium-room session to
         run the negotiation. When that negotiation concludes — agreement <em>or</em>
         timeout — the plugin posts a one-shot summary back to whichever channel
         session each agent was on when they joined.

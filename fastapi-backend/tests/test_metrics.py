@@ -190,12 +190,12 @@ def test_record_room_identity_populates_snapshot() -> None:
     """
     _reset_metrics()
     record_room_identity(mas_id="abc-123", room_name="mycelium_room")
-    record_room_identity(mas_id="def-456", room_name="e2e-matrix-xyz")
+    record_room_identity(mas_id="def-456", room_name="e2e-room-xyz")
 
     snap = snapshot()
     assert snap["room_identities"] == {
         "abc-123": "mycelium_room",
-        "def-456": "e2e-matrix-xyz",
+        "def-456": "e2e-room-xyz",
     }
 
 
