@@ -89,7 +89,9 @@ async def _ensure_mas(db_room: Room, session: AsyncSession) -> str | None:
     if not settings.CFN_MGMT_URL or not settings.WORKSPACE_ID:
         return None
 
-    base_url = f"{settings.CFN_MGMT_URL}/api/workspaces/{settings.WORKSPACE_ID}/multi-agentic-systems"
+    base_url = (
+        f"{settings.CFN_MGMT_URL}/api/workspaces/{settings.WORKSPACE_ID}/multi-agentic-systems"
+    )
     mas_id: str | None = None
 
     try:
