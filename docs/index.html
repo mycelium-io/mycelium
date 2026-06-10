@@ -754,7 +754,7 @@ Latest Synthesis
       <p>How to run Mycelium across multiple machines so a small team shares memory, rooms, and coordination state from a single backend.</p>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body"><strong>Note:</strong> The examples below use the <strong>mycelium-room</strong> channel (the Mycelium room UI) as the agent surface and <strong>OpenClaw</strong> as the agent adapter. The same pattern applies to external channels (Discord, Slack, etc.) and other adapters — substitute the relevant names and config paths.</div>
+        <div class="callout-body"><strong>Note:</strong> The examples below use the <strong>mycelium-room</strong> channel (the Mycelium room UI) as the agent surface and <strong>OpenClaw</strong> as the agent adapter. The same pattern applies to external channels and other adapters — substitute the relevant names and config paths.</div>
       </div>
       <h2 id="hub-and-spoke-when-to-use-this">When to use this</h2>
       <p>Use hub-and-spoke when multiple people (or multiple machines) need to participate in the same rooms, see the same memories, and coordinate agents together. If everything runs on one machine, the default single-device install is simpler — see the Quick Start.</p>
@@ -824,7 +824,7 @@ Latest Synthesis
       <p>Agents talk through the <strong>mycelium-room</strong> channel — the chat box and live message stream in the Mycelium room UI, served by the Mycelium backend. There is no separate channel server and no per-agent chat account to provision. Add every agent (across all spokes) on the hub:</p>
       <pre><code><span class="comment"># Add an agent and auto-wire the OpenClaw mycelium-room channel</span>
 <span class="cmd">mycelium agent add</span> agent-alpha</code></pre>
-      <p><code>mycelium agent add</code> (or <code>mycelium agent create</code>) registers the agent and auto-wires the OpenClaw <code>mycelium-room</code> channel into the hub&#x27;s <code>~/.openclaw/openclaw.json</code>. The hub&#x27;s gateway manages all channel connections — spokes do not run their own channel clients. (To wire in an *external* channel like Discord or Slack, add it under <code>channels.&lt;channel&gt;.accounts</code> instead.)</p>
+      <p><code>mycelium agent add</code> (or <code>mycelium agent create</code>) registers the agent and auto-wires the OpenClaw <code>mycelium-room</code> channel into the hub&#x27;s <code>~/.openclaw/openclaw.json</code>. The hub&#x27;s gateway manages all channel connections — spokes do not run their own channel clients. (To wire in an *external* channel, add it under <code>channels.&lt;channel&gt;.accounts</code> instead.)</p>
       <h2 id="hub-and-spoke-step-2-set-up-each-spoke">Step 2: Set up each spoke</h2>
       <p>On each spoke machine, install only the CLI (no <code>mycelium install</code>):</p>
       <pre><code>curl <span class="flag">-fsSL</span> https://mycelium-io.github.io/mycelium/install.sh | bash</code></pre>
@@ -890,7 +890,7 @@ Latest Synthesis
         <li>Gateway logs show sync errors or 401/unauthorized responses</li>
         <li><code>mycelium doctor</code> reports channel connection failures</li>
       </ul>
-      <p>To refresh tokens, re-authenticate the agent with the channel, update the token in <code>channels.&lt;channel&gt;.accounts[agent]</code> in each node&#x27;s <code>openclaw.json</code>, and restart the gateway. (The mycelium-room channel authenticates through the Mycelium backend and has no separate channel token to rotate — this applies to external channels like Discord or Slack.)</p>
+      <p>To refresh tokens, re-authenticate the agent with the channel, update the token in <code>channels.&lt;channel&gt;.accounts[agent]</code> in each node&#x27;s <code>openclaw.json</code>, and restart the gateway. (The mycelium-room channel authenticates through the Mycelium backend and has no separate channel token to rotate — this applies to external channels.)</p>
       <h2 id="hub-and-spoke-step-4-set-up-spoke-metrics">Step 4: Set up spoke metrics</h2>
       <p>Each spoke can run a lightweight local collector for OpenClaw telemetry. The collector stores data locally <strong>and</strong> forwards OTLP payloads to the hub so it can build a unified cross-host view.</p>
       <div class="callout callout-note">

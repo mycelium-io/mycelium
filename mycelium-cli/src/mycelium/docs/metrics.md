@@ -408,7 +408,7 @@ and behavior info, so you can pivot on:
 | **Host** | `host` column | Which OpenClaw machine emitted the span |
 | **Agent** | `openclaw.agent`, `gen_ai.agent.id`, `ioa_observe.entity.name` | Which agent did the work |
 | **Room** | parsed from `gen_ai.conversation.id` / `openclaw.session.key` (`agent:<a>:<chan-kind>:<chan-type>:<room-id>`) | The room id / Mycelium room name — first-class |
-| **Channel kind** | parsed from same key, plus `openclaw.channel` | `mycelium-room` (the default) vs external kinds like `discord` / `slack` (lets you tell coordination spans from chat spans) |
+| **Channel kind** | parsed from same key, plus `openclaw.channel` | `mycelium-room` (the default) vs external channel kinds (lets you tell coordination spans from chat spans) |
 | **Session** | `session.id`, `openclaw.session.key` | One conversation/turn lifecycle |
 | **Model** | `gen_ai.request.model`, `gen_ai.response.model` | Which LLM was called |
 | **Tool** | `openclaw.toolName`, `gen_ai.tool.name`, `openclaw.exec.exit_code` | Which tool was invoked and its exit code |
@@ -425,7 +425,7 @@ and behavior info, so you can pivot on:
 | `mycelium metrics traces by-host` | Group by source host (spans, errors, avg/p95 latency, tokens) |
 | `mycelium metrics traces by-agent` | Group by agent |
 | `mycelium metrics traces by-room` | Group by room id / Mycelium room name |
-| `mycelium metrics traces by-channel` | Group by channel kind (`mycelium-room`, `discord`, `slack`, …) |
+| `mycelium metrics traces by-channel` | Group by channel kind (`mycelium-room`, external channels, …) |
 | `mycelium metrics traces by-model` | Group by LLM model |
 | `mycelium metrics traces by-name` | Group by span name (`openclaw.agent.turn`, `openclaw.tool.execution`, …) |
 | `mycelium metrics traces by-tool` | Group tool-call spans by tool name |

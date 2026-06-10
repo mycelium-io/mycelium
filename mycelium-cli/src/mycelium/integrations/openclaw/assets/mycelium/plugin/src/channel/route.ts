@@ -317,7 +317,7 @@ export function routeConsensus(cfg: ChannelConfig, msg: any): RouteAction[] {
     messageId: msg.id,
   }));
 
-  // Also notify each agent's home channel session (Discord/Slack/etc.)
+  // Also notify each agent's home channel session (the Mycelium room, or an external channel)
   // with the consensus summary. The notify-home executor checks whether a
   // return address was stashed for each (session, agent) pair when the agent
   // first showed up in the negotiation; agents without a stash are skipped.

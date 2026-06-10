@@ -213,13 +213,13 @@ def test_tokens_by_channel_disjoint_channels_per_host() -> None:
     """Hosts can report different channels; aggregation preserves all of them."""
     store = MetricsStore()
 
-    _push_tokens(store, host="oclw-3", channel="discord", input_tokens=100, output_tokens=10)
+    _push_tokens(store, host="oclw-3", channel="external", input_tokens=100, output_tokens=10)
     _push_tokens(store, host="oclw-4", channel="cfn", input_tokens=200, output_tokens=20)
-    _push_tokens(store, host="oclw-5", channel="discord", input_tokens=300, output_tokens=30)
+    _push_tokens(store, host="oclw-5", channel="external", input_tokens=300, output_tokens=30)
 
     by_agent = store.to_dict()["counters"]["tokens"]["by_agent"]
-    assert by_agent["discord"]["input"] == 100 + 300
-    assert by_agent["discord"]["output"] == 10 + 30
+    assert by_agent["external"]["input"] == 100 + 300
+    assert by_agent["external"]["output"] == 10 + 30
     assert by_agent["cfn"]["input"] == 200
     assert by_agent["cfn"]["output"] == 20
 
@@ -230,13 +230,13 @@ def test_tokens_repushed_from_same_host_overwrites_within_host() -> None:
     """
     store = MetricsStore()
 
-    _push_tokens(store, host="oclw-3", channel="discord", input_tokens=100)
-    _push_tokens(store, host="oclw-4", channel="discord", input_tokens=200)
+    _push_tokens(store, host="oclw-3", channel="external", input_tokens=100)
+    _push_tokens(store, host="oclw-4", channel="external", input_tokens=200)
     # oclw-3 pushes again with a larger cumulative value.
-    _push_tokens(store, host="oclw-3", channel="discord", input_tokens=150)
+    _push_tokens(store, host="oclw-3", channel="external", input_tokens=150)
 
     by_agent = store.to_dict()["counters"]["tokens"]["by_agent"]
-    assert by_agent["discord"]["input"] == 150 + 200
+    assert by_agent["external"]["input"] == 150 + 200
 
 
 # ── cost / simple counters / gauges ──────────────────────────────────
@@ -245,11 +245,11 @@ def test_tokens_repushed_from_same_host_overwrites_within_host() -> None:
 def test_cost_usd_sums_across_hosts() -> None:
     store = MetricsStore()
 
-    _push_cost(store, host="oclw-3", channel="discord", value=1.25)
-    _push_cost(store, host="oclw-5", channel="discord", value=0.75)
+    _push_cost(store, host="oclw-3", channel="external", value=1.25)
+    _push_cost(store, host="oclw-5", channel="external", value=0.75)
 
     snap = store.to_dict()
-    assert snap["counters"]["cost_usd"]["by_agent"]["discord"] == pytest.approx(2.00)
+    assert snap["counters"]["cost_usd"]["by_agent"]["external"] == pytest.approx(2.00)
     assert snap["counters"]["cost_usd"]["total"] == pytest.approx(2.00)
 
 
@@ -302,14 +302,14 @@ def test_snapshot_exposes_counters_by_host_for_persistence() -> None:
     can persist them and reload without re-aggregating (which would
     double-count once any host pushes again)."""
     store = MetricsStore()
-    _push_tokens(store, host="oclw-3", channel="discord", input_tokens=10)
-    _push_tokens(store, host="oclw-5", channel="discord", input_tokens=20)
+    _push_tokens(store, host="oclw-3", channel="external", input_tokens=10)
+    _push_tokens(store, host="oclw-5", channel="external", input_tokens=20)
 
     snap = store.to_dict()
     assert "counters_by_host" in snap
     assert set(snap["counters_by_host"].keys()) == {"oclw-3", "oclw-5"}
-    assert snap["counters_by_host"]["oclw-3"]["tokens"]["by_agent"]["discord"]["input"] == 10
-    assert snap["counters_by_host"]["oclw-5"]["tokens"]["by_agent"]["discord"]["input"] == 20
+    assert snap["counters_by_host"]["oclw-3"]["tokens"]["by_agent"]["external"]["input"] == 10
+    assert snap["counters_by_host"]["oclw-5"]["tokens"]["by_agent"]["external"]["input"] == 20
 
 
 def test_unknown_host_does_not_clobber_known_hosts() -> None:
@@ -317,13 +317,13 @@ def test_unknown_host_does_not_clobber_known_hosts() -> None:
     bucket rather than overwriting other hosts' buckets."""
     store = MetricsStore()
 
-    _push_tokens(store, host="oclw-3", channel="discord", input_tokens=500)
-    _push_tokens(store, host="", channel="discord", input_tokens=42)
+    _push_tokens(store, host="oclw-3", channel="external", input_tokens=500)
+    _push_tokens(store, host="", channel="external", input_tokens=42)
 
     snap = store.to_dict()
-    assert snap["counters_by_host"]["oclw-3"]["tokens"]["by_agent"]["discord"]["input"] == 500
-    assert snap["counters_by_host"]["unknown"]["tokens"]["by_agent"]["discord"]["input"] == 42
-    assert snap["counters"]["tokens"]["by_agent"]["discord"]["input"] == 500 + 42
+    assert snap["counters_by_host"]["oclw-3"]["tokens"]["by_agent"]["external"]["input"] == 500
+    assert snap["counters_by_host"]["unknown"]["tokens"]["by_agent"]["external"]["input"] == 42
+    assert snap["counters"]["tokens"]["by_agent"]["external"]["input"] == 500 + 42
 
 
 def test_empty_store_produces_zeroed_counters() -> None:

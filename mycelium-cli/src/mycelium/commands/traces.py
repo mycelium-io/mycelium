@@ -19,7 +19,7 @@ into a SQLite table::
     - gen_ai.conversation.id           (e.g. agent:claire-agent:mycelium-room:channel:room-42:local)
     - openclaw.session.key             (same shape as conversation.id)
     - session.id                       (UUID for one logical conversation)
-    - openclaw.channel                 (mycelium-room | discord | …)
+    - openclaw.channel                 (mycelium-room | …)
 
   Behavior
     - gen_ai.request.model / response.model
@@ -318,7 +318,7 @@ _CONV_RE = re.compile(
 def _split_conversation(conv: str) -> tuple[str, str, str]:
     """Return (agent, channel_kind, room_id) from a conversation key.
 
-    ``channel_kind`` is e.g. ``mycelium-room`` or ``discord``; ``room_id`` is
+    ``channel_kind`` is e.g. ``mycelium-room`` (or an external channel); ``room_id`` is
     everything after it (the regex captures everything past the channel-type,
     so room ids containing colons stay intact).
     """
@@ -641,7 +641,7 @@ def by_channel(
     agent: str | None = AgentOpt,
     limit: int = LimitOpt,
 ) -> None:
-    """Group spans by channel kind (mycelium-room vs discord vs …)."""
+    """Group spans by channel kind (mycelium-room vs external channels)."""
     rows = _load_filtered_rows(since, host, agent, None)
 
     def key(_r, attrs: dict) -> str:

@@ -20,7 +20,7 @@ export default async function HookHandler(event) {
 
   const ctx = event.context;
 
-  // Extract channel/conversation ID from event context (Slack channel, Discord channel, etc.)
+  // Extract channel/conversation ID from event context (the Mycelium room, or an external channel)
   // Try multiple field names used by different platforms
   const channelId =
     ctx.channelId ??

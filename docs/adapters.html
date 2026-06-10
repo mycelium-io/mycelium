@@ -355,8 +355,8 @@
         chat platform), and cross-channel return-trip delivery for structured
         negotiations — when consensus is reached in a Mycelium negotiation,
         the plugin posts a one-shot summary back to whichever channel session
-        each agent was active on when they joined (the Mycelium room UI, a
-        Discord DM, etc.), so the user sees the result in their own chat instead
+        each agent was active on when they joined (the Mycelium room, or an
+        external channel), so the user sees the result in their own chat instead
         of having to come find it.
       </p>
 
@@ -406,7 +406,7 @@
       <h3 id="oc-return-trip">Cross-channel return trip</h3>
       <p>
         When a user kicks off a Mycelium negotiation from their home chat (the
-        Mycelium room UI, a Discord DM, etc.), the agent is woken in a parallel mycelium-room session to
+        Mycelium room, or an external channel), the agent is woken in a parallel mycelium-room session to
         run the negotiation. When that negotiation concludes — agreement <em>or</em>
         timeout — the plugin posts a one-shot summary back to whichever channel
         session each agent was on when they joined.

@@ -5,9 +5,8 @@ memory, rooms, and coordination state from a single backend.
 
 > **Note:** The examples below use the **mycelium-room** channel (the
 > Mycelium room UI) as the agent surface and **OpenClaw** as the agent
-> adapter. The same pattern applies to external channels (Discord, Slack,
-> etc.) and other adapters — substitute the relevant names and config
-> paths.
+> adapter. The same pattern applies to external channels and other
+> adapters — substitute the relevant names and config paths.
 
 ## When to use this
 
@@ -100,8 +99,7 @@ mycelium agent add agent-alpha
 auto-wires the OpenClaw `mycelium-room` channel into the hub's
 `~/.openclaw/openclaw.json`. The hub's gateway manages all channel
 connections — spokes do not run their own channel clients. (To wire in an
-*external* channel like Discord or Slack, add it under
-`channels.<channel>.accounts` instead.)
+*external* channel, add it under `channels.<channel>.accounts` instead.)
 
 ## Step 2: Set up each spoke
 
@@ -206,8 +204,7 @@ To refresh tokens, re-authenticate the agent with the channel, update the
 token in `channels.<channel>.accounts[agent]` in each node's
 `openclaw.json`, and restart the gateway. (The mycelium-room channel
 authenticates through the Mycelium backend and has no separate channel
-token to rotate — this applies to external channels like Discord or
-Slack.)
+token to rotate — this applies to external channels.)
 
 ## Step 4: Set up spoke metrics
 

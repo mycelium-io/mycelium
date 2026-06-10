@@ -64,7 +64,7 @@ def test_oc_token_totals_splits_heartbeat_from_foreground() -> None:
                         "cache_write": 1000,
                         "total": 1030,
                     },
-                    "discord": {
+                    "external": {
                         "input": 5,
                         "output": 200,
                         "cache_read": 800,
@@ -92,7 +92,7 @@ def test_oc_token_totals_include_background_folds_back_in() -> None:
             "tokens": {
                 "by_agent": {
                     "heartbeat": {"total": 1030, "cache_read": 1000},
-                    "discord": {"total": 1005, "cache_read": 800},
+                    "external": {"total": 1005, "cache_read": 800},
                 }
             }
         }
