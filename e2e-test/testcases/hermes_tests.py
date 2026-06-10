@@ -152,7 +152,7 @@ def _collect_gateway_logs(
     """
     for label, (host, ssh_fn) in nodes.items():
         rc, out, _ = ssh_fn(
-            f"grep -i '{room}\\|notify.home\\|consensus\\|Round [0-9]\\|ERROR\\|WARN' "
+            f"grep -i '{room}\\|notify.home\\|consensus\\|Round [0-9]' "
             f"~/.hermes/logs/gateway.log 2>/dev/null | tail -{lines}",
             timeout=20.0,
         )
