@@ -447,29 +447,37 @@ async def _poll_matrix_room(
     deadline = time.monotonic() + timeout
     sync_token: str | None = None
     seen: set[str] = set()
+    def _scan_events(data: dict) -> None:
+        room_events = (
+            data.get("rooms", {})
+                .get("join", {})
+                .get(room_id, {})
+                .get("timeline", {})
+                .get("events", [])
+        )
+        for ev in room_events:
+            if ev.get("type") == "m.room.message":
+                body = ev.get("content", {}).get("body", "")
+                sender = ev.get("sender", "")
+                log.info("Matrix room message from %s: %s", sender, body[:200])
+                for hermes_user in expected_senders:
+                    if hermes_user in sender:
+                        seen.add(hermes_user)
+
     try:
-        # Grab current sync token so we only see messages arriving *after* this point.
+        # Initial sync with no `since` — returns recent timeline so we catch
+        # notify_home messages that arrived just before we started polling.
         data = await client.sync(timeout=0)
         sync_token = data.get("next_batch")
+        _scan_events(data)
+        if seen >= expected_senders:
+            log.info("All expected notify-home senders delivered (initial sync): %s", seen)
+            return seen
         while time.monotonic() < deadline:
             remaining_ms = max(1, int((deadline - time.monotonic()) * 1000))
             data = await client.sync(timeout=min(remaining_ms, 10_000), since=sync_token)
             sync_token = data.get("next_batch", sync_token)
-            room_events = (
-                data.get("rooms", {})
-                    .get("join", {})
-                    .get(room_id, {})
-                    .get("timeline", {})
-                    .get("events", [])
-            )
-            for ev in room_events:
-                if ev.get("type") == "m.room.message":
-                    body = ev.get("content", {}).get("body", "")
-                    sender = ev.get("sender", "")
-                    log.info("Matrix room message from %s: %s", sender, body[:200])
-                    for hermes_user in expected_senders:
-                        if hermes_user in sender:
-                            seen.add(hermes_user)
+            _scan_events(data)
             if seen >= expected_senders:
                 log.info("All expected notify-home senders delivered: %s", seen)
                 return seen
