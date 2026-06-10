@@ -57,7 +57,7 @@ def _llm_summarize_verdicts(verdicts: list[tuple[str, str, str]]) -> str:
     try:
         payload = json.dumps({
             "model": model,
-            "max_tokens": 300,
+            "max_tokens": 600,
             "messages": [{"role": "user", "content": prompt}],
         }).encode()
         req = urllib.request.Request(
