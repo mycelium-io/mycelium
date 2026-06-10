@@ -516,9 +516,84 @@ def _find_offers(obj) -> list[dict]:
     return found
 
 
-def extract_options_from_session_transcript(content: str) -> dict[str, set[str]]:
-    """Return {issue_key: {option_values}} from all offer snapshots."""
+def _extract_options_from_ce_consensus(content: str) -> dict[str, set[str]]:
+    """
+    Extract {issue: {resolved_value}} from CE consensus/plan lines.
+
+    The CE's final "assignments" dict and "plan" key=value string both encode
+    the single agreed value per issue — adding these to the options dict gives
+    the value matcher something to compare against gold option strings even when
+    no offer-tick payloads are present (ex01, ex07, ex08).
+    """
     options: dict[str, set[str]] = {}
+
+    lines = content.splitlines()
+    for i, line in enumerate(lines):
+        is_ce_json_line = (
+            re.match(r'\[coordination_consensus\]', line)
+            or re.match(r'\[CognitiveEngine\]\s*\{', line)
+            or (re.match(r'\*\*CognitiveEngine:\*\*', line) and i + 1 < len(lines))
+        )
+        if not is_ce_json_line:
+            continue
+
+        if re.match(r'\[coordination_consensus\]', line):
+            inline = re.sub(r'^\[coordination_consensus\]\s*CognitiveEngine:\s*', '', line).strip()
+            json_line = inline if inline.startswith('{') else (
+                lines[i + 1] if i + 1 < len(lines) and lines[i + 1].strip().startswith('{') else None
+            )
+        elif re.match(r'\*\*CognitiveEngine:\*\*', line):
+            json_line = lines[i + 1] if i + 1 < len(lines) else None
+        else:
+            json_line = re.sub(r'^\[CognitiveEngine\]\s*', '', line)
+
+        if not json_line or not json_line.strip().startswith('{'):
+            continue
+
+        # Strategy A: full JSON parse — use assignments dict directly
+        try:
+            obj = json.loads(json_line)
+            if isinstance(obj.get('assignments'), dict):
+                for k, v in obj['assignments'].items():
+                    if k.lower() not in _META_KEYS and isinstance(v, str) and v.strip():
+                        options.setdefault(k, set()).add(v.strip())
+                continue
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        # Strategy B: truncated — regex-extract key: "value" pairs from assignments block
+        assign_block = re.search(r'"assignments"\s*:\s*\{([^}]*)', json_line)
+        if assign_block:
+            for kv in re.finditer(r'"([^"]{2,80})"\s*:\s*"([^"]{2,})"', assign_block.group(1)):
+                k, v = kv.group(1), kv.group(2)
+                if k.lower() not in _META_KEYS:
+                    options.setdefault(k, set()).add(v.strip())
+            if options:
+                continue
+
+        # Strategy C: plan string — key=value; key=value
+        plan_match = re.search(r'"plan"\s*:\s*"([^"]*)', json_line)
+        if plan_match:
+            for segment in plan_match.group(1).split(';'):
+                segment = segment.strip()
+                if '=' in segment:
+                    k, _, v = segment.partition('=')
+                    k, v = k.strip(), v.strip()
+                    if 2 < len(k) <= 80 and k.lower() not in _META_KEYS and v:
+                        options.setdefault(k, set()).add(v)
+
+    return options
+
+
+def extract_options_from_session_transcript(content: str) -> dict[str, set[str]]:
+    """Return {issue_key: {option_values}} from all offer snapshots and CE consensus."""
+    options: dict[str, set[str]] = {}
+
+    # CE consensus resolved values — the single agreed value per issue
+    for k, vals in _extract_options_from_ce_consensus(content).items():
+        options.setdefault(k, set()).update(vals)
+
+    # Offer-tick payloads — all values proposed across rounds
     for raw in _iter_json_objects(content):
         try:
             obj = json.loads(raw)
@@ -717,10 +792,13 @@ def compute_option_metrics(
         gold_opts = gold_options.get(issue, [])
         if not gold_opts:
             continue
-        # Find found options for this issue (fuzzy key match)
+        # Find found options for this issue (fuzzy key match + embedding)
         found_opts: set[str] = set()
         for fk, fv in found_options.items():
-            if _fuzzy_match(fk, [issue]):
+            if _fuzzy_match(fk, [issue]) or (
+                _embed_matcher._try_load()
+                and _embed_matcher.best_similarity(fk, [issue]) >= 0.70
+            ):
                 found_opts |= fv
         tp = sum(
             1 for go in gold_opts
