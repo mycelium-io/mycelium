@@ -724,7 +724,12 @@ def compute_option_metrics(
                 found_opts |= fv
         tp = sum(
             1 for go in gold_opts
-            if any(_jaccard(fo, go) >= 0.4 for fo in found_opts)
+            if any(
+                _embed_matcher.best_similarity(fo, [go]) >= 0.65
+                if _embed_matcher._try_load()
+                else _jaccard(fo, go) >= 0.4
+                for fo in found_opts
+            )
         )
         precisions.append(tp / len(found_opts) if found_opts else 0.0)
         recalls.append(tp / len(gold_opts))
