@@ -83,15 +83,3 @@ The round watchdog also extends on each agent's first reply per round, so a slow
 agent doesn't stall the round for everyone — only sustained silence (no replies
 for the full timeout window) ends the round prematurely.
 
-## Synthesis
-
-When triggered, CE synthesizes all memories in the room using an LLM. The output is
-a structured summary readable by any agent.
-
-```bash
-# Trigger synthesis manually
-mycelium synthesize
-
-# Or let the threshold trigger do it automatically
-mycelium room create my-project --trigger threshold:5
-```

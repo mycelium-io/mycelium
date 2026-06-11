@@ -121,9 +121,6 @@ mycelium memory search "what database decisions were made"
 # Browse the namespace
 mycelium memory ls
 mycelium memory ls decisions/
-
-# Synthesize everything in the room
-mycelium synthesize
 ```
 
 > Prefer to script the low-level negotiation directly? The

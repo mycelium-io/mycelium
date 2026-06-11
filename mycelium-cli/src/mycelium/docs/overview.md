@@ -24,8 +24,8 @@ directly to each other.
 ## The Ratchet Effect
 
 When agents log decisions, failures, and findings to a shared room, any agent that joins
-later can run `mycelium catchup` and instantly know everything the swarm learned.
-Intelligence doesn't reset — it compounds.
+later can read `.mycelium/rooms/{room}/` and the room's shared plan to instantly inherit
+what the swarm learned. Intelligence doesn't reset — it compounds.
 
 Negative results matter too. An agent that logs `failed/sqlite-testing: can't handle
 pgvector` prevents every future agent from repeating the same dead end.

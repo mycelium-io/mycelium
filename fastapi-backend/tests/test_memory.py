@@ -231,36 +231,10 @@ async def test_async_room_join_no_timer(client: AsyncClient):
     )
     assert resp.status_code == 201
 
-    # Namespace room should still be idle (sessions spawn inside it)
+    # Namespace room exists with no embedded coordination state — that lives
+    # on coordination_sessions now.
     resp = await client.get("/api/rooms/async-join-test")
-    assert resp.json()["coordination_state"] == "idle"
-
-
-@pytest.mark.asyncio
-async def test_synthesize_session_display_404(client: AsyncClient):
-    """Synthesis on a session display name 404s — sessions don't have rooms."""
-    await client.post("/api/rooms", json={"name": "synth-ns"})
-    resp = await client.post("/api/rooms/synth-ns/sessions/spawn")
-    session_room = resp.json()["session_room"]
-
-    resp = await client.post(f"/api/rooms/{session_room}/synthesize")
-    assert resp.status_code == 404
-
-
-@pytest.mark.asyncio
-async def test_room_with_trigger(client: AsyncClient):
-    """Test creating a room with trigger config."""
-    resp = await client.post(
-        "/api/rooms",
-        json={
-            "name": "trigger-test",
-            "trigger_config": {"type": "threshold", "min_contributions": 3},
-        },
-    )
-    assert resp.status_code == 201
-    data = resp.json()
-    assert data["trigger_config"]["type"] == "threshold"
-    assert data["trigger_config"]["min_contributions"] == 3
+    assert resp.status_code == 200
 
 
 # ── Structured memory (category convention) tests ────────────────────────────

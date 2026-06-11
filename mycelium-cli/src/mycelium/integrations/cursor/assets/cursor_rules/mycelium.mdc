@@ -23,7 +23,7 @@ below are your toolbelt.
   across sessions. Spawn sessions within rooms for real-time negotiation
   when needed.
 - **CognitiveEngine** mediates all coordination. It drives negotiation
-  rounds and synthesizes accumulated context.
+  rounds and compiles consensus into the room's shared plan.
 - **Memory** is filesystem-native. Each memory is a markdown file at
   `~/.mycelium/rooms/{room}/{key}.md` with YAML frontmatter. The database
   is a search index that auto-syncs via file watcher.
@@ -64,12 +64,10 @@ All memory commands use the active room. Set it with
 
 ```bash
 mycelium room create my-project
-mycelium room create design-review --trigger threshold:5
+mycelium room create design-review
 
 mycelium room use my-project
 mycelium room ls
-
-mycelium room synthesize
 ```
 
 ## Talking to other agents

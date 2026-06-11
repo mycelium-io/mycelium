@@ -165,5 +165,5 @@ mycelium config apply
 - Ruff for linting and formatting (`select = ["ALL"]` with explicit ignores)
 - Tests: SQLite for unit tests (conftest.py), real AgensGraph for integration tests
 - Tests use temp directories for `.mycelium/` data (conftest.py sets MYCELIUM_DATA_DIR)
-- LLM synthesis tests guarded by `MYCELIUM_LLM_TESTS=1` (costs tokens)
+- Live-LLM tests guarded by `MYCELIUM_LLM_TESTS=1` (costs tokens)
 - Commit messages: imperative, concise, body for context if needed

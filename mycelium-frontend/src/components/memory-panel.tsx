@@ -3,8 +3,8 @@
 
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { fetchMemories, searchMemories, fetchCatchup } from "@/lib/api";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { fetchMemories, searchMemories } from "@/lib/api";
 import { KnowledgePanel } from "./knowledge-panel";
 
 interface Memory {
@@ -22,16 +22,6 @@ interface SearchResult {
   similarity: number;
 }
 
-interface CatchupData {
-  room: string;
-  mode: string;
-  total_memories: number;
-  contributors: string[];
-  latest_synthesis: { key: string; content: string; created_at: string } | null;
-  recent_activity: { key: string; created_by: string; content_text: string; created_at: string }[];
-  memories_since_synthesis: number;
-}
-
 interface Props {
   roomName: string;
   masId?: string | null;
@@ -47,7 +37,6 @@ const TABS: { id: Tab; label: string }[] = [
 
 export function MemoryPanel({ roomName, masId, refreshTrigger }: Props) {
   const [memories, setMemories] = useState<Memory[]>([]);
-  const [catchup, setCatchup] = useState<CatchupData | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
   const [searching, setSearching] = useState(false);
@@ -55,14 +44,15 @@ export function MemoryPanel({ roomName, masId, refreshTrigger }: Props) {
 
   const loadData = useCallback(async () => {
     try {
-      const [mems, cu] = await Promise.all([
-        fetchMemories(roomName),
-        fetchCatchup(roomName),
-      ]);
+      const mems = await fetchMemories(roomName);
       setMemories(mems);
-      setCatchup(cu);
     } catch {}
   }, [roomName]);
+
+  const contributors = useMemo(
+    () => Array.from(new Set(memories.map(m => m.created_by).filter(Boolean))),
+    [memories],
+  );
 
   useEffect(() => { loadData(); }, [loadData, refreshTrigger]);
 
@@ -92,15 +82,15 @@ export function MemoryPanel({ roomName, masId, refreshTrigger }: Props) {
       {/* Stats row */}
       <div className="px-4 py-3 border-b border-border bg-paper">
         <div className="flex items-baseline gap-3 caps-mono-sm text-muted">
-          <span className="text-text font-semibold tabular">{catchup?.total_memories ?? 0}</span>
+          <span className="text-text font-semibold tabular">{memories.length}</span>
           <span>memories</span>
           <span className="text-dim">·</span>
-          <span className="text-text font-semibold tabular">{catchup?.contributors?.length ?? 0}</span>
+          <span className="text-text font-semibold tabular">{contributors.length}</span>
           <span>contributors</span>
         </div>
-        {catchup?.contributors && catchup.contributors.length > 0 && (
+        {contributors.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-2">
-            {catchup.contributors.map(c => (
+            {contributors.map(c => (
               <span
                 key={c}
                 className="font-mono text-micro px-2 py-0.5 text-text2 border border-border"

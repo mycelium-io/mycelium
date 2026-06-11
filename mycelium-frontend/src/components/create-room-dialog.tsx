@@ -14,7 +14,6 @@ interface Props {
 
 export function CreateRoomDialog({ open, onClose, onCreated }: Props) {
   const [name, setName] = useState("");
-  const [threshold, setThreshold] = useState("5");
   const [loading, setLoading] = useState(false);
 
   if (!open) return null;
@@ -22,8 +21,7 @@ export function CreateRoomDialog({ open, onClose, onCreated }: Props) {
   const handleCreate = async () => {
     setLoading(true);
     try {
-      const trigger = { type: "threshold", min_contributions: parseInt(threshold) };
-      await createRoom({ name, trigger_config: trigger, is_persistent: true });
+      await createRoom({ name, is_persistent: true });
       onCreated();
       onClose();
       setName("");
@@ -43,14 +41,6 @@ export function CreateRoomDialog({ open, onClose, onCreated }: Props) {
           value={name}
           onChange={e => setName(e.target.value)}
           placeholder="design-review"
-        />
-
-        <label className="block text-sm text-muted mb-1">Synthesis trigger (memory threshold)</label>
-        <input
-          className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:border-accent/50 focus:outline-none mb-4"
-          type="number"
-          value={threshold}
-          onChange={e => setThreshold(e.target.value)}
         />
 
         <div className="flex gap-3 justify-end">

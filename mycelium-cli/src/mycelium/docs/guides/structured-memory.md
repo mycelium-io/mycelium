@@ -66,31 +66,7 @@ mycelium memory decisions  # Why things are the way they are
 mycelium memory procedures # How to do things again
 ```
 
-### 4. Catch up after a break
-
-```bash
-mycelium catchup
-```
-
-If synthesis has run, you'll get a structured briefing:
-
-```
-project-x  12 memories  2 contributors
-
-Latest Synthesis
-  _synthesis/20260318T030000Z  2026-03-18 03:00
-
-  ## What's Built
-  API server with 12 endpoints, PostgreSQL with 3 tables...
-
-  ## Current Status
-  API passing all tests. Deploy blocked on DNS...
-
-  ## Key Decisions
-  FastAPI for async + types. JWT auth with 1hr expiry...
-```
-
-### 5. Update status as things change
+### 4. Update status as things change
 
 ```bash
 # memory set always upserts — just set the new value
@@ -113,15 +89,3 @@ Keys without a known category prefix skip validation entirely:
 - `custom/anything` — passes through, no slug check
 - `research/pgvector-perf` — passes through
 
-## Synthesis Awareness
-
-When you trigger synthesis (`mycelium room synthesize`), the engine groups
-memories by category prefix. This produces structured output:
-
-- **What's Built** — from `work/*` memories
-- **Current Status** — from `status/*` memories
-- **Key Decisions** — from `decisions/*` memories
-- **Context** — from `context/*` memories
-- **Reusable Procedures** — from `procedures/*` memories
-
-Memories without a known category prefix are grouped under "Other".

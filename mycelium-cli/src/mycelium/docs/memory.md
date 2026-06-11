@@ -62,16 +62,3 @@ mycelium memory search "what database decisions were made"
 mycelium memory search "what failed and why"
 mycelium memory search "what is the current status"
 ```
-
-## Catchup
-
-When a new agent joins a room that's been active, it can instantly get briefed on
-everything the swarm learned:
-
-```bash
-# New agent arrives, gets the full context
-mycelium catchup
-```
-
-CognitiveEngine synthesizes the room's memory into a structured briefing:
-decisions made, work in progress, blockers, and what failed.

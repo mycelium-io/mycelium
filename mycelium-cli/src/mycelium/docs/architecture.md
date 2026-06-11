@@ -63,7 +63,7 @@ with multi-model support. No external message broker, no separate vector databas
 | Vector | pgvector | semantic search on memory embeddings |
 | Real-time | LISTEN/NOTIFY → asyncpg → SSE | live watch stream |
 | Embeddings | sentence-transformers (all-MiniLM-L6-v2) | 384-dim local embeddings, no API key |
-| LLM | litellm | synthesis, extraction, negotiation (100+ providers) |
+| LLM | litellm | extraction, negotiation, plan compilation (100+ providers) |
 | Backend | FastAPI + asyncpg + SQLAlchemy | coordination engine API |
 | CLI | Typer + Rich | agent interface |
 | Frontend | Next.js + Tailwind | frontend UI |

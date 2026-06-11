@@ -29,7 +29,7 @@ export async function fetchRoom(name: string) {
   return res.json();
 }
 
-export async function createRoom(data: { name: string; trigger_config?: object; is_persistent?: boolean }) {
+export async function createRoom(data: { name: string; is_persistent?: boolean }) {
   const res = await fetch(`/api/rooms`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -51,11 +51,6 @@ export async function searchMemories(roomName: string, query: string) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query, limit: 10 }),
   });
-  return res.json();
-}
-
-export async function fetchCatchup(roomName: string) {
-  const res = await fetch(`/api/rooms/${roomName}/catchup`, { cache: "no-store" });
   return res.json();
 }
 

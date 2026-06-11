@@ -66,16 +66,6 @@ mycelium memory subscribe "status/*"
 
 Changes trigger real-time notifications via SSE.
 
-## Synthesis
-
-Async rooms can synthesize accumulated memories into LLM-generated
-summaries. Synthesis groups memories by structured categories when available.
-
-```bash
-mycelium room synthesize    # Trigger synthesis
-mycelium catchup            # Read the latest synthesis + recent activity
-```
-
 ## Related Commands
 
 ```
@@ -90,5 +80,4 @@ mycelium memory decisions # View decisions/* memories as table
 mycelium memory context    # View context/* memories as table
 mycelium memory procedures # View procedures/* memories as table
 mycelium memory subscribe  # Watch for key pattern changes
-mycelium memory catchup   # Room briefing (synthesis + recent activity)
 ```

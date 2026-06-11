@@ -41,12 +41,3 @@ idle → waiting → negotiating → complete
 Once `complete`, the consensus is compiled into the room's shared plan
 (`plan/tasks.md`) — a `- [ ]` checklist the team works from. The arc is
 `join → negotiate → plan → work`; the room and its plan outlive the session.
-
-## Triggers
-
-Async rooms synthesize when a trigger fires:
-
-| Trigger | Fires when |
-|---------|------------|
-| `threshold:N` | N memories have been written to the room |
-| `manual` | You call `mycelium synthesize` explicitly |
