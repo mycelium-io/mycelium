@@ -20,7 +20,7 @@ backend + DB + channel server — what the frontend talks to) and one or more
 **spokes** (CLI + the agent runtime + the dispatcher). Registration's side
 effects are *all spoke-local*:
 
-- **`claude_code`** — the cc-daemon resolves manifests from the **spoke**
+- **`claude_code`** — the daemon resolves manifests from the **spoke**
   filesystem (`~/.mycelium/rooms/<room>/agents/<handle>.md`), and the `cwd`
   that `claude -p` runs in is a **spoke** path. `mycelium agent add` works
   because the CLI writes the hub memory entry *and* mirrors the manifest to
@@ -36,7 +36,7 @@ topology.
 
 The only component positioned to perform spoke-local provisioning is the
 always-running spoke process already subscribed to the hub over SSE: the
-**cc-daemon**. Therefore UI-driven provisioning is necessarily
+**mycelium-daemon**. Therefore UI-driven provisioning is necessarily
 **daemon-mediated**, and **the daemon must be running** for it to work — an
 explicit, surfaced precondition, not a silent failure.
 
@@ -47,7 +47,7 @@ UI ──POST request──▶ hub records a provisioning *request*
                          (memory key `provisioning/<id>`, status=pending)
                                   │  (hub SSE the spoke already listens on)
                                   ▼
-                     spoke cc-daemon picks up the request
+                     spoke mycelium-daemon picks up the request
                                   │
                                   ▼
             daemon runs the real Integration facet on the spoke:
@@ -79,7 +79,7 @@ Key points:
 - **Authorization.** Reuse the manifest's `allow_from` notion: only
   configured requesters may provision. The request must be attributable
   (`requested_by`) and the daemon should refuse unknown requesters.
-- **`claude_code` vs `openclaw` asymmetry.** The cc-daemon today only
+- **`claude_code` vs `openclaw` asymmetry.** The daemon today only
   *dispatches* `claude_code`. For provisioning it must also be able to run
   `OpenClawIntegration.register()` (it has the integration registry
   already), **or** the request is routed to whichever spoke process owns
@@ -89,7 +89,7 @@ Key points:
   family-agnostic to the caller).
 - **Failure modes the UI must show.** (a) no daemon running / not
   subscribed to the room → request stays `pending`, UI shows "no
-  provisioner — start the cc-daemon"; (b) `register()` raised → `error`
+  provisioner — start the mycelium-daemon"; (b) `register()` raised → `error`
   with the message; (c) timeout → `error` after N seconds. The UI must
   never imply success on a bare hub write.
 
@@ -114,7 +114,7 @@ Key points:
 ## Why this is tracked, not built
 
 It is a real protocol addition spanning hub (request record + status),
-cc-daemon (a provisioning capability + claiming + both families), and the
+mycelium-daemon (a provisioning capability + claiming + both families), and the
 UI (request form + pending/error states). PR #277 deliberately ships the
 topology-safe, read-only UI (panel + reply badge) and leaves this as the
 next, separately-reviewed unit.

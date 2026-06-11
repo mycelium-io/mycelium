@@ -45,7 +45,15 @@ class DaemonState:
     last_error: dict[str, Any] | None = None
     errors_last_hour: deque[float] = field(default_factory=lambda: deque(maxlen=1024))
     running: dict[str, RunningProc] = field(default_factory=dict)
+    # Dynamic SSE subscriptions for session sub-rooms (``r:session:abc``)
+    # discovered via ``coordination_join`` events. Keyed by sub-room name so
+    # repeated joins are idempotent. Tracked here (not just as fire-and-forget
+    # tasks) so shutdown can cancel them and the health endpoint can surface
+    # how many sub-rooms we're following.
+    session_room_tasks: dict[str, Any] = field(default_factory=dict)
     stopping: asyncio.Event = field(default_factory=asyncio.Event)
+    reload_requested: asyncio.Event = field(default_factory=asyncio.Event)
+    daemon_cfg: Any = field(default=None)  # DaemonConfig — set by runner after load
 
     def lock_for(self, handle: str) -> asyncio.Lock:
         lock = self.handle_locks.get(handle)

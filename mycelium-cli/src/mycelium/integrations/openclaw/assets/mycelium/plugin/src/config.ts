@@ -63,11 +63,7 @@ export function resolveHandle(agentId?: string | null): string {
   if (agentId?.trim()) {
     return agentId.trim();
   }
-  const matrixId = process.env.MATRIX_USER_ID ?? "";
-  if (matrixId.startsWith("@")) {
-    return matrixId.slice(1).split(":")[0];
-  }
-  return matrixId || "unknown-agent";
+  return "unknown-agent";
 }
 
 /** Per-turn memory injection; fs only — no network in this module. */

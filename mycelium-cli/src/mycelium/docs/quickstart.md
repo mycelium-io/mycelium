@@ -35,17 +35,82 @@ mycelium pull      # pull latest images and restart services
 mycelium doctor    # diagnose and fix configuration issues
 ```
 
-## First Room
+## Open the UI
 
-Create a persistent room and start sharing context:
+The Mycelium room view is where you do everything from here — watch the live
+message stream, add agents, chat with them, and track the shared plan. Open it:
 
 ```bash
-# Create a persistent room
+mycelium ui open   # starts the frontend if it isn't running, then opens it
+```
+
+Everything below can be driven from the UI or the CLI — they act on the same
+rooms. The commands are shown so you can script or follow along in a terminal.
+
+## Create a room
+
+A room is a persistent namespace for memory, agents, and coordination:
+
+```bash
+# Create a room and make it active
 mycelium room create my-project
-
-# Set it as your active room
 mycelium room use my-project
+```
 
+Open `my-project` in the UI — it's empty for now. Next we'll add agents and
+start talking to them.
+
+## Add agents
+
+The **agent primitive** registers an addressable agent in the room. Mycelium
+wires up the underlying adapter for you — there's no per-agent chat account or
+homeserver to configure; agents coordinate through the room's own message
+stream.
+
+```bash
+# Greenfield — provision a brand-new agent
+mycelium agent create planner --adapter openclaw \
+    --description "Sprint planner, optimizes for shipping speed"
+
+# Brownfield — adopt agents that already exist in your OpenClaw gateway
+mycelium agent add
+```
+
+`claude_code` and `cursor` agents are cold-spawned by the Mycelium daemon and
+need no chat platform at all — see the **Adapters** guide for the full list.
+
+```bash
+# See who's in the room
+mycelium agent ls
+```
+
+## Coordinate
+
+In the UI room view, type in the chat box and **`@`-mention** an agent — it
+replies in the live message stream. The same message can be sent from the CLI:
+
+```bash
+# Send an @-addressed message to a registered agent
+mycelium agent invoke planner "draft a plan for the Q3 migration"
+```
+
+When you ask multiple agents to reach a decision, Mycelium's CognitiveEngine
+runs a structured negotiation. On consensus, the agreement compiles into the
+room's shared plan — visible in the **PLAN** tab in the UI, or from the CLI:
+
+```bash
+mycelium plan ls          # the room's shared task list
+```
+
+The result lands back in the same room stream — no need to go hunting for it in
+a separate chat.
+
+## Share memory
+
+Rooms are also persistent memory. Anything you write is searchable by meaning
+and visible to every agent in the room:
+
+```bash
 # Share context
 mycelium memory set "decisions/db" "PostgreSQL with pgvector"
 mycelium memory set "decisions/api" "REST with generated OpenAPI client"
@@ -58,18 +123,6 @@ mycelium memory ls
 mycelium memory ls decisions/
 ```
 
-Now try a session — two agents negotiating a plan:
-
-```bash
-# Terminal 1 — agent julia
-mycelium room create sprint-plan
-mycelium session create -r sprint-plan
-mycelium session join --handle julia-agent -m "Prioritize the database migration first" -r sprint-plan
-mycelium session await --handle julia-agent -r sprint-plan
-
-# Terminal 2 — agent selina
-mycelium session join --handle selina-agent -m "Focus on frontend polish, backend is solid" -r sprint-plan
-mycelium session await --handle selina-agent -r sprint-plan
-
-# CognitiveEngine runs negotiation — await returns ticks with actions
-```
+> Prefer to script the low-level negotiation directly? The
+> `mycelium session join` / `session await` commands drive the CognitiveEngine
+> from the terminal — see the **Sessions** reference.

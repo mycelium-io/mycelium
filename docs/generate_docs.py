@@ -58,6 +58,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     # ── adapters (adapters.html) — all hand-coded ──
     (None,                          "adapters",           "adapters",  "Adapters",     "Overview"),
     (None,                          "adapter-claude-code","adapters",  "Adapters",     "Claude Code"),
+    (None,                          "adapter-cursor",     "adapters",  "Adapters",     "Cursor"),
     (None,                          "adapter-openclaw",   "adapters",  "Adapters",     "OpenClaw"),
     (None,                          "adapter-api",        "adapters",  "Adapters",     "REST API"),
     # ── reference (reference.html) ──
@@ -69,7 +70,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
 # IDs that should be looked up in kept HTML (have <!-- keep --> markers, or rescued by id).
 _KEPT_IDS: set[str] = {
     "overview", "quickstart",
-    "adapters", "adapter-claude-code", "adapter-openclaw", "adapter-api",
+    "adapters", "adapter-claude-code", "adapter-cursor", "adapter-openclaw", "adapter-api",
 }
 
 # CLI groups for the cli-reference page.

@@ -1,8 +1,8 @@
-# Reset Matrix, OpenClaw, and Mycelium (start over locally)
+# Reset OpenClaw and Mycelium (start over locally)
 
 Use this when you want a **clean slate** on a dev machine. **Order:** stop services → remove Docker state → remove config directories.
 
-**Warning:** This **deletes** homeserver data, chat history, OpenClaw agents/workspaces, Mycelium DB volumes, and CLI config. Copy anything you need before proceeding.
+**Warning:** This **deletes** OpenClaw agents/workspaces, Mycelium DB volumes, and CLI config. Copy anything you need before proceeding.
 
 ---
 
@@ -19,26 +19,7 @@ docker stop mycelium-collector 2>/dev/null && docker rm mycelium-collector 2>/de
 
 ---
 
-## 2. Matrix (Synapse in Docker)
-
-From the directory that contains your **`docker-compose.yml`** for Synapse:
-
-```bash
-docker compose down -v
-```
-
-`-v` removes **named volumes** (e.g. Synapse DB / media). If Synapse data lives in a **bind-mounted** folder (e.g. `./data`), remove it explicitly:
-
-```bash
-sudo rm -rf ./data
-# or wherever your compose file mounts Synapse /data
-```
-
-Remove any **generated** `homeserver.yaml` if you plan to run `generate` again.
-
----
-
-## 3. Mycelium (Docker stack + CLI config)
+## 2. Mycelium (Docker stack + CLI config)
 
 If you installed the full stack with **`mycelium install`**, from the compose project (often files under **`~/.mycelium/docker/`**):
 
@@ -58,7 +39,7 @@ That removes **`config.toml`**, **`docker/`** (compose + initdb copy), **`.env`*
 
 ---
 
-## 4. OpenClaw
+## 3. OpenClaw
 
 **All local OpenClaw state** for the Unix user:
 
@@ -66,7 +47,7 @@ That removes **`config.toml`**, **`docker/`** (compose + initdb copy), **`.env`*
 rm -rf ~/.openclaw
 ```
 
-This includes **`openclaw.json`**, workspaces, per-agent dirs, **`hooks/`**, **`extensions/`**, **`credentials/`** (including Matrix token cache), logs under **`/tmp/openclaw/`** if you want a clean log dir:
+This includes **`openclaw.json`**, workspaces, per-agent dirs, **`hooks/`**, **`extensions/`**, **`credentials/`** (including any channel token cache), logs under **`/tmp/openclaw/`** if you want a clean log dir:
 
 ```bash
 rm -rf /tmp/openclaw
@@ -76,25 +57,17 @@ If OpenClaw was installed as a **global npm/pnpm** tool, the CLI binary remains;
 
 ---
 
-## 5. Element (browser / desktop)
-
-Sessions are **per client**. For a full UX reset, sign out of your homeserver in **Element** (or clear site data for your Element Web origin). This does **not** delete server-side accounts—that is separate (Synapse admin / deactivate users).
-
----
-
-## 6. Mycelium adapter pieces (already covered by §4)
+## 4. Mycelium adapter pieces (already covered by §3)
 
 `mycelium adapter add openclaw` only writes under **`~/.openclaw/`** and **`~/.mycelium/config.toml`** (adapter registration). Removing **`~/.openclaw`** and **`~/.mycelium`** clears those.
 
 ---
 
-## 7. Start again (short checklist)
+## 5. Start again (short checklist)
 
-1. Bring up **Synapse** (`generate` + `homeserver.yaml` + `up -d`).
-2. Register Matrix users.
-3. Install **OpenClaw**, recreate **`~/.openclaw`** via gateway / wizard.
-4. Run **`mycelium install`** (if you use the backend) and **`mycelium adapter add openclaw`** / **`--step=otel`** as needed.
-5. Follow **[openclaw-matrix-setup.md](openclaw-matrix-setup.md)** for Matrix + multi-agent wiring.
+1. Install **OpenClaw**, recreate **`~/.openclaw`** via gateway / wizard.
+2. Run **`mycelium install`** (if you use the backend) and **`mycelium adapter add openclaw`** / **`--step=otel`** as needed.
+3. Add agents with **`mycelium agent add`** — this auto-wires the OpenClaw `mycelium-room` channel (the Mycelium room UI). For multi-machine / multi-agent wiring, follow the **[Hub & Spoke Setup](../mycelium-cli/src/mycelium/docs/guides/hub-and-spoke.md)** guide.
 
 ---
 
@@ -102,10 +75,9 @@ Sessions are **per client**. For a full UX reset, sign out of your homeserver in
 
 | Goal | Action |
 |------|--------|
-| Only Matrix | §2 only (+ Element sign-out if needed) |
-| Only OpenClaw | §4 only |
+| Only OpenClaw | §3 only |
 | Only Mycelium backend | `docker compose … down -v` for mycelium + `rm -rf ~/.mycelium` |
-| Keep Synapse, reset OpenClaw crypto | Stop gateway, remove only **`~/.openclaw/credentials/`** (and any matrix crypto subdirs under `~/.openclaw` if present), fix tokens in `openclaw.json`, restart |
+| Reset OpenClaw crypto only | Stop gateway, remove only **`~/.openclaw/credentials/`**, fix tokens in `openclaw.json`, restart |
 
 ---
 

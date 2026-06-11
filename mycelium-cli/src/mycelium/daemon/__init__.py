@@ -2,9 +2,9 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Mycelium Claude Code daemon — the userlevel mirror of the OpenClaw gateway.
+Mycelium agent daemon — the userlevel mirror of the OpenClaw gateway.
 
-Subscribes to room SSE for rooms configured in ``~/.mycelium/cc-daemon.toml``,
+Subscribes to room SSE for rooms configured in ``~/.mycelium/daemon.toml``,
 watches for ``@handle`` mentions of agents registered under ``agents/<handle>``,
 and dispatches them via ``claude -p`` with the agent's notes as system prompt.
 Logs every invocation to ``agents/<handle>/log/<ts>`` and posts the reply back
@@ -15,7 +15,7 @@ Architectural symmetry:
         Mycelium room (SSE)
                 │
         ┌───────┴────────┐
- OpenClaw gateway   mycelium-cc-daemon
+ OpenClaw gateway   mycelium-daemon
    (TS, existing)     (Python, this)
         │                │
    openclaw            claude -p

@@ -828,12 +828,37 @@ def _check_room_mas_ids() -> CheckResult:
             message=f"All {len(top_level)} room(s) have MAS IDs",
         )
 
+    def _fix_missing_mas() -> None:
+        import httpx
+
+        fixed, failed = [], []
+        for room_name in missing:
+            try:
+                with httpx.Client(base_url=api_url, timeout=15) as client:
+                    resp = client.post(f"/api/rooms/{room_name}/sync-mas")
+                    resp.raise_for_status()
+                    data = resp.json()
+                mas = data.get("mas_id") or "(unknown)"
+                typer.echo(f"    Registered {room_name}: MAS ID = {mas}")
+                fixed.append(room_name)
+            except Exception as exc:
+                typer.echo(f"    Failed {room_name}: {exc}")
+                failed.append(room_name)
+        if fixed:
+            typer.secho(f"  Registered {len(fixed)} room(s) with CFN.", fg=typer.colors.GREEN)
+        if failed:
+            typer.secho(
+                f"  {len(failed)} room(s) could not be registered — check that CFN is running.",
+                fg=typer.colors.YELLOW,
+            )
+
     return CheckResult(
         name="Room MAS IDs",
         status="warning",
         message=f"{len(missing)} room(s) missing MAS ID",
         details=[f"  {name}" for name in missing]
-        + ["Fix: run 'mycelium doctor --fix' after workspace ID is synced"],
+        + ["Fix: run 'mycelium doctor --fix' to register with CFN"],
+        fix_fn=_fix_missing_mas,
     )
 
 
@@ -1313,7 +1338,216 @@ def _check_openclaw_agent_sandbox() -> CheckResult:
     )
 
 
-# ── Claude Code daemon checks ─────────────────────────────────────────────────
+# ── Cursor adapter checks ─────────────────────────────────────────────────────
+#
+# Mirrors the openclaw pattern: gate every check on whether the user has
+# opted into the cursor adapter (via ``mycelium adapter add cursor``).  A
+# fresh mycelium install that has never touched Cursor — and a user who
+# happens to have ``cursor-agent`` on PATH for unrelated reasons — should
+# both see all cursor checks cleanly skipped.  We surface health only after
+# the user has explicitly asked for the adapter.
+
+
+def _cursor_adapter_registered() -> bool:
+    """True if the user has run ``mycelium adapter add cursor`` at least once."""
+    from mycelium.config import MyceliumConfig
+
+    try:
+        cfg = MyceliumConfig.load()
+    except Exception:
+        return False
+    return "cursor" in (cfg.adapters or {})
+
+
+def _check_cursor_agent_binary() -> CheckResult:
+    """Verify ``cursor-agent`` is reachable on PATH for the daemon to spawn.
+
+    The daemon shells out via ``asyncio.create_subprocess_exec("cursor-agent",
+    ...)`` — without the binary on PATH every mention silently fails with a
+    daemon-side ``FileNotFoundError``. Surfacing this early avoids the "I
+    @-mentioned my cursor agent and nothing happened" debugging spiral.
+    """
+    if not _cursor_adapter_registered():
+        return CheckResult(
+            name="cursor-agent binary",
+            status="ok",
+            message="cursor adapter not registered — skipped",
+        )
+
+    import shutil
+
+    binary = shutil.which("cursor-agent")
+    if binary is None:
+        return CheckResult(
+            name="cursor-agent binary",
+            status="error",
+            message="cursor-agent not on PATH — mentions will fail",
+            details=[
+                "install Cursor + the cursor CLI from https://cursor.com,",
+                "then run `cursor-agent login` to authenticate this host.",
+            ],
+        )
+    return CheckResult(
+        name="cursor-agent binary",
+        status="ok",
+        message=f"installed at {binary}",
+    )
+
+
+def _check_cursor_login() -> CheckResult:
+    """Verify ``cursor-agent`` is authenticated so the daemon can spawn it headlessly.
+
+    ``cursor-agent`` persists its session at ``~/.config/cursor/auth.json``
+    (top-level ``accessToken`` / ``refreshToken``) — that's the file
+    ``cursor-agent`` itself reads on startup. Verified empirically on
+    2026.05 builds: moving that file aside reproduces the
+    ``Authentication required.`` error path; nothing else does. The
+    older ``~/.cursor/cli-config.json`` ``preferences.tokenInfo`` schema
+    is gone in current builds, and ``cli-config.json`` ``authInfo``
+    (email/displayName) is a *biographical* breadcrumb that survives
+    logout — so we deliberately do NOT consider it a "logged in"
+    signal. Doctor must report what ``cursor-agent`` will actually do at
+    spawn time, not what the user ever did.
+
+    The spawn helper still surfaces a friendly error at first-mention
+    time, but doctor catches it during setup. Returns ``ok`` only when
+    auth.json carries a non-empty ``accessToken``.
+    """
+    if not _cursor_adapter_registered():
+        return CheckResult(
+            name="cursor-agent login",
+            status="ok",
+            message="cursor adapter not registered — skipped",
+        )
+
+    import json
+
+    auth_path = Path.home() / ".config" / "cursor" / "auth.json"
+
+    if not auth_path.exists():
+        return CheckResult(
+            name="cursor-agent login",
+            status="warning",
+            message="cursor-agent has not been run on this host",
+            details=[
+                f"expected: {auth_path}",
+                "fix: run `cursor-agent login` and complete the browser flow",
+            ],
+        )
+
+    try:
+        auth_data = json.loads(auth_path.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001 — malformed JSON shouldn't crash doctor
+        return CheckResult(
+            name="cursor-agent login",
+            status="warning",
+            message=f"auth.json could not be parsed: {exc}",
+            details=[
+                f"checked: {auth_path}",
+                "fix: run `cursor-agent login` to refresh credentials",
+            ],
+        )
+
+    if not isinstance(auth_data, dict) or not auth_data.get("accessToken"):
+        return CheckResult(
+            name="cursor-agent login",
+            status="warning",
+            message="cursor-agent is not authenticated",
+            details=[
+                f"checked: {auth_path}",
+                "fix: run `cursor-agent login` and complete the browser flow",
+            ],
+        )
+
+    return CheckResult(
+        name="cursor-agent login",
+        status="ok",
+        message="authenticated",
+    )
+
+
+def _check_cursor_workspace_assets() -> CheckResult:
+    """Verify each registered cursor agent's workspace has the mycelium assets.
+
+    ``mycelium agent create --adapter cursor`` drops
+    ``.cursor/rules/mycelium.mdc`` + the mycelium-marked block of
+    ``AGENTS.md`` into the agent's cwd. A user manually wiping ``.cursor``
+    (or moving the workspace directory) leaves the manifest registered but
+    the spawned ``cursor-agent`` blind to mycelium context. Doctor catches
+    that drift.
+    """
+    if not _cursor_adapter_registered():
+        return CheckResult(
+            name="cursor workspace",
+            status="ok",
+            message="cursor adapter not registered — skipped",
+        )
+
+    # Walk every room's agent manifests; collect (handle, cwd) tuples for
+    # cursor-family agents. We deliberately read the manifest files directly
+    # rather than hitting the backend so doctor stays functional on spokes
+    # whose backend is down.
+    from mycelium.commands.agent import _load_manifest
+
+    rooms_dir = Path.home() / ".mycelium" / "rooms"
+    if not rooms_dir.exists():
+        return CheckResult(
+            name="cursor workspace",
+            status="ok",
+            message="no rooms on disk — skipped",
+        )
+
+    cursor_agents: list[tuple[str, str, Path]] = []
+    for room_dir in rooms_dir.iterdir():
+        if not room_dir.is_dir():
+            continue
+        agents_dir = room_dir / "agents"
+        if not agents_dir.exists():
+            continue
+        for manifest_file in agents_dir.glob("*.md"):
+            try:
+                manifest = _load_manifest(room_dir.name, manifest_file.stem)
+            except Exception:
+                continue
+            if manifest is None or manifest.adapter != "cursor" or not manifest.cwd:
+                continue
+            cursor_agents.append((manifest.handle, room_dir.name, Path(manifest.cwd).expanduser()))
+
+    if not cursor_agents:
+        return CheckResult(
+            name="cursor workspace",
+            status="ok",
+            message="no cursor agents registered — skipped",
+        )
+
+    missing: list[str] = []
+    for handle, room, cwd in cursor_agents:
+        rule = cwd / ".cursor" / "rules" / "mycelium.mdc"
+        agents_md = cwd / "AGENTS.md"
+        if not cwd.is_dir():
+            missing.append(f"  @{handle} ({room}): cwd {cwd} does not exist")
+            continue
+        if not rule.exists():
+            missing.append(f"  @{handle} ({room}): missing {rule}")
+        if not agents_md.exists():
+            missing.append(f"  @{handle} ({room}): missing {agents_md}")
+
+    if missing:
+        return CheckResult(
+            name="cursor workspace",
+            status="warning",
+            message=f"{len(missing)} drift item(s) across {len(cursor_agents)} agent(s)",
+            details=[*missing, "fix: `mycelium agent rm <handle> && mycelium agent create ...`"],
+        )
+
+    return CheckResult(
+        name="cursor workspace",
+        status="ok",
+        message=f"all {len(cursor_agents)} cursor agent(s) have current workspace assets",
+    )
+
+
+# ── Agent daemon checks ───────────────────────────────────────────────────────
 
 
 def _claude_daemon_installed() -> bool:
@@ -1322,38 +1556,38 @@ def _claude_daemon_installed() -> bool:
 
     home = Path.home()
     if platform.system() == "Darwin":
-        return (home / "Library" / "LaunchAgents" / "io.mycelium.cc-daemon.plist").exists()
+        return (home / "Library" / "LaunchAgents" / "io.mycelium.daemon.plist").exists()
     if platform.system() == "Linux":
-        return (home / ".config" / "systemd" / "user" / "mycelium-cc-daemon.service").exists()
+        return (home / ".config" / "systemd" / "user" / "mycelium-daemon.service").exists()
     return False
 
 
-def _check_cc_daemon_service_registered() -> CheckResult:
+def _check_daemon_service_registered() -> CheckResult:
     """The unit file is on disk in the right location for the service manager."""
     import platform
 
     if not _claude_daemon_installed():
         return CheckResult(
-            name="cc-daemon service",
+            name="daemon service",
             status="ok",
             message=(
-                "Claude Code daemon not installed — skipped "
+                "agent daemon not installed — skipped "
                 "(install with: mycelium adapter add claude-code --step=daemon)"
             ),
         )
     system = platform.system()
     return CheckResult(
-        name="cc-daemon service",
+        name="daemon service",
         status="ok",
         message=f"{system} service unit registered",
     )
 
 
-def _check_cc_daemon_running() -> CheckResult:
+def _check_daemon_running() -> CheckResult:
     """The daemon answers on its unix-socket health endpoint."""
     if not _claude_daemon_installed():
         return CheckResult(
-            name="cc-daemon health",
+            name="daemon health",
             status="ok",
             message="not installed — skipped",
         )
@@ -1363,12 +1597,12 @@ def _check_cc_daemon_running() -> CheckResult:
     health = read_health_blocking(timeout=2.0)
     if health is None:
         return CheckResult(
-            name="cc-daemon health",
+            name="daemon health",
             status="error",
             message="service installed but unix-socket /health did not respond",
             details=[
-                "  socket: ~/.mycelium/cc-daemon.sock",
-                "  logs:   ~/.mycelium/logs/cc-daemon.log",
+                "  socket: ~/.mycelium/daemon.sock",
+                "  logs:   ~/.mycelium/logs/daemon.log",
                 "  fix:    mycelium daemon restart",
             ],
         )
@@ -1398,7 +1632,7 @@ def _check_cc_daemon_running() -> CheckResult:
         )
 
     return CheckResult(
-        name="cc-daemon health",
+        name="daemon health",
         status="warning" if errors else "ok",
         message=(
             "running, no errors" if not errors else f"running, but {errors} error(s) in last hour"
@@ -1503,8 +1737,11 @@ def doctor(
                     _check_openclaw_mycelium_plugin(),
                     _check_openclaw_channel_config(),
                     _check_openclaw_agent_sandbox(),
-                    _check_cc_daemon_service_registered(),
-                    _check_cc_daemon_running(),
+                    _check_cursor_agent_binary(),
+                    _check_cursor_login(),
+                    _check_cursor_workspace_assets(),
+                    _check_daemon_service_registered(),
+                    _check_daemon_running(),
                 ],
             ),
         ]

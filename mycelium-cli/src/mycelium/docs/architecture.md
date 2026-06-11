@@ -85,6 +85,22 @@ and coordination commands inline.
 /mycelium
 ```
 
+### Cursor
+
+Same dispatch shape as Claude Code: each `@handle` mention is cold-spawned by
+the shared `mycelium-daemon` as a `cursor-agent -p` process in the agent's
+workspace. One daemon serves both cold-spawn families.
+
+```bash
+mycelium adapter add cursor
+mycelium adapter add cursor --step=daemon  # shared with claude-code
+cursor-agent login                          # one-time, interactive
+
+# Per agent: drops workspace-local rule + AGENTS.md section
+mycelium agent create design-agent --adapter cursor \
+    --cwd ~/repos/my-frontend --room my-project
+```
+
 ### OpenClaw
 
 Plugin + hooks for the OpenClaw agent runtime. Same coordination model,

@@ -957,7 +957,7 @@ class MetricsStore:
 
 
 def _agent_from_session_key(session_key: str) -> str:
-    """Extract agent name from a session key like 'agent:selina-agent:matrix:...'."""
+    """Extract agent name from a session key like 'agent:selina-agent:mycelium-room:...'."""
     if session_key.startswith("agent:"):
         parts = session_key.split(":", 3)
         if len(parts) >= 2:

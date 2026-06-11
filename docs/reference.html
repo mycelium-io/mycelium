@@ -190,6 +190,15 @@
       <pre><code><span class="comment"># The skill is invoked automatically in Claude Code sessions</span>
 <span class="comment"># or explicitly via the slash command</span>
 /mycelium</code></pre>
+      <h3 id="architecture-cursor">Cursor</h3>
+      <p>Same dispatch shape as Claude Code: each <code>@handle</code> mention is cold-spawned by the shared <code>mycelium-daemon</code> as a <code>cursor-agent -p</code> process in the agent&#x27;s workspace. One daemon serves both cold-spawn families.</p>
+      <pre><code><span class="cmd">mycelium adapter add</span> cursor
+<span class="cmd">mycelium adapter add</span> cursor <span class="flag">--step</span>=daemon  # shared with claude-code
+cursor-agent login                          # one-time, interactive
+
+<span class="comment"># Per agent: drops workspace-local rule + AGENTS.md section</span>
+<span class="cmd">mycelium agent create</span> design-agent <span class="flag">--adapter</span> cursor \
+    <span class="flag">--cwd</span> ~/repos/my-frontend <span class="flag">--room</span> my-project</code></pre>
       <h3 id="architecture-openclaw">OpenClaw</h3>
       <p>Plugin + hooks for the OpenClaw agent runtime. Same coordination model, same memory API.</p>
       <pre><code><span class="cmd">mycelium adapter add</span> openclaw
@@ -624,7 +633,7 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
         <div class="cmd-ref-header">
           <code><span class="cmd">mycelium adapter add</span> <span class="arg">&lt;type&gt;</span> [<span class="flag">--openclaw-profile</span> <span class="arg">NAME</span>] [<span class="flag">--openclaw-container</span> <span class="arg">NAME</span>] [<span class="flag">--dry-run</span>] [<span class="flag">--force</span>]</code>
         </div>
-        <div class="cmd-ref-body">Install an agent framework adapter (openclaw, claude-code).</div>
+        <div class="cmd-ref-body">Install an agent framework adapter (openclaw, claude-code, cursor).</div>
       </div>
 
       <div class="cmd-ref">
@@ -948,7 +957,7 @@ docker exec &lt;container-name&gt; openclaw status
       <hr class="divider">
       <h3 id="troubleshooting-14-agents-join-sessions-but-never-respond-expired-channel-tokens">14. Agents Join Sessions but Never Respond (Expired Channel Tokens)</h3>
       <p><strong>Symptom</strong>: An agent appears in <code>mycelium room ls</code> as a session participant, but never responds to coordination ticks. No error in <code>mycelium logs</code>.</p>
-      <p><strong>Cause</strong>: The agent&#x27;s channel access token (e.g., Matrix) has expired or been invalidated (e.g., after a server restart). The OpenClaw gateway silently drops the channel sync connection without surfacing an error to Mycelium.</p>
+      <p><strong>Cause</strong>: The agent&#x27;s channel access token has expired or been invalidated (e.g., after a server restart). The OpenClaw gateway silently drops the channel sync connection without surfacing an error to Mycelium.</p>
       <p><strong>Diagnosis</strong>:</p>
       <pre><code><span class="comment"># Check gateway logs for channel sync errors</span>
 journalctl <span class="flag">--user</span> <span class="flag">-u</span> openclaw-gateway <span class="flag">--since</span> <span class="str">&quot;10 min ago&quot;</span> | grep <span class="flag">-i</span> <span class="str">&quot;sync\|401\|unauthorized&quot;</span>

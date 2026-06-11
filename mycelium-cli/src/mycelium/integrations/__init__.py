@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from mycelium.integrations.base import AddOptions, AgentAdapter, Integration
 from mycelium.integrations.claude_code import ClaudeCodeIntegration
+from mycelium.integrations.cursor import CursorIntegration
 from mycelium.integrations.openclaw import OpenClawIntegration
 
 __all__ = [
@@ -77,6 +78,12 @@ def get_integration(
     canonical = normalize_family_id(name)
     if canonical == "claude_code":
         return ClaudeCodeIntegration(cwd=cwd)
+    if canonical == "cursor":
+        # cursor takes the same ``cwd`` flag claude_code does — it's the
+        # workspace root ``cursor-agent --workspace`` opens. The openclaw
+        # kwargs are silently ignored (kept on the factory signature so
+        # ``commands/adapter.py`` can pass everything uniformly).
+        return CursorIntegration(cwd=cwd)
     if canonical == "openclaw":
         return OpenClawIntegration(
             openclaw_agent=openclaw_agent,

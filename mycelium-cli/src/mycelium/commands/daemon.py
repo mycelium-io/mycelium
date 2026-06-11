@@ -2,7 +2,7 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Daemon commands — manage the mycelium-cc-daemon service.
+Daemon commands — manage the mycelium-daemon service.
 
 The daemon subscribes to room SSE and dispatches ``@handle`` mentions to
 Claude Code spawns. It is installed via
@@ -14,11 +14,9 @@ from __future__ import annotations
 
 import json as json_module
 import os
-import platform
 import subprocess
 import sys
 import time
-from pathlib import Path
 
 import typer
 from rich.console import Console
@@ -31,15 +29,12 @@ from mycelium.error_handler import print_error
 
 app = typer.Typer(
     help=(
-        "Manage the mycelium-cc-daemon — the userlevel service that dispatches "
+        "Manage the mycelium-daemon — the userlevel service that dispatches "
         "@handle mentions to Claude Code agents."
     ),
     no_args_is_help=True,
 )
 console = Console()
-
-_DAEMON_LABEL = "io.mycelium.cc-daemon"
-_DAEMON_SERVICE = "mycelium-cc-daemon"
 
 
 def _format_age(ts: float | None) -> str:
@@ -131,9 +126,9 @@ def subscribe(
 ) -> None:
     """Tell the daemon to subscribe to ``room``.
 
-    Writes the room into ``~/.mycelium/cc-daemon.toml`` and triggers a restart
-    so the new subscription takes effect. Idempotent — adding the same room
-    twice is a no-op.
+    Writes the room into ``~/.mycelium/daemon.toml`` and sends SIGHUP
+    so the daemon hot-reloads its subscriptions without restarting.
+    Idempotent — adding the same room twice is a no-op.
     """
     try:
         cfg = DaemonConfig.load()
@@ -144,7 +139,7 @@ def subscribe(
         cfg.save()
         console.print(f"[green]Added[/green] {room} to daemon subscriptions.")
         _restart_service_quiet()
-        console.print("[dim]Restarted daemon. Verify with: mycelium daemon status[/dim]")
+        console.print("[dim]Reloaded daemon. Verify with: mycelium daemon status[/dim]")
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)
@@ -233,7 +228,7 @@ def logs(
     follow: bool = typer.Option(False, "--follow", "-f", help="Follow the log (tail -f)."),
     lines: int = typer.Option(50, "--lines", "-n", help="Number of trailing lines to show."),
 ) -> None:
-    """Print the daemon's log file at ``~/.mycelium/logs/cc-daemon.log``."""
+    """Print the daemon's log file at ``~/.mycelium/logs/daemon.log``."""
     try:
         path = daemon_log_path()
         if not path.exists():
@@ -315,40 +310,18 @@ def run(
 
 
 def _restart_service_quiet(verbose: bool = False) -> None:
-    """Restart the daemon via the platform's service manager.
+    """Reload the daemon via SIGHUP so it picks up config changes.
 
-    No-op (with a hint) when the service isn't installed, so callers can
-    use it as a "kick the daemon" primitive without first checking install
-    state.
+    Thin wrapper around :func:`mycelium.daemon.install.reload_daemon_service`
+    so command modules don't each carry their own copy of the signal/systemctl
+    plumbing. Silent no-op when the service isn't installed — callers can use
+    it as a "kick the daemon" primitive without first checking install state.
     """
-    system = platform.system()
-    if system == "Darwin":
-        plist = Path.home() / "Library" / "LaunchAgents" / f"{_DAEMON_LABEL}.plist"
-        if not plist.exists():
-            if verbose:
-                console.print(
-                    "[yellow]Daemon service not installed (no launchd unit found).[/yellow]\n"
-                    "  Install with: mycelium adapter add claude-code --step=daemon"
-                )
-            return
-        target = f"gui/{os.getuid()}/{_DAEMON_LABEL}"
-        subprocess.run(["launchctl", "kickstart", "-k", target], capture_output=True)
-        if verbose:
-            console.print(f"[green]Kicked[/green] launchd service {_DAEMON_LABEL}")
-    elif system == "Linux":
-        unit = Path.home() / ".config" / "systemd" / "user" / f"{_DAEMON_SERVICE}.service"
-        if not unit.exists():
-            if verbose:
-                console.print(
-                    "[yellow]Daemon service not installed (no systemd unit found).[/yellow]\n"
-                    "  Install with: mycelium adapter add claude-code --step=daemon"
-                )
-            return
-        subprocess.run(
-            ["systemctl", "--user", "restart", f"{_DAEMON_SERVICE}.service"],
-            capture_output=True,
+    from mycelium.daemon.install import reload_daemon_service
+
+    reloaded = reload_daemon_service(verbose=False)
+    if not reloaded and verbose:
+        console.print(
+            "[yellow]Daemon service not installed.[/yellow]\n"
+            "  Install with: mycelium adapter add claude-code --step=daemon"
         )
-        if verbose:
-            console.print(f"[green]Restarted[/green] systemd service {_DAEMON_SERVICE}")
-    else:
-        console.print(f"[yellow]Service restart not wired up for platform '{system}'.[/yellow]")

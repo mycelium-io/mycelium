@@ -16,10 +16,10 @@ into a SQLite table::
 
   Identity
     - openclaw.agent / gen_ai.agent.id / ioa_observe.entity.name
-    - gen_ai.conversation.id           (e.g. agent:claire-agent:matrix:channel:!xyz:local)
+    - gen_ai.conversation.id           (e.g. agent:claire-agent:mycelium-room:channel:room-42:local)
     - openclaw.session.key             (same shape as conversation.id)
     - session.id                       (UUID for one logical conversation)
-    - openclaw.channel                 (matrix | mycelium-room | …)
+    - openclaw.channel                 (mycelium-room | …)
 
   Behavior
     - gen_ai.request.model / response.model
@@ -318,8 +318,9 @@ _CONV_RE = re.compile(
 def _split_conversation(conv: str) -> tuple[str, str, str]:
     """Return (agent, channel_kind, room_id) from a conversation key.
 
-    ``channel_kind`` is e.g. ``matrix`` or ``mycelium-room``; ``room_id`` is
-    everything after it (so a Matrix ``!abc:server`` stays intact).
+    ``channel_kind`` is e.g. ``mycelium-room`` (or an external channel); ``room_id`` is
+    everything after it (the regex captures everything past the channel-type,
+    so room ids containing colons stay intact).
     """
     if not conv or conv == "-":
         return ("-", "-", "-")
@@ -430,7 +431,7 @@ AgentOpt = typer.Option(
 RoomOpt = typer.Option(
     None,
     "--room",
-    help="Filter to a room id (Matrix room id or mycelium room name; substring match).",
+    help="Filter to a room id (mycelium room name or external channel room id; substring match).",
 )
 NameOpt = typer.Option(None, "--name", help="Filter span name (LIKE pattern, * wildcard).")
 StatusOpt = typer.Option(None, "--status", help="Filter by span status: ok, error, unset.")
@@ -621,7 +622,7 @@ def by_room(
     agent: str | None = AgentOpt,
     limit: int = LimitOpt,
 ) -> None:
-    """Group spans by room (matrix room id or mycelium room name)."""
+    """Group spans by room (mycelium room name or external channel room id)."""
     rows = _load_filtered_rows(since, host, agent, None)
 
     def key(_r, attrs: dict) -> str:
@@ -640,7 +641,7 @@ def by_channel(
     agent: str | None = AgentOpt,
     limit: int = LimitOpt,
 ) -> None:
-    """Group spans by channel kind (matrix vs mycelium-room vs …)."""
+    """Group spans by channel kind (mycelium-room vs external channels)."""
     rows = _load_filtered_rows(since, host, agent, None)
 
     def key(_r, attrs: dict) -> str:

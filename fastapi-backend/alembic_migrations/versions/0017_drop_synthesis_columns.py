@@ -49,6 +49,4 @@ def downgrade() -> None:
                 nullable=True,
             )
         )
-        batch.add_column(
-            sa.Column("last_synthesis_at", sa.DateTime(timezone=True), nullable=True)
-        )
+        batch.add_column(sa.Column("last_synthesis_at", sa.DateTime(timezone=True), nullable=True))
