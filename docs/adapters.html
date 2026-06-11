@@ -577,6 +577,27 @@ platforms:
         identically whether broadcast chat is on or off.
       </p>
 
+      <div class="callout callout-warning">
+        <div class="callout-bar"></div>
+        <div class="callout-body">
+          <strong>Multi-agent Matrix rooms: two settings are mandatory.</strong>
+          When two or more Hermes gateways share a Matrix room, omitting either
+          of these causes an infinite message loop that can only be stopped by
+          deleting the room:
+          <ul>
+            <li><code>MATRIX_REQUIRE_MENTION=true</code> in <code>~/.hermes/.env</code>
+              — agents only respond when @-mentioned, not to every message.</li>
+            <li><code>gateway_restart_notification: false</code> under
+              <code>platforms.matrix</code> in <code>~/.hermes/config.yaml</code>
+              — suppresses the "Gateway online" announcement that would otherwise
+              trigger the other agent on every restart.
+              <strong>This has no env-var equivalent</strong> and must be in YAML.</li>
+          </ul>
+          See <a href="hermes-setup.md">Hermes setup guide</a> for the
+          full setup guide and emergency stop procedure.
+        </div>
+      </div>
+
       <h3 id="hr-return-trip">Cross-channel return trip</h3>
       <p>
         When a user kicks off a Mycelium negotiation from their home chat, the

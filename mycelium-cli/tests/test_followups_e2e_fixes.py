@@ -32,7 +32,7 @@ not that the cursor surface is broken.
    ``test_persist_and_describe_skips_kick_for_long_lived``
    ``mycelium agent create`` writes the handle to ``daemon.toml`` but
    the running daemon only re-reads that file on restart. The fix calls
-   ``restart_daemon_service`` from the create/destroy tail for cold-spawn
+   ``reload_daemon_service`` from the create/destroy tail for cold-spawn
    adapters only (no-op when no daemon is installed, openclaw doesn't need
    it).
 
@@ -226,7 +226,7 @@ def test_persist_and_describe_kicks_daemon_for_cold_spawn(
 
     impl = _stub_integration(lifecycle="cold_spawn")
 
-    with patch("mycelium.daemon.install.restart_daemon_service", return_value=True) as mock_restart:
+    with patch("mycelium.daemon.install.reload_daemon_service", return_value=True) as mock_restart:
         agent_cmd._persist_and_describe(impl=impl, **_fake_persist_inputs(tmp_path))
 
     assert mock_restart.called, "cold-spawn adapter create must kick the mycelium-daemon"
@@ -247,11 +247,11 @@ def test_persist_and_describe_skips_kick_for_long_lived(
 
     impl = _stub_integration(lifecycle="long_lived_gateway")
 
-    with patch("mycelium.daemon.install.restart_daemon_service", return_value=True) as mock_restart:
+    with patch("mycelium.daemon.install.reload_daemon_service", return_value=True) as mock_reload:
         agent_cmd._persist_and_describe(impl=impl, **_fake_persist_inputs(tmp_path))
 
-    assert not mock_restart.called, (
-        "long-lived-gateway adapter (openclaw) must not trigger a mycelium-daemon restart"
+    assert not mock_reload.called, (
+        "long-lived-gateway adapter must not trigger a mycelium-daemon reload"
     )
 
 

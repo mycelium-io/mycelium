@@ -335,6 +335,49 @@ but no `←` reply follows, the inbound dispatch reached Hermes but the
 agent didn't choose to respond — inspect the Hermes session trajectory
 in `~/.hermes/sessions/` to see why.
 
+### Two Hermes agents in the same Matrix room loop forever
+
+When two Hermes gateways share a Matrix home room **and**
+`require_mention` is off (the default), each agent treats the other's
+messages as user input and replies — triggering another reply, ad
+infinitum. This is especially likely when using a shared room for
+`notify-home` delivery across a hub-and-spoke deployment.
+
+**Mandatory config for any shared Matrix room:**
+
+```yaml
+# ~/.hermes/config.yaml  (on every node sharing the room)
+platforms:
+  matrix:
+    require_mention: true                 # only respond when @-mentioned
+    gateway_restart_notification: false   # suppress "Gateway online" spam
+```
+
+Or via `~/.hermes/.env`:
+
+```bash
+MATRIX_REQUIRE_MENTION=true
+```
+
+> `gateway_restart_notification` has no env-var equivalent — it **must**
+> be set in `config.yaml`.  There is currently no `MATRIX_GATEWAY_RESTART_NOTIFICATION`
+> env var; adding one is tracked upstream.
+
+If agents are already looping, the fastest fix is to delete the shared
+room from the Synapse admin API:
+
+```bash
+# Get an admin token
+NONCE=$(curl -s http://localhost:8008/_synapse/admin/v1/register | jq -r .nonce)
+# ... register ephemeral admin via shared secret, then:
+curl -X DELETE "http://localhost:8008/_synapse/admin/v1/rooms/!roomid:local" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{"block":true,"purge":true}'
+```
+
+After deletion the gateways have nothing to respond to, and you can
+recreate the room with the corrected config in place.
+
 ### Stale Hermes session is poisoning every dispatch
 
 A Hermes agent persists its session trajectory in
