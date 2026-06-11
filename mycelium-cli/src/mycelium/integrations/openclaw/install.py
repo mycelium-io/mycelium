@@ -278,6 +278,35 @@ def _install_openclaw(
                 + (f": {stderr}" if stderr else "")
             )
 
+    def _build_plugin(plugin_dir: Path) -> None:
+        """Run npm install + npm run build in the plugin directory.
+
+        OpenClaw 2026.5+ rejects TypeScript entry points — the plugin must be
+        compiled to dist/index.js before install.  Best-effort: warn on failure
+        so a missing npm doesn't hard-block the install on older OpenClaw.
+
+        Used by both the host-native and container install paths (the container
+        gateway is just as strict about source-only plugins, so it needs the
+        same build step before staging).
+        """
+        for npm_cmd in (
+            ["npm", "install", "--prefer-offline", "--silent"],
+            ["npm", "run", "build"],
+        ):
+            if verbose:
+                typer.echo(f"  {' '.join(npm_cmd)} (in {plugin_dir})")
+            result = subprocess.run(
+                npm_cmd, cwd=str(plugin_dir), text=True, capture_output=not verbose
+            )
+            if result.returncode != 0:
+                stderr = (result.stderr or "").strip()
+                typer.secho(
+                    f"  warning: plugin build step '{' '.join(npm_cmd)}' failed"
+                    + (f": {stderr}" if stderr else ""),
+                    fg=typer.colors.YELLOW,
+                )
+                return
+
     _check_openclaw_version(container)
 
     if container:
@@ -288,12 +317,31 @@ def _install_openclaw(
         container_state_dir = f"{container_home}/.openclaw{state_suffix}"
 
         plugin_src = _resolve_asset(_MYCELIUM_PLUGIN_SRC)
+        # Build before staging — the containerized gateway is just as strict as
+        # the host one (OpenClaw >= 2026.5.3 rejects source-only plugins), so the
+        # staged tree must carry a compiled dist/index.js. This mirrors the
+        # host-native path's _build_plugin() call added in 0c5f524; the container
+        # branch was left unbuilt and regressed once OpenClaw raised the bar.
+        _build_plugin(plugin_src)
         container_plugin_path = f"/tmp/mycelium-stage/extensions/{_OPENCLAW_PLUGIN_NAME}"
         if verbose:
             typer.echo(f"  staging {plugin_src} → {container}:{container_plugin_path}")
         _stage_assets_in_container(container, plugin_src, container_plugin_path)
         _run(["openclaw", "plugins", "install", container_plugin_path], allow_already_exists=True)
         _wait_container_healthy(container)
+
+        # `openclaw plugins install` blanket-excludes dist/ (same as the host
+        # path), but openclaw.plugin.json's `extensions` field points at
+        # dist/index.js — so the channel won't load without it. Stage the
+        # compiled dist/ straight into the container's installed extension dir
+        # after install, mirroring the host path's post-install dist copy.
+        dist_src = plugin_src / "dist"
+        if dist_src.exists():
+            container_dist_path = f"{container_state_dir}/extensions/{_OPENCLAW_PLUGIN_NAME}/dist"
+            if verbose:
+                typer.echo(f"  staging {dist_src} → {container}:{container_dist_path}")
+            _stage_assets_in_container(container, dist_src, container_dist_path)
+            _wait_container_healthy(container)
 
         # Remove stale hooks that earlier versions installed inside the container
         # (openclaw hooks uninstall was removed in 2026.5.7).
@@ -391,31 +439,6 @@ def _install_openclaw(
     # step becomes a no-op on matching files.
     def _plugin_ignore(_src: str, names: list[str]) -> list[str]:
         return [n for n in names if n in ("node_modules", "test", "dist", "package-lock.json")]
-
-    def _build_plugin(plugin_dir: Path) -> None:
-        """Run npm install + npm run build in the plugin directory.
-
-        OpenClaw 2026.5+ rejects TypeScript entry points — the plugin must be
-        compiled to dist/index.js before install.  Best-effort: warn on failure
-        so a missing npm doesn't hard-block the install on older OpenClaw.
-        """
-        for npm_cmd in (
-            ["npm", "install", "--prefer-offline", "--silent"],
-            ["npm", "run", "build"],
-        ):
-            if verbose:
-                typer.echo(f"  {' '.join(npm_cmd)} (in {plugin_dir})")
-            result = subprocess.run(
-                npm_cmd, cwd=str(plugin_dir), text=True, capture_output=not verbose
-            )
-            if result.returncode != 0:
-                stderr = (result.stderr or "").strip()
-                typer.secho(
-                    f"  warning: plugin build step '{' '.join(npm_cmd)}' failed"
-                    + (f": {stderr}" if stderr else ""),
-                    fg=typer.colors.YELLOW,
-                )
-                return
 
     if reinstall:
         state_dir = _openclaw_state_dir(profile)
