@@ -187,17 +187,18 @@ class MyceliumRoomAdapter(BasePlatformAdapter):
             headers["Authorization"] = f"Bearer {self._api_token}"
         while True:
             try:
-                await asyncio.sleep(self._POLL_INTERVAL_S)
                 if self._session is None:
                     return
                 try:
                     async with self._session.get(url, headers=headers) as resp:
                         if resp.status != 200:
                             logger.debug("mycelium-room: session poll → HTTP %s", resp.status)
+                            await asyncio.sleep(self._POLL_INTERVAL_S)
                             continue
                         sessions = await resp.json()
                 except (aiohttp.ClientError, TimeoutError, OSError) as exc:
                     logger.debug("mycelium-room: session poll failed: %s", exc)
+                    await asyncio.sleep(self._POLL_INTERVAL_S)
                     continue
                 if not isinstance(sessions, list):
                     continue
@@ -229,6 +230,7 @@ class MyceliumRoomAdapter(BasePlatformAdapter):
                         task = self._session_sub_tasks.pop(stale, None)
                         if task is not None:
                             task.cancel()
+                await asyncio.sleep(self._POLL_INTERVAL_S)
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001 — never let polling die silently
