@@ -37,6 +37,7 @@ fast-openclaw default.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import time
@@ -76,13 +77,27 @@ _KNOWN_TIERS: frozenset[str] = frozenset({"pr", "nightly", "weekly"})
 # budget. Values are conservative — better to over-allocate and finish
 # early than to false-fail on a cold spawn.
 _ADAPTER_ROUND_BUDGET_SECONDS: dict[str, int] = {
-    "openclaw": 20,
+    "openclaw": 25,
     "hermes": 30,
     "cursor": 60,
 }
 
 _DEFAULT_N_ROUNDS = 20
-_DEFAULT_TIMEOUT_FLOOR = 240  # never go below 4min, even for "fast" rows
+# Floor must outlast the BACKEND's CFN session budget (300s
+# negotiation_time_seconds default) plus the abort/plan-compiler tail
+# (~30s) plus the per-test join window (~30s). The 240s floor we used
+# to ship would silently false-fail any 3+ agent test where the LLMs
+# bickered through their full n_steps_total — see ThreeAgentReturnTrip
+# failure in the 2026-06-07 lab run.
+_DEFAULT_TIMEOUT_FLOOR = 360
+
+# Multi-agent synchronization tax. Each agent past 2 adds non-trivial
+# overhead: round trips wait on the *slowest* reply, the proposer
+# rotation logic enforces strict turn order, and the CFN
+# decide-negotiation call grows with the message history. A flat 15%
+# bump per extra agent matches what we saw in lab traces (3 OC agents
+# ran ~14s/round versus the 2-agent ~10s baseline).
+_PER_AGENT_ROUND_OVERHEAD = 0.15
 
 
 # ── row loading ─────────────────────────────────────────────────────
@@ -218,6 +233,13 @@ def compute_timeout_seconds(row: dict[str, Any]) -> int:
     """Return the consensus poll timeout for ``row``.
 
     Precedence: row override → adapter-aware default → floor.
+
+    The adapter-aware default is ``n_rounds * worst_adapter_round_budget
+    * (1 + 0.15 * (n_agents - 2))`` for ``n_agents > 2``, then clamped
+    to ``_DEFAULT_TIMEOUT_FLOOR``. The multi-agent tax models the
+    observed lab behavior that 3-agent OC rounds run ~40% slower than
+    2-agent rounds (round trip blocks on the slowest reply + proposer
+    rotation lengthens the wait queue).
     """
     override = row.get("timeout_seconds")
     if isinstance(override, int) and override > 0:
@@ -225,7 +247,9 @@ def compute_timeout_seconds(row: dict[str, Any]) -> int:
 
     n_rounds = int(row.get("n_steps_total", _DEFAULT_N_ROUNDS))
     worst = max(_ADAPTER_ROUND_BUDGET_SECONDS[a["adapter"]] for a in row["agents"])
-    return max(_DEFAULT_TIMEOUT_FLOOR, n_rounds * worst)
+    n_agents = len(row["agents"])
+    multi_agent_tax = 1.0 + _PER_AGENT_ROUND_OVERHEAD * max(0, n_agents - 2)
+    return max(_DEFAULT_TIMEOUT_FLOOR, int(n_rounds * worst * multi_agent_tax))
 
 
 # ── factory ──────────────────────────────────────────────────────────
@@ -335,7 +359,20 @@ class _ConsensusBase(aetest.Testcase):
         row = self._row
         self.row = row
         self.run_id = uuid.uuid4().hex[:8]
-        self.room = f"scn-{row['name']}-{self.run_id}"
+        # Postgres LISTEN/NOTIFY channel names cap at 63 bytes, and the
+        # backend uses ``room:<room>:session:<8char>`` (22 fixed bytes)
+        # for session-room channels, leaving 41 bytes for the parent
+        # room name. ``scn-`` prefix + ``-<run_id>`` suffix eats 13 of
+        # those, so the row-name slug must stay ≤ 28 bytes. When a name
+        # would overflow (e.g. ``three-agent-return-trip-oc-oc-oc``),
+        # collapse it to a deterministic 6-char hash so the same row
+        # always lands on the same prefix while staying inside the
+        # channel-name budget. Otherwise tick NOTIFYs silently drop and
+        # consensus never reaches the agents.
+        slug = row["name"]
+        if len(slug) > 28:
+            slug = f"{slug[:18]}-{hashlib.sha1(slug.encode()).hexdigest()[:6]}"
+        self.room = f"scn-{slug}-{self.run_id}"
         self.backend_url = backend_url or os.environ.get("MYCELIUM_BACKEND_URL") or "http://localhost:8000"
         self.consensus_timeout = compute_timeout_seconds(row)
         self.agents: list[_AgentBinding] = []
@@ -386,6 +423,15 @@ class _ConsensusBase(aetest.Testcase):
             sessions.create_room(self.control_device, self.room)
         except SessionError as exc:
             self.failed(f"could not create room {self.room!r}: {exc}")
+
+        # The backend (Docker, runs as root) creates the room dir
+        # via a volume mount, so without reclaiming ownership the
+        # CLI's per-agent ``mycelium agent add`` call fails to
+        # write the manifest. Done on EACH host that hosts an agent
+        # in this row — the room dir is created on every device
+        # that calls ``mycelium room create`` (the backend writes
+        # are root-owned per-device).
+        self._chown_mycelium_on_agent_hosts()
 
         # ── register each agent in this room ──────────────────────
         # Lightweight: ``mycelium agent add`` (idempotent). Heavy
@@ -540,6 +586,17 @@ class _ConsensusBase(aetest.Testcase):
         if not writes:
             self.skipped("no memory_writes declared for this row")
 
+        # Reclaim ownership of ``~/.mycelium`` before each write
+        # batch. By this point the negotiation has finished and the
+        # backend (root-in-Docker) has dumped a consensus message,
+        # the plan file, and a fistful of intermediate fragments
+        # into the room dir via its volume mount. Any of those
+        # writes leaves root-owned files / subdirs that block the
+        # CLI's ``_write_local_copy`` (memory.py:191), surfacing as
+        # ``memory_set('decisions/api-style') failed (rc=1)`` with
+        # a confusing Permission Denied traceback.
+        self._chown_mycelium_on_agent_hosts()
+
         for entry in writes:
             handle = entry.get("handle") or self.agents[0].spec["handle"]
             key = entry["key"]
@@ -608,6 +665,53 @@ class _ConsensusBase(aetest.Testcase):
             sessions.delete_room(self.control_device, self.room)
         except Exception as exc:  # noqa: BLE001
             log.debug("room delete failed (ignored): %s", exc)
+
+    # ── helpers ──────────────────────────────────────────────────────
+
+    def _chown_mycelium_on_agent_hosts(self) -> None:
+        """Reclaim user ownership of ``~/.mycelium`` on each agent
+        host (and the control host).
+
+        The backend container runs as root and writes files into the
+        user's home via a Docker volume mount, so any backend write
+        leaves root-owned artifacts that block subsequent user-side
+        CLI writes. We hit this in two places — fresh agent create
+        and fresh per-room ``agent add`` — and the cheap fix is to
+        chown -R the whole ~/.mycelium tree on every host we'll
+        touch right after the operation that triggered the backend
+        write.
+
+        Best-effort: a chown failure just downgrades to a debug log;
+        the downstream operation will surface a clearer error.
+        """
+        # De-dupe by device identity so we don't chown the hub twice
+        # when multiple agents live on the hub.
+        seen_ids: set[int] = set()
+        targets: list[Any] = []
+        for d in (self.control_device, *[b.device for b in self.agents]):
+            if id(d) in seen_ids:
+                continue
+            seen_ids.add(id(d))
+            targets.append(d)
+
+        from libs import host_exec
+        from libs.host_exec import HostExecError
+
+        for device in targets:
+            try:
+                host_exec.execute(
+                    device,
+                    'if [ -d "$HOME/.mycelium" ]; then '
+                    'sudo chown -R "$USER:$USER" "$HOME/.mycelium" '
+                    "2>/dev/null || true; fi",
+                    shell=True,
+                    timeout=20.0,
+                )
+            except HostExecError as exc:
+                log.debug(
+                    "chown ~/.mycelium failed on %s (continuing): %s",
+                    getattr(device, "name", device), exc,
+                )
 
 
 # ── per-agent binding ────────────────────────────────────────────────

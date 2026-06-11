@@ -285,3 +285,15 @@ testcases:
 
   CursorCrossFamilyOpenClaw:
     uid: "mycelium:e2e:cursor:080"
+
+  HermesGatewayPidFormats:
+    uid: "mycelium:e2e:hermes:085"
+
+  HermesLoopSuppression:
+    uid: "mycelium:e2e:hermes:089"
+
+  TwoAgentShakedown_he_he:
+    uid: "mycelium:e2e:hermes:090"
+
+  ThreeAgentConsensus_he_he_he:
+    uid: "mycelium:e2e:hermes:091"

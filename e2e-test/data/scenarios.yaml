@@ -101,6 +101,32 @@ scenarios:
     require_consensus: false   # cursor cold-start may eat the budget
     require_plan_file: false
 
+  - name: two-agent-shakedown-he-he
+    base_name: TwoAgentShakedown
+    tier: pr
+    category: core
+    description: >
+      PR hermes shakedown — two hermes agents negotiate via SSE polling,
+      no explicit wake. Validates the mycelium-room plugin attends ticks
+      and reaches consensus autonomously.
+    topic: logging-verbosity
+    n_steps_total: 8
+    agents:
+      - handle: alpha-he
+        adapter: hermes
+        host: hub
+        position: >
+          Structured JSON logs everywhere; INFO default, DEBUG on errors.
+          Human-readable only for local dev.
+      - handle: beta-he
+        adapter: hermes
+        host: spoke1
+        position: >
+          Human-readable logs in all envs; JSON is a pipeline concern.
+          Structured okay if human-readable stays available.
+    require_consensus: true
+    require_plan_file: true
+
   # 3-agent return-trip: the openclaw-only triple is fast enough to
   # squeeze into the PR tier and proves the round-robin proposer
   # rotation logic doesn't regress with N > 2.
@@ -112,6 +138,14 @@ scenarios:
       PR triple — three openclaw agents across hub + both spokes.
       Validates proposer rotation, multi-agent join window, and the
       plan-compiler's N>2 path.
+
+      Positions are designed to converge in <10 rounds: each agent
+      voices a distinct concern (on-call burnout / hiring quality /
+      tooling debt) with explicit common ground (everyone supports
+      "fix on-call" + "tooling roadmap"). The 2026-06-07 lab run had
+      hard-coded mutually-incompatible positions and bickered until
+      CFN abort at round 8 — see scenarios.py history for the rewrite
+      rationale.
     topic: capacity-planning
     n_steps_total: 10
     agents:
@@ -119,21 +153,27 @@ scenarios:
         adapter: openclaw
         host: hub
         position: >
-          Add 2 SREs in Q1; ops on-call is broken. Hard limit: no more
-          shared on-call between dev and ops.
+          Top priority: fix the on-call rotation by end of Q1. Prefer
+          2 SRE hires, but open to any combination (contractors,
+          platform engineer, automation) that visibly cuts pager load
+          this quarter.
       - handle: beta
         adapter: openclaw
         host: spoke1
         position: >
-          Hire 1 senior platform engineer this quarter, defer SRE
-          headcount to Q2 when we have a clearer SLO baseline.
+          Want 1 senior platform engineer in Q1 — quality over
+          quantity. Supportive of short-term contractor backfill to
+          relieve on-call while we recruit. Comfortable deferring
+          additional headcount to Q2 if there's a clear plan.
       - handle: gamma
         adapter: openclaw
         host: spoke2
         position: >
-          0 new headcount; absorb load via tooling investment
-          (alerting overhaul + runbook automation). Two-quarter budget
-          freeze still on the table.
+          Push for a tooling-and-automation roadmap (alerting
+          overhaul + runbook automation) as the durable fix. Can
+          accept 1 headcount in Q1 if it's tied to an explicit
+          automation milestone; would still flag budget pressure
+          beyond that.
     require_consensus: true
     require_plan_file: true
 
@@ -179,6 +219,38 @@ scenarios:
         adapter: hermes
         host: spoke1
         position: Canary at 5% → 25% → 100% over 24h.
+
+  - name: three-agent-consensus-he-he-he
+    base_name: ThreeAgentConsensus
+    tier: nightly
+    category: core
+    description: >
+      Three hermes agents across hub + both spokes — validates multi-agent
+      proposer rotation entirely via the SSE polling path. Any failure is a
+      hermes plugin or backend regression, not adapter noise.
+    topic: incident-response-process
+    n_steps_total: 12
+    agents:
+      - handle: alpha-he
+        adapter: hermes
+        host: hub
+        position: >
+          Blameless post-mortems within 48h; SEV1 requires a written RCA.
+          On-call should auto-page the owning team, not a shared pool.
+      - handle: beta-he
+        adapter: hermes
+        host: spoke1
+        position: >
+          72h for post-mortems is fine; timeline varies with complexity.
+          Shared on-call pool first, team escalation second.
+      - handle: gamma-he
+        adapter: hermes
+        host: spoke2
+        position: >
+          Lightweight async retros for low-SEV; formal RCA only for SEV1.
+          On-call: team-first with a global fallback.
+    require_consensus: true
+    require_plan_file: true
 
   - name: two-agent-consensus-oc-he
     base_name: TwoAgentConsensus
