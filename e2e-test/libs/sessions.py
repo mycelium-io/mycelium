@@ -249,7 +249,13 @@ def poll_consensus(
     sub-room-only resolution, set ``room`` to the session id explicitly.
     """
     deadline = time.time() + timeout_seconds
-    consensus_url = f"{backend_url.rstrip('/')}/rooms/{quote(room, safe='')}/messages?limit=100"
+    # NOTE: backend mounts resource routes under ``/api`` (see
+    # ``fastapi-backend/app/main.py``). The old ``/rooms/...`` path returns
+    # 404 — every poll silently failed and we timed out without ever
+    # seeing the consensus message. Always include the ``/api`` prefix.
+    consensus_url = (
+        f"{backend_url.rstrip('/')}/api/rooms/{quote(room, safe='')}/messages?limit=100"
+    )
 
     last_log = 0.0
     while time.time() < deadline:

@@ -32,11 +32,13 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
+from libs import host_exec  # noqa: E402 - sys.path tweak first
 from libs.host_exec import HostExecError  # noqa: E402 - sys.path tweak first
 from libs.lab_redeploy import (  # noqa: E402 - sys.path tweak first
     LabCleanupMode,
     LabRedeployConfig,
     redeploy_testbed,
+    verify_cfn_alignment,
 )
 from libs.provisioners import (  # noqa: E402 - sys.path tweak first
     AgentRef,
@@ -134,7 +136,14 @@ class LabRedeployCommonSetup(aetest.CommonSetup):
        Wipes and reinstalls the Mycelium stack on every device in the
        testbed. Compose paths skip this; only used against persistent
        lab hardware.
-    2. ``provision_matrix_agents`` — always runs (unless explicitly
+    2. ``verify_cfn_alignment`` — always runs. Reconciles
+       ``WORKSPACE_ID`` / ``MAS_ID`` drift between the CFN mgmt
+       plane, ``~/.mycelium/config.toml``, and the running backend
+       container's env. Cheap when aligned (one CFN GET + one
+       ``docker inspect``); only does a backend recreate when drift
+       is detected. Skips silently on compose-only paths where
+       there is no CFN.
+    3. ``provision_matrix_agents`` — always runs (unless explicitly
        disabled). Walks ``_ACTIVE_ROWS``, collects unique
        ``(adapter, handle, host)`` tuples, and calls
        ``Provisioner.ensure_runtime`` on each. The resulting
@@ -179,6 +188,102 @@ class LabRedeployCommonSetup(aetest.CommonSetup):
         if failed:
             details = "; ".join(f"{r.device_name}={r.error}" for r in failed)
             self.failed(f"Lab redeploy failed on {len(failed)} device(s): {details}")
+
+    @aetest.subsection
+    def verify_cfn_alignment(self, testscript, testbed=None):
+        """Reconcile workspace + default MAS drift before any scenarios run.
+
+        Walks every hub-role device on the testbed and asks
+        :func:`libs.lab_redeploy.verify_cfn_alignment` to confirm
+        the running backend container's ``WORKSPACE_ID`` /
+        ``MAS_ID`` env matches what the CFN mgmt plane actually
+        has. When they diverge — common after manual config edits,
+        partial reinstalls, or volume wipes — the helper rewrites
+        ``config.toml``, runs ``mycelium config apply``, and
+        force-recreates the backend so new rooms get a real
+        ``mas_id`` assigned at create-time.
+
+        Why this lives in CommonSetup and not in
+        :meth:`redeploy_lab`:
+
+        - ``redeploy_lab`` is opt-in (``MYCELIUM_LAB_REDEPLOY=1``)
+          and only fires on a full wipe-and-redeploy. The drift
+          this catches accumulates between redeploys on a
+          long-lived lab.
+        - The alignment check is **cheap when aligned** (one CFN
+          GET + one ``docker inspect``), so running it on every
+          ``pyats run`` is essentially free.
+        - On compose-only paths (no CFN profile, no
+          ``ioc-cfn-mgmt-plane-svc`` container), the helper
+          returns ``None`` and we skip silently — compose comes up
+          fresh every time and can't drift.
+
+        Opt out via ``MYCELIUM_E2E_SKIP_CFN_ALIGNMENT=1`` for
+        environments where the operator is deliberately running
+        with a mismatched config (e.g. pointing at a different
+        CFN for A/B testing).
+        """
+        if os.environ.get("MYCELIUM_E2E_SKIP_CFN_ALIGNMENT", "").lower() in {
+            "1",
+            "true",
+            "yes",
+        }:
+            self.skipped("MYCELIUM_E2E_SKIP_CFN_ALIGNMENT set")
+
+        if testbed is None:
+            self.skipped("no testbed — alignment needs device handles")
+
+        hubs: list[tuple[str, object]] = []
+        for name, dev in testbed.devices.items():
+            custom = getattr(dev, "custom", None) or {}
+            role = ""
+            if hasattr(custom, "get"):
+                role = (custom.get("role") or "").lower()
+            if role == "hub":
+                hubs.append((name, dev))
+
+        if not hubs:
+            log.info(
+                "verify_cfn_alignment: no hub-role device in testbed; nothing to align",
+            )
+            return
+
+        results: list[object] = []
+        for name, hub in hubs:
+            custom = getattr(hub, "custom", None) or {}
+            backend_url = "http://localhost:8000"
+            if hasattr(custom, "get"):
+                backend_url = (
+                    custom.get("mycelium_backend_url") or os.environ.get("MYCELIUM_BACKEND_URL") or backend_url
+                )
+
+            result = verify_cfn_alignment(hub, backend_url=backend_url)
+            if result is None:
+                # No CFN / backend on this host — perfectly fine
+                # on compose paths. Log once and move on.
+                log.info(
+                    "  ↳ %s: no CFN backend running here, skipped",
+                    name,
+                )
+                continue
+
+            results.append(result)
+            # Pretty-print structured logs so the operator can
+            # see exactly which step (probe / read env / persist
+            # / recreate / re-check) succeeded.
+            for phase, ok, detail in result.logs:
+                tag = "  ✓" if ok else "  ✗"
+                bare = detail if len(detail) < 200 else detail[:200] + "…"
+                log.info("  %s  %s: %s — %s", name, tag, phase, bare)
+
+        testscript.parameters["cfn_alignment_results"] = results
+
+        failures = [r for r in results if not r.success]
+        if failures:
+            details = "; ".join(
+                f"{getattr(r, 'device_name', '?')}={getattr(r, 'error', None) or 'see logs'}" for r in failures
+            )
+            self.failed(f"verify_cfn_alignment: drift on {len(failures)} hub(s) could not be corrected: {details}")
 
     @aetest.subsection
     def provision_matrix_agents(self, testscript, testbed=None):
@@ -237,6 +342,31 @@ class LabRedeployCommonSetup(aetest.CommonSetup):
             len(wants),
             len(_ACTIVE_ROWS),
         )
+
+        # Reclaim ownership of ``~/.mycelium`` on each host we'll
+        # touch. The backend (Docker container, runs as root) creates
+        # room/agent files via a volume mount, so successive
+        # ``mycelium agent create`` calls hit "owned by root" write
+        # failures on a freshly-redeployed box. One sudo chown per
+        # host before we start makes the rest of the subsection
+        # work for the user account the CLI runs as.
+        unique_hosts = {host for (_, _, host) in wants}
+        for host in sorted(unique_hosts):
+            device = testbed.devices.get(host)
+            if device is None:
+                continue
+            try:
+                host_exec.execute(
+                    device,
+                    'if [ -d "$HOME/.mycelium" ]; then '
+                    'sudo chown -R "$USER:$USER" "$HOME/.mycelium" '
+                    "2>/dev/null || true; fi",
+                    shell=True,
+                    timeout=20.0,
+                )
+                log.info("  ↳ chowned ~/.mycelium on %s", host)
+            except HostExecError as exc:
+                log.warning("  ↳ chown failed on %s (continuing): %s", host, exc)
 
         provisioned: dict[tuple[str, str, str], AgentRef] = {}
         failures: list[str] = []

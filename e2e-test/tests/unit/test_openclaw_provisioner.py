@@ -54,16 +54,29 @@ def test_check_prereqs_raises_when_cli_missing():
 # ── ensure_runtime ──────────────────────────────────────────────────
 
 
+def _is_chown(argv) -> bool:
+    """Match the chown best-effort step in ``_ensure_room``.
+
+    ``argv`` may be a list (argv form) or a plain str (shell form);
+    the chown is always passed as a single shell-quoted string, so we
+    just substring-check.
+    """
+    s = argv if isinstance(argv, str) else " ".join(argv)
+    return "chown" in s
+
+
 def test_ensure_runtime_short_circuits_when_agent_already_present():
     """Idempotent fast path: if `agent ls` shows the handle, no
     create call is issued. This is the steady-state for repeated
     suite runs."""
     prov = OpenClawProvisioner()
 
-    calls: list[list[str]] = []
+    calls: list = []
 
     def fake_execute(_device, argv, **_kwargs):
-        calls.append(list(argv))
+        calls.append(argv if isinstance(argv, str) else list(argv))
+        if _is_chown(argv):
+            return _ok()
         if argv[:3] == ["mycelium", "room", "create"]:
             return _ok()
         if argv[:3] == ["mycelium", "agent", "ls"]:
@@ -79,20 +92,25 @@ def test_ensure_runtime_short_circuits_when_agent_already_present():
     assert ref.metadata["bootstrap_room"] == BOOTSTRAP_ROOM
     assert ref.metadata["pre_existing"] is True
     # Specifically: no `agent create` call was made.
-    assert not any(c[:3] == ["mycelium", "agent", "create"] for c in calls)
+    list_calls = [c for c in calls if isinstance(c, list)]
+    assert not any(c[:3] == ["mycelium", "agent", "create"] for c in list_calls)
 
 
 def test_ensure_runtime_creates_when_agent_absent(monkeypatch):
     """Slow path: agent missing from bootstrap room → run
     ``mycelium agent create``. Seed agent (for --copy-auth-from)
-    pulled from the canonical env var."""
+    pulled from the canonical env var (fallback when no per-host
+    override is set)."""
+    monkeypatch.delenv("MYCELIUM_E2E_OPENCLAW_SEED_AGENT", raising=False)
     monkeypatch.setenv("MYCELIUM_E2E_OPENCLAW_SEED_AGENT", "seed-agent")
 
     prov = OpenClawProvisioner()
-    calls: list[list[str]] = []
+    calls: list = []
 
     def fake_execute(_device, argv, **_kwargs):
-        calls.append(list(argv))
+        calls.append(argv if isinstance(argv, str) else list(argv))
+        if _is_chown(argv):
+            return _ok()
         if argv[:3] == ["mycelium", "room", "create"]:
             return _ok()
         if argv[:3] == ["mycelium", "agent", "ls"]:
@@ -105,7 +123,9 @@ def test_ensure_runtime_creates_when_agent_absent(monkeypatch):
         ref = prov.ensure_runtime(_device(), handle="agent-alpha")
 
     assert ref.metadata["pre_existing"] is False
-    create_calls = [c for c in calls if c[:3] == ["mycelium", "agent", "create"]]
+    create_calls = [
+        c for c in calls if isinstance(c, list) and c[:3] == ["mycelium", "agent", "create"]
+    ]
     assert len(create_calls) == 1
     create_argv = create_calls[0]
     # Sanity: handle + adapter + bootstrap room + seed flag are all on the argv.
@@ -115,11 +135,46 @@ def test_ensure_runtime_creates_when_agent_absent(monkeypatch):
     assert "--copy-auth-from" in create_argv and "seed-agent" in create_argv
 
 
+def test_ensure_runtime_prefers_device_custom_seed_over_env(monkeypatch):
+    """Per-host ``custom.openclaw_seed_agent`` wins over the global
+    env var so lab boxes with different pre-authed seeds work
+    out of the box."""
+    monkeypatch.setenv("MYCELIUM_E2E_OPENCLAW_SEED_AGENT", "shared-seed")
+    prov = OpenClawProvisioner()
+
+    captured: list[str] = []
+
+    def fake_execute(_device, argv, **_kwargs):
+        if isinstance(argv, str):
+            captured.append(argv)
+            return _ok()
+        captured.extend(argv)
+        if argv[:3] == ["mycelium", "room", "create"]:
+            return _ok()
+        if argv[:3] == ["mycelium", "agent", "ls"]:
+            return _ok("")
+        if argv[:3] == ["mycelium", "agent", "create"]:
+            return _ok("created")
+        return _ok()
+
+    # Device declares a per-host override.
+    device = _device(role="spoke", openclaw_seed_agent="per-host-seed")
+    with patch("libs.host_exec.execute", side_effect=fake_execute):
+        prov.ensure_runtime(device, handle="alpha")
+
+    # ``per-host-seed`` should be on the argv, NOT ``shared-seed``.
+    assert "per-host-seed" in captured
+    assert "shared-seed" not in captured
+
+
 def test_ensure_runtime_propagates_create_failure(monkeypatch):
+    """Non-root-ownership failures are surfaced directly (no retry)."""
     monkeypatch.delenv("MYCELIUM_E2E_OPENCLAW_SEED_AGENT", raising=False)
     prov = OpenClawProvisioner()
 
     def fake_execute(_device, argv, **_kwargs):
+        if _is_chown(argv):
+            return _ok()
         if argv[:3] == ["mycelium", "room", "create"]:
             return _ok()
         if argv[:3] == ["mycelium", "agent", "ls"]:
@@ -131,6 +186,42 @@ def test_ensure_runtime_propagates_create_failure(monkeypatch):
     with patch("libs.host_exec.execute", side_effect=fake_execute):
         with pytest.raises(PrereqMissing, match="agent create failed"):
             prov.ensure_runtime(_device(), handle="agent-alpha")
+
+
+def test_ensure_runtime_retries_on_root_ownership_race():
+    """``agent create`` exits non-zero with "is owned by root" when
+    the backend (in Docker) wrote the manifest as root before the
+    CLI could update it. Retry once after a chown."""
+    prov = OpenClawProvisioner()
+    attempts: list[int] = []
+
+    def fake_execute(_device, argv, **_kwargs):
+        if _is_chown(argv):
+            return _ok()
+        if argv[:3] == ["mycelium", "room", "create"]:
+            return _ok()
+        if argv[:3] == ["mycelium", "agent", "ls"]:
+            return _ok("")
+        if argv[:3] == ["mycelium", "agent", "create"]:
+            attempts.append(1)
+            if len(attempts) == 1:
+                # First attempt loses the root-ownership race.
+                return subprocess.CompletedProcess(
+                    args=[],
+                    returncode=1,
+                    stdout="created OpenClaw agent agent-alpha",
+                    stderr="✗ Cannot write to ./agents/agent-alpha.md is owned by root",
+                )
+            return _ok("created")
+        return _ok()
+
+    with patch("libs.host_exec.execute", side_effect=fake_execute):
+        ref = prov.ensure_runtime(_device(), handle="agent-alpha")
+
+    assert ref.handle == "agent-alpha"
+    assert ref.metadata["pre_existing"] is False
+    # Exactly two create attempts: initial + retry.
+    assert len(attempts) == 2
 
 
 # ── register_in_room ────────────────────────────────────────────────
@@ -166,10 +257,12 @@ def test_create_agent_chains_ensure_runtime_and_register():
     """The legacy one-shot calls both phases so old callers keep
     working without knowing about the split."""
     prov = OpenClawProvisioner()
-    seen: list[list[str]] = []
+    seen: list = []
 
     def fake_execute(_device, argv, **_kwargs):
-        seen.append(list(argv))
+        seen.append(argv if isinstance(argv, str) else list(argv))
+        if _is_chown(argv):
+            return _ok()
         if argv[:3] == ["mycelium", "room", "create"]:
             return _ok()
         if argv[:3] == ["mycelium", "agent", "ls"]:
@@ -183,8 +276,9 @@ def test_create_agent_chains_ensure_runtime_and_register():
 
     assert ref.metadata["room"] == "r1"
     # Both ensure_runtime (room+ls, no create) and register_in_room (add) ran.
-    assert any(c[:3] == ["mycelium", "agent", "ls"] for c in seen)
-    assert any(c[:3] == ["mycelium", "agent", "add"] for c in seen)
+    list_seen = [c for c in seen if isinstance(c, list)]
+    assert any(c[:3] == ["mycelium", "agent", "ls"] for c in list_seen)
+    assert any(c[:3] == ["mycelium", "agent", "add"] for c in list_seen)
 
 
 # ── wake_agent role gate ────────────────────────────────────────────

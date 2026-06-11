@@ -293,3 +293,151 @@ def test_teardown_matrix_agents_handles_empty_registry(monkeypatch, suite_module
 
     # Returns cleanly.
     section.teardown_matrix_agents(testscript, testbed=_make_testbed())
+
+
+# ── verify_cfn_alignment subsection ─────────────────────────────────
+
+
+def _hub_device(name: str = "hub", role: str = "hub", **extra):
+    """Build a hub-shaped device with a ``custom`` AttrDict-like dict."""
+    custom = {"role": role}
+    custom.update(extra)
+    return SimpleNamespace(name=name, custom=custom)
+
+
+def test_verify_cfn_alignment_skipped_via_env(monkeypatch, suite_module):
+    """``MYCELIUM_E2E_SKIP_CFN_ALIGNMENT=1`` skips the subsection."""
+    monkeypatch.setenv("MYCELIUM_E2E_SKIP_CFN_ALIGNMENT", "1")
+    section = suite_module.LabRedeployCommonSetup()
+    testscript = _make_testscript()
+
+    with pytest.raises(AEtestSkippedSignal):
+        section.verify_cfn_alignment(testscript, testbed=_make_testbed())
+
+
+def test_verify_cfn_alignment_no_hub_role_logs_and_returns(monkeypatch, suite_module):
+    """Testbeds without a hub-role device (rare but valid in dev
+    setups) shouldn't fail the suite — just log and continue."""
+    monkeypatch.delenv("MYCELIUM_E2E_SKIP_CFN_ALIGNMENT", raising=False)
+
+    calls: list[tuple] = []
+
+    def fake_verify(*args, **kwargs):
+        calls.append((args, kwargs))
+        return None
+
+    monkeypatch.setattr(suite_module, "verify_cfn_alignment", fake_verify)
+
+    spoke = SimpleNamespace(name="spoke1", custom={"role": "spoke"})
+    testbed = _make_testbed({"spoke1": spoke})
+
+    section = suite_module.LabRedeployCommonSetup()
+    testscript = _make_testscript()
+
+    # Returns cleanly, never invokes the helper.
+    section.verify_cfn_alignment(testscript, testbed=testbed)
+    assert calls == []
+
+
+def test_verify_cfn_alignment_skips_compose_paths(monkeypatch, suite_module):
+    """When the helper returns ``None`` (no CFN container running),
+    the subsection treats that as a silent skip and moves on."""
+    monkeypatch.delenv("MYCELIUM_E2E_SKIP_CFN_ALIGNMENT", raising=False)
+
+    monkeypatch.setattr(suite_module, "verify_cfn_alignment", lambda *a, **kw: None)
+
+    hub = _hub_device("hub", mycelium_backend_url="http://10.0.0.1:8000")
+    testbed = _make_testbed({"hub": hub})
+
+    section = suite_module.LabRedeployCommonSetup()
+    testscript = _make_testscript()
+
+    section.verify_cfn_alignment(testscript, testbed=testbed)
+    # No results stashed because every hub returned None.
+    assert testscript.parameters.get("cfn_alignment_results", []) == []
+
+
+def test_verify_cfn_alignment_success_stashes_result(monkeypatch, suite_module):
+    """Successful alignment populates the testscript params so
+    downstream subsections / scenarios can inspect what got aligned."""
+    monkeypatch.delenv("MYCELIUM_E2E_SKIP_CFN_ALIGNMENT", raising=False)
+
+    from libs.lab_redeploy import DeviceResult
+
+    fake_result = DeviceResult(device_name="hub", role="hub", success=True)
+    fake_result.workspace_id = "ws-aligned"
+    fake_result.mas_id = "mas-aligned"
+    monkeypatch.setattr(
+        suite_module,
+        "verify_cfn_alignment",
+        lambda *args, **kwargs: fake_result,
+    )
+
+    hub = _hub_device("hub", mycelium_backend_url="http://10.0.0.1:8000")
+    testbed = _make_testbed({"hub": hub})
+
+    section = suite_module.LabRedeployCommonSetup()
+    testscript = _make_testscript()
+
+    section.verify_cfn_alignment(testscript, testbed=testbed)
+
+    results = testscript.parameters["cfn_alignment_results"]
+    assert len(results) == 1
+    assert results[0].success is True
+    assert results[0].workspace_id == "ws-aligned"
+
+
+def test_verify_cfn_alignment_failure_aborts_suite(monkeypatch, suite_module):
+    """If the helper returns a failed result, the subsection must
+    self.failed() so subsequent scenarios don't run against a
+    half-aligned backend (which would just look like consensus
+    timeouts and burn the time budget)."""
+    monkeypatch.delenv("MYCELIUM_E2E_SKIP_CFN_ALIGNMENT", raising=False)
+
+    from libs.lab_redeploy import DeviceResult
+
+    fake_result = DeviceResult(device_name="hub", role="hub", success=False)
+    fake_result.error = "could not force-recreate backend"
+    monkeypatch.setattr(
+        suite_module,
+        "verify_cfn_alignment",
+        lambda *args, **kwargs: fake_result,
+    )
+
+    hub = _hub_device("hub")
+    testbed = _make_testbed({"hub": hub})
+
+    section = suite_module.LabRedeployCommonSetup()
+    testscript = _make_testscript()
+
+    with pytest.raises(AEtestFailedSignal) as excinfo:
+        section.verify_cfn_alignment(testscript, testbed=testbed)
+
+    # The error from the helper must propagate into the failure
+    # message; otherwise the operator can't tell which hub broke.
+    assert "force-recreate" in str(excinfo.value)
+
+
+def test_verify_cfn_alignment_passes_backend_url_from_custom(monkeypatch, suite_module):
+    """The subsection must hand the per-hub
+    ``custom.mycelium_backend_url`` down to the helper rather than
+    always using ``localhost:8000`` (which only works on the hub
+    when ssh'd in)."""
+    monkeypatch.delenv("MYCELIUM_E2E_SKIP_CFN_ALIGNMENT", raising=False)
+    monkeypatch.delenv("MYCELIUM_BACKEND_URL", raising=False)
+
+    captured: list[tuple[object, str]] = []
+
+    def fake_verify(device, *, backend_url, **kwargs):
+        captured.append((device, backend_url))
+        return None
+
+    monkeypatch.setattr(suite_module, "verify_cfn_alignment", fake_verify)
+
+    hub = _hub_device("hub", mycelium_backend_url="http://10.42.0.5:8000")
+    testbed = _make_testbed({"hub": hub})
+
+    section = suite_module.LabRedeployCommonSetup()
+    section.verify_cfn_alignment(_make_testscript(), testbed=testbed)
+
+    assert captured == [(hub, "http://10.42.0.5:8000")]

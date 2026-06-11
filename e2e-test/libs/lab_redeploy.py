@@ -658,6 +658,196 @@ def persist_workspace_and_mas(
     return ok
 
 
+def verify_cfn_alignment(
+    device: Any,
+    *,
+    backend_url: str = "http://localhost:8000",
+    restart_timeout: float = 180.0,
+) -> DeviceResult | None:
+    """Reconcile ``WORKSPACE_ID`` / ``MAS_ID`` drift on a hub.
+
+    Drift sources we've seen in the wild:
+
+    - ``runtime.workspace_id`` and ``server.workspace_id`` in
+      ``config.toml`` ending up with different values after partial
+      installs / manual edits. ``mycelium docker-utils`` renders
+      ``WORKSPACE_ID = server.workspace_id or runtime.workspace_id``
+      into the ``.env`` — whichever was set last wins.
+    - The backend container's bake-time env staying at an OLD
+      workspace ID after the operator updated ``config.toml`` but
+      forgot to ``docker compose ... up -d --force-recreate``.
+    - A fresh CFN mgmt plane (volume wiped) creating a new default
+      workspace that doesn't match the IDs the backend still carries.
+
+    All three look identical to the agent — every freshly-created
+    room gets ``mas_id: null`` and sessions print
+    ``CFN: not configured`` — and nothing in the test harness
+    surfaces the misalignment.
+
+    This helper is the canary. It:
+
+    1. Probes the CFN mgmt plane on the *device* (port 9000) to
+       discover the canonical ``(workspace_id, mas_id)``.
+    2. Reads the backend container's running env.
+    3. Compares; if aligned, returns success without touching
+       anything.
+    4. If misaligned, persists the canonical IDs via the CLI
+       (``mycelium config set …`` + ``config apply``) and
+       force-recreates ``mycelium-backend`` /
+       ``ioc-cognition-fabric-node-svc`` so they pick up the new
+       ``.env``.
+
+    Returns:
+        - :class:`DeviceResult` describing what happened (success +
+          structured logs the caller can pretty-print).
+        - ``None`` when there's no CFN / no backend container on
+          this host (compose-only or pre-install state). The
+          caller treats ``None`` as "nothing to verify, skip
+          quietly".
+    """
+    name = getattr(device, "name", None) or "<device>"
+    result = DeviceResult(device_name=name, role=_role(device) or "hub", success=False)
+
+    # Pre-checks: no CFN container / no backend container → nothing
+    # to align. We use ``docker ps`` rather than HTTP probes to
+    # distinguish "service down" from "wrong host" — the latter
+    # would loop forever on connect timeouts.
+    ok, ps_out = _sh(
+        device,
+        "docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^(mycelium-backend|ioc-cfn-mgmt-plane-svc)$' | sort",
+        timeout=10,
+    )
+    needed = {"mycelium-backend", "ioc-cfn-mgmt-plane-svc"}
+    present = {line.strip() for line in (ps_out or "").splitlines() if line.strip()}
+    missing = needed - present
+    if missing:
+        log.info(
+            "verify_cfn_alignment(%s): %s not running — nothing to align",
+            name,
+            ", ".join(sorted(missing)),
+        )
+        return None
+
+    # 1. Truth: ask the CFN mgmt plane what workspace + MAS it has.
+    cfn_mgmt_url = _cfn_mgmt_url_from(backend_url)
+    truth = provision_workspace_and_mas(device, cfn_mgmt_url, result)
+    if truth is None:
+        return result  # provision_workspace_and_mas already recorded
+    canonical_ws, canonical_mas = truth
+
+    # 2. Backend container's current env (the source of all evil
+    # when drift is in play).
+    ok, env_out = _sh(
+        device,
+        "docker exec mycelium-backend env 2>/dev/null",
+        timeout=10,
+    )
+    if not ok:
+        _record(result, "read backend container env", False, env_out)
+        return result
+    container_ws = container_mas = ""
+    for line in env_out.splitlines():
+        if line.startswith("WORKSPACE_ID="):
+            container_ws = line.split("=", 1)[1].strip()
+        elif line.startswith("MAS_ID="):
+            container_mas = line.split("=", 1)[1].strip()
+
+    aligned = container_ws == canonical_ws and container_mas == canonical_mas
+    if aligned:
+        _record(
+            result,
+            "cfn alignment",
+            True,
+            f"workspace={canonical_ws[:8]}… mas={canonical_mas[:8]}… (no drift)",
+        )
+        result.workspace_id = canonical_ws
+        result.mas_id = canonical_mas
+        result.success = True
+        return result
+
+    log.info(
+        "verify_cfn_alignment(%s): drift detected — container WS=%s MAS=%s vs CFN WS=%s MAS=%s",
+        name,
+        container_ws[:8] or "<empty>",
+        container_mas[:8] or "<empty>",
+        canonical_ws[:8],
+        canonical_mas[:8],
+    )
+
+    # 3. Write canonical IDs into the CLI config (which renders
+    # them into ``.env`` via ``config apply``).
+    if not persist_workspace_and_mas(device, canonical_ws, canonical_mas, result, is_hub=True):
+        return result
+
+    # 4. Discover the compose working dir from the running
+    # container's labels so we can find ``compose.yml`` without
+    # assuming a fixed source-clone location.
+    ok, working_dir = _sh(
+        device,
+        "docker inspect -f '{{ index .Config.Labels \"com.docker.compose.project.working_dir\" }}' "
+        "mycelium-backend 2>/dev/null",
+        timeout=10,
+    )
+    working_dir = (working_dir or "").strip()
+    if not ok or not working_dir:
+        _record(
+            result,
+            "discover compose working dir",
+            False,
+            "could not read com.docker.compose.project.working_dir label",
+        )
+        return result
+
+    # 5. Force-recreate the two stateless services so they pick up
+    # the new env. ``docker compose restart`` won't re-read the env
+    # file (env values are baked at create time); we need ``up -d
+    # --force-recreate`` to rebuild the container spec.
+    recreate_cmd = (
+        f"cd {working_dir} && "
+        "docker compose -f compose.yml -f compose-dev.yml "
+        "--profile cfn up -d --force-recreate "
+        "mycelium-backend ioc-cognition-fabric-node-svc"
+    )
+    ok, out = _sh(device, recreate_cmd, timeout=restart_timeout)
+    if not _record(result, "force-recreate backend + cfn node", ok, out):
+        return result
+
+    # 6. Verify the new container actually has the right env.
+    # A successful recreate that still shows the old WORKSPACE_ID
+    # means we wrote to the wrong place — better to fail loudly
+    # than to claim success and let the next test confusingly
+    # time out.
+    ok, env_out2 = _sh(
+        device,
+        "docker exec mycelium-backend env 2>/dev/null | grep -E '^(WORKSPACE_ID|MAS_ID)='",
+        timeout=10,
+    )
+    if not ok or f"WORKSPACE_ID={canonical_ws}" not in env_out2:
+        # ``_record`` keeps only the last line of detail so the
+        # progress log stays scannable. Flatten the env dump to a
+        # single line so the WHOLE mismatch — both keys — survives
+        # into the failure summary.
+        flat = " ".join(env_out2.split())
+        _record(
+            result,
+            "post-restart alignment check",
+            False,
+            f"backend env still shows: {flat or '<empty>'}",
+        )
+        return result
+
+    _record(
+        result,
+        "cfn alignment",
+        True,
+        f"workspace={canonical_ws[:8]}… mas={canonical_mas[:8]}… (drift corrected)",
+    )
+    result.workspace_id = canonical_ws
+    result.mas_id = canonical_mas
+    result.success = True
+    return result
+
+
 # ── top-level orchestration ────────────────────────────────────────────
 
 

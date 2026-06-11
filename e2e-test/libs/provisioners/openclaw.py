@@ -96,12 +96,17 @@ class OpenClawProvisioner(ABCProvisioner):
         3. Otherwise ``mycelium agent create <handle> --adapter
            openclaw --room <bootstrap_room> [--copy-auth-from <seed>]``.
 
-        ``seed_agent`` (or ``MYCELIUM_E2E_OPENCLAW_SEED_AGENT``)
-        identifies an existing OpenClaw agent whose
-        ``auth-profiles.json`` is copied into the new one so it can
-        authenticate. Without a seed the new agent boots with no
-        credentials — fine for offline tests, broken for anything
-        that hits an LLM.
+        Seed agent resolution (first match wins):
+
+        1. ``seed_agent`` kwarg (explicit override from caller).
+        2. ``device.custom["openclaw_seed_agent"]`` (per-host config
+           in the testbed YAML — different hosts often have
+           different pre-authed seed agents).
+        3. ``MYCELIUM_E2E_OPENCLAW_SEED_AGENT`` env var (shared
+           value across the run).
+        4. None — new agent created without auth. Fine for
+           offline / dispatch-only tests; broken for anything
+           that calls an LLM.
         """
         device_label = host_exec.describe(device)
         log.info("openclaw.ensure_runtime: %s on %s", handle, device_label)
@@ -136,7 +141,7 @@ class OpenClawProvisioner(ABCProvisioner):
         # spawns an OpenClaw runtime + writes a manifest in the
         # provided room. ``--copy-auth-from`` is the only way to make
         # the new agent able to authenticate against the LLM.
-        seed = seed_agent or os.environ.get(SEED_AGENT_ENV)
+        seed = seed_agent or _seed_agent_for(device)
         argv = [
             "mycelium",
             "agent",
@@ -155,6 +160,35 @@ class OpenClawProvisioner(ABCProvisioner):
             result = host_exec.execute(device, argv, timeout=120.0)
         except HostExecError as exc:
             raise PrereqMissing(f"openclaw: agent create dispatch failed for {handle}: {exc}") from exc
+
+        # ``mycelium agent create`` races with the backend over file
+        # ownership: the backend writes ``agents/<handle>.md`` as
+        # root (Docker volume mount), then the CLI tries to update
+        # it as the user. On a fresh host the CLI loses that race
+        # and exits 1 even though the OpenClaw runtime got spawned.
+        # Reclaim ownership and retry once — usually enough to
+        # convert the failure into a clean success.
+        if result.returncode != 0 and "is owned by root" in (result.stderr or ""):
+            log.info(
+                "openclaw.ensure_runtime: %s hit root-ownership race; "
+                "chowning and retrying",
+                handle,
+            )
+            host_exec.execute(
+                device,
+                'if [ -d "$HOME/.mycelium" ]; then '
+                'sudo chown -R "$USER:$USER" "$HOME/.mycelium" '
+                "2>/dev/null || true; fi",
+                shell=True,
+                timeout=20.0,
+            )
+            try:
+                result = host_exec.execute(device, argv, timeout=120.0)
+            except HostExecError as exc:
+                raise PrereqMissing(
+                    f"openclaw: agent create retry dispatch failed for {handle}: {exc}"
+                ) from exc
+
         if result.returncode != 0:
             # ``mycelium agent create`` is the heaviest call we make
             # in setup — surface BOTH streams so debugging doesn't
@@ -165,6 +199,21 @@ class OpenClawProvisioner(ABCProvisioner):
                 f"stdout={result.stdout.strip()[:300]} "
                 f"stderr={result.stderr.strip()[:300]}"
             )
+
+        # Final chown — keeps ``register_in_room`` from tripping
+        # over fresh root-owned files written by the backend during
+        # the create.
+        try:
+            host_exec.execute(
+                device,
+                'if [ -d "$HOME/.mycelium" ]; then '
+                'sudo chown -R "$USER:$USER" "$HOME/.mycelium" '
+                "2>/dev/null || true; fi",
+                shell=True,
+                timeout=20.0,
+            )
+        except HostExecError as exc:
+            log.debug("openclaw.ensure_runtime: post-create chown failed: %s", exc)
 
         return AgentRef(
             handle=handle,
@@ -190,6 +239,11 @@ class OpenClawProvisioner(ABCProvisioner):
         Lightweight: writes a per-room manifest only — does NOT spawn
         any new runtime. ``mycelium agent add <handle> --room <room>``
         is idempotent on the CLI side, so re-running is harmless.
+
+        Same root-ownership race as :meth:`ensure_runtime`: the
+        backend (Docker, runs as root) writes the per-room manifest
+        first, then the CLI tries to update it. Reclaim ownership
+        and retry once on the canonical error string.
         """
         argv = [
             "mycelium",
@@ -207,6 +261,29 @@ class OpenClawProvisioner(ABCProvisioner):
             result = host_exec.execute(device, argv, timeout=30.0)
         except HostExecError as exc:
             raise PrereqMissing(f"openclaw: agent add dispatch failed for {handle}: {exc}") from exc
+
+        if result.returncode != 0 and "is owned by root" in (result.stderr or ""):
+            log.info(
+                "openclaw.register_in_room: %s in %s hit root-ownership race; "
+                "chowning and retrying",
+                handle,
+                room,
+            )
+            host_exec.execute(
+                device,
+                'if [ -d "$HOME/.mycelium" ]; then '
+                'sudo chown -R "$USER:$USER" "$HOME/.mycelium" '
+                "2>/dev/null || true; fi",
+                shell=True,
+                timeout=20.0,
+            )
+            try:
+                result = host_exec.execute(device, argv, timeout=30.0)
+            except HostExecError as exc:
+                raise PrereqMissing(
+                    f"openclaw: agent add retry dispatch failed for {handle}: {exc}"
+                ) from exc
+
         if result.returncode != 0:
             raise PrereqMissing(
                 f"openclaw: `mycelium agent add {handle} --room {room}` "
@@ -344,11 +421,24 @@ class OpenClawProvisioner(ABCProvisioner):
     # ── helpers ───────────────────────────────────────────────────────
 
     def _ensure_room(self, device: Any, room: str) -> None:
-        """Create ``room`` on ``device`` (best-effort).
+        """Create ``room`` and reclaim file ownership.
 
-        ``mycelium room create`` exits non-zero if the room already
-        exists; we tolerate that and only complain on dispatch /
-        unexpected failures.
+        Two-step:
+
+        1. ``mycelium room create <room>`` — idempotent (non-zero
+           exit on "already exists" is silently OK).
+        2. ``sudo chown -R $USER:$USER ~/.mycelium/rooms/<room>``
+           if the directory exists.
+
+        Step 2 is the subtle one. The backend runs as root inside
+        its Docker container and creates ``~/.mycelium/rooms/<room>/``
+        through a volume mount, so subsequent ``mycelium agent
+        create`` calls — which write the local manifest as the SSH
+        user — fail with "Cannot write … owned by root". Reclaiming
+        ownership before handing off to ``agent create`` is the
+        simplest fix that doesn't require changing the backend.
+        ``$USER`` on lab boxes is ``ubuntu`` with passwordless sudo
+        (same convention as ``libs.lab_redeploy._DATA_DIRS_WIPE``).
         """
         try:
             result = host_exec.execute(
@@ -359,13 +449,34 @@ class OpenClawProvisioner(ABCProvisioner):
         except HostExecError as exc:
             log.debug("openclaw._ensure_room: dispatch failed (ignoring): %s", exc)
             return
-        if result.returncode != 0 and "already exists" not in (result.stderr.lower() + result.stdout.lower()):
+        if result.returncode != 0 and "already exists" not in (
+            result.stderr.lower() + result.stdout.lower()
+        ):
             log.debug(
                 "openclaw._ensure_room: %s exit=%d stderr=%s",
                 room,
                 result.returncode,
                 result.stderr.strip()[:120],
             )
+
+        # Reclaim ownership of the room dir. ``shell=True`` here so
+        # ``$USER`` and ``$HOME`` are expanded by the remote shell,
+        # not on the runner side. Best-effort: a chown failure
+        # (e.g. running locally without sudo) downgrades to a debug
+        # log — agent create will then surface the real error.
+        try:
+            host_exec.execute(
+                device,
+                (
+                    f'if [ -d "$HOME/.mycelium/rooms/{room}" ]; then '
+                    f'sudo chown -R "$USER:$USER" "$HOME/.mycelium/rooms/{room}" '
+                    f"2>/dev/null || true; fi"
+                ),
+                shell=True,
+                timeout=15.0,
+            )
+        except HostExecError as exc:
+            log.debug("openclaw._ensure_room: chown skipped: %s", exc)
 
     def _list_agents_in_room(self, device: Any, room: str) -> set[str]:
         """Return the set of agent handles registered in ``room``.
@@ -551,6 +662,27 @@ def _matrix_token_env_for(handle: str) -> str:
     """Convention: agent ``alpha`` -> ``MATRIX_TOKEN_AGENT_ALPHA``."""
     suffix = handle.replace("-", "_").upper()
     return f"MATRIX_TOKEN_{suffix}"
+
+
+def _seed_agent_for(device: Any) -> str | None:
+    """Resolve the OpenClaw seed agent for ``device``.
+
+    Per-host override comes from ``device.custom["openclaw_seed_agent"]``
+    so testbed YAML can specify different pre-authed agents per box
+    (lab boxes typically each have one auth'd seed: claire-agent on
+    hub/spoke1, oclw5-agent on spoke2). Falls back to the global env
+    var for environments where every host shares the same seed.
+    """
+    custom = getattr(device, "custom", None)
+    if custom is not None:
+        # ``custom`` may be a pyATS Custom mapping (.get) OR a plain
+        # dict (test fixtures often use SimpleNamespace + dict). Try
+        # both shapes so tests don't have to mimic pyATS's wrappers.
+        if hasattr(custom, "get"):
+            value = custom.get("openclaw_seed_agent")
+            if value:
+                return str(value)
+    return os.environ.get(SEED_AGENT_ENV)
 
 
 async def _send_matrix_dm(

@@ -33,6 +33,12 @@ devices:
       ssh_user: "%ENV{SSH_USER, ubuntu}"
       ssh_key: "%ENV{SSH_KEY_PATH, ~/.ssh/ioc.pem}"
       mycelium_backend_url: "%ENV{MYCELIUM_BACKEND_URL, http://10.0.50.125:8000}"
+      # Pre-authed OpenClaw agent used as the ``--copy-auth-from``
+      # source when ``provision_matrix_agents`` spawns fresh agents.
+      # claire-agent is the manual seed installed during lab
+      # bootstrap; it survives lab redeploys (MODERATE cleanup
+      # doesn't touch ~/.openclaw).
+      openclaw_seed_agent: claire-agent
 
   spoke1:
     type: linux
@@ -48,6 +54,7 @@ devices:
       ssh_user: "%ENV{SSH_USER, ubuntu}"
       ssh_key: "%ENV{SSH_KEY_PATH, ~/.ssh/ioc.pem}"
       mycelium_backend_url: "%ENV{MYCELIUM_BACKEND_URL, http://10.0.50.125:8000}"
+      openclaw_seed_agent: claire-agent
 
   spoke2:
     type: linux
@@ -63,3 +70,4 @@ devices:
       ssh_user: "%ENV{SSH_USER, ubuntu}"
       ssh_key: "%ENV{SSH_KEY_PATH, ~/.ssh/ioc.pem}"
       mycelium_backend_url: "%ENV{MYCELIUM_BACKEND_URL, http://10.0.50.125:8000}"
+      openclaw_seed_agent: oclw5-agent

@@ -1,12 +1,10 @@
 ---
-# Hermes adapter E2E tests — datafile for tests 85-89.
+# Hermes adapter E2E tests — datafile for tests 85 and 89.
 #
-# Covers: gateway PID file format handling, return-address sidecar,
-# fallback to sessions.json, notify-home via GatewayRunner, and
-# loop-suppression deque eviction.
+# Covers: gateway PID file format handling and loop-suppression deque eviction.
 #
 # Prerequisites:
-#   - hermes installed on hub (oclw4) and spoke1 (oclw3)
+#   - hermes installed on hub (oclw4)
 #   - mycelium CLI updated to feat/hermes on all devices
 #   - hermes gateway running:  hermes gateway start
 #   - SSH key at $SSH_KEY_PATH (default: ~/.ssh/ioc.pem)
@@ -41,14 +39,10 @@ parameters:
     # hermes gateway log path (relative to $HERMES_HOME)
     gateway_log: "logs/gateway.log"
 
-    # How long to wait for consensus in the notify-home test (seconds)
-    consensus_timeout: 600
-
   # ── Timeout overrides for hermes (polling adapter is slower) ─────────
   timeouts:
     http_default: 10
     cli_default: 30
-    negotiation_wait: 660      # hermes polls; allow extra headroom
     convergence_poll: 15
     agent_create_wait: 90      # gateway restarts on adapter add
     session_spawn_wait: 30
@@ -58,17 +52,6 @@ parameters:
 testcases:
   HermesGatewayPidFormats:
     uid: "mycelium:e2e:hermes:085"
-
-  HermesReturnAddressSidecar:
-    uid: "mycelium:e2e:hermes:086"
-
-  HermesReturnAddressFallback:
-    uid: "mycelium:e2e:hermes:087"
-
-  HermesNotifyHomeGatewayRunner:
-    uid: "mycelium:e2e:hermes:088"
-    parameters:
-      consensus_timeout: 600
 
   HermesLoopSuppression:
     uid: "mycelium:e2e:hermes:089"

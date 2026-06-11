@@ -250,22 +250,54 @@ def test_timeout_uses_worst_case_adapter():
     row = {
         "n_steps_total": 10,
         "agents": [
-            {"adapter": "openclaw"},  # 20s/round
-            {"adapter": "cursor"},  # 60s/round (worst)
+            {"adapter": "openclaw"},
+            {"adapter": "cursor"},  # worst (60s/round)
         ],
     }
-    # 10 rounds × 60s = 600s (well above the 240s floor)
+    # 2 agents → no multi-agent tax; 10 rounds × 60s = 600s.
     expected = 10 * _ADAPTER_ROUND_BUDGET_SECONDS["cursor"]
     assert compute_timeout_seconds(row) == expected
 
 
 def test_timeout_respects_floor_for_fast_combos():
     row = {
-        "n_steps_total": 2,  # tiny round budget
+        "n_steps_total": 2,
         "agents": [{"adapter": "openclaw"}, {"adapter": "openclaw"}],
     }
-    # 2 × 20 = 40s, but floor is 240s
+    # 2 × 25 = 50s, well under the floor — floor wins.
     assert compute_timeout_seconds(row) == _DEFAULT_TIMEOUT_FLOOR
+
+
+def test_timeout_adds_multi_agent_tax_for_n_gt_2():
+    """3+ agents add a 15% per-extra-agent overhead.
+
+    Models the lab-observed reality that round trips wait on the
+    *slowest* reply and the proposer rotation lengthens the wait
+    queue. Without this, ThreeAgentReturnTrip false-fails before
+    the CFN finishes a 10-round bicker session.
+    """
+    row = {
+        "n_steps_total": 10,
+        "agents": [
+            {"adapter": "openclaw"},
+            {"adapter": "openclaw"},
+            {"adapter": "openclaw"},
+        ],
+    }
+    # 10 × 25 × (1 + 0.15 * 1) = 287 → floor (360) wins.
+    assert compute_timeout_seconds(row) == _DEFAULT_TIMEOUT_FLOOR
+
+    big_row = {
+        "n_steps_total": 20,
+        "agents": [
+            {"adapter": "openclaw"},
+            {"adapter": "openclaw"},
+            {"adapter": "openclaw"},
+            {"adapter": "openclaw"},
+        ],
+    }
+    # 20 × 25 × (1 + 0.15 * 2) = 650; above the floor.
+    assert compute_timeout_seconds(big_row) == int(20 * 25 * 1.30)
 
 
 # ── make_scenarios ──────────────────────────────────────────────────

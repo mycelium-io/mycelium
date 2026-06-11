@@ -37,6 +37,7 @@ from libs.lab_redeploy import (
     provision_workspace_and_mas,
     redeploy_device,
     redeploy_testbed,
+    verify_cfn_alignment,
 )
 
 # ── fake execute() that captures every call ───────────────────────────
@@ -715,3 +716,201 @@ def test_redeploy_lab_script_env_from_shell_missing(
         )
     # _build_env_overrides raises SystemExit with a string message
     assert "LLM_API_KEY_TEST_REDEPLOY" in str(exc_info.value)
+
+
+# ── verify_cfn_alignment ──────────────────────────────────────────────
+
+
+class TestVerifyCfnAlignment:
+    """Cover every branch of the CFN alignment helper.
+
+    The helper has a strict call sequence:
+
+    1. ``docker ps`` to confirm both containers are running.
+    2. ``provision_workspace_and_mas`` → runs a python heredoc that
+       hits the CFN mgmt plane.
+    3. ``docker exec mycelium-backend env`` to read the current env.
+    4. (drift only) ``mycelium config set ... && config apply``.
+    5. (drift only) ``docker inspect`` to discover the compose dir.
+    6. (drift only) ``docker compose ... up -d --force-recreate``.
+    7. (drift only) ``docker exec mycelium-backend env | grep ...``
+       to confirm the new env stuck.
+
+    We assert at each phase: the right command was issued, the
+    right ``DeviceResult`` flags came back, and a failure at step N
+    short-circuits the chain at step N+1.
+    """
+
+    _CFN_OK_STDOUT = "WORKSPACE_ID=ws-aligned\nMAS_ID=mas-aligned\n"
+
+    def test_no_cfn_container_returns_none(self, fake_exec: FakeExec) -> None:
+        # docker ps shows nothing → caller skips silently. The
+        # compose-only path lives here.
+        fake_exec.results.extend([_completed(rc=0, stdout="")])
+        result = verify_cfn_alignment(_device("hub"))
+        assert result is None
+        assert len(fake_exec.calls) == 1
+        assert "docker ps" in fake_exec.calls[0][1]
+
+    def test_partial_cfn_returns_none(self, fake_exec: FakeExec) -> None:
+        # Only one of the two required containers — we'd hang on
+        # CFN reads, so treat as "not deployed" and skip.
+        fake_exec.results.extend([_completed(rc=0, stdout="mycelium-backend\n")])
+        result = verify_cfn_alignment(_device("hub"))
+        assert result is None
+
+    def test_aligned_returns_success_without_changes(self, fake_exec: FakeExec) -> None:
+        # CFN says ws-aligned/mas-aligned, container env matches,
+        # no writes happen.
+        fake_exec.results.extend(
+            [
+                _completed(stdout="ioc-cfn-mgmt-plane-svc\nmycelium-backend\n"),
+                _completed(stdout=self._CFN_OK_STDOUT),  # provision_workspace_and_mas
+                _completed(stdout="WORKSPACE_ID=ws-aligned\nMAS_ID=mas-aligned\n"),
+            ]
+        )
+        result = verify_cfn_alignment(_device("hub"))
+        assert result is not None
+        assert result.success is True
+        assert result.workspace_id == "ws-aligned"
+        assert result.mas_id == "mas-aligned"
+        # Exactly 3 shell calls — no config writes, no recreate.
+        assert len(fake_exec.calls) == 3
+        for _, cmd in fake_exec.calls:
+            assert "config set" not in cmd
+            assert "force-recreate" not in cmd
+        # The "no drift" detail should land in the structured log.
+        assert any("no drift" in (detail or "") for _, _, detail in result.logs)
+
+    def test_drift_triggers_persist_and_recreate(self, fake_exec: FakeExec) -> None:
+        # CFN says ws-aligned, backend env still on ws-stale →
+        # persist + recreate path fires end-to-end.
+        fake_exec.results.extend(
+            [
+                _completed(stdout="ioc-cfn-mgmt-plane-svc\nmycelium-backend\n"),
+                _completed(stdout=self._CFN_OK_STDOUT),
+                _completed(stdout="WORKSPACE_ID=ws-stale\nMAS_ID=mas-stale\n"),
+                _completed(stdout=""),  # config set ... && config apply
+                _completed(stdout="/srv/mycelium/cli/docker\n"),  # docker inspect
+                _completed(stdout=""),  # docker compose up -d --force-recreate
+                _completed(stdout="WORKSPACE_ID=ws-aligned\nMAS_ID=mas-aligned\n"),
+            ]
+        )
+        result = verify_cfn_alignment(_device("hub"))
+        assert result is not None
+        assert result.success is True
+        assert result.workspace_id == "ws-aligned"
+        assert result.mas_id == "mas-aligned"
+
+        cmds = [c for _, c in fake_exec.calls]
+        # Phase markers in order
+        assert "docker ps" in cmds[0]
+        assert "python3" in cmds[1]  # provision heredoc
+        assert "docker exec mycelium-backend env" in cmds[2]
+        # Persist call uses the CLI to write canonical IDs
+        assert "config set server.workspace_id ws-aligned" in cmds[3]
+        assert "config set server.mas_id mas-aligned" in cmds[3]
+        assert "config apply" in cmds[3]
+        assert "docker inspect" in cmds[4]
+        assert "force-recreate" in cmds[5]
+        assert "/srv/mycelium/cli/docker" in cmds[5]
+        assert "mycelium-backend" in cmds[5]
+        assert "ioc-cognition-fabric-node-svc" in cmds[5]
+        # Final verify uses the same env probe
+        assert "docker exec mycelium-backend env" in cmds[6]
+        assert any("drift corrected" in (detail or "") for _, _, detail in result.logs)
+
+    def test_provision_failure_short_circuits(self, fake_exec: FakeExec) -> None:
+        # CFN GET returns no workspace → provision returns None and
+        # we bail before touching the backend container.
+        fake_exec.results.extend(
+            [
+                _completed(stdout="ioc-cfn-mgmt-plane-svc\nmycelium-backend\n"),
+                _completed(rc=1, stderr="ERR: no workspaces in CFN mgmt"),
+            ]
+        )
+        result = verify_cfn_alignment(_device("hub"))
+        assert result is not None
+        assert result.success is False
+        # No env read attempted after provisioning failed.
+        cmds = [c for _, c in fake_exec.calls]
+        assert len(cmds) == 2
+        assert "docker exec mycelium-backend env" not in " ".join(cmds)
+
+    def test_env_read_failure_records_and_aborts(self, fake_exec: FakeExec) -> None:
+        # Backend container disappeared between ``docker ps`` and
+        # ``docker exec`` → record and abort, don't try to recreate.
+        fake_exec.results.extend(
+            [
+                _completed(stdout="ioc-cfn-mgmt-plane-svc\nmycelium-backend\n"),
+                _completed(stdout=self._CFN_OK_STDOUT),
+                _completed(rc=1, stderr="container not running"),
+            ]
+        )
+        result = verify_cfn_alignment(_device("hub"))
+        assert result is not None
+        assert result.success is False
+        # No persist / recreate attempted.
+        cmds = " ".join(c for _, c in fake_exec.calls)
+        assert "config set" not in cmds
+        assert "force-recreate" not in cmds
+
+    def test_drift_but_persist_fails_aborts_before_recreate(self, fake_exec: FakeExec) -> None:
+        # Drift detected, but the CLI ``config set`` returns non-zero
+        # → we must not proceed to ``docker compose ... up -d
+        # --force-recreate`` on a half-written config.
+        fake_exec.results.extend(
+            [
+                _completed(stdout="ioc-cfn-mgmt-plane-svc\nmycelium-backend\n"),
+                _completed(stdout=self._CFN_OK_STDOUT),
+                _completed(stdout="WORKSPACE_ID=ws-stale\nMAS_ID=mas-stale\n"),
+                _completed(rc=1, stderr="config: permission denied"),
+            ]
+        )
+        result = verify_cfn_alignment(_device("hub"))
+        assert result is not None
+        assert result.success is False
+        cmds = " ".join(c for _, c in fake_exec.calls)
+        assert "force-recreate" not in cmds
+        assert "docker inspect" not in cmds
+
+    def test_drift_with_missing_compose_dir_label_aborts(self, fake_exec: FakeExec) -> None:
+        # Container running but somehow lacks the
+        # ``com.docker.compose.project.working_dir`` label → we can't
+        # locate compose.yml safely, so we refuse to recreate.
+        fake_exec.results.extend(
+            [
+                _completed(stdout="ioc-cfn-mgmt-plane-svc\nmycelium-backend\n"),
+                _completed(stdout=self._CFN_OK_STDOUT),
+                _completed(stdout="WORKSPACE_ID=ws-stale\nMAS_ID=mas-stale\n"),
+                _completed(stdout=""),  # persist
+                _completed(stdout=""),  # docker inspect → empty label
+            ]
+        )
+        result = verify_cfn_alignment(_device("hub"))
+        assert result is not None
+        assert result.success is False
+        cmds = " ".join(c for _, c in fake_exec.calls)
+        assert "force-recreate" not in cmds
+
+    def test_post_restart_check_catches_silent_drift(self, fake_exec: FakeExec) -> None:
+        # Recreate runs cleanly but the env STILL shows the stale
+        # workspace — we MUST surface this as a failure rather than
+        # claim success and let later tests time out mysteriously.
+        fake_exec.results.extend(
+            [
+                _completed(stdout="ioc-cfn-mgmt-plane-svc\nmycelium-backend\n"),
+                _completed(stdout=self._CFN_OK_STDOUT),
+                _completed(stdout="WORKSPACE_ID=ws-stale\nMAS_ID=mas-stale\n"),
+                _completed(stdout=""),  # persist
+                _completed(stdout="/srv/mycelium/cli/docker\n"),
+                _completed(stdout=""),  # force-recreate ok
+                _completed(stdout="WORKSPACE_ID=ws-stale\nMAS_ID=mas-stale\n"),
+            ]
+        )
+        result = verify_cfn_alignment(_device("hub"))
+        assert result is not None
+        assert result.success is False
+        # The diagnostic should mention the stale env so debugging
+        # doesn't require re-running with --loglevel debug.
+        assert any("ws-stale" in (detail or "") for _, ok, detail in result.logs if ok is False)
