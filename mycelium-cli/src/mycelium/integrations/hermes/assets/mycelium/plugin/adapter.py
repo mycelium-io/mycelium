@@ -13,8 +13,7 @@ Owns the side-effecting half of the plugin:
     cache the returned message id in ``_own_message_ids`` so the SSE echo
     of the same message doesn't re-trigger a dispatch.
   - inbound delivery — translate each :class:`route.RouteAction` into the
-    appropriate hermes call (``handle_message`` for ``Dispatch``,
-    :func:`notify_home.deliver_notify_home` for ``NotifyHome``).
+    appropriate hermes call (``handle_message`` for ``Dispatch``).
 
 The chat_id convention is ``<room>`` for the parent room and
 ``<room>:session:<id>`` for session sub-rooms — same wire identifier
@@ -39,14 +38,11 @@ from gateway.platforms.base import (
 )
 
 from .post_to_room import post_to_room
-from .return_address import ReturnAddressBook, stash_return_address
 from .room_sse import subscribe_room
 from .route import (
     Dispatch,
     Ignore,
-    NotifyHome,
     RoomConfig,
-    StashReturnAddress,
     SubscribeSession,
     route_message,
 )
@@ -83,7 +79,6 @@ class MyceliumRoomAdapter(BasePlatformAdapter):
         self._session_sub_tasks: dict[str, asyncio.Task] = {}
         self._own_message_ids: set[str] = set()
         self._own_message_id_queue: deque[str] = deque()
-        self._return_addresses = ReturnAddressBook()
 
     # ── config coercion ─────────────────────────────────────────────────────
 
@@ -336,10 +331,7 @@ class MyceliumRoomAdapter(BasePlatformAdapter):
 
         The session sub-room shares the parent's RoomConfig (same agents
         list, same require_mention policy) so the router treats ticks
-        for sub-rooms identically to ticks for the parent. The
-        :class:`route.NotifyHome` and :class:`route.StashReturnAddress`
-        actions already key off the message's ``room_name`` field, which
-        is the sub-room name on the wire.
+        for sub-rooms identically to ticks for the parent.
         """
         return self._make_room_handler(rcfg)
 
@@ -353,19 +345,6 @@ class MyceliumRoomAdapter(BasePlatformAdapter):
                 continue
             if isinstance(action, SubscribeSession):
                 self._spawn_session_sub(rcfg, action.room_name)
-                continue
-            if isinstance(action, StashReturnAddress):
-                stash_return_address(
-                    self._return_addresses,
-                    session_room=action.session_room,
-                    agent_id=action.agent_id,
-                    log=logger,
-                )
-                continue
-            if isinstance(action, NotifyHome):
-                from .notify_home import deliver_notify_home
-
-                await deliver_notify_home(action=action, addresses=self._return_addresses)
                 continue
 
     async def _dispatch(self, rcfg: RoomConfig, action: Dispatch) -> None:

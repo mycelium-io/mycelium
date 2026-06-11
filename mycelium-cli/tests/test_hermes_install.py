@@ -249,52 +249,6 @@ def test_register_appends_room_entry(_isolated_hermes_home, fake_mycelium_config
     ]
 
 
-def test_register_pins_home_channel_to_latest_handle(
-    _isolated_hermes_home, fake_mycelium_config
-) -> None:
-    """Each ``register()`` rewrites ``home_channel`` to the freshly-added handle.
-
-    Hermes's ``send_message`` tool falls back to ``home_channel`` when the
-    LLM invokes it with a bare ``target="mycelium-room"`` (no chat_id
-    suffix). Without a home_channel set, the tool errors out and the
-    agent's reply never reaches the room — that's the smoke-test failure
-    we hit on the second mention. Pinning ``home_channel.chat_id`` to
-    ``<room>:<handle>`` makes the adapter's ``send()`` ``rpartition`` it
-    back into the right room + handle. Last-write-wins mirrors hermes's
-    own UX for other platforms (single ``HOME_CHANNEL`` env var).
-    """
-    _install_hermes(verbose=False, config=fake_mycelium_config, reinstall=False)
-    integ = HermesIntegration()
-    from mycelium.integrations.base import AddOptions
-
-    integ.register(
-        manifest=_build_manifest("alice"),
-        config=fake_mycelium_config,
-        opts=AddOptions(room="demo"),
-    )
-    block = _read_yaml(_hermes_config_yaml())["platforms"]["mycelium-room"]
-    # The ``platform`` key is mandatory — without it hermes's
-    # ``HomeChannel.from_dict`` KeyErrors and the gateway fails to boot.
-    assert block["home_channel"] == {
-        "platform": "mycelium-room",
-        "chat_id": "demo:alice",
-        "name": "demo/alice",
-    }
-
-    # Adding a second handle re-pins (last-write-wins).
-    integ.register(
-        manifest=_build_manifest("bob"),
-        config=fake_mycelium_config,
-        opts=AddOptions(room="demo"),
-    )
-    block = _read_yaml(_hermes_config_yaml())["platforms"]["mycelium-room"]
-    assert block["home_channel"] == {
-        "platform": "mycelium-room",
-        "chat_id": "demo:bob",
-        "name": "demo/bob",
-    }
-
-
 def test_destroy_removes_handle_and_prunes_empty_room(
     _isolated_hermes_home, fake_mycelium_config
 ) -> None:

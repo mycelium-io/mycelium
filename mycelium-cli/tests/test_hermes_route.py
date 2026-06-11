@@ -328,28 +328,6 @@ def test_route_message_consensus_fans_out(route_module) -> None:
     # The consensus summary itself is still in the content (preserved
     # after the preamble).
     assert "shared plan" in by_agent["alice"]
-    notify = [a for a in actions if isinstance(a, route_module.NotifyHome)]
-    assert len(notify) == 1
-    assert notify[0].session_room == "demo:session:42"
-    assert set(notify[0].agent_ids) == {"alice", "bob"}
-    assert "shared plan" in notify[0].consensus_summary
-    # NotifyHome carries the un-prefixed summary because the home-channel
-    # delivery is for the human user, not for the hermes agent loop.
-    assert not notify[0].consensus_summary.startswith("[mycelium-room]")
-
-
-def test_route_message_consensus_in_parent_does_not_notify_home(route_module) -> None:
-    """Consensus messages that land in the parent room (no ``:session:`` in
-    room_name) skip notify-home — there is no cross-channel hop to bridge."""
-    cfg = route_module.RoomConfig(room="demo", agents=("alice",), require_mention=True)
-    msg = {
-        "id": "c1",
-        "room_name": "demo",  # not a session sub-room
-        "message_type": "coordination_consensus",
-        "content": '{"plan": "do it", "assignments": {"alice": "ship"}}',
-    }
-    actions = route_module.route_message(cfg, msg, set())
-    assert not any(isinstance(a, route_module.NotifyHome) for a in actions)
 
 
 def test_route_message_join_subscribes_session_room(route_module) -> None:
@@ -362,11 +340,8 @@ def test_route_message_join_subscribes_session_room(route_module) -> None:
     }
     actions = route_module.route_message(cfg, msg, set())
     subs = [a for a in actions if isinstance(a, route_module.SubscribeSession)]
-    stashes = [a for a in actions if isinstance(a, route_module.StashReturnAddress)]
     assert len(subs) == 1
     assert subs[0].room_name == "demo:session:42"
-    assert len(stashes) == 1
-    assert stashes[0].agent_id == "alice"
 
 
 def test_route_message_join_extracts_session_from_parent_payload(route_module) -> None:
@@ -386,12 +361,8 @@ def test_route_message_join_extracts_session_from_parent_payload(route_module) -
     }
     actions = route_module.route_message(cfg, msg, set())
     subs = [a for a in actions if isinstance(a, route_module.SubscribeSession)]
-    stashes = [a for a in actions if isinstance(a, route_module.StashReturnAddress)]
     assert len(subs) == 1
     assert subs[0].room_name == "demo:session:99"
-    assert len(stashes) == 1
-    assert stashes[0].session_room == "demo:session:99"
-    assert stashes[0].agent_id == "alice"
 
 
 def test_route_message_join_ignored_when_no_session_anywhere(route_module) -> None:

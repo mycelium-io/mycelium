@@ -29,7 +29,6 @@ def register(ctx) -> None:  # noqa: ANN001 — ctx is hermes-typed
     metadata is being read (``hermes plugins list``).
     """
     from .adapter import MyceliumRoomAdapter
-    from .return_address import on_pre_gateway_dispatch
 
     ctx.register_platform(
         name="mycelium-room",
@@ -41,8 +40,7 @@ def register(ctx) -> None:  # noqa: ANN001 — ctx is hermes-typed
         ),
         emoji="🌿",
     )
-    ctx.register_hook("pre_gateway_dispatch", on_pre_gateway_dispatch)
-    logger.info("mycelium-room platform registered (with return-origin hook)")
+    logger.info("mycelium-room platform registered")
 
 
 def _dependency_check() -> bool:

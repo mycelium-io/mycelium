@@ -46,31 +46,13 @@ class SubscribeSession:
 
 
 @dataclass(frozen=True)
-class StashReturnAddress:
-    """Record where to deliver this agent's consensus summary later."""
-
-    session_room: str
-    agent_id: str
-
-
-@dataclass(frozen=True)
-class NotifyHome:
-    """Deliver a consensus summary back to each agent's home channel."""
-
-    session_room: str
-    agent_ids: tuple[str, ...]
-    consensus_summary: str
-    message_id: str | None = None
-
-
-@dataclass(frozen=True)
 class Ignore:
     """Explicitly drop a message with a reason (useful for tracing/tests)."""
 
     reason: str
 
 
-RouteAction = Dispatch | SubscribeSession | StashReturnAddress | NotifyHome | Ignore
+RouteAction = Dispatch | SubscribeSession | Ignore
 
 
 # ── room config the router needs ─────────────────────────────────────────────
@@ -145,19 +127,14 @@ def _route_tick(cfg: RoomConfig, msg: dict[str, Any]) -> list[RouteAction]:
     room_name = msg.get("room_name") or cfg.room
     instruction = format_tick_instruction(tick_data, room_name, target)
 
-    actions: list[RouteAction] = []
-    session_room = msg.get("room_name") or ""
-    if isinstance(session_room, str) and ":session:" in session_room:
-        actions.append(StashReturnAddress(session_room=session_room, agent_id=target))
-    actions.append(
+    return [
         Dispatch(
             agent_id=target,
             sender="CognitiveEngine",
             content=instruction,
             message_id=msg.get("id"),
         )
-    )
-    return actions
+    ]
 
 
 def format_tick_instruction(tick_data: dict[str, Any], room_name: str, target_agent: str) -> str:
@@ -362,7 +339,7 @@ def _route_consensus(cfg: RoomConfig, msg: dict[str, Any]) -> list[RouteAction]:
 
     summary = format_consensus_summary(data)
     session_room_name = msg.get("room_name") or cfg.room
-    actions: list[RouteAction] = [
+    return [
         Dispatch(
             agent_id=aid,
             sender="CognitiveEngine",
@@ -371,18 +348,6 @@ def _route_consensus(cfg: RoomConfig, msg: dict[str, Any]) -> list[RouteAction]:
         )
         for aid in cfg.agents
     ]
-
-    session_room = msg.get("room_name") or ""
-    if cfg.agents and isinstance(session_room, str) and ":session:" in session_room:
-        actions.append(
-            NotifyHome(
-                session_room=session_room,
-                agent_ids=tuple(cfg.agents),
-                consensus_summary=summary,
-                message_id=msg.get("id"),
-            )
-        )
-    return actions
 
 
 def format_consensus_summary(data: dict[str, Any]) -> str:
@@ -448,11 +413,7 @@ def _route_join(msg: dict[str, Any]) -> list[RouteAction]:
                 session_room = candidate
     if session_room is None:
         return [Ignore("join without session sub-room")]
-    actions: list[RouteAction] = [SubscribeSession(room_name=session_room)]
-    sender = msg.get("sender_handle") if msg.get("message_type") == "coordination_join" else None
-    if isinstance(sender, str) and sender:
-        actions.append(StashReturnAddress(session_room=session_room, agent_id=sender))
-    return actions
+    return [SubscribeSession(room_name=session_room)]
 
 
 # ── broadcast (channel messaging) ────────────────────────────────────────────
@@ -489,10 +450,8 @@ def _route_broadcast(cfg: RoomConfig, msg: dict[str, Any]) -> list[RouteAction]:
 __all__ = [
     "Dispatch",
     "Ignore",
-    "NotifyHome",
     "RoomConfig",
     "RouteAction",
-    "StashReturnAddress",
     "SubscribeSession",
     "format_consensus_summary",
     "format_tick_instruction",
