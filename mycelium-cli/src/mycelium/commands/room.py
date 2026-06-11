@@ -924,6 +924,93 @@ def send(
 
 
 @doc_ref(
+    usage="mycelium room messages [<room>] [--limit N] [--sender <handle>] [--type <type>]",
+    desc="Read recent messages in a room (point-in-time, newest first). Filter with <code>--sender</code> / <code>--type</code>.",
+    group="room",
+)
+@app.command("messages")
+def messages(
+    ctx: typer.Context,
+    room: str | None = typer.Argument(None, help="Room to read (defaults to active room)"),
+    limit: int = typer.Option(20, "--limit", "-l", help="Max messages to show (newest first)"),
+    sender: str | None = typer.Option(
+        None, "--sender", "-s", help="Only messages from this handle"
+    ),
+    message_type: str | None = typer.Option(
+        None, "--type", "-t", help="Only this message type (e.g. direct, broadcast, announce)"
+    ),
+) -> None:
+    """
+    Read recent messages in a room — a point-in-time snapshot, newest first.
+
+    Unlike `mycelium room watch` (which streams live), this returns immediately
+    with the most recent messages and exits. Handy for scripts and for checking
+    whether an agent's reply has landed.
+
+    Examples:
+        mycelium room messages
+        mycelium room messages design-review --limit 5
+        mycelium room messages cc-e2e --sender cc-x
+        mycelium room messages my-room --type broadcast
+    """
+    try:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
+        json_output = ctx.obj.get("json", False) if ctx.obj else False
+
+        config = MyceliumConfig.load()
+        room_name = _resolve_room(config, room)
+
+        from mycelium_backend_client.api.messages import (
+            list_messages_api_rooms_room_name_messages_get as list_api,
+        )
+        from mycelium_backend_client.models import HTTPValidationError
+        from mycelium_backend_client.types import UNSET
+
+        with _typed_client(config) as client:
+            result = list_api.sync(
+                room_name=room_name,
+                client=client,
+                limit=limit,
+                sender=sender or UNSET,
+                message_type=message_type or UNSET,
+            )
+
+        if not result or isinstance(result, HTTPValidationError):
+            msgs = []
+        else:
+            msgs = result.messages
+
+        if json_output:
+            payload = (
+                result.to_dict()
+                if result and not isinstance(result, HTTPValidationError)
+                else {"messages": [], "total": 0}
+            )
+            typer.echo(json_module.dumps(payload, indent=2, default=str))
+            return
+
+        if not msgs:
+            typer.echo(f"  {room_name}: no messages")
+            return
+
+        plural = "message" if len(msgs) == 1 else "messages"
+        typer.secho(f"\n  {room_name}  ", fg=typer.colors.CYAN, bold=True, nl=False)
+        typer.secho(f"({len(msgs)} {plural}, newest first)\n", fg=typer.colors.BRIGHT_BLACK)
+        for m in msgs:
+            stamp = m.created_at.strftime("%H:%M:%S")
+            content = m.content.replace("\n", " ")
+            preview = content[:100] + ("…" if len(content) > 100 else "")
+            typer.echo(f"  {stamp}  {m.sender_handle} [{m.message_type}]: {preview}")
+        typer.echo()
+
+    except (typer.Exit, typer.Abort):
+        raise
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+
+
+@doc_ref(
     usage="mycelium room delegate <room> --to <handle> --task <description>",
     desc="Delegate a task to another agent in a room.",
     group="room",

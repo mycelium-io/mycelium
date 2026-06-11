@@ -353,9 +353,23 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium room messages</span> [<span class="arg">&lt;room&gt;</span>] [<span class="flag">--limit</span> N] [<span class="flag">--sender</span> <span class="arg">&lt;handle&gt;</span>] [<span class="flag">--type</span> <span class="arg">&lt;type&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Read recent messages in a room (point-in-time, newest first). Filter with <code>--sender</code> / <code>--type</code>.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
           <code><span class="cmd">mycelium room delegate</span> <span class="arg">&lt;room&gt;</span> <span class="flag">--to</span> <span class="arg">&lt;handle&gt;</span> <span class="flag">--task</span> <span class="arg">&lt;description&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Delegate a task to another agent in a room.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium room sync</span>-mas <span class="arg">&lt;name&gt;</span></code>
+        </div>
+        <div class="cmd-ref-body">Register (or re-register) a room with the CFN mgmt plane.</div>
       </div>
 
       <h2 id="cli-session">session</h2>

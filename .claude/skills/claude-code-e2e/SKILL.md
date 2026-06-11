@@ -64,7 +64,7 @@ mycelium daemon status | grep cc-x || echo "WARN: handle not in daemon view"
 # Invoke
 mycelium agent invoke cc-x "Reply with the literal string 'OK from cc-x' and nothing else."
 sleep 25
-curl -s "http://localhost:8000/api/rooms/cc-e2e/messages?limit=5" | python3 -m json.tool
+mycelium room messages cc-e2e --limit 5
 ```
 
 **Fail criteria**:
@@ -91,7 +91,7 @@ mycelium memory get agents/cc-x/preferences --room cc-e2e 2>/dev/null || \
 mycelium agent invoke cc-x \
   "What did I tell you I love? Reply with just the fruit name."
 sleep 30
-curl -s "http://localhost:8000/api/rooms/cc-e2e/messages?limit=3" | python3 -m json.tool
+mycelium room messages cc-e2e --limit 3
 ```
 
 **Fail criteria**:
@@ -111,13 +111,13 @@ sleep 5
 # In parallel: ask for status — should respond immediately, NOT queue behind the count
 mycelium agent invoke cc-x "status"
 sleep 5
-curl -s "http://localhost:8000/api/rooms/cc-e2e/messages?limit=5" | python3 -m json.tool
+mycelium room messages cc-e2e --limit 5
 # Expect: a status message describing the running spawn (handle, elapsed, prompt)
 
 # Abort the running spawn
 mycelium agent invoke cc-x "abort"
 sleep 5
-curl -s "http://localhost:8000/api/rooms/cc-e2e/messages?limit=5" | python3 -m json.tool
+mycelium room messages cc-e2e --limit 5
 # Expect: the count stopped early; abort acknowledged
 
 wait  # let the background invoke return
@@ -149,7 +149,7 @@ sleep 5
 grep "budget exceeded" ~/.mycelium/logs/daemon.log | tail -2
 # Expect: at least one budget-denied log line
 
-curl -s "http://localhost:8000/api/rooms/cc-e2e/messages?limit=5" | python3 -m json.tool
+mycelium room messages cc-e2e --limit 5
 # Expect: room shows a budget-exceeded message (or no second reply at all)
 ```
 
@@ -180,7 +180,7 @@ sleep 90
 END=$(date +%s)
 echo "elapsed: $((END - START))s"
 
-curl -s "http://localhost:8000/api/rooms/cc-e2e/messages?limit=10" | python3 -m json.tool
+mycelium room messages cc-e2e --limit 10
 # Expect: cc-b's reply lands ROUGHLY in parallel with cc-a's first reply,
 #         then cc-a's second reply lands AFTER cc-a's first reply
 

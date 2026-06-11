@@ -124,11 +124,10 @@ for s in json.load(sys.stdin):
 # Expect terminal value: "complete" (consensus) or "failed" (timeout / broken)
 
 # Inspect the consensus
-curl -s "http://localhost:8000/api/rooms/e2e-test-room:session:<short_id>/messages?limit=200" \
+mycelium --json room messages "e2e-test-room:session:<short_id>" --type coordination_consensus --limit 200 \
   | python3 -c "import sys,json
 for m in json.load(sys.stdin)['messages']:
-    if m['message_type']=='coordination_consensus':
-        print(m['content']); break"
+    print(m['content']); break"
 # Expect: type=consensus, assignments dict populated, broken=false
 ```
 
@@ -207,7 +206,7 @@ grep "mycelium.*wake dispatched\|mycelium.*wake completed" /tmp/openclaw/opencla
 # Expect: wake dispatched + wake completed for both agents
 
 # Check session messages for agent responses
-curl -s "http://localhost:8000/api/rooms/e2e-openclaw-test:session:*/messages?limit=50"
+mycelium room messages "e2e-openclaw-test:session:<short_id>" --limit 50
 # Expect: coordination_tick messages AND direct messages from agents (accept/reject/counter_offer)
 
 # Poll for consensus (up to 5 min for complex negotiations)
