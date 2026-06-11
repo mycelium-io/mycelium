@@ -528,7 +528,7 @@ class _ConsensusBase(aetest.Testcase):
     @aetest.test
     def wait_for_consensus(self) -> None:
         if not self.agents:
-            self.skipped("setup did not complete (no testbed or prereqs not met)")
+            self.failed("setup did not complete (no testbed or prereqs not met)")
         log.info(
             "polling backend %s for consensus on %s (timeout=%ds)",
             self.backend_url,
