@@ -146,9 +146,20 @@ def _stage_assets_in_container(container: str, src: Path, container_dest: str) -
 
     OpenClaw rejects plugins owned by non-root UIDs when running containerized,
     so the chown is required for the plugin to load cleanly.
+
+    The destination is wiped first so re-runs replace rather than nest: ``docker
+    cp <dir> container:<existing-dir>`` copies *into* the existing dir (creating
+    ``<dir>/<basename>``), which on a reinstall would produce ``dist/dist`` /
+    ``mycelium/plugin``. The wipe runs as root because a prior stage chowned the
+    tree to 0:0 — the default container user can't remove a root-owned subtree.
     """
-    # Ensure the parent directory exists inside the container
     parent = container_dest.rsplit("/", 1)[0]
+    subprocess.run(
+        ["docker", "exec", "-u", "0", container, "rm", "-rf", container_dest],
+        text=True,
+        capture_output=True,
+    )
+    # Ensure the parent directory exists inside the container
     subprocess.run(
         ["docker", "exec", container, "mkdir", "-p", parent],
         text=True,
@@ -330,11 +341,11 @@ def _install_openclaw(
         _run(["openclaw", "plugins", "install", container_plugin_path], allow_already_exists=True)
         _wait_container_healthy(container)
 
-        # `openclaw plugins install` blanket-excludes dist/ (same as the host
-        # path), but openclaw.plugin.json's `extensions` field points at
-        # dist/index.js — so the channel won't load without it. Stage the
-        # compiled dist/ straight into the container's installed extension dir
-        # after install, mirroring the host path's post-install dist copy.
+        # openclaw.plugin.json's `extensions` field points at dist/index.js, so
+        # the installed extension dir must carry a compiled dist/. Whether
+        # `openclaw plugins install` copies dist/ along varies by OpenClaw
+        # version; either way _stage_assets_in_container replaces the dest, so
+        # the compiled dist/ lands cleanly (no dist/dist nesting on reinstall).
         dist_src = plugin_src / "dist"
         if dist_src.exists():
             container_dist_path = f"{container_state_dir}/extensions/{_OPENCLAW_PLUGIN_NAME}/dist"
@@ -418,6 +429,25 @@ def _install_openclaw(
                     f"  warning: could not write config.json to container: {exc}",
                     fg=typer.colors.YELLOW,
                 )
+
+        # The openclaw.json writes above (plugins install + _allow_plugin) each
+        # trip the gateway's config watcher into an in-process restart; chained,
+        # they race and the gateway can die with "config changed since last load"
+        # mid-restart, leaving the container stopped. Force one clean full restart
+        # so it converges to a healthy state loading the final config + plugin.
+        if verbose:
+            typer.echo(f"  restarting {container} to load the final config + plugin")
+        restart = subprocess.run(
+            ["docker", "restart", container], text=True, capture_output=not verbose
+        )
+        if restart.returncode == 0:
+            _wait_container_healthy(container)
+        else:
+            typer.secho(
+                f"  warning: could not restart {container}"
+                f" ({(restart.stderr or '').strip()}) — restart it manually to load the plugin",
+                fg=typer.colors.YELLOW,
+            )
 
         return
 

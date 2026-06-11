@@ -86,3 +86,61 @@ def test_container_install_builds_then_stages_dist(
 
     # Build happens before the dist is staged (you can't stage what isn't built).
     assert first_npm < dist_stage[0], f"dist staged before build: {events}"
+
+
+def test_stage_assets_wipes_dest_as_root_before_copy(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Staging must rm -rf the dest (as root) *before* docker cp.
+
+    ``docker cp <dir> container:<existing-dir>`` copies INTO the existing dir,
+    so without a wipe a reinstall nests (``dist/dist``, ``mycelium/plugin``).
+    The wipe must run as root (-u 0) because a prior stage chowned the tree to
+    0:0 — the default container user can't remove a root-owned subtree.
+    """
+    calls: list[list[str]] = []
+
+    def _rec(cmd: list[str], *args: object, **kwargs: object) -> _Ok:
+        calls.append(list(cmd))
+        return _Ok()
+
+    monkeypatch.setattr(subprocess, "run", _rec)
+
+    dest = "/home/node/.openclaw/extensions/mycelium/dist"
+    oc._stage_assets_in_container("gw", Path("/host/dist"), dest)
+
+    expected_rm = ["docker", "exec", "-u", "0", "gw", "rm", "-rf", dest]
+    assert expected_rm in calls, f"dest not wiped as root: {calls}"
+    rm_idx = calls.index(expected_rm)
+    cp_idx = next(i for i, c in enumerate(calls) if c[:2] == ["docker", "cp"])
+    assert rm_idx < cp_idx, f"wipe must precede docker cp: {calls}"
+
+
+def test_container_install_restarts_gateway_at_end(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """After all openclaw.json mutations the container install must force a clean
+    `docker restart` so the gateway converges to a healthy state — the chained
+    in-process restarts otherwise race ("config changed since last load") and
+    leave the container stopped.
+    """
+    plugin_src = tmp_path / "plugin"
+    (plugin_src / "dist").mkdir(parents=True)
+    (plugin_src / "dist" / "index.js").write_text("// built", encoding="utf-8")
+    monkeypatch.setattr(oc, "_resolve_asset", lambda _name: plugin_src)
+    monkeypatch.setattr(oc, "_check_openclaw_version", lambda container=None: None)
+    monkeypatch.setattr(oc, "_openclaw_container_home", lambda _container: "/home/node")
+    monkeypatch.setattr(oc, "_wait_container_healthy", lambda _container, timeout=30: None)
+    monkeypatch.setattr(oc, "_allow_plugin", lambda *a, **k: None)
+    monkeypatch.setattr(oc, "_install_openclaw_skill", lambda *a, **k: None)
+    monkeypatch.setattr(oc, "_stage_assets_in_container", lambda *a, **k: None)
+
+    calls: list[list[str]] = []
+
+    def _rec(cmd: list[str], *args: object, **kwargs: object) -> _Ok:
+        calls.append(list(cmd))
+        return _Ok()
+
+    monkeypatch.setattr(subprocess, "run", _rec)
+
+    oc._install_openclaw(container="gw", profile=None)
+
+    assert ["docker", "restart", "gw"] in calls, f"gateway not restarted at end: {calls}"
