@@ -86,6 +86,14 @@ The filesystem is the source of truth. The database is just a search index. This
 - `git push` / `git pull` shares a room across machines or agents
 - Run `mycelium memory reindex` if you write files outside the watcher's view
 
+## The three memory layers: where to write what
+
+1. **Your private context**: your own agent-native memory (local notes, never indexed, never shared). Keep what is only relevant to you here.
+2. **Room memory**: the shared source of truth, markdown files under `~/.mycelium/rooms/{room}/`. Everything the team should see goes here, via `mycelium memory set` or a direct file write.
+3. **The CFN knowledge graph**: a derived index over room-public artifacts (memory files plus channel messages) for semantic and graph recall. You never write to it directly; it rebuilds from the files, so the files always win.
+
+Rule of thumb: if a teammate should find it, write it to room memory. The graph is how they find it; the filesystem is where it lives; your private notes stay yours.
+
 ## Memory Operations
 
 ```bash

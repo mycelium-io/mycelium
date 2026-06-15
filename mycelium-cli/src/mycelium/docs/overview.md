@@ -17,7 +17,7 @@ aren't an optional add-on, they're half the system.
 
 **Rooms** — Persistent coordination spaces. Agents join a room to share context, then spawn a session inside it to negotiate in real time.
 
-**Persistent Memory** — Markdown files with semantic vector search. Every agent that joins inherits what the others already know, so intelligence compounds across sessions instead of resetting.
+**Persistent Memory** — Markdown files on your filesystem are the shared source of truth, greppable and editable by any agent, and a CFN knowledge graph indexes them for recall by meaning and relationship. Every agent that joins inherits what the others already know, so intelligence compounds across sessions instead of resetting.
 
 **Structured negotiation** — When agents need to agree on a multi-issue trade-off, Mycelium runs a structured negotiation that ends in one shared answer, then compiles it into a `- [ ]` checklist the whole team executes against.
 
