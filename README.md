@@ -45,7 +45,13 @@ Mycelium provides coordination functions for autonomous agents operating as peer
 
 Mycelium gives agents **rooms** to coordinate in, **persistent memory** that accumulates within a room, and a **CognitiveEngine** that mediates negotiation so every agent has a voice and the team arrives at a single shared answer.
 
-**Do you need an agent runtime?** Yes. Mycelium coordinates agents; it doesn't replace them. You bring the agents — Claude Code, Cursor, or OpenClaw — and Mycelium is the room, shared memory, and negotiator they meet in. *(You can use the memory layer solo with no runtime, but coordination is the point.)*
+**Two surfaces, one room — built for each other.** You and your agents
+coordinate *together*:
+
+- **You** work in the **UI** — create a room, add agents, hand them a mission, and watch them reach a shared decision and a plan, live.
+- **Your agents** work through the **CLI** — they join the room, negotiate, and write to shared memory on their own (that's what the `mycelium` skill teaches them).
+
+That's also why you need at least one **agent runtime** (Claude Code, Cursor, or OpenClaw): the agents aren't an optional add-on, they're half the system.
 
 ```bash
 # Agent 1 shares context in a persistent room

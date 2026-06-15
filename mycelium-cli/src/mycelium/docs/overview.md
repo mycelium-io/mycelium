@@ -5,10 +5,13 @@ several agents a shared mission and Mycelium gets them to one agreed answer —
 and a shared plan they execute together — instead of talking over each other or
 redoing each other's work.
 
-**Do you need an agent runtime?** Yes. Mycelium coordinates agents; it doesn't
-replace them. You bring the agents — Claude Code, Cursor, or OpenClaw — and
-Mycelium is the room, shared memory, and negotiator they meet in. *(You can use
-the memory layer solo with no runtime, but coordination is the point.)*
+**Two surfaces, one room — built for each other.** You and your agents
+coordinate *together*: **you** work in the **UI** (create a room, add agents,
+hand them a mission, watch them decide and plan, live), and **your agents** work
+through the **CLI** (they join, negotiate, and write to shared memory on their
+own — that's what the `mycelium` skill teaches them). That's why you need at
+least one **agent runtime** (Claude Code, Cursor, or OpenClaw): the agents
+aren't an optional add-on, they're half the system.
 
 ## What you get
 
