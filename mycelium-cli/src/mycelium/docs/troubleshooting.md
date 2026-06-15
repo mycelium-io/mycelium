@@ -130,7 +130,7 @@ mycelium room ls            # wrong active room?
 ### 7b. Agents Join a Session but Never Reach Consensus
 
 **Symptom**: `session join` works and agents appear in the session, but
-negotiation never produces a plan — or `session join` reports
+negotiation never produces a plan, or `session join` reports
 `CFN: not configured`.
 
 Negotiation has two prerequisites that memory/rooms don't:

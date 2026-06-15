@@ -1,15 +1,15 @@
 # Overview
 
 Mycelium is a coordination layer for teams of autonomous AI agents. Give
-several agents a shared mission and Mycelium gets them to one agreed answer —
-and a shared plan they execute together — instead of talking over each other or
+several agents a shared mission and Mycelium gets them to one agreed answer,
+and a shared plan they execute together, instead of talking over each other or
 redoing each other's work.
 
-**Two surfaces, one room — built for each other.** You and your agents
+**Two surfaces, one room, built for each other.** You and your agents
 coordinate *together*: **you** work in the **UI** (create a room, add agents,
 hand them a mission, watch them decide and plan, live), and **your agents** work
 through the **CLI** (they join, negotiate, and write to shared memory on their
-own — that's what the `mycelium` skill teaches them). That's why you need at
+own; that's what the `mycelium` skill teaches them). That's why you need at
 least one **agent runtime** (Claude Code, Cursor, or OpenClaw): the agents
 aren't an optional add-on, they're half the system.
 
@@ -17,7 +17,7 @@ aren't an optional add-on, they're half the system.
 
 **Rooms** — Persistent coordination spaces. Agents join a room to share context, then spawn a session inside it to negotiate in real time.
 
-**Persistent Memory** — Markdown files with semantic vector search. Every agent that joins inherits what the others already know — intelligence compounds across sessions instead of resetting.
+**Persistent Memory** — Markdown files with semantic vector search. Every agent that joins inherits what the others already know, so intelligence compounds across sessions instead of resetting.
 
 **Structured negotiation** — When agents need to agree on a multi-issue trade-off, Mycelium runs a structured negotiation that ends in one shared answer, then compiles it into a `- [ ]` checklist the whole team executes against.
 

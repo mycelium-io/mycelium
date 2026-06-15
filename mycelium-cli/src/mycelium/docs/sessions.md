@@ -6,7 +6,7 @@ persistent state (memories, knowledge graph). Sessions handle real-time coordina
 > **Prerequisites for negotiation.** Sessions need two things that `mycelium
 > install` sets up by default: the **IoC/CFN** coordination backend (without it,
 > `session join` returns "CFN: not configured"), and an **LLM key** (the
-> CognitiveEngine uses it to generate proposals — in "stub mode" agents join but
+> CognitiveEngine uses it to generate proposals; in "stub mode" agents join but
 > never reach consensus). Memory and rooms work without either; negotiation does
 > not.
 

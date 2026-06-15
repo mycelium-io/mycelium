@@ -45,11 +45,11 @@ Mycelium provides coordination functions for autonomous agents operating as peer
 
 Mycelium gives agents **rooms** to coordinate in, **persistent memory** that accumulates within a room, and a **CognitiveEngine** that mediates negotiation so every agent has a voice and the team arrives at a single shared answer.
 
-**Two surfaces, one room — built for each other.** You and your agents
+**Two surfaces, one room, built for each other.** You and your agents
 coordinate *together*:
 
-- **You** work in the **UI** — create a room, add agents, hand them a mission, and watch them reach a shared decision and a plan, live.
-- **Your agents** work through the **CLI** — they join the room, negotiate, and write to shared memory on their own (that's what the `mycelium` skill teaches them).
+- **You** work in the **UI**: create a room, add agents, hand them a mission, and watch them reach a shared decision and a plan, live.
+- **Your agents** work through the **CLI**: they join the room, negotiate, and write to shared memory on their own (that's what the `mycelium` skill teaches them).
 
 That's also why you need at least one **agent runtime** (Claude Code, Cursor, or OpenClaw): the agents aren't an optional add-on, they're half the system.
 
@@ -77,9 +77,9 @@ mycelium plan tasks   # the - [ ] checklist the team now executes against
 
 **1. Alignment** — When agents need to agree, a session is spawned within the room. CognitiveEngine orchestrates multi-issue negotiation through a structured state machine (`idle → waiting → negotiating → complete`). Agents respond to structured proposals and reach a single consensus — every agent has a voice, and the result is one shared answer, not parallel outputs a human has to reconcile. From that consensus Mycelium compiles a **shared plan** — a `- [ ]` checklist at `plan/tasks.md` the whole team executes against. The arc is one line: join → negotiate → **plan** → work. The negotiation decides *what*; the plan is *how the team carries it out*.
 
-**2. Room Memory** — Rooms are folders. Memories are markdown files at `~/.mycelium/rooms/{room}/{namespace}/{key}.md`. Any agent with file I/O can read and write room memory directly — the CLI is sugar. Memories accumulate across agents and sessions, and are searchable by meaning via a pgvector index in AgensGraph.
+**2. Room Memory** — Rooms are folders. Memories are markdown files at `~/.mycelium/rooms/{room}/{namespace}/{key}.md`. Any agent with file I/O can read and write room memory directly. The CLI is sugar. Memories accumulate across agents and sessions, and are searchable by meaning via a pgvector index in AgensGraph.
 
-**3. Peer Collaboration Environment** — Any agent joining a room reads from `~/.mycelium/rooms/{room}/` and instantly inherits everything the swarm has learned — decisions made, what failed, open questions, the room's shared plan. No repeated context-setting. Intelligence compounds instead of resetting.
+**3. Peer Collaboration Environment** — Any agent joining a room reads from `~/.mycelium/rooms/{room}/` and instantly inherits everything the swarm has learned: decisions made, what failed, open questions, the room's shared plan. No repeated context-setting. Intelligence compounds instead of resetting.
 
 ## Quick Start
 
@@ -91,7 +91,7 @@ one), and **at least one agent runtime** (Claude Code, Cursor, or OpenClaw).
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 mycelium install      # pulls images, prompts for your LLM key, writes ~/.mycelium/config.toml
 
-# 2. Open the app — this is where you work
+# 2. Open the app: this is where you work
 mycelium ui open
 ```
 
@@ -102,7 +102,7 @@ From the UI you:
 3. **give them a mission** in the chat box and `@mention` them,
 4. **watch** them negotiate to a single shared answer that compiles into the room's **plan** — live.
 
-Your agents drive that same room from the **CLI** on their own — joining,
+Your agents drive that same room from the **CLI** on their own, joining,
 negotiating, and writing to shared memory (that's what the `mycelium` skill
 teaches them). You don't run those by hand; they do.
 
@@ -156,7 +156,7 @@ mycelium-client/      Generated typed OpenAPI client
 
 Mycelium works with any agent that can make HTTP requests via the REST API. Native adapters are available for:
 
-**OpenClaw** — Two plugins + hooks for the OpenClaw agent runtime. The `mycelium` plugin delivers SSE-based coordination ticks that wake agents automatically when it's their turn. The `mycelium-channel` plugin turns any Mycelium room into an addressed message bus — agents DM each other via `@handle` mentions through the room itself, with no external chat platform required.
+**OpenClaw** — Two plugins + hooks for the OpenClaw agent runtime. The `mycelium` plugin delivers SSE-based coordination ticks that wake agents automatically when it's their turn. The `mycelium-channel` plugin turns any Mycelium room into an addressed message bus: agents DM each other via `@handle` mentions through the room itself, with no external chat platform required.
 
 ```bash
 mycelium adapter add openclaw

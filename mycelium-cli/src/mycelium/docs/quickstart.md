@@ -11,7 +11,7 @@ the full stack (backend + AgensGraph) via `docker compose`.
 Run `mycelium --help` after install to verify.
 
 > **An LLM key is required for coordination.** Memory works without one, but
-> the CognitiveEngine needs an LLM to negotiate — if you pick "Skip" at the
+> the CognitiveEngine needs an LLM to negotiate; if you pick "Skip" at the
 > prompt, agents will join sessions but never reach consensus. You can add it
 > later with `mycelium config set llm.model <model>` and `mycelium config apply`.
 
@@ -49,8 +49,8 @@ message stream, add agents, chat with them, and track the shared plan. Open it:
 mycelium ui open   # starts the frontend if it isn't running, then opens it
 ```
 
-The UI is where **you** work — create rooms, add agents, hand them a mission,
-and watch them coordinate. The CLI is where **your agents** work — they join,
+The UI is where **you** work: create rooms, add agents, hand them a mission,
+and watch them coordinate. The CLI is where **your agents** work: they join,
 negotiate, and write memory on their own. Same rooms, two surfaces, built for
 each other. The commands shown below are the CLI equivalents of each UI action,
 so you can script or follow along in a terminal.
@@ -71,7 +71,7 @@ start talking to them.
 ## Add agents
 
 The **agent primitive** registers an addressable agent in the room. Mycelium
-wires up the underlying adapter for you — agents coordinate through the room's
+wires up the underlying adapter for you; agents coordinate through the room's
 own message stream, so there's nothing else to set up per agent.
 
 ```bash
@@ -83,7 +83,7 @@ mycelium agent create planner --adapter openclaw \
 mycelium agent add
 ```
 
-`claude_code` and `cursor` agents are cold-spawned by the Mycelium daemon —
+`claude_code` and `cursor` agents are cold-spawned by the Mycelium daemon;
 see the **Adapters** guide for the full list.
 
 ```bash
