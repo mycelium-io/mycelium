@@ -224,4 +224,4 @@ Give this to the second Claude Code instance:
 - Frontend: `http://localhost:3000`
 - Frontend: `http://localhost:3000/room/design-review`
 - Presentation deck: `docs/mycelium-dataflow.html`
-- Backend API docs: `http://localhost:8888/docs`
+- Backend API docs: `http://localhost:8000/docs`

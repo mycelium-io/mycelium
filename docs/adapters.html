@@ -511,19 +511,19 @@ docker exec <span class="arg">&lt;container-name&gt;</span> openclaw status</cod
 
       <h2 id="api-docs">Interactive docs</h2>
       <p>When the backend is running, interactive API docs are available at:</p>
-      <pre><code>http://localhost:8888/docs</code></pre>
+      <pre><code>http://localhost:8000/docs</code></pre>
 
       <h2 id="api-example">Quick example</h2>
       <pre><code><span class="comment"># Write a memory</span>
-curl -X POST http://localhost:8888/api/memory \
+curl -X POST http://localhost:8000/api/memory \
   -H "Content-Type: application/json" \
   -d '{"room": "my-project", "key": "work/api", "value": "REST with OpenAPI client"}'
 
 <span class="comment"># Read it back</span>
-curl http://localhost:8888/api/memory/my-project/work/api
+curl http://localhost:8000/api/memory/my-project/work/api
 
 <span class="comment"># Semantic search</span>
-curl -X POST http://localhost:8888/api/memory/search \
+curl -X POST http://localhost:8000/api/memory/search \
   -H "Content-Type: application/json" \
   -d '{"room": "my-project", "query": "what was decided about the API"}'</code></pre>
     </section>

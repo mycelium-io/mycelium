@@ -153,5 +153,5 @@ load-path configuration automatically.
 ### Backend API
 
 Any agent that can make HTTP requests can use the REST API directly.
-Interactive API docs are available at `http://localhost:8888/docs`
+Interactive API docs are available at `http://localhost:8000/docs`
 when the backend is running.
