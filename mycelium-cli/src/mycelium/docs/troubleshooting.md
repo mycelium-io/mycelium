@@ -127,6 +127,26 @@ mycelium room ls            # wrong active room?
 
 ---
 
+### 7b. Agents Join a Session but Never Reach Consensus
+
+**Symptom**: `session join` works and agents appear in the session, but
+negotiation never produces a plan — or `session join` reports
+`CFN: not configured`.
+
+Negotiation has two prerequisites that memory/rooms don't:
+
+```bash
+mycelium status            # is an LLM key configured? (CE needs one to propose)
+grep -i ioc ~/.mycelium/.env   # was the stack installed with IoC/CFN enabled?
+```
+
+- **No LLM key** → the CognitiveEngine can't generate proposals. Add one (see
+  *LLM Not Configured* above) and restart: `mycelium down && mycelium up`.
+- **IoC/CFN disabled** → re-run `mycelium install` (interactive enables IoC by
+  default), or reinstall without `--no-ioc`.
+
+---
+
 ### 8. Container Name Conflicts
 
 **Symptom**: `container name "mycelium-db" is already in use`

@@ -45,6 +45,8 @@ Mycelium provides coordination functions for autonomous agents operating as peer
 
 Mycelium gives agents **rooms** to coordinate in, **persistent memory** that accumulates within a room, and a **CognitiveEngine** that mediates negotiation so every agent has a voice and the team arrives at a single shared answer.
 
+**Do you need an agent runtime?** Yes. Mycelium coordinates agents; it doesn't replace them. You bring the agents — Claude Code, Cursor, or OpenClaw — and Mycelium is the room, shared memory, and negotiator they meet in. *(You can use the memory layer solo with no runtime, but coordination is the point.)*
+
 ```bash
 # Agent 1 shares context in a persistent room
 mycelium memory set "position/julia" "I think we should use REST, not GraphQL" --handle julia-agent
@@ -69,35 +71,52 @@ mycelium plan tasks   # the - [ ] checklist the team now executes against
 
 **1. Alignment** — When agents need to agree, a session is spawned within the room. CognitiveEngine orchestrates multi-issue negotiation through a structured state machine (`idle → waiting → negotiating → complete`). Agents respond to structured proposals and reach a single consensus — every agent has a voice, and the result is one shared answer, not parallel outputs a human has to reconcile. From that consensus Mycelium compiles a **shared plan** — a `- [ ]` checklist at `plan/tasks.md` the whole team executes against. The arc is one line: join → negotiate → **plan** → work. The negotiation decides *what*; the plan is *how the team carries it out*.
 
-**2. Room Memory** — Rooms are folders. Memories are markdown files at `.mycelium/rooms/{room}/{namespace}/{key}.md`. Any agent with file I/O can read and write room memory directly — the CLI is sugar. Memories accumulate across agents and sessions, and are searchable by meaning via a pgvector index in AgensGraph.
+**2. Room Memory** — Rooms are folders. Memories are markdown files at `~/.mycelium/rooms/{room}/{namespace}/{key}.md`. Any agent with file I/O can read and write room memory directly — the CLI is sugar. Memories accumulate across agents and sessions, and are searchable by meaning via a pgvector index in AgensGraph.
 
-**3. Peer Collaboration Environment** — Any agent joining a room reads from `.mycelium/rooms/{room}/` and instantly inherits everything the swarm has learned — decisions made, what failed, open questions, the room's shared plan. No repeated context-setting. Intelligence compounds instead of resetting.
+**3. Peer Collaboration Environment** — Any agent joining a room reads from `~/.mycelium/rooms/{room}/` and instantly inherits everything the swarm has learned — decisions made, what failed, open questions, the room's shared plan. No repeated context-setting. Intelligence compounds instead of resetting.
 
 ## Quick Start
+
+You'll need **Docker**, an **LLM API key** (required for negotiation — agents
+can't reach consensus without one), and **at least one agent runtime** (Claude
+Code, Cursor, or OpenClaw).
 
 ```bash
 # 1. Install the CLI
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 
-# 2. Set up the stack (pulls images, prompts for LLM config, writes ~/.mycelium/config.toml)
+# 2. Set up the stack (pulls images, prompts for your LLM key, writes ~/.mycelium/config.toml)
 mycelium install
 
-# 3. Create a room and start sharing context
+# 3. Create a room — a shared space for agents, memory, and coordination
 mycelium room create my-project
 mycelium room use my-project
-mycelium memory set "context/goal" "Build a REST API for the new service"
+
+# 4. Add agents to the room (one per role)
+mycelium agent create planner --adapter openclaw \
+    --description "Sprint planner, optimizes for shipping speed"
+mycelium agent create builder --adapter openclaw \
+    --description "Implementer, optimizes for correctness"
+#    (claude-code and cursor agents work too — see Adapters below)
+
+# 5. Put them to work. When agents need to agree, CognitiveEngine negotiates a
+#    single shared answer and compiles it into the room's plan.
+mycelium agent invoke planner "draft a plan for the Q3 migration"
+mycelium plan tasks        # the shared - [ ] checklist the team executes against
+```
+
+Rooms are also persistent memory — anything you write is searchable by meaning
+and inherited by every agent that joins:
+
+```bash
 mycelium memory set "decisions/db" "AgensGraph with pgvector for embeddings"
-
-# Search what's been shared
 mycelium memory search "database decisions"
-
-# See everything in the room
 mycelium memory ls
 ```
 
 ## Architecture
 
-**Memories live on the filesystem** — rooms are folders, memories are markdown files with YAML frontmatter at `.mycelium/rooms/{room}/{key}.md`. This is the source of truth. Direct writes (cat, editor, agent file I/O) always work; run `mycelium reindex` to refresh the search index after bypassing the CLI.
+**Memories live on the filesystem** — rooms are folders, memories are markdown files with YAML frontmatter at `~/.mycelium/rooms/{room}/{key}.md`. This is the source of truth. Direct writes (cat, editor, agent file I/O) always work; run `mycelium reindex` to refresh the search index after bypassing the CLI.
 
 **AgensGraph** (PostgreSQL 16 fork) is the coordination and search backend:
 - Rooms, sessions, messages, subscriptions — coordination state
@@ -106,14 +125,14 @@ mycelium memory ls
 
 No external message broker, no separate vector DB, no Redis. One database.
 
-**Rooms are git-friendly** — commit `.mycelium/rooms/` to share context across machines. Agents on different machines pull the folder and inherit the room's full memory.
+**Rooms are git-friendly** — commit `~/.mycelium/rooms/` to share context across machines. Agents on different machines pull the folder and inherit the room's full memory.
 
 **Deployment modes** — by default everything runs on a single device (your laptop): backend, database, agents, and CLI all on `localhost`. That's the primary target and what `mycelium install` sets up out of the box. For small teams that want to share memory and coordination state, Mycelium also supports a hub-and-spoke mode: one machine runs the backend (the **hub**), other teammates run only the CLI + agents (**spokes**) pointing at it over HTTPS/SSE. `mycelium doctor` auto-detects which mode you're in based on `server.api_url`; pass `--mode hub` or `--mode spoke` to override. See [`docs/architecture.md`](mycelium-cli/src/mycelium/docs/architecture.md#deployment-modes) for details.
 
 Room folders use standard namespaces:
 
 ```
-.mycelium/rooms/{room}/
+~/.mycelium/rooms/{room}/
 ├── plan/         Shared checklist — compiled from negotiation consensus
 ├── decisions/    Why choices were made
 ├── status/       Current state of things
@@ -136,7 +155,7 @@ mycelium-client/      Generated typed OpenAPI client
 
 Mycelium works with any agent that can make HTTP requests via the REST API. Native adapters are available for:
 
-**OpenClaw** — Two plugins + hooks for the OpenClaw agent runtime. The `mycelium` plugin delivers SSE-based coordination ticks that wake agents automatically when it's their turn. The `mycelium-channel` plugin turns any Mycelium room into an addressed message bus — agents DM each other via `@handle` mentions without Discord, Slack, or any third-party chat platform.
+**OpenClaw** — Two plugins + hooks for the OpenClaw agent runtime. The `mycelium` plugin delivers SSE-based coordination ticks that wake agents automatically when it's their turn. The `mycelium-channel` plugin turns any Mycelium room into an addressed message bus — agents DM each other via `@handle` mentions through the room itself, with no external chat platform required.
 
 ```bash
 mycelium adapter add openclaw
@@ -151,7 +170,7 @@ openclaw approvals allowlist add --agent "*" "~/.local/bin/mycelium"
 openclaw gateway restart
 ```
 
-**Claude Code** — Lifecycle hooks capture tool use and context automatically. The mycelium skill provides memory and coordination commands.
+**Claude Code** — Installs the `mycelium` skill (`~/.claude/skills/mycelium/SKILL.md`), giving Claude Code memory and coordination commands via `/mycelium`. (On reinstall it also backs up `~/.claude/settings.json` and clears any stale hook wiring from earlier versions.)
 
 ```bash
 mycelium adapter add claude-code

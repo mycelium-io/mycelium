@@ -10,6 +10,11 @@ The installer sets up the CLI, prompts for your LLM provider, then brings up
 the full stack (backend + AgensGraph) via `docker compose`.
 Run `mycelium --help` after install to verify.
 
+> **An LLM key is required for coordination.** Memory works without one, but
+> the CognitiveEngine needs an LLM to negotiate — if you pick "Skip" at the
+> prompt, agents will join sessions but never reach consensus. You can add it
+> later with `mycelium config set llm.model <model>` and `mycelium config apply`.
+
 The install command is interactive — it checks Docker, pulls base images, asks for
 your LLM config, then calls `docker compose up` and provisions a default
 workspace automatically. No manual backend setup required.
@@ -63,9 +68,8 @@ start talking to them.
 ## Add agents
 
 The **agent primitive** registers an addressable agent in the room. Mycelium
-wires up the underlying adapter for you — there's no per-agent chat account or
-homeserver to configure; agents coordinate through the room's own message
-stream.
+wires up the underlying adapter for you — agents coordinate through the room's
+own message stream, so there's nothing else to set up per agent.
 
 ```bash
 # Greenfield — provision a brand-new agent
@@ -76,8 +80,8 @@ mycelium agent create planner --adapter openclaw \
 mycelium agent add
 ```
 
-`claude_code` and `cursor` agents are cold-spawned by the Mycelium daemon and
-need no chat platform at all — see the **Adapters** guide for the full list.
+`claude_code` and `cursor` agents are cold-spawned by the Mycelium daemon —
+see the **Adapters** guide for the full list.
 
 ```bash
 # See who's in the room
@@ -99,7 +103,7 @@ runs a structured negotiation. On consensus, the agreement compiles into the
 room's shared plan — visible in the **PLAN** tab in the UI, or from the CLI:
 
 ```bash
-mycelium plan ls          # the room's shared task list
+mycelium plan tasks       # the room's shared task list
 ```
 
 The result lands back in the same room stream — no need to go hunting for it in

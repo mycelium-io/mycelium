@@ -1,7 +1,7 @@
 # Plan
 
 A room's **plan** is the place to write down what the room is for and what's
-left to do. It lives in `.mycelium/rooms/{room}/plan/` as a small set of
+left to do. It lives in `~/.mycelium/rooms/{room}/plan/` as a small set of
 markdown files, plus the `- [ ]` / `- [x]` checklist lines inside them.
 
 Plan content is surfaced to every agent in the room — on every coordination

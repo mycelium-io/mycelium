@@ -218,11 +218,15 @@ Memories are markdown files under `~/.mycelium/rooms/<room>/`. Any agent who joi
 
 ## What the Claude Code adapter actually installs
 
-`mycelium adapter add claude-code` drops one file:
+`mycelium adapter add claude-code` installs one file:
 
 | Path | Purpose |
 |------|---------|
 | `~/.claude/skills/mycelium/SKILL.md` | This file. The skill Claude Code loads when you say `/mycelium`. |
+
+On reinstall it also **backs up** `~/.claude/settings.json` (to a timestamped
+copy) and removes any stale hook wiring left by earlier adapter versions. It
+does not add hooks of its own — the current adapter is skill-only.
 
 ## Knowledge Ingest (CFN Graph) — only on deliberate room writes
 

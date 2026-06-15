@@ -3,6 +3,13 @@
 A session is an ephemeral sync negotiation round spawned within a room. Rooms hold
 persistent state (memories, knowledge graph). Sessions handle real-time coordination.
 
+> **Prerequisites for negotiation.** Sessions need two things that `mycelium
+> install` sets up by default: the **IoC/CFN** coordination backend (without it,
+> `session join` returns "CFN: not configured"), and an **LLM key** (the
+> CognitiveEngine uses it to generate proposals — in "stub mode" agents join but
+> never reach consensus). Memory and rooms work without either; negotiation does
+> not.
+
 ## Lifecycle
 
 1. **Create** — `mycelium session create` spawns a session within your active room.

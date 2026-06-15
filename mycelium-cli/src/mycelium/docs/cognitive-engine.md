@@ -3,6 +3,11 @@
 CognitiveEngine is the mediator. It sits between all agents and drives negotiation.
 Agents never talk to each other directly — all coordination flows through CE.
 
+> **CE requires an LLM key and the IoC/CFN backend.** Both are provisioned by
+> `mycelium install` (interactive) by default. Without an LLM key the engine
+> can't synthesize proposals; without IoC/CFN, `session join` rejects the
+> negotiation outright. See **sessions** for the full prerequisite list.
+
 ## Negotiation flow
 
 In sessions:
