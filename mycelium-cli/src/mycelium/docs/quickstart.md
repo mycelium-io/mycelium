@@ -49,8 +49,11 @@ message stream, add agents, chat with them, and track the shared plan. Open it:
 mycelium ui open   # starts the frontend if it isn't running, then opens it
 ```
 
-Everything below can be driven from the UI or the CLI — they act on the same
-rooms. The commands are shown so you can script or follow along in a terminal.
+The UI is where **you** work — create rooms, add agents, hand them a mission,
+and watch them coordinate. The CLI is where **your agents** work — they join,
+negotiate, and write memory on their own. Same rooms, two surfaces, built for
+each other. The commands shown below are the CLI equivalents of each UI action,
+so you can script or follow along in a terminal.
 
 ## Create a room
 

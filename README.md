@@ -83,41 +83,36 @@ mycelium plan tasks   # the - [ ] checklist the team now executes against
 
 ## Quick Start
 
-You'll need **Docker**, an **LLM API key** (required for negotiation — agents
-can't reach consensus without one), and **at least one agent runtime** (Claude
-Code, Cursor, or OpenClaw).
+You'll need **Docker**, an **LLM API key** (agents can't negotiate without
+one), and **at least one agent runtime** (Claude Code, Cursor, or OpenClaw).
 
 ```bash
-# 1. Install the CLI
+# 1. Install the CLI and bring up the stack
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
+mycelium install      # pulls images, prompts for your LLM key, writes ~/.mycelium/config.toml
 
-# 2. Set up the stack (pulls images, prompts for your LLM key, writes ~/.mycelium/config.toml)
-mycelium install
-
-# 3. Create a room — a shared space for agents, memory, and coordination
-mycelium room create my-project
-mycelium room use my-project
-
-# 4. Add agents to the room (one per role)
-mycelium agent create planner --adapter openclaw \
-    --description "Sprint planner, optimizes for shipping speed"
-mycelium agent create builder --adapter openclaw \
-    --description "Implementer, optimizes for correctness"
-#    (claude-code and cursor agents work too — see Adapters below)
-
-# 5. Put them to work. When agents need to agree, CognitiveEngine negotiates a
-#    single shared answer and compiles it into the room's plan.
-mycelium agent invoke planner "draft a plan for the Q3 migration"
-mycelium plan tasks        # the shared - [ ] checklist the team executes against
+# 2. Open the app — this is where you work
+mycelium ui open
 ```
 
-Rooms are also persistent memory — anything you write is searchable by meaning
-and inherited by every agent that joins:
+From the UI you:
+
+1. **create a room** — a shared space for agents, memory, and the plan,
+2. **add agents** to it (one per role),
+3. **give them a mission** in the chat box and `@mention` them,
+4. **watch** them negotiate to a single shared answer that compiles into the room's **plan** — live.
+
+Your agents drive that same room from the **CLI** on their own — joining,
+negotiating, and writing to shared memory (that's what the `mycelium` skill
+teaches them). You don't run those by hand; they do.
+
+Prefer to script the human side too? Every UI action has a CLI equivalent:
 
 ```bash
-mycelium memory set "decisions/db" "AgensGraph with pgvector for embeddings"
-mycelium memory search "database decisions"
-mycelium memory ls
+mycelium room create my-project && mycelium room use my-project
+mycelium agent create planner --adapter openclaw --description "Sprint planner"
+mycelium agent invoke planner "draft a plan for the Q3 migration"
+mycelium plan tasks   # the shared - [ ] checklist the team executes against
 ```
 
 ## Architecture
