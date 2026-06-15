@@ -351,6 +351,31 @@ mycelium init --api-url http://<correct-hub-ip>:8000
 All of these are written by `mycelium config apply` from the matching
 `runtime.*` config keys — don't edit `.env` by hand.
 
+### Agent environment variables
+
+Read by the CLI and adapters at runtime to identify the agent and locate the backend:
+
+| Variable | Description |
+|----------|-------------|
+| `MYCELIUM_API_URL` | Backend API URL (default: `http://localhost:8000`) |
+| `MYCELIUM_AGENT_HANDLE` | This agent's identity handle |
+| `MYCELIUM_ROOM` | Active room name |
+| `MYCELIUM_WORKSPACE_ID` | CFN workspace UUID, required for knowledge ingest |
+| `MYCELIUM_MAS_ID` | CFN MAS UUID, required for knowledge ingest |
+
+### Knowledge-ingest cost controls
+
+Overrides for `[knowledge_ingest]` in `~/.mycelium/config.toml`. Every key below
+has a matching env var for ephemeral changes (no config edit needed). Forwarding
+to the CFN graph is off by default.
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `MYCELIUM_INGEST_ENABLED` | `true` | Master kill switch. `0`/`false` short-circuits every ingest at the backend gate (no concept extraction, no CFN spend) and the endpoint returns 200 with a disabled marker. |
+| `MYCELIUM_INGEST_MIN_CONTENT_CHARS` | `32` | Skip ingest for trivially short content ("ack", emoji-only). `0` disables the gate. |
+| `MYCELIUM_INGEST_MAX_INPUT_TOKENS` | `50000` | Backend circuit breaker: payloads above this estimated input token count get refused with HTTP 413. `0` disables. |
+| `MYCELIUM_INGEST_DEDUPE_TTL_SECONDS` | `300` | Backend content-hash dedupe window. Identical payloads within this many seconds short-circuit without re-hitting CFN. `0` disables dedupe. |
+
 ---
 
 ## Log Locations
