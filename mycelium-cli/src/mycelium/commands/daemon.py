@@ -116,7 +116,7 @@ def status(ctx: typer.Context) -> None:
 
 @doc_ref(
     usage="mycelium daemon subscribe <room>",
-    desc="Add a room to the daemon's SSE subscription list and restart it.",
+    desc="Add a room to the daemon's SSE subscription list and reload it.",
     group="daemon",
 )
 @app.command("subscribe")
@@ -138,7 +138,7 @@ def subscribe(
         cfg.rooms.append(room)
         cfg.save()
         console.print(f"[green]Added[/green] {room} to daemon subscriptions.")
-        _restart_service_quiet()
+        _reload_daemon_quiet()
         console.print("[dim]Reloaded daemon. Verify with: mycelium daemon status[/dim]")
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
@@ -165,7 +165,7 @@ def unsubscribe(
         cfg.rooms.remove(room)
         cfg.save()
         console.print(f"[green]Removed[/green] {room} from daemon subscriptions.")
-        _restart_service_quiet()
+        _reload_daemon_quiet()
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)
@@ -262,7 +262,14 @@ def logs(
 def restart(ctx: typer.Context) -> None:
     """Restart the daemon service via the platform's service manager."""
     try:
-        _restart_service_quiet(verbose=True)
+        from mycelium.daemon.install import restart_daemon_service
+
+        restarted = restart_daemon_service(verbose=True)
+        if not restarted:
+            console.print(
+                "[yellow]Daemon service not installed.[/yellow]\n"
+                "  Install with: mycelium adapter add claude-code --step=daemon"
+            )
         console.print("[dim]Verify with: mycelium daemon status[/dim]")
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
@@ -309,17 +316,16 @@ def run(
 # ── service-manager helpers ──────────────────────────────────────────────────
 
 
-def _restart_service_quiet(verbose: bool = False) -> None:
-    """Reload the daemon via SIGHUP so it picks up config changes.
+def _reload_daemon_quiet(*, verbose: bool = False) -> None:
+    """Hot-reload the daemon via SIGHUP (rooms + handles from ``daemon.toml``).
 
-    Thin wrapper around :func:`mycelium.daemon.install.reload_daemon_service`
-    so command modules don't each carry their own copy of the signal/systemctl
-    plumbing. Silent no-op when the service isn't installed — callers can use
-    it as a "kick the daemon" primitive without first checking install state.
+    Used by subscribe/unsubscribe. ``agent create``/``rm`` call
+    :func:`mycelium.daemon.install.reload_daemon_service` directly for
+    cold-spawn adapters — no user action needed there.
     """
     from mycelium.daemon.install import reload_daemon_service
 
-    reloaded = reload_daemon_service(verbose=False)
+    reloaded = reload_daemon_service(verbose=verbose)
     if not reloaded and verbose:
         console.print(
             "[yellow]Daemon service not installed.[/yellow]\n"

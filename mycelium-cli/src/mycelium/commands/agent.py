@@ -338,10 +338,9 @@ def _persist_and_describe(
     _write_manifest(config, room_name, manifest, created_by=handle_flag)
     # Cold-spawn adapters (claude_code, cursor) need the daemon to
     # re-read ``daemon.toml`` to pick up the newly-claimed handle —
-    # otherwise the agent appears registered but mentions silently drop
-    # until the next manual ``mycelium daemon restart``. No-op when the
-    # daemon service isn't installed on this host (e.g. openclaw-only
-    # boxes, or before ``--step=daemon`` ran).
+    # otherwise the agent appears registered but mentions silently drop.
+    # SIGHUP reload is issued here automatically; no-op when the daemon
+    # service isn't installed (e.g. openclaw-only boxes).
     if getattr(impl, "lifecycle", None) == "cold_spawn":
         from mycelium.daemon.install import reload_daemon_service
 
