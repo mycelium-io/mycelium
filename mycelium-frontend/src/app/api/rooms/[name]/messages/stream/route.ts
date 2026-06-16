@@ -1,23 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
-
-function getBackendUrl(): string {
-  if (process.env.MYCELIUM_INTERNAL_API_URL) return process.env.MYCELIUM_INTERNAL_API_URL;
-  try {
-    const text = readFileSync(join(homedir(), ".mycelium", "config.toml"), "utf8");
-    const m =
-      text.match(/\[server\][\s\S]*?\n\s*api_url\s*=\s*"([^"]+)"/) ??
-      text.match(/^\s*api_url\s*=\s*"([^"]+)"/m);
-    if (m) return m[1];
-  } catch {
-    /* fall through */
-  }
-  return "http://localhost:8000";
-}
+import { getBackendUrl } from "@/lib/backend";
 
 export async function GET(
   _req: Request,
