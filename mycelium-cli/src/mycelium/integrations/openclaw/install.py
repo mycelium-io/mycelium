@@ -246,6 +246,17 @@ def _write_container_json(container: str, path: str, data: dict) -> None:
 # logical package). OpenClaw still expects each concern in its canonical
 
 
+def _plugin_copy_ignore(_src: str, names: list[str]) -> list[str]:
+    """shutil.copytree ignore filter for staging the plugin into an extension dir.
+
+    Drops dev-only files but KEEPS dist/: it's the committed, compiled plugin and
+    openclaw validates plugins.entries.mycelium against the extension dir on
+    reinstall. Excluding dist/ here would fail that validation ("extension entry
+    not found: dist/index.js") before the build/install could repopulate it.
+    """
+    return [n for n in names if n in ("node_modules", "test", "package-lock.json")]
+
+
 def _install_openclaw(
     verbose: bool = False,
     profile: str | None = None,
@@ -290,15 +301,17 @@ def _install_openclaw(
             )
 
     def _build_plugin(plugin_dir: Path) -> None:
-        """Run npm install + npm run build in the plugin directory.
+        """Refresh the plugin's compiled dist/ via npm install + npm run build.
 
-        OpenClaw 2026.5+ rejects TypeScript entry points — the plugin must be
-        compiled to dist/index.js before install.  Best-effort: warn on failure
-        so a missing npm doesn't hard-block the install on older OpenClaw.
+        OpenClaw 2026.5+ requires a compiled dist/index.js (it rejects TypeScript
+        entry points). The compiled dist/ is committed and ships in the wheel, so
+        this is a best-effort *refresh* for contributors who edited the source —
+        a missing npm just warns and falls back to the shipped dist/ rather than
+        hard-blocking the install.
 
         Used by both the host-native and container install paths (the container
         gateway is just as strict about source-only plugins, so it needs the
-        same build step before staging).
+        same compiled dist/ before staging).
         """
         for npm_cmd in (
             ["npm", "install", "--prefer-offline", "--silent"],
@@ -467,9 +480,6 @@ def _install_openclaw(
     # channel is absent when a user already has `channels.mycelium-room` set.
     # Copying into place first keeps validation happy; openclaw's own install
     # step becomes a no-op on matching files.
-    def _plugin_ignore(_src: str, names: list[str]) -> list[str]:
-        return [n for n in names if n in ("node_modules", "test", "dist", "package-lock.json")]
-
     if reinstall:
         state_dir = _openclaw_state_dir(profile)
         targets: list[tuple[Path, Path]] = [
@@ -484,7 +494,7 @@ def _install_openclaw(
                     typer.echo(f"  refreshing {dst}")
                 shutil.rmtree(dst, ignore_errors=True)
             dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(str(src), str(dst), ignore=_plugin_ignore)
+            shutil.copytree(str(src), str(dst), ignore=_plugin_copy_ignore)
 
         # Clean up hooks that earlier versions installed.
         for stale in _OPENCLAW_STALE_HOOKS:
@@ -495,10 +505,10 @@ def _install_openclaw(
                 shutil.rmtree(stale_path, ignore_errors=True)
 
     plugin_src = _resolve_asset(_MYCELIUM_PLUGIN_SRC)
-    # Always build in the source tree before handing it to openclaw — openclaw
-    # plugins install reads from this path, and 2026.5+ rejects entries without
-    # a compiled dist/index.js. (Previously the reinstall path built in the
-    # destination but still installed from the unbuilt source.)
+    # Refresh the compiled dist/ in the source tree before handing it to openclaw
+    # (openclaw plugins install reads from this path, and 2026.5+ requires a
+    # compiled dist/index.js). The committed dist/ already satisfies this, so on
+    # a machine without npm the shipped artifact is used as-is.
     _build_plugin(plugin_src)
 
     # Stash an existing channels.mycelium-room block before install — openclaw
