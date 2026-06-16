@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>mycelium — Docs</title>
-<meta name="description" content="Coordination layer for multi-agent systems. Semantic negotiation, persistent memory, collective intelligence.">
+<meta name="description" content="Coordination layer for multi-agent systems. Install and run your first multi-agent coordination flow: room, agents, negotiation, plan.">
 <meta property="og:title" content="mycelium — Docs">
-<meta property="og:description" content="Coordination layer for multi-agent systems. Semantic negotiation, persistent memory, collective intelligence.">
+<meta property="og:description" content="Coordination layer for multi-agent systems. Install and run your first multi-agent coordination flow: room, agents, negotiation, plan.">
 <meta property="og:image" content="https://mycelium-io.github.io/mycelium/og.png">
 <meta property="og:url" content="https://mycelium-io.github.io/mycelium/index.html">
 <meta property="og:type" content="website">
@@ -34,7 +34,8 @@
 </nav>
 <nav class="sectionnav">
   <div class="sectionnav-inner">
-    <a href="index.html" class="active"><span class="square-dot"></span>LEARN</a>
+    <a href="index.html" class="active"><span class="square-dot"></span>GET STARTED</a>
+    <a href="concepts.html" class=""><span class="square-dot"></span>CONCEPTS</a>
     <a href="adapters.html" class=""><span class="square-dot"></span>ADAPTERS</a>
     <a href="reference.html" class=""><span class="square-dot"></span>REFERENCE</a>
     <div class="sectionnav-right">
@@ -49,20 +50,6 @@
       <div class="nav-section-label">Get Started</div>
       <a href="#overview" class="nav-link sub">Overview</a>
       <a href="#quickstart" class="nav-link sub">Quick Start</a>
-    </div>
-    <div class="nav-section">
-      <div class="nav-section-label">Concepts</div>
-      <a href="#rooms" class="nav-link sub">Rooms</a>
-      <a href="#sessions" class="nav-link sub">Sessions</a>
-      <a href="#memory" class="nav-link sub">Memory</a>
-      <a href="#plan" class="nav-link sub">Plan</a>
-      <a href="#cognitive-engine" class="nav-link sub">CognitiveEngine</a>
-      <a href="#knowledge-graph" class="nav-link sub">Knowledge Graph</a>
-    </div>
-    <div class="nav-section">
-      <div class="nav-section-label">Guides</div>
-      <a href="#structured-memory" class="nav-link sub">Structured Memory</a>
-      <a href="#hub-and-spoke" class="nav-link sub">Hub &amp; Spoke</a>
     </div>
   </nav>
 
@@ -148,32 +135,15 @@
 
 <section class="doc-section" id="quickstart">
       <!-- keep -->
-      <h2 id="install">Install</h2>
-
-      <div class="install-tabs">
-        <button class="install-tab active" onclick="setInstallTab('curl',this)">curl</button>
-        <button class="install-tab" onclick="setInstallTab('brew',this)">brew</button>
-        <button class="install-tab" onclick="setInstallTab('clawhub',this)">clawhub</button>
-      </div>
-      <div class="install-block">
-        <pre><code id="install-cmd">curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash</code></pre>
-        <button class="install-copy-btn" onclick="copyInstallCmd(this)" title="Copy">
-          <i data-lucide="copy"></i>
-        </button>
-      </div>
-
-      <div class="callout callout-info">
+      <h1>Quick Start</h1>
+      <h2 id="quickstart-install">Install</h2>
+      <pre><code>curl <span class="flag">-fsSL</span> https://mycelium-io.github.io/mycelium/install.sh | bash</code></pre>
+      <p>The installer sets up the CLI, prompts for your LLM provider, then brings up the full stack (backend + AgensGraph) via <code>docker compose</code>. Run <code>mycelium --help</code> after install to verify.</p>
+      <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body">The installer sets up the CLI, prompts for your LLM provider, then brings up
-        the full stack (backend + AgensGraph) via <code>docker compose</code>.
-        Run <code>mycelium --help</code> after install to verify.</div>
+        <div class="callout-body"><strong>An LLM key is required for coordination.</strong> Memory works without one, but the CognitiveEngine needs an LLM to negotiate; if you pick &quot;Skip&quot; at the prompt, agents will join sessions but never reach consensus. You can add it later with <code>mycelium config set llm.model &lt;model&gt;</code> and <code>mycelium config apply</code>.</div>
       </div>
-
-      <p>
-        The install command is interactive — it checks Docker, pulls base images, asks for
-        your LLM config, then calls <code>docker compose up</code> and provisions a default
-        workspace automatically. No manual backend setup required.
-      </p>
+      <p>The install command is interactive — it checks Docker, pulls base images, asks for your LLM config, then calls <code>docker compose up</code> and provisions a default workspace automatically. No manual backend setup required.</p>
       <pre><code><span class="comment"># What mycelium install does:</span>
 <span class="comment">#  1. Check Docker + disk space</span>
 <span class="comment">#  2. Pull base images (postgres, AgensGraph) in the background</span>
@@ -185,71 +155,39 @@
 
 <span class="cmd">mycelium install</span></code></pre>
       <p>Already installed? Use these commands instead:</p>
-      <pre><code><span class="cmd">mycelium upgrade</span>   <span class="comment"># update the CLI binary</span>
-<span class="cmd">mycelium pull</span>      <span class="comment"># pull latest images and restart services</span>
-<span class="cmd">mycelium doctor</span>    <span class="comment"># diagnose and fix configuration issues</span></code></pre>
-      <h2 id="open-the-ui">Open the UI</h2>
-      <p>
-        The Mycelium room view is where you do everything from here — watch the live
-        message stream, add agents, chat with them, and track the shared plan. Open it:
-      </p>
-      <pre><code><span class="cmd">mycelium ui open</span>   <span class="comment"># starts the frontend if it isn&#x27;t running, then opens it</span></code></pre>
-      <div class="callout callout-info">
-        <div class="callout-bar"></div>
-        <div class="callout-body">Everything below can be driven from the UI or the CLI — they act on the same
-        rooms. The commands are shown so you can script or follow along in a terminal.</div>
-      </div>
-
-      <h2 id="create-a-room">Create a room</h2>
+      <pre><code><span class="cmd">mycelium upgrade</span>   # update the CLI binary
+<span class="cmd">mycelium pull</span>      # pull latest images and restart services
+<span class="cmd">mycelium doctor</span>    # diagnose and fix configuration issues</code></pre>
+      <h2 id="quickstart-open-the-ui">Open the UI</h2>
+      <p>The Mycelium room view is where you do everything from here — watch the live message stream, add agents, chat with them, and track the shared plan. Open it:</p>
+      <pre><code><span class="cmd">mycelium ui open</span>   # starts the frontend if it isn&#x27;t running, then opens it</code></pre>
+      <p>The UI is where <strong>you</strong> work: create rooms, add agents, hand them a mission, and watch them coordinate. The CLI is where <strong>your agents</strong> work: they join, negotiate, and write memory on their own. Same rooms, two surfaces, built for each other. The commands shown below are the CLI equivalents of each UI action, so you can script or follow along in a terminal.</p>
+      <h2 id="quickstart-create-a-room">Create a room</h2>
       <p>A room is a persistent namespace for memory, agents, and coordination:</p>
       <pre><code><span class="comment"># Create a room and make it active</span>
 <span class="cmd">mycelium room create</span> my-project
 <span class="cmd">mycelium room use</span> my-project</code></pre>
       <p>Open <code>my-project</code> in the UI — it&#x27;s empty for now. Next we&#x27;ll add agents and start talking to them.</p>
-
-      <h2 id="add-agents">Add agents</h2>
-      <p>
-        The <strong>agent primitive</strong> registers an addressable agent in the room.
-        Mycelium wires up the underlying adapter for you — there&#x27;s no per-agent chat
-        account or homeserver to configure; agents coordinate through the room&#x27;s own
-        message stream.
-      </p>
+      <h2 id="quickstart-add-agents">Add agents</h2>
+      <p>The <strong>agent primitive</strong> registers an addressable agent in the room. Mycelium wires up the underlying adapter for you; agents coordinate through the room&#x27;s own message stream, so there&#x27;s nothing else to set up per agent.</p>
       <pre><code><span class="comment"># Greenfield — provision a brand-new agent</span>
-<span class="cmd">mycelium agent create</span> planner <span class="flag">--adapter</span> openclaw <span class="flag">--description</span> <span class="str">&quot;Sprint planner, optimizes for shipping speed&quot;</span>
+<span class="cmd">mycelium agent create</span> planner <span class="flag">--adapter</span> openclaw \
+    <span class="flag">--description</span> <span class="str">&quot;Sprint planner, optimizes for shipping speed&quot;</span>
 
 <span class="comment"># Brownfield — adopt agents that already exist in your OpenClaw gateway</span>
-<span class="cmd">mycelium agent add</span>
-
-<span class="comment"># See who&#x27;s in the room</span>
+<span class="cmd">mycelium agent add</span></code></pre>
+      <p><code>claude_code</code> and <code>cursor</code> agents are cold-spawned by the Mycelium daemon; see the <strong>Adapters</strong> guide for the full list.</p>
+      <pre><code><span class="comment"># See who&#x27;s in the room</span>
 <span class="cmd">mycelium agent ls</span></code></pre>
-      <p>
-        <code>claude_code</code> and <code>cursor</code> agents are cold-spawned by the
-        Mycelium daemon and need no chat platform at all — see the
-        <a href="adapters.html">Adapters</a> guide for the full list.
-      </p>
-
-      <h2 id="coordinate">Coordinate</h2>
-      <p>
-        In the UI room view, type in the chat box and <strong><code>@</code>-mention</strong>
-        an agent — it replies in the live message stream. The same message can be sent
-        from the CLI:
-      </p>
+      <h2 id="quickstart-coordinate">Coordinate</h2>
+      <p>In the UI room view, type in the chat box and <strong><code>@</code>-mention</strong> an agent — it replies in the live message stream. The same message can be sent from the CLI:</p>
       <pre><code><span class="comment"># Send an @-addressed message to a registered agent</span>
 <span class="cmd">mycelium agent invoke</span> planner <span class="str">&quot;draft a plan for the Q3 migration&quot;</span></code></pre>
-      <p>
-        When you ask multiple agents to reach a decision, Mycelium&#x27;s CognitiveEngine
-        runs a structured negotiation. On consensus, the agreement compiles into the
-        room&#x27;s shared plan — visible in the <strong>PLAN</strong> tab in the UI, or from
-        the CLI:
-      </p>
-      <pre><code><span class="cmd">mycelium plan ls</span>          <span class="comment"># the room&#x27;s shared task list</span></code></pre>
+      <p>When you ask multiple agents to reach a decision, Mycelium&#x27;s CognitiveEngine runs a structured negotiation. On consensus, the agreement compiles into the room&#x27;s shared plan — visible in the <strong>PLAN</strong> tab in the UI, or from the CLI:</p>
+      <pre><code><span class="cmd">mycelium plan tasks</span>       # the room&#x27;s shared task list</code></pre>
       <p>The result lands back in the same room stream — no need to go hunting for it in a separate chat.</p>
-
-      <h2 id="share-memory">Share memory</h2>
-      <p>
-        Rooms are also persistent memory. Anything you write is searchable by meaning
-        and visible to every agent in the room:
-      </p>
+      <h2 id="quickstart-share-memory">Share memory</h2>
+      <p>Rooms are also persistent memory. Anything you write is searchable by meaning and visible to every agent in the room:</p>
       <pre><code><span class="comment"># Share context</span>
 <span class="cmd">mycelium memory set</span> <span class="str">&quot;decisions/db&quot;</span> <span class="str">&quot;PostgreSQL with pgvector&quot;</span>
 <span class="cmd">mycelium memory set</span> <span class="str">&quot;decisions/api&quot;</span> <span class="str">&quot;REST with generated OpenAPI client&quot;</span>
@@ -260,627 +198,10 @@
 <span class="comment"># Browse the namespace</span>
 <span class="cmd">mycelium memory ls</span>
 <span class="cmd">mycelium memory ls</span> decisions/</code></pre>
-      <p>Now try a session — two agents negotiating a plan:</p>
-      <pre><code><span class="comment"># Terminal 1 — agent julia</span>
-<span class="cmd">mycelium room create</span> sprint-plan
-<span class="cmd">mycelium session create</span> <span class="flag">-r</span> sprint-plan
-<span class="cmd">mycelium session join</span> <span class="flag">--handle</span> julia-agent <span class="flag">-m</span> <span class="str">&quot;Prioritize the database migration first&quot;</span> <span class="flag">-r</span> sprint-plan
-<span class="cmd">mycelium session await</span> <span class="flag">--handle</span> julia-agent <span class="flag">-r</span> sprint-plan
-
-<span class="comment"># Terminal 2 — agent selina</span>
-<span class="cmd">mycelium session join</span> <span class="flag">--handle</span> selina-agent <span class="flag">-m</span> <span class="str">&quot;Focus on frontend polish, backend is solid&quot;</span> <span class="flag">-r</span> sprint-plan
-<span class="cmd">mycelium session await</span> <span class="flag">--handle</span> selina-agent <span class="flag">-r</span> sprint-plan
-
-<span class="comment"># CognitiveEngine runs negotiation — await returns ticks with actions</span></code></pre>
-    </section>
-
-    <hr class="divider">
-
-    <section class="doc-section" id="rooms">
-      <h1>Rooms</h1>
-      <p>A room is a persistent coordination namespace. All memories, sessions, and messages are scoped to a room. A room IS its namespace — there&#x27;s no separation between the two.</p>
-      <p>Rooms hold persistent state (memories, knowledge graph). When agents need to negotiate in real time, they spawn <strong>sessions</strong> within a room. Sessions are ephemeral sync negotiation rounds; the room outlives them.</p>
-      <h2 id="rooms-rooms-are-directories">Rooms are Directories</h2>
-      <p>Each room maps to a directory at <code>~/.mycelium/rooms/{room_name}/</code>. Standard subdirectories are created automatically:</p>
-      <pre><code>~/.mycelium/rooms/design-review/
-  decisions/   context/   status/    plan/
-  work/        procedures/   log/   failed/</code></pre>
-      <p>The <code>plan/</code> subdir holds the room&#x27;s plan — a free-form set of markdown files plus the <code>- [ ]</code> / <code>- [x]</code> checklist lines those files contain. <code>plan/title.md</code> holds the room&#x27;s display title (shown italicised above room activity in the UI). The rest are arbitrary <code>plan/{slug}.md</code> files containing prose and tasks. See <a href="#"><code>mycelium plan</code></a> for read/write commands and <code>plan task add|done|undo</code> for checkbox edits.</p>
-      <p>You can browse, edit, or git-track these directories directly. The backend keeps its search index in sync via startup scans and file watching.</p>
-      <h2 id="rooms-session-state-machine">Session State Machine</h2>
-      <p>Sessions spawned within rooms follow a state machine:</p>
-      <pre><code>idle → waiting → negotiating → complete
-          ↑         ↓
-      (join window fires)</code></pre>
-      <p>Once <code>complete</code>, the consensus is compiled into the room&#x27;s shared plan (<code>plan/tasks.md</code>) — a <code>- [ ]</code> checklist the team works from. The arc is <code>join → negotiate → plan → work</code>; the room and its plan outlive the session.</p>
-    </section>
-
-    <hr class="divider">
-
-    <section class="doc-section" id="sessions">
-      <h1>Sessions</h1>
-      <p>A session is an ephemeral sync negotiation round spawned within a room. Rooms hold persistent state (memories, knowledge graph). Sessions handle real-time coordination.</p>
-      <h2 id="sessions-lifecycle">Lifecycle</h2>
-      <ol class="steps">
-        <li><strong>Create</strong> — <code>mycelium session create</code> spawns a session within your active room.</li>
-        <li><strong>Join</strong> — Agents join with <code>mycelium session join -m &quot;your position&quot;</code>. The first join starts a 60-second window for others to join.</li>
-        <li><strong>Await</strong> — <code>mycelium session await</code> blocks until the CognitiveEngine has an action for your agent (propose, respond, or done).</li>
-        <li><strong>Negotiate</strong> — Agents propose and respond in structured rounds mediated by the CognitiveEngine.</li>
-        <li><strong>Complete</strong> — The session reaches consensus. The agreement is compiled into the room&#x27;s <a href="#plan">shared plan</a> (<code>plan/tasks.md</code>); the session is done, the room and its plan persist.</li>
-      </ol>
-      <p>The arc doesn&#x27;t stop at consensus — it flows into work: <strong>join → negotiate → plan → work</strong>. A consensus decides *what*; the plan is *how the team carries it out*.</p>
-      <h2 id="sessions-state-machine">State Machine</h2>
-      <pre><code>idle → waiting → negotiating → complete
-          ↑         ↓
-      (first join)  (CE tick-0)</code></pre>
-      <ul>
-        <li><strong>idle</strong> — Session created, no agents yet.</li>
-        <li><strong>waiting</strong> — At least one agent joined. 60-second window for others.</li>
-        <li><strong>negotiating</strong> — CognitiveEngine is running the NegMAS pipeline.</li>
-        <li><strong>complete</strong> — Consensus reached and compiled into the room&#x27;s <code>plan/tasks.md</code>. Agents pick up the shared checklist and work it.</li>
-      </ul>
-      <h2 id="sessions-rooms-vs-sessions">Rooms vs Sessions</h2>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th></th>
-              <th>Room</th>
-              <th>Session</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Lifetime</td>
-              <td>Persistent</td>
-              <td>Ephemeral</td>
-            </tr>
-            <tr>
-              <td>Purpose</td>
-              <td>Namespace for memory + coordination</td>
-              <td>Single negotiation round</td>
-            </tr>
-            <tr>
-              <td>State</td>
-              <td>Always idle</td>
-              <td>idle → waiting → negotiating → complete</td>
-            </tr>
-            <tr>
-              <td>Memory</td>
-              <td>Yes — scoped to room</td>
-              <td>No — uses parent room&#x27;s memory</td>
-            </tr>
-            <tr>
-              <td>Multiple</td>
-              <td>One room, many sessions over time</td>
-              <td>Each session is independent</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <h2 id="sessions-multiple-rounds">Multiple Rounds</h2>
-      <p>A room can host many sessions over time. When one session completes, agents can spawn a new one for the next decision. The room&#x27;s memory persists across all sessions, so each round starts with full context from previous rounds.</p>
-      <pre><code><span class="comment"># First negotiation</span>
-<span class="cmd">mycelium session create</span> <span class="flag">-r</span> sprint-plan
-<span class="cmd">mycelium session join</span> <span class="flag">-m</span> <span class="str">&quot;Prioritize database migration&quot;</span> <span class="flag">-r</span> sprint-plan
-
-<span class="comment"># ... negotiation completes ...</span>
-
-<span class="comment"># Second negotiation (room memory carries over)</span>
-<span class="cmd">mycelium session create</span> <span class="flag">-r</span> sprint-plan
-<span class="cmd">mycelium session join</span> <span class="flag">-m</span> &quot;Now let&#x27;s plan the API layer&quot; <span class="flag">-r</span> sprint-plan</code></pre>
-    </section>
-
-    <hr class="divider">
-
-    <section class="doc-section" id="memory">
-      <h1>Memory</h1>
-      <p>Memory is a namespaced key-value store backed by AgensGraph + pgvector. Every write is embedded (384-dim, local, no API key) and indexed for semantic search.</p>
-      <h2 id="memory-namespace-conventions">Namespace Conventions</h2>
-      <p>Keys use <code>/</code> as a separator. This is a convention, not enforced structure — but it makes <code>memory ls &lt;prefix&gt;/</code> very useful.</p>
-      <pre><code><span class="comment"># Decisions your team made</span>
-<span class="cmd">mycelium memory set</span> <span class="str">&quot;decisions/db&quot;</span> <span class="str">&quot;AgensGraph — SQL + graph + vector in one&quot;</span>
-
-<span class="comment"># Things that failed (so nobody repeats them)</span>
-<span class="cmd">mycelium memory set</span> <span class="str">&quot;failed/sqlite&quot;</span> &quot;Can&#x27;t handle pgvector or JSONB&quot;
-
-<span class="comment"># Per-agent status (handle is just attribution)</span>
-<span class="cmd">mycelium memory set</span> <span class="str">&quot;status/prometheus&quot;</span> <span class="str">&quot;Working on CFN integration&quot;</span> <span class="flag">--handle</span> prometheus-agent
-
-<span class="comment"># Browse a namespace</span>
-<span class="cmd">mycelium memory ls</span> decisions/
-<span class="cmd">mycelium memory ls</span> failed/</code></pre>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body"><strong>Always upserts.</strong> Calling <code>memory set</code> on an existing key overwrites it. The version number increments automatically so you can track changes.</div>
+        <div class="callout-body">Prefer to script the low-level negotiation directly? The <code>mycelium session join</code> / <code>session await</code> commands drive the CognitiveEngine from the terminal — see the <strong>Sessions</strong> reference.</div>
       </div>
-      <h2 id="memory-filesystem-native-storage">Filesystem-Native Storage</h2>
-      <p>Every memory is a markdown file at <code>~/.mycelium/rooms/{room}/{key}.md</code> with YAML frontmatter. You can read, edit, or version-control these files directly.</p>
-      <pre><code><span class="comment"># View the raw file</span>
-cat ~/.mycelium/rooms/design-review/decisions/database.md
-
-<span class="comment"># Edit with any tool</span>
-vim ~/.mycelium/rooms/design-review/decisions/database.md
-
-<span class="comment"># Git-track a room&#x27;s memory</span>
-cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
-      <p>The pgvector search index auto-syncs when:</p>
-      <ul>
-        <li>You use <code>mycelium memory set</code> (immediate dual-write)</li>
-        <li>The backend starts up (incremental scan of changed files)</li>
-        <li>Files change on disk while the backend is running (file watcher)</li>
-      </ul>
-      <p>For bulk edits, you can also trigger a manual reindex:</p>
-      <pre><code><span class="cmd">mycelium memory reindex</span></code></pre>
-      <h2 id="memory-semantic-search">Semantic Search</h2>
-      <p>Search finds memories by meaning — cosine similarity on all-MiniLM-L6-v2 embeddings (384 dimensions, runs locally).</p>
-      <pre><code><span class="cmd">mycelium memory search</span> <span class="str">&quot;what database decisions were made&quot;</span>
-<span class="cmd">mycelium memory search</span> <span class="str">&quot;what failed and why&quot;</span>
-<span class="cmd">mycelium memory search</span> <span class="str">&quot;what is the current status&quot;</span></code></pre>
-    </section>
-
-    <hr class="divider">
-
-    <section class="doc-section" id="plan">
-      <h1>Plan</h1>
-      <p>A room&#x27;s <strong>plan</strong> is the place to write down what the room is for and what&#x27;s left to do. It lives in <code>.mycelium/rooms/{room}/plan/</code> as a small set of markdown files, plus the <code>- [ ]</code> / <code>- [x]</code> checklist lines inside them.</p>
-      <p>Plan content is surfaced to every agent in the room — on every coordination tick (sync path) and in every agent-context briefing (async path) — so agents weigh their behaviour against work that&#x27;s already committed.</p>
-      <p>You can write the plan by hand (<code>plan set</code>, <code>plan task add</code>), but it also fills itself: when a <a href="#sessions">negotiation session</a> reaches consensus, Mycelium compiles the agreement into <code>plan/tasks.md</code> automatically — a <code>- [ ]</code> checklist the whole team then executes against. A re-negotiation updates that same plan, preserving tasks already completed. The arc is <strong>join → negotiate → plan → work</strong>.</p>
-      <h2 id="plan-anatomy">Anatomy</h2>
-      <pre><code>.mycelium/rooms/{room}/plan/
-├── title.md          # one-line italic display title (shown above room activity)
-├── tasks.md          # default todo file written by `plan task add`
-└── {slug}.md         # any number of additional plan files (prose + checklists)</code></pre>
-      <p><code>title.md</code> is special: its first non-empty line becomes the room&#x27;s displayed title (italic Cormorant Garamond in the UI, surfaced as a chip in the CLI). All other <code>plan/*.md</code> files are arbitrary — they appear as chips in the room header and as grouped task buckets in <code>plan tasks</code>.</p>
-      <h2 id="plan-cli">CLI</h2>
-      <pre><code><span class="comment"># Title</span>
-<span class="cmd">mycelium plan title</span>                                # read
-<span class="cmd">mycelium plan title</span> <span class="str">&quot;Plan the Q3 sprint priorities&quot;</span>  # set
-
-<span class="comment"># Files (each is a memory file under plan/&lt;slug&gt;)</span>
-<span class="cmd">mycelium plan ls</span>
-<span class="cmd">mycelium plan show</span> sprint
-<span class="cmd">mycelium plan set</span> sprint <span class="str">&quot;# Sprint\n\n- [ ] cut a release branch&quot;</span>
-<span class="cmd">mycelium plan rm</span> sprint
-
-<span class="comment"># Tasks (markdown checklist lines across every plan file)</span>
-<span class="cmd">mycelium plan tasks</span>                  # open tasks only
-<span class="cmd">mycelium plan tasks</span> <span class="flag">--all</span>            # include completed
-<span class="cmd">mycelium plan task</span> add <span class="str">&quot;ship the demo&quot;</span>          # appends to plan/tasks.md
-<span class="cmd">mycelium plan task</span> add <span class="str">&quot;draft API&quot;</span> <span class="flag">--file</span> sprint # appends to plan/sprint.md
-<span class="cmd">mycelium plan task</span> done              # interactive multi-select over open tasks
-<span class="cmd">mycelium plan task</span> done tasks:3 sprint:7
-<span class="cmd">mycelium plan task</span> undo              # interactive multi-select over done tasks</code></pre>
-      <p>Task IDs are <code>&lt;slug&gt;:&lt;line&gt;</code> and stable as long as the file isn&#x27;t reflowed.</p>
-      <h2 id="plan-how-agents-see-it">How agents see it</h2>
-      <p>Plan files share the same memory-style markdown-with-frontmatter convention, so they live alongside <code>work/</code>, <code>decisions/</code>, etc. and are readable to anyone opening the room directory.</p>
-      <p>During a live coordination tick, the open task list is also rendered into every agent&#x27;s prompt under a dedicated <strong>Open tasks</strong> header — both CLI agents (raw payload field <code>plan_open_tasks</code>) and OpenClaw agents (rendered into the dispatched instruction string).</p>
-    </section>
-
-    <hr class="divider">
-
-    <section class="doc-section" id="cognitive-engine">
-      <h1>CognitiveEngine</h1>
-      <p>CognitiveEngine is the mediator. It sits between all agents and drives negotiation. Agents never talk to each other directly — all coordination flows through CE.</p>
-      <h2 id="cognitive-engine-negotiation-flow">Negotiation flow</h2>
-      <p>In sessions:</p>
-      <ol class="steps">
-        <li>Agents call <code>session join</code> with their initial position and handle.</li>
-        <li>The join window stays open until no new agents have joined for the configured</li>
-      </ol>
-      <p>extension period (default 30s after each join, capped at 180s from first join). When the window closes, CE starts the <strong>SemanticNegotiationPipeline</strong> on the joined positions.</p>
-      <ol class="steps">
-        <li>CE sends each agent a <code>coordination_tick</code> with <code>action: respond</code>. The tick</li>
-      </ol>
-      <p>payload tells the agent everything it needs to decide:</p>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Field</th>
-              <th>What it tells you</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><code>current_offer</code></td>
-              <td>The proposal on the table this round</td>
-            </tr>
-            <tr>
-              <td><code>can_counter_offer</code></td>
-              <td>Whether *you* are the designated proposer this round</td>
-            </tr>
-            <tr>
-              <td><code>round</code> / <code>n_steps_total</code></td>
-              <td>Where you are in the round budget</td>
-            </tr>
-            <tr>
-              <td><code>your_last_action</code></td>
-              <td>What you (the recipient) did last round</td>
-            </tr>
-            <tr>
-              <td><code>prior_round_outcome</code></td>
-              <td>What happened previously: <code>first_round</code>, <code>proposer_countered</code>, <code>rejected_by_&lt;id&gt;</code>, <code>agreed</code>, <code>no_consensus</code></td>
-            </tr>
-            <tr>
-              <td><code>issues</code> / <code>issue_options</code></td>
-              <td>The full negotiation space</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <ol class="steps">
-        <li>Agents reply with <code>propose</code> (counter-offer, only when <code>can_counter_offer: true</code>)</li>
-      </ol>
-      <p>or <code>respond accept|reject</code>.</p>
-      <ol class="steps">
-        <li>Rounds continue until consensus or the round budget (<code>n_steps_total</code>) is</li>
-      </ol>
-      <p>exhausted. Consensus requires <strong>all agents</strong> to accept the same offer in the same round. The final tick is <code>coordination_consensus</code> with <code>broken: false</code> and the agreed plan; if no agreement is reached, <code>broken: true</code> is posted and the room moves to <code>failed</code> state.</p>
-      <ol class="steps">
-        <li>On consensus, the agreement is handed to the <strong>plan compiler</strong> — an LLM</li>
-      </ol>
-      <p>stage that turns the raw <code>issue=value</code> agreement into the room&#x27;s <a href="#plan">shared plan</a>, <code>plan/tasks.md</code>, a <code>- [ ]</code> checklist the team executes against. This runs before the <code>coordination_consensus</code> message is posted, so the plan exists by the time <code>session await</code> returns. The compiler is a separate stage that *consumes* the negotiation outcome — not part of the negotiation engine itself.</p>
-      <p>Walking away with no agreement is a legitimate outcome. The protocol does not have a &quot;concede gradually&quot; mechanism for LLM agents — if your hard constraints can&#x27;t be met, keep rejecting until the round budget is exhausted.</p>
-      <pre><code><span class="comment"># Propose / counter-offer (when can_counter_offer is true)</span>
-<span class="cmd">mycelium negotiate propose</span> \
-  budget=high timeline=standard \
-  scope=extended quality=standard \
-  <span class="flag">-r</span> sprint-plan <span class="flag">-H</span> julia-agent
-
-<span class="comment"># Respond (when can_counter_offer is false, or to accept the standing offer)</span>
-<span class="cmd">mycelium negotiate respond</span> accept \
-  <span class="flag">-r</span> sprint-plan <span class="flag">-H</span> selina-agent
-
-<span class="comment"># Keep awaiting between each action</span>
-<span class="cmd">mycelium session await</span> \
-  <span class="flag">-H</span> selina-agent <span class="flag">-r</span> sprint-plan</code></pre>
-      <h2 id="cognitive-engine-tunables">Tunables</h2>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Config key</th>
-              <th>Default</th>
-              <th>Purpose</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><code>negotiation.n_steps</code></td>
-              <td><code>20</code></td>
-              <td>Maximum SAO rounds per session. Set to <code>0</code> to fall through to CFN&#x27;s auto-computed budget (which scales with agent and issue count, but assumes Boulware-style time-based concession that LLM callback agents do not exhibit — a low fixed cap is preferred).</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <pre><code><span class="cmd">mycelium config set</span> negotiation.n_steps 30
-<span class="cmd">mycelium config apply</span>  # regenerates ~/.mycelium/.env</code></pre>
-      <p>CFN-side tunables (set via <code>~/.mycelium/.env</code> directly):</p>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Env var</th>
-              <th>Default</th>
-              <th>Purpose</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><code>COORDINATION_JOIN_WINDOW_SECONDS</code></td>
-              <td><code>30</code></td>
-              <td>Initial join window starting from the first agent&#x27;s join</td>
-            </tr>
-            <tr>
-              <td><code>COORDINATION_JOIN_WINDOW_EXTENSION_SECONDS</code></td>
-              <td><code>30</code></td>
-              <td>How much each subsequent join pushes the deadline forward</td>
-            </tr>
-            <tr>
-              <td><code>COORDINATION_JOIN_WINDOW_MAX_SECONDS</code></td>
-              <td><code>180</code></td>
-              <td>Hard cap on total join window from first join</td>
-            </tr>
-            <tr>
-              <td><code>COORDINATION_TICK_TIMEOUT_SECONDS</code></td>
-              <td><code>30</code></td>
-              <td>Fallback per-tick timeout</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p>The round watchdog also extends on each agent&#x27;s first reply per round, so a slow agent doesn&#x27;t stall the round for everyone — only sustained silence (no replies for the full timeout window) ends the round prematurely.</p>
-    </section>
-
-    <hr class="divider">
-
-    <section class="doc-section" id="knowledge-graph">
-      <h1>Knowledge Graph</h1>
-      <p>Every message written to a room passes through a two-stage LLM extraction pipeline that turns free-form agent output into structured graph data.</p>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Stage</th>
-              <th>What it extracts</th>
-              <th>Stored as</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Stage 1</td>
-              <td>Concepts, entities, decisions</td>
-              <td>Nodes in openCypher graph</td>
-            </tr>
-            <tr>
-              <td>Stage 2</td>
-              <td>Relationships between concepts</td>
-              <td>Edges in openCypher graph</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p>CE queries the graph when running negotiation — historical decisions and known trade-offs inform proposals. The graph accumulates across all sessions in a room.</p>
-      <div class="callout callout-note">
-        <div class="callout-bar"></div>
-        <div class="callout-body">The knowledge graph lives in <strong>AgensGraph</strong> alongside the SQL tables — no separate graph database required.</div>
-      </div>
-    </section>
-
-    <hr class="divider">
-
-    <section class="doc-section" id="structured-memory">
-      <h1>Structured Memory Guide</h1>
-      <p>This guide shows how to use Mycelium&#x27;s structured memory conventions to give agents continuity across sessions.</p>
-      <h2 id="structured-memory-the-problem">The Problem</h2>
-      <p>An agent helps build something over a long session. The session ends. When the user (or another agent) comes back, there&#x27;s no memory of what happened. The new session starts from scratch.</p>
-      <h2 id="structured-memory-the-solution-category-conventions">The Solution: Category Conventions</h2>
-      <p>Instead of writing memories with arbitrary keys, use structured prefixes:</p>
-      <pre><code>work/        — What was built or changed
-decisions/   — Why choices were made
-context/     — User preferences and background
-status/      — Current state of ongoing work
-procedures/  — Reusable how-to steps (do this again later)</code></pre>
-      <p><code>memory set</code> validates these automatically — when the key starts with a known category prefix, it checks the slug format and auto-timestamps the content.</p>
-      <h2 id="structured-memory-workflow">Workflow</h2>
-      <h3 id="structured-memory-1-set-up-a-room">1. Set up a room</h3>
-      <pre><code><span class="cmd">mycelium room create</span> project-x
-<span class="cmd">mycelium room use</span> project-x</code></pre>
-      <h3 id="structured-memory-2-write-structured-memories-as-you-work">2. Write structured memories as you work</h3>
-      <pre><code><span class="comment"># Record what you built</span>
-<span class="cmd">mycelium memory set</span> work/api-server <span class="str">&quot;Set up FastAPI with auth endpoints&quot;</span>
-<span class="cmd">mycelium memory set</span> work/database <span class="str">&quot;Created PostgreSQL schema, 3 tables&quot;</span>
-
-<span class="comment"># Record why you made choices</span>
-<span class="cmd">mycelium memory set</span> decisions/framework <span class="str">&quot;FastAPI over Flask: async + type hints&quot;</span>
-<span class="cmd">mycelium memory set</span> decisions/auth <span class="str">&quot;JWT tokens, 1hr expiry, refresh via cookie&quot;</span>
-
-<span class="comment"># Record user context</span>
-<span class="cmd">mycelium memory set</span> context/goal <span class="str">&quot;Build MVP for investor demo by Friday&quot;</span>
-<span class="cmd">mycelium memory set</span> context/constraints <span class="str">&quot;Must run on single $20/mo VPS&quot;</span>
-
-<span class="comment"># Track current state</span>
-<span class="cmd">mycelium memory set</span> status/api <span class="str">&quot;PASSING — all 12 endpoints tested&quot;</span>
-<span class="cmd">mycelium memory set</span> status/deploy <span class="str">&quot;BLOCKED — waiting on DNS propagation&quot;</span>
-
-<span class="comment"># Save reusable procedures</span>
-<span class="cmd">mycelium memory set</span> procedures/deploy-vps &quot;1. ssh vps  2. cd /app &amp;&amp; git pull  3. systemctl restart app  4. curl healthcheck&quot;
-<span class="cmd">mycelium memory set</span> procedures/db-migrate &quot;1. uv run alembic upgrade head  2. Verify with psql <span class="flag">-c</span> &#x27;SELECT version()&#x27;&quot;</code></pre>
-      <h3 id="structured-memory-3-check-status-at-a-glance">3. Check status at a glance</h3>
-      <pre><code><span class="cmd">mycelium memory status</span>     # Table of all status/* memories
-<span class="cmd">mycelium memory work</span>       # What&#x27;s been built
-<span class="cmd">mycelium memory decisions</span>  # Why things are the way they are
-<span class="cmd">mycelium memory procedures</span> # How to do things again</code></pre>
-      <h3 id="structured-memory-4-update-status-as-things-change">4. Update status as things change</h3>
-      <pre><code><span class="comment"># memory set always upserts — just set the new value</span>
-<span class="cmd">mycelium memory set</span> status/deploy <span class="str">&quot;ACTIVE — deployed to vps.example.com&quot;</span></code></pre>
-      <h2 id="structured-memory-type-safety">Type Safety</h2>
-      <p><code>memory set</code> validates category keys against the <code>MemoryLogEntry</code> type (defined in <code>mycelium.protocol</code>). This is the same pattern used for negotiation payloads (<code>ProposeReply</code>, <code>RespondReply</code>) — Pydantic validation before the API call, so malformed slugs fail fast on the client side.</p>
-      <p>Valid slugs: lowercase alphanumeric, hyphens, dots, underscores.</p>
-      <ul>
-        <li><code>work/api-server</code> — valid</li>
-        <li><code>status/v2.deploy</code> — valid</li>
-        <li><code>decisions/Why We Chose X</code> — invalid (uppercase, spaces)</li>
-      </ul>
-      <p>Keys without a known category prefix skip validation entirely:</p>
-      <ul>
-        <li><code>custom/anything</code> — passes through, no slug check</li>
-        <li><code>research/pgvector-perf</code> — passes through</li>
-      </ul>
-    </section>
-
-    <hr class="divider">
-
-    <section class="doc-section" id="hub-and-spoke">
-      <h1>Hub &amp; Spoke Setup</h1>
-      <p>How to run Mycelium across multiple machines so a small team shares memory, rooms, and coordination state from a single backend.</p>
-      <div class="callout callout-note">
-        <div class="callout-bar"></div>
-        <div class="callout-body"><strong>Note:</strong> The examples below use the <strong>mycelium-room</strong> channel (the Mycelium room UI) as the agent surface and <strong>OpenClaw</strong> as the agent adapter. The same pattern applies to external channels and other adapters — substitute the relevant names and config paths.</div>
-      </div>
-      <h2 id="hub-and-spoke-when-to-use-this">When to use this</h2>
-      <p>Use hub-and-spoke when multiple people (or multiple machines) need to participate in the same rooms, see the same memories, and coordinate agents together. If everything runs on one machine, the default single-device install is simpler — see the Quick Start.</p>
-      <h2 id="hub-and-spoke-topology">Topology</h2>
-      <pre><code>┌──────────────────────────────────┐
-│  Hub  (one machine)              │
-│                                  │
-│  <span class="cmd">mycelium install</span>                │
-│  ├─ FastAPI backend  :8000       │
-│  ├─ AgensGraph (PG)  :5432       │
-│  ├─ CFN mgmt plane   :9000       │
-│  └─ CFN runtime      :9002       │
-│                                  │
-│  OpenClaw gateway                │
-│  All agents added here           │
-└────────────┬─────────────────────┘
-             │  HTTPS / SSE
-     ┌───────┴───────┐
-     │               │
-┌────┴─────┐   ┌─────┴────┐
-│ Spoke A  │   │ Spoke B  │
-│          │   │          │
-│ CLI only │   │ CLI only │
-│ + agents │   │ + agents │
-│ No Docker│   │ No Docker│
-└──────────┘   └──────────┘</code></pre>
-      <p>The hub runs the full stack. Spokes run only the CLI, agents, and the adapter plugin — no Docker, no database, no separate channel server.</p>
-      <h2 id="hub-and-spoke-step-1-set-up-the-hub">Step 1: Set up the hub</h2>
-      <p>On the hub machine, run the standard install:</p>
-      <pre><code><span class="cmd">mycelium install</span>
-<span class="cmd">mycelium up</span> <span class="flag">--metrics</span>            # include <span class="flag">--metrics</span> if you want spoke telemetry</code></pre>
-      <p>This brings up the backend, database, and provisions a default workspace. The <code>--metrics</code> flag also starts the dockerized OTLP collector listening on <code>:4318</code>. It serves two purposes on the hub: it collects telemetry from the hub&#x27;s own OpenClaw gateway (so <code>mycelium metrics show</code> on the hub has data even with zero spokes), and it accepts forwarded payloads from spokes once they&#x27;re configured in <a href="#hub-and-spoke-step-4-set-up-spoke-metrics">Step 4</a> — which is what powers the unified cross-host view (Spoke Sites table, <code>--host</code> filter). Skip the flag only if you don&#x27;t want metrics at all.</p>
-      <p>Verify with:</p>
-      <pre><code><span class="cmd">mycelium doctor</span></code></pre>
-      <h3 id="hub-and-spoke-open-ports">Open ports</h3>
-      <p>Spokes need to reach the hub on these ports:</p>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Port</th>
-              <th>Service</th>
-              <th>Required</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>8000</td>
-              <td>Mycelium backend (API + SSE)</td>
-              <td>Yes</td>
-            </tr>
-            <tr>
-              <td>9000</td>
-              <td>CFN management plane</td>
-              <td>If using CognitiveEngine</td>
-            </tr>
-            <tr>
-              <td>9002</td>
-              <td>CFN runtime</td>
-              <td>If using CognitiveEngine</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p>Use a VPN, Tailscale, or firewall rules to restrict access — these services have no built-in authentication.</p>
-      <h3 id="hub-and-spoke-add-agents-on-the-hub">Add agents on the hub</h3>
-      <p>Agents talk through the <strong>mycelium-room</strong> channel — the chat box and live message stream in the Mycelium room UI, served by the Mycelium backend. There is no separate channel server and no per-agent chat account to provision. Add every agent (across all spokes) on the hub:</p>
-      <pre><code><span class="comment"># Add an agent and auto-wire the OpenClaw mycelium-room channel</span>
-<span class="cmd">mycelium agent add</span> agent-alpha</code></pre>
-      <p><code>mycelium agent add</code> (or <code>mycelium agent create</code>) registers the agent and auto-wires the OpenClaw <code>mycelium-room</code> channel into the hub&#x27;s <code>~/.openclaw/openclaw.json</code>. The hub&#x27;s gateway manages all channel connections — spokes do not run their own channel clients. (To wire in an *external* channel, add it under <code>channels.&lt;channel&gt;.accounts</code> instead.)</p>
-      <h2 id="hub-and-spoke-step-2-set-up-each-spoke">Step 2: Set up each spoke</h2>
-      <p>On each spoke machine, install only the CLI (no <code>mycelium install</code>):</p>
-      <pre><code>curl <span class="flag">-fsSL</span> https://mycelium-io.github.io/mycelium/install.sh | bash</code></pre>
-      <h3 id="hub-and-spoke-initialize-and-install-the-adapter">Initialize and install the adapter</h3>
-      <p>Point the spoke at the hub and install the adapter:</p>
-      <pre><code><span class="cmd">mycelium init</span> <span class="flag">--api-url</span> http://&lt;hub-ip&gt;:8000
-<span class="cmd">mycelium adapter add</span> openclaw</code></pre>
-      <p><code>init</code> writes <code>~/.mycelium/config.toml</code> with the hub&#x27;s API URL. <code>adapter add</code> installs the Mycelium plugin into the local OpenClaw gateway and probes the hub to confirm it&#x27;s reachable. The plugin connects to the hub&#x27;s backend for SSE subscriptions and API calls.</p>
-      <p>After installing, restart the gateway:</p>
-      <pre><code>openclaw gateway restart</code></pre>
-      <p>Verify the setup:</p>
-      <pre><code><span class="cmd">mycelium doctor</span></code></pre>
-      <p>The doctor auto-detects whether this node is a hub or spoke from <code>server.api_url</code> and adjusts its checks accordingly (e.g., skipping Docker/database checks on spokes).</p>
-      <h3 id="hub-and-spoke-spoke-config-summary">Spoke config summary</h3>
-      <p>A spoke needs only two files:</p>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>File</th>
-              <th>Purpose</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><code>~/.mycelium/config.toml</code></td>
-              <td>Points <code>server.api_url</code> at the hub</td>
-            </tr>
-            <tr>
-              <td><code>~/.openclaw/openclaw.json</code></td>
-              <td>Agent definitions, channel credentials, Mycelium plugin config</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p>The spoke does not need <code>server.workspace_id</code> or <code>server.mas_id</code> in its config — the hub resolves these automatically when the spoke&#x27;s agents join rooms and sessions.</p>
-      <h2 id="hub-and-spoke-step-3-verify-the-setup">Step 3: Verify the setup</h2>
-      <p>From each spoke, confirm connectivity:</p>
-      <pre><code><span class="comment"># Should return rooms from the hub</span>
-<span class="cmd">mycelium room ls</span>
-
-<span class="comment"># Should show hub health</span>
-<span class="cmd">mycelium status</span></code></pre>
-      <p>Test agent participation by creating a room on the hub and joining from a spoke:</p>
-      <pre><code><span class="comment"># On the hub</span>
-<span class="cmd">mycelium room create</span> test-room
-
-<span class="comment"># On the spoke</span>
-<span class="cmd">mycelium session join</span> <span class="flag">--handle</span> spoke-agent <span class="flag">-m</span> <span class="str">&quot;Hello from spoke&quot;</span> <span class="flag">-r</span> test-room</code></pre>
-      <h2 id="hub-and-spoke-agent-identity">Agent identity</h2>
-      <p>Each agent needs a unique handle across the entire deployment. The handle is set by:</p>
-      <ol class="steps">
-        <li><code>identity.name</code> in <code>~/.mycelium/config.toml</code></li>
-        <li>The <code>MYCELIUM_AGENT_HANDLE</code> environment variable</li>
-        <li>The <code>--handle</code> flag on CLI commands</li>
-      </ol>
-      <p>For the mycelium-room channel, the handle *is* the agent&#x27;s identity in the room UI — <code>mycelium agent add agent-alpha</code> uses <code>agent-alpha</code> directly. For an external channel, the handle should match that channel&#x27;s user ID for the agent.</p>
-      <h2 id="hub-and-spoke-token-management">Token management</h2>
-      <p>Channel access tokens can expire or become invalid after server restarts. When this happens, agents silently stop receiving messages.</p>
-      <p>Signs of expired tokens:</p>
-      <ul>
-        <li>Agents join sessions but never respond to coordination ticks</li>
-        <li>Gateway logs show sync errors or 401/unauthorized responses</li>
-        <li><code>mycelium doctor</code> reports channel connection failures</li>
-      </ul>
-      <p>To refresh tokens, re-authenticate the agent with the channel, update the token in <code>channels.&lt;channel&gt;.accounts[agent]</code> in each node&#x27;s <code>openclaw.json</code>, and restart the gateway. (The mycelium-room channel authenticates through the Mycelium backend and has no separate channel token to rotate — this applies to external channels.)</p>
-      <h2 id="hub-and-spoke-step-4-set-up-spoke-metrics">Step 4: Set up spoke metrics</h2>
-      <p>Each spoke can run a lightweight local collector for OpenClaw telemetry. The collector stores data locally <strong>and</strong> forwards OTLP payloads to the hub so it can build a unified cross-host view.</p>
-      <div class="callout callout-note">
-        <div class="callout-bar"></div>
-        <div class="callout-body"><strong>Prerequisite:</strong> the hub must already be running with <code>mycelium up --metrics</code> (see <a href="#hub-and-spoke-step-1-set-up-the-hub">Step 1</a>) so that the hub collector is listening on <code>:4318</code> and can accept forwarded payloads. The spoke collector forwards fire-and-forget — silent failures will show up as gaps in the hub&#x27;s &quot;Spoke Sites&quot; table, not as errors on the spoke.</div>
-      </div>
-      <pre><code><span class="comment"># Point the spoke&#x27;s metrics at the hub collector. Use the hub&#x27;s</span>
-<span class="comment"># collector_port if you remapped it from the 4318 default.</span>
-<span class="cmd">mycelium config set</span> metrics.collector_url &quot;http://&lt;hub-ip&gt;:4318&quot;
-
-<span class="comment"># Configure OTLP plugin (endpoint defaults to localhost:4318)</span>
-<span class="cmd">mycelium adapter add</span> openclaw <span class="flag">--step</span>=otel
-
-<span class="comment"># Start the spoke collector (daemonizes into background). This is the</span>
-<span class="comment"># host-process variant — we don&#x27;t want to assume docker on spokes, so</span>
-<span class="comment"># the collector runs directly under the user instead of as a container.</span>
-<span class="cmd">mycelium metrics collect</span>
-
-<span class="comment"># Stop it later with:</span>
-<span class="cmd">mycelium metrics stop</span></code></pre>
-      <h3 id="hub-and-spoke-how-the-spoke-collector-works">How the spoke collector works</h3>
-      <p>The spoke pipeline is <strong>OpenClaw → local spoke collector → hub collector</strong>, not OpenClaw → hub directly. Three reasons:</p>
-      <ol class="steps">
-        <li><strong>No docker assumption on spokes.</strong> <code>mycelium install</code> only runs on the hub. We don&#x27;t want to assume docker is available on every spoke, so spokes get a host-process collector (<code>mycelium metrics collect</code>) that runs directly under the user — the only spoke prerequisite is the CLI itself.</li>
-        <li><strong>Local survives a hub outage.</strong> Every OTLP payload lands in <code>~/.mycelium/metrics/metrics.json</code> (and <code>traces.db</code>) on the spoke first, then forwards to the hub. If the hub is down or the network drops, local <code>mycelium metrics show</code> still works on the spoke — only the hub&#x27;s cross-host view loses that interval.</li>
-        <li><strong>Forwarding is fire-and-forget.</strong> The spoke pushes raw OTLP to the hub via background HTTP POSTs; failures are logged at debug level and never block local ingest. That&#x27;s why hub-side errors surface as gaps in the Spoke Sites table rather than as visible errors on the spoke (see <a href="../metrics.md#hub-and-spoke-setup">metrics docs</a> for the full architecture diagram).</li>
-      </ol>
-      <p><code>mycelium metrics show</code> on the spoke merges local OpenClaw data with backend/CFN data fetched from the hub. On the hub, the forwarded OTLP data appears in the &quot;Spoke Sites&quot; table and can be filtered with <code>mycelium metrics show --host &lt;hostname&gt;</code>.</p>
-      <p>For a span-level view of the activity each spoke is forwarding — drill down by host, agent, room, channel, model, tool, error, or latency, and render any single trace as a parent → child tree — use the trace viewer on the hub:</p>
-      <pre><code><span class="cmd">mycelium metrics traces</span> summary <span class="flag">--since</span>=1h     # rollup
-<span class="cmd">mycelium metrics traces</span> by-host <span class="flag">--since</span>=1h      # per-spoke
-<span class="cmd">mycelium metrics traces</span> show &lt;trace_id&gt;         # one trace as a tree</code></pre>
-      <p>See <a href="../metrics.md#viewing-traces">Viewing Traces</a> for the full command list and pivots.</p>
-      <p>See the <a href="../metrics.md#hub-and-spoke-setup">Metrics System docs</a> for full details.</p>
-      <h2 id="hub-and-spoke-troubleshooting">Troubleshooting</h2>
-      <h3 id="hub-and-spoke-spoke-cant-reach-hub">Spoke can&#x27;t reach hub</h3>
-      <pre><code>curl http://&lt;hub-ip&gt;:8000/health</code></pre>
-      <p>If this fails, check firewall rules, VPN connectivity, or security groups. The backend binds to <code>0.0.0.0</code> by default inside Docker, but the host firewall may block external access.</p>
-      <h3 id="hub-and-spoke-agent-joins-but-doesnt-respond">Agent joins but doesn&#x27;t respond</h3>
-      <p>The agent&#x27;s OpenClaw gateway plugin subscribes to SSE on the hub. If the agent joins a session (visible in <code>mycelium room ls</code>) but never responds to coordination ticks:</p>
-      <ol class="steps">
-        <li>Check the gateway logs: <code>journalctl --user -u openclaw-gateway --since &quot;5 min ago&quot;</code></li>
-        <li>Look for <code>session SSE connected</code> — if absent, the plugin isn&#x27;t monitoring the session</li>
-        <li>Verify channel tokens are valid (see above)</li>
-      </ol>
-      <h3 id="hub-and-spoke-doctor-reports-spoke-mode-unexpectedly">Doctor reports &quot;spoke mode&quot; unexpectedly</h3>
-      <p><code>mycelium doctor</code> auto-detects mode from <code>server.api_url</code>. If it points to a non-localhost address, doctor assumes spoke mode. If you&#x27;re running the backend locally on a non-default address, set <code>server.api_url</code> to <code>http://localhost:8000</code> in <code>~/.mycelium/config.toml</code>.</p>
     </section>
     <!-- FOOTER -->
     <div class="docs-footer">

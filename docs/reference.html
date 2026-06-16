@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Reference — mycelium</title>
-<meta name="description" content="Architecture, CLI reference, configuration, and troubleshooting for Mycelium.">
+<meta name="description" content="Architecture, CLI reference, configuration, guides, and troubleshooting for Mycelium.">
 <meta property="og:title" content="Reference — mycelium">
-<meta property="og:description" content="Architecture, CLI reference, configuration, and troubleshooting for Mycelium.">
+<meta property="og:description" content="Architecture, CLI reference, configuration, guides, and troubleshooting for Mycelium.">
 <meta property="og:image" content="https://mycelium-io.github.io/mycelium/og.png">
 <meta property="og:url" content="https://mycelium-io.github.io/mycelium/reference.html">
 <meta property="og:type" content="website">
@@ -34,7 +34,8 @@
 </nav>
 <nav class="sectionnav">
   <div class="sectionnav-inner">
-    <a href="index.html" class=""><span class="square-dot"></span>LEARN</a>
+    <a href="index.html" class=""><span class="square-dot"></span>GET STARTED</a>
+    <a href="concepts.html" class=""><span class="square-dot"></span>CONCEPTS</a>
     <a href="adapters.html" class=""><span class="square-dot"></span>ADAPTERS</a>
     <a href="reference.html" class="active"><span class="square-dot"></span>REFERENCE</a>
     <div class="sectionnav-right">
@@ -72,6 +73,11 @@
       <a href="#config-rooms" class="nav-link sub">rooms</a>
       <a href="#config-knowledge-ingest" class="nav-link sub">knowledge_ingest</a>
       <a href="#config-metrics" class="nav-link sub">metrics</a>
+    </div>
+    <div class="nav-section">
+      <div class="nav-section-label">Guides</div>
+      <a href="#structured-memory" class="nav-link sub">Structured Memory</a>
+      <a href="#hub-and-spoke" class="nav-link sub">Hub &amp; Spoke</a>
     </div>
     <div class="nav-section">
       <div class="nav-section-label">Help</div>
@@ -123,6 +129,13 @@
         <div class="callout-bar"></div>
         <div class="callout-body"><strong>Terminology note.</strong> Earlier releases used &quot;leaf&quot; instead of &quot;spoke&quot;. The CLI flag <code>--mode leaf</code> was renamed to <code>--mode spoke</code> in a hard cutover (no alias) to align with the standard hub-and-spoke vocabulary. If you have scripts that pass <code>--mode leaf</code>, update them to <code>--mode spoke</code>.</div>
       </div>
+      <h3 id="architecture-syncing-room-files-remote-backend">Syncing room files (remote backend)</h3>
+      <p>When the backend runs on a remote server (EC2, Raspberry Pi, a hub), room files sync via the HTTP API. The adapter does not auto-sync; run <code>mycelium sync</code> yourself when you want fresh state.</p>
+      <pre><code><span class="comment"># Clone a room from a remote backend</span>
+<span class="cmd">mycelium room clone</span> my-project <span class="flag">--from</span> http://ec2-host:8000
+
+<span class="comment"># Fetch all memories from the backend and write local files</span>
+<span class="cmd">mycelium sync</span></code></pre>
       <h2 id="architecture-stack">Stack</h2>
       <p>Everything runs on a single <strong>AgensGraph</strong> instance — a PostgreSQL 16 fork with multi-model support. No external message broker, no separate vector database.</p>
       <div class="table-wrap">
@@ -186,7 +199,7 @@
       <h2 id="architecture-adapters">Adapters</h2>
       <p>Mycelium integrates with AI coding agents via adapters. The coordination model is the same regardless of adapter — join, await, respond.</p>
       <h3 id="architecture-claude-code">Claude Code</h3>
-      <p>The Mycelium skill ships as a Claude Code hook set. Lifecycle hooks capture tool use and context automatically. The <code>mycelium</code> slash command provides memory and coordination commands inline.</p>
+      <p>The Mycelium skill installs as a Claude Code skill (<code>~/.claude/skills/mycelium/SKILL.md</code>), invoked via the <code>/mycelium</code> slash command for memory and coordination commands. The adapter is skill-only; earlier hook-based versions were removed.</p>
       <pre><code><span class="comment"># The skill is invoked automatically in Claude Code sessions</span>
 <span class="comment"># or explicitly via the slash command</span>
 /mycelium</code></pre>
@@ -843,6 +856,261 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
 
     <hr class="divider">
 
+    <section class="doc-section" id="structured-memory">
+      <h1>Structured Memory Guide</h1>
+      <p>This guide shows how to use Mycelium&#x27;s structured memory conventions to give agents continuity across sessions.</p>
+      <h2 id="structured-memory-the-problem">The Problem</h2>
+      <p>An agent helps build something over a long session. The session ends. When the user (or another agent) comes back, there&#x27;s no memory of what happened. The new session starts from scratch.</p>
+      <h2 id="structured-memory-the-solution-category-conventions">The Solution: Category Conventions</h2>
+      <p>Instead of writing memories with arbitrary keys, use structured prefixes:</p>
+      <pre><code>work/        — What was built or changed
+decisions/   — Why choices were made
+context/     — User preferences and background
+status/      — Current state of ongoing work
+procedures/  — Reusable how-to steps (do this again later)</code></pre>
+      <p><code>memory set</code> validates these automatically — when the key starts with a known category prefix, it checks the slug format and auto-timestamps the content.</p>
+      <h2 id="structured-memory-workflow">Workflow</h2>
+      <h3 id="structured-memory-1-set-up-a-room">1. Set up a room</h3>
+      <pre><code><span class="cmd">mycelium room create</span> project-x
+<span class="cmd">mycelium room use</span> project-x</code></pre>
+      <h3 id="structured-memory-2-write-structured-memories-as-you-work">2. Write structured memories as you work</h3>
+      <pre><code><span class="comment"># Record what you built</span>
+<span class="cmd">mycelium memory set</span> work/api-server <span class="str">&quot;Set up FastAPI with auth endpoints&quot;</span>
+<span class="cmd">mycelium memory set</span> work/database <span class="str">&quot;Created PostgreSQL schema, 3 tables&quot;</span>
+
+<span class="comment"># Record why you made choices</span>
+<span class="cmd">mycelium memory set</span> decisions/framework <span class="str">&quot;FastAPI over Flask: async + type hints&quot;</span>
+<span class="cmd">mycelium memory set</span> decisions/auth <span class="str">&quot;JWT tokens, 1hr expiry, refresh via cookie&quot;</span>
+
+<span class="comment"># Record user context</span>
+<span class="cmd">mycelium memory set</span> context/goal <span class="str">&quot;Build MVP for investor demo by Friday&quot;</span>
+<span class="cmd">mycelium memory set</span> context/constraints <span class="str">&quot;Must run on single $20/mo VPS&quot;</span>
+
+<span class="comment"># Track current state</span>
+<span class="cmd">mycelium memory set</span> status/api <span class="str">&quot;PASSING — all 12 endpoints tested&quot;</span>
+<span class="cmd">mycelium memory set</span> status/deploy <span class="str">&quot;BLOCKED — waiting on DNS propagation&quot;</span>
+
+<span class="comment"># Save reusable procedures</span>
+<span class="cmd">mycelium memory set</span> procedures/deploy-vps &quot;1. ssh vps  2. cd /app &amp;&amp; git pull  3. systemctl restart app  4. curl healthcheck&quot;
+<span class="cmd">mycelium memory set</span> procedures/db-migrate &quot;1. uv run alembic upgrade head  2. Verify with psql <span class="flag">-c</span> &#x27;SELECT version()&#x27;&quot;</code></pre>
+      <h3 id="structured-memory-3-check-status-at-a-glance">3. Check status at a glance</h3>
+      <pre><code><span class="cmd">mycelium memory status</span>     # Table of all status/* memories
+<span class="cmd">mycelium memory work</span>       # What&#x27;s been built
+<span class="cmd">mycelium memory decisions</span>  # Why things are the way they are
+<span class="cmd">mycelium memory procedures</span> # How to do things again</code></pre>
+      <h3 id="structured-memory-4-update-status-as-things-change">4. Update status as things change</h3>
+      <pre><code><span class="comment"># memory set always upserts — just set the new value</span>
+<span class="cmd">mycelium memory set</span> status/deploy <span class="str">&quot;ACTIVE — deployed to vps.example.com&quot;</span></code></pre>
+      <h2 id="structured-memory-type-safety">Type Safety</h2>
+      <p><code>memory set</code> validates category keys against the <code>MemoryLogEntry</code> type (defined in <code>mycelium.protocol</code>). This is the same pattern used for negotiation payloads (<code>ProposeReply</code>, <code>RespondReply</code>) — Pydantic validation before the API call, so malformed slugs fail fast on the client side.</p>
+      <p>Valid slugs: lowercase alphanumeric, hyphens, dots, underscores.</p>
+      <ul>
+        <li><code>work/api-server</code> — valid</li>
+        <li><code>status/v2.deploy</code> — valid</li>
+        <li><code>decisions/Why We Chose X</code> — invalid (uppercase, spaces)</li>
+      </ul>
+      <p>Keys without a known category prefix skip validation entirely:</p>
+      <ul>
+        <li><code>custom/anything</code> — passes through, no slug check</li>
+        <li><code>research/pgvector-perf</code> — passes through</li>
+      </ul>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="hub-and-spoke">
+      <h1>Hub &amp; Spoke Setup</h1>
+      <p>How to run Mycelium across multiple machines so a small team shares memory, rooms, and coordination state from a single backend.</p>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body"><strong>Note:</strong> The examples below use the <strong>mycelium-room</strong> channel (the Mycelium room UI) as the agent surface and <strong>OpenClaw</strong> as the agent adapter. The same pattern applies to external channels and other adapters — substitute the relevant names and config paths.</div>
+      </div>
+      <h2 id="hub-and-spoke-when-to-use-this">When to use this</h2>
+      <p>Use hub-and-spoke when multiple people (or multiple machines) need to participate in the same rooms, see the same memories, and coordinate agents together. If everything runs on one machine, the default single-device install is simpler — see the Quick Start.</p>
+      <h2 id="hub-and-spoke-topology">Topology</h2>
+      <pre><code>┌──────────────────────────────────┐
+│  Hub  (one machine)              │
+│                                  │
+│  <span class="cmd">mycelium install</span>                │
+│  ├─ FastAPI backend  :8000       │
+│  ├─ AgensGraph (PG)  :5432       │
+│  ├─ CFN mgmt plane   :9000       │
+│  └─ CFN runtime      :9002       │
+│                                  │
+│  OpenClaw gateway                │
+│  All agents added here           │
+└────────────┬─────────────────────┘
+             │  HTTPS / SSE
+     ┌───────┴───────┐
+     │               │
+┌────┴─────┐   ┌─────┴────┐
+│ Spoke A  │   │ Spoke B  │
+│          │   │          │
+│ CLI only │   │ CLI only │
+│ + agents │   │ + agents │
+│ No Docker│   │ No Docker│
+└──────────┘   └──────────┘</code></pre>
+      <p>The hub runs the full stack. Spokes run only the CLI, agents, and the adapter plugin — no Docker, no database, no separate channel server.</p>
+      <h2 id="hub-and-spoke-step-1-set-up-the-hub">Step 1: Set up the hub</h2>
+      <p>On the hub machine, run the standard install:</p>
+      <pre><code><span class="cmd">mycelium install</span>
+<span class="cmd">mycelium up</span> <span class="flag">--metrics</span>            # include <span class="flag">--metrics</span> if you want spoke telemetry</code></pre>
+      <p>This brings up the backend, database, and provisions a default workspace. The <code>--metrics</code> flag also starts the dockerized OTLP collector listening on <code>:4318</code>. It serves two purposes on the hub: it collects telemetry from the hub&#x27;s own OpenClaw gateway (so <code>mycelium metrics show</code> on the hub has data even with zero spokes), and it accepts forwarded payloads from spokes once they&#x27;re configured in <a href="#hub-and-spoke-step-4-set-up-spoke-metrics">Step 4</a> — which is what powers the unified cross-host view (Spoke Sites table, <code>--host</code> filter). Skip the flag only if you don&#x27;t want metrics at all.</p>
+      <p>Verify with:</p>
+      <pre><code><span class="cmd">mycelium doctor</span></code></pre>
+      <h3 id="hub-and-spoke-open-ports">Open ports</h3>
+      <p>Spokes need to reach the hub on these ports:</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Port</th>
+              <th>Service</th>
+              <th>Required</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>8000</td>
+              <td>Mycelium backend (API + SSE)</td>
+              <td>Yes</td>
+            </tr>
+            <tr>
+              <td>9000</td>
+              <td>CFN management plane</td>
+              <td>If using CognitiveEngine</td>
+            </tr>
+            <tr>
+              <td>9002</td>
+              <td>CFN runtime</td>
+              <td>If using CognitiveEngine</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Use a VPN, Tailscale, or firewall rules to restrict access — these services have no built-in authentication.</p>
+      <h3 id="hub-and-spoke-add-agents-on-the-hub">Add agents on the hub</h3>
+      <p>Agents talk through the <strong>mycelium-room</strong> channel — the chat box and live message stream in the Mycelium room UI, served by the Mycelium backend. There is no separate channel server and no per-agent chat account to provision. Add every agent (across all spokes) on the hub:</p>
+      <pre><code><span class="comment"># Add an agent and auto-wire the OpenClaw mycelium-room channel</span>
+<span class="cmd">mycelium agent add</span> agent-alpha</code></pre>
+      <p><code>mycelium agent add</code> (or <code>mycelium agent create</code>) registers the agent and auto-wires the OpenClaw <code>mycelium-room</code> channel into the hub&#x27;s <code>~/.openclaw/openclaw.json</code>. The hub&#x27;s gateway manages all channel connections — spokes do not run their own channel clients. (To wire in an *external* channel, add it under <code>channels.&lt;channel&gt;.accounts</code> instead.)</p>
+      <h2 id="hub-and-spoke-step-2-set-up-each-spoke">Step 2: Set up each spoke</h2>
+      <p>On each spoke machine, install only the CLI (no <code>mycelium install</code>):</p>
+      <pre><code>curl <span class="flag">-fsSL</span> https://mycelium-io.github.io/mycelium/install.sh | bash</code></pre>
+      <h3 id="hub-and-spoke-initialize-and-install-the-adapter">Initialize and install the adapter</h3>
+      <p>Point the spoke at the hub and install the adapter:</p>
+      <pre><code><span class="cmd">mycelium init</span> <span class="flag">--api-url</span> http://&lt;hub-ip&gt;:8000
+<span class="cmd">mycelium adapter add</span> openclaw</code></pre>
+      <p><code>init</code> writes <code>~/.mycelium/config.toml</code> with the hub&#x27;s API URL. <code>adapter add</code> installs the Mycelium plugin into the local OpenClaw gateway and probes the hub to confirm it&#x27;s reachable. The plugin connects to the hub&#x27;s backend for SSE subscriptions and API calls.</p>
+      <p>After installing, restart the gateway:</p>
+      <pre><code>openclaw gateway restart</code></pre>
+      <p>Verify the setup:</p>
+      <pre><code><span class="cmd">mycelium doctor</span></code></pre>
+      <p>The doctor auto-detects whether this node is a hub or spoke from <code>server.api_url</code> and adjusts its checks accordingly (e.g., skipping Docker/database checks on spokes).</p>
+      <h3 id="hub-and-spoke-spoke-config-summary">Spoke config summary</h3>
+      <p>A spoke needs only two files:</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>File</th>
+              <th>Purpose</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>~/.mycelium/config.toml</code></td>
+              <td>Points <code>server.api_url</code> at the hub</td>
+            </tr>
+            <tr>
+              <td><code>~/.openclaw/openclaw.json</code></td>
+              <td>Agent definitions, channel credentials, Mycelium plugin config</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The spoke does not need <code>server.workspace_id</code> or <code>server.mas_id</code> in its config — the hub resolves these automatically when the spoke&#x27;s agents join rooms and sessions.</p>
+      <h2 id="hub-and-spoke-step-3-verify-the-setup">Step 3: Verify the setup</h2>
+      <p>From each spoke, confirm connectivity:</p>
+      <pre><code><span class="comment"># Should return rooms from the hub</span>
+<span class="cmd">mycelium room ls</span>
+
+<span class="comment"># Should show hub health</span>
+<span class="cmd">mycelium status</span></code></pre>
+      <p>Test agent participation by creating a room on the hub and joining from a spoke:</p>
+      <pre><code><span class="comment"># On the hub</span>
+<span class="cmd">mycelium room create</span> test-room
+
+<span class="comment"># On the spoke</span>
+<span class="cmd">mycelium session join</span> <span class="flag">--handle</span> spoke-agent <span class="flag">-m</span> <span class="str">&quot;Hello from spoke&quot;</span> <span class="flag">-r</span> test-room</code></pre>
+      <h2 id="hub-and-spoke-agent-identity">Agent identity</h2>
+      <p>Each agent needs a unique handle across the entire deployment. The handle is set by:</p>
+      <ol class="steps">
+        <li><code>identity.name</code> in <code>~/.mycelium/config.toml</code></li>
+        <li>The <code>MYCELIUM_AGENT_HANDLE</code> environment variable</li>
+        <li>The <code>--handle</code> flag on CLI commands</li>
+      </ol>
+      <p>For the mycelium-room channel, the handle *is* the agent&#x27;s identity in the room UI — <code>mycelium agent add agent-alpha</code> uses <code>agent-alpha</code> directly. For an external channel, the handle should match that channel&#x27;s user ID for the agent.</p>
+      <h2 id="hub-and-spoke-token-management">Token management</h2>
+      <p>Channel access tokens can expire or become invalid after server restarts. When this happens, agents silently stop receiving messages.</p>
+      <p>Signs of expired tokens:</p>
+      <ul>
+        <li>Agents join sessions but never respond to coordination ticks</li>
+        <li>Gateway logs show sync errors or 401/unauthorized responses</li>
+        <li><code>mycelium doctor</code> reports channel connection failures</li>
+      </ul>
+      <p>To refresh tokens, re-authenticate the agent with the channel, update the token in <code>channels.&lt;channel&gt;.accounts[agent]</code> in each node&#x27;s <code>openclaw.json</code>, and restart the gateway. (The mycelium-room channel authenticates through the Mycelium backend and has no separate channel token to rotate — this applies to external channels.)</p>
+      <h2 id="hub-and-spoke-step-4-set-up-spoke-metrics">Step 4: Set up spoke metrics</h2>
+      <p>Each spoke can run a lightweight local collector for OpenClaw telemetry. The collector stores data locally <strong>and</strong> forwards OTLP payloads to the hub so it can build a unified cross-host view.</p>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body"><strong>Prerequisite:</strong> the hub must already be running with <code>mycelium up --metrics</code> (see <a href="#hub-and-spoke-step-1-set-up-the-hub">Step 1</a>) so that the hub collector is listening on <code>:4318</code> and can accept forwarded payloads. The spoke collector forwards fire-and-forget — silent failures will show up as gaps in the hub&#x27;s &quot;Spoke Sites&quot; table, not as errors on the spoke.</div>
+      </div>
+      <pre><code><span class="comment"># Point the spoke&#x27;s metrics at the hub collector. Use the hub&#x27;s</span>
+<span class="comment"># collector_port if you remapped it from the 4318 default.</span>
+<span class="cmd">mycelium config set</span> metrics.collector_url &quot;http://&lt;hub-ip&gt;:4318&quot;
+
+<span class="comment"># Configure OTLP plugin (endpoint defaults to localhost:4318)</span>
+<span class="cmd">mycelium adapter add</span> openclaw <span class="flag">--step</span>=otel
+
+<span class="comment"># Start the spoke collector (daemonizes into background). This is the</span>
+<span class="comment"># host-process variant — we don&#x27;t want to assume docker on spokes, so</span>
+<span class="comment"># the collector runs directly under the user instead of as a container.</span>
+<span class="cmd">mycelium metrics collect</span>
+
+<span class="comment"># Stop it later with:</span>
+<span class="cmd">mycelium metrics stop</span></code></pre>
+      <h3 id="hub-and-spoke-how-the-spoke-collector-works">How the spoke collector works</h3>
+      <p>The spoke pipeline is <strong>OpenClaw → local spoke collector → hub collector</strong>, not OpenClaw → hub directly. Three reasons:</p>
+      <ol class="steps">
+        <li><strong>No docker assumption on spokes.</strong> <code>mycelium install</code> only runs on the hub. We don&#x27;t want to assume docker is available on every spoke, so spokes get a host-process collector (<code>mycelium metrics collect</code>) that runs directly under the user — the only spoke prerequisite is the CLI itself.</li>
+        <li><strong>Local survives a hub outage.</strong> Every OTLP payload lands in <code>~/.mycelium/metrics/metrics.json</code> (and <code>traces.db</code>) on the spoke first, then forwards to the hub. If the hub is down or the network drops, local <code>mycelium metrics show</code> still works on the spoke — only the hub&#x27;s cross-host view loses that interval.</li>
+        <li><strong>Forwarding is fire-and-forget.</strong> The spoke pushes raw OTLP to the hub via background HTTP POSTs; failures are logged at debug level and never block local ingest. That&#x27;s why hub-side errors surface as gaps in the Spoke Sites table rather than as visible errors on the spoke (see <a href="../metrics.md#hub-and-spoke-setup">metrics docs</a> for the full architecture diagram).</li>
+      </ol>
+      <p><code>mycelium metrics show</code> on the spoke merges local OpenClaw data with backend/CFN data fetched from the hub. On the hub, the forwarded OTLP data appears in the &quot;Spoke Sites&quot; table and can be filtered with <code>mycelium metrics show --host &lt;hostname&gt;</code>.</p>
+      <p>For a span-level view of the activity each spoke is forwarding — drill down by host, agent, room, channel, model, tool, error, or latency, and render any single trace as a parent → child tree — use the trace viewer on the hub:</p>
+      <pre><code><span class="cmd">mycelium metrics traces</span> summary <span class="flag">--since</span>=1h     # rollup
+<span class="cmd">mycelium metrics traces</span> by-host <span class="flag">--since</span>=1h      # per-spoke
+<span class="cmd">mycelium metrics traces</span> show &lt;trace_id&gt;         # one trace as a tree</code></pre>
+      <p>See <a href="../metrics.md#viewing-traces">Viewing Traces</a> for the full command list and pivots.</p>
+      <p>See the <a href="../metrics.md#hub-and-spoke-setup">Metrics System docs</a> for full details.</p>
+      <h2 id="hub-and-spoke-troubleshooting">Troubleshooting</h2>
+      <h3 id="hub-and-spoke-spoke-cant-reach-hub">Spoke can&#x27;t reach hub</h3>
+      <pre><code>curl http://&lt;hub-ip&gt;:8000/health</code></pre>
+      <p>If this fails, check firewall rules, VPN connectivity, or security groups. The backend binds to <code>0.0.0.0</code> by default inside Docker, but the host firewall may block external access.</p>
+      <h3 id="hub-and-spoke-agent-joins-but-doesnt-respond">Agent joins but doesn&#x27;t respond</h3>
+      <p>The agent&#x27;s OpenClaw gateway plugin subscribes to SSE on the hub. If the agent joins a session (visible in <code>mycelium room ls</code>) but never responds to coordination ticks:</p>
+      <ol class="steps">
+        <li>Check the gateway logs: <code>journalctl --user -u openclaw-gateway --since &quot;5 min ago&quot;</code></li>
+        <li>Look for <code>session SSE connected</code> — if absent, the plugin isn&#x27;t monitoring the session</li>
+        <li>Verify channel tokens are valid (see above)</li>
+      </ol>
+      <h3 id="hub-and-spoke-doctor-reports-spoke-mode-unexpectedly">Doctor reports &quot;spoke mode&quot; unexpectedly</h3>
+      <p><code>mycelium doctor</code> auto-detects mode from <code>server.api_url</code>. If it points to a non-localhost address, doctor assumes spoke mode. If you&#x27;re running the backend locally on a non-default address, set <code>server.api_url</code> to <code>http://localhost:8000</code> in <code>~/.mycelium/config.toml</code>.</p>
+    </section>
+
+    <hr class="divider">
+
     <section class="doc-section" id="troubleshooting">
       <h1>Troubleshooting</h1>
       <h2 id="troubleshooting-quick-diagnostics">Quick Diagnostics</h2>
@@ -910,6 +1178,20 @@ LLM_BASE_URL=http://localhost:11434</code></pre>
 ls ~/.mycelium/rooms/       # files present?
 <span class="cmd">mycelium reindex</span>            # rebuild search index (needed after direct file writes)
 <span class="cmd">mycelium room ls</span>            # wrong active room?</code></pre>
+      <hr class="divider">
+      <h3 id="troubleshooting-7b-agents-join-a-session-but-never-reach-consensus">7b. Agents Join a Session but Never Reach Consensus</h3>
+      <p><strong>Symptom</strong>: <code>session join</code> works and agents appear in the session, but negotiation never produces a plan, or <code>session join</code> reports <code>CFN: not configured</code>.</p>
+      <p>Negotiation has two prerequisites that memory/rooms don&#x27;t:</p>
+      <pre><code><span class="cmd">mycelium status</span>            # is an LLM key configured? (CE needs one to propose)
+grep <span class="flag">-i</span> ioc ~/.mycelium/.env   # was the stack installed with IoC/CFN enabled?</code></pre>
+      <ul>
+        <li><strong>No LLM key</strong> → the CognitiveEngine can&#x27;t generate proposals. Add one (see</li>
+      </ul>
+      <p>*LLM Not Configured* above) and restart: <code>mycelium down &amp;&amp; mycelium up</code>.</p>
+      <ul>
+        <li><strong>IoC/CFN disabled</strong> → re-run <code>mycelium install</code> (interactive enables IoC by</li>
+      </ul>
+      <p>default), or reinstall without <code>--no-ioc</code>.</p>
       <hr class="divider">
       <h3 id="troubleshooting-8-container-name-conflicts">8. Container Name Conflicts</h3>
       <p><strong>Symptom</strong>: <code>container name &quot;mycelium-db&quot; is already in use</code></p>
@@ -1090,6 +1372,75 @@ grep api_url ~/.mycelium/config.toml</code></pre>
         </table>
       </div>
       <p>All of these are written by <code>mycelium config apply</code> from the matching <code>runtime.*</code> config keys — don&#x27;t edit <code>.env</code> by hand.</p>
+      <h3 id="troubleshooting-agent-environment-variables">Agent environment variables</h3>
+      <p>Read by the CLI and adapters at runtime to identify the agent and locate the backend:</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Variable</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>MYCELIUM_API_URL</code></td>
+              <td>Backend API URL (default: <code>http://localhost:8000</code>)</td>
+            </tr>
+            <tr>
+              <td><code>MYCELIUM_AGENT_HANDLE</code></td>
+              <td>This agent&#x27;s identity handle</td>
+            </tr>
+            <tr>
+              <td><code>MYCELIUM_ROOM</code></td>
+              <td>Active room name</td>
+            </tr>
+            <tr>
+              <td><code>MYCELIUM_WORKSPACE_ID</code></td>
+              <td>CFN workspace UUID, required for knowledge ingest</td>
+            </tr>
+            <tr>
+              <td><code>MYCELIUM_MAS_ID</code></td>
+              <td>CFN MAS UUID, required for knowledge ingest</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <h3 id="troubleshooting-knowledge-ingest-cost-controls">Knowledge-ingest cost controls</h3>
+      <p>Overrides for <code>[knowledge_ingest]</code> in <code>~/.mycelium/config.toml</code>. Every key below has a matching env var for ephemeral changes (no config edit needed). Forwarding to the CFN graph is off by default.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Variable</th>
+              <th>Default</th>
+              <th>Effect</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>MYCELIUM_INGEST_ENABLED</code></td>
+              <td><code>true</code></td>
+              <td>Master kill switch. <code>0</code>/<code>false</code> short-circuits every ingest at the backend gate (no concept extraction, no CFN spend) and the endpoint returns 200 with a disabled marker.</td>
+            </tr>
+            <tr>
+              <td><code>MYCELIUM_INGEST_MIN_CONTENT_CHARS</code></td>
+              <td><code>32</code></td>
+              <td>Skip ingest for trivially short content (&quot;ack&quot;, emoji-only). <code>0</code> disables the gate.</td>
+            </tr>
+            <tr>
+              <td><code>MYCELIUM_INGEST_MAX_INPUT_TOKENS</code></td>
+              <td><code>50000</code></td>
+              <td>Backend circuit breaker: payloads above this estimated input token count get refused with HTTP 413. <code>0</code> disables.</td>
+            </tr>
+            <tr>
+              <td><code>MYCELIUM_INGEST_DEDUPE_TTL_SECONDS</code></td>
+              <td><code>300</code></td>
+              <td>Backend content-hash dedupe window. Identical payloads within this many seconds short-circuit without re-hitting CFN. <code>0</code> disables dedupe.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
       <hr class="divider">
       <h2 id="troubleshooting-log-locations">Log Locations</h2>
       <pre><code><span class="cmd">mycelium logs</span>                       # all services

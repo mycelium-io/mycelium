@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Concepts — mycelium</title>
+<meta name="description" content="The core concepts behind Mycelium: rooms, sessions, memory, plan, CognitiveEngine, and the knowledge graph.">
+<meta property="og:title" content="Concepts — mycelium">
+<meta property="og:description" content="The core concepts behind Mycelium: rooms, sessions, memory, plan, CognitiveEngine, and the knowledge graph.">
+<meta property="og:image" content="https://mycelium-io.github.io/mycelium/og.png">
+<meta property="og:url" content="https://mycelium-io.github.io/mycelium/concepts.html">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://mycelium-io.github.io/mycelium/og.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="mycelium.css">
+</head>
+<body>
+<canvas id="mycelium-bg"></canvas>
+<!-- TOP NAV -->
+<nav class="topnav">
+  <a href="https://mycelium-io.github.io" class="topnav-cell topnav-brand">
+    <img src="logo.png" alt="Mycelium">
+    <span class="brand-word">mycelium</span>
+  </a>
+  <span class="topnav-cell topnav-page-cell">
+    <span class="caps-mono">DOCS</span>
+  </span>
+  <div class="topnav-right">
+    <button class="copy-docs-btn" onclick="copyDocsCmd()"><i data-lucide="terminal" style="width:13px;height:13px;stroke:currentColor;vertical-align:-2px;margin-right:6px;"></i>copy docs cmd</button>
+    <button class="copy-page-btn" onclick="copyPage()"><i data-lucide="copy" style="width:13px;height:13px;stroke:currentColor;vertical-align:-2px;margin-right:6px;"></i>copy this page</button>
+    <a href="https://github.com/mycelium-io/mycelium" aria-label="GitHub" style="display:flex;align-items:center;"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="display:block;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
+  </div>
+</nav>
+<nav class="sectionnav">
+  <div class="sectionnav-inner">
+    <a href="index.html" class=""><span class="square-dot"></span>GET STARTED</a>
+    <a href="concepts.html" class="active"><span class="square-dot"></span>CONCEPTS</a>
+    <a href="adapters.html" class=""><span class="square-dot"></span>ADAPTERS</a>
+    <a href="reference.html" class=""><span class="square-dot"></span>REFERENCE</a>
+    <div class="sectionnav-right">
+    <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/openclaw/assets/mycelium/plugin/skills/mycelium/SKILL.md" target="_blank">SKILL.md ↗</a>
+    </div>
+  </div>
+</nav>
+<div class="layout">
+
+  <nav class="sidebar">
+    <div class="nav-section">
+      <div class="nav-section-label">Concepts</div>
+      <a href="#rooms" class="nav-link sub">Rooms</a>
+      <a href="#sessions" class="nav-link sub">Sessions</a>
+      <a href="#memory" class="nav-link sub">Memory</a>
+      <a href="#plan" class="nav-link sub">Plan</a>
+      <a href="#cognitive-engine" class="nav-link sub">CognitiveEngine</a>
+      <a href="#knowledge-graph" class="nav-link sub">Knowledge Graph</a>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="main">
+  <div class="main-inner">
+    <section class="doc-section" id="rooms">
+      <h1>Rooms</h1>
+      <p>A room is a persistent coordination namespace. All memories, sessions, and messages are scoped to a room. A room IS its namespace — there&#x27;s no separation between the two.</p>
+      <p>Rooms hold persistent state (memories, knowledge graph). When agents need to negotiate in real time, they spawn <strong>sessions</strong> within a room. Sessions are ephemeral sync negotiation rounds; the room outlives them.</p>
+      <h2 id="rooms-rooms-are-directories">Rooms are Directories</h2>
+      <p>Each room maps to a directory at <code>~/.mycelium/rooms/{room_name}/</code>. Standard subdirectories are created automatically:</p>
+      <pre><code>~/.mycelium/rooms/design-review/
+  decisions/   context/   status/    plan/
+  work/        procedures/   log/   failed/</code></pre>
+      <p>The <code>plan/</code> subdir holds the room&#x27;s plan — a free-form set of markdown files plus the <code>- [ ]</code> / <code>- [x]</code> checklist lines those files contain. <code>plan/title.md</code> holds the room&#x27;s display title (shown italicised above room activity in the UI). The rest are arbitrary <code>plan/{slug}.md</code> files containing prose and tasks. See <a href="#"><code>mycelium plan</code></a> for read/write commands and <code>plan task add|done|undo</code> for checkbox edits.</p>
+      <p>You can browse, edit, or git-track these directories directly. The backend keeps its search index in sync via startup scans and file watching.</p>
+      <h2 id="rooms-session-state-machine">Session State Machine</h2>
+      <p>Sessions spawned within rooms follow a state machine:</p>
+      <pre><code>idle → waiting → negotiating → complete
+          ↑         ↓
+      (join window fires)</code></pre>
+      <p>Once <code>complete</code>, the consensus is compiled into the room&#x27;s shared plan (<code>plan/tasks.md</code>) — a <code>- [ ]</code> checklist the team works from. The arc is <code>join → negotiate → plan → work</code>; the room and its plan outlive the session.</p>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="sessions">
+      <h1>Sessions</h1>
+      <p>A session is an ephemeral sync negotiation round spawned within a room. Rooms hold persistent state (memories, knowledge graph). Sessions handle real-time coordination.</p>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body"><strong>Prerequisites for negotiation.</strong> Sessions need two things that <code>mycelium install</code> sets up by default: the <strong>IoC/CFN</strong> coordination backend (without it, <code>session join</code> returns &quot;CFN: not configured&quot;), and an <strong>LLM key</strong> (the CognitiveEngine uses it to generate proposals; in &quot;stub mode&quot; agents join but never reach consensus). Memory and rooms work without either; negotiation does not.</div>
+      </div>
+      <h2 id="sessions-lifecycle">Lifecycle</h2>
+      <ol class="steps">
+        <li><strong>Create</strong> — <code>mycelium session create</code> spawns a session within your active room.</li>
+        <li><strong>Join</strong> — Agents join with <code>mycelium session join -m &quot;your position&quot;</code>. The first join starts a 60-second window for others to join.</li>
+        <li><strong>Await</strong> — <code>mycelium session await</code> blocks until the CognitiveEngine has an action for your agent (propose, respond, or done).</li>
+        <li><strong>Negotiate</strong> — Agents propose and respond in structured rounds mediated by the CognitiveEngine.</li>
+        <li><strong>Complete</strong> — The session reaches consensus. The agreement is compiled into the room&#x27;s <a href="#plan">shared plan</a> (<code>plan/tasks.md</code>); the session is done, the room and its plan persist.</li>
+      </ol>
+      <p>The arc doesn&#x27;t stop at consensus — it flows into work: <strong>join → negotiate → plan → work</strong>. A consensus decides *what*; the plan is *how the team carries it out*.</p>
+      <h2 id="sessions-state-machine">State Machine</h2>
+      <pre><code>idle → waiting → negotiating → complete
+          ↑         ↓
+      (first join)  (CE tick-0)</code></pre>
+      <ul>
+        <li><strong>idle</strong> — Session created, no agents yet.</li>
+        <li><strong>waiting</strong> — At least one agent joined. 60-second window for others.</li>
+        <li><strong>negotiating</strong> — CognitiveEngine is running the NegMAS pipeline.</li>
+        <li><strong>complete</strong> — Consensus reached and compiled into the room&#x27;s <code>plan/tasks.md</code>. Agents pick up the shared checklist and work it.</li>
+      </ul>
+      <h2 id="sessions-rooms-vs-sessions">Rooms vs Sessions</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th></th>
+              <th>Room</th>
+              <th>Session</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Lifetime</td>
+              <td>Persistent</td>
+              <td>Ephemeral</td>
+            </tr>
+            <tr>
+              <td>Purpose</td>
+              <td>Namespace for memory + coordination</td>
+              <td>Single negotiation round</td>
+            </tr>
+            <tr>
+              <td>State</td>
+              <td>Always idle</td>
+              <td>idle → waiting → negotiating → complete</td>
+            </tr>
+            <tr>
+              <td>Memory</td>
+              <td>Yes — scoped to room</td>
+              <td>No — uses parent room&#x27;s memory</td>
+            </tr>
+            <tr>
+              <td>Multiple</td>
+              <td>One room, many sessions over time</td>
+              <td>Each session is independent</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <h2 id="sessions-multiple-rounds">Multiple Rounds</h2>
+      <p>A room can host many sessions over time. When one session completes, agents can spawn a new one for the next decision. The room&#x27;s memory persists across all sessions, so each round starts with full context from previous rounds.</p>
+      <pre><code><span class="comment"># First negotiation</span>
+<span class="cmd">mycelium session create</span> <span class="flag">-r</span> sprint-plan
+<span class="cmd">mycelium session join</span> <span class="flag">-m</span> <span class="str">&quot;Prioritize database migration&quot;</span> <span class="flag">-r</span> sprint-plan
+
+<span class="comment"># ... negotiation completes ...</span>
+
+<span class="comment"># Second negotiation (room memory carries over)</span>
+<span class="cmd">mycelium session create</span> <span class="flag">-r</span> sprint-plan
+<span class="cmd">mycelium session join</span> <span class="flag">-m</span> &quot;Now let&#x27;s plan the API layer&quot; <span class="flag">-r</span> sprint-plan</code></pre>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="memory">
+      <h1>Memory</h1>
+      <p>Room memory is markdown files on your filesystem: the shared source of truth, greppable and editable by any agent. The CFN knowledge graph is a derived index over those files, for recall by meaning and relationship, never an independent source of writes. Whatever stays private to one agent stays in that agent&#x27;s own local memory, never indexed.</p>
+      <h2 id="memory-three-layers-one-source-of-truth">Three layers, one source of truth</h2>
+      <p>Mycelium memory has three layers, and only the middle one is &quot;the memory&quot;:</p>
+      <ol class="steps">
+        <li><strong>Your private context</strong> is yours alone: agent-native files like <code>SOUL.md</code></li>
+      </ol>
+      <p>or per-agent notes that never leave your machine and are never indexed or shared. Anything only you need lives here.</p>
+      <ol class="steps">
+        <li><strong>Room memory</strong> is the shared source of truth: markdown files under</li>
+      </ol>
+      <p><code>~/.mycelium/rooms/{room}/</code> that every agent in the room can read, <code>grep</code>, edit, and <code>git</code>-track. If the team should know it, write it here.</p>
+      <ol class="steps">
+        <li><strong>The CFN knowledge graph</strong> is a derived view, not a place you write to.</li>
+      </ol>
+      <p>Mycelium indexes the room&#x27;s public artifacts (memory files plus channel messages) into it so agents can recall by meaning and by relationship. It rebuilds from the files, so the files always win.</p>
+      <p>Rule of thumb: if a teammate should find it, put it in room memory. The graph is how they find it; the filesystem is where it lives; your private notes stay yours.</p>
+      <p>Every write to room memory is embedded (384-dim, local, no API key) and indexed for semantic search.</p>
+      <h2 id="memory-namespace-conventions">Namespace Conventions</h2>
+      <p>Keys use <code>/</code> as a separator. This is a convention, not enforced structure — but it makes <code>memory ls &lt;prefix&gt;/</code> very useful.</p>
+      <pre><code><span class="comment"># Decisions your team made</span>
+<span class="cmd">mycelium memory set</span> <span class="str">&quot;decisions/db&quot;</span> <span class="str">&quot;AgensGraph — SQL + graph + vector in one&quot;</span>
+
+<span class="comment"># Things that failed (so nobody repeats them)</span>
+<span class="cmd">mycelium memory set</span> <span class="str">&quot;failed/sqlite&quot;</span> &quot;Can&#x27;t handle pgvector or JSONB&quot;
+
+<span class="comment"># Per-agent status (handle is just attribution)</span>
+<span class="cmd">mycelium memory set</span> <span class="str">&quot;status/prometheus&quot;</span> <span class="str">&quot;Working on CFN integration&quot;</span> <span class="flag">--handle</span> prometheus-agent
+
+<span class="comment"># Browse a namespace</span>
+<span class="cmd">mycelium memory ls</span> decisions/
+<span class="cmd">mycelium memory ls</span> failed/</code></pre>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body"><strong>Always upserts.</strong> Calling <code>memory set</code> on an existing key overwrites it. The version number increments automatically so you can track changes.</div>
+      </div>
+      <h2 id="memory-filesystem-native-storage">Filesystem-Native Storage</h2>
+      <p>Every memory is a markdown file at <code>~/.mycelium/rooms/{room}/{key}.md</code> with YAML frontmatter. You can read, edit, or version-control these files directly.</p>
+      <pre><code><span class="comment"># View the raw file</span>
+cat ~/.mycelium/rooms/design-review/decisions/database.md
+
+<span class="comment"># Edit with any tool</span>
+vim ~/.mycelium/rooms/design-review/decisions/database.md
+
+<span class="comment"># Git-track a room&#x27;s memory</span>
+cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
+      <p>The pgvector search index auto-syncs when:</p>
+      <ul>
+        <li>You use <code>mycelium memory set</code> (immediate dual-write)</li>
+        <li>The backend starts up (incremental scan of changed files)</li>
+        <li>Files change on disk while the backend is running (file watcher)</li>
+      </ul>
+      <p>For bulk edits, you can also trigger a manual reindex:</p>
+      <pre><code><span class="cmd">mycelium memory reindex</span></code></pre>
+      <h2 id="memory-semantic-search">Semantic Search</h2>
+      <p>Search finds memories by meaning — cosine similarity on all-MiniLM-L6-v2 embeddings (384 dimensions, runs locally).</p>
+      <pre><code><span class="cmd">mycelium memory search</span> <span class="str">&quot;what database decisions were made&quot;</span>
+<span class="cmd">mycelium memory search</span> <span class="str">&quot;what failed and why&quot;</span>
+<span class="cmd">mycelium memory search</span> <span class="str">&quot;what is the current status&quot;</span></code></pre>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="plan">
+      <h1>Plan</h1>
+      <p>A room&#x27;s <strong>plan</strong> is the place to write down what the room is for and what&#x27;s left to do. It lives in <code>~/.mycelium/rooms/{room}/plan/</code> as a small set of markdown files, plus the <code>- [ ]</code> / <code>- [x]</code> checklist lines inside them.</p>
+      <p>Plan content is surfaced to every agent in the room — on every coordination tick (sync path) and in every agent-context briefing (async path) — so agents weigh their behaviour against work that&#x27;s already committed.</p>
+      <p>You can write the plan by hand (<code>plan set</code>, <code>plan task add</code>), but it also fills itself: when a <a href="#sessions">negotiation session</a> reaches consensus, Mycelium compiles the agreement into <code>plan/tasks.md</code> automatically — a <code>- [ ]</code> checklist the whole team then executes against. A re-negotiation updates that same plan, preserving tasks already completed. The arc is <strong>join → negotiate → plan → work</strong>.</p>
+      <h2 id="plan-anatomy">Anatomy</h2>
+      <pre><code>.mycelium/rooms/{room}/plan/
+├── title.md          # one-line italic display title (shown above room activity)
+├── tasks.md          # default todo file written by `plan task add`
+└── {slug}.md         # any number of additional plan files (prose + checklists)</code></pre>
+      <p><code>title.md</code> is special: its first non-empty line becomes the room&#x27;s displayed title (italic Cormorant Garamond in the UI, surfaced as a chip in the CLI). All other <code>plan/*.md</code> files are arbitrary — they appear as chips in the room header and as grouped task buckets in <code>plan tasks</code>.</p>
+      <h2 id="plan-cli">CLI</h2>
+      <pre><code><span class="comment"># Title</span>
+<span class="cmd">mycelium plan title</span>                                # read
+<span class="cmd">mycelium plan title</span> <span class="str">&quot;Plan the Q3 sprint priorities&quot;</span>  # set
+
+<span class="comment"># Files (each is a memory file under plan/&lt;slug&gt;)</span>
+<span class="cmd">mycelium plan ls</span>
+<span class="cmd">mycelium plan show</span> sprint
+<span class="cmd">mycelium plan set</span> sprint <span class="str">&quot;# Sprint\n\n- [ ] cut a release branch&quot;</span>
+<span class="cmd">mycelium plan rm</span> sprint
+
+<span class="comment"># Tasks (markdown checklist lines across every plan file)</span>
+<span class="cmd">mycelium plan tasks</span>                  # open tasks only
+<span class="cmd">mycelium plan tasks</span> <span class="flag">--all</span>            # include completed
+<span class="cmd">mycelium plan task</span> add <span class="str">&quot;ship the demo&quot;</span>          # appends to plan/tasks.md
+<span class="cmd">mycelium plan task</span> add <span class="str">&quot;draft API&quot;</span> <span class="flag">--file</span> sprint # appends to plan/sprint.md
+<span class="cmd">mycelium plan task</span> done              # interactive multi-select over open tasks
+<span class="cmd">mycelium plan task</span> done tasks:3 sprint:7
+<span class="cmd">mycelium plan task</span> undo              # interactive multi-select over done tasks</code></pre>
+      <p>Task IDs are <code>&lt;slug&gt;:&lt;line&gt;</code> and stable as long as the file isn&#x27;t reflowed.</p>
+      <h2 id="plan-how-agents-see-it">How agents see it</h2>
+      <p>Plan files share the same memory-style markdown-with-frontmatter convention, so they live alongside <code>work/</code>, <code>decisions/</code>, etc. and are readable to anyone opening the room directory.</p>
+      <p>During a live coordination tick, the open task list is also rendered into every agent&#x27;s prompt under a dedicated <strong>Open tasks</strong> header — both CLI agents (raw payload field <code>plan_open_tasks</code>) and OpenClaw agents (rendered into the dispatched instruction string).</p>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="cognitive-engine">
+      <h1>CognitiveEngine</h1>
+      <p>CognitiveEngine is the mediator. It sits between all agents and drives negotiation. Agents never talk to each other directly — all coordination flows through CE.</p>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body"><strong>CE requires an LLM key and the IoC/CFN backend.</strong> Both are provisioned by <code>mycelium install</code> (interactive) by default. Without an LLM key the engine can&#x27;t synthesize proposals; without IoC/CFN, <code>session join</code> rejects the negotiation outright. See <strong>sessions</strong> for the full prerequisite list.</div>
+      </div>
+      <h2 id="cognitive-engine-negotiation-flow">Negotiation flow</h2>
+      <p>In sessions:</p>
+      <ol class="steps">
+        <li>Agents call <code>session join</code> with their initial position and handle.</li>
+        <li>The join window stays open until no new agents have joined for the configured</li>
+      </ol>
+      <p>extension period (default 30s after each join, capped at 180s from first join). When the window closes, CE starts the <strong>SemanticNegotiationPipeline</strong> on the joined positions.</p>
+      <ol class="steps">
+        <li>CE sends each agent a <code>coordination_tick</code> with <code>action: respond</code>. The tick</li>
+      </ol>
+      <p>payload tells the agent everything it needs to decide:</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>What it tells you</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>current_offer</code></td>
+              <td>The proposal on the table this round</td>
+            </tr>
+            <tr>
+              <td><code>can_counter_offer</code></td>
+              <td>Whether *you* are the designated proposer this round</td>
+            </tr>
+            <tr>
+              <td><code>round</code> / <code>n_steps_total</code></td>
+              <td>Where you are in the round budget</td>
+            </tr>
+            <tr>
+              <td><code>your_last_action</code></td>
+              <td>What you (the recipient) did last round</td>
+            </tr>
+            <tr>
+              <td><code>prior_round_outcome</code></td>
+              <td>What happened previously: <code>first_round</code>, <code>proposer_countered</code>, <code>rejected_by_&lt;id&gt;</code>, <code>agreed</code>, <code>no_consensus</code></td>
+            </tr>
+            <tr>
+              <td><code>issues</code> / <code>issue_options</code></td>
+              <td>The full negotiation space</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <ol class="steps">
+        <li>Agents reply with <code>propose</code> (counter-offer, only when <code>can_counter_offer: true</code>)</li>
+      </ol>
+      <p>or <code>respond accept|reject</code>.</p>
+      <ol class="steps">
+        <li>Rounds continue until consensus or the round budget (<code>n_steps_total</code>) is</li>
+      </ol>
+      <p>exhausted. Consensus requires <strong>all agents</strong> to accept the same offer in the same round. The final tick is <code>coordination_consensus</code> with <code>broken: false</code> and the agreed plan; if no agreement is reached, <code>broken: true</code> is posted and the room moves to <code>failed</code> state.</p>
+      <ol class="steps">
+        <li>On consensus, the agreement is handed to the <strong>plan compiler</strong> — an LLM</li>
+      </ol>
+      <p>stage that turns the raw <code>issue=value</code> agreement into the room&#x27;s <a href="#plan">shared plan</a>, <code>plan/tasks.md</code>, a <code>- [ ]</code> checklist the team executes against. This runs before the <code>coordination_consensus</code> message is posted, so the plan exists by the time <code>session await</code> returns. The compiler is a separate stage that *consumes* the negotiation outcome — not part of the negotiation engine itself.</p>
+      <p>Walking away with no agreement is a legitimate outcome. The protocol does not have a &quot;concede gradually&quot; mechanism for LLM agents — if your hard constraints can&#x27;t be met, keep rejecting until the round budget is exhausted.</p>
+      <pre><code><span class="comment"># Propose / counter-offer (when can_counter_offer is true)</span>
+<span class="cmd">mycelium negotiate propose</span> \
+  budget=high timeline=standard \
+  scope=extended quality=standard \
+  <span class="flag">-r</span> sprint-plan <span class="flag">-H</span> julia-agent
+
+<span class="comment"># Respond (when can_counter_offer is false, or to accept the standing offer)</span>
+<span class="cmd">mycelium negotiate respond</span> accept \
+  <span class="flag">-r</span> sprint-plan <span class="flag">-H</span> selina-agent
+
+<span class="comment"># Keep awaiting between each action</span>
+<span class="cmd">mycelium session await</span> \
+  <span class="flag">-H</span> selina-agent <span class="flag">-r</span> sprint-plan</code></pre>
+      <h2 id="cognitive-engine-tunables">Tunables</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Config key</th>
+              <th>Default</th>
+              <th>Purpose</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>negotiation.n_steps</code></td>
+              <td><code>20</code></td>
+              <td>Maximum SAO rounds per session. Set to <code>0</code> to fall through to CFN&#x27;s auto-computed budget (which scales with agent and issue count, but assumes Boulware-style time-based concession that LLM callback agents do not exhibit — a low fixed cap is preferred).</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <pre><code><span class="cmd">mycelium config set</span> negotiation.n_steps 30
+<span class="cmd">mycelium config apply</span>  # regenerates ~/.mycelium/.env</code></pre>
+      <p>CFN-side tunables (set via <code>~/.mycelium/.env</code> directly):</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Env var</th>
+              <th>Default</th>
+              <th>Purpose</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>COORDINATION_JOIN_WINDOW_SECONDS</code></td>
+              <td><code>30</code></td>
+              <td>Initial join window starting from the first agent&#x27;s join</td>
+            </tr>
+            <tr>
+              <td><code>COORDINATION_JOIN_WINDOW_EXTENSION_SECONDS</code></td>
+              <td><code>30</code></td>
+              <td>How much each subsequent join pushes the deadline forward</td>
+            </tr>
+            <tr>
+              <td><code>COORDINATION_JOIN_WINDOW_MAX_SECONDS</code></td>
+              <td><code>180</code></td>
+              <td>Hard cap on total join window from first join</td>
+            </tr>
+            <tr>
+              <td><code>COORDINATION_TICK_TIMEOUT_SECONDS</code></td>
+              <td><code>30</code></td>
+              <td>Fallback per-tick timeout</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The round watchdog also extends on each agent&#x27;s first reply per round, so a slow agent doesn&#x27;t stall the round for everyone — only sustained silence (no replies for the full timeout window) ends the round prematurely.</p>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="knowledge-graph">
+      <h1>Knowledge Graph</h1>
+      <p>Every message written to a room passes through a two-stage LLM extraction pipeline that turns free-form agent output into structured graph data.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Stage</th>
+              <th>What it extracts</th>
+              <th>Stored as</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Stage 1</td>
+              <td>Concepts, entities, decisions</td>
+              <td>Nodes in openCypher graph</td>
+            </tr>
+            <tr>
+              <td>Stage 2</td>
+              <td>Relationships between concepts</td>
+              <td>Edges in openCypher graph</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>CE queries the graph when running negotiation — historical decisions and known trade-offs inform proposals. The graph accumulates across all sessions in a room.</p>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body">The knowledge graph lives in <strong>AgensGraph</strong> alongside the SQL tables — no separate graph database required.</div>
+      </div>
+    </section>
+    <!-- FOOTER -->
+    <div class="docs-footer">
+      <a href="https://github.com/mycelium-io/mycelium">mycelium-io/mycelium</a>
+      <span class="sep">·</span>
+      <span>Apache 2.0</span>
+      <span class="sep">·</span>
+      <span class="tagline">Shared Intent &middot; Shared Memory &middot; Shared Context</span>
+    </div>
+
+  </div>
+  </main>
+</div>
+
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script src="site.js"></script>
+
+</body>
+</html>
