@@ -728,7 +728,7 @@ def _check_runtime_config_drift() -> CheckResult:
     )
 
 
-def _check_cfn_intent() -> CheckResult:
+def _check_cfn_intent(*, local_backend: bool = True) -> CheckResult:
     """Catch the CFN intent/config mismatch that silently breaks negotiation.
 
     Symptom: user has `server.mas_id` in config.toml (set at some point — usually
@@ -739,7 +739,16 @@ def _check_cfn_intent() -> CheckResult:
     with `"CFN coordination required but not configured for this room"`. The
     old CFN check (`_check_room_mas_ids`) silently skips when CFN is disabled,
     so doctor reports all-green while negotiation is broken.
+
+    Spoke nodes talk to a remote hub — CFN URLs belong on the hub, not here.
     """
+    if not local_backend:
+        return CheckResult(
+            name="CFN config",
+            status="ok",
+            message="Skipped (spoke — CFN runs on hub)",
+        )
+
     env_path = Path.home() / ".mycelium" / ".env"
     if not env_path.exists():
         return CheckResult(name="CFN config", status="ok", message="Skipped (no .env)")
@@ -2006,7 +2015,7 @@ def doctor(
             (
                 "CFN",
                 [
-                    _check_cfn_intent(),
+                    _check_cfn_intent(local_backend=local),
                     _check_workspace_id(local_backend=local),
                     _check_room_mas_ids(),
                 ],
