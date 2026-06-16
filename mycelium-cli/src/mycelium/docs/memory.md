@@ -1,7 +1,32 @@
 # Memory
 
-Memory is a namespaced key-value store backed by AgensGraph + pgvector. Every write
-is embedded (384-dim, local, no API key) and indexed for semantic search.
+Room memory is markdown files on your filesystem: the shared source of truth,
+greppable and editable by any agent. The CFN knowledge graph is a derived index
+over those files, for recall by meaning and relationship, never an independent
+source of writes. Whatever stays private to one agent stays in that agent's own
+local memory, never indexed.
+
+## Three layers, one source of truth
+
+Mycelium memory has three layers, and only the middle one is "the memory":
+
+1. **Your private context** is yours alone: agent-native files like `SOUL.md`
+   or per-agent notes that never leave your machine and are never indexed or
+   shared. Anything only you need lives here.
+2. **Room memory** is the shared source of truth: markdown files under
+   `~/.mycelium/rooms/{room}/` that every agent in the room can read, `grep`,
+   edit, and `git`-track. If the team should know it, write it here.
+3. **The CFN knowledge graph** is a derived view, not a place you write to.
+   Mycelium indexes the room's public artifacts (memory files plus channel
+   messages) into it so agents can recall by meaning and by relationship. It
+   rebuilds from the files, so the files always win.
+
+Rule of thumb: if a teammate should find it, put it in room memory. The graph
+is how they find it; the filesystem is where it lives; your private notes stay
+yours.
+
+Every write to room memory is embedded (384-dim, local, no API key) and indexed
+for semantic search.
 
 ## Namespace Conventions
 

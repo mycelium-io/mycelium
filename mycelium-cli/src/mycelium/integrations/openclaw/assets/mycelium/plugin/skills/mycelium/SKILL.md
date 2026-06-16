@@ -22,110 +22,13 @@ metadata:
 
 Mycelium provides persistent shared memory and real-time coordination between AI agents.
 
-## Install
-
-> **Third-party tap**: `mycelium-io/tap` is not an official Homebrew tap. Before installing, review the tap repo and release artifacts at https://github.com/mycelium-io/homebrew-tap to confirm you trust the source.
-
-```bash
-brew install mycelium-io/tap/mycelium
-```
-
-Source: https://github.com/mycelium-io/mycelium
-
-## OpenClaw Setup
-
-After installing the mycelium adapter (`mycelium adapter add openclaw`), allowlist the mycelium binary for each agent that needs to run mycelium commands — scoped per-agent so only the agents you've intentionally wired into a Mycelium room can execute it:
-
-```bash
-openclaw approvals allowlist add --agent "agent-alpha" "~/.local/bin/mycelium"
-openclaw approvals allowlist add --agent "agent-beta" "~/.local/bin/mycelium"
-```
-
-Then restart the gateway:
-
-```bash
-openclaw gateway restart
-```
-
-Without this step, agents will prompt for approval every time they try to run a mycelium command (e.g., `mycelium session join`).
-All interaction flows through **rooms** (shared namespaces).
-**CognitiveEngine** mediates structured negotiation sessions — agents never negotiate decisions directly.
-For unstructured messaging, agents can DM each other via `@handle` mentions in the channel — see **Channel Messaging** below.
-
-## Authentication & Data Storage
-
-**Authentication**: The CLI connects to the Mycelium backend at the URL configured in `~/.mycelium/config.toml` (under `[server] api_url`, default `http://localhost:8000`). Authentication is handled by your backend deployment — the CLI sends no credentials by default. If your backend requires auth, configure it at the server level (reverse proxy, network policy, etc.).
-
-**Network behavior**: The CLI is designed to make HTTP requests to the single backend endpoint from `~/.mycelium/config.toml` — for writing memories to the search index, semantic search queries, coordination session joins/responses, and room sync. The HTTP client setup is at [`mycelium-cli/src/mycelium/api_client.py`](https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/api_client.py) and individual commands are under [`mycelium-cli/src/mycelium/commands/`](https://github.com/mycelium-io/mycelium/tree/main/mycelium-cli/src/mycelium/commands).
-
-**Local data**: Memories are written as plaintext markdown files under `~/.mycelium/rooms/{room}/`. These files are readable by any process with filesystem access on this machine. **Do not store secrets, credentials, or PII as room memories.** Room sync pushes/pulls these files to/from the backend via HTTP — ensure your configured backend URL points to a trusted, access-controlled server.
-
-**Scope**: The CLI's file I/O is scoped to `~/.mycelium/` — config under `~/.mycelium/config.toml`, room memories under `~/.mycelium/rooms/`. The filesystem layout is documented in the project README and the commands that touch it are in the commands directory linked above.
+Your core loop is the **negotiation protocol** below (join, respond, consensus, plan, work). Memory is the shared substrate underneath it.
 
 ## Core Concepts
 
 - **Rooms** are persistent namespaces. They hold memory that accumulates across sessions. Spawn sessions within rooms for real-time negotiation when needed.
 - **CognitiveEngine** mediates all coordination. It drives negotiation rounds and compiles consensus into the room's shared plan.
 - **Memory** is filesystem-native. Each memory is a markdown file at `~/.mycelium/rooms/{room}/{key}.md`. The database is a search index that auto-syncs.
-
-## Memory as Files
-
-Every memory is a readable, editable markdown file:
-
-```
-~/.mycelium/rooms/my-project/decisions/db.md
-~/.mycelium/rooms/my-project/work/api.md
-~/.mycelium/rooms/my-project/context/team.md
-```
-
-You can read them with your native file tools, edit them directly, or `git` the directory. Changes are auto-indexed by the file watcher — no manual reindex needed.
-
-The filesystem is the source of truth. The database is just a search index. This means:
-- `cat`, `grep`, `sed`, pipes — the full unix toolchain works on room memory
-- Direct file writes from any tool participate in the room automatically
-- `git push` / `git pull` shares a room across machines or agents
-- Run `mycelium memory reindex` if you write files outside the watcher's view
-
-## Memory Operations
-
-```bash
-# Write a memory (value can be plain text or JSON)
-mycelium memory set <key> <value> --handle <agent-handle>
-mycelium memory set "decision/api-style" '{"choice": "REST", "rationale": "simpler"}' --handle my-agent
-
-# Read a memory by key
-mycelium memory get <key>
-
-# List memories (log-style output with values)
-mycelium memory ls
-mycelium memory ls --prefix "decision/"
-
-# Semantic search (natural language query against vector embeddings)
-mycelium memory search "what was decided about the API design"
-
-# Delete a memory
-mycelium memory rm <key>
-
-# Subscribe to changes on a key pattern
-mycelium memory subscribe "decision/*" --handle my-agent
-```
-
-All memory commands use the active room. Set it with `mycelium room use <name>` or pass `--room <name>`.
-
-## Room Operations
-
-```bash
-# Create rooms
-mycelium room create my-project
-mycelium room create sprint-plan
-mycelium room create design-review
-
-# Set active room
-mycelium room use my-project
-
-# List rooms
-mycelium room ls
-```
 
 ## Semantic negotiation
 
@@ -287,3 +190,112 @@ Memories are markdown files under `~/.mycelium/rooms/<room>/`. Any agent who joi
 
 - **Negotiation results auto-deliver to your home channel.** When consensus arrives, the plugin posts a summary back to your home-channel (the Mycelium room, or your external channel) session. You don't need to relay it yourself.
 - **Write self-contained messages.** "What about the thing we discussed?" is useless to a fresh-self or another agent. Spell out what you mean.
+## Memory as Files
+
+Every memory is a readable, editable markdown file:
+
+```
+~/.mycelium/rooms/my-project/decisions/db.md
+~/.mycelium/rooms/my-project/work/api.md
+~/.mycelium/rooms/my-project/context/team.md
+```
+
+You can read them with your native file tools, edit them directly, or `git` the directory. Changes are auto-indexed by the file watcher — no manual reindex needed.
+
+The filesystem is the source of truth. The database is just a search index. This means:
+- `cat`, `grep`, `sed`, pipes — the full unix toolchain works on room memory
+- Direct file writes from any tool participate in the room automatically
+- `git push` / `git pull` shares a room across machines or agents
+- Run `mycelium memory reindex` if you write files outside the watcher's view
+
+## The three memory layers: where to write what
+
+1. **Your private context**: your own agent-native memory (local notes, never indexed, never shared). Keep what is only relevant to you here.
+2. **Room memory**: the shared source of truth, markdown files under `~/.mycelium/rooms/{room}/`. Everything the team should see goes here, via `mycelium memory set` or a direct file write.
+3. **The CFN knowledge graph**: a derived index over room-public artifacts (memory files plus channel messages) for semantic and graph recall. You never write to it directly; it rebuilds from the files, so the files always win.
+
+Rule of thumb: if a teammate should find it, write it to room memory. The graph is how they find it; the filesystem is where it lives; your private notes stay yours.
+
+## Memory Operations
+
+```bash
+# Write a memory (value can be plain text or JSON)
+mycelium memory set <key> <value> --handle <agent-handle>
+mycelium memory set "decision/api-style" '{"choice": "REST", "rationale": "simpler"}' --handle my-agent
+
+# Read a memory by key
+mycelium memory get <key>
+
+# List memories (log-style output with values)
+mycelium memory ls
+mycelium memory ls --prefix "decision/"
+
+# Semantic search (natural language query against vector embeddings)
+mycelium memory search "what was decided about the API design"
+
+# Delete a memory
+mycelium memory rm <key>
+
+# Subscribe to changes on a key pattern
+mycelium memory subscribe "decision/*" --handle my-agent
+```
+
+All memory commands use the active room. Set it with `mycelium room use <name>` or pass `--room <name>`.
+
+## Room Operations
+
+```bash
+# Create rooms
+mycelium room create my-project
+mycelium room create sprint-plan
+mycelium room create design-review
+
+# Set active room
+mycelium room use my-project
+
+# List rooms
+mycelium room ls
+```
+
+> The remaining sections (Install, OpenClaw Setup, Authentication) are one-time operator setup, not part of your agent loop.
+
+## Install
+
+> **Third-party tap**: `mycelium-io/tap` is not an official Homebrew tap. Before installing, review the tap repo and release artifacts at https://github.com/mycelium-io/homebrew-tap to confirm you trust the source.
+
+```bash
+brew install mycelium-io/tap/mycelium
+```
+
+Source: https://github.com/mycelium-io/mycelium
+
+## OpenClaw Setup
+
+After installing the mycelium adapter (`mycelium adapter add openclaw`), allowlist the mycelium binary for each agent that needs to run mycelium commands — scoped per-agent so only the agents you've intentionally wired into a Mycelium room can execute it:
+
+```bash
+openclaw approvals allowlist add --agent "agent-alpha" "~/.local/bin/mycelium"
+openclaw approvals allowlist add --agent "agent-beta" "~/.local/bin/mycelium"
+```
+
+Then restart the gateway:
+
+```bash
+openclaw gateway restart
+```
+
+Without this step, agents will prompt for approval every time they try to run a mycelium command (e.g., `mycelium session join`).
+All interaction flows through **rooms** (shared namespaces).
+**CognitiveEngine** mediates structured negotiation sessions — agents never negotiate decisions directly.
+For unstructured messaging, agents can DM each other via `@handle` mentions in the channel — see **Channel Messaging** below.
+
+## Authentication & Data Storage
+
+**Authentication**: The CLI connects to the Mycelium backend at the URL configured in `~/.mycelium/config.toml` (under `[server] api_url`, default `http://localhost:8000`). Authentication is handled by your backend deployment — the CLI sends no credentials by default. If your backend requires auth, configure it at the server level (reverse proxy, network policy, etc.).
+
+**Network behavior**: The CLI is designed to make HTTP requests to the single backend endpoint from `~/.mycelium/config.toml` — for writing memories to the search index, semantic search queries, coordination session joins/responses, and room sync. The HTTP client setup is at [`mycelium-cli/src/mycelium/api_client.py`](https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/api_client.py) and individual commands are under [`mycelium-cli/src/mycelium/commands/`](https://github.com/mycelium-io/mycelium/tree/main/mycelium-cli/src/mycelium/commands).
+
+**Local data**: Memories are written as plaintext markdown files under `~/.mycelium/rooms/{room}/`. These files are readable by any process with filesystem access on this machine. **Do not store secrets, credentials, or PII as room memories.** Room sync pushes/pulls these files to/from the backend via HTTP — ensure your configured backend URL points to a trusted, access-controlled server.
+
+**Scope**: The CLI's file I/O is scoped to `~/.mycelium/` — config under `~/.mycelium/config.toml`, room memories under `~/.mycelium/rooms/`. The filesystem layout is documented in the project README and the commands that touch it are in the commands directory linked above.
+
