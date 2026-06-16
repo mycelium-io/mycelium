@@ -1,0 +1,68 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Mycelium Contributors
+
+import { getBackendUrl } from "@/lib/backend";
+
+/**
+ * Catch-all proxy for `/api/*` → the backend, resolved at REQUEST time.
+ *
+ * Replaces the old next.config rewrite whose destination was frozen at build
+ * time (to localhost:8000), ignoring the runtime MYCELIUM_INTERNAL_API_URL and
+ * breaking the Dockerized UI. The more-specific SSE route handler
+ * (rooms/[name]/messages/stream) still takes precedence for the stream
+ * endpoint; everything else flows through here.
+ */
+export const dynamic = "force-dynamic";
+
+// Headers that must not be forwarded verbatim across the proxy hop.
+const STRIP_REQUEST = ["host", "connection", "keep-alive", "transfer-encoding", "upgrade", "content-length"];
+const STRIP_RESPONSE = ["connection", "keep-alive", "transfer-encoding", "upgrade", "content-length", "content-encoding"];
+
+async function proxy(req: Request): Promise<Response> {
+  const backend = getBackendUrl();
+  const { pathname, search } = new URL(req.url);
+  const target = `${backend}${pathname}${search}`;
+
+  const headers = new Headers(req.headers);
+  for (const h of STRIP_REQUEST) headers.delete(h);
+  // Ask upstream for plain bytes so we can stream the response straight through
+  // without a content-encoding/content-length mismatch.
+  headers.delete("accept-encoding");
+
+  const init: RequestInit = {
+    method: req.method,
+    headers,
+    cache: "no-store",
+    redirect: "manual",
+  };
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    init.body = await req.arrayBuffer();
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(target, init);
+  } catch {
+    return Response.json(
+      { detail: `Backend unreachable at ${backend}` },
+      { status: 502 },
+    );
+  }
+
+  const respHeaders = new Headers(res.headers);
+  for (const h of STRIP_RESPONSE) respHeaders.delete(h);
+
+  return new Response(res.body, {
+    status: res.status,
+    statusText: res.statusText,
+    headers: respHeaders,
+  });
+}
+
+export const GET = proxy;
+export const POST = proxy;
+export const PUT = proxy;
+export const PATCH = proxy;
+export const DELETE = proxy;
+export const HEAD = proxy;
+export const OPTIONS = proxy;

@@ -1,42 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import type { NextConfig } from "next";
 
-/**
- * Internal backend URL used by the Next.js server to proxy `/api/*` requests.
- *
- * The browser never sees this URL — it only talks to its own origin. The
- * Next.js Node process is the one that reaches the backend, so this is a
- * server-side concern resolved at startup with the following precedence:
- *
- *   1. MYCELIUM_INTERNAL_API_URL (preferred — set by compose / runtime env)
- *   2. server.api_url from ~/.mycelium/config.toml (matches the CLI)
- *   3. http://localhost:8000 (mycelium install default)
- *
- * Config-toml read is best-effort — failures fall through to the default.
- */
-function resolveInternalApiUrl(): string {
-  if (process.env.MYCELIUM_INTERNAL_API_URL) return process.env.MYCELIUM_INTERNAL_API_URL;
-  try {
-    const path = join(homedir(), ".mycelium", "config.toml");
-    const text = readFileSync(path, "utf8");
-    const serverMatch = text.match(/\[server\][\s\S]*?\n\s*api_url\s*=\s*"([^"]+)"/);
-    if (serverMatch) return serverMatch[1];
-    const anyMatch = text.match(/^\s*api_url\s*=\s*"([^"]+)"/m);
-    if (anyMatch) return anyMatch[1];
-  } catch {
-    /* no config — fall through */
-  }
-  return "http://localhost:8000";
-}
-
-const internalApiUrl = resolveInternalApiUrl();
-// eslint-disable-next-line no-console
-console.log(`[mycelium-frontend] proxy /api/* → ${internalApiUrl}`);
+// `/api/*` is proxied to the backend by a runtime route handler
+// (src/app/api/[...path]/route.ts), NOT a next.config rewrite. Rewrites are
+// resolved at *build* time and frozen into the image, so a rewrite destination
+// ignored the runtime MYCELIUM_INTERNAL_API_URL and always pointed at the
+// build-time default (localhost:8000) — which broke the Dockerized UI. The
+// route handler resolves the backend per-request instead. See src/lib/backend.ts.
 
 // `next dev` blocks cross-origin requests by default; opt-in via env when
 // running dev mode behind a public IP. The Docker production path doesn't
@@ -56,11 +28,6 @@ const nextConfig: NextConfig = {
   // reverse proxy in production anyway).
   compress: false,
   allowedDevOrigins,
-  async rewrites() {
-    return [
-      { source: "/api/:path*", destination: `${internalApiUrl}/api/:path*` },
-    ];
-  },
 };
 
 export default nextConfig;
