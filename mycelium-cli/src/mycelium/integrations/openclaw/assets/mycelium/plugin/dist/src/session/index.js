@@ -1,0 +1,118 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Mycelium Contributors
+import { getApiUrl, readMemoryFileContent, resolveHandle } from "../config.js";
+import { apiPost, fetchBackendHealth } from "../http.js";
+import { MYCELIUM_INSTRUCTIONS } from "../instructions.js";
+const _sessions = new Map();
+export function installSession(api, channelCfg, log) {
+    api.on("gateway_start", async () => {
+        if (!getApiUrl()) {
+            log.warn("[mycelium] no API URL found in config or env — plugin inactive");
+            return;
+        }
+        try {
+            const res = await fetchBackendHealth();
+            if (res.ok) {
+                log.info(`[mycelium] ready | backend: ${getApiUrl()}`);
+            }
+            else {
+                log.warn(`[mycelium] backend unhealthy (${res.status}) — will retry per call`);
+            }
+        }
+        catch {
+            log.warn(`[mycelium] cannot reach ${getApiUrl()} — will retry per call`);
+        }
+    });
+    api.on("gateway_stop", async () => {
+        log.info("[mycelium] gateway stopping — session state cleared");
+        _sessions.clear();
+    });
+    api.on("session_start", async (event, ctx) => {
+        const agentId = ctx?.agentId;
+        const sessionKey = ctx?.sessionKey;
+        const handle = resolveHandle(agentId);
+        const isCliSession = sessionKey?.endsWith(":main");
+        log.info(`[mycelium] session_start handle:${handle} sessionId:${event.sessionId} sessionKey:${sessionKey ?? "none"} isCliSession:${isCliSession}`);
+        if (sessionKey) {
+            const existing = _sessions.get(agentId ?? "default");
+            const sessionId = isCliSession ? existing?.sessionId : event.sessionId;
+            _sessions.set(agentId ?? "default", {
+                sessionKey,
+                sessionId,
+                handle,
+                room: existing?.room ?? channelCfg?.room,
+            });
+        }
+        if (event.resumedFrom) {
+            log.info(`[mycelium] session resumed (${event.sessionId})`);
+        }
+        else {
+            log.info(`[mycelium] session started — ${handle} (${event.sessionId})`);
+        }
+    });
+    api.on("session_end", async (event, ctx) => {
+        const agentId = ctx?.agentId;
+        const handle = resolveHandle(agentId);
+        const entry = _sessions.get(agentId ?? "default");
+        if (agentId)
+            _sessions.delete(agentId);
+        log.info(`[mycelium] session ${event.sessionId} ended (${event.messageCount} messages)`);
+        if (entry?.room) {
+            await apiPost(`/api/rooms/${entry.room}/messages`, {
+                sender_handle: handle,
+                recipient_handle: null,
+                message_type: "announce",
+                content: "agent offline (session ended)",
+            }, log);
+        }
+    });
+    api.on("before_agent_start", async (_event, ctx) => {
+        const agentId = ctx?.agentId;
+        const sessionKey = ctx?.sessionKey;
+        const handle = resolveHandle(agentId);
+        const sessionId = ctx?.sessionId;
+        const isCliSession = sessionKey?.endsWith(":main");
+        log.info(`[mycelium] before_agent_start handle:${handle} sessionKey:${sessionKey ?? "none"} isCliSession:${isCliSession}`);
+        let existing = _sessions.get(agentId ?? "default");
+        if (!existing && sessionKey) {
+            existing = {
+                sessionKey,
+                sessionId: isCliSession ? undefined : sessionId,
+                handle,
+                room: channelCfg?.room,
+            };
+            _sessions.set(agentId ?? "default", existing);
+        }
+        else if (existing) {
+            if (sessionKey)
+                existing.sessionKey = sessionKey;
+            if (sessionId && !existing.sessionId && !isCliSession) {
+                existing.sessionId = sessionId;
+            }
+        }
+        const systemParts = [
+            MYCELIUM_INSTRUCTIONS,
+            `Your Mycelium handle for this session is: \`${handle}\`\nUse this exact value for \`--handle\` when joining a room.`,
+        ];
+        const contextParts = [];
+        // Coordination context lives in the formatted instruction dispatched by
+        // the channel module (formatTickInstruction in channel/route.ts). That
+        // string is the agent's sole source of tick information per CLAUDE.md —
+        // we used to *also* inject the raw tick payload here as prependContext
+        // (#279), which produced two competing representations of the same tick
+        // and forced the agent to reconcile (#285). The formatted string now
+        // carries every field the agent needs (valid offer keys on normal ticks,
+        // valid_keys + recovery command on error ticks), so this hook is back to
+        // just memory + system instructions.
+        const memory = readMemoryFileContent();
+        if (memory) {
+            contextParts.push(`# Injected Memory (per-turn)\n\n${memory}`);
+            log.info(`[mycelium] injected ${memory.length} bytes from memory file`);
+        }
+        log.info(`[mycelium] prependSystemContext: ${systemParts.join("\n\n").length} chars (cached), prependContext: ${contextParts.length ? contextParts.join("\n\n").length : 0} chars (dynamic)`);
+        return {
+            prependSystemContext: systemParts.join("\n\n"),
+            prependContext: contextParts.length ? contextParts.join("\n\n") : undefined,
+        };
+    });
+}

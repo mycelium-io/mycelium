@@ -165,6 +165,16 @@ jobs:
         working-directory: mycelium-cli/src/mycelium/integrations/openclaw/assets/mycelium/plugin
         run: npm test
 
+      - name: Verify committed dist/ is up to date
+        working-directory: mycelium-cli/src/mycelium/integrations/openclaw/assets/mycelium/plugin
+        run: |
+          npm run build
+          if ! git diff --exit-code dist/; then
+            echo "::error::Committed plugin dist/ is stale. Run 'npm run build' in the" \
+                 "plugin dir and commit the updated dist/ (it ships in the wheel)." >&2
+            exit 1
+          fi
+
   build-collector:
     # Smoke-build the OTLP collector image so PRs that touch the collector
     # source / Dockerfile fail fast in CI rather than at the next release.
