@@ -106,6 +106,7 @@ def _compose_base_cmd(
     *,
     include_cfn_profile: bool = True,
     include_metrics_profile: bool = True,
+    include_ui_profile: bool = True,
 ) -> list[str]:
     """Build the docker compose prefix with consistent project name.
 
@@ -116,6 +117,11 @@ def _compose_base_cmd(
     When *include_metrics_profile* is True (the default) and the collector
     container is running, ``--profile metrics`` is appended so stop/logs/down
     commands include it without ad-hoc detection.
+
+    When *include_ui_profile* is True (the default) and the frontend container
+    is running, ``--profile ui`` is appended so stop/logs/down/status include
+    it too — otherwise the profile-gated frontend is invisible to those
+    commands (its logs don't show up, and it's left running on ``down``).
     """
     if compose_path is None:
         compose_path = _get_compose_path()
@@ -128,6 +134,8 @@ def _compose_base_cmd(
         cmd += ["--profile", "cfn"]
     if include_metrics_profile and _collector_container_running():
         cmd += ["--profile", "metrics"]
+    if include_ui_profile and _frontend_container_running():
+        cmd += ["--profile", "ui"]
     return cmd
 
 
@@ -232,6 +240,26 @@ def _collector_container_running() -> bool:
     try:
         result = subprocess.run(
             ["docker", "inspect", "-f", "{{.State.Running}}", "mycelium-collector"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+        return result.returncode == 0 and result.stdout.strip().lower() == "true"
+    except Exception:
+        return False
+
+
+def _frontend_container_running() -> bool:
+    """Return True if the mycelium-frontend container is running.
+
+    The frontend lives behind the ``ui`` compose profile, so logs/down/stop/
+    status must enable that profile to see it — otherwise compose treats the
+    service as out of scope and silently skips it.
+    """
+    try:
+        result = subprocess.run(
+            ["docker", "inspect", "-f", "{{.State.Running}}", "mycelium-frontend"],
             capture_output=True,
             text=True,
             check=False,
@@ -446,7 +474,12 @@ def start(
             typer.echo("Run 'mycelium install' first.")
             raise typer.Exit(1)
 
-        base = _compose_base_cmd(compose_path, include_metrics_profile=False)
+        # `up` is flag-driven: the optional profiles are controlled by --ui /
+        # --metrics here, not by what happens to be running, so disable the
+        # auto-detection that logs/down/stop/status rely on.
+        base = _compose_base_cmd(
+            compose_path, include_metrics_profile=False, include_ui_profile=False
+        )
         if ui:
             base = base + ["--profile", "ui"]
         if metrics:
