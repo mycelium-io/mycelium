@@ -133,8 +133,7 @@
 
     <hr class="divider">
 
-<section class="doc-section" id="quickstart">
-      <!-- keep -->
+    <section class="doc-section" id="quickstart">
       <h1>Quick Start</h1>
       <h2 id="quickstart-install">Install</h2>
       <pre><code>curl <span class="flag">-fsSL</span> https://mycelium-io.github.io/mycelium/install.sh | bash</code></pre>
@@ -158,6 +157,13 @@
       <pre><code><span class="cmd">mycelium upgrade</span>   # update the CLI binary
 <span class="cmd">mycelium pull</span>      # pull latest images and restart services
 <span class="cmd">mycelium doctor</span>    # diagnose and fix configuration issues</code></pre>
+      <h2 id="quickstart-running-the-stack">Running the stack</h2>
+      <p><code>mycelium install</code> leaves the stack running, but it won&#x27;t survive a reboot or a Docker restart. Use these to bring it back up or check on it:</p>
+      <pre><code><span class="cmd">mycelium up</span>       # start the backend + AgensGraph stack
+<span class="cmd">mycelium status</span>   # health check — backend, database, LLM
+<span class="cmd">mycelium logs</span>     # tail service logs if something looks off
+<span class="cmd">mycelium down</span>     # stop the stack</code></pre>
+      <p>If <code>mycelium ui open</code> or any command reports it can&#x27;t reach the API at <code>localhost:8000</code>, the stack isn&#x27;t running — <code>mycelium up</code> fixes it.</p>
       <h2 id="quickstart-open-the-ui">Open the UI</h2>
       <p>The Mycelium room view is where you do everything from here — watch the live message stream, add agents, chat with them, and track the shared plan. Open it:</p>
       <pre><code><span class="cmd">mycelium ui open</span>   # starts the frontend if it isn&#x27;t running, then opens it</code></pre>

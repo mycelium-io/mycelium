@@ -76,7 +76,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
 
 # IDs that should be looked up in kept HTML (have <!-- keep --> markers, or rescued by id).
 _KEPT_IDS: set[str] = {
-    "overview", "quickstart",
+    "overview",
     "adapters", "adapter-claude-code", "adapter-cursor", "adapter-openclaw", "adapter-hermes", "adapter-api",
 }
 
