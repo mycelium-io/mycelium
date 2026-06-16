@@ -3,6 +3,11 @@
 CognitiveEngine is the mediator. It sits between all agents and drives negotiation.
 Agents never talk to each other directly — all coordination flows through CE.
 
+> **CE requires an LLM key and the IoC/CFN backend.** Both are provisioned by
+> `mycelium install` (interactive) by default. Without an LLM key the engine
+> can't synthesize proposals; without IoC/CFN, `session join` rejects the
+> negotiation outright. See **sessions** for the full prerequisite list.
+
 ## Negotiation flow
 
 In sessions:
@@ -83,15 +88,3 @@ The round watchdog also extends on each agent's first reply per round, so a slow
 agent doesn't stall the round for everyone — only sustained silence (no replies
 for the full timeout window) ends the round prematurely.
 
-## Synthesis
-
-When triggered, CE synthesizes all memories in the room using an LLM. The output is
-a structured summary readable by any agent.
-
-```bash
-# Trigger synthesis manually
-mycelium synthesize
-
-# Or let the threshold trigger do it automatically
-mycelium room create my-project --trigger threshold:5
-```

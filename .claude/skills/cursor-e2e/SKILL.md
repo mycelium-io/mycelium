@@ -66,9 +66,8 @@ mycelium agent invoke cursor-x "Reply with just the string OK so I know you got 
 
 # Wait for response (cursor cold-spawn is ~10-30s)
 sleep 30
-# `mycelium catchup` shows synthesis/memory snapshots, NOT chat messages.
-# To inspect actual chat messages, hit the backend list endpoint directly:
-curl -s "http://localhost:8000/api/rooms/cursor-e2e/messages?limit=5" | python3 -m json.tool
+# Inspect recent chat messages (point-in-time read)
+mycelium room messages cursor-e2e --limit 5
 ```
 
 **Fail criteria**:
@@ -132,7 +131,7 @@ rm ~/.config/cursor/auth.json
 # Try to invoke — should post a friendly message in the room, NOT crash the daemon.
 mycelium agent invoke cursor-x "Anything" --room cursor-e2e
 sleep 15
-curl -s "http://localhost:8000/api/rooms/cursor-e2e/messages?limit=3" | python3 -m json.tool
+mycelium room messages cursor-e2e --limit 3
 
 # Confirm doctor catches the bad state while it's still bad
 mycelium doctor --mode auto 2>&1 | grep -A 2 "cursor-agent login"
@@ -188,7 +187,7 @@ mycelium agent invoke cursor-spoke \
   --room $ROOM
 
 sleep 60  # cursor-agent cold start is slow
-curl -s "http://localhost:8000/api/rooms/$ROOM/messages?limit=5" | python3 -m json.tool
+mycelium room messages $ROOM --limit 5
 # Expect: a message FROM cursor-spoke containing the spoke host's hostname
 ```
 
@@ -255,11 +254,10 @@ SHORT=$(curl -s "http://localhost:8000/api/coordination-sessions?limit=20" \
 for s in json.load(sys.stdin):
     if s['parent_room_name']=='$ROOM' and s['state']=='complete':
         print(s['short_id']); break")
-curl -s "http://localhost:8000/api/rooms/$ROOM:session:$SHORT/messages?limit=200" \
+mycelium --json room messages "$ROOM:session:$SHORT" --type coordination_consensus --limit 200 \
   | python3 -c "import sys,json
 for m in json.load(sys.stdin)['messages']:
-    if m['message_type']=='coordination_consensus':
-        print(m['content']); break"
+    print(m['content']); break"
 # Expect: {\"plan\":\"...\",\"assignments\":{...},\"broken\":false}
 ```
 

@@ -1,16 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import Any, TypeVar, cast
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
-
-if TYPE_CHECKING:
-    from ..models.room_create_trigger_config_type_0 import RoomCreateTriggerConfigType0
-
 
 T = TypeVar("T", bound="RoomCreate")
 
@@ -23,7 +19,6 @@ class RoomCreate:
         description (None | str | Unset):
         is_public (bool | Unset):  Default: True.
         mas_id (None | str | Unset):
-        trigger_config (None | RoomCreateTriggerConfigType0 | Unset):
         workspace_id (None | str | Unset):
     """
 
@@ -31,13 +26,10 @@ class RoomCreate:
     description: None | str | Unset = UNSET
     is_public: bool | Unset = True
     mas_id: None | str | Unset = UNSET
-    trigger_config: None | RoomCreateTriggerConfigType0 | Unset = UNSET
     workspace_id: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.room_create_trigger_config_type_0 import RoomCreateTriggerConfigType0
-
         name = self.name
 
         description: None | str | Unset
@@ -53,14 +45,6 @@ class RoomCreate:
             mas_id = UNSET
         else:
             mas_id = self.mas_id
-
-        trigger_config: dict[str, Any] | None | Unset
-        if isinstance(self.trigger_config, Unset):
-            trigger_config = UNSET
-        elif isinstance(self.trigger_config, RoomCreateTriggerConfigType0):
-            trigger_config = self.trigger_config.to_dict()
-        else:
-            trigger_config = self.trigger_config
 
         workspace_id: None | str | Unset
         if isinstance(self.workspace_id, Unset):
@@ -81,8 +65,6 @@ class RoomCreate:
             field_dict["is_public"] = is_public
         if mas_id is not UNSET:
             field_dict["mas_id"] = mas_id
-        if trigger_config is not UNSET:
-            field_dict["trigger_config"] = trigger_config
         if workspace_id is not UNSET:
             field_dict["workspace_id"] = workspace_id
 
@@ -90,8 +72,6 @@ class RoomCreate:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.room_create_trigger_config_type_0 import RoomCreateTriggerConfigType0
-
         d = dict(src_dict)
         name = d.pop("name")
 
@@ -115,23 +95,6 @@ class RoomCreate:
 
         mas_id = _parse_mas_id(d.pop("mas_id", UNSET))
 
-        def _parse_trigger_config(data: object) -> None | RoomCreateTriggerConfigType0 | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            try:
-                if not isinstance(data, dict):
-                    raise TypeError()
-                trigger_config_type_0 = RoomCreateTriggerConfigType0.from_dict(data)
-
-                return trigger_config_type_0
-            except (TypeError, ValueError, AttributeError, KeyError):
-                pass
-            return cast(None | RoomCreateTriggerConfigType0 | Unset, data)
-
-        trigger_config = _parse_trigger_config(d.pop("trigger_config", UNSET))
-
         def _parse_workspace_id(data: object) -> None | str | Unset:
             if data is None:
                 return data
@@ -146,7 +109,6 @@ class RoomCreate:
             description=description,
             is_public=is_public,
             mas_id=mas_id,
-            trigger_config=trigger_config,
             workspace_id=workspace_id,
         )
 

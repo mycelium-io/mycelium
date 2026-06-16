@@ -8,4 +8,4 @@ metadata:
       - agent:bootstrap
 ---
 
-Sets `MYCELIUM_ROOM_ID` from the channel/conversation context (Matrix room, Slack channel, etc.) and forwards `MYCELIUM_API_URL` from gateway env into the agent session. Coordination instructions are injected by the mycelium plugin (`index.ts`) via `prependSystemContext`.
+Sets `MYCELIUM_ROOM_ID` from the channel/conversation context (the Mycelium room, or an external channel) and forwards `MYCELIUM_API_URL` from gateway env into the agent session. Coordination instructions are injected by the mycelium plugin (`index.ts`) via `prependSystemContext`.

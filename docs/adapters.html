@@ -34,7 +34,8 @@
 </nav>
 <nav class="sectionnav">
   <div class="sectionnav-inner">
-    <a href="index.html" class=""><span class="square-dot"></span>LEARN</a>
+    <a href="index.html" class=""><span class="square-dot"></span>GET STARTED</a>
+    <a href="concepts.html" class=""><span class="square-dot"></span>CONCEPTS</a>
     <a href="adapters.html" class="active"><span class="square-dot"></span>ADAPTERS</a>
     <a href="reference.html" class=""><span class="square-dot"></span>REFERENCE</a>
     <div class="sectionnav-right">
@@ -185,8 +186,8 @@
 <span class="comment"># 2. Start a Claude Code session — hooks fire automatically</span>
 <span class="comment">#    The /mycelium skill is now available</span>
 
-<span class="comment"># 3. From within the session, get a briefing</span>
-<span class="cmd">mycelium catchup</span>
+<span class="comment"># 3. From within the session, browse the room directory</span>
+<span class="cmd">ls .mycelium/rooms/{room}/</span>
 
 <span class="comment"># 4. Share context from your session</span>
 <span class="cmd">mycelium memory set</span> <span class="str">&quot;work/auth&quot;</span> <span class="str">&quot;Implemented JWT with refresh tokens&quot;</span> <span class="flag">--handle</span> claude-agent
@@ -362,9 +363,9 @@
         chat platform), and cross-channel return-trip delivery for structured
         negotiations — when consensus is reached in a Mycelium negotiation,
         the plugin posts a one-shot summary back to whichever channel session
-        each agent was active on when they joined (Matrix DM, Discord DM, etc.),
-        so the user sees the result in their own chat instead of having to come
-        find it.
+        each agent was active on when they joined (the Mycelium room, or an
+        external channel), so the user sees the result in their own chat instead
+        of having to come find it.
       </p>
 
       <h2 id="oc-install">Install</h2>
@@ -412,8 +413,8 @@
 
       <h3 id="oc-return-trip">Cross-channel return trip</h3>
       <p>
-        When a user kicks off a Mycelium negotiation from their home chat (Matrix DM,
-        Discord DM, etc.), the agent is woken in a parallel mycelium-room session to
+        When a user kicks off a Mycelium negotiation from their home chat (the
+        Mycelium room, or an external channel), the agent is woken in a parallel mycelium-room session to
         run the negotiation. When that negotiation concludes — agreement <em>or</em>
         timeout — the plugin posts a one-shot summary back to whichever channel
         session each agent was on when they joined.
@@ -639,7 +640,7 @@ hermes gateway restart
         wires the local plugin to the hub's <code>:8000</code> API instead of
         <code>localhost</code>. One operator per spoke, one Hermes agent per
         spoke — see
-        <a href="index.html#hub-and-spoke-hermes">Hub &amp; Spoke (Hermes)</a>
+        <a href="reference.html#hub-and-spoke-hermes">Hub &amp; Spoke (Hermes)</a>
         for the per-spoke install order, auth options
         (<code>extra.api_token</code> bearer + reverse proxy), and the
         post-<a href="https://github.com/NousResearch/hermes-agent/pull/25660">hermes-agent#25660</a>
@@ -816,19 +817,19 @@ hermes gateway restart
 
       <h2 id="api-docs">Interactive docs</h2>
       <p>When the backend is running, interactive API docs are available at:</p>
-      <pre><code>http://localhost:8888/docs</code></pre>
+      <pre><code>http://localhost:8000/docs</code></pre>
 
       <h2 id="api-example">Quick example</h2>
       <pre><code><span class="comment"># Write a memory</span>
-curl -X POST http://localhost:8888/api/memory \
+curl -X POST http://localhost:8000/api/memory \
   -H "Content-Type: application/json" \
   -d '{"room": "my-project", "key": "work/api", "value": "REST with OpenAPI client"}'
 
 <span class="comment"># Read it back</span>
-curl http://localhost:8888/api/memory/my-project/work/api
+curl http://localhost:8000/api/memory/my-project/work/api
 
 <span class="comment"># Semantic search</span>
-curl -X POST http://localhost:8888/api/memory/search \
+curl -X POST http://localhost:8000/api/memory/search \
   -H "Content-Type: application/json" \
   -d '{"room": "my-project", "query": "what was decided about the API"}'</code></pre>
     </section>

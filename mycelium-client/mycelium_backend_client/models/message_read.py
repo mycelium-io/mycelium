@@ -18,36 +18,42 @@ T = TypeVar("T", bound="MessageRead")
 class MessageRead:
     """
     Attributes:
+        id (UUID):
+        sender_handle (str):
+        message_type (str):
         content (str):
         created_at (datetime.datetime):
-        id (UUID):
-        message_type (str):
-        sender_handle (str):
+        room_name (None | str | Unset):
         coordination_session_id (None | Unset | UUID):
         recipient_handle (None | str | Unset):
-        room_name (None | str | Unset):
     """
 
+    id: UUID
+    sender_handle: str
+    message_type: str
     content: str
     created_at: datetime.datetime
-    id: UUID
-    message_type: str
-    sender_handle: str
+    room_name: None | str | Unset = UNSET
     coordination_session_id: None | Unset | UUID = UNSET
     recipient_handle: None | str | Unset = UNSET
-    room_name: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
+        id = str(self.id)
+
+        sender_handle = self.sender_handle
+
+        message_type = self.message_type
+
         content = self.content
 
         created_at = self.created_at.isoformat()
 
-        id = str(self.id)
-
-        message_type = self.message_type
-
-        sender_handle = self.sender_handle
+        room_name: None | str | Unset
+        if isinstance(self.room_name, Unset):
+            room_name = UNSET
+        else:
+            room_name = self.room_name
 
         coordination_session_id: None | str | Unset
         if isinstance(self.coordination_session_id, Unset):
@@ -63,44 +69,47 @@ class MessageRead:
         else:
             recipient_handle = self.recipient_handle
 
-        room_name: None | str | Unset
-        if isinstance(self.room_name, Unset):
-            room_name = UNSET
-        else:
-            room_name = self.room_name
-
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
+                "id": id,
+                "sender_handle": sender_handle,
+                "message_type": message_type,
                 "content": content,
                 "created_at": created_at,
-                "id": id,
-                "message_type": message_type,
-                "sender_handle": sender_handle,
             }
         )
+        if room_name is not UNSET:
+            field_dict["room_name"] = room_name
         if coordination_session_id is not UNSET:
             field_dict["coordination_session_id"] = coordination_session_id
         if recipient_handle is not UNSET:
             field_dict["recipient_handle"] = recipient_handle
-        if room_name is not UNSET:
-            field_dict["room_name"] = room_name
 
         return field_dict
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
+        id = UUID(d.pop("id"))
+
+        sender_handle = d.pop("sender_handle")
+
+        message_type = d.pop("message_type")
+
         content = d.pop("content")
 
         created_at = isoparse(d.pop("created_at"))
 
-        id = UUID(d.pop("id"))
+        def _parse_room_name(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
 
-        message_type = d.pop("message_type")
-
-        sender_handle = d.pop("sender_handle")
+        room_name = _parse_room_name(d.pop("room_name", UNSET))
 
         def _parse_coordination_session_id(data: object) -> None | Unset | UUID:
             if data is None:
@@ -128,24 +137,15 @@ class MessageRead:
 
         recipient_handle = _parse_recipient_handle(d.pop("recipient_handle", UNSET))
 
-        def _parse_room_name(data: object) -> None | str | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(None | str | Unset, data)
-
-        room_name = _parse_room_name(d.pop("room_name", UNSET))
-
         message_read = cls(
+            id=id,
+            sender_handle=sender_handle,
+            message_type=message_type,
             content=content,
             created_at=created_at,
-            id=id,
-            message_type=message_type,
-            sender_handle=sender_handle,
+            room_name=room_name,
             coordination_session_id=coordination_session_id,
             recipient_handle=recipient_handle,
-            room_name=room_name,
         )
 
         message_read.additional_properties = d

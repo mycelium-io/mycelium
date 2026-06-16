@@ -18,33 +18,29 @@ T = TypeVar("T", bound="CoordinationSessionRead")
 class CoordinationSessionRead:
     """
     Attributes:
-        created_at (datetime.datetime):
-        display_name (str):
         id (UUID):
         parent_room_name (str):
         short_id (str):
         state (str):
+        created_at (datetime.datetime):
+        display_name (str):
         join_window_ends_at (datetime.datetime | None | Unset):
         mas_id (None | str | Unset):
         workspace_id (None | str | Unset):
     """
 
-    created_at: datetime.datetime
-    display_name: str
     id: UUID
     parent_room_name: str
     short_id: str
     state: str
+    created_at: datetime.datetime
+    display_name: str
     join_window_ends_at: datetime.datetime | None | Unset = UNSET
     mas_id: None | str | Unset = UNSET
     workspace_id: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        created_at = self.created_at.isoformat()
-
-        display_name = self.display_name
-
         id = str(self.id)
 
         parent_room_name = self.parent_room_name
@@ -52,6 +48,10 @@ class CoordinationSessionRead:
         short_id = self.short_id
 
         state = self.state
+
+        created_at = self.created_at.isoformat()
+
+        display_name = self.display_name
 
         join_window_ends_at: None | str | Unset
         if isinstance(self.join_window_ends_at, Unset):
@@ -77,12 +77,12 @@ class CoordinationSessionRead:
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
-                "created_at": created_at,
-                "display_name": display_name,
                 "id": id,
                 "parent_room_name": parent_room_name,
                 "short_id": short_id,
                 "state": state,
+                "created_at": created_at,
+                "display_name": display_name,
             }
         )
         if join_window_ends_at is not UNSET:
@@ -97,10 +97,6 @@ class CoordinationSessionRead:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        created_at = isoparse(d.pop("created_at"))
-
-        display_name = d.pop("display_name")
-
         id = UUID(d.pop("id"))
 
         parent_room_name = d.pop("parent_room_name")
@@ -108,6 +104,10 @@ class CoordinationSessionRead:
         short_id = d.pop("short_id")
 
         state = d.pop("state")
+
+        created_at = isoparse(d.pop("created_at"))
+
+        display_name = d.pop("display_name")
 
         def _parse_join_window_ends_at(data: object) -> datetime.datetime | None | Unset:
             if data is None:
@@ -145,12 +145,12 @@ class CoordinationSessionRead:
         workspace_id = _parse_workspace_id(d.pop("workspace_id", UNSET))
 
         coordination_session_read = cls(
-            created_at=created_at,
-            display_name=display_name,
             id=id,
             parent_room_name=parent_room_name,
             short_id=short_id,
             state=state,
+            created_at=created_at,
+            display_name=display_name,
             join_window_ends_at=join_window_ends_at,
             mas_id=mas_id,
             workspace_id=workspace_id,

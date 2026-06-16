@@ -29,15 +29,18 @@ from pathlib import Path
 # 3 pages, each a long doc with a grouped sidebar.
 # (page_id, file_name, page_title, top_nav_label, sheet_no, plate_title, meta_description)
 PAGES: list[tuple[str, str, str, str, str, str, str]] = [
-    ("learn", "index.html", "mycelium — Docs", "Learn",
-     "LRN-001", "LEARN · OVERVIEW · QUICKSTART · CONCEPTS · GUIDES",
-     "Coordination layer for multi-agent systems. Semantic negotiation, persistent memory, collective intelligence."),
+    ("start", "index.html", "mycelium — Docs", "Get Started",
+     "GET-001", "OVERVIEW · INSTALL · FIRST ROOM · COORDINATE",
+     "Coordination layer for multi-agent systems. Install and run your first multi-agent coordination flow: room, agents, negotiation, plan."),
+    ("concepts", "concepts.html", "Concepts — mycelium", "Concepts",
+     "CON-001", "CONCEPTS · ROOMS · SESSIONS · MEMORY · PLAN",
+     "The core concepts behind Mycelium: rooms, sessions, memory, plan, CognitiveEngine, and the knowledge graph."),
     ("adapters", "adapters.html", "Adapters — mycelium", "Adapters",
      "ADP-001", "ADAPTERS · CLAUDE CODE · OPENCLAW · HERMES · REST API",
      "Connect Claude Code, OpenClaw, Hermes, or any HTTP client to the Mycelium coordination layer."),
     ("reference", "reference.html", "Reference — mycelium", "Reference",
-     "REF-001", "REFERENCE · ARCHITECTURE · CLI · CONFIG · HELP",
-     "Architecture, CLI reference, configuration, and troubleshooting for Mycelium."),
+     "REF-001", "REFERENCE · ARCHITECTURE · CLI · CONFIG · GUIDES · HELP",
+     "Architecture, CLI reference, configuration, guides, and troubleshooting for Mycelium."),
 ]
 
 # Sections, in render order per page.
@@ -45,18 +48,16 @@ PAGES: list[tuple[str, str, str, str, str, str, str]] = [
 # md_file=None means the section is hand-coded (kept verbatim from source HTML).
 # If md_file is set AND a kept section with the same id exists, the kept HTML wins.
 SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
-    # ── learn (index.html) ──
-    ("overview.md",                 "overview",           "learn",     "Get Started",  "Overview"),
-    ("quickstart.md",               "quickstart",         "learn",     "Get Started",  "Quick Start"),
-    ("rooms.md",                    "rooms",              "learn",     "Concepts",     "Rooms"),
-    ("sessions.md",                 "sessions",           "learn",     "Concepts",     "Sessions"),
-    ("memory.md",                   "memory",             "learn",     "Concepts",     "Memory"),
-    ("plan.md",                     "plan",               "learn",     "Concepts",     "Plan"),
-    ("cognitive-engine.md",         "cognitive-engine",   "learn",     "Concepts",     "CognitiveEngine"),
-    ("knowledge-graph.md",          "knowledge-graph",    "learn",     "Concepts",     "Knowledge Graph"),
-    ("guides/structured-memory.md", "structured-memory",  "learn",     "Guides",       "Structured Memory"),
-    ("guides/hub-and-spoke.md",     "hub-and-spoke",      "learn",     "Guides",       "Hub & Spoke"),
-    ("guides/hub-and-spoke-hermes.md", "hub-and-spoke-hermes", "learn", "Guides",      "Hub & Spoke (Hermes)"),
+    # ── start (index.html) — overview + quickstart ──
+    ("overview.md",                 "overview",           "start",       "Get Started",  "Overview"),
+    ("quickstart.md",               "quickstart",         "start",       "Get Started",  "Quick Start"),
+    # ── concepts (concepts.html) ──
+    ("rooms.md",                    "rooms",              "concepts",    "Concepts",     "Rooms"),
+    ("sessions.md",                 "sessions",           "concepts",    "Concepts",     "Sessions"),
+    ("memory.md",                   "memory",             "concepts",    "Concepts",     "Memory"),
+    ("plan.md",                     "plan",               "concepts",    "Concepts",     "Plan"),
+    ("cognitive-engine.md",         "cognitive-engine",   "concepts",    "Concepts",     "CognitiveEngine"),
+    ("knowledge-graph.md",          "knowledge-graph",    "concepts",    "Concepts",     "Knowledge Graph"),
     # ── adapters (adapters.html) — all hand-coded ──
     (None,                          "adapters",           "adapters",  "Adapters",     "Overview"),
     (None,                          "adapter-claude-code","adapters",  "Adapters",     "Claude Code"),
@@ -66,7 +67,10 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     (None,                          "adapter-api",        "adapters",  "Adapters",     "REST API"),
     # ── reference (reference.html) ──
     ("architecture.md",             "architecture",       "reference", "Architecture", "Architecture"),
-    # CLI + Config blocks injected after architecture, before troubleshooting.
+    # CLI + Config blocks injected after architecture, before guides/troubleshooting.
+    ("guides/structured-memory.md", "structured-memory",  "reference", "Guides",       "Structured Memory"),
+    ("guides/hub-and-spoke.md",     "hub-and-spoke",      "reference", "Guides",       "Hub & Spoke"),
+    ("guides/hub-and-spoke-hermes.md", "hub-and-spoke-hermes", "reference", "Guides", "Hub & Spoke (Hermes)"),
     ("troubleshooting.md",          "troubleshooting",    "reference", "Help",         "Troubleshooting"),
 ]
 
@@ -87,7 +91,7 @@ GROUP_CONFIG: list[tuple[str, str, str]] = [
     ("cfn", "cfn", "cfn"),
     ("adapter", "adapter", "adapter"),
     ("config", "config", "config"),
-    ("other", "synthesize / catchup / watch", "synthesize / catchup / watch"),
+    ("other", "watch", "watch"),
 ]
 
 # Configuration namespace order.
@@ -858,7 +862,8 @@ def _render_and_write(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--page", help="Regenerate a single page by id (learn|adapters|reference).",
+        "--page",
+        help="Regenerate a single page by id (start|concepts|adapters|reference).",
     )
     args = parser.parse_args()
 
@@ -890,7 +895,33 @@ def main() -> None:
             sheet_no, plate_title,
         )
 
+    if not args.page:
+        _write_llms_full()
+
     print("\nDone.")
+
+
+def _write_llms_full() -> None:
+    """Concatenate every markdown section into one file for LLM ingestion.
+
+    The multi-page split means no single HTML page holds all the docs anymore,
+    so this preserves the "feed the whole docs to an LLM" flow.
+    """
+    parts: list[str] = [
+        "# Mycelium Documentation (full)\n",
+        "Coordination layer for multi-agent systems. "
+        "Concatenated from the source docs; see https://mycelium-io.github.io/mycelium/\n",
+    ]
+    for md_file, _section_id, _page_id, _group, _label in SECTION_CONFIG:
+        if md_file is None:
+            continue
+        path = DOCS_DIR / md_file
+        if not path.exists():
+            continue
+        parts.append("\n\n---\n\n" + path.read_text().rstrip() + "\n")
+    out = OUT_DIR / "llms-full.txt"
+    out.write_text("".join(parts))
+    print(f"  wrote {out.name} ({out.stat().st_size:,} bytes)")
 
 
 if __name__ == "__main__":

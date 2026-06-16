@@ -4,7 +4,7 @@
 """
 Lightweight in-process metrics store for Mycelium backend.
 
-Tracks embedding, LLM, indexing, memory, and synthesis operations with
+Tracks embedding, LLM, indexing, and memory operations with
 counters, histograms, and cost-avoidance estimates. Exposed via
 GET /api/observability and consumed by `mycelium metrics show`.
 
@@ -159,7 +159,7 @@ def record_llm_call(
     """Record a backend LLM call (litellm completion).
 
     Per-operation token totals are tracked alongside the grand totals so that
-    callers (e.g. ``mycelium metrics show mycelium``) can show synthesis-only
+    callers (e.g. ``mycelium metrics show mycelium``) can show per-operation
     figures without having to assume that other operations (health probes,
     future heartbeats) contribute negligibly. See issue #296.
 
@@ -243,36 +243,6 @@ def record_memory_search(
         _inc("memory", "search_misses")
     if duration_ms > 0:
         _record_histogram("memory.search_latency_ms", duration_ms)
-
-
-@_safe
-def record_synthesis(duration_ms: float = 0.0, *, error: bool = False, skipped: str = "") -> None:
-    _inc("synthesis", "runs")
-    if skipped:
-        _inc("synthesis", "skipped")
-        _inc("synthesis", f"skipped.{skipped}")
-        return
-    if error:
-        _inc("synthesis", "errors")
-    if duration_ms > 0:
-        _record_histogram("synthesis.duration_ms", duration_ms)
-
-
-@_safe
-def record_synthesis_reuse(*, had_cached: bool = False, memories_since: int = 0) -> None:
-    """Record when a briefing reuses cached synthesis.
-
-    Args:
-        had_cached: Whether a cached synthesis was available
-        memories_since: Number of memories added since last synthesis
-    """
-    _inc("synthesis", "briefings")
-    if had_cached:
-        _inc("synthesis", "cache_hits")
-    else:
-        _inc("synthesis", "cache_misses")
-    if memories_since > 0:
-        _record_histogram("synthesis.memories_since_last", float(memories_since))
 
 
 @_safe

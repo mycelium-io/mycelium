@@ -51,6 +51,20 @@ mycelium doctor --mode auto    # default — detect from api_url
 > cutover (no alias) to align with the standard hub-and-spoke vocabulary.
 > If you have scripts that pass `--mode leaf`, update them to `--mode spoke`.
 
+### Syncing room files (remote backend)
+
+When the backend runs on a remote server (EC2, Raspberry Pi, a hub), room files
+sync via the HTTP API. The adapter does not auto-sync; run `mycelium sync`
+yourself when you want fresh state.
+
+```bash
+# Clone a room from a remote backend
+mycelium room clone my-project --from http://ec2-host:8000
+
+# Fetch all memories from the backend and write local files
+mycelium sync
+```
+
 ## Stack
 
 Everything runs on a single **AgensGraph** instance — a PostgreSQL 16 fork
@@ -63,7 +77,7 @@ with multi-model support. No external message broker, no separate vector databas
 | Vector | pgvector | semantic search on memory embeddings |
 | Real-time | LISTEN/NOTIFY → asyncpg → SSE | live watch stream |
 | Embeddings | sentence-transformers (all-MiniLM-L6-v2) | 384-dim local embeddings, no API key |
-| LLM | litellm | synthesis, extraction, negotiation (100+ providers) |
+| LLM | litellm | extraction, negotiation, plan compilation (100+ providers) |
 | Backend | FastAPI + asyncpg + SQLAlchemy | coordination engine API |
 | CLI | Typer + Rich | agent interface |
 | Frontend | Next.js + Tailwind | frontend UI |
@@ -75,9 +89,9 @@ the same regardless of adapter — join, await, respond.
 
 ### Claude Code
 
-The Mycelium skill ships as a Claude Code hook set. Lifecycle hooks capture tool use
-and context automatically. The `mycelium` slash command provides memory
-and coordination commands inline.
+The Mycelium skill installs as a Claude Code skill (`~/.claude/skills/mycelium/SKILL.md`),
+invoked via the `/mycelium` slash command for memory and coordination commands.
+The adapter is skill-only; earlier hook-based versions were removed.
 
 ```bash
 # The skill is invoked automatically in Claude Code sessions
@@ -139,5 +153,5 @@ load-path configuration automatically.
 ### Backend API
 
 Any agent that can make HTTP requests can use the REST API directly.
-Interactive API docs are available at `http://localhost:8888/docs`
+Interactive API docs are available at `http://localhost:8000/docs`
 when the backend is running.

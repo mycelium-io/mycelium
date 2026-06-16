@@ -9,67 +9,13 @@ Mycelium provides persistent shared memory and real-time coordination between AI
 All interaction flows through **rooms** (shared namespaces) and **CognitiveEngine** (the mediator).
 Agents never communicate directly with each other.
 
+Your core loop is the **negotiation protocol** below (join, await, respond, consensus, plan, work). Memory is the shared substrate underneath it.
+
 ## Core Concepts
 
 - **Rooms** are persistent namespaces. They hold memory that accumulates across sessions. Spawn sessions within rooms for real-time negotiation when needed.
-- **CognitiveEngine** mediates all coordination. It drives negotiation rounds and synthesizes accumulated context.
+- **CognitiveEngine** mediates all coordination. It drives negotiation rounds and compiles consensus into the room's shared plan.
 - **Memory** is filesystem-native. Each memory is a markdown file at `~/.mycelium/rooms/{room}/{key}.md` with YAML frontmatter. The database is a search index that auto-syncs via file watcher.
-
-## Memory as Files
-
-Every memory is a readable, editable markdown file:
-
-```
-~/.mycelium/rooms/my-project/decisions/db.md
-~/.mycelium/rooms/my-project/work/api.md
-~/.mycelium/rooms/my-project/context/team.md
-```
-
-You can read them with `cat`, edit with any tool, or `git` the directory. Changes are auto-indexed — no manual reindex needed.
-
-## Memory Operations
-
-```bash
-# Write a memory (value can be plain text or JSON)
-mycelium memory set <key> <value> --handle <agent-handle>
-mycelium memory set "decision/api-style" '{"choice": "REST", "rationale": "simpler"}' --handle claude-agent
-
-# Read a memory by key
-mycelium memory get <key>
-
-# List memories (log-style output with values)
-mycelium memory ls
-mycelium memory ls --prefix "decision/"
-
-# Semantic search (natural language query against vector embeddings)
-mycelium memory search "what was decided about the API design"
-
-# Delete a memory
-mycelium memory rm <key>
-
-# Subscribe to changes on a key pattern
-mycelium memory subscribe "decision/*" --handle claude-agent
-```
-
-All memory commands use the active room. Set it with `mycelium room use <name>` or pass `--room <name>`.
-
-## Room Operations
-
-```bash
-# Create rooms
-mycelium room create my-project
-mycelium room create sprint-plan
-mycelium room create design-review --trigger threshold:5   # with synthesis trigger
-
-# Set active room
-mycelium room use my-project
-
-# List rooms
-mycelium room ls
-
-# Trigger CognitiveEngine to synthesize accumulated memories
-mycelium room synthesize
-```
 
 ## Semantic negotiation
 
@@ -219,43 +165,66 @@ Memories are markdown files under `~/.mycelium/rooms/<room>/`. Any agent who joi
 - **Write self-contained messages.** "What about the thing we discussed?" is useless to a recipient who doesn't share your history. Spell out the context.
 - **`session await` is for interactive (user-initiated) negotiations only.** When *you* start a negotiation in your terminal (the user asks "go negotiate in room X"), use the `session await` loop documented above — it blocks until your turn, you act, and loop. But when the **daemon spawns you for a tick**, your prompt already contains the full tick payload (round, current offer, valid commands). In that case do NOT call `session await` — just run the appropriate `mycelium negotiate` command and exit.
 
-## What the Claude Code adapter actually installs
+## Memory as Files
 
-`mycelium adapter add claude-code` drops one file:
+Every memory is a readable, editable markdown file:
 
-| Path | Purpose |
-|------|---------|
-| `~/.claude/skills/mycelium/SKILL.md` | This file. The skill Claude Code loads when you say `/mycelium`. |
-
-## Knowledge Ingest (CFN Graph) — only on deliberate room writes
-
-Mycelium ships content to CFN's `shared-memories` knowledge graph on **two paths only**:
-
-1. **Channel messages** — when an agent posts to a room via `POST /api/rooms/{room}/messages` (or `mycelium room send` / equivalents).
-2. **Memory writes** — when an agent calls `mycelium memory set` (or the underlying `POST /api/rooms/{room}/memory`).
-
-Both are deliberate. Both happen because the agent chose to put something into the room. Tool outputs, reasoning traces, and unsent thoughts never reach CFN.
-
-CFN has no delete API — anything ingested is permanent in the graph. Constraining ingest to deliberate room writes is the only correct privacy posture.
-
-To enable forwarding (off by default — costs CFN tokens), edit `~/.mycelium/config.toml`:
-
-```toml
-[server]
-workspace_id = "<uuid>"
-mas_id       = "<uuid>"
-
-[knowledge_ingest]
-enabled = true
+```
+~/.mycelium/rooms/my-project/decisions/db.md
+~/.mycelium/rooms/my-project/work/api.md
+~/.mycelium/rooms/my-project/context/team.md
 ```
 
-Cost-control knobs under `[knowledge_ingest]` (also env-overridable via `MYCELIUM_INGEST_*` — see **Environment Variables** below): `max_input_tokens` caps the per-payload size; `dedupe_ttl_seconds` short-circuits identical payloads; `min_content_chars` skips trivially short content (default 32 — covers "ack", emoji-only posts).
+You can read them with `cat`, edit with any tool, or `git` the directory. Changes are auto-indexed — no manual reindex needed.
 
-Observability: every forward attempt (ok, deduped, refused, skipped, disabled, error) surfaces via `mycelium cfn log` / `mycelium cfn stats`. What actually landed in the graph: `mycelium cfn ls --mas <uuid>`, `mycelium cfn query "<question>" --mas <uuid>`.
+## The three memory layers: where to write what
 
-Kill switches:
-- `export MYCELIUM_INGEST_ENABLED=0`
-- Flip `[knowledge_ingest] enabled = false` in config.toml
+1. **Your private context**: your own agent-native memory (local notes, never indexed, never shared). Keep what is only relevant to you here.
+2. **Room memory**: the shared source of truth, markdown files under `~/.mycelium/rooms/{room}/`. Everything the team should see goes here, via `mycelium memory set` or a direct file write.
+3. **The CFN knowledge graph**: a derived index over room-public artifacts (memory files plus channel messages) for semantic and graph recall. You never write to it directly; it rebuilds from the files, so the files always win.
+
+Rule of thumb: if a teammate should find it, write it to room memory. The graph is how they find it; the filesystem is where it lives; your private notes stay yours.
+
+## Memory Operations
+
+```bash
+# Write a memory (value can be plain text or JSON)
+mycelium memory set <key> <value> --handle <agent-handle>
+mycelium memory set "decision/api-style" '{"choice": "REST", "rationale": "simpler"}' --handle claude-agent
+
+# Read a memory by key
+mycelium memory get <key>
+
+# List memories (log-style output with values)
+mycelium memory ls
+mycelium memory ls --prefix "decision/"
+
+# Semantic search (natural language query against vector embeddings)
+mycelium memory search "what was decided about the API design"
+
+# Delete a memory
+mycelium memory rm <key>
+
+# Subscribe to changes on a key pattern
+mycelium memory subscribe "decision/*" --handle claude-agent
+```
+
+All memory commands use the active room. Set it with `mycelium room use <name>` or pass `--room <name>`.
+
+## Room Operations
+
+```bash
+# Create rooms
+mycelium room create my-project
+mycelium room create sprint-plan
+mycelium room create design-review
+
+# Set active room
+mycelium room use my-project
+
+# List rooms
+mycelium room ls
+```
 
 ## Agent Mode (when you've been invoked via `@handle`)
 
@@ -298,39 +267,24 @@ not in your own brain:
 `mycelium memory set` overwrites — it always upserts a fresh version. So
 when you update, write the full revised notes, not a diff or addendum.
 
-## Sync (Multi-Machine / Centralized Backend)
+## Knowledge Ingest (CFN Graph) — only on deliberate room writes
 
-When the backend runs on a remote server (EC2, Raspberry Pi, etc.), room files sync via the HTTP API:
+Mycelium ships content to CFN's `shared-memories` knowledge graph on **two paths only**:
 
-```bash
-# Clone a room from a remote backend
-mycelium room clone my-project --from http://ec2-host:8000
+1. **Channel messages** — when an agent posts to a room via `POST /api/rooms/{room}/messages` (or `mycelium room send` / equivalents).
+2. **Memory writes** — when an agent calls `mycelium memory set` (or the underlying `POST /api/rooms/{room}/memory`).
 
-# Sync: fetch all memories from backend + write local files
-mycelium sync
-```
+Both are deliberate. Both happen because the agent chose to put something into the room. Tool outputs, reasoning traces, and unsent thoughts never reach CFN.
 
-The adapter **does not auto-sync** — run `mycelium sync` yourself when you want fresh state.
+CFN has no delete API — anything ingested is permanent in the graph. Constraining ingest to deliberate room writes is the only correct privacy posture. Treat every room write as permanent and public to the team.
 
-## Environment Variables
+Forwarding is **off by default** and is turned on by the operator, not by you. How to enable it, the cost-control knobs, and the observability commands (`mycelium cfn log` / `cfn stats` / `cfn ls` / `cfn query`) live in the Configuration docs: `mycelium docs troubleshooting`.
 
-| Variable | Description |
-|----------|-------------|
-| `MYCELIUM_API_URL` | Backend API URL (default: `http://localhost:8000`) |
-| `MYCELIUM_AGENT_HANDLE` | This agent's identity handle |
-| `MYCELIUM_ROOM` | Active room name |
-| `MYCELIUM_WORKSPACE_ID` | CFN workspace UUID — required for knowledge ingest |
-| `MYCELIUM_MAS_ID` | CFN MAS UUID — required for knowledge ingest |
+## Operator setup (not an agent task)
 
-### Knowledge-ingest cost controls
-
-Overrides for `[knowledge_ingest]` in `~/.mycelium/config.toml`. Every key
-below has a matching env var for ephemeral changes (no config edit needed).
-
-| Variable | Default | Effect |
-|----------|---------|--------|
-| `MYCELIUM_INGEST_ENABLED` | `true` | Master kill switch. `0`/`false` short-circuits every ingest at the backend gate (no concept extraction, no CFN spend) and the endpoint returns 200 with a disabled marker. |
-| `MYCELIUM_INGEST_MIN_CONTENT_CHARS` | `32` | Skip ingest for trivially short content ("ack", emoji-only). `0` disables the gate. |
-| `MYCELIUM_INGEST_MAX_INPUT_TOKENS` | `50000` | Backend circuit breaker — payloads above this estimated input token count get refused with HTTP 413. `0` disables. |
-| `MYCELIUM_INGEST_DEDUPE_TTL_SECONDS` | `300` | Backend content-hash dedupe window. Identical payloads within this many seconds short-circuit without re-hitting CFN. `0` disables dedupe. |
+Install details, environment variables, multi-machine sync, and CFN ingest
+configuration are operator concerns and live in the docs, not in this skill.
+Run `mycelium docs troubleshooting` for configuration and environment variables,
+and `mycelium docs architecture` for deployment modes and sync. As an agent you
+act through the commands above; you do not configure the stack.
 

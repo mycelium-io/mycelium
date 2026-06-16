@@ -142,8 +142,7 @@ def _strip_fences(text: str) -> str:
 async def _compile_plan_body(prompt: str, room_name: str) -> str:
     """Run the timeout-bounded LLM call and return the raw plan markdown.
 
-    Isolated so tests can patch it without a live LLM. Mirrors the litellm
-    kwargs + ``record_llm_call`` shape of ``async_coordination._llm_synthesize``.
+    Isolated so tests can patch it without a live LLM.
     """
     kwargs: dict = {
         "model": settings.LLM_MODEL,

@@ -2,17 +2,13 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import Any, TypeVar, cast
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 from dateutil.parser import isoparse
 
 from ..types import UNSET, Unset
-
-if TYPE_CHECKING:
-    from ..models.room_read_trigger_config_type_0 import RoomReadTriggerConfigType0
-
 
 T = TypeVar("T", bound="RoomRead")
 
@@ -21,44 +17,34 @@ T = TypeVar("T", bound="RoomRead")
 class RoomRead:
     """
     Attributes:
-        created_at (datetime.datetime):
         id (int):
-        is_public (bool):
         name (str):
-        coordination_state (str | Unset):  Default: 'idle'.
+        is_public (bool):
+        created_at (datetime.datetime):
         description (None | str | Unset):
         is_persistent (bool | Unset):  Default: False.
-        last_synthesis_at (datetime.datetime | None | Unset):
         mas_id (None | str | Unset):
-        trigger_config (None | RoomReadTriggerConfigType0 | Unset):
         workspace_id (None | str | Unset):
     """
 
-    created_at: datetime.datetime
     id: int
-    is_public: bool
     name: str
-    coordination_state: str | Unset = "idle"
+    is_public: bool
+    created_at: datetime.datetime
     description: None | str | Unset = UNSET
     is_persistent: bool | Unset = False
-    last_synthesis_at: datetime.datetime | None | Unset = UNSET
     mas_id: None | str | Unset = UNSET
-    trigger_config: None | RoomReadTriggerConfigType0 | Unset = UNSET
     workspace_id: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.room_read_trigger_config_type_0 import RoomReadTriggerConfigType0
-
-        created_at = self.created_at.isoformat()
-
         id = self.id
-
-        is_public = self.is_public
 
         name = self.name
 
-        coordination_state = self.coordination_state
+        is_public = self.is_public
+
+        created_at = self.created_at.isoformat()
 
         description: None | str | Unset
         if isinstance(self.description, Unset):
@@ -68,27 +54,11 @@ class RoomRead:
 
         is_persistent = self.is_persistent
 
-        last_synthesis_at: None | str | Unset
-        if isinstance(self.last_synthesis_at, Unset):
-            last_synthesis_at = UNSET
-        elif isinstance(self.last_synthesis_at, datetime.datetime):
-            last_synthesis_at = self.last_synthesis_at.isoformat()
-        else:
-            last_synthesis_at = self.last_synthesis_at
-
         mas_id: None | str | Unset
         if isinstance(self.mas_id, Unset):
             mas_id = UNSET
         else:
             mas_id = self.mas_id
-
-        trigger_config: dict[str, Any] | None | Unset
-        if isinstance(self.trigger_config, Unset):
-            trigger_config = UNSET
-        elif isinstance(self.trigger_config, RoomReadTriggerConfigType0):
-            trigger_config = self.trigger_config.to_dict()
-        else:
-            trigger_config = self.trigger_config
 
         workspace_id: None | str | Unset
         if isinstance(self.workspace_id, Unset):
@@ -100,24 +70,18 @@ class RoomRead:
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
-                "created_at": created_at,
                 "id": id,
-                "is_public": is_public,
                 "name": name,
+                "is_public": is_public,
+                "created_at": created_at,
             }
         )
-        if coordination_state is not UNSET:
-            field_dict["coordination_state"] = coordination_state
         if description is not UNSET:
             field_dict["description"] = description
         if is_persistent is not UNSET:
             field_dict["is_persistent"] = is_persistent
-        if last_synthesis_at is not UNSET:
-            field_dict["last_synthesis_at"] = last_synthesis_at
         if mas_id is not UNSET:
             field_dict["mas_id"] = mas_id
-        if trigger_config is not UNSET:
-            field_dict["trigger_config"] = trigger_config
         if workspace_id is not UNSET:
             field_dict["workspace_id"] = workspace_id
 
@@ -125,18 +89,14 @@ class RoomRead:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.room_read_trigger_config_type_0 import RoomReadTriggerConfigType0
-
         d = dict(src_dict)
-        created_at = isoparse(d.pop("created_at"))
-
         id = d.pop("id")
-
-        is_public = d.pop("is_public")
 
         name = d.pop("name")
 
-        coordination_state = d.pop("coordination_state", UNSET)
+        is_public = d.pop("is_public")
+
+        created_at = isoparse(d.pop("created_at"))
 
         def _parse_description(data: object) -> None | str | Unset:
             if data is None:
@@ -149,23 +109,6 @@ class RoomRead:
 
         is_persistent = d.pop("is_persistent", UNSET)
 
-        def _parse_last_synthesis_at(data: object) -> datetime.datetime | None | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            try:
-                if not isinstance(data, str):
-                    raise TypeError()
-                last_synthesis_at_type_0 = isoparse(data)
-
-                return last_synthesis_at_type_0
-            except (TypeError, ValueError, AttributeError, KeyError):
-                pass
-            return cast(datetime.datetime | None | Unset, data)
-
-        last_synthesis_at = _parse_last_synthesis_at(d.pop("last_synthesis_at", UNSET))
-
         def _parse_mas_id(data: object) -> None | str | Unset:
             if data is None:
                 return data
@@ -174,23 +117,6 @@ class RoomRead:
             return cast(None | str | Unset, data)
 
         mas_id = _parse_mas_id(d.pop("mas_id", UNSET))
-
-        def _parse_trigger_config(data: object) -> None | RoomReadTriggerConfigType0 | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            try:
-                if not isinstance(data, dict):
-                    raise TypeError()
-                trigger_config_type_0 = RoomReadTriggerConfigType0.from_dict(data)
-
-                return trigger_config_type_0
-            except (TypeError, ValueError, AttributeError, KeyError):
-                pass
-            return cast(None | RoomReadTriggerConfigType0 | Unset, data)
-
-        trigger_config = _parse_trigger_config(d.pop("trigger_config", UNSET))
 
         def _parse_workspace_id(data: object) -> None | str | Unset:
             if data is None:
@@ -202,16 +128,13 @@ class RoomRead:
         workspace_id = _parse_workspace_id(d.pop("workspace_id", UNSET))
 
         room_read = cls(
-            created_at=created_at,
             id=id,
-            is_public=is_public,
             name=name,
-            coordination_state=coordination_state,
+            is_public=is_public,
+            created_at=created_at,
             description=description,
             is_persistent=is_persistent,
-            last_synthesis_at=last_synthesis_at,
             mas_id=mas_id,
-            trigger_config=trigger_config,
             workspace_id=workspace_id,
         )
 

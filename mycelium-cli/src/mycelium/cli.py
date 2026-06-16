@@ -131,8 +131,6 @@ app.command(name="migrate")(instance.migrate)
 
 # Top-level shortcuts
 app.command(name="watch")(room.watch)
-app.command(name="synthesize")(room.synthesize)
-app.command(name="catchup")(memory.memory_catchup)
 app.command(name="sync")(memory.memory_sync)
 
 # Command groups

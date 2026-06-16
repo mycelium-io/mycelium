@@ -24,7 +24,7 @@
  *   - Gateway restart loses the stash. Document, then escalate to disk
  *     persistence if it bites.
  *   - Race: if the agent receives a different-channel inbound between
- *     "user types in matrix" and "plugin observes coordination_join", the
+ *     "user types in the Mycelium room" and "plugin observes coordination_join", the
  *     stash will point at the wrong channel. Tight window in practice.
  */
 
