@@ -11,7 +11,6 @@ being implemented.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import shutil
@@ -177,10 +176,15 @@ class ClaudeCodeAgentLifecycle(aetest.Testcase):
         self._agent_cwd = cwd
         with steps.start("Create a claude_code agent") as step:
             r = self.cli.run(
-                "agent", "create", self.handle,
-                "--adapter", "claude_code",
-                "--cwd", cwd,
-                "--room", self.room_name,
+                "agent",
+                "create",
+                self.handle,
+                "--adapter",
+                "claude_code",
+                "--cwd",
+                cwd,
+                "--room",
+                self.room_name,
                 timeout=30,
             )
             if not r.ok:
@@ -208,7 +212,7 @@ class ClaudeCodeAgentLifecycle(aetest.Testcase):
         cwd = getattr(self, "_agent_cwd", None)
         if cwd and os.path.isdir(cwd):
             shutil.rmtree(cwd, ignore_errors=True)
-        r = self.cli.run("agent", "rm", self.handle, "--force", timeout=10)
+        self.cli.run("agent", "rm", self.handle, "--force", timeout=10)
 
 
 # CursorAdapterPlanned removed — replaced by real tests in testcases/cursor_tests.py (75-80)

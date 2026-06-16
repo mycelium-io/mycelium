@@ -27,11 +27,11 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from testcases.hermes_tests import (
-    HermesGatewayPidFormats,
-    HermesLoopSuppression,
     HUB_HOST,
     SSH_KEY,
     SSH_USER,
+    HermesGatewayPidFormats,
+    HermesLoopSuppression,
 )
 
 log = logging.getLogger(__name__)
@@ -41,6 +41,7 @@ class CommonSetup(aetest.CommonSetup):
     @aetest.subsection
     def check_cli(self):
         import shutil
+
         if not shutil.which("mycelium"):
             self.failed("mycelium CLI not found on PATH")
 
@@ -59,6 +60,7 @@ class CommonSetup(aetest.CommonSetup):
         message if prereqs are missing so CI catches the gap early.
         """
         from libs.hermes_lab import check_prereqs
+
         issues = check_prereqs(HUB_HOST, SSH_USER, SSH_KEY)
         if issues:
             self.skipped(
@@ -69,6 +71,7 @@ class CommonSetup(aetest.CommonSetup):
 
 class test_85_hermes_gateway_pid_formats(HermesGatewayPidFormats):
     pass
+
 
 class test_89_hermes_loop_suppression(HermesLoopSuppression):
     pass

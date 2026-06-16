@@ -2,11 +2,20 @@
 
 Unlike cursor (per-test workspace) and openclaw (pre-configured agents
 on each device), hermes agents are created on demand through
-``mycelium agent create --adapter hermes``. The installer in
-``mycelium-cli/src/mycelium/integrations/hermes/install.py`` patches the
-gateway config and waits for the plugin to reconnect, so by the time
-:meth:`HermesProvisioner.create_agent` returns the agent is already
-subscribed to its room.
+``mycelium agent create --adapter hermes``.
+
+Two-phase lifecycle:
+  - ``ensure_runtime`` (CommonSetup): creates the agent in the bootstrap
+    room once per suite run. Patches ``~/.hermes/config.yaml`` and
+    restarts the gateway. Idempotent — skips creation if the handle is
+    already present.
+  - ``register_in_room`` (per-testcase setup): subscribes the already-
+    created agent to the per-scenario room (another ``agent create`` call
+    that upserts the room entry in config.yaml + restarts the gateway).
+  - ``unregister_from_room`` (per-testcase cleanup): removes the scenario
+    room from the agent's subscription list.
+  - ``teardown_runtime`` (CommonCleanup): removes the agent from the
+    bootstrap room entirely. Skipped for pre-existing agents.
 
 ``wake_agent`` is a no-op: the hermes plugin polls coordination sessions
 and auto-attends, so no Matrix DM or invoke call is needed.
@@ -19,22 +28,13 @@ from typing import Any, ClassVar
 
 from libs import host_exec
 from libs.host_exec import HostExecError
-from libs.provisioners.base import ABCProvisioner, AgentRef, PrereqMissing
+from libs.provisioners.base import BOOTSTRAP_ROOM, ABCProvisioner, AgentRef, PrereqMissing
 
 log = logging.getLogger(__name__)
 
 
 class HermesProvisioner(ABCProvisioner):
-    """Provisioner for the hermes adapter.
-
-    Hermes agents are created on demand by the gateway plugin and
-    auto-attend any coordination session they're subscribed to;
-    there's no separate runtime to spawn. The two-phase lifecycle
-    therefore collapses to ``ensure_runtime`` = no-op (inherited),
-    and ``register_in_room`` / ``unregister_from_room`` forward to
-    legacy ``create_agent`` / ``cleanup_agent`` via the defaults in
-    :class:`ABCProvisioner`.
-    """
+    """Provisioner for the hermes adapter."""
 
     name: ClassVar[str] = "hermes"
 
@@ -82,59 +82,200 @@ class HermesProvisioner(ABCProvisioner):
 
     # ── create ────────────────────────────────────────────────────────
 
-    def create_agent(
+    def ensure_runtime(
+        self,
+        device: Any,
+        handle: str,
+        *,
+        bootstrap_room: str = BOOTSTRAP_ROOM,
+        **kwargs: Any,  # noqa: ARG002
+    ) -> AgentRef:
+        """Idempotently ensure the hermes agent exists in ``bootstrap_room``.
+
+        Checks ``mycelium agent ls --room <bootstrap_room>``; if the handle
+        is already present, returns a ref tagged ``pre_existing=True`` and
+        skips creation (no gateway restart).  Otherwise runs
+        ``mycelium agent create <handle> --adapter hermes --room
+        <bootstrap_room>``, which patches ``~/.hermes/config.yaml`` and
+        restarts the gateway exactly once per unique agent per suite run.
+
+        By running this in ``CommonSetup`` we avoid the previous pattern
+        where per-testcase ``register_in_room`` triggered a gateway restart
+        on each scenario's setup — racing with the immediately-following
+        ``session_create`` call.
+        """
+        device_label = host_exec.describe(device)
+        log.info("hermes.ensure_runtime: %s on %s", handle, device_label)
+
+        existing = self._list_agents_in_room(device, bootstrap_room)
+        if handle in existing:
+            log.info(
+                "hermes.ensure_runtime: %s already present in %s on %s — skipping create",
+                handle,
+                bootstrap_room,
+                device_label,
+            )
+            return AgentRef(
+                handle=handle,
+                adapter=self.name,
+                device_name=getattr(device, "name", None) or device_label,
+                metadata={"bootstrap_room": bootstrap_room, "pre_existing": True},
+            )
+
+        log.info(
+            "hermes.ensure_runtime: creating %s in %s on %s",
+            handle,
+            bootstrap_room,
+            device_label,
+        )
+        result = host_exec.execute(
+            device,
+            ["mycelium", "agent", "create", handle, "--adapter", "hermes", "--room", bootstrap_room],
+            timeout=60.0,
+        )
+        if result.returncode != 0:
+            raise PrereqMissing(
+                f"hermes: `mycelium agent create {handle} --room {bootstrap_room}` failed "
+                f"(rc={result.returncode}): "
+                f"{result.stderr.strip()[:300] or result.stdout.strip()[:300]}"
+            )
+        return AgentRef(
+            handle=handle,
+            adapter=self.name,
+            device_name=getattr(device, "name", None) or device_label,
+            metadata={"bootstrap_room": bootstrap_room, "pre_existing": False},
+        )
+
+    def _list_agents_in_room(self, device: Any, room: str) -> set[str]:
+        """Return the set of agent handles registered in ``room``.
+
+        Returns an empty set on any failure — callers treat "not present"
+        as "needs creating", which is the safe direction.
+        """
+        try:
+            result = host_exec.execute(device, ["mycelium", "agent", "ls", "--room", room], timeout=15.0)
+        except HostExecError:
+            return set()
+        if result.returncode != 0:
+            return set()
+        handles: set[str] = set()
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if not line or line.lower().startswith("no agents"):
+                continue
+            first = line.split()[0].lstrip("@")
+            handles.add(first)
+        return handles
+
+    def register_in_room(
         self,
         device: Any,
         handle: str,
         room: str,
         *,
-        opening: str | None = None,  # noqa: ARG002 - reserved for stage 3
+        opening: str | None = None,  # noqa: ARG002 - hermes opening is set at session join
     ) -> AgentRef:
-        """Create a hermes agent and rely on the installer to restart the gateway.
+        """Subscribe an already-provisioned hermes agent to a scenario room.
 
-        The mycelium hermes installer's wait-and-verify step (see
-        ``mycelium-cli/src/mycelium/integrations/hermes/install.py``)
-        polls the hermes agent log for the plugin's "subscribed to N
-        room(s)" message after each gateway restart, so by the time
-        this call returns the room is already wired up.
+        ``ensure_runtime`` already created the agent in the bootstrap room.
+        This call patches ``~/.hermes/config.yaml`` to add ``room`` to that
+        agent's subscription list and restarts the gateway so the plugin
+        starts polling the new room. The gateway restart + verify takes
+        ~7s per host.
         """
         log.info(
-            "hermes.create_agent: %s on %s for room %s",
+            "hermes.register_in_room: %s on %s → %s",
             handle,
             host_exec.describe(device),
             room,
         )
-
-        # Generous timeout: the gateway restart + wait-and-verify can
-        # take ~20s on a cold spoke (uv-installed CLI + hermes process
-        # supervisor restart).
         result = host_exec.execute(
             device,
-            [
-                "mycelium",
-                "agent",
-                "create",
-                handle,
-                "--adapter",
-                "hermes",
-                "--room",
-                room,
-            ],
+            ["mycelium", "agent", "create", handle, "--adapter", "hermes", "--room", room],
             timeout=60.0,
         )
         if result.returncode != 0:
             raise PrereqMissing(
-                f"hermes: `mycelium agent create {handle}` failed "
-                f"(returncode={result.returncode}): "
+                f"hermes: room subscription for {handle} → {room} failed "
+                f"(rc={result.returncode}): "
                 f"{result.stderr.strip()[:300] or result.stdout.strip()[:300]}"
             )
-
         return AgentRef(
             handle=handle,
             adapter=self.name,
             device_name=getattr(device, "name", None) or str(device),
             metadata={"room": room},
         )
+
+    def unregister_from_room(
+        self,
+        device: Any,
+        agent: AgentRef,
+        room: str,
+    ) -> None:
+        """Remove the agent's subscription from ``room`` (does NOT destroy the runtime)."""
+        log.info(
+            "hermes.unregister_from_room: %s on %s from %s",
+            agent.handle,
+            host_exec.describe(device),
+            room,
+        )
+        try:
+            result = host_exec.execute(
+                device,
+                ["mycelium", "agent", "rm", agent.handle, "--room", room, "--force"],
+                timeout=60.0,
+            )
+        except HostExecError as exc:
+            log.warning("hermes.unregister_from_room: dispatch failed: %s", exc)
+            return
+        if result.returncode != 0:
+            log.warning(
+                "hermes.unregister_from_room: agent rm %s from %s failed (rc=%d): %s",
+                agent.handle,
+                room,
+                result.returncode,
+                result.stderr.strip()[:200],
+            )
+
+    # ── teardown ──────────────────────────────────────────────────────
+
+    def teardown_runtime(self, device: Any, agent: AgentRef) -> None:
+        """Remove the hermes agent from its bootstrap room.
+
+        Skipped when the agent was pre-existing — we didn't create it
+        so we don't own its lifecycle.
+        """
+        if agent.metadata.get("pre_existing"):
+            log.info(
+                "hermes.teardown_runtime: %s was pre-existing; leaving alone",
+                agent.handle,
+            )
+            return
+
+        bootstrap_room = agent.metadata.get("bootstrap_room") or BOOTSTRAP_ROOM
+        log.info(
+            "hermes.teardown_runtime: removing %s from %s on %s",
+            agent.handle,
+            bootstrap_room,
+            host_exec.describe(device),
+        )
+        try:
+            result = host_exec.execute(
+                device,
+                ["mycelium", "agent", "rm", agent.handle, "--room", bootstrap_room, "--force"],
+                timeout=60.0,
+            )
+        except HostExecError as exc:
+            log.warning("hermes.teardown_runtime: dispatch failed for %s: %s", agent.handle, exc)
+            return
+        if result.returncode != 0:
+            log.warning(
+                "hermes.teardown_runtime: agent rm %s failed (rc=%d): %s",
+                agent.handle,
+                result.returncode,
+                result.stderr.strip()[:200],
+            )
 
     # ── wake ──────────────────────────────────────────────────────────
 
@@ -152,36 +293,3 @@ class HermesProvisioner(ABCProvisioner):
             agent.handle,
             session_room,
         )
-
-    # ── cleanup ───────────────────────────────────────────────────────
-
-    def cleanup_agent(
-        self,
-        device: Any,
-        agent: AgentRef,
-        room: str,
-    ) -> None:
-        """Remove the agent; the installer restarts the gateway on its own."""
-        try:
-            result = host_exec.execute(
-                device,
-                [
-                    "mycelium",
-                    "agent",
-                    "rm",
-                    agent.handle,
-                    "--force",
-                    "--room",
-                    room,
-                ],
-                timeout=60.0,
-            )
-        except HostExecError as exc:
-            log.warning("hermes.cleanup_agent: dispatch failed: %s", exc)
-            return
-        if result.returncode != 0:
-            log.warning(
-                "hermes.cleanup_agent: agent rm %s failed: %s",
-                agent.handle,
-                result.stderr.strip()[:200],
-            )

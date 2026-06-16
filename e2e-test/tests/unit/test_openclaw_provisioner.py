@@ -123,9 +123,7 @@ def test_ensure_runtime_creates_when_agent_absent(monkeypatch):
         ref = prov.ensure_runtime(_device(), handle="agent-alpha")
 
     assert ref.metadata["pre_existing"] is False
-    create_calls = [
-        c for c in calls if isinstance(c, list) and c[:3] == ["mycelium", "agent", "create"]
-    ]
+    create_calls = [c for c in calls if isinstance(c, list) and c[:3] == ["mycelium", "agent", "create"]]
     assert len(create_calls) == 1
     create_argv = create_calls[0]
     # Sanity: handle + adapter + bootstrap room + seed flag are all on the argv.

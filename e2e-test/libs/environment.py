@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import uuid
 from typing import Any, Optional
 
-from libs.mycelium_api import MyceliumAPI
 from libs.cfn_api import CfnMgmtAPI, CfnNodeSvcAPI
 from libs.matrix_client import check_matrix_reachable
+from libs.mycelium_api import MyceliumAPI
 
 log = logging.getLogger(__name__)
 
@@ -67,9 +66,15 @@ def detect_environment(
     """Probe all services and return a populated EnvironmentInfo."""
     env = EnvironmentInfo()
 
-    _LLM_FAILURE_STATUSES = frozenset({
-        "auth_error", "unavailable", "error", "misconfigured", "not_configured",
-    })
+    _LLM_FAILURE_STATUSES = frozenset(
+        {
+            "auth_error",
+            "unavailable",
+            "error",
+            "misconfigured",
+            "not_configured",
+        }
+    )
 
     # Backend health
     health = backend.health_json()
@@ -80,17 +85,13 @@ def detect_environment(
         llm_status = health.get("llm")
         if isinstance(llm_status, dict):
             status_val = llm_status.get("status", "")
-            env.llm_available = (
-                bool(status_val) and status_val not in _LLM_FAILURE_STATUSES
-            )
+            env.llm_available = bool(status_val) and status_val not in _LLM_FAILURE_STATUSES
             env.llm_detail = (
                 f"status={status_val} model={llm_status.get('model', '?')} "
                 f"base_url={'set' if llm_status.get('base_url') else 'NOT SET'}"
             )
         elif isinstance(llm_status, str):
-            env.llm_available = (
-                bool(llm_status) and llm_status not in _LLM_FAILURE_STATUSES
-            )
+            env.llm_available = bool(llm_status) and llm_status not in _LLM_FAILURE_STATUSES
             env.llm_detail = f"status={llm_status}"
         else:
             env.llm_available = False
@@ -140,7 +141,7 @@ def _check_llm_env_vars(env: EnvironmentInfo) -> None:
     """
     key_set = bool(os.environ.get("LLM_API_KEY"))
     url_set = bool(os.environ.get("LLM_BASE_URL"))
-    model_set = bool(os.environ.get("LLM_MODEL"))
+    bool(os.environ.get("LLM_MODEL"))
 
     if key_set and not url_set:
         log.warning(

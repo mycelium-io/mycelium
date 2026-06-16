@@ -1,0 +1,84 @@
+---
+# Core suite — lab topology + testcase UIDs for tests 001–014 and 022.
+extends: lab_datafile.yaml
+
+testcases:
+  RoomLifecycle:
+    uid: "mycelium:e2e:core:001"
+
+  MultiAgentMemory:
+    uid: "mycelium:e2e:core:002"
+    parameters:
+      memories:
+        - agent: "alpha"
+          key: "decisions/database"
+          content: "Decided to use PostgreSQL for persistence. SQLite considered but rejected for concurrency."
+        - agent: "alpha"
+          key: "decisions/llm"
+          content: "Using Claude Haiku for synthesis, Sonnet for complex reasoning. Cost/quality tradeoff."
+        - agent: "beta"
+          key: "status/frontend"
+          content: "React 19 migration complete. Server components working. HMR fixed."
+        - agent: "beta"
+          key: "work/tailwind-v4"
+          content: "Upgraded to Tailwind v4. Removed autoprefixer (now built-in). Fixed JIT issues."
+        - agent: "gamma"
+          key: "context/dep-updates"
+          content: "Dependabot PRs: 3 pending (lodash, axios, typescript). lodash is security-critical."
+        - agent: "gamma"
+          key: "decisions/no-autoprefixer"
+          content: "Dropped autoprefixer from deps. Tailwind v4 includes it. Saves 2MB bundle."
+        - agent: "delta"
+          key: "status/backend-deps"
+          content: "All backend deps up to date. LiteLLM pinned to 1.55.3 due to breaking change in 1.56."
+        - agent: "delta"
+          key: "decisions/litellm-pin"
+          content: "Pinned LiteLLM to 1.55.3. Version 1.56 broke streaming. Issue filed upstream."
+
+  MemoryReads:
+    uid: "mycelium:e2e:core:003"
+
+  SemanticSearch:
+    uid: "mycelium:e2e:core:004"
+
+  Synthesis:
+    uid: "mycelium:e2e:core:005"
+
+  ConsensusNegotiation:
+    uid: "mycelium:e2e:core:006"
+
+  SessionJoinIdempotency:
+    uid: "mycelium:e2e:core:006b"
+
+  DoctorClean:
+    uid: "mycelium:e2e:core:006c"
+
+  CfnLlmCounters:
+    uid: "mycelium:e2e:core:006d"
+
+  MatrixCommunication:
+    uid: "mycelium:e2e:matrix:007"
+
+  IocCfn:
+    uid: "mycelium:e2e:cfn:008"
+
+  IocFullPath:
+    uid: "mycelium:e2e:cfn:009"
+
+  IocNegotiationPath:
+    uid: "mycelium:e2e:cfn:010"
+
+  SharedMemoryCliE2E:
+    uid: "mycelium:e2e:core:011"
+
+  ConsensusCliE2E:
+    uid: "mycelium:e2e:core:012"
+
+  SyncNegotiationCliE2E:
+    uid: "mycelium:e2e:core:013"
+
+  DemoScriptNegotiation:
+    uid: "mycelium:e2e:core:014"
+
+  Reindex:
+    uid: "mycelium:e2e:core:022"

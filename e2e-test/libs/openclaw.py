@@ -8,7 +8,7 @@ import os
 import shlex
 import subprocess
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -40,7 +40,10 @@ def run_openclaw(
         try:
             return subprocess.run(
                 ["openclaw", *args],
-                capture_output=True, text=True, timeout=timeout, check=False,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
             )
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
             return None
@@ -60,13 +63,17 @@ def run_openclaw(
         return None
 
     remote_cmd = " ".join(shlex.quote(a) for a in ["openclaw", *args])
-    full_remote = (
-        '[ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh" >/dev/null 2>&1; '
-        + remote_cmd
-    )
+    full_remote = '[ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh" >/dev/null 2>&1; ' + remote_cmd
     cmd = [
-        "ssh", "-i", key_path, "-o", "StrictHostKeyChecking=no",
-        "-o", f"ConnectTimeout=5", f"{user}@{host}", full_remote,
+        "ssh",
+        "-i",
+        key_path,
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "ConnectTimeout=5",
+        f"{user}@{host}",
+        full_remote,
     ]
     try:
         return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
@@ -85,7 +92,10 @@ def list_agent_sessions(
     """List an agent's sessions that carry negotiation traffic."""
     proc = run_openclaw(
         ["sessions", "--agent", agent_id, "--json", "--limit", "100"],
-        host=host, container=container, transport=transport, timeout=20.0,
+        host=host,
+        container=container,
+        transport=transport,
+        timeout=20.0,
     )
     if proc is None or proc.returncode != 0 or not proc.stdout.strip():
         return []
@@ -94,10 +104,7 @@ def list_agent_sessions(
     except json.JSONDecodeError:
         return []
     sessions = data if isinstance(data, list) else data.get("sessions", [])
-    return [
-        s for s in sessions
-        if any(tag in (s.get("key") or s.get("sessionKey") or "") for tag in tags)
-    ]
+    return [s for s in sessions if any(tag in (s.get("key") or s.get("sessionKey") or "") for tag in tags)]
 
 
 def reset_session(
@@ -110,7 +117,10 @@ def reset_session(
     """Call gateway RPC ``sessions.reset`` for a single session key."""
     proc = run_openclaw(
         ["gateway", "call", "sessions.reset", "--params", json.dumps({"key": key})],
-        host=host, container=container, transport=transport, timeout=15.0,
+        host=host,
+        container=container,
+        transport=transport,
+        timeout=15.0,
     )
     return proc is not None and proc.returncode == 0
 
@@ -196,16 +206,29 @@ def trim_remote_agent_sessions(
             if ctr:
                 result = subprocess.run(
                     ["docker", "exec", ctr, "sh", "-c", trim_script],
-                    capture_output=True, text=True, timeout=10,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
                 )
             else:
                 key_path = os.path.expanduser(ssh_key)
                 if not os.path.exists(key_path):
                     continue
                 result = subprocess.run(
-                    ["ssh", "-i", key_path, "-o", "StrictHostKeyChecking=no",
-                     "-o", "ConnectTimeout=5", f"{user}@{host}", trim_script],
-                    capture_output=True, text=True, timeout=10,
+                    [
+                        "ssh",
+                        "-i",
+                        key_path,
+                        "-o",
+                        "StrictHostKeyChecking=no",
+                        "-o",
+                        "ConnectTimeout=5",
+                        f"{user}@{host}",
+                        trim_script,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
                 )
             for line in result.stdout.strip().splitlines():
                 if line:
@@ -222,6 +245,7 @@ def wait_for_agents_idle(
 ) -> dict[str, int]:
     """Poll until all agents have 0 active turns. Returns final counts."""
     import time
+
     containers = containers or {}
     deadline = time.time() + timeout
     counts: dict[str, int] = {}
@@ -233,7 +257,9 @@ def wait_for_agents_idle(
             for agent_id in agent_ids:
                 proc = run_openclaw(
                     ["sessions", "--agent", agent_id, "--json", "--limit", "1"],
-                    host=host, container=ctr, timeout=10.0,
+                    host=host,
+                    container=ctr,
+                    timeout=10.0,
                 )
                 active = 0
                 if proc and proc.returncode == 0 and proc.stdout.strip():

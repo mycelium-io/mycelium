@@ -148,7 +148,7 @@ class LabRedeployCommonSetup(aetest.CommonSetup):
        ``(adapter, handle, host)`` tuples, and calls
        ``Provisioner.ensure_runtime`` on each. The resulting
        :class:`AgentRef` map is stashed in
-       ``testscript.parameters['matrix_agents_provisioned']`` so
+       ``testscript.parameters['provisioned_agents']`` so
        per-test setup can do the lightweight ``register_in_room``
        step instead of repeating the heavy spawn each scenario.
     """
@@ -302,7 +302,7 @@ class LabRedeployCommonSetup(aetest.CommonSetup):
           in the bootstrap room.
 
         Stashes a ``(adapter, handle, host) -> AgentRef`` map in
-        ``testscript.parameters['matrix_agents_provisioned']``.
+        ``testscript.parameters['provisioned_agents']``.
 
         Opt out via ``MYCELIUM_E2E_SKIP_AGENT_PROVISIONING=1`` for
         environments where agents are pre-baked and creating them
@@ -315,7 +315,7 @@ class LabRedeployCommonSetup(aetest.CommonSetup):
             "yes",
         }:
             log.info("provision_matrix_agents: skipped via env opt-out")
-            testscript.parameters["matrix_agents_provisioned"] = {}
+            testscript.parameters["provisioned_agents"] = {}
             self.skipped("MYCELIUM_E2E_SKIP_AGENT_PROVISIONING set")
 
         if testbed is None:
@@ -325,7 +325,7 @@ class LabRedeployCommonSetup(aetest.CommonSetup):
 
         if not _ACTIVE_ROWS:
             log.info("provision_matrix_agents: no active rows; nothing to do")
-            testscript.parameters["matrix_agents_provisioned"] = {}
+            testscript.parameters["provisioned_agents"] = {}
             return
 
         # Build a deduped set of (adapter, handle, host) tuples
@@ -406,7 +406,7 @@ class LabRedeployCommonSetup(aetest.CommonSetup):
                 ref.metadata.get("pre_existing", "n/a"),
             )
 
-        testscript.parameters["matrix_agents_provisioned"] = provisioned
+        testscript.parameters["provisioned_agents"] = provisioned
 
         if failures:
             # Bail noisily — scenarios that depend on these agents
@@ -441,7 +441,7 @@ class MatrixCommonCleanup(aetest.CommonCleanup):
         if testbed is None:
             self.skipped("no testbed; runtime teardown needs device handles")
 
-        provisioned: dict[tuple[str, str, str], AgentRef] = testscript.parameters.get("matrix_agents_provisioned") or {}
+        provisioned: dict[tuple[str, str, str], AgentRef] = testscript.parameters.get("provisioned_agents") or {}
         if not provisioned:
             log.info("teardown_matrix_agents: nothing to tear down")
             return

@@ -65,6 +65,7 @@ class CommonSetup(aetest.CommonSetup):
     @aetest.subsection
     def check_cli(self):
         import shutil
+
         if not shutil.which("mycelium"):
             self.failed("mycelium CLI not found on PATH")
 
@@ -77,6 +78,7 @@ class CommonSetup(aetest.CommonSetup):
     @aetest.subsection
     def check_hermes_prereqs(self):
         from libs.hermes_lab import check_prereqs
+
         issues = check_prereqs(HUB_HOST, SSH_USER, SSH_KEY)
         if issues:
             self.skipped(
@@ -86,24 +88,28 @@ class CommonSetup(aetest.CommonSetup):
 
     @aetest.subsection
     def provision_hermes_agents(self, testscript, testbed=None):
-        """Ensure every hermes agent the active rows need is created.
+        """Create hermes agents that don't already exist in the bootstrap room.
 
-        Hermes ``ensure_runtime`` is a no-op (the agent is created
-        per-room in ``_ConsensusBase.setup``), so this subsection
-        is mainly a prereq check and a chown gate.
+        Runs ``ensure_runtime`` for every unique (adapter, handle, host)
+        tuple across the active rows. Pre-existing agents are returned as-is
+        (no gateway restart). New agents trigger one gateway restart per
+        host, isolated here in common_setup so no per-testcase setup races
+        with an in-progress restart.
         """
         if os.environ.get("MYCELIUM_E2E_SKIP_AGENT_PROVISIONING", "").lower() in {
-            "1", "true", "yes",
+            "1",
+            "true",
+            "yes",
         }:
             log.info("provision_hermes_agents: skipped via env opt-out")
-            testscript.parameters["matrix_agents_provisioned"] = {}
+            testscript.parameters["provisioned_agents"] = {}
             self.skipped("MYCELIUM_E2E_SKIP_AGENT_PROVISIONING set")
 
         if testbed is None:
             self.skipped("no testbed; agent provisioning needs device handles")
 
         if not _HERMES_ROWS:
-            testscript.parameters["matrix_agents_provisioned"] = {}
+            testscript.parameters["provisioned_agents"] = {}
             return
 
         wants: set[tuple[str, str, str]] = set()
@@ -143,12 +149,39 @@ class CommonSetup(aetest.CommonSetup):
             except (PrereqMissing, HostExecError) as exc:
                 failures.append(f"{handle}@{host} ({adapter}): {exc}")
 
-        testscript.parameters["matrix_agents_provisioned"] = provisioned
+        testscript.parameters["provisioned_agents"] = provisioned
         if failures:
-            self.failed(
-                f"provision_hermes_agents: {len(failures)} agent(s) failed:\n  "
-                + "\n  ".join(failures)
-            )
+            self.failed(f"provision_hermes_agents: {len(failures)} agent(s) failed:\n  " + "\n  ".join(failures))
+
+
+class CommonCleanup(aetest.CommonCleanup):
+    @aetest.subsection
+    def teardown_hermes_agents(self, testscript, testbed=None):
+        """Remove hermes agents that were created (not pre-existing) this run."""
+        if os.environ.get("MYCELIUM_E2E_KEEP_AGENTS", "").lower() in {"1", "true", "yes"}:
+            log.info("teardown_hermes_agents: skipped via MYCELIUM_E2E_KEEP_AGENTS")
+            return
+
+        provisioned: dict[tuple[str, str, str], AgentRef] = testscript.parameters.get("provisioned_agents") or {}
+        if not provisioned:
+            return
+
+        if testbed is None:
+            log.warning("teardown_hermes_agents: no testbed; skipping teardown")
+            return
+
+        for (adapter, handle, host), ref in provisioned.items():
+            if adapter != "hermes":
+                continue
+            device = testbed.devices.get(host)
+            if device is None:
+                log.warning("teardown_hermes_agents: device %r not in testbed; skipping %s", host, handle)
+                continue
+            try:
+                provisioner = get_provisioner(adapter)
+                provisioner.teardown_runtime(device, ref)
+            except Exception as exc:  # noqa: BLE001 - cleanup is best-effort
+                log.warning("teardown_hermes_agents: teardown failed for %s@%s: %s", handle, host, exc)
 
 
 globals().update(_CLASSES)

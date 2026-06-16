@@ -67,6 +67,7 @@ def _get_client() -> MatrixClient:
 
 # -- Example: whoami ---------------------------------------------------------
 
+
 async def example_whoami() -> None:
     """Verify the token is valid by checking the authenticated user ID."""
     client = _get_client()
@@ -78,6 +79,7 @@ async def example_whoami() -> None:
 
 
 # -- Example: resolve alias --------------------------------------------------
+
 
 async def example_resolve(alias: str) -> None:
     """Resolve a room alias like #agents:local to its room ID."""
@@ -91,6 +93,7 @@ async def example_resolve(alias: str) -> None:
 
 # -- Example: send message ---------------------------------------------------
 
+
 async def example_send(room: str, body: str) -> None:
     """Send a text message to a room (by ID or alias)."""
     client = _get_client()
@@ -102,6 +105,7 @@ async def example_send(room: str, body: str) -> None:
 
 
 # -- Example: read messages --------------------------------------------------
+
 
 async def example_read(room: str, limit: int = 10) -> None:
     """Read recent messages from a room."""
@@ -118,6 +122,7 @@ async def example_read(room: str, limit: int = 10) -> None:
 
 
 # -- Example: full round-trip ------------------------------------------------
+
 
 async def example_roundtrip() -> None:
     """Send a unique marker message and verify it appears in the read-back.
@@ -152,6 +157,7 @@ async def example_roundtrip() -> None:
 
 # -- Example: list rooms -----------------------------------------------------
 
+
 async def example_list_rooms() -> None:
     """List all rooms the authenticated user has joined."""
     client = _get_client()
@@ -165,6 +171,7 @@ async def example_list_rooms() -> None:
 
 
 # -- Example: room members ---------------------------------------------------
+
 
 async def example_members(room: str) -> None:
     """List members of a room."""
@@ -180,6 +187,7 @@ async def example_members(room: str) -> None:
 
 # -- Example: create room + invite -------------------------------------------
 
+
 async def example_create_room(name: str, invite: list[str] | None = None) -> None:
     """Create a private room and optionally invite users."""
     client = _get_client()
@@ -191,6 +199,7 @@ async def example_create_room(name: str, invite: list[str] | None = None) -> Non
 
 
 # -- Example: trigger negotiation (manual test helper) -----------------------
+
 
 async def example_trigger_negotiation(
     room: str,
@@ -223,6 +232,7 @@ async def example_trigger_negotiation(
 
 
 # -- Example: register user (from mycelium_e2e/matrix_e2e.py) ----------------
+
 
 async def example_register(username: str, password: str, admin: bool = False) -> None:
     """Register a Matrix user via the Synapse shared-secret admin API.
@@ -283,6 +293,7 @@ async def example_register(username: str, password: str, admin: bool = False) ->
 
 # -- Example: multi-agent setup (from mycelium_e2e/matrix_e2e.py) -----------
 
+
 async def example_multi_agent_setup(
     room_name: str = "mcp-demo",
     agents: str = "agent-alpha,agent-beta",
@@ -337,6 +348,7 @@ async def example_multi_agent_setup(
 
 
 # -- CLI dispatch ------------------------------------------------------------
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(

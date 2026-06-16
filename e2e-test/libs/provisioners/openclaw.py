@@ -170,8 +170,7 @@ class OpenClawProvisioner(ABCProvisioner):
         # convert the failure into a clean success.
         if result.returncode != 0 and "is owned by root" in (result.stderr or ""):
             log.info(
-                "openclaw.ensure_runtime: %s hit root-ownership race; "
-                "chowning and retrying",
+                "openclaw.ensure_runtime: %s hit root-ownership race; chowning and retrying",
                 handle,
             )
             host_exec.execute(
@@ -185,9 +184,7 @@ class OpenClawProvisioner(ABCProvisioner):
             try:
                 result = host_exec.execute(device, argv, timeout=120.0)
             except HostExecError as exc:
-                raise PrereqMissing(
-                    f"openclaw: agent create retry dispatch failed for {handle}: {exc}"
-                ) from exc
+                raise PrereqMissing(f"openclaw: agent create retry dispatch failed for {handle}: {exc}") from exc
 
         if result.returncode != 0:
             # ``mycelium agent create`` is the heaviest call we make
@@ -264,8 +261,7 @@ class OpenClawProvisioner(ABCProvisioner):
 
         if result.returncode != 0 and "is owned by root" in (result.stderr or ""):
             log.info(
-                "openclaw.register_in_room: %s in %s hit root-ownership race; "
-                "chowning and retrying",
+                "openclaw.register_in_room: %s in %s hit root-ownership race; chowning and retrying",
                 handle,
                 room,
             )
@@ -280,9 +276,7 @@ class OpenClawProvisioner(ABCProvisioner):
             try:
                 result = host_exec.execute(device, argv, timeout=30.0)
             except HostExecError as exc:
-                raise PrereqMissing(
-                    f"openclaw: agent add retry dispatch failed for {handle}: {exc}"
-                ) from exc
+                raise PrereqMissing(f"openclaw: agent add retry dispatch failed for {handle}: {exc}") from exc
 
         if result.returncode != 0:
             raise PrereqMissing(
@@ -449,9 +443,7 @@ class OpenClawProvisioner(ABCProvisioner):
         except HostExecError as exc:
             log.debug("openclaw._ensure_room: dispatch failed (ignoring): %s", exc)
             return
-        if result.returncode != 0 and "already exists" not in (
-            result.stderr.lower() + result.stdout.lower()
-        ):
+        if result.returncode != 0 and "already exists" not in (result.stderr.lower() + result.stdout.lower()):
             log.debug(
                 "openclaw._ensure_room: %s exit=%d stderr=%s",
                 room,

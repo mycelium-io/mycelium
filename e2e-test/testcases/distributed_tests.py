@@ -8,17 +8,13 @@ then verify coordination through the shared Mycelium backend.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
-import time
 import uuid
 
 from pyats import aetest
 
-from libs.mycelium_api import MyceliumAPI
 from libs.matrix_client import MatrixClient
-from libs.environment import EnvironmentInfo
 
 log = logging.getLogger(__name__)
 
@@ -54,7 +50,9 @@ class _DistributedBase(aetest.Testcase):
             self.skipped("Matrix not reachable (required for distributed tests)")
 
     @aetest.test
-    def run_distributed_scenario(self, steps, api, room_name, owned_rooms, matrix_url=None, matrix_config=None, timeouts=None):
+    def run_distributed_scenario(
+        self, steps, api, room_name, owned_rooms, matrix_url=None, matrix_config=None, timeouts=None
+    ):
         t = timeouts or {}
         timeout = t.get("negotiation_wait", 600)
         suffix = uuid.uuid4().hex[:8]
@@ -98,9 +96,7 @@ class _DistributedBase(aetest.Testcase):
                 if not token:
                     step.failed("MATRIX_TOKEN_AGENT_ALPHA not set — cannot send trigger")
                 try:
-                    asyncio.run(
-                        _send_matrix_trigger(matrix_url, token, room_id, trigger)
-                    )
+                    asyncio.run(_send_matrix_trigger(matrix_url, token, room_id, trigger))
                 except Exception as exc:
                     step.failed(f"Failed to send Matrix trigger: {exc}")
                 log.info("Matrix trigger sent to %s: %s", room_id, trigger[:80])
@@ -122,7 +118,10 @@ class _DistributedBase(aetest.Testcase):
 
 
 async def _send_matrix_trigger(
-    homeserver: str, token: str, room_id: str, body: str,
+    homeserver: str,
+    token: str,
+    room_id: str,
+    body: str,
 ) -> None:
     """Send a single Matrix message, then close the client."""
     client = MatrixClient(homeserver=homeserver, access_token=token)
@@ -133,6 +132,7 @@ async def _send_matrix_trigger(
 
 
 # ─── Local-Real Tests (test_30-32) ───────────────────────────────────────────
+
 
 class LocalTwoAgentNegotiation(_DistributedBase):
     """Test 30: Two local agents (alpha + beta) negotiate."""
@@ -162,6 +162,7 @@ class LocalArchitectureDecision(_DistributedBase):
 
 
 # ─── Cross-Device Distributed Tests (test_40-49) ─────────────────────────────
+
 
 class DistributedTwoAgent(_DistributedBase):
     """Test 40: Two agents on different devices (oclw4 + oclw3)."""
@@ -236,13 +237,13 @@ class DistributedBackendResolvedCfnIds(aetest.Testcase):
                 step.failed(f"Room creation failed: status={st}")
 
         with steps.start("Ingest knowledge with room_name only") as step:
-            st, resp = api.ingest_knowledge({
-                "room_name": test_room,
-                "agent_id": "e2e-leaf-node",
-                "records": [
-                    {"response": f"Backend-resolved test: {marker}"}
-                ],
-            })
+            st, resp = api.ingest_knowledge(
+                {
+                    "room_name": test_room,
+                    "agent_id": "e2e-leaf-node",
+                    "records": [{"response": f"Backend-resolved test: {marker}"}],
+                }
+            )
             if st not in (200, 201, 202):
                 log.error("Knowledge ingest body: %s", resp)
                 step.failed(f"Ingest failed: status={st}: {resp}")

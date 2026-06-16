@@ -15,35 +15,89 @@ import pytest
 
 from mycelium_e2e.bundle import (
     TestContext,
-    test_consensus_cli_e2e as section_consensus_cli_e2e,
-    test_consensus_negotiation as section_consensus_negotiation,
-    test_demo_script_negotiation_coverage as section_demo_script_negotiation,
-    test_doctor_clean as section_doctor_clean,
-    test_ioc_cfn as section_ioc_cfn,
-    test_ioc_full_path as section_ioc_full_path,
-    test_ioc_negotiation_path as section_ioc_negotiation_path,
-    test_matrix_communication as section_matrix_communication,
-    test_memory_reads as section_memory_reads,
-    test_multi_agent_memory as section_multi_agent_memory,
-    test_reindex as section_reindex,
-    test_room_lifecycle as section_room_lifecycle,
-    test_semantic_search as section_semantic_search,
-    test_cfn_llm_counters as section_cfn_llm_counters,
-    test_session_join_idempotency as section_session_join_idempotency,
-    test_shared_memory_cli_e2e as section_shared_memory_cli_e2e,
-    test_sync_negotiation_cli_e2e as section_sync_negotiation_cli_e2e,
-    test_synthesis as section_synthesis,
-    # New convergence scenario tests
-    test_three_agent_negotiation as section_three_agent_negotiation,
+)
+from mycelium_e2e.bundle import (
     test_architecture_decision as section_architecture_decision,
-    test_resource_allocation as section_resource_allocation,
+)
+from mycelium_e2e.bundle import (
     test_asymmetric_stakes as section_asymmetric_stakes,
-    test_preexisting_context as section_preexisting_context,
-    test_feature_prioritization as section_feature_prioritization,
+)
+from mycelium_e2e.bundle import (
+    test_cfn_llm_counters as section_cfn_llm_counters,
+)
+from mycelium_e2e.bundle import (
+    test_consensus_cli_e2e as section_consensus_cli_e2e,
+)
+from mycelium_e2e.bundle import (
+    test_consensus_negotiation as section_consensus_negotiation,
+)
+from mycelium_e2e.bundle import (
     test_consensus_stability as section_consensus_stability,
+)
+from mycelium_e2e.bundle import (
+    test_demo_script_negotiation_coverage as section_demo_script_negotiation,
+)
+from mycelium_e2e.bundle import (
+    test_doctor_clean as section_doctor_clean,
+)
+from mycelium_e2e.bundle import (
+    test_feature_prioritization as section_feature_prioritization,
+)
+from mycelium_e2e.bundle import (
+    test_ioc_cfn as section_ioc_cfn,
+)
+from mycelium_e2e.bundle import (
+    test_ioc_full_path as section_ioc_full_path,
+)
+from mycelium_e2e.bundle import (
+    test_ioc_negotiation_path as section_ioc_negotiation_path,
+)
+from mycelium_e2e.bundle import (
+    test_matrix_communication as section_matrix_communication,
+)
+from mycelium_e2e.bundle import (
+    test_memory_reads as section_memory_reads,
+)
+from mycelium_e2e.bundle import (
+    test_multi_agent_memory as section_multi_agent_memory,
+)
+from mycelium_e2e.bundle import (
+    test_openclaw_agent_mycelium_execution as section_openclaw_agent_execution,
+)
+from mycelium_e2e.bundle import (
     # OpenClaw skill verification
     test_openclaw_mycelium_skill as section_openclaw_mycelium_skill,
-    test_openclaw_agent_mycelium_execution as section_openclaw_agent_execution,
+)
+from mycelium_e2e.bundle import (
+    test_preexisting_context as section_preexisting_context,
+)
+from mycelium_e2e.bundle import (
+    test_reindex as section_reindex,
+)
+from mycelium_e2e.bundle import (
+    test_resource_allocation as section_resource_allocation,
+)
+from mycelium_e2e.bundle import (
+    test_room_lifecycle as section_room_lifecycle,
+)
+from mycelium_e2e.bundle import (
+    test_semantic_search as section_semantic_search,
+)
+from mycelium_e2e.bundle import (
+    test_session_join_idempotency as section_session_join_idempotency,
+)
+from mycelium_e2e.bundle import (
+    test_shared_memory_cli_e2e as section_shared_memory_cli_e2e,
+)
+from mycelium_e2e.bundle import (
+    test_sync_negotiation_cli_e2e as section_sync_negotiation_cli_e2e,
+)
+from mycelium_e2e.bundle import (
+    test_synthesis as section_synthesis,
+)
+from mycelium_e2e.bundle import (
+    # New convergence scenario tests
+    test_three_agent_negotiation as section_three_agent_negotiation,
 )
 
 
@@ -312,17 +366,17 @@ def test_22_reindex(bundle_ctx: TestContext) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 from mycelium_e2e.distributed_e2e import (
-    local_two_agent_negotiation,
-    local_three_agent_negotiation,
-    local_architecture_decision,
-    distributed_two_agent_negotiation,
-    distributed_three_agent_negotiation,
     distributed_architecture_decision,
-    distributed_resource_allocation,
     distributed_asymmetric_stakes,
-    distributed_preexisting_context,
-    distributed_feature_prioritization,
     distributed_backend_resolved_cfn_ids,
+    distributed_feature_prioritization,
+    distributed_preexisting_context,
+    distributed_resource_allocation,
+    distributed_three_agent_negotiation,
+    distributed_two_agent_negotiation,
+    local_architecture_decision,
+    local_three_agent_negotiation,
+    local_two_agent_negotiation,
     skill_cross_channel_return_trip,
 )
 
@@ -369,6 +423,7 @@ def test_32_local_architecture_decision(bundle_ctx: TestContext) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 # Distributed E2E Tests (real agents on oclw3, oclw4, oclw5)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.llm
 @pytest.mark.slow
@@ -469,7 +524,7 @@ def test_46_distributed_feature_prioritization(bundle_ctx: TestContext) -> None:
 def test_47_distributed_cross_device_only(bundle_ctx: TestContext) -> None:
     """
     Two remote agents (oclw3 + oclw5) negotiate using IOC backend on oclw4.
-    
+
     This validates that agents on machines WITHOUT the IOC stack can coordinate
     through the centralized backend. No agent from oclw4 participates.
     """
@@ -477,6 +532,7 @@ def test_47_distributed_cross_device_only(bundle_ctx: TestContext) -> None:
         pytest.skip(bundle_ctx.coordination_blocked_reason)
     n = len(bundle_ctx.results)
     from mycelium_e2e.distributed_e2e import distributed_cross_device_only
+
     distributed_cross_device_only(bundle_ctx)
     _assert_new_checks(bundle_ctx, n)
 
@@ -485,12 +541,13 @@ def test_47_distributed_cross_device_only(bundle_ctx: TestContext) -> None:
 # OpenClaw Skill Verification Tests
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.distributed
 @pytest.mark.cfn
 def test_48_distributed_backend_resolved_cfn_ids(bundle_ctx: TestContext) -> None:
     """
     Verify leaf nodes can ingest knowledge without workspace_id/mas_id (Issue #139).
-    
+
     Tests the backend-resolved CFN IDs feature: leaf nodes only send room_name,
     and the backend resolves workspace_id + mas_id from the room's DB record
     or falls back to system settings.
@@ -541,14 +598,13 @@ def test_51_openclaw_agent_mycelium_execution(bundle_ctx: TestContext) -> None:
 from mycelium_e2e.cross_channel_e2e import (
     cross_channel_memory_isolation,
 )
-
 from mycelium_e2e.cursor_e2e import (
-    cursor_basic_dispatch,
-    cursor_workspace_drift,
     cursor_auth_failure,
-    cursor_multi_host_dispatch,
+    cursor_basic_dispatch,
     cursor_cross_family_cursor,
     cursor_cross_family_openclaw,
+    cursor_multi_host_dispatch,
+    cursor_workspace_drift,
 )
 
 

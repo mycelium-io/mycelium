@@ -19,8 +19,8 @@ import uuid
 from pyats import aetest
 
 from libs.cursor import (
-    HUB_HOST,
     CURSOR_SPOKE_HOSTS,
+    HUB_HOST,
     check_cursor_agent_installed,
     check_daemon_health,
     check_ssh_connectivity,
@@ -87,14 +87,19 @@ class CursorBasicDispatch(aetest.Testcase):
     def invoke_and_verify_response(self, steps):
         with steps.start("Invoke agent via daemon") as step:
             before_ts = time.time()
-            r = invoke_agent(None, self.handle, "Say hello to confirm you are operational.", room=self.room, timeout=90.0)
+            r = invoke_agent(
+                None, self.handle, "Say hello to confirm you are operational.", room=self.room, timeout=90.0
+            )
             if not r.ok:
                 step.failed(f"Agent invoke failed: {r.error_message}")
 
         with steps.start("Verify agent response posted to room") as step:
             msg = wait_for_agent_response(
-                self.room, self.handle,
-                timeout_seconds=120, poll_interval=5, after_ts=before_ts,
+                self.room,
+                self.handle,
+                timeout_seconds=120,
+                poll_interval=5,
+                after_ts=before_ts,
             )
             if msg is None:
                 step.failed(f"No response from {self.handle} within 120s")
@@ -271,14 +276,19 @@ class CursorMultiHostDispatch(aetest.Testcase):
     def dispatch_from_hub_verify_spoke_responds(self, steps):
         with steps.start("Send mention from hub to spoke agent") as step:
             before_ts = time.time()
-            r = invoke_agent(None, self.handle, "Respond to confirm multi-host dispatch works.", room=self.room, timeout=90.0)
+            r = invoke_agent(
+                None, self.handle, "Respond to confirm multi-host dispatch works.", room=self.room, timeout=90.0
+            )
             if not r.ok:
                 log.warning("Invoke returned non-zero (may still work via daemon): %s", r.error_message)
 
         with steps.start("Wait for spoke agent response") as step:
             msg = wait_for_agent_response(
-                self.room, self.handle,
-                timeout_seconds=180, poll_interval=5, after_ts=before_ts,
+                self.room,
+                self.handle,
+                timeout_seconds=180,
+                poll_interval=5,
+                after_ts=before_ts,
             )
             if msg is None:
                 step.failed(f"No response from spoke agent {self.handle} within 180s")
@@ -348,9 +358,11 @@ class CursorCrossFamilyCursor(aetest.Testcase):
         topic = "Decide on a CI/CD pipeline tool: GitHub Actions vs GitLab CI"
         with steps.start("Create coordination session") as step:
             r = create_session(
-                self.room, topic,
+                self.room,
+                topic,
                 [self.hub_handle, self.spoke_handle],
-                host=None, timeout=60.0,
+                host=None,
+                timeout=60.0,
             )
             if not r.ok:
                 step.failed(f"Session create failed: {r.error_message}")
@@ -358,7 +370,10 @@ class CursorCrossFamilyCursor(aetest.Testcase):
 
         with steps.start("Wait for consensus or max rounds") as step:
             result = poll_session_status(
-                self.room, timeout_seconds=600, poll_interval=10, target_status="consensus",
+                self.room,
+                timeout_seconds=600,
+                poll_interval=10,
+                target_status="consensus",
             )
             if result is None:
                 step.failed("Consensus not reached within 600s (cursor vs cursor)")
@@ -428,9 +443,11 @@ class CursorCrossFamilyOpenClaw(aetest.Testcase):
         topic = "Agree on a logging framework: structured JSON vs human-readable"
         with steps.start("Create coordination session with both families") as step:
             r = create_session(
-                self.room, topic,
+                self.room,
+                topic,
                 [self.cursor_handle, self.openclaw_handle],
-                host=None, timeout=60.0,
+                host=None,
+                timeout=60.0,
             )
             if not r.ok:
                 step.failed(f"Session create failed: {r.error_message}")
@@ -438,7 +455,10 @@ class CursorCrossFamilyOpenClaw(aetest.Testcase):
 
         with steps.start("Wait for consensus") as step:
             result = poll_session_status(
-                self.room, timeout_seconds=600, poll_interval=10, target_status="consensus",
+                self.room,
+                timeout_seconds=600,
+                poll_interval=10,
+                target_status="consensus",
             )
             if result is None:
                 step.failed("Cross-family consensus not reached within 600s (cursor vs openclaw)")

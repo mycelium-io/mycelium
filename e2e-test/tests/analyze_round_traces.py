@@ -66,9 +66,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-DEFAULT_TRACE_DIR = Path(
-    os.environ.get("MYCELIUM_TRACE_DIR", str(Path.home() / ".mycelium" / "e2e-logs" / "traces"))
-)
+DEFAULT_TRACE_DIR = Path(os.environ.get("MYCELIUM_TRACE_DIR", str(Path.home() / ".mycelium" / "e2e-logs" / "traces")))
 
 
 @dataclass
@@ -228,7 +226,7 @@ def print_per_round_table(runs: list[TestRun]) -> None:
                 f"{i:<4}{r['round_n']:<3}{r['decision_path']:<14}{(r.get('outcome') or '-'):<10}"
                 f"{_fmt_ms(r.get('elapsed_ms'), 10)}{_fmt_ms(collection, 10)}{_fmt_ms(decide, 10)}"
                 f"{(str(msgs) if msgs is not None else '-'):>5}"
-                f"{(f'{resp_b/1024:.1f}' if resp_b is not None else '-'):>8}"
+                f"{(f'{resp_b / 1024:.1f}' if resp_b is not None else '-'):>8}"
                 f"  {agents_str}"
             )
     print()
@@ -322,8 +320,7 @@ def print_aggregate(runs: list[TestRun]) -> None:
             line(f"    {h}", by_handle[h])
 
     if total_slots:
-        print(f"\nSynthesis rate: {synthesised}/{total_slots} agent-rounds "
-              f"({100 * synthesised / total_slots:.1f}%)")
+        print(f"\nSynthesis rate: {synthesised}/{total_slots} agent-rounds ({100 * synthesised / total_slots:.1f}%)")
         if by_handle_synth:
             for h, c in sorted(by_handle_synth.items(), key=lambda x: -x[1]):
                 print(f"  {h:<20}{c} synthesised replies")
@@ -338,8 +335,10 @@ def print_aggregate(runs: list[TestRun]) -> None:
         for j, r in enumerate(long_rounds, 1):
             c, d = round_decomposition(r)
             dominant = (
-                "decide" if d is not None and c is not None and d > c
-                else "agents" if c is not None and d is not None
+                "decide"
+                if d is not None and c is not None and d > c
+                else "agents"
+                if c is not None and d is not None
                 else "?"
             )
             msgs = r.get("cfn_messages_count")
@@ -348,7 +347,7 @@ def print_aggregate(runs: list[TestRun]) -> None:
                 f"  {j:<4}{r['round_n']:<3}{_fmt_ms(r.get('elapsed_ms'), 10)}"
                 f"{_fmt_ms(c, 10)}{_fmt_ms(d, 10)}"
                 f"{(str(msgs) if msgs is not None else '-'):>5}"
-                f"{(f'{resp_b/1024:.1f}' if resp_b is not None else '-'):>8}"
+                f"{(f'{resp_b / 1024:.1f}' if resp_b is not None else '-'):>8}"
                 f"  {dominant:<8}  {r.get('cfn_status') or '-'}"
             )
 
@@ -364,21 +363,21 @@ def print_aggregate(runs: list[TestRun]) -> None:
 # follows the request lifecycle (outside-in) — the same order the
 # investigation history walked the sites in.
 INTERNAL_TIMING_FIELDS: tuple[str, ...] = (
-    "wire_to_middleware_ms",          # Site 5 — Mycelium send -> CFN middleware
-    "check_workspace_and_mas_ms",     # Site 3 — workspace/MAS dependency
-    "vector_cache_layer_ms",          # Site 3 — vector cache dep
-    "rag_cache_layer_ms",             # Site 3 — RAG cache dep
-    "route_handler_ms",               # Site 3 — total route handler body
-    "thread_wait_ms",                 # Site 2 — queued in default executor
-    "in_thread_ms",                   # Site 2 — actual execute() runtime
-    "post_thread_resume_ms",          # Site 2 — thread done -> coroutine resume
-    "pipeline_ms",                    # Site 1 — pipeline.async_execute total
-    "pipeline_plus_persist_setup_ms", # Site 1 — pipeline + ingest hand-off
-    "to_dict_ms",                     # Site 1 — response serialisation
+    "wire_to_middleware_ms",  # Site 5 — Mycelium send -> CFN middleware
+    "check_workspace_and_mas_ms",  # Site 3 — workspace/MAS dependency
+    "vector_cache_layer_ms",  # Site 3 — vector cache dep
+    "rag_cache_layer_ms",  # Site 3 — RAG cache dep
+    "route_handler_ms",  # Site 3 — total route handler body
+    "thread_wait_ms",  # Site 2 — queued in default executor
+    "in_thread_ms",  # Site 2 — actual execute() runtime
+    "post_thread_resume_ms",  # Site 2 — thread done -> coroutine resume
+    "pipeline_ms",  # Site 1 — pipeline.async_execute total
+    "pipeline_plus_persist_setup_ms",  # Site 1 — pipeline + ingest hand-off
+    "to_dict_ms",  # Site 1 — response serialisation
 )
 
 CALL_TIMING_FIELDS: tuple[str, ...] = (
-    "http_ms",                        # httpx client.post wall time
+    "http_ms",  # httpx client.post wall time
     "client_setup_ms",
     "client_close_ms",
     "raise_for_status_ms",
@@ -424,10 +423,7 @@ def print_cfn_timing_envelope(runs: list[TestRun]) -> None:
 
     print()
     print("=" * 100)
-    print(
-        f"CFN TIMING ENVELOPE  "
-        f"(internal={rounds_with_internal}/{n} rounds, call={rounds_with_call}/{n} rounds)"
-    )
+    print(f"CFN TIMING ENVELOPE  (internal={rounds_with_internal}/{n} rounds, call={rounds_with_call}/{n} rounds)")
     print("=" * 100)
     print(
         "  Sites correspond to cfn_decide_investigation_history.md:\n"
@@ -465,8 +461,8 @@ WEDGE_THRESHOLD_MS = 10_000  # same threshold the existing "long rounds" block u
 WEDGE_PATTERNS: tuple[tuple[str, str, str], ...] = (
     ("A", "post_thread_resume_ms", "loop-wedge"),
     ("B", "wire_to_middleware_ms", "accept-queue"),
-    ("C", "thread_wait_ms",        "pool-starve"),
-    ("D", "in_thread_ms",          "real-work"),
+    ("C", "thread_wait_ms", "pool-starve"),
+    ("D", "in_thread_ms", "real-work"),
 )
 
 
@@ -498,15 +494,16 @@ def _classify_wedge(rnd: dict) -> tuple[str, str, float] | None:
 
 def print_wedge_attribution(runs: list[TestRun]) -> None:
     """For every long round, name the dominant wedger using the timing envelope."""
-    rounds = [r for run in runs for r in run.rounds]
-    long_rounds = [(i, r) for i, run in enumerate(runs, 1) for r in run.rounds
-                   if (r.get("elapsed_ms") or 0) > WEDGE_THRESHOLD_MS]
+    [r for run in runs for r in run.rounds]
+    long_rounds = [
+        (i, r) for i, run in enumerate(runs, 1) for r in run.rounds if (r.get("elapsed_ms") or 0) > WEDGE_THRESHOLD_MS
+    ]
     if not long_rounds:
         return
 
     print()
     print("=" * 100)
-    print(f"WEDGE ATTRIBUTION  ({len(long_rounds)} rounds > {WEDGE_THRESHOLD_MS/1000:.0f}s)")
+    print(f"WEDGE ATTRIBUTION  ({len(long_rounds)} rounds > {WEDGE_THRESHOLD_MS / 1000:.0f}s)")
     print("=" * 100)
     print(
         "  A=loop-wedge (post_thread_resume_ms)  "
@@ -517,10 +514,7 @@ def print_wedge_attribution(runs: list[TestRun]) -> None:
     )
 
     counts: dict[str, int] = {}
-    print(
-        f"\n  {'#':<4}{'r':<3}{'elapsed':>10}  {'pattern':<14}{'attributed_ms':>14}"
-        f"  {'cfn_status':<10}{'test':<40}"
-    )
+    print(f"\n  {'#':<4}{'r':<3}{'elapsed':>10}  {'pattern':<14}{'attributed_ms':>14}  {'cfn_status':<10}{'test':<40}")
     print("  " + "-" * 95)
     for j, (run_idx, r) in enumerate(long_rounds, 1):
         run = runs[run_idx - 1]
@@ -551,6 +545,7 @@ def print_wedge_attribution(runs: list[TestRun]) -> None:
 # Comparison across two trace directories (e.g. pre-fix vs post-fix smoke).
 # ---------------------------------------------------------------------------
 
+
 def _envelope_quantiles(runs: list[TestRun]) -> dict[str, dict[str, dict[str, float | None]]]:
     rounds = [r for run in runs for r in run.rounds]
     out: dict[str, dict[str, dict[str, float | None]]] = {
@@ -577,8 +572,7 @@ def _envelope_quantiles(runs: list[TestRun]) -> dict[str, dict[str, dict[str, fl
     return out
 
 
-def print_comparison(label_a: str, runs_a: list[TestRun],
-                     label_b: str, runs_b: list[TestRun]) -> None:
+def print_comparison(label_a: str, runs_a: list[TestRun], label_b: str, runs_b: list[TestRun]) -> None:
     """Side-by-side median/p95/max diff for every timing field present in both."""
     qa = _envelope_quantiles(runs_a)
     qb = _envelope_quantiles(runs_b)
@@ -598,7 +592,7 @@ def print_comparison(label_a: str, runs_a: list[TestRun],
             return f"{'-':>8}"
         r = a / b
         if r < 1:
-            return f"{1/r:>6.1f}x↓"
+            return f"{1 / r:>6.1f}x↓"
         return f"{r:>6.1f}x↑"
 
     for envelope in ("round", "cfn_internal_timing", "cfn_call_timing"):
@@ -666,24 +660,29 @@ def to_json_report(runs: list[TestRun]) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0] if __doc__ else "")
-    p.add_argument("--dir", type=Path, default=DEFAULT_TRACE_DIR,
-                   help="Trace directory (default: ~/.mycelium/e2e-logs/traces)")
+    p.add_argument(
+        "--dir", type=Path, default=DEFAULT_TRACE_DIR, help="Trace directory (default: ~/.mycelium/e2e-logs/traces)"
+    )
     src = p.add_mutually_exclusive_group()
-    src.add_argument("--file", type=Path, action="append", default=[],
-                     help="Analyze a specific JSON file (repeatable)")
+    src.add_argument("--file", type=Path, action="append", default=[], help="Analyze a specific JSON file (repeatable)")
     src.add_argument("--glob", type=str, help="Glob pattern within --dir (e.g. 'test_41_*.json')")
-    p.add_argument("--last", type=int, default=None,
-                   help="Take only the most-recent N files after globbing (default: 1 if no glob/file, all otherwise)")
-    p.add_argument("--rounds", action="store_true",
-                   help="Print per-round breakdown table (verbose)")
-    p.add_argument("--wedges", action="store_true",
-                   help="Attribute every >10s round to wedge pattern A/B/C/D")
-    p.add_argument("--no-envelope", action="store_true",
-                   help="Suppress the CFN timing-envelope block (printed by default when present)")
-    p.add_argument("--compare-dir", type=Path, default=None,
-                   help="Diff timing distributions vs traces in this other directory")
-    p.add_argument("--json", action="store_true",
-                   help="Emit machine-readable JSON instead of pretty tables")
+    p.add_argument(
+        "--last",
+        type=int,
+        default=None,
+        help="Take only the most-recent N files after globbing (default: 1 if no glob/file, all otherwise)",
+    )
+    p.add_argument("--rounds", action="store_true", help="Print per-round breakdown table (verbose)")
+    p.add_argument("--wedges", action="store_true", help="Attribute every >10s round to wedge pattern A/B/C/D")
+    p.add_argument(
+        "--no-envelope",
+        action="store_true",
+        help="Suppress the CFN timing-envelope block (printed by default when present)",
+    )
+    p.add_argument(
+        "--compare-dir", type=Path, default=None, help="Diff timing distributions vs traces in this other directory"
+    )
+    p.add_argument("--json", action="store_true", help="Emit machine-readable JSON instead of pretty tables")
     args = p.parse_args(argv)
 
     last = args.last
@@ -692,8 +691,9 @@ def main(argv: list[str] | None = None) -> int:
 
     files = discover_files(args.dir, args.file, args.glob, last)
     if not files:
-        print(f"no trace files found in {args.dir}"
-              + (f" matching {args.glob!r}" if args.glob else ""), file=sys.stderr)
+        print(
+            f"no trace files found in {args.dir}" + (f" matching {args.glob!r}" if args.glob else ""), file=sys.stderr
+        )
         return 1
 
     runs = [TestRun.load(f) for f in files]

@@ -35,7 +35,6 @@ import uuid
 
 from pyats import aetest
 
-
 log = logging.getLogger(__name__)
 
 # ── topology constants ────────────────────────────────────────────────────────
@@ -69,15 +68,20 @@ def _ssh(host: str, cmd: str, *, timeout: float = 20.0) -> tuple[int, str, str]:
     "ran and failed".
     """
     import subprocess
+
     key = os.path.expanduser(SSH_KEY)
     if not os.path.exists(key):
         return 127, "", f"SSH key not found: {key}"
     full_cmd = f"{PATH_PREFIX} {cmd}"
     proc = subprocess.run(
         [
-            "ssh", "-i", key,
-            "-o", "StrictHostKeyChecking=no",
-            "-o", f"ConnectTimeout={SSH_CONNECT_TIMEOUT}",
+            "ssh",
+            "-i",
+            key,
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            f"ConnectTimeout={SSH_CONNECT_TIMEOUT}",
             f"{SSH_USER}@{host}",
             full_cmd,
         ],
@@ -123,14 +127,15 @@ def _collect_gateway_logs(
     """
     for label, (host, ssh_fn) in nodes.items():
         rc, out, _ = ssh_fn(
-            f"grep -i '{room}\\|consensus\\|Round [0-9]' "
-            f"~/.hermes/logs/gateway.log 2>/dev/null | tail -{lines}",
+            f"grep -i '{room}\\|consensus\\|Round [0-9]' ~/.hermes/logs/gateway.log 2>/dev/null | tail -{lines}",
             timeout=20.0,
         )
         if rc == 0 and out.strip():
             log.info(
                 "=== gateway.log [%s] — lines mentioning %s ===\n%s",
-                label, room, out.strip(),
+                label,
+                room,
+                out.strip(),
             )
         else:
             log.info("=== gateway.log [%s] — no matching lines for %s ===", label, room)
@@ -342,8 +347,7 @@ class HermesLoopSuppression(aetest.Testcase):
                 log.info("adapter status: %s", st_out.strip()[:300])
                 if rc_st != 0 or "✓ gateway" not in st_out:
                     step.failed(
-                        f"Gateway not subscribed after agent register. "
-                        f"adapter status rc={rc_st}: {st_out[:200]}"
+                        f"Gateway not subscribed after agent register. adapter status rc={rc_st}: {st_out[:200]}"
                     )
                 log.info("Gateway subscription confirmed via adapter status")
 

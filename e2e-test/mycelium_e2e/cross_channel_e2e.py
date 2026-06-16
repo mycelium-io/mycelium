@@ -39,19 +39,23 @@ from urllib.parse import quote
 
 import httpx
 
-from mycelium_e2e.distributed_e2e import wait_for_mycelium_consensus
-
 from mycelium_e2e.bundle import (
     BACKEND_URL,
+    BOLD,
+    DIM,
+    GREEN,
+    RED,
+    RESET,
+    YELLOW,
     TestContext,
     check,
-    log_info,
     log_debug,
     log_error,
+    log_info,
     log_warning,
     print_section,
-    GREEN, RED, YELLOW, DIM, BOLD, RESET,
 )
+from mycelium_e2e.distributed_e2e import wait_for_mycelium_consensus
 
 MATRIX_HOMESERVER = os.environ.get("MATRIX_HOMESERVER", "http://localhost:8008")
 MATRIX_SHARED_SECRET = os.environ.get(
@@ -117,12 +121,14 @@ class MatrixClient:
         messages = []
         for ev in reversed(r.json().get("chunk", [])):
             if ev.get("type") == "m.room.message":
-                messages.append({
-                    "event_id": ev.get("event_id"),
-                    "sender": ev.get("sender"),
-                    "timestamp": ev.get("origin_server_ts"),
-                    "body": ev.get("content", {}).get("body", ""),
-                })
+                messages.append(
+                    {
+                        "event_id": ev.get("event_id"),
+                        "sender": ev.get("sender"),
+                        "timestamp": ev.get("origin_server_ts"),
+                        "body": ev.get("content", {}).get("body", ""),
+                    }
+                )
         return messages
 
     async def join_room(self, room_id_or_alias: str) -> dict:
@@ -144,15 +150,13 @@ async def get_observer_token() -> str:
         if r.status_code == 200:
             return r.json()["access_token"]
 
-        import hmac
         import hashlib
+        import hmac
 
         r = await client.get(f"{MATRIX_HOMESERVER}/_synapse/admin/v1/register")
         nonce = r.json()["nonce"]
         mac_content = f"{nonce}\x00test-observer\x00observer123\x00notadmin"
-        mac = hmac.new(
-            MATRIX_SHARED_SECRET.encode(), mac_content.encode(), hashlib.sha1
-        ).hexdigest()
+        mac = hmac.new(MATRIX_SHARED_SECRET.encode(), mac_content.encode(), hashlib.sha1).hexdigest()
         r = await client.post(
             f"{MATRIX_HOMESERVER}/_synapse/admin/v1/register",
             json={
@@ -260,8 +264,12 @@ async def test_cross_channel_memory_isolation(test_ctx: TestContext):
                 json={"name": seed_room, "mode": "coordination"},
             )
         room_created = r.status_code in (200, 201)
-        check(test_ctx, "Seed room created", room_created,
-              error=f"status {r.status_code}: {r.text}" if not room_created else None)
+        check(
+            test_ctx,
+            "Seed room created",
+            room_created,
+            error=f"status {r.status_code}: {r.text}" if not room_created else None,
+        )
 
         if not room_created:
             for name in skip_checks[1:]:
@@ -296,8 +304,8 @@ async def test_cross_channel_memory_isolation(test_ctx: TestContext):
             f"by running EXACTLY these two commands (no others):\n\n"
             f"```\n"
             f"mycelium room use {seed_room}\n"
-            f"mycelium memory set \"decision/{DECISION_TOKEN.lower()}\" "
-            f"\"<your decision and rationale>\" --handle agent-alpha\n"
+            f'mycelium memory set "decision/{DECISION_TOKEN.lower()}" '
+            f'"<your decision and rationale>" --handle agent-alpha\n'
             f"```\n\n"
             f"Then report back here with a summary of what you decided and why."
         )
@@ -310,8 +318,8 @@ async def test_cross_channel_memory_isolation(test_ctx: TestContext):
             f"by running EXACTLY these two commands (no others):<br/><br/>"
             f"<pre><code>"
             f"mycelium room use {seed_room}\n"
-            f"mycelium memory set \"decision/{DECISION_TOKEN.lower()}\" "
-            f"\"&lt;your decision and rationale&gt;\" --handle agent-alpha"
+            f'mycelium memory set "decision/{DECISION_TOKEN.lower()}" '
+            f'"&lt;your decision and rationale&gt;" --handle agent-alpha'
             f"</code></pre><br/>"
             f"Then report back here with a summary of what you decided and why."
         )
@@ -322,11 +330,19 @@ async def test_cross_channel_memory_isolation(test_ctx: TestContext):
 
         # Wait for agent-alpha to respond
         alpha_responses = await wait_for_agent_response(
-            observer, agents_room, "agent-alpha", trigger_ts, timeout_seconds=120,
+            observer,
+            agents_room,
+            "agent-alpha",
+            trigger_ts,
+            timeout_seconds=120,
         )
         alpha_responded = len(alpha_responses) > 0
-        check(test_ctx, "agent-alpha responded in Matrix", alpha_responded,
-              error="No response from agent-alpha within 120s" if not alpha_responded else None)
+        check(
+            test_ctx,
+            "agent-alpha responded in Matrix",
+            alpha_responded,
+            error="No response from agent-alpha within 120s" if not alpha_responded else None,
+        )
 
         # Verify memory was written to seed room
         await asyncio.sleep(5)  # Give time for memory write to propagate
@@ -347,10 +363,7 @@ async def test_cross_channel_memory_isolation(test_ctx: TestContext):
         # regression in mycelium. Skip the rest of the test rather than
         # report a misleading isolation failure: the seed never landed,
         # so phases 2–4 can't tell us anything about isolation either.
-        approval_blocked = any(
-            "Approval required" in msg or "/approve " in msg
-            for msg in alpha_responses
-        )
+        approval_blocked = any("Approval required" in msg or "/approve " in msg for msg in alpha_responses)
 
         if not memory_found and approval_blocked:
             check(
@@ -366,12 +379,21 @@ async def test_cross_channel_memory_isolation(test_ctx: TestContext):
                 ),
             )
             for name in skip_checks[3:]:
-                check(test_ctx, name, False, skipped=True,
-                      skip_reason="seed step skipped — see 'Memory written to seed room'")
+                check(
+                    test_ctx,
+                    name,
+                    False,
+                    skipped=True,
+                    skip_reason="seed step skipped — see 'Memory written to seed room'",
+                )
             return
 
-        check(test_ctx, "Memory written to seed room", memory_found,
-              error="agent-alpha responded but no memories found in seed room" if not memory_found else None)
+        check(
+            test_ctx,
+            "Memory written to seed room",
+            memory_found,
+            error="agent-alpha responded but no memories found in seed room" if not memory_found else None,
+        )
 
         # ── Phase 2: Verify isolation ─────────────────────────────────────
 
@@ -440,15 +462,16 @@ async def test_cross_channel_memory_isolation(test_ctx: TestContext):
             f"Do NOT guess — only answer if you have actual knowledge of this decision."
         )
 
+        blind_err: str | None = None
         try:
             await observer.send_message(agents_room, blind_probe, formatted_body=blind_html)
             blind_sent = True
-        except Exception as e:
+        except Exception as exc:
             blind_sent = False
-            log_error(f"Failed to send blind probe: {e}")
+            blind_err = str(exc)
+            log_error(f"Failed to send blind probe: {exc}")
 
-        check(test_ctx, "Blind probe sent to agent-beta", blind_sent,
-              error=str(e) if not blind_sent else None)
+        check(test_ctx, "Blind probe sent to agent-beta", blind_sent, error=blind_err if not blind_sent else None)
 
         if not blind_sent:
             for name in skip_checks[7:]:
@@ -458,18 +481,25 @@ async def test_cross_channel_memory_isolation(test_ctx: TestContext):
 
         # Wait for agent-beta's response in Matrix
         blind_responses = await wait_for_agent_response(
-            observer, agents_room, "agent-beta", blind_ts, timeout_seconds=90,
+            observer,
+            agents_room,
+            "agent-beta",
+            blind_ts,
+            timeout_seconds=90,
         )
 
         blind_responded = len(blind_responses) > 0
-        check(test_ctx, "agent-beta responded to blind probe", blind_responded,
-              error="No response from agent-beta within 90s" if not blind_responded else None)
+        check(
+            test_ctx,
+            "agent-beta responded to blind probe",
+            blind_responded,
+            error="No response from agent-beta within 90s" if not blind_responded else None,
+        )
 
         # Evaluate: agent-beta should NOT know the specific decision
         blind_text = " ".join(blind_responses).lower()
-        knows_decision = (
-            ("redis" in blind_text or "memcached" in blind_text)
-            and any(w in blind_text for w in ["chose", "decided", "selected", "recommend"])
+        knows_decision = ("redis" in blind_text or "memcached" in blind_text) and any(
+            w in blind_text for w in ["chose", "decided", "selected", "recommend"]
         )
 
         check(
@@ -479,7 +509,9 @@ async def test_cross_channel_memory_isolation(test_ctx: TestContext):
             error=(
                 f"UNEXPECTED: agent-beta knew about the {DECISION_TOKEN} decision "
                 f"without cross-channel context. Response: {blind_text[:200]}"
-            ) if knows_decision else None,
+            )
+            if knows_decision
+            else None,
         )
 
         if blind_responded:
@@ -505,8 +537,7 @@ async def test_cross_channel_memory_isolation(test_ctx: TestContext):
                 activity = catchup.get("recent_activity", [])
                 if activity:
                     seed_context = "\n".join(
-                        f"- {a.get('key', '?')}: {a.get('content_text', '')}"
-                        for a in activity[:5]
+                        f"- {a.get('key', '?')}: {a.get('content_text', '')}" for a in activity[:5]
                     )
                     log_info(f"Loaded {len(activity)} items from seed room catchup")
 
@@ -520,8 +551,7 @@ async def test_cross_channel_memory_isolation(test_ctx: TestContext):
                     memories = data if isinstance(data, list) else data.get("memories", [])
                     if memories:
                         seed_context = "\n".join(
-                            f"- {m.get('key', '?')}: {m.get('value', m.get('content_text', ''))}"
-                            for m in memories[:5]
+                            f"- {m.get('key', '?')}: {m.get('value', m.get('content_text', ''))}" for m in memories[:5]
                         )
                         log_info(f"Loaded {len(memories)} memories from seed room API")
 
@@ -548,15 +578,16 @@ async def test_cross_channel_memory_isolation(test_ctx: TestContext):
             f"with the rationale? Be specific."
         )
 
+        bridge_err: str | None = None
         try:
             await observer.send_message(agents_room, bridged_probe, formatted_body=bridged_html)
             bridge_sent = True
-        except Exception as e:
+        except Exception as exc:
             bridge_sent = False
-            log_error(f"Failed to send bridged probe: {e}")
+            bridge_err = str(exc)
+            log_error(f"Failed to send bridged probe: {exc}")
 
-        check(test_ctx, "Bridged probe sent to agent-beta", bridge_sent,
-              error=str(e) if not bridge_sent else None)
+        check(test_ctx, "Bridged probe sent to agent-beta", bridge_sent, error=bridge_err if not bridge_sent else None)
 
         if not bridge_sent:
             for name in skip_checks[10:]:
@@ -566,12 +597,20 @@ async def test_cross_channel_memory_isolation(test_ctx: TestContext):
 
         # Wait for agent-beta's response in Matrix
         bridged_responses = await wait_for_agent_response(
-            observer, agents_room, "agent-beta", bridge_ts, timeout_seconds=90,
+            observer,
+            agents_room,
+            "agent-beta",
+            bridge_ts,
+            timeout_seconds=90,
         )
 
         bridge_responded = len(bridged_responses) > 0
-        check(test_ctx, "agent-beta responded to bridged probe", bridge_responded,
-              error="No response from agent-beta within 90s" if not bridge_responded else None)
+        check(
+            test_ctx,
+            "agent-beta responded to bridged probe",
+            bridge_responded,
+            error="No response from agent-beta within 90s" if not bridge_responded else None,
+        )
 
         # Evaluate: agent-beta SHOULD now know the decision
         bridged_text = " ".join(bridged_responses).lower()
@@ -589,7 +628,9 @@ async def test_cross_channel_memory_isolation(test_ctx: TestContext):
             error=(
                 f"Agent-beta still doesn't reference the caching decision even "
                 f"with explicit context. Response: {bridged_text[:200]}"
-            ) if not bridge_has_knowledge else None,
+            )
+            if not bridge_has_knowledge
+            else None,
         )
 
         if bridge_responded:
@@ -629,8 +670,7 @@ async def test_cross_channel_memory_isolation(test_ctx: TestContext):
 
         if not nego_room_created:
             for name in skip_checks[13:]:
-                check(test_ctx, name, False, skipped=True,
-                      skip_reason="Negotiation room creation failed")
+                check(test_ctx, name, False, skipped=True, skip_reason="Negotiation room creation failed")
         else:
             await asyncio.sleep(5)
             nego_trigger_ts = int(time.time() * 1000)
@@ -646,7 +686,7 @@ async def test_cross_channel_memory_isolation(test_ctx: TestContext):
                 f"Run EXACTLY these commands — do NOT run any others:\n\n"
                 f"1. Join the coordination session as yourself:\n"
                 f"     mycelium session join --handle YOUR_HANDLE --room {nego_room} "
-                f"-m \"YOUR_POSITION\"\n\n"
+                f'-m "YOUR_POSITION"\n\n'
                 f"2. Do NOT run mycelium session await. The Mycelium channel plugin "
                 f"wakes you when CognitiveEngine addresses you.\n\n"
                 f"3. When a tick arrives, respond via the CLI:\n"
@@ -688,31 +728,38 @@ async def test_cross_channel_memory_isolation(test_ctx: TestContext):
 
             if not nego_sent:
                 for name in skip_checks[14:]:
-                    check(test_ctx, name, False, skipped=True,
-                          skip_reason="Negotiation trigger send failed")
+                    check(test_ctx, name, False, skipped=True, skip_reason="Negotiation trigger send failed")
             else:
                 log_info("Waiting 30s for agents to join the negotiation...")
                 await asyncio.sleep(30)
 
                 alpha_joined = await wait_for_agent_response(
-                    observer, agents_room, "agent-alpha", nego_trigger_ts, timeout_seconds=60,
+                    observer,
+                    agents_room,
+                    "agent-alpha",
+                    nego_trigger_ts,
+                    timeout_seconds=60,
                 )
                 beta_joined = await wait_for_agent_response(
-                    observer, agents_room, "agent-beta", nego_trigger_ts, timeout_seconds=60,
+                    observer,
+                    agents_room,
+                    "agent-beta",
+                    nego_trigger_ts,
+                    timeout_seconds=60,
                 )
                 agents_joined = len(alpha_joined) > 0 and len(beta_joined) > 0
                 check(
                     test_ctx,
                     "Agents joined negotiation",
                     agents_joined,
-                    error=(
-                        f"alpha responded: {len(alpha_joined) > 0}, "
-                        f"beta responded: {len(beta_joined) > 0}"
-                    ) if not agents_joined else None,
+                    error=(f"alpha responded: {len(alpha_joined) > 0}, beta responded: {len(beta_joined) > 0}")
+                    if not agents_joined
+                    else None,
                 )
 
                 consensus = await wait_for_mycelium_consensus(
-                    nego_room, timeout_seconds=300,
+                    nego_room,
+                    timeout_seconds=300,
                 )
                 check(
                     test_ctx,
@@ -749,10 +796,9 @@ async def test_cross_channel_memory_isolation(test_ctx: TestContext):
                         test_ctx,
                         "Return-trip delivered to Matrix",
                         return_trip_found,
-                        error=(
-                            "No '[Mycelium return trip' message appeared in "
-                            "the agents room within 90s of consensus"
-                        ) if not return_trip_found else None,
+                        error=("No '[Mycelium return trip' message appeared in the agents room within 90s of consensus")
+                        if not return_trip_found
+                        else None,
                     )
                 else:
                     check(
@@ -773,10 +819,18 @@ async def test_cross_channel_memory_isolation(test_ctx: TestContext):
             print(f"    Seed room memories:  {GREEN}present{RESET}")
         else:
             print(f"    Seed room memories:  {YELLOW}not written{RESET}")
-        print(f"    Cross-channel leak:  {'%sYES%s' % (RED, RESET) if not channel_room_clean else '%sNO%s' % (GREEN, RESET)}")
-        print(f"    Blind probe aware:   {'%sYES (unexpected)%s' % (RED, RESET) if knows_decision else '%sNO (expected)%s' % (GREEN, RESET)}")
-        print(f"    Bridged probe aware: {'%sYES (expected)%s' % (GREEN, RESET) if bridge_has_knowledge else '%sNO (unexpected)%s' % (YELLOW, RESET)}")
-        print(f"    Return-trip:         {'%sdelivered%s' % (GREEN, RESET) if nego_room_created and 'return_trip_found' in dir() and return_trip_found else '%snot verified%s' % (YELLOW, RESET)}")
+        print(
+            f"    Cross-channel leak:  {'%sYES%s' % (RED, RESET) if not channel_room_clean else '%sNO%s' % (GREEN, RESET)}"
+        )
+        print(
+            f"    Blind probe aware:   {'%sYES (unexpected)%s' % (RED, RESET) if knows_decision else '%sNO (expected)%s' % (GREEN, RESET)}"
+        )
+        print(
+            f"    Bridged probe aware: {'%sYES (expected)%s' % (GREEN, RESET) if bridge_has_knowledge else '%sNO (unexpected)%s' % (YELLOW, RESET)}"
+        )
+        print(
+            f"    Return-trip:         {'%sdelivered%s' % (GREEN, RESET) if nego_room_created and 'return_trip_found' in dir() and return_trip_found else '%snot verified%s' % (YELLOW, RESET)}"
+        )
 
         await observer.close()
 
@@ -817,9 +871,9 @@ async def main():
     ctx = TestContext(room_name="xch-e2e-main")
     detect_environment(ctx)
 
-    print(f"\n{BOLD}{'='*60}{RESET}")
+    print(f"\n{BOLD}{'=' * 60}{RESET}")
     print(f"{BOLD}Cross-Channel Memory Isolation E2E Test{RESET}")
-    print(f"{BOLD}{'='*60}{RESET}\n")
+    print(f"{BOLD}{'=' * 60}{RESET}\n")
 
     await test_cross_channel_memory_isolation(ctx)
     print_results(ctx)

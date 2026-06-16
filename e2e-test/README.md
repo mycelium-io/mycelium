@@ -43,9 +43,13 @@ libs/                           Shared libraries
   environment.py                Environment detection & health probes
 
 data/                           pyATS datafiles (YAML config)
-  base_datafile.yaml            Common topology + test parameters
-  lab_datafile.yaml             Lab overrides (oclw3/4/5 topology)
-  local_datafile.yaml           Local dev overrides
+  base_datafile.yaml            Shared parameters (topology, timeouts)
+  lab_datafile.yaml             Lab topology overlay (oclw3/4/5)
+  local_datafile.yaml           Localhost topology overlay
+  weekly_datafile.yaml          Full weekly suite UIDs (extends lab)
+  core_datafile.yaml            Core suite UIDs (extends lab)
+  distributed_datafile.yaml     Distributed suite UIDs (extends lab)
+  sanity_datafile.yaml          Sanity smoke UIDs (extends local)
 
 scripts/                        Operator utility scripts
 docs/                           Historical investigation docs
@@ -71,14 +75,14 @@ pip install -e ".[dev]"
 # Quick sanity check (local backend on localhost)
 pyats run job jobs/sanity_job.py
 
-# Core tests against lab
-pyats run job jobs/core_job.py --datafile data/lab_datafile.yaml
+# Core tests against lab (default datafile includes lab topology)
+pyats run job jobs/core_job.py
 
 # Full weekly E2E (long-running, all tiers)
-pyats run job jobs/weekly_e2e_job.py --datafile data/lab_datafile.yaml
+pyats run job jobs/weekly_e2e_job.py
 
 # Distributed tests only
-pyats run job jobs/distributed_job.py --datafile data/lab_datafile.yaml
+pyats run job jobs/distributed_job.py
 
 # Specific tests via TESTCASES filter
 TESTCASES="test_01_room_lifecycle, test_02_multi_agent_memory" \
@@ -88,7 +92,7 @@ TESTCASES="test_01_room_lifecycle, test_02_multi_agent_memory" \
 pyats run job jobs/weekly_e2e_job.py --html-logs
 
 # Standalone script execution (no job)
-python suites/sanity_suite.py --datafile data/local_datafile.yaml
+python suites/sanity_suite.py --datafile data/sanity_datafile.yaml
 
 # View logs from last run
 pyats logs view

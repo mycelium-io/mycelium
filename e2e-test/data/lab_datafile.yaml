@@ -1,5 +1,5 @@
 ---
-# Lab environment datafile — overrides for the oclw3/4/5 topology.
+# Lab environment datafile — oclw3/4/5 topology overlay (parameters only).
 extends: base_datafile.yaml
 
 parameters:
@@ -15,6 +15,7 @@ parameters:
 
     matrix:
       base_url: "%ENV{MATRIX_URL, http://10.0.50.125:8008}"
+      shared_secret: '%ENV{MATRIX_SHARED_SECRET, C&1gRZ#;M2hEp-ehNLtSPeddl^DOutp*Ls4=eDyx_+._^Y#ieY}'
 
   # Remote hosts for distributed tests
   remote_hosts:

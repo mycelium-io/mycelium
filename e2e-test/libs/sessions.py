@@ -253,9 +253,7 @@ def poll_consensus(
     # ``fastapi-backend/app/main.py``). The old ``/rooms/...`` path returns
     # 404 — every poll silently failed and we timed out without ever
     # seeing the consensus message. Always include the ``/api`` prefix.
-    consensus_url = (
-        f"{backend_url.rstrip('/')}/api/rooms/{quote(room, safe='')}/messages?limit=100"
-    )
+    consensus_url = f"{backend_url.rstrip('/')}/api/rooms/{quote(room, safe='')}/messages?limit=100"
 
     last_log = 0.0
     while time.time() < deadline:

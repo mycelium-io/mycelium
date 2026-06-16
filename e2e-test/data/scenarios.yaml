@@ -41,7 +41,6 @@ scenarios:
       PR canary — openclaw vs openclaw on the hub with a full
       consensus → plan → memory → search check. Tightest happy path.
     topic: api-style
-    n_steps_total: 8
     agents:
       - handle: alpha
         adapter: openclaw
@@ -84,7 +83,6 @@ scenarios:
       both agents joined and the session reached *some* terminal state
       within budget.
     topic: rollout-cadence
-    n_steps_total: 6
     timeout_seconds: 480       # 8 min — cursor cold-start hostile to default
     agents:
       - handle: planner
@@ -110,7 +108,6 @@ scenarios:
       no explicit wake. Validates the mycelium-room plugin attends ticks
       and reaches consensus autonomously.
     topic: logging-verbosity
-    n_steps_total: 8
     agents:
       - handle: alpha-he
         adapter: hermes
@@ -147,7 +144,6 @@ scenarios:
       CFN abort at round 8 — see scenarios.py history for the rewrite
       rationale.
     topic: capacity-planning
-    n_steps_total: 10
     agents:
       - handle: alpha
         adapter: openclaw
@@ -190,7 +186,6 @@ scenarios:
       regressions in cold-spawn, workspace asset drift, or daemon
       subscription ordering.
     topic: storage-engine
-    n_steps_total: 10
     agents:
       - handle: alpha-cu
         adapter: cursor
@@ -209,7 +204,6 @@ scenarios:
       Hermes vs hermes — exercises the polling-driven autonomous
       coordination path (no explicit wake).
     topic: deployment-strategy
-    n_steps_total: 10
     agents:
       - handle: alpha-he
         adapter: hermes
@@ -229,7 +223,6 @@ scenarios:
       proposer rotation entirely via the SSE polling path. Any failure is a
       hermes plugin or backend regression, not adapter noise.
     topic: incident-response-process
-    n_steps_total: 12
     agents:
       - handle: alpha-he
         adapter: hermes
@@ -261,7 +254,6 @@ scenarios:
       verifies the room sub-tick fan-out covers both delivery paths
       simultaneously.
     topic: secrets-management
-    n_steps_total: 10
     agents:
       - handle: alpha
         adapter: openclaw
@@ -280,7 +272,6 @@ scenarios:
       Cursor (invoke wake) + hermes (poll wake). Verifies that cursor's
       cold-spawn and hermes's polling co-exist on the same session.
     topic: monorepo-or-polyrepo
-    n_steps_total: 10
     agents:
       - handle: front-cu
         adapter: cursor
@@ -300,7 +291,6 @@ scenarios:
       most diagnostic single row in the matrix — a regression here
       almost always means a real backend issue, not adapter flakiness.
     topic: observability-budget
-    n_steps_total: 12
     timeout_seconds: 900   # 15 min — cursor cold-spawn × 3 agents
     agents:
       - handle: planner
@@ -326,7 +316,6 @@ scenarios:
     category: cross_channel
     description: Mirror of oc-cu — confirms the wake protocol is symmetric.
     topic: caching-tier
-    n_steps_total: 10
     agents:
       - handle: alpha-cu
         adapter: cursor
@@ -343,7 +332,6 @@ scenarios:
     category: cross_channel
     description: Mirror of oc-he.
     topic: auth-provider
-    n_steps_total: 10
     agents:
       - handle: alpha-he
         adapter: hermes
@@ -360,7 +348,6 @@ scenarios:
     category: cross_channel
     description: Mirror of cu-he.
     topic: ci-runner-pool
-    n_steps_total: 10
     agents:
       - handle: alpha-he
         adapter: hermes

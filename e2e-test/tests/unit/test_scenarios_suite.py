@@ -74,7 +74,7 @@ def test_provision_matrix_agents_short_circuits_on_skip_env(monkeypatch, suite_m
     with pytest.raises(AEtestSkippedSignal):
         section.provision_matrix_agents(testscript, testbed=_make_testbed())
 
-    assert testscript.parameters["matrix_agents_provisioned"] == {}
+    assert testscript.parameters["provisioned_agents"] == {}
 
 
 def test_provision_matrix_agents_dedups_across_rows(monkeypatch, suite_module):
@@ -143,7 +143,7 @@ def test_provision_matrix_agents_dedups_across_rows(monkeypatch, suite_module):
         ("openclaw", "beta", "spoke1"),
     ]
 
-    refs = testscript.parameters["matrix_agents_provisioned"]
+    refs = testscript.parameters["provisioned_agents"]
     assert set(refs.keys()) == {
         ("openclaw", "alpha", "hub"),
         ("openclaw", "beta", "spoke1"),
@@ -205,7 +205,7 @@ def test_provision_matrix_agents_handles_empty_rows(monkeypatch, suite_module):
 
     # Should not raise; just sets an empty registry.
     section.provision_matrix_agents(testscript, testbed=_make_testbed())
-    assert testscript.parameters["matrix_agents_provisioned"] == {}
+    assert testscript.parameters["provisioned_agents"] == {}
 
 
 # ── teardown_matrix_agents ──────────────────────────────────────────
@@ -219,7 +219,7 @@ def test_teardown_matrix_agents_short_circuits_on_keep_env(monkeypatch, suite_mo
 
     section = suite_module.MatrixCommonCleanup()
     testscript = _make_testscript()
-    testscript.parameters["matrix_agents_provisioned"] = {
+    testscript.parameters["provisioned_agents"] = {
         ("openclaw", "alpha", "hub"): AgentRef(handle="alpha", adapter="openclaw", device_name="hub"),
     }
 
@@ -244,7 +244,7 @@ def test_teardown_matrix_agents_calls_teardown_runtime_for_each(monkeypatch, sui
 
     section = suite_module.MatrixCommonCleanup()
     testscript = _make_testscript()
-    testscript.parameters["matrix_agents_provisioned"] = {
+    testscript.parameters["provisioned_agents"] = {
         ("openclaw", "alpha", "hub"): AgentRef(handle="alpha", adapter="openclaw", device_name="hub"),
         ("openclaw", "beta", "spoke1"): AgentRef(handle="beta", adapter="openclaw", device_name="spoke1"),
     }
@@ -273,7 +273,7 @@ def test_teardown_matrix_agents_swallows_failures(monkeypatch, suite_module):
 
     section = suite_module.MatrixCommonCleanup()
     testscript = _make_testscript()
-    testscript.parameters["matrix_agents_provisioned"] = {
+    testscript.parameters["provisioned_agents"] = {
         ("openclaw", "alpha", "hub"): AgentRef(handle="alpha", adapter="openclaw", device_name="hub"),
         ("openclaw", "beta", "hub"): AgentRef(handle="beta", adapter="openclaw", device_name="hub"),
     }

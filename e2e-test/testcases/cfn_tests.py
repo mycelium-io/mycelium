@@ -22,10 +22,7 @@ import uuid
 
 from pyats import aetest
 
-from libs.cfn_api import CfnMgmtAPI, CfnNodeSvcAPI
-from libs.environment import EnvironmentInfo
-from libs.mycelium_api import MyceliumAPI
-from libs.mycelium_cli import CLIResult, MyceliumCLI
+from libs.mycelium_cli import CLIResult
 
 log = logging.getLogger(__name__)
 

@@ -7,7 +7,7 @@ Covers tests 15-21. Requires LLM and CFN stack.
 
 Usage:
     pyats run job jobs/convergence_job.py
-    pyats run job jobs/convergence_job.py --datafile data/lab_datafile.yaml
+    pyats run job jobs/convergence_job.py --datafile data/convergence_datafile.yaml
 """
 
 import logging
@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 def main(runtime):
     log.info("=== Mycelium Convergence Tests ===")
 
-    datafile = common.get_datafile(default="base_datafile.yaml")
+    datafile = common.get_datafile(default="convergence_datafile.yaml")
     suite = common.get_suite_path("convergence_suite.py")
     max_failures = common.get_max_failures(datafile)
 

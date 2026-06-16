@@ -315,6 +315,7 @@ class _ConsensusBase(aetest.Testcase):
        each agent + delete the room. Runs even if a test section
        above aborted. Runtime teardown happens once at the suite
        level in ``MatrixCommonCleanup.teardown_matrix_agents``.
+       Set ``MYCELIUM_E2E_KEEP_ROOMS=1`` to skip this step.
 
     Per-row knobs (all optional with sensible defaults):
 
@@ -383,7 +384,7 @@ class _ConsensusBase(aetest.Testcase):
         # matches our row's spec exactly.
         provisioned: dict[tuple[str, str, str], AgentRef] = {}
         if testscript is not None:
-            provisioned = testscript.parameters.get("matrix_agents_provisioned", {}) or {}
+            provisioned = testscript.parameters.get("provisioned_agents", {}) or {}
 
         if testbed is None:
             self.skipped("no pyATS testbed supplied (scenarios need a testbed)")
@@ -646,7 +647,14 @@ class _ConsensusBase(aetest.Testcase):
         - Runs under ``@aetest.cleanup`` so it executes even when an
           earlier test section failed, partially-built sessions get
           torn down, and the next testcase starts from a clean room.
+        - Set ``MYCELIUM_E2E_KEEP_ROOMS=1`` to skip unregister and room
+          deletion — useful for post-run inspection of memory, plan files,
+          and session logs without losing context.
         """
+        if os.environ.get("MYCELIUM_E2E_KEEP_ROOMS", "").lower() in {"1", "true", "yes"}:
+            log.info("cleanup: skipping room teardown for %s (MYCELIUM_E2E_KEEP_ROOMS)", self.room)
+            return
+
         for binding in self.agents:
             if binding.ref is None:
                 continue
@@ -712,7 +720,8 @@ class _ConsensusBase(aetest.Testcase):
             except HostExecError as exc:
                 log.debug(
                     "chown ~/.mycelium failed on %s (continuing): %s",
-                    getattr(device, "name", device), exc,
+                    getattr(device, "name", device),
+                    exc,
                 )
 
 

@@ -6,14 +6,9 @@ Maps to original test 60.
 from __future__ import annotations
 
 import logging
-import time
 import uuid
 
 from pyats import aetest
-
-from libs.mycelium_api import MyceliumAPI
-from libs.mycelium_cli import MyceliumCLI
-from libs.environment import EnvironmentInfo
 
 log = logging.getLogger(__name__)
 

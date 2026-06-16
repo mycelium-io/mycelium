@@ -284,7 +284,14 @@ class MyceliumCommonSetup(aetest.CommonSetup):
         env_path.parent.mkdir(parents=True, exist_ok=True)
 
         lines = []
-        for var in ("LLM_API_KEY", "LLM_BASE_URL", "LLM_MODEL", "WORKSPACE_ID", "MAS_ID"):
+        for var in (
+            "LLM_API_KEY",
+            "LLM_BASE_URL",
+            "LLM_MODEL",
+            "WORKSPACE_ID",
+            "MAS_ID",
+            "MATRIX_SHARED_SECRET",
+        ):
             val = os.environ.get(var)
             if val:
                 lines.append(f"{var}={val}")

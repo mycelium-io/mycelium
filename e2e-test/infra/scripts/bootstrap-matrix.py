@@ -79,13 +79,17 @@ def register_user(username, password="agent-e2e-pass", admin=False):
     mac.update(b"\x00")
     mac.update(b"admin" if admin else b"notadmin")
 
-    status, result = _request("POST", f"{HOMESERVER}/_synapse/admin/v1/register", {
-        "nonce": nonce,
-        "username": username,
-        "password": password,
-        "admin": admin,
-        "mac": mac.hexdigest(),
-    })
+    status, result = _request(
+        "POST",
+        f"{HOMESERVER}/_synapse/admin/v1/register",
+        {
+            "nonce": nonce,
+            "username": username,
+            "password": password,
+            "admin": admin,
+            "mac": mac.hexdigest(),
+        },
+    )
 
     if status in (200, 201):
         print(f"  Registered @{username}:local")
@@ -93,11 +97,15 @@ def register_user(username, password="agent-e2e-pass", admin=False):
 
     if "User ID already taken" in str(result.get("error", "")):
         print(f"  @{username}:local already exists, logging in...")
-        status, login_result = _request("POST", f"{HOMESERVER}/_matrix/client/v3/login", {
-            "type": "m.login.password",
-            "user": username,
-            "password": password,
-        })
+        status, login_result = _request(
+            "POST",
+            f"{HOMESERVER}/_matrix/client/v3/login",
+            {
+                "type": "m.login.password",
+                "user": username,
+                "password": password,
+            },
+        )
         if status == 200:
             return login_result.get("access_token")
         print(f"  Login failed: {status} {login_result}", file=sys.stderr)
@@ -109,12 +117,17 @@ def register_user(username, password="agent-e2e-pass", admin=False):
 
 def create_room(token, alias):
     """Create a room with the given alias and return the room_id."""
-    status, result = _request("POST", f"{HOMESERVER}/_matrix/client/v3/createRoom", {
-        "room_alias_name": alias,
-        "visibility": "public",
-        "preset": "public_chat",
-        "name": f"#{alias}:local",
-    }, token=token)
+    status, result = _request(
+        "POST",
+        f"{HOMESERVER}/_matrix/client/v3/createRoom",
+        {
+            "room_alias_name": alias,
+            "visibility": "public",
+            "preset": "public_chat",
+            "name": f"#{alias}:local",
+        },
+        token=token,
+    )
 
     if status == 200:
         room_id = result.get("room_id")
@@ -138,10 +151,13 @@ def create_room(token, alias):
 
 def invite_and_join(room_id, inviter_token, invitee_user_id, invitee_token):
     """Invite a user to a room and have them join."""
-    _request("POST", f"{HOMESERVER}/_matrix/client/v3/rooms/{room_id}/invite",
-             {"user_id": invitee_user_id}, token=inviter_token)
-    _request("POST", f"{HOMESERVER}/_matrix/client/v3/rooms/{room_id}/join",
-             {}, token=invitee_token)
+    _request(
+        "POST",
+        f"{HOMESERVER}/_matrix/client/v3/rooms/{room_id}/invite",
+        {"user_id": invitee_user_id},
+        token=inviter_token,
+    )
+    _request("POST", f"{HOMESERVER}/_matrix/client/v3/rooms/{room_id}/join", {}, token=invitee_token)
 
 
 def main():

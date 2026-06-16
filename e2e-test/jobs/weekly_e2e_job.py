@@ -12,7 +12,7 @@ Usage:
 
     # With explicit datafile
     pyats run job jobs/weekly_e2e_job.py \\
-        --datafile data/lab_datafile.yaml
+        --datafile data/weekly_datafile.yaml
 
     # Filter to specific groups
     TESTCASES="test_01_room_lifecycle, test_02_multi_agent_memory" \\
@@ -22,11 +22,11 @@ Usage:
     pyats run job jobs/weekly_e2e_job.py --html-logs
 """
 
-import os
 import logging
+import os
 
-from pyats.easypy import run
 from pyats.datastructures.logic import Or
+from pyats.easypy import run
 
 # Ensure project root on path
 import jobs._common as common
@@ -45,7 +45,7 @@ def main(runtime):
     log.info("=== Mycelium Weekly E2E Test ===")
     log.info("Runtime directory: %s", runtime.directory)
 
-    datafile = common.get_datafile(default="lab_datafile.yaml")
+    datafile = common.get_datafile(default="weekly_datafile.yaml")
     suite = common.get_suite_path("weekly_full_suite.py")
     max_failures = common.get_max_failures(datafile)
 

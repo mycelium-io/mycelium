@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import json
 import logging
 import os
 import uuid
@@ -50,9 +49,7 @@ class MatrixClient:
         r.raise_for_status()
         return r.json()
 
-    async def read_messages(
-        self, room_id: str, limit: int = 50, since: Optional[str] = None
-    ) -> tuple[list[dict], str]:
+    async def read_messages(self, room_id: str, limit: int = 50, since: Optional[str] = None) -> tuple[list[dict], str]:
         params: dict[str, Any] = {"dir": "b", "limit": limit}
         if since:
             params["from"] = since
@@ -65,13 +62,15 @@ class MatrixClient:
         messages = []
         for ev in reversed(data.get("chunk", [])):
             if ev.get("type") == "m.room.message":
-                messages.append({
-                    "event_id": ev.get("event_id"),
-                    "sender": ev.get("sender"),
-                    "timestamp": ev.get("origin_server_ts"),
-                    "body": ev.get("content", {}).get("body", ""),
-                    "msgtype": ev.get("content", {}).get("msgtype"),
-                })
+                messages.append(
+                    {
+                        "event_id": ev.get("event_id"),
+                        "sender": ev.get("sender"),
+                        "timestamp": ev.get("origin_server_ts"),
+                        "body": ev.get("content", {}).get("body", ""),
+                        "msgtype": ev.get("content", {}).get("msgtype"),
+                    }
+                )
         return messages, data.get("end", "")
 
     async def sync(self, timeout: int = 1000, since: Optional[str] = None) -> dict:
@@ -84,9 +83,7 @@ class MatrixClient:
 
     async def resolve_room_alias(self, alias: str) -> Optional[str]:
         try:
-            r = await self._http.get(
-                f"/_matrix/client/v3/directory/room/{quote(alias, safe='')}"
-            )
+            r = await self._http.get(f"/_matrix/client/v3/directory/room/{quote(alias, safe='')}")
             if r.status_code == 200:
                 return r.json().get("room_id")
         except Exception:
@@ -95,7 +92,29 @@ class MatrixClient:
 
 
 _OBSERVER_USERNAME = "test-observer"
-_OBSERVER_PASSWORD = "agent-e2e-pass"
+_DEFAULT_OBSERVER_PASSWORDS = ("agent-e2e-pass", "observer123")
+
+
+def _observer_password_candidates() -> tuple[str, ...]:
+    """Passwords to try for the shared test-observer account."""
+    env_pw = os.environ.get("MATRIX_OBSERVER_PASSWORD", "").strip()
+    if env_pw:
+        return (env_pw, *_DEFAULT_OBSERVER_PASSWORDS)
+    return _DEFAULT_OBSERVER_PASSWORDS
+
+
+async def _login_observer(client: httpx.AsyncClient, homeserver: str, password: str) -> str | None:
+    r = await client.post(
+        f"{homeserver}/_matrix/client/v3/login",
+        json={
+            "type": "m.login.password",
+            "identifier": {"type": "m.id.user", "user": _OBSERVER_USERNAME},
+            "password": password,
+        },
+    )
+    if r.status_code == 200:
+        return r.json()["access_token"]
+    return None
 
 
 async def get_observer_token(
@@ -108,25 +127,21 @@ async def get_observer_token(
     already exists (e.g., from a prior CI run on the same Synapse volume),
     falls back to password login.
 
-    The password must match what ``bootstrap-matrix.py`` uses for all agent
-    accounts (``agent-e2e-pass``).
+    Lab Synapse may have created ``test-observer`` with ``observer123``;
+    compose/bootstrap uses ``agent-e2e-pass``. Both are tried before
+    attempting registration via the shared secret.
     """
     async with httpx.AsyncClient(timeout=30.0) as client:
-        r = await client.post(
-            f"{homeserver}/_matrix/client/v3/login",
-            json={
-                "type": "m.login.password",
-                "identifier": {"type": "m.id.user", "user": _OBSERVER_USERNAME},
-                "password": _OBSERVER_PASSWORD,
-            },
-        )
-        if r.status_code == 200:
-            return r.json()["access_token"]
+        for password in _observer_password_candidates():
+            token = await _login_observer(client, homeserver, password)
+            if token:
+                return token
 
         secret = shared_secret or os.environ.get("MATRIX_SHARED_SECRET", "")
         if not secret:
             raise RuntimeError("Cannot create observer: MATRIX_SHARED_SECRET not set and login failed")
 
+        register_password = _observer_password_candidates()[0]
         nonce_resp = await client.get(f"{homeserver}/_synapse/admin/v1/register")
         nonce = nonce_resp.json()["nonce"]
 
@@ -135,7 +150,7 @@ async def get_observer_token(
         mac.update(b"\x00")
         mac.update(_OBSERVER_USERNAME.encode())
         mac.update(b"\x00")
-        mac.update(_OBSERVER_PASSWORD.encode())
+        mac.update(register_password.encode())
         mac.update(b"\x00")
         mac.update(b"notadmin")
 
@@ -144,7 +159,7 @@ async def get_observer_token(
             json={
                 "nonce": nonce,
                 "username": _OBSERVER_USERNAME,
-                "password": _OBSERVER_PASSWORD,
+                "password": register_password,
                 "admin": False,
                 "mac": mac.hexdigest(),
             },
@@ -155,27 +170,19 @@ async def get_observer_token(
         reg_body = reg_resp.json() if reg_resp.headers.get("content-type", "").startswith("application/json") else {}
         if reg_body.get("errcode") == "M_USER_IN_USE":
             log.info("Observer user already exists — retrying login")
-            retry = await client.post(
-                f"{homeserver}/_matrix/client/v3/login",
-                json={
-                    "type": "m.login.password",
-                    "identifier": {"type": "m.id.user", "user": _OBSERVER_USERNAME},
-                    "password": _OBSERVER_PASSWORD,
-                },
-            )
-            if retry.status_code == 200:
-                return retry.json()["access_token"]
-            raise RuntimeError(
-                f"Observer exists but login failed: {retry.status_code} {retry.text}"
-            )
+            for password in _observer_password_candidates():
+                token = await _login_observer(client, homeserver, password)
+                if token:
+                    return token
+            raise RuntimeError("Observer exists but login failed with all known passwords")
 
         raise RuntimeError(f"Observer registration failed: {reg_resp.status_code} {reg_resp.text}")
 
 
 def check_matrix_reachable(base_url: str) -> bool:
     """Synchronous check for Matrix availability."""
-    import urllib.request
     import urllib.error
+    import urllib.request
 
     try:
         with urllib.request.urlopen(f"{base_url}/_matrix/client/versions", timeout=5) as resp:

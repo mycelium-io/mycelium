@@ -18,10 +18,8 @@ import hashlib
 import hmac
 import logging
 import subprocess
-import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any
 
 import httpx
 
@@ -44,11 +42,11 @@ _MAUTRIX_PACKAGES = (
 class NodeConfig:
     """Per-node hermes provisioning config."""
 
-    name: str               # human label (e.g. "hub", "spoke1")
+    name: str  # human label (e.g. "hub", "spoke1")
     ssh_ip: str
     ssh_user: str = "ubuntu"
     ssh_key: str = "~/.ssh/ioc.pem"
-    matrix_user: str = ""   # e.g. "hermes-oclw4"; derived from name if empty
+    matrix_user: str = ""  # e.g. "hermes-oclw4"; derived from name if empty
     matrix_homeserver: str = "http://localhost:8008"
     # Path to hermes venv python on the node — auto-detected if empty
     hermes_python: str = ""
@@ -73,6 +71,7 @@ class ProvisionResult:
 
 # ── SSH helpers ────────────────────────────────────────────────────────────────
 
+
 def _ssh(
     ip: str,
     user: str,
@@ -82,13 +81,23 @@ def _ssh(
     timeout: float = 60.0,
 ) -> tuple[int, str, str]:
     import os
+
     full = f'export PATH="$HOME/.local/bin:$PATH"; {cmd}'
     proc = subprocess.run(
-        ["ssh", "-i", os.path.expanduser(key),
-         "-o", "StrictHostKeyChecking=no",
-         "-o", "ConnectTimeout=5",
-         f"{user}@{ip}", full],
-        capture_output=True, text=True, timeout=timeout,
+        [
+            "ssh",
+            "-i",
+            os.path.expanduser(key),
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "ConnectTimeout=5",
+            f"{user}@{ip}",
+            full,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
     )
     return proc.returncode, proc.stdout, proc.stderr
 
@@ -103,10 +112,10 @@ def _detect_hermes_python(ip: str, user: str, key: str) -> str:
 
 # ── Synapse helpers ────────────────────────────────────────────────────────────
 
+
 def _synapse_secret() -> str:
     raw = subprocess.check_output(
-        ["docker", "exec", _SYNAPSE_CONTAINER,
-         "grep", "registration_shared_secret:", "/data/homeserver.yaml"],
+        ["docker", "exec", _SYNAPSE_CONTAINER, "grep", "registration_shared_secret:", "/data/homeserver.yaml"],
         text=True,
     )
     return raw.split('"')[1]
@@ -114,8 +123,7 @@ def _synapse_secret() -> str:
 
 def _synapse_server_name() -> str:
     raw = subprocess.check_output(
-        ["docker", "exec", _SYNAPSE_CONTAINER,
-         "grep", "server_name:", "/data/homeserver.yaml"],
+        ["docker", "exec", _SYNAPSE_CONTAINER, "grep", "server_name:", "/data/homeserver.yaml"],
         text=True,
     )
     return raw.split('"')[1]
@@ -134,8 +142,7 @@ def get_admin_token(homeserver: str) -> str:
 
     resp = httpx.post(
         f"{homeserver}/_synapse/admin/v1/register",
-        json={"nonce": nonce, "username": admin_user,
-              "password": admin_pass, "admin": True, "mac": mac.hexdigest()},
+        json={"nonce": nonce, "username": admin_user, "password": admin_pass, "admin": True, "mac": mac.hexdigest()},
     )
     resp.raise_for_status()
     return resp.json()["access_token"]
@@ -174,6 +181,7 @@ def impersonate_user(homeserver: str, admin_token: str, username: str) -> str:
 
 # ── per-node provisioning ──────────────────────────────────────────────────────
 
+
 def provision_node(cfg: NodeConfig, admin_token: str) -> ProvisionResult:
     """Idempotently provision hermes + Matrix on a single node."""
     result = ProvisionResult(node=cfg.name, success=False)
@@ -192,8 +200,7 @@ def provision_node(cfg: NodeConfig, admin_token: str) -> ProvisionResult:
         result.record("mautrix already installed", True)
     else:
         pkgs = " ".join(f"'{p}'" for p in _MAUTRIX_PACKAGES)
-        rc, out, err = _ssh(ip, user, key,
-            f"{hermes_python} -m pip install {pkgs} 2>&1", timeout=180.0)
+        rc, out, err = _ssh(ip, user, key, f"{hermes_python} -m pip install {pkgs} 2>&1", timeout=180.0)
         result.record("install mautrix", rc == 0, out + err)
         if rc != 0:
             result.error = "mautrix install failed"
@@ -214,8 +221,7 @@ def provision_node(cfg: NodeConfig, admin_token: str) -> ProvisionResult:
     if rc == 0 and "hermes" in out.lower():
         result.record("hermes adapter registered", True)
     else:
-        rc, out, err = _ssh(ip, user, key,
-            "mycelium adapter add hermes --reinstall -y 2>&1", timeout=120.0)
+        rc, out, err = _ssh(ip, user, key, "mycelium adapter add hermes --reinstall -y 2>&1", timeout=120.0)
         result.record("register hermes adapter", rc == 0, out + err)
         if rc != 0:
             result.error = "adapter registration failed"
@@ -285,7 +291,7 @@ def check_prereqs(
     if matrix_user:
         try:
             server_name = _synapse_server_name()
-            secret = _synapse_secret()
+            _synapse_secret()
             admin_token = get_admin_token(matrix_homeserver)
             resp = httpx.get(
                 f"{matrix_homeserver}/_synapse/admin/v2/users/@{matrix_user}:{server_name}",

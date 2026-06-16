@@ -13,17 +13,9 @@ from __future__ import annotations
 import time
 import uuid
 
-from mycelium_e2e.bundle import (
-    TestContext,
-    check,
-    log_info,
-    log_warning,
-    log_error,
-    print_section,
-)
 from libs.cursor import (
-    HUB_HOST,
     CURSOR_SPOKE_HOSTS,
+    HUB_HOST,
     check_cursor_agent_installed,
     check_daemon_health,
     check_ssh_connectivity,
@@ -42,6 +34,12 @@ from libs.cursor import (
     ssh_run,
     verify_agents_md,
     wait_for_agent_response,
+)
+from mycelium_e2e.bundle import (
+    TestContext,
+    check,
+    log_info,
+    print_section,
 )
 
 
@@ -119,15 +117,18 @@ def cursor_workspace_drift(ctx: TestContext):
 
         rules_file = f"{workspace}/.cursor/rules/mycelium.mdc"
         r = ssh_run(HUB_HOST, f"test -f {rules_file} && echo exists", timeout=10.0)
-        check(ctx, "mycelium.mdc rules file exists", "exists" in r.stdout,
-              "Rules file not found at .cursor/rules/mycelium.mdc")
+        check(
+            ctx,
+            "mycelium.mdc rules file exists",
+            "exists" in r.stdout,
+            "Rules file not found at .cursor/rules/mycelium.mdc",
+        )
 
         agents_md = f"{workspace}/AGENTS.md"
         ssh_run(HUB_HOST, f'echo "# User notes outside fences" >> {agents_md}', timeout=10.0)
 
         still_valid = verify_agents_md(HUB_HOST, workspace)
-        check(ctx, "Marker fences intact after external edit", still_valid,
-              "Fences lost after appending content")
+        check(ctx, "Marker fences intact after external edit", still_valid, "Fences lost after appending content")
     finally:
         remove_cursor_agent(None, handle, room=room)
         if workspace:
@@ -163,12 +164,15 @@ def cursor_auth_failure(ctx: TestContext):
         r = invoke_agent(None, handle, "test auth failure", room=room, timeout=60.0)
         combined = (r.stdout + r.stderr).lower()
         no_crash = r.returncode != 139 and "segfault" not in combined and "panic" not in combined
-        check(ctx, "No crash on missing auth", no_crash,
-              f"Daemon crashed (rc={r.returncode}): {combined[:200]}")
+        check(ctx, "No crash on missing auth", no_crash, f"Daemon crashed (rc={r.returncode}): {combined[:200]}")
 
         has_auth_msg = "auth" in combined or "credential" in combined or "login" in combined
-        check(ctx, "Actionable error message", has_auth_msg or not r.ok,
-              f"Expected auth-related message, got: {combined[:200]}")
+        check(
+            ctx,
+            "Actionable error message",
+            has_auth_msg or not r.ok,
+            f"Expected auth-related message, got: {combined[:200]}",
+        )
     finally:
         auth_path = "~/.config/cursor/auth.json"
         ssh_run(HUB_HOST, f"mv {auth_path}.bak {auth_path} 2>/dev/null", timeout=10.0)
@@ -189,13 +193,20 @@ def cursor_multi_host_dispatch(ctx: TestContext):
 
     try:
         ssh_ok = check_ssh_connectivity(spoke)
-        if not check(ctx, "SSH to spoke", ssh_ok, f"Cannot reach {spoke}", skipped=not ssh_ok,
-                     skip_reason=f"SSH to {spoke} failed"):
+        if not check(
+            ctx,
+            "SSH to spoke",
+            ssh_ok,
+            f"Cannot reach {spoke}",
+            skipped=not ssh_ok,
+            skip_reason=f"SSH to {spoke} failed",
+        ):
             return
 
         agent_ok = check_cursor_agent_installed(spoke)
-        if not check(ctx, "cursor-agent on spoke", agent_ok, skipped=not agent_ok,
-                     skip_reason=f"cursor-agent not on {spoke}"):
+        if not check(
+            ctx, "cursor-agent on spoke", agent_ok, skipped=not agent_ok, skip_reason=f"cursor-agent not on {spoke}"
+        ):
             return
 
         daemon_ok = check_daemon_health(None)
@@ -244,13 +255,13 @@ def cursor_cross_family_cursor(ctx: TestContext):
 
     try:
         ssh_ok = check_ssh_connectivity(spoke)
-        if not check(ctx, "SSH to spoke", ssh_ok, skipped=not ssh_ok,
-                     skip_reason=f"SSH to {spoke} failed"):
+        if not check(ctx, "SSH to spoke", ssh_ok, skipped=not ssh_ok, skip_reason=f"SSH to {spoke} failed"):
             return
 
         agent_ok = check_cursor_agent_installed(spoke)
-        if not check(ctx, "cursor-agent on spoke", agent_ok, skipped=not agent_ok,
-                     skip_reason=f"cursor-agent not on {spoke}"):
+        if not check(
+            ctx, "cursor-agent on spoke", agent_ok, skipped=not agent_ok, skip_reason=f"cursor-agent not on {spoke}"
+        ):
             return
 
         r = create_room(None, room)
@@ -278,8 +289,7 @@ def cursor_cross_family_cursor(ctx: TestContext):
             return
 
         result = poll_session_status(room, timeout_seconds=600, poll_interval=10, target_status="consensus")
-        check(ctx, "Consensus reached (cursor vs cursor)", result is not None,
-              "No consensus within 600s")
+        check(ctx, "Consensus reached (cursor vs cursor)", result is not None, "No consensus within 600s")
         if result:
             log_info(f"Consensus: {str(result)[:300]}")
     finally:
@@ -325,8 +335,13 @@ def cursor_cross_family_openclaw(ctx: TestContext):
         r = run_mycelium_cli(None, "agent", "ls", timeout=15.0)
         oc_visible = openclaw_handle in r.stdout
         if not oc_visible:
-            check(ctx, "OpenClaw agent visible", False, skipped=True,
-                  skip_reason=f"{openclaw_handle} not registered (mycelium#334 — adopt via 'mycelium agent add')")
+            check(
+                ctx,
+                "OpenClaw agent visible",
+                False,
+                skipped=True,
+                skip_reason=f"{openclaw_handle} not registered (mycelium#334 — adopt via 'mycelium agent add')",
+            )
             return
         check(ctx, "OpenClaw agent visible", True)
 
@@ -336,8 +351,7 @@ def cursor_cross_family_openclaw(ctx: TestContext):
             return
 
         result = poll_session_status(room, timeout_seconds=600, poll_interval=10, target_status="consensus")
-        check(ctx, "Cross-family consensus (cursor vs openclaw)", result is not None,
-              "No consensus within 600s")
+        check(ctx, "Cross-family consensus (cursor vs openclaw)", result is not None, "No consensus within 600s")
         if result:
             log_info(f"Cross-family consensus: {str(result)[:300]}")
     finally:

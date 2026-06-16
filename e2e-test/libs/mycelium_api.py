@@ -145,9 +145,7 @@ class MyceliumAPI:
     def list_sessions(self, room: str) -> tuple[int, Any]:
         return self.get_json(f"/rooms/{self._enc(room)}/sessions")
 
-    def get_coordination_sessions(
-        self, parent_room: str | None = None, limit: int = 10
-    ) -> tuple[int, Any]:
+    def get_coordination_sessions(self, parent_room: str | None = None, limit: int = 10) -> tuple[int, Any]:
         params = f"?limit={limit}"
         if parent_room:
             params += f"&parent_room={urllib.parse.quote(parent_room, safe='')}"
@@ -170,7 +168,10 @@ class MyceliumAPI:
         return self.post_json("/knowledge/ingest", data, timeout=timeout)
 
     def query_knowledge(
-        self, query: str, mas_id: str | None = None, timeout: int = 180,
+        self,
+        query: str,
+        mas_id: str | None = None,
+        timeout: int = 180,
     ) -> tuple[int, Any]:
         payload: dict[str, Any] = {"intent": query}
         if mas_id:
@@ -239,6 +240,7 @@ class MyceliumAPI:
 
         if max_age_minutes > 0:
             from datetime import datetime, timezone
+
             cutoff_seconds = max_age_minutes * 60
             now = datetime.now(timezone.utc)
 
@@ -251,9 +253,7 @@ class MyceliumAPI:
                 created_at = room.get("created_at")
                 if created_at:
                     try:
-                        created = datetime.fromisoformat(
-                            created_at.replace("Z", "+00:00")
-                        )
+                        created = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
                         if (now - created).total_seconds() < cutoff_seconds:
                             continue
                     except (ValueError, TypeError):

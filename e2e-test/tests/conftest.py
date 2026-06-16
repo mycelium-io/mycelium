@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 import sys
 import time
@@ -71,10 +70,7 @@ def _kill_stale_pytest_processes() -> None:
             pid = int(line.strip())
             if pid in (my_pid, my_ppid):
                 continue
-            print(
-                f"  [GUARD] killing stale pytest process {pid} "
-                f"to prevent cross-run interference"
-            )
+            print(f"  [GUARD] killing stale pytest process {pid} to prevent cross-run interference")
             os.kill(pid, 9)
     except (subprocess.TimeoutExpired, FileNotFoundError, ValueError):
         pass
@@ -146,17 +142,12 @@ def _trim_agent_sessions(max_files: int = 5) -> None:
         sessions_dir = agent_dir / "sessions"
         if not sessions_dir.exists():
             continue
-        jsonl_files = sorted(
-            sessions_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime
-        )
+        jsonl_files = sorted(sessions_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime)
         excess = len(jsonl_files) - max_files
         if excess > 0:
             for f in jsonl_files[:excess]:
                 f.unlink(missing_ok=True)
-            print(
-                f"  [SETUP] Trimmed {excess} session file(s) for "
-                f"{agent_dir.name} (kept {max_files})"
-            )
+            print(f"  [SETUP] Trimmed {excess} session file(s) for {agent_dir.name} (kept {max_files})")
 
 
 def _trim_remote_agent_sessions(
@@ -177,10 +168,10 @@ def _trim_remote_agent_sessions(
     for host in hosts:
         cmd = (
             f"for d in ~/.openclaw/agents/*/sessions; do "
-            f"  [ -d \"$d\" ] || continue; "
-            f"  count=$(ls -1 \"$d\"/*.jsonl 2>/dev/null | wc -l); "
-            f"  if [ \"$count\" -gt {max_files} ]; then "
-            f"    ls -1t \"$d\"/*.jsonl | tail -n +{max_files + 1} | xargs rm -f; "
+            f'  [ -d "$d" ] || continue; '
+            f'  count=$(ls -1 "$d"/*.jsonl 2>/dev/null | wc -l); '
+            f'  if [ "$count" -gt {max_files} ]; then '
+            f'    ls -1t "$d"/*.jsonl | tail -n +{max_files + 1} | xargs rm -f; '
             f'    echo "trimmed $d: $count -> {max_files}"; '
             f"  fi; "
             f"done"
@@ -188,10 +179,19 @@ def _trim_remote_agent_sessions(
         try:
             result = subprocess.run(
                 [
-                    "ssh", "-i", key_path, "-o", "StrictHostKeyChecking=no",
-                    "-o", "ConnectTimeout=5", f"{user}@{host}", cmd,
+                    "ssh",
+                    "-i",
+                    key_path,
+                    "-o",
+                    "StrictHostKeyChecking=no",
+                    "-o",
+                    "ConnectTimeout=5",
+                    f"{user}@{host}",
+                    cmd,
                 ],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             for line in result.stdout.strip().splitlines():
                 if line:
@@ -229,7 +229,10 @@ def _run_openclaw(
         try:
             return subprocess.run(
                 ["openclaw", *args],
-                capture_output=True, text=True, timeout=timeout, check=False,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
             )
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
             return None
@@ -240,18 +243,27 @@ def _run_openclaw(
     # Argument-array → single shell command for the remote bash. shlex.quote
     # each arg to keep the JSON / nested quoting in --params intact.
     import shlex
+
     remote_cmd = " ".join(shlex.quote(a) for a in ["openclaw", *args])
-    full_remote = (
-        '[ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh" >/dev/null 2>&1; '
-        + remote_cmd
-    )
+    full_remote = '[ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh" >/dev/null 2>&1; ' + remote_cmd
     cmd = [
-        "ssh", "-i", key_path, "-o", "StrictHostKeyChecking=no",
-        "-o", "ConnectTimeout=5", f"{user}@{host}", full_remote,
+        "ssh",
+        "-i",
+        key_path,
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "ConnectTimeout=5",
+        f"{user}@{host}",
+        full_remote,
     ]
     try:
         return subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout, check=False,
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
         )
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         return None
@@ -272,7 +284,9 @@ _RESET_SESSION_TAGS: tuple[str, ...] = (
 
 
 def _list_mycelium_sessions(
-    agent_id: str, *, host: str | None = None,
+    agent_id: str,
+    *,
+    host: str | None = None,
 ) -> list[dict[str, Any]]:
     """List the agent's sessions that carry negotiation traffic.
 
@@ -296,11 +310,7 @@ def _list_mycelium_sessions(
     #   agent:agent-alpha:mycelium-room:group:mycelium_room
     #   agent:agent-gamma:matrix:channel:!xsqgkkmaxjhhtwqlte:local
     return [
-        s for s in sessions
-        if any(
-            tag in (s.get("key") or s.get("sessionKey") or "")
-            for tag in _RESET_SESSION_TAGS
-        )
+        s for s in sessions if any(tag in (s.get("key") or s.get("sessionKey") or "") for tag in _RESET_SESSION_TAGS)
     ]
 
 
@@ -309,8 +319,11 @@ def _reset_session(key: str, *, host: str | None = None) -> bool:
     Returns True on a 0 exit code, False otherwise. Best-effort, never raises."""
     proc = _run_openclaw(
         [
-            "gateway", "call", "sessions.reset",
-            "--params", json.dumps({"key": key}),
+            "gateway",
+            "call",
+            "sessions.reset",
+            "--params",
+            json.dumps({"key": key}),
         ],
         host=host,
         timeout=15.0,
@@ -372,23 +385,15 @@ def _reset_agent_mycelium_sessions(
                 pct = (tokens / context_cap * 100) if context_cap else 0
                 if _reset_session(key, host=host):
                     total_reset += 1
-                    print(
-                        f"  [SETUP] reset {label}:{agent_id} "
-                        f"({tokens:,} tokens, {pct:.0f}% of ctx)"
-                    )
+                    print(f"  [SETUP] reset {label}:{agent_id} ({tokens:,} tokens, {pct:.0f}% of ctx)")
                 else:
                     total_failed += 1
-                    print(
-                        f"  [SETUP] reset FAILED {label}:{agent_id} key={key}"
-                    )
+                    print(f"  [SETUP] reset FAILED {label}:{agent_id} key={key}")
 
     if total_reset == 0 and total_failed == 0:
         print("  [SETUP] No mycelium-room sessions found to reset")
     elif total_failed:
-        print(
-            f"  [SETUP] Session reset: {total_reset} ok, "
-            f"{total_failed} failed (suite continues)"
-        )
+        print(f"  [SETUP] Session reset: {total_reset} ok, {total_failed} failed (suite continues)")
 
 
 @pytest.fixture(scope="session")
@@ -402,7 +407,7 @@ def bundle_ctx() -> TestContext:
     _ctx_holder["ctx"] = ctx
     yield ctx
     cleanup(ctx)
-    
+
     # If distributed tests ran, also clean up remote agents
     if _ran_distributed:
         cleanup_distributed()
@@ -455,9 +460,7 @@ def _list_leaked_rooms(
 def _delete_room(name: str) -> bool:
     """Best-effort DELETE /rooms/{name}; returns True on 2xx."""
     encoded = urllib.parse.quote(name, safe="")
-    req = urllib.request.Request(
-        f"{BACKEND_URL}/rooms/{encoded}", method="DELETE"
-    )
+    req = urllib.request.Request(f"{BACKEND_URL}/rooms/{encoded}", method="DELETE")
     try:
         with urllib.request.urlopen(req, timeout=10.0) as resp:  # noqa: S310
             return 200 <= resp.status < 300
@@ -500,14 +503,12 @@ def _reap_leaked_sessions(request: pytest.FixtureRequest):
     owned = ctx._owned_rooms if ctx else None
 
     leaked = _list_leaked_rooms(
-        prefixes=("e2e-", "dist-e2e-", "mycelium_room:session:"), owned_rooms=owned,
+        prefixes=("e2e-", "dist-e2e-", "mycelium_room:session:"),
+        owned_rooms=owned,
     )
     if leaked:
         test_name = request.node.name
-        print(
-            f"\n  [LEAK] {len(leaked)} session(s) still in-flight after "
-            f"{test_name} (state in {_LEAKED_STATES}):"
-        )
+        print(f"\n  [LEAK] {len(leaked)} session(s) still in-flight after {test_name} (state in {_LEAKED_STATES}):")
         for room in leaked:
             print(
                 f"     - {room.get('name')} "
@@ -534,9 +535,7 @@ def _reap_leaked_sessions(request: pytest.FixtureRequest):
         counts = wait_for_agents_idle(timeout=20, poll_interval=1.0)
         busy = {h: c for h, c in counts.items() if c > 0}
         if busy:
-            print(
-                f"  [IDLE-WAIT] agent turns still in-flight after 20s: {busy}"
-            )
+            print(f"  [IDLE-WAIT] agent turns still in-flight after 20s: {busy}")
 
 
 def pytest_sessionfinish(session: Any, exitstatus: int) -> None:
@@ -691,14 +690,8 @@ def _capture_round_traces(request: pytest.FixtureRequest):
         "buffer_capacity": payload.get("buffer_capacity"),
         "traces": payload.get("traces", []),
     }
-    fname = (
-        f"{request.node.name}_{time.strftime('%Y%m%d_%H%M%S', time.gmtime())}_"
-        f"{outcome}.json"
-    )
+    fname = f"{request.node.name}_{time.strftime('%Y%m%d_%H%M%S', time.gmtime())}_{outcome}.json"
     out_path = _TRACE_DIR / fname
     out_path.write_text(json.dumps(record, indent=2))
     _session_trace_files.append(out_path)
-    print(
-        f"\n  [TRACE] saved {record['trace_count']} round trace(s) "
-        f"-> {out_path}"
-    )
+    print(f"\n  [TRACE] saved {record['trace_count']} round trace(s) -> {out_path}")

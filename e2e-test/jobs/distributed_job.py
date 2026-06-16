@@ -7,18 +7,18 @@ Covers tests 30-32 (local-real) and 40-49 (cross-device).
 Requires the full lab topology with Matrix, OpenClaw, and remote agents.
 
 Usage:
-    pyats run job jobs/distributed_job.py --datafile data/lab_datafile.yaml
+    pyats run job jobs/distributed_job.py --datafile data/distributed_datafile.yaml
 
     # Local-real only (no remote agents needed)
     TESTCASES="test_30_local_two_agent, test_31_local_three_agent, test_32_local_architecture" \\
         pyats run job jobs/distributed_job.py
 """
 
-import os
 import logging
+import os
 
-from pyats.easypy import run
 from pyats.datastructures.logic import Or
+from pyats.easypy import run
 
 import jobs._common as common
 
@@ -35,7 +35,7 @@ else:
 def main(runtime):
     log.info("=== Mycelium Distributed Tests ===")
 
-    datafile = common.get_datafile(default="lab_datafile.yaml")
+    datafile = common.get_datafile(default="distributed_datafile.yaml")
     suite = common.get_suite_path("distributed_suite.py")
     max_failures = common.get_max_failures(datafile)
 

@@ -1,23 +1,8 @@
 ---
-# Integration adapter suite — testcase UIDs for tests 070–080.
+# Cursor adapter suite — testcase UIDs for tests 075–080.
 extends: base_datafile.yaml
 
 testcases:
-  ClaudeCodeSkillInstall:
-    uid: "mycelium:e2e:integration:070"
-
-  ClaudeCodeAdapterStatus:
-    uid: "mycelium:e2e:integration:071"
-
-  ClaudeCodeAdapterRemove:
-    uid: "mycelium:e2e:integration:072"
-
-  ClaudeCodeDaemonHealth:
-    uid: "mycelium:e2e:integration:073"
-
-  ClaudeCodeAgentLifecycle:
-    uid: "mycelium:e2e:integration:074"
-
   CursorBasicDispatch:
     uid: "mycelium:e2e:cursor:075"
 

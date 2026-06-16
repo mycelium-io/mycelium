@@ -50,7 +50,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from libs.hermes_lab import NodeConfig, ProvisionResult, provision_lab, check_prereqs
+from libs.hermes_lab import NodeConfig, ProvisionResult, check_prereqs, provision_lab
 
 log = logging.getLogger(__name__)
 
@@ -133,7 +133,8 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Alias for --check-only.",
     )
     p.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="DEBUG-level logging.",
     )
@@ -159,7 +160,9 @@ def main(argv: list[str] | None = None) -> int:
         failed = 0
         for node in nodes:
             issues = check_prereqs(
-                node.ssh_ip, node.ssh_user, node.ssh_key,
+                node.ssh_ip,
+                node.ssh_user,
+                node.ssh_key,
                 matrix_homeserver=_MATRIX_HOMESERVER,
                 matrix_user=node.matrix_user,
             )

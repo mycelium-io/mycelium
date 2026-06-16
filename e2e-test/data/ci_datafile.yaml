@@ -3,7 +3,7 @@
 #
 # All services run on localhost (host-mapped ports from compose.e2e.yaml).
 # OpenClaw spokes are containers reachable via Docker DNS names.
-extends: base_datafile.yaml
+extends: scenarios_datafile.yaml
 
 parameters:
   topology:
@@ -37,6 +37,3 @@ parameters:
     negotiation_wait: 900
     agent_idle_wait: 30
     session_spawn_wait: 90
-
-  # Abort early in CI to save runner minutes and LLM credits
-  max_failures: 3
