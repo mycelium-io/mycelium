@@ -257,9 +257,7 @@ def _plugin_copy_ignore(_src: str, names: list[str]) -> list[str]:
     return [n for n in names if n in ("node_modules", "test", "package-lock.json")]
 
 
-def _copy_built_dist_to_extension(
-    plugin_dir: Path, *, profile: str | None = None
-) -> None:
+def _copy_built_dist_to_extension(plugin_dir: Path, *, profile: str | None = None) -> None:
     """Copy compiled dist/ into the installed OpenClaw extension dir.
 
     ``openclaw plugins install`` blanket-excludes dist/, so we mirror it manually.
