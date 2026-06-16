@@ -1,15 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Host-native OpenClaw reinstall builds dist/ before staging the extension.
+"""Host-native OpenClaw reinstall ships dist/ without requiring npm.
 
-Regression guard for the host ``--reinstall`` path. OpenClaw >= 2026.5.3
-validates ``plugins.entries.mycelium`` against
-``~/.openclaw/extensions/mycelium/dist/index.js`` on every CLI invocation.
-The old reinstall sequence copied TypeScript-only source (``dist/`` excluded),
-then built in the package tree, then ran ``openclaw plugins install`` — which
-failed with ``extension entry not found: dist/index.js`` because the live
-extension dir was still unbuilt when validation ran.
+OpenClaw >= 2026.5.3 validates ``plugins.entries.mycelium`` against
+``~/.openclaw/extensions/mycelium/dist/index.js``. The compiled dist/ is
+committed and ships in the wheel (#354), so reinstall must copy it into the
+extension dir even when ``npm run build`` is unavailable.
 """
 
 from __future__ import annotations
@@ -31,12 +28,19 @@ class _Ok:
     stderr = ""
 
 
-def test_host_reinstall_builds_before_copy_and_keeps_dist(
+class _Fail:
+    returncode = 1
+    stdout = ""
+    stderr = "npm not found"
+
+
+def test_host_reinstall_succeeds_with_shipped_dist_when_npm_fails(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Reinstall must not depend on npm when committed dist/ is present."""
     plugin_src = tmp_path / "plugin"
     (plugin_src / "dist").mkdir(parents=True)
-    (plugin_src / "dist" / "index.js").write_text("// built", encoding="utf-8")
+    (plugin_src / "dist" / "index.js").write_text("// shipped", encoding="utf-8")
     (plugin_src / "index.ts").write_text("// src", encoding="utf-8")
 
     state_dir = tmp_path / "openclaw"
@@ -49,11 +53,13 @@ def test_host_reinstall_builds_before_copy_and_keeps_dist(
 
     events: list[str] = []
 
-    def _fake_run(cmd: list[str], *args: object, **kwargs: object) -> _Ok:
+    def _fake_run(cmd: list[str], *args: object, **kwargs: object) -> _Ok | _Fail:
         if cmd and cmd[0] == "npm":
             events.append("build")
-        elif len(cmd) >= 2 and cmd[0] == "openclaw" and cmd[1] == "plugins":
+            return _Fail()
+        if len(cmd) >= 2 and cmd[0] == "openclaw" and cmd[1] == "plugins":
             events.append("plugins_install")
+            return _Ok()
         return _Ok()
 
     monkeypatch.setattr(subprocess, "run", _fake_run)
@@ -77,7 +83,7 @@ def test_host_reinstall_builds_before_copy_and_keeps_dist(
 
     oc._install_openclaw(reinstall=True, profile=None)
 
-    first_build = events.index("build")
-    assert first_build < events.index("copytree"), events
-    assert events.index("copytree") < events.index("plugins_install"), events
+    assert "copytree" in events
+    assert "plugins_install" in events
+    assert events.index("copytree") < events.index("plugins_install")
     assert (ext_dir / "dist" / "index.js").is_file()

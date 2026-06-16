@@ -246,6 +246,33 @@ def _write_container_json(container: str, path: str, data: dict) -> None:
 # logical package). OpenClaw still expects each concern in its canonical
 
 
+def _plugin_copy_ignore(_src: str, names: list[str]) -> list[str]:
+    """shutil.copytree ignore filter for staging the plugin into an extension dir.
+
+    Drops dev-only files but KEEPS dist/: it's the committed, compiled plugin and
+    openclaw validates plugins.entries.mycelium against the extension dir on
+    reinstall. Excluding dist/ here would fail that validation ("extension entry
+    not found: dist/index.js") before the build/install could repopulate it.
+    """
+    return [n for n in names if n in ("node_modules", "test", "package-lock.json")]
+
+
+def _copy_built_dist_to_extension(
+    plugin_dir: Path, *, profile: str | None = None
+) -> None:
+    """Copy compiled dist/ into the installed OpenClaw extension dir.
+
+    ``openclaw plugins install`` blanket-excludes dist/, so we mirror it manually.
+    """
+    dist_src = plugin_dir / "dist"
+    dist_dst = _openclaw_state_dir(profile) / "extensions" / _OPENCLAW_PLUGIN_NAME / "dist"
+    if not dist_src.exists():
+        return
+    if dist_dst.exists():
+        shutil.rmtree(dist_dst, ignore_errors=True)
+    shutil.copytree(str(dist_src), str(dist_dst))
+
+
 def _install_openclaw(
     verbose: bool = False,
     profile: str | None = None,
@@ -290,15 +317,17 @@ def _install_openclaw(
             )
 
     def _build_plugin(plugin_dir: Path) -> None:
-        """Run npm install + npm run build in the plugin directory.
+        """Refresh the plugin's compiled dist/ via npm install + npm run build.
 
-        OpenClaw 2026.5+ rejects TypeScript entry points — the plugin must be
-        compiled to dist/index.js before install.  Best-effort: warn on failure
-        so a missing npm doesn't hard-block the install on older OpenClaw.
+        OpenClaw 2026.5+ requires a compiled dist/index.js (it rejects TypeScript
+        entry points). The compiled dist/ is committed and ships in the wheel, so
+        this is a best-effort *refresh* for contributors who edited the source —
+        a missing npm just warns and falls back to the shipped dist/ rather than
+        hard-blocking the install.
 
         Used by both the host-native and container install paths (the container
         gateway is just as strict about source-only plugins, so it needs the
-        same build step before staging).
+        same compiled dist/ before staging).
         """
         for npm_cmd in (
             ["npm", "install", "--prefer-offline", "--silent"],
@@ -467,36 +496,11 @@ def _install_openclaw(
     # channel is absent when a user already has `channels.mycelium-room` set.
     # Copying into place first keeps validation happy; openclaw's own install
     # step becomes a no-op on matching files.
-    #
-    # Build *before* the reinstall copy: OpenClaw 2026.5+ validates
-    # plugins.entries.mycelium against ~/.openclaw/extensions/mycelium/dist/index.js
-    # on every CLI invocation.  The old path copied TypeScript-only source (dist/
-    # excluded), then built in the package tree, then ran `plugins install` — which
-    # failed validation because the live extension dir had no dist/ yet.
-    def _plugin_copy_ignore(_src: str, names: list[str]) -> list[str]:
-        return [n for n in names if n in ("node_modules", "test", "package-lock.json")]
-
-    def _copy_built_dist_to_extension(plugin_dir: Path) -> None:
-        """Ensure the installed extension dir carries compiled dist/index.js."""
-        dist_src = plugin_dir / "dist"
-        dist_dst = _openclaw_state_dir(profile) / "extensions" / _OPENCLAW_PLUGIN_NAME / "dist"
-        if not dist_src.exists():
-            return
-        if dist_dst.exists():
-            shutil.rmtree(dist_dst, ignore_errors=True)
-        shutil.copytree(str(dist_src), str(dist_dst))
-
-    plugin_src = _resolve_asset(_MYCELIUM_PLUGIN_SRC)
-    # Always build in the source tree before handing it to openclaw — openclaw
-    # plugins install reads from this path, and 2026.5+ rejects entries without
-    # a compiled dist/index.js.
-    _build_plugin(plugin_src)
-
     if reinstall:
         state_dir = _openclaw_state_dir(profile)
         targets: list[tuple[Path, Path]] = [
             (
-                plugin_src,
+                _resolve_asset(_MYCELIUM_PLUGIN_SRC),
                 state_dir / "extensions" / _OPENCLAW_PLUGIN_NAME,
             ),
         ]
@@ -508,11 +512,6 @@ def _install_openclaw(
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copytree(str(src), str(dst), ignore=_plugin_copy_ignore)
 
-        # Belt-and-suspenders: copytree should carry dist/ when the build
-        # succeeded, but mirror the post-install dist sync so validation always
-        # sees dist/index.js before `openclaw plugins install` runs.
-        _copy_built_dist_to_extension(plugin_src)
-
         # Clean up hooks that earlier versions installed.
         for stale in _OPENCLAW_STALE_HOOKS:
             stale_path = state_dir / "hooks" / stale
@@ -520,6 +519,13 @@ def _install_openclaw(
                 if verbose:
                     typer.echo(f"  removing stale hook: {stale_path}")
                 shutil.rmtree(stale_path, ignore_errors=True)
+
+    plugin_src = _resolve_asset(_MYCELIUM_PLUGIN_SRC)
+    # Refresh the compiled dist/ in the source tree before handing it to openclaw
+    # (openclaw plugins install reads from this path, and 2026.5+ requires a
+    # compiled dist/index.js). The committed dist/ already satisfies this, so on
+    # a machine without npm the shipped artifact is used as-is.
+    _build_plugin(plugin_src)
 
     # Stash an existing channels.mycelium-room block before install — openclaw
     # validates the existing config *before* loading the plugin that registers
@@ -546,7 +552,7 @@ def _install_openclaw(
         # build output by default), but our plugin needs the compiled
         # dist/index.js — openclaw.plugin.json's `extensions` field points
         # at it. Copy it over after install so the channel actually loads.
-        _copy_built_dist_to_extension(plugin_src)
+        _copy_built_dist_to_extension(plugin_src, profile=profile)
     finally:
         # Restore the channel config so the user's room/agents/etc. survive
         # the install — the plugin is now registered, so the channel id
