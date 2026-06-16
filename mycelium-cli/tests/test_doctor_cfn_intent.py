@@ -76,3 +76,30 @@ def test_room_mas_ids_skips_on_hub_when_cfn_not_enabled(
 
     assert result.status == "ok"
     assert result.message == "Skipped (CFN not enabled)"
+
+
+def test_room_mas_ids_warns_when_api_rooms_returns_http_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Reachable backend with a broken /api/rooms must not read as unreachable."""
+    mycelium_dir = tmp_path / ".mycelium"
+    mycelium_dir.mkdir()
+    (mycelium_dir / ".env").write_text("WORKSPACE_ID=ws\n")
+    (mycelium_dir / "config.toml").write_text(
+        '[server]\napi_url = "http://10.0.50.125:8000"\n'
+    )
+
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    import httpx
+
+    request = httpx.Request("GET", "http://10.0.50.125:8000/api/rooms")
+    response = httpx.Response(500, request=request, text="Internal Server Error")
+
+    with patch("httpx.Client") as mock_client:
+        mock_client.return_value.__enter__.return_value.get.return_value = response
+        result = doctor._check_room_mas_ids(local_backend=False)
+
+    assert result.status == "warning"
+    assert "HTTP 500" in result.message
+    assert "unreachable" not in result.message.lower()

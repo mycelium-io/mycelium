@@ -831,9 +831,33 @@ def _check_room_mas_ids(*, local_backend: bool = True) -> CheckResult:
             resp = client.get("/api/rooms")
             resp.raise_for_status()
             rooms = resp.json()
-    except Exception:
+    except httpx.HTTPStatusError as exc:
+        body = (exc.response.text or "").strip().replace("\n", " ")[:200]
+        details = [f"  {api_url.rstrip('/')}/api/rooms"]
+        if body:
+            details.append(f"  {body}")
+        details.append(
+            "  /health can still pass while /api/rooms fails — check hub logs and migrations."
+        )
         return CheckResult(
-            name="Room MAS IDs", status="ok", message="Skipped (backend unreachable)"
+            name="Room MAS IDs",
+            status="warning",
+            message=f"GET /api/rooms returned HTTP {exc.response.status_code}",
+            details=details,
+        )
+    except httpx.RequestError as exc:
+        return CheckResult(
+            name="Room MAS IDs",
+            status="ok",
+            message="Skipped (backend unreachable)",
+            details=[str(exc)],
+        )
+    except (TypeError, KeyError, ValueError) as exc:
+        return CheckResult(
+            name="Room MAS IDs",
+            status="warning",
+            message="Skipped (unexpected /api/rooms response)",
+            details=[str(exc)],
         )
 
     # Session sub-rooms (name contains ":session:") don't need MAS IDs
