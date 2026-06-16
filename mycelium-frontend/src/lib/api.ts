@@ -35,6 +35,20 @@ export async function createRoom(data: { name: string; is_persistent?: boolean }
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...data, is_public: true }),
   });
+  if (!res.ok) {
+    // Surface the backend's reason (FastAPI returns `{ detail: ... }`) so the
+    // caller can show it instead of failing silently.
+    let detail = `Failed to create room (${res.status})`;
+    try {
+      const body = await res.json();
+      if (body?.detail) {
+        detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
+      }
+    } catch {
+      /* non-JSON error body — keep the status-based message */
+    }
+    throw new Error(detail);
+  }
   return res.json();
 }
 
