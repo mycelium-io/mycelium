@@ -796,17 +796,25 @@ def _check_cfn_intent(*, local_backend: bool = True) -> CheckResult:
     return CheckResult(name="CFN config", status="ok", message="CFN URLs configured")
 
 
-def _check_room_mas_ids() -> CheckResult:
-    """Check that all rooms have a MAS ID (CFN-enabled installs only)."""
-    env_path = Path.home() / ".mycelium" / ".env"
-    if not env_path.exists():
-        return CheckResult(name="Room MAS IDs", status="ok", message="Skipped (no .env)")
+def _check_room_mas_ids(*, local_backend: bool = True) -> CheckResult:
+    """Check that all rooms have a MAS ID (CFN-enabled installs only).
 
-    from dotenv import dotenv_values
+    On hub nodes, skips when local ``CFN_MGMT_URL`` is unset (CFN profile
+    not active). On spoke nodes, queries the remote hub backend — CFN may be
+    enabled there even when this node's ``.env`` has no CFN URLs.
+    """
+    if local_backend:
+        env_path = Path.home() / ".mycelium" / ".env"
+        if not env_path.exists():
+            return CheckResult(name="Room MAS IDs", status="ok", message="Skipped (no .env)")
 
-    vals = dotenv_values(env_path)
-    if not vals.get("CFN_MGMT_URL"):
-        return CheckResult(name="Room MAS IDs", status="ok", message="Skipped (CFN not enabled)")
+        from dotenv import dotenv_values
+
+        vals = dotenv_values(env_path)
+        if not vals.get("CFN_MGMT_URL"):
+            return CheckResult(
+                name="Room MAS IDs", status="ok", message="Skipped (CFN not enabled)"
+            )
 
     from mycelium.config import MyceliumConfig
 
@@ -2017,7 +2025,7 @@ def doctor(
                 [
                     _check_cfn_intent(local_backend=local),
                     _check_workspace_id(local_backend=local),
-                    _check_room_mas_ids(),
+                    _check_room_mas_ids(local_backend=local),
                 ],
             ),
             (

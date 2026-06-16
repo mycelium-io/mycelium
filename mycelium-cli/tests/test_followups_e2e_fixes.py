@@ -545,9 +545,11 @@ def test_daemon_restart_cli_calls_full_restart_not_reload() -> None:
     from mycelium.commands import daemon as daemon_cmd
 
     runner = CliRunner()
-    with patch("mycelium.daemon.install.restart_daemon_service", return_value=True) as mock_restart:
-        with patch("mycelium.daemon.install.reload_daemon_service", return_value=True) as mock_reload:
-            result = runner.invoke(daemon_cmd.app, ["restart"])
+    with (
+        patch("mycelium.daemon.install.restart_daemon_service", return_value=True) as mock_restart,
+        patch("mycelium.daemon.install.reload_daemon_service", return_value=True) as mock_reload,
+    ):
+        result = runner.invoke(daemon_cmd.app, ["restart"])
 
     assert result.exit_code == 0
     assert mock_restart.called

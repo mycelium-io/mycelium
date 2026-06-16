@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from collections.abc import Callable, Iterable
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -58,12 +60,16 @@ def test_host_reinstall_builds_before_copy_and_keeps_dist(
 
     original_copytree = shutil.copytree
 
-    def _tracking_copytree(src: str, dst: str, *args: object, **kwargs: object) -> None:
+    def _tracking_copytree(src: str, dst: str, *args: Any, **kwargs: Any) -> None:
         if Path(dst) == ext_dir:
             events.append("copytree")
-            ignore = kwargs.get("ignore")
-            assert ignore is not None
-            filtered = ignore(src, ["dist", "node_modules", "index.ts"])
+            ignore_fn = kwargs.get("ignore")
+            if ignore_fn is None and len(args) >= 2:
+                ignore_fn = args[1]
+            assert callable(ignore_fn)
+            filtered = cast(Callable[[str, list[str]], Iterable[str]], ignore_fn)(
+                src, ["dist", "node_modules", "index.ts"]
+            )
             assert "dist" not in filtered, f"dist/ must not be excluded on reinstall: {filtered}"
         original_copytree(src, dst, *args, **kwargs)
 
