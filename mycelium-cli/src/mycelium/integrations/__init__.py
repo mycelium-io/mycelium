@@ -29,6 +29,7 @@ from __future__ import annotations
 from mycelium.integrations.base import AddOptions, AgentAdapter, Integration
 from mycelium.integrations.claude_code import ClaudeCodeIntegration
 from mycelium.integrations.cursor import CursorIntegration
+from mycelium.integrations.hermes import HermesIntegration
 from mycelium.integrations.openclaw import OpenClawIntegration
 
 __all__ = [
@@ -91,6 +92,13 @@ def get_integration(
             openclaw_profile=openclaw_profile,
             copy_auth_from=copy_auth_from,
         )
+    if canonical == "hermes":
+        # Hermes always targets whichever profile is active on the host
+        # (``$HERMES_HOME`` or ``~/.hermes/``). First-class multi-profile
+        # selection is on hold until ``hermes-agent#25660`` (single gateway,
+        # multiple agents) lands — at which point handle-level routing
+        # replaces per-profile gateways entirely.
+        return HermesIntegration()
     raise ValueError(f"unknown integration: {name!r}")
 
 

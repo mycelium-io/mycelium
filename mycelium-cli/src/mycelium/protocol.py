@@ -167,7 +167,7 @@ class MemoryLogEntry(BaseModel):
 #                 runs inside OpenClaw; we just register it into the channel's
 #                 rooms[] fan-out — no daemon involvement, see the daemon
 #                 dispatch loop which skips non-cold_spawn families).
-AGENT_ADAPTERS: frozenset[str] = frozenset({"claude_code", "cursor", "openclaw"})
+AGENT_ADAPTERS: frozenset[str] = frozenset({"claude_code", "cursor", "openclaw", "hermes"})
 
 
 class AgentManifest(BaseModel):
@@ -178,7 +178,7 @@ class AgentManifest(BaseModel):
     manifest body — the bare minimum a dispatcher needs to route an
     ``@handle`` mention to the agent's runtime.
 
-    Three adapters:
+    Four adapters:
 
     - ``claude_code`` — cold-spawned by the daemon. Requires ``cwd`` (where
       ``claude -p`` runs).
@@ -188,13 +188,22 @@ class AgentManifest(BaseModel):
       (the OpenClaw agent id; usually == handle for create-mode). The
       OpenClaw gateway's channel plugin is the dispatcher; the daemon
       ignores these manifests entirely.
+    - ``hermes`` — a handle exposed through a long-lived hermes gateway
+      (``hermes gateway run``). The bundled ``mycelium-room`` platform
+      plugin under ``integrations/hermes/assets/`` subscribes to the
+      configured rooms and dispatches into the hermes agent loop, so the
+      daemon ignores these manifests as it does for ``openclaw``. Mycelium
+      always targets whichever hermes profile is active on the host (i.e.
+      ``$HERMES_HOME`` or ``~/.hermes/``); first-class multi-profile
+      support is on hold until ``hermes-agent#25660`` (single gateway,
+      multiple agents) lands.
 
     The handle slug doubles as the mention target (``@release-agent``), so it
     must match the same lowercase pattern other memory slugs use.
     """
 
     handle: str = Field(..., min_length=1, pattern=r"^[a-z0-9][a-z0-9._-]*$")
-    adapter: Literal["claude_code", "cursor", "openclaw"] = "claude_code"
+    adapter: Literal["claude_code", "cursor", "openclaw", "hermes"] = "claude_code"
     cwd: str | None = Field(
         default=None,
         description=(

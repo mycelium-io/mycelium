@@ -82,6 +82,7 @@ mycelium = [
     "integrations/claude_code/assets/**/*",
     "integrations/cursor/assets/**/*",
     "integrations/openclaw/assets/mycelium/**/*",
+    "integrations/hermes/assets/**/*",
     "daemon/service/*",
     "docker/*",
     "docker/initdb/*",
@@ -111,7 +112,16 @@ addopts = [
 ]
 
 [tool.ty.src]
-exclude = ["src/mycelium_backend_client"]
+exclude = [
+    "src/mycelium_backend_client",
+    # Hermes-side plugin assets — staged into ~/.hermes/plugins/mycelium/
+    # at install time and executed by the hermes gateway process, which has
+    # ``aiohttp``, ``gateway.config``, and ``gateway.platforms.*`` available.
+    # Those modules are not part of mycelium-cli's dependency closure, so we
+    # exclude the asset tree from type checking here (analogous to how the
+    # openclaw plugin assets are TypeScript and live outside Python's reach).
+    "src/mycelium/integrations/hermes/assets",
+]
 
 [tool.ty.environment]
 python-version = "3.12"

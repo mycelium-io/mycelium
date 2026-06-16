@@ -10,9 +10,9 @@ lives behind the single ``Integration`` contract
 via ``get_integration(...)`` — there is no ``if adapter_type ==`` branching
 left (that asymmetry was the disease tracked as #173).
 
-Supported families: ``openclaw``, ``claude-code``, ``cursor``. Every family
-that has an entry in ``ADAPTER_TYPES`` below is also wired through
-:func:`mycelium.integrations.get_integration`.
+Supported families: ``openclaw``, ``claude-code``, ``cursor``, ``hermes``.
+Every family that has an entry in ``ADAPTER_TYPES`` below is also wired
+through :func:`mycelium.integrations.get_integration`.
 """
 
 from __future__ import annotations
@@ -43,6 +43,11 @@ ADAPTER_TYPES = {
         "daemon-dispatched — drops .cursor/rules/mycelium.mdc + AGENTS.md "
         "into each cursor agent's workspace at `mycelium agent create` time"
     ),
+    "hermes": (
+        "platform plugin — stages a hermes-side Python plugin into "
+        "~/.hermes/plugins/mycelium/ and enables platforms.mycelium-room "
+        "in ~/.hermes/config.yaml"
+    ),
 }
 
 
@@ -72,7 +77,9 @@ def _resolve_integration(adapter_type: str) -> Integration | None:
 @app.command("add")
 def add(
     ctx: typer.Context,
-    adapter_type: str = typer.Argument(..., help="Adapter type: openclaw, cursor, claude-code"),
+    adapter_type: str = typer.Argument(
+        ..., help="Adapter type: openclaw, cursor, claude-code, hermes"
+    ),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Show what would be installed without doing it"
     ),

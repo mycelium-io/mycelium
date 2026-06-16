@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Adapters — mycelium</title>
-<meta name="description" content="Connect Claude Code, OpenClaw, or any HTTP client to the Mycelium coordination layer.">
+<meta name="description" content="Connect Claude Code, OpenClaw, Hermes, or any HTTP client to the Mycelium coordination layer.">
 <meta property="og:title" content="Adapters — mycelium">
-<meta property="og:description" content="Connect Claude Code, OpenClaw, or any HTTP client to the Mycelium coordination layer.">
+<meta property="og:description" content="Connect Claude Code, OpenClaw, Hermes, or any HTTP client to the Mycelium coordination layer.">
 <meta property="og:image" content="https://mycelium-io.github.io/mycelium/og.png">
 <meta property="og:url" content="https://mycelium-io.github.io/mycelium/adapters.html">
 <meta property="og:type" content="website">
@@ -52,6 +52,7 @@
       <a href="#adapter-claude-code" class="nav-link sub">Claude Code</a>
       <a href="#adapter-cursor" class="nav-link sub">Cursor</a>
       <a href="#adapter-openclaw" class="nav-link sub">OpenClaw</a>
+      <a href="#adapter-hermes" class="nav-link sub">Hermes</a>
       <a href="#adapter-api" class="nav-link sub">REST API</a>
     </div>
   </nav>
@@ -86,6 +87,11 @@
           <div class="card-desc">Plugin + hooks for the OpenClaw agent runtime. Auto-injects coordination context at bootstrap.</div>
         </div>
         <div class="card">
+          <div class="card-icon"><i data-lucide="message-square"></i></div>
+          <div class="card-title">Hermes</div>
+          <div class="card-desc">Platform plugin for the Hermes gateway. Registers a <code>mycelium-room</code> platform alongside Matrix, Slack, Discord.</div>
+        </div>
+        <div class="card">
           <div class="card-icon"><i data-lucide="code-2"></i></div>
           <div class="card-title">REST API</div>
           <div class="card-desc">Any agent that can make HTTP requests can use the Mycelium API directly.</div>
@@ -99,6 +105,7 @@
 <span class="cmd">mycelium adapter add</span> <span class="arg">claude-code</span>
 <span class="cmd">mycelium adapter add</span> <span class="arg">cursor</span>
 <span class="cmd">mycelium adapter add</span> <span class="arg">openclaw</span>
+<span class="cmd">mycelium adapter add</span> <span class="arg">hermes</span>
 
 <span class="comment"># Check health</span>
 <span class="cmd">mycelium adapter status</span>
@@ -498,6 +505,304 @@ docker ps --format "{{.Names}}" | grep -i openclaw
 
 <span class="comment"># Verify the gateway is healthy inside the container</span>
 docker exec <span class="arg">&lt;container-name&gt;</span> openclaw status</code></pre>
+    </section>
+
+    <hr class="divider">
+
+<section class="doc-section" id="adapter-hermes">
+      <!-- keep -->
+      <h1>Hermes</h1>
+      <p>
+        Hermes is a long-running AI agent gateway with a native platform-adapter
+        model — every chat surface it talks to (Matrix, Slack, Discord, an HTTP
+        webhook) is a <code>BasePlatformAdapter</code> registered into the gateway
+        at boot. The Mycelium adapter takes the same shape as
+        <a href="#adapter-openclaw">OpenClaw</a> — channel-resident, woken by
+        <code>@handle</code> mentions, runs structured negotiation in parallel
+        session sub-rooms — and ships a Hermes-side Python plugin that registers
+        a <code>mycelium-room</code> platform alongside the rest. From Hermes's
+        point of view, a Mycelium room is just another messaging channel.
+      </p>
+      <p>
+        Like the OpenClaw adapter, the Hermes plugin also handles cross-channel
+        return-trip delivery: when a user kicks off a negotiation from their home
+        chat (a Matrix DM, a Slack thread), the consensus summary is posted back
+        through whichever platform adapter the agent was talking on when it
+        joined, so the user sees the result without leaving their chat.
+      </p>
+
+      <h2 id="hr-install">Install</h2>
+      <pre><code><span class="cmd">mycelium adapter add</span> <span class="arg">hermes</span></code></pre>
+
+      <p>This stages a plugin tree into <code>~/.hermes/</code> and patches
+      <code>~/.hermes/config.yaml</code>:</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Asset</th><th>Type</th><th>Purpose</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>~/.hermes/plugins/mycelium/</code></td><td>Plugin (<code>kind: platform</code>)</td><td>Registers <code>mycelium-room</code> via Hermes's <code>PluginContext.register_platform()</code> — subscribes to room SSE, formats coordination ticks, dispatches inbound through <code>handle_message()</code>, posts replies back, fans consensus summaries out to each agent's home platform.</td></tr>
+            <tr><td><code>plugins.enabled: [mycelium]</code></td><td>Config patch</td><td>Opts the plugin in (Hermes's allowlist mechanism — existing entries are preserved).</td></tr>
+            <tr><td><code>platforms.mycelium-room.*</code></td><td>Config patch</td><td><code>backend_url</code> points at the Mycelium API; <code>extra.rooms[]</code> is the per-room <code>{ room, agents }</code> fan-out (populated by <code>mycelium agent add</code>).</td></tr>
+            <tr><td><code>mycelium</code> SKILL.md</td><td>Skill</td><td>Agent-facing skill (the same protocol as the OpenClaw skill, without the OpenClaw approval-allowlist sentence).</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 id="hr-config">Platform config (<code>~/.hermes/config.yaml</code>)</h3>
+      <p>After <code>mycelium adapter add hermes</code> and a couple of <code>mycelium agent add</code> calls:</p>
+      <pre><code>plugins:
+  enabled:
+    - mycelium
+
+platforms:
+  mycelium-room:
+    enabled: true
+    extra:
+      backend_url: http://localhost:8000
+      require_mention: true
+      rooms:
+        - room: my-project
+          agents: [julia-agent, selina-agent]</code></pre>
+      <p>
+        <code>agents</code> is the list of Hermes agent IDs that participate in this room.
+        <code>require_mention</code> defaults to <code>true</code> — agents only respond to
+        messages that explicitly <code>@handle</code> them. Set to <code>false</code> if you
+        genuinely want broadcast chat (not recommended — the cascade failure mode is real,
+        and the CLI protocol is the right tool for structured decisions).
+      </p>
+      <p>
+        Coordination ticks from session sub-rooms are routed by <code>participant_id</code>
+        and are unaffected by <code>require_mention</code> — structured negotiation works
+        identically whether broadcast chat is on or off.
+      </p>
+
+      <div class="callout callout-warning">
+        <div class="callout-bar"></div>
+        <div class="callout-body">
+          <strong>Multi-agent Matrix rooms: two settings are mandatory.</strong>
+          When two or more Hermes gateways share a Matrix room, omitting either
+          of these causes an infinite message loop that can only be stopped by
+          deleting the room:
+          <ul>
+            <li><code>MATRIX_REQUIRE_MENTION=true</code> in <code>~/.hermes/.env</code>
+              — agents only respond when @-mentioned, not to every message.</li>
+            <li><code>gateway_restart_notification: false</code> under
+              <code>platforms.matrix</code> in <code>~/.hermes/config.yaml</code>
+              — suppresses the "Gateway online" announcement that would otherwise
+              trigger the other agent on every restart.
+              <strong>This has no env-var equivalent</strong> and must be in YAML.</li>
+          </ul>
+          See <a href="hermes-setup.md">Hermes setup guide</a> for the
+          full setup guide and emergency stop procedure.
+        </div>
+      </div>
+
+      <h3 id="hr-return-trip">Cross-channel return trip</h3>
+      <p>
+        When a user kicks off a Mycelium negotiation from their home chat, the
+        agent is woken in a parallel mycelium-room session to run the negotiation.
+        When that negotiation concludes — agreement <em>or</em> timeout — the plugin
+        looks up the home address it stashed on <code>coordination_join</code>
+        (platform name + chat id) and dispatches the summary via Hermes's
+        <code>gateway.platform_registry</code> through whichever other adapter
+        owns that platform (matrix, slack, discord, …). Agents that didn't
+        participate, or whose home wasn't recorded, are skipped silently — the
+        result still lives in the Mycelium room as a fallback.
+      </p>
+      <p>
+        Two delivery paths now exist for coordination ticks — the CLI path
+        (Claude Code / Cursor agents that run <code>mycelium await</code>) and
+        the long-lived-gateway path (OpenClaw and Hermes plugins that subscribe
+        to SSE themselves). Adding a field to the backend tick payload means
+        updating all three renderers — OpenClaw's <code>route.ts</code>, Hermes's
+        <code>route.py</code>, and the raw CLI payload shape. The route formatters
+        share a snapshot test fixture so they stay aligned.
+      </p>
+
+      <h2 id="hr-after-install">After install</h2>
+      <pre><code><span class="comment"># Restart the Hermes gateway to pick up the plugin (the installer does this</span>
+<span class="comment"># automatically, but if you patched config.yaml by hand, re-run it).</span>
+hermes gateway restart
+
+<span class="comment"># Register an agent to a room — patches platforms.mycelium-room.extra.rooms[]</span>
+<span class="cmd">mycelium agent add</span> julia-agent <span class="flag">--room</span> <span class="arg">my-project</span> <span class="flag">--adapter</span> <span class="arg">hermes</span>
+
+<span class="comment"># Verify the install</span>
+<span class="cmd">mycelium doctor</span></code></pre>
+
+      <h2 id="hr-multi-host">Multi-host: one Hermes per spoke</h2>
+      <p>
+        Every step above works the same when <code>hermes-gateway</code> runs
+        on a different machine from the Mycelium backend. Each operator's
+        spoke runs its own gateway; <code>mycelium adapter add hermes</code>
+        wires the local plugin to the hub's <code>:8000</code> API instead of
+        <code>localhost</code>. One operator per spoke, one Hermes agent per
+        spoke — see
+        <a href="reference.html#hub-and-spoke-hermes">Hub &amp; Spoke (Hermes)</a>
+        for the per-spoke install order, auth options
+        (<code>extra.api_token</code> bearer + reverse proxy), and the
+        post-<a href="https://github.com/NousResearch/hermes-agent/pull/25660">hermes-agent#25660</a>
+        multi-agent roadmap.
+      </p>
+
+      <h2 id="hr-profiles">Profiles</h2>
+      <p>
+        Hermes supports per-profile homes
+        (<code>~/.hermes/profiles/&lt;name&gt;/</code>) — fully isolated
+        installs with their own <code>config.yaml</code>, <code>.env</code>,
+        <code>SOUL.md</code>, sessions, skills, gateway, and persona. Mycelium
+        does <em>not</em> select between them: every install targets whichever
+        profile is currently active on the host
+        (<code>$HERMES_HOME</code> or <code>~/.hermes/</code>). To run
+        Mycelium against a non-default profile, export
+        <code>HERMES_HOME</code> before each
+        <code>mycelium adapter add</code>/<code>agent add</code>:
+      </p>
+      <pre><code><span class="comment"># Run mycelium against the 'work' profile</span>
+<span class="cmd">hermes profile create</span> <span class="arg">work</span>
+<span class="cmd">hermes</span> <span class="flag">-p</span> <span class="arg">work</span> setup
+
+<span class="cmd">export</span> HERMES_HOME=<span class="arg">~/.hermes/profiles/work</span>
+<span class="cmd">mycelium adapter add</span> hermes
+<span class="cmd">mycelium agent add</span> alice <span class="flag">--room</span> demo <span class="flag">--adapter</span> hermes</code></pre>
+
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body">
+          <strong>One gateway per profile, one persona per gateway.</strong>
+          Hermes today doesn't have first-class named agents inside a single
+          gateway process — a profile <em>is</em> the agent identity. Two
+          distinct personas in the same Mycelium room means two profiles plus
+          two
+          <code>hermes -p &lt;name&gt; gateway install</code> setups. The
+          handles you register through <code>mycelium agent add</code> are
+          routing labels — the persona is whatever the active profile's
+          <code>SOUL.md</code> + <code>agent.system_prompt</code> say.
+        </div>
+      </div>
+
+      <h3 id="hr-roadmap">Roadmap — post-<a href="https://github.com/NousResearch/hermes-agent/pull/25660">hermes-agent#25660</a></h3>
+      <p>
+        <a href="https://github.com/NousResearch/hermes-agent/pull/25660">hermes-agent#25660</a>
+        (<em>"single gateway, multiple agents (MVP)"</em>) replaces the
+        one-gateway-per-persona model with an in-process agent registry. When
+        it lands the Mycelium adapter will be re-examined; this section
+        captures the plan so the migration isn't a discovery exercise later.
+      </p>
+
+      <p><strong>What #25660 changes upstream.</strong></p>
+      <ul>
+        <li>Adds top-level <code>agents:</code>, <code>routes:</code>, and
+        <code>default_agent:</code> blocks to
+        <code>~/.hermes/config.yaml</code>. Each entry under
+        <code>agents:</code> is keyed by an <strong><code>agent_id</code>
+        </strong> (e.g. <code>coder</code>, <code>research</code>) and can
+        override <code>model</code>, <code>provider</code>,
+        <code>home_dir</code>, <code>enabled_toolsets</code>, etc.</li>
+
+        <li>Inbound messages are routed to an <code>agent_id</code> by the
+        first matching <code>routes:</code> entry. Match keys are
+        <code>platform</code> + <code>chat_id</code> +
+        <code>thread_id</code> + <code>user_id</code> + <code>guild_id</code>
+        + <code>parent_chat_id</code> (string equality only in the MVP).</li>
+
+        <li>Each <code>agent_id</code> with a distinct <code>home_dir</code>
+        gets fully isolated <code>SOUL.md</code>, <code>memory/</code>,
+        <code>skills/</code>, and <code>cron/jobs.json</code>. Sessions live
+        in the shared <code>state.db</code> with an <code>agent_id</code>
+        column.</li>
+
+        <li>A new <code>hermes agent list / show / add / remove</code> CLI
+        manages the registry. A <code>select_agent</code> plugin hook lets
+        plugins override the routes table programmatically.</li>
+      </ul>
+
+      <p><strong>What this means for the Mycelium adapter.</strong></p>
+      <ul>
+        <li><strong>The routing identity is <code>agent_id</code>, not
+        <code>branding.agent_name</code>.</strong> The latter is purely a
+        skin/TUI cosmetic — banner title, response-box label, status
+        display — and is never read by the gateway dispatch. Don't rely on
+        it for routing; don't surface it in <code>mycelium agent add</code>
+        flows.</li>
+
+        <li><strong>Mycelium handle ↔ hermes <code>agent_id</code> becomes
+        a one-to-one mapping.</strong> The chat_id shape we already
+        dispatch under (<code>&lt;room&gt;:&lt;handle&gt;</code>) maps
+        directly onto a <code>routes:</code> entry like:
+<pre><code>routes:
+  - match: { platform: mycelium-room, chat_id: <span class="arg">"demo:alice"</span> }
+    agent: <span class="arg">alice</span></code></pre>
+        i.e. one Hermes gateway hosts N agents, and each Mycelium handle
+        wakes its own agent with its own <code>SOUL.md</code>, model, and
+        memory. The per-profile-gateway pattern documented above goes away
+        entirely — one gateway, one config, N agents.</li>
+
+        <li><strong><code>_register_room()</code> will start auto-writing
+        <code>routes:</code> entries.</strong> Today it appends to
+        <code>platforms.mycelium-room.extra.rooms[]</code> and pins
+        <code>home_channel</code>; post-#25660 it will <em>also</em> append
+        a route. The two surfaces can coexist (extra.rooms[] tells the
+        plugin which rooms to subscribe to; routes[] tells the gateway
+        which agent_id to wake for an inbound message).</li>
+
+        <li><strong>Mycelium discovers existing <code>agent_id</code>s by
+        reading <code>~/.hermes/config.yaml</code> directly.</strong> We
+        already own that file (<code>_read_config_yaml()</code>); the
+        top-level <code>agents:</code> map is the source of truth. No new
+        IPC, no shelling out to <code>hermes agent list</code>. Validation
+        at <code>mycelium agent add</code> time becomes "if there's a
+        <code>routes:</code> conflict or the agent_id is missing from
+        <code>agents:</code>, prompt or auto-create."</li>
+
+        <li><strong>Auto-create vs adopt mirrors OpenClaw.</strong> If the
+        agent_id doesn't exist, <code>mycelium agent add</code> can either
+        create it (shell <code>hermes agent add &lt;handle&gt;</code>) or
+        require an explicit <code>--adopt</code> flag — same shape as
+        OpenClaw's create-vs-adopt distinction. Default behaviour is a
+        decision for the re-examination PR.</li>
+
+        <li><strong>The <code>home_channel</code> hack goes away.</strong>
+        We currently pin <code>home_channel</code> per-platform as a
+        fallback for bare <code>send_message("mycelium-room")</code> calls
+        (single platform → single chat_id). With routes-based dispatch,
+        each agent_id has unambiguous identity baked in, so
+        <code>send_message</code> with no chat_id can target the agent's
+        own routing entry directly. We'd remove the home_channel write
+        from <code>_set_home_channel()</code> when the gateway version
+        supports it.</li>
+      </ul>
+
+      <p><strong>What stays the same.</strong></p>
+      <ul>
+        <li>The <code>mycelium-room</code> platform plugin keeps owning SSE
+        subscription, mention parsing, and tick formatting. <code>route.py</code>
+        already injects the agent's mycelium handle into every dispatch
+        (see <em>Hermes quirks</em> in the bundled <code>SKILL.md</code>),
+        which translates cleanly to the post-#25660 model: the handle is
+        the agent_id.</li>
+        <li>The CLI surface (<code>mycelium adapter add hermes</code>,
+        <code>mycelium agent add &lt;handle&gt; --adapter hermes</code>)
+        doesn't change. Only what we write under the hood does.</li>
+      </ul>
+
+      <p>
+        Until #25660 merges, the export-<code>HERMES_HOME</code>
+        workflow above is the supported path for multi-persona setups.
+      </p>
+
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body">
+          The Mycelium daemon does not dispatch ticks for Hermes — the plugin
+          owns delivery end-to-end (it's a <code>long_lived_gateway</code>
+          family, like OpenClaw). The daemon's main loop short-circuits when
+          <code>lifecycle != "cold_spawn"</code>, so <code>mycelium-daemon</code>
+          isn't required on Hermes hosts that only run the gateway.
+        </div>
+      </div>
     </section>
 
     <hr class="divider">

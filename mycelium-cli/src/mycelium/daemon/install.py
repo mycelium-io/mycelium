@@ -253,14 +253,15 @@ def install_daemon_service(verbose: bool = False) -> None:
 
 
 def restart_daemon_service(*, verbose: bool = False) -> bool:
-    """Kick the running daemon so it re-reads ``daemon.toml``.
+    """Fully restart the daemon process via the platform service manager.
 
-    The daemon snapshots ``DaemonConfig`` (rooms + handles) at startup, so
-    any change made by ``mycelium agent create``/``rm`` or ``mycelium daemon
-    subscribe`` is invisible until the service restarts. Returns ``True``
-    when a restart was actually issued, ``False`` when the daemon isn't
-    installed on this host (silent no-op so callers can use it as a "kick
-    if present" primitive).
+    Use after deploying new daemon code or when the process is wedged.
+    Config/handle changes from ``agent create``/``rm`` and ``daemon
+    subscribe`` are picked up via :func:`reload_daemon_service` (SIGHUP)
+    automatically — a full restart is not required for those.
+
+    Returns ``True`` when a restart was issued, ``False`` when the daemon
+    isn't installed on this host (silent no-op for callers).
     """
     import platform
 

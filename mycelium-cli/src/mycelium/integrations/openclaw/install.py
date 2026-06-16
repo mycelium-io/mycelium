@@ -257,6 +257,20 @@ def _plugin_copy_ignore(_src: str, names: list[str]) -> list[str]:
     return [n for n in names if n in ("node_modules", "test", "package-lock.json")]
 
 
+def _copy_built_dist_to_extension(plugin_dir: Path, *, profile: str | None = None) -> None:
+    """Copy compiled dist/ into the installed OpenClaw extension dir.
+
+    ``openclaw plugins install`` blanket-excludes dist/, so we mirror it manually.
+    """
+    dist_src = plugin_dir / "dist"
+    dist_dst = _openclaw_state_dir(profile) / "extensions" / _OPENCLAW_PLUGIN_NAME / "dist"
+    if not dist_src.exists():
+        return
+    if dist_dst.exists():
+        shutil.rmtree(dist_dst, ignore_errors=True)
+    shutil.copytree(str(dist_src), str(dist_dst))
+
+
 def _install_openclaw(
     verbose: bool = False,
     profile: str | None = None,
@@ -536,12 +550,7 @@ def _install_openclaw(
         # build output by default), but our plugin needs the compiled
         # dist/index.js — openclaw.plugin.json's `extensions` field points
         # at it. Copy it over after install so the channel actually loads.
-        dist_src = plugin_src / "dist"
-        dist_dst = _openclaw_state_dir(profile) / "extensions" / _OPENCLAW_PLUGIN_NAME / "dist"
-        if dist_src.exists():
-            if dist_dst.exists():
-                shutil.rmtree(dist_dst, ignore_errors=True)
-            shutil.copytree(str(dist_src), str(dist_dst))
+        _copy_built_dist_to_extension(plugin_src, profile=profile)
     finally:
         # Restore the channel config so the user's room/agents/etc. survive
         # the install — the plugin is now registered, so the channel id

@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Mycelium Contributors
+#
+# Hermes platform plugin for Mycelium coordination rooms.
+#
+# Staged into ``~/.hermes/plugins/mycelium/`` by ``mycelium adapter add
+# hermes``. Hermes discovers the plugin on the second scan pass (user
+# plugins) and gates loading on ``plugins.enabled: [mycelium, ...]`` in
+# ``~/.hermes/config.yaml``.
+name: mycelium
+version: 0.1.0
+description: >-
+  Mycelium multi-agent coordination — rooms, structured negotiation,
+  shared plan. Registers the ``mycelium-room`` platform adapter.
+author: Mycelium Contributors
+kind: platform

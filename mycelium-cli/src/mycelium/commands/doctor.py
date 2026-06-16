@@ -15,6 +15,7 @@ Checks:
   8. Workspace ID in sync (CFN mgmt plane vs .env vs config.toml)
   9. Room MAS IDs present (CFN-enabled installs)
   10. OpenClaw adapter health (plugin, channel config, agent sandbox)
+  11. Hermes adapter health (plugin tree, config.yaml, gateway pid)
 
 Single-device installs (the default) run the backend locally and exercise
 all checks. In the optional hub-and-spoke deployment mode, spoke nodes
@@ -727,7 +728,7 @@ def _check_runtime_config_drift() -> CheckResult:
     )
 
 
-def _check_cfn_intent() -> CheckResult:
+def _check_cfn_intent(*, local_backend: bool = True) -> CheckResult:
     """Catch the CFN intent/config mismatch that silently breaks negotiation.
 
     Symptom: user has `server.mas_id` in config.toml (set at some point — usually
@@ -738,7 +739,16 @@ def _check_cfn_intent() -> CheckResult:
     with `"CFN coordination required but not configured for this room"`. The
     old CFN check (`_check_room_mas_ids`) silently skips when CFN is disabled,
     so doctor reports all-green while negotiation is broken.
+
+    Spoke nodes talk to a remote hub — CFN URLs belong on the hub, not here.
     """
+    if not local_backend:
+        return CheckResult(
+            name="CFN config",
+            status="ok",
+            message="Skipped (spoke — CFN runs on hub)",
+        )
+
     env_path = Path.home() / ".mycelium" / ".env"
     if not env_path.exists():
         return CheckResult(name="CFN config", status="ok", message="Skipped (no .env)")
@@ -786,17 +796,25 @@ def _check_cfn_intent() -> CheckResult:
     return CheckResult(name="CFN config", status="ok", message="CFN URLs configured")
 
 
-def _check_room_mas_ids() -> CheckResult:
-    """Check that all rooms have a MAS ID (CFN-enabled installs only)."""
-    env_path = Path.home() / ".mycelium" / ".env"
-    if not env_path.exists():
-        return CheckResult(name="Room MAS IDs", status="ok", message="Skipped (no .env)")
+def _check_room_mas_ids(*, local_backend: bool = True) -> CheckResult:
+    """Check that all rooms have a MAS ID (CFN-enabled installs only).
 
-    from dotenv import dotenv_values
+    On hub nodes, skips when local ``CFN_MGMT_URL`` is unset (CFN profile
+    not active). On spoke nodes, queries the remote hub backend — CFN may be
+    enabled there even when this node's ``.env`` has no CFN URLs.
+    """
+    if local_backend:
+        env_path = Path.home() / ".mycelium" / ".env"
+        if not env_path.exists():
+            return CheckResult(name="Room MAS IDs", status="ok", message="Skipped (no .env)")
 
-    vals = dotenv_values(env_path)
-    if not vals.get("CFN_MGMT_URL"):
-        return CheckResult(name="Room MAS IDs", status="ok", message="Skipped (CFN not enabled)")
+        from dotenv import dotenv_values
+
+        vals = dotenv_values(env_path)
+        if not vals.get("CFN_MGMT_URL"):
+            return CheckResult(
+                name="Room MAS IDs", status="ok", message="Skipped (CFN not enabled)"
+            )
 
     from mycelium.config import MyceliumConfig
 
@@ -813,9 +831,33 @@ def _check_room_mas_ids() -> CheckResult:
             resp = client.get("/api/rooms")
             resp.raise_for_status()
             rooms = resp.json()
-    except Exception:
+    except httpx.HTTPStatusError as exc:
+        body = (exc.response.text or "").strip().replace("\n", " ")[:200]
+        details = [f"  {api_url.rstrip('/')}/api/rooms"]
+        if body:
+            details.append(f"  {body}")
+        details.append(
+            "  /health can still pass while /api/rooms fails — check hub logs and migrations."
+        )
         return CheckResult(
-            name="Room MAS IDs", status="ok", message="Skipped (backend unreachable)"
+            name="Room MAS IDs",
+            status="warning",
+            message=f"GET /api/rooms returned HTTP {exc.response.status_code}",
+            details=details,
+        )
+    except httpx.RequestError as exc:
+        return CheckResult(
+            name="Room MAS IDs",
+            status="ok",
+            message="Skipped (backend unreachable)",
+            details=[str(exc)],
+        )
+    except (TypeError, KeyError, ValueError) as exc:
+        return CheckResult(
+            name="Room MAS IDs",
+            status="warning",
+            message="Skipped (unexpected /api/rooms response)",
+            details=[str(exc)],
         )
 
     # Session sub-rooms (name contains ":session:") don't need MAS IDs
@@ -1359,6 +1401,285 @@ def _cursor_adapter_registered() -> bool:
     return "cursor" in (cfg.adapters or {})
 
 
+# ── hermes adapter health ────────────────────────────────────────────────────
+# Mirrors the openclaw block above: gate every check on whether the user has
+# explicitly run `mycelium adapter add hermes`. A user who happens to have
+# hermes installed but has not opted into the mycelium adapter should see all
+# four checks cleanly skipped — doctor only nags about hermes once asked.
+
+
+def _hermes_adapter_registered() -> bool:
+    """True if the user has run `mycelium adapter add hermes` at least once."""
+    from mycelium.config import MyceliumConfig
+
+    try:
+        cfg = MyceliumConfig.load()
+    except Exception:
+        return False
+    return "hermes" in (cfg.adapters or {})
+
+
+def _hermes_paths() -> tuple[Path, Path, Path]:
+    """(home, plugin_dir, config_yaml) for the active hermes profile.
+
+    Mycelium always targets whichever profile is active via ``HERMES_HOME``
+    (or ``~/.hermes/``); per-profile multi-tenancy is on hold until
+    hermes-agent#25660. See ``_hermes_home`` for the resolution rule.
+    """
+    from mycelium.integrations.hermes.install import (
+        _hermes_config_yaml,
+        _hermes_home,
+        _hermes_plugin_dst,
+    )
+
+    return _hermes_home(), _hermes_plugin_dst(), _hermes_config_yaml()
+
+
+def _check_hermes_plugin() -> CheckResult:
+    """Verify the hermes-side plugin tree is staged and well-formed.
+
+    Catches the three most likely "I ran adapter add but nothing happens"
+    failure modes: missing plugin dir (install never ran), missing
+    plugin.yaml manifest (partial copy), and a manifest with the wrong
+    ``kind``/name (a hand-edit that hermes will refuse to load).
+    """
+    if not _hermes_adapter_registered():
+        return CheckResult(
+            name="hermes plugin",
+            status="ok",
+            message="hermes adapter not registered — skipped",
+        )
+
+    _, plugin_dir, _ = _hermes_paths()
+    plugin_yaml = plugin_dir / "plugin.yaml"
+    adapter_py = plugin_dir / "adapter.py"
+
+    if not plugin_dir.exists():
+        return CheckResult(
+            name="hermes plugin",
+            status="warning",
+            message="adapter registered but plugin tree missing",
+            details=[
+                f"expected: {plugin_dir}",
+                "fix: run `mycelium adapter add hermes --reinstall`",
+            ],
+        )
+    if not plugin_yaml.exists():
+        return CheckResult(
+            name="hermes plugin",
+            status="error",
+            message="plugin.yaml manifest missing — corrupt install",
+            details=[
+                f"expected: {plugin_yaml}",
+                "fix: run `mycelium adapter add hermes --reinstall`",
+            ],
+        )
+    if not adapter_py.exists():
+        return CheckResult(
+            name="hermes plugin",
+            status="error",
+            message="adapter.py missing — corrupt install",
+            details=[
+                f"expected: {adapter_py}",
+                "fix: run `mycelium adapter add hermes --reinstall`",
+            ],
+        )
+
+    try:
+        import yaml
+
+        manifest = yaml.safe_load(plugin_yaml.read_text()) or {}
+    except Exception as exc:
+        return CheckResult(
+            name="hermes plugin",
+            status="error",
+            message=f"plugin.yaml is not valid YAML: {exc}",
+            details=["fix: run `mycelium adapter add hermes --reinstall`"],
+        )
+    if manifest.get("kind") != "platform" or manifest.get("name") != "mycelium":
+        return CheckResult(
+            name="hermes plugin",
+            status="error",
+            message="plugin.yaml manifest is wrong (need kind=platform, name=mycelium)",
+            details=[
+                f"found kind={manifest.get('kind')!r} name={manifest.get('name')!r}",
+                "fix: run `mycelium adapter add hermes --reinstall`",
+            ],
+        )
+    return CheckResult(
+        name="hermes plugin",
+        status="ok",
+        message=f"installed at {plugin_dir} (manifest valid)",
+    )
+
+
+def _check_hermes_config_yaml() -> CheckResult:
+    """Verify ``~/.hermes/config.yaml`` enables the plugin and platform."""
+    if not _hermes_adapter_registered():
+        return CheckResult(
+            name="hermes config",
+            status="ok",
+            message="hermes adapter not registered — skipped",
+        )
+
+    _, _, config_yaml = _hermes_paths()
+
+    if not config_yaml.exists():
+        return CheckResult(
+            name="hermes config",
+            status="error",
+            message="hermes config.yaml not found",
+            details=[
+                f"expected: {config_yaml}",
+                "fix: run `mycelium adapter add hermes --reinstall`",
+            ],
+        )
+
+    try:
+        import yaml
+
+        data = yaml.safe_load(config_yaml.read_text()) or {}
+    except Exception as exc:
+        return CheckResult(
+            name="hermes config",
+            status="error",
+            message=f"hermes config.yaml is not valid YAML: {exc}",
+        )
+    if not isinstance(data, dict):
+        return CheckResult(
+            name="hermes config",
+            status="error",
+            message="hermes config.yaml top-level is not a mapping",
+        )
+
+    plugins = data.get("plugins") or {}
+    enabled = plugins.get("enabled") if isinstance(plugins, dict) else None
+    if not isinstance(enabled, list) or "mycelium" not in enabled:
+        return CheckResult(
+            name="hermes config",
+            status="error",
+            message="plugins.enabled does not contain 'mycelium'",
+            details=[
+                "the hermes gateway loads user plugins only when allow-listed",
+                "fix: run `mycelium adapter add hermes --reinstall`",
+            ],
+        )
+
+    platforms = data.get("platforms") or {}
+    block = platforms.get("mycelium-room") if isinstance(platforms, dict) else None
+    if not isinstance(block, dict):
+        return CheckResult(
+            name="hermes config",
+            status="warning",
+            message="platforms.mycelium-room block missing",
+            details=["fix: run `mycelium adapter add hermes --reinstall`"],
+        )
+    if block.get("enabled") is False:
+        return CheckResult(
+            name="hermes config",
+            status="warning",
+            message="platforms.mycelium-room is disabled",
+        )
+    extra = block.get("extra") or {}
+    backend_url = extra.get("backend_url") if isinstance(extra, dict) else None
+    if not isinstance(backend_url, str) or not backend_url:
+        return CheckResult(
+            name="hermes config",
+            status="error",
+            message="platforms.mycelium-room.extra.backend_url is empty",
+            details=["fix: run `mycelium adapter add hermes --reinstall`"],
+        )
+
+    # Cross-check the backend URL against ~/.mycelium/config.toml so a stale
+    # patch from a renamed backend doesn't silently route to nowhere.
+    try:
+        import tomllib
+
+        mycelium_toml = Path.home() / ".mycelium" / "config.toml"
+        if mycelium_toml.exists():
+            with mycelium_toml.open("rb") as f:
+                mcfg = tomllib.load(f)
+            expected = (mcfg.get("server") or {}).get("api_url", "").rstrip("/")
+            if expected and expected != backend_url.rstrip("/"):
+                return CheckResult(
+                    name="hermes config",
+                    status="error",
+                    message="backend_url doesn't match mycelium config.toml",
+                    details=[
+                        f"hermes config.yaml:  {backend_url}",
+                        f"mycelium config:     {expected}",
+                        "fix: run `mycelium adapter add hermes --reinstall`",
+                    ],
+                )
+    except Exception:
+        pass  # non-fatal
+
+    rooms = extra.get("rooms") if isinstance(extra, dict) else None
+    rooms_count = (
+        sum(1 for r in rooms if isinstance(r, dict) and r.get("room"))
+        if isinstance(rooms, list)
+        else 0
+    )
+    return CheckResult(
+        name="hermes config",
+        status="ok",
+        message=f"plugin enabled, platform configured, {rooms_count} room(s) wired",
+    )
+
+
+def _check_hermes_gateway_running() -> CheckResult:
+    """Probe the hermes gateway pid file to confirm the long-lived process is up."""
+    if not _hermes_adapter_registered():
+        return CheckResult(
+            name="hermes gateway",
+            status="ok",
+            message="hermes adapter not registered — skipped",
+        )
+
+    import os
+
+    from mycelium.integrations.hermes.install import _hermes_gateway_pid, _read_gateway_pid
+
+    pid_path = _hermes_gateway_pid()
+    if not pid_path.exists():
+        return CheckResult(
+            name="hermes gateway",
+            status="warning",
+            message="gateway pid file not found",
+            details=[
+                f"expected: {pid_path}",
+                "the platform plugin only delivers ticks while the gateway is running",
+                "fix: start it with `hermes gateway start`",
+            ],
+        )
+
+    pid = _read_gateway_pid()
+    if pid is None:
+        return CheckResult(
+            name="hermes gateway",
+            status="warning",
+            message="gateway pid file is unreadable",
+            details=[
+                f"path: {pid_path}",
+                "fix: restart with `hermes gateway restart`",
+            ],
+        )
+    try:
+        os.kill(pid, 0)
+    except (OSError, ProcessLookupError):
+        return CheckResult(
+            name="hermes gateway",
+            status="warning",
+            message=f"pid file references {pid} but no such process",
+            details=["fix: start it with `hermes gateway start`"],
+        )
+    return CheckResult(
+        name="hermes gateway",
+        status="ok",
+        message=f"running (pid {pid})",
+    )
+
+
 def _check_cursor_agent_binary() -> CheckResult:
     """Verify ``cursor-agent`` is reachable on PATH for the daemon to spawn.
 
@@ -1726,9 +2047,9 @@ def doctor(
             (
                 "CFN",
                 [
-                    _check_cfn_intent(),
+                    _check_cfn_intent(local_backend=local),
                     _check_workspace_id(local_backend=local),
-                    _check_room_mas_ids(),
+                    _check_room_mas_ids(local_backend=local),
                 ],
             ),
             (
@@ -1737,6 +2058,9 @@ def doctor(
                     _check_openclaw_mycelium_plugin(),
                     _check_openclaw_channel_config(),
                     _check_openclaw_agent_sandbox(),
+                    _check_hermes_plugin(),
+                    _check_hermes_config_yaml(),
+                    _check_hermes_gateway_running(),
                     _check_cursor_agent_binary(),
                     _check_cursor_login(),
                     _check_cursor_workspace_assets(),

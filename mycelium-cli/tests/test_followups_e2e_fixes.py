@@ -31,8 +31,8 @@ not that the cursor surface is broken.
 4. ``test_persist_and_describe_kicks_daemon_for_cold_spawn`` /
    ``test_persist_and_describe_skips_kick_for_long_lived``
    ``mycelium agent create`` writes the handle to ``daemon.toml`` but
-   the running daemon only re-reads that file on restart. The fix calls
-   ``restart_daemon_service`` from the create/destroy tail for cold-spawn
+   the running daemon must re-read that file. The fix calls
+   ``reload_daemon_service`` (SIGHUP) from the create/destroy tail for cold-spawn
    adapters only (no-op when no daemon is installed, openclaw doesn't need
    it).
 
@@ -226,7 +226,7 @@ def test_persist_and_describe_kicks_daemon_for_cold_spawn(
 
     impl = _stub_integration(lifecycle="cold_spawn")
 
-    with patch("mycelium.daemon.install.restart_daemon_service", return_value=True) as mock_restart:
+    with patch("mycelium.daemon.install.reload_daemon_service", return_value=True) as mock_restart:
         agent_cmd._persist_and_describe(impl=impl, **_fake_persist_inputs(tmp_path))
 
     assert mock_restart.called, "cold-spawn adapter create must kick the mycelium-daemon"
@@ -247,11 +247,11 @@ def test_persist_and_describe_skips_kick_for_long_lived(
 
     impl = _stub_integration(lifecycle="long_lived_gateway")
 
-    with patch("mycelium.daemon.install.restart_daemon_service", return_value=True) as mock_restart:
+    with patch("mycelium.daemon.install.reload_daemon_service", return_value=True) as mock_reload:
         agent_cmd._persist_and_describe(impl=impl, **_fake_persist_inputs(tmp_path))
 
-    assert not mock_restart.called, (
-        "long-lived-gateway adapter (openclaw) must not trigger a mycelium-daemon restart"
+    assert not mock_reload.called, (
+        "long-lived-gateway adapter must not trigger a mycelium-daemon reload"
     )
 
 
@@ -538,6 +538,22 @@ def test_restart_daemon_service_no_op_when_uninstalled(monkeypatch: pytest.Monke
     )
 
     assert daemon_install.restart_daemon_service(verbose=False) is False
+
+
+def test_daemon_restart_cli_calls_full_restart_not_reload() -> None:
+    """``mycelium daemon restart`` must restart the process, not SIGHUP-reload."""
+    from mycelium.commands import daemon as daemon_cmd
+
+    runner = CliRunner()
+    with (
+        patch("mycelium.daemon.install.restart_daemon_service", return_value=True) as mock_restart,
+        patch("mycelium.daemon.install.reload_daemon_service", return_value=True) as mock_reload,
+    ):
+        result = runner.invoke(daemon_cmd.app, ["restart"])
+
+    assert result.exit_code == 0
+    assert mock_restart.called
+    assert not mock_reload.called
 
 
 # ── 7. agent invoke falls through to backend for cross-host invocations ──────
