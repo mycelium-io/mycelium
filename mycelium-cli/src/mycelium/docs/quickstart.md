@@ -40,6 +40,21 @@ mycelium pull      # pull latest images and restart services
 mycelium doctor    # diagnose and fix configuration issues
 ```
 
+## Running the stack
+
+`mycelium install` leaves the stack running, but it won't survive a reboot or a
+Docker restart. Use these to bring it back up or check on it:
+
+```bash
+mycelium up       # start the backend + AgensGraph stack
+mycelium status   # health check — backend, database, LLM
+mycelium logs     # tail service logs if something looks off
+mycelium down     # stop the stack
+```
+
+If `mycelium ui open` or any command reports it can't reach the API at
+`localhost:8000`, the stack isn't running — `mycelium up` fixes it.
+
 ## Open the UI
 
 The Mycelium room view is where you do everything from here — watch the live
