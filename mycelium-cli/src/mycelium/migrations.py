@@ -168,6 +168,23 @@ def run_alembic_current() -> AlembicRunResult:
     )
 
 
+def run_alembic_heads() -> AlembicRunResult:
+    """Return the latest alembic head revision using the best available backend."""
+    backend_dir = find_local_backend_dir()
+    if backend_dir is not None:
+        return _run_host_alembic(backend_dir, ["heads"])
+
+    if backend_container_running():
+        return _run_container_alembic(["heads"])
+
+    return AlembicRunResult(
+        1,
+        "",
+        "alembic.ini not found on the host and mycelium-backend is not running",
+        "unavailable",
+    )
+
+
 def echo_alembic_output(result: AlembicRunResult) -> None:
     """Print alembic stdout/stderr with basic success/error highlighting."""
     import typer
