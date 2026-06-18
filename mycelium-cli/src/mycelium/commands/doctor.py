@@ -960,7 +960,11 @@ def _check_pending_migrations() -> CheckResult:
                 details=["fix: mycelium up", "fix: mycelium migrate"],
             )
         if heads.returncode != 0:
-            err_tail = heads.stderr.strip().splitlines()[-1] if heads.stderr.strip() else "(no error output)"
+            err_tail = (
+                heads.stderr.strip().splitlines()[-1]
+                if heads.stderr.strip()
+                else "(no error output)"
+            )
             return CheckResult(
                 name="Migrations",
                 status="warning",
