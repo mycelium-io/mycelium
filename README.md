@@ -39,6 +39,11 @@ Alignment pays off at 3+ agents. At three it improves decision quality over unco
 
 If your system has a central orchestrator routing tasks to worker agents, you probably don't need Mycelium — your orchestrator is already the coordination layer. Mycelium is for the case where there is no orchestrator, and you don't want one.
 
+## Does It Work
+
+Mycelium was evaluated across 14 decision scenarios in a controlled A/B study. 
+See [Evaluation Results](docs/evaluation.md) for the full findings.
+
 ## What Mycelium Does
 
 Mycelium provides coordination functions for autonomous agents operating as peers. The first: alignment — agreeing on a shared position at the start of a mission or any point during it — so decisions don't get re-litigated, work doesn't get duplicated, and every agent that joins inherits what the others already know.
