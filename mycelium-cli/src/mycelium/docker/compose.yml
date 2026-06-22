@@ -11,11 +11,11 @@ services:
       context: ../fastapi-backend
       dockerfile: docker/Dockerfile.agensgraph
     image: ghcr.io/mycelium-io/mycelium-db:${MYCELIUM_IMAGE_TAG:-latest}
-    pull_policy: always
+    pull_policy: never
     platform: linux/amd64
     container_name: mycelium-db
     restart: unless-stopped
-    command: postgres -c max_locks_per_transaction=256
+    command: postgres -c max_locks_per_transaction=256 -c shared_preload_libraries=timescaledb
     env_file:
       - path: ../.env
         required: false
@@ -162,81 +162,173 @@ services:
 
   # ── CFN Stack (profile: cfn) ──────────────────────────────────────────────────
 
+  # Backing Database for IoC Knowledge Memory Service
+  # Graph(Agensgraph) + PgVector + Postgres Database
+
+  # Mgmt. Plane Backend Service - FastAPI backend for workspaces, users, CFN nodes
+  # Port Mapping: 9000:9000 (same port inside and outside container)
   ioc-cfn-mgmt-plane-svc:
-    image: ghcr.io/outshift-open/ioc-cfn-mgmt-plane-svc:0.1.1
-    container_name: ioc-cfn-mgmt-plane-svc
-    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Image Link: https://github.com/orgs/cisco-eti/packages/container/package/ioc-cfn-mgmt-plane-svc
+    image: ghcr.io/cisco-eti/ioc-cfn-mgmt-plane-svc:2026-06-15-eb13be4
+    platform: ${DOCKER_DEFAULT_PLATFORM}
     profiles: [cfn]
-    env_file:
-      - path: ../.env
-        required: false
-    depends_on:
-      mycelium-db:
-        condition: service_healthy
     ports:
       - "9000:9000"
     environment:
       SERVICE_NAME: ioc-cfn-mgmt-plane-svc
-      APPLICATION_VERSION: latest
-      LOG_LEVEL: INFO
-      ADMIN_USER_PASSWORD: ${ADMIN_USER_PASSWORD:-admin}
+      APPLICATION_VERSION: dev
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      ADMIN_USER_PASSWORD: ${ADMIN_USER_PASSWORD}
       POSTGRES_HOST: mycelium-db
       POSTGRES_PORT: 5432
-      POSTGRES_DB: ${CFN_DB:-cfn_mgmt}
-      POSTGRES_USER: ${CFN_DB_USER:-postgres}
+      POSTGRES_DB: cfn_mgmt
+      POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${MYCELIUM_DB_PASSWORD:-password}
       PORT: 9000
-      CFN_DEV_MODE: ${CFN_DEV_MODE:-false}
-      # Must match the node-svc's CFN_NAME below — the mgmt plane's
-      # Default-Workspace ↔ CFN auto-association branch (see #308) only
-      # fires when the registering node's cfn_name equals this env var.
-      # If unset, the mgmt plane silently falls back to "My Cognition
-      # Fabric Node", the strings don't match, and workspace.cfn_id stays
-      # NULL forever — breaking every CFN data-plane round trip.
-      CFN_NAME: ${CFN_NAME:-mycelium-cfn}
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9000/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-      start_period: 30s
-
-
-  ioc-cognition-fabric-node-svc:
-    image: ghcr.io/outshift-open/ioc-cognition-fabric-node-svc:0.1.7
-    pull_policy: always
-    platform: linux/amd64
-    container_name: ioc-cognition-fabric-node-svc
+      CFN_DEV_MODE: ${CFN_DEV_MODE}
+      CFN_SVC_URL: ${CFN_SVC_URL:-http://ioc-cfn-svc:9002}
+    volumes:
+      - ./.secrets:/home/app/.secrets:ro
     restart: unless-stopped
+    depends_on:
+      mycelium-db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "-f",
+          "http://ioc-cfn-mgmt-plane-svc:9000/api/internal/diagnostics/health",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+
+  # Knowledge Memory Service - Graph + Vector Memory Storage
+  # Port Mapping: 9003:9003 (same port inside and outside container)
+  ioc-knowledge-memory-svc:
+    # Image Link: https://github.com/orgs/cisco-eti/packages/container/package/ioc-knowledge-memory-svc
+    image: ghcr.io/cisco-eti/ioc-knowledge-memory-svc:2026-05-22-a668d2e
+    platform: linux/amd64
     profiles: [cfn]
-    env_file:
-      - path: ../.env
-        required: false
+    ports:
+      - "9003:9003"
+    environment:
+      SERVICE_NAME: ioc-knowledge-memory-svc
+      APPLICATION_VERSION: dev
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      MEMORY_PROVIDER_REGISTRATION_URL: http://ioc-cfn-mgmt-plane-svc:9000
+      MEMORY_PROVIDER_ID: ${MEMORY_PROVIDER_ID:-de54dacb-60ab-476a-9e83-64e09f867358}
+      IOC_KNOWLEDGE_DB_HOST: mycelium-db
+      IOC_KNOWLEDGE_DB: ${IOC_KNOWLEDGE_DB:-ioc-graph-db}
+      IOC_KNOWLEDGE_DB_USER: postgres
+      IOC_KNOWLEDGE_DB_PASSWORD: password
+      IOC_KNOWLEDGE_DB_PORT: 5432
+      EMBEDDING_VECTOR_SIZE: ${EMBEDDING_VECTOR_SIZE:-384}
+    restart: unless-stopped
     depends_on:
       mycelium-db:
         condition: service_healthy
       ioc-cfn-mgmt-plane-svc:
         condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "-f",
+          "http://localhost:9003/api/internal/diagnostics/health",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # CFN Service - Cognition Fabric Node service
+  # Port Mapping(HTTP): 9002:9002 (same port inside and outside container)
+  # Port Mapping(MCP): 9009:9001 (different port inside and outside container)
+  ioc-cfn-svc:
+    # Image Link: https://github.com/orgs/cisco-eti/packages/container/package/ioc-cfn-svc
+    image: ghcr.io/cisco-eti/ioc-cfn-svc:2026-06-15-43e8f28
+    container_name: ioc-cfn-svc
+    platform: ${DOCKER_DEFAULT_PLATFORM}
+    profiles: [cfn]
+    restart: unless-stopped
     ports:
       - "9002:9002"
+      - "9009:9001"
     environment:
-      MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
-      CFN_NAME: ${CFN_NAME:-mycelium-cfn}
-      DB_HOST: mycelium-db
-      DB_PORT: 5432
-      DB_NAME: cfn_cp
-      DB_USER: ${CFN_DB_USER:-postgres}
-      DB_PASSWORD: ${MYCELIUM_DB_PASSWORD:-password}
-      DB_SSL_MODE: disable
-      PORT: 9002
-      HEARTBEAT_INTERVAL_SECONDS: ${HEARTBEAT_INTERVAL_SECONDS:-29}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - MGMT_URL=http://ioc-cfn-mgmt-plane-svc:9000
+      - CFN_NAME=${CFN_NAME:-cfn-new}
+      - HEARTBEAT_INTERVAL_SECONDS=${HEARTBEAT_INTERVAL_SECONDS:-10}
+      - SERVICE_NAME=${SERVICE_NAME:-ioc-cfn-svc}
+      - DB_NAME=${DB_NAME:-cfn_cp}
+      - DB_USER=${POSTGRES_USER}
+      - DB_PASSWORD=${MYCELIUM_DB_PASSWORD:-password}
+      - DB_HOST=mycelium-db
+      - DB_PORT=5432
+      - KNOWLEDGE_MEMORY_SVC_URL=http://ioc-knowledge-memory-svc:9003
+      - LLM_PROVIDER=${LLM_PROVIDER:-azure-openai}
+      - COGNITION_ENGINE_SVC_URL=http://ioc-cfn-cognition-engine:9004
+      - MCP_PORT=9001
+    depends_on:
+      mycelium-db:
+        condition: service_healthy
+      ioc-cfn-mgmt-plane-svc:
+        condition: service_healthy
+      ioc-knowledge-memory-svc:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:9002/api/internal/diagnostics/health')\" || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-      start_period: 30s
+      test:
+        [
+          "CMD",
+          "curl",
+          "-f",
+          "http://localhost:9002/api/internal/diagnostics/health",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
+  ioc-cfn-cognition-engine:
+    # Image Link: https://github.com/orgs/cisco-eti/packages/container/package/ioc-cfn-cognition-engine
+    image: ghcr.io/cisco-eti/ioc-cfn-cognition-engine:2026-06-15-fad5e98
+    ports:
+      - "9004:9004"
+    platform: ${DOCKER_DEFAULT_PLATFORM}
+    profiles: [cfn]
+    restart: unless-stopped
+    env_file:
+      - path: ~/.mycelium/.env
+        required: false
+    environment:
+      - LLM_BASE_URL=${LLM_BASE_URL}
+      - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_MODEL=${LLM_MODEL}
+      - ENABLE_DEDUP=true
+      # CE lifecycle management - auto-registration and heartbeat
+      - CFN_URL=http://ioc-cfn-svc:9002
+      - COGNITION_ENGINE_HOST=ioc-cfn-cognition-engine
+      - COGNITION_ENGINE_PORT=9004
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      ioc-cfn-mgmt-plane-svc:
+        condition: service_healthy
+      ioc-cfn-svc:
+        condition: service_healthy
 
 volumes:
   mycelium-db-data:
