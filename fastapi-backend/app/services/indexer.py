@@ -18,7 +18,7 @@ from pathlib import Path
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Memory
+from app.models import Memory, Room
 from app.services.embedding import embed_text
 from app.services.filesystem import (
     get_data_dir,
@@ -49,6 +49,11 @@ async def index_room(room_name: str, db: AsyncSession, *, force: bool = False) -
     data_dir = get_data_dir()
     room_dir = data_dir / "rooms" / room_name
     if not room_dir.exists():
+        return {"indexed": 0, "skipped": 0, "pruned": 0, "errors": 0}
+
+    room_exists = await db.scalar(select(Room).where(Room.name == room_name))
+    if not room_exists:
+        logger.warning("Skipping index for room %s: directory exists on disk but room is not in DB (stale data from a previous DB wipe?)", room_name)
         return {"indexed": 0, "skipped": 0, "pruned": 0, "errors": 0}
 
     entries = list_memory_files(room_dir, limit=10000)
