@@ -17,6 +17,7 @@ from mycelium.commands import (
     cfn,
     config,
     daemon,
+    demo,
     docs,
     doctor,
     install,
@@ -132,6 +133,9 @@ app.command(name="migrate")(instance.migrate)
 # Top-level shortcuts
 app.command(name="watch")(room.watch)
 app.command(name="sync")(memory.memory_sync)
+
+# Guided sample-coordination walkthrough (isolated demo feature)
+app.add_typer(demo.app, name="demo")
 
 # Command groups
 app.add_typer(room.app, name="room")
