@@ -82,6 +82,104 @@ def test_register_adopted_batch_restarts_gateway_once(
     assert restarts == [1]
 
 
+def _write_oc(state, payload) -> None:
+    state.mkdir(exist_ok=True)
+    (state / "openclaw.json").write_text(json.dumps(payload))
+
+
+def test_disable_sandbox_flips_created_agent_to_host(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A greenfield openclaw agent inherits the default sandbox, which hides
+    the host mycelium CLI. `_disable_sandbox` must pin it to mode=off so it
+    can coordinate on first dispatch."""
+    state = tmp_path / ".openclaw"
+    _write_oc(
+        state,
+        {
+            "agents": {
+                "defaults": {"sandbox": {"mode": "all", "docker": {"image": "x"}}},
+                "list": [{"id": "devops", "workspace": "/w/d"}],
+            }
+        },
+    )
+    monkeypatch.setattr(
+        "mycelium.integrations.openclaw.dispatch._openclaw_state_dir",
+        lambda _profile: state,
+    )
+
+    OpenClawIntegration()._disable_sandbox("devops")
+
+    written = json.loads((state / "openclaw.json").read_text())
+    record = next(a for a in written["agents"]["list"] if a["id"] == "devops")
+    assert record["sandbox"] == {"mode": "off"}
+
+
+def test_disable_sandbox_missing_record_does_not_raise(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If the agent isn't in the list yet, warn — don't abort registration."""
+    state = tmp_path / ".openclaw"
+    _write_oc(state, {"agents": {"list": []}})
+    monkeypatch.setattr(
+        "mycelium.integrations.openclaw.dispatch._openclaw_state_dir",
+        lambda _profile: state,
+    )
+
+    # best-effort: must not raise even when the record is absent
+    OpenClawIntegration()._disable_sandbox("ghost")
+
+
+def test_register_created_agent_disables_sandbox(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """register() of a created agent must run _disable_sandbox; an adopted
+    agent must not (it only warns)."""
+    from mycelium.integrations.base import AddOptions
+    from mycelium.protocol import AgentManifest
+
+    state = tmp_path / ".openclaw"
+    _write_oc(state, {"agents": {"list": [{"id": "devops"}]}})
+    monkeypatch.setattr(
+        "mycelium.integrations.openclaw.dispatch._openclaw_state_dir",
+        lambda _profile: state,
+    )
+
+    impl = OpenClawIntegration()
+    disabled: list[str] = []
+    warned: list[str] = []
+    monkeypatch.setattr(impl, "_create_agent", lambda **_: None)
+    monkeypatch.setattr(impl, "_disable_sandbox", lambda aid: disabled.append(aid))
+    monkeypatch.setattr(impl, "_warn_if_sandboxed", lambda aid: warned.append(aid))
+    monkeypatch.setattr(impl, "_register_channel", lambda **_: None)
+    monkeypatch.setattr(impl, "_allowlist_mycelium", lambda _aid: None)
+    monkeypatch.setattr(impl, "restart_gateway", lambda: None)
+
+    cfg = type(
+        "C",
+        (),
+        {"server": type("S", (), {"api_url": "http://localhost:8000"})()},
+    )()
+    opts = AddOptions(room="demo")
+
+    created = AgentManifest(
+        handle="devops",
+        adapter="openclaw",
+        openclaw_agent="devops",
+        openclaw_created=True,
+    )
+    impl.register(manifest=created, config=cfg, opts=opts)  # ty: ignore[invalid-argument-type]
+    assert disabled == ["devops"] and warned == []
+
+    adopted = AgentManifest(
+        handle="legacy",
+        adapter="openclaw",
+        openclaw_agent="legacy",
+        openclaw_created=False,
+    )
+    impl.register(manifest=adopted, config=cfg, opts=opts)  # ty: ignore[invalid-argument-type]
+    assert disabled == ["devops"]  # unchanged — adopt doesn't disable
+    assert warned == ["legacy"]
+
+
 def test_agent_add_non_interactive_without_handle_errors() -> None:
     """CliRunner stdin/stdout aren't a TTY — bare `agent add` must refuse with
     guidance instead of hanging on a picker or silently doing nothing."""

@@ -136,6 +136,68 @@ class OpenClawIntegration(Integration):
             f'"{mycelium_bin}"'
         )
 
+    def _disable_sandbox(self, agent_id: str) -> None:
+        """Set ``sandbox.mode = "off"`` for *agent_id* in openclaw.json.
+
+        A wired-in agent must be able to exec the host ``mycelium`` binary
+        (negotiate, memory writes, plan task ops). OpenClaw's default
+        per-agent sandbox runs every command inside a Linux container
+        (``openclaw-sandbox-python``) that has neither the host-installed
+        ``mycelium`` binary nor access to ``~/.mycelium`` — so the agent
+        reports ``mycelium: not found`` mid-conversation. Mounting the host
+        binary in via ``sandbox.docker.binds`` can't help: the host binary
+        is built for the host OS/arch and won't execute in the Linux
+        container. The only reliable fix today is to run the agent on the
+        host (``mode = "off"``), matching how existing wired-in agents are
+        configured. ``mycelium doctor`` would otherwise flag this after the
+        fact (``N channel agent(s) are sandboxed — mycelium CLI invisible``);
+        we apply it at create time so the agent works on first dispatch.
+
+        Un-sandboxing is a security-relevant change, so it's logged loudly.
+        Best-effort: a missing agent record or unreadable config warns rather
+        than aborting the registration.
+        """
+        oc, oc_json = self._read_block()
+        agents = ((oc.get("agents") or {}).get("list")) or []
+        record = next((a for a in agents if a.get("id") == agent_id), None)
+        if record is None:
+            console.print(
+                f"[yellow]could not set sandbox=off for {agent_id}[/yellow] "
+                f"(no agent record in {oc_json}). If the agent can't run the "
+                f"mycelium CLI, set sandbox.mode = 'off' for it manually and "
+                f"restart the gateway."
+            )
+            return
+        if (record.get("sandbox") or {}).get("mode") == "off":
+            return  # already on the host
+        record["sandbox"] = {"mode": "off"}
+        oc_json.write_text(json.dumps(oc, indent=2) + "\n")
+        console.print(
+            f"  [green]sandbox[/green] off for [cyan]{agent_id}[/cyan] "
+            f"[dim](runs on host so it can exec the mycelium CLI)[/dim]"
+        )
+
+    def _warn_if_sandboxed(self, agent_id: str) -> None:
+        """Warn (don't change) if an adopted agent's sandbox hides the CLI.
+
+        Adopted agents are user-owned; flipping their sandbox silently would
+        override a deliberate choice. We only surface the same diagnosis
+        ``mycelium doctor`` would, with the manual fix.
+        """
+        oc, _oc_json = self._read_block()
+        agents_cfg = oc.get("agents") or {}
+        default_mode = (((agents_cfg.get("defaults") or {}).get("sandbox")) or {}).get("mode")
+        record = next((a for a in (agents_cfg.get("list") or []) if a.get("id") == agent_id), None)
+        mode = ((record or {}).get("sandbox") or {}).get("mode") or default_mode
+        if mode and mode != "off":
+            console.print(
+                f"[yellow]heads up:[/yellow] @{agent_id} runs sandboxed "
+                f"(mode={mode}), so it can't exec the host mycelium CLI "
+                f"(session join/propose/respond will fail). To let it "
+                f"coordinate, set sandbox.mode = 'off' for it in openclaw.json "
+                f"and restart the gateway."
+            )
+
     # ── discovery (brownfield adopt) ────────────────────────────────────────
 
     def discover_local_agents(self) -> list[dict[str, str]]:
@@ -430,10 +492,17 @@ class OpenClawIntegration(Integration):
         assert agent_id  # guaranteed by AgentManifest validation
         if manifest.openclaw_created:
             self._create_agent(agent_id=agent_id, description=manifest.description)
+            # Greenfield agents inherit openclaw's default per-agent sandbox,
+            # which hides the host mycelium CLI (see _disable_sandbox). Run
+            # them on the host so they can coordinate on first dispatch.
+            self._disable_sandbox(agent_id)
         else:
             console.print(
                 f"  [green]adopting[/green] existing OpenClaw agent [cyan]{agent_id}[/cyan]"
             )
+            # Don't override a user's deliberate sandbox config on adopt; just
+            # warn if it'll hide the mycelium CLI (mirrors `mycelium doctor`).
+            self._warn_if_sandboxed(agent_id)
         self._register_channel(room=opts.room, agent_id=agent_id, backend_url=config.server.api_url)
         self._allowlist_mycelium(agent_id)
         self.restart_gateway()
