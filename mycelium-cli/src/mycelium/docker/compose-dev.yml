@@ -9,8 +9,9 @@
 # env_file paths are also relative to this file's location.
 services:
   mycelium-db:
+    image: ghcr.io/mycelium-io/mycelium-db:dev
     pull_policy: never    # use locally built image with TimescaleDB + pgvector
-    build: !reset {}      # suppress the build context so --build doesn't fail
+    # build: !reset {}      # suppress the build context so --build doesn't fail
 
   # Override env_file for all services to point at ~/.mycelium/.env so that
   # LLM_MODEL, WORKSPACE_ID etc. are available when running compose manually
@@ -26,7 +27,7 @@ services:
         required: false
     environment:
       CFN_MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
-      COGNITION_FABRIC_NODE_URL: http://ioc-cfn-svc:9002
+      CFN_SVC_URL: http://ioc-cfn-svc:9002
       MYCELIUM_STUB_EMBEDDINGS: "1"
 
   mycelium-collector:

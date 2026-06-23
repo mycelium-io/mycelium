@@ -95,7 +95,7 @@ class CfnKnowledgeError(RuntimeError):
 
 def _client() -> Client:
     return Client(
-        base_url=settings.COGNITION_FABRIC_NODE_URL or "",
+        base_url=settings.CFN_SVC_URL or "",
         timeout=_CFN_HTTP_TIMEOUT,
         raise_on_unexpected_status=True,
     )
@@ -104,7 +104,7 @@ def _client() -> Client:
 def _mas_base(workspace_id: str, mas_id: str) -> str:
     """For graph/* endpoints not in the OpenAPI schema."""
     return (
-        f"{settings.COGNITION_FABRIC_NODE_URL}"
+        f"{settings.CFN_SVC_URL}"
         f"/api/workspaces/{workspace_id}/multi-agentic-systems/{mas_id}"
     )
 

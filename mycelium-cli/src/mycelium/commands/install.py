@@ -898,7 +898,7 @@ def _write_mycelium_config(
         runtime.collector_port = custom_ports.get("collector", 4318)
     if ioc_enabled:
         runtime.cfn_mgmt_url = "http://ioc-cfn-mgmt-plane-svc:9000"
-        runtime.cognition_fabric_node_url = "http://ioc-cfn-svc:9002"
+        runtime.cfn_svc_url = "http://ioc-cfn-svc:9002"
     if workspace_id:
         runtime.workspace_id = workspace_id
     config.runtime = runtime
@@ -1025,7 +1025,7 @@ def install(
             compose_profiles: list[str] = []
             if ioc:
                 llm_config["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
-                llm_config["COGNITION_FABRIC_NODE_URL"] = (
+                llm_config["CFN_SVC_URL"] = (
                     "http://ioc-cfn-svc:9002"
                 )
                 compose_profiles.append("cfn")
@@ -1122,7 +1122,7 @@ def install(
                     ws_patch["MAS_ID"] = mas_id
                 if ioc:
                     ws_patch["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
-                    ws_patch["COGNITION_FABRIC_NODE_URL"] = (
+                    ws_patch["CFN_SVC_URL"] = (
                         "http://ioc-cfn-svc:9002"
                     )
                 _patch_env_vars(env_path, ws_patch)
@@ -1306,7 +1306,7 @@ def install(
         compose_profiles: list[str] = []
         if ioc_enabled:
             llm_config["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
-            llm_config["COGNITION_FABRIC_NODE_URL"] = "http://ioc-cfn-svc:9002"
+            llm_config["CFN_SVC_URL"] = "http://ioc-cfn-svc:9002"
             compose_profiles.append("cfn")
 
         # Frontend prompt — default to the --ui flag value (True unless --no-ui).
@@ -1419,7 +1419,7 @@ def install(
                 ws_patch["MAS_ID"] = mas_id
             if ioc_enabled:
                 ws_patch["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
-                ws_patch["COGNITION_FABRIC_NODE_URL"] = "http://ioc-cfn-svc:9002"
+                ws_patch["CFN_SVC_URL"] = "http://ioc-cfn-svc:9002"
             _patch_env_vars(env_path, ws_patch)
             _restart_backend(compose_path, env_path, compose_profiles, api_url)
 

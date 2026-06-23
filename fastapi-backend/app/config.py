@@ -91,7 +91,7 @@ class Settings(BaseSettings):
     CFN_MGMT_URL: str | None = None
 
     # IoC CFN cognition fabric node svc (required for session negotiation)
-    COGNITION_FABRIC_NODE_URL: str = ""
+    CFN_SVC_URL: str = ""
 
     # Workspace ID in the CFN mgmt plane (set by mycelium install)
     WORKSPACE_ID: str = ""

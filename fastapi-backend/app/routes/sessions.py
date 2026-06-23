@@ -176,7 +176,7 @@ async def spawn_session(
     coord = await _spawn_coordination_session(room_name, db)
     await db.commit()
 
-    cfn_enabled = bool(settings.COGNITION_FABRIC_NODE_URL and room.mas_id and room.workspace_id)
+    cfn_enabled = bool(settings.CFN_SVC_URL and room.mas_id and room.workspace_id)
     return {
         "session_room": coord.display_name,
         "coordination_session_id": str(coord.id),

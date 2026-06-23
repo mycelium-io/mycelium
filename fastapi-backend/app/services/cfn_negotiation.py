@@ -57,7 +57,7 @@ class CfnNegotiationError(RuntimeError):
 
 def _client(**extra_headers: str) -> Client:
     return Client(
-        base_url=settings.COGNITION_FABRIC_NODE_URL or "",
+        base_url=settings.CFN_SVC_URL or "",
         timeout=_CFN_HTTP_TIMEOUT,
         raise_on_unexpected_status=True,
         headers=dict(extra_headers) if extra_headers else {},

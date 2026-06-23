@@ -733,7 +733,7 @@ def _check_cfn_intent(*, local_backend: bool = True) -> CheckResult:
 
     Symptom: user has `server.mas_id` in config.toml (set at some point — usually
     by an earlier `mycelium room create` against a CFN-enabled install) but
-    `.env` has no `CFN_MGMT_URL` / `COGNITION_FABRIC_NODE_URL`. `mycelium up`
+    `.env` has no `CFN_MGMT_URL` / `CFN_SVC_URL`. `mycelium up`
     then skips `--profile cfn`, the backend starts with empty CFN env vars, new
     rooms get no `mas_id` / `workspace_id`, and the first negotiate tick fails
     with `"CFN coordination required but not configured for this room"`. The
@@ -757,7 +757,7 @@ def _check_cfn_intent(*, local_backend: bool = True) -> CheckResult:
 
     vals = dotenv_values(env_path)
     mgmt = (vals.get("CFN_MGMT_URL") or "").strip()
-    node = (vals.get("COGNITION_FABRIC_NODE_URL") or "").strip()
+    node = (vals.get("CFN_SVC_URL") or "").strip()
 
     from mycelium.config import MyceliumConfig
 
@@ -776,15 +776,15 @@ def _check_cfn_intent(*, local_backend: bool = True) -> CheckResult:
                 details=[
                     f"  config.toml server.mas_id = {configured_mas_id}",
                     "  .env CFN_MGMT_URL = (empty)",
-                    "  .env COGNITION_FABRIC_NODE_URL = (empty)",
+                    "  .env CFN_SVC_URL = (empty)",
                     "Fix: set both URLs and run `mycelium up` to start the cfn profile:",
                     "  CFN_MGMT_URL=http://ioc-cfn-mgmt-plane-svc:9000",
-                    "  COGNITION_FABRIC_NODE_URL=http://ioc-cfn-svc:9002",
+                    "  CFN_SVC_URL=http://ioc-cfn-svc:9002",
                 ],
             )
         return CheckResult(name="CFN config", status="ok", message="CFN not enabled")
 
-    missing = [k for k, v in (("CFN_MGMT_URL", mgmt), ("COGNITION_FABRIC_NODE_URL", node)) if not v]
+    missing = [k for k, v in (("CFN_MGMT_URL", mgmt), ("CFN_SVC_URL", node)) if not v]
     if missing:
         return CheckResult(
             name="CFN config",
