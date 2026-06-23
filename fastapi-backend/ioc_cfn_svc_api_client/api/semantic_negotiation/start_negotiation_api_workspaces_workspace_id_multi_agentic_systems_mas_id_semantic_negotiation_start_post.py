@@ -21,7 +21,7 @@ def _get_kwargs(
 
     _kwargs: dict[str, Any] = {
         "method": "post",
-        "url": "/api/workspaces/{workspace_id}/multi-agentic-systems/{mas_id}/semantic-negotiation/start".format(
+        "url": "/api/workspaces/{workspace_id}/multi-agentic-systems/{mas_id}/semantic-alignment/start".format(
             workspace_id=quote(str(workspace_id), safe=""),
             mas_id=quote(str(mas_id), safe=""),
         ),
@@ -76,7 +76,7 @@ def sync_detailed(
      Start a semantic negotiation session.
 
     Route:
-        POST /workspaces/{workspace_id}/multi-agentic-systems/{mas_id}/semantic-negotiation/start
+        POST /workspaces/{workspace_id}/multi-agentic-systems/{mas_id}/semantic-alignment/start
 
     Body:
         See :class:`InitiateNegotiationRequest`.
@@ -127,7 +127,7 @@ def sync(
      Start a semantic negotiation session.
 
     Route:
-        POST /workspaces/{workspace_id}/multi-agentic-systems/{mas_id}/semantic-negotiation/start
+        POST /workspaces/{workspace_id}/multi-agentic-systems/{mas_id}/semantic-alignment/start
 
     Body:
         See :class:`InitiateNegotiationRequest`.
@@ -173,7 +173,7 @@ async def asyncio_detailed(
      Start a semantic negotiation session.
 
     Route:
-        POST /workspaces/{workspace_id}/multi-agentic-systems/{mas_id}/semantic-negotiation/start
+        POST /workspaces/{workspace_id}/multi-agentic-systems/{mas_id}/semantic-alignment/start
 
     Body:
         See :class:`InitiateNegotiationRequest`.
@@ -222,7 +222,7 @@ async def asyncio(
      Start a semantic negotiation session.
 
     Route:
-        POST /workspaces/{workspace_id}/multi-agentic-systems/{mas_id}/semantic-negotiation/start
+        POST /workspaces/{workspace_id}/multi-agentic-systems/{mas_id}/semantic-alignment/start
 
     Body:
         See :class:`InitiateNegotiationRequest`.
