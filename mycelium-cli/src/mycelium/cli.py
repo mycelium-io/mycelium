@@ -134,9 +134,6 @@ app.command(name="migrate")(instance.migrate)
 app.command(name="watch")(room.watch)
 app.command(name="sync")(memory.memory_sync)
 
-# Guided sample-coordination walkthrough (isolated demo feature)
-app.add_typer(demo.app, name="demo")
-
 # Command groups
 app.add_typer(room.app, name="room")
 app.add_typer(negotiate.app, name="negotiate")
@@ -151,6 +148,7 @@ app.add_typer(session.app, name="session")
 app.add_typer(cfn.app, name="cfn")
 app.add_typer(agent.app, name="agent")
 app.add_typer(daemon.app, name="daemon")
+app.add_typer(demo.app, name="demo")
 
 
 if __name__ == "__main__":
