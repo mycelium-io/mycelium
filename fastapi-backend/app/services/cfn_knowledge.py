@@ -3,7 +3,7 @@
 
 """Async client for CFN's shared-memories knowledge API.
 
-The ioc-cognition-fabric-node-svc (CFN) exposes shared-memories endpoints under
+The ioc-cfn-svc (CFN) exposes shared-memories endpoints under
 ``/api/workspaces/{ws}/multi-agentic-systems/{mas}/``:
 
   POST  shared-memories              create/update knowledge   (typed client)

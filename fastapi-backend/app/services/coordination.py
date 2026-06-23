@@ -123,7 +123,7 @@ class _RoundTrace:
     cfn_messages_count: int | None = None  # mediator messages returned (ongoing rounds)
     cfn_response_bytes: int | None = None  # size of CFN's JSON response
     # Per-stage timing breakdown returned by CFN itself (when available).  See the
-    # experiment branch in ioc-cognition-fabric-node-svc / ioc-cfn-cognitive-agents
+    # experiment branch in ioc-cfn-svc / ioc-cfn-cognitive-agents
     # that adds a ``_timing`` envelope to /decide responses.  Keys are stage names
     # (e.g. ``pipeline_ms``, ``to_dict_ms``, ``thread_wait_ms``, ``in_thread_ms``,
     # ``step_negotiation_ms``).  ``None`` when CFN doesn't emit the envelope —

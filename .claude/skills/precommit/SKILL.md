@@ -52,7 +52,7 @@ Run all quality checks on the mycelium codebase. Auto-fix issues where possible.
    ```
    Writes to `mycelium-client/mycelium_backend_client/` and `mycelium-cli/src/mycelium_backend_client/`. CI fails if the committed copy drifts from live `/openapi.json`.
 
-   **CFN client.** If `mycelium-cli/src/mycelium/docker/compose.yml` was bumped to a new `ioc-cognition-fabric-node-svc` version, regenerate. The CFN stack must be running.
+   **CFN client.** If `mycelium-cli/src/mycelium/docker/compose.yml` was bumped to a new `ioc-cfn-svc` version, regenerate. The CFN stack must be running.
    ```bash
    docker compose -f mycelium-cli/src/mycelium/docker/compose.yml --profile cfn up -d
    ./scripts/gen-cfn-client.sh

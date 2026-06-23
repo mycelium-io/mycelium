@@ -128,7 +128,7 @@ Then recreate any running CFN containers to pick up the new env:
 ```bash
 docker compose -f mycelium-cli/src/mycelium/docker/compose.yml \
   -f mycelium-cli/src/mycelium/docker/compose-dev.yml \
-  --profile cfn up -d --force-recreate ioc-cognition-fabric-node-svc
+  --profile cfn up -d --force-recreate ioc-cfn-cognition-engine
 ```
 
 **Important:** `mycelium config apply` regenerates `.env` from `config.toml`. If you edit `.env` directly, those changes will be overwritten. Always use `mycelium config set` to persist values.

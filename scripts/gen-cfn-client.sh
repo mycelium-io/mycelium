@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Regenerate the CFN (cognition-fabric-node) OpenAPI client.
 #
-# Pulls /openapi.json from a running ioc-cognition-fabric-node-svc and runs
+# Pulls /openapi.json from a running ioc-cfn-svc and runs
 # openapi-python-client, replacing the committed copy in:
 #   - fastapi-backend/ioc_cfn_svc_api_client/
 #
