@@ -100,33 +100,60 @@ def _raise_if_validation_error(
 def _extract_cfn_usage(
     result: dict[str, Any], operation: str, *, room: str = "", mas_id: str = ""
 ) -> None:
-    """Extract ``_usage`` from a CFN response and record it as metrics.
+    """Extract token usage from a CFN response and record it as metrics.
 
-    ``mas_id`` is captured alongside ``room`` into the snapshot's
-    ``room_identities`` map so the CLI can keep displaying the
-    room ↔ mas_id link even after the room is hard-deleted.
+    Handles two shapes:
+    - Legacy Python CE: ``_usage`` top-level key with flat fields
+    - Go CE: ``meta`` key with nested ``tokens.prompt/completion/total`` structure
     """
     record_room_identity(mas_id=mas_id, room_name=room)
+
+    # Legacy Python CE shape
     usage = result.pop("_usage", None)
-    if not isinstance(usage, dict):
+    if isinstance(usage, dict):
+        record_cfn_llm_usage(
+            operation=operation,
+            room=room,
+            prompt_tokens=usage.get("prompt_tokens", 0),
+            completion_tokens=usage.get("completion_tokens", 0),
+            cached_tokens=usage.get("cached_tokens", 0),
+            total_tokens=usage.get("total_tokens", 0),
+            llm_calls=usage.get("llm_calls", 0),
+            latency_ms=usage.get("total_latency_ms", 0.0),
+            by_operation=usage.get("by_operation"),
+        )
+        logger.debug(
+            "CFN %s usage: %d calls, %d prompt, %d completion tokens",
+            operation,
+            usage.get("llm_calls", 0),
+            usage.get("prompt_tokens", 0),
+            usage.get("completion_tokens", 0),
+        )
         return
+
+    # Go CE shape: meta.tokens.{prompt,completion,total}
+    meta = result.get("meta")
+    if not isinstance(meta, dict):
+        return
+    tokens = meta.get("tokens", {})
+    prompt = tokens.get("prompt", 0)
+    completion = tokens.get("completion", 0)
+    total = tokens.get("total", 0)
+    latency = meta.get("latency_ms", 0.0)
     record_cfn_llm_usage(
         operation=operation,
         room=room,
-        prompt_tokens=usage.get("prompt_tokens", 0),
-        completion_tokens=usage.get("completion_tokens", 0),
-        cached_tokens=usage.get("cached_tokens", 0),
-        total_tokens=usage.get("total_tokens", 0),
-        llm_calls=usage.get("llm_calls", 0),
-        latency_ms=usage.get("total_latency_ms", 0.0),
-        by_operation=usage.get("by_operation"),
+        prompt_tokens=prompt,
+        completion_tokens=completion,
+        cached_tokens=0,
+        total_tokens=total,
+        llm_calls=1,
+        latency_ms=latency,
+        by_operation=None,
     )
     logger.debug(
-        "CFN %s usage: %d calls, %d prompt, %d completion tokens",
-        operation,
-        usage.get("llm_calls", 0),
-        usage.get("prompt_tokens", 0),
-        usage.get("completion_tokens", 0),
+        "CFN %s usage: %d prompt, %d completion tokens, %.1f ms",
+        operation, prompt, completion, latency,
     )
 
 
@@ -233,21 +260,23 @@ async def start_negotiation(
 
 
 def _build_agent_reply(item: dict[str, Any]) -> AgentReply:
+    # Support both legacy "agent_id" and current "participant_id" key
+    pid = item.get("participant_id") or item.get("agent_id", "")
     raw_offer = item.get("offer", UNSET)
     if raw_offer is None:
         return AgentReply(
-            agent_id=item["agent_id"],
+            participant_id=pid,
             action=AgentReplyAction(item["action"]),
             offer=None,
         )
     if isinstance(raw_offer, dict):
         return AgentReply(
-            agent_id=item["agent_id"],
+            participant_id=pid,
             action=AgentReplyAction(item["action"]),
             offer=AgentReplyOfferType0.from_dict(raw_offer),
         )
     return AgentReply(
-        agent_id=item["agent_id"],
+        participant_id=pid,
         action=AgentReplyAction(item["action"]),
     )
 
@@ -261,7 +290,7 @@ async def decide_negotiation(
 ) -> dict[str, Any]:
     """Call CFN /decide. Raises :class:`CfnNegotiationError` on any failure.
 
-    ``agent_replies`` items: ``{"agent_id": handle, "action": "accept"|"reject"|"counter_offer", "offer": {...}|None}``
+    ``agent_replies`` items: ``{"participant_id": handle, "action": "accept"|"reject"|"counter_offer", "offer": {...}|None}``
     """
     cfn_timing_stamp("endpoint", "decide_negotiation")
     sent_ns = time.time_ns()

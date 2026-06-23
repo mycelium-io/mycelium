@@ -42,6 +42,8 @@ services:
     env_file:
       - path: ../.env
         required: false
+      - path: ~/.mycelium/.env
+        required: false
     depends_on:
       mycelium-db:
         condition: service_healthy
@@ -310,9 +312,6 @@ services:
       - path: ~/.mycelium/.env
         required: false
     environment:
-      - LLM_BASE_URL=${LLM_BASE_URL}
-      - LLM_API_KEY=${LLM_API_KEY}
-      - LLM_MODEL=${LLM_MODEL}
       - ENABLE_DEDUP=true
       # CE lifecycle management - auto-registration and heartbeat
       - CFN_URL=http://ioc-cfn-svc:9002

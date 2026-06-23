@@ -21,12 +21,12 @@ class AgentReply:
     """A single agent reply used to advance an existing session.
 
     Attributes:
-        agent_id (str):
+        participant_id (str):
         action (AgentReplyAction):
         offer (AgentReplyOfferType0 | None | Unset):
     """
 
-    agent_id: str
+    participant_id: str
     action: AgentReplyAction
     offer: AgentReplyOfferType0 | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -34,7 +34,7 @@ class AgentReply:
     def to_dict(self) -> dict[str, Any]:
         from ..models.agent_reply_offer_type_0 import AgentReplyOfferType0
 
-        agent_id = self.agent_id
+        participant_id = self.participant_id
 
         action = self.action.value
 
@@ -50,7 +50,7 @@ class AgentReply:
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
-                "agent_id": agent_id,
+                "participant_id": participant_id,
                 "action": action,
             }
         )
@@ -64,7 +64,7 @@ class AgentReply:
         from ..models.agent_reply_offer_type_0 import AgentReplyOfferType0
 
         d = dict(src_dict)
-        agent_id = d.pop("agent_id")
+        participant_id = d.pop("participant_id", d.pop("agent_id", ""))
 
         action = AgentReplyAction(d.pop("action"))
 
@@ -86,7 +86,7 @@ class AgentReply:
         offer = _parse_offer(d.pop("offer", UNSET))
 
         agent_reply = cls(
-            agent_id=agent_id,
+            participant_id=participant_id,
             action=action,
             offer=offer,
         )
