@@ -8,7 +8,7 @@ services:
 
   mycelium-db:
     build:
-      context: ../fastapi-backend
+      context: ../../../../fastapi-backend
       dockerfile: docker/Dockerfile.agensgraph
     image: ghcr.io/mycelium-io/mycelium-db:${MYCELIUM_IMAGE_TAG:-latest}
     pull_policy: never
@@ -172,6 +172,7 @@ services:
   ioc-cfn-mgmt-plane-svc:
     # Image Link: https://github.com/orgs/cisco-eti/packages/container/package/ioc-cfn-mgmt-plane-svc
     image: ghcr.io/outshift-open/ioc-cfn-mgmt-plane-svc:2026-06-23-40056a5
+    container_name: ioc-cfn-mgmt-plane-svc
     platform: ${DOCKER_DEFAULT_PLATFORM}
     profiles: [cfn]
     ports:
@@ -214,6 +215,7 @@ services:
   ioc-knowledge-memory-svc:
     # Image Link: https://github.com/orgs/cisco-eti/packages/container/package/ioc-knowledge-memory-svc
     image: ghcr.io/outshift-open/ioc-knowledge-memory-svc:2026-06-23-ee8f699
+    container_name: ioc-knowledge-memory-svc
     platform: linux/amd64
     profiles: [cfn]
     ports:
@@ -300,6 +302,7 @@ services:
   ioc-cfn-cognition-engine:
     # Image Link: https://github.com/orgs/cisco-eti/packages/container/package/ioc-cfn-cognition-engine
     image: ghcr.io/outshift-open/ioc-cfn-cognition-engines:2026-06-23-9e295b5
+    container_name: ioc-cfn-cognition-engine
     ports:
       - "9004:9004"
     platform: ${DOCKER_DEFAULT_PLATFORM}
