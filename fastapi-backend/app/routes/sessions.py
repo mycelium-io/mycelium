@@ -442,11 +442,19 @@ async def _register_agent_cfn(room: Room, handle: str) -> None:
                 handle,
                 room.workspace_id,
             )
-        else:
+        elif resp.status_code < 400:
             logger.debug(
                 "CFN agent registered: %s in workspace %s",
                 handle,
                 room.workspace_id,
+            )
+        else:
+            logger.warning(
+                "CFN register agent failed for %s in workspace %s: HTTP %s"
+                " (stale workspace_id after a DB wipe?)",
+                handle,
+                room.workspace_id,
+                resp.status_code,
             )
     except Exception as exc:
         record_cfn_call(
