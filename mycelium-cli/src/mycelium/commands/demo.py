@@ -4,22 +4,24 @@
 """``mycelium demo`` — run a real sample coordination end-to-end.
 
 A guided onboarding command (issues #374 / #315). It is pure glue over the real
-system: it fetches agent personas from the public ``agent-personas`` dataset,
-creates a room, runs ``mycelium agent create`` for each persona on your chosen
-adapter, seeds the room with a task, and then lets the agents actually negotiate
-to consensus. There is no canned transcript and nothing replayed — what you
-watch is a live run.
+system, with no mirrored data: it discovers scenarios and agent personas from
+the public ``agent-personas`` dataset at run time, creates a room, runs
+``mycelium agent create`` for each persona on your chosen adapter, seeds the
+room with a task, and then lets the agents actually negotiate to consensus.
+There is no canned transcript and nothing replayed — what you watch is a live
+run.
 
 Because it is live, it requires a working stack: an installed agent adapter
 (``--adapter``), the backend up, and an LLM configured. If those aren't present
 the command fails fast with the exact fix, rather than pretending.
 
-Everything for the demo lives in this module and ``_demo_scenarios.py`` — it is
-deliberately isolated and clearly labeled so it can be lifted out cleanly.
+Everything for the demo lives in this single module — it is deliberately
+isolated and clearly labeled so it can be lifted out cleanly.
 """
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import sys
@@ -30,15 +32,17 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from mycelium.commands._demo_scenarios import (
-    DEFAULT_SCENARIO,
-    PERSONAS_RAW_BASE,
-    SCENARIOS,
-    list_scenarios,
-)
-
 app = typer.Typer()
 console = Console()
+
+# Public persona dataset (the persona-before-and-after skill runs these live).
+_REPO = "mycelium-io/agent-personas"
+_REF = "main"
+_RAW_BASE = f"https://raw.githubusercontent.com/{_REPO}/{_REF}"
+_TREE_URL = f"https://api.github.com/repos/{_REPO}/git/trees/{_REF}?recursive=1"
+
+# Sensible default; any scenario discovered in the dataset is selectable.
+DEFAULT_SCENARIO = "ex07_investment_portfolio"
 
 # Adapters that can host a demo agent. Mirrors AGENT_ADAPTERS (underscore form).
 _KNOWN_ADAPTERS = ("openclaw", "claude_code", "cursor", "hermes")
@@ -55,34 +59,105 @@ def _cli_prefix() -> list[str]:
 def _run(args: list[str], *, capture: bool = True) -> subprocess.CompletedProcess[str]:
     """Run a `mycelium ...` subcommand."""
     cmd = _cli_prefix() + args
-    return subprocess.run(  # noqa: S603
-        cmd,
-        capture_output=capture,
-        text=True,
-        check=False,
+    return subprocess.run(cmd, capture_output=capture, text=True, check=False)  # noqa: S603
+
+
+# --------------------------------------------------------------------------- #
+# Discovery from the public dataset (no local mirror)
+# --------------------------------------------------------------------------- #
+
+
+def _fetch_tree() -> list[str]:
+    """Return every path in the agent-personas repo (one API call)."""
+    import httpx
+
+    resp = httpx.get(_TREE_URL, timeout=15.0, follow_redirects=True)
+    resp.raise_for_status()
+    return [t["path"] for t in resp.json().get("tree", [])]
+
+
+def _list_scenarios(paths: list[str] | None = None) -> list[str]:
+    """Scenario ids = the subdirectories under ``profiles/`` in the dataset."""
+    paths = paths if paths is not None else _fetch_tree()
+    return sorted(
+        {p.split("/")[1] for p in paths if p.startswith("profiles/") and p.count("/") >= 2}
     )
 
 
-def _fetch_persona(path: str) -> str:
-    """Fetch a persona's prose from the public agent-personas repo.
+def _pretty_topic(scenario_id: str) -> str:
+    """ex07_investment_portfolio -> 'investment portfolio'."""
+    return re.sub(r"^ex\d+_", "", scenario_id).replace("_", " ")
 
-    Returns the ``domain:`` block (the agent's identity / red lines / goals).
-    Raises on network or parse failure — the demo has no offline fallback by
-    design.
+
+def _fetch_persona(path: str) -> str:
+    """Fetch a persona's prose (the ``domain:`` block) from the dataset."""
+    import httpx
+    import yaml
+
+    resp = httpx.get(f"{_RAW_BASE}/{path}", timeout=15.0, follow_redirects=True)
+    resp.raise_for_status()
+    data = yaml.safe_load(resp.text) or {}
+    return str(data.get("domain") or "").strip() or resp.text.strip()
+
+
+def _resolve_scenario(scenario_id: str) -> dict[str, Any]:
+    """Build a scenario spec entirely from the remote dataset.
+
+    Returns ``{id, title, topic, room, task, agents:[{handle, persona}]}``.
+    Raises typer.Exit if the scenario or its personas can't be resolved.
     """
     import httpx
     import yaml
 
-    url = f"{PERSONAS_RAW_BASE}/{path}"
-    resp = httpx.get(url, timeout=15.0, follow_redirects=True)
-    resp.raise_for_status()
-    data = yaml.safe_load(resp.text) or {}
-    prose = str(data.get("domain") or "").strip()
-    if not prose:
-        # Some persona files may carry the text under a different key; fall back
-        # to the raw file so the agent still gets a persona.
-        prose = resp.text.strip()
-    return prose
+    try:
+        paths = _fetch_tree()
+    except httpx.HTTPError as e:
+        console.print(f"[red]Could not reach agent-personas:[/red] {e}")
+        raise typer.Exit(1)
+
+    if scenario_id not in _list_scenarios(paths):
+        console.print(f"[red]Unknown scenario:[/red] {scenario_id}")
+        console.print("[dim]Run 'mycelium demo --list' to see available scenarios.[/dim]")
+        raise typer.Exit(1)
+
+    profile_files = sorted(
+        p for p in paths if p.startswith(f"profiles/{scenario_id}/") and p.endswith(".yaml")
+    )
+
+    agents: list[dict[str, str]] = []
+    for pf in profile_files:
+        stem = pf.rsplit("/", 1)[1][: -len(".yaml")]
+        handle = stem[: -len("_agent")] if stem.endswith("_agent") else stem
+        try:
+            profile = yaml.safe_load(httpx.get(f"{_RAW_BASE}/{pf}", timeout=15.0).text) or {}
+        except httpx.HTTPError as e:
+            console.print(f"[red]Could not read profile[/red] {pf}: {e}")
+            raise typer.Exit(1)
+        parts = profile.get("persona_parts", []) or []
+        pref = next((x for x in parts if "preferences/" in x), None)
+        if not pref:
+            continue
+        # persona_parts paths are repo-root-relative but prefixed `personas/`.
+        persona_path = pref.split("personas/", 1)[-1]
+        agents.append({"handle": handle, "persona": persona_path})
+
+    if len(agents) < 2:
+        console.print(f"[red]Scenario '{scenario_id}' has too few agents to negotiate.[/red]")
+        raise typer.Exit(1)
+
+    topic = _pretty_topic(scenario_id)
+    return {
+        "id": scenario_id,
+        "title": topic[:1].upper() + topic[1:],
+        "topic": topic,
+        "room": "demo-" + topic.replace(" ", "-"),
+        "task": (
+            f"You are negotiating the {topic} decision. Each of you holds the position "
+            f"described in your persona. Use Mycelium to propose offers, counter, and "
+            f"reach consensus."
+        ),
+        "agents": agents,
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -108,27 +183,23 @@ def _check_prereqs(adapter: str) -> tuple[Any, list[str]]:
         )
         raise typer.Exit(1)
 
-    # Adapter installed?
     if not _adapter_installed(config, adapter):
         kebab = adapter.replace("_", "-")
         problems.append(
             f"Adapter '{adapter}' is not installed. Install it with: mycelium adapter add {kebab}"
         )
 
-    # LLM configured? (agents can't negotiate without a model)
     if not getattr(config.llm, "model", None):
         problems.append(
             "No LLM configured. Set one with: "
             'mycelium config set llm.model "<provider/model>" && mycelium config apply'
         )
 
-    # Backend reachable?
     import httpx
 
     api = config.server.api_url.rstrip("/")
     try:
-        r = httpx.get(f"{api}/api/rooms", timeout=5.0)
-        r.raise_for_status()
+        httpx.get(f"{api}/api/rooms", timeout=5.0).raise_for_status()
     except httpx.HTTPError:
         problems.append(f"Backend not reachable at {api}. Is the stack up? Try: mycelium status")
 
@@ -144,8 +215,7 @@ def _provision(scenario: dict[str, Any], adapter: str, model: str | None, room: 
     """Create the room + persona agents and seed the task. Raises typer.Exit on failure."""
     handles = [a["handle"] for a in scenario["agents"]]
 
-    # 1. Fetch personas first — fail before we create anything if the dataset is
-    #    unreachable.
+    # 1. Fetch personas first — fail before we create anything if unreachable.
     console.print("[dim]Fetching personas from agent-personas…[/dim]")
     personas: dict[str, str] = {}
     for a in scenario["agents"]:
@@ -167,16 +237,11 @@ def _provision(scenario: dict[str, Any], adapter: str, model: str | None, room: 
     for a in scenario["agents"]:
         handle = a["handle"]
         args = [
-            "agent",
-            "create",
-            handle,
-            "--adapter",
-            adapter,
-            "--room",
-            room,
-            "--description",
-            personas[handle],
-        ]
+            "agent", "create", handle,
+            "--adapter", adapter,
+            "--room", room,
+            "--description", personas[handle],
+        ]  # fmt: skip
         if model and adapter == "openclaw":
             args += ["--model", model]
         r = _run(args)
@@ -192,7 +257,7 @@ def _provision(scenario: dict[str, Any], adapter: str, model: str | None, room: 
     # 4. Seed: one message mentioning every agent + the task. The adapter wakes
     #    each agent, which then runs the Mycelium coordination protocol.
     mentions = " ".join(f"@{h}" for h in handles)
-    seed = f"{mentions} {scenario['task']} Coordinate via Mycelium and reach consensus."
+    seed = f"{mentions} {scenario['task']}"
     r = _run(["agent", "invoke", handles[0], seed, "--room", room, "-H", "demo"])
     if r.returncode != 0:
         console.print(f"[red]seeding failed:[/red]\n{r.stderr or r.stdout}")
@@ -202,7 +267,6 @@ def _provision(scenario: dict[str, Any], adapter: str, model: str | None, room: 
 
 def _print_intro(scenario: dict[str, Any], adapter: str, room: str) -> None:
     body = (
-        f"{scenario['tagline']}\n\n"
         f"[dim]Adapter:[/dim] [bold]{adapter}[/bold]    "
         f"[dim]Room:[/dim] [bold]{room}[/bold]    "
         f"[dim]Agents:[/dim] [bold]"
@@ -252,16 +316,6 @@ def _print_outro(scenario: dict[str, Any], adapter: str, room: str) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def _select_scenario(scenario_id: str | None) -> dict[str, Any]:
-    if scenario_id:
-        if scenario_id not in SCENARIOS:
-            console.print(f"[red]Unknown scenario:[/red] {scenario_id}")
-            console.print("[dim]Run 'mycelium demo --list' to see available scenarios.[/dim]")
-            raise typer.Exit(1)
-        return SCENARIOS[scenario_id]
-    return SCENARIOS[DEFAULT_SCENARIO]
-
-
 @app.callback(invoke_without_command=True)
 def demo(
     ctx: typer.Context,
@@ -286,7 +340,8 @@ def demo(
 ) -> None:
     """Run a real sample coordination: personas → agents → seeded room → live negotiation.
 
-    Requires an installed adapter, the backend up, and an LLM configured. Example:
+    Scenarios and personas are discovered from the public agent-personas dataset.
+    Requires an installed adapter, the backend up, and an LLM configured:
 
         mycelium demo --adapter openclaw
     """
@@ -294,20 +349,25 @@ def demo(
         return
 
     if list_flag:
+        try:
+            ids = _list_scenarios()
+        except Exception as e:
+            console.print(f"[red]Could not reach agent-personas:[/red] {e}")
+            raise typer.Exit(1)
         table = Table(title="mycelium demo scenarios", show_edge=False, pad_edge=False)
         table.add_column("id", style="bold cyan")
-        table.add_column("title", style="bold")
         table.add_column("about", style="dim")
-        for s in list_scenarios():
-            marker = "  (default)" if s["id"] == DEFAULT_SCENARIO else ""
-            table.add_row(s["id"] + marker, s["title"], s["tagline"])
+        for sid in ids:
+            marker = "  (default)" if sid == DEFAULT_SCENARIO else ""
+            table.add_row(sid + marker, _pretty_topic(sid))
         console.print(table)
+        console.print("[dim]Source: github.com/mycelium-io/agent-personas[/dim]")
         return
 
     if not adapter:
         console.print(
             "[red]--adapter is required.[/red] The demo runs real agents, so pick one:\n"
-            f"  mycelium demo --adapter openclaw\n"
+            "  mycelium demo --adapter openclaw\n"
             f"[dim]Known adapters: {', '.join(_KNOWN_ADAPTERS)}[/dim]"
         )
         raise typer.Exit(1)
@@ -319,7 +379,7 @@ def demo(
         )
         raise typer.Exit(1)
 
-    chosen = _select_scenario(scenario)
+    chosen = _resolve_scenario(scenario or DEFAULT_SCENARIO)
     room_name = room or chosen["room"]
 
     _print_intro(chosen, adapter, room_name)

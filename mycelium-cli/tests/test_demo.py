@@ -3,10 +3,10 @@
 
 """Tests for the live ``mycelium demo`` orchestration (issues #374 / #315).
 
-The demo is glue over the real CLI: it fetches personas, creates a room and
-agents, and seeds a negotiation. These tests exercise the registry, the
-prereq/argument gating, and the provisioning sequence with the subprocess and
-network calls mocked — no real backend, adapter, or LLM is touched.
+The demo is glue over the real CLI: it discovers scenarios/personas from the
+public agent-personas dataset, creates a room and agents, and seeds a
+negotiation. These tests mock the network and subprocess calls — no real
+backend, adapter, LLM, or GitHub access is touched.
 """
 
 from __future__ import annotations
@@ -20,48 +20,81 @@ from typer.testing import CliRunner
 
 from mycelium.cli import app
 from mycelium.commands import demo
-from mycelium.commands._demo_scenarios import (
-    DEFAULT_SCENARIO,
-    SCENARIOS,
-    list_scenarios,
-)
 
 runner = CliRunner()
+
+# A fake slice of the agent-personas repo tree.
+_FAKE_TREE = [
+    "profiles/ex07_investment_portfolio/growth_agent.yaml",
+    "profiles/ex07_investment_portfolio/risk_agent.yaml",
+    "profiles/ex07_investment_portfolio/execution_agent.yaml",
+    "profiles/ex02_inbox_thread_workflow/bob.yaml",
+    "profiles/ex02_inbox_thread_workflow/julie.yaml",
+    "preferences/ex07_growth_agent.yaml",
+    "missions.yaml",
+]
 
 
 def _ok(stdout: str = "") -> subprocess.CompletedProcess[str]:
     return subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
 
 
-# ── registry ──────────────────────────────────────────────────────────────────
+# ── discovery ───────────────────────────────────────────────────────────────────
 
 
-def test_default_scenario_first() -> None:
-    assert DEFAULT_SCENARIO in SCENARIOS
-    assert list_scenarios()[0]["id"] == DEFAULT_SCENARIO
+def test_list_scenarios_from_tree() -> None:
+    ids = demo._list_scenarios(_FAKE_TREE)
+    assert ids == ["ex02_inbox_thread_workflow", "ex07_investment_portfolio"]
 
 
-@pytest.mark.parametrize("scenario_id", list(SCENARIOS))
-def test_scenario_schema(scenario_id: str) -> None:
-    s = SCENARIOS[scenario_id]
-    assert s["id"] == scenario_id
-    for field in ("title", "tagline", "room", "task", "agents"):
-        assert s[field], f"{scenario_id} missing {field}"
-    handles = {a["handle"] for a in s["agents"]}
-    assert len(handles) == len(s["agents"]), "duplicate handles"
-    for a in s["agents"]:
-        # Every agent points at a persona file in the public dataset.
-        assert a["persona"].startswith("preferences/")
-        assert a["persona"].endswith(".yaml")
+def test_pretty_topic() -> None:
+    assert demo._pretty_topic("ex07_investment_portfolio") == "investment portfolio"
+    assert demo._pretty_topic("default") == "default"
+
+
+def test_resolve_scenario_derives_agents_and_persona_paths() -> None:
+    """Handles come from profile filenames; persona paths from persona_parts."""
+    profile_yaml = (
+        "persona_parts:\n"
+        "  - personas/preferences/ex07_growth_agent.yaml\n"
+        "  - personas/strategies/negotiate_v1_0.yaml\n"
+    )
+
+    class FakeResp:
+        text = profile_yaml
+
+        def raise_for_status(self) -> None:  # noqa: D401
+            return None
+
+    with (
+        patch.object(demo, "_fetch_tree", return_value=_FAKE_TREE),
+        patch("httpx.get", return_value=FakeResp()),
+    ):
+        spec = demo._resolve_scenario("ex07_investment_portfolio")
+
+    assert spec["id"] == "ex07_investment_portfolio"
+    assert spec["title"] == "Investment portfolio"
+    assert spec["room"] == "demo-investment-portfolio"
+    handles = [a["handle"] for a in spec["agents"]]
+    assert handles == ["execution", "growth", "risk"]  # sorted by profile filename
+    # persona_parts' `personas/` prefix is translated to a repo-root path.
+    for a in spec["agents"]:
+        assert a["persona"] == "preferences/ex07_growth_agent.yaml"
+
+
+def test_resolve_unknown_scenario_exits() -> None:
+    with patch.object(demo, "_fetch_tree", return_value=_FAKE_TREE), pytest.raises(typer.Exit):
+        demo._resolve_scenario("nope")
 
 
 # ── argument / prereq gating ────────────────────────────────────────────────────
 
 
 def test_list_command() -> None:
-    result = runner.invoke(app, ["demo", "--list"])
+    with patch.object(demo, "_list_scenarios", return_value=["ex07_investment_portfolio"]):
+        result = runner.invoke(app, ["demo", "--list"])
     assert result.exit_code == 0
-    assert DEFAULT_SCENARIO in result.stdout
+    assert "ex07_investment_portfolio" in result.stdout
 
 
 def test_adapter_required() -> None:
@@ -76,15 +109,18 @@ def test_unknown_adapter_rejected() -> None:
     assert "Unknown adapter" in result.stdout
 
 
-def test_unknown_scenario_rejected() -> None:
-    result = runner.invoke(app, ["demo", "--adapter", "openclaw", "--scenario", "nope"])
-    assert result.exit_code == 1
-    assert "Unknown scenario" in result.stdout
-
-
 def test_blocks_when_prereqs_missing() -> None:
     """Missing adapter/LLM/backend should fail fast with fixes, not provision."""
+    spec = {
+        "id": "x",
+        "title": "X",
+        "topic": "x",
+        "room": "demo-x",
+        "task": "t",
+        "agents": [{"handle": "a", "persona": "p"}, {"handle": "b", "persona": "p"}],
+    }
     with (
+        patch.object(demo, "_resolve_scenario", return_value=spec),
         patch.object(
             demo,
             "_check_prereqs",
@@ -101,9 +137,24 @@ def test_blocks_when_prereqs_missing() -> None:
 # ── provisioning sequence ───────────────────────────────────────────────────────
 
 
+def _spec() -> dict:
+    return {
+        "id": "ex07_investment_portfolio",
+        "title": "Investment portfolio",
+        "topic": "investment portfolio",
+        "room": "demo-investment-portfolio",
+        "task": "Reach consensus.",
+        "agents": [
+            {"handle": "growth", "persona": "preferences/ex07_growth_agent.yaml"},
+            {"handle": "risk", "persona": "preferences/ex07_risk_agent.yaml"},
+            {"handle": "execution", "persona": "preferences/ex07_execution_agent.yaml"},
+        ],
+    }
+
+
 def test_provision_runs_real_cli_sequence() -> None:
     """Provisioning creates the room, one agent per persona, then seeds."""
-    scenario = SCENARIOS[DEFAULT_SCENARIO]
+    spec = _spec()
     calls: list[list[str]] = []
 
     def fake_run(args, *, capture=True):  # noqa: ANN001, ARG001
@@ -114,26 +165,23 @@ def test_provision_runs_real_cli_sequence() -> None:
         patch.object(demo, "_fetch_persona", return_value="You are a test persona."),
         patch.object(demo, "_run", side_effect=fake_run),
     ):
-        demo._provision(scenario, "openclaw", model="m/x", room="demo-room")
+        demo._provision(spec, "openclaw", model="m/x", room="demo-room")
 
-    verbs = [c[:2] for c in calls]
-    assert ["room", "create"] in verbs
-    # one agent create per persona
+    assert ["room", "create"] in [c[:2] for c in calls]
     agent_creates = [c for c in calls if c[:2] == ["agent", "create"]]
-    assert len(agent_creates) == len(scenario["agents"])
+    assert len(agent_creates) == len(spec["agents"])
     for c in agent_creates:
         assert "--adapter" in c and "openclaw" in c
         assert "--model" in c  # openclaw + model provided
-    # seed via agent invoke, mentioning all handles
     invokes = [c for c in calls if c[:2] == ["agent", "invoke"]]
     assert len(invokes) == 1
     seed_text = invokes[0][3]
-    for a in scenario["agents"]:
+    for a in spec["agents"]:
         assert f"@{a['handle']}" in seed_text
 
 
 def test_provision_no_model_for_non_openclaw() -> None:
-    scenario = SCENARIOS[DEFAULT_SCENARIO]
+    spec = _spec()
     calls: list[list[str]] = []
 
     def fake_run(args, *, capture=True):  # noqa: ANN001, ARG001
@@ -144,18 +192,18 @@ def test_provision_no_model_for_non_openclaw() -> None:
         patch.object(demo, "_fetch_persona", return_value="persona"),
         patch.object(demo, "_run", side_effect=fake_run),
     ):
-        demo._provision(scenario, "cursor", model="m/x", room="r")
+        demo._provision(spec, "cursor", model="m/x", room="r")
 
     for c in [c for c in calls if c[:2] == ["agent", "create"]]:
         assert "--model" not in c  # model only applied to openclaw
 
 
 def test_provision_aborts_on_persona_fetch_failure() -> None:
-    scenario = SCENARIOS[DEFAULT_SCENARIO]
+    spec = _spec()
     with (
         patch.object(demo, "_fetch_persona", side_effect=RuntimeError("offline")),
         patch.object(demo, "_run") as run,
         pytest.raises(typer.Exit),
     ):
-        demo._provision(scenario, "openclaw", model=None, room="r")
+        demo._provision(spec, "openclaw", model=None, room="r")
     run.assert_not_called()  # nothing created if personas can't be fetched
