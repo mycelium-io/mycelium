@@ -85,9 +85,7 @@ def test_room_mas_ids_warns_when_api_rooms_returns_http_error(
     mycelium_dir = tmp_path / ".mycelium"
     mycelium_dir.mkdir()
     (mycelium_dir / ".env").write_text("WORKSPACE_ID=ws\n")
-    (mycelium_dir / "config.toml").write_text(
-        '[server]\napi_url = "http://10.0.50.125:8000"\n'
-    )
+    (mycelium_dir / "config.toml").write_text('[server]\napi_url = "http://10.0.50.125:8000"\n')
 
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
 

@@ -468,50 +468,21 @@ def _compose_up(
 
 
 def _run_migrations() -> None:
-    """Run alembic migrations via the migrate command."""
-    from mycelium.commands.instance import _get_backend_dir, _get_env_path
+    """Run alembic migrations via host checkout or mycelium-backend container."""
+    from mycelium.migrations import echo_alembic_output, run_alembic_upgrade
 
-    backend_dir = _get_backend_dir()
-    if not (backend_dir / "alembic.ini").exists():
-        typer.echo("  ⚠  alembic.ini not found — skipping migrations")
-        return
-
-    import os
-
-    env = {**os.environ}
-    env_path = _get_env_path()
-    if env_path and env_path.exists():
-        from dotenv import dotenv_values
-
-        env.update({k: v for k, v in dotenv_values(env_path).items() if v is not None})
-
-    backend_env = backend_dir / ".env"
-    if backend_env.exists():
-        from dotenv import dotenv_values
-
-        env.update({k: v for k, v in dotenv_values(backend_env).items() if v is not None})
-
-    from mycelium.docker_utils import resolve_host_database_url
-
-    host_url = resolve_host_database_url(env)
-    if host_url:
-        env["DATABASE_URL"] = host_url
-    elif "DATABASE_URL" not in env:
-        typer.echo("  ⚠  DATABASE_URL not set — skipping migrations")
-        return
-
-    result = subprocess.run(
-        ["uv", "run", "alembic", "upgrade", "head"],
-        cwd=str(backend_dir),
-        env=env,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    result = run_alembic_upgrade("head")
     if result.returncode == 0:
+        echo_alembic_output(result)
         typer.secho("  ✓ Database migrations applied", fg=typer.colors.GREEN)
-    else:
-        typer.secho("  ⚠  Migration failed (non-fatal)", fg=typer.colors.YELLOW)
+        return
+
+    if result.mode == "unavailable":
+        typer.echo("  ⚠  Could not run migrations (backend container not running)")
+        return
+
+    echo_alembic_output(result)
+    typer.secho("  ⚠  Migration failed (non-fatal)", fg=typer.colors.YELLOW)
 
 
 def _ensure_cfn_databases(db_container: str = "mycelium-db") -> None:
