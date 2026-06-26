@@ -28,8 +28,14 @@ services:
     environment:
       CFN_MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
       CFN_SVC_URL: http://ioc-cfn-svc:9002
-      MYCELIUM_STUB_EMBEDDINGS: "1"
 
+  mycelium-frontend:
+    build:
+      context: ../../../../mycelium-frontend
+      dockerfile: Dockerfile
+    pull_policy: never
+    image: mycelium-frontend:dev
+    
   mycelium-collector:
     build:
       context: ../../../
@@ -45,7 +51,16 @@ services:
       - path: ~/.mycelium/.env
         required: false
 
+  ioc-cfn-svc:
+    image: ioc-cfn-svc:debug
+    pull_policy: never
+    env_file:
+      - path: ~/.mycelium/.env
+        required: false
+
   ioc-cfn-cognition-engine:
+    image: ioc-cfn-cognition-engines:debug
+    pull_policy: never
     env_file:
       - path: ~/.mycelium/.env
         required: false
