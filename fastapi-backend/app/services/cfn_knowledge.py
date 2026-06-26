@@ -109,8 +109,11 @@ def _mas_base(workspace_id: str, mas_id: str) -> str:
     )
 
 
-def _build_extraction_payload(records: list[dict[str, Any]]) -> ExtractionPayload:
-    metadata = ExtractionPayloadMetadata(format_=ExtractionPayloadMetadataFormat.OPENCLAW)
+def _build_extraction_payload(
+    records: list[dict[str, Any]],
+    data_format: ExtractionPayloadMetadataFormat = ExtractionPayloadMetadataFormat.OTEL_TRACE,
+) -> ExtractionPayload:
+    metadata = ExtractionPayloadMetadata(format_=data_format)
     data_items: list[ExtractionPayloadDataItem] = []
     for record in records:
         item = ExtractionPayloadDataItem()
@@ -127,17 +130,18 @@ async def create_or_update_shared_memories(
     records: list[dict[str, Any]],
     agent_id: str | None = None,
     request_id: str | None = None,
+    data_format: ExtractionPayloadMetadataFormat = ExtractionPayloadMetadataFormat.OTEL_TRACE,
 ) -> dict[str, Any]:
-    """POST openclaw turns to CFN's ``shared-memories`` create/update endpoint.
+    """POST agent spans to CFN's ``shared-memories`` create/update endpoint.
 
-    Builds a ``CreateOrUpdateRequest`` body with ``metadata.format="openclaw"``
-    and the provided ``records`` as ``payload.data``. Returns CFN's response as
-    a dict, typically ``{"response_id": str, "message": str | None}``.
+    Builds a ``CreateOrUpdateRequest`` body with the given ``data_format``
+    (default ``otel-trace``) and the provided ``records`` as ``payload.data``.
+    Returns CFN's response as a dict, typically ``{"response_id": str, "message": str | None}``.
 
     Raises :class:`CfnKnowledgeError` on any HTTP or transport failure.
     """
     body = CreateOrUpdateRequest(
-        payload=_build_extraction_payload(records),
+        payload=_build_extraction_payload(records, data_format),
         header=Header(agent_id=agent_id) if agent_id else Header(),
         request_id=request_id or str(uuid.uuid4()),
     )
@@ -151,6 +155,23 @@ async def create_or_update_shared_memories(
                 body=body,
             )
     except UnexpectedStatus as exc:
+        # CFN now returns 202 Accepted for async processing — treat as success.
+        if exc.status_code == 202:
+            record_cfn_call(
+                service="node",
+                operation="shared_memories",
+                duration_ms=(time.monotonic() - t0) * 1000,
+                status_code=202,
+            )
+            try:
+                body = json.loads(exc.content)
+            except Exception:
+                body = {}
+            return {
+                "response_id": body.get("response_id", str(uuid.uuid4())),
+                "message": body.get("message"),
+                "status": body.get("status", "accepted"),
+            }
         record_cfn_call(
             service="node",
             operation="shared_memories",

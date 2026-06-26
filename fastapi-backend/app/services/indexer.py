@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import delete, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Memory, Room
@@ -142,6 +143,12 @@ async def index_single_file(room_name: str, key: str, db: AsyncSession) -> bool:
     room_dir = data_dir / "rooms" / room_name
     file_path = room_dir / (key + ".md" if not key.endswith(".md") else key)
 
+    room_exists = await db.scalar(select(Room).where(Room.name == room_name))
+    if not room_exists:
+        logger.warning("Skipping watcher index for %s/%s: room not in DB", room_name, key)
+        record_index_run(target="watcher", skipped=1, duration_ms=(time.monotonic() - t0) * 1000)
+        return False
+
     if not file_path.exists():
         # File was deleted — remove from DB
         await db.execute(
@@ -210,20 +217,9 @@ async def _index_single_memory(
     created_at = _parse_datetime(meta.get("created_at")) or now
     updated_at = _parse_datetime(meta.get("updated_at")) or now
 
-    existing = await _find_existing(db, room_name, key)
-
-    if existing:
-        existing.value = value
-        existing.content_text = content_text
-        existing.embedding = embedding
-        existing.updated_by = updated_by
-        existing.version = version
-        existing.tags = tags
-        existing.updated_at = updated_at
-        existing.file_path = file_path
-        await db.flush()
-    else:
-        mem = Memory(
+    stmt = (
+        pg_insert(Memory)
+        .values(
             room_name=room_name,
             key=key,
             value=value,
@@ -233,12 +229,25 @@ async def _index_single_memory(
             updated_by=updated_by,
             version=version,
             tags=tags,
+            created_at=created_at,
+            updated_at=updated_at,
             file_path=file_path,
         )
-        mem.created_at = created_at
-        mem.updated_at = updated_at
-        db.add(mem)
-        await db.flush()
+        .on_conflict_do_update(
+            constraint="uq_memory_room_key",
+            set_=dict(
+                value=value,
+                content_text=content_text,
+                embedding=embedding,
+                updated_by=updated_by,
+                version=version,
+                tags=tags,
+                updated_at=updated_at,
+                file_path=file_path,
+            ),
+        )
+    )
+    await db.execute(stmt)
 
 
 def _parse_datetime(value: str | datetime | None) -> datetime | None:

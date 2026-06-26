@@ -35,6 +35,7 @@ from app.services.cfn_resolve import resolve_mas_id, resolve_workspace_id
 from app.services.ingest_dedupe import get_cache
 from app.services.ingest_log_buffer import IngestEvent, IngestState, get_buffer
 from app.services.metrics import record_knowledge_ingestion, record_room_identity
+from ioc_cfn_svc_api_client.models import ExtractionPayloadMetadataFormat
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,9 @@ class KnowledgeIngestRequest(BaseModel):
     # is reserved for any caller still using the old per-turn hook flow during
     # the deprecation window.
     source: Literal["channel_message", "memory_set", "context_file", "legacy"] = "legacy"
+    # Extraction format forwarded to CFN. Defaults to otel-trace (ioa_observe schema).
+    # Use "openclaw" for legacy callers that still send openclaw-conversation-v1 turns.
+    data_format: str = "otel-trace"
 
 
 class KnowledgeIngestResponse(BaseModel):
@@ -194,11 +198,25 @@ async def knowledge_ingest(
     # all records' text fields concatenated.
     min_chars = settings.MYCELIUM_INGEST_MIN_CONTENT_CHARS
     if min_chars > 0:
-        total_text = sum(
-            len(str(r.get(k, "") or ""))
-            for r in data.records
-            for k in ("content", "response", "text", "value")
-        )
+        def _record_text(r: dict) -> int:
+            # Flat keys (legacy / openclaw format)
+            flat = sum(
+                len(str(r.get(k, "") or ""))
+                for k in ("content", "response", "text", "value")
+            )
+            # Nested otel-trace: text lives in attributes
+            attrs = r.get("attributes") or {}
+            otel = sum(
+                len(str(attrs.get(k, "") or ""))
+                for k in (
+                    "ioa_observe.entity.input",
+                    "ioa_observe.entity.output",
+                    "openclaw.agent.input",
+                )
+            )
+            return flat + otel
+
+        total_text = sum(_record_text(r) for r in data.records)
         if total_text < min_chars:
             _log_ingest_event(
                 workspace_id=workspace_id,
@@ -277,12 +295,17 @@ async def knowledge_ingest(
 
     # ── Forward to CFN ────────────────────────────────────────────────────────
     try:
+        try:
+            fmt = ExtractionPayloadMetadataFormat(data.data_format)
+        except ValueError:
+            fmt = ExtractionPayloadMetadataFormat.OTEL_TRACE
         cfn_resp = await create_or_update_shared_memories(
             workspace_id=workspace_id,
             mas_id=mas_id,
             records=data.records,
             agent_id=data.agent_id,
             request_id=request_id,
+            data_format=fmt,
         )
     except CfnKnowledgeError as exc:
         cfn_latency = (time.perf_counter() - started) * 1000
