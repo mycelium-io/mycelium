@@ -20,7 +20,7 @@ interface RawMessage {
   created_at: string;
 }
 
-type Action = "propose" | "counter" | "accept" | "reject" | "tick" | "consensus" | "broken" | "start" | "join";
+type Action = "propose" | "counter" | "accept" | "reject" | "tick" | "consensus" | "broken" | "timeout" | "abort" | "start" | "join" | "retry";
 
 interface Event {
   id: string;
@@ -114,12 +114,32 @@ function parseEvents(messages: RawMessage[]): Event[] {
       continue;
     }
 
-    if (m.message_type === "coordination_consensus") {
-      const broken = Boolean(content.broken);
+    if (m.message_type === "coordination_retry") {
+      const attempt = (content.attempt as number) ?? 2;
+      const priorRounds = (content.prior_rounds as number) ?? "?";
       out.push({
         id: m.id, time, iso, agent: "CognitiveEngine",
         round: 0,
-        action: broken ? "broken" : "consensus",
+        action: "retry",
+        note: `attempt ${attempt} — alignment validation rejected ${priorRounds}-round agreement`,
+        raw: m,
+      });
+      continue;
+    }
+
+    if (m.message_type === "coordination_consensus") {
+      const broken = Boolean(content.broken);
+      const reason = typeof content.reason === "string" ? content.reason : null;
+      let action: Action = "consensus";
+      if (broken) {
+        if (reason === "timeout") action = "timeout";
+        else if (reason === "abort") action = "abort";
+        else action = "broken"; // backwards compat for messages without reason
+      }
+      out.push({
+        id: m.id, time, iso, agent: "CognitiveEngine",
+        round: 0,
+        action,
         offer: (content.assignments as Record<string, string>) ?? undefined,
         note: typeof content.plan === "string" ? content.plan : undefined,
         raw: m,
@@ -177,9 +197,9 @@ function deriveState(messages: RawMessage[]): DerivedState {
   const nextProposerId = (tickPayload.next_proposer_id as string) ?? null;
 
   // State
-  const consensusEvent = events.find(e => e.action === "consensus" || e.action === "broken");
+  const consensusEvent = events.find(e => e.action === "consensus" || e.action === "broken" || e.action === "timeout" || e.action === "abort");
   let state: DerivedState["state"] = "starting";
-  if (consensusEvent) state = consensusEvent.action === "broken" ? "broken" : "complete";
+  if (consensusEvent) state = (consensusEvent.action === "broken" || consensusEvent.action === "timeout" || consensusEvent.action === "abort") ? "broken" : "complete";
   else if (lastTick) state = "negotiating";
 
   let consensus: DerivedState["consensus"] = null;
@@ -251,7 +271,10 @@ const ACTION_META: Record<Action, { label: string; tone: "accent" | "ok" | "warn
   accept:    { label: "ACCEPT",    tone: "ok" },
   reject:    { label: "REJECT",    tone: "warn" },
   consensus: { label: "CONSENSUS", tone: "ok" },
-  broken:    { label: "TIMEOUT",   tone: "warn" },
+  timeout:   { label: "TIMEOUT",   tone: "warn" },
+  abort:     { label: "ABORT",     tone: "warn" },
+  broken:    { label: "TIMEOUT",   tone: "warn" }, // backwards compat
+  retry:     { label: "RETRY",     tone: "warn" },
 };
 
 function toneVar(t: "accent" | "ok" | "warn" | "muted" | "ink"): string {
@@ -274,6 +297,17 @@ function ActionGlyph({ action }: { action: Action }) {
         <line x1="2" y1="2" x2="10" y2="10" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
         <line x1="10" y1="2" x2="2" y2="10" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
       </svg>
+    );
+  }
+  if (action === "retry") {
+    return (
+      <span
+        aria-hidden
+        title="alignment validation retry"
+        style={{ display: "inline-block", color: "var(--yellow)", fontSize: 13, lineHeight: 1, flexShrink: 0 }}
+      >
+        ↺
+      </span>
     );
   }
   if (action === "tick") {

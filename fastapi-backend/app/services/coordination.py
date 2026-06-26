@@ -266,6 +266,9 @@ class _CfnRoundState:
     # positions and participant handles aren't otherwise reachable there.
     joined_intents: str = ""
     session_handles: list[str] = field(default_factory=list)
+    # How many times CFN's validation pipeline has rejected an agreement and
+    # restarted negotiation from round 1. Starts at 1 (first attempt).
+    negotiation_attempt: int = 1
 
 
 # {room_name: _CfnRoundState}
@@ -509,7 +512,7 @@ async def _run_cfn_negotiation(
         )
     except CfnNegotiationError as exc:
         logger.error("CFN start_negotiation failed for %s: %s", room_name, exc)
-        await _finish_cfn(room_name, plan=f"CFN start failed — {exc}", assignments={}, broken=True)
+        await _finish_cfn(room_name, plan=f"CFN start failed — {exc}", assignments={}, broken=True, reason="abort")
         return
 
     # Set up CFN round state
@@ -536,7 +539,7 @@ async def _run_cfn_negotiation(
     if not messages:
         logger.error("CFN initiate returned no messages for %s", room_name)
         await _finish_cfn(
-            room_name, plan="CFN initiate returned no messages", assignments={}, broken=True
+            room_name, plan="CFN initiate returned no messages", assignments={}, broken=True, reason="abort"
         )
         return
 
@@ -640,6 +643,7 @@ async def _round_timeout(room_name: str) -> None:
         plan="Negotiation timed out — agents did not respond",
         assignments={},
         broken=True,
+        reason="timeout",
     )
 
 
@@ -958,7 +962,7 @@ async def _cfn_decide_round(
             )
             _close_with_decide_ms("error")
             await _finish_cfn(
-                room_name, plan=f"CFN decide failed — {exc}", assignments={}, broken=True
+                room_name, plan=f"CFN decide failed — {exc}", assignments={}, broken=True, reason="abort"
             )
             return
     finally:
@@ -993,7 +997,7 @@ async def _cfn_decide_round(
             logger.error("CFN decide returned non-dict for %s: %s", room_name, type(result))
             _close_with_decide_ms("error")
             await _finish_cfn(
-                room_name, plan="CFN decide returned invalid response", assignments={}, broken=True
+                room_name, plan="CFN decide returned invalid response", assignments={}, broken=True, reason="abort"
             )
             return
 
@@ -1060,6 +1064,32 @@ async def _cfn_decide_round(
 
         elif status == "ongoing":
             messages = result.get("messages", [])
+            # Detect CFN validation-pipeline retry: the cognition engine
+            # internally rejected the agreement (alignment score below threshold)
+            # and restarted from round 1.  The only observable signal here is
+            # the round number regressing from N>1 back to ≤1.
+            if messages and state.current_round > 1:
+                first_payload = messages[0].get("payload") or messages[0]
+                incoming_round = first_payload.get("round") or 0
+                if incoming_round <= 1:
+                    state.negotiation_attempt += 1
+                    await _post_message(
+                        room_name,
+                        message_type="coordination_retry",
+                        content=json.dumps(
+                            {
+                                "attempt": state.negotiation_attempt,
+                                "prior_rounds": state.current_round,
+                                "session": state.session_id,
+                            }
+                        ),
+                    )
+                    logger.info(
+                        "retry detected for %s: attempt=%d prior_rounds=%d",
+                        room_name,
+                        state.negotiation_attempt,
+                        state.current_round,
+                    )
             addressed = await _fan_out_cfn_messages(
                 room_name,
                 messages,
@@ -1079,17 +1109,39 @@ async def _cfn_decide_round(
             _reset_round_timeout(room_name, state)
 
         else:
-            # Unknown / failed status
+            # Unknown / failed status — may include semantic alignment rejection data
+            # from the CFN engine (failure_modes, scores, abort_reason).
             logger.warning("CFN decide returned status=%s for %s", status, room_name)
             _close_with_decide_ms(status or "timeout")
+            abort_reason = (
+                payload.get("abort_reason")
+                or result.get("abort_reason")
+                or payload.get("reason")
+                or result.get("reason")
+            )
+            failure_modes: list[str] = []
+            for src in (payload, result.get("semantic_context") or {}):
+                fm = src.get("failure_modes")
+                if isinstance(fm, list):
+                    failure_modes = [str(f) for f in fm]
+                    break
+            plan_parts = [f"Negotiation ended: {status}"]
+            if abort_reason and str(abort_reason) not in plan_parts[0]:
+                plan_parts.append(str(abort_reason))
+            if failure_modes:
+                plan_parts.append("; ".join(failure_modes[:3]))
             await _finish_cfn(
-                room_name, plan=f"Negotiation ended: {status}", assignments={}, broken=True
+                room_name,
+                plan=" — ".join(plan_parts),
+                assignments={},
+                broken=True,
+                reason="timeout" if status == "timeout" else "abort",
             )
     except Exception as exc:
         logger.exception("Unhandled error processing CFN decide response for %s", room_name)
         _close_with_decide_ms("error")
         await _finish_cfn(
-            room_name, plan=f"CFN response processing failed — {exc}", assignments={}, broken=True
+            room_name, plan=f"CFN response processing failed — {exc}", assignments={}, broken=True, reason="abort"
         )
 
 
@@ -1146,6 +1198,7 @@ async def teardown_for_namespace(namespace_name: str, child_room_names: list[str
                             "plan": "Coordination aborted — room deleted",
                             "assignments": {},
                             "broken": True,
+                            "reason": "abort",
                         }
                     ),
                 )
@@ -1166,7 +1219,13 @@ async def teardown_for_namespace(namespace_name: str, child_room_names: list[str
         )
 
 
-async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool) -> None:
+async def _finish_cfn(
+    room_name: str,
+    plan: str,
+    assignments: dict,
+    broken: bool,
+    reason: str = "agreed",
+) -> None:
     """Post consensus and clean up CFN state."""
     state = _cfn_state.pop(room_name, None)
     # Avoid self-cancellation: if _finish_cfn is being called from inside the
@@ -1250,6 +1309,7 @@ async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool
             "plan_file": plan_file,
             "assignments": assignments,
             "broken": broken,
+            "reason": reason,
             "session": room_name,
         }
     )
