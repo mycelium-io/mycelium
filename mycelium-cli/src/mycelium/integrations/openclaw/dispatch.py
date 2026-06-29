@@ -104,18 +104,16 @@ class OpenClawIntegration(Integration):
             )
 
     def _allowlist_mycelium(self, agent_id: str) -> None:
-        """Allowlist the ``mycelium`` binary for *agent_id*.
+        """Allowlist the ``mycelium`` binary for *agent_id* in the exec approvals file.
 
-        A wired-in agent has to be able to exec ``mycelium`` (negotiate,
-        memory writes, plan task ops). Without an allowlist entry a
-        sandboxed agent either gets per-call approval prompts or can't run
-        it at all — and reports "mycelium isn't available" mid-conversation.
-        Wiring the agent in is exactly when we know it'll need the binary,
-        so allowlist it here rather than leaving it as a manual step.
+        The approvals file is only consulted when the agent's effective exec
+        host is NOT "sandbox" — i.e. when ``sandbox.mode = 'off'`` or when
+        ``tools.exec.host = 'gateway'`` is set. Pair this call with
+        :meth:`_configure_exec_host_gateway` so the allowlist is actually
+        evaluated for sandboxed agents.
 
-        Best-effort: a failure (older openclaw without ``approvals
-        allowlist``, etc.) warns with the manual command rather than
-        aborting the registration.
+        Best-effort: warns with the manual command on failure rather than
+        aborting registration.
         """
         mycelium_bin = shutil.which("mycelium") or str(Path.home() / ".local" / "bin" / "mycelium")
         result = subprocess.run(
@@ -135,6 +133,58 @@ class OpenClawIntegration(Integration):
             f'  Add it manually: openclaw approvals allowlist add --agent "{agent_id}" '
             f'"{mycelium_bin}"'
         )
+
+    def _configure_exec_host_gateway(self, agent_id: str) -> None:
+        """Set ``tools.exec.host = 'gateway'`` for *agent_id* in openclaw.json.
+
+        OpenClaw's exec approvals file is **bypassed** when the effective exec
+        host is "sandbox" (the default when ``sandbox.mode != 'off'``).
+        Routing exec to the gateway host instead means:
+
+        - ``mycelium`` executes on the gateway host where it is installed.
+        - The approvals allowlist (written by :meth:`_allowlist_mycelium`) is
+          now actually evaluated — gating which binaries the agent may run.
+        - Sandbox container isolation (filesystem, network) is preserved for
+          all other tools (read/write/edit/apply_patch).
+
+        Trade-off: ALL exec calls for this agent route to the gateway host,
+        not just mycelium. Operators who need per-binary exec routing should
+        set ``sandbox.mode = 'off'`` instead and rely solely on the approvals
+        allowlist.
+
+        Best-effort: skips silently if the agent is not in ``agents.list``
+        (e.g. the implicit ``main`` handle) or if the file cannot be written.
+        """
+        _state_dir, oc_json = self._paths()
+        if not oc_json.exists():
+            return
+        try:
+            cfg = json.loads(oc_json.read_text())
+        except (OSError, ValueError):
+            return
+
+        agents_list: list[dict] = (cfg.get("agents") or {}).get("list") or []
+        agent_entry = next((a for a in agents_list if a.get("id") == agent_id), None)
+        if agent_entry is None:
+            # Implicit agents (e.g. main) are not in agents.list — skip.
+            return
+
+        exec_cfg: dict = agent_entry.setdefault("tools", {}).setdefault("exec", {})
+        if exec_cfg.get("host") == "gateway":
+            return  # Already set — idempotent.
+
+        exec_cfg["host"] = "gateway"
+        try:
+            oc_json.write_text(json.dumps(cfg, indent=2))
+            console.print(
+                f"  [green]set exec.host=gateway[/green] for [cyan]{agent_id}[/cyan] "
+                "[dim](exec routes to gateway host; sandbox isolation preserved for other tools)[/dim]"
+            )
+        except OSError as exc:
+            console.print(
+                f"[yellow]could not write exec.host for {agent_id}[/yellow]: {exc}\n"
+                f'  Set manually: tools.exec.host = "gateway" in openclaw.json for agent {agent_id}'
+            )
 
     # ── discovery (brownfield adopt) ────────────────────────────────────────
 
@@ -192,6 +242,7 @@ class OpenClawIntegration(Integration):
                 backend_url=backend_url,
             )
             self._allowlist_mycelium(handle)
+            self._configure_exec_host_gateway(handle)
         self.restart_gateway()
 
     # ── manifest ────────────────────────────────────────────────────────────
@@ -436,6 +487,7 @@ class OpenClawIntegration(Integration):
             )
         self._register_channel(room=opts.room, agent_id=agent_id, backend_url=config.server.api_url)
         self._allowlist_mycelium(agent_id)
+        self._configure_exec_host_gateway(agent_id)
         self.restart_gateway()
 
     def destroy(
