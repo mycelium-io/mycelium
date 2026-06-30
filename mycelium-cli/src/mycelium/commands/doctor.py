@@ -1326,11 +1326,8 @@ def _check_openclaw_agent_sandbox() -> CheckResult:
         mode = (agent.get("sandbox") or {}).get("mode") or default_sandbox
         if mode == "off":
             continue
-        # sandbox is on — check if exec is routed to the gateway host instead.
-        # tools.exec.host = "gateway" causes OpenClaw to bypass the sandbox exec
-        # context and run exec calls on the gateway host, where mycelium is
-        # installed and the approvals allowlist is evaluated. This is the
-        # fine-grained alternative to disabling the sandbox entirely.
+        # exec.host=gateway routes exec to the host (where mycelium lives) without
+        # disabling sandbox isolation for other tools — acceptable alternative to mode=off.
         exec_host = (agent.get("tools") or {}).get("exec", {}).get("host")
         if exec_host == "gateway":
             continue

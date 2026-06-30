@@ -137,23 +137,14 @@ class OpenClawIntegration(Integration):
     def _configure_exec_host_gateway(self, agent_id: str) -> None:
         """Set ``tools.exec.host = 'gateway'`` for *agent_id* in openclaw.json.
 
-        OpenClaw's exec approvals file is **bypassed** when the effective exec
-        host is "sandbox" (the default when ``sandbox.mode != 'off'``).
-        Routing exec to the gateway host instead means:
+        The exec-approvals allowlist is bypassed when exec runs in the sandbox
+        container. Routing exec to the gateway host restores allowlist evaluation
+        and puts ``mycelium`` on PATH — while keeping sandbox isolation for all
+        other tools. Trade-off: ALL exec calls route to the gateway, not just
+        mycelium; use ``sandbox.mode=off`` if per-binary routing is needed instead.
 
-        - ``mycelium`` executes on the gateway host where it is installed.
-        - The approvals allowlist (written by :meth:`_allowlist_mycelium`) is
-          now actually evaluated — gating which binaries the agent may run.
-        - Sandbox container isolation (filesystem, network) is preserved for
-          all other tools (read/write/edit/apply_patch).
-
-        Trade-off: ALL exec calls for this agent route to the gateway host,
-        not just mycelium. Operators who need per-binary exec routing should
-        set ``sandbox.mode = 'off'`` instead and rely solely on the approvals
-        allowlist.
-
-        Best-effort: skips silently if the agent is not in ``agents.list``
-        (e.g. the implicit ``main`` handle) or if the file cannot be written.
+        Best-effort: skips silently for implicit agents (e.g. ``main``, not in
+        ``agents.list``) or if the file cannot be written.
         """
         _state_dir, oc_json = self._paths()
         if not oc_json.exists():
@@ -175,7 +166,7 @@ class OpenClawIntegration(Integration):
 
         exec_cfg["host"] = "gateway"
         try:
-            oc_json.write_text(json.dumps(cfg, indent=2))
+            oc_json.write_text(json.dumps(cfg, indent=2) + "\n")
             console.print(
                 f"  [green]set exec.host=gateway[/green] for [cyan]{agent_id}[/cyan] "
                 "[dim](exec routes to gateway host; sandbox isolation preserved for other tools)[/dim]"
