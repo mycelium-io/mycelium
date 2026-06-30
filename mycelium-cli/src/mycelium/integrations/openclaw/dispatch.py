@@ -160,7 +160,16 @@ class OpenClawIntegration(Integration):
             # Implicit agents (e.g. main) are not in agents.list — skip.
             return
 
-        exec_cfg: dict = agent_entry.setdefault("tools", {}).setdefault("exec", {})
+        # Defensive against explicit JSON nulls (e.g. "tools": null) — setdefault
+        # would return the existing None and the next .setdefault would crash.
+        tools_cfg = agent_entry.get("tools")
+        if not isinstance(tools_cfg, dict):
+            tools_cfg = {}
+            agent_entry["tools"] = tools_cfg
+        exec_cfg = tools_cfg.get("exec")
+        if not isinstance(exec_cfg, dict):
+            exec_cfg = {}
+            tools_cfg["exec"] = exec_cfg
         if exec_cfg.get("host") == "gateway":
             return  # Already set — idempotent.
 

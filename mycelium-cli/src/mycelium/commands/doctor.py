@@ -1328,7 +1328,7 @@ def _check_openclaw_agent_sandbox() -> CheckResult:
             continue
         # exec.host=gateway routes exec to the host (where mycelium lives) without
         # disabling sandbox isolation for other tools — acceptable alternative to mode=off.
-        exec_host = (agent.get("tools") or {}).get("exec", {}).get("host")
+        exec_host = ((agent.get("tools") or {}).get("exec") or {}).get("host")
         if exec_host == "gateway":
             continue
         sandboxed.append(f"{agent_id} (sandbox.mode={mode}, exec.host={exec_host or 'auto'})")
