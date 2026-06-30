@@ -2,12 +2,12 @@
 
 ## Why this exists
 
-OpenClaw is the org's standard agent runtime, it's disallowed on personal PCs,
-and the whole stack already runs on a shared EC2 hub. So the only way a PM can
-see a coordination today is to SSH into a box they don't own and drive the
-OpenClaw gateway CLI by hand. They won't.
+In a hub-and-spoke deployment the stack and the OpenClaw gateway run on a
+shared remote host. The only way to start a coordination today is to SSH into
+that host and drive the gateway CLI by hand — so a fresh instance is an empty
+world with no obvious way in, and non-CLI users are stuck.
 
-This feature lets them click **"Run a sample coordination"** in the web GUI
+This feature lets anyone click **"Run a sample coordination"** in the web GUI
 instead — it provisions real agents on the hub and routes them straight into
 the live room. No terminal, no SSH.
 
@@ -35,7 +35,7 @@ affordance unless `/api/demos/scenarios` answers.
 
 ## One-time hub setup
 
-Everything below runs **on the EC2 host** (where the gateway and the mycelium
+Everything below runs **on the hub host** (where the gateway and the mycelium
 CLI already live).
 
 ### 1. The runner
@@ -83,8 +83,8 @@ mycelium up   # or: docker compose ... up -d --force-recreate mycelium-backend
 ```
 
 `compose.yml` already gives the backend `extra_hosts: host.docker.internal:
-host-gateway`, so this resolves on Linux EC2. If you run the backend with host
-networking instead, use `http://127.0.0.1:8765`.
+host-gateway`, so this resolves on Linux hosts. If you run the backend with
+host networking instead, use `http://127.0.0.1:8765`.
 
 ### 3. The seed agent (don't skip this)
 
@@ -114,9 +114,9 @@ curl -s -H "Authorization: Bearer $HUB_RUNNER_TOKEN" \
   on the backend. Set both — a runner with no token will provision agents for
   anyone who can reach the port.
 - Bind the runner to localhost (default). Never expose `:8765` publicly.
-- A web button that spawns LLM agents is spend + RCE surface. The hub GUI must
-  sit behind the org's SSO/nginx before it's reachable by PMs. **TODO:** confirm
-  the Outshift SSO front door for the hub.
+- A web button that spawns LLM agents is spend + RCE surface. The hub GUI
+  should sit behind an auth front door (SSO / reverse proxy) before it's
+  broadly reachable. **TODO:** wire up that front door for the hub.
 - Per-agent budget caps live on the agent manifest (daemon-enforced for
   cold-spawn adapters); set sane demo defaults before opening this up widely.
 
