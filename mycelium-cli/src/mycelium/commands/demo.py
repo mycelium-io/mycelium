@@ -21,10 +21,13 @@ isolated and clearly labeled so it can be lifted out cleanly.
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess
 import sys
+import time
+from pathlib import Path
 from typing import Any
 
 import typer
@@ -211,7 +214,86 @@ def _check_prereqs(adapter: str) -> tuple[Any, list[str]]:
 # --------------------------------------------------------------------------- #
 
 
-def _provision(scenario: dict[str, Any], adapter: str, model: str | None, room: str) -> None:
+def _discover_openclaw_auth_source(exclude: set[str]) -> str | None:
+    """Find an existing OpenClaw agent that already has model credentials.
+
+    ``openclaw agents add --non-interactive`` (which ``agent create`` uses)
+    creates an agent with an *empty* ``auth-profiles.json`` — no token — so the
+    agent can't authenticate its model and every dispatch hangs in
+    ``processing`` with no error. The demo's whole point is a turn that runs, so
+    we copy credentials from an already-authenticated agent via
+    ``--copy-auth-from``. Pick a source here: prefer one with an anthropic
+    profile (matches openclaw's default model), else any non-empty profile.
+
+    Returns the source agent id, or None if nothing on this host is
+    authenticated yet (the caller warns and proceeds).
+    """
+    agents_dir = Path.home() / ".openclaw" / "agents"
+    if not agents_dir.is_dir():
+        return None
+    fallback: str | None = None
+    for d in sorted(agents_dir.iterdir()):
+        if d.name in exclude:
+            continue
+        try:
+            profiles = json.loads((d / "agent" / "auth-profiles.json").read_text()).get(
+                "profiles", {}
+            )
+        except (OSError, ValueError):
+            continue
+        if not profiles:
+            continue
+        if any("anthropic" in k for k in profiles):
+            return d.name  # ideal: matches the default anthropic model
+        fallback = fallback or d.name
+    return fallback
+
+
+def _await_openclaw_ready(*, timeout: float = 30.0, settle: float = 5.0) -> None:
+    """Block until the OpenClaw gateway is back up and its room channel has had
+    time to (re)subscribe to SSE, before we seed.
+
+    ``mycelium agent create --adapter openclaw`` restarts the gateway to load
+    the new room into the ``mycelium-room`` channel, but that restart is
+    asynchronous. The gateway then has to come up *and* the channel has to open
+    a fresh SSE connection per room. Until that subscription exists, the seed
+    mention is delivered to nobody — SSE is live-only, so a message posted
+    before the channel connects is never replayed, and the agents simply never
+    wake (the message still lands in the room, which makes the silence look
+    like a hang). Wait for ``gateway status`` to report running, then settle a
+    few seconds for the per-room SSE subscription to establish.
+
+    Best-effort: if openclaw isn't on PATH or never reports ready, warn and let
+    the caller seed anyway rather than blocking the demo outright.
+    """
+    if not shutil.which("openclaw"):
+        return
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        r = subprocess.run(  # noqa: S603
+            ["openclaw", "gateway", "status"],  # noqa: S607
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if r.returncode == 0 and "running" in (r.stdout + r.stderr).lower():
+            time.sleep(settle)  # let the mycelium-room channel open its SSE
+            return
+        time.sleep(1.0)
+    console.print(
+        "[yellow]⚠ gateway didn't report ready in time — seeding anyway. If the "
+        "agents stay silent, run [cyan]openclaw gateway restart[/cyan] and re-seed "
+        "with the invoke command shown below.[/yellow]"
+    )
+
+
+def _provision(
+    scenario: dict[str, Any],
+    adapter: str,
+    model: str | None,
+    room: str,
+    auth_from: str | None = None,
+) -> None:
     """Create the room + persona agents and seed the task. Raises typer.Exit on failure."""
     handles = [a["handle"] for a in scenario["agents"]]
 
@@ -225,6 +307,22 @@ def _provision(scenario: dict[str, Any], adapter: str, model: str | None, room: 
             console.print(f"[red]Could not fetch persona[/red] {a['persona']}: {e}")
             raise typer.Exit(1)
     console.print(f"[green]✓[/green] Loaded {len(personas)} personas")
+
+    # 1b. openclaw: new agents are created with no model credentials, so their
+    #     turns hang in `processing` with no error. Copy creds from an
+    #     already-authenticated agent (explicit --auth-from, else discovered).
+    auth_source: str | None = None
+    if adapter == "openclaw":
+        auth_source = auth_from or _discover_openclaw_auth_source(exclude=set(handles))
+        if auth_source:
+            console.print(f"[dim]Seeding agent credentials from [cyan]{auth_source}[/cyan][/dim]")
+        else:
+            console.print(
+                "[yellow]⚠ No authenticated OpenClaw agent found to copy credentials from.[/yellow]\n"
+                "[dim]  Fresh agents have no model token, so their turns will hang silently. "
+                "Authenticate one agent (e.g. [cyan]openclaw models auth[/cyan]) or pass "
+                "[cyan]--auth-from <agent>[/cyan].[/dim]"
+            )
 
     # 2. Room
     r = _run(["room", "create", room])
@@ -244,6 +342,8 @@ def _provision(scenario: dict[str, Any], adapter: str, model: str | None, room: 
         ]  # fmt: skip
         if model and adapter == "openclaw":
             args += ["--model", model]
+        if auth_source:
+            args += ["--copy-auth-from", auth_source]
         r = _run(args)
         if r.returncode != 0:
             console.print(f"[red]agent create {handle} failed:[/red]\n{r.stderr or r.stdout}")
@@ -253,6 +353,13 @@ def _provision(scenario: dict[str, Any], adapter: str, model: str | None, room: 
             )
             raise typer.Exit(1)
         console.print(f"[green]✓[/green] Created [bold]@{handle}[/bold] ({adapter})")
+
+    # 3b. For openclaw, the gateway restart triggered by `agent create` is
+    #     async — wait for it to come back and re-subscribe the room's SSE
+    #     before seeding, or the wake-up mention is delivered to nobody.
+    if adapter == "openclaw":
+        console.print("[dim]Waiting for the OpenClaw gateway to subscribe the room…[/dim]")
+        _await_openclaw_ready()
 
     # 4. Seed: one message mentioning every agent + the task. The adapter wakes
     #    each agent, which then runs the Mycelium coordination protocol.
@@ -331,6 +438,14 @@ def demo(
     model: str | None = typer.Option(
         None, "--model", help="openclaw: model for the demo agents (else the configured default)."
     ),
+    auth_from: str | None = typer.Option(
+        None,
+        "--auth-from",
+        help=(
+            "openclaw: copy model credentials from this existing agent into the demo "
+            "agents (else auto-discovered). Fresh agents have no token and would hang."
+        ),
+    ),
     room: str | None = typer.Option(None, "--room", help="Override the room name."),
     no_watch: bool = typer.Option(
         False, "--no-watch", help="Provision and seed, but don't stream the room afterward."
@@ -400,7 +515,7 @@ def demo(
         if not proceed:
             raise typer.Exit(0)
 
-    _provision(chosen, adapter, model, room_name)
+    _provision(chosen, adapter, model, room_name, auth_from)
     _print_outro(chosen, adapter, room_name)
 
     if not no_watch:
