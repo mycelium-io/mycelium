@@ -20,6 +20,7 @@ from mycelium.commands import (
     demo,
     docs,
     doctor,
+    hub,
     install,
     instance,
     memory,
@@ -149,6 +150,7 @@ app.add_typer(cfn.app, name="cfn")
 app.add_typer(agent.app, name="agent")
 app.add_typer(daemon.app, name="daemon")
 app.add_typer(demo.app, name="demo")
+app.add_typer(hub.app, name="hub")
 
 
 if __name__ == "__main__":
