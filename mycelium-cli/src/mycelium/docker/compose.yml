@@ -68,8 +68,20 @@ services:
       # env var is read separately by docker compose to resolve the volume
       # source path; the two values are different by design.)
       MYCELIUM_DATA_DIR: /home/mycelium/.mycelium
+      # Host runner (`mycelium hub serve`) for web-triggered demos. Unset (the
+      # default) disables the /api/demos endpoints — end-user installs see no
+      # change. On the internal hub, set HUB_RUNNER_URL to the host-process
+      # runner, reached over the host gateway (see extra_hosts), e.g.
+      # HUB_RUNNER_URL=http://host.docker.internal:8765.
+      HUB_RUNNER_URL: ${HUB_RUNNER_URL:-}
+      HUB_RUNNER_TOKEN: ${HUB_RUNNER_TOKEN:-}
     volumes:
       - ${MYCELIUM_DATA_DIR:-~/.mycelium}:/home/mycelium/.mycelium
+    extra_hosts:
+      # Lets the backend container reach a host-process runner (the OpenClaw
+      # gateway + `mycelium hub serve` run on the host, not in the stack) via
+      # host.docker.internal. Harmless when the hub runner isn't configured.
+      - "host.docker.internal:host-gateway"
     ports:
       - "${MYCELIUM_BACKEND_PORT:-8000}:8000"
     healthcheck:
