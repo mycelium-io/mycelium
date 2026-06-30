@@ -52,6 +52,63 @@ export async function createRoom(data: { name: string; is_persistent?: boolean }
   return res.json();
 }
 
+// ── Demos (web-triggered coordinations via the host runner) ───────────────────
+// These hit /api/demos/*, which 404s unless the backend has a host runner
+// configured (HUB_RUNNER_URL). The UI treats a null result as "feature off" and
+// hides the demo affordances — so end-user local installs see nothing new.
+
+export interface DemoScenario {
+  id: string;
+  topic: string;
+  default: boolean;
+}
+
+/** Available demo scenarios, or null if the host runner isn't configured/up. */
+export async function fetchDemoScenarios(): Promise<DemoScenario[] | null> {
+  const res = await fetch(`/api/demos/scenarios`, { cache: "no-store" });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.scenarios ?? [];
+}
+
+export interface DemoJob {
+  id: string;
+  status: "provisioning" | "ready" | "failed";
+  scenario: string;
+  adapter: string;
+  room: string;
+  error: string | null;
+}
+
+export async function startDemo(
+  opts: { scenario?: string; adapter?: string } = {},
+): Promise<{ job_id: string; room: string; status: string }> {
+  const res = await fetch(`/api/demos`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(opts),
+  });
+  if (!res.ok) {
+    let detail = `Failed to start demo (${res.status})`;
+    try {
+      const body = await res.json();
+      if (body?.detail) {
+        detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
+      }
+    } catch {
+      /* non-JSON error body — keep the status-based message */
+    }
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+export async function fetchDemoJob(jobId: string): Promise<DemoJob | null> {
+  const res = await fetch(`/api/demos/${jobId}`, { cache: "no-store" });
+  if (!res.ok) return null;
+  return res.json();
+}
+
 export async function fetchMemories(roomName: string, prefix?: string) {
   const params = new URLSearchParams({ limit: "50" });
   if (prefix) params.set("prefix", prefix);

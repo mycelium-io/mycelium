@@ -99,6 +99,14 @@ class Settings(BaseSettings):
     # Default MAS ID — fallback when ingest requests omit mas_id and room_name
     MAS_ID: str = ""
 
+    # Host runner (`mycelium hub serve`) for web-triggered coordinations.
+    # The runner lives on the host next to the openclaw gateway and does the
+    # provisioning a container can't (restarting the gateway, editing
+    # ~/.openclaw). When HUB_RUNNER_URL is unset the /api/demos endpoints are
+    # disabled (404) — that's the default everywhere except the internal hub.
+    HUB_RUNNER_URL: str | None = None
+    HUB_RUNNER_TOKEN: str | None = None
+
     # Knowledge ingest control surface. Master switch + per-payload caps.
     MYCELIUM_INGEST_ENABLED: bool = True
     MYCELIUM_INGEST_MAX_INPUT_TOKENS: int = 50_000

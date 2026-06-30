@@ -22,6 +22,7 @@ isolated and clearly labeled so it can be lifted out cleanly.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -70,11 +71,23 @@ def _run(args: list[str], *, capture: bool = True) -> subprocess.CompletedProces
 # --------------------------------------------------------------------------- #
 
 
+def _gh_headers() -> dict[str, str]:
+    """Authenticate dataset reads when a GitHub token is present.
+
+    The scenario/persona dataset is a public repo, but the tree listing hits
+    ``api.github.com``, which rate-limits *unauthenticated* requests by IP
+    (60/hr) — on a shared hub that 403s fast. Use ``GITHUB_TOKEN``/``GH_TOKEN``
+    if set to lift the limit (harmless on the raw.githubusercontent.com reads).
+    """
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    return {"Authorization": f"Bearer {token}"} if token else {}
+
+
 def _fetch_tree() -> list[str]:
     """Return every path in the agent-personas repo (one API call)."""
     import httpx
 
-    resp = httpx.get(_TREE_URL, timeout=15.0, follow_redirects=True)
+    resp = httpx.get(_TREE_URL, timeout=15.0, follow_redirects=True, headers=_gh_headers())
     resp.raise_for_status()
     return [t["path"] for t in resp.json().get("tree", [])]
 
@@ -97,7 +110,9 @@ def _fetch_persona(path: str) -> str:
     import httpx
     import yaml
 
-    resp = httpx.get(f"{_RAW_BASE}/{path}", timeout=15.0, follow_redirects=True)
+    resp = httpx.get(
+        f"{_RAW_BASE}/{path}", timeout=15.0, follow_redirects=True, headers=_gh_headers()
+    )
     resp.raise_for_status()
     data = yaml.safe_load(resp.text) or {}
     return str(data.get("domain") or "").strip() or resp.text.strip()
@@ -132,7 +147,12 @@ def _resolve_scenario(scenario_id: str) -> dict[str, Any]:
         stem = pf.rsplit("/", 1)[1][: -len(".yaml")]
         handle = stem[: -len("_agent")] if stem.endswith("_agent") else stem
         try:
-            profile = yaml.safe_load(httpx.get(f"{_RAW_BASE}/{pf}", timeout=15.0).text) or {}
+            profile = (
+                yaml.safe_load(
+                    httpx.get(f"{_RAW_BASE}/{pf}", timeout=15.0, headers=_gh_headers()).text
+                )
+                or {}
+            )
         except httpx.HTTPError as e:
             console.print(f"[red]Could not read profile[/red] {pf}: {e}")
             raise typer.Exit(1)

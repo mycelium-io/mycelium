@@ -37,6 +37,7 @@ from app.routes.cfn_proxy import cfn_read_router
 from app.routes.cfn_proxy import router as cfn_proxy_router
 from app.routes.coordination import router as coordination_router
 from app.routes.coordination_sessions import router as coordination_sessions_router
+from app.routes.demos import router as demos_router
 from app.routes.knowledge import router as knowledge_router
 from app.routes.memory import router as memory_router
 from app.routes.messages import router as messages_router
@@ -207,6 +208,10 @@ app.include_router(coordination_router)
 # frontend, and CLI in place of addressing sessions by their parent room's
 # display name.
 app.include_router(coordination_sessions_router)
+
+# Web-triggered coordinations — proxy to the host-side hub runner. Endpoints
+# 404 unless HUB_RUNNER_URL is set (off on end-user installs; on for the hub).
+app.include_router(demos_router, prefix="/api")
 
 
 @app.get("/", tags=["health"])

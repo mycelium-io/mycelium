@@ -5,8 +5,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { fetchRooms, logFetchError } from "@/lib/api";
+import { fetchRooms, fetchDemoScenarios, logFetchError } from "@/lib/api";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
+import { DemoLauncherDialog } from "@/components/demo-launcher-dialog";
 import { MainTopBar } from "@/components/main-top-bar";
 import { IDChip } from "@/components/id-chip";
 
@@ -35,6 +36,10 @@ function relativeTime(iso: string): string {
 export default function Dashboard() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [showCreate, setShowCreate] = useState(false);
+  const [showDemo, setShowDemo] = useState(false);
+  // Feature flag, resolved at runtime: the demo affordances only appear when
+  // the backend has a host runner configured (HUB_RUNNER_URL). Off → undefined.
+  const [demoAvailable, setDemoAvailable] = useState(false);
 
   const load = () =>
     fetchRooms()
@@ -47,17 +52,33 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    fetchDemoScenarios()
+      .then((list) => setDemoAvailable(list !== null))
+      .catch(logFetchError("fetchDemoScenarios"));
+  }, []);
+
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-bg text-text">
       <MainTopBar
         activeTab="rooms"
         actions={
-          <button
-            onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 border border-accent/40 bg-accent/[0.06] px-3 py-1.5 text-accent caps-mono-sm transition-colors hover:bg-accent/[0.12] hover:border-accent/60"
-          >
-            + NEW ROOM
-          </button>
+          <div className="flex items-center gap-2">
+            {demoAvailable && (
+              <button
+                onClick={() => setShowDemo(true)}
+                className="flex items-center gap-2 border border-accent/40 bg-accent/[0.06] px-3 py-1.5 text-accent caps-mono-sm transition-colors hover:bg-accent/[0.12] hover:border-accent/60"
+              >
+                ▶ SAMPLE COORDINATION
+              </button>
+            )}
+            <button
+              onClick={() => setShowCreate(true)}
+              className="flex items-center gap-2 border border-border2 bg-white/[0.02] px-3 py-1.5 text-muted caps-mono-sm transition-colors hover:bg-white/[0.05] hover:text-text"
+            >
+              + NEW ROOM
+            </button>
+          </div>
         }
       />
 
@@ -65,8 +86,20 @@ export default function Dashboard() {
         <TableHeader />
         <div className="flex-1 overflow-y-auto">
           {rooms.length === 0 ? (
-            <div className="px-6 py-16 text-center italic text-muted">
-              no rooms yet — create one to get started
+            <div className="flex flex-col items-center gap-4 px-6 py-16 text-center">
+              <p className="italic text-muted">
+                {demoAvailable
+                  ? "empty world — run a sample coordination to see agents negotiate"
+                  : "no rooms yet — create one to get started"}
+              </p>
+              {demoAvailable && (
+                <button
+                  onClick={() => setShowDemo(true)}
+                  className="flex items-center gap-2 border border-accent/40 bg-accent/[0.06] px-4 py-2 text-accent caps-mono-sm transition-colors hover:bg-accent/[0.12] hover:border-accent/60"
+                >
+                  ▶ RUN A SAMPLE COORDINATION
+                </button>
+              )}
             </div>
           ) : (
             rooms.map((room, i) => <RoomRow key={room.name} room={room} index={i} />)
@@ -76,6 +109,7 @@ export default function Dashboard() {
       </main>
 
       <CreateRoomDialog open={showCreate} onClose={() => setShowCreate(false)} onCreated={load} />
+      <DemoLauncherDialog open={showDemo} onClose={() => setShowDemo(false)} />
     </div>
   );
 }
