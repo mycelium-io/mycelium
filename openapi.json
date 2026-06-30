@@ -2523,6 +2523,113 @@
                 }
             }
         },
+        "/api/demos/scenarios": {
+            "get": {
+                "tags": [
+                    "demos"
+                ],
+                "summary": "List Demo Scenarios",
+                "description": "Discoverable demo scenarios (proxied from the host runner).",
+                "operationId": "list_demo_scenarios_api_demos_scenarios_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "title": "Response List Demo Scenarios Api Demos Scenarios Get"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/demos": {
+            "post": {
+                "tags": [
+                    "demos"
+                ],
+                "summary": "Start Demo",
+                "description": "Kick off a demo coordination on the host. Returns ``{job_id, room}``.",
+                "operationId": "start_demo_api_demos_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/DemoStartRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "title": "Response Start Demo Api Demos Post"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/demos/{job_id}": {
+            "get": {
+                "tags": [
+                    "demos"
+                ],
+                "summary": "Get Demo Job",
+                "description": "Poll a demo provisioning job's status.",
+                "operationId": "get_demo_job_api_demos__job_id__get",
+                "parameters": [
+                    {
+                        "name": "job_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Job Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "title": "Response Get Demo Job Api Demos  Job Id  Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/health": {
             "get": {
                 "tags": [
@@ -3116,6 +3223,68 @@
                     "display_name"
                 ],
                 "title": "CoordinationSessionRead"
+            },
+            "DemoStartRequest": {
+                "properties": {
+                    "scenario": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Scenario"
+                    },
+                    "adapter": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Adapter"
+                    },
+                    "model": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Model"
+                    },
+                    "auth_from": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Auth From"
+                    },
+                    "room": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Room"
+                    }
+                },
+                "type": "object",
+                "title": "DemoStartRequest",
+                "description": "Demo launch parameters. All optional \u2014 the runner fills sane defaults\n(default scenario, openclaw adapter, scenario-derived room name)."
             },
             "GraphPathsRequest": {
                 "properties": {
