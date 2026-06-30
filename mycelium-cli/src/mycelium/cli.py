@@ -17,6 +17,7 @@ from mycelium.commands import (
     cfn,
     config,
     daemon,
+    demo,
     docs,
     doctor,
     install,
@@ -147,6 +148,7 @@ app.add_typer(session.app, name="session")
 app.add_typer(cfn.app, name="cfn")
 app.add_typer(agent.app, name="agent")
 app.add_typer(daemon.app, name="daemon")
+app.add_typer(demo.app, name="demo")
 
 
 if __name__ == "__main__":
