@@ -1032,25 +1032,9 @@ def logs(
 
 def _get_backend_dir() -> Path:
     """Find the fastapi-backend directory (for running alembic)."""
-    import importlib.resources
+    from mycelium.migrations import find_local_backend_dir
 
-    try:
-        pkg_path = Path(str(importlib.resources.files("mycelium")))
-        for depth in range(2, 7):
-            candidate = pkg_path.parents[depth] / "fastapi-backend"
-            if (candidate / "alembic.ini").exists():
-                return candidate
-    except Exception:
-        pass
-
-    if (Path.cwd() / "alembic.ini").exists():
-        return Path.cwd()
-
-    candidate = Path.cwd() / "fastapi-backend"
-    if (candidate / "alembic.ini").exists():
-        return candidate
-
-    return Path.cwd()
+    return find_local_backend_dir() or Path.cwd()
 
 
 @doc_ref(
@@ -1076,52 +1060,26 @@ def migrate(
         mycelium migrate -r 0008      # upgrade to specific revision
     """
     try:
-        backend_dir = _get_backend_dir()
-        if not (backend_dir / "alembic.ini").exists():
-            typer.secho(f"alembic.ini not found in {backend_dir}", fg=typer.colors.RED)
-            typer.echo("Run this from the repo root or set MYCELIUM_COMPOSE_FILE.")
-            raise typer.Exit(1)
-
-        env_path = _get_env_path()
-
-        import os
-
-        env = {**os.environ}
-        if env_path and env_path.exists():
-            from dotenv import dotenv_values
-
-            env.update({k: v for k, v in dotenv_values(env_path).items() if v is not None})
-
-        backend_env = backend_dir / ".env"
-        if backend_env.exists():
-            from dotenv import dotenv_values
-
-            env.update({k: v for k, v in dotenv_values(backend_env).items() if v is not None})
-
-        from mycelium.docker_utils import resolve_host_database_url
-
-        host_url = resolve_host_database_url(env)
-        if host_url:
-            env["DATABASE_URL"] = host_url
-        elif "DATABASE_URL" not in env:
-            typer.secho("DATABASE_URL not set.", fg=typer.colors.RED)
-            typer.echo("Set it in ~/.mycelium/.env (run `mycelium config apply`)")
-            raise typer.Exit(1)
-
-        typer.echo(f"Running migrations (target: {revision})...")
-        cmd = ["uv", "run", "alembic", "upgrade", revision]
-        result = subprocess.run(
-            cmd, cwd=str(backend_dir), env=env, check=False, capture_output=True, text=True
+        from mycelium.migrations import (
+            BACKEND_CONTAINER,
+            echo_alembic_output,
+            run_alembic_upgrade,
         )
 
-        if result.stdout:
-            typer.echo(result.stdout.rstrip())
-        if result.stderr:
-            for line in result.stderr.strip().split("\n"):
-                if "Running upgrade" in line:
-                    typer.secho(f"  {line.split('] ')[-1]}", fg=typer.colors.GREEN)
-                elif "ERROR" in line:
-                    typer.secho(f"  {line}", fg=typer.colors.RED)
+        result = run_alembic_upgrade(revision)
+        if result.mode == "unavailable":
+            typer.secho("Cannot run migrations.", fg=typer.colors.RED)
+            typer.echo(result.stderr)
+            typer.echo("Start the stack with: mycelium up")
+            typer.echo("Or run from a mycelium repo checkout for host-side alembic.")
+            raise typer.Exit(1)
+
+        if result.mode == "container":
+            typer.echo(f"Running migrations in {BACKEND_CONTAINER} (target: {revision})...")
+        else:
+            typer.echo(f"Running migrations (target: {revision})...")
+
+        echo_alembic_output(result)
 
         if result.returncode == 0:
             typer.secho("Migrations complete.", fg=typer.colors.GREEN)
