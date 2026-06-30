@@ -1323,12 +1323,12 @@ The skill always does `--depth 1` clone so it gets the latest version automatica
 | Strategy block missing from after-case SOUL.md | Profile only refs a preference file | Add a strategy to `persona_parts` in the profile YAML; the before case intentionally omits it |
 | `openclaw agents add` prompts interactively | Missing `--non-interactive` | Add `--non-interactive --workspace <path>` |
 | `mycelium room create` returns 400 | Room name already exists | Use unique `$EXP_ID` prefix or delete existing room first |
-| Agents don't respond in after case | Sandbox blocks `mycelium` CLI | Verify `sandbox: {mode: off}` was patched in Phase 1a |
+| Agents don't respond in after case | Sandbox blocks `mycelium` CLI | Verify `sandbox: {mode: off}` was patched in Phase 1a, or `tools.exec.host = 'gateway'` set |
 | After-case agents chat instead of using CLI | Strategy block not in SOUL.md | See above |
 | `curl` to backend fails | Wrong port | Read from `~/.mycelium/config.toml` |
 | No SSE connection | Plugin not loaded | Check plugin in `load.paths` and `allow` |
 | Ticks never arrive (after case) | Session room SSE not subscribed | Check poll found session room; verify CFN is running (`docker logs mycelium-backend`) |
 | Agent processes hang | `--local` flag or SSE loop in child | Ensure NOT using `--local`; check `MYCELIUM_CHANNEL_ONESHOT` env var |
-| After-case agents say "mycelium CLI isn't available" | Experiment agents are sandboxed | Set `sandbox: {mode: "off"}` on each `exp-*` agent in `openclaw.json` and restart gateway. See Phase 1a. |
+| After-case agents say "mycelium CLI isn't available" | Experiment agents are sandboxed | Set `sandbox: {mode: "off"}` or `tools.exec.host = "gateway"` on each `exp-*` agent in `openclaw.json` and restart gateway. See Phase 1a. |
 
 

@@ -178,7 +178,9 @@ mycelium session join --handle agent-delta -m "Ship safe" -r e2e-test-room
 
 Test that OpenClaw agents get woken by coordination ticks and respond autonomously.
 
-**Prerequisites**: OpenClaw gateway running, mycelium adapter installed, agents configured with sandbox=off.
+**Prerequisites**: OpenClaw gateway running, mycelium adapter installed, agents able to exec mycelium CLI. Two ways to achieve this per agent in `openclaw.json`:
+- Option A (simpler): `"sandbox": {"mode": "off"}`
+- Option B (preserves container isolation): `"tools": {"exec": {"host": "gateway"}}` — routes exec to the gateway host where mycelium is installed while keeping sandbox isolation for read/write/edit.
 
 ```bash
 # Verify gateway + plugin
