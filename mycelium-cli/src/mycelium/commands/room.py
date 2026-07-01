@@ -305,6 +305,21 @@ def delete(
 
         typer.secho(f"Room '{room_name}' deleted.", fg=typer.colors.GREEN)
 
+        # Remove from openclaw.json if it was registered there, so the gateway
+        # stops holding a LISTEN connection open for the now-deleted room.
+        # Only affects channels.mycelium-room.rooms[] — Hermes/Cursor entries
+        # are stored separately and are not touched.
+        try:
+            from mycelium.integrations.openclaw.dispatch import remove_room_from_openclaw
+
+            if remove_room_from_openclaw(room_name):
+                typer.secho(
+                    f"  Removed '{room_name}' from local openclaw.json.",
+                    fg=typer.colors.CYAN,
+                )
+        except Exception:
+            pass  # openclaw not installed locally — skip silently
+
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)

@@ -720,5 +720,42 @@ class OpenClawIntegration(Integration):
         return {"ok": ok, "details": details}
 
 
+def remove_room_from_openclaw(room_name: str, *, profile: str | None = None) -> bool:
+    """Remove a room entry from channels.mycelium-room.rooms[] in openclaw.json.
+
+    Called by `mycelium room delete` so stale room subscriptions don't hold
+    Postgres LISTEN connections open after the room is gone from the backend.
+    Only touches entries under channels.mycelium-room — Hermes/Cursor rooms are
+    stored elsewhere and are not affected.
+
+    Returns True if the room was found and removed, False if not present or
+    if openclaw.json doesn't exist.
+    """
+    oc_json = _openclaw_state_dir(profile) / "openclaw.json"
+    if not oc_json.exists():
+        return False
+    try:
+        cfg = json.loads(oc_json.read_text())
+    except Exception:
+        return False
+
+    block = (cfg.get("channels") or {}).get(_CHANNEL_ID)
+    if not isinstance(block, dict):
+        return False
+
+    rooms_before = block.get("rooms") or []
+    if not isinstance(rooms_before, list):
+        return False
+
+    rooms_after = [r for r in rooms_before if r.get("room") != room_name]
+    if len(rooms_after) == len(rooms_before):
+        return False  # room wasn't in the list
+
+    block["rooms"] = rooms_after
+    cfg["channels"][_CHANNEL_ID] = block
+    oc_json.write_text(json.dumps(cfg, indent=2) + "\n")
+    return True
+
+
 #: Back-compat alias for the historical class name.
 OpenClawAdapter = OpenClawIntegration
