@@ -6,9 +6,11 @@ Weekly full E2E job — runs all test tiers in sequence.
 This is the primary job for the weekly long-running integration test
 of the Mycelium multi-agent coordination platform.
 
+**Runtime:** lab only (``testbeds/lab.yaml``) — runs on the orch EC2
+cluster via ``.github/workflows/weekly-e2e.yaml``, not the compose stack.
+
 Usage:
-    # Full weekly run against lab
-    pyats run job jobs/weekly_e2e_job.py
+    pyats run job jobs/weekly_e2e_job.py --testbed-file testbeds/lab.yaml
 
     # With explicit datafile
     pyats run job jobs/weekly_e2e_job.py \\
@@ -33,6 +35,9 @@ import jobs._common as common
 
 log = logging.getLogger(__name__)
 
+_DEFAULT_RUNTIME = common.RUNTIME_LAB
+_ALLOWED_RUNTIMES = common.RUNTIME_LAB_ONLY
+
 testcases_filter = os.getenv("TESTCASES")
 if testcases_filter:
     tcs = [t.strip() for t in testcases_filter.split(",")]
@@ -42,7 +47,19 @@ else:
 
 
 def main(runtime):
-    log.info("=== Mycelium Weekly E2E Test ===")
+    testbed, active_runtime, _source = common.prepare_job_testbed(
+        runtime,
+        log,
+        job_default_runtime=_DEFAULT_RUNTIME,
+        allowed_runtimes=_ALLOWED_RUNTIMES,
+    )
+    common.log_job_context(
+        log,
+        title="Mycelium Weekly E2E Test",
+        runtime=active_runtime,
+        default_testbed=common.testbed_path_for_runtime(active_runtime),
+        active_testbed=testbed,
+    )
     log.info("Runtime directory: %s", runtime.directory)
 
     datafile = common.get_datafile(default="weekly_datafile.yaml")
@@ -59,5 +76,7 @@ def main(runtime):
         log.info("Filtering to testcases: %s", testcases_filter)
     if max_failures:
         kwargs["max_failures"] = max_failures
+    if testbed is not None:
+        kwargs["testbed"] = testbed
 
     run(**kwargs)

@@ -249,7 +249,7 @@ jobs:
             mycelium-db matrix-synapse
           echo "Waiting for DB and Matrix..."
           docker compose -f $COMPOSE_FILE up -d \
-            ioc-cfn-mgmt-plane-svc ioc-cognition-fabric-node-svc
+            ioc-cfn-mgmt-plane-svc ioc-cfn-svc
           docker compose -f $COMPOSE_FILE up -d \
             mycelium-backend
 
@@ -515,22 +515,19 @@ jobs:
         env:
           MYCELIUM_DATAFILE: ${{ steps.resolve.outputs.datafile }}
           SUITE: ${{ steps.resolve.outputs.suite }}
+          MYCELIUM_E2E_RUNTIME: compose
         run: |
-          # Map suite → job file + tier env + testbed file. New
-          # matrix-driven suites (pr, nightly) use scenarios_suite.py
-          # via dedicated job files; legacy suites keep their existing
-          # ``jobs/<suite>_job.py`` wiring.
+          # Runtime: MYCELIUM_E2E_RUNTIME (also auto-detects GITHUB_ACTIONS).
+          # Jobs load the matching testbed — no --testbed-file required.
           TESTBED_ARGS=()
           case "$SUITE" in
             pr)
               JOB_FILE="jobs/pr_job.py"
               export MYCELIUM_E2E_TIERS=pr
-              TESTBED_ARGS=(--testbed-file testbeds/compose.yaml)
               ;;
             nightly)
               JOB_FILE="jobs/nightly_e2e_job.py"
               export MYCELIUM_E2E_TIERS=pr,nightly
-              TESTBED_ARGS=(--testbed-file testbeds/compose.yaml)
               ;;
             weekly_full)
               JOB_FILE="jobs/weekly_e2e_job.py"

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import re
+import subprocess
 from typing import Any, ClassVar
 
 from libs import host_exec
@@ -74,6 +75,16 @@ class CursorProvisioner(ABCProvisioner):
             raise PrereqMissing(
                 f"cursor: mycelium-cc-daemon not responsive on "
                 f"{host_exec.describe(device)}: {daemon.stderr.strip()[:200]}"
+            )
+
+        try:
+            auth = host_exec.execute(device, ["cursor-agent", "status"], timeout=15.0)
+        except HostExecError as exc:
+            raise PrereqMissing(f"cursor: dispatch failed: {exc}") from exc
+        if not _cursor_agent_authenticated(auth):
+            raise PrereqMissing(
+                f"cursor: cursor-agent not authenticated on {host_exec.describe(device)} — "
+                "run `cursor-agent login` on that host before e2e tests"
             )
 
     # ── create ────────────────────────────────────────────────────────
@@ -250,3 +261,27 @@ class CursorProvisioner(ABCProvisioner):
 
 
 _SAFE_WORKSPACE_RE = re.compile(r"^/tmp/cursor-e2e-[A-Za-z0-9]{6,}$")
+
+_AUTH_SUCCESS_MARKERS = (
+    "login successful",
+    "logged in with",
+    "authenticated",
+)
+_AUTH_FAILURE_MARKERS = (
+    "authentication required",
+    "not authenticated",
+    "not logged in",
+    "please log in",
+    "please run `cursor-agent login`",
+)
+
+
+def _cursor_agent_authenticated(result: subprocess.CompletedProcess[str]) -> bool:
+    """Return True when ``cursor-agent status`` indicates a usable session."""
+    combined = (result.stdout + result.stderr).lower()
+    if any(marker in combined for marker in _AUTH_SUCCESS_MARKERS):
+        return True
+    if result.returncode != 0 and any(marker in combined for marker in _AUTH_FAILURE_MARKERS):
+        return False
+    # Unknown output with non-zero exit — treat as unauthenticated.
+    return result.returncode == 0

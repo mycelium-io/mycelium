@@ -161,6 +161,37 @@ def _record(result: DeviceResult, phase: str, ok: bool, detail: str = "") -> boo
     return ok
 
 
+def _compose_file_flags(device: Any, working_dir: str) -> str:
+    """Return ``-f compose.yml`` flags for ``working_dir``.
+
+    ``compose-dev.yml`` is only appended when the file exists on the
+    device. Installs via ``mycelium install -n`` (prebuilt images under
+    ``~/.mycelium/docker``) ship ``compose.yml`` only — requiring the dev
+    override breaks drift correction on long-lived lab boxes.
+    """
+    ok, _ = _sh(device, f"test -f {working_dir}/compose-dev.yml", timeout=5)
+    if ok:
+        return "-f compose.yml -f compose-dev.yml"
+    return "-f compose.yml"
+
+
+def _force_recreate_cfn_services(
+    device: Any,
+    working_dir: str,
+    *,
+    restart_timeout: float = 180.0,
+) -> tuple[bool, str]:
+    """Force-recreate backend + CFN node so they re-read ``~/.mycelium/.env``."""
+    flags = _compose_file_flags(device, working_dir)
+    recreate_cmd = (
+        f"cd {working_dir} && "
+        f"docker compose {flags} "
+        "--profile cfn up -d --force-recreate "
+        "mycelium-backend ioc-cfn-svc"
+    )
+    return _sh(device, recreate_cmd, timeout=restart_timeout)
+
+
 # ── cleanup ────────────────────────────────────────────────────────────
 
 
@@ -600,7 +631,7 @@ def provision_workspace_and_mas(device: Any, cfn_mgmt_url: str, result: DeviceRe
 # The backend container reaches CFN services by docker-network hostname,
 # so these don't change between deployments.
 _CFN_MGMT_URL_INTERNAL = "http://ioc-cfn-mgmt-plane-svc:9000"
-_COGNITION_FABRIC_NODE_URL_INTERNAL = "http://ioc-cognition-fabric-node-svc:9002"
+_CFN_SVC_URL_INTERNAL = "http://ioc-cfn-svc:9002"
 
 _PERSIST_HUB_IDS = (
     # Persist the provisioned IDs + CFN URLs via the CLI. ``config
@@ -610,7 +641,7 @@ _PERSIST_HUB_IDS = (
     "mycelium config set server.workspace_id {ws} && "
     "mycelium config set server.mas_id {mas} && "
     "mycelium config set runtime.cfn_mgmt_url {cfn_mgmt} && "
-    "mycelium config set runtime.cognition_fabric_node_url {cognition} && "
+    "mycelium config set runtime.cfn_svc_url {cfn_svc} && "
     "mycelium config apply"
 )
 
@@ -633,7 +664,7 @@ def persist_workspace_and_mas(
     """Write the IDs into the device's config via the mycelium CLI.
 
     On the hub, also writes ``CFN_MGMT_URL`` and
-    ``COGNITION_FABRIC_NODE_URL`` so the backend container can reach
+    ``CFN_SVC_URL`` so the backend container can reach
     the cognition fabric services (without these, ``mycelium doctor
     --mode hub`` reports a CFN config warning and negotiations fail).
     """
@@ -650,7 +681,7 @@ def persist_workspace_and_mas(
         ws=workspace_id,
         mas=mas_id,
         cfn_mgmt=_CFN_MGMT_URL_INTERNAL,
-        cognition=_COGNITION_FABRIC_NODE_URL_INTERNAL,
+        cfn_svc=_CFN_SVC_URL_INTERNAL,
     )
     ok, out = _sh(device, cmd, timeout=30)
     label = "persist workspace + MAS + CFN URLs" if is_hub else "persist workspace + MAS"
@@ -694,7 +725,7 @@ def verify_cfn_alignment(
     4. If misaligned, persists the canonical IDs via the CLI
        (``mycelium config set …`` + ``config apply``) and
        force-recreates ``mycelium-backend`` /
-       ``ioc-cognition-fabric-node-svc`` so they pick up the new
+       ``ioc-cfn-svc`` so they pick up the new
        ``.env``.
 
     Returns:
@@ -802,13 +833,7 @@ def verify_cfn_alignment(
     # the new env. ``docker compose restart`` won't re-read the env
     # file (env values are baked at create time); we need ``up -d
     # --force-recreate`` to rebuild the container spec.
-    recreate_cmd = (
-        f"cd {working_dir} && "
-        "docker compose -f compose.yml -f compose-dev.yml "
-        "--profile cfn up -d --force-recreate "
-        "mycelium-backend ioc-cognition-fabric-node-svc"
-    )
-    ok, out = _sh(device, recreate_cmd, timeout=restart_timeout)
+    ok, out = _force_recreate_cfn_services(device, working_dir, restart_timeout=restart_timeout)
     if not _record(result, "force-recreate backend + cfn node", ok, out):
         return result
 
@@ -932,7 +957,7 @@ def redeploy_device(
             return result
 
         # Restart the backend so it picks up the freshly written
-        # WORKSPACE_ID / MAS_ID / CFN_MGMT_URL / COGNITION_FABRIC_NODE_URL
+        # WORKSPACE_ID / MAS_ID / CFN_MGMT_URL / CFN_SVC_URL
         # from the rendered .env. Without this restart the backend
         # keeps its boot-time env (empty values) and ``mycelium
         # doctor`` reports CFN config warnings.

@@ -155,28 +155,13 @@ class SemanticSearch(aetest.Testcase):
 
 
 class Synthesis(aetest.Testcase):
-    """Test 05: AI synthesis of room state. Requires LLM."""
+    """Removed: ``mycelium synthesize`` / ``mycelium catchup`` CLI commands no longer exist."""
 
-    groups = ["core", "llm", "slow"]
+    groups = ["core", "llm", "slow", "removed"]
 
     @aetest.setup
-    def check_llm(self, env):
-        if env.skip_llm_tests:
-            self.skipped("LLM not available")
-
-    @aetest.test
-    def synthesize_room(self, steps, cli, room_name):
-        with steps.start("Synthesize room via CLI") as step:
-            r = cli.synthesize(room_name)
-            if not r.ok:
-                step.failed(f"Synthesis failed: {r.error_message}")
-
-    @aetest.test
-    def catchup_room(self, steps, cli, room_name):
-        with steps.start("Catchup via CLI") as step:
-            r = cli.catchup(room_name)
-            if not r.ok:
-                step.failed(f"Catchup failed: {r.error_message}")
+    def removed(self):
+        self.skipped("synthesize/catchup commands removed from CLI")
 
 
 class ConsensusNegotiation(aetest.Testcase):

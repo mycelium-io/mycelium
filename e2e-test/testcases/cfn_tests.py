@@ -2,7 +2,7 @@
 
 Maps to original tests 08, 09, 10.
 
-Key design lessons ported from mycelium_e2e/bundle.py test_ioc_cfn:
+Key design lessons from early IOC/CFN E2E runs:
 - CFN node-svc is single-worker uvicorn → use 180s timeouts to absorb
   queueing behind concurrent negotiations.
 - Leaf nodes only send room_name; backend resolves workspace/mas IDs.

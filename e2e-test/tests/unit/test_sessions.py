@@ -1,11 +1,12 @@
 """Unit tests for :mod:`libs.sessions`.
 
-All host_exec calls and HTTP polling are stubbed so the tests run
+All host_exec calls and consensus polling are stubbed so the tests run
 offline in <100ms.
 """
 
 from __future__ import annotations
 
+import json
 import json
 import subprocess
 from types import SimpleNamespace
@@ -62,10 +63,13 @@ def test_delete_room_never_raises_even_on_dispatch_error():
 
 
 def test_session_create_argv():
-    with patch("libs.host_exec.execute", return_value=_ok()) as exec_mock:
-        sessions.session_create(_device(), "r-x")
+    stdout = json.dumps({"session_room": "r-x:session:abc123"})
+    with patch("libs.host_exec.execute", return_value=_ok(stdout=stdout)) as exec_mock:
+        room = sessions.session_create(_device(), "r-x")
+    assert room == "r-x:session:abc123"
     assert exec_mock.call_args.args[1] == [
         "mycelium",
+        "--json",
         "session",
         "create",
         "--room",
@@ -114,41 +118,18 @@ def test_memory_search_returns_stdout():
 # ── poll_consensus ──────────────────────────────────────────────────
 
 
-def _make_resp(payload: dict) -> object:
-    body = json.dumps(payload).encode()
-
-    class _Resp:
-        def __init__(self) -> None:
-            self._data = body
-
-        def read(self):  # noqa: D401 - urlopen-style
-            return self._data
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            return False
-
-    return _Resp()
-
-
 def test_poll_consensus_parses_full_envelope():
-    msg = {
-        "message_type": "coordination_consensus",
-        "content": json.dumps(
-            {
-                "plan": "go with REST",
-                "plan_file": "plan/tasks.md",
-                "broken": False,
-                "assignments": {"alpha": "REST"},
-            }
-        ),
+    result = {
+        "coordination_state": "complete",
+        "completion_source": "coordination_consensus",
+        "consensus": {
+            "plan": "go with REST",
+            "plan_file": "plan/tasks.md",
+            "broken": False,
+            "assignments": {"alpha": "REST"},
+        },
     }
-    with patch(
-        "urllib.request.urlopen",
-        return_value=_make_resp({"messages": [msg]}),
-    ):
+    with patch("libs.coordination_flow.poll_for_consensus", return_value=result):
         outcome = sessions.poll_consensus(
             "http://backend:8000",
             "r-x",
@@ -162,14 +143,12 @@ def test_poll_consensus_parses_full_envelope():
 
 
 def test_poll_consensus_handles_broken_envelope():
-    msg = {
-        "message_type": "coordination_consensus",
-        "content": json.dumps({"plan": "Negotiation ended: timeout", "broken": True}),
+    result = {
+        "coordination_state": "failed",
+        "completion_source": "coordination_consensus",
+        "consensus": {"plan": "Negotiation ended: timeout", "broken": True},
     }
-    with patch(
-        "urllib.request.urlopen",
-        return_value=_make_resp({"messages": [msg]}),
-    ):
+    with patch("libs.coordination_flow.poll_for_consensus", return_value=result):
         outcome = sessions.poll_consensus(
             "http://backend:8000",
             "r-x",
@@ -182,12 +161,7 @@ def test_poll_consensus_handles_broken_envelope():
 
 
 def test_poll_consensus_returns_timeout_state():
-    # No consensus messages → loop times out quickly because we pass
-    # ``timeout_seconds=0`` (deadline already past on first iteration).
-    with patch(
-        "urllib.request.urlopen",
-        return_value=_make_resp({"messages": []}),
-    ):
+    with patch("libs.coordination_flow.poll_for_consensus", return_value=None):
         outcome = sessions.poll_consensus(
             "http://backend:8000",
             "r-x",
@@ -199,21 +173,13 @@ def test_poll_consensus_returns_timeout_state():
     assert outcome.plan_file is None
 
 
-def test_poll_consensus_tolerates_invalid_content_json():
-    msg = {
-        "message_type": "coordination_consensus",
-        "content": "this is not json",
+def test_consensus_outcome_from_poll_tolerates_invalid_content_json():
+    result = {
+        "coordination_state": "complete",
+        "completion_source": "coordination_consensus",
+        "consensus": {"plan": "this is not json", "broken": False},
     }
-    with patch(
-        "urllib.request.urlopen",
-        return_value=_make_resp({"messages": [msg]}),
-    ):
-        outcome = sessions.poll_consensus(
-            "http://backend:8000",
-            "r-x",
-            timeout_seconds=1,
-            poll_interval=0,
-        )
+    outcome = sessions.consensus_outcome_from_poll(result)
     assert outcome.state == "consensus"
     assert outcome.plan == "this is not json"
 

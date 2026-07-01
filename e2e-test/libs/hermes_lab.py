@@ -1,10 +1,12 @@
-"""Hermes lab provisioner — idempotent setup of hermes + Matrix across nodes.
+"""Hermes lab provisioner — idempotent setup of hermes across nodes.
 
 Handles per-node state that must exist before any hermes E2E test runs:
-  - mautrix (the hermes[matrix] extra) installed in the hermes venv
-  - Dedicated Matrix user created on Synapse (hermes-oclw4/3/5)
+  - hermes binary reachable on PATH
   - hermes adapter registered in mycelium (``mycelium adapter add hermes``)
   - hermes gateway running
+
+Hermes talks to Mycelium rooms directly via the ``mycelium-room`` platform
+plugin — no Matrix homeserver, mautrix, or Synapse users are required.
 
 All operations are idempotent — safe to re-run against an already-provisioned
 node. Designed to be called from ``scripts/provision_hermes_lab.py`` in CI
@@ -14,28 +16,11 @@ test suite (fast check, skip-not-fail if missing).
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import logging
 import subprocess
-import uuid
 from dataclasses import dataclass, field
 
-import httpx
-
 log = logging.getLogger(__name__)
-
-# Synapse container name — same default as refresh-matrix-tokens.sh
-_SYNAPSE_CONTAINER = "matrix-synapse"
-
-# mautrix version pinned to match hermes pyproject.toml extras
-_MAUTRIX_PACKAGES = (
-    "mautrix[encryption]==0.21.0",
-    "aiosqlite",
-    "asyncpg",
-    "aiohttp-socks",
-    "Markdown",
-)
 
 
 @dataclass
@@ -46,8 +31,6 @@ class NodeConfig:
     ssh_ip: str
     ssh_user: str = "ubuntu"
     ssh_key: str = "~/.ssh/ioc.pem"
-    matrix_user: str = ""  # e.g. "hermes-oclw4"; derived from name if empty
-    matrix_homeserver: str = "http://localhost:8008"
     # Path to hermes venv python on the node — auto-detected if empty
     hermes_python: str = ""
 
@@ -110,80 +93,11 @@ def _detect_hermes_python(ip: str, user: str, key: str) -> str:
     return "/home/ubuntu/hermes-agent/venv/bin/python3"
 
 
-# ── Synapse helpers ────────────────────────────────────────────────────────────
-
-
-def _synapse_secret() -> str:
-    raw = subprocess.check_output(
-        ["docker", "exec", _SYNAPSE_CONTAINER, "grep", "registration_shared_secret:", "/data/homeserver.yaml"],
-        text=True,
-    )
-    return raw.split('"')[1]
-
-
-def _synapse_server_name() -> str:
-    raw = subprocess.check_output(
-        ["docker", "exec", _SYNAPSE_CONTAINER, "grep", "server_name:", "/data/homeserver.yaml"],
-        text=True,
-    )
-    return raw.split('"')[1]
-
-
-def get_admin_token(homeserver: str) -> str:
-    """Create a short-lived Synapse admin user; return its access token."""
-    secret = _synapse_secret()
-    nonce = httpx.get(f"{homeserver}/_synapse/admin/v1/register").json()["nonce"]
-    admin_user = f"mycelium-admin-{uuid.uuid4().hex[:12]}"
-    admin_pass = uuid.uuid4().hex
-
-    mac = hmac.new(secret.encode(), digestmod=hashlib.sha1)
-    for part in [nonce, "\x00", admin_user, "\x00", admin_pass, "\x00", "admin"]:
-        mac.update(part.encode())
-
-    resp = httpx.post(
-        f"{homeserver}/_synapse/admin/v1/register",
-        json={"nonce": nonce, "username": admin_user, "password": admin_pass, "admin": True, "mac": mac.hexdigest()},
-    )
-    resp.raise_for_status()
-    return resp.json()["access_token"]
-
-
-def ensure_matrix_user(homeserver: str, admin_token: str, username: str) -> None:
-    """Create *username* on Synapse if it does not already exist."""
-    server_name = _synapse_server_name()
-    user_id = f"@{username}:{server_name}"
-    resp = httpx.get(
-        f"{homeserver}/_synapse/admin/v2/users/{user_id}",
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    if resp.status_code == 200:
-        log.info("Matrix user %s already exists", user_id)
-        return
-    httpx.put(
-        f"{homeserver}/_synapse/admin/v2/users/{user_id}",
-        headers={"Authorization": f"Bearer {admin_token}"},
-        json={"password": uuid.uuid4().hex, "admin": False, "displayname": username},
-    ).raise_for_status()
-    log.info("Created Matrix user %s", user_id)
-
-
-def impersonate_user(homeserver: str, admin_token: str, username: str) -> str:
-    """Return a fresh access token for *username* via admin impersonation."""
-    server_name = _synapse_server_name()
-    resp = httpx.post(
-        f"{homeserver}/_synapse/admin/v1/users/@{username}:{server_name}/login",
-        headers={"Authorization": f"Bearer {admin_token}"},
-        json={},
-    )
-    resp.raise_for_status()
-    return resp.json()["access_token"]
-
-
 # ── per-node provisioning ──────────────────────────────────────────────────────
 
 
-def provision_node(cfg: NodeConfig, admin_token: str) -> ProvisionResult:
-    """Idempotently provision hermes + Matrix on a single node."""
+def provision_node(cfg: NodeConfig) -> ProvisionResult:
+    """Idempotently provision hermes on a single node."""
     result = ProvisionResult(node=cfg.name, success=False)
     ip, user, key = cfg.ssh_ip, cfg.ssh_user, cfg.ssh_key
 
@@ -194,29 +108,7 @@ def provision_node(cfg: NodeConfig, admin_token: str) -> ProvisionResult:
         result.error = f"hermes venv python not found at {hermes_python}"
         return result
 
-    # ── 2. Install mautrix ────────────────────────────────────────────
-    rc, out, err = _ssh(ip, user, key, f"{hermes_python} -c 'import mautrix'", timeout=10.0)
-    if rc == 0:
-        result.record("mautrix already installed", True)
-    else:
-        pkgs = " ".join(f"'{p}'" for p in _MAUTRIX_PACKAGES)
-        rc, out, err = _ssh(ip, user, key, f"{hermes_python} -m pip install {pkgs} 2>&1", timeout=180.0)
-        result.record("install mautrix", rc == 0, out + err)
-        if rc != 0:
-            result.error = "mautrix install failed"
-            return result
-
-    # ── 3. Ensure Matrix user exists ──────────────────────────────────
-    matrix_user = cfg.matrix_user or f"hermes-{cfg.name.replace(' ', '-').lower()}"
-    try:
-        ensure_matrix_user(cfg.matrix_homeserver, admin_token, matrix_user)
-        result.record(f"Matrix user @{matrix_user}", True)
-    except Exception as exc:
-        result.record(f"Matrix user @{matrix_user}", False, str(exc))
-        result.error = str(exc)
-        return result
-
-    # ── 4. Register hermes adapter ────────────────────────────────────
+    # ── 2. Register hermes adapter ────────────────────────────────────
     rc, out, _ = _ssh(ip, user, key, "mycelium adapter ls 2>&1", timeout=15.0)
     if rc == 0 and "hermes" in out.lower():
         result.record("hermes adapter registered", True)
@@ -227,7 +119,7 @@ def provision_node(cfg: NodeConfig, admin_token: str) -> ProvisionResult:
             result.error = "adapter registration failed"
             return result
 
-    # ── 5. Ensure gateway is running ──────────────────────────────────
+    # ── 3. Ensure gateway is running ──────────────────────────────────
     rc, out, _ = _ssh(ip, user, key, "hermes gateway status 2>&1", timeout=10.0)
     running = rc == 0 and ("running" in out.lower() or "pid" in out.lower())
     if running:
@@ -243,42 +135,28 @@ def provision_node(cfg: NodeConfig, admin_token: str) -> ProvisionResult:
     return result
 
 
-def provision_lab(
-    nodes: list[NodeConfig],
-    matrix_homeserver: str = "http://localhost:8008",
-) -> list[ProvisionResult]:
+def provision_lab(nodes: list[NodeConfig]) -> list[ProvisionResult]:
     """Provision all nodes; returns results in input order."""
-    try:
-        admin_token = get_admin_token(matrix_homeserver)
-        log.info("Got Synapse admin token")
-    except Exception as exc:
-        log.error("Failed to get Synapse admin token: %s", exc)
-        return [ProvisionResult(node=n.name, success=False, error=str(exc)) for n in nodes]
-
     results = []
     for node in nodes:
         log.info("Provisioning %s (%s)…", node.name, node.ssh_ip)
-        result = provision_node(node, admin_token)
+        result = provision_node(node)
         results.append(result)
-
     return results
 
 
-def check_prereqs(
-    ip: str,
-    user: str,
-    key: str,
-    *,
-    matrix_homeserver: str = "http://localhost:8008",
-    matrix_user: str = "",
-) -> list[str]:
+def check_prereqs(ip: str, user: str, key: str) -> list[str]:
     """Return a list of missing prerequisites on the node (empty = all good)."""
     missing = []
 
-    hermes_python = _detect_hermes_python(ip, user, key)
-    rc, _, _ = _ssh(ip, user, key, f"{hermes_python} -c 'import mautrix'", timeout=10.0)
+    rc, _, _ = _ssh(ip, user, key, "command -v hermes >/dev/null 2>&1", timeout=10.0)
     if rc != 0:
-        missing.append("mautrix not installed in hermes venv — run provision_hermes_lab.py")
+        missing.append("hermes binary not on PATH — install hermes-agent first")
+
+    hermes_python = _detect_hermes_python(ip, user, key)
+    rc, _, _ = _ssh(ip, user, key, f"{hermes_python} -c 'import sys; print(sys.version)'", timeout=10.0)
+    if rc != 0:
+        missing.append("hermes venv python not reachable — check hermes install")
 
     rc, out, _ = _ssh(ip, user, key, "mycelium adapter ls 2>&1", timeout=15.0)
     if rc != 0 or "hermes" not in out.lower():
@@ -287,19 +165,5 @@ def check_prereqs(
     rc, out, _ = _ssh(ip, user, key, "hermes gateway status 2>&1", timeout=10.0)
     if rc != 0 or ("running" not in out.lower() and "pid" not in out.lower()):
         missing.append("hermes gateway not running — run: hermes gateway start")
-
-    if matrix_user:
-        try:
-            server_name = _synapse_server_name()
-            _synapse_secret()
-            admin_token = get_admin_token(matrix_homeserver)
-            resp = httpx.get(
-                f"{matrix_homeserver}/_synapse/admin/v2/users/@{matrix_user}:{server_name}",
-                headers={"Authorization": f"Bearer {admin_token}"},
-            )
-            if resp.status_code != 200:
-                missing.append(f"Matrix user @{matrix_user} missing — run provision_hermes_lab.py")
-        except Exception as exc:
-            missing.append(f"Matrix user check failed: {exc}")
 
     return missing

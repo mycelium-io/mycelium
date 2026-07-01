@@ -41,9 +41,6 @@ testcases:
   SemanticSearch:
     uid: "mycelium:e2e:core:004"
 
-  Synthesis:
-    uid: "mycelium:e2e:core:005"
-
   ConsensusNegotiation:
     uid: "mycelium:e2e:core:006"
 

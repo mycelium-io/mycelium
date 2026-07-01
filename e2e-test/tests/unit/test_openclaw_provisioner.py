@@ -55,7 +55,7 @@ def test_check_prereqs_raises_when_cli_missing():
 
 
 def _is_chown(argv) -> bool:
-    """Match the chown best-effort step in ``_ensure_room``.
+    """Match the chown best-effort step in ``ensure_bootstrap_room``.
 
     ``argv`` may be a list (argv form) or a plain str (shell form);
     the chown is always passed as a single shell-quoted string, so we
@@ -66,7 +66,7 @@ def _is_chown(argv) -> bool:
 
 
 def test_ensure_runtime_short_circuits_when_agent_already_present():
-    """Idempotent fast path: if `agent ls` shows the handle, no
+    """Idempotent fast path: if ``openclaw agents list`` shows the handle, no
     create call is issued. This is the steady-state for repeated
     suite runs."""
     prov = OpenClawProvisioner()
@@ -79,8 +79,8 @@ def test_ensure_runtime_short_circuits_when_agent_already_present():
             return _ok()
         if argv[:3] == ["mycelium", "room", "create"]:
             return _ok()
-        if argv[:3] == ["mycelium", "agent", "ls"]:
-            return _ok("agent-alpha   openclaw   ready\nagent-beta   openclaw   ready")
+        if argv[:3] == ["openclaw", "agents", "list"]:
+            return _ok("- agent-alpha\n- agent-beta")
         # If we reach here the test caught a regression — log enough to debug.
         raise AssertionError(f"unexpected call in fast path: {argv}")
 
@@ -113,8 +113,8 @@ def test_ensure_runtime_creates_when_agent_absent(monkeypatch):
             return _ok()
         if argv[:3] == ["mycelium", "room", "create"]:
             return _ok()
-        if argv[:3] == ["mycelium", "agent", "ls"]:
-            return _ok("")  # nothing in the bootstrap room
+        if argv[:3] == ["openclaw", "agents", "list"]:
+            return _ok("")  # no agents configured
         if argv[:3] == ["mycelium", "agent", "create"]:
             return _ok("created")
         raise AssertionError(f"unexpected call: {argv}")
@@ -149,7 +149,7 @@ def test_ensure_runtime_prefers_device_custom_seed_over_env(monkeypatch):
         captured.extend(argv)
         if argv[:3] == ["mycelium", "room", "create"]:
             return _ok()
-        if argv[:3] == ["mycelium", "agent", "ls"]:
+        if argv[:3] == ["openclaw", "agents", "list"]:
             return _ok("")
         if argv[:3] == ["mycelium", "agent", "create"]:
             return _ok("created")
@@ -175,7 +175,7 @@ def test_ensure_runtime_propagates_create_failure(monkeypatch):
             return _ok()
         if argv[:3] == ["mycelium", "room", "create"]:
             return _ok()
-        if argv[:3] == ["mycelium", "agent", "ls"]:
+        if argv[:3] == ["openclaw", "agents", "list"]:
             return _ok("")
         if argv[:3] == ["mycelium", "agent", "create"]:
             return _fail("LLM auth missing", rc=2)
@@ -198,7 +198,7 @@ def test_ensure_runtime_retries_on_root_ownership_race():
             return _ok()
         if argv[:3] == ["mycelium", "room", "create"]:
             return _ok()
-        if argv[:3] == ["mycelium", "agent", "ls"]:
+        if argv[:3] == ["openclaw", "agents", "list"]:
             return _ok("")
         if argv[:3] == ["mycelium", "agent", "create"]:
             attempts.append(1)
@@ -263,8 +263,8 @@ def test_create_agent_chains_ensure_runtime_and_register():
             return _ok()
         if argv[:3] == ["mycelium", "room", "create"]:
             return _ok()
-        if argv[:3] == ["mycelium", "agent", "ls"]:
-            return _ok("agent-alpha   openclaw   ready")  # already present
+        if argv[:3] == ["openclaw", "agents", "list"]:
+            return _ok("- agent-alpha")  # already present
         if argv[:3] == ["mycelium", "agent", "add"]:
             return _ok("added")
         raise AssertionError(f"unexpected: {argv}")
@@ -273,9 +273,9 @@ def test_create_agent_chains_ensure_runtime_and_register():
         ref = prov.create_agent(_device(), handle="agent-alpha", room="r1")
 
     assert ref.metadata["room"] == "r1"
-    # Both ensure_runtime (room+ls, no create) and register_in_room (add) ran.
+    # Both ensure_runtime (agents list, no create) and register_in_room (add) ran.
     list_seen = [c for c in seen if isinstance(c, list)]
-    assert any(c[:3] == ["mycelium", "agent", "ls"] for c in list_seen)
+    assert any(c[:3] == ["openclaw", "agents", "list"] for c in list_seen)
     assert any(c[:3] == ["mycelium", "agent", "add"] for c in list_seen)
 
 
@@ -463,6 +463,65 @@ def test_cleanup_agent_resets_listed_sessions():
     reset_calls = [c for c in calls if c[0][:2] == ("openclaw", "gateway")]
     assert len(reset_calls) == 1
     assert "mycelium-room:r1:session:abc" in reset_calls[0][0][-1]
+
+
+# ── discover_available ───────────────────────────────────────────────
+
+
+def test_discover_available_returns_healthy_agents():
+    """Agents listed by ``openclaw agents list`` AND passing the gateway probe are returned."""
+    prov = OpenClawProvisioner()
+
+    def fake_execute(_device, argv, **_kwargs):
+        if argv[:3] == ["openclaw", "agents", "list"]:
+            return _ok("- claire-agent\n- selina-agent")
+        if argv[:2] == ["openclaw", "sessions"]:
+            return _ok("[]")  # gateway responds → healthy
+        raise AssertionError(f"unexpected: {argv}")
+
+    with patch("libs.host_exec.execute", side_effect=fake_execute):
+        refs = prov.discover_available(_device())
+
+    handles = [r.handle for r in refs]
+    assert "claire-agent" in handles
+    assert "selina-agent" in handles
+    assert all(r.adapter == "openclaw" for r in refs)
+    assert all(r.metadata["pre_existing"] is True for r in refs)
+
+
+def test_discover_available_skips_agents_with_dead_gateway():
+    """An agent known to openclaw but rejected by the gateway probe is excluded."""
+    prov = OpenClawProvisioner()
+
+    def fake_execute(_device, argv, **_kwargs):
+        if argv[:3] == ["openclaw", "agents", "list"]:
+            return _ok("- ghost-agent")
+        if argv[:2] == ["openclaw", "sessions"]:
+            return _fail("gateway not running", rc=1)
+        raise AssertionError(f"unexpected: {argv}")
+
+    with patch("libs.host_exec.execute", side_effect=fake_execute):
+        refs = prov.discover_available(_device())
+
+    assert refs == []
+
+
+def test_discover_available_returns_empty_when_no_agents_in_room():
+    prov = OpenClawProvisioner()
+
+    with patch("libs.host_exec.execute", return_value=_ok("")):
+        refs = prov.discover_available(_device())
+
+    assert refs == []
+
+
+def test_discover_available_returns_empty_on_ls_failure():
+    prov = OpenClawProvisioner()
+
+    with patch("libs.host_exec.execute", return_value=_fail("room not found")):
+        refs = prov.discover_available(_device())
+
+    assert refs == []
 
 
 # ── helpers ─────────────────────────────────────────────────────────

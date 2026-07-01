@@ -36,12 +36,18 @@ class MatrixClient:
         body: str,
         msgtype: str = "m.text",
         formatted_body: Optional[str] = None,
+        mention_user_ids: Optional[list] = None,
     ) -> dict:
         txn_id = uuid.uuid4().hex
         payload: dict[str, Any] = {"msgtype": msgtype, "body": body}
         if formatted_body:
             payload["format"] = "org.matrix.custom.html"
             payload["formatted_body"] = formatted_body
+        # m.mentions is the Matrix spec field for explicit user mentions.
+        # Clients (and bots like the OpenClaw gateway) use this to filter
+        # requireMention checks — without it, mentions in formatted_body are ignored.
+        if mention_user_ids:
+            payload["m.mentions"] = {"user_ids": mention_user_ids}
         r = await self._http.put(
             f"/_matrix/client/v3/rooms/{quote(room_id, safe='')}/send/m.room.message/{txn_id}",
             json=payload,
@@ -177,6 +183,74 @@ async def get_observer_token(
             raise RuntimeError("Observer exists but login failed with all known passwords")
 
         raise RuntimeError(f"Observer registration failed: {reg_resp.status_code} {reg_resp.text}")
+
+
+async def _synapse_admin_token(
+    client: httpx.AsyncClient,
+    homeserver: str,
+    secret: str,
+) -> tuple[str, str]:
+    """Register a throwaway Synapse admin user and return (access_token, server_name).
+
+    The registration response's ``home_server`` field gives us the canonical
+    server name without needing a separate discovery call.
+    """
+    nonce_resp = await client.get(f"{homeserver}/_synapse/admin/v1/register")
+    nonce_resp.raise_for_status()
+    nonce = nonce_resp.json()["nonce"]
+
+    username = f"e2e-admin-{uuid.uuid4().hex[:8]}"
+    password = uuid.uuid4().hex
+
+    mac = hmac.new(secret.encode(), digestmod=hashlib.sha1)
+    for part in (nonce, "\x00", username, "\x00", password, "\x00", "admin"):
+        mac.update(part.encode())
+
+    reg_resp = await client.post(
+        f"{homeserver}/_synapse/admin/v1/register",
+        json={
+            "nonce": nonce,
+            "username": username,
+            "password": password,
+            "admin": True,
+            "mac": mac.hexdigest(),
+        },
+    )
+    reg_resp.raise_for_status()
+    body = reg_resp.json()
+    return body["access_token"], body["home_server"]
+
+
+async def get_agent_token(
+    homeserver: str,
+    agent_id: str,
+    *,
+    shared_secret: Optional[str] = None,
+) -> str:
+    """Return a Matrix access token for *agent_id* via the Synapse admin API.
+
+    Uses the shared secret to mint a throwaway admin user, then calls the
+    admin impersonation endpoint to get a token for the named agent without
+    knowing the agent's password. The throwaway admin account is left in
+    place — Synapse treats it as an ordinary (low-privilege) account once
+    the registration flow completes, and it is never used again.
+    """
+    secret = shared_secret or os.environ.get("MATRIX_SHARED_SECRET", "")
+    if not secret:
+        raise RuntimeError(
+            "MATRIX_SHARED_SECRET not set — cannot provision agent token via admin API"
+        )
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        admin_token, server_name = await _synapse_admin_token(client, homeserver, secret)
+        user_id = f"@{agent_id}:{server_name}"
+        resp = await client.post(
+            f"{homeserver}/_synapse/admin/v1/users/{user_id}/login",
+            headers={"Authorization": f"Bearer {admin_token}"},
+            json={},
+        )
+        resp.raise_for_status()
+        return resp.json()["access_token"]
 
 
 def check_matrix_reachable(base_url: str) -> bool:

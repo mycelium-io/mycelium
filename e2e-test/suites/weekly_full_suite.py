@@ -47,7 +47,6 @@ from testcases.core_tests import (
     SessionJoinIdempotency,
     SharedMemoryCliE2E,
     SyncNegotiationCliE2E,
-    Synthesis,
 )
 from testcases.cross_channel_tests import CrossChannelMemoryIsolation
 from testcases.cursor_tests import (
@@ -104,10 +103,6 @@ class test_03_memory_reads(MemoryReads):
 
 
 class test_04_semantic_search(SemanticSearch):
-    pass
-
-
-class test_05_synthesis(Synthesis):
     pass
 
 

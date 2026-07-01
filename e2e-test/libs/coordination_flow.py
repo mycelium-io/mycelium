@@ -7,10 +7,7 @@ SKILL-faithful negotiation flow (OpenClaw / Hermes / daemon cold-spawn):
    ``mycelium negotiate`` on their own — the harness never impersonates
    agents with ``negotiate respond`` or ``session await``.
 3. Harness polls the backend for agent ``direct`` replies and terminal
-   ``coordination_state`` / ``coordination_consensus``.
-
-Mirrors ``mycelium_e2e/distributed_e2e.wait_for_negotiation_responses`` and
-``libs/sessions.poll_consensus`` used by the matrix scenario tests.
+   negotiation outcomes via ``poll_for_consensus`` / ``poll_room_consensus_outcome``.
 """
 
 from __future__ import annotations
@@ -25,6 +22,9 @@ from libs.mycelium_api import MyceliumAPI
 from libs.mycelium_cli import MyceliumCLI
 
 log = logging.getLogger(__name__)
+
+TERMINAL_COMPLETE_STATES = frozenset({"complete", "agreed"})
+TERMINAL_FAILED_STATES = frozenset({"failed", "aborted"})
 
 
 @dataclass
@@ -108,6 +108,290 @@ def wait_for_coordination_tick(
     return wait_for_message_type(api, room, "coordination_tick", timeout, poll_interval)
 
 
+def find_coordination_consensus(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Return parsed ``coordination_consensus`` payload from *messages*, if any."""
+    for m in messages:
+        if m.get("message_type") != "coordination_consensus":
+            continue
+        content = m.get("content") or "{}"
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            return {"raw": content}
+    return None
+
+
+def get_coordination_session(
+    api: MyceliumAPI,
+    parent_room: str,
+    session_room: str,
+) -> dict[str, Any] | None:
+    """Look up the ``CoordinationSession`` row for *session_room* under *parent_room*."""
+    status, data = api.get_coordination_sessions(parent_room=parent_room, limit=50)
+    if status != 200 or not isinstance(data, list):
+        return None
+    for session in data:
+        if session.get("display_name") == session_room:
+            return session
+    return None
+
+
+def _negotiation_result(
+    session_room: str,
+    *,
+    source: str,
+    coordination_state: str = "complete",
+    consensus: dict[str, Any] | None = None,
+    session: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "session_room": session_room,
+        "coordination_state": coordination_state,
+        "completion_source": source,
+    }
+    if consensus is not None:
+        result["consensus"] = consensus
+    if session is not None:
+        result["session"] = session
+    return result
+
+
+def poll_room_consensus_outcome(
+    api: MyceliumAPI,
+    parent_room: str,
+    *,
+    session_room: str | None = None,
+) -> dict[str, Any] | None:
+    """Detect a terminal negotiation outcome for *parent_room*.
+
+    When ``session_room`` is set, only that coordination session is
+    considered.  This avoids picking up a prior testcase's terminal
+    session when several sessions share one suite parent room.
+
+    Parent rooms no longer expose ``coordination_state``; completion is
+    observed via ``coordination_sessions.state`` or a ``coordination_consensus``
+    message (posted on the parent listing, which includes session sub-room
+    traffic).
+    """
+    if session_room:
+        return poll_negotiation_completion(api, None, parent_room, session_room)
+
+    status, data = api.get_coordination_sessions(parent_room=parent_room, limit=20)
+    if status == 200 and isinstance(data, list):
+        for session in sorted(
+            data,
+            key=lambda s: s.get("created_at") or "",
+            reverse=True,
+        ):
+            state = session.get("state")
+            session_room = session.get("display_name") or parent_room
+            if state in TERMINAL_COMPLETE_STATES:
+                return _negotiation_result(
+                    session_room,
+                    source="coordination_session",
+                    session=session,
+                )
+            if state in TERMINAL_FAILED_STATES:
+                return _negotiation_result(
+                    session_room,
+                    source="coordination_session",
+                    coordination_state=str(state),
+                    session=session,
+                )
+
+    _, msgs = api.get_room_messages(parent_room, limit=200)
+    consensus = find_coordination_consensus(msgs)
+    if consensus is not None:
+        session_room = consensus.get("session") or parent_room
+        if consensus.get("broken"):
+            return _negotiation_result(
+                session_room,
+                source="coordination_consensus",
+                coordination_state="failed",
+                consensus=consensus,
+            )
+        return _negotiation_result(
+            session_room,
+            source="coordination_consensus",
+            consensus=consensus,
+        )
+
+    return None
+
+
+def poll_for_consensus(
+    api: MyceliumAPI,
+    parent_room: str,
+    *,
+    session_room: str | None = None,
+    timeout: int = 600,
+    poll_interval: int = 5,
+) -> dict[str, Any] | None:
+    """Poll until *parent_room* (or *session_room*) reaches a terminal outcome."""
+    deadline = time.time() + timeout
+    last_log = 0.0
+    target = session_room or parent_room
+    while time.time() < deadline:
+        outcome = poll_room_consensus_outcome(
+            api,
+            parent_room,
+            session_room=session_room,
+        )
+        if outcome is not None:
+            state = outcome.get("coordination_state")
+            if state in TERMINAL_FAILED_STATES:
+                log.warning(
+                    "Coordination ended with state=%s for %s",
+                    state,
+                    target,
+                )
+            return outcome
+
+        now = time.time()
+        if now - last_log >= 30:
+            log.info(
+                "poll_for_consensus: still waiting on %s (%.0fs remaining)",
+                target,
+                deadline - now,
+            )
+            last_log = now
+        time.sleep(poll_interval)
+
+    log.warning("poll_for_consensus timed out after %ds for %s", timeout, target)
+    return None
+
+
+@dataclass
+class AgentNegotiationSetup:
+    """Session plumbing created by :func:`setup_agent_driven_negotiation`."""
+
+    session_room: str
+    expected_handles: list[str]
+
+
+def setup_agent_driven_negotiation(
+    api: MyceliumAPI,
+    cli: MyceliumCLI,
+    parent_room: str,
+    agents: list[tuple[str, str]],
+) -> AgentNegotiationSetup | None:
+    """Create a coordination session and join *agents* with opening positions.
+
+    Real agents must respond to CFN ticks via their adapter after this returns.
+    Returns ``None`` when session create/join fails.
+    """
+    expected_handles = [handle for handle, _ in agents]
+
+    r = cli.session_create(parent_room)
+    if not r.ok:
+        log.error("session create failed: %s", r.error_message)
+        return None
+
+    session_room = resolve_session_room(api, parent_room, r.stdout)
+    if not session_room:
+        log.error("could not resolve session room for %s", parent_room)
+        return None
+
+    for handle, position in agents:
+        jr = cli.session_join(parent_room, handle, position=position)
+        if not jr.ok:
+            log.error("session join failed for %s: %s", handle, jr.error_message)
+            return None
+
+    if not wait_for_message_type(
+        api,
+        session_room,
+        "coordination_start",
+        timeout=120,
+        poll_interval=2,
+    ):
+        log.warning(
+            "coordination_start not seen within 120s for %s — continuing",
+            session_room,
+        )
+
+    return AgentNegotiationSetup(
+        session_room=session_room,
+        expected_handles=expected_handles,
+    )
+
+
+def log_negotiation_poll_failure(
+    api: MyceliumAPI,
+    cli: MyceliumCLI,
+    parent_room: str,
+    setup: AgentNegotiationSetup,
+    result: dict[str, Any] | None,
+    *,
+    timeout: int,
+) -> None:
+    """Emit a debug bundle when :func:`poll_for_consensus` times out or fails."""
+    state = result.get("coordination_state") if isinstance(result, dict) else None
+    debug = collect_negotiation_debug(
+        api,
+        cli,
+        parent_room,
+        setup.session_room,
+        setup.expected_handles,
+    )
+    log.error(
+        "negotiation poll failed for %s state=%s timeout=%ds debug=%s",
+        setup.session_room,
+        state,
+        timeout,
+        json.dumps(debug, default=str)[:4000],
+    )
+
+
+def poll_negotiation_completion(
+    api: MyceliumAPI,
+    cli: MyceliumCLI | None,
+    parent_room: str,
+    session_room: str,
+) -> dict[str, Any] | None:
+    """Return a terminal negotiation result dict, or ``None`` if still in progress.
+
+    Session rooms are not ``rooms`` table rows (``GET /api/rooms/{session}`` → 404).
+    Completion is detected via ``coordination_sessions.state``, a
+    ``coordination_consensus`` message, or an inactive ``negotiate status`` after
+    consensus was posted.
+    """
+    session = get_coordination_session(api, parent_room, session_room)
+    if session is not None:
+        state = session.get("state")
+        if state in TERMINAL_COMPLETE_STATES:
+            return _negotiation_result(
+                session_room,
+                source="coordination_session",
+                session=session,
+            )
+        if state in TERMINAL_FAILED_STATES:
+            return _negotiation_result(
+                session_room,
+                source="coordination_session",
+                coordination_state=str(state),
+                session=session,
+            )
+
+    _, msgs = api.get_room_messages(session_room, limit=200)
+    consensus = find_coordination_consensus(msgs)
+    if consensus is not None:
+        if consensus.get("broken"):
+            return _negotiation_result(
+                session_room,
+                source="coordination_consensus",
+                coordination_state="failed",
+                consensus=consensus,
+            )
+        return _negotiation_result(
+            session_room,
+            source="coordination_consensus",
+            consensus=consensus,
+        )
+
+    return None
+
+
 def wait_for_coordination_consensus(
     api: MyceliumAPI,
     room: str,
@@ -118,14 +402,9 @@ def wait_for_coordination_consensus(
     deadline = time.time() + timeout
     while time.time() < deadline:
         _, msgs = api.get_room_messages(room, limit=50)
-        for m in msgs:
-            if m.get("message_type") != "coordination_consensus":
-                continue
-            content = m.get("content") or "{}"
-            try:
-                return json.loads(content)
-            except json.JSONDecodeError:
-                return {"raw": content}
+        consensus = find_coordination_consensus(msgs)
+        if consensus is not None:
+            return consensus
         time.sleep(poll_interval)
     return None
 
@@ -236,127 +515,3 @@ def collect_negotiation_debug(
         debug["negotiate_status_error"] = status_r.error_message
 
     return debug
-
-
-def run_agent_driven_negotiation(
-    api: MyceliumAPI,
-    cli: MyceliumCLI,
-    parent_room: str,
-    agents: list[tuple[str, str]],
-    *,
-    negotiation_timeout: int = 600,
-    poll_interval: int = 5,
-) -> dict[str, Any] | None:
-    """Create session, join agents, wait for autonomous agent negotiation.
-
-    *agents* is a list of ``(handle, position_message)`` tuples. The harness
-    only performs setup (``session create`` + ``session join``); real agents
-    must respond to CFN ticks via their adapter (OpenClaw gateway,
-    ``mycelium-daemon`` cold-spawn, Hermes gateway, etc.).
-
-    Returns the session-room dict when ``coordination_state == complete``,
-    the session-room dict for terminal ``failed``/``aborted``, or ``None``
-    on timeout (with a debug dump logged).
-    """
-    expected_handles = [handle for handle, _ in agents]
-
-    r = cli.session_create(parent_room)
-    if not r.ok:
-        log.error("session create failed: %s", r.error_message)
-        return None
-
-    session_room = resolve_session_room(api, parent_room, r.stdout)
-    if not session_room:
-        log.error("could not resolve session room for %s", parent_room)
-        return None
-
-    for handle, position in agents:
-        jr = cli.session_join(parent_room, handle, position=position)
-        if not jr.ok:
-            log.error("session join failed for %s: %s", handle, jr.error_message)
-            return None
-
-    if not wait_for_message_type(
-        api,
-        session_room,
-        "coordination_start",
-        timeout=120,
-        poll_interval=2,
-    ):
-        log.warning(
-            "coordination_start not seen within 120s for %s — continuing",
-            session_room,
-        )
-
-    deadline = time.time() + negotiation_timeout
-    seen_ids: set[str] = set()
-    last_progress = 0.0
-    saw_tick = False
-    agent_snapshot = AgentResponseSnapshot(responses={h: [] for h in expected_handles})
-
-    while time.time() < deadline:
-        status, data = api.get_room(session_room)
-        if status == 200 and isinstance(data, dict):
-            state = data.get("coordination_state")
-            if state == "complete":
-                log.info("negotiation complete for %s", session_room)
-                return data
-            if state in ("failed", "aborted"):
-                debug = collect_negotiation_debug(
-                    api,
-                    cli,
-                    parent_room,
-                    session_room,
-                    expected_handles,
-                )
-                log.error(
-                    "coordination ended with state=%s for %s debug=%s",
-                    state,
-                    session_room,
-                    json.dumps(debug, default=str)[:4000],
-                )
-                return data
-
-        _, msgs = api.get_room_messages(session_room, limit=200)
-        if not saw_tick and any(m.get("message_type") == "coordination_tick" for m in msgs):
-            saw_tick = True
-            log.info("coordination_tick observed in %s", session_room)
-
-        agent_snapshot = collect_agent_responses(
-            msgs,
-            expected_handles,
-            seen_ids=seen_ids,
-        )
-
-        for m in msgs:
-            if m.get("message_type") == "coordination_consensus":
-                log.debug("coordination_consensus seen for %s", session_room)
-                break
-
-        now = time.time()
-        if now - last_progress >= 30:
-            log.info(
-                "negotiation progress %s: tick=%s responses=%s remaining=%.0fs",
-                session_room,
-                saw_tick,
-                [(h, len(v)) for h, v in agent_snapshot.responses.items()],
-                deadline - now,
-            )
-            last_progress = now
-
-        time.sleep(poll_interval)
-
-    debug = collect_negotiation_debug(
-        api,
-        cli,
-        parent_room,
-        session_room,
-        expected_handles,
-    )
-    log.error(
-        "negotiation did not reach complete within %ds for %s debug=%s",
-        negotiation_timeout,
-        session_room,
-        json.dumps(debug, default=str)[:4000],
-    )
-    return None

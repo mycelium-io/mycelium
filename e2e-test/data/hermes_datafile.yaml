@@ -1,7 +1,7 @@
 ---
-# Hermes adapter E2E tests — datafile for tests 85 and 89.
+# Hermes adapter E2E tests — datafile for test 89.
 #
-# Covers: gateway PID file format handling and loop-suppression deque eviction.
+# Covers: loop-suppression deque eviction in the mycelium-room plugin.
 #
 # Prerequisites:
 #   - hermes installed on hub (oclw4)
@@ -40,8 +40,5 @@ parameters:
     session_spawn_wait: 30
 
 testcases:
-  HermesGatewayPidFormats:
-    uid: "mycelium:e2e:hermes:085"
-
   HermesLoopSuppression:
     uid: "mycelium:e2e:hermes:089"

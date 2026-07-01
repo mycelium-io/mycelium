@@ -14,14 +14,22 @@ job files, so we only spot-check the new surfaces.
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Iterator
+from types import SimpleNamespace
 
 import pytest
 
 from jobs import _common as common
 
-_TRACKED_ENV = ("MYCELIUM_TESTBED_FILE", "MYCELIUM_E2E_TIERS")
+_TRACKED_ENV = (
+    "MYCELIUM_TESTBED_FILE",
+    "MYCELIUM_E2E_TIERS",
+    "MYCELIUM_E2E_GROUPS",
+    "MYCELIUM_E2E_RUNTIME",
+    "GITHUB_ACTIONS",
+)
 
 
 @pytest.fixture
@@ -108,6 +116,123 @@ class TestGetTestbedFile:
         assert result.endswith("/testbeds/compose.yaml")
 
 
+# ── runtime / testbed contract ────────────────────────────────────────
+
+
+class TestRuntimeForTestbed:
+    def test_compose_path(self) -> None:
+        assert common.runtime_for_testbed("testbeds/compose.yaml") == "compose"
+        assert common.runtime_for_testbed("/abs/testbeds/compose.yaml") == "compose"
+
+    def test_lab_path(self) -> None:
+        assert common.runtime_for_testbed("testbeds/lab.yaml") == "lab"
+
+    def test_unknown_path(self) -> None:
+        assert common.runtime_for_testbed("testbeds/custom.yaml") == "unknown"
+
+
+class TestRuntimeForTestbedObject:
+    def test_compose_name(self) -> None:
+        from pyats import topology
+
+        tb = topology.loader.load(common.get_testbed_file(default=common.TESTBED_COMPOSE))
+        assert common.runtime_for_testbed_object(tb) == "compose"
+
+    def test_lab_name(self) -> None:
+        from pyats import topology
+
+        tb = topology.loader.load(common.get_testbed_file(default=common.TESTBED_LAB))
+        assert common.runtime_for_testbed_object(tb) == "lab"
+
+
+class TestActiveE2ERuntime:
+    def test_explicit_env_wins(self, clean_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("MYCELIUM_E2E_RUNTIME", "lab")
+        monkeypatch.setenv("GITHUB_ACTIONS", "true")
+        assert common.active_e2e_runtime(common.RUNTIME_COMPOSE) == "lab"
+
+    def test_github_actions_when_env_unset(
+        self,
+        clean_env: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("GITHUB_ACTIONS", "true")
+        assert common.active_e2e_runtime(common.RUNTIME_LAB) == "compose"
+
+    def test_job_default_when_nothing_set(self, clean_env: None) -> None:
+        assert common.active_e2e_runtime(common.RUNTIME_LAB) == "lab"
+
+    def test_invalid_runtime_raises(self, clean_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("MYCELIUM_E2E_RUNTIME", "kubernetes")
+        with pytest.raises(common.InvalidE2ERuntimeError):
+            common.active_e2e_runtime(common.RUNTIME_COMPOSE)
+
+
+class TestResolveJobTestbed:
+    def test_loads_compose_from_job_default_when_runtime_has_no_testbed(
+        self,
+        clean_env: None,
+    ) -> None:
+        runtime = SimpleNamespace(testbed=None)
+        tb, active, source = common.resolve_job_testbed(runtime, common.RUNTIME_COMPOSE)
+        assert tb is not None
+        assert tb.name == common.TESTBED_NAME_COMPOSE
+        assert active == common.RUNTIME_COMPOSE
+        assert source == "job_default"
+
+    def test_loads_lab_when_runtime_env_set(
+        self,
+        clean_env: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("MYCELIUM_E2E_RUNTIME", "lab")
+        runtime = SimpleNamespace(testbed=None)
+        tb, active, source = common.resolve_job_testbed(runtime, common.RUNTIME_COMPOSE)
+        assert tb.name == common.TESTBED_NAME_LAB
+        assert active == common.RUNTIME_LAB
+        assert source == common.RUNTIME_ENV_VAR
+
+    def test_prefers_runtime_testbed_from_cli(self) -> None:
+        from pyats import topology
+
+        lab = topology.loader.load(common.get_testbed_file(default=common.TESTBED_LAB))
+        runtime = SimpleNamespace(testbed=lab)
+        tb, active, source = common.resolve_job_testbed(runtime, common.RUNTIME_COMPOSE)
+        assert tb is lab
+        assert active == common.RUNTIME_LAB
+        assert source == "cli"
+
+
+class TestPrepareJobTestbed:
+    def test_hermes_rejects_compose_runtime(
+        self,
+        clean_env: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("MYCELIUM_E2E_RUNTIME", "compose")
+        with pytest.raises(common.JobRuntimeMismatchError):
+            common.prepare_job_testbed(
+                SimpleNamespace(testbed=None),
+                logging.getLogger("test"),
+                job_default_runtime=common.RUNTIME_LAB,
+                allowed_runtimes=common.RUNTIME_LAB_ONLY,
+            )
+
+
+class TestValidateJobRuntime:
+    def test_strict_raises_on_mismatch(self) -> None:
+        from pyats import topology
+
+        compose = topology.loader.load(common.get_testbed_file(default=common.TESTBED_COMPOSE))
+        with pytest.raises(common.JobRuntimeMismatchError):
+            common.validate_job_runtime(
+                logging.getLogger("test"),
+                expected_runtime=common.RUNTIME_LAB,
+                testbed=compose,
+                strict=True,
+            )
+
+
 # ── ensure_tier_env ───────────────────────────────────────────────────
 
 
@@ -145,3 +270,27 @@ class TestEnsureTierEnv:
         result = common.ensure_tier_env()
         assert result == "all"
         assert os.environ["MYCELIUM_E2E_TIERS"] == "all"
+
+
+# ── groups_logic_from_env ─────────────────────────────────────────────
+
+
+class TestGroupsLogicFromEnv:
+    def test_unset_returns_none(self, clean_env: None) -> None:
+        assert common.groups_filter_from_env() is None
+
+    def test_single_group(self, clean_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
+        from pyats.datastructures.logic import Or
+
+        monkeypatch.setenv("MYCELIUM_E2E_GROUPS", "openclaw")
+        result = common.groups_filter_from_env()
+        assert isinstance(result, Or)
+        assert str(result) == "Or('openclaw')"
+
+    def test_multiple_groups(self, clean_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
+        from pyats.datastructures.logic import Or
+
+        monkeypatch.setenv("MYCELIUM_E2E_GROUPS", "openclaw, cross_family")
+        result = common.groups_filter_from_env()
+        assert isinstance(result, Or)
+        assert str(result) == "Or('openclaw', 'cross_family')"

@@ -1,18 +1,19 @@
-"""Three-axis scenario suite.
+"""Three-axis scenario suite (+ runtime owned by the job).
 
 Loads ``data/scenarios.yaml``, filters by ``MYCELIUM_E2E_TIERS``, and
 materialises one pyATS ``Testcase`` per row at import time.
 
-Run standalone:
-    MYCELIUM_E2E_TIERS=pr pyats run job suites/scenarios_suite.py \\
-        --testbed-file testbeds/compose.yaml
+Run via job (runtime from ``MYCELIUM_E2E_RUNTIME`` / ``GITHUB_ACTIONS`` / job default):
+    pyats run job jobs/pr_job.py
+
+Lab:
+    MYCELIUM_E2E_RUNTIME=lab pyats run job jobs/pr_job.py
 
 Optional lab redeploy (only fires when running against
 ``testbeds/lab.yaml`` with ``MYCELIUM_LAB_REDEPLOY=1`` set):
 
     MYCELIUM_LAB_REDEPLOY=1 MYCELIUM_LAB_REF=main \\
-        MYCELIUM_E2E_TIERS=pr pyats run job suites/scenarios_suite.py \\
-        --testbed-file testbeds/lab.yaml
+        MYCELIUM_E2E_RUNTIME=lab pyats run job jobs/pr_job.py
 
 This module is intentionally thin — all the scenario logic lives in
 :mod:`testcases.scenarios`. The suite's only job is to wire the
@@ -45,6 +46,8 @@ from libs.provisioners import (  # noqa: E402 - sys.path tweak first
     PrereqMissing,
     get_provisioner,
 )
+from libs.suite_lifecycle import setup_shared_suite_room, teardown_shared_suite_room  # noqa: E402
+from libs.sessions import SessionError  # noqa: E402
 from testcases.scenarios import (  # noqa: E402 - sys.path tweak first
     active_tiers,
     filter_by_tier,
@@ -127,6 +130,23 @@ def _redeploy_config_from_env() -> LabRedeployConfig:
     )
 
 
+_COMMON_CLEANUP_GOTO = ["common_cleanup"]
+
+
+def _abort_common_setup(testscript: object, section: aetest.CommonSetup, message: str) -> None:
+    """Record a fatal setup error, skip remaining setup + testcases, run cleanup."""
+    if hasattr(testscript, "parameters"):
+        testscript.parameters["common_setup_aborted"] = message
+    section.failed(message, goto=_COMMON_CLEANUP_GOTO)
+
+
+def _common_setup_was_aborted(testscript: object) -> str | None:
+    if not hasattr(testscript, "parameters"):
+        return None
+    reason = testscript.parameters.get("common_setup_aborted")
+    return reason if isinstance(reason, str) and reason else None
+
+
 class LabRedeployCommonSetup(aetest.CommonSetup):
     """Pre-suite setup: optional lab redeploy + matrix-agent provisioning.
 
@@ -161,7 +181,9 @@ class LabRedeployCommonSetup(aetest.CommonSetup):
             )
 
         if testbed is None:
-            self.failed(
+            _abort_common_setup(
+                testscript,
+                self,
                 "MYCELIUM_LAB_REDEPLOY=1 but no testbed was provided. Pass --testbed-file testbeds/lab.yaml.",
             )
 
@@ -176,7 +198,7 @@ class LabRedeployCommonSetup(aetest.CommonSetup):
         try:
             results = redeploy_testbed(testbed, cfg)
         except ValueError as exc:
-            self.failed(f"Lab redeploy aborted: {exc}")
+            _abort_common_setup(testscript, self, f"Lab redeploy aborted: {exc}")
             return
 
         # Persist results into testscript params so testcases can
@@ -187,7 +209,11 @@ class LabRedeployCommonSetup(aetest.CommonSetup):
         failed = [r for r in results if not r.success]
         if failed:
             details = "; ".join(f"{r.device_name}={r.error}" for r in failed)
-            self.failed(f"Lab redeploy failed on {len(failed)} device(s): {details}")
+            _abort_common_setup(
+                testscript,
+                self,
+                f"Lab redeploy failed on {len(failed)} device(s): {details}",
+            )
 
     @aetest.subsection
     def verify_cfn_alignment(self, testscript, testbed=None):
@@ -283,7 +309,11 @@ class LabRedeployCommonSetup(aetest.CommonSetup):
             details = "; ".join(
                 f"{getattr(r, 'device_name', '?')}={getattr(r, 'error', None) or 'see logs'}" for r in failures
             )
-            self.failed(f"verify_cfn_alignment: drift on {len(failures)} hub(s) could not be corrected: {details}")
+            _abort_common_setup(
+                testscript,
+                self,
+                f"verify_cfn_alignment: drift on {len(failures)} hub(s) could not be corrected: {details}",
+            )
 
     @aetest.subsection
     def provision_matrix_agents(self, testscript, testbed=None):
@@ -309,6 +339,10 @@ class LabRedeployCommonSetup(aetest.CommonSetup):
         again would fail (e.g. running scenarios against a shared
         prod-like environment for smoke-testing).
         """
+        aborted = _common_setup_was_aborted(testscript)
+        if aborted:
+            self.skipped(f"common setup aborted earlier — {aborted}")
+
         if os.environ.get("MYCELIUM_E2E_SKIP_AGENT_PROVISIONING", "").lower() in {
             "1",
             "true",
@@ -329,9 +363,9 @@ class LabRedeployCommonSetup(aetest.CommonSetup):
             return
 
         # Build a deduped set of (adapter, handle, host) tuples
-        # across every active row. ``ensure_runtime`` is idempotent
-        # so re-running for the same handle is fine, but
-        # de-duplicating here keeps the subsection logs scannable.
+        # across every active row. Keys use the *spec* handle from
+        # scenarios.yaml; values may reference a different actual handle
+        # when an existing agent was discovered and reused.
         wants: set[tuple[str, str, str]] = set()
         for row in _ACTIVE_ROWS:
             for ag in row.get("agents", []):
@@ -368,6 +402,44 @@ class LabRedeployCommonSetup(aetest.CommonSetup):
             except HostExecError as exc:
                 log.warning("  ↳ chown failed on %s (continuing): %s", host, exc)
 
+        # ── Phase 1: discover already-present, healthy agents ──────────
+        # Build a per-(adapter, host) pool of reusable agents so we don't
+        # recreate runtimes that are already configured and working.
+        # Each provisioner's discover_available() implements its own
+        # liveness probe (openclaw: gateway ping; hermes: listing only;
+        # cursor: always returns [] since it creates fresh per scenario).
+        available_pools: dict[tuple[str, str], list[AgentRef]] = {}
+        for adapter, host in sorted({(a, h) for (a, _, h) in wants}):
+            device = testbed.devices.get(host)
+            if device is None:
+                continue
+            try:
+                provisioner = get_provisioner(adapter)
+            except KeyError:
+                continue
+            try:
+                found = provisioner.discover_available(device)
+            except Exception as exc:  # noqa: BLE001 - discovery is best-effort
+                log.warning(
+                    "  discover_available(%s, %s) failed: %s — will create fresh",
+                    adapter,
+                    host,
+                    exc,
+                )
+                found = []
+            available_pools[(adapter, host)] = list(found)
+            if found:
+                log.info(
+                    "  discover: %d existing %s agent(s) on %s: %s",
+                    len(found),
+                    adapter,
+                    host,
+                    [r.handle for r in found],
+                )
+            else:
+                log.info("  discover: no existing %s agents on %s", adapter, host)
+
+        # ── Phase 2: allocate from pool or ensure_runtime ──────────────
         provisioned: dict[tuple[str, str, str], AgentRef] = {}
         failures: list[str] = []
         for adapter, handle, host in sorted(wants):
@@ -388,23 +460,50 @@ class LabRedeployCommonSetup(aetest.CommonSetup):
                 failures.append(f"{handle}@{host} ({adapter}): prereq missing — {exc}")
                 continue
 
-            try:
-                ref = provisioner.ensure_runtime(device, handle)
-            except PrereqMissing as exc:
-                failures.append(f"{handle}@{host} ({adapter}): ensure_runtime — {exc}")
-                continue
-            except HostExecError as exc:
-                failures.append(f"{handle}@{host} ({adapter}): transport — {exc}")
-                continue
+            pool = available_pools.get((adapter, host), [])
+            # Prefer an exact handle match from the pool so that named agents
+            # (e.g. hermes alpha-he) are reused when already bootstrapped.
+            # Fall back to the first available slot; if nothing matches and
+            # the pool is empty, ensure_runtime creates a fresh agent.
+            exact_idx = next(
+                (i for i, r in enumerate(pool) if r.handle == handle), None
+            )
+            if exact_idx is not None:
+                ref = pool.pop(exact_idx)
+                log.info(
+                    "  ✓ %s/%s on %s → reusing existing agent %r (exact match)",
+                    adapter,
+                    handle,
+                    host,
+                    ref.handle,
+                )
+            elif pool and not getattr(provisioner, "requires_exact_handle", False):
+                ref = pool.pop(0)
+                log.info(
+                    "  ✓ %s/%s on %s → reusing existing agent %r",
+                    adapter,
+                    handle,
+                    host,
+                    ref.handle,
+                )
+            else:
+                try:
+                    ref = provisioner.ensure_runtime(device, handle)
+                except PrereqMissing as exc:
+                    failures.append(f"{handle}@{host} ({adapter}): ensure_runtime — {exc}")
+                    continue
+                except HostExecError as exc:
+                    failures.append(f"{handle}@{host} ({adapter}): transport — {exc}")
+                    continue
+                log.info(
+                    "  ✓ %s/%s on %s → created (pre_existing=%s)",
+                    adapter,
+                    handle,
+                    host,
+                    ref.metadata.get("pre_existing", "n/a"),
+                )
 
             provisioned[(adapter, handle, host)] = ref
-            log.info(
-                "  ✓ %s/%s on %s (pre_existing=%s)",
-                adapter,
-                handle,
-                host,
-                ref.metadata.get("pre_existing", "n/a"),
-            )
 
         testscript.parameters["provisioned_agents"] = provisioned
 
@@ -414,10 +513,20 @@ class LabRedeployCommonSetup(aetest.CommonSetup):
             # them all in one go is friendlier than 30 separate
             # "prereq missing" skips downstream.
             joined = "\n  ".join(failures)
-            self.failed(f"provision_matrix_agents: {len(failures)} agent(s) could not be ensured:\n  {joined}")
+            _abort_common_setup(
+                testscript,
+                self,
+                f"provision_matrix_agents: {len(failures)} agent(s) could not be ensured:\n  {joined}",
+            )
+
+        try:
+            setup_shared_suite_room(testscript, testbed, wants)
+        except SessionError as exc:
+            _abort_common_setup(testscript, self, f"setup_shared_suite_room: {exc}")
 
 
 class MatrixCommonCleanup(aetest.CommonCleanup):
+    uid = "common_cleanup"
     """Suite-level teardown for matrix-provisioned agents.
 
     Gates on ``MYCELIUM_E2E_KEEP_AGENTS`` — devs iterating on a
@@ -426,6 +535,13 @@ class MatrixCommonCleanup(aetest.CommonCleanup):
     job leaves the env var unset and runs full teardown so successive
     runs don't accumulate stale gateway-side state.
     """
+
+    @aetest.subsection
+    def teardown_suite_room(self, testscript, testbed=None):
+        if testbed is None:
+            return
+        backend_url = os.environ.get("MYCELIUM_BACKEND_URL")
+        teardown_shared_suite_room(testscript, testbed, backend_url=backend_url)
 
     @aetest.subsection
     def teardown_matrix_agents(self, testscript, testbed=None):

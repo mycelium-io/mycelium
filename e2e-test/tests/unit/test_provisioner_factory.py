@@ -13,7 +13,7 @@ from libs.provisioners import (
     get_provisioner,
     registered_adapters,
 )
-from libs.provisioners.base import BOOTSTRAP_ROOM, ABCProvisioner
+from libs.provisioners.base import BOOTSTRAP_ROOM, HERMES_BOOTSTRAP_ROOM, ABCProvisioner
 
 
 def test_all_three_adapters_are_registered():
@@ -132,7 +132,8 @@ def test_wake_agent_default_is_no_op():
 
 
 def test_bootstrap_room_is_canonical_string():
-    """Sanity check: scenarios and provisioners all reference the
-    same constant for the holding-pen room."""
+    """Sanity check: openclaw and hermes each have a holding-pen room."""
     assert isinstance(BOOTSTRAP_ROOM, str)
     assert BOOTSTRAP_ROOM == "matrix-agents"
+    assert isinstance(HERMES_BOOTSTRAP_ROOM, str)
+    assert HERMES_BOOTSTRAP_ROOM == "hermes-agents"

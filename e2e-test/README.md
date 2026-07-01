@@ -136,7 +136,3 @@ pyats logs view
 - **Testcase class**: Reusable test logic with `@aetest.setup/test/cleanup`
 - **Datafile**: YAML-driven parameters injected into tests at runtime
 - **Steps**: Fine-grained sub-results within each test for debuggability
-
-## Legacy Compatibility
-
-The original pytest-based suite remains in `mycelium_e2e/` and `tests/` for reference. The pyATS suite in `suites/`, `testcases/`, `libs/`, `jobs/`, and `data/` is the new primary test framework.

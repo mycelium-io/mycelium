@@ -15,8 +15,14 @@ need nothing more than the device handle plus the requested handle/room.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any, ClassVar, Protocol, runtime_checkable
+
+from libs import host_exec
+from libs.host_exec import HostExecError
+
+log = logging.getLogger(__name__)
 
 
 class PrereqMissing(RuntimeError):
@@ -47,7 +53,7 @@ class AgentRef:
 
 
 BOOTSTRAP_ROOM = "matrix-agents"
-"""Room used as the holding pen for runtime-provisioned agents.
+"""OpenClaw holding pen — agents registered here before per-scenario adoption.
 
 Openclaw agents must be registered into *some* room when they're
 created (the manifest needs a home). We use a stable ``matrix-agents``
@@ -56,6 +62,15 @@ adopted into per-scenario rooms via ``mycelium agent add`` without
 ever being torn down and recreated. The bootstrap room is created
 lazily by :meth:`ABCProvisioner.ensure_bootstrap_room` and never
 deleted by the scenarios suite — it's the "home" the agents return to.
+"""
+
+HERMES_BOOTSTRAP_ROOM = "hermes-agents"
+"""Hermes holding pen — Mycelium rooms only (no Matrix bridge).
+
+Hermes agents subscribe to Mycelium rooms via the ``mycelium-room``
+platform plugin. Suite ``ensure_runtime`` registers each agent in this
+stable bootstrap room first; per-scenario rooms are added in
+``register_in_room``. Created lazily by :meth:`ensure_bootstrap_room`.
 """
 
 
@@ -180,6 +195,31 @@ class Provisioner(Protocol):
         cross-scenario runtime state.
         """
 
+    def discover_available(
+        self,
+        device: Any,
+        *,
+        bootstrap_room: str = BOOTSTRAP_ROOM,
+    ) -> list[AgentRef]:
+        """Return already-present, healthy agents on ``device``.
+
+        Called by suite common_setup before :meth:`ensure_runtime` so
+        that pre-existing agents can be reused without recreation.
+        Results are consumed as a pool: the caller pops one ref per
+        spec slot that needs filling. Agents returned here are NOT
+        created — they already exist on the device.
+
+        Adapters that always create fresh (cursor) or have no
+        persistent runtime state return an empty list; the caller
+        falls back to :meth:`ensure_runtime`.
+
+        Each provisioner implements its own health probe:
+        - openclaw: listed in bootstrap room + gateway responds
+        - hermes: listed in bootstrap room (polls autonomously)
+        - cursor: always [] (per-scenario workspace, no reuse)
+        """
+        return []
+
     # ── legacy adapters (forwarding shims) ────────────────────────────
 
     def create_agent(
@@ -224,6 +264,44 @@ class ABCProvisioner:
 
     def check_prereqs(self, device: Any) -> None:  # pragma: no cover - abstract
         raise NotImplementedError
+
+    def ensure_bootstrap_room(self, device: Any, room: str) -> None:
+        """Create ``room`` idempotently and reclaim local file ownership.
+
+        Provisioners call this before ``agent create``. The backend returns
+        404 if the room does not exist yet.
+        """
+        try:
+            result = host_exec.execute(
+                device,
+                ["mycelium", "room", "create", room],
+                timeout=15.0,
+            )
+        except HostExecError as exc:
+            log.debug("%s.ensure_bootstrap_room: dispatch failed (ignoring): %s", self.name, exc)
+            return
+        if result.returncode != 0 and "already exists" not in (result.stderr.lower() + result.stdout.lower()):
+            log.debug(
+                "%s.ensure_bootstrap_room: %s exit=%d stderr=%s",
+                self.name,
+                room,
+                result.returncode,
+                result.stderr.strip()[:120],
+            )
+
+        try:
+            host_exec.execute(
+                device,
+                (
+                    f'if [ -d "$HOME/.mycelium/rooms/{room}" ]; then '
+                    f'sudo chown -R "$USER:$USER" "$HOME/.mycelium/rooms/{room}" '
+                    f"2>/dev/null || true; fi"
+                ),
+                shell=True,
+                timeout=15.0,
+            )
+        except HostExecError as exc:
+            log.debug("%s.ensure_bootstrap_room: chown skipped: %s", self.name, exc)
 
     # Default ensure_runtime is a no-op: returns a minimal AgentRef
     # so cursor/hermes (which don't need pre-spawn) work out of the
@@ -270,6 +348,17 @@ class ABCProvisioner:
         # Default no-op: cursor/hermes don't have a runtime to tear
         # down. Openclaw overrides this to destroy the OpenClaw agent.
         return None
+
+    def discover_available(
+        self,
+        device: Any,  # noqa: ARG002
+        *,
+        bootstrap_room: str = BOOTSTRAP_ROOM,  # noqa: ARG002
+    ) -> list[AgentRef]:
+        # Default: no discovery — always fall through to ensure_runtime.
+        # Cursor overrides with [] explicitly; openclaw and hermes
+        # override with real liveness probes.
+        return []
 
     # Legacy methods — concrete classes that pre-date the two-phase
     # split implement these directly; the defaults above forward back

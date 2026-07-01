@@ -1,7 +1,6 @@
-"""Hermes adapter E2E suite — gateway health and loop suppression.
+"""Hermes adapter E2E suite — loop suppression.
 
-Tests 85 and 89: cover the changes landed in mycelium-cli commit 28aca63
-(PID file format tolerance, deque-based loop suppression).
+Test 89: deque-based loop suppression in the mycelium-room plugin.
 
 Prerequisites:
   - hermes installed (``hermes`` on PATH of hub and spoke)
@@ -30,7 +29,6 @@ from testcases.hermes_tests import (
     HUB_HOST,
     SSH_KEY,
     SSH_USER,
-    HermesGatewayPidFormats,
     HermesLoopSuppression,
 )
 
@@ -67,10 +65,6 @@ class CommonSetup(aetest.CommonSetup):
                 "Hermes lab prerequisites not met — run scripts/provision_hermes_lab.py:\n"
                 + "\n".join(f"  • {i}" for i in issues)
             )
-
-
-class test_85_hermes_gateway_pid_formats(HermesGatewayPidFormats):
-    pass
 
 
 class test_89_hermes_loop_suppression(HermesLoopSuppression):

@@ -591,7 +591,7 @@ class TestPersistWorkspaceAndMas:
         assert "server.workspace_id ws-1" in cmd
         assert "server.mas_id mas-1" in cmd
         assert "runtime.cfn_mgmt_url http://ioc-cfn-mgmt-plane-svc:9000" in cmd
-        assert "runtime.cognition_fabric_node_url http://ioc-cognition-fabric-node-svc:9002" in cmd
+        assert "runtime.cfn_svc_url http://ioc-cfn-svc:9002" in cmd
         assert "mycelium config apply" in cmd
 
     def test_spoke_skips_cfn_urls(self, fake_exec: FakeExec) -> None:
@@ -604,7 +604,7 @@ class TestPersistWorkspaceAndMas:
         # (would otherwise point the spoke CLI at hostnames it can't
         # resolve).
         assert "cfn_mgmt_url" not in cmd
-        assert "cognition_fabric_node_url" not in cmd
+        assert "cfn_svc_url" not in cmd
         # But workspace + MAS must be there.
         assert "server.workspace_id ws-1" in cmd
         assert "server.mas_id mas-1" in cmd
@@ -792,6 +792,7 @@ class TestVerifyCfnAlignment:
                 _completed(stdout="WORKSPACE_ID=ws-stale\nMAS_ID=mas-stale\n"),
                 _completed(stdout=""),  # config set ... && config apply
                 _completed(stdout="/srv/mycelium/cli/docker\n"),  # docker inspect
+                _completed(rc=1),  # test -f compose-dev.yml → absent
                 _completed(stdout=""),  # docker compose up -d --force-recreate
                 _completed(stdout="WORKSPACE_ID=ws-aligned\nMAS_ID=mas-aligned\n"),
             ]
@@ -812,13 +813,35 @@ class TestVerifyCfnAlignment:
         assert "config set server.mas_id mas-aligned" in cmds[3]
         assert "config apply" in cmds[3]
         assert "docker inspect" in cmds[4]
-        assert "force-recreate" in cmds[5]
-        assert "/srv/mycelium/cli/docker" in cmds[5]
-        assert "mycelium-backend" in cmds[5]
-        assert "ioc-cognition-fabric-node-svc" in cmds[5]
+        assert "test -f /srv/mycelium/cli/docker/compose-dev.yml" in cmds[5]
+        assert "force-recreate" in cmds[6]
+        assert "/srv/mycelium/cli/docker" in cmds[6]
+        assert "-f compose.yml -f compose-dev.yml" not in cmds[6]
+        assert "-f compose.yml --profile cfn" in cmds[6]
+        assert "mycelium-backend" in cmds[6]
+        assert "ioc-cfn-svc" in cmds[6]
         # Final verify uses the same env probe
-        assert "docker exec mycelium-backend env" in cmds[6]
+        assert "docker exec mycelium-backend env" in cmds[7]
         assert any("drift corrected" in (detail or "") for _, _, detail in result.logs)
+
+    def test_drift_recreate_uses_compose_dev_when_present(self, fake_exec: FakeExec) -> None:
+        fake_exec.results.extend(
+            [
+                _completed(stdout="ioc-cfn-mgmt-plane-svc\nmycelium-backend\n"),
+                _completed(stdout=self._CFN_OK_STDOUT),
+                _completed(stdout="WORKSPACE_ID=ws-stale\nMAS_ID=mas-stale\n"),
+                _completed(stdout=""),  # persist
+                _completed(stdout="/tmp/mycelium-redeploy/mycelium-cli/src/mycelium/docker\n"),
+                _completed(rc=0),  # compose-dev.yml exists
+                _completed(stdout=""),  # force-recreate
+                _completed(stdout="WORKSPACE_ID=ws-aligned\nMAS_ID=mas-aligned\n"),
+            ]
+        )
+        result = verify_cfn_alignment(_device("hub"))
+        assert result is not None
+        assert result.success is True
+        recreate = [c for _, c in fake_exec.calls if "force-recreate" in c][0]
+        assert "-f compose.yml -f compose-dev.yml" in recreate
 
     def test_provision_failure_short_circuits(self, fake_exec: FakeExec) -> None:
         # CFN GET returns no workspace → provision returns None and
@@ -904,6 +927,7 @@ class TestVerifyCfnAlignment:
                 _completed(stdout="WORKSPACE_ID=ws-stale\nMAS_ID=mas-stale\n"),
                 _completed(stdout=""),  # persist
                 _completed(stdout="/srv/mycelium/cli/docker\n"),
+                _completed(rc=1),  # compose-dev absent
                 _completed(stdout=""),  # force-recreate ok
                 _completed(stdout="WORKSPACE_ID=ws-stale\nMAS_ID=mas-stale\n"),
             ]

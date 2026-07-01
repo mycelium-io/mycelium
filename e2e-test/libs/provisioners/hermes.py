@@ -2,7 +2,8 @@
 
 Unlike cursor (per-test workspace) and openclaw (pre-configured agents
 on each device), hermes agents are created on demand through
-``mycelium agent create --adapter hermes``.
+``mycelium agent create --adapter hermes``. Hermes uses the
+``mycelium-room`` platform plugin — Mycelium rooms only, no Matrix bridge.
 
 Two-phase lifecycle:
   - ``ensure_runtime`` (CommonSetup): creates the agent in the bootstrap
@@ -28,7 +29,7 @@ from typing import Any, ClassVar
 
 from libs import host_exec
 from libs.host_exec import HostExecError
-from libs.provisioners.base import BOOTSTRAP_ROOM, ABCProvisioner, AgentRef, PrereqMissing
+from libs.provisioners.base import HERMES_BOOTSTRAP_ROOM, ABCProvisioner, AgentRef, PrereqMissing
 
 log = logging.getLogger(__name__)
 
@@ -37,6 +38,11 @@ class HermesProvisioner(ABCProvisioner):
     """Provisioner for the hermes adapter."""
 
     name: ClassVar[str] = "hermes"
+    # Hermes agents are named (alpha-he, beta-he, …); a discovered agent with a
+    # different handle must NOT be silently substituted for the spec handle — the
+    # handle is threaded through session-join and tick routing so a mismatch
+    # causes the wrong agent to receive ticks (or no agent at all).
+    requires_exact_handle: ClassVar[bool] = True
 
     # ── prereqs ────────────────────────────────────────────────────────
 
@@ -87,7 +93,7 @@ class HermesProvisioner(ABCProvisioner):
         device: Any,
         handle: str,
         *,
-        bootstrap_room: str = BOOTSTRAP_ROOM,
+        bootstrap_room: str = HERMES_BOOTSTRAP_ROOM,
         **kwargs: Any,  # noqa: ARG002
     ) -> AgentRef:
         """Idempotently ensure the hermes agent exists in ``bootstrap_room``.
@@ -106,6 +112,8 @@ class HermesProvisioner(ABCProvisioner):
         """
         device_label = host_exec.describe(device)
         log.info("hermes.ensure_runtime: %s on %s", handle, device_label)
+
+        self.ensure_bootstrap_room(device, bootstrap_room)
 
         existing = self._list_agents_in_room(device, bootstrap_room)
         if handle in existing:
@@ -146,6 +154,41 @@ class HermesProvisioner(ABCProvisioner):
             metadata={"bootstrap_room": bootstrap_room, "pre_existing": False},
         )
 
+    def discover_available(
+        self,
+        device: Any,
+        *,
+        bootstrap_room: str = HERMES_BOOTSTRAP_ROOM,
+    ) -> list[AgentRef]:
+        """Return hermes agents already present in ``bootstrap_room``.
+
+        Hermes agents poll coordination sessions autonomously via the
+        mycelium-room plugin — no gateway ping is needed. Being listed
+        in the bootstrap room is sufficient evidence of availability.
+        """
+        device_label = host_exec.describe(device)
+        handles = self._list_agents_in_room(device, bootstrap_room)
+        if not handles:
+            log.debug("hermes.discover_available: no agents in %s on %s", bootstrap_room, device_label)
+            return []
+
+        refs = [
+            AgentRef(
+                handle=h,
+                adapter=self.name,
+                device_name=getattr(device, "name", None) or device_label,
+                metadata={"bootstrap_room": bootstrap_room, "pre_existing": True},
+            )
+            for h in sorted(handles)
+        ]
+        log.info(
+            "hermes.discover_available: %d agent(s) on %s: %s",
+            len(refs),
+            device_label,
+            [r.handle for r in refs],
+        )
+        return refs
+
     def _list_agents_in_room(self, device: Any, room: str) -> set[str]:
         """Return the set of agent handles registered in ``room``.
 
@@ -163,8 +206,17 @@ class HermesProvisioner(ABCProvisioner):
             line = line.strip()
             if not line or line.lower().startswith("no agents"):
                 continue
-            first = line.split()[0].lstrip("@")
-            handles.add(first)
+            # `mycelium agent ls` renders a Rich table:
+            #   hermes-agents — agents       ← title (room name, NOT a handle)
+            #   ┏━━━━━┳━━━━━━━┓
+            #   ┃ Handle … ┃   ← column header
+            #   ┡━━━━━╇━━━━━━━┩
+            #   │ @alpha-he │ hermes │ …  ← data row: handle is 2nd token
+            #   └────┴───────┘
+            # Only data rows have "│ @<handle>" shape; skip everything else.
+            tokens = line.split()
+            if len(tokens) >= 2 and tokens[0] == "│" and tokens[1].startswith("@"):
+                handles.add(tokens[1][1:])  # strip leading @
         return handles
 
     def register_in_room(
@@ -253,7 +305,7 @@ class HermesProvisioner(ABCProvisioner):
             )
             return
 
-        bootstrap_room = agent.metadata.get("bootstrap_room") or BOOTSTRAP_ROOM
+        bootstrap_room = agent.metadata.get("bootstrap_room") or HERMES_BOOTSTRAP_ROOM
         log.info(
             "hermes.teardown_runtime: removing %s from %s on %s",
             agent.handle,

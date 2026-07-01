@@ -11,7 +11,7 @@ Three axes
 - **tier**: ``pr`` | ``nightly`` | ``weekly`` — controls run frequency.
   Filtered via the ``MYCELIUM_E2E_TIERS`` env var (comma-separated;
   ``all`` matches everything; unset defaults to ``all``).
-- **category**: ``core`` | ``distributed`` | ``cross_channel`` etc. —
+- **category**: ``core`` | ``distributed`` | ``cross_adapter`` etc. —
   becomes a pyATS ``groups`` entry so existing job filters keep working.
 - **agents**: the per-row adapter combo (e.g. ``[oc on hub, cu on
   spoke1]``). The class suffix encodes this for legibility:
@@ -26,13 +26,11 @@ agent's :class:`Provisioner` for the wake action and computes the
 worst-case round budget so a slow-cursor row doesn't time out at the
 fast-openclaw default.
 
-- ``openclaw``: pre-existing agent in the gateway; ``wake_agent``
-  triggers a Matrix DM to seat the agent on the session.
-- ``cursor``: cold-spawn per-tick; ``wake_agent`` runs ``mycelium agent
-  invoke`` once and the cc-daemon's room subscription handles the rest.
-- ``hermes``: plugin polls coordination sessions; ``wake_agent`` is a
-  no-op and the round budget needs only to accommodate the polling
-  interval.
+Testcase profiles (see ``profile`` in ``data/scenarios.yaml``) select
+which pyATS sections exist on each generated class — ``consensus``
+(negotiate + plan), ``full`` (+ memory + search), or ``shakedown``
+(session terminal state only). Tier (``pr`` / ``nightly`` / ``weekly``)
+filters which rows run; profile filters what each row tests.
 """
 
 from __future__ import annotations
@@ -70,6 +68,11 @@ _ADAPTER_SHORTCODE: dict[str, str] = {
 }
 
 _KNOWN_TIERS: frozenset[str] = frozenset({"pr", "nightly", "weekly"})
+
+# Testcase shape — chosen at class materialisation time, not via skipping
+# subtests.  ``consensus`` = negotiate + plan; ``full`` adds memory +
+# search; ``shakedown`` = session terminal state only (timeouts OK).
+_KNOWN_PROFILES: frozenset[str] = frozenset({"consensus", "full", "shakedown"})
 
 # Worst-case per-adapter round latency in seconds. Used to size the
 # default consensus timeout when a row doesn't specify one. The base
@@ -125,6 +128,8 @@ def load_rows(path: str | Path) -> list[dict[str, Any]]:
         if not isinstance(raw, dict):
             raise ValueError(f"{p}: row {i} is not a mapping")
         validate_row(raw, position=i, source=str(p))
+        # Normalise profile early so load_rows catches misconfigurations.
+        raw["profile"] = profile_for_row(raw)
         rows.append(raw)
     return rows
 
@@ -155,6 +160,10 @@ def validate_row(row: dict[str, Any], *, position: int, source: str) -> None:
                 f"{where} ({name!r}): agent {j} adapter {ag['adapter']!r} not in {sorted(_ADAPTER_SHORTCODE)}"
             )
 
+    profile = row.get("profile")
+    if profile is not None and profile not in _KNOWN_PROFILES:
+        raise ValueError(f"{where} ({name!r}): profile {profile!r} not in {sorted(_KNOWN_PROFILES)}")
+
 
 # ── tier gating ──────────────────────────────────────────────────────
 
@@ -181,6 +190,45 @@ def active_tiers(env_value: str | None = None) -> frozenset[str]:
 def filter_by_tier(rows: list[dict[str, Any]], tiers: frozenset[str]) -> list[dict[str, Any]]:
     """Return only the rows whose tier is in ``tiers``."""
     return [r for r in rows if r.get("tier", "weekly") in tiers]
+
+
+def profile_for_row(row: dict[str, Any]) -> str:
+    """Return the testcase profile for ``row``.
+
+    Profiles control which pyATS sections exist on the generated class
+    (not which sections skip at runtime):
+
+    - ``consensus`` — setup → wake → poll → plan file → cleanup
+    - ``full`` — consensus path + memory writes + search hits
+    - ``shakedown`` — setup → wake → poll → cleanup (no plan/memory/search)
+
+    An explicit ``profile`` key wins. Otherwise: rows with both
+    ``memory_writes`` and ``search_queries`` become ``full``; rows with
+    ``require_consensus: false`` become ``shakedown``; everything else
+    is ``consensus``.
+    """
+    explicit = row.get("profile")
+    if explicit is not None:
+        if explicit not in _KNOWN_PROFILES:
+            raise ValueError(
+                f"row {row.get('name')!r}: profile {explicit!r} not in {sorted(_KNOWN_PROFILES)}"
+            )
+        return explicit
+
+    has_memory = bool(row.get("memory_writes"))
+    has_search = bool(row.get("search_queries"))
+    if has_memory or has_search:
+        if not (has_memory and has_search):
+            raise ValueError(
+                f"row {row.get('name')!r}: memory_writes and search_queries must both be "
+                "set for a full-profile row (or set profile explicitly)"
+            )
+        return "full"
+
+    if row.get("require_consensus") is False:
+        return "shakedown"
+
+    return "consensus"
 
 
 # ── class-name shortcoding ──────────────────────────────────────────
@@ -229,6 +277,20 @@ def groups_for(row: dict[str, Any]) -> list[str]:
 # ── adapter-aware timeout calculation ───────────────────────────────
 
 
+def room_name_for_row(row: dict[str, Any], run_id: str) -> str:
+    """Deterministic parent-room name for a matrix row.
+
+    Postgres LISTEN/NOTIFY channel names cap at 63 bytes; the backend
+    uses ``room:<room>:session:<8char>`` (22 fixed bytes) for session
+    channels, leaving 41 bytes for the parent room name. ``scn-`` +
+    ``-<run_id>`` eats 13, so the row slug must stay ≤ 28 bytes.
+    """
+    slug = row["name"]
+    if len(slug) > 28:
+        slug = f"{slug[:18]}-{hashlib.sha1(slug.encode()).hexdigest()[:6]}"
+    return f"scn-{slug}-{run_id}"
+
+
 def compute_timeout_seconds(row: dict[str, Any]) -> int:
     """Return the consensus poll timeout for ``row``.
 
@@ -255,6 +317,9 @@ def compute_timeout_seconds(row: dict[str, Any]) -> int:
 # ── factory ──────────────────────────────────────────────────────────
 
 
+_PROFILE_BASE: dict[str, type] = {}  # filled after base classes are defined
+
+
 def make_scenarios(rows: list[dict[str, Any]]) -> dict[str, type[aetest.Testcase]]:
     """Materialise one Testcase subclass per matrix row.
 
@@ -262,6 +327,10 @@ def make_scenarios(rows: list[dict[str, Any]]) -> dict[str, type[aetest.Testcase
     expected to do ``globals().update(...)`` (the suite loader does so
     automatically) so pyATS discovers the classes via module
     introspection.
+
+    Each row's ``profile`` (see :func:`profile_for_row`) selects the
+    base class — optional assertions are omitted entirely rather than
+    registered as skipping subtests.
     """
     classes: dict[str, type[aetest.Testcase]] = {}
     seen_names: set[str] = set()
@@ -274,12 +343,18 @@ def make_scenarios(rows: list[dict[str, Any]]) -> dict[str, type[aetest.Testcase
             )
         seen_names.add(cls_name)
 
+        profile = row.get("profile") or profile_for_row(row)
+        base = _PROFILE_BASE.get(profile)
+        if base is None:
+            raise ValueError(f"row {row.get('name')!r}: unknown profile {profile!r}")
+
         cls = type(
             cls_name,
-            (_ConsensusBase,),
+            (base,),
             {
                 "_row": row,
                 "_class_name": cls_name,
+                "_profile": profile,
                 "groups": groups_for(row),
                 "__doc__": row.get("description") or f"{cls_name} — generated from data/scenarios.yaml",
             },
@@ -292,46 +367,18 @@ def make_scenarios(rows: list[dict[str, Any]]) -> dict[str, type[aetest.Testcase
 # ── base testcase ───────────────────────────────────────────────────
 
 
-class _ConsensusBase(aetest.Testcase):
-    """Adapter-aware consensus negotiation testcase.
+class _ScenarioCore(aetest.Testcase):
+    """Shared negotiation lifecycle: setup → wake → poll → cleanup.
 
     Subclasses are generated by :func:`make_scenarios` — do not
-    instantiate directly. The base implements the full lifecycle:
-
-    1. ``setup`` (``@aetest.setup``): resolve devices from the
-       pyATS testbed, check provisioner prereqs, create the
-       per-scenario room, ``register_in_room`` each row agent
-       (lightweight — heavy ``ensure_runtime`` already happened in
-       ``LabRedeployCommonSetup.provision_matrix_agents``), then
-       ``session create`` + ``session join`` for each agent with
-       their row-defined opening position.
-    2. ``wake_agents``: ``Provisioner.wake_agent`` for each (no-op for
-       hermes; Matrix DM for openclaw spokes; ``mycelium agent invoke``
-       for cursor).
-    3. ``wait_for_consensus``: poll backend until terminal state or
-       per-row timeout.
-    4. Optional asserts for plan file, memory writes, search hits.
-    5. ``cleanup`` (``@aetest.cleanup``): ``unregister_from_room``
-       each agent + delete the room. Runs even if a test section
-       above aborted. Runtime teardown happens once at the suite
-       level in ``MatrixCommonCleanup.teardown_matrix_agents``.
-       Set ``MYCELIUM_E2E_KEEP_ROOMS=1`` to skip this step.
-
-    Per-row knobs (all optional with sensible defaults):
-
-    - ``timeout_seconds``: override the auto-computed timeout
-    - ``n_steps_total``: round budget (default 20)
-    - ``require_consensus`` (default ``true``): if ``false``, a timeout
-      is treated as a passing outcome (broken-by-design rows).
-    - ``require_plan_file`` (default ``true`` when ``require_consensus``)
-    - ``memory_writes``: list of ``{handle, key, value}`` to assert
-      were written. Tested via ``mycelium memory get``.
-    - ``search_queries``: list of ``{query, expected_substring}`` for
-      semantic search assertions.
+    instantiate directly. Profile-specific classes add plan / memory /
+    search sections; this core never registers optional subtests that
+    skip at runtime.
     """
 
     _row: ClassVar[dict[str, Any]]
-    _class_name: ClassVar[str] = "_ConsensusBase"
+    _class_name: ClassVar[str] = "_ScenarioCore"
+    _profile: ClassVar[str] = "consensus"
 
     # ── parameters ───────────────────────────────────────────────────
 
@@ -359,21 +406,16 @@ class _ConsensusBase(aetest.Testcase):
         """
         row = self._row
         self.row = row
-        self.run_id = uuid.uuid4().hex[:8]
-        # Postgres LISTEN/NOTIFY channel names cap at 63 bytes, and the
-        # backend uses ``room:<room>:session:<8char>`` (22 fixed bytes)
-        # for session-room channels, leaving 41 bytes for the parent
-        # room name. ``scn-`` prefix + ``-<run_id>`` suffix eats 13 of
-        # those, so the row-name slug must stay ≤ 28 bytes. When a name
-        # would overflow (e.g. ``three-agent-return-trip-oc-oc-oc``),
-        # collapse it to a deterministic 6-char hash so the same row
-        # always lands on the same prefix while staying inside the
-        # channel-name budget. Otherwise tick NOTIFYs silently drop and
-        # consensus never reaches the agents.
-        slug = row["name"]
-        if len(slug) > 28:
-            slug = f"{slug[:18]}-{hashlib.sha1(slug.encode()).hexdigest()[:6]}"
-        self.room = f"scn-{slug}-{self.run_id}"
+        suite_room: str | None = None
+        if testscript is not None:
+            suite_room = testscript.parameters.get("suite_shared_room")
+        self._suite_shared_room = bool(suite_room)
+        if suite_room:
+            self.room = suite_room
+            self.run_id = testscript.parameters.get("suite_run_id") or "suite"
+        else:
+            self.run_id = uuid.uuid4().hex[:8]
+            self.room = room_name_for_row(row, self.run_id)
         self.backend_url = backend_url or os.environ.get("MYCELIUM_BACKEND_URL") or "http://localhost:8000"
         self.consensus_timeout = compute_timeout_seconds(row)
         self.agents: list[_AgentBinding] = []
@@ -419,78 +461,112 @@ class _ConsensusBase(aetest.Testcase):
         # earliest in the row so test logs stay deterministic.
         self.control_device = self.agents[0].device
 
-        # ── create per-scenario room ──────────────────────────────
-        try:
-            sessions.create_room(self.control_device, self.room)
-        except SessionError as exc:
-            self.failed(f"could not create room {self.room!r}: {exc}")
+        if not self._suite_shared_room:
+            # ── create per-scenario room ──────────────────────────
+            try:
+                sessions.create_room(self.control_device, self.room)
+            except SessionError as exc:
+                self.failed(f"could not create room {self.room!r}: {exc}")
 
-        # The backend (Docker, runs as root) creates the room dir
-        # via a volume mount, so without reclaiming ownership the
-        # CLI's per-agent ``mycelium agent add`` call fails to
-        # write the manifest. Done on EACH host that hosts an agent
-        # in this row — the room dir is created on every device
-        # that calls ``mycelium room create`` (the backend writes
-        # are root-owned per-device).
-        self._chown_mycelium_on_agent_hosts()
+            # The backend (Docker, runs as root) creates the room dir
+            # via a volume mount, so without reclaiming ownership the
+            # CLI's per-agent ``mycelium agent add`` call fails to
+            # write the manifest.
+            self._chown_mycelium_on_agent_hosts()
 
-        # ── register each agent in this room ──────────────────────
-        # Lightweight: ``mycelium agent add`` (idempotent). Heavy
-        # ``mycelium agent create`` already ran in common_setup —
-        # we only fall back to ``ensure_runtime`` here if no
-        # pre-provisioned ref exists for this (adapter, handle,
-        # host) tuple (e.g. running this testcase standalone).
-        for binding in self.agents:
-            key = (binding.spec["adapter"], binding.spec["handle"], binding.spec["host"])
-            opening = binding.spec.get("position")
+            # ── register each agent in this room ──────────────────
+            for binding in self.agents:
+                key = (binding.spec["adapter"], binding.spec["handle"], binding.spec["host"])
+                opening = binding.spec.get("position")
 
-            if key not in provisioned:
-                # Standalone-test fallback: do the full create.
+                if key in provisioned:
+                    # Suite common_setup already ran ensure_runtime (or
+                    # discovery allocated an existing agent). Use the actual
+                    # handle from the provisioned ref — it may differ from
+                    # the spec handle when an existing agent was reused.
+                    actual_handle = provisioned[key].handle
+                else:
+                    # No suite common_setup (running standalone). Fall back
+                    # to the spec handle for a fresh ensure_runtime.
+                    try:
+                        binding.provisioner.ensure_runtime(binding.device, binding.spec["handle"])
+                    except PrereqMissing as exc:
+                        self.failed(
+                            f"ensure_runtime failed for {binding.spec['handle']} (no common_setup ran): {exc}"
+                        )
+                    actual_handle = binding.spec["handle"]
+
                 try:
-                    binding.provisioner.ensure_runtime(binding.device, binding.spec["handle"])
+                    binding.ref = binding.provisioner.register_in_room(
+                        binding.device,
+                        actual_handle,
+                        self.room,
+                        opening=opening,
+                    )
                 except PrereqMissing as exc:
-                    self.failed(f"ensure_runtime failed for {binding.spec['handle']} (no common_setup ran): {exc}")
+                    self.failed(f"register_in_room failed for {binding.actual_handle}: {exc}")
+                except HostExecError as exc:
+                    self.failed(f"transport error during register_in_room for {binding.actual_handle}: {exc}")
+        else:
+            # Suite mode: agents were registered to the shared room in
+            # CommonSetup. Reuse the ensure_runtime refs — no gateway
+            # restart here.
+            for binding in self.agents:
+                key = (binding.spec["adapter"], binding.spec["handle"], binding.spec["host"])
+                binding.ref = provisioned.get(key)
+                if binding.ref is None:
+                    self.failed(
+                        f"no provisioned ref for {binding.spec['handle']} "
+                        f"(suite_shared_room={self.room!r})"
+                    )
 
             try:
-                binding.ref = binding.provisioner.register_in_room(
-                    binding.device,
-                    binding.spec["handle"],
-                    self.room,
-                    opening=opening,
-                )
-            except PrereqMissing as exc:
-                self.failed(f"register_in_room failed for {binding.spec['handle']}: {exc}")
-            except HostExecError as exc:
-                self.failed(f"transport error during register_in_room for {binding.spec['handle']}: {exc}")
+                sessions.wait_for_no_active_sessions(self.backend_url, self.room)
+            except SessionError as exc:
+                self.failed(f"stale coordination session on {self.room!r}: {exc}")
 
         # ── create session + per-agent joins ──────────────────────
         try:
-            sessions.session_create(self.control_device, self.room)
+            self.session_room = sessions.session_create(
+                self.control_device,
+                self.room,
+                backend_url=self.backend_url,
+            )
         except SessionError as exc:
             self.failed(f"session create failed: {exc}")
+
+        log.info(
+            "%s session created: %s",
+            self._class_name,
+            self.session_room,
+        )
 
         for binding in self.agents:
             position = (
                 binding.spec.get("position")
-                or f"I'm {binding.spec['handle']}. I aim to find the best "
+                or f"I'm {binding.actual_handle}. I aim to find the best "
                 f"shared outcome on {self.row.get('topic', 'this issue')}."
             )
             try:
                 sessions.session_join(
                     binding.device,
                     self.room,
-                    binding.spec["handle"],
+                    binding.actual_handle,
                     position,
                 )
             except SessionError as exc:
-                self.failed(f"session join failed for {binding.spec['handle']}: {exc}")
+                self.failed(f"session join failed for {binding.actual_handle}: {exc}")
 
         log.info(
             "%s setup ok: room=%s timeout=%ds agents=%s",
             self._class_name,
             self.room,
             self.consensus_timeout,
-            ", ".join(f"{b.spec['handle']}({b.spec['adapter']}@{b.spec['host']})" for b in self.agents),
+            ", ".join(
+                f"{b.actual_handle}({b.spec['adapter']}@{b.spec['host']})"
+                + (f"[spec={b.spec['handle']}]" if b.actual_handle != b.spec["handle"] else "")
+                for b in self.agents
+            ),
         )
 
     # ── 4 — wake ─────────────────────────────────────────────────────
@@ -527,18 +603,19 @@ class _ConsensusBase(aetest.Testcase):
     # ── 5 — consensus ────────────────────────────────────────────────
 
     @aetest.test
-    def wait_for_consensus(self) -> None:
+    def poll_for_consensus(self) -> None:
         if not self.agents:
             self.failed("setup did not complete (no testbed or prereqs not met)")
         log.info(
             "polling backend %s for consensus on %s (timeout=%ds)",
             self.backend_url,
-            self.room,
+            getattr(self, "session_room", self.room),
             self.consensus_timeout,
         )
         outcome = sessions.poll_consensus(
             self.backend_url,
             self.room,
+            session_room=getattr(self, "session_room", None),
             timeout_seconds=self.consensus_timeout,
         )
         self.outcome: ConsensusOutcome = outcome
@@ -561,98 +638,38 @@ class _ConsensusBase(aetest.Testcase):
                 "row expected timeout but consensus reached; not failing",
             )
 
-    # ── 6a — plan/tasks.md ───────────────────────────────────────────
-
-    @aetest.test
-    def assert_plan_file(self) -> None:
-        require = self.row.get("require_plan_file")
-        if require is None:
-            require = self.row.get("require_consensus", True)
-        if not require:
-            self.skipped("plan-file assertion not required for this row")
-
-        if not getattr(self, "outcome", None) or not self.outcome.reached:
-            self.skipped("no consensus — plan file assertion vacuous")
-
-        try:
-            body = sessions.read_plan_tasks(self.control_device, self.room)
-        except SessionError as exc:
-            self.failed(f"plan/tasks.md missing or unreadable: {exc}")
-        if "- [ ]" not in body and "- [x]" not in body:
-            self.failed(f"plan/tasks.md present but has no checklist items: {body[:300]!r}")
-
-    # ── 6b — memory writes ───────────────────────────────────────────
-
-    @aetest.test
-    def assert_memory_writes(self) -> None:
-        writes = self.row.get("memory_writes") or []
-        if not writes:
-            self.skipped("no memory_writes declared for this row")
-
-        # Reclaim ownership of ``~/.mycelium`` before each write
-        # batch. By this point the negotiation has finished and the
-        # backend (root-in-Docker) has dumped a consensus message,
-        # the plan file, and a fistful of intermediate fragments
-        # into the room dir via its volume mount. Any of those
-        # writes leaves root-owned files / subdirs that block the
-        # CLI's ``_write_local_copy`` (memory.py:191), surfacing as
-        # ``memory_set('decisions/api-style') failed (rc=1)`` with
-        # a confusing Permission Denied traceback.
-        self._chown_mycelium_on_agent_hosts()
-
-        for entry in writes:
-            handle = entry.get("handle") or self.agents[0].spec["handle"]
-            key = entry["key"]
-            value = entry["value"]
-            # Pick the device that owns this handle, fall back to control.
-            device = next(
-                (b.device for b in self.agents if b.spec["handle"] == handle),
-                self.control_device,
-            )
-            try:
-                sessions.memory_set(device, self.room, handle, key, value)
-            except SessionError as exc:
-                self.failed(f"memory write {key!r} from {handle!r} failed: {exc}")
-
-    # ── 6c — search hits ─────────────────────────────────────────────
-
-    @aetest.test
-    def assert_search_hits(self) -> None:
-        queries = self.row.get("search_queries") or []
-        if not queries:
-            self.skipped("no search_queries declared for this row")
-
-        # Pause briefly so the embedding worker indexes any writes from
-        # the previous step. The default isn't aggressive — search just
-        # exercises the index, not the freshness SLO.
-        time.sleep(2)
-
-        for q in queries:
-            query = q["query"]
-            expected = q.get("expected_substring", "")
-            stdout = sessions.memory_search(self.control_device, self.room, query)
-            if expected and expected not in stdout:
-                self.failed(f"search {query!r}: expected substring {expected!r} not found in: {stdout[:400]!r}")
-
-    # ── 7 — cleanup ──────────────────────────────────────────────────
-
     @aetest.cleanup
     def cleanup(self) -> None:
-        """Unregister agents from this room and delete the room.
-
-        Crucially:
-        - Does NOT call ``teardown_runtime`` — runtime cleanup happens
-          once in ``CommonCleanup.teardown_matrix_agents`` (or is
-          deliberately skipped via ``MYCELIUM_E2E_KEEP_AGENTS``).
-        - Runs under ``@aetest.cleanup`` so it executes even when an
-          earlier test section failed, partially-built sessions get
-          torn down, and the next testcase starts from a clean room.
-        - Set ``MYCELIUM_E2E_KEEP_ROOMS=1`` to skip unregister and room
-          deletion — useful for post-run inspection of memory, plan files,
-          and session logs without losing context.
-        """
+        """Unregister agents from this room and delete the room."""
         if os.environ.get("MYCELIUM_E2E_KEEP_ROOMS", "").lower() in {"1", "true", "yes"}:
             log.info("cleanup: skipping room teardown for %s (MYCELIUM_E2E_KEEP_ROOMS)", self.room)
+            return
+
+        if getattr(self, "_suite_shared_room", False):
+            session_room = getattr(self, "session_room", None)
+            if session_room:
+                try:
+                    sessions.wait_for_session_terminal(
+                        self.backend_url,
+                        self.room,
+                        session_room,
+                        timeout_seconds=sessions._SUITE_SESSION_DRAIN_SECONDS,
+                    )
+                except SessionError as exc:
+                    log.warning(
+                        "cleanup: session %s not terminal on %s: %s",
+                        session_room,
+                        self.room,
+                        exc,
+                    )
+            try:
+                sessions.wait_for_no_active_sessions(
+                    self.backend_url,
+                    self.room,
+                    timeout_seconds=sessions._SUITE_SESSION_DRAIN_SECONDS,
+                )
+            except SessionError as exc:
+                log.warning("cleanup: session still active on %s: %s", self.room, exc)
             return
 
         for binding in self.agents:
@@ -676,26 +693,8 @@ class _ConsensusBase(aetest.Testcase):
         except Exception as exc:  # noqa: BLE001
             log.debug("room delete failed (ignored): %s", exc)
 
-    # ── helpers ──────────────────────────────────────────────────────
-
     def _chown_mycelium_on_agent_hosts(self) -> None:
-        """Reclaim user ownership of ``~/.mycelium`` on each agent
-        host (and the control host).
-
-        The backend container runs as root and writes files into the
-        user's home via a Docker volume mount, so any backend write
-        leaves root-owned artifacts that block subsequent user-side
-        CLI writes. We hit this in two places — fresh agent create
-        and fresh per-room ``agent add`` — and the cheap fix is to
-        chown -R the whole ~/.mycelium tree on every host we'll
-        touch right after the operation that triggered the backend
-        write.
-
-        Best-effort: a chown failure just downgrades to a debug log;
-        the downstream operation will surface a clearer error.
-        """
-        # De-dupe by device identity so we don't chown the hub twice
-        # when multiple agents live on the hub.
+        """Reclaim user ownership of ``~/.mycelium`` on each agent host."""
         seen_ids: set[int] = set()
         targets: list[Any] = []
         for d in (self.control_device, *[b.device for b in self.agents]):
@@ -725,6 +724,88 @@ class _ConsensusBase(aetest.Testcase):
                 )
 
 
+class _ConsensusScenario(_ScenarioCore):
+    """Negotiate to agreement and verify ``plan/tasks.md``."""
+
+    _profile: ClassVar[str] = "consensus"
+
+    @aetest.test
+    def assert_plan_file(self) -> None:
+        if not getattr(self, "outcome", None) or not self.outcome.reached:
+            self.failed("consensus not reached — plan/tasks.md assertion requires agreement")
+
+        try:
+            body = sessions.read_plan_tasks(self.control_device, self.room)
+        except SessionError as exc:
+            self.failed(f"plan/tasks.md missing or unreadable: {exc}")
+        if "- [ ]" not in body and "- [x]" not in body:
+            self.failed(f"plan/tasks.md present but has no checklist items: {body[:300]!r}")
+
+
+class _FullScenario(_ConsensusScenario):
+    """Consensus + plan + memory persistence + semantic search."""
+
+    _profile: ClassVar[str] = "full"
+
+    @aetest.test
+    def assert_memory_writes(self) -> None:
+        writes = self.row.get("memory_writes") or []
+        if not writes:
+            self.failed("full-profile row missing memory_writes")
+
+        self._chown_mycelium_on_agent_hosts()
+
+        for entry in writes:
+            spec_handle = entry.get("handle") or self.agents[0].spec["handle"]
+            key = entry["key"]
+            value = entry["value"]
+            # Look up by spec handle (as declared in scenarios.yaml);
+            # use the actual (possibly discovered) handle for the CLI call.
+            binding = next(
+                (b for b in self.agents if b.spec["handle"] == spec_handle),
+                None,
+            )
+            device = binding.device if binding else self.control_device
+            actual_handle = binding.actual_handle if binding else spec_handle
+            try:
+                sessions.memory_set(device, self.room, actual_handle, key, value)
+            except SessionError as exc:
+                self.failed(f"memory write {key!r} from {actual_handle!r} failed: {exc}")
+
+    @aetest.test
+    def assert_search_hits(self) -> None:
+        queries = self.row.get("search_queries") or []
+        if not queries:
+            self.failed("full-profile row missing search_queries")
+
+        time.sleep(2)
+
+        for q in queries:
+            query = q["query"]
+            expected = q.get("expected_substring", "")
+            stdout = sessions.memory_search(self.control_device, self.room, query)
+            if expected and expected not in stdout:
+                self.failed(f"search {query!r}: expected substring {expected!r} not found in: {stdout[:400]!r}")
+
+
+class _ShakedownScenario(_ScenarioCore):
+    """Session plumbing only — terminal state required, agreement optional."""
+
+    _profile: ClassVar[str] = "shakedown"
+
+
+_PROFILE_BASE.update(
+    {
+        "consensus": _ConsensusScenario,
+        "full": _FullScenario,
+        "shakedown": _ShakedownScenario,
+    }
+)
+
+# Back-compat alias for suite loaders that reference the old name.
+_ConsensusBase = _ConsensusScenario
+
+
 # ── per-agent binding ────────────────────────────────────────────────
 
 
@@ -739,3 +820,13 @@ class _AgentBinding:
     device: Any  # pyATS testbed device
     provisioner: Provisioner  # adapter-specific provisioner
     ref: AgentRef | None  # set during setup's register_in_room loop
+
+    @property
+    def actual_handle(self) -> str:
+        """Real agent handle — may differ from spec if a discovered agent was allocated.
+
+        Use this (not ``spec["handle"]``) for all CLI operations after
+        setup's register_in_room loop has run.  Before that point
+        ``ref`` is None and this falls back to the spec handle.
+        """
+        return self.ref.handle if self.ref is not None else self.spec["handle"]

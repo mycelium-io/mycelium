@@ -40,6 +40,7 @@ def test_check_prereqs_passes_when_all_present():
             _ok("mycelium 1.2.3"),  # mycelium --version
             _ok("/home/me/.local/bin/cursor-agent\n"),  # which cursor-agent
             _ok("cc-daemon: active"),  # mycelium daemon status
+            _ok("Login successful!\nLogged in with Token\n"),  # cursor-agent status
         ]
     )
 
@@ -82,6 +83,28 @@ def test_check_prereqs_skips_when_daemon_dead():
 
     with patch("libs.host_exec.execute", side_effect=fake_execute):
         with pytest.raises(PrereqMissing, match="daemon"):
+            prov.check_prereqs(_device())
+
+
+def test_check_prereqs_fails_when_cursor_not_authenticated():
+    prov = CursorProvisioner()
+    responses = iter(
+        [
+            _ok("mycelium 1.2.3"),
+            _ok("/home/me/.local/bin/cursor-agent"),
+            _ok("cc-daemon: active"),
+            _fail(
+                "Authentication required. Please run 'agent login' first, "
+                "or set CURSOR_API_KEY environment variable for headless mode."
+            ),
+        ]
+    )
+
+    def fake_execute(_device, _argv, **_kwargs):
+        return next(responses)
+
+    with patch("libs.host_exec.execute", side_effect=fake_execute):
+        with pytest.raises(PrereqMissing, match="not authenticated"):
             prov.check_prereqs(_device())
 
 

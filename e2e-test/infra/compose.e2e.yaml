@@ -74,7 +74,7 @@ services:
       - mycelium-e2e
 
   # ── CFN Fabric Node ───────────────────────────────────────────────────
-  ioc-cognition-fabric-node-svc:
+  ioc-cfn-svc:
     image: ${CFN_NODE_IMAGE:-ghcr.io/outshift-open/ioc-cognition-fabric-node-svc:0.1.7}
     platform: linux/amd64
     container_name: e2e-cfn-node
@@ -129,7 +129,7 @@ services:
         condition: service_healthy
       ioc-cfn-mgmt-plane-svc:
         condition: service_healthy
-      ioc-cognition-fabric-node-svc:
+      ioc-cfn-svc:
         condition: service_healthy
     environment:
       <<: *common-env
@@ -137,7 +137,7 @@ services:
       GRAPH_DB_URL: "postgresql://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium"
       API_BASE_URL: http://mycelium-backend:8000
       CFN_MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
-      COGNITION_FABRIC_NODE_URL: http://ioc-cognition-fabric-node-svc:9002
+      CFN_SVC_URL: http://ioc-cfn-svc:9002
       COORDINATION_TICK_TIMEOUT_SECONDS: ${COORDINATION_TICK_TIMEOUT_SECONDS:-30}
       MYCELIUM_DATA_DIR: /home/mycelium/.mycelium
       MYCELIUM_STUB_EMBEDDINGS: "${MYCELIUM_STUB_EMBEDDINGS:-0}"
@@ -409,7 +409,7 @@ services:
     environment:
       MYCELIUM_BACKEND_URL: http://mycelium-backend:8000
       CFN_MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
-      CFN_SVC_URL: http://ioc-cognition-fabric-node-svc:9002
+      CFN_SVC_URL: http://ioc-cfn-svc:9002
       MATRIX_URL: http://matrix-synapse:8008
     volumes:
       - ../artifacts:/tests/artifacts

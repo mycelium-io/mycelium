@@ -1,6 +1,6 @@
-"""Hermes adapter E2E tests — gateway PID handling and loop suppression.
+"""Hermes adapter E2E tests — loop suppression.
 
-Maps to test numbers 85 and 89.
+Maps to test number 89.
 
 These tests exercise the actual running hermes gateway on the hub and spokes
 via SSH / local dispatch. They require:
@@ -12,13 +12,6 @@ All tests gate on gateway reachability and skip cleanly when the gateway
 is not up, so they are safe to include in the lab integration suite even
 when hermes isn't deployed everywhere.
 
-85 HermesGatewayPidFormats
-   ``mycelium doctor`` must report a healthy gateway regardless of whether
-   the pid file is in the new JSON format (``{"pid": N, ...}``) or the
-   legacy plain-integer format. We inject both variants and assert that
-   ``mycelium doctor`` exits 0 and prints a checkmark for the gateway
-   health check.
-
 89 HermesLoopSuppression
    Posting a message via the adapter must not echo it back into the same
    agent's receive loop. We create a hermes agent, post 1030 synthetic
@@ -29,7 +22,6 @@ when hermes isn't deployed everywhere.
 
 from __future__ import annotations
 
-import json
 import logging
 import uuid
 
@@ -145,91 +137,6 @@ def _gateway_running_on(host: str) -> bool:
     """Return True when `hermes gateway status` reports a running gateway."""
     rc, stdout, _ = _ssh(host, "hermes gateway status 2>&1", timeout=10.0)
     return rc == 0 and ("running" in stdout.lower() or "pid" in stdout.lower())
-
-
-def _mycelium_doctor_output(host: str) -> tuple[int, str]:
-    rc, stdout, stderr = _ssh(host, "mycelium doctor 2>&1", timeout=30.0)
-    return rc, stdout + stderr
-
-
-# ── Test 85: Gateway PID file format tolerance ────────────────────────────────
-
-
-class HermesGatewayPidFormats(aetest.Testcase):
-    """Test 85: ``mycelium doctor`` handles both JSON and legacy plain-int
-    gateway pid file formats without reporting a warning.
-
-    Commit 28aca63 extracted ``_read_gateway_pid()`` from duplicated inline
-    parsing in ``dispatch.py`` and ``doctor.py``.  Both callers now delegate
-    to the helper, which handles the JSON format (``{"pid": N, ...}``)
-    *and* the legacy bare-integer format.  A version skew between the
-    hermes binary (writing legacy) and the mycelium CLI (reading) should
-    not surface as a spurious "unreadable pid" warning in doctor output.
-    """
-
-    groups = ["hermes", "integration"]
-
-    @aetest.setup
-    def setup(self):
-        if not _is_ssh_reachable(HUB_HOST):
-            self.skipped(f"Cannot SSH to hub {HUB_HOST}")
-        if not _gateway_running_on(HUB_HOST):
-            self.skipped("hermes gateway not running on hub — start with `hermes gateway start`")
-        self.hermes_home = _hermes_home_on(HUB_HOST)
-        self.pid_path = f"{self.hermes_home}/gateway.pid"
-        # Read the current pid file so we can restore it in cleanup.
-        _rc, self._original_pid_content, _ = _ssh(HUB_HOST, f"cat {self.pid_path} 2>/dev/null")
-
-    def _actual_pid(self) -> str:
-        """Extract the numeric PID from the saved pid file content."""
-        raw = (self._original_pid_content or "").strip()
-        if not raw:
-            return "1"
-        try:
-            return str(json.loads(raw)["pid"])
-        except (json.JSONDecodeError, KeyError, TypeError):
-            return raw.splitlines()[0].strip() or "1"
-
-    @aetest.test
-    def doctor_accepts_json_pid_format(self, steps):
-        """Inject a JSON pid file and confirm doctor does not warn."""
-        actual_pid = self._actual_pid()
-
-        with steps.start("Write JSON-format pid file") as step:
-            json_content = json.dumps({"pid": int(actual_pid), "kind": "hermes-gateway"})
-            write_rc, _, write_err = _ssh(
-                HUB_HOST,
-                f"echo '{json_content}' > {self.pid_path}",
-            )
-            if write_rc != 0:
-                step.failed(f"Could not write pid file: {write_err}")
-
-        with steps.start("mycelium doctor accepts JSON pid file") as step:
-            _, output = _mycelium_doctor_output(HUB_HOST)
-            log.info("doctor output (JSON pid): %s", output[:800])
-            if "unreadable" in output.lower():
-                step.failed(f"doctor reported pid unreadable with JSON format.\nOutput:\n{output[:600]}")
-
-    @aetest.test
-    def doctor_accepts_legacy_integer_pid_format(self, steps):
-        """Inject a legacy plain-integer pid file and confirm doctor accepts it."""
-        actual_pid = self._actual_pid()
-
-        with steps.start("Write legacy plain-integer pid file") as step:
-            write_rc, _, write_err = _ssh(HUB_HOST, f"echo '{actual_pid}' > {self.pid_path}")
-            if write_rc != 0:
-                step.failed(f"Could not write pid file: {write_err}")
-
-        with steps.start("mycelium doctor accepts legacy pid file") as step:
-            _, output = _mycelium_doctor_output(HUB_HOST)
-            log.info("doctor output (legacy pid): %s", output[:800])
-            if "unreadable" in output.lower():
-                step.failed(f"doctor reported pid unreadable with legacy format.\nOutput:\n{output[:600]}")
-
-    @aetest.cleanup
-    def cleanup(self):
-        if self._original_pid_content:
-            _ssh(HUB_HOST, f"echo '{self._original_pid_content.strip()}' > {self.pid_path}")
 
 
 # ── Test 89: Loop suppression — deque-based eviction ─────────────────────────

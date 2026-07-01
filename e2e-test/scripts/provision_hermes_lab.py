@@ -2,8 +2,7 @@
 """Provision the hermes lab — idempotent setup across all nodes.
 
 Run this once before a CI run, or after a lab redeploy, to ensure every
-node has mautrix installed, its Matrix user created, the hermes adapter
-registered, and the gateway running.
+node has the hermes adapter registered and the gateway running.
 
 Usage
 -----
@@ -17,13 +16,9 @@ Usage
     # Dry-run: show what would be checked/done without making changes
     python scripts/provision_hermes_lab.py --dry-run
 
-    # Override the Matrix homeserver (e.g. in CI where it's remote)
-    MATRIX_HOMESERVER=http://10.0.50.125:8008 python scripts/provision_hermes_lab.py
-
 Environment variables
 ---------------------
 
-    MATRIX_HOMESERVER   Matrix/Synapse URL (default: http://localhost:8008)
     OCLW4_IP            Hub IP (default: 10.0.50.125)
     OCLW3_IP            Spoke1 IP (default: 10.0.50.171)
     OCLW5_IP            Spoke2 IP (default: 10.0.50.142)
@@ -54,35 +49,27 @@ from libs.hermes_lab import NodeConfig, ProvisionResult, check_prereqs, provisio
 
 log = logging.getLogger(__name__)
 
-_MATRIX_HOMESERVER = os.environ.get("MATRIX_HOMESERVER", "http://localhost:8008")
 _SSH_KEY = os.environ.get("SSH_KEY_PATH", "~/.ssh/ioc.pem")
 _SSH_USER = os.environ.get("SSH_USER", "ubuntu")
 
-# Node definitions — matrix_user follows the hermes-<node> convention
 _ALL_NODES: list[NodeConfig] = [
     NodeConfig(
         name="hub",
         ssh_ip=os.environ.get("OCLW4_IP", "10.0.50.125"),
         ssh_user=_SSH_USER,
         ssh_key=_SSH_KEY,
-        matrix_user="hermes-oclw4",
-        matrix_homeserver=_MATRIX_HOMESERVER,
     ),
     NodeConfig(
         name="spoke1",
         ssh_ip=os.environ.get("OCLW3_IP", "10.0.50.171"),
         ssh_user=_SSH_USER,
         ssh_key=_SSH_KEY,
-        matrix_user="hermes-oclw3",
-        matrix_homeserver=_MATRIX_HOMESERVER,
     ),
     NodeConfig(
         name="spoke2",
         ssh_ip=os.environ.get("OCLW5_IP", "10.0.50.142"),
         ssh_user=_SSH_USER,
         ssh_key=_SSH_KEY,
-        matrix_user="hermes-oclw5",
-        matrix_homeserver=_MATRIX_HOMESERVER,
     ),
 ]
 
@@ -151,7 +138,6 @@ def main(argv: list[str] | None = None) -> int:
     nodes = [_NODE_MAP[n] for n in args.nodes] if args.nodes else _ALL_NODES
     check_only = args.check_only or args.dry_run
 
-    log.info("Matrix homeserver: %s", _MATRIX_HOMESERVER)
     log.info("Nodes: %s", ", ".join(n.name for n in nodes))
 
     if check_only:
@@ -159,13 +145,7 @@ def main(argv: list[str] | None = None) -> int:
         print("=" * 70)
         failed = 0
         for node in nodes:
-            issues = check_prereqs(
-                node.ssh_ip,
-                node.ssh_user,
-                node.ssh_key,
-                matrix_homeserver=_MATRIX_HOMESERVER,
-                matrix_user=node.matrix_user,
-            )
+            issues = check_prereqs(node.ssh_ip, node.ssh_user, node.ssh_key)
             if issues:
                 print(f"  {node.name:10s}  MISSING:")
                 for issue in issues:
@@ -176,7 +156,7 @@ def main(argv: list[str] | None = None) -> int:
         print("=" * 70)
         return 0 if failed == 0 else 1
 
-    results = provision_lab(nodes, matrix_homeserver=_MATRIX_HOMESERVER)
+    results = provision_lab(nodes)
     failed = _print_results(results)
     return 0 if failed == 0 else 1
 

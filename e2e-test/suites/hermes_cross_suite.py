@@ -30,6 +30,8 @@ if _ROOT not in sys.path:
 from libs import host_exec  # noqa: E402
 from libs.host_exec import HostExecError  # noqa: E402
 from libs.provisioners import AgentRef, PrereqMissing, get_provisioner  # noqa: E402
+from libs.suite_lifecycle import setup_shared_suite_room, teardown_shared_suite_room  # noqa: E402
+from libs.sessions import SessionError  # noqa: E402
 from testcases.hermes_tests import HUB_HOST, SSH_KEY, SSH_USER  # noqa: E402
 from testcases.scenarios import (  # noqa: E402
     active_tiers,
@@ -148,8 +150,25 @@ class CommonSetup(aetest.CommonSetup):
         if failures:
             self.failed(f"provision_agents: {len(failures)} agent(s) failed:\n  " + "\n  ".join(failures))
 
+        try:
+            setup_shared_suite_room(
+                testscript,
+                testbed,
+                wants,
+                room_prefix="scn-he-cross",
+            )
+        except SessionError as exc:
+            self.failed(f"setup_shared_suite_room: {exc}")
+
 
 class CommonCleanup(aetest.CommonCleanup):
+    @aetest.subsection
+    def teardown_suite_room(self, testscript, testbed=None):
+        if testbed is None:
+            return
+        backend_url = os.environ.get("MYCELIUM_BACKEND_URL")
+        teardown_shared_suite_room(testscript, testbed, backend_url=backend_url)
+
     @aetest.subsection
     def teardown_hermes_agents(self, testscript, testbed=None):
         """Remove hermes agents that were created (not pre-existing) this run."""

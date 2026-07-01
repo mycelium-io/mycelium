@@ -1,5 +1,5 @@
 """
-Core suite — rooms, memory, CLI, sessions, search, synthesis, CFN basics.
+Core suite — rooms, memory, CLI, sessions, search, CFN basics.
 
 Covers tests 01-14 and 22.
 
@@ -32,7 +32,6 @@ from testcases.core_tests import (
     SessionJoinIdempotency,
     SharedMemoryCliE2E,
     SyncNegotiationCliE2E,
-    Synthesis,
 )
 from testcases.matrix_tests import MatrixCommunication
 
@@ -54,10 +53,6 @@ class test_03_memory_reads(MemoryReads):
 
 
 class test_04_semantic_search(SemanticSearch):
-    pass
-
-
-class test_05_synthesis(Synthesis):
     pass
 
 

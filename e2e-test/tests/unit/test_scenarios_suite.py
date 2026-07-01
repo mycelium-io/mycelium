@@ -416,6 +416,34 @@ def test_verify_cfn_alignment_failure_aborts_suite(monkeypatch, suite_module):
     # The error from the helper must propagate into the failure
     # message; otherwise the operator can't tell which hub broke.
     assert "force-recreate" in str(excinfo.value)
+    assert "common_setup_aborted" in testscript.parameters
+
+
+def test_provision_matrix_agents_skipped_after_common_setup_abort(suite_module, monkeypatch):
+    """Do not spend minutes provisioning agents when CFN alignment failed."""
+    monkeypatch.delenv("MYCELIUM_E2E_SKIP_AGENT_PROVISIONING", raising=False)
+    monkeypatch.setattr(suite_module, "_ACTIVE_ROWS", [{"agents": [{"adapter": "openclaw", "handle": "alpha", "host": "hub"}]}])
+
+    ensure_calls: list[str] = []
+
+    class _Provisioner:
+        def check_prereqs(self, device):
+            return None
+
+        def ensure_runtime(self, device, handle, **kwargs):
+            ensure_calls.append(handle)
+            raise AssertionError("ensure_runtime should not run after setup abort")
+
+    monkeypatch.setattr(suite_module, "get_provisioner", lambda _name: _Provisioner())
+
+    section = suite_module.LabRedeployCommonSetup()
+    testscript = _make_testscript()
+    testscript.parameters["common_setup_aborted"] = "verify_cfn_alignment failed"
+
+    with pytest.raises(AEtestSkippedSignal):
+        section.provision_matrix_agents(testscript, testbed=_make_testbed())
+
+    assert ensure_calls == []
 
 
 def test_verify_cfn_alignment_passes_backend_url_from_custom(monkeypatch, suite_module):

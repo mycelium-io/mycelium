@@ -113,12 +113,12 @@ class OpenClawProvisioner(ABCProvisioner):
 
         # 1) Bootstrap room — create it (idempotent: returns 0 even
         # if already exists, in the current CLI).
-        self._ensure_room(device, bootstrap_room)
+        self.ensure_bootstrap_room(device, bootstrap_room)
 
-        # 2) Already-present fast path. ``mycelium agent ls`` returns
-        # an empty body (and rc=0) if the room is empty, so the
-        # "handle in stdout" check is the source of truth.
-        existing = self._list_agents_in_room(device, bootstrap_room)
+        # 2) Already-present fast path.  Ask openclaw itself which
+        # agents are configured — more reliable than parsing the mycelium
+        # Rich-table output.
+        existing = self._list_openclaw_agents(device)
         if handle in existing:
             log.info(
                 "openclaw.ensure_runtime: %s already present in %s on %s",
@@ -222,6 +222,75 @@ class OpenClawProvisioner(ABCProvisioner):
                 "pre_existing": False,
             },
         )
+
+    def discover_available(
+        self,
+        device: Any,
+        *,
+        bootstrap_room: str = BOOTSTRAP_ROOM,
+    ) -> list[AgentRef]:
+        """Return OpenClaw agents already present in ``bootstrap_room`` and alive.
+
+        Two-step probe:
+        1. ``mycelium agent ls --room <bootstrap_room>`` — cheap listing.
+        2. ``openclaw sessions --agent <handle>`` — confirms the agent is
+           registered with the gateway and the gateway is responding.
+           A handle that passes the listing but fails the gateway probe
+           is silently skipped (stale manifest from a restarted gateway).
+        """
+        device_label = host_exec.describe(device)
+        handles = self._list_openclaw_agents(device)
+        if not handles:
+            log.debug("openclaw.discover_available: no agents configured on %s", device_label)
+            return []
+
+        alive: list[AgentRef] = []
+        for handle in sorted(handles):
+            if self._is_agent_alive(device, handle):
+                alive.append(
+                    AgentRef(
+                        handle=handle,
+                        adapter=self.name,
+                        device_name=getattr(device, "name", None) or device_label,
+                        metadata={
+                            "matrix_token_env": _matrix_token_env_for(handle),
+                            "bootstrap_room": bootstrap_room,
+                            "pre_existing": True,
+                        },
+                    )
+                )
+            else:
+                log.debug(
+                    "openclaw.discover_available: %s listed but gateway probe failed — skipping",
+                    handle,
+                )
+
+        log.info(
+            "openclaw.discover_available: %d/%d agent(s) healthy on %s: %s",
+            len(alive),
+            len(handles),
+            device_label,
+            [r.handle for r in alive],
+        )
+        return alive
+
+    def _is_agent_alive(self, device: Any, handle: str) -> bool:
+        """Return True when ``openclaw sessions --agent <handle>`` exits 0.
+
+        A zero exit code means the gateway process is running and the
+        agent is registered. We don't inspect the session list itself —
+        an empty list (``[]``) is a healthy gateway response for an
+        idle agent.
+        """
+        try:
+            result = host_exec.execute(
+                device,
+                ["openclaw", "sessions", "--agent", handle, "--json", "--limit", "1"],
+                timeout=10.0,
+            )
+            return result.returncode == 0
+        except HostExecError:
+            return False
 
     def register_in_room(
         self,
@@ -414,93 +483,36 @@ class OpenClawProvisioner(ABCProvisioner):
 
     # ── helpers ───────────────────────────────────────────────────────
 
-    def _ensure_room(self, device: Any, room: str) -> None:
-        """Create ``room`` and reclaim file ownership.
+    def _list_openclaw_agents(self, device: Any) -> set[str]:
+        """Return the set of agent handles configured in openclaw on ``device``.
 
-        Two-step:
-
-        1. ``mycelium room create <room>`` — idempotent (non-zero
-           exit on "already exists" is silently OK).
-        2. ``sudo chown -R $USER:$USER ~/.mycelium/rooms/<room>``
-           if the directory exists.
-
-        Step 2 is the subtle one. The backend runs as root inside
-        its Docker container and creates ``~/.mycelium/rooms/<room>/``
-        through a volume mount, so subsequent ``mycelium agent
-        create`` calls — which write the local manifest as the SSH
-        user — fail with "Cannot write … owned by root". Reclaiming
-        ownership before handing off to ``agent create`` is the
-        simplest fix that doesn't require changing the backend.
-        ``$USER`` on lab boxes is ``ubuntu`` with passwordless sudo
-        (same convention as ``libs.lab_redeploy._DATA_DIRS_WIPE``).
+        Uses ``openclaw agents list`` which emits ``- <handle>`` lines —
+        more reliable than parsing the mycelium Rich-table output.
+        Empty set on any failure.
         """
         try:
             result = host_exec.execute(
                 device,
-                ["mycelium", "room", "create", room],
-                timeout=15.0,
-            )
-        except HostExecError as exc:
-            log.debug("openclaw._ensure_room: dispatch failed (ignoring): %s", exc)
-            return
-        if result.returncode != 0 and "already exists" not in (result.stderr.lower() + result.stdout.lower()):
-            log.debug(
-                "openclaw._ensure_room: %s exit=%d stderr=%s",
-                room,
-                result.returncode,
-                result.stderr.strip()[:120],
-            )
-
-        # Reclaim ownership of the room dir. ``shell=True`` here so
-        # ``$USER`` and ``$HOME`` are expanded by the remote shell,
-        # not on the runner side. Best-effort: a chown failure
-        # (e.g. running locally without sudo) downgrades to a debug
-        # log — agent create will then surface the real error.
-        try:
-            host_exec.execute(
-                device,
-                (
-                    f'if [ -d "$HOME/.mycelium/rooms/{room}" ]; then '
-                    f'sudo chown -R "$USER:$USER" "$HOME/.mycelium/rooms/{room}" '
-                    f"2>/dev/null || true; fi"
-                ),
-                shell=True,
-                timeout=15.0,
-            )
-        except HostExecError as exc:
-            log.debug("openclaw._ensure_room: chown skipped: %s", exc)
-
-    def _list_agents_in_room(self, device: Any, room: str) -> set[str]:
-        """Return the set of agent handles registered in ``room``.
-
-        Empty set on any failure — callers treat "not present" as "needs
-        creating" which is the safe direction.
-        """
-        try:
-            result = host_exec.execute(
-                device,
-                ["mycelium", "agent", "ls", "--room", room],
+                ["openclaw", "agents", "list"],
                 timeout=15.0,
             )
         except HostExecError:
             return set()
         if result.returncode != 0:
             return set()
-        # ``mycelium agent ls`` output: one line per agent, handle in
-        # the first whitespace-separated column. Skip blank lines and
-        # the "No agents" advisory line if present.
+        # Output format:
+        #   - main (default)
+        #   - agent-alpha
+        #   - agent-beta
         handles: set[str] = set()
         for line in result.stdout.splitlines():
             line = line.strip()
-            if not line or line.lower().startswith("no agents"):
+            if not line.startswith("- "):
                 continue
-            # Header rows from Rich tables start with a separator;
-            # the first column is the handle for both Rich and plain
-            # output.
-            first = line.split()[0]
-            # Strip leading '@' in case the CLI ever prefixes handles
-            # for display.
-            handles.add(first.lstrip("@"))
+            # Strip the "- " prefix and any trailing annotation like "(default)"
+            handle = line[2:].split()[0]
+            if handle:
+                handles.add(handle)
         return handles
 
     # ── wake ──────────────────────────────────────────────────────────

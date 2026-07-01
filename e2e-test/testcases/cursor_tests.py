@@ -368,7 +368,7 @@ class CursorCrossFamilyCursor(aetest.Testcase):
                 step.failed(f"Session create failed: {r.error_message}")
             log.info("Session created: %s", r.stdout[:300])
 
-        with steps.start("Wait for consensus or max rounds") as step:
+        with steps.start("Poll for consensus or max rounds") as step:
             result = poll_session_status(
                 self.room,
                 timeout_seconds=600,
@@ -453,7 +453,7 @@ class CursorCrossFamilyOpenClaw(aetest.Testcase):
                 step.failed(f"Session create failed: {r.error_message}")
             log.info("Cross-family session: %s", r.stdout[:300])
 
-        with steps.start("Wait for consensus") as step:
+        with steps.start("Poll for consensus") as step:
             result = poll_session_status(
                 self.room,
                 timeout_seconds=600,

@@ -27,14 +27,9 @@ in openclaw + cursor; passive polling in hermes) — that part lives in
 
 from __future__ import annotations
 
-import json
 import logging
-import time
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import quote
 
 from libs import host_exec
 from libs.host_exec import HostExecError
@@ -105,12 +100,23 @@ def delete_room(device: Any, room: str, *, timeout: float = 15.0) -> None:
 # ── session / negotiation ────────────────────────────────────────────
 
 
-def session_create(device: Any, room: str, *, timeout: float = 60.0) -> None:
-    """Start a coordination session in the given room."""
+def session_create(
+    device: Any,
+    room: str,
+    *,
+    backend_url: str | None = None,
+    timeout: float = 60.0,
+) -> str:
+    """Start a coordination session in the given room.
+
+    Returns the child session room name (``parent:session:shortid``).
+    """
+    from libs.coordination_flow import parse_session_room_from_cli, resolve_session_room
+
     try:
         result = host_exec.execute(
             device,
-            ["mycelium", "session", "create", "--room", room],
+            ["mycelium", "--json", "session", "create", "--room", room],
             timeout=timeout,
         )
     except HostExecError as exc:
@@ -120,6 +126,20 @@ def session_create(device: Any, room: str, *, timeout: float = 60.0) -> None:
             f"session_create({room!r}) failed (rc={result.returncode}): "
             f"{(result.stderr or result.stdout).strip()[:300]}"
         )
+
+    session_room = parse_session_room_from_cli(result.stdout, room)
+    if not session_room and backend_url:
+        from libs.mycelium_api import MyceliumAPI
+
+        api = MyceliumAPI(base_url=backend_url)
+        session_room = resolve_session_room(api, room, result.stdout)
+
+    if not session_room:
+        raise SessionError(
+            f"session_create({room!r}) succeeded but session room could not be resolved "
+            f"from CLI output: {(result.stdout or result.stderr).strip()[:300]!r}"
+        )
+    return session_room
 
 
 def session_join(
@@ -232,87 +252,56 @@ def memory_search(
 # room-wide outcome poller, so we hit the backend directly.
 
 
+def consensus_outcome_from_poll(result: dict[str, Any] | None) -> ConsensusOutcome:
+    """Convert a :func:`coordination_flow.poll_for_consensus` result to ``ConsensusOutcome``."""
+    if result is None:
+        return ConsensusOutcome(
+            state="timeout",
+            broken=True,
+            plan_file=None,
+            plan=None,
+            assignments={},
+            raw={},
+        )
+
+    consensus = result.get("consensus") or {}
+    coord_state = result.get("coordination_state", "complete")
+    broken = bool(consensus.get("broken")) or coord_state in ("failed", "aborted")
+    return ConsensusOutcome(
+        state="consensus",
+        broken=broken,
+        plan_file=consensus.get("plan_file"),
+        plan=consensus.get("plan"),
+        assignments=consensus.get("assignments") or {},
+        raw=consensus if consensus else result,
+    )
+
+
 def poll_consensus(
     backend_url: str,
     room: str,
     *,
+    session_room: str | None = None,
     timeout_seconds: int = 600,
     poll_interval: int = 5,
 ) -> ConsensusOutcome:
-    """Poll the backend until ``coordination_consensus`` is posted in
-    ``room`` or the timeout expires.
+    """Poll the backend until *room* reaches a terminal negotiation outcome.
 
-    The consensus message lives in the *session sub-room*
-    (``<room>:session:<short_id>``) but the backend's room-messages
-    endpoint exposes child sub-room messages on the parent room's
-    listing, so a single GET against the parent works. If you want
-    sub-room-only resolution, set ``room`` to the session id explicitly.
+    When ``session_room`` is provided, only that coordination session is
+    polled — required for shared suite parent rooms.
     """
-    deadline = time.time() + timeout_seconds
-    # NOTE: backend mounts resource routes under ``/api`` (see
-    # ``fastapi-backend/app/main.py``). The old ``/rooms/...`` path returns
-    # 404 — every poll silently failed and we timed out without ever
-    # seeing the consensus message. Always include the ``/api`` prefix.
-    consensus_url = f"{backend_url.rstrip('/')}/api/rooms/{quote(room, safe='')}/messages?limit=100"
+    from libs.coordination_flow import poll_for_consensus
+    from libs.mycelium_api import MyceliumAPI
 
-    last_log = 0.0
-    while time.time() < deadline:
-        try:
-            req = urllib.request.Request(consensus_url, method="GET")
-            with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310 - http(s) only
-                data = json.loads(resp.read().decode())
-        except (urllib.error.URLError, OSError, ValueError) as exc:
-            log.debug("poll_consensus: HTTP error: %s", exc)
-        else:
-            for msg in data.get("messages", []):
-                if msg.get("message_type") == "coordination_consensus":
-                    return _parse_consensus_message(msg)
-
-        # Throttled progress log every 30s so CI output stays readable.
-        now = time.time()
-        if now - last_log >= 30:
-            log.info(
-                "poll_consensus: still waiting on %s (%.0fs remaining)",
-                room,
-                deadline - now,
-            )
-            last_log = now
-        time.sleep(poll_interval)
-
-    log.warning(
-        "poll_consensus: timed out after %ds on room %s",
-        timeout_seconds,
+    api = MyceliumAPI(base_url=backend_url)
+    result = poll_for_consensus(
+        api,
         room,
+        session_room=session_room,
+        timeout=timeout_seconds,
+        poll_interval=poll_interval,
     )
-    return ConsensusOutcome(
-        state="timeout",
-        broken=True,
-        plan_file=None,
-        plan=None,
-        assignments={},
-        raw={},
-    )
-
-
-def _parse_consensus_message(msg: dict[str, Any]) -> ConsensusOutcome:
-    """Turn a backend ``coordination_consensus`` message into a typed outcome."""
-    content = msg.get("content", "{}")
-    if isinstance(content, str):
-        try:
-            body = json.loads(content)
-        except json.JSONDecodeError:
-            body = {"plan": content}
-    else:
-        body = content or {}
-
-    return ConsensusOutcome(
-        state="consensus",
-        broken=bool(body.get("broken")),
-        plan_file=body.get("plan_file"),
-        plan=body.get("plan"),
-        assignments=body.get("assignments") or {},
-        raw=body,
-    )
+    return consensus_outcome_from_poll(result)
 
 
 # ── plan/tasks ───────────────────────────────────────────────────────
@@ -358,3 +347,95 @@ def read_plan_tasks(
 
 class SessionError(RuntimeError):
     """Raised when a session/negotiate/plan CLI call fails."""
+
+
+# Coordination sessions in these states block ``session create`` on the
+# parent room (mirrors the hermes plugin session poller).
+_ACTIVE_COORDINATION_STATES = frozenset({"waiting", "negotiating"})
+_TERMINAL_COORDINATION_STATES = frozenset({"complete", "agreed", "failed", "aborted"})
+_SUITE_SESSION_DRAIN_SECONDS = 120.0
+
+
+def wait_for_session_terminal(
+    backend_url: str,
+    parent_room: str,
+    session_room: str,
+    *,
+    timeout_seconds: float = _SUITE_SESSION_DRAIN_SECONDS,
+    poll_interval: float = 2.0,
+) -> None:
+    """Block until ``session_room`` reaches a terminal coordination state."""
+    import time
+
+    from libs.coordination_flow import get_coordination_session
+
+    from libs.mycelium_api import MyceliumAPI
+
+    api = MyceliumAPI(base_url=backend_url)
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        session = get_coordination_session(api, parent_room, session_room)
+        if session is None:
+            return
+        state = session.get("state")
+        if state in _TERMINAL_COORDINATION_STATES:
+            return
+        log.info(
+            "wait_for_session_terminal: %r still %s — waiting",
+            session_room,
+            state,
+        )
+        time.sleep(poll_interval)
+    raise SessionError(
+        f"coordination session {session_room!r} still active after "
+        f"{timeout_seconds:.0f}s (parent={parent_room!r})"
+    )
+
+
+def wait_for_no_active_sessions(
+    backend_url: str,
+    parent_room: str,
+    *,
+    timeout_seconds: float = _SUITE_SESSION_DRAIN_SECONDS,
+    poll_interval: float = 2.0,
+) -> None:
+    """Block until no coordination session on ``parent_room`` is active.
+
+    Raises :class:`SessionError` when sessions remain active after
+    ``timeout_seconds``.
+    """
+    import time
+
+    from libs.mycelium_api import MyceliumAPI
+
+    api = MyceliumAPI(base_url=backend_url)
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        status, data = api.get_coordination_sessions(parent_room=parent_room, limit=50)
+        if status != 200:
+            log.debug(
+                "wait_for_no_active_sessions: GET coordination-sessions → %s",
+                status,
+            )
+            time.sleep(poll_interval)
+            continue
+        entries = data if isinstance(data, list) else []
+        active = [
+            e
+            for e in entries
+            if isinstance(e, dict)
+            and e.get("state") in _ACTIVE_COORDINATION_STATES
+            and e.get("parent_room_name") == parent_room
+        ]
+        if not active:
+            return
+        log.info(
+            "wait_for_no_active_sessions: %d active session(s) on %r — waiting",
+            len(active),
+            parent_room,
+        )
+        time.sleep(poll_interval)
+    raise SessionError(
+        f"active coordination session(s) still present on {parent_room!r} "
+        f"after {timeout_seconds:.0f}s — prior testcase may have aborted mid-flight"
+    )
