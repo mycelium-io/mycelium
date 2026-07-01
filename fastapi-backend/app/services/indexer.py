@@ -18,7 +18,7 @@ from pathlib import Path
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import CoordinationSession, Memory, Room
+from app.models import Memory, Room
 from app.services.embedding import embed_text
 from app.services.filesystem import (
     get_data_dir,
@@ -37,32 +37,23 @@ def _file_mtime(base_dir: Path, key: str) -> datetime:
 
 async def _ensure_room(db: AsyncSession, room_name: str) -> bool:
     """Ensure a Room row exists for room_name. Returns False if the directory
-    should be skipped entirely (confirmed coordination session sub-room).
+    should be skipped entirely (coordination session sub-room).
 
     After a volume wipe the filesystem survives but the DB is empty; this
     upserts the Room row so the FK on memories.room_name → rooms.name is
     satisfied.
 
-    Directories whose names contain ':session:' are validated against the
-    CoordinationSession table before skipping — a user room that happens to
-    contain ':session:' in its name is still indexed normally if no matching
-    CoordinationSession row exists.
+    Session sub-rooms ({room}:session:{short_id}) are excluded by string check
+    rather than a DB lookup. A DB lookup can't reliably distinguish them on a
+    fresh DB (CoordinationSession table is also empty after a volume wipe), and
+    ':session:' is an internal convention enforced by _spawn_coordination_session
+    — it is not reachable via normal `mycelium room create` usage.
     """
+    if ":session:" in room_name:
+        return False
     result = await db.execute(select(Room).where(Room.name == room_name))
     if result.scalar_one_or_none() is not None:
         return True
-
-    if ":session:" in room_name:
-        parent, _, short_id = room_name.partition(":session:")
-        cs_result = await db.execute(
-            select(CoordinationSession).where(
-                CoordinationSession.parent_room_name == parent,
-                CoordinationSession.short_id == short_id,
-            )
-        )
-        if cs_result.scalar_one_or_none() is not None:
-            return False
-
     db.add(Room(name=room_name, is_public=True, namespace=room_name))
     try:
         await db.flush()
@@ -87,11 +78,8 @@ async def index_room(room_name: str, db: AsyncSession, *, force: bool = False) -
     if not room_dir.exists():
         return {"indexed": 0, "skipped": 0, "pruned": 0, "errors": 0}
 
-    # Ensure the room has a DB row before inserting Memory rows, and confirm
-    # this isn't a coordination session sub-room (which has no Room row by
-    # design). _ensure_room does a DB-validated check rather than a string
-    # heuristic so rooms whose names happen to contain ':session:' are
-    # still indexed if no CoordinationSession record matches.
+    # Ensure the room has a DB row before inserting Memory rows.
+    # Returns False for session sub-rooms, which are skipped entirely.
     if not await _ensure_room(db, room_name):
         return {"indexed": 0, "skipped": 0, "pruned": 0, "errors": 0}
 
