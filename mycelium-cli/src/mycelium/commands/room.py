@@ -305,16 +305,16 @@ def delete(
 
         typer.secho(f"Room '{room_name}' deleted.", fg=typer.colors.GREEN)
 
-        # Remove from openclaw.json if it was registered there, so the gateway
-        # stops holding a LISTEN connection open for the now-deleted room.
-        # Only affects channels.mycelium-room.rooms[] — Hermes/Cursor entries
-        # are stored separately and are not touched.
+        # Unregister all agents from the room in local openclaw.json, using the
+        # same _unregister_channel path that `mycelium agent rm` uses on remote
+        # machines — keeps local and remote cleanup symmetric.
         try:
-            from mycelium.integrations.openclaw.dispatch import remove_room_from_openclaw
+            from mycelium.integrations.openclaw.dispatch import unregister_room_from_openclaw
 
-            if remove_room_from_openclaw(room_name):
+            removed = unregister_room_from_openclaw(room_name)
+            if removed:
                 typer.secho(
-                    f"  Removed '{room_name}' from local openclaw.json.",
+                    f"  Unregistered {len(removed)} agent(s) from '{room_name}' in local openclaw.json.",
                     fg=typer.colors.CYAN,
                 )
         except Exception:

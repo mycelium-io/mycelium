@@ -720,41 +720,47 @@ class OpenClawIntegration(Integration):
         return {"ok": ok, "details": details}
 
 
-def remove_room_from_openclaw(room_name: str, *, profile: str | None = None) -> bool:
-    """Remove a room entry from channels.mycelium-room.rooms[] in openclaw.json.
+def unregister_room_from_openclaw(room_name: str, *, profile: str | None = None) -> list[str]:
+    """Unregister all agents from a room in the local openclaw.json.
 
-    Called by `mycelium room delete` so stale room subscriptions don't hold
-    Postgres LISTEN connections open after the room is gone from the backend.
-    Only touches entries under channels.mycelium-room — Hermes/Cursor rooms are
+    Uses ``_unregister_channel`` per-agent — the same path the test provisioner
+    takes on remote machines via ``mycelium agent rm``.  Called by
+    ``mycelium room delete`` so local openclaw.json stays in sync after a room
+    is removed from the backend.
+
+    Only touches ``channels.mycelium-room.rooms[]`` — Hermes/Cursor entries are
     stored elsewhere and are not affected.
 
-    Returns True if the room was found and removed, False if not present or
-    if openclaw.json doesn't exist.
+    Returns the list of agent handles that were removed (empty if the room was
+    not present or openclaw.json doesn't exist).
     """
     oc_json = _openclaw_state_dir(profile) / "openclaw.json"
     if not oc_json.exists():
-        return False
+        return []
     try:
         cfg = json.loads(oc_json.read_text())
     except Exception:
-        return False
+        return []
 
     block = (cfg.get("channels") or {}).get(_CHANNEL_ID)
     if not isinstance(block, dict):
-        return False
+        return []
 
-    rooms_before = block.get("rooms") or []
-    if not isinstance(rooms_before, list):
-        return False
+    rooms = block.get("rooms") or []
+    target = next((r for r in rooms if isinstance(r, dict) and r.get("room") == room_name), None)
+    if not target:
+        return []
 
-    rooms_after = [r for r in rooms_before if r.get("room") != room_name]
-    if len(rooms_after) == len(rooms_before):
-        return False  # room wasn't in the list
+    agents = list(target.get("agents") or [])
+    if not agents:
+        return []
 
-    block["rooms"] = rooms_after
-    cfg["channels"][_CHANNEL_ID] = block
-    oc_json.write_text(json.dumps(cfg, indent=2) + "\n")
-    return True
+    integration = OpenClawIntegration(openclaw_profile=profile)
+    removed = []
+    for agent_id in agents:
+        if integration._unregister_channel(room=room_name, agent_id=agent_id):
+            removed.append(agent_id)
+    return removed
 
 
 #: Back-compat alias for the historical class name.
