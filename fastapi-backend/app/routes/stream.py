@@ -180,12 +180,13 @@ async def stream_room_messages(room_name: str, request: Request):
             # pattern "{parent_room_name}:session:{short_id}" but have no Room
             # table entry of their own.  display_name is a @property so we
             # parse the short_id from the tail of the URL segment instead.
-            short_id = room_name.rsplit(":session:", 1)[-1] if ":session:" in room_name else None
             found = False
-            if short_id:
+            if ":session:" in room_name:
+                parent, _, short_id = room_name.partition(":session:")
                 cs_result = await db.execute(
                     select(CoordinationSession).where(
-                        CoordinationSession.short_id == short_id
+                        CoordinationSession.parent_room_name == parent,
+                        CoordinationSession.short_id == short_id,
                     )
                 )
                 found = cs_result.scalar_one_or_none() is not None
