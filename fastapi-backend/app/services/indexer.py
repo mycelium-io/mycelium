@@ -18,7 +18,7 @@ from pathlib import Path
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Memory
+from app.models import Memory, Room
 from app.services.embedding import embed_text
 from app.services.filesystem import (
     get_data_dir,
@@ -33,6 +33,27 @@ def _file_mtime(base_dir: Path, key: str) -> datetime:
     filename = key + ".md" if not key.endswith(".md") else key
     path = base_dir / filename
     return datetime.fromtimestamp(os.path.getmtime(path), tz=UTC)
+
+
+async def _ensure_room(db: AsyncSession, room_name: str) -> None:
+    """Create a Room row for room_name if one doesn't exist.
+
+    Called by index_room before inserting Memory rows so the FK
+    memories.room_name → rooms.name is satisfied after a volume wipe or
+    when a room directory pre-dates its DB row.  Session sub-rooms
+    ({name}:session:{id}) are skipped — they are CoordinationSession
+    records, not Room rows, and should not be indexed.
+    """
+    if ":session:" in room_name:
+        return
+    result = await db.execute(select(Room).where(Room.name == room_name))
+    if result.scalar_one_or_none() is not None:
+        return
+    db.add(Room(name=room_name, is_public=True, namespace=room_name))
+    try:
+        await db.flush()
+    except Exception:
+        await db.rollback()
 
 
 async def index_room(room_name: str, db: AsyncSession, *, force: bool = False) -> dict:
@@ -50,6 +71,16 @@ async def index_room(room_name: str, db: AsyncSession, *, force: bool = False) -
     room_dir = data_dir / "rooms" / room_name
     if not room_dir.exists():
         return {"indexed": 0, "skipped": 0, "pruned": 0, "errors": 0}
+
+    # Session sub-rooms are coordination contexts, not memory namespaces —
+    # they have no Room row and should not be indexed.
+    if ":session:" in room_name:
+        return {"indexed": 0, "skipped": 0, "pruned": 0, "errors": 0}
+
+    # Ensure the room has a DB row before inserting Memory rows.
+    # After a volume wipe the filesystem survives but the DB is empty;
+    # without this the FK on memories.room_name → rooms.name would fail.
+    await _ensure_room(db, room_name)
 
     entries = list_memory_files(room_dir, limit=10000)
     file_keys = set()
