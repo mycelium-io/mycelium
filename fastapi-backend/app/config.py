@@ -96,7 +96,7 @@ class Settings(BaseSettings):
 
     # Post L9 knowledge envelopes to the CFN's /api/l9/messages endpoint
     # (knowledge query at session start, knowledge write after consensus).
-    # Requires a knowledge CE registered with the CFN; dark until then.
+    # Requires a knowledge CE registered with the CFN; off until then.
     L9_CFN_ENABLED: bool = False
 
     # Workspace ID in the CFN mgmt plane (set by mycelium install)

@@ -169,7 +169,7 @@ the endpoint takes/returns one model):
   back, inject as `team_prior` into the tick payload (and its formatted
   rendering, section 4.3).
 - Both calls are feature-gated (`L9_CFN_ENABLED` setting, default false) —
-  merge dark, enable once the cognition-engines gateway and
+  ship it disabled, enable once the cognition-engines gateway and
   ioc-knowledge-memory-svc are running and the knowledge CE is registered
   with the CFN.
 
@@ -417,5 +417,5 @@ Dependencies only — not split-PR boundaries:
    4 (UI) together — the fields are only useful once emitted, parsed, and
    rendered; the openclaw formatter must land in the same change as the tick
    payload additions (CLAUDE.md rule).
-4. Section 2.4 (L9 to CFN) merged dark behind `L9_CFN_ENABLED`.
+4. Section 2.4 (L9 to CFN) shipped disabled behind `L9_CFN_ENABLED`.
 5. Section 6 (docs) regenerated last, over the final flag/config surface.

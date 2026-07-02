@@ -9,7 +9,7 @@ matching kind/subkind (content-based routing; workspace/MAS are read from
 ``participants.groups``). Everything here is gated on
 ``settings.L9_CFN_ENABLED`` — it requires a knowledge CE
 (ghcr.io/outshift-open/ioc-cfn-cognition-engines) registered with the CFN,
-and stays dark until the deployment runs one.
+and stays off until the deployment runs one.
 
 Both operations are deliberately fail-soft: a knowledge query miss just means
 no team prior in the ticks, and a knowledge write failure is logged and

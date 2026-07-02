@@ -1441,7 +1441,7 @@ async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool
         await db.commit()
 
     # L9 episode close-out: persist the full envelope record to the parent
-    # room's memory, and (dark-launched) hand the agreement to the CFN
+    # room's memory, and (when the flag is on) hand the agreement to the CFN
     # knowledge fabric. Both best-effort — consensus is already posted.
     if state and state.episode is not None:
         l9_episode.write_episode_record(
