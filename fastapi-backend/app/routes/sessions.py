@@ -459,7 +459,21 @@ async def _register_agent_cfn(room: Room, handle: str) -> None:
 
 
 async def _notify_join(room_name: str, handle: str, intent: str | None) -> None:
-    """Fire NOTIFY for coordination_join so SSE consumers see it immediately."""
+    """Fire NOTIFY for coordination_join so SSE consumers see it immediately.
+
+    Notifies two channels:
+    1. The session sub-room channel (room_name itself) — for subscribers already
+       watching the session.
+    2. The parent room channel — so spoke-side plugins (hermes, openclaw) that
+       are only subscribed to the parent room SSE can discover the session
+       sub-room name via push and call SubscribeSession before the first tick
+       arrives, rather than relying on a polling loop.
+
+    Both payloads carry ``session: room_name`` in content so _route_join can
+    extract the session sub-room name from either source.
+    """
+    content = json.dumps({"handle": handle, "intent": intent, "session": room_name})
+    now = datetime.now(UTC).isoformat()
     try:
         parsed = urlparse(settings.DATABASE_URL)
         conn: asyncpg.Connection = await asyncpg.connect(
@@ -477,10 +491,25 @@ async def _notify_join(room_name: str, handle: str, intent: str | None) -> None:
                     "room_name": room_name,
                     "sender_handle": "CognitiveEngine",
                     "message_type": "coordination_join",
-                    "content": json.dumps({"handle": handle, "intent": intent}),
-                    "created_at": datetime.now(UTC).isoformat(),
+                    "content": content,
+                    "created_at": now,
                 },
             )
+            # Also notify the parent room so spoke plugins subscribed only to
+            # the parent SSE discover the session sub-room immediately.
+            if ":session:" in room_name:
+                parent_room = room_name.partition(":session:")[0]
+                await notify(
+                    conn,
+                    room_channel(parent_room),
+                    {
+                        "room_name": parent_room,
+                        "sender_handle": "CognitiveEngine",
+                        "message_type": "coordination_join",
+                        "content": content,
+                        "created_at": now,
+                    },
+                )
         finally:
             await conn.close()
     except Exception as e:
