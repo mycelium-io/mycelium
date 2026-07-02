@@ -142,7 +142,9 @@ async def send_message(
     except Exception as e:
         logger.warning("NOTIFY failed for %s: %s", notify_channel, e)
 
-    if coord and coord.state == "negotiating":
+    # Events are machine feed, not negotiation replies — never let one be
+    # parsed as an agent's round response.
+    if coord and coord.state == "negotiating" and msg.message_type != MessageType.EVENT:
         from app.services import coordination
 
         asyncio.ensure_future(
