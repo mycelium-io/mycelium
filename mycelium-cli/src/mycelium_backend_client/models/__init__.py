@@ -24,6 +24,13 @@ from .concepts_by_ids_request import ConceptsByIdsRequest
 from .context_file import ContextFile
 from .context_file_read import ContextFileRead
 from .coordination_session_read import CoordinationSessionRead
+from .event_metadata import EventMetadata
+from .event_metadata_payload import EventMetadataPayload
+from .event_metadata_status_type_0 import EventMetadataStatusType0
+from .event_provenance_ref import EventProvenanceRef
+from .event_provenance_ref_type import EventProvenanceRefType
+from .event_status_update import EventStatusUpdate
+from .event_status_update_status import EventStatusUpdateStatus
 from .get_negotiation_status_response_get_negotiation_status import (
     GetNegotiationStatusResponseGetNegotiationStatus,
 )
@@ -57,6 +64,7 @@ from .memory_search_result import MemorySearchResult
 from .message_create import MessageCreate
 from .message_list_response import MessageListResponse
 from .message_read import MessageRead
+from .message_read_metadata_type_0 import MessageReadMetadataType0
 from .participant_create import ParticipantCreate
 from .participant_list_response import ParticipantListResponse
 from .participant_read import ParticipantRead
@@ -95,6 +103,13 @@ __all__ = (
     "ContextFile",
     "ContextFileRead",
     "CoordinationSessionRead",
+    "EventMetadata",
+    "EventMetadataPayload",
+    "EventMetadataStatusType0",
+    "EventProvenanceRef",
+    "EventProvenanceRefType",
+    "EventStatusUpdate",
+    "EventStatusUpdateStatus",
     "GetNegotiationStatusResponseGetNegotiationStatus",
     "GraphPathsRequest",
     "HTTPValidationError",
@@ -122,6 +137,7 @@ __all__ = (
     "MessageCreate",
     "MessageListResponse",
     "MessageRead",
+    "MessageReadMetadataType0",
     "ParticipantCreate",
     "ParticipantListResponse",
     "ParticipantRead",

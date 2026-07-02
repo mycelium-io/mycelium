@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
+
+if TYPE_CHECKING:
+    from ..models.event_metadata import EventMetadata
+
 
 T = TypeVar("T", bound="MessageCreate")
 
@@ -16,18 +20,22 @@ class MessageCreate:
     """
     Attributes:
         sender_handle (str): Sender handle (e.g., 'alpha#a8f3')
-        message_type (str): Type: announce, direct, broadcast, or delegate
+        message_type (str): Type: announce, direct, broadcast, delegate, or event
         content (str):
         recipient_handle (None | str | Unset): Recipient handle for direct messages; omit for broadcast
+        metadata (EventMetadata | None | Unset): Structured event metadata; required when message_type="event"
     """
 
     sender_handle: str
     message_type: str
     content: str
     recipient_handle: None | str | Unset = UNSET
+    metadata: EventMetadata | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
+        from ..models.event_metadata import EventMetadata
+
         sender_handle = self.sender_handle
 
         message_type = self.message_type
@@ -40,6 +48,14 @@ class MessageCreate:
         else:
             recipient_handle = self.recipient_handle
 
+        metadata: dict[str, Any] | None | Unset
+        if isinstance(self.metadata, Unset):
+            metadata = UNSET
+        elif isinstance(self.metadata, EventMetadata):
+            metadata = self.metadata.to_dict()
+        else:
+            metadata = self.metadata
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
@@ -51,11 +67,15 @@ class MessageCreate:
         )
         if recipient_handle is not UNSET:
             field_dict["recipient_handle"] = recipient_handle
+        if metadata is not UNSET:
+            field_dict["metadata"] = metadata
 
         return field_dict
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.event_metadata import EventMetadata
+
         d = dict(src_dict)
         sender_handle = d.pop("sender_handle")
 
@@ -72,11 +92,29 @@ class MessageCreate:
 
         recipient_handle = _parse_recipient_handle(d.pop("recipient_handle", UNSET))
 
+        def _parse_metadata(data: object) -> EventMetadata | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, dict):
+                    raise TypeError()
+                metadata_type_0 = EventMetadata.from_dict(data)
+
+                return metadata_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(EventMetadata | None | Unset, data)
+
+        metadata = _parse_metadata(d.pop("metadata", UNSET))
+
         message_create = cls(
             sender_handle=sender_handle,
             message_type=message_type,
             content=content,
             recipient_handle=recipient_handle,
+            metadata=metadata,
         )
 
         message_create.additional_properties = d
