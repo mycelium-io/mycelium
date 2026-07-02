@@ -720,5 +720,48 @@ class OpenClawIntegration(Integration):
         return {"ok": ok, "details": details}
 
 
+def unregister_room_from_openclaw(room_name: str, *, profile: str | None = None) -> list[str]:
+    """Unregister all agents from a room in the local openclaw.json.
+
+    Uses ``_unregister_channel`` per-agent — the same path the test provisioner
+    takes on remote machines via ``mycelium agent rm``.  Called by
+    ``mycelium room delete`` so local openclaw.json stays in sync after a room
+    is removed from the backend.
+
+    Only touches ``channels.mycelium-room.rooms[]`` — Hermes/Cursor entries are
+    stored elsewhere and are not affected.
+
+    Returns the list of agent handles that were removed (empty if the room was
+    not present or openclaw.json doesn't exist).
+    """
+    oc_json = _openclaw_state_dir(profile) / "openclaw.json"
+    if not oc_json.exists():
+        return []
+    try:
+        cfg = json.loads(oc_json.read_text())
+    except Exception:
+        return []
+
+    block = (cfg.get("channels") or {}).get(_CHANNEL_ID)
+    if not isinstance(block, dict):
+        return []
+
+    rooms = block.get("rooms") or []
+    target = next((r for r in rooms if isinstance(r, dict) and r.get("room") == room_name), None)
+    if not target:
+        return []
+
+    agents = list(target.get("agents") or [])
+    if not agents:
+        return []
+
+    integration = OpenClawIntegration(openclaw_profile=profile)
+    removed = []
+    for agent_id in agents:
+        if integration._unregister_channel(room=room_name, agent_id=agent_id):
+            removed.append(agent_id)
+    return removed
+
+
 #: Back-compat alias for the historical class name.
 OpenClawAdapter = OpenClawIntegration

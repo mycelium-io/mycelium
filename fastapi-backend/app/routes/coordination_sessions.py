@@ -26,6 +26,7 @@ from app.bus import room_channel
 from app.config import settings
 from app.database import async_session_maker, get_async_session
 from app.models import CoordinationSession, Message
+from app.routes.stream import _close_listen_conn, _open_listen_conn, _stream_with_disconnect_watcher
 from app.schemas import (
     CoordinationSessionRead,
     MessageCreate,
@@ -217,36 +218,30 @@ async def stream_session_messages(
 
     display_name = coord.display_name
 
+    channel = room_channel(display_name)
+    conn = await _open_listen_conn()
+    queue: asyncio.Queue = asyncio.Queue()
+
+    def _enqueue(_conn, _pid, _ch, payload):
+        queue.put_nowait(payload)
+
+    await conn.add_listener(channel, _enqueue)
+    await conn.execute(f'LISTEN "{channel}"')
+
+    async def _transform(payload: str) -> str:
+        return f"data: {payload}\n\n"
+
     async def event_gen():
-        parsed = urlparse(settings.DATABASE_URL)
-        conn = await asyncpg.connect(
-            host=parsed.hostname,
-            port=parsed.port or 5432,
-            user=parsed.username,
-            password=parsed.password,
-            database=parsed.path.lstrip("/"),
-        )
-        queue: asyncio.Queue = asyncio.Queue()
-
-        def _enqueue(_conn, _pid, _channel, payload):
-            queue.put_nowait(payload)
-
-        await conn.add_listener(room_channel(display_name), _enqueue)
         try:
-            yield ": connected\n\n"
-            while True:
-                if await request.is_disconnected():
-                    return
-                try:
-                    payload = await asyncio.wait_for(queue.get(), timeout=15.0)
-                    yield f"data: {payload}\n\n"
-                except TimeoutError:
-                    yield ": keepalive\n\n"
+            async for chunk in _stream_with_disconnect_watcher(request, queue, _transform):
+                yield chunk
+        except asyncio.CancelledError:
+            pass
         finally:
-            try:
-                await conn.remove_listener(room_channel(display_name), _enqueue)
-            except Exception:
-                pass
-            await conn.close()
+            await _close_listen_conn(conn, channel, _enqueue)
 
-    return StreamingResponse(event_gen(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

@@ -22,6 +22,7 @@ from sqlalchemy import select
 from app.bus import agent_channel, room_channel
 from app.config import settings
 from app.database import async_session_maker
+from app.models import CoordinationSession, Room
 
 logger = logging.getLogger(__name__)
 
@@ -172,6 +173,26 @@ async def stream_room_messages(room_name: str, request: Request):
     Yields SSE events as messages arrive via Postgres NOTIFY.
     Connect with: curl -N http://localhost:8000/rooms/{room}/messages/stream
     """
+    async with async_session_maker() as db:
+        room_result = await db.execute(select(Room).where(Room.name == room_name))
+        if not room_result.scalar_one_or_none():
+            # Also accept coordination session display names, which follow the
+            # pattern "{parent_room_name}:session:{short_id}" but have no Room
+            # table entry of their own.  display_name is a @property so we
+            # parse the short_id from the tail of the URL segment instead.
+            found = False
+            if ":session:" in room_name:
+                parent, _, short_id = room_name.partition(":session:")
+                cs_result = await db.execute(
+                    select(CoordinationSession).where(
+                        CoordinationSession.parent_room_name == parent,
+                        CoordinationSession.short_id == short_id,
+                    )
+                )
+                found = cs_result.scalar_one_or_none() is not None
+            if not found:
+                raise HTTPException(status_code=404, detail=f"Room '{room_name}' not found")
+
     try:
         conn: asyncpg.Connection = await _open_listen_conn()
     except Exception as e:
