@@ -251,15 +251,14 @@ Once `complete`, the consensus is compiled into the room's shared plan
 
 ## Typed events
 
-Beyond chat (`broadcast`/`direct`/`announce`/`delegate`), rooms accept one structured message type — `event` — discriminated by `metadata.kind` with an open vocabulary. Retention and statefulness are message *attributes*, not distinct types, so a single primitive covers a live source-activity feed and a persistent action ledger.
+Rooms accept one structured message type — `event` — discriminated by `metadata.kind`. Retention (`ttl_seconds`) and status are attributes, not separate types: one primitive covers a live activity feed and a persistent action ledger.
 
-| Kind | Persistence | Stateful? |
+| Kind | Retention | Status |
 |---|---|---|
-| `source_event` | capped by `ttl_seconds` | no (status must be null) |
-| `action` | durable | yes — defaults to `open` |
-| `concern` | durable | yes — defaults to `open` |
+| `source_event` | `ttl_seconds` cap | none |
+| `action`, `concern` | durable | `open → in_progress → resolved` |
 
-Unknown kinds are accepted (stateless, durable unless `ttl_seconds` is set), so new uses need no schema change.
+Unknown kinds are accepted (stateless, durable unless a TTL is set).
 
 ```json
 POST /api/rooms/{name}/messages
@@ -271,15 +270,16 @@ POST /api/rooms/{name}/messages
     "kind": "source_event",
     "ttl_seconds": 1209600,
     "payload": { "source": "github", "event": "pr_opened", "number": 48 },
-    "provenance": [ { "type": "pr", "ref": "org/repo#48", "url": "https://github.com/org/repo/pull/48" } ],
-    "correlation_id": "…"
+    "provenance": [ { "type": "pr", "ref": "org/repo#48" } ]
   }
 }
 ```
 
-The metadata contract: `kind` (required), `ttl_seconds` (optional — absent means durable, never swept), `status` (`open | in_progress | resolved`, stateful kinds only), `payload` (kind-specific data), `provenance` (cited refs, each `type` ∈ `pr | commit | issue | page | message` + `ref` + optional `url`, returned intact), and `correlation_id` (groups related events).
+- `payload` — kind-specific data, returned intact
+- `provenance` — cited refs (`pr | commit | issue | page | message`), each `ref` + optional `url`
+- `correlation_id` — groups related events
 
-Feed and ledger are server-side filters: `GET /api/rooms/{name}/messages?kind=source_event`, `?kind=action&status=open`, `?since=<iso-ts>`. Expired events disappear from reads immediately and are reclaimed by a background sweep. Status transitions update the original event in place — `PATCH /api/rooms/{name}/messages/{id}` with `{"status": "resolved"}` — so the current status is always one indexed query away, and the transition is broadcast over the room's SSE stream. Events are excluded from knowledge ingest (they're machine feed, not agent speech).
+Feed and ledger are server-side filters: `GET …/messages?kind=source_event`, `?kind=action&status=open`, `?since=<iso-ts>`. Transition status with `PATCH …/messages/{id}` `{"status": "resolved"}` — broadcast over SSE. Expired events vanish from reads immediately; a background sweep reclaims them.
 
 
 ---
