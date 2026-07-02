@@ -392,7 +392,7 @@
                     "messages"
                 ],
                 "summary": "List Messages",
-                "description": "List messages in a room (or coordination session), newest first.",
+                "description": "List messages in a room (or coordination session), newest first.\n\n``kind``/``status``/``since`` make the source-activity feed and the\naction/concern ledger server-side filters over the room (#392). Expired\nevents (past their ``ttl_seconds``) are excluded even if the sweep\nhasn't collected them yet.",
                 "operationId": "list_messages_api_rooms__room_name__messages_get",
                 "parameters": [
                     {
@@ -456,6 +456,61 @@
                             ],
                             "title": "Message Type"
                         }
+                    },
+                    {
+                        "name": "kind",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter events by metadata.kind",
+                            "title": "Kind"
+                        },
+                        "description": "Filter events by metadata.kind"
+                    },
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter events by ledger status",
+                            "title": "Status"
+                        },
+                        "description": "Filter events by ledger status"
+                    },
+                    {
+                        "name": "since",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "format": "date-time"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Only messages created at/after this time",
+                            "title": "Since"
+                        },
+                        "description": "Only messages created at/after this time"
                     }
                 ],
                 "responses": {
@@ -465,6 +520,69 @@
                             "application/json": {
                                 "schema": {
                                     "$ref": "#/components/schemas/MessageListResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/rooms/{room_name}/messages/{message_id}": {
+            "patch": {
+                "tags": [
+                    "messages"
+                ],
+                "summary": "Update Event Status",
+                "description": "Transition a stateful event's status (open -> in_progress -> resolved).\n\nDesign choice (#392 left it open): the status lives on the original event\nrow and is updated in place, rather than appending follow-up events \u2014\nthe current status must be cheaply queryable, and a follow-up-event model\nforces a latest-per-correlation aggregation on every ledger query. The\ntransition is broadcast over SSE so subscribers see the change live.",
+                "operationId": "update_event_status_api_rooms__room_name__messages__message_id__patch",
+                "parameters": [
+                    {
+                        "name": "room_name",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Room Name"
+                        }
+                    },
+                    {
+                        "name": "message_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Message Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/EventStatusUpdate"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MessageRead"
                                 }
                             }
                         }
@@ -3117,6 +3235,135 @@
                 ],
                 "title": "CoordinationSessionRead"
             },
+            "EventMetadata": {
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "minLength": 1,
+                        "title": "Kind",
+                        "description": "Event kind (open vocabulary)"
+                    },
+                    "ttl_seconds": {
+                        "anyOf": [
+                            {
+                                "type": "integer",
+                                "exclusiveMinimum": 0.0
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Ttl Seconds",
+                        "description": "Retention cap for transient kinds; absent = durable"
+                    },
+                    "status": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "enum": [
+                                    "open",
+                                    "in_progress",
+                                    "resolved"
+                                ]
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Status",
+                        "description": "Ledger status for stateful kinds; null for stateless"
+                    },
+                    "payload": {
+                        "additionalProperties": true,
+                        "type": "object",
+                        "title": "Payload",
+                        "description": "Kind-specific structured data"
+                    },
+                    "provenance": {
+                        "items": {
+                            "$ref": "#/components/schemas/EventProvenanceRef"
+                        },
+                        "type": "array",
+                        "title": "Provenance"
+                    },
+                    "correlation_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Correlation Id",
+                        "description": "Groups related events / links updates to their origin"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "kind"
+                ],
+                "title": "EventMetadata",
+                "description": "Structured metadata for ``message_type=\"event\"``.\n\nRetention (``ttl_seconds``) and statefulness (``status``) are independent\nattributes, not distinct message types \u2014 one primitive covers a transient\nsource-activity feed and a durable status-bearing ledger."
+            },
+            "EventProvenanceRef": {
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "pr",
+                            "commit",
+                            "issue",
+                            "page",
+                            "message"
+                        ],
+                        "title": "Type"
+                    },
+                    "ref": {
+                        "type": "string",
+                        "minLength": 1,
+                        "title": "Ref",
+                        "description": "e.g. 'org/repo#48' or a message id"
+                    },
+                    "url": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Url"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "type",
+                    "ref"
+                ],
+                "title": "EventProvenanceRef",
+                "description": "A cited reference backing an event."
+            },
+            "EventStatusUpdate": {
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "open",
+                            "in_progress",
+                            "resolved"
+                        ],
+                        "title": "Status"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "status"
+                ],
+                "title": "EventStatusUpdate",
+                "description": "Body for PATCH /rooms/{name}/messages/{id} \u2014 transition an event's status."
+            },
             "GraphPathsRequest": {
                 "properties": {
                     "source_id": {
@@ -3814,14 +4061,25 @@
                     },
                     "message_type": {
                         "type": "string",
-                        "pattern": "^(announce|direct|broadcast|delegate)$",
+                        "pattern": "^(announce|direct|broadcast|delegate|event)$",
                         "title": "Message Type",
-                        "description": "Type: announce, direct, broadcast, or delegate"
+                        "description": "Type: announce, direct, broadcast, delegate, or event"
                     },
                     "content": {
                         "type": "string",
                         "minLength": 1,
                         "title": "Content"
+                    },
+                    "metadata": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/EventMetadata"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "description": "Structured event metadata; required when message_type=\"event\""
                     }
                 },
                 "type": "object",
@@ -3905,6 +4163,18 @@
                     "content": {
                         "type": "string",
                         "title": "Content"
+                    },
+                    "metadata": {
+                        "anyOf": [
+                            {
+                                "additionalProperties": true,
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Metadata"
                     },
                     "created_at": {
                         "type": "string",

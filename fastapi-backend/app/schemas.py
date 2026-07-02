@@ -6,9 +6,10 @@ Minimal schemas for Mycelium's core models.
 """
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # ── Room ──────────────────────────────────────────────────────────────────────
 
@@ -42,11 +43,70 @@ class MessageType:
     DIRECT = "direct"
     BROADCAST = "broadcast"
     DELEGATE = "delegate"
+    # Typed structured event (#392): source_event / action / concern / ...
+    EVENT = "event"
     # Coordination system messages (posted directly by coordination service, not via HTTP API)
     COORDINATION_JOIN = "coordination_join"
     COORDINATION_START = "coordination_start"
     COORDINATION_TICK = "coordination_tick"
     COORDINATION_CONSENSUS = "coordination_consensus"
+
+
+# ── event primitive (#392) ────────────────────────────────────────────────────
+
+# Kinds with documented semantics. The vocabulary is deliberately open —
+# unknown kinds are accepted (stateless, durable unless a TTL is given) so new
+# uses don't need a schema change; these names just get defaults applied.
+EVENT_KIND_SOURCE_EVENT = "source_event"
+STATEFUL_EVENT_KINDS = frozenset({"action", "concern"})
+
+EventStatus = Literal["open", "in_progress", "resolved"]
+
+
+class EventProvenanceRef(BaseModel):
+    """A cited reference backing an event."""
+
+    type: Literal["pr", "commit", "issue", "page", "message"]
+    ref: str = Field(..., min_length=1, description="e.g. 'org/repo#48' or a message id")
+    url: str | None = None
+
+
+class EventMetadata(BaseModel):
+    """Structured metadata for ``message_type="event"``.
+
+    Retention (``ttl_seconds``) and statefulness (``status``) are independent
+    attributes, not distinct message types — one primitive covers a transient
+    source-activity feed and a durable status-bearing ledger.
+    """
+
+    kind: str = Field(..., min_length=1, description="Event kind (open vocabulary)")
+    ttl_seconds: int | None = Field(
+        None, gt=0, description="Retention cap for transient kinds; absent = durable"
+    )
+    status: EventStatus | None = Field(
+        None, description="Ledger status for stateful kinds; null for stateless"
+    )
+    payload: dict = Field(default_factory=dict, description="Kind-specific structured data")
+    provenance: list[EventProvenanceRef] = Field(default_factory=list)
+    correlation_id: str | None = Field(
+        None, description="Groups related events / links updates to their origin"
+    )
+
+    @model_validator(mode="after")
+    def _apply_kind_defaults(self) -> "EventMetadata":
+        # Stateful kinds open by default; the ledger needs a queryable status.
+        if self.kind in STATEFUL_EVENT_KINDS and self.status is None:
+            self.status = "open"
+        # source_event is stateless by definition.
+        if self.kind == EVENT_KIND_SOURCE_EVENT and self.status is not None:
+            raise ValueError("source_event is stateless — status must be null")
+        return self
+
+
+class EventStatusUpdate(BaseModel):
+    """Body for PATCH /rooms/{name}/messages/{id} — transition an event's status."""
+
+    status: EventStatus
 
 
 class MessageCreate(BaseModel):
@@ -56,10 +116,21 @@ class MessageCreate(BaseModel):
     )
     message_type: str = Field(
         ...,
-        description="Type: announce, direct, broadcast, or delegate",
-        pattern="^(announce|direct|broadcast|delegate)$",
+        description="Type: announce, direct, broadcast, delegate, or event",
+        pattern="^(announce|direct|broadcast|delegate|event)$",
     )
     content: str = Field(..., min_length=1)
+    metadata: EventMetadata | None = Field(
+        None, description='Structured event metadata; required when message_type="event"'
+    )
+
+    @model_validator(mode="after")
+    def _metadata_matches_type(self) -> "MessageCreate":
+        if self.message_type == MessageType.EVENT and self.metadata is None:
+            raise ValueError('message_type "event" requires metadata with a kind')
+        if self.message_type != MessageType.EVENT and self.metadata is not None:
+            raise ValueError('metadata is only valid on message_type "event"')
+        return self
 
 
 class MessageRead(BaseModel):
@@ -71,9 +142,10 @@ class MessageRead(BaseModel):
     recipient_handle: str | None = None
     message_type: str
     content: str
+    metadata: dict | None = Field(None, validation_alias="event_metadata")
     created_at: datetime
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "populate_by_name": True}
 
 
 class MessageListResponse(BaseModel):
