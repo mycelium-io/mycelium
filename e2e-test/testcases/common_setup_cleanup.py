@@ -463,48 +463,57 @@ def _keep_rooms() -> bool:
 
 
 class MyceliumCommonCleanup(aetest.CommonCleanup):
-    """Shared cleanup: delete test rooms, reap leaked sessions."""
+    """Shared cleanup: delete test rooms, sweep for stragglers."""
 
     @aetest.subsection
     def cleanup_test_room(self, testscript):
-        """Delete the session-scoped test room."""
-        if _keep_rooms():
-            room_name = testscript.parameters.get("room_name")
-            log.info("cleanup: skipping room deletion for %s (MYCELIUM_E2E_KEEP_ROOMS)", room_name)
-            return
-        api: MyceliumAPI = testscript.parameters.get("api")
-        room_name = testscript.parameters.get("room_name")
-        if api and room_name:
-            api.delete_room(room_name)
-            log.info("Deleted test room: %s", room_name)
+        """Delete all rooms created during this suite run.
 
-    @aetest.subsection
-    def reap_leaked_sessions(self, testscript):
-        """Find and delete any rooms still in negotiating/waiting state."""
+        ``owned_rooms`` is accumulated by testcases that call
+        ``owned_rooms.add(name)``; the primary ``room_name`` from
+        ``create_test_room`` is always included.
+        """
         if _keep_rooms():
-            log.info("cleanup: skipping leaked session reap (MYCELIUM_E2E_KEEP_ROOMS)")
+            log.info(
+                "cleanup: skipping room deletion (MYCELIUM_E2E_KEEP_ROOMS) — owned=%s",
+                testscript.parameters.get("owned_rooms"),
+            )
             return
         api: MyceliumAPI = testscript.parameters.get("api")
-        owned = testscript.parameters.get("owned_rooms", set())
         if not api:
             return
 
-        status, rooms = api.list_rooms()
-        if status != 200:
+        owned: set[str] = set(testscript.parameters.get("owned_rooms") or set())
+        room_name = testscript.parameters.get("room_name")
+        if room_name:
+            owned.add(room_name)
+
+        for name in sorted(owned):
+            st, _ = api.delete_room(name)
+            if 200 <= st < 300:
+                log.info("Deleted room: %s", name)
+            else:
+                log.debug("Room %s already gone (status=%d)", name, st)
+
+    @aetest.subsection
+    def cleanup_stale_rooms(self, testscript):
+        """Prefix sweep for any e2e/scenario rooms not explicitly tracked.
+
+        This is a safety net for rooms created by testcases that don't
+        register themselves in ``owned_rooms``, or for rooms left behind
+        when a test was interrupted mid-setup before teardown ran.
+        """
+        if _keep_rooms():
+            return
+        api: MyceliumAPI = testscript.parameters.get("api")
+        if not api:
             return
 
-        leaked_states = ("negotiating", "waiting", "synthesizing")
-        room_list = rooms if isinstance(rooms, list) else rooms.get("rooms", []) if isinstance(rooms, dict) else []
-        reaped = 0
-        for room in room_list:
-            name = room.get("name", "")
-            base = name.split(":session:")[0]
-            if base not in owned:
-                continue
-            if room.get("coordination_state") in leaked_states:
-                st, _ = api.delete_room(name)
-                if 200 <= st < 300:
-                    reaped += 1
-                    log.info("Reaped leaked session: %s (state=%s)", name, room.get("coordination_state"))
-        if reaped:
-            log.info("Reaped %d leaked sessions total", reaped)
+        # Protect rooms we still own (e.g. rooms deleted above may have
+        # already been removed, but exclude is cheap).
+        owned = testscript.parameters.get("owned_rooms") or set()
+
+        for prefix in ("e2e-", "dist-e2e-", "scn-"):
+            deleted = api.cleanup_rooms(prefix, exclude=owned)
+            if deleted:
+                log.info("Stale room sweep: deleted %d '%s*' rooms", deleted, prefix)

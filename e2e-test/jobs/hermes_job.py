@@ -51,6 +51,12 @@ def main(runtime):
     # Scenario suites use scenarios_datafile.yaml — it has no testcases: block
     # so pyATS won't error when it can't find plumbing class names in those scripts.
     hermes_datafile = common.get_datafile(default="hermes_datafile.yaml")
+
+    # Install Ctrl-C handler so a job-level interrupt sweeps e2e rooms even
+    # when the interrupt fires between run() calls (pyATS only guarantees
+    # CommonCleanup runs for the *currently executing* suite, not for suites
+    # that haven't started yet).
+    common.install_job_sigint_cleanup(common.resolve_backend_url(hermes_datafile))
     scenarios_datafile = common.get_datafile(default="scenarios_datafile.yaml")
     max_failures = common.get_max_failures(hermes_datafile)
 

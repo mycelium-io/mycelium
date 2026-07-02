@@ -333,6 +333,94 @@ def groups_filter_from_env() -> Or | None:
 groups_logic_from_env = groups_filter_from_env
 
 
+def resolve_backend_url(datafile_path: str | None = None) -> str:
+    """Resolve the mycelium backend URL for use outside a running suite.
+
+    Resolution order:
+    1. ``MYCELIUM_BACKEND_URL`` env var
+    2. ``parameters.topology.backend.base_url`` from the datafile (with
+       ``%ENV{VAR, default}`` expansion)
+    3. Hard-coded default: ``http://localhost:8000``
+    """
+    from_env = os.environ.get("MYCELIUM_BACKEND_URL", "").strip()
+    if from_env:
+        return from_env
+
+    if datafile_path:
+        raw = _read_datafile_param(datafile_path, "topology")
+        if isinstance(raw, dict):
+            raw_url = (raw.get("backend") or {}).get("base_url", "")
+            if raw_url and raw_url.startswith("%ENV{"):
+                inner = raw_url[5:-1]
+                parts = inner.split(",", 1)
+                var = parts[0].strip()
+                default = parts[1].strip() if len(parts) > 1 else ""
+                raw_url = os.environ.get(var, default)
+            if raw_url:
+                return raw_url.strip()
+
+    return "http://localhost:8000"
+
+
+# Room prefixes used by all suites — kept in one place so the SIGINT handler
+# and CommonCleanup sweep the same set of names.
+E2E_ROOM_PREFIXES: tuple[str, ...] = ("e2e-", "dist-e2e-", "scn-")
+
+
+def install_job_sigint_cleanup(
+    backend_url: str,
+    prefixes: tuple[str, ...] = E2E_ROOM_PREFIXES,
+) -> None:
+    """Install a SIGINT handler that sweeps e2e rooms before the job exits.
+
+    Addresses the job-level Ctrl-C gap: pyATS guarantees ``CommonCleanup``
+    runs when Ctrl-C fires *inside* a running suite, but if the interrupt
+    hits between ``run()`` calls in the job's ``main()``, subsequent suites
+    and their cleanups are skipped entirely.  This handler fires the moment
+    SIGINT is received, deletes rooms with the known e2e prefixes via the
+    backend API, then chains to pyATS's own handler so it can finish its
+    graceful shutdown.
+
+    Call once near the top of ``main(runtime)`` before the first ``run()``.
+    """
+    import signal
+
+    prev_handler = signal.getsignal(signal.SIGINT)
+
+    def _handler(signum: int, frame: Any) -> None:
+        # Restore default immediately so a second Ctrl-C force-kills.
+        signal.signal(signal.SIGINT, signal.SIG_DFL)
+        logging.getLogger(__name__).warning(
+            "SIGINT received — sweeping e2e rooms from %s before exit", backend_url
+        )
+        try:
+            from libs.mycelium_api import MyceliumAPI
+
+            api = MyceliumAPI(base_url=backend_url)
+            for prefix in prefixes:
+                deleted = api.cleanup_rooms(prefix)
+                if deleted:
+                    logging.getLogger(__name__).warning(
+                        "Deleted %d '%s*' rooms on interrupt", deleted, prefix
+                    )
+        except Exception as exc:  # noqa: BLE001 — best-effort, never block shutdown
+            logging.getLogger(__name__).warning("Room sweep on interrupt failed: %s", exc)
+
+        # Chain to pyATS's own SIGINT handler so it can abort cleanly.
+        if callable(prev_handler) and prev_handler not in (
+            signal.SIG_DFL,
+            signal.SIG_IGN,
+        ):
+            prev_handler(signum, frame)  # type: ignore[operator]
+        else:
+            raise KeyboardInterrupt
+
+    signal.signal(signal.SIGINT, _handler)
+    logging.getLogger(__name__).info(
+        "Installed SIGINT cleanup handler (backend=%s prefixes=%s)", backend_url, prefixes
+    )
+
+
 def get_max_failures(datafile_path: str | None = None) -> int | None:
     """Read max_failures from the datafile or MAX_FAILURES env var.
 
