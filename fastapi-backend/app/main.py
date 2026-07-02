@@ -139,6 +139,11 @@ async def lifespan(app: FastAPI):
     await startup_scan()
     start_watcher()
 
+    # TTL sweep for transient event messages (#392)
+    from app.services.event_sweep import start_event_sweep, stop_event_sweep
+
+    start_event_sweep()
+
     # Pre-load embedding model so first request isn't slow
     from app.services.embedding import warmup as warmup_embeddings
 
@@ -149,8 +154,11 @@ async def lifespan(app: FastAPI):
 
     yield
     stop_watcher()
+    stop_event_sweep()
+    from app.routes.messages import close_notify_connection
     from app.services.cfn_http import aclose_all
 
+    await close_notify_connection()
     await aclose_all()
     logger.info("Mycelium backend shutting down")
 

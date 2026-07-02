@@ -253,14 +253,30 @@ def ensure_room_structure(room_dir: Path) -> None:
 
 
 def remove_room_dir(room_name: str) -> bool:
-    """Remove a room's directory tree. Returns True if it existed."""
+    """Remove a room's directory tree and any session sub-room directories.
+
+    Session sub-rooms follow the pattern ``{room_name}:session:*`` and are
+    stored as sibling directories alongside the parent room directory.  They
+    are orphaned when the parent is deleted, so we clean them up here too.
+
+    Returns True if the primary room directory existed.
+    """
     import shutil
 
-    room_dir = get_data_dir() / "rooms" / room_name
-    if room_dir.exists():
+    rooms_dir = get_data_dir() / "rooms"
+    room_dir = rooms_dir / room_name
+    existed = room_dir.exists()
+    if existed:
         shutil.rmtree(room_dir)
-        return True
-    return False
+
+    # Remove session sub-rooms: same-prefix directories with ":session:" suffix.
+    prefix = room_name + ":session:"
+    if rooms_dir.exists():
+        for child in list(rooms_dir.iterdir()):
+            if child.is_dir() and child.name.startswith(prefix):
+                shutil.rmtree(child)
+
+    return existed
 
 
 def value_to_content(value: dict | str) -> str:
