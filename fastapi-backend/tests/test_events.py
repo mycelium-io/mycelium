@@ -254,3 +254,22 @@ async def test_sweep_deletes_only_expired(client, room, db_session, monkeypatch)
     remaining = (await db_session.execute(select(Message))).scalars().all()
     assert len(remaining) == 1
     assert remaining[0].event_kind == "action"
+
+
+@pytest.mark.asyncio
+async def test_total_is_filtered_count_not_page_length(client, room):
+    for _ in range(3):
+        await client.post("/api/rooms/platform-eng/messages", json=_event_body())
+    await client.post(
+        "/api/rooms/platform-eng/messages",
+        json={"sender_handle": "a1", "message_type": "broadcast", "content": "chat"},
+    )
+
+    # total reflects the full filtered set, not the returned page.
+    resp = await client.get("/api/rooms/platform-eng/messages?kind=source_event&limit=1")
+    body = resp.json()
+    assert len(body["messages"]) == 1
+    assert body["total"] == 3
+
+    resp = await client.get("/api/rooms/platform-eng/messages?limit=2")
+    assert resp.json()["total"] == 4

@@ -43,17 +43,22 @@ def upgrade() -> None:
         batch.add_column(sa.Column("event_kind", sa.String(), nullable=True))
         batch.add_column(sa.Column("event_status", sa.String(), nullable=True))
         batch.add_column(sa.Column("event_expires_at", sa.DateTime(timezone=True), nullable=True))
-    op.create_index("ix_messages_event_expires_at", "messages", ["event_expires_at"])
-    op.create_index(
-        "ix_messages_room_kind_created",
-        "messages",
-        ["room_name", "event_kind", "created_at"],
-    )
-    op.create_index(
-        "ix_messages_room_kind_status",
-        "messages",
-        ["room_name", "event_kind", "event_status"],
-    )
+    # Plain CREATE INDEX takes an ACCESS EXCLUSIVE lock on messages for the
+    # build — on a busy deployment that blocks every room's writes. Build
+    # concurrently on postgres (needs autocommit); sqlite has no such lock
+    # semantics (or CONCURRENTLY support), so it takes the plain path.
+    indexes = [
+        ("ix_messages_event_expires_at", ["event_expires_at"]),
+        ("ix_messages_room_kind_created", ["room_name", "event_kind", "created_at"]),
+        ("ix_messages_room_kind_status", ["room_name", "event_kind", "event_status"]),
+    ]
+    if op.get_bind().dialect.name == "postgresql":
+        with op.get_context().autocommit_block():
+            for name, cols in indexes:
+                op.create_index(name, "messages", cols, postgresql_concurrently=True)
+    else:
+        for name, cols in indexes:
+            op.create_index(name, "messages", cols)
 
 
 def downgrade() -> None:

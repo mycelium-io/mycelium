@@ -17,7 +17,7 @@ from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bus import notify, room_channel
@@ -36,6 +36,56 @@ from app.schemas import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/rooms/{room_name}/messages", tags=["messages"])
+
+# Long-lived NOTIFY connection, lazily opened and reused across requests.
+# Human chat was low-volume enough to tolerate a connect-per-message, but
+# source_event pollers emit bursts — connection churn on every message is a
+# hot path. One retry with a fresh connection covers server-side drops.
+_notify_conn: asyncpg.Connection | None = None
+_notify_lock = asyncio.Lock()
+
+
+async def _notify_room(channel: str, payload: dict) -> None:
+    """Fire a Postgres NOTIFY on ``channel``. Never raises — SSE delivery is
+    best-effort and must not fail the write that triggered it."""
+    global _notify_conn
+    from urllib.parse import urlparse
+
+    async with _notify_lock:
+        for attempt in (1, 2):
+            try:
+                if _notify_conn is None or _notify_conn.is_closed():
+                    parsed = urlparse(settings.DATABASE_URL)
+                    _notify_conn = await asyncpg.connect(
+                        host=parsed.hostname,
+                        port=parsed.port or 5432,
+                        user=parsed.username,
+                        password=parsed.password,
+                        database=parsed.path.lstrip("/"),
+                    )
+                await notify(_notify_conn, channel, payload)
+                return
+            except Exception as e:
+                if _notify_conn is not None:
+                    try:
+                        await _notify_conn.close()
+                    except Exception:
+                        pass
+                    _notify_conn = None
+                if attempt == 2:
+                    logger.warning("NOTIFY failed for %s: %s", channel, e)
+
+
+async def close_notify_connection() -> None:
+    """Close the shared NOTIFY connection. Called from app lifespan shutdown."""
+    global _notify_conn
+    async with _notify_lock:
+        if _notify_conn is not None:
+            try:
+                await _notify_conn.close()
+            except Exception:
+                pass
+            _notify_conn = None
 
 
 async def _resolve_target(
@@ -124,23 +174,7 @@ async def send_message(
         notify_payload["room_name"] = coord.display_name  # legacy compat
     else:
         raise HTTPException(status_code=500, detail="resolver returned (None, None)")
-    try:
-        from urllib.parse import urlparse
-
-        parsed = urlparse(settings.DATABASE_URL)
-        conn: asyncpg.Connection = await asyncpg.connect(
-            host=parsed.hostname,
-            port=parsed.port or 5432,
-            user=parsed.username,
-            password=parsed.password,
-            database=parsed.path.lstrip("/"),
-        )
-        try:
-            await notify(conn, notify_channel, notify_payload)
-        finally:
-            await conn.close()
-    except Exception as e:
-        logger.warning("NOTIFY failed for %s: %s", notify_channel, e)
+    await _notify_room(notify_channel, notify_payload)
 
     # Events are machine feed, not negotiation replies — never let one be
     # parsed as an agent's round response.
@@ -221,13 +255,18 @@ async def list_messages(
         (Message.event_expires_at.is_(None)) | (Message.event_expires_at > datetime.now(UTC))
     )
 
+    # Real total across the same filters (page length is not a total —
+    # reverse infinite-scroll clients paginate against this).
+    count_query = select(func.count()).select_from(query.subquery())
+    total = (await session.execute(count_query)).scalar_one()
+
     query = query.order_by(Message.created_at.desc()).offset(offset).limit(limit)
     result = await session.execute(query)
     messages: list[Message] = list(result.scalars().all())
 
     return MessageListResponse(
         messages=[MessageRead.model_validate(m) for m in messages],
-        total=len(messages),
+        total=total,
     )
 
 
@@ -285,22 +324,6 @@ async def update_event_status(
     }
     channel_name = room.name if room is not None else coord.display_name  # type: ignore[union-attr]
     notify_payload["room_name"] = channel_name
-    try:
-        from urllib.parse import urlparse
-
-        parsed = urlparse(settings.DATABASE_URL)
-        conn: asyncpg.Connection = await asyncpg.connect(
-            host=parsed.hostname,
-            port=parsed.port or 5432,
-            user=parsed.username,
-            password=parsed.password,
-            database=parsed.path.lstrip("/"),
-        )
-        try:
-            await notify(conn, room_channel(channel_name), notify_payload)
-        finally:
-            await conn.close()
-    except Exception as e:
-        logger.warning("NOTIFY failed for %s: %s", channel_name, e)
+    await _notify_room(room_channel(channel_name), notify_payload)
 
     return msg
