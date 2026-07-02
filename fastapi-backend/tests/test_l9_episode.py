@@ -285,7 +285,6 @@ async def test_alignment_decide_maps_participant_id(monkeypatch):
     from app.config import settings
     from app.services import cfn_negotiation
 
-    monkeypatch.setattr(settings, "CFN_API_FLAVOR", "alignment")
     monkeypatch.setattr(settings, "COGNITION_FABRIC_NODE_URL", "http://cfn:9002")
     monkeypatch.setattr(cfn_negotiation.httpx, "AsyncClient", _FakeAsyncClient)
 
@@ -319,7 +318,6 @@ async def test_alignment_start_request_shape(monkeypatch):
     from app.config import settings
     from app.services import cfn_negotiation
 
-    monkeypatch.setattr(settings, "CFN_API_FLAVOR", "alignment")
     monkeypatch.setattr(settings, "COGNITION_FABRIC_NODE_URL", "http://cfn:9002")
     monkeypatch.setattr(cfn_negotiation.httpx, "AsyncClient", _FakeAsyncClient)
     _FakeAsyncClient.response_json = {"status": "initiated", "messages": [], "issues": []}

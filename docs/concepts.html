@@ -363,11 +363,9 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
 <span class="comment"># Keep awaiting between each action</span>
 <span class="cmd">mycelium session await</span> \
   <span class="flag">-H</span> selina-agent <span class="flag">-r</span> sprint-plan</code></pre>
-      <h2 id="cognitive-engine-cfn-flavors-semantic-negotiation-and-semantic-alignment">CFN flavors: semantic-negotiation and semantic-alignment</h2>
-      <p>The CE runs on a CFN backend, and Mycelium supports two: the Python CFN (<code>ioc-cognition-fabric-node-svc</code>, the default) with its semantic-negotiation API, and the Go CFN (<a href="https://github.com/outshift-open/ioc-cfn-svc">ioc-cfn-svc</a>), which renames the flow to <strong>semantic-alignment</strong> and exposes a native <a href="#l9-protocol">L9</a> endpoint (<code>POST /api/l9/messages</code>). Request shapes are the same across both; the differences (decide replies keyed on <code>participant_id</code>, <code>final_result</code> SSTP agreement envelopes, auto-persistence to CFN shared memory) are handled by Mycelium&#x27;s dual-stack client. Switch with:</p>
-      <pre><code><span class="cmd">mycelium config set</span> runtime.cfn_api_flavor alignment  # or <span class="str">&quot;negotiation&quot;</span>
-<span class="cmd">mycelium config apply</span></code></pre>
-      <p>See <a href="#l9-protocol">L9 Protocol</a> for the envelope format, epistemic reply fields, and consensus quality metrics that ride on top of either flavor.</p>
+      <h2 id="cognitive-engine-the-cfn-backend">The CFN backend</h2>
+      <p>The CE runs on the CFN service (<a href="https://github.com/outshift-open/ioc-cfn-svc">ioc-cfn-svc</a>), which exposes the <strong>semantic-alignment</strong> API that drives negotiation rounds and a native <a href="#l9-protocol">L9</a> endpoint (<code>POST /api/l9/messages</code>) that routes protocol envelopes to Cognition Engines by kind/subkind. Agreements are auto-persisted to CFN shared memory (surfaced as <code>cfn_persisted</code> on the consensus message).</p>
+      <p>See <a href="#l9-protocol">L9 Protocol</a> for the envelope format, epistemic reply fields, and consensus quality metrics.</p>
       <h2 id="cognitive-engine-tunables">Tunables</h2>
       <div class="table-wrap">
         <table>
@@ -554,34 +552,8 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
         <div class="callout-bar"></div>
         <div class="callout-body">Team priors are dark-launched — off unless <code>L9_CFN_ENABLED=true</code> is set *and* a knowledge CE is registered with the CFN.</div>
       </div>
-      <h2 id="l9-protocol-choosing-a-cfn-flavor">Choosing a CFN flavor</h2>
-      <p>Mycelium speaks to two CFN implementations:</p>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Flavor</th>
-              <th>Implementation</th>
-              <th>API</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><code>negotiation</code> (default)</td>
-              <td>Python CFN (<code>ioc-cognition-fabric-node-svc</code>)</td>
-              <td>semantic-negotiation</td>
-            </tr>
-            <tr>
-              <td><code>alignment</code></td>
-              <td>Go CFN (<a href="https://github.com/outshift-open/ioc-cfn-svc">ioc-cfn-svc</a>)</td>
-              <td>semantic-alignment</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p>The request shapes are the same; under <code>alignment</code>, decide replies key on <code>participant_id</code>, the terminal agreement arrives as a <code>final_result</code> SSTP envelope, responses carry trace/meta/shared-memory extras, and agreements are auto-persisted to CFN shared memory (surfaced as <code>cfn_persisted</code> on the consensus payload).</p>
-      <pre><code><span class="cmd">mycelium config set</span> runtime.cfn_api_flavor alignment
-<span class="cmd">mycelium config apply</span></code></pre>
+      <h2 id="l9-protocol-the-cfn-service">The CFN service</h2>
+      <p>Negotiation and L9 routing are served by the CFN (<a href="https://github.com/outshift-open/ioc-cfn-svc">ioc-cfn-svc</a>) via its semantic-alignment API. The terminal agreement arrives as a <code>final_result</code> SSTP envelope, responses carry trace/meta/shared-memory extras, and agreements are auto-persisted to CFN shared memory (surfaced as <code>cfn_persisted</code> on the consensus payload).</p>
     </section>
 
     <hr class="divider">

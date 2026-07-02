@@ -27,7 +27,6 @@ services:
     environment:
       CFN_MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
       COGNITION_FABRIC_NODE_URL: http://ioc-cognition-fabric-node-svc:9002
-      CFN_API_FLAVOR: ${CFN_API_FLAVOR:-negotiation}
       L9_CFN_ENABLED: ${L9_CFN_ENABLED:-false}
       MYCELIUM_STUB_EMBEDDINGS: "1"
 
@@ -50,46 +49,3 @@ services:
     env_file:
       - path: ~/.mycelium/.env
         required: false
-
-  # ── Go CFN (ioc-cfn-svc) — dev-only, disabled by default ──────────────────
-  #
-  # The next-generation CFN with the semantic-alignment API and native L9
-  # routing (POST /api/l9/messages). The CFN instance migration is WIP; to
-  # test mycelium against it locally:
-  #
-  #   1. Uncomment this block AND comment out ioc-cognition-fabric-node-svc
-  #      above (both bind port 9002).
-  #   2. mycelium config set runtime.cfn_api_flavor alignment
-  #      mycelium config apply
-  #   3. Bring the stack up with --profile cfn as usual.
-  #
-  # Build from a local checkout instead of the published image by swapping
-  # `image:` for `build: { context: <path-to-ioc-cfn-svc>, dockerfile: build/Dockerfile }`.
-  #
-  # ioc-cfn-svc:
-  #   image: ghcr.io/outshift-open/ioc-cfn-svc:latest
-  #   container_name: ioc-cognition-fabric-node-svc  # keep the DNS name mycelium expects
-  #   restart: unless-stopped
-  #   profiles: [cfn]
-  #   ports:
-  #     - "9002:9002"
-  #   environment:
-  #     MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
-  #     CFN_NAME: ${CFN_NAME:-mycelium-cfn}
-  #     DB_HOST: mycelium-db
-  #     DB_PORT: "5432"
-  #     DB_NAME: cfn_cp
-  #     DB_USER: ${CFN_DB_USER:-postgres}
-  #     DB_PASSWORD: ${MYCELIUM_DB_PASSWORD:-password}
-  #     PORT: "9002"
-  #   depends_on:
-  #     mycelium-db:
-  #       condition: service_healthy
-  #     ioc-cfn-mgmt-plane-svc:
-  #       condition: service_healthy
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "curl -sf http://localhost:9002/api/internal/diagnostics/health || exit 1"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 6
-  #     start_period: 30s

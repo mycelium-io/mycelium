@@ -62,11 +62,6 @@ services:
       GRAPH_DB_URL: ${GRAPH_DB_URL:-postgresql://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium}
       API_BASE_URL: http://mycelium-backend:8000
       COORDINATION_TICK_TIMEOUT_SECONDS: ${COORDINATION_TICK_TIMEOUT_SECONDS:-30}
-      # Which CFN negotiation API generation to speak. "negotiation" targets
-      # the python CFN (ioc-cognition-fabric-node-svc); "alignment" targets
-      # the Go CFN (ioc-cfn-svc). Set via `mycelium config set
-      # runtime.cfn_api_flavor alignment && mycelium config apply`.
-      CFN_API_FLAVOR: ${CFN_API_FLAVOR:-negotiation}
       # Post L9 knowledge envelopes to the CFN's /api/l9/messages endpoint.
       # Requires a knowledge CE registered with the CFN — leave off otherwise.
       L9_CFN_ENABLED: ${L9_CFN_ENABLED:-false}
@@ -210,10 +205,13 @@ services:
       start_period: 30s
 
 
+  # The CFN service (ioc-cfn-svc, Go — semantic-alignment API + native L9
+  # routing via POST /api/l9/messages). The service/DNS name is kept as
+  # ioc-cognition-fabric-node-svc so existing installs' saved
+  # COGNITION_FABRIC_NODE_URL values keep resolving across the 2.0.0 upgrade.
   ioc-cognition-fabric-node-svc:
-    image: ghcr.io/outshift-open/ioc-cognition-fabric-node-svc:0.1.7
+    image: ghcr.io/outshift-open/ioc-cfn-svc:latest
     pull_policy: always
-    platform: linux/amd64
     container_name: ioc-cognition-fabric-node-svc
     restart: unless-stopped
     profiles: [cfn]
@@ -239,7 +237,8 @@ services:
       PORT: 9002
       HEARTBEAT_INTERVAL_SECONDS: ${HEARTBEAT_INTERVAL_SECONDS:-29}
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:9002/api/internal/diagnostics/health')\" || exit 1"]
+      # The Go image is alpine + curl (no python3).
+      test: ["CMD-SHELL", "curl -sf http://localhost:9002/api/internal/diagnostics/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 6

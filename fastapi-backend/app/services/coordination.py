@@ -298,9 +298,9 @@ def _utcnow() -> datetime:
 
 
 def _normalize_cfn_decide_response(result: dict) -> dict:
-    """Normalize CFN ``/semantic-negotiation/decide`` JSON so we can read status + agreement.
+    """Normalize CFN semantic-alignment ``/decide`` JSON so we can read status + agreement.
 
-    The IOC node returns ``SemanticNegotiationPipeline.execute()`` output:
+    The CFN returns the CE's negotiation pipeline output:
 
     - **Terminal:** top-level ``status``, ``session_id``, ``round``, and ``final_result``
       where ``final_result`` is the SSTP commit (``semantic_context.final_agreement``, etc.).

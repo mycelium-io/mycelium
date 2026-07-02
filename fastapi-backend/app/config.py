@@ -2,7 +2,6 @@
 # Copyright 2026 Mycelium Contributors
 
 from pathlib import Path
-from typing import Literal
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -91,14 +90,9 @@ class Settings(BaseSettings):
     # IoC CFN management plane (optional — registration skipped if unset)
     CFN_MGMT_URL: str | None = None
 
-    # IoC CFN cognition fabric node svc (required for session negotiation)
+    # IoC CFN service (ioc-cfn-svc, required for session negotiation) —
+    # the semantic-alignment API and native L9 routing.
     COGNITION_FABRIC_NODE_URL: str = ""
-
-    # Which CFN negotiation API generation to speak:
-    #   "negotiation" — the python CFN's semantic-negotiation/start|decide
-    #   "alignment"   — the Go CFN's (ioc-cfn-svc) semantic-alignment/start|decide
-    # Dual-stack while the CFN instance migration is in flight.
-    CFN_API_FLAVOR: Literal["negotiation", "alignment"] = "negotiation"
 
     # Post L9 knowledge envelopes to the CFN's /api/l9/messages endpoint
     # (knowledge query at session start, knowledge write after consensus).

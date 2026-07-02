@@ -98,22 +98,11 @@ without priors.
 > Team priors are dark-launched — off unless `L9_CFN_ENABLED=true` is set
 > *and* a knowledge CE is registered with the CFN.
 
-## Choosing a CFN flavor
+## The CFN service
 
-Mycelium speaks to two CFN implementations:
-
-| Flavor | Implementation | API |
-|---|---|---|
-| `negotiation` (default) | Python CFN (`ioc-cognition-fabric-node-svc`) | semantic-negotiation |
-| `alignment` | Go CFN ([ioc-cfn-svc](https://github.com/outshift-open/ioc-cfn-svc)) | semantic-alignment |
-
-The request shapes are the same; under `alignment`, decide replies key on
-`participant_id`, the terminal agreement arrives as a `final_result` SSTP
-envelope, responses carry trace/meta/shared-memory extras, and agreements are
-auto-persisted to CFN shared memory (surfaced as `cfn_persisted` on the
-consensus payload).
-
-```bash
-mycelium config set runtime.cfn_api_flavor alignment
-mycelium config apply
-```
+Negotiation and L9 routing are served by the CFN
+([ioc-cfn-svc](https://github.com/outshift-open/ioc-cfn-svc)) via its
+semantic-alignment API. The terminal agreement arrives as a `final_result`
+SSTP envelope, responses carry trace/meta/shared-memory extras, and
+agreements are auto-persisted to CFN shared memory (surfaced as
+`cfn_persisted` on the consensus payload).

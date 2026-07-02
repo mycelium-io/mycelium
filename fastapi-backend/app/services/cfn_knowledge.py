@@ -3,19 +3,17 @@
 
 """Async client for CFN's shared-memories knowledge API.
 
-The ioc-cognition-fabric-node-svc (CFN) exposes shared-memories endpoints under
+The CFN (ioc-cfn-svc) exposes shared-memories endpoints under
 ``/api/workspaces/{ws}/multi-agentic-systems/{mas}/``:
 
-  POST  shared-memories              create/update knowledge   (typed client)
-  POST  shared-memories/query        semantic query             (typed client)
-  GET   graph/neighbors/{id}         graph neighbors            (raw httpx — not in schema)
-  POST  graph/concepts/by_ids        concepts by id             (raw httpx — not in schema)
-  POST  graph/paths                  graph paths                (raw httpx — not in schema)
+  POST  shared-memories              create/update knowledge
+  POST  shared-memories/query        semantic query
+  GET   graph/neighbors/{id}         graph neighbors
+  POST  graph/concepts/by_ids        concepts by id
+  POST  graph/paths                  graph paths
 
-The shared-memories endpoints go through ``ioc_cfn_svc_api_client`` so ty
-catches breaking field changes when the client is regenerated. The graph/*
-endpoints are flagged ``include_in_schema=False`` upstream and aren't in the
-OpenAPI doc, so they remain on raw httpx.
+All calls are plain httpx against documented JSON shapes. (The generated
+``ioc_cfn_svc_api_client`` from the python CFN was removed in 2.0.0.)
 
 CFN runs the heavy work (two-stage LLM extraction via ioc-cfn-cognitive-engines'
 ingestion agent, embeddings, KG writes) inside the handler, so timeouts are
@@ -37,27 +35,6 @@ import tiktoken
 
 from app.config import settings
 from app.services.metrics import record_cfn_call, record_knowledge_query
-from ioc_cfn_svc_api_client import Client
-from ioc_cfn_svc_api_client.api.shared_memories import (
-    create_or_update_shared_memories_api_workspaces_workspace_id_multi_agentic_systems_mas_id_shared_memories_post as create_api,
-)
-from ioc_cfn_svc_api_client.api.shared_memories import (
-    fetch_shared_memories_api_workspaces_workspace_id_multi_agentic_systems_mas_id_shared_memories_query_post as query_api,
-)
-from ioc_cfn_svc_api_client.errors import UnexpectedStatus
-from ioc_cfn_svc_api_client.models import (
-    CreateOrUpdateRequest,
-    CreateOrUpdateResponse,
-    ExtractionPayload,
-    ExtractionPayloadDataItem,
-    ExtractionPayloadMetadata,
-    ExtractionPayloadMetadataFormat,
-    Header,
-    HTTPValidationError,
-    QueryRequest,
-    QueryRequestAdditionalContextType0,
-    QueryResponse,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -93,31 +70,11 @@ class CfnKnowledgeError(RuntimeError):
         self.status_code = status_code
 
 
-def _client() -> Client:
-    return Client(
-        base_url=settings.COGNITION_FABRIC_NODE_URL or "",
-        timeout=_CFN_HTTP_TIMEOUT,
-        raise_on_unexpected_status=True,
-    )
-
-
 def _mas_base(workspace_id: str, mas_id: str) -> str:
-    """For graph/* endpoints not in the OpenAPI schema."""
     return (
         f"{settings.COGNITION_FABRIC_NODE_URL}"
         f"/api/workspaces/{workspace_id}/multi-agentic-systems/{mas_id}"
     )
-
-
-def _build_extraction_payload(records: list[dict[str, Any]]) -> ExtractionPayload:
-    metadata = ExtractionPayloadMetadata(format_=ExtractionPayloadMetadataFormat.OPENCLAW)
-    data_items: list[ExtractionPayloadDataItem] = []
-    for record in records:
-        item = ExtractionPayloadDataItem()
-        for key, value in record.items():
-            item[key] = value
-        data_items.append(item)
-    return ExtractionPayload(metadata=metadata, data=data_items)
 
 
 async def create_or_update_shared_memories(
@@ -130,62 +87,19 @@ async def create_or_update_shared_memories(
 ) -> dict[str, Any]:
     """POST openclaw turns to CFN's ``shared-memories`` create/update endpoint.
 
-    Builds a ``CreateOrUpdateRequest`` body with ``metadata.format="openclaw"``
-    and the provided ``records`` as ``payload.data``. Returns CFN's response as
-    a dict, typically ``{"response_id": str, "message": str | None}``.
+    Sends ``{header, request_id, payload: {metadata: {format: "openclaw"},
+    data: records}}``. Returns CFN's response as a dict, typically
+    ``{"response_id": str, "status": str, "message": str | None}``.
 
     Raises :class:`CfnKnowledgeError` on any HTTP or transport failure.
     """
-    body = CreateOrUpdateRequest(
-        payload=_build_extraction_payload(records),
-        header=Header(agent_id=agent_id) if agent_id else Header(),
-        request_id=request_id or str(uuid.uuid4()),
-    )
-    t0 = time.monotonic()
-    try:
-        async with _client() as client:
-            result = await create_api.asyncio(
-                workspace_id=workspace_id,
-                mas_id=mas_id,
-                client=client,
-                body=body,
-            )
-    except UnexpectedStatus as exc:
-        record_cfn_call(
-            service="node",
-            operation="shared_memories",
-            duration_ms=(time.monotonic() - t0) * 1000,
-            status_code=exc.status_code,
-            error=True,
-        )
-        raise _wrap_unexpected_status(exc, "shared-memories") from exc
-    except (httpx.TimeoutException, httpx.TransportError) as exc:
-        logger.exception("CFN shared-memories unreachable")
-        record_cfn_call(
-            service="node",
-            operation="shared_memories",
-            duration_ms=(time.monotonic() - t0) * 1000,
-            error=True,
-        )
-        raise CfnKnowledgeError(f"CFN unreachable: {exc}") from exc
-
-    record_cfn_call(
-        service="node",
-        operation="shared_memories",
-        duration_ms=(time.monotonic() - t0) * 1000,
-        status_code=200,
-    )
-
-    if isinstance(result, HTTPValidationError):
-        raise CfnKnowledgeError(
-            f"CFN shared-memories validation error: {result.detail}",
-            status_code=422,
-        )
-    if not isinstance(result, CreateOrUpdateResponse):
-        raise CfnKnowledgeError(
-            f"CFN shared-memories returned unexpected payload: {type(result).__name__}",
-        )
-    return result.to_dict()
+    body: dict[str, Any] = {
+        "header": {"agent_id": agent_id} if agent_id else {},
+        "request_id": request_id or str(uuid.uuid4()),
+        "payload": {"metadata": {"format": "openclaw"}, "data": records},
+    }
+    url = f"{_mas_base(workspace_id, mas_id)}/shared-memories"
+    return await _cfn_post(url, body, operation="shared_memories")
 
 
 async def query_shared_memories(
@@ -200,56 +114,29 @@ async def query_shared_memories(
 ) -> dict[str, Any]:
     """POST to CFN's ``shared-memories/query`` endpoint.
 
-    Returns CFN's QueryResponse dict: ``{"response_id": str, "message": str}``.
-    Note that ``message`` is a natural-language answer synthesized by CFN's
-    evidence agent, NOT a structured list of records.
+    Returns CFN's query response dict: ``{"response_id": str, "message": str,
+    ...}``. Note that ``message`` is a natural-language answer synthesized by
+    CFN's evidence agent, NOT a structured list of records.
     """
-    ctx = QueryRequestAdditionalContextType0()
+    body: dict[str, Any] = {
+        "header": {"agent_id": agent_id} if agent_id else {},
+        "request_id": request_id or str(uuid.uuid4()),
+        "search_strategy": search_strategy,
+        "intent": intent,
+    }
     if additional_context:
-        for key, value in additional_context.items():
-            ctx[key] = value
-    body = QueryRequest(
-        intent=intent,
-        header=Header(agent_id=agent_id) if agent_id else Header(),
-        request_id=request_id or str(uuid.uuid4()),
-        search_strategy=search_strategy,
-        additional_context=ctx if additional_context else None,
-    )
+        body["additional_context"] = additional_context
+    url = f"{_mas_base(workspace_id, mas_id)}/shared-memories/query"
     t0 = time.monotonic()
     try:
-        async with _client() as client:
-            result = await query_api.asyncio(
-                workspace_id=workspace_id,
-                mas_id=mas_id,
-                client=client,
-                body=body,
-            )
-    except UnexpectedStatus as exc:
+        resp = await _cfn_post(url, body, operation="shared_memories_query")
+    except CfnKnowledgeError:
         record_knowledge_query(
             query_type="semantic",
             duration_ms=(time.monotonic() - t0) * 1000,
             error=True,
         )
-        raise _wrap_unexpected_status(exc, "shared-memories/query") from exc
-    except (httpx.TimeoutException, httpx.TransportError) as exc:
-        logger.exception("CFN shared-memories/query unreachable")
-        record_knowledge_query(
-            query_type="semantic",
-            duration_ms=(time.monotonic() - t0) * 1000,
-            error=True,
-        )
-        raise CfnKnowledgeError(f"CFN unreachable: {exc}") from exc
-
-    if isinstance(result, HTTPValidationError):
-        raise CfnKnowledgeError(
-            f"CFN shared-memories/query validation error: {result.detail}",
-            status_code=422,
-        )
-    if not isinstance(result, QueryResponse):
-        raise CfnKnowledgeError(
-            f"CFN shared-memories/query returned unexpected payload: {type(result).__name__}",
-        )
-    resp = result.to_dict()
+        raise
     record_knowledge_query(
         query_type="semantic",
         results_returned=1 if resp.get("message") else 0,
@@ -258,20 +145,7 @@ async def query_shared_memories(
     return resp
 
 
-def _wrap_unexpected_status(exc: UnexpectedStatus, endpoint: str) -> CfnKnowledgeError:
-    snippet = exc.content[:300].decode("utf-8", errors="replace")
-    logger.warning("CFN %s failed | status=%d body=%r", endpoint, exc.status_code, snippet)
-    return CfnKnowledgeError(
-        f"CFN {endpoint} returned {exc.status_code}: {snippet[:200]}",
-        status_code=exc.status_code,
-    )
-
-
-# ── Graph read surface (raw httpx — not in CFN OpenAPI schema) ───────────────
-#
-# The graph/* endpoints are flagged ``include_in_schema=False`` upstream, so
-# their shapes may drift — treat them as best-effort and don't rely on CFN's
-# typed contract here.
+# ── Raw HTTP helpers ─────────────────────────────────────────────────────────
 
 
 async def _cfn_get(url: str, *, operation: str) -> dict[str, Any]:

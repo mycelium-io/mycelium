@@ -111,12 +111,10 @@ jobs:
             exit 1
           fi
 
-  # CFN staleness check is run manually via scripts/gen-cfn-client.sh after
-  # bumping ioc-cognition-fabric-node-svc in compose.yml. Adding it to CI
-  # would require replicating the full compose stack (mgmt-plane + Postgres
-  # for both `cfn_mgmt` and `cfn_cp` databases), which costs more than it
-  # saves — CFN drift only happens when we explicitly bump the image, and
-  # that's the natural moment to regen and commit.
+  # CFN contract drift is checked manually when the ioc-cfn-svc image is
+  # bumped in compose.yml: diff upstream docs/swagger.json against the httpx
+  # call sites in app/services/cfn_negotiation.py and cfn_knowledge.py.
+  # (The generated CFN client and its staleness check were removed in 2.0.0.)
 
   lint-cli:
     name: CLI lint

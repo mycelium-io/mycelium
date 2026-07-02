@@ -154,26 +154,6 @@ class RuntimeConfig(BaseModel):
         default=False,
         description="Enable CFN dev mode",
     )
-    cfn_api_flavor: str = Field(
-        default="negotiation",
-        description=(
-            "Which CFN negotiation API the backend targets: 'negotiation' for the "
-            "legacy Python CFN's semantic-negotiation endpoints, 'alignment' for the "
-            "Go CFN's semantic-alignment endpoints. Emitted into ~/.mycelium/.env as "
-            "CFN_API_FLAVOR. Leave at 'negotiation' until the Go CFN instance "
-            "migration lands."
-        ),
-    )
-
-    @field_validator("cfn_api_flavor")
-    @classmethod
-    def validate_cfn_api_flavor(cls, v: str) -> str:
-        """Restrict to the two supported CFN API flavors."""
-        allowed = ("negotiation", "alignment")
-        if v not in allowed:
-            msg = f"cfn_api_flavor must be one of {allowed}, got '{v}'"
-            raise ValueError(msg)
-        return v
 
 
 class NegotiationConfig(BaseModel):

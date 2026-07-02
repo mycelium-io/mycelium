@@ -7,7 +7,7 @@ Covers the fixed wire contract for propose/respond replies (optional
 ``confidence`` / ``evidence`` / ``reasoning`` / ``deferred_to`` — omitted keys
 MUST be absent from the serialized JSON so legacy requests stay byte-identical),
 tick/consensus parsing of ``team_prior`` / ``metrics`` / ``cfn_persisted``,
-the ``runtime.cfn_api_flavor`` config key, and its ``.env`` emission.
+and the ``.env`` generation surface.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from pydantic import ValidationError
 from typer.testing import CliRunner
 
 from mycelium.commands import negotiate as negotiate_cmd
-from mycelium.config import MyceliumConfig, RuntimeConfig
+from mycelium.config import MyceliumConfig
 from mycelium.docker_utils import generate_env_file
 from mycelium.protocol import (
     ConsensusContent,
@@ -365,22 +365,6 @@ def test_consensus_output_includes_metrics_only_when_present() -> None:
     assert enriched["cfn_persisted"] is True
 
 
-# ── config: runtime.cfn_api_flavor ───────────────────────────────────────────
-
-
-def test_cfn_api_flavor_defaults_to_negotiation() -> None:
-    assert RuntimeConfig().cfn_api_flavor == "negotiation"
-
-
-def test_cfn_api_flavor_accepts_alignment() -> None:
-    assert RuntimeConfig(cfn_api_flavor="alignment").cfn_api_flavor == "alignment"
-
-
-def test_cfn_api_flavor_rejects_unknown_values() -> None:
-    with pytest.raises(ValidationError, match="cfn_api_flavor"):
-        RuntimeConfig(cfn_api_flavor="semantic-negotiation")
-
-
 # ── .env emission ────────────────────────────────────────────────────────────
 
 
@@ -395,13 +379,7 @@ def _parse_env(blob: str) -> dict[str, str]:
     return out
 
 
-def test_env_emits_cfn_api_flavor_default() -> None:
+def test_env_omits_cfn_api_flavor() -> None:
+    """The 2.0.0 cutover removed the dual-stack flavor flag entirely."""
     env = _parse_env(generate_env_file(MyceliumConfig()))
-    assert env["CFN_API_FLAVOR"] == "negotiation"
-
-
-def test_env_emits_cfn_api_flavor_alignment() -> None:
-    cfg = MyceliumConfig()
-    cfg.runtime.cfn_api_flavor = "alignment"
-    env = _parse_env(generate_env_file(cfg))
-    assert env["CFN_API_FLAVOR"] == "alignment"
+    assert "CFN_API_FLAVOR" not in env
