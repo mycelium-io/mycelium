@@ -24,7 +24,7 @@ from typing import Any
 import httpx
 
 from app.config import settings
-from app.services import l9
+from app.services import cfn_http, l9
 from app.services.l9_models import Kind
 
 logger = logging.getLogger(__name__)
@@ -40,11 +40,11 @@ async def post_l9(envelope_dict: dict[str, Any]) -> dict[str, Any] | None:
     """POST an envelope to the CFN; return the CE's L9 response dict or None."""
     url = f"{settings.COGNITION_FABRIC_NODE_URL}/api/l9/messages"
     try:
-        async with httpx.AsyncClient(timeout=_L9_HTTP_TIMEOUT) as client:
-            resp = await client.post(url, json=envelope_dict)
-            resp.raise_for_status()
-            data = resp.json()
-            return data if isinstance(data, dict) else None
+        client = cfn_http.get_client()
+        resp = await client.post(url, json=envelope_dict, timeout=_L9_HTTP_TIMEOUT)
+        resp.raise_for_status()
+        data = resp.json()
+        return data if isinstance(data, dict) else None
     except Exception as exc:
         logger.warning("CFN /api/l9/messages call failed: %s", exc)
         return None

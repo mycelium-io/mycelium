@@ -292,6 +292,17 @@ _cfn_state: dict[str, _CfnRoundState] = {}
 # before the join window fires `_run_tick` for an already-deleted room.
 _join_timer_tasks: dict[str, asyncio.Task] = {}
 
+# Strong refs to fire-and-forget background tasks (e.g. the post-consensus
+# CFN knowledge write) so they can't be garbage-collected mid-flight; each
+# task removes itself on completion.
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _spawn_background(coro) -> None:
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
@@ -1443,7 +1454,7 @@ async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool
             consensus_l9_id = None
             if consensus_l9 is not None:
                 consensus_l9_id = (consensus_l9.get("header", {}).get("message") or {}).get("id")
-            asyncio.ensure_future(
+            _spawn_background(
                 l9_cfn.knowledge_write_consensus(
                     parent_room=state.episode.parent_room,
                     short_id=state.episode.short_id,

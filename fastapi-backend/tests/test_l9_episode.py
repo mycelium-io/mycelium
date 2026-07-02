@@ -268,16 +268,11 @@ class _FakeAsyncClient:
 
     captured: ClassVar[dict[str, Any]] = {}
     response_json: ClassVar[dict[str, Any]] = {"status": "ongoing", "messages": []}
+    is_closed: bool = False
 
-    def __init__(self, **kwargs: Any) -> None:
-        pass
-
-    async def post(self, url: str, json: Any = None) -> httpx.Response:
+    async def post(self, url: str, json: Any = None, **kwargs: Any) -> httpx.Response:
         _FakeAsyncClient.captured = {"url": url, "json": json}
         return httpx.Response(200, json=self.response_json, request=httpx.Request("POST", url))
-
-    async def aclose(self) -> None:
-        pass
 
 
 @pytest.mark.asyncio
@@ -286,7 +281,7 @@ async def test_alignment_decide_maps_participant_id(monkeypatch):
     from app.services import cfn_negotiation
 
     monkeypatch.setattr(settings, "COGNITION_FABRIC_NODE_URL", "http://cfn:9002")
-    monkeypatch.setattr(cfn_negotiation.httpx, "AsyncClient", _FakeAsyncClient)
+    monkeypatch.setattr(cfn_negotiation.cfn_http, "get_client", lambda: _FakeAsyncClient())
 
     await cfn_negotiation.decide_negotiation(
         session_id="s1",
@@ -319,7 +314,7 @@ async def test_alignment_start_request_shape(monkeypatch):
     from app.services import cfn_negotiation
 
     monkeypatch.setattr(settings, "COGNITION_FABRIC_NODE_URL", "http://cfn:9002")
-    monkeypatch.setattr(cfn_negotiation.httpx, "AsyncClient", _FakeAsyncClient)
+    monkeypatch.setattr(cfn_negotiation.cfn_http, "get_client", lambda: _FakeAsyncClient())
     _FakeAsyncClient.response_json = {"status": "initiated", "messages": [], "issues": []}
 
     await cfn_negotiation.start_negotiation(

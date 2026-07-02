@@ -130,8 +130,8 @@ JSON (existing keys unchanged — both delivery paths keep working):
   1), parents = final-round reply IDs. After the plan write, emit an L9
   `kind=knowledge` record of the agreement (see 2.4).
 - Episode record persistence: on commit, write the full ordered envelope list
-  to room memory `log/episodes/{session_short_id}.md` (YAML frontmatter:
-  episode URN, outcome, metrics; body: message table). Uses the existing
+  to room memory `log/episodes/{session_short_id}.md` (markdown summary —
+  episode URN, outcome, metrics — plus a fenced JSONL block of envelopes). Uses the existing
   memory-write path, so it is git-shareable and pgvector-indexed for free.
 
 ### 2.3 Epistemic reply fields + agreement-quality metrics (interim)

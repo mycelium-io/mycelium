@@ -80,7 +80,7 @@ Engine once it computes them natively.
 ## Episode records
 
 On consensus, the full causally-linked envelope record is written to room
-memory at `log/episodes/{session_short_id}.md` — YAML frontmatter plus a JSONL
+memory at `log/episodes/{session_short_id}.md` — a markdown summary plus a fenced JSONL
 block of every envelope in the episode. Like any room memory it's
 git-shareable and searchable via the normal memory index.
 

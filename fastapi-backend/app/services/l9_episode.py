@@ -176,7 +176,7 @@ def record_reply(
     ep.messages.append(l9.envelope_to_dict(env))
 
     conf = reply.get("confidence")
-    if isinstance(conf, int | float) and 0.0 <= conf <= 1.0:
+    if isinstance(conf, int | float) and not isinstance(conf, bool) and 0.0 <= conf <= 1.0:
         ep.priors.setdefault(handle, float(conf))
         ep.last_confidence[handle] = float(conf)
     if action == "accept":

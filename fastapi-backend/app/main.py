@@ -149,6 +149,9 @@ async def lifespan(app: FastAPI):
 
     yield
     stop_watcher()
+    from app.services.cfn_http import aclose_all
+
+    await aclose_all()
     logger.info("Mycelium backend shutting down")
 
 

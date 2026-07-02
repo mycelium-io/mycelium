@@ -31,6 +31,7 @@ from typing import Any
 import httpx
 
 from app.config import settings
+from app.services import cfn_http
 from app.services._cfn_call_timing import cfn_timing_stage, cfn_timing_stamp
 from app.services.metrics import record_cfn_call, record_cfn_llm_usage, record_room_identity
 
@@ -132,18 +133,16 @@ async def _post_alignment(
     t0 = time.monotonic()
     try:
         with cfn_timing_stage("client_setup_ms"):
-            client = httpx.AsyncClient(
+            client = cfn_http.get_client()
+        with cfn_timing_stage("http_ms"):
+            resp = await client.post(
+                url,
+                json=payload,
                 timeout=_CFN_HTTP_TIMEOUT,
                 headers={"X-Client-Sent-Wall-Ns": str(sent_ns)},
             )
-        try:
-            with cfn_timing_stage("http_ms"):
-                resp = await client.post(url, json=payload)
-            cfn_timing_stamp("response_bytes", len(resp.content))
-            _extract_cfn_loop_lag_headers(resp.headers)
-        finally:
-            with cfn_timing_stage("client_close_ms"):
-                await client.aclose()
+        cfn_timing_stamp("response_bytes", len(resp.content))
+        _extract_cfn_loop_lag_headers(resp.headers)
         resp.raise_for_status()
         result = resp.json()
     except httpx.HTTPStatusError as exc:
