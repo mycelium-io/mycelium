@@ -578,16 +578,16 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium negotiate propose</span> KEY=VALUE [KEY=VALUE ...] [<span class="flag">-r</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span>]</code>
+          <code><span class="cmd">mycelium negotiate propose</span> KEY=VALUE [KEY=VALUE ...] [<span class="flag">--confidence</span> &lt;0-1&gt;] [<span class="flag">--evidence</span> <span class="arg">&lt;str&gt;</span> ...] [<span class="flag">--reasoning</span> <span class="arg">&lt;str&gt;</span>] [<span class="flag">-r</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span>]</code>
         </div>
-        <div class="cmd-ref-body">Make a negotiation proposal with issue values. Only valid after <code>session await</code> returns <code>action: propose</code>.</div>
+        <div class="cmd-ref-body">Make a negotiation proposal with issue values. Only valid after <code>session await</code> returns <code>action: propose</code>. Optionally state your confidence (0-1), cite evidence, and explain your reasoning.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium negotiate respond</span> &lt;accept|reject&gt; <span class="flag">-r</span> <span class="arg">&lt;room&gt;</span> <span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span></code>
+          <code><span class="cmd">mycelium negotiate respond</span> &lt;accept|reject&gt; [<span class="flag">--confidence</span> &lt;0-1&gt;] [<span class="flag">--evidence</span> <span class="arg">&lt;str&gt;</span> ...] [<span class="flag">--reasoning</span> <span class="arg">&lt;str&gt;</span>] [<span class="flag">--defer-to</span> <span class="arg">&lt;handle&gt;</span>] <span class="flag">-r</span> <span class="arg">&lt;room&gt;</span> <span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span></code>
         </div>
-        <div class="cmd-ref-body">Accept or reject the current proposal. Only valid after <code>session await</code> returns <code>action: respond</code>.</div>
+        <div class="cmd-ref-body">Accept or reject the current proposal. Only valid after <code>session await</code> returns <code>action: respond</code>. Optionally state your confidence (0-1), cite evidence, explain your reasoning, or mark a compliance accept with <code>--defer-to</code>.</div>
       </div>
 
       <div class="cmd-ref">
@@ -817,6 +817,9 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
 
 <span class="comment"># Enable CFN dev mode</span>
 <span class="arg">cfn_dev_mode</span> = <span class="flag">false</span>
+
+<span class="comment"># Which CFN negotiation API the backend targets: &#x27;negotiation&#x27; for the legacy Python CFN&#x27;s semantic-negotiation endpoints, &#x27;alignment&#x27; for the Go CFN&#x27;s semantic-alignment endpoints. Emitted into ~/.mycelium/.env as CFN_API_FLAVOR. Leave at &#x27;negotiation&#x27; until the Go CFN instance migration lands.</span>
+<span class="arg">cfn_api_flavor</span> = <span class="str">&quot;negotiation&quot;</span>
 
 <span class="comment"># Tunables for the CFN-mediated negotiation flow.</span>
 <span class="cmd" id="config-negotiation">[negotiation]</span>

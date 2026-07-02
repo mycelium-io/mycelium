@@ -31,6 +31,11 @@ const stateColors: Record<string, { dot: string; label: string }> = {
   failed:      { dot: "bg-red-400",        label: "text-red-300" },
 };
 
+/** Guarded numeric read — non-finite / non-number values count as absent. */
+function asNum(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+}
+
 function parseSessionEvent(msg: Record<string, unknown>): Event {
   let mtype = (msg.message_type as string) || (msg.type as string) || "unknown";
   const sender = (msg.sender_handle as string) || (msg.updated_by as string) || "?";
@@ -138,6 +143,12 @@ function TickCard({ event }: { event: Event }) {
   const action = raw.action as string;
   const currentOffer = raw.current_offer as Record<string, unknown> | undefined;
   const allowed = (raw.allowed_actions as string[]) || [];
+  const teamPrior = raw.team_prior && typeof raw.team_prior === "object"
+    ? (raw.team_prior as Record<string, unknown>)
+    : undefined;
+  const tpConfidence = asNum(teamPrior?.confidence);
+  const tpWeight = asNum(teamPrior?.provenance_weight);
+  const tpEpisodes = asNum(teamPrior?.episode_count);
 
   return (
     <div className="bg-indigo-500/5 border border-indigo-500/20 rounded-lg p-3">
@@ -163,6 +174,16 @@ function TickCard({ event }: { event: Event }) {
           ))}
         </div>
       )}
+      {tpConfidence !== undefined && (
+        <div
+          className="text-micro text-muted font-mono mt-1"
+          title="the team's prior confidence on this topic from earlier episodes"
+        >
+          team prior {tpConfidence.toFixed(2)}
+          {tpWeight !== undefined && ` · weight ${tpWeight.toFixed(2)}`}
+          {tpEpisodes !== undefined && ` · ${tpEpisodes} episode${tpEpisodes === 1 ? "" : "s"}`}
+        </div>
+      )}
       {currentOffer && Object.keys(currentOffer).length > 0 && (
         <>
           <div className="text-muted uppercase tracking-wider text-micro mt-2">current offer</div>
@@ -176,6 +197,10 @@ function TickCard({ event }: { event: Event }) {
 function ResponseCard({ event }: { event: Event }) {
   const action = (event.raw.action as string) || "reject";
   const offer = event.raw.offer as Record<string, unknown> | undefined;
+  const confidence = asNum(event.raw.confidence);
+  const deferredTo = typeof event.raw.deferred_to === "string" && event.raw.deferred_to
+    ? event.raw.deferred_to
+    : undefined;
 
   const styles = {
     accept:        { border: "border-emerald-500/30", bg: "bg-emerald-500/5",  chip: "bg-emerald-500/15 text-emerald-300", icon: "✓", text: "accepted" },
@@ -192,6 +217,22 @@ function ResponseCard({ event }: { event: Event }) {
         <span className={`text-micro px-1.5 py-0.5 rounded font-bold uppercase tracking-wider whitespace-nowrap ${s.chip}`}>
           {s.text}
         </span>
+        {confidence !== undefined && (
+          <span
+            className="text-micro px-1.5 py-0.5 rounded bg-white/5 text-muted font-mono whitespace-nowrap"
+            title="agent's stated confidence (0–1)"
+          >
+            {confidence.toFixed(2)}
+          </span>
+        )}
+        {deferredTo && (
+          <span
+            className="text-micro text-muted font-mono italic whitespace-nowrap"
+            title="accept by deference — yielded without being persuaded"
+          >
+            deferred → {deferredTo}
+          </span>
+        )}
         <span className="ml-auto text-micro text-muted font-mono">{event.time}</span>
       </div>
       {offer && <OfferBlock offer={offer} tone="fuchsia" />}
@@ -204,6 +245,15 @@ function ConsensusCard({ event }: { event: Event }) {
   const assignments = event.raw.assignments as Record<string, unknown> | undefined;
   const broken = event.raw.broken as boolean | undefined;
   const hasAssignments = assignments && Object.keys(assignments).length > 0;
+  const metrics = event.raw.metrics && typeof event.raw.metrics === "object"
+    ? (event.raw.metrics as Record<string, unknown>)
+    : undefined;
+  const metricDefs: [string, number | undefined, string][] = [
+    ["MPC", asNum(metrics?.mpc), "mean confidence of the team in the outcome"],
+    ["GAR", asNum(metrics?.gar), "genuine agreement ratio — how many agents actually moved toward the outcome"],
+    ["SCR", asNum(metrics?.scr), "social compliance ratio — how many accepts were deference, not persuasion"],
+  ];
+  const metricChips = metricDefs.filter((c): c is [string, number, string] => c[1] !== undefined);
 
   if (broken) {
     return (
@@ -227,6 +277,19 @@ function ConsensusCard({ event }: { event: Event }) {
       </div>
       {plan && <p className="text-sm text-white/90 mb-2 leading-relaxed whitespace-pre-wrap">{plan}</p>}
       {hasAssignments && <OfferBlock offer={assignments} tone="emerald" />}
+      {metricChips.length > 0 && (
+        <div className="flex gap-1.5 mt-2 flex-wrap">
+          {metricChips.map(([label, value, tip]) => (
+            <span
+              key={label}
+              className="text-micro px-1.5 py-0.5 rounded bg-white/5 text-muted font-mono uppercase tracking-wider whitespace-nowrap"
+              title={tip}
+            >
+              {label} {value.toFixed(2)}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

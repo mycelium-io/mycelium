@@ -139,6 +139,7 @@ def generate_env_file(
         f"CFN_DB={config.runtime.cfn_db}",
         f"ADMIN_USER_PASSWORD={config.runtime.admin_user_password}",
         f"CFN_DEV_MODE={'true' if config.runtime.cfn_dev_mode else 'false'}",
+        f"CFN_API_FLAVOR={config.runtime.cfn_api_flavor}",
         "",
         "# ── Negotiation ──────────────────────────────────────────────────────────",
         f"NEGOTIATION_N_STEPS={config.negotiation.n_steps}",

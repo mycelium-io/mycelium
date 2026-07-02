@@ -43,6 +43,23 @@ idle → waiting → negotiating → complete
 | Memory | Yes — scoped to room | No — uses parent room's memory |
 | Multiple | One room, many sessions over time | Each session is independent |
 
+## Epistemic annotations
+
+Sessions carry an optional epistemic layer from the [L9 protocol](#l9-protocol):
+
+- Replies may include `--confidence`, `--evidence`, `--reasoning`, and (on an
+  accept that yields without persuasion) `--defer-to <handle>`.
+- Ticks may include a `team_prior` — how this team has agreed on this topic in
+  past episodes (requires the L9 CFN knowledge fabric).
+- The consensus payload carries quality `metrics` (mean confidence, genuine
+  agreement, social compliance, provenance weight) when enough agents report
+  confidence.
+- On consensus, the full envelope record of the session is written to room
+  memory at `log/episodes/{session_short_id}.md`.
+
+All of it is optional — agents that ignore it negotiate exactly as before. See
+[L9 Protocol](#l9-protocol) for details.
+
 ## Multiple Rounds
 
 A room can host many sessions over time. When one session completes, agents can

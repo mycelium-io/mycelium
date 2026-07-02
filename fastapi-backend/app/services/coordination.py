@@ -39,6 +39,7 @@ from app.bus import agent_channel, notify, room_channel
 from app.config import settings
 from app.database import async_session_maker
 from app.models import CoordinationSession, Message, Participant, Room
+from app.services import l9_cfn, l9_episode
 from app.services.metrics import (
     record_consensus,
     record_coordination_round,
@@ -129,6 +130,10 @@ class _RoundTrace:
     # ``step_negotiation_ms``).  ``None`` when CFN doesn't emit the envelope —
     # capture is tolerant so this code works against unpatched CFN images too.
     cfn_internal_timing: dict | None = None
+    # Raw ``meta`` block from the Go CFN's semantic-alignment responses
+    # (token usage / model / latency / cost). Stored verbatim — the alignment
+    # API's field names aren't pinned yet, so we record rather than interpret.
+    cfn_meta: dict | None = None
     # Mycelium-side breakdown of the /decide HTTP call.  Populated by
     # ``services/_cfn_call_timing.py`` + ``cfn_negotiation._cfn_post``.  Keys include
     # ``client_setup_ms``, ``http_ms``, ``raise_for_status_ms``, ``json_parse_ms``,
@@ -179,6 +184,7 @@ class _RoundTrace:
             "cfn_messages_count": self.cfn_messages_count,
             "cfn_response_bytes": self.cfn_response_bytes,
             "cfn_internal_timing": self.cfn_internal_timing,
+            "cfn_meta": self.cfn_meta,
             "cfn_call_timing": self.cfn_call_timing,
             "per_agent": {
                 h: {
@@ -266,6 +272,16 @@ class _CfnRoundState:
     # positions and participant handles aren't otherwise reachable there.
     joined_intents: str = ""
     session_handles: list[str] = field(default_factory=list)
+    # L9 episode accumulator (envelopes, causal threading, epistemic fields,
+    # consensus quality metrics). None only if episode setup failed — every
+    # consumer is None-tolerant.
+    episode: "l9_episode.EpisodeState | None" = None
+    # Team prior fetched from the CFN knowledge fabric at session start
+    # (L9_CFN_ENABLED only). Forwarded into every tick when present.
+    team_prior: dict | None = None
+    # Whether the CFN reported persisting the agreement to shared memory
+    # (alignment flavor's decide response). Surfaced on the consensus payload.
+    cfn_persisted: bool | None = None
 
 
 # {room_name: _CfnRoundState}
@@ -526,6 +542,32 @@ async def _run_cfn_negotiation(
         joined_intents=joined_intents,
         session_handles=session_handles[:],
     )
+    # L9 episode: mint the URN, record the intent envelope, and (when the
+    # CFN knowledge path is enabled) fetch the team's prior on this topic so
+    # every tick can carry it. Fail-soft — negotiation proceeds without L9
+    # annotations if any of this throws.
+    parent_room_l9 = room_name.split(":session:", 1)[0] if ":session:" in room_name else room_name
+    short_id_l9 = room_name.split(":session:", 1)[1] if ":session:" in room_name else room_name
+    try:
+        state.episode = l9_episode.open_episode(
+            parent_room=parent_room_l9,
+            short_id=short_id_l9,
+            workspace_id=workspace_id,
+            mas_id=mas_id,
+            agents=session_handles,
+            joined_intents=joined_intents,
+        )
+    except Exception:
+        logger.exception("L9 episode setup failed for %s — continuing without", room_name)
+    try:
+        state.team_prior = await l9_cfn.knowledge_query_team_prior(
+            parent_room=parent_room_l9,
+            short_id=short_id_l9,
+            workspace_id=workspace_id,
+            mas_id=mas_id,
+        )
+    except Exception:
+        logger.exception("L9 team-prior query failed for %s — continuing without", room_name)
     _cfn_state[room_name] = state
 
     # /start returns a flat dict: {"status": "initiated", "messages": [...], "issues": [...], ...}
@@ -730,6 +772,26 @@ async def _fan_out_cfn_messages(
     n_steps_total = state_snapshot.n_steps_total if state_snapshot else 0
     last_actions = dict(state_snapshot.last_actions) if state_snapshot else {}
     prior_round_outcome = state_snapshot.last_round_outcome if state_snapshot else "first_round"
+    team_prior = state_snapshot.team_prior if state_snapshot else None
+    episode = state_snapshot.episode if state_snapshot else None
+
+    def _tick_content(handle: str, payload_fields: dict) -> str:
+        """Assemble tick content; optional L9 keys added only when present so
+        legacy ticks stay byte-identical."""
+        if team_prior:
+            payload_fields["team_prior"] = team_prior
+        content: dict = {"payload": payload_fields}
+        if episode is not None:
+            try:
+                content["l9"] = l9_episode.record_tick(
+                    episode,
+                    handle=handle,
+                    round_n=payload_fields.get("round"),
+                    payload=payload_fields,
+                )
+            except Exception:
+                logger.exception("L9 tick envelope failed for %s/%s", room_name, handle)
+        return json.dumps(content)
 
     for msg in messages:
         payload = msg.get("payload", msg)
@@ -752,28 +814,27 @@ async def _fan_out_cfn_messages(
                 await _post_message(
                     room_name,
                     message_type="coordination_tick",
-                    content=json.dumps(
+                    content=_tick_content(
+                        handle,
                         {
-                            "payload": {
-                                "participant_id": handle,
-                                "round": payload.get("round"),
-                                "action": payload.get("action"),
-                                "allowed_actions": payload.get("allowed_actions", []),
-                                "can_counter_offer": handle == next_proposer_id,
-                                "current_offer": payload.get("current_offer"),
-                                "proposer_id": payload.get("proposer_id"),
-                                "next_proposer_id": next_proposer_id,
-                                "issue_options": issue_options,
-                                "issues": issues,
-                                # Negotiation budget + per-agent context so
-                                # agents don't have to reverse-engineer the
-                                # prior turn from action+can_counter_offer.
-                                "n_steps_total": n_steps_total,
-                                "your_last_action": last_actions.get(handle),
-                                "prior_round_outcome": prior_round_outcome,
-                                "plan_open_tasks": plan_summary,
-                            }
-                        }
+                            "participant_id": handle,
+                            "round": payload.get("round"),
+                            "action": payload.get("action"),
+                            "allowed_actions": payload.get("allowed_actions", []),
+                            "can_counter_offer": handle == next_proposer_id,
+                            "current_offer": payload.get("current_offer"),
+                            "proposer_id": payload.get("proposer_id"),
+                            "next_proposer_id": next_proposer_id,
+                            "issue_options": issue_options,
+                            "issues": issues,
+                            # Negotiation budget + per-agent context so
+                            # agents don't have to reverse-engineer the
+                            # prior turn from action+can_counter_offer.
+                            "n_steps_total": n_steps_total,
+                            "your_last_action": last_actions.get(handle),
+                            "prior_round_outcome": prior_round_outcome,
+                            "plan_open_tasks": plan_summary,
+                        },
                     ),
                 )
             addressed.extend(all_agents)
@@ -781,26 +842,25 @@ async def _fan_out_cfn_messages(
             await _post_message(
                 room_name,
                 message_type="coordination_tick",
-                content=json.dumps(
+                content=_tick_content(
+                    participant_id,
                     {
-                        "payload": {
-                            "participant_id": participant_id,
-                            "round": payload.get("round"),
-                            "action": payload.get("action"),
-                            "allowed_actions": payload.get("allowed_actions", []),
-                            "can_counter_offer": participant_id == next_proposer_id,
-                            "current_offer": payload.get("current_offer"),
-                            "proposer_id": payload.get("proposer_id"),
-                            "next_proposer_id": next_proposer_id,
-                            "issue_options": issue_options,
-                            "issues": issues,
-                            "n_steps_total": n_steps_total,
-                            "your_last_action": last_actions.get(participant_id),
-                            "prior_round_outcome": prior_round_outcome,
-                            "shared_context_files": shared_context,
-                            "plan_open_tasks": plan_summary,
-                        }
-                    }
+                        "participant_id": participant_id,
+                        "round": payload.get("round"),
+                        "action": payload.get("action"),
+                        "allowed_actions": payload.get("allowed_actions", []),
+                        "can_counter_offer": participant_id == next_proposer_id,
+                        "current_offer": payload.get("current_offer"),
+                        "proposer_id": payload.get("proposer_id"),
+                        "next_proposer_id": next_proposer_id,
+                        "issue_options": issue_options,
+                        "issues": issues,
+                        "n_steps_total": n_steps_total,
+                        "your_last_action": last_actions.get(participant_id),
+                        "prior_round_outcome": prior_round_outcome,
+                        "shared_context_files": shared_context,
+                        "plan_open_tasks": plan_summary,
+                    },
                 ),
             )
             addressed.append(participant_id)
@@ -871,9 +931,29 @@ async def _cfn_decide_round(
             # often this happens in practice.
             if state.current_trace and handle in state.current_trace.per_agent:
                 state.current_trace.per_agent[handle].was_synthesised = True
+            synthesised = True
+            episode_reply: dict = {"action": "reject"}
         else:
             agent_replies.append(reply_data)
             snapshot_actions[handle] = str(reply_data.get("action") or "reject")
+            synthesised = False
+            episode_reply = reply_data
+        # Fold the reply into the L9 episode: synthesizes the reply envelope
+        # (parented on the tick it answers) and tracks confidence/deference
+        # for the consensus quality metrics. Recorded once per agent per
+        # round, at decide time, so resubmits collapse to the reply that
+        # counted.
+        if state.episode is not None:
+            try:
+                l9_episode.record_reply(
+                    state.episode,
+                    handle=handle,
+                    reply=episode_reply,
+                    round_n=state.current_round,
+                    synthesised=synthesised,
+                )
+            except Exception:
+                logger.exception("L9 reply record failed for %s/%s", room_name, handle)
 
     proposer_handle = state.next_proposer_id or ""
     proposer_action = snapshot_actions.get(proposer_handle, "")
@@ -1032,6 +1112,17 @@ async def _cfn_decide_round(
                     for k, v in timing.items()
                     if isinstance(k, str) and isinstance(v, int | float)
                 }
+            # Alignment-flavor extras: raw token-usage meta (recorded, not
+            # interpreted — field names aren't pinned yet).
+            meta = result.get("meta")
+            if isinstance(meta, dict):
+                state.current_trace.cfn_meta = meta
+
+        # Alignment flavor reports whether it persisted the agreement to CFN
+        # shared memory; surface that on the consensus payload.
+        shared_memory = result.get("shared_memory")
+        if isinstance(shared_memory, dict) and isinstance(shared_memory.get("persisted"), bool):
+            state.cfn_persisted = shared_memory["persisted"]
 
         if status in ("agreed",):
             final_result = result.get("final_result", {})
@@ -1240,19 +1331,43 @@ async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool
             except Exception:
                 logger.exception("_finish_cfn: fallback plan write failed for %s", room_name)
 
+    # L9 close-out: consensus quality metrics (only meaningful on a genuine
+    # agreement with enough confidence reports), the commit envelope, and the
+    # keys they add to the consensus payload. All optional — absent keys keep
+    # the payload byte-compatible for non-L9 consumers.
+    metrics: dict | None = None
+    consensus_l9: dict | None = None
+    if state and state.episode is not None:
+        try:
+            if not broken:
+                metrics = l9_episode.compute_metrics(state.episode, state.last_actions)
+            consensus_l9 = l9_episode.build_consensus_envelope(
+                state.episode,
+                broken=broken,
+                assignments=assignments,
+                metrics=metrics,
+            )
+        except Exception:
+            logger.exception("L9 consensus envelope failed for %s", room_name)
+
     # ``session`` carries the session display name so room-scoped consumers
     # (the chat-channel render) can build a link to the live session view —
     # the room-scoped row has ``coordination_session_id=None`` so the link
     # target can't be derived from the row alone.
-    consensus_content = json.dumps(
-        {
-            "plan": plan,
-            "plan_file": plan_file,
-            "assignments": assignments,
-            "broken": broken,
-            "session": room_name,
-        }
-    )
+    consensus_fields: dict = {
+        "plan": plan,
+        "plan_file": plan_file,
+        "assignments": assignments,
+        "broken": broken,
+        "session": room_name,
+    }
+    if metrics:
+        consensus_fields["metrics"] = metrics
+    if state and state.cfn_persisted is not None:
+        consensus_fields["cfn_persisted"] = state.cfn_persisted
+    if consensus_l9 is not None:
+        consensus_fields["l9"] = consensus_l9
+    consensus_content = json.dumps(consensus_fields)
     parent_room_for_post = (
         room_name.split(":session:", 1)[0] if ":session:" in room_name else room_name
     )
@@ -1313,6 +1428,33 @@ async def _finish_cfn(room_name: str, plan: str, assignments: dict, broken: bool
                 )
             )
         await db.commit()
+
+    # L9 episode close-out: persist the full envelope record to the parent
+    # room's memory, and (dark-launched) hand the agreement to the CFN
+    # knowledge fabric. Both best-effort — consensus is already posted.
+    if state and state.episode is not None:
+        l9_episode.write_episode_record(
+            state.episode,
+            outcome="broken" if broken else "converged",
+            metrics=metrics,
+            plan_file=plan_file,
+        )
+        if not broken and l9_cfn.enabled():
+            consensus_l9_id = None
+            if consensus_l9 is not None:
+                consensus_l9_id = (consensus_l9.get("header", {}).get("message") or {}).get("id")
+            asyncio.ensure_future(
+                l9_cfn.knowledge_write_consensus(
+                    parent_room=state.episode.parent_room,
+                    short_id=state.episode.short_id,
+                    workspace_id=state.workspace_id,
+                    mas_id=state.mas_id,
+                    assignments=assignments,
+                    metrics=metrics,
+                    plan_file=plan_file,
+                    consensus_l9_id=consensus_l9_id,
+                )
+            )
 
 
 async def on_agent_response(room_name: str, handle: str, content: str) -> None:
@@ -1568,6 +1710,7 @@ def _parse_agent_reply(
                     "action": "counter_offer",
                     "offer": parsed["offer"],
                 }
+                l9_episode.sanitize_epistemic_fields(parsed, result)
                 return _validate_and_fill_offer(handle, result, current_offer)
 
             if "action" in parsed:
@@ -1581,6 +1724,7 @@ def _parse_agent_reply(
                 }
                 if parsed.get("offer"):
                     result["offer"] = parsed["offer"]
+                l9_episode.sanitize_epistemic_fields(parsed, result)
                 if action == "counter_offer":
                     return _validate_and_fill_offer(handle, result, current_offer)
                 return result

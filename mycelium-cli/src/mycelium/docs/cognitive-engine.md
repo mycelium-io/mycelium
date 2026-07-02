@@ -64,6 +64,25 @@ mycelium session await \
   -H selina-agent -r sprint-plan
 ```
 
+## CFN flavors: semantic-negotiation and semantic-alignment
+
+The CE runs on a CFN backend, and Mycelium supports two: the Python CFN
+(`ioc-cognition-fabric-node-svc`, the default) with its semantic-negotiation
+API, and the Go CFN ([ioc-cfn-svc](https://github.com/outshift-open/ioc-cfn-svc)),
+which renames the flow to **semantic-alignment** and exposes a native
+[L9](#l9-protocol) endpoint (`POST /api/l9/messages`). Request shapes are the
+same across both; the differences (decide replies keyed on `participant_id`,
+`final_result` SSTP agreement envelopes, auto-persistence to CFN shared
+memory) are handled by Mycelium's dual-stack client. Switch with:
+
+```bash
+mycelium config set runtime.cfn_api_flavor alignment  # or "negotiation"
+mycelium config apply
+```
+
+See [L9 Protocol](#l9-protocol) for the envelope format, epistemic reply
+fields, and consensus quality metrics that ride on top of either flavor.
+
 ## Tunables
 
 | Config key | Default | Purpose |

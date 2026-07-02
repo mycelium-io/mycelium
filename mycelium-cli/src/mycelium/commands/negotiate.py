@@ -103,9 +103,22 @@ def _post(ctx: typer.Context, room: str | None, handle: str | None, content: str
 # ── propose ───────────────────────────────────────────────────────────────────
 
 
+def _check_confidence(confidence: float | None) -> None:
+    """Range-check --confidence with a clear error before model validation."""
+    if confidence is not None and not (0.0 <= confidence <= 1.0):
+        typer.echo(
+            f"  Error: --confidence must be between 0.0 and 1.0, got {confidence}",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+
 @doc_ref(
-    usage="mycelium negotiate propose KEY=VALUE [KEY=VALUE ...] [-r <room>] [-H <handle>]",
-    desc="Make a negotiation proposal with issue values. Only valid after <code>session await</code> returns <code>action: propose</code>.",
+    usage=(
+        "mycelium negotiate propose KEY=VALUE [KEY=VALUE ...] "
+        "[--confidence <0-1>] [--evidence <str> ...] [--reasoning <str>] [-r <room>] [-H <handle>]"
+    ),
+    desc="Make a negotiation proposal with issue values. Only valid after <code>session await</code> returns <code>action: propose</code>. Optionally state your confidence (0-1), cite evidence, and explain your reasoning.",
     group="negotiate",
 )
 @app.command("propose")
@@ -121,6 +134,15 @@ def propose(
     handle: str | None = typer.Option(
         None, "--handle", "-H", help="Your agent handle (overrides identity config)"
     ),
+    confidence: float | None = typer.Option(
+        None, "--confidence", help="Your confidence in this offer, 0.0-1.0"
+    ),
+    evidence: list[str] | None = typer.Option(
+        None, "--evidence", help="Supporting evidence citation (repeatable)"
+    ),
+    reasoning: str | None = typer.Option(
+        None, "--reasoning", help="Free-text rationale for the offer"
+    ),
 ) -> None:
     """
     Submit an offer for the current negotiate/propose tick.
@@ -128,9 +150,14 @@ def propose(
     Pass issue assignments as KEY=VALUE pairs.  The CLI wraps them in the
     correct wire format so you never have to write JSON by hand.
 
+    Optionally attach epistemic context: --confidence (0-1), --evidence
+    (repeatable), --reasoning.  Omitted flags leave the wire payload
+    byte-identical to a plain propose.
+
     Examples:
         mycelium negotiate propose budget=medium timeline=standard scope=standard quality=standard
         mycelium negotiate propose budget=high scope=full --room my-room --handle julia-agent
+        mycelium negotiate propose budget=high --confidence 0.8 --evidence "Q3 revenue up 12%"
     """
     from mycelium.commands.room import _resolve_room
 
@@ -222,13 +249,20 @@ def propose(
                             typer.echo(f'  interpreted "{raw_pair}" as "{canon_pair}"')
                 offer = snapped
 
+        _check_confidence(confidence)
+
         try:
-            reply = ProposeReply(offer=offer)
+            reply = ProposeReply(
+                offer=offer,
+                confidence=confidence,
+                evidence=evidence or None,
+                reasoning=reasoning,
+            )
         except ValidationError as exc:
             typer.echo(f"  Error: invalid propose payload — {exc}", err=True)
             raise typer.Exit(1) from exc
 
-        content = json_module.dumps(reply.model_dump())
+        content = json_module.dumps(reply.model_dump(exclude_none=True))
         _post(ctx, room, handle, content)
 
     except (typer.Exit, typer.Abort):
@@ -245,8 +279,11 @@ VALID_ACTIONS = {"accept", "reject", "end", "counter_offer"}
 
 
 @doc_ref(
-    usage="mycelium negotiate respond <accept|reject> -r <room> -H <handle>",
-    desc="Accept or reject the current proposal. Only valid after <code>session await</code> returns <code>action: respond</code>.",
+    usage=(
+        "mycelium negotiate respond <accept|reject> [--confidence <0-1>] [--evidence <str> ...] "
+        "[--reasoning <str>] [--defer-to <handle>] -r <room> -H <handle>"
+    ),
+    desc="Accept or reject the current proposal. Only valid after <code>session await</code> returns <code>action: respond</code>. Optionally state your confidence (0-1), cite evidence, explain your reasoning, or mark a compliance accept with <code>--defer-to</code>.",
     group="negotiate",
 )
 @app.command("respond")
@@ -262,28 +299,68 @@ def respond(
     handle: str | None = typer.Option(
         None, "--handle", "-H", help="Your agent handle (overrides identity config)"
     ),
+    confidence: float | None = typer.Option(
+        None, "--confidence", help="Your confidence in this response, 0.0-1.0"
+    ),
+    evidence: list[str] | None = typer.Option(
+        None, "--evidence", help="Supporting evidence citation (repeatable)"
+    ),
+    reasoning: str | None = typer.Option(
+        None, "--reasoning", help="Free-text rationale for the response"
+    ),
+    defer_to: str | None = typer.Option(
+        None,
+        "--defer-to",
+        help="Handle you are yielding to — marks a compliance accept (only valid with accept)",
+    ),
 ) -> None:
     """
     Accept, reject, or end the negotiation for the current respond tick.
+
+    Optionally attach epistemic context: --confidence (0-1), --evidence
+    (repeatable), --reasoning.  If you accept only to defer to another agent
+    (yielding without being persuaded), say so with --defer-to <handle> —
+    it's measured, not punished.  Omitted flags leave the wire payload
+    byte-identical to a plain respond.
 
     Examples:
         mycelium negotiate respond accept
         mycelium negotiate respond reject --room my-room
         mycelium negotiate respond end    --handle julia-agent
+        mycelium negotiate respond accept --confidence 0.7 --defer-to julia-agent
     """
     try:
         action = action.strip().lower()
 
-        try:
-            reply = RespondReply(action=action)  # ty: ignore[invalid-argument-type]
-        except ValidationError:
+        if defer_to is not None and action != "accept":
+            typer.echo(
+                f"  Error: --defer-to is only valid with 'accept' (got action '{action}')",
+                err=True,
+            )
+            raise typer.Exit(1)
+
+        _check_confidence(confidence)
+
+        if action not in VALID_ACTIONS:
             typer.echo(
                 f"  Error: action must be one of {', '.join(sorted(VALID_ACTIONS))}, got '{action}'",
                 err=True,
             )
-            raise typer.Exit(1) from None
+            raise typer.Exit(1)
 
-        content = json_module.dumps(reply.model_dump())
+        try:
+            reply = RespondReply(
+                action=action,  # ty: ignore[invalid-argument-type]
+                confidence=confidence,
+                evidence=evidence or None,
+                deferred_to=defer_to,
+                reasoning=reasoning,
+            )
+        except ValidationError as exc:
+            typer.echo(f"  Error: invalid respond payload — {exc}", err=True)
+            raise typer.Exit(1) from exc
+
+        content = json_module.dumps(reply.model_dump(exclude_none=True))
         _post(ctx, room, handle, content)
 
     except (typer.Exit, typer.Abort):

@@ -225,6 +225,53 @@ def join(
         print_error(e, verbose=verbose)
 
 
+def _tick_output(room_name: str | None, data: dict, *, replayed: bool = False) -> dict:
+    """Build the JSON dict `session await` emits for a coordination tick.
+
+    Optional L9 keys (currently ``team_prior``) are only included when present
+    in the payload, so legacy ticks render byte-identical to before.
+    """
+    out = {
+        "type": "tick",
+        "room": room_name,
+        "round": data.get("round"),
+        "action": data.get("action"),
+        "issue_options": data.get("issue_options", {}),
+        "current_offer": data.get("current_offer"),
+        "proposer_id": data.get("proposer_id"),
+        "can_counter_offer": data.get("can_counter_offer", False),
+        "history": data.get("history"),
+    }
+    if data.get("team_prior") is not None:
+        out["team_prior"] = data["team_prior"]
+    if replayed:
+        out["replayed"] = True
+    return out
+
+
+def _consensus_output(room_name: str | None, data: dict, *, replayed: bool = False) -> dict:
+    """Build the JSON dict `session await` emits for a consensus message.
+
+    Optional L9 keys (``metrics``, ``cfn_persisted``) are only included when
+    present in the content, so legacy consensus messages render unchanged.
+    """
+    out = {
+        "type": "consensus",
+        "room": room_name,
+        "plan": data.get("plan"),
+        "plan_file": data.get("plan_file"),
+        "assignments": data.get("assignments"),
+        "broken": data.get("broken", False),
+    }
+    if data.get("metrics") is not None:
+        out["metrics"] = data["metrics"]
+    if data.get("cfn_persisted") is not None:
+        out["cfn_persisted"] = data["cfn_persisted"]
+    if replayed:
+        out["replayed"] = True
+    return out
+
+
 @doc_ref(
     usage="mycelium session await -H <handle> [-r <room>]",
     desc="Block and wait for a negotiation tick. Returns when CE has an action for your agent.",
@@ -297,15 +344,7 @@ def await_tick(
                                     data = {}
                                 typer.echo(
                                     json_module.dumps(
-                                        {
-                                            "type": "consensus",
-                                            "room": msg.get("room_name"),
-                                            "plan": data.get("plan"),
-                                            "plan_file": data.get("plan_file"),
-                                            "assignments": data.get("assignments"),
-                                            "broken": data.get("broken", False),
-                                            "replayed": True,
-                                        }
+                                        _consensus_output(msg.get("room_name"), data, replayed=True)
                                     )
                                 )
                                 return
@@ -328,18 +367,9 @@ def await_tick(
                                     data = data["payload"]
                                 participant = data.get("participant_id")
                                 if participant == handle or participant is None:
-                                    missed_tick = {
-                                        "type": "tick",
-                                        "room": msg.get("room_name"),
-                                        "round": data.get("round"),
-                                        "action": data.get("action"),
-                                        "issue_options": data.get("issue_options", {}),
-                                        "current_offer": data.get("current_offer"),
-                                        "proposer_id": data.get("proposer_id"),
-                                        "can_counter_offer": data.get("can_counter_offer", False),
-                                        "history": data.get("history"),
-                                        "replayed": True,
-                                    }
+                                    missed_tick = _tick_output(
+                                        msg.get("room_name"), data, replayed=True
+                                    )
                         if missed_tick is not None:
                             typer.echo(json_module.dumps(missed_tick))
                             return
@@ -394,21 +424,7 @@ def await_tick(
                         data = data["payload"]
                     participant = data.get("participant_id")
                     if participant == handle or participant is None:
-                        typer.echo(
-                            json_module.dumps(
-                                {
-                                    "type": "tick",
-                                    "room": msg.get("room_name"),
-                                    "round": data.get("round"),
-                                    "action": data.get("action"),
-                                    "issue_options": data.get("issue_options", {}),
-                                    "current_offer": data.get("current_offer"),
-                                    "proposer_id": data.get("proposer_id"),
-                                    "can_counter_offer": data.get("can_counter_offer", False),
-                                    "history": data.get("history"),
-                                }
-                            )
-                        )
+                        typer.echo(json_module.dumps(_tick_output(msg.get("room_name"), data)))
                         return
 
                 if mtype == "coordination_consensus":
@@ -416,18 +432,7 @@ def await_tick(
                         data = json_module.loads(msg.get("content", "{}"))
                     except json_module.JSONDecodeError:
                         data = {}
-                    typer.echo(
-                        json_module.dumps(
-                            {
-                                "type": "consensus",
-                                "room": msg.get("room_name"),
-                                "plan": data.get("plan"),
-                                "plan_file": data.get("plan_file"),
-                                "assignments": data.get("assignments"),
-                                "broken": data.get("broken", False),
-                            }
-                        )
-                    )
+                    typer.echo(json_module.dumps(_consensus_output(msg.get("room_name"), data)))
                     return
 
     except KeyboardInterrupt:

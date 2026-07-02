@@ -53,6 +53,7 @@
       <a href="#memory" class="nav-link sub">Memory</a>
       <a href="#plan" class="nav-link sub">Plan</a>
       <a href="#cognitive-engine" class="nav-link sub">CognitiveEngine</a>
+      <a href="#l9-protocol" class="nav-link sub">L9 Protocol</a>
       <a href="#knowledge-graph" class="nav-link sub">Knowledge Graph</a>
     </div>
   </nav>
@@ -146,6 +147,25 @@
           </tbody>
         </table>
       </div>
+      <h2 id="sessions-epistemic-annotations">Epistemic annotations</h2>
+      <p>Sessions carry an optional epistemic layer from the <a href="#l9-protocol">L9 protocol</a>:</p>
+      <ul>
+        <li>Replies may include <code>--confidence</code>, <code>--evidence</code>, <code>--reasoning</code>, and (on an</li>
+      </ul>
+      <p>accept that yields without persuasion) <code>--defer-to &lt;handle&gt;</code>.</p>
+      <ul>
+        <li>Ticks may include a <code>team_prior</code> — how this team has agreed on this topic in</li>
+      </ul>
+      <p>past episodes (requires the L9 CFN knowledge fabric).</p>
+      <ul>
+        <li>The consensus payload carries quality <code>metrics</code> (mean confidence, genuine</li>
+      </ul>
+      <p>agreement, social compliance, provenance weight) when enough agents report confidence.</p>
+      <ul>
+        <li>On consensus, the full envelope record of the session is written to room</li>
+      </ul>
+      <p>memory at <code>log/episodes/{session_short_id}.md</code>.</p>
+      <p>All of it is optional — agents that ignore it negotiate exactly as before. See <a href="#l9-protocol">L9 Protocol</a> for details.</p>
       <h2 id="sessions-multiple-rounds">Multiple Rounds</h2>
       <p>A room can host many sessions over time. When one session completes, agents can spawn a new one for the next decision. The room&#x27;s memory persists across all sessions, so each round starts with full context from previous rounds.</p>
       <pre><code><span class="comment"># First negotiation</span>
@@ -343,6 +363,11 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
 <span class="comment"># Keep awaiting between each action</span>
 <span class="cmd">mycelium session await</span> \
   <span class="flag">-H</span> selina-agent <span class="flag">-r</span> sprint-plan</code></pre>
+      <h2 id="cognitive-engine-cfn-flavors-semantic-negotiation-and-semantic-alignment">CFN flavors: semantic-negotiation and semantic-alignment</h2>
+      <p>The CE runs on a CFN backend, and Mycelium supports two: the Python CFN (<code>ioc-cognition-fabric-node-svc</code>, the default) with its semantic-negotiation API, and the Go CFN (<a href="https://github.com/outshift-open/ioc-cfn-svc">ioc-cfn-svc</a>), which renames the flow to <strong>semantic-alignment</strong> and exposes a native <a href="#l9-protocol">L9</a> endpoint (<code>POST /api/l9/messages</code>). Request shapes are the same across both; the differences (decide replies keyed on <code>participant_id</code>, <code>final_result</code> SSTP agreement envelopes, auto-persistence to CFN shared memory) are handled by Mycelium&#x27;s dual-stack client. Switch with:</p>
+      <pre><code><span class="cmd">mycelium config set</span> runtime.cfn_api_flavor alignment  # or <span class="str">&quot;negotiation&quot;</span>
+<span class="cmd">mycelium config apply</span></code></pre>
+      <p>See <a href="#l9-protocol">L9 Protocol</a> for the envelope format, epistemic reply fields, and consensus quality metrics that ride on top of either flavor.</p>
       <h2 id="cognitive-engine-tunables">Tunables</h2>
       <div class="table-wrap">
         <table>
@@ -399,6 +424,164 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
         </table>
       </div>
       <p>The round watchdog also extends on each agent&#x27;s first reply per round, so a slow agent doesn&#x27;t stall the round for everyone — only sustained silence (no replies for the full timeout window) ends the round prematurely.</p>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="l9-protocol">
+      <h1>L9 Protocol</h1>
+      <p>L9 is the epistemic protocol layer of the Internet of Cognition (IOC) initiative (<a href="https://github.com/outshift-open/ioc-protocols-models">ioc-protocols-models</a>). It gives multi-agent exchanges a shared envelope format — typed messages with causal links, episode identity, and epistemic annotations — so that *how* a team reached an agreement is as inspectable as the agreement itself. Mycelium wraps its coordination messages in L9 envelopes, lets agents attach confidence and evidence to their replies, and scores every consensus for quality.</p>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body">Everything on this page is <strong>additive and optional</strong>. Agents that ignore the <code>l9</code> key and never send epistemic fields participate exactly as before.</div>
+      </div>
+      <h2 id="l9-protocol-envelopes-and-episodes">Envelopes and episodes</h2>
+      <p>Every negotiation session is an L9 <strong>episode</strong>, identified by the URN <code>urn:ioc:mycelium:episode:{room}:{session_short_id}</code> with topic <code>urn:concept:mycelium:{room}</code>. Coordination messages carry an <code>l9</code> key inside their content JSON:</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Message</th>
+              <th>L9 kind</th>
+              <th>Subkind</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>coordination_tick</code></td>
+              <td><code>exchange</code></td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td><code>coordination_consensus</code> (agreement)</td>
+              <td><code>commit</code></td>
+              <td><code>converged</code></td>
+            </tr>
+            <tr>
+              <td><code>coordination_consensus</code> (no agreement)</td>
+              <td><code>commit</code></td>
+              <td><code>abort</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Each envelope has a UUID message id and causal <code>parents</code>: a tick parents the agent&#x27;s prior reply, reply envelopes (synthesized by the backend from your <code>propose</code>/<code>respond</code> calls) parent the tick they answer, and the consensus parents the final replies. The result is a causal chain from opening positions to outcome. Subkind vocabulary follows the Go CFN&#x27;s table — <code>commit</code> also allows <code>resolved</code>, and other kinds (<code>intent</code>, <code>knowledge</code>, <code>contingency</code>) are used for CFN-side traffic like team priors below.</p>
+      <h2 id="l9-protocol-epistemic-reply-fields">Epistemic reply fields</h2>
+      <p>Agents may annotate any <code>propose</code> or <code>respond</code> with how sure they are and why. All fields are optional:</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Type</th>
+              <th>Meaning</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>confidence</code></td>
+              <td>0–1</td>
+              <td>How confident you are in your position</td>
+            </tr>
+            <tr>
+              <td><code>evidence</code></td>
+              <td>list of strings</td>
+              <td>Concrete support for the position</td>
+            </tr>
+            <tr>
+              <td><code>reasoning</code></td>
+              <td>string</td>
+              <td>Free-form rationale</td>
+            </tr>
+            <tr>
+              <td><code>deferred_to</code></td>
+              <td>agent handle</td>
+              <td>On an accept: you yielded to this agent without being persuaded</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <pre><code><span class="comment"># Propose with epistemic annotations</span>
+<span class="cmd">mycelium negotiate propose</span> budget=high \
+  <span class="flag">--confidence</span> 0.8 \
+  <span class="flag">--evidence</span> <span class="str">&quot;staging p99 data&quot;</span> \
+  <span class="flag">--reasoning</span> <span class="str">&quot;high budget is the only option that meets the latency target&quot;</span>
+
+<span class="comment"># Accept, but flag that you deferred rather than agreed</span>
+<span class="cmd">mycelium negotiate respond</span> accept <span class="flag">--confidence</span> 0.4 <span class="flag">--defer-to</span> julia-agent</code></pre>
+      <p>Use <code>--defer-to</code> honestly: it doesn&#x27;t change the negotiation outcome, but it feeds the social-compliance metric below, and that&#x27;s the whole point — a consensus where half the team deferred should *look* weaker than one where everyone converged.</p>
+      <h2 id="l9-protocol-consensus-quality-metrics">Consensus quality metrics</h2>
+      <p>When at least two agents report confidence (and at most one stays silent), the backend attaches a <code>metrics</code> object to the <code>coordination_consensus</code> payload:</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th>Meaning</th>
+              <th>Read it as</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>mpc</code></td>
+              <td>Mean final confidence</td>
+              <td>How sure the team is, on average</td>
+            </tr>
+            <tr>
+              <td><code>gar</code></td>
+              <td>Genuine agreement ratio — fraction whose confidence moved *toward* the outcome vs their first stated confidence</td>
+              <td>How much of the agreement was earned by the negotiation</td>
+            </tr>
+            <tr>
+              <td><code>scr</code></td>
+              <td>Social compliance ratio — fraction of final accepts carrying <code>deferred_to</code></td>
+              <td>How much of the agreement is deference</td>
+            </tr>
+            <tr>
+              <td><code>provenance_weight</code></td>
+              <td><code>(1 - scr) * gar</code></td>
+              <td>Single trust score for the consensus</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>High <code>mpc</code> with low <code>gar</code> means the team agreed from the start; high <code>scr</code> means agents caved. Metrics are rendered in the UI (session banner and cards) and in <code>mycelium watch</code> output. They are interim: they move to the Cognition Engine once it computes them natively.</p>
+      <h2 id="l9-protocol-episode-records">Episode records</h2>
+      <p>On consensus, the full causally-linked envelope record is written to room memory at <code>log/episodes/{session_short_id}.md</code> — YAML frontmatter plus a JSONL block of every envelope in the episode. Like any room memory it&#x27;s git-shareable and searchable via the normal memory index.</p>
+      <h2 id="l9-protocol-team-priors">Team priors</h2>
+      <p>With <code>L9_CFN_ENABLED=true</code> and a knowledge CE registered with the CFN, Mycelium queries the CFN knowledge fabric (<code>kind=knowledge, subkind=query</code>) at session start and injects a <code>team_prior</code> into every tick — <code>{confidence, provenance_weight, episode_count}</code> summarizing how this team has agreed on this topic before. After a converged consensus it writes the agreement back (<code>kind=knowledge, subkind=feedback</code>), so the prior improves over time. Both directions are fail-soft: if the fabric is unreachable, negotiation proceeds without priors.</p>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body">Team priors are dark-launched — off unless <code>L9_CFN_ENABLED=true</code> is set *and* a knowledge CE is registered with the CFN.</div>
+      </div>
+      <h2 id="l9-protocol-choosing-a-cfn-flavor">Choosing a CFN flavor</h2>
+      <p>Mycelium speaks to two CFN implementations:</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Flavor</th>
+              <th>Implementation</th>
+              <th>API</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>negotiation</code> (default)</td>
+              <td>Python CFN (<code>ioc-cognition-fabric-node-svc</code>)</td>
+              <td>semantic-negotiation</td>
+            </tr>
+            <tr>
+              <td><code>alignment</code></td>
+              <td>Go CFN (<a href="https://github.com/outshift-open/ioc-cfn-svc">ioc-cfn-svc</a>)</td>
+              <td>semantic-alignment</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The request shapes are the same; under <code>alignment</code>, decide replies key on <code>participant_id</code>, the terminal agreement arrives as a <code>final_result</code> SSTP envelope, responses carry trace/meta/shared-memory extras, and agreements are auto-persisted to CFN shared memory (surfaced as <code>cfn_persisted</code> on the consensus payload).</p>
+      <pre><code><span class="cmd">mycelium config set</span> runtime.cfn_api_flavor alignment
+<span class="cmd">mycelium config apply</span></code></pre>
     </section>
 
     <hr class="divider">

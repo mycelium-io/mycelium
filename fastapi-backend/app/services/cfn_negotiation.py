@@ -2,16 +2,26 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Async client for the CFN cognitive agents semantic negotiation API.
+Async client for the CFN semantic negotiation API — dual-stack.
 
-Calls go through the generated ``ioc_cfn_svc_api_client`` (regenerated from
-``http://localhost:9002/openapi.json`` via ``scripts/gen-cfn-client.sh``).
-The typed client is the contract — ty catches breaking CFN field changes
-at the call sites below when the client is regenerated.
+``settings.CFN_API_FLAVOR`` selects the API generation:
 
-Endpoints used:
+``negotiation`` (python CFN, ioc-cognition-fabric-node-svc):
   POST /api/workspaces/{ws}/multi-agentic-systems/{mas}/semantic-negotiation/start
   POST /api/workspaces/{ws}/multi-agentic-systems/{mas}/semantic-negotiation/decide
+  Calls go through the generated ``ioc_cfn_svc_api_client`` (regenerated from
+  ``http://localhost:9002/openapi.json`` via ``scripts/gen-cfn-client.sh``).
+  The typed client is the contract — ty catches breaking CFN field changes
+  at the call sites below when the client is regenerated.
+
+``alignment`` (Go CFN, ioc-cfn-svc):
+  POST /api/workspaces/{ws}/multi-agentic-systems/{mas}/semantic-alignment/start
+  POST /api/workspaces/{ws}/multi-agentic-systems/{mas}/semantic-alignment/decide
+  Same request shape except decide replies key on ``participant_id`` (not
+  ``agent_id``). Called with plain httpx — two endpoints with open-ended JSON
+  responses don't warrant a second generated client. Terminal agreements
+  arrive as a ``final_result`` SSTP envelope (normalized in coordination.py)
+  and the response carries ``trace``/``meta``/``shared_memory`` extras.
 """
 
 from __future__ import annotations
@@ -154,6 +164,74 @@ def _extract_cfn_loop_lag_headers(headers: Any) -> None:
                 pass
 
 
+async def _post_alignment(
+    *,
+    op: str,
+    workspace_id: str,
+    mas_id: str,
+    payload: dict[str, Any],
+    operation: str,
+) -> dict[str, Any]:
+    """POST to the Go CFN's semantic-alignment API with the standard
+    timing/metrics instrumentation. Raises :class:`CfnNegotiationError`."""
+    sent_ns = time.time_ns()
+    cfn_timing_stamp("sent_wall_ns", sent_ns)
+    url = (
+        f"{settings.COGNITION_FABRIC_NODE_URL}/api/workspaces/{workspace_id}"
+        f"/multi-agentic-systems/{mas_id}/semantic-alignment/{op}"
+    )
+    t0 = time.monotonic()
+    try:
+        with cfn_timing_stage("client_setup_ms"):
+            client = httpx.AsyncClient(
+                timeout=_CFN_HTTP_TIMEOUT,
+                headers={"X-Client-Sent-Wall-Ns": str(sent_ns)},
+            )
+        try:
+            with cfn_timing_stage("http_ms"):
+                resp = await client.post(url, json=payload)
+            cfn_timing_stamp("response_bytes", len(resp.content))
+            _extract_cfn_loop_lag_headers(resp.headers)
+        finally:
+            with cfn_timing_stage("client_close_ms"):
+                await client.aclose()
+        resp.raise_for_status()
+        result = resp.json()
+    except httpx.HTTPStatusError as exc:
+        body = exc.response.content[:200].decode("utf-8", errors="replace").strip()
+        reason = f"CFN {op} returned {exc.response.status_code}: {body}"
+        logger.warning("CFN %s (alignment) failed | %s", operation, reason)
+        record_cfn_call(
+            service="node",
+            operation=operation,
+            duration_ms=(time.monotonic() - t0) * 1000,
+            status_code=exc.response.status_code,
+            error=True,
+        )
+        raise CfnNegotiationError(reason) from exc
+    except Exception as exc:
+        reason = _describe_exc(exc)
+        logger.exception("CFN %s (alignment) failed | reason=%s", operation, reason)
+        record_cfn_call(
+            service="node",
+            operation=operation,
+            duration_ms=(time.monotonic() - t0) * 1000,
+            error=True,
+        )
+        raise CfnNegotiationError(reason) from exc
+    record_cfn_call(
+        service="node",
+        operation=operation,
+        duration_ms=(time.monotonic() - t0) * 1000,
+        status_code=resp.status_code,
+    )
+    if not isinstance(result, dict):
+        raise CfnNegotiationError(
+            f"CFN {op} returned unexpected payload type: {type(result).__name__}"
+        )
+    return result
+
+
 async def start_negotiation(
     *,
     session_id: str,
@@ -168,6 +246,24 @@ async def start_negotiation(
 
     ``agents`` items: ``{"id": handle, "name": handle}``
     """
+    if settings.CFN_API_FLAVOR == "alignment":
+        cfn_timing_stamp("endpoint", "start_negotiation")
+        payload: dict[str, Any] = {
+            "session_id": session_id,
+            "content_text": content_text,
+            "agents": [{"id": a["id"], "name": a["name"]} for a in agents],
+        }
+        if n_steps and n_steps > 0:
+            payload["n_steps"] = n_steps
+        result = await _post_alignment(
+            op="start",
+            workspace_id=workspace_id,
+            mas_id=mas_id,
+            payload=payload,
+            operation="start_negotiation",
+        )
+        _extract_cfn_usage(result, "start_negotiation", room=room, mas_id=mas_id)
+        return result
     cfn_timing_stamp("endpoint", "start_negotiation")
     sent_ns = time.time_ns()
     cfn_timing_stamp("sent_wall_ns", sent_ns)
@@ -263,6 +359,25 @@ async def decide_negotiation(
 
     ``agent_replies`` items: ``{"agent_id": handle, "action": "accept"|"reject"|"counter_offer", "offer": {...}|None}``
     """
+    if settings.CFN_API_FLAVOR == "alignment":
+        cfn_timing_stamp("endpoint", "decide_negotiation")
+        # The Go CFN keys replies on participant_id (the python CFN's agent_id).
+        replies = []
+        for r in agent_replies:
+            reply: dict[str, Any] = {
+                "participant_id": r["agent_id"],
+                "action": r["action"],
+            }
+            if isinstance(r.get("offer"), dict):
+                reply["offer"] = r["offer"]
+            replies.append(reply)
+        return await _post_alignment(
+            op="decide",
+            workspace_id=workspace_id,
+            mas_id=mas_id,
+            payload={"session_id": session_id, "agent_replies": replies},
+            operation="decide_negotiation",
+        )
     cfn_timing_stamp("endpoint", "decide_negotiation")
     sent_ns = time.time_ns()
     cfn_timing_stamp("sent_wall_ns", sent_ns)

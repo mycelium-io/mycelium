@@ -62,6 +62,14 @@ services:
       GRAPH_DB_URL: ${GRAPH_DB_URL:-postgresql://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium}
       API_BASE_URL: http://mycelium-backend:8000
       COORDINATION_TICK_TIMEOUT_SECONDS: ${COORDINATION_TICK_TIMEOUT_SECONDS:-30}
+      # Which CFN negotiation API generation to speak. "negotiation" targets
+      # the python CFN (ioc-cognition-fabric-node-svc); "alignment" targets
+      # the Go CFN (ioc-cfn-svc). Set via `mycelium config set
+      # runtime.cfn_api_flavor alignment && mycelium config apply`.
+      CFN_API_FLAVOR: ${CFN_API_FLAVOR:-negotiation}
+      # Post L9 knowledge envelopes to the CFN's /api/l9/messages endpoint.
+      # Requires a knowledge CE registered with the CFN — leave off otherwise.
+      L9_CFN_ENABLED: ${L9_CFN_ENABLED:-false}
       # IN-CONTAINER path the backend writes rooms/memory/plans to. MUST match
       # the bind-mount target below — otherwise writes land in the container's
       # overlay FS and are lost on recreate. (The host-side MYCELIUM_DATA_DIR
