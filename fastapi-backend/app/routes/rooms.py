@@ -94,9 +94,23 @@ async def _ensure_mas(db_room: Room, session: AsyncSession) -> str | None:
     )
     mas_id: str | None = None
 
+    # Set the MAS config at creation so negotiations use mycelium's retry /
+    # validation-threshold policy instead of the CFN defaults (retry_max=3,
+    # which silently runs a session several times over on a low alignment
+    # score — see CFN_RETRY_MAX_ATTEMPTS / CFN_VALIDATION_SCORE_INTERVENTION).
+    # Whether the mgmt plane applies mas_config at create vs needs a follow-up
+    # PATCH is unverified pending the live smoke test; unknown fields are
+    # ignored, so sending it is safe either way.
+    create_body = {
+        "name": db_room.name,
+        "mas_config": {
+            "retry_max_attempts": settings.CFN_RETRY_MAX_ATTEMPTS,
+            "validation_score_intervention": settings.CFN_VALIDATION_SCORE_INTERVENTION,
+        },
+    }
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(base_url, json={"name": db_room.name})
+            resp = await client.post(base_url, json=create_body)
             if resp.status_code == 409:
                 mas_id = await _fetch_mas_id_by_name(db_room.name)
             else:

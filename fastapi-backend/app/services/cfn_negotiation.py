@@ -66,7 +66,8 @@ logger = logging.getLogger(__name__)
 
 # CFN runs LLM + intent discovery + options generation; 60s is too short.
 # /decide can also take a while when CFN persists agreements to shared memory.
-_CFN_HTTP_TIMEOUT = httpx.Timeout(300.0)
+# Configurable via CFN_DECIDE_TIMEOUT_SECONDS.
+_CFN_HTTP_TIMEOUT = httpx.Timeout(float(settings.CFN_DECIDE_TIMEOUT_SECONDS))
 
 
 class CfnNegotiationError(RuntimeError):

@@ -59,6 +59,25 @@ class Settings(BaseSettings):
     # burning rounds indefinitely. 0 = fall through to CFN auto-compute.
     NEGOTIATION_N_STEPS: int = 20
 
+    # CFN MAS config (set on the MAS at creation via the mgmt plane). These
+    # tame the retry/timeout behaviour that otherwise makes a single session
+    # run several times the rounds you'd expect:
+    #   retry_max_attempts — how many times the cognition engine may reject an
+    #     agreement (alignment score below the intervention threshold) and
+    #     restart negotiation from round 1. CFN default is 3; we default to 1
+    #     (take the first agreement — mycelium's own round loop + plan compiler
+    #     handle quality) for predictable timing.
+    #   validation_score_intervention — the alignment score below which the
+    #     engine intervenes/retries. Lower it if LLM-callback agents can't
+    #     reach the CFN default (0.6).
+    CFN_RETRY_MAX_ATTEMPTS: int = 1
+    CFN_VALIDATION_SCORE_INTERVENTION: float = 0.6
+
+    # Per-call HTTP timeout (seconds) for CFN start/decide. A single /decide is
+    # one round's decision; 300s covers the engine's LLM + scoring. Bump if a
+    # slow engine under load approaches this ceiling.
+    CFN_DECIDE_TIMEOUT_SECONDS: int = 300
+
     @field_validator("LLM_BASE_URL", mode="before")
     @classmethod
     def _coerce_base_url(cls, v: object) -> object:

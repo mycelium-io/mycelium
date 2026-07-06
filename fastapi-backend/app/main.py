@@ -82,14 +82,14 @@ def _register_memory_provider() -> None:
 
     api_url = settings.API_BASE_URL
     payload = {
-        "memory_provider_name": "mycelium",
+        "name": "mycelium",
         "description": (
             "Mycelium persistent memory — namespaced KVP, semantic vector search, "
             f"and knowledge graph. API: {api_url}/docs"
         ),
         "config": {
             "url": api_url,
-            "shared": "True",
+            "shared": True,
         },
     }
     t0 = time.monotonic()

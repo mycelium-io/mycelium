@@ -50,6 +50,7 @@ class MessageType:
     COORDINATION_START = "coordination_start"
     COORDINATION_TICK = "coordination_tick"
     COORDINATION_CONSENSUS = "coordination_consensus"
+    COORDINATION_RETRY = "coordination_retry"
 
 
 # ── event primitive (#392) ────────────────────────────────────────────────────
