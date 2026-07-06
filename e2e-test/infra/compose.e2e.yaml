@@ -127,7 +127,7 @@ services:
       CFN_MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
       COGNITION_FABRIC_NODE_URL: http://ioc-cognition-fabric-node-svc:9002
       COORDINATION_TICK_TIMEOUT_SECONDS: ${COORDINATION_TICK_TIMEOUT_SECONDS:-30}
-      MYCELIUM_DATA_DIR: /root/.mycelium
+      MYCELIUM_DATA_DIR: /home/mycelium/.mycelium
       MYCELIUM_STUB_EMBEDDINGS: "${MYCELIUM_STUB_EMBEDDINGS:-0}"
       LLM_MODEL: "${LLM_MODEL:-}"
       LLM_API_KEY: "${LLM_API_KEY:-}"
@@ -137,7 +137,7 @@ services:
     ports:
       - "${E2E_BACKEND_PORT:-8000}:8000"
     volumes:
-      - e2e-mycelium-data:/root/.mycelium
+      - e2e-mycelium-data:/home/mycelium/.mycelium
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
       interval: 5s
