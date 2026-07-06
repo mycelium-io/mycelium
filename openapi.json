@@ -3726,6 +3726,11 @@
                         ],
                         "title": "Source",
                         "default": "legacy"
+                    },
+                    "data_format": {
+                        "type": "string",
+                        "title": "Data Format",
+                        "default": "otel-trace"
                     }
                 },
                 "type": "object",

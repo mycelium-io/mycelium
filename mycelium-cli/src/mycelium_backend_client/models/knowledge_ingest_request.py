@@ -26,6 +26,7 @@ class KnowledgeIngestRequest:
         workspace_id (None | str | Unset):
         mas_id (None | str | Unset):
         source (KnowledgeIngestRequestSource | Unset):  Default: KnowledgeIngestRequestSource.LEGACY.
+        data_format (str | Unset):  Default: 'otel-trace'.
     """
 
     records: list[KnowledgeIngestRequestRecordsItem]
@@ -34,6 +35,7 @@ class KnowledgeIngestRequest:
     workspace_id: None | str | Unset = UNSET
     mas_id: None | str | Unset = UNSET
     source: KnowledgeIngestRequestSource | Unset = KnowledgeIngestRequestSource.LEGACY
+    data_format: str | Unset = "otel-trace"
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -70,6 +72,8 @@ class KnowledgeIngestRequest:
         if not isinstance(self.source, Unset):
             source = self.source.value
 
+        data_format = self.data_format
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
@@ -87,6 +91,8 @@ class KnowledgeIngestRequest:
             field_dict["mas_id"] = mas_id
         if source is not UNSET:
             field_dict["source"] = source
+        if data_format is not UNSET:
+            field_dict["data_format"] = data_format
 
         return field_dict
 
@@ -145,6 +151,8 @@ class KnowledgeIngestRequest:
         else:
             source = KnowledgeIngestRequestSource(_source)
 
+        data_format = d.pop("data_format", UNSET)
+
         knowledge_ingest_request = cls(
             records=records,
             agent_id=agent_id,
@@ -152,6 +160,7 @@ class KnowledgeIngestRequest:
             workspace_id=workspace_id,
             mas_id=mas_id,
             source=source,
+            data_format=data_format,
         )
 
         knowledge_ingest_request.additional_properties = d
