@@ -73,10 +73,19 @@ class Settings(BaseSettings):
     CFN_RETRY_MAX_ATTEMPTS: int = 1
     CFN_VALIDATION_SCORE_INTERVENTION: float = 0.6
 
-    # Per-call HTTP timeout (seconds) for CFN start/decide. A single /decide is
-    # one round's decision; 300s covers the engine's LLM + scoring. Bump if a
-    # slow engine under load approaches this ceiling.
-    CFN_DECIDE_TIMEOUT_SECONDS: int = 300
+    # Per-call HTTP timeout (seconds) for CFN start/decide — a DEAD-CONNECTION
+    # BACKSTOP, not a negotiation control. The boundary:
+    #   * Agent responsiveness is mycelium's round watchdog
+    #     (_CFN_ROUND_TIMEOUT_SECS), which restarts per agent reply so
+    #     single-threaded/serialized agent runtimes get a fresh budget each
+    #     time. That timer runs *before* /decide — by the time we call the CFN,
+    #     all replies are collected, so agent slowness never reaches this one.
+    #   * The CFN owns the negotiation-compute timeout and returns a structured
+    #     ``status: "timeout"`` we handle cleanly. This HTTP timeout must sit
+    #     comfortably ABOVE the CFN's internal timeout so that status wins over
+    #     an opaque transport error; it should essentially never fire.
+    # (Confirm the CFN's internal negotiation timeout is < this at smoke-test.)
+    CFN_DECIDE_TIMEOUT_SECONDS: int = 600
 
     @field_validator("LLM_BASE_URL", mode="before")
     @classmethod
