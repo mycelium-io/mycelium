@@ -164,7 +164,7 @@ JSON (existing keys unchanged — both delivery paths keep working):
 New module `app/services/l9_cfn.py` (thin httpx client, no generated client —
 the endpoint takes/returns one model):
 
-- `post_l9(envelope) -> L9`: `POST {COGNITION_FABRIC_NODE_URL}/api/l9/messages`.
+- `post_l9(envelope) -> L9`: `POST {CFN_SVC_URL}/api/l9/messages`.
 - **Knowledge write** after consensus: `kind=knowledge` (subkind per CFN
   vocabulary) carrying the agreement, metrics, and `plan_file` reference.
   Fire-and-forget with logged failure — consensus must not block on it.
@@ -216,7 +216,7 @@ the endpoint takes/returns one model):
 
 - `runtime.cfn_api_flavor` (`negotiation` | `alignment`) → emitted into
   `~/.mycelium/.env` as `CFN_API_FLAVOR` by `generate_env_file()`.
-- (No other env plumbing changes: `COGNITION_FABRIC_NODE_URL`,
+- (No other env plumbing changes: `CFN_SVC_URL`,
   `WORKSPACE_ID`, `MAS_ID` already flow through.)
 
 ### 3.4 Agent skill/protocol docs — all three adapters
@@ -315,7 +315,7 @@ All fields optional → sessions run by non-L9 agents render exactly as today.
 - Keep `ioc-cfn-mgmt-plane-svc` as-is (the Go CFN consumes the same
   `MGMT_URL` config-push pattern) pending open question 4.
 - Backend env: add `CFN_API_FLAVOR` passthrough next to the existing
-  `COGNITION_FABRIC_NODE_URL` wiring in `compose.yml`/`compose-dev.yml`.
+  `CFN_SVC_URL` wiring in `compose.yml`/`compose-dev.yml`.
 - New services for the L9 knowledge path (behind the cfn profile or a new
   `l9` profile): `ghcr.io/outshift-open/ioc-cfn-cognition-engines` (CE
   gateway: ingestion + evidence + semantic-alignment agents) and

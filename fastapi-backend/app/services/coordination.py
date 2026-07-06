@@ -7,7 +7,7 @@ Multi-agent coordination service.
 Manages the join-window → tick-based negotiation lifecycle for Mycelium rooms.
 State is in-memory (v1) — cleared on server restart.
 
-CFN mode (requires COGNITION_FABRIC_NODE_URL + room.mas_id + room.workspace_id):
+CFN mode (requires CFN_SVC_URL + room.mas_id + room.workspace_id):
   1. First agent joins → start join timer
   2. Timer fires → call CFN start, fan out coordination_ticks to ALL agents at once
   3. Agents reply → replies collected in _cfn_state[room_name].pending_replies
@@ -445,9 +445,9 @@ async def _run_tick(room_name: str, tick: int) -> None:
     if tick != 0:
         return
 
-    if not settings.COGNITION_FABRIC_NODE_URL or not mas_id or not workspace_id:
+    if not settings.CFN_SVC_URL or not mas_id or not workspace_id:
         logger.error(
-            "Coordination requested for %s but CFN not configured (no COGNITION_FABRIC_NODE_URL "
+            "Coordination requested for %s but CFN not configured (no CFN_SVC_URL "
             "or coord_session mas_id/workspace_id not set)",
             room_name,
         )

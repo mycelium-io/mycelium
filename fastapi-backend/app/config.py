@@ -92,7 +92,7 @@ class Settings(BaseSettings):
 
     # IoC CFN service (ioc-cfn-svc, required for session negotiation) —
     # the semantic-alignment API and native L9 routing.
-    COGNITION_FABRIC_NODE_URL: str = ""
+    CFN_SVC_URL: str = ""
 
     # Post L9 knowledge envelopes to the CFN's /api/l9/messages endpoint
     # (knowledge query at session start, knowledge write after consensus).

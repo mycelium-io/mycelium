@@ -33,12 +33,12 @@ _L9_HTTP_TIMEOUT = httpx.Timeout(60.0)
 
 
 def enabled() -> bool:
-    return bool(settings.L9_CFN_ENABLED and settings.COGNITION_FABRIC_NODE_URL)
+    return bool(settings.L9_CFN_ENABLED and settings.CFN_SVC_URL)
 
 
 async def post_l9(envelope_dict: dict[str, Any]) -> dict[str, Any] | None:
     """POST an envelope to the CFN; return the CE's L9 response dict or None."""
-    url = f"{settings.COGNITION_FABRIC_NODE_URL}/api/l9/messages"
+    url = f"{settings.CFN_SVC_URL}/api/l9/messages"
     try:
         client = cfn_http.get_client()
         resp = await client.post(url, json=envelope_dict, timeout=_L9_HTTP_TIMEOUT)

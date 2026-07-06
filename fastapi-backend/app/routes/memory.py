@@ -287,7 +287,8 @@ async def create_memories(
             fan_in(
                 room_name=room_name,
                 sender_handle=item.created_by,
-                content=f"{item.key}\n\n{body}",
+                content=item.key,
+                output_text=body,
                 source="memory_set",
             )
         )

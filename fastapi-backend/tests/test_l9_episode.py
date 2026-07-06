@@ -285,7 +285,7 @@ async def test_alignment_decide_maps_participant_id(monkeypatch):
     from app.services import cfn_negotiation
     from ioc_cfn_svc_api_client.models import SemanticalignmentDecideResponse
 
-    monkeypatch.setattr(settings, "COGNITION_FABRIC_NODE_URL", "http://cfn:9002")
+    monkeypatch.setattr(settings, "CFN_SVC_URL", "http://cfn:9002")
     monkeypatch.setattr(cfn_negotiation, "decide_api", _CapturingEndpoint)
     _CapturingEndpoint.parsed = SemanticalignmentDecideResponse(status="agreed")
 
@@ -319,7 +319,7 @@ async def test_alignment_start_request_shape(monkeypatch):
     from app.services import cfn_negotiation
     from ioc_cfn_svc_api_client.models import SemanticalignmentStartResponse
 
-    monkeypatch.setattr(settings, "COGNITION_FABRIC_NODE_URL", "http://cfn:9002")
+    monkeypatch.setattr(settings, "CFN_SVC_URL", "http://cfn:9002")
     monkeypatch.setattr(cfn_negotiation, "start_api", _CapturingEndpoint)
     _CapturingEndpoint.parsed = SemanticalignmentStartResponse(status="initiated")
 
@@ -349,7 +349,7 @@ async def test_decide_raises_on_missing_status(monkeypatch):
     from app.services import cfn_negotiation
     from ioc_cfn_svc_api_client.models import SemanticalignmentDecideResponse
 
-    monkeypatch.setattr(settings, "COGNITION_FABRIC_NODE_URL", "http://cfn:9002")
+    monkeypatch.setattr(settings, "CFN_SVC_URL", "http://cfn:9002")
     monkeypatch.setattr(cfn_negotiation, "decide_api", _CapturingEndpoint)
     _CapturingEndpoint.parsed = SemanticalignmentDecideResponse()  # no status
 

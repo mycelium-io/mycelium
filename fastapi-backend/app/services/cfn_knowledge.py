@@ -83,10 +83,7 @@ class CfnKnowledgeError(RuntimeError):
 
 
 def _mas_base(workspace_id: str, mas_id: str) -> str:
-    return (
-        f"{settings.COGNITION_FABRIC_NODE_URL}"
-        f"/api/workspaces/{workspace_id}/multi-agentic-systems/{mas_id}"
-    )
+    return f"{settings.CFN_SVC_URL}/api/workspaces/{workspace_id}/multi-agentic-systems/{mas_id}"
 
 
 async def create_or_update_shared_memories(
@@ -96,11 +93,20 @@ async def create_or_update_shared_memories(
     records: list[dict[str, Any]],
     agent_id: str | None = None,
     request_id: str | None = None,
+    data_format: str = "otel-trace",
 ) -> dict[str, Any]:
-    """POST openclaw turns to CFN's ``shared-memories`` create/update endpoint.
+    """POST agent spans to CFN's ``shared-memories`` create/update endpoint.
 
-    Sends ``{header, request_id, payload: {metadata: {format: "openclaw"},
-    data: records}}``. Returns CFN's response as a dict, typically
+    Sends ``{header, request_id, payload: {metadata: {format: data_format},
+    data: records}}``. ``data_format`` defaults to ``"otel-trace"`` (the
+    ioa_observe span schema); ``"openclaw"`` is still accepted for legacy
+    openclaw-conversation-v1 turns.
+
+    The Go CFN acknowledges the create asynchronously with **HTTP 202
+    Accepted**. ``_cfn_post`` passes 202 through ``raise_for_status`` (only
+    4xx/5xx raise) and returns the acknowledgement body, so the
+    ``{response_id, message, status}`` fields flow back unchanged. Returns
+    CFN's response as a dict, typically
     ``{"response_id": str, "status": str, "message": str | None}``.
 
     Raises :class:`CfnKnowledgeError` on any HTTP or transport failure.
@@ -108,7 +114,7 @@ async def create_or_update_shared_memories(
     body: dict[str, Any] = {
         "header": {"agent_id": agent_id} if agent_id else {},
         "request_id": request_id or str(uuid.uuid4()),
-        "payload": {"metadata": {"format": "openclaw"}, "data": records},
+        "payload": {"metadata": {"format": data_format}, "data": records},
     }
     url = f"{_mas_base(workspace_id, mas_id)}/shared-memories"
     return await _cfn_post(url, body, operation="shared_memories")

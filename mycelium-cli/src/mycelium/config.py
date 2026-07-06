@@ -134,9 +134,9 @@ class RuntimeConfig(BaseModel):
         default=None,
         description="IoC CFN management plane URL",
     )
-    cognition_fabric_node_url: str | None = Field(
+    cfn_svc_url: str | None = Field(
         default=None,
-        description="IoC CFN cognition fabric node URL",
+        description="IoC CFN node service URL",
     )
     workspace_id: str | None = Field(
         default=None,
@@ -258,7 +258,7 @@ class MetricsConfig(BaseModel):
     """Configuration for the metrics collector + display.
 
     For the common case (scraping stock CFN services whose URLs are
-    already in ``runtime.cfn_mgmt_url`` / ``runtime.cognition_fabric_node_url``)
+    already in ``runtime.cfn_mgmt_url`` / ``runtime.cfn_svc_url``)
     you don't need to touch this section at all — the collector auto-derives
     scrape targets from those runtime URLs. Use ``[[metrics.scrape]]`` only
     to add *additional* targets (e.g. a user's own Prometheus-instrumented
@@ -472,7 +472,7 @@ class MyceliumConfig(BaseModel):
 
         Mirrors how OTLP ingestion works (no config needed — OpenClaw knows
         where to push) by auto-deriving CFN scrape targets from the already-
-        installed ``runtime.cfn_mgmt_url`` / ``runtime.cognition_fabric_node_url``
+        installed ``runtime.cfn_mgmt_url`` / ``runtime.cfn_svc_url``
         values. That way the common case needs zero new configuration, while
         ``[[metrics.scrape]]`` remains an escape hatch for non-CFN targets
         and for overriding an auto-derived entry (match by ``name``).
@@ -484,7 +484,7 @@ class MyceliumConfig(BaseModel):
              auto-derived one, so users can change URL/kind without losing
              the rest of the auto set.
 
-        We only emit a target for ``cognition_fabric_node_url`` when the
+        We only emit a target for ``cfn_svc_url`` when the
         service actually exposes ``/metrics`` — today it does not (see
         cfn_component_metrics_reconciliation.md), so we leave it out to
         avoid a permanently "degraded" row. Flip ``_NODE_HAS_METRICS`` below
@@ -502,10 +502,10 @@ class MyceliumConfig(BaseModel):
                 "url": self.runtime.cfn_mgmt_url.rstrip("/") + "/metrics",
                 "kind": "http_red",
             }
-        if _NODE_HAS_METRICS and self.runtime.cognition_fabric_node_url:
+        if _NODE_HAS_METRICS and self.runtime.cfn_svc_url:
             derived["cfn-node"] = {
                 "name": "cfn-node",
-                "url": self.runtime.cognition_fabric_node_url.rstrip("/") + "/metrics",
+                "url": self.runtime.cfn_svc_url.rstrip("/") + "/metrics",
                 "kind": "http_red",
             }
 

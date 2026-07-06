@@ -9,4 +9,11 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
 
     SELECT 'CREATE DATABASE cfn_cp'
     WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'cfn_cp')\gexec
+
+    SELECT 'CREATE DATABASE "ioc-graph-db"'
+    WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'ioc-graph-db')\gexec
+EOSQL
+
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "ioc-graph-db" <<-EOSQL
+    CREATE EXTENSION IF NOT EXISTS vector;
 EOSQL
