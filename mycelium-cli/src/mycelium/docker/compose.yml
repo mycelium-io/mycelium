@@ -210,8 +210,11 @@ services:
   # ioc-cognition-fabric-node-svc so existing installs' saved
   # COGNITION_FABRIC_NODE_URL values keep resolving across the 2.0.0 upgrade.
   ioc-cognition-fabric-node-svc:
-    image: ghcr.io/outshift-open/ioc-cfn-svc:latest
-    pull_policy: always
+    # Pinned to a released tag (not :latest) so `docker compose up` can't
+    # silently pull a breaking CFN change. Override with CFN_IMAGE_TAG to try
+    # another build (e.g. a dated-sha) during the pre-2.0.0 smoke test; bump
+    # the default here once a build is validated against mgmt-plane 0.1.1.
+    image: ghcr.io/outshift-open/ioc-cfn-svc:${CFN_IMAGE_TAG:-v0.2.0}
     container_name: ioc-cognition-fabric-node-svc
     restart: unless-stopped
     profiles: [cfn]
