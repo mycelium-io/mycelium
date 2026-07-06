@@ -132,13 +132,21 @@ node -e "
         dm: { allowFrom: ['*'] },
         groupAllowFrom: ['*'],
         network: { dangerouslyAllowPrivateNetwork: true }
+      },
+      'mycelium-room': {
+        enabled: true,
+        backendUrl: '${MYCELIUM_BACKEND_URL:-http://mycelium-backend:8000}',
+        requireMention: true,
+        room: 'mycelium_room',
+        agents: validAgents
       }
     },
     plugins: {
-      allow: ['litellm', 'matrix'],
+      allow: ['litellm', 'matrix', 'mycelium'],
       entries: {
         matrix: { enabled: true },
-        litellm: { enabled: true }
+        litellm: { enabled: true },
+        mycelium: { enabled: true }
       }
     },
     bindings: validAgents.map(id => ({
