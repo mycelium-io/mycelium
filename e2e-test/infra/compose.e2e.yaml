@@ -109,9 +109,21 @@ services:
       - mycelium-e2e
 
   # ── Mycelium Backend ──────────────────────────────────────────────────
+  #
+  # The published image runs as UID 1000 (mycelium). Named volumes are
+  # root-owned on first creation, so start as root, fix perms, then exec
+  # the normal start.sh as mycelium.
   mycelium-backend:
     image: ${MYCELIUM_BACKEND_IMAGE:-ghcr.io/mycelium-io/mycelium-backend:${MYCELIUM_IMAGE_TAG:-latest}}
     container_name: e2e-mycelium-backend
+    user: "0:0"
+    entrypoint:
+      - sh
+      - -c
+      - |
+        mkdir -p /home/mycelium/.mycelium
+        chown -R 1000:0 /home/mycelium/.mycelium
+        exec runuser -u mycelium -- sh -c "cd /app && ./start.sh"
     depends_on:
       mycelium-db:
         condition: service_healthy
