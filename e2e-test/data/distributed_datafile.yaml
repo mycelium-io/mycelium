@@ -1,0 +1,43 @@
+---
+# Distributed suite — lab topology + testcase UIDs for tests 030–032 and 040–049.
+extends: lab_datafile.yaml
+
+testcases:
+  LocalTwoAgentNegotiation:
+    uid: "mycelium:e2e:local:030"
+
+  LocalThreeAgentNegotiation:
+    uid: "mycelium:e2e:local:031"
+
+  LocalArchitectureDecision:
+    uid: "mycelium:e2e:local:032"
+
+  DistributedTwoAgent:
+    uid: "mycelium:e2e:dist:040"
+
+  DistributedThreeAgent:
+    uid: "mycelium:e2e:dist:041"
+
+  DistributedArchitecture:
+    uid: "mycelium:e2e:dist:042"
+
+  DistributedResourceAllocation:
+    uid: "mycelium:e2e:dist:043"
+
+  DistributedAsymmetricStakes:
+    uid: "mycelium:e2e:dist:044"
+
+  DistributedPreexistingContext:
+    uid: "mycelium:e2e:dist:045"
+
+  DistributedFeaturePrioritization:
+    uid: "mycelium:e2e:dist:046"
+
+  DistributedCrossDeviceOnly:
+    uid: "mycelium:e2e:dist:047"
+
+  DistributedBackendResolvedCfnIds:
+    uid: "mycelium:e2e:dist:048"
+
+  SkillCrossChannelReturnTrip:
+    uid: "mycelium:e2e:dist:049"

@@ -110,7 +110,18 @@ class ThreeAgentNegotiation(_ConvergenceBase):
 
 ### 6. Datafile Inheritance with `extends:`
 
-Environment-specific datafiles inherit from base and override only what differs:
+`base_datafile.yaml` holds shared parameters only. Suite-specific files
+add testcase UIDs and extend an environment overlay:
+
+```yaml
+# data/core_datafile.yaml
+extends: lab_datafile.yaml
+testcases:
+  RoomLifecycle:
+    uid: "mycelium:e2e:core:001"
+```
+
+Environment overlays inherit from base and override topology only:
 
 ```yaml
 # data/lab_datafile.yaml
@@ -165,7 +176,8 @@ Run with: `pyats run job ... --groups core` or via `uids` in job files.
 
 1. **Add testcase class** in the appropriate `testcases/*.py` file
 2. **Add thin declaration** in the suite file(s) that should include it
-3. **Add UID entry** in `data/base_datafile.yaml` under `testcases:`
+3. **Add UID entry** in the suite's datafile (e.g. `data/core_datafile.yaml`
+   for core tests, `data/weekly_datafile.yaml` for weekly) under `testcases:`
 4. **Set groups** on the class for selective execution
 5. **Use steps** for granular sub-results
 
@@ -196,7 +208,7 @@ class test_23_new_feature(NewFeatureTest):
 
 ```bash
 # Full weekly (all tiers)
-pyats run job jobs/weekly_e2e_job.py --datafile data/lab_datafile.yaml
+pyats run job jobs/weekly_e2e_job.py --datafile data/weekly_datafile.yaml
 
 # Quick sanity
 pyats run job jobs/sanity_job.py

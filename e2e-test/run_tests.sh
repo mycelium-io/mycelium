@@ -65,10 +65,13 @@ resolve_default_datafile() {
     local suite="$1"
     case "$suite" in
         integration) echo "data/integration_datafile.yaml" ;;
-        sanity)      echo "data/local_datafile.yaml" ;;
+        sanity)      echo "data/sanity_datafile.yaml" ;;
         minimal)     echo "data/minimal_datafile.yaml" ;;
-        distributed) echo "data/lab_datafile.yaml" ;;
-        weekly_full) echo "data/lab_datafile.yaml" ;;
+        core)        echo "data/core_datafile.yaml" ;;
+        convergence) echo "data/convergence_datafile.yaml" ;;
+        cursor)      echo "data/cursor_datafile.yaml" ;;
+        distributed) echo "data/distributed_datafile.yaml" ;;
+        weekly_full) echo "data/weekly_datafile.yaml" ;;
         *)           echo "data/base_datafile.yaml" ;;
     esac
 }

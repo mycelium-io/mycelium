@@ -112,7 +112,7 @@ class MyceliumCLI:
     # ── Session commands ──────────────────────────────────────────────────
 
     def session_create(self, room: str) -> CLIResult:
-        return self.run("--json", "session", "create", "--room", room, timeout=60)
+        return self.run("session", "create", "--room", room, json_mode=True, timeout=60)
 
     def session_join(self, room: str, handle: str, position: str = "") -> CLIResult:
         args = ["session", "join", "--room", room, "--handle", handle]
@@ -123,8 +123,16 @@ class MyceliumCLI:
     def session_ls(self, room: str) -> CLIResult:
         return self.run("session", "ls", "--room", room)
 
-    def session_await(self, room: str, timeout: int = 300) -> CLIResult:
-        return self.run("session", "await", "--room", room, timeout=timeout)
+    def session_await(
+        self,
+        room: str,
+        handle: str = "",
+        timeout: int = 300,
+    ) -> CLIResult:
+        args = ["session", "await", "--room", room, "--timeout", str(timeout)]
+        if handle:
+            args.extend(["--handle", handle])
+        return self.run(*args, timeout=timeout + 15)
 
     def session_watch(self, room: str, timeout: int = 300) -> CLIResult:
         return self.run("session", "watch", "--room", room, timeout=timeout)
@@ -135,10 +143,13 @@ class MyceliumCLI:
         return self.run("negotiate", "propose", "--room", room, "--handle", handle, f"topic={topic}", timeout=60)
 
     def negotiate_respond(self, room: str, handle: str, action: str) -> CLIResult:
-        return self.run("negotiate", "respond", action, "--room", room, "--handle", handle, timeout=60)
+        return self.run("negotiate", "respond", action, "--room", room, "--handle", handle, timeout=120)
 
     def negotiate_query(self, room: str, text: str = "status") -> CLIResult:
         return self.run("negotiate", "query", text, "--room", room, timeout=30)
+
+    def negotiate_status(self, room: str) -> CLIResult:
+        return self.run("negotiate", "status", "--room", room, json_mode=True, timeout=30)
 
     # ── Synthesis / Catchup ───────────────────────────────────────────────
 

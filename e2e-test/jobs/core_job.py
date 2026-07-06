@@ -7,7 +7,7 @@ Covers tests 01-14 and 22.
 
 Usage:
     pyats run job jobs/core_job.py
-    pyats run job jobs/core_job.py --datafile data/lab_datafile.yaml
+    pyats run job jobs/core_job.py --datafile data/core_datafile.yaml
 """
 
 import logging
@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 def main(runtime):
     log.info("=== Mycelium Core Tests ===")
 
-    datafile = common.get_datafile(default="base_datafile.yaml")
+    datafile = common.get_datafile(default="core_datafile.yaml")
     suite = common.get_suite_path("core_suite.py")
     max_failures = common.get_max_failures(datafile)
 

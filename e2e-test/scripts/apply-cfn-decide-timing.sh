@@ -130,4 +130,4 @@ else
     log "Skipped mycelium-backend rebuild (--skip-backend).  Capture will not include _timing."
 fi
 
-log "Done.  Run a smoke test with:  pytest tests/test_mycelium_e2e.py::test_40_distributed_two_agent --analyze-traces"
+log "Done.  Run a smoke test with:  uv run pyats run job jobs/distributed_job.py"

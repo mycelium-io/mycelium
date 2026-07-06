@@ -1,0 +1,427 @@
+# Three-axis E2E scenario matrix (+ runtime owned by the job).
+#
+# Each row generates exactly one pyATS Testcase class at import time via
+# ``testcases.scenarios.make_scenarios``. Class names are deterministic
+# so the same row always maps to the same artifact name in reports.
+#
+# Row ``profile`` selects the testcase shape (sections present — no
+# skipping subtests):
+#   consensus  — negotiate + plan/tasks.md (default for nightly/weekly)
+#   full       — consensus + memory writes + semantic search (PR canary)
+#   shakedown  — session reaches terminal state; agreement optional
+#
+# ``tier`` (pr | nightly | weekly) filters which rows run via
+# MYCELIUM_E2E_TIERS — orthogonal to profile.
+#
+# ``category: cross_adapter`` marks rows where multiple adapter families
+# negotiate on the same mycelium room (not Matrix/Discord cross-channel).
+#
+# **Runtime** (lab vs docker-compose) is *not* on rows. Jobs resolve it via:
+#   MYCELIUM_E2E_RUNTIME=compose|lab  →  testbeds/{compose,lab}.yaml
+#   GITHUB_ACTIONS (unset env)        →  compose
+#   job _DEFAULT_RUNTIME              →  fallback
+#   --testbed-file                    →  explicit override
+#
+# Hosts are logical names resolved against the active testbed:
+#   hub     → openclaw-hub container / oclw4 lab box
+#   spoke1  → openclaw-spoke1       / oclw3
+#   spoke2  → openclaw-spoke2       / oclw5
+#
+# Adapters and their flow differences (baked into the provisioners,
+# not the scenario rows):
+#   openclaw  pre-installed in gateway; wake = Matrix DM
+#   cursor    cold-spawn per tick; wake = `mycelium agent invoke`; slow
+#   hermes    plugin polls sessions; wake = no-op
+#
+# When adding rows, prefer reusing an existing ``base_name`` so the
+# matrix grows by combo, not by topic — e.g. a new he-he row reuses
+# ``base_name: TwoAgentConsensus`` and produces
+# ``TwoAgentConsensus_he_he``.
+
+scenarios:
+  # ────────────────────────────────────────────────────────────────────
+  #  Tier: PR  (30-minute budget, broad-coverage canaries)
+  # ────────────────────────────────────────────────────────────────────
+
+  # The PR canary: openclaw is the fastest adapter and we want to
+  # exercise consensus + plan + memory + search in a single short row
+  # so we get the maximum signal per minute of wall-clock budget.
+  - name: two-agent-consensus-broad-oc-oc
+    base_name: TwoAgentConsensusBroad
+    tier: pr
+    profile: full
+    category: core
+    description: >
+      PR canary — openclaw vs openclaw on the hub with a full
+      consensus → plan → memory → search check. Tightest happy path.
+    topic: api-style
+    agents:
+      - handle: alpha
+        adapter: openclaw
+        host: hub
+        position: >
+          I want REST with OpenAPI; GraphQL is fine for internal tools
+          only. Hard limit: no public-facing GraphQL without persisted
+          queries.
+      - handle: beta
+        adapter: openclaw
+        host: hub
+        position: >
+          GraphQL for the developer platform — over-fetching is killing
+          us. Compromise: REST acceptable for uploads/webhooks.
+    require_consensus: true
+    memory_writes:
+      - handle: alpha
+        key: decisions/api-style
+        value: '{"choice":"see consensus","author":"alpha"}'
+      - handle: beta
+        key: status/integration
+        value: "frontend ready to migrate within 4 weeks"
+    search_queries:
+      - query: what was decided about the API design
+        expected_substring: api-style
+
+  # A second PR row to ensure cross-family openclaw/cursor coordination
+  # at least starts a session end-to-end. We don't require consensus —
+  # if cursor cold-start eats the budget on a busy runner we still
+  # collect the value of "did the wake protocols agree?". Failure here
+  # means the autonomous loop is broken upstream of CFN.
+  - name: two-agent-shakedown-oc-cu
+    base_name: TwoAgentShakedown
+    tier: pr
+    profile: shakedown
+    category: cross_adapter
+    description: >
+      PR shakedown — openclaw hub vs cursor spoke. Verifies cross-family
+      wake protocols. Consensus is best-effort; the assertion is that
+      both agents joined and the session reached *some* terminal state
+      within budget.
+    topic: rollout-cadence
+    timeout_seconds: 480       # 8 min — cursor cold-start hostile to default
+    agents:
+      - handle: planner
+        adapter: openclaw
+        host: hub
+        position: >
+          Ship every two weeks; no exceptions. Risk = feature flags +
+          incremental rollout.
+      - handle: designer
+        adapter: cursor
+        host: spoke1
+        position: >
+          Polish over pace; ship monthly with a hard quality gate.
+    require_consensus: false   # cursor cold-start may eat the budget
+
+  - name: two-agent-shakedown-he-he
+    base_name: TwoAgentShakedown
+    tier: pr
+    category: core
+    description: >
+      PR hermes shakedown — two hermes agents negotiate via SSE polling,
+      no explicit wake. Validates the mycelium-room plugin attends ticks
+      and reaches consensus autonomously.
+    topic: logging-verbosity
+    agents:
+      - handle: alpha-he
+        adapter: hermes
+        host: hub
+        position: >
+          Prefer structured JSON as the default format — easy to query
+          and parse in CI/CD pipelines. Open to keeping human-readable
+          output available for local development if it doesn't add
+          maintenance overhead. A dual-format config flag would be
+          acceptable.
+      - handle: beta-he
+        adapter: hermes
+        host: spoke1
+        position: >
+          Prefer human-readable logs so developers can follow output
+          without extra tooling. Accepting of structured JSON in
+          production or CI contexts if a human-readable mode remains
+          available for local use. A config flag or library-level
+          switch is a reasonable compromise.
+    require_consensus: true
+
+  # 3-agent return-trip: the openclaw-only triple is fast enough to
+  # squeeze into the PR tier and proves the round-robin proposer
+  # rotation logic doesn't regress with N > 2.
+  - name: three-agent-return-trip-oc-oc-oc
+    base_name: ThreeAgentReturnTrip
+    tier: pr
+    category: core
+    description: >
+      PR triple — three openclaw agents across hub + both spokes.
+      Validates proposer rotation, multi-agent join window, and the
+      plan-compiler's N>2 path.
+
+      Positions are designed to converge in <10 rounds: each agent
+      voices a distinct concern (on-call burnout / hiring quality /
+      tooling debt) with explicit common ground (everyone supports
+      "fix on-call" + "tooling roadmap"). The 2026-06-07 lab run had
+      hard-coded mutually-incompatible positions and bickered until
+      CFN abort at round 8 — see scenarios.py history for the rewrite
+      rationale.
+    topic: capacity-planning
+    agents:
+      - handle: alpha
+        adapter: openclaw
+        host: hub
+        position: >
+          Top priority: fix the on-call rotation by end of Q1. Prefer
+          2 SRE hires, but open to any combination (contractors,
+          platform engineer, automation) that visibly cuts pager load
+          this quarter.
+      - handle: beta
+        adapter: openclaw
+        host: spoke1
+        position: >
+          Want 1 senior platform engineer in Q1 — quality over
+          quantity. Supportive of short-term contractor backfill to
+          relieve on-call while we recruit. Comfortable deferring
+          additional headcount to Q2 if there's a clear plan.
+      - handle: gamma
+        adapter: openclaw
+        host: spoke2
+        position: >
+          Push for a tooling-and-automation roadmap (alerting
+          overhaul + runbook automation) as the durable fix. Can
+          accept 1 headcount in Q1 if it's tied to an explicit
+          automation milestone; would still flag budget pressure
+          beyond that.
+    require_consensus: true
+
+  # ────────────────────────────────────────────────────────────────────
+  #  Tier: NIGHTLY  (~60-minute budget, adapter-pair coverage)
+  # ────────────────────────────────────────────────────────────────────
+
+  - name: two-agent-consensus-cu-cu
+    base_name: TwoAgentConsensus
+    tier: nightly
+    category: core
+    description: >
+      Cursor vs cursor on the hub + spoke. Catches cursor-only
+      regressions in cold-spawn, workspace asset drift, or daemon
+      subscription ordering.
+    topic: storage-engine
+    agents:
+      - handle: alpha-cu
+        adapter: cursor
+        host: hub
+        position: Pick Postgres for everything — we already operate it.
+      - handle: beta-cu
+        adapter: cursor
+        host: spoke1
+        position: Split — Postgres for OLTP, ClickHouse for analytics.
+
+  - name: two-agent-consensus-he-he
+    base_name: TwoAgentConsensus
+    tier: nightly
+    category: core
+    description: >
+      Hermes vs hermes — exercises the polling-driven autonomous
+      coordination path (no explicit wake).
+    topic: deployment-strategy
+    agents:
+      - handle: alpha-he
+        adapter: hermes
+        host: hub
+        position: Blue-green on every deploy; rollback within 60s.
+      - handle: beta-he
+        adapter: hermes
+        host: spoke1
+        position: Canary at 5% → 25% → 100% over 24h.
+
+  - name: three-agent-consensus-he-he-he
+    base_name: ThreeAgentConsensus
+    tier: nightly
+    category: core
+    description: >
+      Three hermes agents across hub + both spokes — validates multi-agent
+      proposer rotation entirely via the SSE polling path. Any failure is a
+      hermes plugin or backend regression, not adapter noise.
+
+      Positions are designed to converge in <10 rounds: each agent voices a
+      distinct concern (post-mortem timing / on-call routing / retro depth)
+      with explicit common ground (blameless culture + team-first paging +
+      SEV1 RCA). Hard-coded mutually-incompatible positions caused the
+      2026-06-18 lab run to bicker for all 20 rounds without consensus.
+    topic: incident-response-process
+    agents:
+      - handle: alpha-he
+        adapter: hermes
+        host: hub
+        position: >
+          Top priority: blameless post-mortems and clear ownership. Prefer
+          48h for post-mortems but open to 72h when complexity warrants.
+          On-call should page the owning team first with a global fallback.
+      - handle: beta-he
+        adapter: hermes
+        host: spoke1
+        position: >
+          Support blameless culture; 72h post-mortems are fine for complex
+          incidents. Shared on-call pool is OK short-term if team escalation
+          stays in the runbook.
+      - handle: gamma-he
+        adapter: hermes
+        host: spoke2
+        position: >
+          Lightweight async retros for low-SEV; formal RCA only for SEV1.
+          Team-first on-call with global fallback — same goals as alpha/beta,
+          willing to align on timing and paging in the plan.
+    require_consensus: true
+
+  - name: two-agent-consensus-oc-he
+    base_name: TwoAgentConsensus
+    tier: nightly
+    category: cross_adapter
+    description: >
+      Cross-family openclaw (Matrix DM wake) + hermes (poll wake) —
+      verifies the room sub-tick fan-out covers both delivery paths
+      simultaneously.
+    topic: secrets-management
+    agents:
+      - handle: alpha
+        adapter: openclaw
+        host: hub
+        position: Centralize on Vault; deprecate per-env secret files.
+      - handle: beta-he
+        adapter: hermes
+        host: spoke1
+        position: AWS Secrets Manager — Vault adds an extra dep we don't need.
+
+  - name: two-agent-consensus-cu-he
+    base_name: TwoAgentConsensus
+    tier: nightly
+    category: cross_adapter
+    description: >
+      Cursor (invoke wake) + hermes (poll wake). Verifies that cursor's
+      cold-spawn and hermes's polling co-exist on the same session.
+    topic: monorepo-or-polyrepo
+    agents:
+      - handle: front-cu
+        adapter: cursor
+        host: hub
+        position: Single monorepo with Bazel — sharing types is killing us.
+      - handle: back-he
+        adapter: hermes
+        host: spoke1
+        position: Polyrepo — coordination tax is small, build complexity is large.
+
+  - name: three-agent-consensus-oc-cu-he
+    base_name: ThreeAgentConsensus
+    tier: nightly
+    category: distributed
+    description: >
+      The full cross-family triple. Slow on cursor cold-spawn but the
+      most diagnostic single row in the matrix — a regression here
+      almost always means a real backend issue, not adapter flakiness.
+
+      Positions are designed to converge in <10 rounds: each agent voices
+      a distinct observability concern (trace coverage / error-biased
+      sampling / retention cost) with explicit common ground (sample by
+      default, full trace on errors, 90-day retention). Hard-coded
+      mutually-incompatible positions (100% vs 10% vs 1% trace) caused
+      the 2026-06-18 lab run to bicker for all 20 rounds; a cursor auth
+      failure on designer also produced fake fast rejects.
+    topic: observability-budget
+    timeout_seconds: 900   # 15 min — cursor cold-spawn × 3 agents
+    agents:
+      - handle: planner
+        adapter: openclaw
+        host: hub
+        position: >
+          Prefer representative sampling for steady-state traffic with
+          100% trace on errors and SLO breaches. Open to 5–10% baseline
+          sampling if retention stays within budget.
+      - handle: designer
+        adapter: cursor
+        host: spoke1
+        position: >
+          Support error-biased tracing: ~10% baseline sample plus full
+          capture on 5xx/timeouts. Align on 90-day retention and cost
+          caps — same goals as planner/ops.
+      - handle: ops
+        adapter: hermes
+        host: spoke2
+        position: >
+          Optimize for retention cost: 1–5% baseline sampling, full trace
+          on errors, 90-day retention. Willing to raise baseline sample
+          rate if planner/designer need better steady-state visibility.
+
+  # ────────────────────────────────────────────────────────────────────
+  #  Tier: WEEKLY  (full grid + stress)
+  # ────────────────────────────────────────────────────────────────────
+
+  - name: two-agent-consensus-cu-oc
+    base_name: TwoAgentConsensus
+    tier: weekly
+    category: cross_adapter
+    description: Mirror of oc-cu — confirms the wake protocol is symmetric.
+    topic: caching-tier
+    agents:
+      - handle: alpha-cu
+        adapter: cursor
+        host: hub
+        position: Redis everywhere; we already pay for it.
+      - handle: beta
+        adapter: openclaw
+        host: spoke1
+        position: Memcached for hot paths; Redis for state.
+
+  - name: two-agent-consensus-he-oc
+    base_name: TwoAgentConsensus
+    tier: weekly
+    category: cross_adapter
+    description: Mirror of oc-he.
+    topic: auth-provider
+    agents:
+      - handle: alpha-he
+        adapter: hermes
+        host: hub
+        position: Auth0 — managed service, fewer surprises.
+      - handle: beta
+        adapter: openclaw
+        host: spoke1
+        position: Self-host Keycloak — vendor lock-in concern is real.
+
+  - name: two-agent-consensus-he-cu
+    base_name: TwoAgentConsensus
+    tier: weekly
+    category: cross_adapter
+    description: Mirror of cu-he.
+    topic: ci-runner-pool
+    agents:
+      - handle: alpha-he
+        adapter: hermes
+        host: hub
+        position: GitHub-hosted runners — zero ops overhead.
+      - handle: beta-cu
+        adapter: cursor
+        host: spoke1
+        position: Self-hosted on bare metal — cost + speed.
+
+  - name: timeout-as-valid-oc-oc
+    base_name: TimeoutAsValid
+    tier: weekly
+    profile: shakedown
+    category: core
+    description: >
+      Two diametrically opposed openclaw agents with a tight round
+      budget — designed to time out cleanly. Verifies the
+      ``broken: true`` consensus envelope path.
+    topic: licensing-model
+    n_steps_total: 4         # deliberately too short to converge
+    agents:
+      - handle: lawyer-a
+        adapter: openclaw
+        host: hub
+        position: >
+          GPLv3 only; no exceptions. Hard limit: no commercial
+          relicensing under any circumstance.
+      - handle: lawyer-b
+        adapter: openclaw
+        host: spoke1
+        position: >
+          Apache-2.0 only; copyleft licenses are non-starters for
+          enterprise adoption.
+    require_consensus: false   # expect the broken envelope

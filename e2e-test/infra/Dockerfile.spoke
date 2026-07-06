@@ -1,48 +1,124 @@
-# Spoke device image: OpenClaw gateway + Mycelium CLI + cc-daemon + metrics collector.
+# Unified Mycelium "spoke" device image.
+#
+# Bundles the three adapter runtimes so a single container can stand in
+# for any combination of openclaw / cursor / hermes agents in compose-based
+# E2E runs. Which subset actually starts at runtime is controlled by the
+# ``SPOKE_ADAPTERS`` env var (comma-separated, default "openclaw").
 #
 # Published to ghcr.io/mycelium-io/mycelium-spoke:latest by the
-# build-openclaw workflow.  For source builds, the workflow pre-builds
-# a CLI wheel and passes it via --build-arg MYCELIUM_CLI_WHL.
+# build-spoke workflow. For source builds, the workflow pre-builds a CLI
+# wheel and passes it via --build-arg MYCELIUM_CLI_WHL.
+#
+# Process supervision is intentionally NOT systemd:
+#  - PID 1 is ``tini`` (reaps zombies, forwards signals).
+#  - tini execs the entrypoint script.
+#  - The entrypoint generates a per-run ``supervisord.conf`` populated
+#    only with the processes the requested adapters need, then exec's
+#    supervisord to run them all in the foreground.
 #
 # Usage:
-#   docker run -e OPENCLAW_ROLE=spoke1 ghcr.io/mycelium-io/mycelium-spoke
-#   docker run -e OPENCLAW_ROLE=spoke2 ghcr.io/mycelium-io/mycelium-spoke
+#   docker run -e OPENCLAW_ROLE=spoke1 -e SPOKE_ADAPTERS=openclaw,cursor,hermes \
+#              ghcr.io/mycelium-io/mycelium-spoke
 
-FROM node:22-alpine
+FROM node:22-bookworm-slim
 
-# Install system deps: bash/wget for entrypoint, python3 for mycelium CLI
-RUN apk add --no-cache bash curl wget python3 py3-pip && \
-    npm install -g openclaw@latest && \
-    npm cache clean --force && \
-    rm -rf /tmp/* /root/.npm
+# ── System deps ──────────────────────────────────────────────────────
+#
+# - python3 / pip / venv: hermes-agent + mycelium CLI both need Python 3.11
+# - git: hermes-agent ships some skills as git checkouts
+# - curl/wget/jq: bootstrap + healthchecks
+# - ca-certificates: TLS for downloads
+# - tini: PID 1 signal handling
+# - supervisor: multi-process orchestration (no systemd in container)
+# - ripgrep, ffmpeg: optional but commonly used by hermes skills
+# - gosu: privilege drop in entrypoint
+# - libsecret-1-0, libnss3: shared libs needed by cursor-agent's keyring
+#   stub at startup (it links against them even when running headless)
 
-# Install mycelium CLI.
-# In release mode the install script is fetched at runtime by the entrypoint.
-# In source-build mode CI copies a pre-built wheel into /tmp and sets the arg.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        bash curl wget jq ca-certificates git tini supervisor gosu \
+        python3 python3-pip python3-venv \
+        ripgrep ffmpeg \
+        libsecret-1-0 libnss3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── OpenClaw gateway (Node) ──────────────────────────────────────────
+
+RUN npm install -g openclaw@latest \
+    && npm cache clean --force \
+    && rm -rf /tmp/* /root/.npm
+
+# ── Cursor agent binary (glibc) ──────────────────────────────────────
+#
+# Cursor's official installer drops the binary into /usr/local/bin and
+# wires up a small wrapper. Cached versions are pinned via the build arg
+# below; leave it unset to grab the latest stable release at build time.
+
+ARG CURSOR_AGENT_VERSION="latest"
+RUN curl -fsSL https://cursor.com/install | \
+        CURSOR_INSTALL_VERSION="${CURSOR_AGENT_VERSION}" bash || \
+        echo "[Dockerfile.spoke] cursor-agent install skipped (offline build)"
+
+# ── Hermes agent (Python) ────────────────────────────────────────────
+#
+# hermes-agent is a real PyPI package as of v0.14.0. Lazy/extra deps
+# (browser, voice, …) are not needed for the negotiation path that
+# mycelium-room exercises, so we install the base wheel only.
+# ``--break-system-packages`` is the official escape hatch on
+# bookworm-slim, where pip refuses to write outside a venv unless asked.
+
+ARG HERMES_AGENT_VERSION=""
+RUN if [ -n "${HERMES_AGENT_VERSION}" ]; then \
+        pip3 install --no-cache-dir --break-system-packages \
+            "hermes-agent==${HERMES_AGENT_VERSION}"; \
+    else \
+        pip3 install --no-cache-dir --break-system-packages hermes-agent || \
+            echo "[Dockerfile.spoke] hermes-agent install skipped (offline build)"; \
+    fi
+
+# ── Mycelium CLI ─────────────────────────────────────────────────────
+#
+# Release builds fetch install.sh in the entrypoint. Source builds copy
+# a pre-built wheel via --build-arg MYCELIUM_CLI_WHL and install it now
+# so cold-starts skip the runtime fetch.
+
 ARG MYCELIUM_CLI_WHL=""
 RUN if [ -n "$MYCELIUM_CLI_WHL" ]; then \
-        pip install --no-cache-dir --break-system-packages "$MYCELIUM_CLI_WHL" && \
+        pip3 install --no-cache-dir --break-system-packages "$MYCELIUM_CLI_WHL" && \
         rm -f "$MYCELIUM_CLI_WHL"; \
     fi
 
-RUN mkdir -p /openclaw /shared && \
-    adduser -D -h /home/spoke spoke && \
-    chown -R spoke:spoke /openclaw /shared /home/spoke
+# ── Filesystem layout ────────────────────────────────────────────────
+
+RUN mkdir -p /openclaw /shared /etc/supervisor/conf.d \
+    && useradd --create-home --home-dir /home/spoke --shell /bin/bash --uid 1001 spoke \
+    && chown -R spoke:spoke /openclaw /shared /home/spoke
 
 COPY --chown=spoke:spoke infra/scripts/spoke-entrypoint.sh /openclaw/entrypoint.sh
 RUN chmod +x /openclaw/entrypoint.sh
 
+# ── OpenClaw plugin pre-warm (run as spoke user) ─────────────────────
+
 WORKDIR /openclaw
 USER spoke
 
-RUN openclaw plugins install @openclaw/matrix && \
-    openclaw plugins enable matrix
+RUN openclaw plugins install @openclaw/matrix \
+    && openclaw plugins enable matrix
+
+# ── Defaults ─────────────────────────────────────────────────────────
+#
+# OPENCLAW_ROLE preserves the existing per-spoke identity (spoke1/spoke2)
+# used by the openclaw config generator. SPOKE_ADAPTERS gates the
+# supervisord program list at runtime.
 
 ENV OPENCLAW_ROLE=spoke1 \
+    SPOKE_ADAPTERS=openclaw \
     MATRIX_HOMESERVER=http://matrix-synapse:8008 \
     MYCELIUM_BACKEND_URL=http://mycelium-backend:8000 \
     COLLECTOR_HUB_URL=http://mycelium-collector:4318 \
     MATRIX_SHARED_SECRET=e2e-shared-secret \
-    TOKEN_FILE=/shared/matrix-tokens.json
+    TOKEN_FILE=/shared/matrix-tokens.json \
+    HERMES_HOME=/home/spoke/.hermes
 
-ENTRYPOINT ["/openclaw/entrypoint.sh"]
+# tini is PID 1 → entrypoint → supervisord (foreground)
+ENTRYPOINT ["/usr/bin/tini", "--", "/openclaw/entrypoint.sh"]

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -116,7 +115,7 @@ class CfnMgmtAPI:
 
 
 class CfnNodeSvcAPI:
-    """Client for the CFN node service (ioc-cognition-fabric-node-svc)."""
+    """Client for the CFN node service (ioc-cfn-svc)."""
 
     def __init__(self, base_url: str = "http://localhost:9002"):
         self.base_url = base_url.rstrip("/")

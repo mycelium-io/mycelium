@@ -145,9 +145,7 @@ class MyceliumAPI:
     def list_sessions(self, room: str) -> tuple[int, Any]:
         return self.get_json(f"/rooms/{self._enc(room)}/sessions")
 
-    def get_coordination_sessions(
-        self, parent_room: str | None = None, limit: int = 10
-    ) -> tuple[int, Any]:
+    def get_coordination_sessions(self, parent_room: str | None = None, limit: int = 10) -> tuple[int, Any]:
         params = f"?limit={limit}"
         if parent_room:
             params += f"&parent_room={urllib.parse.quote(parent_room, safe='')}"
@@ -170,7 +168,10 @@ class MyceliumAPI:
         return self.post_json("/knowledge/ingest", data, timeout=timeout)
 
     def query_knowledge(
-        self, query: str, mas_id: str | None = None, timeout: int = 180,
+        self,
+        query: str,
+        mas_id: str | None = None,
+        timeout: int = 180,
     ) -> tuple[int, Any]:
         payload: dict[str, Any] = {"intent": query}
         if mas_id:
@@ -192,35 +193,38 @@ class MyceliumAPI:
     # ── Coordination helpers ──────────────────────────────────────────────
 
     def find_session_room(self, parent_namespace: str) -> Optional[str]:
-        status, data = self.get_coordination_sessions(parent_room=parent_namespace, limit=1)
+        status, data = self.get_coordination_sessions(parent_room=parent_namespace, limit=20)
         if status != 200 or not data:
             return None
         sessions = data if isinstance(data, list) else data.get("sessions", [])
-        for s in sessions:
-            if s.get("status") in ("active", "negotiating", "waiting"):
-                return s.get("display_name") or s.get("session_room")
+        active = [
+            s
+            for s in sessions
+            if s.get("state") in ("waiting", "negotiating")
+        ]
+        active.sort(key=lambda s: s.get("created_at") or "", reverse=True)
+        for s in active:
+            return s.get("display_name") or s.get("session_room")
         return None
 
-    def wait_for_consensus(
+    def poll_for_consensus(
         self,
         room_name: str,
         timeout: int = 600,
         poll_interval: int = 5,
+        *,
+        session_room: str | None = None,
     ) -> dict | None:
-        """Poll room coordination state until consensus or timeout."""
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            status, data = self.get_room(room_name)
-            if status == 200 and isinstance(data, dict):
-                state = data.get("coordination_state")
-                if state == "complete":
-                    return data
-                if state in ("failed", "aborted"):
-                    log.warning("Coordination ended with state=%s for %s", state, room_name)
-                    return data
-            time.sleep(poll_interval)
-        log.warning("Consensus timeout after %ds for %s", timeout, room_name)
-        return None
+        """Poll until negotiation reaches a terminal outcome or *timeout*."""
+        from libs.coordination_flow import poll_for_consensus as _poll_for_consensus
+
+        return _poll_for_consensus(
+            self,
+            room_name,
+            session_room=session_room,
+            timeout=timeout,
+            poll_interval=poll_interval,
+        )
 
     def cleanup_rooms(self, prefix: str, max_age_minutes: int = 0, exclude: set[str] | None = None) -> int:
         """Delete rooms matching prefix. Returns count of deleted rooms.
@@ -239,6 +243,7 @@ class MyceliumAPI:
 
         if max_age_minutes > 0:
             from datetime import datetime, timezone
+
             cutoff_seconds = max_age_minutes * 60
             now = datetime.now(timezone.utc)
 
@@ -251,9 +256,7 @@ class MyceliumAPI:
                 created_at = room.get("created_at")
                 if created_at:
                     try:
-                        created = datetime.fromisoformat(
-                            created_at.replace("Z", "+00:00")
-                        )
+                        created = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
                         if (now - created).total_seconds() < cutoff_seconds:
                             continue
                     except (ValueError, TypeError):

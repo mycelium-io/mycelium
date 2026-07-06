@@ -8,7 +8,6 @@ import os
 import shlex
 import subprocess
 import time
-from typing import Optional
 from urllib.parse import quote
 
 from libs.mycelium_cli import CLIResult
@@ -53,9 +52,13 @@ def ssh_run(
     remote_cmd = f"{PATH_PREFIX} {cmd}"
 
     ssh_cmd = [
-        "ssh", "-i", key_path,
-        "-o", "StrictHostKeyChecking=no",
-        "-o", f"ConnectTimeout={SSH_CONNECT_TIMEOUT}",
+        "ssh",
+        "-i",
+        key_path,
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        f"ConnectTimeout={SSH_CONNECT_TIMEOUT}",
         f"{effective_user}@{host}",
         remote_cmd,
     ]
@@ -63,7 +66,11 @@ def ssh_run(
     start = time.time()
     try:
         result = subprocess.run(
-            ssh_cmd, capture_output=True, text=True, timeout=timeout, check=False,
+            ssh_cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
         )
         elapsed = int((time.time() - start) * 1000)
         return CLIResult(result.returncode, result.stdout, result.stderr, elapsed, ssh_cmd)
@@ -134,7 +141,11 @@ def run_mycelium_cli(
         start = time.time()
         try:
             result = subprocess.run(
-                full_cmd, capture_output=True, text=True, timeout=timeout, check=False,
+                full_cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
             )
             elapsed = int((time.time() - start) * 1000)
             return CLIResult(result.returncode, result.stdout, result.stderr, elapsed, full_cmd)
@@ -177,10 +188,15 @@ def create_cursor_agent(
     """Create a cursor agent via mycelium CLI (greenfield path)."""
     return run_mycelium_cli(
         host,
-        "agent", "create", handle,
-        "--adapter", "cursor",
-        "--cwd", workspace,
-        "--room", room,
+        "agent",
+        "create",
+        handle,
+        "--adapter",
+        "cursor",
+        "--cwd",
+        workspace,
+        "--room",
+        room,
         timeout=30.0,
     )
 
@@ -214,10 +230,14 @@ def create_session(
         position = f"I'm {agent}. My position on '{topic}' is to find the best solution collaboratively."
         join_r = run_mycelium_cli(
             host,
-            "session", "join",
-            "--room", room,
-            "--handle", agent,
-            "--message", position,
+            "session",
+            "join",
+            "--room",
+            room,
+            "--handle",
+            agent,
+            "--message",
+            position,
             timeout=timeout,
         )
         if not join_r.ok:
@@ -237,8 +257,8 @@ def poll_session_status(
 
     Returns the session dict if found, None on timeout.
     """
-    import urllib.request
     import urllib.error
+    import urllib.request
 
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
@@ -278,8 +298,8 @@ def wait_for_agent_response(
     Returns the message dict if found, None on timeout.
     The backend returns ``sender_handle`` and ``created_at`` (ISO 8601).
     """
-    import urllib.request
     import urllib.error
+    import urllib.request
     from datetime import datetime, timezone
 
     deadline = time.time() + timeout_seconds

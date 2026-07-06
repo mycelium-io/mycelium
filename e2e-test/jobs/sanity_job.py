@@ -8,7 +8,7 @@ Suitable for pre-merge gating or environment verification.
 
 Usage:
     pyats run job jobs/sanity_job.py
-    pyats run job jobs/sanity_job.py --datafile data/local_datafile.yaml
+    pyats run job jobs/sanity_job.py --datafile data/sanity_datafile.yaml
 """
 
 import logging
@@ -23,7 +23,7 @@ log = logging.getLogger(__name__)
 def main(runtime):
     log.info("=== Mycelium Sanity Test ===")
 
-    datafile = common.get_datafile(default="local_datafile.yaml")
+    datafile = common.get_datafile(default="sanity_datafile.yaml")
     suite = common.get_suite_path("sanity_suite.py")
     max_failures = common.get_max_failures(datafile)
 

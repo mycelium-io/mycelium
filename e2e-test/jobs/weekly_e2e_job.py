@@ -6,13 +6,15 @@ Weekly full E2E job — runs all test tiers in sequence.
 This is the primary job for the weekly long-running integration test
 of the Mycelium multi-agent coordination platform.
 
+**Runtime:** lab only (``testbeds/lab.yaml``) — runs on the orch EC2
+cluster via ``.github/workflows/weekly-e2e.yaml``, not the compose stack.
+
 Usage:
-    # Full weekly run against lab
-    pyats run job jobs/weekly_e2e_job.py
+    pyats run job jobs/weekly_e2e_job.py --testbed-file testbeds/lab.yaml
 
     # With explicit datafile
     pyats run job jobs/weekly_e2e_job.py \\
-        --datafile data/lab_datafile.yaml
+        --datafile data/weekly_datafile.yaml
 
     # Filter to specific groups
     TESTCASES="test_01_room_lifecycle, test_02_multi_agent_memory" \\
@@ -22,16 +24,19 @@ Usage:
     pyats run job jobs/weekly_e2e_job.py --html-logs
 """
 
-import os
 import logging
+import os
 
-from pyats.easypy import run
 from pyats.datastructures.logic import Or
+from pyats.easypy import run
 
 # Ensure project root on path
 import jobs._common as common
 
 log = logging.getLogger(__name__)
+
+_DEFAULT_RUNTIME = common.RUNTIME_LAB
+_ALLOWED_RUNTIMES = common.RUNTIME_LAB_ONLY
 
 testcases_filter = os.getenv("TESTCASES")
 if testcases_filter:
@@ -42,10 +47,22 @@ else:
 
 
 def main(runtime):
-    log.info("=== Mycelium Weekly E2E Test ===")
+    testbed, active_runtime, _source = common.prepare_job_testbed(
+        runtime,
+        log,
+        job_default_runtime=_DEFAULT_RUNTIME,
+        allowed_runtimes=_ALLOWED_RUNTIMES,
+    )
+    common.log_job_context(
+        log,
+        title="Mycelium Weekly E2E Test",
+        runtime=active_runtime,
+        default_testbed=common.testbed_path_for_runtime(active_runtime),
+        active_testbed=testbed,
+    )
     log.info("Runtime directory: %s", runtime.directory)
 
-    datafile = common.get_datafile(default="lab_datafile.yaml")
+    datafile = common.get_datafile(default="weekly_datafile.yaml")
     suite = common.get_suite_path("weekly_full_suite.py")
     max_failures = common.get_max_failures(datafile)
 
@@ -59,5 +76,7 @@ def main(runtime):
         log.info("Filtering to testcases: %s", testcases_filter)
     if max_failures:
         kwargs["max_failures"] = max_failures
+    if testbed is not None:
+        kwargs["testbed"] = testbed
 
     run(**kwargs)

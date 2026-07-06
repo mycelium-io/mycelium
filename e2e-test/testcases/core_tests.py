@@ -10,9 +10,7 @@ import time
 
 from pyats import aetest
 
-from libs.mycelium_api import MyceliumAPI
-from libs.mycelium_cli import CLIResult, MyceliumCLI
-from libs.environment import EnvironmentInfo
+from libs.mycelium_cli import CLIResult
 
 log = logging.getLogger(__name__)
 
@@ -157,28 +155,13 @@ class SemanticSearch(aetest.Testcase):
 
 
 class Synthesis(aetest.Testcase):
-    """Test 05: AI synthesis of room state. Requires LLM."""
+    """Removed: ``mycelium synthesize`` / ``mycelium catchup`` CLI commands no longer exist."""
 
-    groups = ["core", "llm", "slow"]
+    groups = ["core", "llm", "slow", "removed"]
 
     @aetest.setup
-    def check_llm(self, env):
-        if env.skip_llm_tests:
-            self.skipped("LLM not available")
-
-    @aetest.test
-    def synthesize_room(self, steps, cli, room_name):
-        with steps.start("Synthesize room via CLI") as step:
-            r = cli.synthesize(room_name)
-            if not r.ok:
-                step.failed(f"Synthesis failed: {r.error_message}")
-
-    @aetest.test
-    def catchup_room(self, steps, cli, room_name):
-        with steps.start("Catchup via CLI") as step:
-            r = cli.catchup(room_name)
-            if not r.ok:
-                step.failed(f"Catchup failed: {r.error_message}")
+    def removed(self):
+        self.skipped("synthesize/catchup commands removed from CLI")
 
 
 class ConsensusNegotiation(aetest.Testcase):
@@ -289,12 +272,27 @@ class CfnLlmCounters(aetest.Testcase):
 
     @aetest.test
     def verify_counters(self, steps, cli, api, room_name):
+        from libs.coordination_flow import resolve_session_room, wait_for_message_type
+        from libs.observability_helpers import (
+            cfn_llm_counter,
+            cfn_llm_token_total,
+            observability_counters,
+        )
+
         test_room = f"{room_name}-cfn-llm"
 
         with steps.start("Snapshot counters before") as step:
-            before = _fetch_cfn_llm_counters(api)
-            calls_before = _cfn_llm_counter(before, "calls")
-            log.info("cfn_llm.calls before: %d", calls_before)
+            st_before, obs_before = api.observability()
+            if st_before != 200:
+                step.failed(f"Observability endpoint returned status={st_before}")
+            before = observability_counters(obs_before)
+            calls_before = cfn_llm_counter(before, "calls")
+            tokens_before = cfn_llm_token_total(before)
+            log.info(
+                "cfn_llm before: calls=%s tokens=%s",
+                calls_before,
+                tokens_before,
+            )
 
         with steps.start("Create room, session, and join two agents") as step:
             st, _ = api.create_room(test_room, description="cfn-llm counter test")
@@ -303,7 +301,7 @@ class CfnLlmCounters(aetest.Testcase):
             r = cli.session_create(test_room)
             if not r.ok:
                 step.failed(f"session create failed: {r.error_message}")
-            session_room = _parse_session_room(r)
+            session_room = resolve_session_room(api, test_room, r.stdout)
             r = cli.session_join(
                 test_room,
                 "agent-alpha",
@@ -321,44 +319,38 @@ class CfnLlmCounters(aetest.Testcase):
 
         with steps.start("Resolve session room and wait for coordination_start (60s)") as step:
             if not session_room:
-                for _ in range(20):
-                    session_room = api.find_session_room(test_room)
-                    if session_room:
-                        break
-                    time.sleep(0.5)
-            if not session_room:
                 step.failed("Could not resolve session sub-room")
             log.info("Session room: %s", session_room)
-            deadline = time.time() + 60
-            while time.time() < deadline:
-                _, msgs = api.get_room_messages(session_room)
-                if any(m.get("message_type") == "coordination_start" for m in msgs):
-                    log.info("coordination_start seen in %s", session_room)
-                    break
-                time.sleep(2)
-            else:
+            if not wait_for_message_type(
+                api,
+                session_room,
+                "coordination_start",
+                timeout=60,
+                poll_interval=2,
+            ):
                 step.failed("No coordination_start within 60s")
 
         with steps.start("Wait for cfn_llm.calls to advance (Phase 2, 240s)") as step:
-            deadline = time.time() + 240
+            phase2_deadline = time.time() + 240
             after = before
-            while time.time() < deadline:
+            while time.time() < phase2_deadline:
                 time.sleep(3)
-                after = _fetch_cfn_llm_counters(api)
-                if _cfn_llm_counter(after, "calls") > calls_before:
+                st_after, obs_after = api.observability()
+                if st_after != 200:
+                    continue
+                after = observability_counters(obs_after)
+                if cfn_llm_counter(after, "calls") > calls_before:
                     break
 
-            calls_after = _cfn_llm_counter(after, "calls")
-            in_after = _cfn_llm_counter(after, "input_tokens")
-            out_after = _cfn_llm_counter(after, "output_tokens")
+            calls_after = cfn_llm_counter(after, "calls")
+            tokens_after = cfn_llm_token_total(after)
             calls_delta = calls_after - calls_before
             log.info(
-                "cfn_llm counters: calls=%d→%d (Δ%d), input_tokens=%d, output_tokens=%d",
+                "cfn_llm counters: calls=%d→%d (Δ%d), tokens=%s",
                 calls_before,
                 calls_after,
                 calls_delta,
-                in_after,
-                out_after,
+                tokens_after,
             )
             if calls_delta <= 0:
                 step.failed(f"cfn_llm.calls did not advance: before={calls_before}, after={calls_after}")
@@ -367,27 +359,6 @@ class CfnLlmCounters(aetest.Testcase):
     def cleanup(self, api, room_name):
         api.delete_room(f"{room_name}-cfn-llm")
 
-
-def _fetch_cfn_llm_counters(api) -> dict:
-    """GET /observability and return the ``counters`` dict."""
-    st, obs = api.observability()
-    if st != 200 or not isinstance(obs, dict):
-        return {}
-    return obs.get("counters") or {}
-
-
-def _cfn_llm_counter(counters: dict, key: str) -> int:
-    """Sum cfn_llm.by_pipeline.<pipeline>.<key> across all pipelines."""
-    grp = counters.get("cfn_llm") or {}
-    suffix = f".{key}"
-    total = 0
-    for k, v in grp.items():
-        if k.startswith("by_pipeline.") and k.endswith(suffix):
-            try:
-                total += int(v)
-            except (TypeError, ValueError):
-                continue
-    return total
 
 
 class SharedMemoryCliE2E(aetest.Testcase):
@@ -421,9 +392,15 @@ class SharedMemoryCliE2E(aetest.Testcase):
 
 
 class ConsensusCliE2E(aetest.Testcase):
-    """Test 12: Two-agent consensus workflow via CLI."""
+    """Test 12 (smoke): CLI negotiate propose/respond without real agents.
 
-    groups = ["core", "llm", "slow"]
+    The harness impersonates both handles via ``mycelium negotiate`` — it
+    does not start a CFN session, wait for ticks, or use ``session await``.
+    Validates that the CLI negotiation commands wire through; not an
+    agent-integration test.
+    """
+
+    groups = ["core", "smoke", "llm"]
 
     @aetest.setup
     def check_llm(self, env):
@@ -438,12 +415,12 @@ class ConsensusCliE2E(aetest.Testcase):
             if not r.ok:
                 step.failed(r.error_message)
 
-        with steps.start("Agent Alpha proposes topic") as step:
+        with steps.start("Harness: agent-alpha proposes via CLI") as step:
             r = cli.negotiate_propose(test_room, "agent-alpha", "Should we use REST or gRPC?")
             if not r.ok:
                 step.failed(r.error_message)
 
-        with steps.start("Agent Beta responds") as step:
+        with steps.start("Harness: agent-beta accepts via CLI") as step:
             r = cli.negotiate_respond(test_room, "agent-beta", "accept")
             if not r.ok:
                 step.failed(r.error_message)
@@ -540,16 +517,20 @@ class SyncNegotiationCliE2E(aetest.Testcase):
 
 
 class DemoScriptNegotiation(aetest.Testcase):
-    """Test 14: Demo-script flow — watch/await/respond."""
+    """Test 14 (smoke): CLI memory + negotiate propose/respond/query.
 
-    groups = ["core", "cfn", "llm", "slow"]
+    The harness seeds room context with ``memory set``, then impersonates
+    ``agent-alpha`` (propose) and ``agent-beta`` (accept) via ``negotiate``
+    commands and checks ``negotiate query``. Does not use ``watch``,
+    ``session create/join``, ``session await``, or the CFN tick path.
+    """
+
+    groups = ["core", "smoke", "llm"]
 
     @aetest.setup
-    def check_prerequisites(self, env):
+    def check_llm(self, env):
         if env.skip_llm_tests:
             self.skipped("LLM not available")
-        if env.coordination_blocked_reason:
-            self.skipped(env.coordination_blocked_reason)
 
     @aetest.test
     def demo_script_flow(self, steps, cli, room_name):
@@ -562,17 +543,17 @@ class DemoScriptNegotiation(aetest.Testcase):
             if not r.ok:
                 step.failed(f"memory set failed: {r.error_message}")
 
-        with steps.start("Start negotiation") as step:
+        with steps.start("Harness: agent-alpha proposes via CLI") as step:
             r = cli.negotiate_propose(test_room, "agent-alpha", "Release planning for v2.0")
             if not r.ok:
                 step.failed(f"negotiate propose failed: {r.error_message}")
 
-        with steps.start("Agent responds") as step:
+        with steps.start("Harness: agent-beta accepts via CLI") as step:
             r = cli.negotiate_respond(test_room, "agent-beta", "accept")
             if not r.ok:
                 step.failed(f"negotiate respond failed: {r.error_message}")
 
-        with steps.start("Query negotiation state") as step:
+        with steps.start("Harness: negotiate query via CLI") as step:
             r = cli.negotiate_query(test_room, "Release planning for v2.0")
             if not r.ok:
                 step.failed(f"negotiate query failed: {r.error_message}")

@@ -74,7 +74,7 @@ services:
       - mycelium-e2e
 
   # ── CFN Fabric Node ───────────────────────────────────────────────────
-  ioc-cognition-fabric-node-svc:
+  ioc-cfn-svc:
     image: ${CFN_NODE_IMAGE:-ghcr.io/outshift-open/ioc-cognition-fabric-node-svc:0.1.7}
     platform: linux/amd64
     container_name: e2e-cfn-node
@@ -129,7 +129,7 @@ services:
         condition: service_healthy
       ioc-cfn-mgmt-plane-svc:
         condition: service_healthy
-      ioc-cognition-fabric-node-svc:
+      ioc-cfn-svc:
         condition: service_healthy
     environment:
       <<: *common-env
@@ -137,7 +137,7 @@ services:
       GRAPH_DB_URL: "postgresql://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium"
       API_BASE_URL: http://mycelium-backend:8000
       CFN_MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
-      COGNITION_FABRIC_NODE_URL: http://ioc-cognition-fabric-node-svc:9002
+      CFN_SVC_URL: http://ioc-cfn-svc:9002
       COORDINATION_TICK_TIMEOUT_SECONDS: ${COORDINATION_TICK_TIMEOUT_SECONDS:-30}
       MYCELIUM_DATA_DIR: /home/mycelium/.mycelium
       MYCELIUM_STUB_EMBEDDINGS: "${MYCELIUM_STUB_EMBEDDINGS:-0}"
@@ -260,13 +260,18 @@ services:
     networks:
       - mycelium-e2e
 
-  # ── OpenClaw Gateway (Hub) ──────────────────────────────────────────
+  # ── Mycelium Hub (OpenClaw + cc-daemon + collector) ──────────────────
   #
   # Pre-built image from GHCR (see .github/workflows/build-openclaw.yml).
   # Reads Matrix tokens from the shared volume written by matrix-bootstrap,
   # then starts the gateway with agents alpha/beta/gamma/delta.
   # Start AFTER both bootstraps have run:
   #   docker compose -f infra/compose.e2e.yaml up -d openclaw-hub
+  #
+  # The service name remains ``openclaw-hub`` for backwards-compat with
+  # the existing GitHub Actions workflow and pyATS testbeds. With the
+  # stage-2 spoke image rewrite, the hub is also adapter-aware via
+  # ``HUB_ADAPTERS``.
   openclaw-hub:
     image: ghcr.io/mycelium-io/mycelium-openclaw:latest
     container_name: e2e-openclaw-hub
@@ -277,6 +282,7 @@ services:
         condition: service_healthy
     environment:
       OPENCLAW_ROLE: hub
+      SPOKE_ADAPTERS: "${HUB_ADAPTERS:-openclaw}"
       MATRIX_HOMESERVER: http://matrix-synapse:8008
       MYCELIUM_BACKEND_URL: http://mycelium-backend:8000
       MATRIX_SHARED_SECRET: e2e-shared-secret
@@ -297,10 +303,23 @@ services:
     networks:
       - mycelium-e2e
 
-  # ── Spoke 1 (OpenClaw + mycelium CLI + cc-daemon + collector) ────────
+  # ── OpenClaw Spoke 1 (unified: openclaw + cursor + hermes) ──────────
   #
-  # Lightweight "device" container.  Connects back to the hub's backend,
-  # Matrix, and collector.  Start AFTER bootstraps and collector:
+  # Single "device" container that can stand in for any adapter combo.
+  # ``SPOKE_ADAPTERS`` (default "openclaw") gates which runtimes start;
+  # set it to ``openclaw,cursor,hermes`` for the full matrix.
+  #
+  # The cursor auth bind-mount is best-effort: when ``HOST_CURSOR_AUTH``
+  # is unset it falls back to ``/dev/null``, which docker tolerates as
+  # an empty read-only file (cursor-agent then logs a clear "not
+  # authenticated" message rather than crashing the container).
+  #
+  # Service + container names retain the ``openclaw-spoke{1,2}`` /
+  # ``e2e-openclaw-spoke{1,2}`` form so the existing GitHub Actions
+  # workflow and pyATS testbeds keep working without a co-ordinated
+  # rename.
+  #
+  # Start AFTER bootstraps and the collector:
   #   docker compose -f infra/compose.e2e.yaml up -d openclaw-spoke1 openclaw-spoke2
   openclaw-spoke1:
     image: ${MYCELIUM_SPOKE_IMAGE:-ghcr.io/mycelium-io/mycelium-spoke:latest}
@@ -314,6 +333,7 @@ services:
         condition: service_healthy
     environment:
       OPENCLAW_ROLE: spoke1
+      SPOKE_ADAPTERS: "${SPOKE_ADAPTERS:-openclaw}"
       MATRIX_HOMESERVER: http://matrix-synapse:8008
       MYCELIUM_BACKEND_URL: http://mycelium-backend:8000
       COLLECTOR_HUB_URL: http://mycelium-collector:4318
@@ -324,6 +344,9 @@ services:
       LLM_BASE_URL: "${LLM_BASE_URL:-}"
     volumes:
       - e2e-shared:/shared:ro
+      # Host cursor auth (optional; left as an explicit empty default
+      # so compose doesn't choke when the file is absent).
+      - ${HOST_CURSOR_AUTH:-/dev/null}:/home/spoke/.config/cursor/auth.json:ro
     ports:
       - "${E2E_SPOKE1_PORT:-18790}:18789"
     healthcheck:
@@ -335,7 +358,7 @@ services:
     networks:
       - mycelium-e2e
 
-  # ── Spoke 2 ─────────────────────────────────────────────────────────
+  # ── OpenClaw Spoke 2 ────────────────────────────────────────────────
   openclaw-spoke2:
     image: ${MYCELIUM_SPOKE_IMAGE:-ghcr.io/mycelium-io/mycelium-spoke:latest}
     container_name: e2e-openclaw-spoke2
@@ -348,6 +371,7 @@ services:
         condition: service_healthy
     environment:
       OPENCLAW_ROLE: spoke2
+      SPOKE_ADAPTERS: "${SPOKE_ADAPTERS:-openclaw}"
       MATRIX_HOMESERVER: http://matrix-synapse:8008
       MYCELIUM_BACKEND_URL: http://mycelium-backend:8000
       COLLECTOR_HUB_URL: http://mycelium-collector:4318
@@ -358,6 +382,7 @@ services:
       LLM_BASE_URL: "${LLM_BASE_URL:-}"
     volumes:
       - e2e-shared:/shared:ro
+      - ${HOST_CURSOR_AUTH:-/dev/null}:/home/spoke/.config/cursor/auth.json:ro
     ports:
       - "${E2E_SPOKE2_PORT:-18791}:18789"
     healthcheck:
@@ -384,7 +409,7 @@ services:
     environment:
       MYCELIUM_BACKEND_URL: http://mycelium-backend:8000
       CFN_MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
-      CFN_SVC_URL: http://ioc-cognition-fabric-node-svc:9002
+      CFN_SVC_URL: http://ioc-cfn-svc:9002
       MATRIX_URL: http://matrix-synapse:8008
     volumes:
       - ../artifacts:/tests/artifacts

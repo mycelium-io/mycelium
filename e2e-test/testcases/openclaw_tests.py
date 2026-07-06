@@ -9,9 +9,7 @@ import logging
 
 from pyats import aetest
 
-from libs.mycelium_cli import MyceliumCLI
 from libs.openclaw import run_openclaw
-from libs.environment import EnvironmentInfo
 
 log = logging.getLogger(__name__)
 
@@ -68,10 +66,16 @@ class OpenClawAgentExecution(aetest.Testcase):
 
         with steps.start("Trigger agent skill execution") as step:
             log.info("Triggering agent skill execution for room %s", test_room)
-            proc = run_openclaw([
-                "run", "--agent", "agent-alpha",
-                "--prompt", f"Use the mycelium skill to list rooms. The room '{test_room}' should exist.",
-            ], timeout=120.0)
+            proc = run_openclaw(
+                [
+                    "run",
+                    "--agent",
+                    "agent-alpha",
+                    "--prompt",
+                    f"Use the mycelium skill to list rooms. The room '{test_room}' should exist.",
+                ],
+                timeout=120.0,
+            )
             if proc is None:
                 step.failed("openclaw run command failed")
             if proc.returncode != 0:

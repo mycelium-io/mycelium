@@ -1,0 +1,22 @@
+---
+# Cursor adapter suite — testcase UIDs for tests 075–080.
+extends: base_datafile.yaml
+
+testcases:
+  CursorBasicDispatch:
+    uid: "mycelium:e2e:cursor:075"
+
+  CursorWorkspaceDrift:
+    uid: "mycelium:e2e:cursor:076"
+
+  CursorAuthFailure:
+    uid: "mycelium:e2e:cursor:077"
+
+  CursorMultiHostDispatch:
+    uid: "mycelium:e2e:cursor:078"
+
+  CursorCrossFamilyCursor:
+    uid: "mycelium:e2e:cursor:079"
+
+  CursorCrossFamilyOpenClaw:
+    uid: "mycelium:e2e:cursor:080"

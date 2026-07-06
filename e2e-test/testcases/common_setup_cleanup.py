@@ -147,6 +147,76 @@ class MyceliumCommonSetup(aetest.CommonSetup):
         )
 
     @aetest.subsection
+    def provision_matrix_tokens(self, testscript):
+        """Get a fresh Matrix access token for agent-alpha via the Synapse admin API.
+
+        Stores the token as ``matrix_token_agent_alpha`` in testscript.parameters
+        so distributed testcases can send Matrix triggers without requiring the
+        token to be pre-set in the environment.
+
+        Falls back to MATRIX_TOKEN_AGENT_ALPHA env var if already set.
+        Stores None when Matrix is not reachable or the secret is missing —
+        distributed testcases gate on this value in check_prerequisites.
+        """
+        import asyncio
+
+        env: EnvironmentInfo = testscript.parameters.get("env")
+        if not env or not env.matrix_reachable:
+            log.info("Matrix not reachable — skipping token provisioning")
+            testscript.parameters["matrix_token_agent_alpha"] = None
+            return
+
+        # Honour a pre-set token (CI injects via environment / secrets store).
+        existing = os.environ.get("MATRIX_TOKEN_AGENT_ALPHA", "").strip()
+        if existing:
+            log.info("Using MATRIX_TOKEN_AGENT_ALPHA from environment")
+            testscript.parameters["matrix_token_agent_alpha"] = existing
+            return
+
+        # Prefer datafile topology value (already resolved via %ENV{} by initialize_clients)
+        # over raw os.environ so the datafile default is honoured even without an env var.
+        matrix_config: dict = testscript.parameters.get("matrix_config") or {}
+        shared_secret = (
+            matrix_config.get("shared_secret")
+            or os.environ.get("MATRIX_SHARED_SECRET", "")
+        ).strip()
+        if not shared_secret:
+            log.warning(
+                "MATRIX_SHARED_SECRET not set — distributed tests will skip "
+                "(set MATRIX_TOKEN_AGENT_ALPHA or MATRIX_SHARED_SECRET)"
+            )
+            testscript.parameters["matrix_token_agent_alpha"] = None
+            return
+
+        matrix_url: str = testscript.parameters.get("matrix_url", "")
+        try:
+            from libs.matrix_client import get_agent_token, get_observer_token
+
+            # Provision agent-alpha's token (used as a join credential).
+            token = asyncio.run(
+                get_agent_token(matrix_url, "agent-alpha", shared_secret=shared_secret)
+            )
+            testscript.parameters["matrix_token_agent_alpha"] = token
+            log.info("Provisioned Matrix token for agent-alpha via admin API")
+
+            # Provision a neutral sender token (test-observer) for Matrix triggers.
+            # Using a non-participant sender avoids echo suppression — the gateway
+            # ignores messages sent by the same account it is syncing for, so triggers
+            # sent as agent-alpha would be silently dropped for agent-alpha's own loop.
+            try:
+                obs_token = asyncio.run(get_observer_token(matrix_url, shared_secret=shared_secret))
+                testscript.parameters["matrix_token_trigger_sender"] = obs_token
+                log.info("Provisioned Matrix trigger sender token (test-observer)")
+            except Exception as exc:
+                log.warning("Failed to provision trigger sender token: %s — will fall back to agent-alpha", exc)
+                testscript.parameters["matrix_token_trigger_sender"] = token
+
+        except Exception as exc:
+            log.warning("Failed to provision Matrix token for agent-alpha: %s", exc)
+            testscript.parameters["matrix_token_agent_alpha"] = None
+            testscript.parameters["matrix_token_trigger_sender"] = None
+
+    @aetest.subsection
     def provision_cfn_ids(self, testscript):
         """Fetch workspace & MAS IDs from CFN mgmt and persist them.
 
@@ -284,7 +354,14 @@ class MyceliumCommonSetup(aetest.CommonSetup):
         env_path.parent.mkdir(parents=True, exist_ok=True)
 
         lines = []
-        for var in ("LLM_API_KEY", "LLM_BASE_URL", "LLM_MODEL", "WORKSPACE_ID", "MAS_ID"):
+        for var in (
+            "LLM_API_KEY",
+            "LLM_BASE_URL",
+            "LLM_MODEL",
+            "WORKSPACE_ID",
+            "MAS_ID",
+            "MATRIX_SHARED_SECRET",
+        ):
             val = os.environ.get(var)
             if val:
                 lines.append(f"{var}={val}")
@@ -381,42 +458,62 @@ class MyceliumCommonSetup(aetest.CommonSetup):
         return result
 
 
+def _keep_rooms() -> bool:
+    return os.environ.get("MYCELIUM_E2E_KEEP_ROOMS", "").lower() in {"1", "true", "yes"}
+
+
 class MyceliumCommonCleanup(aetest.CommonCleanup):
-    """Shared cleanup: delete test rooms, reap leaked sessions."""
+    """Shared cleanup: delete test rooms, sweep for stragglers."""
 
     @aetest.subsection
     def cleanup_test_room(self, testscript):
-        """Delete the session-scoped test room."""
-        api: MyceliumAPI = testscript.parameters.get("api")
-        room_name = testscript.parameters.get("room_name")
-        if api and room_name:
-            api.delete_room(room_name)
-            log.info("Deleted test room: %s", room_name)
+        """Delete all rooms created during this suite run.
 
-    @aetest.subsection
-    def reap_leaked_sessions(self, testscript):
-        """Find and delete any rooms still in negotiating/waiting state."""
+        ``owned_rooms`` is accumulated by testcases that call
+        ``owned_rooms.add(name)``; the primary ``room_name`` from
+        ``create_test_room`` is always included.
+        """
+        if _keep_rooms():
+            log.info(
+                "cleanup: skipping room deletion (MYCELIUM_E2E_KEEP_ROOMS) — owned=%s",
+                testscript.parameters.get("owned_rooms"),
+            )
+            return
         api: MyceliumAPI = testscript.parameters.get("api")
-        owned = testscript.parameters.get("owned_rooms", set())
         if not api:
             return
 
-        status, rooms = api.list_rooms()
-        if status != 200:
+        owned: set[str] = set(testscript.parameters.get("owned_rooms") or set())
+        room_name = testscript.parameters.get("room_name")
+        if room_name:
+            owned.add(room_name)
+
+        for name in sorted(owned):
+            st, _ = api.delete_room(name)
+            if 200 <= st < 300:
+                log.info("Deleted room: %s", name)
+            else:
+                log.debug("Room %s already gone (status=%d)", name, st)
+
+    @aetest.subsection
+    def cleanup_stale_rooms(self, testscript):
+        """Prefix sweep for any e2e/scenario rooms not explicitly tracked.
+
+        This is a safety net for rooms created by testcases that don't
+        register themselves in ``owned_rooms``, or for rooms left behind
+        when a test was interrupted mid-setup before teardown ran.
+        """
+        if _keep_rooms():
+            return
+        api: MyceliumAPI = testscript.parameters.get("api")
+        if not api:
             return
 
-        leaked_states = ("negotiating", "waiting", "synthesizing")
-        room_list = rooms if isinstance(rooms, list) else rooms.get("rooms", []) if isinstance(rooms, dict) else []
-        reaped = 0
-        for room in room_list:
-            name = room.get("name", "")
-            base = name.split(":session:")[0]
-            if base not in owned:
-                continue
-            if room.get("coordination_state") in leaked_states:
-                st, _ = api.delete_room(name)
-                if 200 <= st < 300:
-                    reaped += 1
-                    log.info("Reaped leaked session: %s (state=%s)", name, room.get("coordination_state"))
-        if reaped:
-            log.info("Reaped %d leaked sessions total", reaped)
+        # Protect rooms we still own (e.g. rooms deleted above may have
+        # already been removed, but exclude is cheap).
+        owned = testscript.parameters.get("owned_rooms") or set()
+
+        for prefix in ("e2e-", "dist-e2e-", "scn-"):
+            deleted = api.cleanup_rooms(prefix, exclude=owned)
+            if deleted:
+                log.info("Stale room sweep: deleted %d '%s*' rooms", deleted, prefix)

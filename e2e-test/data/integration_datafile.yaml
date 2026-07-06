@@ -1,20 +1,6 @@
 ---
-# Integration adapter tests — Claude Code skill/daemon + Cursor stubs.
-#
-# Only the parameters and testcases relevant to tests 70-75.
-# Does not extend the full base_datafile to avoid section mismatches.
-
-parameters:
-
-  topology:
-    backend:
-      base_url: "%ENV{MYCELIUM_BACKEND_URL, http://localhost:8000}"
-      api_path: "/api"
-      health_path: "/health"
-
-  timeouts:
-    http_default: 10
-    cli_default: 30
+# Integration adapter suite — testcase UIDs for tests 070–080.
+extends: base_datafile.yaml
 
 testcases:
   ClaudeCodeSkillInstall:

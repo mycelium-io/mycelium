@@ -61,9 +61,7 @@ DISPATCH_RE = re.compile(r"\[mycelium-room\] → dispatching to (?P<agent>[\w-]+
 LIVENESS_QUEUED_RE = re.compile(r"\bqueued=(\d+)\b")
 LIVENESS_ACTIVE_RE = re.compile(r"\bactive=(\d+)\b")
 # Per-agent work tuples in the liveness "work=[...]" section.
-WORK_AGENT_RE = re.compile(
-    r"agent:(?P<agent>[\w-]+):mycelium-room:[^\(]+\([^,]+,q=(?P<q>\d+),age=(?P<age>\d+)s"
-)
+WORK_AGENT_RE = re.compile(r"agent:(?P<agent>[\w-]+):mycelium-room:[^\(]+\([^,]+,q=(?P<q>\d+),age=(?P<age>\d+)s")
 
 
 def _parse_iso(ts_str: str) -> datetime:
@@ -76,6 +74,7 @@ def _parse_naive(ts_str: str) -> datetime:
 
 
 # ─── Data shapes ─────────────────────────────────────────────────────────────
+
 
 @dataclass
 class TestWindow:
@@ -103,13 +102,11 @@ class TestStats:
 
     @property
     def gaps_s(self) -> list[float]:
-        return [
-            (b - a).total_seconds()
-            for a, b in zip(self.dispatch_ts, self.dispatch_ts[1:])
-        ]
+        return [(b - a).total_seconds() for a, b in zip(self.dispatch_ts, self.dispatch_ts[1:])]
 
 
 # ─── Builders ────────────────────────────────────────────────────────────────
+
 
 def parse_test_windows(e2e_log: Path) -> list[TestWindow]:
     windows: list[TestWindow] = []
@@ -131,9 +128,10 @@ def fetch_journal(since: datetime) -> list[str]:
     which has subsecond precision."""
     since_str = since.strftime("%Y-%m-%d %H:%M:%S")
     result = subprocess.run(
-        ["journalctl", "--user", "-u", "openclaw-gateway.service",
-         "--since", since_str, "-o", "cat", "--no-pager"],
-        capture_output=True, text=True, check=False,
+        ["journalctl", "--user", "-u", "openclaw-gateway.service", "--since", since_str, "-o", "cat", "--no-pager"],
+        capture_output=True,
+        text=True,
+        check=False,
     )
     return result.stdout.splitlines()
 
@@ -144,6 +142,7 @@ def attribute_journal(
     agent: str = "agent-alpha",
 ) -> dict[int, TestStats]:
     stats = {w.num: TestStats(window=w) for w in windows}
+
     # Build an index for O(log n) window lookup; small N so linear scan is fine.
     def find_window(ts: datetime) -> Optional[TestStats]:
         for s in stats.values():
@@ -193,6 +192,7 @@ def attribute_journal(
 
 # ─── Reporting ───────────────────────────────────────────────────────────────
 
+
 def fmt_gap(gaps: list[float]) -> str:
     if not gaps:
         return "n=0"
@@ -227,9 +227,11 @@ def print_report(stats: dict[int, TestStats]) -> None:
         wedges = sum(1 for s in ts if s.wedge_seen)
         max_q = max((s.max_q for s in ts), default=0)
         max_age = max((s.max_age for s in ts), default=0)
-        print(f"  {tier:<11}  tests={len(ts):>2}  dispatches={total_dispatch:>3}  "
-              f"tick gaps {fmt_gap(all_gaps)}  max q={max_q}  max age={max_age}s  "
-              f"wedged tests={wedges}/{len(ts)}")
+        print(
+            f"  {tier:<11}  tests={len(ts):>2}  dispatches={total_dispatch:>3}  "
+            f"tick gaps {fmt_gap(all_gaps)}  max q={max_q}  max age={max_age}s  "
+            f"wedged tests={wedges}/{len(ts)}"
+        )
 
     # Hypothesis call
     matrix_gaps = [g for s in by_tier["matrix"] for g in s.gaps_s]
@@ -252,13 +254,16 @@ def print_report(stats: dict[int, TestStats]) -> None:
     if dist_wedges and not matrix_wedges:
         print(f"  → wedge seen in {dist_wedges} distributed test(s), 0 matrix → distributed-specific trigger.")
     elif dist_wedges and matrix_wedges:
-        print(f"  → wedges in both tiers ({matrix_wedges} matrix, {dist_wedges} distributed) → "
-              f"load-driven, not test-type-specific (supports H2).")
+        print(
+            f"  → wedges in both tiers ({matrix_wedges} matrix, {dist_wedges} distributed) → "
+            f"load-driven, not test-type-specific (supports H2)."
+        )
     elif not dist_wedges and not matrix_wedges:
         print("  → no wedge observed in this run (q<2 or age<60s everywhere).")
 
 
 # ─── Entrypoint ──────────────────────────────────────────────────────────────
+
 
 def latest_e2e_log() -> Optional[Path]:
     log_dir = Path.home() / ".mycelium" / "e2e-logs"

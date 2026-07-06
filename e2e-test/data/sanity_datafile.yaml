@@ -1,0 +1,60 @@
+---
+# Sanity suite — localhost topology + fast smoke testcase UIDs.
+extends: local_datafile.yaml
+
+testcases:
+  RoomLifecycle:
+    uid: "mycelium:e2e:core:001"
+
+  MultiAgentMemory:
+    uid: "mycelium:e2e:core:002"
+    parameters:
+      memories:
+        - agent: "alpha"
+          key: "decisions/database"
+          content: "Decided to use PostgreSQL for persistence. SQLite considered but rejected for concurrency."
+        - agent: "alpha"
+          key: "decisions/llm"
+          content: "Using Claude Haiku for synthesis, Sonnet for complex reasoning. Cost/quality tradeoff."
+        - agent: "beta"
+          key: "status/frontend"
+          content: "React 19 migration complete. Server components working. HMR fixed."
+        - agent: "beta"
+          key: "work/tailwind-v4"
+          content: "Upgraded to Tailwind v4. Removed autoprefixer (now built-in). Fixed JIT issues."
+        - agent: "gamma"
+          key: "context/dep-updates"
+          content: "Dependabot PRs: 3 pending (lodash, axios, typescript). lodash is security-critical."
+        - agent: "gamma"
+          key: "decisions/no-autoprefixer"
+          content: "Dropped autoprefixer from deps. Tailwind v4 includes it. Saves 2MB bundle."
+        - agent: "delta"
+          key: "status/backend-deps"
+          content: "All backend deps up to date. LiteLLM pinned to 1.55.3 due to breaking change in 1.56."
+        - agent: "delta"
+          key: "decisions/litellm-pin"
+          content: "Pinned LiteLLM to 1.55.3. Version 1.56 broke streaming. Issue filed upstream."
+
+  MemoryReads:
+    uid: "mycelium:e2e:core:003"
+
+  SemanticSearch:
+    uid: "mycelium:e2e:core:004"
+
+  DoctorClean:
+    uid: "mycelium:e2e:core:006c"
+
+  SharedMemoryCliE2E:
+    uid: "mycelium:e2e:core:011"
+
+  Reindex:
+    uid: "mycelium:e2e:core:022"
+
+  ClaudeCodeSkillInstall:
+    uid: "mycelium:e2e:integration:070"
+
+  ClaudeCodeAdapterStatus:
+    uid: "mycelium:e2e:integration:071"
+
+  CursorBasicDispatch:
+    uid: "mycelium:e2e:cursor:075"

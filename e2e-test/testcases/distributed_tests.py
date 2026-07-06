@@ -8,17 +8,13 @@ then verify coordination through the shared Mycelium backend.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
-import time
 import uuid
 
 from pyats import aetest
 
-from libs.mycelium_api import MyceliumAPI
 from libs.matrix_client import MatrixClient
-from libs.environment import EnvironmentInfo
 
 log = logging.getLogger(__name__)
 
@@ -45,16 +41,34 @@ class _DistributedBase(aetest.Testcase):
     local_only: bool = False
 
     @aetest.setup
-    def check_prerequisites(self, env):
+    def check_prerequisites(self, env, matrix_url=None, matrix_token_agent_alpha=None):
         if env.skip_llm_tests:
             self.skipped("LLM not available")
         if env.coordination_blocked_reason:
             self.skipped(env.coordination_blocked_reason)
-        if not self.local_only and env.skip_matrix_tests:
-            self.skipped("Matrix not reachable (required for distributed tests)")
+        if not self.local_only:
+            # Re-probe Matrix at testcase time — the suite-level check runs once
+            # at startup and may be stale if Matrix went down (or was never up).
+            from libs.matrix_client import check_matrix_reachable
+            if not matrix_url or not check_matrix_reachable(matrix_url):
+                self.skipped(
+                    f"Matrix not reachable at testcase time (url={matrix_url!r}) "
+                    "— required for distributed tests"
+                )
+            # matrix_token_agent_alpha is provisioned by CommonSetup.provision_matrix_tokens.
+            # Check here (not just in the send step) so a missing token skips rather than fails,
+            # avoiding max_failures cascade onto unrelated testcases.
+            if not matrix_token_agent_alpha:
+                self.skipped(
+                    "No Matrix token for agent-alpha — cannot send trigger "
+                    "(set MATRIX_SHARED_SECRET or MATRIX_TOKEN_AGENT_ALPHA)"
+                )
 
     @aetest.test
-    def run_distributed_scenario(self, steps, api, room_name, owned_rooms, matrix_url=None, matrix_config=None, timeouts=None):
+    def run_distributed_scenario(
+        self, steps, api, cli, room_name, owned_rooms, matrix_url=None, matrix_config=None, timeouts=None,
+        matrix_token_agent_alpha=None, matrix_token_trigger_sender=None,
+    ):
         t = timeouts or {}
         timeout = t.get("negotiation_wait", 600)
         suffix = uuid.uuid4().hex[:8]
@@ -84,29 +98,62 @@ class _DistributedBase(aetest.Testcase):
                 step.failed(f"Session spawn failed: status={st}")
 
         if self.local_only:
-            log.info("local_only=True — skipping Matrix trigger (agents are co-located)")
+            with steps.start("Join agents via CLI (local — no Matrix trigger)") as step:
+                # For local-only runs there is no Matrix message to tell agents to join.
+                # Join each agent directly; the daemon then delivers CFN ticks and
+                # the agents respond autonomously via their adapter.
+                positions = [
+                    f"Agent {DISTRIBUTED_AGENTS[a]['display_name']}: ready to negotiate on '{self.scenario_topic}'"
+                    for a in self.scenario_agents
+                ]
+                for agent_id, position in zip(self.scenario_agents, positions):
+                    jr = cli.session_join(test_room, agent_id, position=position)
+                    if not jr.ok:
+                        step.failed(f"session join failed for {agent_id}: {jr.error_message}")
+                    log.info("Joined %s in %s", agent_id, test_room)
         else:
             with steps.start("Send Matrix trigger message") as step:
                 room_id = matrix_config.get("test_room_id")
                 if not room_id:
                     step.failed("No Matrix room ID configured")
-                trigger = (
-                    f"@all Please join the negotiation on '{self.scenario_topic}' "
-                    f"in room {test_room}. Use `mycelium session join --room {test_room}`."
+                # Derive Synapse server_name from room_id (e.g. "!hash:local" → "local").
+                server_name = room_id.split(":", 1)[1] if ":" in room_id else "local"
+                # Build proper Matrix @mentions so agents with requireMention=true respond.
+                mention_parts_plain = [f"@{a}:{server_name}" for a in self.scenario_agents]
+                mention_parts_html = [
+                    f'<a href="https://matrix.to/#/@{a}:{server_name}">@{a}</a>'
+                    for a in self.scenario_agents
+                ]
+                trigger_plain = (
+                    f"{' '.join(mention_parts_plain)} Please join the negotiation on "
+                    f"'{self.scenario_topic}' in room {test_room}. "
+                    f"Use `mycelium session join --room {test_room}`."
                 )
-                token = os.environ.get("MATRIX_TOKEN_AGENT_ALPHA", "")
+                trigger_html = (
+                    f"{' '.join(mention_parts_html)} Please join the negotiation on "
+                    f"'{self.scenario_topic}' in room <code>{test_room}</code>. "
+                    f"Use <code>mycelium session join --room {test_room}</code>."
+                )
+                # Use the neutral sender token (test-observer) so the trigger is
+                # NOT sent as agent-alpha. The gateway suppresses echo events —
+                # a trigger sent AS agent-alpha would be silently dropped for
+                # agent-alpha's own Matrix sync loop.
+                token = matrix_token_trigger_sender or matrix_token_agent_alpha or ""
                 if not token:
-                    step.failed("MATRIX_TOKEN_AGENT_ALPHA not set — cannot send trigger")
+                    step.failed("No Matrix token for trigger sender (should have been caught in check_prerequisites)")
+                mention_user_ids = [f"@{a}:{server_name}" for a in self.scenario_agents]
                 try:
-                    asyncio.run(
-                        _send_matrix_trigger(matrix_url, token, room_id, trigger)
-                    )
+                    asyncio.run(_send_matrix_trigger(
+                        matrix_url, token, room_id,
+                        trigger_plain, trigger_html,
+                        mention_user_ids=mention_user_ids,
+                    ))
                 except Exception as exc:
                     step.failed(f"Failed to send Matrix trigger: {exc}")
-                log.info("Matrix trigger sent to %s: %s", room_id, trigger[:80])
+                log.info("Matrix trigger sent to %s: %s", room_id, trigger_plain[:100])
 
-        with steps.start(f"Wait for consensus (timeout={timeout}s)") as step:
-            result = api.wait_for_consensus(test_room, timeout=timeout)
+        with steps.start(f"Poll for consensus (timeout={timeout}s)") as step:
+            result = api.poll_for_consensus(test_room, timeout=timeout)
             if not result:
                 step.failed(f"Consensus not reached within {timeout}s")
             state = result.get("coordination_state") if isinstance(result, dict) else None
@@ -122,17 +169,27 @@ class _DistributedBase(aetest.Testcase):
 
 
 async def _send_matrix_trigger(
-    homeserver: str, token: str, room_id: str, body: str,
+    homeserver: str,
+    token: str,
+    room_id: str,
+    body: str,
+    formatted_body: str | None = None,
+    mention_user_ids: list | None = None,
 ) -> None:
-    """Send a single Matrix message, then close the client."""
+    """Send a Matrix message with HTML formatting and explicit m.mentions."""
     client = MatrixClient(homeserver=homeserver, access_token=token)
     try:
-        await client.send_message(room_id, body)
+        await client.send_message(
+            room_id, body,
+            formatted_body=formatted_body,
+            mention_user_ids=mention_user_ids,
+        )
     finally:
         await client.close()
 
 
 # ─── Local-Real Tests (test_30-32) ───────────────────────────────────────────
+
 
 class LocalTwoAgentNegotiation(_DistributedBase):
     """Test 30: Two local agents (alpha + beta) negotiate."""
@@ -162,6 +219,7 @@ class LocalArchitectureDecision(_DistributedBase):
 
 
 # ─── Cross-Device Distributed Tests (test_40-49) ─────────────────────────────
+
 
 class DistributedTwoAgent(_DistributedBase):
     """Test 40: Two agents on different devices (oclw4 + oclw3)."""
@@ -236,13 +294,13 @@ class DistributedBackendResolvedCfnIds(aetest.Testcase):
                 step.failed(f"Room creation failed: status={st}")
 
         with steps.start("Ingest knowledge with room_name only") as step:
-            st, resp = api.ingest_knowledge({
-                "room_name": test_room,
-                "agent_id": "e2e-leaf-node",
-                "records": [
-                    {"response": f"Backend-resolved test: {marker}"}
-                ],
-            })
+            st, resp = api.ingest_knowledge(
+                {
+                    "room_name": test_room,
+                    "agent_id": "e2e-leaf-node",
+                    "records": [{"response": f"Backend-resolved test: {marker}"}],
+                }
+            )
             if st not in (200, 201, 202):
                 log.error("Knowledge ingest body: %s", resp)
                 step.failed(f"Ingest failed: status={st}: {resp}")
