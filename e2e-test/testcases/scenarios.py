@@ -640,11 +640,17 @@ class _ScenarioCore(aetest.Testcase):
 
     @aetest.cleanup
     def cleanup(self) -> None:
-        """Unregister agents from this room and delete the room."""
-        if os.environ.get("MYCELIUM_E2E_KEEP_ROOMS", "").lower() in {"1", "true", "yes"}:
-            log.info("cleanup: skipping room teardown for %s (MYCELIUM_E2E_KEEP_ROOMS)", self.room)
-            return
+        """Unregister agents from this room and optionally delete the room.
 
+        Agent unregistration always runs — it removes the room from each
+        agent's adapter config (openclaw.json / hermes config) on the remote
+        host, releasing the SSE LISTEN connection.  Room deletion is skipped
+        when MYCELIUM_E2E_KEEP_ROOMS=1 so the room data survives for
+        post-test inspection, but the SSE subscriptions are still torn down.
+        """
+        keep_rooms = os.environ.get("MYCELIUM_E2E_KEEP_ROOMS", "").lower() in {"1", "true", "yes"}
+
+        # Suite-shared rooms: just drain the session, never delete the room.
         if getattr(self, "_suite_shared_room", False):
             session_room = getattr(self, "session_room", None)
             if session_room:
@@ -672,6 +678,9 @@ class _ScenarioCore(aetest.Testcase):
                 log.warning("cleanup: session still active on %s: %s", self.room, exc)
             return
 
+        # Always unregister agents — this removes the room from each agent's
+        # adapter config on the remote host (openclaw.json, hermes config)
+        # so stale SSE LISTEN connections are released even when keeping rooms.
         for binding in self.agents:
             if binding.ref is None:
                 continue
@@ -687,6 +696,10 @@ class _ScenarioCore(aetest.Testcase):
                     binding.spec["handle"],
                     exc,
                 )
+
+        if keep_rooms:
+            log.info("cleanup: keeping room %s (MYCELIUM_E2E_KEEP_ROOMS)", self.room)
+            return
 
         try:
             sessions.delete_room(self.control_device, self.room)
