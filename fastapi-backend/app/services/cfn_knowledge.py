@@ -12,8 +12,20 @@ The CFN (ioc-cfn-svc) exposes shared-memories endpoints under
   POST  graph/concepts/by_ids        concepts by id
   POST  graph/paths                  graph paths
 
-All calls are plain httpx against documented JSON shapes. (The generated
-``ioc_cfn_svc_api_client`` from the python CFN was removed in 2.0.0.)
+These calls use plain httpx rather than the generated
+``ioc_cfn_svc_api_client`` — deliberately, unlike ``cfn_negotiation.py`` which
+is fully typed. The knowledge path resists clean typing:
+
+- ``shared-memories`` create sends ``payload.data`` which the CFN declares as
+  Go ``json.RawMessage`` (``swaggertype:"object"``). At runtime it accepts the
+  openclaw records as a *list*; the generated ``ExtractionPayloadData`` model
+  is object-only, so typing it would misrepresent the real payload.
+- The ``graph/*`` read endpoints are not published in the CFN's swagger
+  (``paths`` omits them), so the generated client has no functions for them.
+
+Shapes are documented inline. If the CFN's shared-memory contract firms up
+(a non-RawMessage data field, graph endpoints added to swagger), migrate these
+onto the typed client the way ``cfn_negotiation.py`` uses it.
 
 CFN runs the heavy work (two-stage LLM extraction via ioc-cfn-cognitive-engines'
 ingestion agent, embeddings, KG writes) inside the handler, so timeouts are

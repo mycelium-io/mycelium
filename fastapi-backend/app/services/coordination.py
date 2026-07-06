@@ -909,7 +909,6 @@ async def _cfn_decide_round(
     """
     from app.services.cfn_negotiation import (
         CfnNegotiationError,
-        _extract_cfn_usage,
         decide_negotiation,
     )
 
@@ -1027,6 +1026,7 @@ async def _cfn_decide_round(
                 agent_replies=agent_replies,
                 workspace_id=state.workspace_id,
                 mas_id=state.mas_id,
+                room=room_name,
             )
             # Stamp the moment the awaited /decide returned to Mycelium, so we
             # can attribute the leftover (cfn_decide_ms - sum_of_call_timing)
@@ -1088,16 +1088,17 @@ async def _cfn_decide_round(
             )
             return
 
-        _extract_cfn_usage(result, "decide_negotiation", room=room_name)
+        # Token usage is recorded inside decide_negotiation from the typed
+        # ``meta`` field (the Go CFN's shape); no top-level ``_usage`` here.
 
         with cfn_timing_stage("normalize_response_ms"):
             result = _normalize_cfn_decide_response(result)
 
-        # CFN returns a nested envelope: status lives in result["payload"]["status"]
-        # and the agreement in result["semantic_context"]["final_agreement"].
-        # Fall back to top-level keys for backward compatibility.
+        # The Go CFN reports status at the top level of the decide response.
+        # (``_normalize_cfn_decide_response`` may still surface a nested
+        # commit's status under ``payload`` for the embedded-envelope path.)
         payload = result.get("payload", {})
-        status = payload.get("status", result.get("status", ""))
+        status = result.get("status") or payload.get("status", "")
 
         # Stamp CFN response shape on the trace so a long ``cfn_decide_ms``
         # can be attributed to "many mediator turns" vs "one slow LLM call"

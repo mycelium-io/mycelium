@@ -46,6 +46,7 @@ build-backend = "uv_build"
 [tool.ruff]
 target-version = "py312"
 line-length = 100
+extend-exclude = ["ioc_cfn_svc_api_client"]
 
 [tool.ruff.lint]
 select = [
@@ -77,6 +78,9 @@ ignore = [
     "ARG001",  # unused function args (e.g. fixtures)
     "SLF001",  # private member access in tests is fine
 ]
+
+[tool.ty.src]
+exclude = ["ioc_cfn_svc_api_client"]
 
 [tool.ty.environment]
 python-version = "3.12"

@@ -5,9 +5,9 @@
 and the dual-stack (alignment) CFN client mapping."""
 
 import json
+from types import SimpleNamespace
 from typing import Any, ClassVar
 
-import httpx
 import pytest
 
 from app.services import l9_episode
@@ -263,25 +263,31 @@ def test_write_episode_record(tmp_path, monkeypatch):
 # ── alignment-flavor CFN client ───────────────────────────────────────────────
 
 
-class _FakeAsyncClient:
-    """Captures the outgoing request; returns a canned response."""
+class _CapturingEndpoint:
+    """Stands in for a generated endpoint module: captures the typed request
+    body and returns a canned typed response, so we assert on request mapping
+    without a live CFN."""
 
     captured: ClassVar[dict[str, Any]] = {}
-    response_json: ClassVar[dict[str, Any]] = {"status": "ongoing", "messages": []}
-    is_closed: bool = False
+    parsed: ClassVar[Any] = None
 
-    async def post(self, url: str, json: Any = None, **kwargs: Any) -> httpx.Response:
-        _FakeAsyncClient.captured = {"url": url, "json": json}
-        return httpx.Response(200, json=self.response_json, request=httpx.Request("POST", url))
+    @staticmethod
+    async def asyncio_detailed(*, workspace_id: str, mas_id: str, client: Any, body: Any) -> Any:
+        _CapturingEndpoint.captured = {"workspace_id": workspace_id, "mas_id": mas_id, "body": body}
+        return SimpleNamespace(
+            content=b"{}", headers={}, status_code=200, parsed=_CapturingEndpoint.parsed
+        )
 
 
 @pytest.mark.asyncio
 async def test_alignment_decide_maps_participant_id(monkeypatch):
     from app.config import settings
     from app.services import cfn_negotiation
+    from ioc_cfn_svc_api_client.models import SemanticalignmentDecideResponse
 
     monkeypatch.setattr(settings, "COGNITION_FABRIC_NODE_URL", "http://cfn:9002")
-    monkeypatch.setattr(cfn_negotiation.cfn_http, "get_client", lambda: _FakeAsyncClient())
+    monkeypatch.setattr(cfn_negotiation, "decide_api", _CapturingEndpoint)
+    _CapturingEndpoint.parsed = SemanticalignmentDecideResponse(status="agreed")
 
     await cfn_negotiation.decide_negotiation(
         session_id="s1",
@@ -297,12 +303,11 @@ async def test_alignment_decide_maps_participant_id(monkeypatch):
         workspace_id="ws",
         mas_id="mas",
     )
-    sent = _FakeAsyncClient.captured
-    assert sent["url"] == (
-        "http://cfn:9002/api/workspaces/ws/multi-agentic-systems/mas/semantic-alignment/decide"
-    )
-    # agent_id → participant_id; epistemic extras are NOT forwarded to CFN.
-    assert sent["json"]["agent_replies"] == [
+    cap = _CapturingEndpoint.captured
+    assert cap["workspace_id"] == "ws" and cap["mas_id"] == "mas"
+    # Typed request body: agent_id → participant_id; epistemic extras (confidence)
+    # are NOT forwarded to CFN.
+    assert cap["body"].to_dict()["agent_replies"] == [
         {"participant_id": "a1", "action": "accept"},
         {"participant_id": "a2", "action": "counter_offer", "offer": {"k": "v"}},
     ]
@@ -312,10 +317,11 @@ async def test_alignment_decide_maps_participant_id(monkeypatch):
 async def test_alignment_start_request_shape(monkeypatch):
     from app.config import settings
     from app.services import cfn_negotiation
+    from ioc_cfn_svc_api_client.models import SemanticalignmentStartResponse
 
     monkeypatch.setattr(settings, "COGNITION_FABRIC_NODE_URL", "http://cfn:9002")
-    monkeypatch.setattr(cfn_negotiation.cfn_http, "get_client", lambda: _FakeAsyncClient())
-    _FakeAsyncClient.response_json = {"status": "initiated", "messages": [], "issues": []}
+    monkeypatch.setattr(cfn_negotiation, "start_api", _CapturingEndpoint)
+    _CapturingEndpoint.parsed = SemanticalignmentStartResponse(status="initiated")
 
     await cfn_negotiation.start_negotiation(
         session_id="s1",
@@ -325,14 +331,37 @@ async def test_alignment_start_request_shape(monkeypatch):
         mas_id="mas",
         n_steps=10,
     )
-    sent = _FakeAsyncClient.captured
-    assert sent["url"].endswith("/semantic-alignment/start")
-    assert sent["json"] == {
+    body = _CapturingEndpoint.captured["body"].to_dict()
+    assert body == {
         "session_id": "s1",
         "content_text": "- a1: ship",
         "agents": [{"id": "a1", "name": "a1"}],
         "n_steps": 10,
     }
+
+
+@pytest.mark.asyncio
+async def test_decide_raises_on_missing_status(monkeypatch):
+    """Presence-assertion: a response missing the depended-on ``status`` field
+    (swaggo marks everything optional, so a rename becomes UNSET) is a loud
+    CfnNegotiationError, not a silent empty agreement."""
+    from app.config import settings
+    from app.services import cfn_negotiation
+    from ioc_cfn_svc_api_client.models import SemanticalignmentDecideResponse
+
+    monkeypatch.setattr(settings, "COGNITION_FABRIC_NODE_URL", "http://cfn:9002")
+    monkeypatch.setattr(cfn_negotiation, "decide_api", _CapturingEndpoint)
+    _CapturingEndpoint.parsed = SemanticalignmentDecideResponse()  # no status
+
+    with pytest.raises(
+        cfn_negotiation.CfnNegotiationError, match="missing required field 'status'"
+    ):
+        await cfn_negotiation.decide_negotiation(
+            session_id="s1",
+            agent_replies=[{"agent_id": "a1", "action": "accept"}],
+            workspace_id="ws",
+            mas_id="mas",
+        )
 
 
 def test_normalize_decide_handles_alignment_final_result():

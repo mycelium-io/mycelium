@@ -18,9 +18,13 @@ metrics), it is interim and designed to be ceded to the CE later.
 > **2.0.0 addendum (2026-07-02):** the dual-stack `CFN_API_FLAVOR` migration
 > vehicle described below was built, then removed the same day by team
 > decision — mycelium 2.0.0 targets the Go CFN (ioc-cfn-svc) exclusively.
-> The python CFN's semantic-negotiation path and the generated
-> `ioc_cfn_svc_api_client` are gone; all CFN calls are plain httpx against
-> the semantic-alignment API. The compose service keeps the historical
+> The python CFN's semantic-negotiation path is gone; negotiation now targets
+> the semantic-alignment API. `cfn_negotiation.py` uses a **typed generated
+> client** regenerated from the Go CFN's swagger (`scripts/gen-cfn-client.sh`,
+> committed snapshot `fastapi-backend/cfn_swagger.json`) — typed requests,
+> schema-validated responses, presence assertions. `cfn_knowledge.py` and
+> `l9_cfn.py` stay on httpx by design (json.RawMessage payloads / off-by-default
+> L9 channel). The compose service keeps the historical
 > `ioc-cognition-fabric-node-svc` name for existing installs' saved URLs.
 
 ## 0. Open questions — RESOLVED (2026-07-02)
