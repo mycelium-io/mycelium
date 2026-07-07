@@ -51,7 +51,18 @@ async def _sync_create_mas(db_room: Room, session: AsyncSession) -> None:
             f"{settings.CFN_MGMT_URL}/api/workspaces/{settings.WORKSPACE_ID}/multi-agentic-systems"
         )
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(url, json={"name": db_room.name})
+            resp = await client.post(
+                url,
+                json={
+                    "name": db_room.name,
+                    # Live mgmt-plane field is `config` (not `mas_config`) — apply
+                    # mycelium's retry policy so this create path matches _ensure_mas.
+                    "config": {
+                        "retry_max_attempts": settings.CFN_RETRY_MAX_ATTEMPTS,
+                        "validation_score_intervention": settings.CFN_VALIDATION_SCORE_INTERVENTION,
+                    },
+                },
+            )
             resp.raise_for_status()
             data = resp.json()
         record_cfn_call(
@@ -98,12 +109,12 @@ async def _ensure_mas(db_room: Room, session: AsyncSession) -> str | None:
     # validation-threshold policy instead of the CFN defaults (retry_max=3,
     # which silently runs a session several times over on a low alignment
     # score — see CFN_RETRY_MAX_ATTEMPTS / CFN_VALIDATION_SCORE_INTERVENTION).
-    # Whether the mgmt plane applies mas_config at create vs needs a follow-up
-    # PATCH is unverified pending the live smoke test; unknown fields are
-    # ignored, so sending it is safe either way.
+    # The live mgmt-plane field is `config` (MultiAgenticSystemRequest.config);
+    # it applies at create and persists (verified via GET on a real MAS). An
+    # earlier `mas_config` key was silently dropped — the policy never took.
     create_body = {
         "name": db_room.name,
-        "mas_config": {
+        "config": {
             "retry_max_attempts": settings.CFN_RETRY_MAX_ATTEMPTS,
             "validation_score_intervention": settings.CFN_VALIDATION_SCORE_INTERVENTION,
         },

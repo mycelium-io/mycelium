@@ -293,7 +293,7 @@ def _check_docker_containers() -> CheckResult:
 
         vals = dotenv_values(env_path)
         if vals.get("CFN_MGMT_URL", ""):
-            expected += ["ioc-cfn-mgmt-plane-svc", "ioc-cognition-fabric-node-svc"]
+            expected += ["ioc-cfn-mgmt-plane-svc", "ioc-cfn-svc"]
 
     try:
         r = subprocess.run(
@@ -779,7 +779,7 @@ def _check_cfn_intent(*, local_backend: bool = True) -> CheckResult:
                     "  .env CFN_SVC_URL = (empty)",
                     "Fix: set both URLs and run `mycelium up` to start the cfn profile:",
                     "  CFN_MGMT_URL=http://ioc-cfn-mgmt-plane-svc:9000",
-                    "  CFN_SVC_URL=http://ioc-cognition-fabric-node-svc:9002",
+                    "  CFN_SVC_URL=http://ioc-cfn-svc:9002",
                 ],
             )
         return CheckResult(name="CFN config", status="ok", message="CFN not enabled")

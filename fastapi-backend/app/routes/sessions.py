@@ -18,7 +18,6 @@ from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 import asyncpg
-import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, text, update
 from sqlalchemy.exc import IntegrityError
@@ -262,10 +261,13 @@ async def join_room(
         await db.commit()
     await db.refresh(sess)
 
-    # Register agent handle in CFN mgmt plane (non-fatal, fire-and-forget).
-    # Already idempotent on duplicates — 409 is treated as benign — so fire
-    # this on dup joins too.
-    asyncio.ensure_future(_register_agent_cfn(room, payload.agent_handle))
+    # NB: we deliberately do NOT register the agent in the CFN mgmt plane on
+    # join. The 06-26 Go mgmt-plane has no per-agent endpoint (the old
+    # POST .../cognitive-agents 404s), and the MAS `agents[]` PUT is a
+    # full-replace that clobbers the roster and 400s on duplicates — unsafe for
+    # incremental per-join registration (concurrent joins would race). Agents
+    # are declared to the CFN per session via semantic-alignment /start, which
+    # is sufficient for negotiation (verified live). See the drift audit.
 
     # The remaining side effects (context-files audit + fan-in, the
     # coordination_join notification, and the join-window state machine)
@@ -407,65 +409,6 @@ async def join_room(
             )
 
     return sess
-
-
-async def _register_agent_cfn(room: Room, handle: str) -> None:
-    """Register an agent handle in the CFN mgmt plane MAS. Non-fatal."""
-    import time
-
-    from app.services.metrics import record_cfn_call
-
-    if not settings.CFN_MGMT_URL or not room.mas_id or not room.workspace_id:
-        return
-    t0 = time.monotonic()
-    try:
-        url = f"{settings.CFN_MGMT_URL}/api/workspaces/{room.workspace_id}/cognitive-agents"
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(url, json={"cognitive_agent_name": handle})
-        # 409 here means "this cognitive agent is already registered in
-        # the MAS" — entirely benign, since `_register_agent_cfn` is fire-
-        # and-forget on every `session join` and the same handle (e.g.
-        # alpha/beta in distributed E2E) joins many sessions per workspace.
-        # Treat it the same as `register_memory_provider` does in
-        # main.py:103 to avoid skewing the CFN Transport Health error
-        # rate (we've seen 80/80 mgmt errors all turn out to be 409s).
-        record_cfn_call(
-            service="mgmt",
-            operation="register_agent",
-            duration_ms=(time.monotonic() - t0) * 1000,
-            status_code=resp.status_code,
-            error=resp.status_code >= 400 and resp.status_code != 409,
-        )
-        if resp.status_code == 409:
-            logger.debug(
-                "CFN agent %s already registered in workspace %s",
-                handle,
-                room.workspace_id,
-            )
-        elif resp.status_code < 400:
-            logger.debug(
-                "CFN agent registered: %s in workspace %s",
-                handle,
-                room.workspace_id,
-            )
-        else:
-            # 4xx/5xx used to fall through as success, masking failures — most
-            # often a stale workspace_id after a DB wipe.
-            logger.warning(
-                "CFN register agent failed for %s in workspace %s: HTTP %s"
-                " (stale workspace_id after a DB wipe?)",
-                handle,
-                room.workspace_id,
-                resp.status_code,
-            )
-    except Exception as exc:
-        record_cfn_call(
-            service="mgmt",
-            operation="register_agent",
-            duration_ms=(time.monotonic() - t0) * 1000,
-            error=True,
-        )
-        logger.warning("CFN register agent failed for %s: %s", handle, exc)
 
 
 async def _notify_join(room_name: str, handle: str, intent: str | None) -> None:

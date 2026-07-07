@@ -767,66 +767,6 @@ def _get_cfn_workspace_id(cfn_mgmt_url: str) -> str | None:
         return None
 
 
-def _provision_backend(api_url: str, workspace_name: str = "default") -> tuple[str, str]:
-    """
-    Create a default workspace and MAS in the backend.
-    Returns (workspace_id, mas_id).
-    Idempotent — fetches existing workspace/MAS on 409/400 conflict.
-    Raises RuntimeError if the backend is unreachable or returns an error.
-    """
-    import json
-    import urllib.error
-    import urllib.request
-
-    def _get(path: str) -> list:
-        req = urllib.request.Request(
-            f"{api_url}{path}", headers={"Content-Type": "application/json"}
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read())
-
-    def _post(path: str, body: dict) -> dict:
-        data = json.dumps(body).encode()
-        req = urllib.request.Request(
-            f"{api_url}{path}",
-            data=data,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read())
-
-    try:
-        ws = _post("/api/workspaces", {"name": workspace_name})
-    except urllib.error.HTTPError as e:
-        if e.code in (400, 409):
-            workspaces = _get("/api/workspaces")
-            ws = next(
-                (w for w in workspaces if w.get("name") == workspace_name),
-                workspaces[0] if workspaces else None,
-            )
-            if ws is None:
-                raise RuntimeError(
-                    f"Workspace '{workspace_name}' creation returned {e.code} "
-                    "but no workspaces exist on the backend"
-                )
-        else:
-            raise
-    workspace_id: str = ws["id"]
-
-    try:
-        mas = _post(f"/api/workspaces/{workspace_id}/mas", {"name": "default"})
-    except urllib.error.HTTPError as e:
-        if e.code in (400, 409):
-            mas_list = _get(f"/api/workspaces/{workspace_id}/mas")
-            mas = mas_list[0]
-        else:
-            raise
-    mas_id: str = mas["id"]
-
-    return workspace_id, mas_id
-
-
 # ── Config write ─────────────────────────────────────────────────────────────
 
 
@@ -869,7 +809,7 @@ def _write_mycelium_config(
         runtime.collector_port = custom_ports.get("collector", 4318)
     if ioc_enabled:
         runtime.cfn_mgmt_url = "http://ioc-cfn-mgmt-plane-svc:9000"
-        runtime.cfn_svc_url = "http://ioc-cognition-fabric-node-svc:9002"
+        runtime.cfn_svc_url = "http://ioc-cfn-svc:9002"
     if workspace_id:
         runtime.workspace_id = workspace_id
     config.runtime = runtime
@@ -996,7 +936,7 @@ def install(
             compose_profiles: list[str] = []
             if ioc:
                 llm_config["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
-                llm_config["CFN_SVC_URL"] = "http://ioc-cognition-fabric-node-svc:9002"
+                llm_config["CFN_SVC_URL"] = "http://ioc-cfn-svc:9002"
                 compose_profiles.append("cfn")
 
             # Non-interactive: trust the --ui/--no-ui flag, never prompt.
@@ -1076,13 +1016,10 @@ def install(
                         "  ⚠  Could not fetch workspace from CFN mgmt plane", fg=typer.colors.YELLOW
                     )
             else:
-                try:
-                    workspace_id, mas_id = _provision_backend(api_url)
-                    typer.echo(f"  ✓ Workspace  {workspace_id}")
-                    typer.echo(f"  ✓ MAS        {mas_id}")
-                except Exception as exc:
-                    typer.secho(f"  ⚠  Could not provision backend: {exc}", fg=typer.colors.YELLOW)
-                    workspace_id, mas_id = "", ""
+                # Non-CFN installs have no CFN workspace/MAS to provision — the
+                # mgmt-plane's workspace/multi-agentic-systems endpoints only
+                # exist under the cfn profile. Skip silently.
+                workspace_id, mas_id = "", ""
 
             # Persist WORKSPACE_ID and MAS_ID into .env and restart backend so it picks them up
             if workspace_id:
@@ -1091,7 +1028,7 @@ def install(
                     ws_patch["MAS_ID"] = mas_id
                 if ioc:
                     ws_patch["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
-                    ws_patch["CFN_SVC_URL"] = "http://ioc-cognition-fabric-node-svc:9002"
+                    ws_patch["CFN_SVC_URL"] = "http://ioc-cfn-svc:9002"
                 _patch_env_vars(env_path, ws_patch)
                 _restart_backend(compose_path, env_path, compose_profiles, api_url)
 
@@ -1273,7 +1210,7 @@ def install(
         compose_profiles: list[str] = []
         if ioc_enabled:
             llm_config["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
-            llm_config["CFN_SVC_URL"] = "http://ioc-cognition-fabric-node-svc:9002"
+            llm_config["CFN_SVC_URL"] = "http://ioc-cfn-svc:9002"
             compose_profiles.append("cfn")
 
         # Frontend prompt — default to the --ui flag value (True unless --no-ui).
@@ -1369,14 +1306,10 @@ def install(
                     "  ⚠  Could not fetch workspace from CFN mgmt plane", fg=typer.colors.YELLOW
                 )
         else:
-            try:
-                workspace_id, mas_id = _provision_backend(api_url)
-                typer.echo(f"  ✓ Workspace created  {workspace_id}")
-                typer.echo(f"  ✓ MAS created        {mas_id}")
-            except Exception as exc:
-                typer.secho(f"  ⚠  Could not provision backend: {exc}", fg=typer.colors.YELLOW)
-                typer.echo("     Re-run install or check the backend logs.")
-                workspace_id, mas_id = "", ""
+            # Non-CFN installs have no CFN workspace/MAS to provision — the
+            # mgmt-plane's workspace/multi-agentic-systems endpoints only exist
+            # under the cfn profile. Skip silently.
+            workspace_id, mas_id = "", ""
 
         # ── Phase 6: Migrate DB + write config ────────────────────────────
         # Persist WORKSPACE_ID and MAS_ID into .env and restart backend so it picks them up
@@ -1386,7 +1319,7 @@ def install(
                 ws_patch["MAS_ID"] = mas_id
             if ioc_enabled:
                 ws_patch["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
-                ws_patch["CFN_SVC_URL"] = "http://ioc-cognition-fabric-node-svc:9002"
+                ws_patch["CFN_SVC_URL"] = "http://ioc-cfn-svc:9002"
             _patch_env_vars(env_path, ws_patch)
             _restart_backend(compose_path, env_path, compose_profiles, api_url)
 
