@@ -11,20 +11,20 @@ One :class:`EpisodeState` accompanies each ``_CfnRoundState`` in
    (ticks are ``exchange``, the consensus is ``commit:converged`` /
    ``commit:abort``) and threads causality: a tick's envelope parents the
    agent's prior reply, a reply parents the tick it answers, the consensus
-   parents the final round's replies. Agents don't speak L9 themselves —
+   parents the final round's replies. Agents don't speak L9 themselves:
    the backend synthesizes reply envelopes from the parsed reply dicts, so
    the causal graph is complete without requiring L9-aware agents.
 
 2. Tracks the epistemic fields agents volunteer (``confidence``,
    ``deferred_to``) and computes the SIEP-style agreement-quality metrics
    at consensus: MPC (mean final confidence), GAR (genuine agreement
-   ratio — whose confidence moved toward the outcome relative to their
-   first stated confidence), SCR (social compliance ratio — accepts made
+   ratio: whose confidence moved toward the outcome relative to their
+   first stated confidence), SCR (social compliance ratio: accepts made
    by deference), and provenance_weight = (1 - SCR) * GAR. Interim: these
    move to the Cognition Engine when it computes them natively.
 
 3. Writes the full episode record to the parent room's memory under
-   ``log/episodes/{short_id}.md`` at close — git-shareable and indexed by
+   ``log/episodes/{short_id}.md`` at close: git-shareable and indexed by
    the normal memory path.
 """
 
@@ -250,7 +250,7 @@ def write_episode_record(
     plan_file: str | None,
 ) -> None:
     """Persist the episode to ``log/episodes/{short_id}.md`` in the parent
-    room's memory. Best-effort — never raises into the consensus path."""
+    room's memory. Best-effort: never raises into the consensus path."""
     try:
         from app.services.filesystem import get_room_dir, write_memory_file
 
@@ -295,7 +295,7 @@ def write_episode_record(
 
 def sanitize_epistemic_fields(parsed: dict[str, Any], result: dict[str, Any]) -> None:
     """Copy validated epistemic fields from a raw agent reply into the parsed
-    reply dict. Invalid values are dropped, never rejected — epistemic fields
+    reply dict. Invalid values are dropped, never rejected: epistemic fields
     must not break a legacy-shaped negotiation."""
     conf = parsed.get("confidence")
     if isinstance(conf, int | float) and not isinstance(conf, bool) and 0.0 <= conf <= 1.0:

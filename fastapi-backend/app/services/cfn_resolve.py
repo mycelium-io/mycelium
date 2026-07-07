@@ -89,7 +89,7 @@ async def resolve_mas_id(
         # Fail cleanly so best-effort callers (knowledge fan-in) skip and real
         # callers get an actionable error. The global-MAS fallback below is
         # only for the no-room_name case (no room to attribute to).
-        logger.debug("room '%s' exists but has no mas_id — not borrowing global MAS_ID", room_name)
+        logger.debug("room '%s' exists but has no mas_id: not borrowing global MAS_ID", room_name)
         raise HTTPException(
             status_code=400,
             detail=(

@@ -627,34 +627,6 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
         <div class="cmd-ref-body">Ask CFN's evidence agent a natural-language question about the shared knowledge graph. Returns a synthesized answer, not a record list.</div>
       </div>
 
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium cfn concepts</span> <span class="arg">&lt;id&gt;</span>[,<span class="arg">&lt;id&gt;</span>,...] [<span class="flag">--mas</span> &lt;mas-id&gt;]</code>
-        </div>
-        <div class="cmd-ref-body">Fetch specific CFN concept records by ID.</div>
-      </div>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium cfn neighbors</span> &lt;concept-id&gt; [<span class="flag">--mas</span> &lt;mas-id&gt;]</code>
-        </div>
-        <div class="cmd-ref-body">Show CFN graph neighbors for a concept.</div>
-      </div>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium cfn ls</span> [<span class="flag">--mas</span> &lt;mas-id&gt;] [<span class="flag">--limit</span> N] [<span class="flag">--json</span>]</code>
-        </div>
-        <div class="cmd-ref-body">Enumerate nodes in CFN's knowledge graph by reading AgensGraph directly. NOT a CFN-supported API — couples to CFN's internal graph-naming convention (graph_<mas_id>).</div>
-      </div>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium cfn paths</span> &lt;source-id&gt; &lt;target-id&gt; [<span class="flag">--mas</span> &lt;mas-id&gt;] [<span class="flag">--max-depth</span> N] [<span class="flag">--limit</span> N]</code>
-        </div>
-        <div class="cmd-ref-body">Show CFN graph paths between two concepts.</div>
-      </div>
-
       <h2 id="cli-adapter">adapter</h2>
 
       <div class="cmd-ref">
@@ -803,8 +775,8 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
 <span class="comment"># IoC CFN management plane URL</span>
 <span class="arg">cfn_mgmt_url</span> = <span class="str">&quot;&quot;</span>
 
-<span class="comment"># IoC CFN cognition fabric node URL</span>
-<span class="arg">cognition_fabric_node_url</span> = <span class="str">&quot;&quot;</span>
+<span class="comment"># IoC CFN node service URL</span>
+<span class="arg">cfn_svc_url</span> = <span class="str">&quot;&quot;</span>
 
 <span class="comment"># Workspace ID in the CFN mgmt plane</span>
 <span class="arg">workspace_id</span> = <span class="str">&quot;&quot;</span>

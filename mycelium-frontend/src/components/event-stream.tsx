@@ -427,7 +427,7 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
                             <span className="text-muted">·</span>
                             <span
                               className="font-mono text-text2"
-                              title="genuine agreement ratio — how many agents actually moved toward the outcome"
+                              title="genuine agreement ratio: how many agents actually moved toward the outcome"
                             >
                               GAR {gar.toFixed(2)}
                             </span>

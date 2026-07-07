@@ -12,7 +12,7 @@ causal parents, topic) plus a typed payload.
 Mycelium uses L9 two ways:
 
 1. Coordination messages (ticks, replies, consensus) carry an ``l9`` key
-   inside their existing content JSON. This is additive — agents and UIs
+   inside their existing content JSON. This is additive: agents and UIs
    that ignore it keep working unchanged.
 2. The Go CFN service (outshift-open/ioc-cfn-svc) exposes a native
    ``POST /api/l9/messages`` endpoint that routes envelopes to Cognition
@@ -110,7 +110,7 @@ def build_envelope(
 ) -> L9:
     """Build a validated L9 envelope.
 
-    ``workspace_id``/``mas_id`` land in ``participants.groups`` — the Go CFN's
+    ``workspace_id``/``mas_id`` land in ``participants.groups``: the Go CFN's
     content-based routing extracts them from there, so both are required for
     envelopes that will be POSTed to the CFN (optional for envelopes that only
     annotate mycelium's own coordination messages).

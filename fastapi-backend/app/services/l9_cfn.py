@@ -7,13 +7,13 @@ Client for the Go CFN's native L9 endpoint (``POST /api/l9/messages``).
 The CFN routes each envelope to a Cognition Engine registered for the MAS by
 matching kind/subkind (content-based routing; workspace/MAS are read from
 ``participants.groups``). Everything here is gated on
-``settings.L9_CFN_ENABLED`` — it requires a knowledge CE
+``settings.L9_CFN_ENABLED``: it requires a knowledge CE
 (ghcr.io/outshift-open/ioc-cfn-cognition-engines) registered with the CFN,
 and stays off until the deployment runs one.
 
 Both operations are deliberately fail-soft: a knowledge query miss just means
 no team prior in the ticks, and a knowledge write failure is logged and
-dropped — consensus must never block on the knowledge fabric.
+dropped: consensus must never block on the knowledge fabric.
 """
 
 from __future__ import annotations

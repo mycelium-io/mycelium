@@ -131,7 +131,7 @@ class _RoundTrace:
     # capture is tolerant so this code works against unpatched CFN images too.
     cfn_internal_timing: dict | None = None
     # Raw ``meta`` block from the Go CFN's semantic-alignment responses
-    # (token usage / model / latency / cost). Stored verbatim — the alignment
+    # (token usage / model / latency / cost). Stored verbatim: the alignment
     # API's field names aren't pinned yet, so we record rather than interpret.
     cfn_meta: dict | None = None
     # Mycelium-side breakdown of the /decide HTTP call.  Populated by
@@ -273,7 +273,7 @@ class _CfnRoundState:
     joined_intents: str = ""
     session_handles: list[str] = field(default_factory=list)
     # L9 episode accumulator (envelopes, causal threading, epistemic fields,
-    # consensus quality metrics). None only if episode setup failed — every
+    # consensus quality metrics). None only if episode setup failed; every
     # consumer is None-tolerant.
     episode: "l9_episode.EpisodeState | None" = None
     # Team prior fetched from the CFN knowledge fabric at session start
@@ -542,7 +542,7 @@ async def _run_cfn_negotiation(
     except CfnNegotiationError as exc:
         logger.error("CFN start_negotiation failed for %s: %s", room_name, exc)
         await _finish_cfn(
-            room_name, plan=f"CFN start failed — {exc}", assignments={}, broken=True, reason="abort"
+            room_name, plan=f"CFN start failed: {exc}", assignments={}, broken=True, reason="abort"
         )
         return
 
@@ -562,7 +562,7 @@ async def _run_cfn_negotiation(
     )
     # L9 episode: mint the URN, record the intent envelope, and (when the
     # CFN knowledge path is enabled) fetch the team's prior on this topic so
-    # every tick can carry it. Fail-soft — negotiation proceeds without L9
+    # every tick can carry it. Fail-soft: negotiation proceeds without L9
     # annotations if any of this throws.
     parent_room_l9 = room_name.split(":session:", 1)[0] if ":session:" in room_name else room_name
     short_id_l9 = room_name.split(":session:", 1)[1] if ":session:" in room_name else room_name
@@ -576,7 +576,7 @@ async def _run_cfn_negotiation(
             joined_intents=joined_intents,
         )
     except Exception:
-        logger.exception("L9 episode setup failed for %s — continuing without", room_name)
+        logger.exception("L9 episode setup failed for %s: continuing without", room_name)
     try:
         state.team_prior = await l9_cfn.knowledge_query_team_prior(
             parent_room=parent_room_l9,
@@ -585,7 +585,7 @@ async def _run_cfn_negotiation(
             mas_id=mas_id,
         )
     except Exception:
-        logger.exception("L9 team-prior query failed for %s — continuing without", room_name)
+        logger.exception("L9 team-prior query failed for %s: continuing without", room_name)
     _cfn_state[room_name] = state
 
     # /start returns a flat dict: {"status": "initiated", "messages": [...], "issues": [...], ...}
@@ -1062,7 +1062,7 @@ async def _cfn_decide_round(
             _close_with_decide_ms("error")
             await _finish_cfn(
                 room_name,
-                plan=f"CFN decide failed — {exc}",
+                plan=f"CFN decide failed: {exc}",
                 assignments={},
                 broken=True,
                 reason="abort",
@@ -1145,7 +1145,7 @@ async def _cfn_decide_round(
                     if isinstance(k, str) and isinstance(v, int | float)
                 }
             # Alignment-flavor extras: raw token-usage meta (recorded, not
-            # interpreted — field names aren't pinned yet).
+            # interpreted; field names aren't pinned yet).
             meta = result.get("meta")
             if isinstance(meta, dict):
                 state.current_trace.cfn_meta = meta
@@ -1188,7 +1188,7 @@ async def _cfn_decide_round(
             # validation_score_intervention) and restarted from round 1. The
             # only observable signal is the round number regressing from N>1
             # back to ≤1. Surface it as coordination_retry so a long session
-            # doesn't look like a stall — the direct cause of the timeout
+            # doesn't look like a stall; the direct cause of the timeout
             # headaches before CFN_RETRY_MAX_ATTEMPTS was pinned to 1.
             if messages and state.current_round > 1:
                 first_payload = messages[0].get("payload") or messages[0]
@@ -1231,7 +1231,7 @@ async def _cfn_decide_round(
             _reset_round_timeout(room_name, state)
 
         else:
-            # Unknown / failed status — may carry semantic-alignment rejection
+            # Unknown / failed status: may carry semantic-alignment rejection
             # data from the CFN engine (abort_reason, failure_modes) that
             # explains *why* it ended, which we surface into the plan text.
             logger.warning("CFN decide returned status=%s for %s", status, room_name)
@@ -1255,7 +1255,7 @@ async def _cfn_decide_round(
                 plan_parts.append("; ".join(failure_modes[:3]))
             await _finish_cfn(
                 room_name,
-                plan=" — ".join(plan_parts),
+                plan="; ".join(plan_parts),
                 assignments={},
                 broken=True,
                 reason="timeout" if status == "timeout" else "abort",
@@ -1265,7 +1265,7 @@ async def _cfn_decide_round(
         _close_with_decide_ms("error")
         await _finish_cfn(
             room_name,
-            plan=f"CFN response processing failed — {exc}",
+            plan=f"CFN response processing failed: {exc}",
             assignments={},
             broken=True,
             reason="abort",
@@ -1424,7 +1424,7 @@ async def _finish_cfn(
 
     # L9 close-out: consensus quality metrics (only meaningful on a genuine
     # agreement with enough confidence reports), the commit envelope, and the
-    # keys they add to the consensus payload. All optional — absent keys keep
+    # keys they add to the consensus payload. All optional: absent keys keep
     # the payload byte-compatible for non-L9 consumers.
     metrics: dict | None = None
     consensus_l9: dict | None = None
@@ -1523,7 +1523,7 @@ async def _finish_cfn(
 
     # L9 episode close-out: persist the full envelope record to the parent
     # room's memory, and (when the flag is on) hand the agreement to the CFN
-    # knowledge fabric. Both best-effort — consensus is already posted.
+    # knowledge fabric. Both best-effort: consensus is already posted.
     if state and state.episode is not None:
         l9_episode.write_episode_record(
             state.episode,

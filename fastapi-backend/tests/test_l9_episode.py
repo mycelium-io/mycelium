@@ -75,7 +75,7 @@ def test_broken_consensus_commits_as_abort():
     ep = _open()
     consensus = l9_episode.build_consensus_envelope(ep, broken=True, assignments={}, metrics=None)
     assert consensus["header"]["subkind"] == "abort"
-    # No replies recorded — falls back to parenting the intent.
+    # No replies recorded: falls back to parenting the intent.
     assert consensus["header"]["message"]["parents"] == [ep.intent_id]
 
 
@@ -158,7 +158,7 @@ def test_metrics_social_compliance():
         reply={"action": "accept", "confidence": 0.4, "deferred_to": "a1"},
         round_n=1,
     )
-    # a2's prior was also 0.4 (single round) — direction*delta == 0 counts as
+    # a2's prior was also 0.4 (single round): direction*delta == 0 counts as
     # non-opposing, so GAR stays 1.0; SCR catches the deference instead.
     m = l9_episode.compute_metrics(ep, {"a1": "accept", "a2": "accept"})
     assert m is not None

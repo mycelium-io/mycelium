@@ -62,23 +62,23 @@ class Settings(BaseSettings):
     # CFN MAS config (set on the MAS at creation via the mgmt plane). These
     # tame the retry/timeout behaviour that otherwise makes a single session
     # run several times the rounds you'd expect:
-    #   retry_max_attempts — how many times the cognition engine may reject an
+    #   retry_max_attempts: how many times the cognition engine may reject an
     #     agreement (alignment score below the intervention threshold) and
     #     restart negotiation from round 1. CFN default is 3; we default to 1
-    #     (take the first agreement — mycelium's own round loop + plan compiler
+    #     (take the first agreement; mycelium's own round loop + plan compiler
     #     handle quality) for predictable timing.
-    #   validation_score_intervention — the alignment score below which the
+    #   validation_score_intervention: the alignment score below which the
     #     engine intervenes/retries. Lower it if LLM-callback agents can't
     #     reach the CFN default (0.6).
     CFN_RETRY_MAX_ATTEMPTS: int = 1
     CFN_VALIDATION_SCORE_INTERVENTION: float = 0.6
 
-    # Per-call HTTP timeout (seconds) for CFN start/decide — a DEAD-CONNECTION
+    # Per-call HTTP timeout (seconds) for CFN start/decide: a DEAD-CONNECTION
     # BACKSTOP, not a negotiation control. The boundary:
     #   * Agent responsiveness is mycelium's round watchdog
     #     (_CFN_ROUND_TIMEOUT_SECS), which restarts per agent reply so
     #     single-threaded/serialized agent runtimes get a fresh budget each
-    #     time. That timer runs *before* /decide — by the time we call the CFN,
+    #     time. That timer runs *before* /decide; by the time we call the CFN,
     #     all replies are collected, so agent slowness never reaches this one.
     #   * The CFN owns the negotiation-compute timeout and returns a structured
     #     ``status: "timeout"`` we handle cleanly. This HTTP timeout must sit
@@ -118,7 +118,7 @@ class Settings(BaseSettings):
     # IoC CFN management plane (optional — registration skipped if unset)
     CFN_MGMT_URL: str | None = None
 
-    # IoC CFN service (ioc-cfn-svc, required for session negotiation) —
+    # IoC CFN service (ioc-cfn-svc, required for session negotiation):
     # the semantic-alignment API and native L9 routing.
     CFN_SVC_URL: str = ""
 

@@ -55,7 +55,7 @@ async def _sync_create_mas(db_room: Room, session: AsyncSession) -> None:
                 url,
                 json={
                     "name": db_room.name,
-                    # Live mgmt-plane field is `config` (not `mas_config`) — apply
+                    # Live mgmt-plane field is `config` (not `mas_config`); apply
                     # mycelium's retry policy so this create path matches _ensure_mas.
                     "config": {
                         "retry_max_attempts": settings.CFN_RETRY_MAX_ATTEMPTS,
@@ -108,10 +108,10 @@ async def _ensure_mas(db_room: Room, session: AsyncSession) -> str | None:
     # Set the MAS config at creation so negotiations use mycelium's retry /
     # validation-threshold policy instead of the CFN defaults (retry_max=3,
     # which silently runs a session several times over on a low alignment
-    # score — see CFN_RETRY_MAX_ATTEMPTS / CFN_VALIDATION_SCORE_INTERVENTION).
+    # score: see CFN_RETRY_MAX_ATTEMPTS / CFN_VALIDATION_SCORE_INTERVENTION).
     # The live mgmt-plane field is `config` (MultiAgenticSystemRequest.config);
     # it applies at create and persists (verified via GET on a real MAS). An
-    # earlier `mas_config` key was silently dropped — the policy never took.
+    # earlier `mas_config` key was silently dropped; the policy never took.
     create_body = {
         "name": db_room.name,
         "config": {

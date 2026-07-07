@@ -311,7 +311,7 @@ def respond(
     defer_to: str | None = typer.Option(
         None,
         "--defer-to",
-        help="Handle you are yielding to — marks a compliance accept (only valid with accept)",
+        help="Handle you are yielding to: marks a compliance accept (only valid with accept)",
     ),
 ) -> None:
     """
@@ -319,7 +319,7 @@ def respond(
 
     Optionally attach epistemic context: --confidence (0-1), --evidence
     (repeatable), --reasoning.  If you accept only to defer to another agent
-    (yielding without being persuaded), say so with --defer-to <handle> —
+    (yielding without being persuaded), say so with --defer-to <handle>;
     it's measured, not punished.  Omitted flags leave the wire payload
     byte-identical to a plain respond.
 
@@ -357,7 +357,7 @@ def respond(
                 reasoning=reasoning,
             )
         except ValidationError as exc:
-            typer.echo(f"  Error: invalid respond payload — {exc}", err=True)
+            typer.echo(f"  Error: invalid respond payload: {exc}", err=True)
             raise typer.Exit(1) from exc
 
         content = json_module.dumps(reply.model_dump(exclude_none=True))

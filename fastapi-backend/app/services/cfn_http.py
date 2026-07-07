@@ -5,7 +5,7 @@
 
 A client per request defeats connection pooling and pays TCP+TLS setup on
 every negotiation round (PR #391 review). Clients are cached per running
-event loop — production has one loop for the app's lifetime, while each
+event loop: production has one loop for the app's lifetime, while each
 pytest-asyncio test gets a fresh loop, so a cached client never outlives
 its loop. ``aclose_all()`` is wired into the app lifespan shutdown.
 

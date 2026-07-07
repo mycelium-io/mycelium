@@ -104,8 +104,8 @@ async def fan_in(
         async with async_session_maker() as db:
             await knowledge_ingest(payload, db=db)
     except HTTPException as exc:
-        # Best-effort: an unresolvable target — most often a room with no MAS
-        # of its own — is an expected skip, not an error. Logging it at WARNING
+        # Best-effort: an unresolvable target (most often a room with no MAS
+        # of its own) is an expected skip, not an error. Logging it at WARNING
         # spammed a line on every channel message for such rooms.
         logger.debug(
             "KXP fan-in skipped | room=%s source=%s sender=%s detail=%s",

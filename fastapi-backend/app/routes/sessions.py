@@ -264,7 +264,7 @@ async def join_room(
     # NB: we deliberately do NOT register the agent in the CFN mgmt plane on
     # join. The 06-26 Go mgmt-plane has no per-agent endpoint (the old
     # POST .../cognitive-agents 404s), and the MAS `agents[]` PUT is a
-    # full-replace that clobbers the roster and 400s on duplicates — unsafe for
+    # full-replace that clobbers the roster and 400s on duplicates: unsafe for
     # incremental per-join registration (concurrent joins would race). Agents
     # are declared to the CFN per session via semantic-alignment /start, which
     # is sufficient for negotiation (verified live). See the drift audit.

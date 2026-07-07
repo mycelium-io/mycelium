@@ -15,7 +15,7 @@ services:
     platform: linux/amd64
     container_name: mycelium-db
     restart: unless-stopped
-    # shared_preload_libraries=timescaledb — required by ioc-cfn-svc's cfn_cp
+    # shared_preload_libraries=timescaledb: required by ioc-cfn-svc's cfn_cp
     # metrics tables. TimescaleDB is baked into the mycelium-db image
     # (Dockerfile.agensgraph); the published image must be rebuilt+republished
     # with it for the released cfn profile to start.
@@ -67,7 +67,7 @@ services:
       API_BASE_URL: http://mycelium-backend:8000
       COORDINATION_TICK_TIMEOUT_SECONDS: ${COORDINATION_TICK_TIMEOUT_SECONDS:-30}
       # Post L9 knowledge envelopes to the CFN's /api/l9/messages endpoint.
-      # Requires a knowledge CE registered with the CFN — leave off otherwise.
+      # Requires a knowledge CE registered with the CFN; leave off otherwise.
       L9_CFN_ENABLED: ${L9_CFN_ENABLED:-false}
       # IN-CONTAINER path the backend writes rooms/memory/plans to. MUST match
       # the bind-mount target below — otherwise writes land in the container's
@@ -169,8 +169,8 @@ services:
 
   # ── CFN Stack (profile: cfn) ──────────────────────────────────────────────────
 
-  # The full CFN stack — four services, pinned to a coherent validated set
-  # (the 2026-06-26-* builds — the closest reproducible set to the 2026-06-23
+  # The full CFN stack: four services, pinned to a coherent validated set
+  # (the 2026-06-26-* builds, the closest reproducible set to the 2026-06-23
   # builds sfph ran end-to-end; ioc-cfn-svc's 06-23 tag was pruned upstream).
   # Override any tag via the *_IMAGE_TAG env vars for the smoke test; bump the
   # defaults here as a set once a newer set is validated together.
@@ -178,7 +178,7 @@ services:
   # Default platform is linux/amd64 (the images are built amd64-first; they run
   # under emulation on arm64 Macs). Override with DOCKER_DEFAULT_PLATFORM.
 
-  # Mgmt plane — workspaces, users, CFN-node registration, MAS config.
+  # Mgmt plane: workspaces, users, CFN-node registration, MAS config.
   ioc-cfn-mgmt-plane-svc:
     image: ghcr.io/outshift-open/ioc-cfn-mgmt-plane-svc:${CFN_MGMT_IMAGE_TAG:-2026-06-26-d2e97e4}
     container_name: ioc-cfn-mgmt-plane-svc
@@ -215,7 +215,7 @@ services:
       retries: 6
       start_period: 40s
 
-  # Knowledge memory — graph (AgensGraph) + pgvector store the CFN writes to.
+  # Knowledge memory: graph (AgensGraph) + pgvector store the CFN writes to.
   ioc-knowledge-memory-svc:
     image: ghcr.io/outshift-open/ioc-knowledge-memory-svc:${CFN_KNOWLEDGE_IMAGE_TAG:-2026-06-26-ee8f699}
     container_name: ioc-knowledge-memory-svc
@@ -252,7 +252,7 @@ services:
       retries: 6
       start_period: 40s
 
-  # CFN node — the Go ioc-cfn-svc: semantic-alignment API + native L9 routing
+  # CFN node, the Go ioc-cfn-svc: semantic-alignment API + native L9 routing
   # (POST /api/l9/messages). HTTP on 9002, MCP on 9001 (mapped to host 9009).
   ioc-cfn-svc:
     image: ghcr.io/outshift-open/ioc-cfn-svc:${CFN_SVC_IMAGE_TAG:-2026-06-26-dd16901}
@@ -294,7 +294,7 @@ services:
       retries: 6
       start_period: 40s
 
-  # Cognition engine — LLM + alignment scoring; auto-registers with the CFN
+  # Cognition engine: LLM + alignment scoring; auto-registers with the CFN
   # node on startup (CFN_URL) and heartbeats. Takes LLM config from the shared
   # ~/.mycelium/.env (LLM_MODEL/LLM_API_KEY/LLM_BASE_URL).
   ioc-cfn-cognition-engine:

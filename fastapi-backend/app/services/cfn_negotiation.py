@@ -6,7 +6,7 @@ Async client for the CFN semantic-alignment API (ioc-cfn-svc, the Go CFN).
 
 TRANSITIONAL (per CFN team, 2026-07-07): this REST contract is a bridge, not a
 permanent surface. The Semantic Alignment CE (formerly "sem neg") is being
-reworked to process L9 natively — specifically the SAB subprotocol — and once
+reworked to process L9 natively (specifically the SAB subprotocol) and once
 that lands the CFN's ``semantic-alignment/start|decide`` endpoints are removed.
 At that point mycelium's negotiation path migrates onto the L9 envelope layer
 (``app/services/l9.py`` / ``l9_episode.py``), which is why we already emit L9
@@ -21,20 +21,20 @@ Calls go through the generated ``ioc_cfn_svc_api_client`` (regenerated from the
 Go CFN's swagger via ``scripts/gen-cfn-client.sh``). Three layers of contract
 enforcement:
 
-1. **Typed request construction** — ``StartRequest``/``DecideRequest``/
+1. **Typed request construction**: ``StartRequest``/``DecideRequest``/
    ``AgentReply`` are built as typed models; ``ty`` catches a field we got
    wrong at the call site.
-2. **Schema-validated response parsing** — the client parses the HTTP body
+2. **Schema-validated response parsing**: the client parses the HTTP body
    into ``StartResponse``/``DecideResponse``, so a structural mismatch shows
    up here, not three layers deep in coordination.
-3. **Presence assertions** — swaggo marks every field optional, so a CFN-side
+3. **Presence assertions**: swaggo marks every field optional, so a CFN-side
    *rename* would silently become ``UNSET`` rather than raise. We assert the
    fields we depend on and raise :class:`CfnNegotiationError` on drift.
 
 Two response fields are deliberately NOT trusted from the typed model:
-``messages`` (Go ``[]json.RawMessage`` — swaggo mis-renders as ``[]int``, but
+``messages`` (Go ``[]json.RawMessage``, swaggo mis-renders as ``[]int``, but
 the runtime shape is a list of JSON envelope objects) and ``final_result``
-(Go ``map[string]interface{}`` — opaque by the CFN's own contract). We return
+(Go ``map[string]interface{}``: opaque by the CFN's own contract). We return
 the validated model's ``to_dict()`` to coordination so those two are handed
 over as their real dict form, never as a mis-typed field. The returned dict is
 in the Go CFN's JSON shape (top-level ``status``/``meta``/``final_result``/
@@ -130,7 +130,7 @@ def _record_meta_usage(meta: Any, operation: str, *, room: str, mas_id: str) -> 
 
     The Go CFN reports usage in ``meta.tokens`` (prompt/completion/total) with
     ``meta.cost_usd`` / ``meta.latency_ms``. (The python CFN used a top-level
-    ``_usage`` key — reading that against the Go CFN silently recorded nothing;
+    ``_usage`` key; reading that against the Go CFN silently recorded nothing;
     the typed client surfaced the drift.)
     """
     record_room_identity(mas_id=mas_id, room_name=room)
@@ -163,7 +163,7 @@ def _require(value: Any, field: str, endpoint: str) -> Any:
     """Assert a depended-on response field is present. Raises on drift."""
     if isinstance(value, Unset) or value is None:
         raise CfnNegotiationError(
-            f"CFN {endpoint} response missing required field {field!r} — "
+            f"CFN {endpoint} response missing required field {field!r}: "
             f"the semantic-alignment contract may have changed "
             f"(regenerate the client with scripts/gen-cfn-client.sh)"
         )
@@ -309,7 +309,7 @@ async def decide_negotiation(
 
     ``agent_replies`` items: ``{"agent_id", "action", "offer"?}``. Epistemic
     extras that coordination tracks on the reply dicts (confidence/evidence/
-    deferred_to/reasoning) are NOT forwarded to CFN — they never leave
+    deferred_to/reasoning) are NOT forwarded to CFN; they never leave
     Mycelium. Returns the validated response as a dict in the Go CFN's shape.
     """
     body = SemanticalignmentDecideRequest(

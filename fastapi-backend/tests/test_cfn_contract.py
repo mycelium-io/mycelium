@@ -47,7 +47,7 @@ def test_register_memory_provider_payload_shape(monkeypatch):
 @pytest.mark.asyncio
 async def test_ensure_mas_sends_mas_config(monkeypatch):
     """_ensure_mas sends mycelium's retry/validation policy under `config` (the
-    live MultiAgenticSystemRequest field — an earlier `mas_config` key was
+    live MultiAgenticSystemRequest field; an earlier `mas_config` key was
     silently dropped) so a room's MAS doesn't inherit the CFN default
     retry_max_attempts=3."""
     from app.models import Room

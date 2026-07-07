@@ -139,7 +139,7 @@ export function formatTickInstruction(tickData, roomName, targetAgent) {
     }
     // Team prior: the team's earned confidence on this topic from previous
     // negotiations (with a provenance weight). Rendered so the agent can weigh
-    // it — after forming its own position first.
+    // it, after forming its own position first.
     const teamPrior = payload?.team_prior;
     const priorConfidence = typeof teamPrior?.confidence === "number" ? teamPrior.confidence : undefined;
     const priorBlock = [];
@@ -152,7 +152,7 @@ export function formatTickInstruction(tickData, roomName, targetAgent) {
             qualifiers.push(`from ${teamPrior.episode_count} prior episode${teamPrior.episode_count === 1 ? "" : "s"}`);
         }
         const qualifierText = qualifiers.length > 0 ? ` (${qualifiers.join(", ")})` : "";
-        priorBlock.push(`Team prior on this topic: ${priorConfidence.toFixed(2)}${qualifierText} — form your own position first, then weigh this.`);
+        priorBlock.push(`Team prior on this topic: ${priorConfidence.toFixed(2)}${qualifierText}. Form your own position first, then weigh this.`);
     }
     // Open plan tasks: the parent room's `plan/` namespace contains the active
     // todo list. Surfaced here so agents weigh their proposals against work that
@@ -190,7 +190,7 @@ export function formatTickInstruction(tickData, roomName, targetAgent) {
         `To accept: mycelium negotiate respond accept --room ${roomName} --handle ${targetAgent}`,
         `To reject: mycelium negotiate respond reject --room ${roomName} --handle ${targetAgent}`,
         "",
-        "Include `--confidence <0-1>` in your reply, and optionally `--evidence <path-or-claim>` (repeatable) and `--reasoning <why>` to cite what your position rests on. If you accept only by deference — yielding without being persuaded — add `--defer-to <handle>`; that honesty is measured, not punished.",
+        "Include `--confidence <0-1>` in your reply, and optionally `--evidence <path-or-claim>` (repeatable) and `--reasoning <why>` to cite what your position rests on. If you accept only by deference (yielding without being persuaded), add `--defer-to <handle>`; that honesty is measured, not punished.",
         "",
         "Explain your reasoning before running the command. Walking away with no agreement is a legitimate outcome — keep rejecting until the session ends if your hard constraints can't be met.",
     ]
@@ -282,7 +282,7 @@ export function formatConsensusSummary(consensusData) {
     // Consensus quality metrics (when the backend computed them):
     //   MPC = mean final confidence, GAR = genuine agreement ratio,
     //   SCR = social compliance ratio (fraction of accepts that were deferred).
-    // Guard every field — older backends omit metrics entirely.
+    // Guard every field: older backends omit metrics entirely.
     const metrics = consensusData?.metrics;
     const metricParts = [];
     if (typeof metrics?.mpc === "number")

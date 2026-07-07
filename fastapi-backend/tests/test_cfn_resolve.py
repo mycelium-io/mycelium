@@ -155,7 +155,7 @@ async def test_resolve_mas_id_named_room_no_mas_id_does_not_borrow_global(
     client: AsyncClient, db_session: AsyncSession, monkeypatch
 ):
     """A *named* room that exists but has no mas_id must NOT fall back to the
-    global settings.MAS_ID — cross-wiring a room to an unrelated (often stale)
+    global settings.MAS_ID: cross-wiring a room to an unrelated (often stale)
     MAS silently misroutes its knowledge and spams 404s. It returns 400 even
     when MAS_ID is set (the global is only a fallback for the no-room case)."""
     monkeypatch.setattr("app.config.settings.WORKSPACE_ID", "settings-ws")

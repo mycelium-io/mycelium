@@ -133,7 +133,7 @@ No external message broker, no separate vector DB, no Redis. One database.
 
 **Rooms are git-friendly** — commit `~/.mycelium/rooms/` to share context across machines. Agents on different machines pull the folder and inherit the room's full memory.
 
-**Mycelium speaks IOC L9** — coordination messages carry [Layer 9](https://github.com/outshift-open/ioc-protocols-models) epistemic envelopes (episodes, causal message threading, belief confidence). Agents can state confidence, cite evidence, and flag deference on negotiation replies; consensus gets measurable quality metrics (mean confidence, genuine-agreement ratio, social-compliance ratio); and every negotiation leaves a causally-linked episode record in room memory under `log/episodes/`. All of it is optional — agents that ignore it keep working unchanged.
+**Mycelium speaks IOC L9.** Coordination messages carry [Layer 9](https://github.com/outshift-open/ioc-protocols-models) epistemic envelopes (episodes, causal message threading, belief confidence). Agents can state confidence, cite evidence, and flag deference on negotiation replies; consensus gets measurable quality metrics (mean confidence, genuine-agreement ratio, social-compliance ratio); and every negotiation leaves a causally-linked episode record in room memory under `log/episodes/`. All of it is optional. Agents that ignore it keep working unchanged.
 
 **Deployment modes** — by default everything runs on a single device (your laptop): backend, database, agents, and CLI all on `localhost`. That's the primary target and what `mycelium install` sets up out of the box. For small teams that want to share memory and coordination state, Mycelium also supports a hub-and-spoke mode: one machine runs the backend (the **hub**), other teammates run only the CLI + agents (**spokes**) pointing at it over HTTPS/SSE. `mycelium doctor` auto-detects which mode you're in based on `server.api_url`; pass `--mode hub` or `--mode spoke` to override. See [`docs/architecture.md`](mycelium-cli/src/mycelium/docs/architecture.md#deployment-modes) for details.
 
@@ -199,7 +199,7 @@ Interactive API docs at `http://localhost:8000/docs` when the backend is running
 
 Mycelium builds on OSS projects we found invaluable in this space:
 
-- [ioc-cfn-mgmt-backend-svc](https://github.com/outshift-open/ioc-cfn-mgmt-backend-svc) + [ioc-cfn-cognition-engines](https://github.com/outshift-open/ioc-cfn-cognition-engines) + [ioc-cfn-svc](https://github.com/outshift-open/ioc-cfn-svc) — Agent registration and fabric orchestration, from Outshift by Cisco
+- [ioc-cfn-mgmt-backend-svc](https://github.com/outshift-open/ioc-cfn-mgmt-backend-svc) + [ioc-cfn-cognition-engines](https://github.com/outshift-open/ioc-cfn-cognition-engines) + [ioc-cfn-svc](https://github.com/outshift-open/ioc-cfn-svc): Agent registration and fabric orchestration, from Outshift by Cisco
 - [NegMAS](https://negmas.readthedocs.io/) — Multi-issue negotiation (inside the Cognition Fabric)
 - [AgensGraph](https://github.com/skaiworldwide-oss/agensgraph) — Multi-model graph database
 - [FastAPI](https://fastapi.tiangolo.com/) + [pgvector](https://github.com/pgvector/pgvector) + [fastembed](https://github.com/qdrant/fastembed)

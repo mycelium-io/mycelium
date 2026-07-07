@@ -31,7 +31,7 @@ const stateColors: Record<string, { dot: string; label: string }> = {
   failed:      { dot: "bg-red-400",        label: "text-red-300" },
 };
 
-/** Guarded numeric read — non-finite / non-number values count as absent. */
+/** Guarded numeric read: non-finite / non-number values count as absent. */
 function asNum(v: unknown): number | undefined {
   return typeof v === "number" && Number.isFinite(v) ? v : undefined;
 }
@@ -228,7 +228,7 @@ function ResponseCard({ event }: { event: Event }) {
         {deferredTo && (
           <span
             className="text-micro text-muted font-mono italic whitespace-nowrap"
-            title="accept by deference — yielded without being persuaded"
+            title="accept by deference: yielded without being persuaded"
           >
             deferred → {deferredTo}
           </span>
@@ -250,8 +250,8 @@ function ConsensusCard({ event }: { event: Event }) {
     : undefined;
   const metricDefs: [string, number | undefined, string][] = [
     ["MPC", asNum(metrics?.mpc), "mean confidence of the team in the outcome"],
-    ["GAR", asNum(metrics?.gar), "genuine agreement ratio — how many agents actually moved toward the outcome"],
-    ["SCR", asNum(metrics?.scr), "social compliance ratio — how many accepts were deference, not persuasion"],
+    ["GAR", asNum(metrics?.gar), "genuine agreement ratio: how many agents actually moved toward the outcome"],
+    ["SCR", asNum(metrics?.scr), "social compliance ratio: how many accepts were deference, not persuasion"],
   ];
   const metricChips = metricDefs.filter((c): c is [string, number, string] => c[1] !== undefined);
 

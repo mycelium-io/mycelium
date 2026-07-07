@@ -14,8 +14,8 @@ Two concerns live here:
 
 2. **CFN shared-memories query surface**. The ``/api/cfn/knowledge/query``
    route proxies a semantic-graph query to CFN's evidence agent, backing the
-   ``mycelium cfn query`` CLI command. (The structured graph-read routes —
-   concepts/neighbors/paths/list — were removed in 2.0.0: the Go cfn-svc no
+   ``mycelium cfn query`` CLI command. (The structured graph-read routes,
+   concepts/neighbors/paths/list, were removed in 2.0.0: the Go cfn-svc no
    longer exposes those ``graph/*`` endpoints.) The CFN client function lives
    in ``app/services/cfn_knowledge.py``.
 """

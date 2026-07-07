@@ -59,7 +59,7 @@ def test_build_envelope_full():
 
 
 # The Go CFN's authoritative table (ioc-cfn-svc handlers_l9.go). A failed
-# negotiation is commit:abort — the spec docs' "rejected"/"ready" are stale.
+# negotiation is commit:abort; the spec docs' "rejected"/"ready" are stale.
 @pytest.mark.parametrize(
     ("kind", "subkind", "ok"),
     [

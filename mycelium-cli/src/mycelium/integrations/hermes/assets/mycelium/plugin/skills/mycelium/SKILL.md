@@ -203,8 +203,8 @@ It tells you what just happened so you don't have to infer:
 - **Narrate before each command.** Say *why* you're rejecting or what you're trying to push on. "Rejecting because the timeline is too tight — countering with 6 months." This makes the negotiation legible to anyone watching.
 - **Walking away is legitimate.** Each session has a fixed `n_steps_total`. If you and another agent are flip-flopping the same issue, you're not converging — the protocol has no "concede gradually" mechanism. Keep rejecting until timeout. That's a clean "couldn't agree" signal, not a failure.
 - **Strong opening positions matter a lot.** See Hermes quirks below — the negotiation runs in a parallel session of you that doesn't carry your home-channel context. Your `-m "..."` seed is the only context you can hand off to that parallel-self.
-- **State your confidence and cite your sources.** Every propose/respond takes `--confidence <0-1>`, repeatable `--evidence` (file paths, memory keys, or short claims), and `--reasoning`. Use them — they're how the team distinguishes an informed position from a guess.
-- **Defer honestly.** If you accept an offer you weren't actually persuaded by — yielding to move things along — say so with `--defer-to <handle-you-are-yielding-to>`. Deference is measured as social compliance in the consensus quality metrics, not punished. Dishonest agreement corrupts the team's shared memory.
+- **State your confidence and cite your sources.** Every propose/respond takes `--confidence <0-1>`, repeatable `--evidence` (file paths, memory keys, or short claims), and `--reasoning`. Use them: they're how the team distinguishes an informed position from a guess.
+- **Defer honestly.** If you accept an offer you weren't actually persuaded by (yielding to move things along), say so with `--defer-to <handle-you-are-yielding-to>`. Deference is measured as social compliance in the consensus quality metrics, not punished. Dishonest agreement corrupts the team's shared memory.
 - **Weigh the team prior; don't adopt it.** When a tick carries a `team_prior`, that's the team's earned confidence on this topic from previous negotiations, weighted by provenance. Form your own view first, then factor the prior in. Don't simply echo it.
 
 ### Checking status
@@ -224,7 +224,7 @@ When the session has concluded:
 - **Agreement** → consensus payload includes per-agent `assignments` and a `plan_file`.
 - **No agreement** → consensus payload has `broken: true` with `plan: "Negotiation ended: timeout"`. Report it as "no agreement" — it's not a system failure.
 
-Consensus payloads may also carry quality `metrics`: **MPC** (mean final confidence across agents), **GAR** (genuine agreement ratio — fraction of agents whose confidence moved toward the outcome), and **SCR** (social compliance ratio — fraction of accepts that were deferred). High MPC + high GAR is a strong consensus; high SCR means agents yielded rather than agreed — report that nuance to anyone asking.
+Consensus payloads may also carry quality `metrics`: **MPC** (mean final confidence across agents), **GAR** (genuine agreement ratio: fraction of agents whose confidence moved toward the outcome), and **SCR** (social compliance ratio: fraction of accepts that were deferred). High MPC + high GAR is a strong consensus; high SCR means agents yielded rather than agreed; report that nuance to anyone asking.
 
 The structured outcome lives in a session sub-room (`<room-name>:session:<id>`), not in the parent room's broadcast log. `mycelium negotiate status` reads the right place automatically; don't go grepping the parent room.
 

@@ -11,7 +11,7 @@ services:
   mycelium-db:
     # Build locally so the image carries TimescaleDB + pgvector (the released
     # ghcr image must be rebuilt+republished with TimescaleDB for the cfn
-    # profile — see Dockerfile.agensgraph). The base compose.yml's build
+    # profile, see Dockerfile.agensgraph). The base compose.yml's build
     # context (../fastapi-backend) only resolves inside the packaged install
     # layout; from the repo root it must climb to the real fastapi-backend,
     # same as mycelium-backend below. `--build` compiles the extension.

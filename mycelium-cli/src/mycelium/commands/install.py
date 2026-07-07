@@ -1016,7 +1016,7 @@ def install(
                         "  ⚠  Could not fetch workspace from CFN mgmt plane", fg=typer.colors.YELLOW
                     )
             else:
-                # Non-CFN installs have no CFN workspace/MAS to provision — the
+                # Non-CFN installs have no CFN workspace/MAS to provision: the
                 # mgmt-plane's workspace/multi-agentic-systems endpoints only
                 # exist under the cfn profile. Skip silently.
                 workspace_id, mas_id = "", ""
@@ -1306,7 +1306,7 @@ def install(
                     "  ⚠  Could not fetch workspace from CFN mgmt plane", fg=typer.colors.YELLOW
                 )
         else:
-            # Non-CFN installs have no CFN workspace/MAS to provision — the
+            # Non-CFN installs have no CFN workspace/MAS to provision: the
             # mgmt-plane's workspace/multi-agentic-systems endpoints only exist
             # under the cfn profile. Skip silently.
             workspace_id, mas_id = "", ""

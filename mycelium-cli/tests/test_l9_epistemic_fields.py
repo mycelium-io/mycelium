@@ -4,7 +4,7 @@
 """Tests for the L9 epistemic reply fields and config plumbing.
 
 Covers the fixed wire contract for propose/respond replies (optional
-``confidence`` / ``evidence`` / ``reasoning`` / ``deferred_to`` — omitted keys
+``confidence`` / ``evidence`` / ``reasoning`` / ``deferred_to``: omitted keys
 MUST be absent from the serialized JSON so legacy requests stay byte-identical),
 tick/consensus parsing of ``team_prior`` / ``metrics`` / ``cfn_persisted``,
 and the ``.env`` generation surface.
@@ -34,7 +34,7 @@ from mycelium.protocol import (
 
 
 def test_propose_reply_legacy_wire_shape_is_byte_identical() -> None:
-    """A plain offer serializes exactly as before — no new keys, not even null."""
+    """A plain offer serializes exactly as before: no new keys, not even null."""
     reply = ProposeReply(offer={"budget": "high"})
     assert json.dumps(reply.model_dump(exclude_none=True)) == '{"offer": {"budget": "high"}}'
 

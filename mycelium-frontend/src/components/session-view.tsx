@@ -77,7 +77,7 @@ function parseContent(c: string | Record<string, unknown>): Record<string, unkno
   return c ?? {};
 }
 
-/** Guarded numeric read — non-finite / non-number values count as absent. */
+/** Guarded numeric read: non-finite / non-number values count as absent. */
 function asNum(v: unknown): number | undefined {
   return typeof v === "number" && Number.isFinite(v) ? v : undefined;
 }
@@ -144,7 +144,7 @@ function parseEvents(messages: RawMessage[]): Event[] {
         id: m.id, time, iso, agent: "CognitiveEngine",
         round: 0,
         action: "retry",
-        note: `attempt ${attempt} — alignment validation rejected ${priorRounds}-round agreement`,
+        note: `attempt ${attempt}: alignment validation rejected ${priorRounds}-round agreement`,
         raw: m,
       });
       continue;
@@ -162,7 +162,7 @@ function parseEvents(messages: RawMessage[]): Event[] {
       const abortText = asStr(content.abort_reason) ?? (action === "abort" ? reason : undefined);
       const planNote = asStr(content.plan);
       const note = action === "abort" && abortText
-        ? (planNote ? `${planNote} — ${abortText}` : abortText)
+        ? (planNote ? `${planNote}: ${abortText}` : abortText)
         : planNote;
       out.push({
         id: m.id, time, iso, agent: "CognitiveEngine",
@@ -338,7 +338,7 @@ function toneVar(t: "accent" | "ok" | "warn" | "muted" | "ink"): string {
 
 function ActionGlyph({ action, deferred = false }: { action: Action; deferred?: boolean }) {
   const meta = ACTION_META[action];
-  // A deferred accept is compliance, not persuasion — mute it so it reads
+  // A deferred accept is compliance, not persuasion: mute it so it reads
   // differently from a genuine accept in the lanes and legend.
   const color = deferred && action === "accept" ? "var(--muted)" : toneVar(meta.tone);
   if (action === "reject" || action === "broken" || action === "timeout" || action === "abort") {
@@ -617,7 +617,7 @@ function SwimLanes({ derived }: { derived: DerivedState }) {
               </span>
             </div>
           ))}
-          <div className="flex items-center gap-2" title="accept by deference — yielded without being persuaded">
+          <div className="flex items-center gap-2" title="accept by deference: yielded without being persuaded">
             <ActionGlyph action="accept" deferred />
             <span className="caps-mono-sm" style={{ color: "var(--muted)" }}>DEFERRED</span>
           </div>
@@ -663,8 +663,8 @@ function ConsensusBanner({ derived }: { derived: DerivedState }) {
         <div className="caps-mono-sm mt-3 pt-2 border-t flex items-baseline gap-2" style={{ borderColor: color }}>
           {([
             ["MPC", c.metrics.mpc, "mean confidence of the team in the outcome"],
-            ["GAR", c.metrics.gar, "genuine agreement ratio — how many agents actually moved toward the outcome"],
-            ["SCR", c.metrics.scr, "social compliance ratio — how many accepts were deference, not persuasion"],
+            ["GAR", c.metrics.gar, "genuine agreement ratio: how many agents actually moved toward the outcome"],
+            ["SCR", c.metrics.scr, "social compliance ratio: how many accepts were deference, not persuasion"],
           ] as const)
             .filter(([, v]) => v !== undefined)
             .map(([label, v, tip], i) => (

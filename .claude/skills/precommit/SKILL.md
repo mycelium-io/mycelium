@@ -52,7 +52,7 @@ Run all quality checks on the mycelium codebase. Auto-fix issues where possible.
    ```
    Writes to `mycelium-client/mycelium_backend_client/` and `mycelium-cli/src/mycelium_backend_client/`. CI fails if the committed copy drifts from live `/openapi.json`.
 
-   **CFN client.** `app/services/cfn_negotiation.py` uses the generated typed `ioc_cfn_svc_api_client` (from `fastapi-backend/cfn_swagger.json`). If the CFN image was bumped in `mycelium-cli/src/mycelium/docker/compose.yml`, refresh + regenerate: `CFN_URL=http://localhost:9002 ./scripts/gen-cfn-client.sh` (or point at the ioc-cfn-svc repo's `docs/swagger.json`), then `cd fastapi-backend && uv run ty check .` — type errors at call sites mean the CFN contract changed. **The typecheck IS the contract test.** (`cfn_knowledge.py` stays on httpx by design — json.RawMessage payload + graph endpoints absent from swagger.)
+   **CFN client.** `app/services/cfn_negotiation.py` uses the generated typed `ioc_cfn_svc_api_client` (from `fastapi-backend/cfn_swagger.json`). If the CFN image was bumped in `mycelium-cli/src/mycelium/docker/compose.yml`, refresh + regenerate: `CFN_URL=http://localhost:9002 ./scripts/gen-cfn-client.sh` (or point at the ioc-cfn-svc repo's `docs/swagger.json`), then `cd fastapi-backend && uv run ty check .`. Type errors at call sites mean the CFN contract changed. **The typecheck IS the contract test.** (`cfn_knowledge.py` stays on httpx by design: json.RawMessage payload + graph endpoints absent from swagger.)
 
 7. **Docs consistency** — If any user-facing behavior changed (commands renamed, new features, API changes), grep for stale references and fix them in:
    - `docs/index.html` (Learn), `docs/adapters.html`, `docs/reference.html` — main docs site (3 pages, generated)

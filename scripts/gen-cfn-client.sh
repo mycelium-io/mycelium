@@ -4,7 +4,7 @@
 # The Go CFN serves Swagger 2.0 at /docs/swagger.json (swaggo). openapi-python-client
 # only consumes OpenAPI 3.x, so we convert first with swagger2openapi (npx).
 #
-# Source of truth is the committed snapshot fastapi-backend/cfn_swagger.json —
+# Source of truth is the committed snapshot fastapi-backend/cfn_swagger.json;
 # regen is deterministic and needs no running CFN. Pass CFN_URL to refresh the
 # snapshot from a live instance first.
 #

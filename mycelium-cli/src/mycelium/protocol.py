@@ -18,10 +18,10 @@ Agent reply shapes (agent → server, plain JSON in room message content):
 
     Both reply shapes accept optional epistemic fields (L9/SIEP):
     ``confidence`` (float 0-1), ``evidence`` (list of non-empty strings),
-    ``reasoning`` (string), and — respond only — ``deferred_to`` (the handle
+    ``reasoning`` (string), and (respond only) ``deferred_to`` (the handle
     you yielded to on a compliance accept). Omitted fields MUST be absent
     from the serialized JSON, not null, so legacy replies stay byte-identical
-    — always serialize with ``model_dump(exclude_none=True)``.
+    (so always serialize with ``model_dump(exclude_none=True)``).
 
 Inbound tick shape (server → agent, coordination_tick message content):
 The content field is a JSON-serialised SSTPNegotiateMessage envelope whose
@@ -64,7 +64,7 @@ class ProposeReply(BaseModel):
     content.  Pydantic validation ensures the shape is correct before posting.
 
     Epistemic fields (confidence/evidence/reasoning) are optional; when unset
-    they must be absent from the wire JSON — serialize with
+    they must be absent from the wire JSON: serialize with
     ``model_dump(exclude_none=True)``.
     """
 
@@ -98,7 +98,7 @@ class RespondReply(BaseModel):
 
     Epistemic fields (confidence/evidence/deferred_to/reasoning) are optional;
     ``offer`` is only meaningful for ``counter_offer``. Unset fields must be
-    absent from the wire JSON — serialize with ``model_dump(exclude_none=True)``.
+    absent from the wire JSON: serialize with ``model_dump(exclude_none=True)``.
     """
 
     action: Literal["accept", "reject", "end", "counter_offer"]
