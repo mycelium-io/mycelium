@@ -151,10 +151,13 @@ async def test_resolve_mas_id_from_session_display_name(
     assert resp.status_code == 200
 
 
-async def test_resolve_mas_id_room_exists_no_mas_id_falls_back_to_settings(
+async def test_resolve_mas_id_named_room_no_mas_id_does_not_borrow_global(
     client: AsyncClient, db_session: AsyncSession, monkeypatch
 ):
-    """Room exists but has no mas_id; falls back to settings.MAS_ID."""
+    """A *named* room that exists but has no mas_id must NOT fall back to the
+    global settings.MAS_ID — cross-wiring a room to an unrelated (often stale)
+    MAS silently misroutes its knowledge and spams 404s. It returns 400 even
+    when MAS_ID is set (the global is only a fallback for the no-room case)."""
     monkeypatch.setattr("app.config.settings.WORKSPACE_ID", "settings-ws")
     monkeypatch.setattr("app.config.settings.MAS_ID", "settings-mas")
     monkeypatch.setattr("app.config.settings.MYCELIUM_INGEST_ENABLED", False)
@@ -170,7 +173,8 @@ async def test_resolve_mas_id_room_exists_no_mas_id_falls_back_to_settings(
             "records": [{"response": "test"}],
         },
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 400
+    assert "no mas_id" in resp.json()["detail"].lower()
 
 
 async def test_resolve_mas_id_room_not_found_400(client: AsyncClient, monkeypatch):

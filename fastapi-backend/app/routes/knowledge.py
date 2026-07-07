@@ -348,7 +348,7 @@ async def knowledge_ingest(
         payload_bytes=payload_bytes,
         latency_ms=latency_ms,
         state="ok",
-        cfn_status=status.HTTP_201_CREATED,
+        cfn_status=status.HTTP_202_ACCEPTED,  # CFN acks shared-memories async (202), not 201
         cfn_message=cfn_message,
     )
 

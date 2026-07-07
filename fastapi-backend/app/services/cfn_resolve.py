@@ -82,16 +82,21 @@ async def resolve_mas_id(
             )
         if room.mas_id:
             return room.mas_id
-        logger.warning("room '%s' exists but has no mas_id", room_name)
-        if not settings.MAS_ID:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Room '{room_name}' exists but has no mas_id configured. "
-                    f"Either create the room via `mycelium room create` (which "
-                    f"provisions a MAS), or set MAS_ID in your backend .env."
-                ),
-            )
+        # Room exists but has no MAS of its own. Do NOT fall through to the
+        # global settings.MAS_ID: cross-wiring a *named* room to an unrelated
+        # (often stale) MAS silently misroutes its knowledge and spams 404s on
+        # every write (the borrowed MAS may not exist under this workspace).
+        # Fail cleanly so best-effort callers (knowledge fan-in) skip and real
+        # callers get an actionable error. The global-MAS fallback below is
+        # only for the no-room_name case (no room to attribute to).
+        logger.debug("room '%s' exists but has no mas_id — not borrowing global MAS_ID", room_name)
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Room '{room_name}' exists but has no mas_id configured. "
+                f"Create it via `mycelium room create` (which provisions a MAS)."
+            ),
+        )
 
     if settings.MAS_ID:
         return settings.MAS_ID

@@ -22,6 +22,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Literal
 
+from fastapi import HTTPException
+
 from app.database import async_session_maker
 
 logger = logging.getLogger(__name__)
@@ -101,6 +103,17 @@ async def fan_in(
     try:
         async with async_session_maker() as db:
             await knowledge_ingest(payload, db=db)
+    except HTTPException as exc:
+        # Best-effort: an unresolvable target — most often a room with no MAS
+        # of its own — is an expected skip, not an error. Logging it at WARNING
+        # spammed a line on every channel message for such rooms.
+        logger.debug(
+            "KXP fan-in skipped | room=%s source=%s sender=%s detail=%s",
+            room_name,
+            source,
+            sender_handle,
+            getattr(exc, "detail", exc),
+        )
     except Exception as exc:
         logger.warning(
             "KXP fan-in failed | room=%s source=%s sender=%s err=%s",
