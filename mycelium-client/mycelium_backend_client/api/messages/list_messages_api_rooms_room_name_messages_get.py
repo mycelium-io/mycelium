@@ -1,3 +1,4 @@
+import datetime
 from http import HTTPStatus
 from typing import Any
 from urllib.parse import quote
@@ -18,6 +19,9 @@ def _get_kwargs(
     offset: int | Unset = 0,
     sender: None | str | Unset = UNSET,
     message_type: None | str | Unset = UNSET,
+    kind: None | str | Unset = UNSET,
+    status: None | str | Unset = UNSET,
+    since: datetime.datetime | None | Unset = UNSET,
 ) -> dict[str, Any]:
 
     params: dict[str, Any] = {}
@@ -39,6 +43,29 @@ def _get_kwargs(
     else:
         json_message_type = message_type
     params["message_type"] = json_message_type
+
+    json_kind: None | str | Unset
+    if isinstance(kind, Unset):
+        json_kind = UNSET
+    else:
+        json_kind = kind
+    params["kind"] = json_kind
+
+    json_status: None | str | Unset
+    if isinstance(status, Unset):
+        json_status = UNSET
+    else:
+        json_status = status
+    params["status"] = json_status
+
+    json_since: None | str | Unset
+    if isinstance(since, Unset):
+        json_since = UNSET
+    elif isinstance(since, datetime.datetime):
+        json_since = since.isoformat()
+    else:
+        json_since = since
+    params["since"] = json_since
 
     params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
 
@@ -91,10 +118,18 @@ def sync_detailed(
     offset: int | Unset = 0,
     sender: None | str | Unset = UNSET,
     message_type: None | str | Unset = UNSET,
+    kind: None | str | Unset = UNSET,
+    status: None | str | Unset = UNSET,
+    since: datetime.datetime | None | Unset = UNSET,
 ) -> Response[HTTPValidationError | MessageListResponse]:
     """List Messages
 
      List messages in a room (or coordination session), newest first.
+
+    ``kind``/``status``/``since`` make the source-activity feed and the
+    action/concern ledger server-side filters over the room (#392). Expired
+    events (past their ``ttl_seconds``) are excluded even if the sweep
+    hasn't collected them yet.
 
     Args:
         room_name (str):
@@ -102,6 +137,9 @@ def sync_detailed(
         offset (int | Unset):  Default: 0.
         sender (None | str | Unset):
         message_type (None | str | Unset):
+        kind (None | str | Unset): Filter events by metadata.kind
+        status (None | str | Unset): Filter events by ledger status
+        since (datetime.datetime | None | Unset): Only messages created at/after this time
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -117,6 +155,9 @@ def sync_detailed(
         offset=offset,
         sender=sender,
         message_type=message_type,
+        kind=kind,
+        status=status,
+        since=since,
     )
 
     response = client.get_httpx_client().request(
@@ -134,10 +175,18 @@ def sync(
     offset: int | Unset = 0,
     sender: None | str | Unset = UNSET,
     message_type: None | str | Unset = UNSET,
+    kind: None | str | Unset = UNSET,
+    status: None | str | Unset = UNSET,
+    since: datetime.datetime | None | Unset = UNSET,
 ) -> HTTPValidationError | MessageListResponse | None:
     """List Messages
 
      List messages in a room (or coordination session), newest first.
+
+    ``kind``/``status``/``since`` make the source-activity feed and the
+    action/concern ledger server-side filters over the room (#392). Expired
+    events (past their ``ttl_seconds``) are excluded even if the sweep
+    hasn't collected them yet.
 
     Args:
         room_name (str):
@@ -145,6 +194,9 @@ def sync(
         offset (int | Unset):  Default: 0.
         sender (None | str | Unset):
         message_type (None | str | Unset):
+        kind (None | str | Unset): Filter events by metadata.kind
+        status (None | str | Unset): Filter events by ledger status
+        since (datetime.datetime | None | Unset): Only messages created at/after this time
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -161,6 +213,9 @@ def sync(
         offset=offset,
         sender=sender,
         message_type=message_type,
+        kind=kind,
+        status=status,
+        since=since,
     ).parsed
 
 
@@ -172,10 +227,18 @@ async def asyncio_detailed(
     offset: int | Unset = 0,
     sender: None | str | Unset = UNSET,
     message_type: None | str | Unset = UNSET,
+    kind: None | str | Unset = UNSET,
+    status: None | str | Unset = UNSET,
+    since: datetime.datetime | None | Unset = UNSET,
 ) -> Response[HTTPValidationError | MessageListResponse]:
     """List Messages
 
      List messages in a room (or coordination session), newest first.
+
+    ``kind``/``status``/``since`` make the source-activity feed and the
+    action/concern ledger server-side filters over the room (#392). Expired
+    events (past their ``ttl_seconds``) are excluded even if the sweep
+    hasn't collected them yet.
 
     Args:
         room_name (str):
@@ -183,6 +246,9 @@ async def asyncio_detailed(
         offset (int | Unset):  Default: 0.
         sender (None | str | Unset):
         message_type (None | str | Unset):
+        kind (None | str | Unset): Filter events by metadata.kind
+        status (None | str | Unset): Filter events by ledger status
+        since (datetime.datetime | None | Unset): Only messages created at/after this time
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -198,6 +264,9 @@ async def asyncio_detailed(
         offset=offset,
         sender=sender,
         message_type=message_type,
+        kind=kind,
+        status=status,
+        since=since,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -213,10 +282,18 @@ async def asyncio(
     offset: int | Unset = 0,
     sender: None | str | Unset = UNSET,
     message_type: None | str | Unset = UNSET,
+    kind: None | str | Unset = UNSET,
+    status: None | str | Unset = UNSET,
+    since: datetime.datetime | None | Unset = UNSET,
 ) -> HTTPValidationError | MessageListResponse | None:
     """List Messages
 
      List messages in a room (or coordination session), newest first.
+
+    ``kind``/``status``/``since`` make the source-activity feed and the
+    action/concern ledger server-side filters over the room (#392). Expired
+    events (past their ``ttl_seconds``) are excluded even if the sweep
+    hasn't collected them yet.
 
     Args:
         room_name (str):
@@ -224,6 +301,9 @@ async def asyncio(
         offset (int | Unset):  Default: 0.
         sender (None | str | Unset):
         message_type (None | str | Unset):
+        kind (None | str | Unset): Filter events by metadata.kind
+        status (None | str | Unset): Filter events by ledger status
+        since (datetime.datetime | None | Unset): Only messages created at/after this time
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -241,5 +321,8 @@ async def asyncio(
             offset=offset,
             sender=sender,
             message_type=message_type,
+            kind=kind,
+            status=status,
+            since=since,
         )
     ).parsed
