@@ -102,12 +102,14 @@ async def create_or_update_shared_memories(
     ioa_observe span schema); ``"openclaw"`` is still accepted for legacy
     openclaw-conversation-v1 turns.
 
-    The Go CFN acknowledges the create asynchronously with **HTTP 202
-    Accepted**. ``_cfn_post`` passes 202 through ``raise_for_status`` (only
-    4xx/5xx raise) and returns the acknowledgement body, so the
-    ``{response_id, message, status}`` fields flow back unchanged. Returns
-    CFN's response as a dict, typically
-    ``{"response_id": str, "status": str, "message": str | None}``.
+    Knowledge extraction (otel-trace spans -> concepts/relations) is hardwired
+    **server-side** in CFN: the write is fire-and-forget from the caller's view.
+    CFN acknowledges asynchronously with **HTTP 202 Accepted** and there is
+    nothing for the caller to process beyond that ack — no extracted records
+    come back on this call, and no follow-up poll is required. ``_cfn_post``
+    passes 202 through ``raise_for_status`` (only 4xx/5xx raise) and returns the
+    acknowledgement body (``{response_id, status, message}``) unchanged, which
+    the ingest route records for observability only.
 
     Raises :class:`CfnKnowledgeError` on any HTTP or transport failure.
     """

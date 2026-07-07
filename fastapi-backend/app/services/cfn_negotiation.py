@@ -4,6 +4,15 @@
 """
 Async client for the CFN semantic-alignment API (ioc-cfn-svc, the Go CFN).
 
+TRANSITIONAL (per CFN team, 2026-07-07): this REST contract is a bridge, not a
+permanent surface. The Semantic Alignment CE (formerly "sem neg") is being
+reworked to process L9 natively — specifically the SAB subprotocol — and once
+that lands the CFN's ``semantic-alignment/start|decide`` endpoints are removed.
+At that point mycelium's negotiation path migrates onto the L9 envelope layer
+(``app/services/l9.py`` / ``l9_episode.py``), which is why we already emit L9
+envelopes today. Don't over-invest in this typed client; it exists to make the
+current endpoints safe during the transition.
+
 Endpoints:
   POST /api/workspaces/{ws}/multi-agentic-systems/{mas}/semantic-alignment/start
   POST /api/workspaces/{ws}/multi-agentic-systems/{mas}/semantic-alignment/decide
