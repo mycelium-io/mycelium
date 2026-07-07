@@ -178,6 +178,27 @@ services:
   # Default platform is linux/amd64 (the images are built amd64-first; they run
   # under emulation on arm64 Macs). Override with DOCKER_DEFAULT_PLATFORM.
 
+  # One-shot DB prep: ensures the CFN databases exist and resets an
+  # incompatible python-era cfn_mgmt so the Go mgmt-plane migrates cleanly on
+  # upgrade (initdb only runs on a fresh volume). Runs to completion, then the
+  # CFN services start. See cfn-db-prep.sh for the why.
+  cfn-db-init:
+    image: postgres:16-alpine
+    container_name: cfn-db-init
+    profiles: [cfn]
+    restart: "no"
+    depends_on:
+      mycelium-db:
+        condition: service_healthy
+    # Same ../.env the other CFN services read, so MYCELIUM_DB_PASSWORD /
+    # CFN_DB_USER match mycelium-db. The script falls back to sensible defaults.
+    env_file:
+      - path: ../.env
+        required: false
+    volumes:
+      - ./cfn-db-prep.sh:/cfn-db-prep.sh:ro
+    entrypoint: ["/bin/bash", "/cfn-db-prep.sh"]
+
   # Mgmt plane: workspaces, users, CFN-node registration, MAS config.
   ioc-cfn-mgmt-plane-svc:
     image: ghcr.io/outshift-open/ioc-cfn-mgmt-plane-svc:${CFN_MGMT_IMAGE_TAG:-2026-06-26-d2e97e4}
@@ -191,6 +212,8 @@ services:
     depends_on:
       mycelium-db:
         condition: service_healthy
+      cfn-db-init:
+        condition: service_completed_successfully
     ports:
       - "9000:9000"
     environment:
