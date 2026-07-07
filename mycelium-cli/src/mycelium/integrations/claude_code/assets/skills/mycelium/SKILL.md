@@ -294,7 +294,7 @@ Both are deliberate. Both happen because the agent chose to put something into t
 
 CFN has no delete API — anything ingested is permanent in the graph. Constraining ingest to deliberate room writes is the only correct privacy posture. Treat every room write as permanent and public to the team.
 
-Forwarding is **off by default** and is turned on by the operator, not by you. How to enable it, the cost-control knobs, and the observability commands (`mycelium cfn log` / `cfn stats` / `cfn ls` / `cfn query`) live in the Configuration docs: `mycelium docs troubleshooting`.
+Forwarding is **off by default** and is turned on by the operator, not by you. How to enable it, the cost-control knobs, and the observability commands (`mycelium cfn log` / `cfn stats` / `cfn query`) live in the Configuration docs: `mycelium docs troubleshooting`.
 
 ## Operator setup (not an agent task)
 

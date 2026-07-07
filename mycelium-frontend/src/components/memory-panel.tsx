@@ -5,7 +5,6 @@
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { fetchMemories, searchMemories } from "@/lib/api";
-import { KnowledgePanel } from "./knowledge-panel";
 
 interface Memory {
   key: string;
@@ -28,19 +27,11 @@ interface Props {
   refreshTrigger: number;
 }
 
-type Tab = "memories" | "knowledge";
-
-const TABS: { id: Tab; label: string }[] = [
-  { id: "memories",  label: "MEMORIES" },
-  { id: "knowledge", label: "KNOWLEDGE" },
-];
-
-export function MemoryPanel({ roomName, masId, refreshTrigger }: Props) {
+export function MemoryPanel({ roomName, refreshTrigger }: Props) {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
   const [searching, setSearching] = useState(false);
-  const [tab, setTab] = useState<Tab>("memories");
 
   const loadData = useCallback(async () => {
     try {
@@ -103,103 +94,76 @@ export function MemoryPanel({ roomName, masId, refreshTrigger }: Props) {
         )}
       </div>
 
-      {/* Tabs */}
-      <div className="flex items-stretch border-b border-border bg-paper">
-        {TABS.map(t => {
-          const active = tab === t.id;
-          return (
+      <div className="flex-1 overflow-y-auto">
+        {/* Search */}
+        <div className="px-4 py-3 border-b border-border bg-paper">
+          <div className="flex gap-2">
+            <input
+              className="flex-1 bg-bg border border-border px-3 py-1.5 text-label font-mono text-text placeholder:text-muted focus:border-accent focus:outline-none transition-colors"
+              placeholder="semantic search…"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && handleSearch()}
+            />
             <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`flex-1 py-2 caps-mono-sm transition-colors ${
-                active ? "text-accent" : "text-text2 hover:text-text"
-              }`}
-              style={{ borderBottom: `2px solid ${active ? "var(--accent)" : "transparent"}` }}
+              onClick={handleSearch}
+              disabled={searching}
+              className="flex items-center gap-2 px-3 py-1.5 caps-mono-sm border border-accent/40 bg-accent/[0.06] text-accent transition-colors hover:bg-accent/[0.12] hover:border-accent/60 disabled:opacity-50"
             >
-              {t.label}
+              {searching ? "…" : "SEARCH"}
             </button>
-          );
-        })}
-      </div>
+          </div>
+        </div>
 
-      {tab === "memories" && (
-        <div className="flex-1 overflow-y-auto">
-          {/* Search */}
-          <div className="px-4 py-3 border-b border-border bg-paper">
-            <div className="flex gap-2">
-              <input
-                className="flex-1 bg-bg border border-border px-3 py-1.5 text-label font-mono text-text placeholder:text-muted focus:border-accent focus:outline-none transition-colors"
-                placeholder="semantic search…"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && handleSearch()}
-              />
+        {/* Search results */}
+        {searchResults && (
+          <div className="border-b border-border" style={{ background: "rgba(93,212,224,0.03)" }}>
+            <div className="flex items-center gap-2 px-4 py-2 border-b border-border">
+              <span className="caps-mono-sm text-muted">
+                <span className="text-text font-semibold tabular">{searchResults.length}</span> RESULTS
+              </span>
               <button
-                onClick={handleSearch}
-                disabled={searching}
-                className="flex items-center gap-2 px-3 py-1.5 caps-mono-sm border border-accent/40 bg-accent/[0.06] text-accent transition-colors hover:bg-accent/[0.12] hover:border-accent/60 disabled:opacity-50"
+                onClick={() => setSearchResults(null)}
+                className="ml-auto caps-mono-sm text-text2 hover:text-accent transition-colors"
               >
-                {searching ? "…" : "SEARCH"}
+                CLEAR
               </button>
             </div>
-          </div>
-
-          {/* Search results */}
-          {searchResults && (
-            <div className="border-b border-border" style={{ background: "rgba(93,212,224,0.03)" }}>
-              <div className="flex items-center gap-2 px-4 py-2 border-b border-border">
-                <span className="caps-mono-sm text-muted">
-                  <span className="text-text font-semibold tabular">{searchResults.length}</span> RESULTS
-                </span>
-                <button
-                  onClick={() => setSearchResults(null)}
-                  className="ml-auto caps-mono-sm text-text2 hover:text-accent transition-colors"
-                >
-                  CLEAR
-                </button>
-              </div>
-              {searchResults.map((r, i) => (
-                <div key={i} className="px-4 py-2 border-b border-border last:border-b-0">
-                  <div className="flex items-baseline gap-2 mb-1">
-                    <span className="font-mono text-label text-accent truncate">{r.memory.key}</span>
-                    <span className="caps-mono-sm tabular ml-auto" style={{ color: "var(--yellow)" }}>
-                      {(r.similarity * 100).toFixed(0)}%
-                    </span>
-                  </div>
-                  <p className="text-label text-text2 line-clamp-2">{formatValue(r.memory.value)}</p>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Memory list */}
-          <div>
-            {memories.map(mem => (
-              <div key={mem.key} className="px-4 py-2.5 border-b border-border last:border-b-0">
+            {searchResults.map((r, i) => (
+              <div key={i} className="px-4 py-2 border-b border-border last:border-b-0">
                 <div className="flex items-baseline gap-2 mb-1">
-                  <span className="font-mono text-label text-accent truncate min-w-0">{mem.key}</span>
-                  <span className="caps-mono-sm text-muted tabular flex-shrink-0">v{mem.version}</span>
-                  <span className="ml-auto caps-mono-sm text-muted truncate flex-shrink-0">{mem.created_by}</span>
+                  <span className="font-mono text-label text-accent truncate">{r.memory.key}</span>
+                  <span className="caps-mono-sm tabular ml-auto" style={{ color: "var(--yellow)" }}>
+                    {(r.similarity * 100).toFixed(0)}%
+                  </span>
                 </div>
-                <p className="text-label text-text2 line-clamp-2 font-mono leading-snug">
-                  {formatValue(mem.value)}
-                </p>
+                <p className="text-label text-text2 line-clamp-2">{formatValue(r.memory.value)}</p>
               </div>
             ))}
-            {memories.length === 0 && (
-              <div className="text-center caps-mono-sm text-muted italic py-10">
-                no memories yet
-              </div>
-            )}
           </div>
-        </div>
-      )}
+        )}
 
-      {tab === "knowledge" && (
-        <div className="flex-1 overflow-hidden">
-          <KnowledgePanel masId={masId} />
+        {/* Memory list */}
+        <div>
+          {memories.map(mem => (
+            <div key={mem.key} className="px-4 py-2.5 border-b border-border last:border-b-0">
+              <div className="flex items-baseline gap-2 mb-1">
+                <span className="font-mono text-label text-accent truncate min-w-0">{mem.key}</span>
+                <span className="caps-mono-sm text-muted tabular flex-shrink-0">v{mem.version}</span>
+                <span className="ml-auto caps-mono-sm text-muted truncate flex-shrink-0">{mem.created_by}</span>
+              </div>
+              <p className="text-label text-text2 line-clamp-2 font-mono leading-snug">
+                {formatValue(mem.value)}
+              </p>
+            </div>
+          ))}
+          {memories.length === 0 && (
+            <div className="text-center caps-mono-sm text-muted italic py-10">
+              no memories yet
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
