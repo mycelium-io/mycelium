@@ -104,18 +104,16 @@ class OpenClawIntegration(Integration):
             )
 
     def _allowlist_mycelium(self, agent_id: str) -> None:
-        """Allowlist the ``mycelium`` binary for *agent_id*.
+        """Allowlist the ``mycelium`` binary for *agent_id* in the exec approvals file.
 
-        A wired-in agent has to be able to exec ``mycelium`` (negotiate,
-        memory writes, plan task ops). Without an allowlist entry a
-        sandboxed agent either gets per-call approval prompts or can't run
-        it at all — and reports "mycelium isn't available" mid-conversation.
-        Wiring the agent in is exactly when we know it'll need the binary,
-        so allowlist it here rather than leaving it as a manual step.
+        The approvals file is only consulted when the agent's effective exec
+        host is NOT "sandbox" — i.e. when ``sandbox.mode = 'off'`` or when
+        ``tools.exec.host = 'gateway'`` is set. Pair this call with
+        :meth:`_configure_exec_host_gateway` so the allowlist is actually
+        evaluated for sandboxed agents.
 
-        Best-effort: a failure (older openclaw without ``approvals
-        allowlist``, etc.) warns with the manual command rather than
-        aborting the registration.
+        Best-effort: warns with the manual command on failure rather than
+        aborting registration.
         """
         mycelium_bin = shutil.which("mycelium") or str(Path.home() / ".local" / "bin" / "mycelium")
         result = subprocess.run(
@@ -135,6 +133,58 @@ class OpenClawIntegration(Integration):
             f'  Add it manually: openclaw approvals allowlist add --agent "{agent_id}" '
             f'"{mycelium_bin}"'
         )
+
+    def _configure_exec_host_gateway(self, agent_id: str) -> None:
+        """Set ``tools.exec.host = 'gateway'`` for *agent_id* in openclaw.json.
+
+        The exec-approvals allowlist is bypassed when exec runs in the sandbox
+        container. Routing exec to the gateway host restores allowlist evaluation
+        and puts ``mycelium`` on PATH — while keeping sandbox isolation for all
+        other tools. Trade-off: ALL exec calls route to the gateway, not just
+        mycelium; use ``sandbox.mode=off`` if per-binary routing is needed instead.
+
+        Best-effort: skips silently for implicit agents (e.g. ``main``, not in
+        ``agents.list``) or if the file cannot be written.
+        """
+        _state_dir, oc_json = self._paths()
+        if not oc_json.exists():
+            return
+        try:
+            cfg = json.loads(oc_json.read_text())
+        except (OSError, ValueError):
+            return
+
+        agents_list: list[dict] = (cfg.get("agents") or {}).get("list") or []
+        agent_entry = next((a for a in agents_list if a.get("id") == agent_id), None)
+        if agent_entry is None:
+            # Implicit agents (e.g. main) are not in agents.list — skip.
+            return
+
+        # Defensive against explicit JSON nulls (e.g. "tools": null) — setdefault
+        # would return the existing None and the next .setdefault would crash.
+        tools_cfg = agent_entry.get("tools")
+        if not isinstance(tools_cfg, dict):
+            tools_cfg = {}
+            agent_entry["tools"] = tools_cfg
+        exec_cfg = tools_cfg.get("exec")
+        if not isinstance(exec_cfg, dict):
+            exec_cfg = {}
+            tools_cfg["exec"] = exec_cfg
+        if exec_cfg.get("host") == "gateway":
+            return  # Already set — idempotent.
+
+        exec_cfg["host"] = "gateway"
+        try:
+            oc_json.write_text(json.dumps(cfg, indent=2) + "\n")
+            console.print(
+                f"  [green]set exec.host=gateway[/green] for [cyan]{agent_id}[/cyan] "
+                "[dim](exec routes to gateway host; sandbox isolation preserved for other tools)[/dim]"
+            )
+        except OSError as exc:
+            console.print(
+                f"[yellow]could not write exec.host for {agent_id}[/yellow]: {exc}\n"
+                f'  Set manually: tools.exec.host = "gateway" in openclaw.json for agent {agent_id}'
+            )
 
     # ── discovery (brownfield adopt) ────────────────────────────────────────
 
@@ -192,6 +242,7 @@ class OpenClawIntegration(Integration):
                 backend_url=backend_url,
             )
             self._allowlist_mycelium(handle)
+            self._configure_exec_host_gateway(handle)
         self.restart_gateway()
 
     # ── manifest ────────────────────────────────────────────────────────────
@@ -436,6 +487,7 @@ class OpenClawIntegration(Integration):
             )
         self._register_channel(room=opts.room, agent_id=agent_id, backend_url=config.server.api_url)
         self._allowlist_mycelium(agent_id)
+        self._configure_exec_host_gateway(agent_id)
         self.restart_gateway()
 
     def destroy(
@@ -666,6 +718,49 @@ class OpenClawIntegration(Integration):
 
         details.append(f"api_url: {info.get('api_url', '')}")
         return {"ok": ok, "details": details}
+
+
+def unregister_room_from_openclaw(room_name: str, *, profile: str | None = None) -> list[str]:
+    """Unregister all agents from a room in the local openclaw.json.
+
+    Uses ``_unregister_channel`` per-agent — the same path the test provisioner
+    takes on remote machines via ``mycelium agent rm``.  Called by
+    ``mycelium room delete`` so local openclaw.json stays in sync after a room
+    is removed from the backend.
+
+    Only touches ``channels.mycelium-room.rooms[]`` — Hermes/Cursor entries are
+    stored elsewhere and are not affected.
+
+    Returns the list of agent handles that were removed (empty if the room was
+    not present or openclaw.json doesn't exist).
+    """
+    oc_json = _openclaw_state_dir(profile) / "openclaw.json"
+    if not oc_json.exists():
+        return []
+    try:
+        cfg = json.loads(oc_json.read_text())
+    except Exception:
+        return []
+
+    block = (cfg.get("channels") or {}).get(_CHANNEL_ID)
+    if not isinstance(block, dict):
+        return []
+
+    rooms = block.get("rooms") or []
+    target = next((r for r in rooms if isinstance(r, dict) and r.get("room") == room_name), None)
+    if not target:
+        return []
+
+    agents = list(target.get("agents") or [])
+    if not agents:
+        return []
+
+    integration = OpenClawIntegration(openclaw_profile=profile)
+    removed = []
+    for agent_id in agents:
+        if integration._unregister_channel(room=room_name, agent_id=agent_id):
+            removed.append(agent_id)
+    return removed
 
 
 #: Back-compat alias for the historical class name.

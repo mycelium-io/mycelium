@@ -36,6 +36,33 @@ def _file_mtime(base_dir: Path, key: str) -> datetime:
     return datetime.fromtimestamp(os.path.getmtime(path), tz=UTC)
 
 
+async def _ensure_room(db: AsyncSession, room_name: str) -> bool:
+    """Ensure a Room row exists for room_name. Returns False if the directory
+    should be skipped entirely (coordination session sub-room).
+
+    After a volume wipe the filesystem survives but the DB is empty; this
+    upserts the Room row so the FK on memories.room_name → rooms.name is
+    satisfied.
+
+    Session sub-rooms ({room}:session:{short_id}) are excluded by string check
+    rather than a DB lookup. A DB lookup can't reliably distinguish them on a
+    fresh DB (CoordinationSession table is also empty after a volume wipe), and
+    ':session:' is an internal convention enforced by _spawn_coordination_session
+    — it is not reachable via normal `mycelium room create` usage.
+    """
+    if ":session:" in room_name:
+        return False
+    result = await db.execute(select(Room).where(Room.name == room_name))
+    if result.scalar_one_or_none() is not None:
+        return True
+    db.add(Room(name=room_name, is_public=True, namespace=room_name))
+    try:
+        await db.flush()
+    except Exception:
+        await db.rollback()
+    return True
+
+
 async def index_room(room_name: str, db: AsyncSession, *, force: bool = False) -> dict:
     """Scan a room's directory and upsert embeddings into the search index.
 
@@ -52,9 +79,9 @@ async def index_room(room_name: str, db: AsyncSession, *, force: bool = False) -
     if not room_dir.exists():
         return {"indexed": 0, "skipped": 0, "pruned": 0, "errors": 0}
 
-    room_exists = await db.scalar(select(Room).where(Room.name == room_name))
-    if not room_exists:
-        logger.warning("Skipping index for room %s: directory exists on disk but room is not in DB (stale data from a previous DB wipe?)", room_name)
+    # Ensure the room has a DB row before inserting Memory rows.
+    # Returns False for session sub-rooms, which are skipped entirely.
+    if not await _ensure_room(db, room_name):
         return {"indexed": 0, "skipped": 0, "pruned": 0, "errors": 0}
 
     entries = list_memory_files(room_dir, limit=10000)
@@ -143,9 +170,7 @@ async def index_single_file(room_name: str, key: str, db: AsyncSession) -> bool:
     room_dir = data_dir / "rooms" / room_name
     file_path = room_dir / (key + ".md" if not key.endswith(".md") else key)
 
-    room_exists = await db.scalar(select(Room).where(Room.name == room_name))
-    if not room_exists:
-        logger.warning("Skipping watcher index for %s/%s: room not in DB", room_name, key)
+    if not await _ensure_room(db, room_name):
         record_index_run(target="watcher", skipped=1, duration_ms=(time.monotonic() - t0) * 1000)
         return False
 

@@ -82,6 +82,146 @@ def test_register_adopted_batch_restarts_gateway_once(
     assert restarts == [1]
 
 
+def _write_oc(state, payload) -> None:
+    state.mkdir(exist_ok=True)
+    (state / "openclaw.json").write_text(json.dumps(payload))
+
+
+def _patch_state(monkeypatch, state) -> None:
+    monkeypatch.setattr(
+        "mycelium.integrations.openclaw.dispatch._openclaw_state_dir",
+        lambda _profile: state,
+    )
+
+
+def test_configure_exec_host_gateway_sets_host(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A wired-in agent must get tools.exec.host=gateway so the exec-approvals
+    allowlist is consulted and mycelium runs on the host."""
+    state = tmp_path / ".openclaw"
+    _write_oc(state, {"agents": {"list": [{"id": "lawyer-a"}]}})
+    _patch_state(monkeypatch, state)
+
+    OpenClawIntegration()._configure_exec_host_gateway("lawyer-a")
+
+    written = json.loads((state / "openclaw.json").read_text())
+    entry = next(a for a in written["agents"]["list"] if a["id"] == "lawyer-a")
+    assert entry["tools"]["exec"]["host"] == "gateway"
+
+
+def test_configure_exec_host_gateway_is_idempotent(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Re-running must not clobber an already-correct config."""
+    state = tmp_path / ".openclaw"
+    _write_oc(
+        state,
+        {"agents": {"list": [{"id": "lawyer-a", "tools": {"exec": {"host": "gateway"}}}]}},
+    )
+    _patch_state(monkeypatch, state)
+
+    OpenClawIntegration()._configure_exec_host_gateway("lawyer-a")
+
+    written = json.loads((state / "openclaw.json").read_text())
+    entry = next(a for a in written["agents"]["list"] if a["id"] == "lawyer-a")
+    assert entry["tools"]["exec"]["host"] == "gateway"
+
+
+def test_configure_exec_host_gateway_preserves_sibling_tool_config(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Setting exec.host must not drop other keys under tools/exec."""
+    state = tmp_path / ".openclaw"
+    _write_oc(
+        state,
+        {
+            "agents": {
+                "list": [
+                    {"id": "lawyer-a", "tools": {"browser": {"on": True}, "exec": {"timeout": 30}}}
+                ]
+            }
+        },
+    )
+    _patch_state(monkeypatch, state)
+
+    OpenClawIntegration()._configure_exec_host_gateway("lawyer-a")
+
+    entry = next(
+        a
+        for a in json.loads((state / "openclaw.json").read_text())["agents"]["list"]
+        if a["id"] == "lawyer-a"
+    )
+    assert entry["tools"]["exec"] == {"timeout": 30, "host": "gateway"}
+    assert entry["tools"]["browser"] == {"on": True}  # sibling tool untouched
+
+
+def test_configure_exec_host_gateway_missing_agent_is_noop(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Implicit agents (e.g. `main`, not in agents.list) are skipped without
+    raising and without rewriting the file."""
+    state = tmp_path / ".openclaw"
+    payload = {"agents": {"list": [{"id": "lawyer-a"}]}}
+    _write_oc(state, payload)
+    _patch_state(monkeypatch, state)
+
+    OpenClawIntegration()._configure_exec_host_gateway("main")
+
+    # untouched — no exec.host injected for an absent agent
+    assert json.loads((state / "openclaw.json").read_text()) == payload
+
+
+def test_configure_exec_host_gateway_tolerates_null_tools(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A hand-edited `tools: null` must not crash the read-modify-write."""
+    state = tmp_path / ".openclaw"
+    _write_oc(state, {"agents": {"list": [{"id": "lawyer-a", "tools": None}]}})
+    _patch_state(monkeypatch, state)
+
+    OpenClawIntegration()._configure_exec_host_gateway("lawyer-a")  # must not raise
+
+    entry = next(
+        a
+        for a in json.loads((state / "openclaw.json").read_text())["agents"]["list"]
+        if a["id"] == "lawyer-a"
+    )
+    assert entry["tools"]["exec"]["host"] == "gateway"
+
+
+def test_register_wires_exec_host_for_created_and_adopted(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """register() must configure exec.host=gateway for both created and adopted
+    agents (paired with the allowlist), so they can exec mycelium on first tick."""
+    from mycelium.integrations.base import AddOptions
+    from mycelium.protocol import AgentManifest
+
+    _patch_state(monkeypatch, tmp_path / ".openclaw")
+    impl = OpenClawIntegration()
+    configured: list[str] = []
+    monkeypatch.setattr(impl, "_create_agent", lambda **_: None)
+    monkeypatch.setattr(impl, "_register_channel", lambda **_: None)
+    monkeypatch.setattr(impl, "_allowlist_mycelium", lambda _aid: None)
+    monkeypatch.setattr(impl, "_configure_exec_host_gateway", lambda aid: configured.append(aid))
+    monkeypatch.setattr(impl, "restart_gateway", lambda: None)
+
+    cfg = type("C", (), {"server": type("S", (), {"api_url": "http://localhost:8000"})()})()
+    opts = AddOptions(room="demo")
+
+    for created, handle in ((True, "fresh"), (False, "legacy")):
+        impl.register(
+            manifest=AgentManifest(
+                handle=handle,
+                adapter="openclaw",
+                openclaw_agent=handle,
+                openclaw_created=created,
+            ),
+            config=cfg,  # ty: ignore[invalid-argument-type]
+            opts=opts,
+        )
+    assert configured == ["fresh", "legacy"]
+
+
 def test_agent_add_non_interactive_without_handle_errors() -> None:
     """CliRunner stdin/stdout aren't a TTY — bare `agent add` must refuse with
     guidance instead of hanging on a picker or silently doing nothing."""

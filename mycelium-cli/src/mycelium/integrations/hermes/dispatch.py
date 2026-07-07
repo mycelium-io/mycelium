@@ -396,5 +396,60 @@ class HermesIntegration(Integration):
         return {"ok": ok, "details": details}
 
 
+def unregister_room_from_hermes(room_name: str) -> list[str]:
+    """Remove *room_name* from the local hermes config.yaml in one shot.
+
+    Called by ``mycelium room delete`` to keep the hermes gateway from
+    re-opening an SSE connection to a room that no longer exists after the
+    next ``hermes gateway restart``.
+
+    Returns the list of agent handles that were registered in the room (may
+    be empty).  Returns [] silently if hermes config is absent or unreadable.
+    """
+    try:
+        data = _read_config_yaml()
+    except (HermesConfigError, Exception):
+        return []
+
+    platforms = data.get("platforms") or {}
+    block = platforms.get(_HERMES_PLATFORM_ID)
+    if not isinstance(block, dict):
+        return []
+    extra = block.get("extra") or {}
+    if not isinstance(extra, dict):
+        return []
+    rooms_raw = extra.get("rooms") or []
+    if not isinstance(rooms_raw, list):
+        return []
+
+    removed_agents: list[str] = []
+    kept: list[dict] = []
+    for entry in rooms_raw:
+        if not isinstance(entry, dict):
+            kept.append(entry)
+            continue
+        if entry.get("room") == room_name:
+            agents_raw = entry.get("agents") or []
+            removed_agents = [str(a) for a in agents_raw if isinstance(a, (str, int))]
+        else:
+            kept.append(entry)
+
+    if not removed_agents:
+        return []
+
+    extra["rooms"] = kept
+    try:
+        _write_config_yaml(data)
+    except Exception:
+        return []
+
+    try:
+        _restart_gateway()
+    except Exception:
+        pass
+
+    return removed_agents
+
+
 #: Back-compat alias matching the convention used by the other integrations.
 HermesAdapter = HermesIntegration

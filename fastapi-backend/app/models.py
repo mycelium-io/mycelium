@@ -172,12 +172,38 @@ class Message(Base):
     sender_handle: Mapped[str] = mapped_column(String, nullable=False, index=True)
     recipient_handle: Mapped[str | None] = mapped_column(String, index=True)  # NULL = broadcast
 
-    # Type: announce, direct, broadcast, delegate
+    # Type: announce, direct, broadcast, delegate, event
     message_type: Mapped[str] = mapped_column(String, nullable=False, index=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
 
+    # ── event primitive (#392) ────────────────────────────────────────────
+    # Full structured metadata for message_type="event", returned intact:
+    # {kind, ttl_seconds?, status?, payload, provenance[], correlation_id?}.
+    # Attribute named event_metadata because Base.metadata is reserved by
+    # SQLAlchemy; the column itself is "metadata" per the API contract.
+    event_metadata: Mapped[dict | None] = mapped_column(
+        "metadata", JSONB().with_variant(JSON(), "sqlite"), nullable=True
+    )
+    # kind/status/expiry are promoted from metadata at write time so the
+    # feed (?kind=) and ledger (?status=) filters and the TTL sweep hit
+    # plain indexed columns instead of JSON path expressions (which differ
+    # between the AgensGraph and SQLite test backends).
+    event_kind: Mapped[str | None] = mapped_column(String, nullable=True)
+    event_status: Mapped[str | None] = mapped_column(String, nullable=True)
+    # created_at + ttl_seconds, precomputed. NULL = durable (never swept).
+    event_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+
+    __table_args__ = (
+        # Feed: newest events of a kind in a room.
+        Index("ix_messages_room_kind_created", "room_name", "event_kind", "created_at"),
+        # Ledger: open actions/concerns in a room.
+        Index("ix_messages_room_kind_status", "room_name", "event_kind", "event_status"),
     )
 
 

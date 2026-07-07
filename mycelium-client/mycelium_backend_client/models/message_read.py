@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Mapping
-from typing import Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 from uuid import UUID
 
 from attrs import define as _attrs_define
@@ -10,6 +10,10 @@ from attrs import field as _attrs_field
 from dateutil.parser import isoparse
 
 from ..types import UNSET, Unset
+
+if TYPE_CHECKING:
+    from ..models.message_read_metadata_type_0 import MessageReadMetadataType0
+
 
 T = TypeVar("T", bound="MessageRead")
 
@@ -26,6 +30,7 @@ class MessageRead:
         room_name (None | str | Unset):
         coordination_session_id (None | Unset | UUID):
         recipient_handle (None | str | Unset):
+        metadata (MessageReadMetadataType0 | None | Unset):
     """
 
     id: UUID
@@ -36,9 +41,12 @@ class MessageRead:
     room_name: None | str | Unset = UNSET
     coordination_session_id: None | Unset | UUID = UNSET
     recipient_handle: None | str | Unset = UNSET
+    metadata: MessageReadMetadataType0 | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
+        from ..models.message_read_metadata_type_0 import MessageReadMetadataType0
+
         id = str(self.id)
 
         sender_handle = self.sender_handle
@@ -69,6 +77,14 @@ class MessageRead:
         else:
             recipient_handle = self.recipient_handle
 
+        metadata: dict[str, Any] | None | Unset
+        if isinstance(self.metadata, Unset):
+            metadata = UNSET
+        elif isinstance(self.metadata, MessageReadMetadataType0):
+            metadata = self.metadata.to_dict()
+        else:
+            metadata = self.metadata
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
@@ -86,11 +102,15 @@ class MessageRead:
             field_dict["coordination_session_id"] = coordination_session_id
         if recipient_handle is not UNSET:
             field_dict["recipient_handle"] = recipient_handle
+        if metadata is not UNSET:
+            field_dict["metadata"] = metadata
 
         return field_dict
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.message_read_metadata_type_0 import MessageReadMetadataType0
+
         d = dict(src_dict)
         id = UUID(d.pop("id"))
 
@@ -137,6 +157,23 @@ class MessageRead:
 
         recipient_handle = _parse_recipient_handle(d.pop("recipient_handle", UNSET))
 
+        def _parse_metadata(data: object) -> MessageReadMetadataType0 | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, dict):
+                    raise TypeError()
+                metadata_type_0 = MessageReadMetadataType0.from_dict(data)
+
+                return metadata_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(MessageReadMetadataType0 | None | Unset, data)
+
+        metadata = _parse_metadata(d.pop("metadata", UNSET))
+
         message_read = cls(
             id=id,
             sender_handle=sender_handle,
@@ -146,6 +183,7 @@ class MessageRead:
             room_name=room_name,
             coordination_session_id=coordination_session_id,
             recipient_handle=recipient_handle,
+            metadata=metadata,
         )
 
         message_read.additional_properties = d

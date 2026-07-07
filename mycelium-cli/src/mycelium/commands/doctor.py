@@ -1324,26 +1324,36 @@ def _check_openclaw_agent_sandbox() -> CheckResult:
         if agent_id not in channel_agents:
             continue
         mode = (agent.get("sandbox") or {}).get("mode") or default_sandbox
-        if mode != "off":
-            sandboxed.append(f"{agent_id} (mode={mode})")
+        if mode == "off":
+            continue
+        # exec.host=gateway routes exec to the host (where mycelium lives) without
+        # disabling sandbox isolation for other tools — acceptable alternative to mode=off.
+        exec_host = ((agent.get("tools") or {}).get("exec") or {}).get("host")
+        if exec_host == "gateway":
+            continue
+        sandboxed.append(f"{agent_id} (sandbox.mode={mode}, exec.host={exec_host or 'auto'})")
 
     if sandboxed:
         return CheckResult(
             name="agent sandbox",
             status="warning",
-            message=f"{len(sandboxed)} channel agent(s) are sandboxed — mycelium CLI invisible",
+            message=f"{len(sandboxed)} channel agent(s) block mycelium CLI exec",
             details=[
                 *sandboxed,
                 "sandboxed agents cannot execute `mycelium session join`, `message propose`,",
-                "or `message respond` because the mycelium binary isn't in their sandbox PATH.",
-                "fix: set sandbox.mode = 'off' in openclaw.json for each agent, restart gateway",
+                "or `message respond` — the exec approvals allowlist is bypassed in sandbox mode.",
+                "fix (option A — simpler): set sandbox.mode = 'off' in openclaw.json per agent",
+                "fix (option B — preserves sandbox): set tools.exec.host = 'gateway' per agent",
+                "  option B keeps container isolation for read/write/edit while routing exec",
+                "  calls to the gateway host where mycelium is installed and allowlisted.",
+                "restart the openclaw gateway after either change.",
             ],
         )
 
     return CheckResult(
         name="agent sandbox",
         status="ok",
-        message=f"all {len(channel_agents)} channel agent(s) have sandbox=off",
+        message=f"all {len(channel_agents)} channel agent(s) can exec mycelium CLI",
     )
 
 

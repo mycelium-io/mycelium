@@ -305,6 +305,32 @@ def delete(
 
         typer.secho(f"Room '{room_name}' deleted.", fg=typer.colors.GREEN)
 
+        # Unregister all agents from the room in local adapter configs so the
+        # plugins stop reopening SSE connections to a room that no longer exists.
+        try:
+            from mycelium.integrations.openclaw.dispatch import unregister_room_from_openclaw
+
+            removed = unregister_room_from_openclaw(room_name)
+            if removed:
+                typer.secho(
+                    f"  Unregistered {len(removed)} agent(s) from '{room_name}' in local openclaw.json.",
+                    fg=typer.colors.CYAN,
+                )
+        except Exception:
+            pass  # openclaw not installed locally — skip silently
+
+        try:
+            from mycelium.integrations.hermes.dispatch import unregister_room_from_hermes
+
+            removed = unregister_room_from_hermes(room_name)
+            if removed:
+                typer.secho(
+                    f"  Unregistered {len(removed)} agent(s) from '{room_name}' in local hermes config.yaml.",
+                    fg=typer.colors.CYAN,
+                )
+        except Exception:
+            pass  # hermes not installed locally — skip silently
+
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)
