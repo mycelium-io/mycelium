@@ -1,4 +1,10 @@
-FROM --platform=linux/amd64 skaiworldwide/agensgraph:v2.16.0-alpine3.22
+# Base platform defaults to amd64 (the released image target). Override to
+# linux/arm64 for a native build on Apple Silicon — the skaiworldwide/agensgraph
+# base is multi-arch, and building native avoids the Rosetta/QEMU deadlock that
+# hangs the TimescaleDB `make` under emulation. The arm64 db still interoperates
+# with the amd64 CFN services over the network.
+ARG DB_BASE_PLATFORM=linux/amd64
+FROM --platform=${DB_BASE_PLATFORM} skaiworldwide/agensgraph:v2.16.0-alpine3.22
 
 # Install pgvector extension for semantic vector search
 RUN apk add --no-cache build-base git clang15 llvm15 \

@@ -170,7 +170,8 @@ services:
   # ── CFN Stack (profile: cfn) ──────────────────────────────────────────────────
 
   # The full CFN stack — four services, pinned to a coherent validated set
-  # (the 2026-06-23-* builds sfph ran end-to-end against the live Go CFN).
+  # (the 2026-06-26-* builds — the closest reproducible set to the 2026-06-23
+  # builds sfph ran end-to-end; ioc-cfn-svc's 06-23 tag was pruned upstream).
   # Override any tag via the *_IMAGE_TAG env vars for the smoke test; bump the
   # defaults here as a set once a newer set is validated together.
   #
@@ -179,7 +180,7 @@ services:
 
   # Mgmt plane — workspaces, users, CFN-node registration, MAS config.
   ioc-cfn-mgmt-plane-svc:
-    image: ghcr.io/outshift-open/ioc-cfn-mgmt-plane-svc:${CFN_MGMT_IMAGE_TAG:-2026-06-23-40056a5}
+    image: ghcr.io/outshift-open/ioc-cfn-mgmt-plane-svc:${CFN_MGMT_IMAGE_TAG:-2026-06-26-d2e97e4}
     container_name: ioc-cfn-mgmt-plane-svc
     platform: ${DOCKER_DEFAULT_PLATFORM:-linux/amd64}
     restart: unless-stopped
@@ -216,7 +217,7 @@ services:
 
   # Knowledge memory — graph (AgensGraph) + pgvector store the CFN writes to.
   ioc-knowledge-memory-svc:
-    image: ghcr.io/outshift-open/ioc-knowledge-memory-svc:${CFN_KNOWLEDGE_IMAGE_TAG:-2026-06-23-ee8f699}
+    image: ghcr.io/outshift-open/ioc-knowledge-memory-svc:${CFN_KNOWLEDGE_IMAGE_TAG:-2026-06-26-ee8f699}
     container_name: ioc-knowledge-memory-svc
     platform: ${DOCKER_DEFAULT_PLATFORM:-linux/amd64}
     restart: unless-stopped
@@ -254,7 +255,7 @@ services:
   # CFN node — the Go ioc-cfn-svc: semantic-alignment API + native L9 routing
   # (POST /api/l9/messages). HTTP on 9002, MCP on 9001 (mapped to host 9009).
   ioc-cfn-svc:
-    image: ghcr.io/outshift-open/ioc-cfn-svc/ioc-cfn-svc:${CFN_SVC_IMAGE_TAG:-2026-06-23-41e11a6}
+    image: ghcr.io/outshift-open/ioc-cfn-svc:${CFN_SVC_IMAGE_TAG:-2026-06-26-dd16901}
     container_name: ioc-cfn-svc
     platform: ${DOCKER_DEFAULT_PLATFORM:-linux/amd64}
     restart: unless-stopped
@@ -297,7 +298,7 @@ services:
   # node on startup (CFN_URL) and heartbeats. Takes LLM config from the shared
   # ~/.mycelium/.env (LLM_MODEL/LLM_API_KEY/LLM_BASE_URL).
   ioc-cfn-cognition-engine:
-    image: ghcr.io/outshift-open/ioc-cfn-cognition-engines:${CFN_CE_IMAGE_TAG:-2026-06-23-9e295b5}
+    image: ghcr.io/outshift-open/ioc-cfn-cognition-engines:${CFN_CE_IMAGE_TAG:-2026-06-26-c01c60a}
     container_name: ioc-cfn-cognition-engine
     platform: ${DOCKER_DEFAULT_PLATFORM:-linux/amd64}
     restart: unless-stopped

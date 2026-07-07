@@ -11,8 +11,19 @@ services:
   mycelium-db:
     # Build locally so the image carries TimescaleDB + pgvector (the released
     # ghcr image must be rebuilt+republished with TimescaleDB for the cfn
-    # profile — see Dockerfile.agensgraph). Inherits the build context from
-    # compose.yml; `--build` compiles the extension.
+    # profile — see Dockerfile.agensgraph). The base compose.yml's build
+    # context (../fastapi-backend) only resolves inside the packaged install
+    # layout; from the repo root it must climb to the real fastapi-backend,
+    # same as mycelium-backend below. `--build` compiles the extension.
+    build:
+      context: ../../../../fastapi-backend
+      dockerfile: docker/Dockerfile.agensgraph
+      # Build native to the host arch (Apple Silicon → arm64). The amd64 base
+      # under Rosetta/QEMU deadlocks the TimescaleDB compile; native avoids it.
+      # Override with DB_BASE_PLATFORM if building for amd64 hosts.
+      args:
+        DB_BASE_PLATFORM: ${DB_BASE_PLATFORM:-linux/arm64}
+    platform: ${DB_PLATFORM:-linux/arm64}
     pull_policy: never
 
   # Override env_file for all services to point at ~/.mycelium/.env so that
