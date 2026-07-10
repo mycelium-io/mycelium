@@ -95,12 +95,15 @@ def runtime_resolution_source(job_default: str) -> str:
 
 
 def runtime_for_testbed(testbed_path: str) -> str:
-    """Return ``compose`` or ``lab`` from a testbed file path."""
+    """Return ``compose``, ``lab``, or ``compose`` (for aio) from a testbed file path."""
     normalized = testbed_path.replace("\\", "/").rstrip("/")
     if normalized.endswith("compose.yaml"):
         return RUNTIME_COMPOSE
     if normalized.endswith("lab.yaml"):
         return RUNTIME_LAB
+    if normalized.endswith("aio.yaml"):
+        # aio is a single-host variant — treated as compose for job runtime checks.
+        return RUNTIME_COMPOSE
     return "unknown"
 
 
