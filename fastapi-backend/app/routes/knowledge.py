@@ -51,13 +51,9 @@ class KnowledgeIngestRequest(BaseModel):
     room_name: str | None = None
     workspace_id: str | None = None
     mas_id: str | None = None
-    # Attribution for the ingest source. Channel messages and memory_set are
-    # the two deliberate room-write paths after the silent-hook removal; legacy
-    # is reserved for any caller still using the old per-turn hook flow during
-    # the deprecation window.
-    source: Literal["channel_message", "memory_set", "context_file", "legacy"] = "legacy"
+    # Attribution for the ingest source.
+    source: Literal["channel_message", "memory_set", "context_file"] = "channel_message"
     # Extraction format forwarded to CFN. Defaults to otel-trace (ioa_observe schema).
-    # Use "openclaw" for legacy callers that still send openclaw-conversation-v1 turns.
     data_format: str = "otel-trace"
 
 
@@ -200,7 +196,7 @@ async def knowledge_ingest(
     if min_chars > 0:
 
         def _record_text(r: dict) -> int:
-            # Flat keys (legacy / openclaw format)
+            # Flat keys (openclaw format or direct content field)
             flat = sum(
                 len(str(r.get(k, "") or "")) for k in ("content", "response", "text", "value")
             )
