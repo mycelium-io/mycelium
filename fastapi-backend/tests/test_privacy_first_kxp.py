@@ -22,13 +22,23 @@ def captured_kxp(monkeypatch):
     """Patch fan_in to capture invocations instead of doing the real ingest."""
     captured: list[dict] = []
 
-    async def _capture(*, room_name, sender_handle, content, source):
+    async def _capture(
+        *,
+        room_name,
+        sender_handle,
+        content,
+        source,
+        agent_provider=None,
+        output_text=None,
+    ):
         captured.append(
             {
                 "room_name": room_name,
                 "sender_handle": sender_handle,
                 "content": content,
                 "source": source,
+                "agent_provider": agent_provider,
+                "output_text": output_text,
             }
         )
 

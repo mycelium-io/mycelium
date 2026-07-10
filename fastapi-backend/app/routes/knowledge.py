@@ -198,11 +198,11 @@ async def knowledge_ingest(
     # all records' text fields concatenated.
     min_chars = settings.MYCELIUM_INGEST_MIN_CONTENT_CHARS
     if min_chars > 0:
+
         def _record_text(r: dict) -> int:
             # Flat keys (legacy / openclaw format)
             flat = sum(
-                len(str(r.get(k, "") or ""))
-                for k in ("content", "response", "text", "value")
+                len(str(r.get(k, "") or "")) for k in ("content", "response", "text", "value")
             )
             # Nested otel-trace: text lives in attributes
             attrs = r.get("attributes") or {}

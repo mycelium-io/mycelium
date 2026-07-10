@@ -512,7 +512,9 @@ async def _run_cfn_negotiation(
         )
     except CfnNegotiationError as exc:
         logger.error("CFN start_negotiation failed for %s: %s", room_name, exc)
-        await _finish_cfn(room_name, plan=f"CFN start failed — {exc}", assignments={}, broken=True, reason="abort")
+        await _finish_cfn(
+            room_name, plan=f"CFN start failed — {exc}", assignments={}, broken=True, reason="abort"
+        )
         return
 
     # Set up CFN round state
@@ -539,7 +541,11 @@ async def _run_cfn_negotiation(
     if not messages:
         logger.error("CFN initiate returned no messages for %s", room_name)
         await _finish_cfn(
-            room_name, plan="CFN initiate returned no messages", assignments={}, broken=True, reason="abort"
+            room_name,
+            plan="CFN initiate returned no messages",
+            assignments={},
+            broken=True,
+            reason="abort",
         )
         return
 
@@ -962,7 +968,11 @@ async def _cfn_decide_round(
             )
             _close_with_decide_ms("error")
             await _finish_cfn(
-                room_name, plan=f"CFN decide failed — {exc}", assignments={}, broken=True, reason="abort"
+                room_name,
+                plan=f"CFN decide failed — {exc}",
+                assignments={},
+                broken=True,
+                reason="abort",
             )
             return
     finally:
@@ -997,7 +1007,11 @@ async def _cfn_decide_round(
             logger.error("CFN decide returned non-dict for %s: %s", room_name, type(result))
             _close_with_decide_ms("error")
             await _finish_cfn(
-                room_name, plan="CFN decide returned invalid response", assignments={}, broken=True, reason="abort"
+                room_name,
+                plan="CFN decide returned invalid response",
+                assignments={},
+                broken=True,
+                reason="abort",
             )
             return
 
@@ -1141,7 +1155,11 @@ async def _cfn_decide_round(
         logger.exception("Unhandled error processing CFN decide response for %s", room_name)
         _close_with_decide_ms("error")
         await _finish_cfn(
-            room_name, plan=f"CFN response processing failed — {exc}", assignments={}, broken=True, reason="abort"
+            room_name,
+            plan=f"CFN response processing failed — {exc}",
+            assignments={},
+            broken=True,
+            reason="abort",
         )
 
 

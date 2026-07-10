@@ -153,7 +153,10 @@ def _extract_cfn_usage(
     )
     logger.debug(
         "CFN %s usage: %d prompt, %d completion tokens, %.1f ms",
-        operation, prompt, completion, latency,
+        operation,
+        prompt,
+        completion,
+        latency,
     )
 
 

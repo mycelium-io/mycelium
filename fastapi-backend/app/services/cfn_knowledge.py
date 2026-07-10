@@ -103,10 +103,7 @@ def _client() -> Client:
 
 def _mas_base(workspace_id: str, mas_id: str) -> str:
     """For graph/* endpoints not in the OpenAPI schema."""
-    return (
-        f"{settings.CFN_SVC_URL}"
-        f"/api/workspaces/{workspace_id}/multi-agentic-systems/{mas_id}"
-    )
+    return f"{settings.CFN_SVC_URL}/api/workspaces/{workspace_id}/multi-agentic-systems/{mas_id}"
 
 
 def _build_extraction_payload(

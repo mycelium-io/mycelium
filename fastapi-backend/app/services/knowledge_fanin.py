@@ -35,6 +35,7 @@ def _build_otel_record(
     sender_handle: str | None,
     agent_provider: str | None,
     output_text: str | None = None,
+    room_name: str | None = None,
 ) -> dict[str, Any]:
     """Build a single otel-trace span record in the ioa_observe schema.
 
@@ -51,6 +52,8 @@ def _build_otel_record(
         attrs["ioa_observe.entity.output"] = output_text
     if sender_handle:
         attrs["gen_ai.agent.id"] = sender_handle
+    if room_name:
+        attrs["openclaw.session.key"] = room_name
     if agent_provider == "openclaw":
         attrs["openclaw.agent.input"] = content
 
@@ -91,7 +94,11 @@ async def fan_in(
     from app.routes.knowledge import KnowledgeIngestRequest, knowledge_ingest
 
     payload = KnowledgeIngestRequest(
-        records=[_build_otel_record(content, source, sender_handle, agent_provider, output_text)],
+        records=[
+            _build_otel_record(
+                content, source, sender_handle, agent_provider, output_text, room_name
+            )
+        ],
         agent_id=sender_handle,
         room_name=room_name,
         source=source,
