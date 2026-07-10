@@ -1939,6 +1939,68 @@ def _check_daemon_running() -> CheckResult:
     )
 
 
+def _check_cfn_pgvector() -> CheckResult:
+    """Check the pgvector extension is installed in the ioc-graph-db database.
+
+    The CFN knowledge graph (ioc-knowledge-memory-svc) needs pgvector in
+    ioc-graph-db. Without it, concept similarity-search 500s and the cognition
+    engine can hang the whole /decide call, surfacing as a
+    coordination_consensus with broken:true. cfn-db-init installs it on
+    `mycelium up`, but a hand-created ioc-graph-db can miss it.
+    """
+    name = "CFN pgvector (ioc-graph-db)"
+    env_path = Path.home() / ".mycelium" / ".env"
+    if not env_path.exists():
+        return CheckResult(name=name, status="ok", message="CFN not configured (skipped)")
+    from dotenv import dotenv_values
+
+    if not dotenv_values(env_path).get("CFN_MGMT_URL", ""):
+        return CheckResult(name=name, status="ok", message="CFN not enabled (skipped)")
+    try:
+        r = subprocess.run(
+            [
+                "docker",
+                "exec",
+                "mycelium-db",
+                "psql",
+                "-U",
+                "postgres",
+                "-d",
+                "ioc-graph-db",
+                "-tAc",
+                "SELECT extname FROM pg_extension WHERE extname='vector'",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return CheckResult(
+            name=name, status="warning", message="Could not query mycelium-db (is it running?)"
+        )
+    if r.returncode != 0:
+        # DB / database unreachable — the container + backend checks already
+        # cover a down stack; don't double-report as an error here.
+        return CheckResult(
+            name=name,
+            status="warning",
+            message="Could not check (mycelium-db or ioc-graph-db unavailable)",
+        )
+    if "vector" in r.stdout:
+        return CheckResult(name=name, status="ok", message="pgvector installed in ioc-graph-db")
+    return CheckResult(
+        name=name,
+        status="error",
+        message="pgvector NOT installed in ioc-graph-db",
+        details=[
+            "CFN concept search will 500 and negotiations can hang (broken:true).",
+            "Fix: docker exec mycelium-db psql -U postgres -d ioc-graph-db \\",
+            "       -c 'CREATE EXTENSION IF NOT EXISTS vector;'",
+            "cfn-db-init installs this automatically on 'mycelium up'.",
+        ],
+    )
+
+
 @doc_ref(
     usage="mycelium doctor [--fix] [--json] [--mode auto|hub|spoke]",
     desc="Diagnose and fix common configuration issues (workspace sync, LLM, containers).",
@@ -2027,6 +2089,7 @@ def doctor(
                     _check_cfn_intent(local_backend=local),
                     _check_workspace_id(local_backend=local),
                     _check_room_mas_ids(local_backend=local),
+                    _check_cfn_pgvector(),
                 ],
             ),
             (
