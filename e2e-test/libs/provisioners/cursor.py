@@ -108,20 +108,25 @@ class CursorProvisioner(ABCProvisioner):
 
         # Subscribe the daemon to the room BEFORE creating the agent so
         # the agent's first tick isn't missed. In compose containers use
-        # the infra script — older CLI builds fall back to systemctl.
-        sub = host_exec.execute(
-            device,
-            ["/openclaw/daemon-subscribe.sh", room],
-            timeout=15.0,
-        )
-        if sub.returncode != 0:
+        # the infra script — fall back to mycelium CLI on local hosts.
+        try:
+            sub = host_exec.execute(
+                device,
+                ["/openclaw/daemon-subscribe.sh", room],
+                timeout=15.0,
+            )
+            script_ok = sub.returncode == 0
+        except FileNotFoundError:
+            # Script lives in E2E Docker containers — not present on local hosts.
+            script_ok = False
+        if not script_ok:
             sub = host_exec.execute(
                 device,
                 ["mycelium", "daemon", "subscribe", room],
                 timeout=15.0,
             )
-        if sub.returncode != 0:
-            raise PrereqMissing(f"cursor: daemon subscribe to {room} failed: {sub.stderr.strip()[:200]}")
+            if sub.returncode != 0:
+                raise PrereqMissing(f"cursor: daemon subscribe to {room} failed: {sub.stderr.strip()[:200]}")
 
         result = host_exec.execute(
             device,
