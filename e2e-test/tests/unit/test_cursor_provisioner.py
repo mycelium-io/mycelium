@@ -115,7 +115,11 @@ def test_create_agent_creates_workspace_and_subscribes_daemon():
     prov = CursorProvisioner()
     calls: list[list[str]] = []
 
-    def fake_execute(_device, argv, **_kwargs):
+    def fake_execute(_device, argv, shell=False, **_kwargs):
+        if shell:
+            # shell=True calls are workspace seed commands and daemon-subscribe.sh
+            calls.append(["shell", str(argv)])
+            return _ok()
         calls.append(list(argv))
         if argv[0] == "mktemp":
             return _ok(stdout="/tmp/cursor-e2e-abc123\n")
@@ -129,12 +133,33 @@ def test_create_agent_creates_workspace_and_subscribes_daemon():
     assert ref.metadata["workspace"] == "/tmp/cursor-e2e-abc123"
     assert ref.metadata["room"] == "r1"
 
-    # CLI ordering matters: subscribe BEFORE create_agent so the
-    # daemon doesn't miss the first tick.
+    # daemon-subscribe.sh is called as a list argv before agent create.
+    # If it succeeds, the mycelium daemon subscribe fallback is not called.
+    subscribe_script = any(
+        c[0] == "/openclaw/daemon-subscribe.sh" for c in calls
+    )
+    subscribe_cli = any(
+        c[:3] == ["mycelium", "daemon", "subscribe"] for c in calls
+    )
+    assert subscribe_script or subscribe_cli, (
+        "either daemon-subscribe.sh or mycelium daemon subscribe should be called"
+    )
+
+    # agent create must be called
     cli_calls = [c for c in calls if c[0] == "mycelium"]
-    subscribe_idx = next(i for i, c in enumerate(cli_calls) if c[:3] == ["mycelium", "daemon", "subscribe"])
-    create_idx = next(i for i, c in enumerate(cli_calls) if c[:3] == ["mycelium", "agent", "create"])
-    assert subscribe_idx < create_idx
+    create_idx = next(
+        (i for i, c in enumerate(cli_calls) if c[:3] == ["mycelium", "agent", "create"]),
+        None,
+    )
+    assert create_idx is not None, "mycelium agent create should be called"
+
+    # pre-warm invoke must be called after create
+    invoke_idx = next(
+        (i for i, c in enumerate(cli_calls) if c[:3] == ["mycelium", "agent", "invoke"]),
+        None,
+    )
+    assert invoke_idx is not None, "pre-warm mycelium agent invoke should be called"
+    assert invoke_idx > create_idx, "pre-warm invoke should come after agent create"
 
 
 def test_create_agent_passes_workspace_to_agent_create():
@@ -175,12 +200,15 @@ def test_create_agent_propagates_create_failure():
     responses = iter(
         [
             _ok("/tmp/cursor-e2e-abc123"),  # mktemp
-            _ok(),  # daemon subscribe
+            _ok(),  # daemon subscribe (daemon-subscribe.sh)
             _fail("agent create: room not found"),  # agent create
         ]
     )
 
-    def fake_execute(_device, _argv, **_kwargs):
+    def fake_execute(_device, _argv, shell=False, **_kwargs):
+        # Workspace seed commands (shell=True) are fire-and-forget; skip them.
+        if shell:
+            return _ok()
         return next(responses)
 
     with patch("libs.host_exec.execute", side_effect=fake_execute):

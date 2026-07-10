@@ -167,7 +167,8 @@ def test_ensure_runtime_surfaces_create_failure():
 
 def test_ensure_runtime_uses_generous_timeout_on_create():
     prov = HermesProvisioner()
-    responses = iter([_ok(), _ok("no agents"), _ok()])
+    # ensure_runtime: agent ls check → agent create → gateway restart
+    responses = iter([_ok(), _ok("no agents"), _ok(), _ok()])
 
     def fake_execute(_device, _argv, **_kwargs):
         if _is_chown(_argv):
@@ -177,7 +178,11 @@ def test_ensure_runtime_uses_generous_timeout_on_create():
     with patch("libs.host_exec.execute", side_effect=fake_execute) as exec_mock:
         prov.ensure_runtime(_device(), handle="he-2")
 
-    create_call = exec_mock.call_args_list[3]
+    # Find the agent create call by argv content
+    create_call = next(
+        c for c in exec_mock.call_args_list
+        if list(c.args[1])[:3] == ["mycelium", "agent", "create"]
+    )
     assert create_call.kwargs.get("timeout", 0) >= 30
 
 
@@ -194,7 +199,12 @@ def test_register_in_room_returns_ref_with_room_metadata():
     assert ref.adapter == "hermes"
     assert ref.metadata == {"room": "r1"}
 
-    argv = exec_mock.call_args.args[1]
+    # register_in_room: agent create then gateway restart — find create call
+    create_call = next(
+        c for c in exec_mock.call_args_list
+        if list(c.args[1])[:3] == ["mycelium", "agent", "create"]
+    )
+    argv = create_call.args[1]
     assert argv[:3] == ["mycelium", "agent", "create"]
     assert "--adapter" in argv
     assert argv[argv.index("--adapter") + 1] == "hermes"

@@ -544,15 +544,6 @@ class _ScenarioCore(aetest.Testcase):
             except SessionError as exc:
                 self.failed(f"stale coordination session on {self.room!r}: {exc}")
 
-            # Poll CFN until the cognition engine is idle. The backend marks a
-            # session terminal before CFN finishes processing KXP fan-in from
-            # the consensus, so a /start immediately after would get a 500.
-            cfn_url = os.environ.get("CFN_SVC_URL", "http://localhost:9002")
-            try:
-                sessions.wait_for_cfn_idle(cfn_url)
-            except SessionError as exc:
-                log.warning("wait_for_cfn_idle timed out (%s) — proceeding anyway", exc)
-
         # ── create session + per-agent joins ──────────────────────
         try:
             self.session_room = sessions.session_create(
@@ -562,6 +553,17 @@ class _ScenarioCore(aetest.Testcase):
             )
         except SessionError as exc:
             self.failed(f"session create failed: {exc}")
+
+        # Poll CFN until the cognition engine is idle before agents join.
+        # Placed here (after session_create, before joins) so that KXP fan-in
+        # triggered by the openclaw gateway reset has time to arrive at the CE
+        # and be processed. The 30s join window then adds further headroom
+        # before the backend fires CFN /start on join-window expiry.
+        cfn_url = os.environ.get("CFN_SVC_URL", "http://localhost:9002")
+        try:
+            sessions.wait_for_cfn_idle(cfn_url)
+        except SessionError as exc:
+            log.warning("wait_for_cfn_idle timed out (%s) — proceeding anyway", exc)
 
         log.info(
             "%s session created: %s",
