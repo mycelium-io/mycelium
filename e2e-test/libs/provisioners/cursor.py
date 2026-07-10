@@ -116,8 +116,8 @@ class CursorProvisioner(ABCProvisioner):
                 timeout=15.0,
             )
             script_ok = sub.returncode == 0
-        except FileNotFoundError:
-            # Script lives in E2E Docker containers — not present on local hosts.
+        except HostExecError:
+            # Script not found on local hosts — fall through to CLI.
             script_ok = False
         if not script_ok:
             sub = host_exec.execute(

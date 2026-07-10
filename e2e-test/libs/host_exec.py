@@ -216,15 +216,22 @@ def execute(  # noqa: PLR0913 - keeps subprocess.run-style ergonomics
 
     if rt.transport == "local":
         full = cmd_str if shell else list(argv)  # type: ignore[arg-type]
-        return subprocess.run(  # noqa: S603 - explicit shell flag, args validated above
-            full,
-            shell=shell,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            input=input,
-            check=check,
-        )
+        try:
+            return subprocess.run(  # noqa: S603 - explicit shell flag, args validated above
+                full,
+                shell=shell,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                input=input,
+                check=check,
+            )
+        except FileNotFoundError as exc:
+            # Executable not found on the local host — surface as HostExecError
+            # so callers with `except HostExecError` handle it gracefully.
+            # Common cause: container-only scripts (e.g. /openclaw/*.sh) being
+            # invoked via transport=local on a bare host.
+            raise HostExecError(f"command not found: {exc.filename!r}") from exc
 
     if rt.transport == "docker":
         # docker exec runs argv directly when given; for shell mode we
