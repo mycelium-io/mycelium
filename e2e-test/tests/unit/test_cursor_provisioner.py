@@ -153,13 +153,9 @@ def test_create_agent_creates_workspace_and_subscribes_daemon():
     )
     assert create_idx is not None, "mycelium agent create should be called"
 
-    # pre-warm invoke must be called after create
-    invoke_idx = next(
-        (i for i, c in enumerate(cli_calls) if c[:3] == ["mycelium", "agent", "invoke"]),
-        None,
-    )
-    assert invoke_idx is not None, "pre-warm mycelium agent invoke should be called"
-    assert invoke_idx > create_idx, "pre-warm invoke should come after agent create"
+    # pre-warm invoke must NOT be called (removed: caused KXP fan-in that blocked partner agents)
+    invoke_calls = [c for c in cli_calls if c[:3] == ["mycelium", "agent", "invoke"]]
+    assert not invoke_calls, "pre-warm invoke should not be called"
 
 
 def test_create_agent_passes_workspace_to_agent_create():

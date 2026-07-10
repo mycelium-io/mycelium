@@ -149,10 +149,6 @@ class CursorProvisioner(ABCProvisioner):
             metadata={"workspace": workspace, "room": room},
         )
 
-        # Pre-warm: spawn cursor-agent now so the model and workspace index
-        # are loaded before the first negotiation tick arrives.
-        self._pre_warm(device, handle, room)
-
         return ref
 
     # ── wake ──────────────────────────────────────────────────────────
