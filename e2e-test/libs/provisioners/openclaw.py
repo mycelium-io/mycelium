@@ -497,6 +497,13 @@ class OpenClawProvisioner(ABCProvisioner):
             argv.append(agent_id)
         try:
             host_exec.execute(device, argv, timeout=30.0)
+        except FileNotFoundError:
+            # Script lives in E2E Docker containers — not present on local hosts.
+            # On local installs mycelium adapter add already seeded skills.
+            log.debug(
+                "openclaw: install-openclaw-skills.sh not found on %s — skipping",
+                host_exec.describe(device),
+            )
         except HostExecError as exc:
             log.warning(
                 "openclaw: skill install failed on %s for %s: %s",
