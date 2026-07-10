@@ -59,6 +59,15 @@ class Settings(BaseSettings):
     # burning rounds indefinitely. 0 = fall through to CFN auto-compute.
     NEGOTIATION_N_STEPS: int = 20
 
+    # Maximum SAV-triggered re-negotiation attempts per session.
+    # 0 (default) disables CE auto-retry: terminal /decide returns after a
+    # single validation pass (~15-20s). Each retry adds ~18-20s (one extra
+    # sync LLM call). Raise to ≤3 only if you want the CE to auto-correct
+    # low-alignment consensus — and extend CFN_SVC timeouts accordingly:
+    #   COGNITION_ENGINES_TIMEOUT_SECONDS >= 20 + (retry_max_attempts * 20)
+    #   SERVER_TIMEOUT_SECONDS            >= COGNITION_ENGINES_TIMEOUT_SECONDS + 5
+    MYCELIUM_CFN_RETRY_MAX_ATTEMPTS: int = 0
+
     @field_validator("LLM_BASE_URL", mode="before")
     @classmethod
     def _coerce_base_url(cls, v: object) -> object:

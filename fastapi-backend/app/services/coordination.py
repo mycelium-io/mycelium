@@ -508,6 +508,7 @@ async def _run_cfn_negotiation(
             workspace_id=workspace_id,
             mas_id=mas_id,
             n_steps=settings.NEGOTIATION_N_STEPS,
+            retry_max_attempts=settings.MYCELIUM_CFN_RETRY_MAX_ATTEMPTS,
             room=room_name,
         )
     except CfnNegotiationError as exc:

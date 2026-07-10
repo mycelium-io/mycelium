@@ -24,12 +24,17 @@ class InitiateNegotiationRequest:
         content_text (str):
         agents (list[Agent]):
         n_steps (int | None | Unset):  Default: 20.
+        retry_max_attempts (int | None | Unset): Maximum SAV-triggered re-negotiation
+            attempts per session. ``0`` (default) disables CE auto-retry so the terminal
+            ``/decide`` returns after a single validation pass (~15-20s instead of
+            ~40-60s per retry). Set to ``3`` to restore the factory CE behaviour.
     """
 
     session_id: str
     content_text: str
     agents: list[Agent]
     n_steps: int | None | Unset = 20
+    retry_max_attempts: int | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -48,6 +53,12 @@ class InitiateNegotiationRequest:
         else:
             n_steps = self.n_steps
 
+        retry_max_attempts: int | None | Unset
+        if isinstance(self.retry_max_attempts, Unset):
+            retry_max_attempts = UNSET
+        else:
+            retry_max_attempts = self.retry_max_attempts
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
@@ -59,6 +70,8 @@ class InitiateNegotiationRequest:
         )
         if n_steps is not UNSET:
             field_dict["n_steps"] = n_steps
+        if retry_max_attempts is not UNSET:
+            field_dict["retry_max_attempts"] = retry_max_attempts
 
         return field_dict
 
@@ -87,11 +100,21 @@ class InitiateNegotiationRequest:
 
         n_steps = _parse_n_steps(d.pop("n_steps", UNSET))
 
+        def _parse_retry_max_attempts(data: object) -> int | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(int | None | Unset, data)
+
+        retry_max_attempts = _parse_retry_max_attempts(d.pop("retry_max_attempts", UNSET))
+
         initiate_negotiation_request = cls(
             session_id=session_id,
             content_text=content_text,
             agents=agents,
             n_steps=n_steps,
+            retry_max_attempts=retry_max_attempts,
         )
 
         initiate_negotiation_request.additional_properties = d

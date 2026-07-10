@@ -168,6 +168,19 @@ class NegotiationConfig(BaseModel):
             "Set to 0 to fall through to CFN's auto-computed budget."
         ),
     )
+    retry_max_attempts: int = Field(
+        default=0,
+        description=(
+            "Maximum SAV-triggered re-negotiation attempts per session. "
+            "0 (default) disables CE auto-retry so the terminal /decide returns "
+            "after a single validation pass (~15-20s). Each retry adds ~18-20s "
+            "(one extra sync LLM call in the CE validation pipeline). "
+            "Raise to ≤3 only if you want the CE to auto-correct low-alignment "
+            "consensus — and extend CFN_SVC timeouts accordingly: "
+            "COGNITION_ENGINES_TIMEOUT_SECONDS >= 20 + (retry_max_attempts * 20), "
+            "SERVER_TIMEOUT_SECONDS >= COGNITION_ENGINES_TIMEOUT_SECONDS + 5."
+        ),
+    )
 
 
 class RoomConfig(BaseModel):

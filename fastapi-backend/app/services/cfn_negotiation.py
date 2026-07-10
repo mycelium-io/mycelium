@@ -192,11 +192,15 @@ async def start_negotiation(
     workspace_id: str,
     mas_id: str,
     n_steps: int = 20,
+    retry_max_attempts: int = 0,
     room: str = "",
 ) -> dict[str, Any]:
     """Call CFN /start. Raises :class:`CfnNegotiationError` on any failure.
 
     ``agents`` items: ``{"id": handle, "name": handle}``
+
+    ``retry_max_attempts``: maximum SAV-triggered re-negotiation attempts.
+    ``0`` (default) disables CE auto-retry for a fast terminal ``/decide``.
     """
     cfn_timing_stamp("endpoint", "start_negotiation")
     sent_ns = time.time_ns()
@@ -207,6 +211,7 @@ async def start_negotiation(
         content_text=content_text,
         agents=[Agent(id=a["id"], name=a["name"]) for a in agents],
         n_steps=n_steps if n_steps and n_steps > 0 else UNSET,
+        retry_max_attempts=retry_max_attempts if retry_max_attempts > 0 else UNSET,
     )
     t0 = time.monotonic()
     try:

@@ -142,6 +142,7 @@ def generate_env_file(
         "",
         "# ── Negotiation ──────────────────────────────────────────────────────────",
         f"NEGOTIATION_N_STEPS={config.negotiation.n_steps}",
+        f"MYCELIUM_CFN_RETRY_MAX_ATTEMPTS={config.negotiation.retry_max_attempts}",
         "",
         "# ── Knowledge ingest control (CFN shared-memories hook) ─────────────────",
         f"MYCELIUM_INGEST_ENABLED={'true' if config.knowledge_ingest.enabled else 'false'}",
