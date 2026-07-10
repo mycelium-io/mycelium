@@ -116,6 +116,9 @@ def runtime_for_testbed_object(testbed: Any) -> str:
         return RUNTIME_COMPOSE
     if name == TESTBED_NAME_LAB:
         return RUNTIME_LAB
+    if name == "mycelium-aio":
+        # aio is a single-host variant — treated as compose for job runtime checks.
+        return RUNTIME_COMPOSE
     return "unknown"
 
 
