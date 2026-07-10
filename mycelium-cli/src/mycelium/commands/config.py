@@ -370,6 +370,10 @@ def _migrate_env_to_config(config: "MyceliumConfig") -> None:
     if not config.runtime.cfn_svc_url and env.get("CFN_SVC_URL"):
         config.runtime.cfn_svc_url = env["CFN_SVC_URL"]
         changed = True
+    # Legacy rename: COGNITION_FABRIC_NODE_URL → CFN_SVC_URL
+    if not config.runtime.cfn_svc_url and env.get("COGNITION_FABRIC_NODE_URL"):
+        config.runtime.cfn_svc_url = env["COGNITION_FABRIC_NODE_URL"]
+        changed = True
     if not config.runtime.workspace_id and env.get("WORKSPACE_ID"):
         config.runtime.workspace_id = env["WORKSPACE_ID"]
         changed = True

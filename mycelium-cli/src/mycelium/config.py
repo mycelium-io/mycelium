@@ -102,6 +102,10 @@ class LLMConfig(BaseModel):
 class RuntimeConfig(BaseModel):
     """Docker runtime / environment configuration."""
 
+    db_user: str = Field(
+        default="postgres",
+        description="Postgres username for the mycelium-db container",
+    )
     db_password: str = Field(
         default="password",
         description="Postgres password for the mycelium-db container",
@@ -652,8 +656,9 @@ class MyceliumConfig(BaseModel):
         from urllib.parse import quote
 
         scheme = "postgresql+asyncpg" if async_driver else "postgresql"
+        user = quote(self.runtime.db_user, safe="")
         password = quote(self.runtime.db_password, safe="")
-        return f"{scheme}://{self.DB_USER}:{password}@{host}:{port}/{self.DB_NAME}"
+        return f"{scheme}://{user}:{password}@{host}:{port}/{self.DB_NAME}"
 
     def save_to_project(self, project_dir: Path | None = None) -> None:
         """Save room settings to project-local .mycelium/."""

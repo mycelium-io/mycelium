@@ -1,0 +1,23 @@
+# Transition override: allow mycelium-db to be pulled from the registry.
+#
+# compose.yml sets pull_policy: never on mycelium-db so that dev builds
+# (compose-dev.yml --build) aren't silently replaced by a registry pull.
+# That breaks packaged installs where the image hasn't been built locally.
+#
+# This overlay restores pull_policy: missing (the compose default) so that
+# non-dev installs can pull ghcr.io/mycelium-io/mycelium-db when the image
+# isn't cached locally.
+#
+# Use during the ioc-golang transition period only. Once the cutover to the
+# IoC Go stack is complete and mycelium-db is no longer a custom-built image,
+# delete this file.
+#
+# Usage:
+#   docker compose \
+#     -f mycelium-cli/src/mycelium/docker/compose.yml \
+#     -f mycelium-cli/src/mycelium/docker/compose-transition.yml \
+#     --profile cfn up -d
+#
+services:
+  mycelium-db:
+    pull_policy: missing

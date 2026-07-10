@@ -228,8 +228,8 @@ services:
       MEMORY_PROVIDER_ID: ${MEMORY_PROVIDER_ID:-de54dacb-60ab-476a-9e83-64e09f867358}
       IOC_KNOWLEDGE_DB_HOST: mycelium-db
       IOC_KNOWLEDGE_DB: ${IOC_KNOWLEDGE_DB:-ioc-graph-db}
-      IOC_KNOWLEDGE_DB_USER: postgres
-      IOC_KNOWLEDGE_DB_PASSWORD: password
+      IOC_KNOWLEDGE_DB_USER: ${MYCELIUM_DB_USER:-postgres}
+      IOC_KNOWLEDGE_DB_PASSWORD: ${MYCELIUM_DB_PASSWORD:-password}
       IOC_KNOWLEDGE_DB_PORT: 5432
       EMBEDDING_VECTOR_SIZE: ${EMBEDDING_VECTOR_SIZE:-384}
     restart: unless-stopped
@@ -271,7 +271,7 @@ services:
       - HEARTBEAT_INTERVAL_SECONDS=${HEARTBEAT_INTERVAL_SECONDS:-10}
       - SERVICE_NAME=${SERVICE_NAME:-ioc-cfn-svc}
       - DB_NAME=${DB_NAME:-cfn_cp}
-      - DB_USER=${POSTGRES_USER}
+      - DB_USER=${MYCELIUM_DB_USER:-postgres}
       - DB_PASSWORD=${MYCELIUM_DB_PASSWORD:-password}
       - DB_HOST=mycelium-db
       - DB_PORT=5432

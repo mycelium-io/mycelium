@@ -99,6 +99,7 @@ def generate_env_file(
         "# Regenerate with: mycelium config apply",
         "",
         "# ── Postgres ─────────────────────────────────────────────────────────────",
+        f"MYCELIUM_DB_USER={config.runtime.db_user}",
         f"MYCELIUM_DB_PASSWORD={config.runtime.db_password}",
         f"MYCELIUM_DB_PORT={config.runtime.db_port}",
         # DATABASE_URL / GRAPH_DB_URL / DATABASE_URL_HOST are materialised here
