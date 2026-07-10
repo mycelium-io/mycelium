@@ -660,11 +660,13 @@ class _ScenarioCore(aetest.Testcase):
         if require_consensus and not outcome.reached:
             self.failed(f"consensus not reached (state={outcome.state}, broken={outcome.broken}); raw={outcome.raw!r}")
         if not require_consensus:
-            if outcome.broken:
-                # broken=True means the coordination engine itself failed
-                # (e.g. CFN /start returned 500), not just that agents
-                # didn't converge. Even for shakedown rows this is a real
-                # failure — the session never ran.
+            if outcome.broken and outcome.state not in ("timeout", "agreed"):
+                # broken=True on state=failed/aborted/error means the
+                # coordination engine itself failed (CFN 500, disconnect,
+                # agent silent for full budget). These are infrastructure
+                # failures — the session never ran properly.
+                # state=timeout means the SAO exhausted n_steps without
+                # consensus — that's a valid shakedown outcome, not a failure.
                 self.failed(
                     f"session ended broken (state={outcome.state}); "
                     f"coordination engine failure, not a negotiation timeout; "
