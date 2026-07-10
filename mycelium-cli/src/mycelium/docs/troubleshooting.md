@@ -147,6 +147,38 @@ grep -i ioc ~/.mycelium/.env   # was the stack installed with IoC/CFN enabled?
 
 ---
 
+### 7c. Terminal `/decide` Takes 40–60s
+
+**Symptom**: consensus is eventually reached but the final round takes
+40–60 seconds (or more) to return.
+
+This is the CFN Cognitive Engine's SAV (Semantic Alignment Validator)
+auto-retry path. When alignment scores fall below threshold, the CE runs the
+full negotiation pipeline again — each extra attempt adds ~18–20s (one
+synchronous LLM call inside the CE). Three retries ≈ 54–60s.
+
+By default Mycelium sends `retry_max_attempts=0` to disable CE auto-retry, so
+the terminal `/decide` should complete in ~15–20s. If you're still seeing
+slow `/decide` calls, check what value is being sent:
+
+```bash
+grep MYCELIUM_CFN_RETRY_MAX_ATTEMPTS ~/.mycelium/.env
+```
+
+If the value is missing or non-zero, reset it:
+
+```bash
+mycelium config set negotiation.retry_max_attempts 0
+mycelium config apply --restart
+```
+
+If you intentionally want the CE to auto-correct low-alignment consensus,
+raise it — but extend the CFN service timeouts first. See
+[CE validation retries](cognitive-engine.md#superuser-ce-validation-retries-negotiationretry_max_attempts)
+for the full timeout budget formula.
+
+---
+
 ### 8. Container Name Conflicts
 
 **Symptom**: `container name "mycelium-db" is already in use`

@@ -591,6 +591,7 @@ mycelium session await \
 | Config key | Default | Purpose |
 |---|---|---|
 | `negotiation.n_steps` | `20` | Maximum SAO rounds per session. Set to `0` to fall through to CFN's auto-computed budget (which scales with agent and issue count, but assumes Boulware-style time-based concession that LLM callback agents do not exhibit — a low fixed cap is preferred). |
+| `negotiation.retry_max_attempts` | `0` | Maximum SAV-triggered re-negotiation attempts per session (superuser knob — see below). |
 
 ```bash
 mycelium config set negotiation.n_steps 30
@@ -609,6 +610,52 @@ CFN-side tunables (set via `~/.mycelium/.env` directly):
 The round watchdog also extends on each agent's first reply per round, so a slow
 agent doesn't stall the round for everyone — only sustained silence (no replies
 for the full timeout window) ends the round prematurely.
+
+### Superuser: CE validation retries (`negotiation.retry_max_attempts`)
+
+By default Mycelium sets `retry_max_attempts=0`, which disables the CFN
+Cognitive Engine's Semantic Alignment Validator (SAV) auto-retry path. This
+keeps the terminal `/decide` call fast (~15–20s for a single validation pass).
+
+When `retry_max_attempts > 0`, the CE re-runs the full negotiation pipeline
+each time the SAV scores alignment below its threshold. Each retry adds
+approximately **18–20s** of wall-clock latency (one extra sync LLM call inside
+the CE). Three retries ≈ 54–60s for the terminal `/decide`.
+
+**When to raise it:** only if you observe the CE consistently returning
+`"should_retry": true` in the validation payload and you want it to
+auto-correct before surfacing consensus to agents. For most deployments the
+default advisory-only mode (retry=0, validation surfaced in the consensus
+message) is preferred.
+
+**Timeout budget:** if you raise `retry_max_attempts`, extend the CFN service
+timeouts to avoid the outer HTTP server cutting the engine off mid-retry:
+
+```toml
+# config.toml — example for retry_max_attempts = 3
+[negotiation]
+retry_max_attempts = 3
+```
+
+```bash
+mycelium config set negotiation.retry_max_attempts 3
+mycelium config apply
+```
+
+Then set the CFN-side timeouts in `~/.mycelium/.env` (these are Go CFN service
+env vars, not managed by `config.toml`):
+
+```bash
+# Minimum: 20s base + (retry_max_attempts × 20s) + headroom
+COGNITION_ENGINES_TIMEOUT_SECONDS=80   # 20 + 3×20 = 80
+SERVER_TIMEOUT_SECONDS=85              # must be ≥ COGNITION_ENGINES_TIMEOUT_SECONDS + 5
+```
+
+Restart the CFN service to pick up the new env:
+
+```bash
+mycelium config apply --restart
+```
 
 
 ---
@@ -1741,6 +1788,38 @@ grep -i ioc ~/.mycelium/.env   # was the stack installed with IoC/CFN enabled?
   *LLM Not Configured* above) and restart: `mycelium down && mycelium up`.
 - **IoC/CFN disabled** → re-run `mycelium install` (interactive enables IoC by
   default), or reinstall without `--no-ioc`.
+
+---
+
+### 7c. Terminal `/decide` Takes 40–60s
+
+**Symptom**: consensus is eventually reached but the final round takes
+40–60 seconds (or more) to return.
+
+This is the CFN Cognitive Engine's SAV (Semantic Alignment Validator)
+auto-retry path. When alignment scores fall below threshold, the CE runs the
+full negotiation pipeline again — each extra attempt adds ~18–20s (one
+synchronous LLM call inside the CE). Three retries ≈ 54–60s.
+
+By default Mycelium sends `retry_max_attempts=0` to disable CE auto-retry, so
+the terminal `/decide` should complete in ~15–20s. If you're still seeing
+slow `/decide` calls, check what value is being sent:
+
+```bash
+grep MYCELIUM_CFN_RETRY_MAX_ATTEMPTS ~/.mycelium/.env
+```
+
+If the value is missing or non-zero, reset it:
+
+```bash
+mycelium config set negotiation.retry_max_attempts 0
+mycelium config apply --restart
+```
+
+If you intentionally want the CE to auto-correct low-alignment consensus,
+raise it — but extend the CFN service timeouts first. See
+[CE validation retries](cognitive-engine.md#superuser-ce-validation-retries-negotiationretry_max_attempts)
+for the full timeout budget formula.
 
 ---
 

@@ -803,8 +803,8 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
 <span class="comment"># IoC CFN management plane URL</span>
 <span class="arg">cfn_mgmt_url</span> = <span class="str">&quot;&quot;</span>
 
-<span class="comment"># IoC CFN cognition fabric node URL</span>
-<span class="arg">cognition_fabric_node_url</span> = <span class="str">&quot;&quot;</span>
+<span class="comment"># IoC CFN node service URL</span>
+<span class="arg">cfn_svc_url</span> = <span class="str">&quot;&quot;</span>
 
 <span class="comment"># Workspace ID in the CFN mgmt plane</span>
 <span class="arg">workspace_id</span> = <span class="str">&quot;&quot;</span>
@@ -823,6 +823,9 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
 
 <span class="comment"># Maximum SAO rounds per session. CFN&#x27;s auto-compute formula assumes Boulware-style time-based concession (last ~30% of rounds), which LLM callback agents do not exhibit — so a low fixed cap is preferred. Set to 0 to fall through to CFN&#x27;s auto-computed budget.</span>
 <span class="arg">n_steps</span> = 20
+
+<span class="comment"># Maximum SAV-triggered re-negotiation attempts per session. 0 (default) disables CE auto-retry so the terminal /decide returns after a single validation pass (~15-20s). Each retry adds ~18-20s (one extra sync LLM call in the CE validation pipeline). Raise to ≤3 only if you want the CE to auto-correct low-alignment consensus — and extend CFN_SVC timeouts accordingly: COGNITION_ENGINES_TIMEOUT_SECONDS &gt;= 20 + (retry_max_attempts * 20), SERVER_TIMEOUT_SECONDS &gt;= COGNITION_ENGINES_TIMEOUT_SECONDS + 5.</span>
+<span class="arg">retry_max_attempts</span> = 0
 
 <span class="comment"># Room management configuration.</span>
 <span class="cmd" id="config-rooms">[rooms]</span>
@@ -1421,6 +1424,16 @@ grep <span class="flag">-i</span> ioc ~/.mycelium/.env   # was the stack install
         <li><strong>IoC/CFN disabled</strong> → re-run <code>mycelium install</code> (interactive enables IoC by</li>
       </ul>
       <p>default), or reinstall without <code>--no-ioc</code>.</p>
+      <hr class="divider">
+      <h3 id="troubleshooting-7c-terminal-decide-takes-4060s">7c. Terminal <code>/decide</code> Takes 40–60s</h3>
+      <p><strong>Symptom</strong>: consensus is eventually reached but the final round takes 40–60 seconds (or more) to return.</p>
+      <p>This is the CFN Cognitive Engine&#x27;s SAV (Semantic Alignment Validator) auto-retry path. When alignment scores fall below threshold, the CE runs the full negotiation pipeline again — each extra attempt adds ~18–20s (one synchronous LLM call inside the CE). Three retries ≈ 54–60s.</p>
+      <p>By default Mycelium sends <code>retry_max_attempts=0</code> to disable CE auto-retry, so the terminal <code>/decide</code> should complete in ~15–20s. If you&#x27;re still seeing slow <code>/decide</code> calls, check what value is being sent:</p>
+      <pre><code>grep MYCELIUM_CFN_RETRY_MAX_ATTEMPTS ~/.mycelium/.env</code></pre>
+      <p>If the value is missing or non-zero, reset it:</p>
+      <pre><code><span class="cmd">mycelium config set</span> negotiation.retry_max_attempts 0
+<span class="cmd">mycelium config apply</span> <span class="flag">--restart</span></code></pre>
+      <p>If you intentionally want the CE to auto-correct low-alignment consensus, raise it — but extend the CFN service timeouts first. See <a href="cognitive-engine.md#superuser-ce-validation-retries-negotiationretry_max_attempts">CE validation retries</a> for the full timeout budget formula.</p>
       <hr class="divider">
       <h3 id="troubleshooting-8-container-name-conflicts">8. Container Name Conflicts</h3>
       <p><strong>Symptom</strong>: <code>container name &quot;mycelium-db&quot; is already in use</code></p>

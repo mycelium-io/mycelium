@@ -386,6 +386,11 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
               <td><code>20</code></td>
               <td>Maximum SAO rounds per session. Set to <code>0</code> to fall through to CFN&#x27;s auto-computed budget (which scales with agent and issue count, but assumes Boulware-style time-based concession that LLM callback agents do not exhibit — a low fixed cap is preferred).</td>
             </tr>
+            <tr>
+              <td><code>negotiation.retry_max_attempts</code></td>
+              <td><code>0</code></td>
+              <td>Maximum SAV-triggered re-negotiation attempts per session (superuser knob — see below).</td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -426,6 +431,22 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
         </table>
       </div>
       <p>The round watchdog also extends on each agent&#x27;s first reply per round, so a slow agent doesn&#x27;t stall the round for everyone — only sustained silence (no replies for the full timeout window) ends the round prematurely.</p>
+      <h3 id="cognitive-engine-superuser-ce-validation-retries-negotiationretry_max_attempts">Superuser: CE validation retries (<code>negotiation.retry_max_attempts</code>)</h3>
+      <p>By default Mycelium sets <code>retry_max_attempts=0</code>, which disables the CFN Cognitive Engine&#x27;s Semantic Alignment Validator (SAV) auto-retry path. This keeps the terminal <code>/decide</code> call fast (~15–20s for a single validation pass).</p>
+      <p>When <code>retry_max_attempts &gt; 0</code>, the CE re-runs the full negotiation pipeline each time the SAV scores alignment below its threshold. Each retry adds approximately <strong>18–20s</strong> of wall-clock latency (one extra sync LLM call inside the CE). Three retries ≈ 54–60s for the terminal <code>/decide</code>.</p>
+      <p><strong>When to raise it:</strong> only if you observe the CE consistently returning <code>&quot;should_retry&quot;: true</code> in the validation payload and you want it to auto-correct before surfacing consensus to agents. For most deployments the default advisory-only mode (retry=0, validation surfaced in the consensus message) is preferred.</p>
+      <p><strong>Timeout budget:</strong> if you raise <code>retry_max_attempts</code>, extend the CFN service timeouts to avoid the outer HTTP server cutting the engine off mid-retry:</p>
+      <pre><code># config.toml — example for retry_max_attempts = 3
+[negotiation]
+retry_max_attempts = 3</code></pre>
+      <pre><code><span class="cmd">mycelium config set</span> negotiation.retry_max_attempts 3
+<span class="cmd">mycelium config apply</span></code></pre>
+      <p>Then set the CFN-side timeouts in <code>~/.mycelium/.env</code> (these are Go CFN service env vars, not managed by <code>config.toml</code>):</p>
+      <pre><code><span class="comment"># Minimum: 20s base + (retry_max_attempts × 20s) + headroom</span>
+COGNITION_ENGINES_TIMEOUT_SECONDS=80   # 20 + 3×20 = 80
+SERVER_TIMEOUT_SECONDS=85              # must be ≥ COGNITION_ENGINES_TIMEOUT_SECONDS + 5</code></pre>
+      <p>Restart the CFN service to pick up the new env:</p>
+      <pre><code><span class="cmd">mycelium config apply</span> <span class="flag">--restart</span></code></pre>
     </section>
 
     <hr class="divider">
