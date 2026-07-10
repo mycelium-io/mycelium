@@ -11,7 +11,7 @@ services:
       context: ../../../../fastapi-backend
       dockerfile: docker/Dockerfile.agensgraph
     image: ghcr.io/mycelium-io/mycelium-db:${MYCELIUM_IMAGE_TAG:-latest}
-    pull_policy: never
+    pull_policy: always
     platform: linux/amd64
     container_name: mycelium-db
     restart: unless-stopped
