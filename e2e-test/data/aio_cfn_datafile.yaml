@@ -8,5 +8,5 @@ extends: local_datafile.yaml
 
 parameters:
   timeouts:
-    negotiation_wait: 480   # cursor cold-spawn needs headroom
+    negotiation_wait: 900   # cursor cold-spawn + slow round 0 needs headroom
     agent_idle_wait: 15
