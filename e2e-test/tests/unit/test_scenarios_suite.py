@@ -5,7 +5,7 @@ matrix refactor:
 
 - ``LabRedeployCommonSetup.provision_matrix_agents`` deduplicates
   agents across active rows, runs ``ensure_runtime`` per unique
-  ``(adapter, handle, host)``, and stashes refs in
+  ``(adapter, role, host)``, and stashes refs in
   ``testscript.parameters``.
 - ``MatrixCommonCleanup.teardown_matrix_agents`` reads those refs
   back and calls ``teardown_runtime`` for each, gated on
@@ -78,7 +78,7 @@ def test_provision_matrix_agents_short_circuits_on_skip_env(monkeypatch, suite_m
 
 
 def test_provision_matrix_agents_dedups_across_rows(monkeypatch, suite_module):
-    """Two scenarios sharing the same (adapter, handle, host)
+    """Two scenarios sharing the same (adapter, role, host)
     should produce ONE ensure_runtime call, not two."""
     monkeypatch.delenv("MYCELIUM_E2E_SKIP_AGENT_PROVISIONING", raising=False)
 
@@ -86,16 +86,16 @@ def test_provision_matrix_agents_dedups_across_rows(monkeypatch, suite_module):
         {
             "name": "row1",
             "agents": [
-                {"adapter": "openclaw", "handle": "alpha", "host": "hub"},
-                {"adapter": "openclaw", "handle": "beta", "host": "spoke1"},
+                {"adapter": "openclaw", "role": "alpha", "host": "hub"},
+                {"adapter": "openclaw", "role": "beta", "host": "spoke1"},
             ],
         },
         {
             "name": "row2",
             "agents": [
                 # alpha@hub is a duplicate — must collapse to one call
-                {"adapter": "openclaw", "handle": "alpha", "host": "hub"},
-                {"adapter": "cursor", "handle": "gamma", "host": "spoke2"},
+                {"adapter": "openclaw", "role": "alpha", "host": "hub"},
+                {"adapter": "cursor", "role": "gamma", "host": "spoke2"},
             ],
         },
     ]
@@ -115,6 +115,9 @@ def test_provision_matrix_agents_dedups_across_rows(monkeypatch, suite_module):
         def check_prereqs(self, device):
             return None
 
+        def discover_available(self, device, **kwargs):
+            return []
+
         def ensure_runtime(self, device, handle, **kwargs):
             calls.append((self.adapter, handle, device.name))
             return AgentRef(
@@ -124,23 +127,33 @@ def test_provision_matrix_agents_dedups_across_rows(monkeypatch, suite_module):
                 metadata={"pre_existing": False},
             )
 
+        def register_in_room(self, device, handle, room, **kwargs):
+            return AgentRef(
+                handle=handle,
+                adapter=self.adapter,
+                device_name=device.name,
+                metadata={"room": room},
+            )
+
     def fake_get_provisioner(name):
         return _RecordingProvisioner(name)
 
     monkeypatch.setattr(suite_module, "_ACTIVE_ROWS", fake_rows)
-    monkeypatch.setattr(suite_module, "get_provisioner", fake_get_provisioner)
+    monkeypatch.setattr("libs.agent_pools.get_provisioner", fake_get_provisioner)
+    monkeypatch.setattr(suite_module, "ensure_pool_slots", lambda *args, **kwargs: [])
+    monkeypatch.setattr(suite_module, "reset_openclaw_pools_for_wants", lambda *args, **kwargs: None)
+    monkeypatch.setattr(suite_module, "setup_shared_suite_room", lambda *args, **kwargs: "scn-suite-test")
 
     section = suite_module.LabRedeployCommonSetup()
     testscript = _make_testscript()
 
     section.provision_matrix_agents(testscript, testbed=testbed)
 
-    # Three unique tuples: (oc, alpha, hub), (oc, beta, spoke1),
-    # (cu, gamma, spoke2). alpha@hub appearing twice must collapse.
+    # Three unique role tuples; ensure_runtime receives pool handles.
     assert sorted(calls) == [
         ("cursor", "gamma", "spoke2"),
-        ("openclaw", "alpha", "hub"),
-        ("openclaw", "beta", "spoke1"),
+        ("openclaw", "agent-alpha", "hub"),
+        ("openclaw", "claire-agent", "spoke1"),
     ]
 
     refs = testscript.parameters["provisioned_agents"]
@@ -162,8 +175,8 @@ def test_provision_matrix_agents_collects_failures(monkeypatch, suite_module):
         {
             "name": "row1",
             "agents": [
-                {"adapter": "openclaw", "handle": "alpha", "host": "hub"},
-                {"adapter": "openclaw", "handle": "ghost", "host": "missing-host"},
+                {"adapter": "openclaw", "role": "alpha", "host": "hub"},
+                {"adapter": "openclaw", "role": "ghost", "host": "missing-host"},
             ],
         },
     ]
@@ -176,13 +189,19 @@ def test_provision_matrix_agents_collects_failures(monkeypatch, suite_module):
         def check_prereqs(self, device):
             return None
 
+        def discover_available(self, device, **kwargs):
+            return []
+
         def ensure_runtime(self, device, handle, **kwargs):
-            if handle == "alpha":
+            if handle == "agent-alpha":
                 raise PrereqMissing("LLM key missing")
             return AgentRef(handle=handle, adapter="openclaw", device_name="hub")
 
     monkeypatch.setattr(suite_module, "_ACTIVE_ROWS", fake_rows)
-    monkeypatch.setattr(suite_module, "get_provisioner", lambda _: _FailingProvisioner())
+    monkeypatch.setattr("libs.agent_pools.get_provisioner", lambda _: _FailingProvisioner())
+    monkeypatch.setattr(suite_module, "ensure_pool_slots", lambda *args, **kwargs: [])
+    monkeypatch.setattr(suite_module, "reset_openclaw_pools_for_wants", lambda *args, **kwargs: None)
+    monkeypatch.setattr(suite_module, "setup_shared_suite_room", lambda *args, **kwargs: "scn-suite-test")
 
     section = suite_module.LabRedeployCommonSetup()
     testscript = _make_testscript()
@@ -192,7 +211,7 @@ def test_provision_matrix_agents_collects_failures(monkeypatch, suite_module):
 
     msg = str(excinfo.value)
     # Both failures should be reported in the bulk message.
-    assert "alpha" in msg
+    assert "agent-alpha" in msg or "alpha" in msg
     assert "ghost" in msg
 
 
@@ -422,7 +441,7 @@ def test_verify_cfn_alignment_failure_aborts_suite(monkeypatch, suite_module):
 def test_provision_matrix_agents_skipped_after_common_setup_abort(suite_module, monkeypatch):
     """Do not spend minutes provisioning agents when CFN alignment failed."""
     monkeypatch.delenv("MYCELIUM_E2E_SKIP_AGENT_PROVISIONING", raising=False)
-    monkeypatch.setattr(suite_module, "_ACTIVE_ROWS", [{"agents": [{"adapter": "openclaw", "handle": "alpha", "host": "hub"}]}])
+    monkeypatch.setattr(suite_module, "_ACTIVE_ROWS", [{"agents": [{"adapter": "openclaw", "role": "alpha", "host": "hub"}]}])
 
     ensure_calls: list[str] = []
 

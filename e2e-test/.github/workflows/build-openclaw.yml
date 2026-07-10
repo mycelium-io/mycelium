@@ -47,6 +47,7 @@ jobs:
         with:
           context: .
           file: infra/Dockerfile.spoke
+          target: spoke-release
           push: true
           tags: |
             ${{ env.SPOKE_IMAGE }}:latest

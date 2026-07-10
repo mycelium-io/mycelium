@@ -107,12 +107,19 @@ class CursorProvisioner(ABCProvisioner):
         )
 
         # Subscribe the daemon to the room BEFORE creating the agent so
-        # the agent's first tick isn't missed.
+        # the agent's first tick isn't missed. In compose containers use
+        # the infra script — older CLI builds fall back to systemctl.
         sub = host_exec.execute(
             device,
-            ["mycelium", "daemon", "subscribe", room],
+            ["/openclaw/daemon-subscribe.sh", room],
             timeout=15.0,
         )
+        if sub.returncode != 0:
+            sub = host_exec.execute(
+                device,
+                ["mycelium", "daemon", "subscribe", room],
+                timeout=15.0,
+            )
         if sub.returncode != 0:
             raise PrereqMissing(f"cursor: daemon subscribe to {room} failed: {sub.stderr.strip()[:200]}")
 
@@ -135,12 +142,18 @@ class CursorProvisioner(ABCProvisioner):
         if result.returncode != 0:
             raise PrereqMissing(f"cursor: `mycelium agent create {handle}` failed: {result.stderr.strip()[:200]}")
 
-        return AgentRef(
+        ref = AgentRef(
             handle=handle,
             adapter=self.name,
             device_name=getattr(device, "name", None) or str(device),
             metadata={"workspace": workspace, "room": room},
         )
+
+        # Pre-warm: spawn cursor-agent now so the model and workspace index
+        # are loaded before the first negotiation tick arrives.
+        self._pre_warm(device, handle, room)
+
+        return ref
 
     # ── wake ──────────────────────────────────────────────────────────
 
@@ -240,10 +253,15 @@ class CursorProvisioner(ABCProvisioner):
     # ── helpers ───────────────────────────────────────────────────────
 
     def _make_workspace(self, device: Any) -> str:
-        """Create a temp workspace dir and return its absolute path.
+        """Create a temp workspace dir, seed it, and return its absolute path.
 
         ``mktemp -d /tmp/cursor-e2e-XXXXXX`` is used so cleanup can
         verify the prefix before issuing ``rm -rf``.
+
+        The workspace is seeded with a minimal ``.cursor/rules/mycelium.mdc``
+        so cursor-agent indexes the workspace immediately rather than
+        discovering it cold on the first negotiation tick (#4 — workspace
+        pre-indexing).
         """
         try:
             result = host_exec.execute(
@@ -257,7 +275,51 @@ class CursorProvisioner(ABCProvisioner):
         # Defence in depth: confirm it really is a /tmp/cursor-e2e- path
         if not _SAFE_WORKSPACE_RE.match(path):
             raise PrereqMissing(f"cursor: mktemp produced unexpected path {path!r}")
+
+        # Seed the workspace so cursor-agent has something to index on
+        # first load — avoids the cold-discovery penalty on the first tick.
+        seed_cmds = [
+            f"mkdir -p {path}/.cursor/rules",
+            (
+                f"printf 'You are a mycelium negotiation agent.\\n"
+                f"Follow the mycelium SKILL.md protocol for session respond.\\n' "
+                f"> {path}/.cursor/rules/mycelium.mdc"
+            ),
+        ]
+        for cmd in seed_cmds:
+            try:
+                host_exec.execute(device, cmd, shell=True, timeout=5.0)
+            except HostExecError as exc:
+                log.warning("cursor: workspace seed step failed (continuing): %s", exc)
+
         return path
+
+    def _pre_warm(self, device: Any, handle: str, room: str) -> None:
+        """Fire a no-op invoke so cursor-agent loads the model before the first tick.
+
+        The daemon spawns a cursor-agent process on the first invoke. By
+        triggering that spawn against the bootstrap room (not the session
+        room) immediately after agent creation, the model and workspace
+        index are warm by the time the first negotiation tick arrives —
+        cutting cold-start latency off round 0 (#1 — pre-warm).
+        """
+        log.info("cursor._pre_warm: warming %s via no-op invoke on %s", handle, room)
+        try:
+            host_exec.execute(
+                device,
+                [
+                    "mycelium",
+                    "agent",
+                    "invoke",
+                    handle,
+                    "You are warming up. Reply with one word: ready.",
+                    "--room",
+                    room,
+                ],
+                timeout=120.0,
+            )
+        except HostExecError as exc:
+            log.warning("cursor._pre_warm: invoke failed (non-fatal): %s", exc)
 
 
 _SAFE_WORKSPACE_RE = re.compile(r"^/tmp/cursor-e2e-[A-Za-z0-9]{6,}$")

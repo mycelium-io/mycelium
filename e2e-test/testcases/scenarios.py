@@ -11,7 +11,7 @@ Three axes
 - **tier**: ``pr`` | ``nightly`` | ``weekly`` — controls run frequency.
   Filtered via the ``MYCELIUM_E2E_TIERS`` env var (comma-separated;
   ``all`` matches everything; unset defaults to ``all``).
-- **category**: ``core`` | ``distributed`` | ``cross_adapter`` etc. —
+- **category**: ``core`` | ``hub_and_spoke`` | ``cross_adapter`` etc. —
   becomes a pyATS ``groups`` entry so existing job filters keep working.
 - **agents**: the per-row adapter combo (e.g. ``[oc on hub, cu on
   spoke1]``). The class suffix encodes this for legibility:
@@ -45,7 +45,9 @@ from typing import Any, ClassVar
 
 from pyats import aetest
 
+from jobs._common import get_agent_idle_wait
 from libs import sessions
+from libs.agent_pools import reset_openclaw_pools_for_wants
 from libs.host_exec import HostExecError
 from libs.provisioners import (
     AgentRef,
@@ -53,6 +55,7 @@ from libs.provisioners import (
     Provisioner,
     get_provisioner,
 )
+from libs.scenario_row import agent_role, memory_write_role
 from libs.sessions import ConsensusOutcome, SessionError
 
 log = logging.getLogger(__name__)
@@ -152,7 +155,9 @@ def validate_row(row: dict[str, Any], *, position: int, source: str) -> None:
     for j, ag in enumerate(agents):
         if not isinstance(ag, dict):
             raise ValueError(f"{where} ({name!r}): agent {j} is not a mapping")
-        for required in ("handle", "adapter", "host"):
+        if not ag.get("role") and not ag.get("handle"):
+            raise ValueError(f"{where} ({name!r}): agent {j} missing `role`")
+        for required in ("adapter", "host"):
             if not ag.get(required):
                 raise ValueError(f"{where} ({name!r}): agent {j} missing {required!r}")
         if ag["adapter"] not in _ADAPTER_SHORTCODE:
@@ -422,11 +427,21 @@ class _ScenarioCore(aetest.Testcase):
 
         # Pull the matrix-wide agent registry that
         # ``provision_matrix_agents`` deposited. Keys are tuples of
-        # ``(adapter, handle, host)`` so we can find the AgentRef that
+        # ``(adapter, role, host)`` so we can find the AgentRef that
         # matches our row's spec exactly.
         provisioned: dict[tuple[str, str, str], AgentRef] = {}
         if testscript is not None:
             provisioned = testscript.parameters.get("provisioned_agents", {}) or {}
+            self._agent_pools = testscript.parameters.get("agent_pools") or {}
+            self._agent_idle_wait = int(
+                testscript.parameters.get(
+                    "agent_idle_wait",
+                    get_agent_idle_wait(),
+                )
+            )
+        else:
+            self._agent_pools = {}
+            self._agent_idle_wait = get_agent_idle_wait()
 
         if testbed is None:
             self.skipped("no pyATS testbed supplied (scenarios need a testbed)")
@@ -436,7 +451,9 @@ class _ScenarioCore(aetest.Testcase):
             host_name = ag["host"]
             device = testbed.devices.get(host_name)
             if device is None:
-                self.skipped(f"testbed has no device named {host_name!r} (needed for agent {ag['handle']!r})")
+                self.skipped(
+                    f"testbed has no device named {host_name!r} (needed for agent {agent_role(ag)!r})"
+                )
             provisioner = get_provisioner(ag["adapter"])
             self.agents.append(
                 _AgentBinding(
@@ -452,9 +469,9 @@ class _ScenarioCore(aetest.Testcase):
             try:
                 binding.provisioner.check_prereqs(binding.device)
             except PrereqMissing as exc:
-                self.skipped(f"prereq missing for {binding.spec['handle']}: {exc}")
+                self.skipped(f"prereq missing for {binding.spec_role}: {exc}")
             except HostExecError as exc:
-                self.skipped(f"transport down for {binding.spec['handle']}: {exc}")
+                self.skipped(f"transport down for {binding.spec_role}: {exc}")
 
         # Use the first agent's device as the room-management host. Any
         # device with mycelium CLI reachable would do; we pick the
@@ -476,25 +493,25 @@ class _ScenarioCore(aetest.Testcase):
 
             # ── register each agent in this room ──────────────────
             for binding in self.agents:
-                key = (binding.spec["adapter"], binding.spec["handle"], binding.spec["host"])
+                key = (binding.spec["adapter"], binding.spec_role, binding.spec["host"])
                 opening = binding.spec.get("position")
 
                 if key in provisioned:
                     # Suite common_setup already ran ensure_runtime (or
                     # discovery allocated an existing agent). Use the actual
                     # handle from the provisioned ref — it may differ from
-                    # the spec handle when an existing agent was reused.
+                    # the row role when an existing agent was reused.
                     actual_handle = provisioned[key].handle
                 else:
                     # No suite common_setup (running standalone). Fall back
-                    # to the spec handle for a fresh ensure_runtime.
+                    # to the row role for a fresh ensure_runtime.
                     try:
-                        binding.provisioner.ensure_runtime(binding.device, binding.spec["handle"])
+                        binding.provisioner.ensure_runtime(binding.device, binding.spec_role)
                     except PrereqMissing as exc:
                         self.failed(
-                            f"ensure_runtime failed for {binding.spec['handle']} (no common_setup ran): {exc}"
+                            f"ensure_runtime failed for {binding.spec_role} (no common_setup ran): {exc}"
                         )
-                    actual_handle = binding.spec["handle"]
+                    actual_handle = binding.spec_role
 
                 try:
                     binding.ref = binding.provisioner.register_in_room(
@@ -512,18 +529,29 @@ class _ScenarioCore(aetest.Testcase):
             # CommonSetup. Reuse the ensure_runtime refs — no gateway
             # restart here.
             for binding in self.agents:
-                key = (binding.spec["adapter"], binding.spec["handle"], binding.spec["host"])
+                key = (binding.spec["adapter"], binding.spec_role, binding.spec["host"])
                 binding.ref = provisioned.get(key)
                 if binding.ref is None:
                     self.failed(
-                        f"no provisioned ref for {binding.spec['handle']} "
+                        f"no provisioned ref for {binding.spec_role} "
                         f"(suite_shared_room={self.room!r})"
                     )
+
+            self._reset_openclaw_gateway_sessions()
 
             try:
                 sessions.wait_for_no_active_sessions(self.backend_url, self.room)
             except SessionError as exc:
                 self.failed(f"stale coordination session on {self.room!r}: {exc}")
+
+            # Poll CFN until the cognition engine is idle. The backend marks a
+            # session terminal before CFN finishes processing KXP fan-in from
+            # the consensus, so a /start immediately after would get a 500.
+            cfn_url = os.environ.get("CFN_SVC_URL", "http://localhost:9002")
+            try:
+                sessions.wait_for_cfn_idle(cfn_url)
+            except SessionError as exc:
+                log.warning("wait_for_cfn_idle timed out (%s) — proceeding anyway", exc)
 
         # ── create session + per-agent joins ──────────────────────
         try:
@@ -564,7 +592,7 @@ class _ScenarioCore(aetest.Testcase):
             self.consensus_timeout,
             ", ".join(
                 f"{b.actual_handle}({b.spec['adapter']}@{b.spec['host']})"
-                + (f"[spec={b.spec['handle']}]" if b.actual_handle != b.spec["handle"] else "")
+                + (f"[role={b.spec_role}]" if b.actual_handle != b.spec_role else "")
                 for b in self.agents
             ),
         )
@@ -596,7 +624,7 @@ class _ScenarioCore(aetest.Testcase):
             except Exception as exc:  # noqa: BLE001 - wake is best-effort
                 log.warning(
                     "wake_agent failed for %s (continuing): %s",
-                    binding.spec["handle"],
+                    binding.spec_role,
                     exc,
                 )
 
@@ -629,14 +657,21 @@ class _ScenarioCore(aetest.Testcase):
         require_consensus = self.row.get("require_consensus", True)
         if require_consensus and not outcome.reached:
             self.failed(f"consensus not reached (state={outcome.state}, broken={outcome.broken}); raw={outcome.raw!r}")
-        if not require_consensus and outcome.state == "consensus" and not outcome.broken:
-            # The row was tagged as "expected to time out" but we got
-            # an agreement instead — surface this as a soft signal
-            # rather than failing, since unexpected convergence is
-            # usually fine.
-            log.info(
-                "row expected timeout but consensus reached; not failing",
-            )
+        if not require_consensus:
+            if outcome.broken:
+                # broken=True means the coordination engine itself failed
+                # (e.g. CFN /start returned 500), not just that agents
+                # didn't converge. Even for shakedown rows this is a real
+                # failure — the session never ran.
+                self.failed(
+                    f"session ended broken (state={outcome.state}); "
+                    f"coordination engine failure, not a negotiation timeout; "
+                    f"raw={outcome.raw!r}"
+                )
+            if outcome.state == "consensus":
+                # The row was tagged as "expected to time out" but we got
+                # an agreement instead — surface as a soft signal, not a fail.
+                log.info("row expected timeout but consensus reached; not failing")
 
     @aetest.cleanup
     def cleanup(self) -> None:
@@ -650,7 +685,8 @@ class _ScenarioCore(aetest.Testcase):
         """
         keep_rooms = os.environ.get("MYCELIUM_E2E_KEEP_ROOMS", "").lower() in {"1", "true", "yes"}
 
-        # Suite-shared rooms: just drain the session, never delete the room.
+        # Suite-shared rooms: drain the session, reset gateway context,
+        # never delete the room.
         if getattr(self, "_suite_shared_room", False):
             session_room = getattr(self, "session_room", None)
             if session_room:
@@ -676,6 +712,7 @@ class _ScenarioCore(aetest.Testcase):
                 )
             except SessionError as exc:
                 log.warning("cleanup: session still active on %s: %s", self.room, exc)
+            self._reset_openclaw_gateway_sessions()
             return
 
         # Always unregister agents — this removes the room from each agent's
@@ -693,7 +730,7 @@ class _ScenarioCore(aetest.Testcase):
             except Exception as exc:  # noqa: BLE001 - cleanup is best-effort
                 log.warning(
                     "unregister_from_room failed for %s (continuing): %s",
-                    binding.spec["handle"],
+                    binding.spec_role,
                     exc,
                 )
 
@@ -705,6 +742,95 @@ class _ScenarioCore(aetest.Testcase):
             sessions.delete_room(self.control_device, self.room)
         except Exception as exc:  # noqa: BLE001
             log.debug("room delete failed (ignored): %s", exc)
+
+    def _reset_openclaw_gateway_sessions(self) -> None:
+        """Reset OpenClaw pool slots between suite scenarios.
+
+        Suite mode keeps agents registered to one parent room across rows.
+        Reset the full openclaw pool on each touched host (not only this
+        row's agents) so idle slots do not leave stale gateway state.
+        """
+        pools = getattr(self, "_agent_pools", None) or {}
+        wants: set[tuple[str, str, str]] = set()
+        testbed_devices: dict[str, Any] = {}
+
+        for binding in self.agents:
+            if binding.ref is None or binding.spec.get("adapter") != "openclaw":
+                continue
+            host = binding.spec["host"]
+            role = binding.spec_role
+            adapter = binding.spec["adapter"]
+            wants.add((adapter, role, host))
+            testbed_devices[host] = binding.device
+
+        if not wants or not pools:
+            # Legacy fallback when pools were not loaded (standalone run).
+            device_handles: dict[int, dict[str, Any]] = {}
+            for binding in self.agents:
+                if binding.ref is None or binding.spec.get("adapter") != "openclaw":
+                    continue
+                device = binding.device
+                device_id = id(device)
+                entry = device_handles.setdefault(
+                    device_id,
+                    {"device": device, "handles": [], "provisioner": binding.provisioner},
+                )
+                entry["handles"].append(binding.actual_handle)
+            for entry in device_handles.values():
+                self._reset_openclaw_device(
+                    entry["device"],
+                    entry["provisioner"],
+                    sorted(set(entry["handles"])),
+                )
+            return
+
+        class _MiniTestbed:
+            def __init__(self, devices: dict[str, Any]) -> None:
+                self.devices = devices
+
+        reset_openclaw_pools_for_wants(
+            _MiniTestbed(testbed_devices),
+            wants,
+            pools,
+            idle_wait_seconds=self._agent_idle_wait,
+        )
+
+    def _reset_openclaw_device(
+        self,
+        device: Any,
+        provisioner: Provisioner,
+        handles: list[str],
+    ) -> None:
+        reset_all = getattr(provisioner, "reset_device_gateway_sessions", None)
+        if callable(reset_all):
+            try:
+                reset_all(
+                    device,
+                    handles=handles,
+                    idle_wait_seconds=getattr(self, "_agent_idle_wait", None),
+                )
+            except Exception as exc:  # noqa: BLE001 - best-effort hygiene
+                log.warning(
+                    "openclaw device reset failed on %s (continuing): %s",
+                    getattr(device, "name", device),
+                    exc,
+                )
+            return
+        for handle in handles:
+            ref = next(
+                (b.ref for b in self.agents if b.ref is not None and b.actual_handle == handle),
+                None,
+            )
+            if ref is None:
+                continue
+            try:
+                provisioner.cleanup_agent(device, ref, self.room)
+            except Exception as exc:  # noqa: BLE001 - best-effort hygiene
+                log.warning(
+                    "openclaw session reset failed for %s (continuing): %s",
+                    handle,
+                    exc,
+                )
 
     def _chown_mycelium_on_agent_hosts(self) -> None:
         """Reclaim user ownership of ``~/.mycelium`` on each agent host."""
@@ -748,7 +874,11 @@ class _ConsensusScenario(_ScenarioCore):
             self.failed("consensus not reached — plan/tasks.md assertion requires agreement")
 
         try:
-            body = sessions.read_plan_tasks(self.control_device, self.room)
+            body = sessions.read_plan_tasks(
+                self.control_device,
+                self.room,
+                backend_url=self.backend_url,
+            )
         except SessionError as exc:
             self.failed(f"plan/tasks.md missing or unreadable: {exc}")
         if "- [ ]" not in body and "- [x]" not in body:
@@ -769,17 +899,18 @@ class _FullScenario(_ConsensusScenario):
         self._chown_mycelium_on_agent_hosts()
 
         for entry in writes:
-            spec_handle = entry.get("handle") or self.agents[0].spec["handle"]
+            write_role = memory_write_role(
+                entry,
+                default_role=self.agents[0].spec_role,
+            )
             key = entry["key"]
             value = entry["value"]
-            # Look up by spec handle (as declared in scenarios.yaml);
-            # use the actual (possibly discovered) handle for the CLI call.
             binding = next(
-                (b for b in self.agents if b.spec["handle"] == spec_handle),
+                (b for b in self.agents if b.spec_role == write_role),
                 None,
             )
             device = binding.device if binding else self.control_device
-            actual_handle = binding.actual_handle if binding else spec_handle
+            actual_handle = binding.actual_handle if binding else write_role
             try:
                 sessions.memory_set(device, self.room, actual_handle, key, value)
             except SessionError as exc:
@@ -793,9 +924,29 @@ class _FullScenario(_ConsensusScenario):
 
         time.sleep(2)
 
+        stub_embeddings = os.environ.get("MYCELIUM_STUB_EMBEDDINGS", "").strip().lower() not in (
+            "",
+            "0",
+            "false",
+        )
+
         for q in queries:
             query = q["query"]
             expected = q.get("expected_substring", "")
+            if stub_embeddings and expected:
+                # Stub vectors are not semantic — verify the memory key exists.
+                key = expected if "/" in expected else f"decisions/{expected}"
+                try:
+                    body = sessions.memory_get(self.control_device, self.room, key)
+                except SessionError:
+                    body = sessions.memory_ls(self.control_device, self.room, namespace="decisions")
+                if expected not in body:
+                    self.failed(
+                        f"search stub-mode check for {query!r}: "
+                        f"expected substring {expected!r} not found in memory: {body[:400]!r}"
+                    )
+                continue
+
             stdout = sessions.memory_search(self.control_device, self.room, query)
             if expected and expected not in stdout:
                 self.failed(f"search {query!r}: expected substring {expected!r} not found in: {stdout[:400]!r}")
@@ -835,11 +986,16 @@ class _AgentBinding:
     ref: AgentRef | None  # set during setup's register_in_room loop
 
     @property
-    def actual_handle(self) -> str:
-        """Real agent handle — may differ from spec if a discovered agent was allocated.
+    def spec_role(self) -> str:
+        """Logical role from the scenario row (not the runtime agent handle)."""
+        return agent_role(self.spec)
 
-        Use this (not ``spec["handle"]``) for all CLI operations after
-        setup's register_in_room loop has run.  Before that point
-        ``ref`` is None and this falls back to the spec handle.
+    @property
+    def actual_handle(self) -> str:
+        """Real agent handle — may differ from the row role if a pool agent was allocated.
+
+        Use this (not :meth:`spec_role`) for all CLI operations after
+        setup's register_in_room loop has run. Before that point ``ref``
+        is None and this falls back to the row role.
         """
-        return self.ref.handle if self.ref is not None else self.spec["handle"]
+        return self.ref.handle if self.ref is not None else self.spec_role

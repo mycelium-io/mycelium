@@ -234,7 +234,7 @@ class CursorAuthFailure(aetest.Testcase):
 class CursorMultiHostDispatch(aetest.Testcase):
     """Test 78: Multi-host dispatch — hub mentions cursor agent on spoke (Phase 4)."""
 
-    groups = ["cursor", "distributed", "multi_host"]
+    groups = ["cursor", "hub_and_spoke", "multi_host"]
 
     @aetest.setup
     def setup(self, cli=None):
@@ -307,7 +307,7 @@ class CursorMultiHostDispatch(aetest.Testcase):
 class CursorCrossFamilyCursor(aetest.Testcase):
     """Test 79: Cross-family cursor vs cursor negotiation (Phase 5a)."""
 
-    groups = ["cursor", "distributed", "multi_host", "convergence"]
+    groups = ["cursor", "hub_and_spoke", "multi_host", "convergence"]
 
     @aetest.setup
     def setup(self, cli=None):
@@ -395,7 +395,7 @@ class CursorCrossFamilyCursor(aetest.Testcase):
 class CursorCrossFamilyOpenClaw(aetest.Testcase):
     """Test 80: Cross-family cursor vs openclaw negotiation (Phase 5b)."""
 
-    groups = ["cursor", "distributed", "multi_host", "convergence", "openclaw"]
+    groups = ["cursor", "hub_and_spoke", "multi_host", "convergence", "openclaw"]
 
     @aetest.setup
     def setup(self, cli=None):

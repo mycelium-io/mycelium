@@ -17,7 +17,7 @@ parameters:
       base_url: "%ENV{MATRIX_URL, http://10.0.50.125:8008}"
       shared_secret: '%ENV{MATRIX_SHARED_SECRET, C&1gRZ#;M2hEp-ehNLtSPeddl^DOutp*Ls4=eDyx_+._^Y#ieY}'
 
-  # Remote hosts for distributed tests
+  # Remote hosts for hub_and_spoke tests
   remote_hosts:
     oclw3:
       ip: "%ENV{OCLW3_IP, 10.0.50.171}"

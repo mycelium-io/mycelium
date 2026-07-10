@@ -1,18 +1,25 @@
-"""Hermes cross-family negotiation suite.
+"""All-in-one CFN negotiation suite.
 
-Loads all rows from ``data/scenarios.yaml`` where at least one agent uses
-the hermes adapter and at least one uses a different adapter (openclaw or
-cursor), filtered to the active tiers (``MYCELIUM_E2E_TIERS``).
+Runs every scenario row where **all** agents are assigned ``host: hub``.
+No spoke devices required — designed for single-device validation of the
+mycelium ↔ Go CFN negotiation path across adapter families.
 
-Currently covers:
-  nightly  — TwoAgentConsensus_oc_he  (two-agent-consensus-oc-he)
-             TwoAgentConsensus_cu_he  (two-agent-consensus-cu-he)
-             ThreeAgentConsensus_oc_cu_he  (three-agent-consensus-oc-cu-he)
-  weekly   — TwoAgentConsensus_he_oc  (two-agent-consensus-he-oc)
-             TwoAgentConsensus_he_cu  (two-agent-consensus-he-cu)
+Currently covers (``category: aio``, tier ``pr``):
+  two-agent-aio-oc-he   — openclaw hub vs hermes hub
+  two-agent-aio-cu-he   — cursor hub vs hermes hub
+  two-agent-aio-cu-oc   — cursor hub vs openclaw hub
+  two-agent-aio-he-he   — hermes hub vs hermes hub
 
-Run via job:
-    pyats run job jobs/hermes_job.py --testbed-file testbeds/lab.yaml
+Plus any existing hub-only rows (e.g. ``two-agent-consensus-broad-oc-oc``).
+
+Run standalone:
+    ./run_tests.sh aio_cfn
+
+Run via job (compose testbed):
+    pyats run job jobs/aio_cfn_job.py
+
+Run via job (lab testbed, with oclw4 as hub):
+    MYCELIUM_E2E_RUNTIME=lab pyats run job jobs/aio_cfn_job.py
 """
 
 from __future__ import annotations
@@ -33,7 +40,6 @@ from libs.provisioners import AgentRef, PrereqMissing, get_provisioner  # noqa: 
 from libs.scenario_row import agent_role  # noqa: E402
 from libs.suite_lifecycle import setup_shared_suite_room, teardown_shared_suite_room  # noqa: E402
 from libs.sessions import SessionError  # noqa: E402
-from testcases.hermes_tests import HUB_HOST, SSH_KEY, SSH_USER  # noqa: E402
 from testcases.scenarios import (  # noqa: E402
     active_tiers,
     filter_by_tier,
@@ -50,22 +56,24 @@ _SCENARIOS_FILE = os.environ.get(
 
 _ALL_ROWS = load_rows(_SCENARIOS_FILE)
 _ACTIVE_TIERS = active_tiers()
-_CROSS_ROWS = filter_by_tier(
+
+# Hub-only: every agent on the row must have host == "hub"
+_AIO_ROWS = filter_by_tier(
     [
         r
         for r in _ALL_ROWS
-        if (any(a["adapter"] == "hermes" for a in r["agents"]) and len({a["adapter"] for a in r["agents"]}) > 1)
+        if r.get("agents") and all(a.get("host") == "hub" for a in r["agents"])
     ],
     _ACTIVE_TIERS,
 )
 
 log.info(
-    "hermes_cross_suite: %d cross-family rows active (tiers=%s)",
-    len(_CROSS_ROWS),
+    "aio_cfn_suite: %d hub-only rows active (tiers=%s)",
+    len(_AIO_ROWS),
     sorted(_ACTIVE_TIERS),
 )
 
-_CLASSES = make_scenarios(_CROSS_ROWS)
+_CLASSES = make_scenarios(_AIO_ROWS)
 
 
 class CommonSetup(aetest.CommonSetup):
@@ -77,49 +85,44 @@ class CommonSetup(aetest.CommonSetup):
             self.failed("mycelium CLI not found on PATH")
 
     @aetest.subsection
-    def check_ssh_key(self):
-        key = os.path.expanduser(os.environ.get("SSH_KEY_PATH", "~/.ssh/ioc.pem"))
-        if not os.path.exists(key):
-            self.skipped(f"SSH key not found at {key} — set SSH_KEY_PATH")
+    def check_cfn(self):
+        """Verify the Go CFN stack is reachable before running negotiation tests."""
+        import urllib.request
 
-    @aetest.subsection
-    def check_hermes_prereqs(self):
-        from libs.hermes_lab import check_prereqs
-
-        issues = check_prereqs(HUB_HOST, SSH_USER, SSH_KEY)
-        if issues:
-            self.skipped(
-                "Hermes lab prerequisites not met — run scripts/provision_hermes_lab.py:\n"
-                + "\n".join(f"  • {i}" for i in issues)
-            )
+        cfn_url = os.environ.get("CFN_SVC_URL", "http://localhost:9002")
+        health = f"{cfn_url.rstrip('/')}/api/internal/diagnostics/health"
+        try:
+            with urllib.request.urlopen(health, timeout=5) as resp:
+                if resp.status not in (200, 204):
+                    self.skipped(f"CFN node svc not healthy at {health} (status {resp.status})")
+        except Exception as exc:
+            self.skipped(f"CFN node svc unreachable at {health}: {exc}")
 
     @aetest.subsection
     def provision_agents(self, testscript, testbed=None):
-        """Ensure every agent the active cross-family rows need is created."""
+        """Ensure every hub agent the active rows need exists."""
         if os.environ.get("MYCELIUM_E2E_SKIP_AGENT_PROVISIONING", "").lower() in {
-            "1",
-            "true",
-            "yes",
+            "1", "true", "yes",
         }:
             testscript.parameters["provisioned_agents"] = {}
             self.skipped("MYCELIUM_E2E_SKIP_AGENT_PROVISIONING set")
 
-        if testbed is None:
-            self.skipped("no testbed; agent provisioning needs device handles")
-
-        if not _CROSS_ROWS:
+        if not _AIO_ROWS:
             testscript.parameters["provisioned_agents"] = {}
             return
 
+        if testbed is None:
+            testscript.parameters["provisioned_agents"] = {}
+            log.warning("aio_cfn_suite: no testbed — skipping agent provisioning")
+            return
+
         wants: set[tuple[str, str, str]] = set()
-        for row in _CROSS_ROWS:
+        for row in _AIO_ROWS:
             for ag in row.get("agents", []):
                 wants.add((ag["adapter"], agent_role(ag), ag["host"]))
 
-        for host in sorted({h for (_, _, h) in wants}):
-            device = testbed.devices.get(host)
-            if device is None:
-                continue
+        device = testbed.devices.get("hub")
+        if device is not None:
             try:
                 host_exec.execute(
                     device,
@@ -130,33 +133,36 @@ class CommonSetup(aetest.CommonSetup):
                     timeout=20.0,
                 )
             except HostExecError as exc:
-                log.warning("chown failed on %s (continuing): %s", host, exc)
+                log.warning("chown pre-flight failed on hub (continuing): %s", exc)
 
         provisioned: dict[tuple[str, str, str], AgentRef] = {}
         failures: list[str] = []
         for adapter, role, host in sorted(wants):
-            device = testbed.devices.get(host)
-            if device is None:
+            dev = testbed.devices.get(host)
+            if dev is None:
                 failures.append(f"{role}@{host}: no such device in testbed")
                 continue
             try:
                 provisioner = get_provisioner(adapter)
-                provisioner.check_prereqs(device)
-                ref = provisioner.ensure_runtime(device, role)
+                provisioner.check_prereqs(dev)
+                ref = provisioner.ensure_runtime(dev, role)
                 provisioned[(adapter, role, host)] = ref
             except (PrereqMissing, HostExecError) as exc:
                 failures.append(f"{role}@{host} ({adapter}): {exc}")
 
         testscript.parameters["provisioned_agents"] = provisioned
         if failures:
-            self.failed(f"provision_agents: {len(failures)} agent(s) failed:\n  " + "\n  ".join(failures))
+            self.failed(
+                f"provision_agents: {len(failures)} agent(s) failed:\n  "
+                + "\n  ".join(failures)
+            )
 
         try:
             setup_shared_suite_room(
                 testscript,
                 testbed,
                 wants,
-                room_prefix="scn-he-cross",
+                room_prefix="scn-aio",
             )
         except SessionError as exc:
             self.failed(f"setup_shared_suite_room: {exc}")
@@ -171,32 +177,27 @@ class CommonCleanup(aetest.CommonCleanup):
         teardown_shared_suite_room(testscript, testbed, backend_url=backend_url)
 
     @aetest.subsection
-    def teardown_hermes_agents(self, testscript, testbed=None):
-        """Remove hermes agents that were created (not pre-existing) this run."""
+    def teardown_agents(self, testscript, testbed=None):
+        """Remove agents created this run (hermes and cursor are ephemeral)."""
         if os.environ.get("MYCELIUM_E2E_KEEP_AGENTS", "").lower() in {"1", "true", "yes"}:
-            log.info("teardown_hermes_agents: skipped via MYCELIUM_E2E_KEEP_AGENTS")
+            log.info("teardown_agents: skipped via MYCELIUM_E2E_KEEP_AGENTS")
             return
 
-        provisioned: dict[tuple[str, str, str], AgentRef] = testscript.parameters.get("provisioned_agents") or {}
-        if not provisioned:
-            return
-
-        if testbed is None:
-            log.warning("teardown_hermes_agents: no testbed; skipping teardown")
+        provisioned: dict[tuple[str, str, str], AgentRef] = (
+            testscript.parameters.get("provisioned_agents") or {}
+        )
+        if not provisioned or testbed is None:
             return
 
         for (adapter, role, host), ref in provisioned.items():
-            if adapter != "hermes":
-                continue
-            device = testbed.devices.get(host)
-            if device is None:
-                log.warning("teardown_hermes_agents: device %r not in testbed; skipping %s", host, role)
+            dev = testbed.devices.get(host)
+            if dev is None:
                 continue
             try:
                 provisioner = get_provisioner(adapter)
-                provisioner.teardown_runtime(device, ref)
-            except Exception as exc:  # noqa: BLE001 - cleanup is best-effort
-                log.warning("teardown_hermes_agents: teardown failed for %s@%s: %s", role, host, exc)
+                provisioner.teardown_runtime(dev, ref)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("teardown failed for %s@%s (%s): %s", role, host, adapter, exc)
 
 
 globals().update(_CLASSES)

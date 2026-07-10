@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from libs.scenario_row import agent_role, memory_write_role
 from testcases.scenarios import (
     _ADAPTER_ROUND_BUDGET_SECONDS,
     _DEFAULT_TIMEOUT_FLOOR,
@@ -46,8 +47,8 @@ def test_load_rows_parses_minimal_row(tmp_path: Path):
             tier: pr
             category: core
             agents:
-              - {handle: a, adapter: openclaw, host: hub}
-              - {handle: b, adapter: openclaw, host: spoke1}
+              - {role: a, adapter: openclaw, host: hub}
+              - {role: b, adapter: openclaw, host: spoke1}
     """,
     )
     rows = load_rows(p)
@@ -63,8 +64,8 @@ def test_load_rows_rejects_unknown_tier(tmp_path: Path):
           - name: t2
             tier: yearly
             agents:
-              - {handle: a, adapter: openclaw, host: hub}
-              - {handle: b, adapter: openclaw, host: spoke1}
+              - {role: a, adapter: openclaw, host: hub}
+              - {role: b, adapter: openclaw, host: spoke1}
     """,
     )
     with pytest.raises(ValueError, match="tier"):
@@ -79,8 +80,8 @@ def test_load_rows_rejects_unknown_adapter(tmp_path: Path):
           - name: t3
             tier: pr
             agents:
-              - {handle: a, adapter: matrix, host: hub}
-              - {handle: b, adapter: openclaw, host: spoke1}
+              - {role: a, adapter: matrix, host: hub}
+              - {role: b, adapter: openclaw, host: spoke1}
     """,
     )
     with pytest.raises(ValueError, match="adapter"):
@@ -95,7 +96,7 @@ def test_load_rows_rejects_single_agent(tmp_path: Path):
           - name: t4
             tier: pr
             agents:
-              - {handle: a, adapter: openclaw, host: hub}
+              - {role: a, adapter: openclaw, host: hub}
     """,
     )
     with pytest.raises(ValueError, match="at least two"):
@@ -111,16 +112,28 @@ def test_load_rows_rejects_missing_required_fields(tmp_path: Path):
             tier: pr
             agents:
               - {adapter: openclaw, host: hub}
-              - {handle: b, adapter: openclaw, host: spoke1}
+              - {role: b, adapter: openclaw, host: spoke1}
     """,
     )
-    with pytest.raises(ValueError, match="handle"):
+    with pytest.raises(ValueError, match="role"):
         load_rows(p)
 
 
 def test_load_rows_missing_file(tmp_path: Path):
     with pytest.raises(FileNotFoundError):
         load_rows(tmp_path / "nope.yaml")
+
+
+def test_agent_role_prefers_role_field():
+    assert agent_role({"role": "alpha", "adapter": "openclaw", "host": "hub"}) == "alpha"
+
+
+def test_agent_role_accepts_legacy_handle_alias():
+    assert agent_role({"handle": "alpha", "adapter": "openclaw", "host": "hub"}) == "alpha"
+
+
+def test_memory_write_role_accepts_legacy_handle_alias():
+    assert memory_write_role({"handle": "beta", "key": "k", "value": "v"}, default_role="alpha") == "beta"
 
 
 # ── active_tiers / filter_by_tier ───────────────────────────────────
@@ -170,8 +183,8 @@ def test_class_name_explicit_base():
         "name": "anything",
         "base_name": "TwoAgentConsensus",
         "agents": [
-            {"handle": "a", "adapter": "openclaw", "host": "hub"},
-            {"handle": "b", "adapter": "cursor", "host": "spoke1"},
+            {"role": "a", "adapter": "openclaw", "host": "hub"},
+            {"role": "b", "adapter": "cursor", "host": "spoke1"},
         ],
     }
     assert class_name_for(row) == "TwoAgentConsensus_oc_cu"
@@ -181,8 +194,8 @@ def test_class_name_derived_from_name():
     row = {
         "name": "two-agent-consensus-oc-cu",
         "agents": [
-            {"handle": "a", "adapter": "openclaw", "host": "hub"},
-            {"handle": "b", "adapter": "cursor", "host": "spoke1"},
+            {"role": "a", "adapter": "openclaw", "host": "hub"},
+            {"role": "b", "adapter": "cursor", "host": "spoke1"},
         ],
     }
     # Adapter shortcodes are stripped from the camel-case prefix and
@@ -194,9 +207,9 @@ def test_class_name_three_agent_combo():
     row = {
         "name": "three-agent-consensus",
         "agents": [
-            {"handle": "a", "adapter": "openclaw", "host": "hub"},
-            {"handle": "b", "adapter": "cursor", "host": "spoke1"},
-            {"handle": "c", "adapter": "hermes", "host": "spoke2"},
+            {"role": "a", "adapter": "openclaw", "host": "hub"},
+            {"role": "b", "adapter": "cursor", "host": "spoke1"},
+            {"role": "c", "adapter": "hermes", "host": "spoke2"},
         ],
     }
     assert class_name_for(row) == "ThreeAgentConsensus_oc_cu_he"
@@ -329,8 +342,8 @@ def test_make_scenarios_generates_one_class_per_row():
             "tier": "pr",
             "category": "core",
             "agents": [
-                {"handle": "a", "adapter": "openclaw", "host": "hub"},
-                {"handle": "b", "adapter": "openclaw", "host": "spoke1"},
+                {"role": "a", "adapter": "openclaw", "host": "hub"},
+                {"role": "b", "adapter": "openclaw", "host": "spoke1"},
             ],
         },
         {
@@ -338,8 +351,8 @@ def test_make_scenarios_generates_one_class_per_row():
             "tier": "nightly",
             "category": "cross_adapter",
             "agents": [
-                {"handle": "a", "adapter": "openclaw", "host": "hub"},
-                {"handle": "b", "adapter": "cursor", "host": "spoke1"},
+                {"role": "a", "adapter": "openclaw", "host": "hub"},
+                {"role": "b", "adapter": "cursor", "host": "spoke1"},
             ],
         },
     ]
@@ -363,8 +376,8 @@ def test_make_scenarios_duplicate_class_names_raise():
             "tier": "pr",
             "category": "core",
             "agents": [
-                {"handle": "a", "adapter": "openclaw", "host": "hub"},
-                {"handle": "b", "adapter": "openclaw", "host": "spoke1"},
+                {"role": "a", "adapter": "openclaw", "host": "hub"},
+                {"role": "b", "adapter": "openclaw", "host": "spoke1"},
             ],
         },
         {
@@ -374,8 +387,8 @@ def test_make_scenarios_duplicate_class_names_raise():
             "tier": "weekly",
             "category": "core",
             "agents": [
-                {"handle": "a", "adapter": "openclaw", "host": "hub"},
-                {"handle": "b", "adapter": "openclaw", "host": "spoke2"},
+                {"role": "a", "adapter": "openclaw", "host": "hub"},
+                {"role": "b", "adapter": "openclaw", "host": "spoke2"},
             ],
         },
     ]
@@ -411,10 +424,10 @@ def test_make_scenarios_full_profile_includes_memory_sections():
             "tier": "pr",
             "category": "core",
             "agents": [
-                {"handle": "a", "adapter": "openclaw", "host": "hub"},
-                {"handle": "b", "adapter": "openclaw", "host": "hub"},
+                {"role": "a", "adapter": "openclaw", "host": "hub"},
+                {"role": "b", "adapter": "openclaw", "host": "hub"},
             ],
-            "memory_writes": [{"handle": "a", "key": "k", "value": "v"}],
+            "memory_writes": [{"role": "a", "key": "k", "value": "v"}],
             "search_queries": [{"query": "q", "expected_substring": "k"}],
         },
     ]
@@ -434,8 +447,8 @@ def test_make_scenarios_shakedown_omits_plan_and_memory():
             "category": "core",
             "require_consensus": False,
             "agents": [
-                {"handle": "a", "adapter": "openclaw", "host": "hub"},
-                {"handle": "b", "adapter": "cursor", "host": "spoke1"},
+                {"role": "a", "adapter": "openclaw", "host": "hub"},
+                {"role": "b", "adapter": "cursor", "host": "spoke1"},
             ],
         },
     ]
@@ -479,8 +492,8 @@ def test_validate_row_passes_for_minimal_valid_row():
         "name": "x",
         "tier": "pr",
         "agents": [
-            {"handle": "a", "adapter": "openclaw", "host": "hub"},
-            {"handle": "b", "adapter": "openclaw", "host": "spoke1"},
+            {"role": "a", "adapter": "openclaw", "host": "hub"},
+            {"role": "b", "adapter": "openclaw", "host": "spoke1"},
         ],
     }
     validate_row(row, position=0, source="<test>")  # no raise

@@ -112,16 +112,16 @@ def test_setup_shared_suite_room_updates_provisioned_ref_from_register():
 
 
 def test_setup_shared_suite_room_uses_actual_handle_not_spec():
-    """register_in_room must be called with ref.handle (actual), not the spec handle.
+    """register_in_room must be called with ref.handle (actual), not the row role.
 
-    When discover_available reuses an existing agent (e.g. spec='alpha' →
+    When discover_available reuses an existing agent (e.g. role='alpha' →
     actual='agent-alpha'), the suite room must register under the real
     openclaw handle so that tick participant_id matching works.
     """
     testscript = _testscript()
     hub = _device("hub")
     testbed = _testbed(("hub", hub))
-    # Spec handle is "alpha"; actual discovered handle is "agent-alpha"
+    # Row role is "alpha"; actual discovered handle is "agent-alpha"
     wants = {("openclaw", "alpha", "hub")}
     testscript.parameters["provisioned_agents"] = {
         ("openclaw", "alpha", "hub"): AgentRef(

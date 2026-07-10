@@ -6,8 +6,8 @@
 # ``SPOKE_ADAPTERS`` env var (comma-separated, default "openclaw").
 #
 # Published to ghcr.io/mycelium-io/mycelium-spoke:latest by the
-# build-spoke workflow. For source builds, the workflow pre-builds a CLI
-# wheel and passes it via --build-arg MYCELIUM_CLI_WHL.
+# build-spoke workflow. For source/CI builds, use the ``spoke-dev`` target
+# after copying a mycelium_cli wheel to ``infra/mycelium_cli.whl``.
 #
 # Process supervision is intentionally NOT systemd:
 #  - PID 1 is ``tini`` (reaps zombies, forwards signals).
@@ -17,26 +17,27 @@
 #    supervisord to run them all in the foreground.
 #
 # Usage:
-#   docker run -e OPENCLAW_ROLE=spoke1 -e SPOKE_ADAPTERS=openclaw,cursor,hermes \
-#              ghcr.io/mycelium-io/mycelium-spoke
+#   # Release (GHCR) — CLI installed at runtime by spoke-entrypoint.sh
+#   docker build -f infra/Dockerfile.spoke --target spoke .
+#
+#   # CI / lab — bake a source-branch CLI wheel into the image
+#   cp mycelium_cli-*.whl infra/mycelium_cli.whl
+#   docker build -f infra/Dockerfile.spoke --target spoke-dev .
 
-FROM node:22-bookworm-slim
+FROM node:22-bookworm-slim AS spoke-base
 
 # ── System deps ──────────────────────────────────────────────────────
 #
-# - python3 / pip / venv: hermes-agent + mycelium CLI both need Python 3.11
+# - python3 / pip: hermes-agent + optional baked mycelium CLI wheel
 # - git: hermes-agent ships some skills as git checkouts
 # - curl/wget/jq: bootstrap + healthchecks
-# - ca-certificates: TLS for downloads
-# - tini: PID 1 signal handling
-# - supervisor: multi-process orchestration (no systemd in container)
-# - ripgrep, ffmpeg: optional but commonly used by hermes skills
+# - procps: pgrep/pkill for hermes gateway restart in supervisord containers
+# - tini + supervisor: PID 1 + multi-process orchestration (no systemd)
 # - gosu: privilege drop in entrypoint
-# - libsecret-1-0, libnss3: shared libs needed by cursor-agent's keyring
-#   stub at startup (it links against them even when running headless)
+# - libsecret-1-0, libnss3: cursor-agent headless keyring stubs
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        bash curl wget jq ca-certificates git tini supervisor gosu \
+        bash curl wget jq ca-certificates git tini supervisor gosu procps \
         python3 python3-pip python3-venv \
         ripgrep ffmpeg \
         libsecret-1-0 libnss3 \
@@ -48,24 +49,25 @@ RUN npm install -g openclaw@latest \
     && npm cache clean --force \
     && rm -rf /tmp/* /root/.npm
 
-# ── Cursor agent binary (glibc) ──────────────────────────────────────
+# ── Cursor agent (glibc) ─────────────────────────────────────────────
 #
-# Cursor's official installer drops the binary into /usr/local/bin and
-# wires up a small wrapper. Cached versions are pinned via the build arg
-# below; leave it unset to grab the latest stable release at build time.
+# The official installer drops files under /root/.local, which the ``spoke``
+# user cannot read. Copy the versioned bundle to /usr/local/share and symlink
+# /usr/local/bin/cursor-agent so every UID on PATH can invoke it.
 
 ARG CURSOR_AGENT_VERSION="latest"
 RUN curl -fsSL https://cursor.com/install | \
-        CURSOR_INSTALL_VERSION="${CURSOR_AGENT_VERSION}" bash || \
-        echo "[Dockerfile.spoke] cursor-agent install skipped (offline build)"
+        CURSOR_INSTALL_VERSION="${CURSOR_AGENT_VERSION}" bash && \
+    CUR_VER="$(ls /root/.local/share/cursor-agent/versions | head -1)" && \
+    mkdir -p "/usr/local/share/cursor-agent/versions/${CUR_VER}" && \
+    cp -a "/root/.local/share/cursor-agent/versions/${CUR_VER}/." \
+          "/usr/local/share/cursor-agent/versions/${CUR_VER}/" && \
+    ln -sf "/usr/local/share/cursor-agent/versions/${CUR_VER}/cursor-agent" \
+          /usr/local/bin/cursor-agent && \
+    chmod -R a+rX /usr/local/share/cursor-agent && \
+    cursor-agent --version
 
 # ── Hermes agent (Python) ────────────────────────────────────────────
-#
-# hermes-agent is a real PyPI package as of v0.14.0. Lazy/extra deps
-# (browser, voice, …) are not needed for the negotiation path that
-# mycelium-room exercises, so we install the base wheel only.
-# ``--break-system-packages`` is the official escape hatch on
-# bookworm-slim, where pip refuses to write outside a venv unless asked.
 
 ARG HERMES_AGENT_VERSION=""
 RUN if [ -n "${HERMES_AGENT_VERSION}" ]; then \
@@ -75,18 +77,10 @@ RUN if [ -n "${HERMES_AGENT_VERSION}" ]; then \
         pip3 install --no-cache-dir --break-system-packages hermes-agent || \
             echo "[Dockerfile.spoke] hermes-agent install skipped (offline build)"; \
     fi
-
-# ── Mycelium CLI ─────────────────────────────────────────────────────
-#
-# Release builds fetch install.sh in the entrypoint. Source builds copy
-# a pre-built wheel via --build-arg MYCELIUM_CLI_WHL and install it now
-# so cold-starts skip the runtime fetch.
-
-ARG MYCELIUM_CLI_WHL=""
-RUN if [ -n "$MYCELIUM_CLI_WHL" ]; then \
-        pip3 install --no-cache-dir --break-system-packages "$MYCELIUM_CLI_WHL" && \
-        rm -f "$MYCELIUM_CLI_WHL"; \
-    fi
+# mycelium-room hermes plugin uses aiohttp for SSE + outbound POST; hermes-agent
+# does not pull it in as a base dependency.
+RUN pip3 install --no-cache-dir --break-system-packages aiohttp || \
+    echo "[Dockerfile.spoke] aiohttp install skipped (offline build)"
 
 # ── Filesystem layout ────────────────────────────────────────────────
 
@@ -95,21 +89,19 @@ RUN mkdir -p /openclaw /shared /etc/supervisor/conf.d \
     && chown -R spoke:spoke /openclaw /shared /home/spoke
 
 COPY --chown=spoke:spoke infra/scripts/spoke-entrypoint.sh /openclaw/entrypoint.sh
-RUN chmod +x /openclaw/entrypoint.sh
-
-# ── OpenClaw plugin pre-warm (run as spoke user) ─────────────────────
-
-WORKDIR /openclaw
-USER spoke
-
-RUN openclaw plugins install @openclaw/matrix \
-    && openclaw plugins enable matrix
-
-# ── Defaults ─────────────────────────────────────────────────────────
-#
-# OPENCLAW_ROLE preserves the existing per-spoke identity (spoke1/spoke2)
-# used by the openclaw config generator. SPOKE_ADAPTERS gates the
-# supervisord program list at runtime.
+COPY --chown=spoke:spoke infra/scripts/install-openclaw-skills.sh /openclaw/install-openclaw-skills.sh
+COPY --chown=spoke:spoke infra/scripts/patch-hermes-plugin.sh /openclaw/patch-hermes-plugin.sh
+COPY --chown=spoke:spoke infra/scripts/daemon-subscribe.sh /openclaw/daemon-subscribe.sh
+COPY --chown=spoke:spoke infra/scripts/patch-mycelium-daemon.sh /openclaw/patch-mycelium-daemon.sh
+COPY --chown=spoke:spoke infra/scripts/install-openclaw-mycelium-plugin.sh /openclaw/install-openclaw-mycelium-plugin.sh
+COPY --chown=spoke:spoke infra/scripts/patch-openclaw-plugin.sh /openclaw/patch-openclaw-plugin.sh
+COPY --chown=spoke:spoke infra/scripts/restart-hermes-gateway.sh /openclaw/restart-hermes-gateway.sh
+COPY --chown=spoke:spoke infra/scripts/restart-openclaw-gateway.sh /openclaw/restart-openclaw-gateway.sh
+RUN chmod +x /openclaw/entrypoint.sh /openclaw/install-openclaw-skills.sh \
+    /openclaw/daemon-subscribe.sh /openclaw/patch-mycelium-daemon.sh \
+    /openclaw/install-openclaw-mycelium-plugin.sh \
+    /openclaw/patch-hermes-plugin.sh /openclaw/patch-openclaw-plugin.sh \
+    /openclaw/restart-hermes-gateway.sh /openclaw/restart-openclaw-gateway.sh
 
 ENV OPENCLAW_ROLE=spoke1 \
     SPOKE_ADAPTERS=openclaw \
@@ -118,7 +110,67 @@ ENV OPENCLAW_ROLE=spoke1 \
     COLLECTOR_HUB_URL=http://mycelium-collector:4318 \
     MATRIX_SHARED_SECRET=e2e-shared-secret \
     TOKEN_FILE=/shared/matrix-tokens.json \
-    HERMES_HOME=/home/spoke/.hermes
+    HERMES_HOME=/home/spoke/.hermes \
+    PATH="/usr/local/bin:${PATH}"
 
-# tini is PID 1 → entrypoint → supervisord (foreground)
+# ── Dev/CI target: bake a mycelium CLI wheel from the build context ──
+#
+# e2e.yml copies the wheel to infra/mycelium_cli.whl before building this
+# target. Release builds use the ``spoke`` target instead and let the
+# entrypoint install CLI from the release channel on first boot.
+
+FROM spoke-base AS spoke-dev
+COPY infra/mycelium_cli*.whl /tmp/
+ENV UV_PYTHON_INSTALL_DIR=/usr/local/share/uv/python
+RUN WHEEL="$(ls /tmp/mycelium_cli*.whl | head -1)" \
+    && curl -fsSL https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local sh \
+    && /usr/local/uv python install 3.12 \
+    && UV_TOOL_DIR=/usr/local/share/uv/tools /usr/local/uv tool install --python 3.12 \
+         --force --from "$WHEEL" mycelium-cli \
+    && chmod -R a+rX /usr/local/share/uv \
+    && ln -sf /usr/local/share/uv/tools/mycelium-cli/bin/mycelium /usr/local/bin/mycelium \
+    && rm -f /tmp/mycelium_cli*.whl \
+    && mycelium --version \
+    && bash /openclaw/patch-mycelium-daemon.sh
+
+# ── Final runtime image ──────────────────────────────────────────────
+
+FROM spoke-dev AS spoke
+WORKDIR /openclaw
+# Matrix plugin must land in spoke's ~/.openclaw (supervisord runs as spoke).
+USER spoke
+RUN openclaw plugins install @openclaw/matrix \
+    && openclaw plugins enable matrix
+USER root
+
+ENTRYPOINT ["/usr/bin/tini", "--", "/openclaw/entrypoint.sh"]
+
+# Release alias: pre-bakes the mycelium CLI from PyPI (no local wheel needed).
+# build-openclaw.yml publishes this target to GHCR.
+FROM spoke-base AS spoke-release
+# Pass the mycelium CLI version to bake in, e.g.:
+#   docker build --build-arg MYCELIUM_VERSION=$(gh api repos/mycelium-io/mycelium/releases/latest --jq .tag_name) ...
+ARG MYCELIUM_VERSION
+ENV UV_PYTHON_INSTALL_DIR=/usr/local/share/uv/python \
+    UV_TOOL_DIR=/usr/local/share/uv/tools
+RUN [ -n "$MYCELIUM_VERSION" ] \
+    && curl -fsSL https://astral.sh/uv/install.sh -o /tmp/uv-install.sh \
+    && UV_INSTALL_DIR=/usr/local sh /tmp/uv-install.sh \
+    && rm /tmp/uv-install.sh \
+    && MC_VER="${MYCELIUM_VERSION#v}" \
+    && curl -fsSL \
+        "https://github.com/mycelium-io/mycelium/releases/download/v${MC_VER}/mycelium_cli-${MC_VER}-py3-none-any.whl" \
+        -o "/tmp/mycelium_cli-${MC_VER}-py3-none-any.whl" \
+    && /usr/local/uv tool install "/tmp/mycelium_cli-${MC_VER}-py3-none-any.whl" --python 3.12 --force \
+    && rm "/tmp/mycelium_cli-${MC_VER}-py3-none-any.whl" \
+    && chmod -R a+rX /usr/local/share/uv \
+    && ln -sf /usr/local/share/uv/tools/mycelium-cli/bin/mycelium /usr/local/bin/mycelium \
+    && mycelium --version \
+    && bash /openclaw/patch-mycelium-daemon.sh
+WORKDIR /openclaw
+USER spoke
+
+RUN openclaw plugins install @openclaw/matrix \
+    && openclaw plugins enable matrix
+
 ENTRYPOINT ["/usr/bin/tini", "--", "/openclaw/entrypoint.sh"]

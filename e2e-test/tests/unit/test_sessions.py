@@ -200,3 +200,12 @@ def test_read_plan_tasks_raises_when_missing():
     with patch("libs.host_exec.execute", return_value=_fail("not found")):
         with pytest.raises(sessions.SessionError, match="read_plan_tasks"):
             sessions.read_plan_tasks(_device(), "r-x")
+
+
+def test_read_plan_tasks_via_backend_api():
+    with patch(
+        "libs.mycelium_api.MyceliumAPI.get_plan",
+        return_value=(200, {"files": [{"slug": "tasks", "content": "- [ ] api task\n"}]}),
+    ):
+        body = sessions.read_plan_tasks(_device(), "r-x", backend_url="http://localhost:8000")
+    assert "- [ ] api task" in body

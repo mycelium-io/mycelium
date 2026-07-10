@@ -421,6 +421,29 @@ def install_job_sigint_cleanup(
     )
 
 
+def get_agent_idle_wait(datafile_path: str | None = None) -> int:
+    """Seconds to wait for OpenClaw agents to finish in-flight turns before reset.
+
+    Resolution order: ``MYCELIUM_E2E_AGENT_IDLE_WAIT`` env var, then
+    ``parameters.timeouts.agent_idle_wait`` from the datafile chain, else 20.
+    """
+    env_val = os.environ.get("MYCELIUM_E2E_AGENT_IDLE_WAIT", "").strip()
+    if env_val:
+        try:
+            return max(0, int(env_val))
+        except ValueError:
+            pass
+
+    path = datafile_path
+    if path is None:
+        path = get_datafile(env_var="MYCELIUM_DATAFILE", default="scenarios_datafile.yaml")
+    timeouts = _read_datafile_param(path, "timeouts") or {}
+    try:
+        return max(0, int(timeouts.get("agent_idle_wait", 20)))
+    except (TypeError, ValueError):
+        return 20
+
+
 def get_max_failures(datafile_path: str | None = None) -> int | None:
     """Read max_failures from the datafile or MAX_FAILURES env var.
 

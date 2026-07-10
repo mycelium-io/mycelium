@@ -86,6 +86,8 @@ class _ResolvedTransport:
     ssh_key: str
     ssh_connect_timeout: int
     path_prepend: str
+    exec_user: str | None
+    exec_home: str | None
 
 
 def _custom_mapping(device: Any) -> Mapping[str, Any]:
@@ -143,10 +145,12 @@ def _resolve(device: Any) -> _ResolvedTransport:
         ssh_key=get("ssh_key") or SSH_DEFAULT_KEY,
         ssh_connect_timeout=int(get("ssh_connect_timeout") or SSH_DEFAULT_CONNECT_TIMEOUT),
         path_prepend=get("path_prepend") or DEFAULT_PATH_PREPEND,
+        exec_user=get("exec_user") or ("spoke" if transport == "docker" else None),
+        exec_home=get("exec_home") or ("/home/spoke" if transport == "docker" else None),
     )
 
 
-def _shell_wrap(cmd: str, path_prepend: str) -> str:
+def _shell_wrap(cmd: str, path_prepend: str, *, home: str | None = None) -> str:
     """Wrap a shell command with PATH plumbing for non-interactive shells.
 
     Both cursor-agent (installed via ``npm i -g`` or ``curl`` under nvm)
@@ -155,7 +159,9 @@ def _shell_wrap(cmd: str, path_prepend: str) -> str:
     most spoke hosts, so we always prepend a known set of directories
     and source ``nvm.sh`` if present.
     """
+    home_export = f'export HOME="{home}"; ' if home else ""
     prelude = (
+        f"{home_export}"
         f'[ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh" >/dev/null 2>&1; export PATH="{path_prepend}:$PATH"; '
     )
     return prelude + cmd
@@ -222,9 +228,15 @@ def execute(  # noqa: PLR0913 - keeps subprocess.run-style ergonomics
 
     if rt.transport == "docker":
         # docker exec runs argv directly when given; for shell mode we
-        # invoke ``sh -c`` so we get the PATH wrapping.
-        wrapped = _shell_wrap(cmd_str, rt.path_prepend)
-        full = ["docker", "exec", "-i", rt.container, "sh", "-c", wrapped]
+        # invoke ``sh -c`` so we get the PATH wrapping. Spoke images start
+        # as root (cursor auth install) but all runtimes live under spoke.
+        wrapped = _shell_wrap(cmd_str, rt.path_prepend, home=rt.exec_home)
+        full: list[str] = ["docker", "exec", "-i"]
+        if rt.exec_user:
+            full.extend(["-u", rt.exec_user])
+        if rt.exec_home:
+            full.extend(["-e", f"HOME={rt.exec_home}"])
+        full.extend([rt.container, "sh", "-c", wrapped])
         return subprocess.run(  # noqa: S603 - argv is a constructed list, not shell
             full,
             capture_output=True,

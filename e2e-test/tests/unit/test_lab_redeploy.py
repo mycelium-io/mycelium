@@ -591,7 +591,7 @@ class TestPersistWorkspaceAndMas:
         assert "server.workspace_id ws-1" in cmd
         assert "server.mas_id mas-1" in cmd
         assert "runtime.cfn_mgmt_url http://ioc-cfn-mgmt-plane-svc:9000" in cmd
-        assert "runtime.cfn_svc_url http://ioc-cfn-svc:9002" in cmd
+        assert "runtime.cognition_fabric_node_url http://ioc-cfn-svc:9002" in cmd
         assert "mycelium config apply" in cmd
 
     def test_spoke_skips_cfn_urls(self, fake_exec: FakeExec) -> None:
@@ -604,7 +604,7 @@ class TestPersistWorkspaceAndMas:
         # (would otherwise point the spoke CLI at hostnames it can't
         # resolve).
         assert "cfn_mgmt_url" not in cmd
-        assert "cfn_svc_url" not in cmd
+        assert "cognition_fabric_node_url" not in cmd
         # But workspace + MAS must be there.
         assert "server.workspace_id ws-1" in cmd
         assert "server.mas_id mas-1" in cmd

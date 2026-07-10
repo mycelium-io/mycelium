@@ -247,4 +247,4 @@ pyats run job jobs/weekly_e2e_job.py --html-logs && pyats logs view
 
 4. **Owned-room tracking** — `testscript.parameters["owned_rooms"]` prevents cross-run reaper interference (learned from production failure mode).
 
-5. **Groups over markers** — pyATS uses `groups` (class-level) instead of pytest markers. The mapping: `slow` → `slow`, `llm` → `llm`, `cfn` → `cfn`, `convergence` → `convergence`, `distributed` → `distributed`, etc.
+5. **Groups over markers** — pyATS uses `groups` (class-level) instead of pytest markers. The mapping: `slow` → `slow`, `llm` → `llm`, `cfn` → `cfn`, `convergence` → `convergence`, `hub_and_spoke` → `hub_and_spoke`, etc.

@@ -237,13 +237,25 @@ def trim_remote_agent_sessions(
             pass
 
 
+def count_active_negotiation_sessions(
+    agent_id: str,
+    *,
+    host: str | None = None,
+    container: str | None = None,
+    transport: str | None = None,
+) -> int:
+    """Return how many mycelium-room/matrix sessions are currently active."""
+    sessions = list_agent_sessions(agent_id, host=host, container=container, transport=transport)
+    return sum(1 for s in sessions if s.get("active"))
+
+
 def wait_for_agents_idle(
     agents_by_host: dict[str | None, tuple[str, ...]],
     timeout: int = 20,
     poll_interval: float = 2.0,
     containers: dict[str, str] | None = None,
 ) -> dict[str, int]:
-    """Poll until all agents have 0 active turns. Returns final counts."""
+    """Poll until all agents have 0 active turns. Returns final active counts."""
     import time
 
     containers = containers or {}
@@ -255,24 +267,67 @@ def wait_for_agents_idle(
         for host, agent_ids in agents_by_host.items():
             ctr = containers.get(host) if host else None
             for agent_id in agent_ids:
-                proc = run_openclaw(
-                    ["sessions", "--agent", agent_id, "--json", "--limit", "1"],
+                active = count_active_negotiation_sessions(
+                    agent_id,
                     host=host,
                     container=ctr,
-                    timeout=10.0,
                 )
-                active = 0
-                if proc and proc.returncode == 0 and proc.stdout.strip():
-                    try:
-                        data = json.loads(proc.stdout)
-                        sessions = data if isinstance(data, list) else data.get("sessions", [])
-                        active = sum(1 for s in sessions if s.get("active"))
-                    except (json.JSONDecodeError, TypeError):
-                        pass
                 label = f"{host or 'local'}:{agent_id}"
                 counts[label] = active
                 if active > 0:
                     all_idle = False
+        if all_idle:
+            break
+        time.sleep(poll_interval)
+    return counts
+
+
+def wait_for_device_agents_idle(
+    device: Any,
+    handles: list[str],
+    *,
+    timeout: float = 20,
+    poll_interval: float = 2.0,
+) -> dict[str, int]:
+    """Poll until listed agents on a testbed device have no active turns.
+
+    Uses :mod:`host_exec` so it works for docker/ssh/local transports.
+    Returns final per-handle active session counts.
+    """
+    import time
+
+    from libs import host_exec
+
+    deadline = time.time() + timeout
+    counts: dict[str, int] = {}
+    while time.time() < deadline:
+        counts.clear()
+        all_idle = True
+        for handle in handles:
+            proc = host_exec.execute(
+                device,
+                ["openclaw", "sessions", "--agent", handle, "--json", "--limit", "100"],
+                timeout=20.0,
+            )
+            active = 0
+            if proc.returncode == 0 and proc.stdout.strip():
+                try:
+                    data = json.loads(proc.stdout)
+                    sessions = data if isinstance(data, list) else data.get("sessions", [])
+                    tagged = [
+                        s
+                        for s in sessions
+                        if any(
+                            tag in (s.get("key") or s.get("sessionKey") or "")
+                            for tag in RESET_SESSION_TAGS
+                        )
+                    ]
+                    active = sum(1 for s in tagged if s.get("active"))
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            counts[handle] = active
+            if active > 0:
+                all_idle = False
         if all_idle:
             break
         time.sleep(poll_interval)

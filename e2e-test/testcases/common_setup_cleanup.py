@@ -151,12 +151,12 @@ class MyceliumCommonSetup(aetest.CommonSetup):
         """Get a fresh Matrix access token for agent-alpha via the Synapse admin API.
 
         Stores the token as ``matrix_token_agent_alpha`` in testscript.parameters
-        so distributed testcases can send Matrix triggers without requiring the
+        so hub_and_spoke testcases can send Matrix triggers without requiring the
         token to be pre-set in the environment.
 
         Falls back to MATRIX_TOKEN_AGENT_ALPHA env var if already set.
         Stores None when Matrix is not reachable or the secret is missing —
-        distributed testcases gate on this value in check_prerequisites.
+        hub_and_spoke testcases gate on this value in check_prerequisites.
         """
         import asyncio
 
@@ -182,7 +182,7 @@ class MyceliumCommonSetup(aetest.CommonSetup):
         ).strip()
         if not shared_secret:
             log.warning(
-                "MATRIX_SHARED_SECRET not set — distributed tests will skip "
+                "MATRIX_SHARED_SECRET not set — hub_and_spoke tests will skip "
                 "(set MATRIX_TOKEN_AGENT_ALPHA or MATRIX_SHARED_SECRET)"
             )
             testscript.parameters["matrix_token_agent_alpha"] = None
@@ -296,12 +296,20 @@ class MyceliumCommonSetup(aetest.CommonSetup):
     @aetest.subsection
     def wait_agents_idle(self, testscript):
         """Wait for any in-flight agent turns to finish."""
+        from jobs._common import get_agent_idle_wait
+
         agents_by_host = self._get_agents_by_host(testscript)
         containers = self._get_containers(testscript)
-        counts = wait_for_agents_idle(agents_by_host, timeout=15, poll_interval=2.0, containers=containers)
+        idle_wait = get_agent_idle_wait()
+        counts = wait_for_agents_idle(
+            agents_by_host,
+            timeout=idle_wait,
+            poll_interval=2.0,
+            containers=containers,
+        )
         busy = {h: c for h, c in counts.items() if c > 0}
         if busy:
-            log.warning("Agents still busy after 15s: %s", busy)
+            log.warning("Agents still busy after %ds: %s", idle_wait, busy)
         else:
             log.info("All agents idle")
 

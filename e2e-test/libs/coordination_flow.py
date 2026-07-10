@@ -186,17 +186,29 @@ def poll_room_consensus_outcome(
             state = session.get("state")
             session_room = session.get("display_name") or parent_room
             if state in TERMINAL_COMPLETE_STATES:
-                return _negotiation_result(
+                result = _negotiation_result(
                     session_room,
                     source="coordination_session",
                     session=session,
                 )
+                return _attach_consensus_payload(
+                    api,
+                    result,
+                    session_room=session_room,
+                    parent_room=parent_room,
+                )
             if state in TERMINAL_FAILED_STATES:
-                return _negotiation_result(
+                result = _negotiation_result(
                     session_room,
                     source="coordination_session",
                     coordination_state=str(state),
                     session=session,
+                )
+                return _attach_consensus_payload(
+                    api,
+                    result,
+                    session_room=session_room,
+                    parent_room=parent_room,
                 )
 
     _, msgs = api.get_room_messages(parent_room, limit=200)
@@ -343,6 +355,25 @@ def log_negotiation_poll_failure(
     )
 
 
+def _attach_consensus_payload(
+    api: MyceliumAPI,
+    result: dict[str, Any],
+    *,
+    session_room: str,
+    parent_room: str,
+) -> dict[str, Any]:
+    """Merge ``coordination_consensus`` message fields into *result* when present."""
+    for room in (session_room, parent_room):
+        if not room:
+            continue
+        _, msgs = api.get_room_messages(room, limit=200)
+        consensus = find_coordination_consensus(msgs)
+        if consensus is not None:
+            result["consensus"] = consensus
+            break
+    return result
+
+
 def poll_negotiation_completion(
     api: MyceliumAPI,
     cli: MyceliumCLI | None,
@@ -360,17 +391,29 @@ def poll_negotiation_completion(
     if session is not None:
         state = session.get("state")
         if state in TERMINAL_COMPLETE_STATES:
-            return _negotiation_result(
+            result = _negotiation_result(
                 session_room,
                 source="coordination_session",
                 session=session,
             )
+            return _attach_consensus_payload(
+                api,
+                result,
+                session_room=session_room,
+                parent_room=parent_room,
+            )
         if state in TERMINAL_FAILED_STATES:
-            return _negotiation_result(
+            result = _negotiation_result(
                 session_room,
                 source="coordination_session",
                 coordination_state=str(state),
                 session=session,
+            )
+            return _attach_consensus_payload(
+                api,
+                result,
+                session_room=session_room,
+                parent_room=parent_room,
             )
 
     _, msgs = api.get_room_messages(session_room, limit=200)

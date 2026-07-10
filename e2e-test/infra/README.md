@@ -1,6 +1,6 @@
 # Mycelium E2E Test Infrastructure
 
-Ephemeral EC2 infrastructure for running the distributed E2E test suite.
+Ephemeral EC2 infrastructure for running the hub_and_spoke E2E test suite.
 Spins up 3 spot instances in a VPC, runs tests, tears everything down.
 
 ## Architecture

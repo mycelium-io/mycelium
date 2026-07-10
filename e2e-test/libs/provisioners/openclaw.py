@@ -126,6 +126,7 @@ class OpenClawProvisioner(ABCProvisioner):
                 bootstrap_room,
                 device_label,
             )
+            self._install_openclaw_skills(device, handle)
             return AgentRef(
                 handle=handle,
                 adapter=self.name,
@@ -212,6 +213,7 @@ class OpenClawProvisioner(ABCProvisioner):
         except HostExecError as exc:
             log.debug("openclaw.ensure_runtime: post-create chown failed: %s", exc)
 
+        self._install_openclaw_skills(device, handle)
         return AgentRef(
             handle=handle,
             adapter=self.name,
@@ -354,6 +356,7 @@ class OpenClawProvisioner(ABCProvisioner):
                 f"{result.stderr.strip() or result.stdout.strip()}"
             )
 
+        self._install_openclaw_skills(device, handle)
         return AgentRef(
             handle=handle,
             adapter=self.name,
@@ -483,6 +486,38 @@ class OpenClawProvisioner(ABCProvisioner):
 
     # ── helpers ───────────────────────────────────────────────────────
 
+    def _install_openclaw_skills(self, device: Any, agent_id: str | None = None) -> None:
+        """Copy the bundled mycelium skill into per-agent OpenClaw workspaces.
+
+        Product ``mycelium adapter add`` only seeds the default workspace;
+        E2E infra handles per-agent copies via ``install-openclaw-skills.sh``.
+        """
+        argv = ["/openclaw/install-openclaw-skills.sh"]
+        if agent_id:
+            argv.append(agent_id)
+        try:
+            host_exec.execute(device, argv, timeout=30.0)
+        except HostExecError as exc:
+            log.warning(
+                "openclaw: skill install failed on %s for %s: %s",
+                host_exec.describe(device),
+                agent_id or "*",
+                exc,
+            )
+
+    def _patch_openclaw_plugin(self, device: Any, *, restart: bool = False) -> None:
+        """Apply infra-side OpenClaw plugin patches; optional gateway restart."""
+        try:
+            host_exec.execute(device, ["/openclaw/patch-openclaw-plugin.sh"], timeout=30.0)
+            if restart:
+                host_exec.execute(device, ["/openclaw/restart-openclaw-gateway.sh"], timeout=20.0)
+        except HostExecError as exc:
+            log.warning(
+                "openclaw: plugin patch failed on %s: %s",
+                host_exec.describe(device),
+                exc,
+            )
+
     def _list_openclaw_agents(self, device: Any) -> set[str]:
         """Return the set of agent handles configured in openclaw on ``device``.
 
@@ -604,8 +639,10 @@ class OpenClawProvisioner(ABCProvisioner):
                         "sessions.reset",
                         "--params",
                         json.dumps({"key": key}),
+                        "--timeout",
+                        "60000",
                     ],
-                    timeout=15.0,
+                    timeout=90.0,
                 )
             except HostExecError as exc:
                 log.warning(
@@ -622,6 +659,110 @@ class OpenClawProvisioner(ABCProvisioner):
                     key,
                     proc.stderr.strip()[:200],
                 )
+
+        self._trim_stale_session_files(device, max_files=1)
+
+    def reset_device_gateway_sessions(
+        self,
+        device: Any,
+        *,
+        handles: list[str] | None = None,
+        idle_wait_seconds: int | None = None,
+    ) -> None:
+        """Reset OpenClaw agents on a host between suite scenarios.
+
+        Suite rows reuse the same gateway across scenarios. A prior row can
+        leave mycelium-room session metadata that makes the next row's ticks
+        fail with ``reply session initialization conflicted`` when multiple
+        agents share one gateway (e.g. hub-local oc_oc).
+
+        When ``handles`` is provided, only those agents are reset. Suite
+        hygiene should pass the scenario's agents so unrelated hub agents
+        (e.g. ``agent-gamma`` in a two-agent row) are not disturbed.
+
+        Waits up to ``idle_wait_seconds`` for in-flight LLM turns to finish
+        before calling ``sessions.reset`` so the gateway is not busy.
+        """
+        from libs.openclaw import wait_for_device_agents_idle
+
+        device_label = host_exec.describe(device)
+        available = set(self._list_openclaw_agents(device))
+        if handles is None:
+            targets = sorted(available)
+        else:
+            targets = sorted({h for h in handles if h in available})
+            missing = sorted(set(handles) - available)
+            if missing:
+                log.debug(
+                    "openclaw.reset_device_gateway_sessions: skipping unknown handle(s) on %s: %s",
+                    device_label,
+                    ", ".join(missing),
+                )
+        if not targets:
+            log.debug("openclaw.reset_device_gateway_sessions: no agents on %s", device_label)
+            return
+
+        idle_wait = 20 if idle_wait_seconds is None else max(0, idle_wait_seconds)
+        if idle_wait > 0:
+            log.info(
+                "openclaw.reset_device_gateway_sessions: waiting up to %ds for idle on %s (%s)",
+                idle_wait,
+                device_label,
+                ", ".join(targets),
+            )
+            busy = wait_for_device_agents_idle(device, targets, timeout=idle_wait)
+            still_busy = {h: n for h, n in busy.items() if n > 0}
+            if still_busy:
+                log.warning(
+                    "openclaw.reset_device_gateway_sessions: agents still active on %s after %ds: %s",
+                    device_label,
+                    idle_wait,
+                    still_busy,
+                )
+            else:
+                log.info(
+                    "openclaw.reset_device_gateway_sessions: all agents idle on %s",
+                    device_label,
+                )
+
+        log.info(
+            "openclaw.reset_device_gateway_sessions: resetting %d agent(s) on %s: %s",
+            len(targets),
+            device_label,
+            ", ".join(targets),
+        )
+        for handle in targets:
+            self.cleanup_agent(
+                device,
+                AgentRef(handle=handle, adapter=self.name, device_name=device_label),
+                room="",
+            )
+        self._trim_stale_session_files(device, max_files=1)
+        try:
+            host_exec.execute(device, ["/openclaw/restart-openclaw-gateway.sh"], timeout=30.0)
+            host_exec.execute(device, ["sleep", "3"], timeout=10.0)
+        except HostExecError as exc:
+            log.warning(
+                "openclaw.reset_device_gateway_sessions: gateway restart/wait failed on %s: %s",
+                device_label,
+                exc,
+            )
+
+    def _trim_stale_session_files(self, device: Any, *, max_files: int = 3) -> None:
+        """Remove excess per-agent ``.jsonl`` session files on the gateway host."""
+        trim = (
+            'for d in "$HOME/.openclaw/agents/"*/sessions; do '
+            '[ -d "$d" ] || continue; '
+            f'count=$(ls -1 "$d"/*.jsonl 2>/dev/null | wc -l); '
+            f'if [ "$count" -gt {max_files} ]; then '
+            f'  ls -1t "$d"/*.jsonl | tail -n +{max_files + 1} | xargs rm -f; '
+            "fi; "
+            "done"
+        )
+        try:
+            host_exec.execute(device, trim, shell=True, timeout=30.0)
+        except HostExecError as exc:
+            log.debug("openclaw._trim_stale_session_files: %s", exc)
 
     # ── helpers ───────────────────────────────────────────────────────
 

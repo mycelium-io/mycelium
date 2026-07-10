@@ -149,20 +149,10 @@ testcases:
   CrossChannelMemoryIsolation:
     uid: "mycelium:e2e:xchannel:060"
 
-  ClaudeCodeSkillInstall:
-    uid: "mycelium:e2e:integration:070"
 
-  ClaudeCodeAdapterStatus:
-    uid: "mycelium:e2e:integration:071"
 
-  ClaudeCodeAdapterRemove:
-    uid: "mycelium:e2e:integration:072"
 
-  ClaudeCodeDaemonHealth:
-    uid: "mycelium:e2e:integration:073"
 
-  ClaudeCodeAgentLifecycle:
-    uid: "mycelium:e2e:integration:074"
 
   CursorBasicDispatch:
     uid: "mycelium:e2e:cursor:075"
@@ -173,11 +163,5 @@ testcases:
   CursorAuthFailure:
     uid: "mycelium:e2e:cursor:077"
 
-  CursorMultiHostDispatch:
-    uid: "mycelium:e2e:cursor:078"
 
-  CursorCrossFamilyCursor:
-    uid: "mycelium:e2e:cursor:079"
 
-  CursorCrossFamilyOpenClaw:
-    uid: "mycelium:e2e:cursor:080"

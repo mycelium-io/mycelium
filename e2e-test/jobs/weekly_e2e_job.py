@@ -6,11 +6,21 @@ Weekly full E2E job — runs all test tiers in sequence.
 This is the primary job for the weekly long-running integration test
 of the Mycelium multi-agent coordination platform.
 
-**Runtime:** lab only (``testbeds/lab.yaml``) — runs on the orch EC2
-cluster via ``.github/workflows/weekly-e2e.yaml``, not the compose stack.
+**Runtime:** resolved from ``MYCELIUM_E2E_RUNTIME``, ``GITHUB_ACTIONS`` /
+job default. Permitted: compose and lab.
+
+- **compose** — docker stack on the CI runner (``testbeds/compose.yaml``)
+- **lab** — orch EC2 cluster (``testbeds/lab.yaml``) via
+  ``.github/workflows/weekly-e2e.yaml``
 
 Usage:
-    pyats run job jobs/weekly_e2e_job.py --testbed-file testbeds/lab.yaml
+    pyats run job jobs/weekly_e2e_job.py
+
+    # Lab cluster (default when not in CI):
+    MYCELIUM_E2E_RUNTIME=lab pyats run job jobs/weekly_e2e_job.py
+
+    # Compose stack (CI / local docker):
+    MYCELIUM_E2E_RUNTIME=compose pyats run job jobs/weekly_e2e_job.py
 
     # With explicit datafile
     pyats run job jobs/weekly_e2e_job.py \\
@@ -36,7 +46,7 @@ import jobs._common as common
 log = logging.getLogger(__name__)
 
 _DEFAULT_RUNTIME = common.RUNTIME_LAB
-_ALLOWED_RUNTIMES = common.RUNTIME_LAB_ONLY
+_ALLOWED_RUNTIMES = common.RUNTIMES_ALL
 
 testcases_filter = os.getenv("TESTCASES")
 if testcases_filter:

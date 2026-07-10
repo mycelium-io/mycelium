@@ -3,7 +3,7 @@
 
 Sanity job — quick smoke test of core functionality.
 
-Does NOT exercise LLM, convergence, distributed, or slow tests.
+Does NOT exercise LLM, convergence, hub_and_spoke, or slow tests.
 Suitable for pre-merge gating or environment verification.
 
 Usage:

@@ -1,5 +1,10 @@
 #!/bin/bash
-# Unified spoke entrypoint for E2E CI.
+# Unified spoke/hub entrypoint for E2E CI.
+#
+# ``OPENCLAW_ROLE`` selects the Matrix agent set when openclaw is enabled:
+#   hub    → agent-alpha agent-beta agent-gamma agent-delta
+#   spoke1 → claire-agent
+#   spoke2 → oclw5-agent
 #
 # Reads ``SPOKE_ADAPTERS`` (comma-separated) and stands up the requested
 # adapter runtimes side-by-side. Process supervision is delegated to
@@ -7,7 +12,7 @@
 #
 # Always-on processes:
 #   - mycelium metrics collect (spoke OTLP collector → hub)
-#   - mycelium daemon run      (cc-daemon, dispatches @handle mentions)
+#   - mycelium daemon run --foreground (mycelium-daemon, dispatches cold-spawn adapters)
 #
 # Conditional processes (per ``SPOKE_ADAPTERS``):
 #   - openclaw: openclaw gateway run
@@ -18,6 +23,46 @@
 # (matches the previous behaviour of the openclaw-only spoke image).
 
 set -euo pipefail
+
+# When the container starts as root (compose spoke image), install host secrets
+# with spoke ownership, run bootstrap as spoke, then start supervisord as root
+# (root supervisord can spawn spoke-owned programs and wire stdout to fd 1).
+SPOKE_HOME="/home/spoke"
+install_cursor_auth() {
+    local src=/run/host-secrets/cursor-auth.json
+    local dst="${SPOKE_HOME}/.config/cursor/auth.json"
+    if [ ! -s "$src" ]; then
+        return 0
+    fi
+    install -d -o spoke -g spoke -m 700 "${SPOKE_HOME}/.config/cursor"
+    install -o spoke -g spoke -m 600 "$src" "$dst"
+    echo "[spoke-entrypoint] Installed cursor auth for spoke user"
+}
+
+start_supervisord() {
+    local conf="$1"
+    if [ "$(id -u)" -eq 0 ]; then
+        awk '/^\[program:/ { print; print "user=spoke"; next }1' "$conf" > "${conf}.root"
+        mv "${conf}.root" "$conf"
+    fi
+    exec /usr/bin/supervisord -c "$conf"
+}
+
+if [ "$(id -u)" -eq 0 ] && [ "${SPOKE_BOOTSTRAP_CHILD:-}" != 1 ]; then
+    install_cursor_auth
+    if [ -d "${SPOKE_HOME}/.hermes" ]; then
+        chown -R spoke:spoke "${SPOKE_HOME}/.hermes" 2>/dev/null || true
+    fi
+    gosu spoke env HOME="${SPOKE_HOME}" SPOKE_BOOTSTRAP_CHILD=1 "$0"
+    if [ -d "${SPOKE_HOME}/.hermes" ]; then
+        chown -R spoke:spoke "${SPOKE_HOME}/.hermes" 2>/dev/null || true
+    fi
+    start_supervisord /tmp/spoke-supervisord.conf
+fi
+
+if [ "${SPOKE_BOOTSTRAP_CHILD:-}" = 1 ]; then
+    export HOME="${SPOKE_HOME}"
+fi
 
 # ── Inputs ──────────────────────────────────────────────────────────
 
@@ -49,10 +94,27 @@ echo "[spoke-entrypoint] Collector hub:    $COLLECTOR_HUB"
 # ── Mycelium CLI available? ─────────────────────────────────────────
 
 if ! command -v mycelium &>/dev/null; then
-    echo "[spoke-entrypoint] mycelium CLI not found — installing from release..."
-    curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
+    echo "[spoke-entrypoint] mycelium CLI not found — installing via uv+wheel..."
+    if ! command -v uv &>/dev/null; then
+        curl -fsSL https://astral.sh/uv/install.sh -o /tmp/uv-install.sh \
+            && UV_INSTALL_DIR=/usr/local sh /tmp/uv-install.sh \
+            && rm -f /tmp/uv-install.sh
+    fi
+    export PATH="/usr/local/bin:${PATH}"
+    _mc_latest=$(curl -fsSL "https://api.github.com/repos/mycelium-io/mycelium/releases/latest" | jq -r '.tag_name')
+    _mc_ver="${_mc_latest#v}"
+    curl -fsSL \
+        "https://github.com/mycelium-io/mycelium/releases/download/${_mc_latest}/mycelium_cli-${_mc_ver}-py3-none-any.whl" \
+        -o "/tmp/mycelium_cli-${_mc_ver}-py3-none-any.whl"
+    UV_TOOL_DIR=/usr/local/share/uv/tools \
+        UV_PYTHON_INSTALL_DIR=/usr/local/share/uv/python \
+        uv tool install "/tmp/mycelium_cli-${_mc_ver}-py3-none-any.whl" --python 3.12 --force 2>&1 | sed 's/^/  /'
+    rm -f "/tmp/mycelium_cli-${_mc_ver}-py3-none-any.whl"
+    ln -sf /usr/local/share/uv/tools/mycelium-cli/bin/mycelium /usr/local/bin/mycelium 2>/dev/null || true
 fi
 echo "[spoke-entrypoint] mycelium CLI:     $(mycelium --version 2>/dev/null || echo 'installed')"
+/openclaw/patch-mycelium-daemon.sh 2>&1 \
+    || echo "[spoke-entrypoint] mycelium daemon patch skipped"
 
 # ── Mycelium config (shared by all adapters) ────────────────────────
 
@@ -66,8 +128,29 @@ api_url = "$BACKEND_URL"
 TOML
 fi
 
-mycelium config set server.api_url "$BACKEND_URL" 2>/dev/null || true
+    mycelium config set server.api_url "$BACKEND_URL" 2>/dev/null || true
 mycelium config set metrics.collector_url "$COLLECTOR_HUB" 2>/dev/null || true
+
+# CFN workspace + default MAS (written by mycelium-bootstrap to the shared volume).
+MYCELIUM_CONFIG_FILE="${MYCELIUM_CONFIG_FILE:-/shared/mycelium-config.json}"
+if [ -f "$MYCELIUM_CONFIG_FILE" ]; then
+    eval "$(node -e "
+      const c = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'));
+      if (c.workspace_id) process.stdout.write('export BOOTSTRAP_WORKSPACE_ID=' + JSON.stringify(c.workspace_id) + '\n');
+      if (c.mas_id) process.stdout.write('export BOOTSTRAP_MAS_ID=' + JSON.stringify(c.mas_id) + '\n');
+    " "$MYCELIUM_CONFIG_FILE")"
+    if [ -n "${BOOTSTRAP_WORKSPACE_ID:-}" ]; then
+        mycelium config set server.workspace_id "$BOOTSTRAP_WORKSPACE_ID" 2>/dev/null || true
+        echo "[spoke-entrypoint] workspace_id from bootstrap: $BOOTSTRAP_WORKSPACE_ID"
+    fi
+    if [ -n "${BOOTSTRAP_MAS_ID:-}" ]; then
+        mycelium config set server.mas_id "$BOOTSTRAP_MAS_ID" 2>/dev/null || true
+        echo "[spoke-entrypoint] mas_id from bootstrap: $BOOTSTRAP_MAS_ID"
+    fi
+fi
+# Env overrides (compose CI exports these after bootstrap).
+[ -n "${WORKSPACE_ID:-}" ] && mycelium config set server.workspace_id "$WORKSPACE_ID" 2>/dev/null || true
+[ -n "${MAS_ID:-}" ] && mycelium config set server.mas_id "$MAS_ID" 2>/dev/null || true
 
 # LLM credentials → .env (consumed by adapter installers + CLI commands)
 {
@@ -105,13 +188,23 @@ if has_adapter openclaw; then
     ROOM_ID=$(json_get "d.room_id")
 
     case "$ROLE" in
+        hub)
+            AGENTS="agent-alpha agent-beta agent-gamma agent-delta"
+            ;;
         spoke1) AGENTS="claire-agent" ;;
         spoke2) AGENTS="oclw5-agent" ;;
         *)
-            echo "[spoke-entrypoint] ERROR: Unknown spoke role: $ROLE" >&2
+            echo "[spoke-entrypoint] ERROR: Unknown role: $ROLE (expected hub, spoke1, or spoke2)" >&2
             exit 1
             ;;
     esac
+
+    # Install the mycelium OpenClaw plugin before generating openclaw.json so
+    # extensions/mycelium exists and the mycelium-room channel can be enabled.
+    mycelium adapter add openclaw --yes 2>&1 \
+        || echo "[spoke-entrypoint] adapter add openclaw skipped (trying infra plugin install)"
+    /openclaw/install-openclaw-mycelium-plugin.sh 2>&1 \
+        || echo "[spoke-entrypoint] infra mycelium plugin install skipped"
 
     node -e "
       const fs = require('fs');
@@ -127,6 +220,13 @@ if has_adapter openclaw; then
         if (!tokens[id]) console.error('[spoke-entrypoint] WARNING: No token for ' + id);
         return !!tokens[id];
       });
+
+      const path = require('path');
+      const configDir = '$CONFIG_DIR';
+      const hasMycelium = fs.existsSync(path.join(configDir, 'extensions', 'mycelium'));
+      if (!hasMycelium) {
+        console.log('[spoke-entrypoint] Mycelium plugin not installed yet — omitting mycelium-room channel');
+      }
 
       const matrixAccounts = {};
       for (const id of validAgents) {
@@ -182,13 +282,23 @@ if has_adapter openclaw; then
             dm: { allowFrom: ['*'] },
             groupAllowFrom: ['*'],
             network: { dangerouslyAllowPrivateNetwork: true }
-          }
+          },
+          ...(hasMycelium ? {
+            'mycelium-room': {
+              enabled: true,
+              backendUrl: '${MYCELIUM_BACKEND_URL:-http://mycelium-backend:8000}',
+              requireMention: false,
+              room: 'mycelium_room',
+              agents: validAgents
+            }
+          } : {})
         },
         plugins: {
-          allow: ['litellm', 'matrix'],
+          allow: hasMycelium ? ['litellm', 'matrix', 'mycelium'] : ['litellm', 'matrix'],
           entries: {
             matrix: { enabled: true },
-            litellm: { enabled: true }
+            litellm: { enabled: true },
+            ...(hasMycelium ? { mycelium: { enabled: true } } : {})
           }
         },
         bindings: validAgents.map(id => ({
@@ -225,26 +335,33 @@ if has_adapter openclaw; then
       console.log('[spoke-entrypoint] OpenClaw agents: ' + validAgents.join(', '));
     "
 
-    mycelium adapter add openclaw --yes 2>&1 \
-        || echo "[spoke-entrypoint] adapter add openclaw skipped"
     mycelium adapter add openclaw --step=otel --yes 2>&1 \
         || echo "[spoke-entrypoint] openclaw otel step skipped"
+    /openclaw/install-openclaw-skills.sh 2>&1 \
+        || echo "[spoke-entrypoint] openclaw skill install skipped"
+    /openclaw/patch-openclaw-plugin.sh 2>&1 \
+        || echo "[spoke-entrypoint] openclaw plugin patch skipped"
 fi
 
 # ── Cursor bootstrap (if enabled) ───────────────────────────────────
 
 if has_adapter cursor; then
+    CURSOR_MODEL="${CURSOR_MODEL:-claude-4.5-haiku}"
     echo "[spoke-entrypoint] Bootstrapping cursor..."
     if ! command -v cursor-agent &>/dev/null; then
         echo "[spoke-entrypoint] ERROR: cursor-agent binary missing from image" >&2
         exit 1
     fi
-    # The cursor-agent auth file is expected to be mounted at
-    # ~/.config/cursor/auth.json by the compose stack. If it's not
-    # present we log a warning but keep going — tests that need cursor
-    # will fail with a clearer error from the provisioner.
-    if [ ! -f "$HOME/.config/cursor/auth.json" ]; then
-        echo "[spoke-entrypoint] WARNING: cursor auth.json not mounted; cursor tests will fail"
+    if [ ! -r "$HOME/.config/cursor/auth.json" ] && [ -z "${CURSOR_API_KEY:-}" ]; then
+        echo "[spoke-entrypoint] WARNING: no cursor auth.json and CURSOR_API_KEY unset; cursor tests will fail"
+    fi
+    if [ -n "${CURSOR_API_KEY:-}" ]; then
+        echo "[spoke-entrypoint] Cursor auth: CURSOR_API_KEY (headless)"
+    elif [ -r "$HOME/.config/cursor/auth.json" ]; then
+        echo "[spoke-entrypoint] Cursor auth: ~/.config/cursor/auth.json"
+    fi
+    if [ -n "${CURSOR_MODEL:-}" ]; then
+        echo "[spoke-entrypoint] Cursor model: $CURSOR_MODEL"
     fi
     mycelium adapter add cursor --yes 2>&1 \
         || echo "[spoke-entrypoint] adapter add cursor skipped"
@@ -254,6 +371,12 @@ fi
 
 if has_adapter hermes; then
     echo "[spoke-entrypoint] Bootstrapping hermes..."
+    if [ -d "$HERMES_DIR" ] && [ ! -w "$HERMES_DIR" ]; then
+        if command -v gosu >/dev/null 2>&1 && [ "$(id -u)" -ne 0 ]; then
+            echo "[spoke-entrypoint] Fixing root-owned ${HERMES_DIR}"
+            gosu root chown -R spoke:spoke "$HERMES_DIR"
+        fi
+    fi
     mkdir -p "$HERMES_DIR"
 
     # First-run config: hermes itself writes ~/.hermes/config.yaml on
@@ -273,27 +396,82 @@ YAML
     {
         [ -n "${LLM_API_KEY:-}" ]  && echo "OPENROUTER_API_KEY=$LLM_API_KEY"
         [ -n "${LLM_API_KEY:-}" ]  && echo "ANTHROPIC_API_KEY=$LLM_API_KEY"
+        [ -n "${LLM_BASE_URL:-}" ] && echo "LLM_BASE_URL=$LLM_BASE_URL"
+        [ -n "${LLM_MODEL:-}" ]    && echo "LLM_MODEL=$LLM_MODEL"
+        echo "GATEWAY_ALLOW_ALL_USERS=true"
     } > "$HERMES_DIR/.env"
 
     mycelium adapter add hermes --yes 2>&1 \
         || echo "[spoke-entrypoint] adapter add hermes skipped"
+    /openclaw/patch-hermes-plugin.sh 2>&1 \
+        || echo "[spoke-entrypoint] hermes plugin patch skipped"
+
+    # Route Hermes inference through the same LiteLLM proxy as OpenClaw.
+    # Hermes custom-provider mode reads model.{api_key,base_url,default} from
+    # config.yaml — not auth.json / OPENROUTER credential pool.
+    if [ -n "${LLM_API_KEY:-}" ]; then
+        HERMES_MODEL="${LLM_MODEL:-anthropic/claude-sonnet-4-20250514}"
+        case "$HERMES_MODEL" in
+            openai/*) HERMES_MODEL="${HERMES_MODEL#openai/}" ;;
+        esac
+        HERMES_LITELLM_BASE="${LLM_BASE_URL:-}"
+        HERMES_LITELLM_BASE="${HERMES_LITELLM_BASE%/}"
+        if [ -n "$HERMES_LITELLM_BASE" ] && [ "${HERMES_LITELLM_BASE##*/}" != "v1" ]; then
+            HERMES_LITELLM_BASE="${HERMES_LITELLM_BASE}/v1"
+        fi
+        _hermes_cfg() {
+            HOME="$HOME" HERMES_HOME="$HERMES_DIR" hermes config set "$@" 2>/dev/null \
+                || echo "[spoke-entrypoint] hermes config set $1 skipped"
+        }
+        _hermes_cfg model.provider custom
+        _hermes_cfg model.api_mode chat_completions
+        _hermes_cfg model.api_key "$LLM_API_KEY"
+        _hermes_cfg model.default "$HERMES_MODEL"
+        if [ -n "$HERMES_LITELLM_BASE" ]; then
+            _hermes_cfg model.base_url "$HERMES_LITELLM_BASE"
+            echo "[spoke-entrypoint] Hermes model → $HERMES_MODEL via $HERMES_LITELLM_BASE"
+        else
+            echo "[spoke-entrypoint] Hermes model → $HERMES_MODEL (no LLM_BASE_URL)"
+        fi
+    fi
 fi
 
 # ── Build supervisord.conf ──────────────────────────────────────────
 #
-# Always-on programs: collector + cc-daemon.
+# Always-on programs: collector + mycelium-daemon.
 # Per-adapter programs added conditionally.
 
 SUPERVISOR_CONF="/tmp/spoke-supervisord.conf"
+
+# Supervisord may run as root (compose image) while programs run as spoke.
+# Always pin HOME so mycelium/openclaw do not read /root/.mycelium or /root/.openclaw.
+SPOKE_PROG_ENV='directory=/home/spoke
+environment=HOME="/home/spoke",HERMES_HOME="/home/spoke/.hermes",PATH="/usr/local/bin:/usr/local/share/uv/tools/mycelium-cli/bin:/home/spoke/.local/bin:%(ENV_PATH)s"'
+
+# Hermes gateway LLM creds live in config.yaml (model.api_key); keep env for aux tools.
+HERMES_PROG_ENV="$SPOKE_PROG_ENV"
+if has_adapter hermes && [ -n "${LLM_API_KEY:-}" ]; then
+    HERMES_PROG_ENV='directory=/home/spoke
+environment=HOME="/home/spoke",HERMES_HOME="/home/spoke/.hermes",PATH="/usr/local/bin:/usr/local/share/uv/tools/mycelium-cli/bin:/home/spoke/.local/bin:%(ENV_PATH)s",GATEWAY_ALLOW_ALL_USERS="true"'
+fi
+
+# Cursor cold-spawn reads CURSOR_API_KEY + CURSOR_MODEL from the daemon process env.
+DAEMON_PROG_ENV="$SPOKE_PROG_ENV"
+if has_adapter cursor; then
+    _daemon_extra=",CURSOR_MODEL=\"${CURSOR_MODEL:-claude-4.5-haiku}\""
+    [ -n "${CURSOR_API_KEY:-}" ] && _daemon_extra="${_daemon_extra},CURSOR_API_KEY=\"${CURSOR_API_KEY}\""
+    DAEMON_PROG_ENV='directory=/home/spoke
+environment=HOME="/home/spoke",HERMES_HOME="/home/spoke/.hermes",PATH="/usr/local/bin:/usr/local/share/uv/tools/mycelium-cli/bin:/home/spoke/.local/bin:%(ENV_PATH)s"'"${_daemon_extra}"
+fi
 
 cat > "$SUPERVISOR_CONF" <<CONF
 [supervisord]
 nodaemon=true
 logfile=/tmp/supervisord.log
 loglevel=info
-user=spoke
 
 [program:metrics-collector]
+${SPOKE_PROG_ENV}
 command=mycelium metrics collect --foreground
 autostart=true
 autorestart=true
@@ -303,8 +481,9 @@ stdout_logfile_maxbytes=0
 stderr_logfile=/dev/fd/2
 stderr_logfile_maxbytes=0
 
-[program:cc-daemon]
-command=mycelium daemon run
+[program:mycelium-daemon]
+${DAEMON_PROG_ENV}
+command=mycelium daemon run --foreground
 autostart=true
 autorestart=true
 startsecs=5
@@ -318,6 +497,7 @@ if has_adapter openclaw; then
     cat >> "$SUPERVISOR_CONF" <<CONF
 
 [program:openclaw-gateway]
+${SPOKE_PROG_ENV}
 command=openclaw gateway run --force --verbose --bind lan
 autostart=true
 autorestart=true
@@ -333,6 +513,7 @@ if has_adapter hermes; then
     cat >> "$SUPERVISOR_CONF" <<CONF
 
 [program:hermes-gateway]
+${HERMES_PROG_ENV}
 command=hermes gateway run
 autostart=true
 autorestart=true
@@ -350,4 +531,8 @@ cat "$SUPERVISOR_CONF"
 echo "------"
 echo "[spoke-entrypoint] Starting supervisord..."
 
-exec /usr/bin/supervisord -c "$SUPERVISOR_CONF"
+if [ "${SPOKE_BOOTSTRAP_CHILD:-}" = 1 ]; then
+    exit 0
+fi
+
+start_supervisord "$SUPERVISOR_CONF"

@@ -62,12 +62,17 @@ def test_docker_transport_wraps_with_docker_exec_and_sh():
 
     args, _ = run.call_args
     full = args[0]
-    assert full[:5] == ["docker", "exec", "-i", "e2e-mycelium-spoke1", "sh"]
-    assert full[5] == "-c"
-    wrapped = full[6]
+    assert full[:3] == ["docker", "exec", "-i"]
+    assert full[3:5] == ["-u", "spoke"]
+    assert full[5:7] == ["-e", "HOME=/home/spoke"]
+    assert full[7] == "e2e-mycelium-spoke1"
+    assert full[8] == "sh"
+    assert full[9] == "-c"
+    wrapped = full[10]
     assert "mycelium agent ls" in wrapped
     # PATH prelude is present so installed-via-uv binaries resolve
     assert "$HOME/.local/bin" in wrapped
+    assert 'export HOME="/home/spoke"' in wrapped
 
 
 def test_docker_transport_requires_container():

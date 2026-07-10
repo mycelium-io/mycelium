@@ -48,6 +48,64 @@ parameters:
         display_name: "Delta"
         matrix_token_env: "MATRIX_TOKEN_AGENT_DELTA"
 
+  # Fixed runtime handles per logical host + adapter. Scenario rows use
+  # ``role`` keys that resolve through ``roles``; ``slots`` is the full
+  # set ensured in CommonSetup before the suite room is created.
+  agent_pools:
+    hub:
+      openclaw:
+        slots: [agent-alpha, agent-beta, agent-gamma, agent-delta]
+        roles:
+          alpha: agent-alpha
+          beta: agent-beta
+          gamma: agent-gamma
+          delta: agent-delta
+          planner: agent-gamma
+          lawyer-a: agent-alpha
+          lawyer-b: agent-beta
+      hermes:
+        slots: [alpha-he, beta-he, gamma-he]
+        roles:
+          alpha-he: alpha-he
+          beta-he: beta-he
+          gamma-he: gamma-he
+      cursor:
+        slots: []
+        roles:
+          alpha-cu: alpha-cu
+          beta-cu: beta-cu
+          front-cu: front-cu
+    spoke1:
+      openclaw:
+        slots: [claire-agent]
+        roles:
+          beta: claire-agent
+          lawyer-b: claire-agent
+      hermes:
+        slots: [beta-he]
+        roles:
+          beta-he: beta-he
+          back-he: beta-he
+      cursor:
+        slots: []
+        roles:
+          designer: designer
+          beta-cu: beta-cu
+    spoke2:
+      openclaw:
+        slots: [oclw5-agent]
+        roles:
+          gamma: oclw5-agent
+      hermes:
+        slots: [gamma-he]
+        roles:
+          gamma-he: gamma-he
+          ops: gamma-he
+      cursor:
+        slots: []
+        roles:
+          ops: ops
+
   # ── Shared Test Parameters ──────────────────────────────────────────────
   room_prefix: "e2e-test"
   shared_mycelium_room: "%ENV{E2E_MYCELIUM_ROOM, mycelium_room}"

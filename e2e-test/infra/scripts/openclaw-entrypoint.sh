@@ -78,6 +78,13 @@ node -e "
     return !!tokens[id];
   });
 
+  const path = require('path');
+  const configDir = '$CONFIG_DIR';
+  const hasMycelium = fs.existsSync(path.join(configDir, 'extensions', 'mycelium'));
+  if (!hasMycelium) {
+    console.log('[openclaw-entrypoint] Mycelium plugin not installed yet — omitting mycelium-room channel');
+  }
+
   const matrixAccounts = {};
   for (const id of validAgents) {
     matrixAccounts[id] = {
@@ -133,20 +140,22 @@ node -e "
         groupAllowFrom: ['*'],
         network: { dangerouslyAllowPrivateNetwork: true }
       },
-      'mycelium-room': {
-        enabled: true,
-        backendUrl: '${MYCELIUM_BACKEND_URL:-http://mycelium-backend:8000}',
-        requireMention: true,
-        room: 'mycelium_room',
-        agents: validAgents
-      }
+      ...(hasMycelium ? {
+        'mycelium-room': {
+          enabled: true,
+          backendUrl: '${MYCELIUM_BACKEND_URL:-http://mycelium-backend:8000}',
+          requireMention: true,
+          room: 'mycelium_room',
+          agents: validAgents
+        }
+      } : {})
     },
     plugins: {
-      allow: ['litellm', 'matrix', 'mycelium'],
+      allow: hasMycelium ? ['litellm', 'matrix', 'mycelium'] : ['litellm', 'matrix'],
       entries: {
         matrix: { enabled: true },
         litellm: { enabled: true },
-        mycelium: { enabled: true }
+        ...(hasMycelium ? { mycelium: { enabled: true } } : {})
       }
     },
     bindings: validAgents.map(id => ({

@@ -76,24 +76,24 @@ def setup_shared_suite_room(
     )
     failures: list[str] = []
 
-    for adapter, handle, host in sorted(wants):
+    for adapter, role, host in sorted(wants):
         device = testbed.devices.get(host)
         if device is None:
-            failures.append(f"{handle}@{host}: no such device in testbed")
+            failures.append(f"{role}@{host}: no such device in testbed")
             continue
-        key = (adapter, handle, host)
+        key = (adapter, role, host)
         ref = provisioned.get(key)
         if ref is None:
-            failures.append(f"{handle}@{host} ({adapter}): missing ensure_runtime ref")
+            failures.append(f"{role}@{host} ({adapter}): missing ensure_runtime ref")
             continue
         try:
             provisioner = get_provisioner(adapter)
             # Use ref.handle (the actual discovered/created handle) not the
-            # spec handle — they differ when an existing agent was reused.
+            # row role — they differ when an existing agent was reused.
             updated_ref = provisioner.register_in_room(device, ref.handle, room)
             provisioned[key] = updated_ref
         except (PrereqMissing, HostExecError) as exc:
-            failures.append(f"{handle}@{host} ({adapter}): register_in_room → {exc}")
+            failures.append(f"{role}@{host} ({adapter}): register_in_room → {exc}")
 
     testscript.parameters["provisioned_agents"] = provisioned
 
@@ -137,7 +137,7 @@ def teardown_shared_suite_room(
             log.warning("teardown_shared_suite_room: %s", exc)
 
     provisioned: dict[tuple[str, str, str], AgentRef] = testscript.parameters.get("provisioned_agents") or {}
-    for (adapter, handle, host), ref in sorted(provisioned.items()):
+    for (adapter, role, host), ref in sorted(provisioned.items()):
         device = testbed.devices.get(host)
         if device is None:
             continue
@@ -148,7 +148,7 @@ def teardown_shared_suite_room(
             log.warning(
                 "teardown_shared_suite_room: unregister %s/%s from %s failed: %s",
                 adapter,
-                handle,
+                role,
                 room,
                 exc,
             )

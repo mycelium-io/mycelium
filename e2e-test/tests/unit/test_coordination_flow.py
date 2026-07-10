@@ -107,11 +107,23 @@ def test_poll_negotiation_completion_via_session_state() -> None:
             }
         ],
     )
+    api.get_room_messages.return_value = (
+        200,
+        [
+            {
+                "message_type": "coordination_consensus",
+                "content": json.dumps(
+                    {"plan_file": "plan/tasks.md", "broken": False, "plan": "ship it"}
+                ),
+            }
+        ],
+    )
     cli = MagicMock()
     result = poll_negotiation_completion(api, cli, "room", "room:session:abc")
     assert result is not None
     assert result["coordination_state"] == "complete"
     assert result["completion_source"] == "coordination_session"
+    assert result["consensus"]["plan_file"] == "plan/tasks.md"
 
 
 def test_poll_room_consensus_outcome_via_failed_session() -> None:
@@ -126,6 +138,7 @@ def test_poll_room_consensus_outcome_via_failed_session() -> None:
             }
         ],
     )
+    api.get_room_messages.return_value = (200, [])
     result = poll_room_consensus_outcome(api, "room")
     assert result is not None
     assert result["coordination_state"] == "failed"

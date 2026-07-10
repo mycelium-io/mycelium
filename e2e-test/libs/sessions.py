@@ -217,6 +217,53 @@ def memory_set(
         )
 
 
+def memory_get(
+    device: Any,
+    room: str,
+    key: str,
+    *,
+    timeout: float = 30.0,
+) -> str:
+    """Read a memory key; returns stdout body."""
+    try:
+        result = host_exec.execute(
+            device,
+            ["mycelium", "memory", "get", "--room", room, key],
+            timeout=timeout,
+        )
+    except HostExecError as exc:
+        raise SessionError(f"memory_get: dispatch failed: {exc}") from exc
+    if result.returncode != 0:
+        raise SessionError(
+            f"memory_get({key!r}) failed (rc={result.returncode}): "
+            f"{(result.stderr or result.stdout).strip()[:300]}"
+        )
+    return result.stdout
+
+
+def memory_ls(
+    device: Any,
+    room: str,
+    *,
+    namespace: str | None = None,
+    timeout: float = 30.0,
+) -> str:
+    """List memory keys in *room*; optional *namespace* prefix filter."""
+    argv = ["mycelium", "memory", "ls", "--room", room]
+    if namespace:
+        argv.append(namespace)
+    try:
+        result = host_exec.execute(device, argv, timeout=timeout)
+    except HostExecError as exc:
+        raise SessionError(f"memory_ls: dispatch failed: {exc}") from exc
+    if result.returncode != 0:
+        raise SessionError(
+            f"memory_ls({room!r}) failed (rc={result.returncode}): "
+            f"{(result.stderr or result.stdout).strip()[:300]}"
+        )
+    return result.stdout
+
+
 def memory_search(
     device: Any,
     room: str,
@@ -312,13 +359,29 @@ def read_plan_tasks(
     room: str,
     *,
     timeout: float = 15.0,
+    backend_url: str | None = None,
 ) -> str:
-    """Read the room's shared plan via ``mycelium memory get plan/tasks``.
+    """Read the room's shared plan checklist body.
 
-    Returns the raw markdown body. Raises ``SessionError`` when the key
-    is missing - scenarios that require a plan file fail loudly so the
-    plan-compiler regression is visible in CI output.
+    When *backend_url* is set (compose/lab HTTP path), reads ``plan/tasks`` from
+    the backend API — the plan compiler writes to the backend data volume, not
+    the spoke container's local ``~/.mycelium``.  Otherwise uses
+    ``mycelium memory get plan/tasks`` on *device*.
     """
+    if backend_url:
+        from libs.mycelium_api import MyceliumAPI
+
+        api = MyceliumAPI(backend_url)
+        status, data = api.get_plan(room)
+        if status != 200 or not isinstance(data, dict):
+            raise SessionError(
+                f"read_plan_tasks({room!r}) via API failed (status={status})"
+            )
+        for file in data.get("files") or []:
+            if file.get("slug") == "tasks":
+                return str(file.get("content") or "")
+        raise SessionError(f"read_plan_tasks({room!r}): plan/tasks not in API response")
+
     try:
         result = host_exec.execute(
             device,
@@ -438,4 +501,83 @@ def wait_for_no_active_sessions(
     raise SessionError(
         f"active coordination session(s) still present on {parent_room!r} "
         f"after {timeout_seconds:.0f}s — prior testcase may have aborted mid-flight"
+    )
+
+
+def wait_for_cfn_idle(
+    cfn_url: str,
+    *,
+    timeout_seconds: float = 60.0,
+    idle_latency_ms: float = 150.0,
+    stable_checks: int = 2,
+    poll_interval: float = 3.0,
+) -> None:
+    """Poll the CFN node-svc health endpoint until response latency drops.
+
+    The CFN cognition engine is single-threaded. When it's processing a
+    shared-memories ingestion or an active negotiation, its health endpoint
+    responds slowly (200-800ms). When idle it responds in < 30ms. We poll
+    until ``stable_checks`` consecutive responses each complete in under
+    ``idle_latency_ms`` milliseconds, indicating the engine is free.
+
+    This is called after ``wait_for_no_active_sessions`` to guard against
+    the case where the mycelium backend considers a session terminal but
+    CFN is still processing KXP fan-in from the previous consensus.
+
+    Raises :class:`SessionError` if the engine is still busy after
+    ``timeout_seconds``.
+    """
+    import time
+    import urllib.request
+
+    health_url = f"{cfn_url.rstrip('/')}/api/internal/diagnostics/health"
+    deadline = time.monotonic() + timeout_seconds
+    consecutive = 0
+
+    while time.monotonic() < deadline:
+        t0 = time.monotonic()
+        try:
+            with urllib.request.urlopen(health_url, timeout=5) as resp:
+                _ = resp.read()
+            elapsed_ms = (time.monotonic() - t0) * 1000
+        except Exception as exc:
+            log.warning("wait_for_cfn_idle: health check failed (%s) — retrying", exc)
+            consecutive = 0
+            time.sleep(poll_interval)
+            continue
+
+        if elapsed_ms < idle_latency_ms:
+            consecutive += 1
+            log.debug(
+                "wait_for_cfn_idle: %.1fms (check %d/%d)",
+                elapsed_ms,
+                consecutive,
+                stable_checks,
+            )
+            if consecutive >= stable_checks:
+                log.info(
+                    "wait_for_cfn_idle: CFN idle after %d stable checks (last=%.1fms)",
+                    stable_checks,
+                    elapsed_ms,
+                )
+                return
+        else:
+            if consecutive > 0:
+                log.debug(
+                    "wait_for_cfn_idle: reset (%.1fms >= %.1fms threshold)",
+                    elapsed_ms,
+                    idle_latency_ms,
+                )
+            consecutive = 0
+            log.info(
+                "wait_for_cfn_idle: CFN busy (%.1fms) — waiting",
+                elapsed_ms,
+            )
+
+        time.sleep(poll_interval)
+
+    raise SessionError(
+        f"CFN node-svc still busy after {timeout_seconds:.0f}s "
+        f"(health latency never dropped below {idle_latency_ms:.0f}ms for "
+        f"{stable_checks} consecutive checks)"
     )

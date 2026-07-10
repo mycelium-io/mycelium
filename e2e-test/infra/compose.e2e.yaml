@@ -137,7 +137,7 @@ services:
       GRAPH_DB_URL: "postgresql://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium"
       API_BASE_URL: http://mycelium-backend:8000
       CFN_MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
-      CFN_SVC_URL: http://ioc-cfn-svc:9002
+      COGNITION_FABRIC_NODE_URL: http://ioc-cfn-svc:9002
       COORDINATION_TICK_TIMEOUT_SECONDS: ${COORDINATION_TICK_TIMEOUT_SECONDS:-30}
       MYCELIUM_DATA_DIR: /home/mycelium/.mycelium
       MYCELIUM_STUB_EMBEDDINGS: "${MYCELIUM_STUB_EMBEDDINGS:-0}"
@@ -260,38 +260,41 @@ services:
     networks:
       - mycelium-e2e
 
-  # ── Mycelium Hub (OpenClaw + cc-daemon + collector) ──────────────────
+  # ── Mycelium Hub (unified spoke image + HUB_ADAPTERS) ────────────────
   #
-  # Pre-built image from GHCR (see .github/workflows/build-openclaw.yml).
-  # Reads Matrix tokens from the shared volume written by matrix-bootstrap,
-  # then starts the gateway with agents alpha/beta/gamma/delta.
-  # Start AFTER both bootstraps have run:
-  #   docker compose -f infra/compose.e2e.yaml up -d openclaw-hub
+  # Uses the same ``mycelium-spoke`` image and ``spoke-entrypoint.sh`` as
+  # the spokes so hub can run openclaw / cursor / hermes side-by-side with
+  # a baked-in mycelium CLI. ``OPENCLAW_ROLE=hub`` selects alpha/beta/
+  # gamma/delta; ``HUB_ADAPTERS`` gates which adapter runtimes start.
   #
-  # The service name remains ``openclaw-hub`` for backwards-compat with
-  # the existing GitHub Actions workflow and pyATS testbeds. With the
-  # stage-2 spoke image rewrite, the hub is also adapter-aware via
-  # ``HUB_ADAPTERS``.
+  # Service + container names remain ``openclaw-hub`` / ``e2e-openclaw-hub``
+  # for backwards-compat with pyATS testbeds and the GitHub Actions workflow.
   openclaw-hub:
-    image: ghcr.io/mycelium-io/mycelium-openclaw:latest
+    image: ${MYCELIUM_SPOKE_IMAGE:-ghcr.io/mycelium-io/mycelium-spoke:latest}
     container_name: e2e-openclaw-hub
     depends_on:
       mycelium-backend:
         condition: service_healthy
       matrix-synapse:
         condition: service_healthy
+      mycelium-collector:
+        condition: service_healthy
     environment:
       OPENCLAW_ROLE: hub
-      SPOKE_ADAPTERS: "${HUB_ADAPTERS:-openclaw}"
+      SPOKE_ADAPTERS: "${HUB_ADAPTERS:-openclaw,cursor}"
       MATRIX_HOMESERVER: http://matrix-synapse:8008
       MYCELIUM_BACKEND_URL: http://mycelium-backend:8000
+      COLLECTOR_HUB_URL: http://mycelium-collector:4318
       MATRIX_SHARED_SECRET: e2e-shared-secret
       TOKEN_FILE: /shared/matrix-tokens.json
       LLM_MODEL: "${LLM_MODEL:-}"
       LLM_API_KEY: "${LLM_API_KEY:-}"
       LLM_BASE_URL: "${LLM_BASE_URL:-}"
+      CURSOR_API_KEY: "${CURSOR_API_KEY:-}"
+      CURSOR_MODEL: "${CURSOR_MODEL:-claude-4.5-haiku}"
     volumes:
       - e2e-shared:/shared:ro
+      - ${HOST_CURSOR_AUTH:-/dev/null}:/run/host-secrets/cursor-auth.json:ro
     ports:
       - "${E2E_OPENCLAW_PORT:-18789}:18789"
     healthcheck:
@@ -299,7 +302,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 15
-      start_period: 45s
+      start_period: 60s
     networks:
       - mycelium-e2e
 
@@ -342,11 +345,13 @@ services:
       LLM_MODEL: "${LLM_MODEL:-}"
       LLM_API_KEY: "${LLM_API_KEY:-}"
       LLM_BASE_URL: "${LLM_BASE_URL:-}"
+      CURSOR_API_KEY: "${CURSOR_API_KEY:-}"
+      CURSOR_MODEL: "${CURSOR_MODEL:-claude-4.5-haiku}"
     volumes:
       - e2e-shared:/shared:ro
       # Host cursor auth (optional; left as an explicit empty default
       # so compose doesn't choke when the file is absent).
-      - ${HOST_CURSOR_AUTH:-/dev/null}:/home/spoke/.config/cursor/auth.json:ro
+      - ${HOST_CURSOR_AUTH:-/dev/null}:/run/host-secrets/cursor-auth.json:ro
     ports:
       - "${E2E_SPOKE1_PORT:-18790}:18789"
     healthcheck:
@@ -380,9 +385,11 @@ services:
       LLM_MODEL: "${LLM_MODEL:-}"
       LLM_API_KEY: "${LLM_API_KEY:-}"
       LLM_BASE_URL: "${LLM_BASE_URL:-}"
+      CURSOR_API_KEY: "${CURSOR_API_KEY:-}"
+      CURSOR_MODEL: "${CURSOR_MODEL:-claude-4.5-haiku}"
     volumes:
       - e2e-shared:/shared:ro
-      - ${HOST_CURSOR_AUTH:-/dev/null}:/home/spoke/.config/cursor/auth.json:ro
+      - ${HOST_CURSOR_AUTH:-/dev/null}:/run/host-secrets/cursor-auth.json:ro
     ports:
       - "${E2E_SPOKE2_PORT:-18791}:18789"
     healthcheck:

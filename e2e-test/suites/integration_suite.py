@@ -1,9 +1,9 @@
 """
-Integration adapter suite — Claude Code skill/daemon + Cursor stubs.
+Integration adapter suite — Cursor single-host tests (75-77).
 
-Tests 70-75: adapter install, status, remove, daemon health, agent lifecycle.
-The skill-install tests (70-72, 75) are file-system-only and fast.
-Daemon/agent tests (73-74) need a running backend.
+Tests 75-77 run on any all-in-one host with the mycelium stack running.
+Tests 78-80 require spoke agents on separate devices and live in the
+hub_and_spoke suite instead.
 
 Run standalone:
     python suites/integration_suite.py --datafile data/integration_datafile.yaml
@@ -24,17 +24,7 @@ if _ROOT not in sys.path:
 from testcases.cursor_tests import (
     CursorAuthFailure,
     CursorBasicDispatch,
-    CursorCrossFamilyCursor,
-    CursorCrossFamilyOpenClaw,
-    CursorMultiHostDispatch,
     CursorWorkspaceDrift,
-)
-from testcases.integration_tests import (
-    ClaudeCodeAdapterRemove,
-    ClaudeCodeAdapterStatus,
-    ClaudeCodeAgentLifecycle,
-    ClaudeCodeDaemonHealth,
-    ClaudeCodeSkillInstall,
 )
 
 
@@ -49,26 +39,6 @@ class CommonSetup(aetest.CommonSetup):
             self.failed("mycelium CLI not found on PATH")
 
 
-class test_70_claude_code_skill_install(ClaudeCodeSkillInstall):
-    pass
-
-
-class test_71_claude_code_adapter_status(ClaudeCodeAdapterStatus):
-    pass
-
-
-class test_72_claude_code_adapter_remove(ClaudeCodeAdapterRemove):
-    pass
-
-
-class test_73_claude_code_daemon_health(ClaudeCodeDaemonHealth):
-    pass
-
-
-class test_74_claude_code_agent_lifecycle(ClaudeCodeAgentLifecycle):
-    pass
-
-
 class test_75_cursor_basic_dispatch(CursorBasicDispatch):
     pass
 
@@ -78,18 +48,6 @@ class test_76_cursor_workspace_drift(CursorWorkspaceDrift):
 
 
 class test_77_cursor_auth_failure(CursorAuthFailure):
-    pass
-
-
-class test_78_cursor_multi_host_dispatch(CursorMultiHostDispatch):
-    pass
-
-
-class test_79_cursor_cross_family_cursor(CursorCrossFamilyCursor):
-    pass
-
-
-class test_80_cursor_cross_family_openclaw(CursorCrossFamilyOpenClaw):
     pass
 
 

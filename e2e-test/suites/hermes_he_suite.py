@@ -30,6 +30,7 @@ if _ROOT not in sys.path:
 from libs import host_exec  # noqa: E402
 from libs.host_exec import HostExecError  # noqa: E402
 from libs.provisioners import AgentRef, PrereqMissing, get_provisioner  # noqa: E402
+from libs.scenario_row import agent_role  # noqa: E402
 from libs.suite_lifecycle import setup_shared_suite_room, teardown_shared_suite_room  # noqa: E402
 from libs.sessions import SessionError  # noqa: E402
 from testcases.hermes_tests import HUB_HOST, SSH_KEY, SSH_USER  # noqa: E402
@@ -92,7 +93,7 @@ class CommonSetup(aetest.CommonSetup):
     def provision_hermes_agents(self, testscript, testbed=None):
         """Create hermes agents that don't already exist in the bootstrap room.
 
-        Runs ``ensure_runtime`` for every unique (adapter, handle, host)
+        Runs ``ensure_runtime`` for every unique (adapter, role, host)
         tuple across the active rows. Pre-existing agents are returned as-is
         (no gateway restart). New agents trigger one gateway restart per
         host, isolated here in common_setup so no per-testcase setup races
@@ -117,7 +118,7 @@ class CommonSetup(aetest.CommonSetup):
         wants: set[tuple[str, str, str]] = set()
         for row in _HERMES_ROWS:
             for ag in row.get("agents", []):
-                wants.add((ag["adapter"], ag["handle"], ag["host"]))
+                wants.add((ag["adapter"], agent_role(ag), ag["host"]))
 
         # Reclaim ownership so the CLI's per-agent writes succeed.
         for host in sorted({h for (_, _, h) in wants}):
@@ -138,18 +139,18 @@ class CommonSetup(aetest.CommonSetup):
 
         provisioned: dict[tuple[str, str, str], AgentRef] = {}
         failures: list[str] = []
-        for adapter, handle, host in sorted(wants):
+        for adapter, role, host in sorted(wants):
             device = testbed.devices.get(host)
             if device is None:
-                failures.append(f"{handle}@{host}: no such device in testbed")
+                failures.append(f"{role}@{host}: no such device in testbed")
                 continue
             try:
                 provisioner = get_provisioner(adapter)
                 provisioner.check_prereqs(device)
-                ref = provisioner.ensure_runtime(device, handle)
-                provisioned[(adapter, handle, host)] = ref
+                ref = provisioner.ensure_runtime(device, role)
+                provisioned[(adapter, role, host)] = ref
             except (PrereqMissing, HostExecError) as exc:
-                failures.append(f"{handle}@{host} ({adapter}): {exc}")
+                failures.append(f"{role}@{host} ({adapter}): {exc}")
 
         testscript.parameters["provisioned_agents"] = provisioned
         if failures:
@@ -190,18 +191,18 @@ class CommonCleanup(aetest.CommonCleanup):
             log.warning("teardown_hermes_agents: no testbed; skipping teardown")
             return
 
-        for (adapter, handle, host), ref in provisioned.items():
+        for (adapter, role, host), ref in provisioned.items():
             if adapter != "hermes":
                 continue
             device = testbed.devices.get(host)
             if device is None:
-                log.warning("teardown_hermes_agents: device %r not in testbed; skipping %s", host, handle)
+                log.warning("teardown_hermes_agents: device %r not in testbed; skipping %s", host, role)
                 continue
             try:
                 provisioner = get_provisioner(adapter)
                 provisioner.teardown_runtime(device, ref)
             except Exception as exc:  # noqa: BLE001 - cleanup is best-effort
-                log.warning("teardown_hermes_agents: teardown failed for %s@%s: %s", handle, host, exc)
+                log.warning("teardown_hermes_agents: teardown failed for %s@%s: %s", role, host, exc)
 
 
 globals().update(_CLASSES)

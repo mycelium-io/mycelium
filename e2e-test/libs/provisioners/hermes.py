@@ -102,8 +102,9 @@ class HermesProvisioner(ABCProvisioner):
         is already present, returns a ref tagged ``pre_existing=True`` and
         skips creation (no gateway restart).  Otherwise runs
         ``mycelium agent create <handle> --adapter hermes --room
-        <bootstrap_room>``, which patches ``~/.hermes/config.yaml`` and
-        restarts the gateway exactly once per unique agent per suite run.
+        <bootstrap_room>``, which patches ``~/.hermes/config.yaml``; the
+        infra ``restart-hermes-gateway.sh`` reloads the supervisord-managed
+        gateway so new room subscriptions take effect.
 
         By running this in ``CommonSetup`` we avoid the previous pattern
         where per-testcase ``register_in_room`` triggered a gateway restart
@@ -147,6 +148,7 @@ class HermesProvisioner(ABCProvisioner):
                 f"(rc={result.returncode}): "
                 f"{result.stderr.strip()[:300] or result.stdout.strip()[:300]}"
             )
+        self._restart_hermes_gateway(device)
         return AgentRef(
             handle=handle,
             adapter=self.name,
@@ -188,6 +190,17 @@ class HermesProvisioner(ABCProvisioner):
             [r.handle for r in refs],
         )
         return refs
+
+    def _restart_hermes_gateway(self, device: Any) -> None:
+        """Signal the supervisord-managed hermes gateway to reload config."""
+        try:
+            host_exec.execute(device, ["/openclaw/restart-hermes-gateway.sh"], timeout=20.0)
+        except HostExecError as exc:
+            log.warning(
+                "hermes: gateway restart failed on %s: %s",
+                host_exec.describe(device),
+                exc,
+            )
 
     def _list_agents_in_room(self, device: Any, room: str) -> set[str]:
         """Return the set of agent handles registered in ``room``.
@@ -231,8 +244,8 @@ class HermesProvisioner(ABCProvisioner):
 
         ``ensure_runtime`` already created the agent in the bootstrap room.
         This call patches ``~/.hermes/config.yaml`` to add ``room`` to that
-        agent's subscription list and restarts the gateway so the plugin
-        starts polling the new room. The gateway restart + verify takes
+        agent's subscription list and restarts the gateway (via infra script)
+        so the plugin starts polling the new room. The gateway restart takes
         ~7s per host.
         """
         log.info(
@@ -252,6 +265,7 @@ class HermesProvisioner(ABCProvisioner):
                 f"(rc={result.returncode}): "
                 f"{result.stderr.strip()[:300] or result.stdout.strip()[:300]}"
             )
+        self._restart_hermes_gateway(device)
         return AgentRef(
             handle=handle,
             adapter=self.name,

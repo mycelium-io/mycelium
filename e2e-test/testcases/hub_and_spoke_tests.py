@@ -1,6 +1,6 @@
 """Distributed E2E tests — real agents on oclw3/4/5 via Matrix + Mycelium.
 
-Maps to original tests 30-32 (local-real) and 40-49 (distributed).
+Maps to original tests 30-32 (local-real) and 40-49 (hub_and_spoke).
 These tests send Matrix messages to trigger real OpenClaw agent responses,
 then verify coordination through the shared Mycelium backend.
 """
@@ -33,9 +33,9 @@ DISTRIBUTED_AGENTS = {
 
 
 class _DistributedBase(aetest.Testcase):
-    """Base for distributed tests. Subclasses configure agents and scenario."""
+    """Base for hub_and_spoke tests. Subclasses configure agents and scenario."""
 
-    groups = ["distributed", "convergence", "llm", "slow"]
+    groups = ["hub_and_spoke", "convergence", "llm", "slow"]
     scenario_agents: list[str] = []
     scenario_topic: str = ""
     local_only: bool = False
@@ -53,7 +53,7 @@ class _DistributedBase(aetest.Testcase):
             if not matrix_url or not check_matrix_reachable(matrix_url):
                 self.skipped(
                     f"Matrix not reachable at testcase time (url={matrix_url!r}) "
-                    "— required for distributed tests"
+                    "— required for hub_and_spoke tests"
                 )
             # matrix_token_agent_alpha is provisioned by CommonSetup.provision_matrix_tokens.
             # Check here (not just in the send step) so a missing token skips rather than fails,
@@ -273,7 +273,7 @@ class DistributedFeaturePrioritization(_DistributedBase):
 class DistributedCrossDeviceOnly(_DistributedBase):
     """Test 47: Two remote agents (oclw3 + oclw5) only — no oclw4 agent."""
 
-    groups = ["distributed", "convergence", "llm", "slow", "cfn"]
+    groups = ["hub_and_spoke", "convergence", "llm", "slow", "cfn"]
     scenario_agents = ["claire-agent", "oclw5-agent"]
     scenario_topic = "Remote-only coordination through central backend"
 
@@ -281,7 +281,7 @@ class DistributedCrossDeviceOnly(_DistributedBase):
 class DistributedBackendResolvedCfnIds(aetest.Testcase):
     """Test 48: Leaf nodes ingest knowledge with room_name only (Issue #139)."""
 
-    groups = ["distributed", "cfn"]
+    groups = ["hub_and_spoke", "cfn"]
 
     @aetest.test
     def backend_resolved_ids(self, steps, api, room_name):
@@ -313,6 +313,6 @@ class DistributedBackendResolvedCfnIds(aetest.Testcase):
 class SkillCrossChannelReturnTrip(_DistributedBase):
     """Test 49: 3 agents, 3 devices, individual DMs, return-trip verification."""
 
-    groups = ["distributed", "cross_channel", "llm", "slow"]
+    groups = ["hub_and_spoke", "cross_channel", "llm", "slow"]
     scenario_agents = ["agent-alpha", "claire-agent", "oclw5-agent"]
     scenario_topic = "Cross-channel return trip verification (PR #221)"

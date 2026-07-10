@@ -1,0 +1,34 @@
+---
+# All-in-one testbed — single device, all services on localhost.
+#
+# Uses transport: local so host_exec runs commands directly as subprocess
+# rather than via SSH or docker exec. The connections: block is required
+# by the pyATS schema validator but is never used — host_exec bypasses
+# it entirely when transport=local.
+#
+# This is not a runtime type. Use it any time you want local execution
+# regardless of which suite or runtime you're targeting:
+#
+#   ./run_tests.sh aio_cfn                          # automatic (run_tests.sh default)
+#   pyats run job jobs/aio_cfn_job.py \
+#     --testbed-file testbeds/aio.yaml              # local, no SSH
+#   pyats run job jobs/aio_cfn_job.py               # compose network (default)
+#   pyats run job jobs/aio_cfn_job.py \
+#     --testbed-file testbeds/lab.yaml              # SSH to lab
+
+testbed:
+  name: mycelium-aio
+
+devices:
+  hub:
+    type: linux
+    os: linux
+    connections:
+      local:
+        protocol: ssh
+        ip: 127.0.0.1
+    custom:
+      role: hub
+      transport: local
+      mycelium_backend_url: "%ENV{MYCELIUM_BACKEND_URL, http://localhost:8000}"
+      openclaw_seed_agent: "%ENV{OPENCLAW_SEED_AGENT, agent-alpha}"

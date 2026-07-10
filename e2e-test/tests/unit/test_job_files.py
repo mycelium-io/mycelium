@@ -85,6 +85,13 @@ def test_hermes_job_constants() -> None:
     assert hermes_job._ALLOWED_RUNTIMES == common.RUNTIME_LAB_ONLY
 
 
+def test_weekly_job_constants() -> None:
+    from jobs import weekly_e2e_job
+
+    assert weekly_e2e_job._DEFAULT_RUNTIME == "lab"
+    assert weekly_e2e_job._ALLOWED_RUNTIMES == common.RUNTIMES_ALL
+
+
 # ── main() wiring with easypy mocked out ──────────────────────────────
 
 
@@ -98,7 +105,7 @@ def _run_main(module_name: str) -> dict[str, object]:
         captured.update(kwargs)
 
     with patch.object(module, "run", fake_run):
-        module.main(SimpleNamespace(testbed=None))
+        module.main(SimpleNamespace(testbed=None, directory="/tmp/pyats-runtime"))
 
     return captured
 
@@ -169,3 +176,24 @@ def test_hermes_job_rejects_compose_runtime(
     monkeypatch.setenv("MYCELIUM_E2E_RUNTIME", "compose")
     with pytest.raises(common.JobRuntimeMismatchError):
         _run_main("jobs.hermes_job")
+
+
+def test_weekly_job_main_defaults_to_lab_testbed(clean_tier_env: None) -> None:
+    kwargs = _run_main("jobs.weekly_e2e_job")
+
+    assert kwargs["testscript"].endswith("/suites/weekly_full_suite.py")
+    assert kwargs["datafile"].endswith("/data/weekly_datafile.yaml")
+    testbed = kwargs.get("testbed")
+    assert testbed is not None
+    assert getattr(testbed, "name", None) == "mycelium-lab"
+
+
+def test_weekly_job_main_uses_compose_when_runtime_env_set(
+    clean_tier_env: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MYCELIUM_E2E_RUNTIME", "compose")
+    kwargs = _run_main("jobs.weekly_e2e_job")
+    testbed = kwargs.get("testbed")
+    assert testbed is not None
+    assert getattr(testbed, "name", None) == "mycelium-compose"

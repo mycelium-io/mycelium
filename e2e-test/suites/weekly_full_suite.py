@@ -2,7 +2,7 @@
 Weekly full E2E suite — runs ALL test tiers in sequence.
 
 This is the primary suite for the weekly long-running integration test.
-Includes: core, CFN, Matrix, convergence, local-real, distributed, openclaw,
+Includes: core, CFN, Matrix, convergence, local-real, hub_and_spoke, openclaw,
 and cross-channel tests.
 
 Run standalone:
@@ -71,13 +71,6 @@ from testcases.distributed_tests import (
     LocalThreeAgentNegotiation,
     LocalTwoAgentNegotiation,
     SkillCrossChannelReturnTrip,
-)
-from testcases.integration_tests import (
-    ClaudeCodeAdapterRemove,
-    ClaudeCodeAdapterStatus,
-    ClaudeCodeAgentLifecycle,
-    ClaudeCodeDaemonHealth,
-    ClaudeCodeSkillInstall,
 )
 from testcases.matrix_tests import MatrixCommunication
 from testcases.openclaw_tests import OpenClawAgentExecution, OpenClawMyceliumSkill
@@ -258,27 +251,7 @@ class test_60_cross_channel_memory_isolation(CrossChannelMemoryIsolation):
     pass
 
 
-# Integration adapters (70-75)
-class test_70_claude_code_skill_install(ClaudeCodeSkillInstall):
-    pass
-
-
-class test_71_claude_code_adapter_status(ClaudeCodeAdapterStatus):
-    pass
-
-
-class test_72_claude_code_adapter_remove(ClaudeCodeAdapterRemove):
-    pass
-
-
-class test_73_claude_code_daemon_health(ClaudeCodeDaemonHealth):
-    pass
-
-
-class test_74_claude_code_agent_lifecycle(ClaudeCodeAgentLifecycle):
-    pass
-
-
+# Integration adapters (75+)
 class test_75_cursor_basic_dispatch(CursorBasicDispatch):
     pass
 

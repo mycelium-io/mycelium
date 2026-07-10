@@ -2,7 +2,7 @@
 
 pyATS-based end-to-end test suite for [Mycelium](https://github.com/mycelium-io/mycelium), a multi-agent coordination platform.
 
-This repository is an **operator-side** harness: tests drive a running Mycelium backend (and, for distributed tests, OpenClaw agents on multiple machines) over its public HTTP and CLI surfaces.
+This repository is an **operator-side** harness: tests drive a running Mycelium backend (and, for hub_and_spoke tests, OpenClaw agents on multiple machines) over its public HTTP and CLI surfaces.
 
 ## Architecture
 
@@ -14,7 +14,7 @@ jobs/                           Easypy job files (orchestration)
   sanity_job.py                 Quick smoke test
   core_job.py                   Core tests only
   convergence_job.py            Multi-agent convergence
-  distributed_job.py            Cross-device distributed tests
+  distributed_job.py            Cross-device hub_and_spoke tests
   _common.py                    Shared job utilities
 
 suites/                         Thin AEtest scripts (class declarations)
@@ -125,7 +125,7 @@ pyats logs view
 | **Matrix** | 07 | `matrix` | Synapse |
 | **Convergence** | 15-21 | `convergence` | Backend + CFN + LLM |
 | **Local-Real** | 30-32 | `local_e2e` | OpenClaw + Matrix + local agents |
-| **Distributed** | 40-49 | `distributed` | Remote agents on oclw3/oclw5 |
+| **Distributed** | 40-49 | `hub_and_spoke` | Remote agents on oclw3/oclw5 |
 | **OpenClaw** | 50-51 | `openclaw` | OpenClaw with mycelium adapter |
 | **Cross-Channel** | 60 | `cross_channel` | LLM + Matrix |
 

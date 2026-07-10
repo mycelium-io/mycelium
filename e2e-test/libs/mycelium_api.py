@@ -137,6 +137,9 @@ class MyceliumAPI:
     def search_memory(self, room: str, query: str) -> tuple[int, Any]:
         return self.post_json(f"/rooms/{self._enc(room)}/memory/search", {"query": query})
 
+    def get_plan(self, room: str) -> tuple[int, Any]:
+        return self.get_json(f"/rooms/{self._enc(room)}/plan", timeout=15)
+
     # ── Sessions ──────────────────────────────────────────────────────────
 
     def spawn_session(self, room: str, data: dict | None = None) -> tuple[int, Any]:
