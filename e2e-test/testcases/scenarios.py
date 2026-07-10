@@ -537,7 +537,7 @@ class _ScenarioCore(aetest.Testcase):
                         f"(suite_shared_room={self.room!r})"
                     )
 
-            self._reset_openclaw_gateway_sessions()
+            self._reset_openclaw_gateway_sessions(testscript=testscript)
 
             try:
                 sessions.wait_for_no_active_sessions(self.backend_url, self.room)
@@ -745,15 +745,19 @@ class _ScenarioCore(aetest.Testcase):
         except Exception as exc:  # noqa: BLE001
             log.debug("room delete failed (ignored): %s", exc)
 
-    def _reset_openclaw_gateway_sessions(self) -> None:
+    def _reset_openclaw_gateway_sessions(self, testscript: Any = None) -> None:
         """Reset OpenClaw pool slots between suite scenarios.
 
-        Suite mode keeps agents registered to one parent room across rows.
-        Reset the full openclaw pool on each touched host (not only this
-        row's agents) so idle slots do not leave stale gateway state.
+        Resets the union of the current scenario's openclaw agents and the
+        previous scenario's openclaw agents. This ensures an agent that was
+        active two scenarios ago but skipped in between (e.g. agent-alpha in
+        a cu-he scenario) still gets cleaned up before it's needed again.
+
+        The previous scenario's wants are carried in
+        ``testscript.parameters["_prev_openclaw_wants"]`` and updated here.
         """
         pools = getattr(self, "_agent_pools", None) or {}
-        wants: set[tuple[str, str, str]] = set()
+        current_wants: set[tuple[str, str, str]] = set()
         testbed_devices: dict[str, Any] = {}
 
         for binding in self.agents:
@@ -762,8 +766,20 @@ class _ScenarioCore(aetest.Testcase):
             host = binding.spec["host"]
             role = binding.spec_role
             adapter = binding.spec["adapter"]
-            wants.add((adapter, role, host))
+            current_wants.add((adapter, role, host))
             testbed_devices[host] = binding.device
+
+        # Pull previous scenario's openclaw wants and union with current.
+        prev_wants: set[tuple[str, str, str]] = set()
+        if testscript is not None:
+            raw = testscript.parameters.get("_prev_openclaw_wants") or []
+            prev_wants = {tuple(t) for t in raw}  # type: ignore[misc]
+
+        wants = current_wants | prev_wants
+
+        # Save current wants for the next scenario.
+        if testscript is not None:
+            testscript.parameters["_prev_openclaw_wants"] = list(current_wants)
 
         if not wants or not pools:
             # Legacy fallback when pools were not loaded (standalone run).
