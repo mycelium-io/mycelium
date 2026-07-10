@@ -31,4 +31,4 @@ devices:
       role: hub
       transport: local
       mycelium_backend_url: "%ENV{MYCELIUM_BACKEND_URL, http://localhost:8000}"
-      openclaw_seed_agent: "%ENV{OPENCLAW_SEED_AGENT, agent-alpha}"
+      openclaw_seed_agent: "agent-alpha"
