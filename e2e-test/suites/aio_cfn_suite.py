@@ -36,6 +36,7 @@ if _ROOT not in sys.path:
 
 from libs import host_exec  # noqa: E402
 from libs.host_exec import HostExecError  # noqa: E402
+from libs.agent_pools import load_agent_pools, resolve_role_handle  # noqa: E402
 from libs.provisioners import AgentRef, PrereqMissing, get_provisioner  # noqa: E402
 from libs.scenario_row import agent_role  # noqa: E402
 from libs.suite_lifecycle import setup_shared_suite_room, teardown_shared_suite_room  # noqa: E402
@@ -135,6 +136,13 @@ class CommonSetup(aetest.CommonSetup):
             except HostExecError as exc:
                 log.warning("chown pre-flight failed on hub (continuing): %s", exc)
 
+        # Load agent pools from datafile parameters so roles resolve to the
+        # correct pre-existing handles (e.g. role=alpha → handle=agent-alpha).
+        pools = testscript.parameters.get("agent_pools") or {}
+        if not pools:
+            pools = load_agent_pools(testscript.parameters)
+        testscript.parameters["agent_pools"] = pools
+
         provisioned: dict[tuple[str, str, str], AgentRef] = {}
         failures: list[str] = []
         for adapter, role, host in sorted(wants):
@@ -143,9 +151,15 @@ class CommonSetup(aetest.CommonSetup):
                 failures.append(f"{role}@{host}: no such device in testbed")
                 continue
             try:
+                # Resolve role → actual handle via pool (reuses pre-existing
+                # agents like agent-alpha instead of creating a fresh alpha).
+                try:
+                    handle = resolve_role_handle(role, adapter, host, pools)
+                except KeyError:
+                    handle = role  # no pool mapping — use role as handle
                 provisioner = get_provisioner(adapter)
                 provisioner.check_prereqs(dev)
-                ref = provisioner.ensure_runtime(dev, role)
+                ref = provisioner.ensure_runtime(dev, handle)
                 provisioned[(adapter, role, host)] = ref
             except (PrereqMissing, HostExecError) as exc:
                 failures.append(f"{role}@{host} ({adapter}): {exc}")
