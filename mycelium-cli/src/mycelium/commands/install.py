@@ -310,7 +310,7 @@ def _refresh_compose_templates(*, backup: bool = True) -> list[Path]:
     """Overwrite ``~/.mycelium/docker/`` with the templates bundled in the
     currently-installed wheel.
 
-    Refreshes ``compose.yml`` and ``initdb/*``. When *backup* is True (the
+    Refreshes ``compose.yml``, ``cfn-db-prep.sh``, and ``initdb/*``. When *backup* is True (the
     default), the previous ``compose.yml`` is renamed to ``compose.yml.prev``
     before overwrite — a single rolling backup that covers anyone who has
     hand-edited the file.
@@ -336,6 +336,16 @@ def _refresh_compose_templates(*, backup: bool = True) -> list[Path]:
     compose_ref = importlib.resources.files("mycelium.docker") / "compose.yml"
     compose_dest.write_bytes(compose_ref.read_bytes())
     refreshed.append(compose_dest)
+
+    # cfn-db-prep.sh: the cfn-db-init one-shot bind-mounts this file
+    # (./cfn-db-prep.sh). If it isn't materialized here, Docker creates the
+    # mount source as an empty directory and cfn-db-init dies with
+    # "Is a directory" (exit 126), taking the whole cfn profile down with it.
+    prep_dest = dest_dir / "cfn-db-prep.sh"
+    prep_ref = importlib.resources.files("mycelium.docker") / "cfn-db-prep.sh"
+    prep_dest.write_bytes(prep_ref.read_bytes())
+    prep_dest.chmod(0o755)
+    refreshed.append(prep_dest)
 
     # initdb/ scripts so Postgres entrypoint creates CFN databases on first
     # volume init (compose mounts ./initdb as /docker-entrypoint-initdb.d).
@@ -864,6 +874,13 @@ def install(
     force: bool = typer.Option(
         False, "--force", help="Force full reinstall even if already installed"
     ),
+    tag: str = typer.Option(
+        "",
+        "--tag",
+        help="Pin MYCELIUM_IMAGE_TAG (mycelium-io image version, e.g. 2.0.0) instead of "
+        "the :latest default. Required for the cfn profile — mycelium-db:latest has no "
+        "TimescaleDB, so leaving it on :latest fails db startup.",
+    ),
 ) -> None:
     """
     Install a Mycelium instance.
@@ -978,6 +995,8 @@ def install(
             env_dir = Path.home() / ".mycelium"
             env_dir.mkdir(parents=True, exist_ok=True)
             env_path = env_dir / ".env"
+            if tag:
+                llm_config["MYCELIUM_IMAGE_TAG"] = tag
             _write_env_file(env_path, llm_config)
             typer.echo(f"  ✓ Wrote {env_path}")
 
@@ -1262,6 +1281,8 @@ def install(
             typer.echo(f"  ✓ Creating {env_path}")
         else:
             typer.echo(f"  ~ Updating existing {env_path}")
+        if tag:
+            llm_config["MYCELIUM_IMAGE_TAG"] = tag
         _write_env_file(env_path, llm_config)
         typer.echo(f"  ✓ Wrote {env_path}")
 
