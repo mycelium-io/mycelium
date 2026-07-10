@@ -207,4 +207,14 @@ for _cls in _CLASSES.values():
 
 
 if __name__ == "__main__":
-    aetest.main()
+    import sys
+
+    _testbed = None
+    if "--testbed-file" in sys.argv:
+        _idx = sys.argv.index("--testbed-file")
+        if _idx + 1 < len(sys.argv):
+            from pyats.topology import loader as _loader
+
+            _testbed = _loader.load(sys.argv[_idx + 1])
+
+    aetest.main(testbed=_testbed)
