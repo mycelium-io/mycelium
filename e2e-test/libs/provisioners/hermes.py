@@ -30,6 +30,7 @@ from typing import Any, ClassVar
 from libs import host_exec
 from libs.host_exec import HostExecError
 from libs.provisioners.base import HERMES_BOOTSTRAP_ROOM, ABCProvisioner, AgentRef, PrereqMissing
+from libs.provisioners.openclaw import _infra_script
 
 log = logging.getLogger(__name__)
 
@@ -194,7 +195,8 @@ class HermesProvisioner(ABCProvisioner):
     def _restart_hermes_gateway(self, device: Any) -> None:
         """Signal the supervisord-managed hermes gateway to reload config."""
         try:
-            host_exec.execute(device, ["/openclaw/restart-hermes-gateway.sh"], timeout=20.0)
+            _restart_script = _infra_script("restart-hermes-gateway.sh")
+            host_exec.execute(device, [_restart_script], timeout=20.0)
         except HostExecError as exc:
             log.warning(
                 "hermes: gateway restart failed on %s: %s",

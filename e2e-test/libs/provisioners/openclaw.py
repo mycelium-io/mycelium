@@ -33,6 +33,22 @@ from libs.provisioners.base import (
 
 log = logging.getLogger(__name__)
 
+# Scripts live at /openclaw/ inside E2E Docker containers. On bare hosts
+# (transport=local) they're in infra/scripts/ relative to the repo root.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_INFRA_SCRIPTS = os.path.join(_REPO_ROOT, "infra", "scripts")
+
+
+def _infra_script(name: str) -> str:
+    """Return the path to an infra script, preferring the container path."""
+    container_path = f"/openclaw/{name}"
+    if os.path.isfile(container_path):
+        return container_path
+    local_path = os.path.join(_INFRA_SCRIPTS, name)
+    if os.path.isfile(local_path):
+        return local_path
+    return container_path  # fall through — HostExecError will handle missing
+
 
 # When OpenClaw agents are spawned by the test harness they need
 # credentials. ``mycelium agent create --copy-auth-from <seed>``
@@ -492,7 +508,7 @@ class OpenClawProvisioner(ABCProvisioner):
         Product ``mycelium adapter add`` only seeds the default workspace;
         E2E infra handles per-agent copies via ``install-openclaw-skills.sh``.
         """
-        argv = ["/openclaw/install-openclaw-skills.sh"]
+        argv = [_infra_script("install-openclaw-skills.sh")]
         if agent_id:
             argv.append(agent_id)
         try:
@@ -515,9 +531,9 @@ class OpenClawProvisioner(ABCProvisioner):
     def _patch_openclaw_plugin(self, device: Any, *, restart: bool = False) -> None:
         """Apply infra-side OpenClaw plugin patches; optional gateway restart."""
         try:
-            host_exec.execute(device, ["/openclaw/patch-openclaw-plugin.sh"], timeout=30.0)
+            host_exec.execute(device, [_infra_script("patch-openclaw-plugin.sh")], timeout=30.0)
             if restart:
-                host_exec.execute(device, ["/openclaw/restart-openclaw-gateway.sh"], timeout=20.0)
+                host_exec.execute(device, [_infra_script("restart-openclaw-gateway.sh")], timeout=20.0)
         except HostExecError as exc:
             log.warning(
                 "openclaw: plugin patch failed on %s: %s",
@@ -746,7 +762,7 @@ class OpenClawProvisioner(ABCProvisioner):
             )
         self._trim_stale_session_files(device, max_files=1)
         try:
-            host_exec.execute(device, ["/openclaw/restart-openclaw-gateway.sh"], timeout=30.0)
+            host_exec.execute(device, [_infra_script("restart-openclaw-gateway.sh")], timeout=30.0)
             host_exec.execute(device, ["sleep", "3"], timeout=10.0)
         except HostExecError as exc:
             log.warning(

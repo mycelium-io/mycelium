@@ -66,11 +66,16 @@ def _is_chown(argv) -> bool:
 
 
 def _is_infra_script(argv) -> bool:
-    """Baked spoke infra helpers invoked during ensure/register."""
-    if isinstance(argv, list) and argv and str(argv[0]).startswith("/openclaw/"):
-        return True
+    """Baked spoke infra helpers invoked during ensure/register.
+
+    Scripts live at /openclaw/ in containers and at infra/scripts/ on bare hosts.
+    """
+    if isinstance(argv, list) and argv:
+        s = str(argv[0])
+        if s.startswith("/openclaw/") or "infra/scripts/" in s:
+            return True
     if isinstance(argv, str):
-        return "/openclaw/" in argv or ".openclaw/agents/" in argv
+        return "/openclaw/" in argv or ".openclaw/agents/" in argv or "infra/scripts/" in argv
     return False
 
 
@@ -504,7 +509,7 @@ def test_reset_device_gateway_sessions_waits_for_idle_before_reset():
             return _ok()
         if isinstance(argv, str) and ".openclaw/agents/" in argv:
             return _ok()
-        if argv == ["/openclaw/restart-openclaw-gateway.sh"]:
+        if argv and "restart-openclaw-gateway.sh" in str(argv[0]):
             return _ok()
         if argv == ["sleep", "3"]:
             return _ok()
@@ -538,7 +543,7 @@ def test_reset_device_gateway_sessions_resets_every_agent_and_restarts():
             return _ok()
         if isinstance(argv, str) and ".openclaw/agents/" in argv:
             return _ok()
-        if argv == ["/openclaw/restart-openclaw-gateway.sh"]:
+        if argv and "restart-openclaw-gateway.sh" in str(argv[0]):
             return _ok()
         if argv == ["sleep", "3"]:
             return _ok()
@@ -551,7 +556,7 @@ def test_reset_device_gateway_sessions_resets_every_agent_and_restarts():
         prov.reset_device_gateway_sessions(_device())
 
     argv_lists = [c[0][1] for c in mock_exec.call_args_list if isinstance(c[0][1], list)]
-    assert ["/openclaw/restart-openclaw-gateway.sh"] in argv_lists
+    assert any("restart-openclaw-gateway.sh" in str(a[0]) for a in argv_lists if a)
     assert ["sleep", "3"] in argv_lists
     assert sorted(session_lists) == ["agent-alpha", "agent-beta", "agent-gamma"]
 
@@ -570,7 +575,7 @@ def test_reset_device_gateway_sessions_scoped_to_handles():
             return _ok()
         if isinstance(argv, str) and ".openclaw/agents/" in argv:
             return _ok()
-        if argv == ["/openclaw/restart-openclaw-gateway.sh"]:
+        if argv and "restart-openclaw-gateway.sh" in str(argv[0]):
             return _ok()
         if argv == ["sleep", "3"]:
             return _ok()
