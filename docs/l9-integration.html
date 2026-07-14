@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L9 Integration (internal) — mycelium</title>
+<meta name="description" content="Internal reference: how mycelium integrates the IOC L9 protocol across ioc-cfn-svc, ioc-protocols-models, and ioc-cfn-cognition-engines, with the deployed version pins.">
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="mycelium.css">
+<style>
+  /* Ghost-page-only tweaks: this page is unlinked from the site nav. */
+  .ghost-banner {
+    border: 1px solid var(--rule, #cbb89a);
+    background: rgba(203, 184, 154, 0.10);
+    padding: 12px 16px; margin: 0 0 28px; border-radius: 4px;
+    font-size: 0.9rem;
+  }
+  .ghost-banner strong { letter-spacing: 0.04em; }
+  table.l9 { border-collapse: collapse; width: 100%; margin: 18px 0; font-size: 0.92rem; }
+  table.l9 th, table.l9 td { border: 1px solid rgba(120,110,90,0.25); padding: 7px 10px; text-align: left; vertical-align: top; }
+  table.l9 th { background: rgba(203,184,154,0.12); font-weight: 600; }
+  table.l9 code { white-space: nowrap; }
+  .pill { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 0.78rem; border: 1px solid rgba(120,110,90,0.35); }
+  .pill.ours { background: rgba(120,170,120,0.15); }
+  .pill.cfn  { background: rgba(120,150,200,0.15); }
+  .pill.gap  { background: rgba(200,140,120,0.15); }
+</style>
+</head>
+<body>
+<canvas id="mycelium-bg"></canvas>
+<nav class="topnav">
+  <a href="https://mycelium-io.github.io" class="topnav-cell topnav-brand">
+    <img src="logo.png" alt="Mycelium">
+    <span class="brand-word">mycelium</span>
+  </a>
+  <span class="topnav-cell topnav-page-cell">
+    <span class="caps-mono">L9 · INTERNAL</span>
+  </span>
+  <div class="topnav-right">
+    <a href="https://github.com/mycelium-io/mycelium" aria-label="GitHub" style="display:flex;align-items:center;"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="display:block;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
+  </div>
+</nav>
+<div class="layout">
+
+  <nav class="sidebar">
+    <div class="nav-section">
+      <div class="nav-section-label">L9 Integration</div>
+      <a href="#model" class="nav-link sub">The model</a>
+      <a href="#components" class="nav-link sub">Component map</a>
+      <a href="#responsibility" class="nav-link sub">Who computes what</a>
+      <a href="#flow" class="nav-link sub">Envelope flow</a>
+      <a href="#mycelium-adds" class="nav-link sub">What mycelium adds</a>
+      <a href="#versions" class="nav-link sub">Deployed versions</a>
+      <a href="#drift" class="nav-link sub">Spec drift &amp; in-flight</a>
+      <a href="#transitional" class="nav-link sub">Transitional direction</a>
+    </div>
+  </nav>
+
+  <main class="main">
+  <div class="main-inner">
+    <section class="doc-section" id="model">
+      <div class="ghost-banner">
+        <strong>INTERNAL / UNLINKED.</strong> This page is not in the docs nav — it exists to be
+        shared by URL. It documents how mycelium wires into the IOC L9 stack and pins the versions
+        we actually deploy. Last hand-verified against the sibling repos on 2026-07-14.
+      </div>
+
+      <h1>How mycelium integrates L9</h1>
+      <p>
+        L9 is the epistemic layer of the <a href="https://github.com/outshift-open/ioc-protocols-models">Internet of Cognition</a>:
+        a fixed message <em>envelope</em> (kind/subkind, participants, episode URN, causal
+        <code>message.parents</code>, typed payload) that lets a routing fabric move
+        cognition between agents and engines. Mycelium is one producer of those envelopes.
+      </p>
+      <p>Three upstream repos, one local integration:</p>
+      <ul>
+        <li><strong>ioc-protocols-models</strong> — the L9 spec + the generated language bindings. The <em>grammar</em>.</li>
+        <li><strong>ioc-cfn-svc</strong> (the "CFN") — the Go fabric node: validates + routes L9 envelopes to Cognition Engines, and serves the semantic-alignment (bargaining) + shared-memory APIs. The <em>switchboard</em>.</li>
+        <li><strong>ioc-cfn-cognition-engines</strong> (the "CE") — the engines the CFN routes to: semantic-alignment (NegMAS/SAO), knowledge extraction, drift/validation. The <em>compute</em>.</li>
+        <li><strong>mycelium</strong> — coordinates agents, drives negotiation through the CFN, and <em>annotates</em> every coordination message with an additive L9 envelope. Agents never speak L9 themselves; the backend synthesizes it.</li>
+      </ul>
+      <p>
+        The load-bearing fact: <strong>mycelium&#x27;s L9 envelopes are additive and never required of agents.</strong>
+        A negotiation runs identically with or without them; they ride inside the existing message
+        content JSON under an <code>l9</code> key, and the epistemic reply fields are all optional.
+      </p>
+    </section>
+
+    <section class="doc-section" id="components">
+      <h1>Component map</h1>
+      <table class="l9">
+        <thead><tr><th>Repo</th><th>Role in L9</th><th>What mycelium consumes</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>ioc-protocols-models</code></td>
+            <td>Spec + bindings. Defines the L9 envelope, the <code>kind</code> enum, and (in subprotocols) SAB/SIEP/CIP semantics.</td>
+            <td>The <strong>python binding, vendored</strong> as <code>l9_models.py</code> (the PyPI package pulls a conflicting litellm). We build/validate envelopes against it in <code>app/services/l9.py</code>.</td>
+          </tr>
+          <tr>
+            <td><code>ioc-cfn-svc</code></td>
+            <td>Routing fabric. <code>POST /api/l9/messages</code> validates kind/subkind and routes by <code>participants.groups</code> to a CE. Also serves semantic-alignment + shared-memory.</td>
+            <td>The <strong>semantic-alignment REST API</strong> (start/decide) via a typed client for negotiation, and shared-memory via httpx. Its <code>validSubkinds</code> table is authoritative for our <code>VALID_SUBKINDS</code>.</td>
+          </tr>
+          <tr>
+            <td><code>ioc-cfn-cognition-engines</code></td>
+            <td>The engines: NegMAS/SAO bargaining, knowledge extraction, SAV/drift validation.</td>
+            <td>Reached <em>through</em> the CFN. We consume the SAO agreement (<code>final_result</code>) and the otel-trace knowledge-extraction pipeline. We do <strong>not</strong> talk to CEs directly.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="doc-section" id="responsibility">
+      <h1>Who computes what</h1>
+      <p>The single most useful thing to internalize: the deployed CFN and CE do <em>not</em> compute the SNP epistemic quality metrics. Mycelium does, for now.</p>
+      <table class="l9">
+        <thead><tr><th>Layer</th><th>Owns</th><th>Does not do</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="pill cfn">CFN</span> ioc-cfn-svc</td>
+            <td>L9 envelope transport + kind/subkind validation + content-based CE routing; SAO bargaining; knowledge/shared-memory plumbing; CE registry + operational metrics.</td>
+            <td>No belief model, no MPC/GAR/SCR, no grounding, no ToM. Its only score is a commit-level <code>confidence_score</code> scalar (which mycelium currently ignores).</td>
+          </tr>
+          <tr>
+            <td><span class="pill cfn">CE</span> cognition-engines</td>
+            <td>NegMAS/SAO agreement; knowledge extraction (concepts/relations); SAV instability/drift validation (positional_instability, per_issue_divergence, agreement_coherence).</td>
+            <td>The deployed CE computes agreement, not the SNP convergence metrics. The belief-revision layer is in-flight upstream, not released.</td>
+          </tr>
+          <tr>
+            <td><span class="pill ours">mycelium</span></td>
+            <td><strong>All of the L9 epistemic quality layer:</strong> MPC, genuine GAR, genuine SCR, provenance_weight; contingency/grounding; <code>revision_cause</code> derivation; episode records (<code>log/episodes/*.md</code>); the local <code>team_prior</code> writeback loop.</td>
+            <td>&mdash;</td>
+          </tr>
+          <tr>
+            <td><span class="pill gap">nobody (deployed)</span></td>
+            <td colspan="2">The SNP belief-revision metric family from a <em>real</em> belief model. That&#x27;s exactly why mycelium computes it: <code>l9_episode.py</code> says "interim until the CE computes them natively" — and the interim is real.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="doc-section" id="flow">
+      <h1>Envelope flow</h1>
+      <p>Every negotiation is one L9 <strong>episode</strong>, keyed by <code>urn:ioc:mycelium:episode:{room}:{session_short_id}</code>. The envelopes, in causal order:</p>
+      <pre><code>intent:mission          episode opens (joined agent intents)
+  └─ exchange (tick)    server → agent: the offer + can_counter_offer
+       └─ exchange (reply)   agent → server: accept/reject/counter + epistemic fields
+            └─ ...             one tick/reply pair per agent per round
+  └─ commit:converged   agreement   (or commit:abort on failure/timeout)</code></pre>
+      <p>
+        Each envelope cites its <code>parents</code>: a tick parents the agent&#x27;s prior reply,
+        a reply parents the tick it answers, the commit parents every final reply. Reply envelopes
+        are <strong>synthesized backend-side</strong> from the parsed reply dict — agents never write L9.
+      </p>
+      <p><strong>Two delivery paths, kept in sync</strong> (change both when you touch a tick/consensus field):</p>
+      <ul>
+        <li><strong>CLI path</strong> (Claude Code, Cursor, shell): the agent runs <code>mycelium await</code> and sees the raw JSON tick.</li>
+        <li><strong>OpenClaw path</strong>: the <code>mycelium-room</code> channel plugin subscribes to the session SSE and dispatches a human-readable string via <code>formatTickInstruction()</code> / <code>formatConsensusSummary()</code> in <code>route.ts</code>. The agent only sees that string.</li>
+      </ul>
+      <p>
+        The subkind vocabulary is the Go CFN&#x27;s <code>validSubkinds</code> table (authoritative over the
+        spec docs): <code>commit: converged | resolved | abort</code>. A failed negotiation commits as
+        <code>abort</code>, not <code>rejected</code>.
+      </p>
+    </section>
+
+    <section class="doc-section" id="mycelium-adds">
+      <h1>What mycelium adds on top</h1>
+      <p>
+        On top of the transport, mycelium computes the SIEP-style agreement-quality layer from the
+        optional epistemic reply fields agents volunteer (<code>confidence</code>,
+        <code>supporting_evidence</code>/<code>against_evidence</code>, <code>addresses</code>,
+        <code>revision_cause</code>, <code>deferred_to</code>). All in <code>app/services/l9_episode.py</code>:
+      </p>
+      <ul>
+        <li><strong>MPC</strong> — mean final confidence at convergence.</li>
+        <li><strong>GAR</strong> — genuine agreement ratio: whose posterior moved toward the outcome (guarded at the MPC=0.5 degeneracy).</li>
+        <li><strong>SCR</strong> — social compliance ratio: fraction of belief <em>revisions</em> caused by compliance (a deferral, or a move that engages evidence too weakly) rather than grounded argument. Movement with no grounding flags is given the benefit of the doubt (genuine), so non-adopters are never penalized.</li>
+        <li><strong>provenance_weight</strong> = <code>(1 − SCR) × GAR</code> — the single trust score. Surfaced live via <code>negotiate status</code>; <code>--contested</code> exits 2 below 0.60.</li>
+        <li><strong>Grounding</strong> — <code>contingency_score = |addresses ∩ prior evidence| / |addresses|</code>; ≥ 0.40 counts as grounded.</li>
+        <li><strong>team_prior loop</strong> — a converged episode writes its rule to the room&#x27;s own memory at <code>l9/rule_update/topic</code>; the next episode reads it back as the tick <code>team_prior</code>. Fully local (markdown + frontmatter); the CFN knowledge store is only a fallback behind <code>L9_CFN_ENABLED</code>.</li>
+      </ul>
+      <p>These are mycelium-side telemetry: none of them are forwarded to the CFN, which only ever receives <code>participant_id/action/offer</code>.</p>
+    </section>
+
+    <section class="doc-section" id="versions">
+      <h1>Deployed versions</h1>
+      <p>What the <code>cfn</code> compose profile actually pins (coherent <code>2026-06-26-*</code> set), plus the binding versions:</p>
+      <table class="l9">
+        <thead><tr><th>Component</th><th>Pinned</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>ioc-cfn-svc</code></td><td><code>2026-06-26-dd16901</code></td><td>Pins the golang L9 binding <code>v0.0.6</code>. Authoritative subkind table.</td></tr>
+          <tr><td><code>ioc-cfn-mgmt-plane-svc</code></td><td><code>2026-06-26-d2e97e4</code></td><td>Python/FastAPI; OpenAPI at <code>/api/openapi.json</code>; auto-creates a Default Workspace.</td></tr>
+          <tr><td><code>ioc-knowledge-memory-svc</code></td><td><code>2026-06-26-ee8f699</code></td><td>Knowledge store (port 9003); holds the graph.</td></tr>
+          <tr><td><code>ioc-cfn-cognition-engines</code></td><td><code>2026-06-26-c01c60a</code></td><td>= commit <code>c01c60a</code> (PR #34). <strong>SSTP-only</strong>: has the SAV validation layer but <em>no</em> <code>/api/l9/messages</code> endpoint and no SAB wrapping.</td></tr>
+          <tr><td>L9 binding (spec)</td><td><code>v0.0.6</code></td><td>The version the CFN pins; matches mycelium&#x27;s <code>l9.py VERSION</code>.</td></tr>
+          <tr><td>mycelium vendored python binding</td><td>spec commit <code>93773a5</code></td><td><code>l9_models.py</code>. Regenerate from the upstream <code>src/l9.py</code> (moved from <code>data_model.py</code>).</td></tr>
+          <tr><td>mycelium L9 layer</td><td><code>VERSION="0.0.6"</code>, subprotocol <code>mycelium</code></td><td><code>app/services/l9.py</code>.</td></tr>
+        </tbody>
+      </table>
+      <p>
+        <strong>Consequence:</strong> the pinned CE (<code>c01c60a</code>) has no L9 endpoint, so mycelium&#x27;s
+        optional native-L9-to-CFN path (<code>L9_CFN_ENABLED</code> → <code>l9_cfn.post_l9</code>) would route to
+        a CE that can&#x27;t handle it. That&#x27;s why it&#x27;s off by default, and it can&#x27;t be turned on until the
+        CE image is bumped past cognition-engines <code>#38</code>. The additive envelopes inside coordination
+        content are unaffected — they never reach the CE.
+      </p>
+    </section>
+
+    <section class="doc-section" id="drift">
+      <h1>Spec drift &amp; in-flight upstream</h1>
+      <p>Spec <code>main</code> has moved ahead of both our vendored binding and the deployed CFN. None breaks us today; one is worth tracking.</p>
+      <table class="l9">
+        <thead><tr><th>Upstream PR</th><th>Change</th><th>Impact on us</th></tr></thead>
+        <tbody>
+          <tr><td>ioc-protocols-models <code>#32</code></td><td>Commit subkinds renamed <code>converged→resolved</code>, <code>disagreement→unresolved</code> (SAB).</td><td><strong>Track.</strong> We emit <code>commit:converged</code>. The deployed CFN still accepts it (both are valid), so no break; when the CFN bumps its binding, we switch to <code>resolved</code>.</td></tr>
+          <tr><td>ioc-protocols-models <code>#29</code></td><td><code>message</code> made required on <code>L9Header</code>; classes moved <code>data_model.py → src/l9.py</code>.</td><td>Safe — we always populate <code>message</code>. Tidy: update the regen path in <code>l9_models.py</code>.</td></tr>
+          <tr><td>ioc-protocols-models <code>#28</code>, <code>#25</code></td><td>SAB rebuilt on the canonical L9 envelope; genuine GAR/SCR in the reference impl.</td><td>Future / validation. #25 is the canonical reference for exactly the belief-revision + grounding + real-GAR/SCR layer we implemented.</td></tr>
+          <tr><td>cognition-engines <code>#38</code> (merged)</td><td>SAB L9 routing for the Semantic Alignment CE (<code>/api/l9/messages</code>).</td><td>On CE <code>main</code> but not in the pinned image. Prereq for enabling <code>L9_CFN_ENABLED</code>.</td></tr>
+          <tr><td>cognition-engines <code>#33</code>, <code>#41</code></td><td>SAV → Drift Detection CE (process-failure-mode thresholds, CE-side L9 adapter); SAB-wrap negotiation inward.</td><td>Drift Detection is the upstream home of the ToM/social-compliance layer — consume it when released rather than building our own.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="doc-section" id="transitional">
+      <h1>Transitional direction</h1>
+      <p>
+        Per the CFN team, the sem-neg REST contract is <strong>transitional</strong>. The Semantic
+        Alignment CE is being reworked to process L9 natively via the <strong>SAB subprotocol</strong>;
+        once that lands, the CFN&#x27;s <code>semantic-alignment/start|decide</code> endpoints are removed and
+        negotiation migrates onto the L9 envelope layer (<code>l9.py</code> / <code>l9_episode.py</code>).
+        The typed negotiation client is a bridge — don&#x27;t over-invest.
+      </p>
+      <p>
+        This is why mycelium already emits L9 envelopes and computes the epistemic layer locally: when
+        the platform catches up, we plug in instead of retrofit. The near-term, non-throwaway work is
+        the belief model + genuine SCR + grounding + the local knowledge writeback — all of which the
+        SAB migration will need regardless. The Theory-of-Mind layer is the one piece we deliberately
+        defer to the upstream Drift Detection CE.
+      </p>
+    </section>
+
+  </div>
+  </main>
+</div>
+</body>
+</html>
