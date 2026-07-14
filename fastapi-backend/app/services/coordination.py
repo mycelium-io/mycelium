@@ -578,12 +578,17 @@ async def _run_cfn_negotiation(
     except Exception:
         logger.exception("L9 episode setup failed for %s: continuing without", room_name)
     try:
-        state.team_prior = await l9_cfn.knowledge_query_team_prior(
-            parent_room=parent_room_l9,
-            short_id=short_id_l9,
-            workspace_id=workspace_id,
-            mas_id=mas_id,
-        )
+        # Prefer the mycelium-local prior written by the last converged episode
+        # on this topic; only fall back to the CFN knowledge store (off by
+        # default) when no local rule exists.
+        state.team_prior = l9_episode.read_team_prior_local(parent_room_l9)
+        if state.team_prior is None:
+            state.team_prior = await l9_cfn.knowledge_query_team_prior(
+                parent_room=parent_room_l9,
+                short_id=short_id_l9,
+                workspace_id=workspace_id,
+                mas_id=mas_id,
+            )
     except Exception:
         logger.exception("L9 team-prior query failed for %s: continuing without", room_name)
     _cfn_state[room_name] = state
@@ -1531,6 +1536,10 @@ async def _finish_cfn(
             metrics=metrics,
             plan_file=plan_file,
         )
+        # Write the converged rule to local memory so the next episode on this
+        # topic reads its provenance-weighted prior back (mycelium-local loop).
+        if not broken and metrics is not None:
+            l9_episode.write_rule_update(state.episode, metrics)
         if not broken and l9_cfn.enabled():
             consensus_l9_id = None
             if consensus_l9 is not None:

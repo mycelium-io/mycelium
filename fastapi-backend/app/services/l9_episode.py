@@ -388,6 +388,87 @@ def write_episode_record(
         logger.exception("episode record write failed for %s", ep.episode)
 
 
+# One canonical converged-rule memory per room (each room is one topic). Reading
+# it back on the next episode is the mycelium-local team_prior loop; it does not
+# touch the CFN knowledge store (that path is l9_cfn, off by default).
+_RULE_UPDATE_KEY = "l9/rule_update/topic"
+
+
+def write_rule_update(ep: EpisodeState, metrics: dict[str, Any]) -> None:
+    """Persist the converged rule to the parent room's memory so a later episode
+    on this topic can read its provenance-weighted prior back. Best-effort."""
+    try:
+        from app.services.filesystem import get_room_dir, read_memory_file, write_memory_file
+
+        base = get_room_dir(ep.parent_room)
+        # Count how many times this topic has converged (for prior weighting).
+        episode_count = 1
+        existing = read_memory_file(base, _RULE_UPDATE_KEY)
+        if existing:
+            prev = existing[0].get("l9")
+            if isinstance(prev, dict):
+                try:
+                    episode_count = int(prev.get("episode_count", 0)) + 1
+                except (TypeError, ValueError):
+                    episode_count = 1
+        rule = {
+            "posterior": metrics["mpc"],
+            "gar": metrics["gar"],
+            "scr": metrics["scr"],
+            "provenance_weight": metrics["provenance_weight"],
+            "revision_cause": "converged_episode",
+            "episode_id": ep.episode,
+            "episode_count": episode_count,
+        }
+        content = (
+            f"Converged rule for `{ep.topic}`: posterior {metrics['mpc']:.2f}, "
+            f"provenance_weight {metrics['provenance_weight']:.2f} "
+            f"(episode {ep.short_id}, {episode_count} converged)."
+        )
+        base.mkdir(parents=True, exist_ok=True)
+        write_memory_file(
+            base,
+            _RULE_UPDATE_KEY,
+            content,
+            created_by=l9.SYSTEM_ACTOR_ID,
+            updated_by=l9.SYSTEM_ACTOR_ID,
+            extra_meta={"l9": rule},
+        )
+    except Exception:
+        logger.exception("rule_update write failed for %s", ep.episode)
+
+
+def read_team_prior_local(parent_room: str) -> dict[str, Any] | None:
+    """Read the last converged rule for this room back as a tick-ready
+    ``team_prior`` dict. None when no prior episode has converged."""
+    try:
+        from app.services.filesystem import get_room_dir, read_memory_file
+
+        result = read_memory_file(get_room_dir(parent_room), _RULE_UPDATE_KEY)
+        if not result:
+            return None
+        rule = result[0].get("l9")
+        if not isinstance(rule, dict):
+            return None
+        posterior = rule.get("posterior")
+        pw = rule.get("provenance_weight")
+        if not isinstance(posterior, int | float) or not isinstance(pw, int | float):
+            return None
+        try:
+            episode_count = int(rule.get("episode_count", 1))
+        except (TypeError, ValueError):
+            episode_count = 1
+        return {
+            "confidence": float(posterior),
+            "provenance_weight": float(pw),
+            "episode_count": episode_count,
+            "source": "mycelium-memory",
+        }
+    except Exception:
+        logger.exception("local team-prior read failed for %s", parent_room)
+        return None
+
+
 def sanitize_epistemic_fields(parsed: dict[str, Any], result: dict[str, Any]) -> None:
     """Copy validated epistemic fields from a raw agent reply into the parsed
     reply dict. Invalid values are dropped, never rejected: epistemic fields

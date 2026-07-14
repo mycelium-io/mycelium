@@ -386,6 +386,50 @@ def test_write_episode_record(tmp_path, monkeypatch):
     assert len(jsonl_lines) == 3
 
 
+def test_rule_update_writeback_and_local_team_prior(tmp_path, monkeypatch):
+    monkeypatch.setenv("MYCELIUM_DATA_DIR", str(tmp_path))
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
+    ep = _open()
+    metrics = {"mpc": 0.72, "gar": 0.8, "scr": 0.1, "provenance_weight": 0.72, "participants": 2}
+    l9_episode.write_rule_update(ep, metrics)
+
+    rule_file = tmp_path / "rooms" / "sprint" / "l9" / "rule_update" / "topic.md"
+    assert rule_file.exists()
+
+    prior = l9_episode.read_team_prior_local("sprint")
+    assert prior == {
+        "confidence": 0.72,
+        "provenance_weight": 0.72,
+        "episode_count": 1,
+        "source": "mycelium-memory",
+    }
+
+
+def test_rule_update_episode_count_increments(tmp_path, monkeypatch):
+    monkeypatch.setenv("MYCELIUM_DATA_DIR", str(tmp_path))
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
+    ep = _open()
+    metrics = {"mpc": 0.6, "gar": 0.5, "scr": 0.2, "provenance_weight": 0.4, "participants": 2}
+    l9_episode.write_rule_update(ep, metrics)
+    l9_episode.write_rule_update(ep, metrics)
+
+    prior = l9_episode.read_team_prior_local("sprint")
+    assert prior is not None
+    assert prior["episode_count"] == 2
+
+
+def test_read_team_prior_local_absent_returns_none(tmp_path, monkeypatch):
+    monkeypatch.setenv("MYCELIUM_DATA_DIR", str(tmp_path))
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
+    assert l9_episode.read_team_prior_local("never-negotiated") is None
+
+
 # ── alignment-flavor CFN client ───────────────────────────────────────────────
 
 
