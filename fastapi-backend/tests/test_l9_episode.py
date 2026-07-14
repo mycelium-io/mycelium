@@ -119,7 +119,7 @@ def test_metrics_none_when_participation_thin():
     l9_episode.record_reply(
         ep, handle="a1", reply={"action": "accept", "confidence": 0.8}, round_n=1
     )
-    assert l9_episode.compute_metrics(ep, {"a1": "accept", "a2": "accept"}) is None
+    assert l9_episode.compute_metrics(ep) is None
 
 
 def test_metrics_genuine_agreement():
@@ -137,10 +137,11 @@ def test_metrics_genuine_agreement():
     l9_episode.record_reply(
         ep, handle="a2", reply={"action": "accept", "confidence": 0.9}, round_n=2
     )
-    m = l9_episode.compute_metrics(ep, {"a1": "accept", "a2": "accept"})
+    m = l9_episode.compute_metrics(ep)
     assert m is not None
     assert m["mpc"] == pytest.approx(0.85)
     assert m["gar"] == 1.0
+    # Both moved without deference or failed grounding → genuine, so SCR stays 0.
     assert m["scr"] == 0.0
     assert m["provenance_weight"] == 1.0
     assert m["participants"] == 2
@@ -158,12 +159,12 @@ def test_metrics_social_compliance():
         reply={"action": "accept", "confidence": 0.4, "deferred_to": "a1"},
         round_n=1,
     )
-    # a2's prior was also 0.4 (single round): direction*delta == 0 counts as
-    # non-opposing, so GAR stays 1.0; SCR catches the deference instead.
-    m = l9_episode.compute_metrics(ep, {"a1": "accept", "a2": "accept"})
+    # SCR is over agents that actually revised: a2 deferred (compliance), a1
+    # stated once and never moved (not a reviser), so 1/1 revisions was compliance.
+    m = l9_episode.compute_metrics(ep)
     assert m is not None
-    assert m["scr"] == 0.5
-    assert m["provenance_weight"] == pytest.approx((1 - 0.5) * m["gar"])
+    assert m["scr"] == 1.0
+    assert m["provenance_weight"] == pytest.approx((1 - 1.0) * m["gar"])
 
 
 def test_metrics_gar_detects_dragged_agent():
@@ -178,9 +179,134 @@ def test_metrics_gar_detects_dragged_agent():
     l9_episode.record_reply(
         ep, handle="a2", reply={"action": "accept", "confidence": 0.6}, round_n=2
     )
-    m = l9_episode.compute_metrics(ep, {"a1": "accept", "a2": "accept"})
+    m = l9_episode.compute_metrics(ep)
     assert m is not None
     assert m["gar"] == 0.5
+
+
+def test_grounding_yields_genuine_revision_cause():
+    ep = _open()
+    # a1 seeds the evidence pool; a2 states a prior, then moves while engaging it.
+    l9_episode.record_reply(
+        ep,
+        handle="a1",
+        reply={"action": "reject", "confidence": 0.5, "supporting_evidence": ["e1", "e2"]},
+        round_n=1,
+    )
+    l9_episode.record_reply(
+        ep, handle="a2", reply={"action": "reject", "confidence": 0.3}, round_n=1
+    )
+    l9_episode.record_reply(
+        ep,
+        handle="a2",
+        reply={"action": "accept", "confidence": 0.8, "addresses": ["e1", "e2"]},
+        round_n=2,
+    )
+    assert ep.revision_cause["a2"] == "grounded_argument"
+
+
+def test_weak_grounding_yields_social_compliance():
+    ep = _open()
+    l9_episode.record_reply(
+        ep,
+        handle="a1",
+        reply={"action": "reject", "confidence": 0.5, "supporting_evidence": ["e1", "e2"]},
+        round_n=1,
+    )
+    l9_episode.record_reply(
+        ep, handle="a2", reply={"action": "reject", "confidence": 0.3}, round_n=1
+    )
+    # a2 moves but its addresses don't overlap the pool → weak grounding → compliance.
+    l9_episode.record_reply(
+        ep,
+        handle="a2",
+        reply={"action": "accept", "confidence": 0.8, "addresses": ["unrelated"]},
+        round_n=2,
+    )
+    assert ep.revision_cause["a2"] == "social_compliance"
+
+
+def test_movement_without_addresses_is_genuine():
+    ep = _open()
+    # No grounding flags at all: an agent that moves must not be scored as complying.
+    l9_episode.record_reply(
+        ep, handle="a2", reply={"action": "reject", "confidence": 0.3}, round_n=1
+    )
+    l9_episode.record_reply(
+        ep, handle="a2", reply={"action": "accept", "confidence": 0.9}, round_n=2
+    )
+    assert ep.revision_cause["a2"] == "grounded_argument"
+
+
+def test_explicit_revision_cause_overrides_derivation():
+    ep = _open()
+    l9_episode.record_reply(
+        ep, handle="a2", reply={"action": "reject", "confidence": 0.3}, round_n=1
+    )
+    l9_episode.record_reply(
+        ep,
+        handle="a2",
+        reply={"action": "accept", "confidence": 0.9, "revision_cause": "new_evidence"},
+        round_n=2,
+    )
+    assert ep.revision_cause["a2"] == "new_evidence"
+
+
+def test_gar_guard_at_mpc_half():
+    ep = _open()
+    # Two agents move in opposite directions and land at mean 0.5. The direction
+    # term vanishes; the guard must NOT score this maximal disagreement as gar=1.
+    l9_episode.record_reply(
+        ep, handle="a1", reply={"action": "reject", "confidence": 0.6}, round_n=1
+    )
+    l9_episode.record_reply(
+        ep, handle="a2", reply={"action": "reject", "confidence": 0.4}, round_n=1
+    )
+    l9_episode.record_reply(
+        ep, handle="a1", reply={"action": "accept", "confidence": 0.4}, round_n=2
+    )
+    l9_episode.record_reply(
+        ep, handle="a2", reply={"action": "accept", "confidence": 0.6}, round_n=2
+    )
+    m = l9_episode.compute_metrics(ep)
+    assert m is not None
+    assert m["mpc"] == pytest.approx(0.5)
+    assert m["gar"] == 0.0
+
+
+# ── reply parsing (coordination.py integration) ───────────────────────────────
+
+
+def test_parse_agent_reply_carries_new_epistemic_fields():
+    content = json.dumps(
+        {
+            "action": "accept",
+            "supporting_evidence": ["e1", "  ", 5],
+            "against_evidence": ["c1"],
+            "addresses": ["e0"],
+            "revision_cause": "grounded_argument",
+        }
+    )
+    reply = _parse_agent_reply("a1", content)
+    assert reply["supporting_evidence"] == ["e1"]  # trimmed / non-strings dropped
+    assert reply["against_evidence"] == ["c1"]
+    assert reply["addresses"] == ["e0"]
+    assert reply["revision_cause"] == "grounded_argument"
+    assert "offer" not in reply  # epistemic fields never synthesize an offer
+
+
+def test_parse_agent_reply_drops_invalid_revision_cause():
+    reply = _parse_agent_reply("a1", json.dumps({"action": "accept", "revision_cause": "bogus"}))
+    assert "revision_cause" not in reply
+
+
+def test_epistemic_fields_stay_out_of_offer():
+    content = json.dumps(
+        {"offer": {"budget": "high"}, "supporting_evidence": ["e1"], "addresses": ["e0"]}
+    )
+    reply = _parse_agent_reply("a1", content)
+    assert reply["offer"] == {"budget": "high"}  # only issue keys, nothing leaked
+    assert reply["supporting_evidence"] == ["e1"]  # carried as a sibling
 
 
 # ── reply parsing (coordination.py integration) ───────────────────────────────

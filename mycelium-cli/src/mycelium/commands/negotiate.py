@@ -116,7 +116,8 @@ def _check_confidence(confidence: float | None) -> None:
 @doc_ref(
     usage=(
         "mycelium negotiate propose KEY=VALUE [KEY=VALUE ...] "
-        "[--confidence <0-1>] [--evidence <str> ...] [--reasoning <str>] [-r <room>] [-H <handle>]"
+        "[--confidence <0-1>] [--supporting-evidence <str> ...] [--against-evidence <str> ...] "
+        "[--addresses <str> ...] [--reasoning <str>] [-r <room>] [-H <handle>]"
     ),
     desc="Make a negotiation proposal with issue values. Only valid after <code>session await</code> returns <code>action: propose</code>. Optionally state your confidence (0-1), cite evidence, and explain your reasoning.",
     group="negotiate",
@@ -138,7 +139,16 @@ def propose(
         None, "--confidence", help="Your confidence in this offer, 0.0-1.0"
     ),
     evidence: list[str] | None = typer.Option(
-        None, "--evidence", help="Supporting evidence citation (repeatable)"
+        None, "--evidence", help="Legacy flat evidence citation (repeatable)"
+    ),
+    supporting_evidence: list[str] | None = typer.Option(
+        None, "--supporting-evidence", help="Evidence FOR this offer (repeatable)"
+    ),
+    against_evidence: list[str] | None = typer.Option(
+        None, "--against-evidence", help="Known counter-evidence (repeatable)"
+    ),
+    addresses: list[str] | None = typer.Option(
+        None, "--addresses", help="Prior evidence keys this offer engages (repeatable)"
     ),
     reasoning: str | None = typer.Option(
         None, "--reasoning", help="Free-text rationale for the offer"
@@ -256,6 +266,9 @@ def propose(
                 offer=offer,
                 confidence=confidence,
                 evidence=evidence or None,
+                supporting_evidence=supporting_evidence or None,
+                against_evidence=against_evidence or None,
+                addresses=addresses or None,
                 reasoning=reasoning,
             )
         except ValidationError as exc:
@@ -280,8 +293,9 @@ VALID_ACTIONS = {"accept", "reject", "end", "counter_offer"}
 
 @doc_ref(
     usage=(
-        "mycelium negotiate respond <accept|reject> [--confidence <0-1>] [--evidence <str> ...] "
-        "[--reasoning <str>] [--defer-to <handle>] -r <room> -H <handle>"
+        "mycelium negotiate respond <accept|reject> [--confidence <0-1>] "
+        "[--supporting-evidence <str> ...] [--against-evidence <str> ...] [--addresses <str> ...] "
+        "[--revision-cause <cause>] [--reasoning <str>] [--defer-to <handle>] -r <room> -H <handle>"
     ),
     desc="Accept or reject the current proposal. Only valid after <code>session await</code> returns <code>action: respond</code>. Optionally state your confidence (0-1), cite evidence, explain your reasoning, or mark a compliance accept with <code>--defer-to</code>.",
     group="negotiate",
@@ -303,7 +317,22 @@ def respond(
         None, "--confidence", help="Your confidence in this response, 0.0-1.0"
     ),
     evidence: list[str] | None = typer.Option(
-        None, "--evidence", help="Supporting evidence citation (repeatable)"
+        None, "--evidence", help="Legacy flat evidence citation (repeatable)"
+    ),
+    supporting_evidence: list[str] | None = typer.Option(
+        None, "--supporting-evidence", help="Evidence FOR this response (repeatable)"
+    ),
+    against_evidence: list[str] | None = typer.Option(
+        None, "--against-evidence", help="Known counter-evidence (repeatable)"
+    ),
+    addresses: list[str] | None = typer.Option(
+        None, "--addresses", help="Prior evidence keys this response engages (repeatable)"
+    ),
+    revision_cause: str | None = typer.Option(
+        None,
+        "--revision-cause",
+        help="Why your belief moved: grounded_argument|social_compliance|"
+        "new_evidence|semantic_memory|repair_resolution",
     ),
     reasoning: str | None = typer.Option(
         None, "--reasoning", help="Free-text rationale for the response"
@@ -353,6 +382,10 @@ def respond(
                 action=action,  # ty: ignore[invalid-argument-type]
                 confidence=confidence,
                 evidence=evidence or None,
+                supporting_evidence=supporting_evidence or None,
+                against_evidence=against_evidence or None,
+                addresses=addresses or None,
+                revision_cause=revision_cause,  # ty: ignore[invalid-argument-type]
                 deferred_to=defer_to,
                 reasoning=reasoning,
             )

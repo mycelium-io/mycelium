@@ -17,11 +17,18 @@ Agent reply shapes (agent → server, plain JSON in room message content):
     { "action": "accept" }   # or "reject" or "end"
 
     Both reply shapes accept optional epistemic fields (L9/SIEP):
-    ``confidence`` (float 0-1), ``evidence`` (list of non-empty strings),
-    ``reasoning`` (string), and (respond only) ``deferred_to`` (the handle
-    you yielded to on a compliance accept). Omitted fields MUST be absent
-    from the serialized JSON, not null, so legacy replies stay byte-identical
-    (so always serialize with ``model_dump(exclude_none=True)``).
+    ``confidence`` (float 0-1), ``reasoning`` (string), and the 3-way evidence
+    split from the spec's ``proposal_payload`` -- ``supporting_evidence`` /
+    ``against_evidence`` (lists of non-empty strings) plus ``addresses`` (the
+    prior evidence keys this turn engages, the input to the grounding check).
+    ``respond`` additionally accepts ``revision_cause`` (why the belief moved:
+    ``grounded_argument`` / ``social_compliance`` / ``new_evidence`` /
+    ``semantic_memory`` / ``repair_resolution``) and ``deferred_to`` (the handle
+    you yielded to on a compliance accept). The legacy flat ``evidence`` list
+    still parses. Every epistemic field is optional -- an agent that sends none
+    negotiates exactly as before. Omitted fields MUST be absent from the
+    serialized JSON, not null, so legacy replies stay byte-identical (so always
+    serialize with ``model_dump(exclude_none=True)``).
 
 Inbound tick shape (server → agent, coordination_tick message content):
 The content field is a JSON-serialised SSTPNegotiateMessage envelope whose
@@ -45,6 +52,16 @@ from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+# Why an agent's stated belief moved this turn (SIEP `belief.revision_cause`).
+# ``social_compliance`` is the one that drives SCR down; the rest are genuine.
+RevisionCause = Literal[
+    "grounded_argument",
+    "social_compliance",
+    "new_evidence",
+    "semantic_memory",
+    "repair_resolution",
+]
 
 
 def _validate_evidence(evidence: list[str] | None) -> list[str] | None:
@@ -77,14 +94,26 @@ class ProposeReply(BaseModel):
     )
     evidence: list[str] | None = Field(
         default=None,
-        description="Supporting evidence citations (non-empty strings).",
+        description="Legacy flat evidence list; prefer supporting/against_evidence.",
+    )
+    supporting_evidence: list[str] | None = Field(
+        default=None,
+        description="Evidence keys arguing FOR this offer (non-empty strings).",
+    )
+    against_evidence: list[str] | None = Field(
+        default=None,
+        description="Known counter-evidence keys arguing against this offer.",
+    )
+    addresses: list[str] | None = Field(
+        default=None,
+        description="Prior evidence keys this offer engages (feeds grounding).",
     )
     reasoning: str | None = Field(
         default=None,
         description="Free-text rationale for the offer.",
     )
 
-    @field_validator("evidence")
+    @field_validator("evidence", "supporting_evidence", "against_evidence", "addresses")
     @classmethod
     def check_evidence(cls, v: list[str] | None) -> list[str] | None:
         return _validate_evidence(v)
@@ -96,9 +125,10 @@ class RespondReply(BaseModel):
     CFN mode: action is "accept" or "reject".
     Inline NegMAS mode: "end" is also accepted (mapped to "reject" by backend).
 
-    Epistemic fields (confidence/evidence/deferred_to/reasoning) are optional;
-    ``offer`` is only meaningful for ``counter_offer``. Unset fields must be
-    absent from the wire JSON: serialize with ``model_dump(exclude_none=True)``.
+    Epistemic fields (confidence, supporting/against_evidence, addresses,
+    revision_cause, deferred_to, reasoning) are optional; ``offer`` is only
+    meaningful for ``counter_offer``. Unset fields must be absent from the wire
+    JSON: serialize with ``model_dump(exclude_none=True)``.
     """
 
     action: Literal["accept", "reject", "end", "counter_offer"]
@@ -114,7 +144,23 @@ class RespondReply(BaseModel):
     )
     evidence: list[str] | None = Field(
         default=None,
-        description="Supporting evidence citations (non-empty strings).",
+        description="Legacy flat evidence list; prefer supporting/against_evidence.",
+    )
+    supporting_evidence: list[str] | None = Field(
+        default=None,
+        description="Evidence keys arguing FOR this response (non-empty strings).",
+    )
+    against_evidence: list[str] | None = Field(
+        default=None,
+        description="Known counter-evidence keys arguing against this response.",
+    )
+    addresses: list[str] | None = Field(
+        default=None,
+        description="Prior evidence keys this response engages (feeds grounding).",
+    )
+    revision_cause: RevisionCause | None = Field(
+        default=None,
+        description="Why the stated belief moved this turn (SIEP belief.revision_cause).",
     )
     deferred_to: str | None = Field(
         default=None,
@@ -126,7 +172,7 @@ class RespondReply(BaseModel):
         description="Free-text rationale for the response.",
     )
 
-    @field_validator("evidence")
+    @field_validator("evidence", "supporting_evidence", "against_evidence", "addresses")
     @classmethod
     def check_evidence(cls, v: list[str] | None) -> list[str] | None:
         return _validate_evidence(v)

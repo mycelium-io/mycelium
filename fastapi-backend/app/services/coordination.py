@@ -1431,7 +1431,7 @@ async def _finish_cfn(
     if state and state.episode is not None:
         try:
             if not broken:
-                metrics = l9_episode.compute_metrics(state.episode, state.last_actions)
+                metrics = l9_episode.compute_metrics(state.episode)
             consensus_l9 = l9_episode.build_consensus_envelope(
                 state.episode,
                 broken=broken,

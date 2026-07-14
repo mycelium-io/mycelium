@@ -45,6 +45,30 @@ logger = logging.getLogger(__name__)
 MAX_EVIDENCE_ITEMS = 20
 MAX_REASONING_CHARS = 2000
 
+# SIEP belief.revision_cause vocabulary. Only ``social_compliance`` drives SCR;
+# the rest count as genuine revisions.
+_VALID_REVISION_CAUSES = frozenset(
+    {
+        "grounded_argument",
+        "social_compliance",
+        "new_evidence",
+        "semantic_memory",
+        "repair_resolution",
+    }
+)
+# A turn is grounded when its ``addresses`` overlap prior evidence by at least
+# this fraction (spec contingency_score threshold θ_c).
+_GROUNDING_THRESHOLD = 0.40
+# A posterior shift larger than this counts as a genuine belief move.
+_MOVE_EPS = 0.05
+
+
+def _clean_str_list(value: Any) -> list[str]:
+    """Non-empty trimmed strings from a reply list field, capped. [] otherwise."""
+    if not isinstance(value, list):
+        return []
+    return [v.strip() for v in value if isinstance(v, str) and v.strip()][:MAX_EVIDENCE_ITEMS]
+
 
 @dataclass
 class EpisodeState:
@@ -70,6 +94,11 @@ class EpisodeState:
     last_confidence: dict[str, float] = field(default_factory=dict)
     # handle -> deferred_to handle on the agent's most recent accept, if any.
     deferred: dict[str, str] = field(default_factory=dict)
+    # Union of all supporting-evidence keys stated so far: the grounding pool a
+    # later turn's ``addresses`` is scored against (contingency_score).
+    evidence_pool: set[str] = field(default_factory=set)
+    # handle -> final revision_cause (explicit or derived). Feeds genuine SCR.
+    revision_cause: dict[str, str] = field(default_factory=dict)
 
 
 def open_episode(
@@ -156,7 +185,16 @@ def record_reply(
         payload_data["synthesised"] = True
     if isinstance(reply.get("offer"), dict):
         payload_data["offer"] = reply["offer"]
-    for k in ("confidence", "evidence", "deferred_to", "reasoning"):
+    for k in (
+        "confidence",
+        "evidence",
+        "supporting_evidence",
+        "against_evidence",
+        "addresses",
+        "revision_cause",
+        "deferred_to",
+        "reasoning",
+    ):
         if reply.get(k) is not None:
             payload_data[k] = reply[k]
 
@@ -175,35 +213,92 @@ def record_reply(
     ep.last_reply_ids[handle] = env.header.message.id  # type: ignore[union-attr]
     ep.messages.append(l9.envelope_to_dict(env))
 
+    # --- epistemic folding: belief move, grounding, revision cause ---
     conf = reply.get("confidence")
+    prior = ep.priors.get(handle)  # None until the agent first states confidence
+    new_conf: float | None = None
     if isinstance(conf, int | float) and not isinstance(conf, bool) and 0.0 <= conf <= 1.0:
-        ep.priors.setdefault(handle, float(conf))
-        ep.last_confidence[handle] = float(conf)
+        new_conf = float(conf)
+
+    # Grounding: does this turn engage prior evidence? Score BEFORE folding this
+    # turn's own evidence into the pool, so a turn can't ground itself.
+    addresses = set(_clean_str_list(reply.get("addresses")))
+    grounded: bool | None = None
+    if addresses:
+        contingency = len(addresses & ep.evidence_pool) / len(addresses)
+        grounded = contingency >= _GROUNDING_THRESHOLD
+
+    deferred_to = reply.get("deferred_to")
+    is_defer = action == "accept" and isinstance(deferred_to, str) and bool(deferred_to.strip())
+
+    # Revision cause: an explicit, valid self-report wins; otherwise derive it
+    # from whether the belief moved and whether the move was grounded.
+    cause = reply.get("revision_cause")
+    if not (isinstance(cause, str) and cause in _VALID_REVISION_CAUSES):
+        cause = None
+    if cause is None:
+        moved = prior is not None and new_conf is not None and abs(new_conf - prior) > _MOVE_EPS
+        if is_defer:
+            cause = "social_compliance"
+        elif moved:
+            # Weak grounding (``addresses`` given but overlap below threshold) is
+            # the only *derived* compliance signal. Movement with no addresses at
+            # all gets the benefit of the doubt -- an agent that doesn't use the
+            # optional grounding flags must not be scored as complying.
+            cause = "social_compliance" if grounded is False else "grounded_argument"
+    if cause is not None:
+        ep.revision_cause[handle] = cause
+
+    # Fold this turn's supporting evidence into the grounding pool for later turns.
+    supporting = _clean_str_list(reply.get("supporting_evidence")) or _clean_str_list(
+        reply.get("evidence")
+    )
+    ep.evidence_pool.update(supporting)
+
+    # Prior = first stated confidence (immutable); last_confidence = latest.
+    if new_conf is not None:
+        ep.priors.setdefault(handle, new_conf)
+        ep.last_confidence[handle] = new_conf
+
+    # Keep deference for the episode record; SCR now derives from revision_cause.
     if action == "accept":
-        deferred_to = reply.get("deferred_to")
         if isinstance(deferred_to, str) and deferred_to.strip():
             ep.deferred[handle] = deferred_to.strip()
         else:
             ep.deferred.pop(handle, None)
 
 
-def compute_metrics(ep: EpisodeState, final_actions: dict[str, str]) -> dict[str, Any] | None:
-    """SIEP-style agreement-quality metrics over the agents that reported
-    confidence. Returns None when participation is too thin to mean anything
-    (fewer than two reporters, or more than one silent agent)."""
+def compute_metrics(ep: EpisodeState) -> dict[str, Any] | None:
+    """SIEP agreement-quality metrics over the agents that reported confidence.
+    Returns None when participation is too thin to mean anything (fewer than two
+    reporters, or more than one silent agent)."""
     conf = ep.last_confidence
     if len(conf) < 2 or len(conf) < len(ep.agents) - 1:
         return None
 
     mpc = sum(conf.values()) / len(conf)
-    # GAR: an agent genuinely agrees when its confidence moved in the
-    # direction of the outcome (toward 1 when the team is confident, toward 0
-    # when it isn't) relative to its first stated confidence.
+    # GAR: fraction whose posterior moved toward the outcome relative to prior.
+    # At mpc == 0.5 the direction term vanishes (a spec degeneracy that would
+    # otherwise score maximal disagreement as unanimity), so credit only agents
+    # that did not move -- they at least weren't coerced.
     direction = mpc - 0.5
-    genuine = sum(1 for h, c in conf.items() if (c - ep.priors.get(h, c)) * direction >= 0)
+    genuine = 0
+    for h, c in conf.items():
+        delta = c - ep.priors.get(h, c)
+        if abs(direction) < 1e-9:
+            if abs(delta) < 1e-9:
+                genuine += 1
+        elif delta * direction >= 0:
+            genuine += 1
     gar = genuine / len(conf)
-    accepts = [h for h, a in final_actions.items() if a == "accept"]
-    scr = (sum(1 for h in accepts if h in ep.deferred) / len(accepts)) if accepts else 0.0
+    # SCR: fraction of belief revisions caused by social compliance rather than
+    # grounded argument, over the agents that actually revised (spec definition).
+    revisers = list(ep.revision_cause)
+    scr = (
+        sum(1 for h in revisers if ep.revision_cause[h] == "social_compliance") / len(revisers)
+        if revisers
+        else 0.0
+    )
     return {
         "mpc": round(mpc, 4),
         "gar": round(gar, 4),
@@ -300,11 +395,13 @@ def sanitize_epistemic_fields(parsed: dict[str, Any], result: dict[str, Any]) ->
     conf = parsed.get("confidence")
     if isinstance(conf, int | float) and not isinstance(conf, bool) and 0.0 <= conf <= 1.0:
         result["confidence"] = float(conf)
-    evidence = parsed.get("evidence")
-    if isinstance(evidence, list):
-        cleaned = [e.strip() for e in evidence if isinstance(e, str) and e.strip()]
+    for key in ("evidence", "supporting_evidence", "against_evidence", "addresses"):
+        cleaned = _clean_str_list(parsed.get(key))
         if cleaned:
-            result["evidence"] = cleaned[:MAX_EVIDENCE_ITEMS]
+            result[key] = cleaned
+    cause = parsed.get("revision_cause")
+    if isinstance(cause, str) and cause in _VALID_REVISION_CAUSES:
+        result["revision_cause"] = cause
     deferred_to = parsed.get("deferred_to")
     if isinstance(deferred_to, str) and deferred_to.strip() and result.get("action") == "accept":
         result["deferred_to"] = deferred_to.strip()
