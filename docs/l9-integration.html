@@ -17,6 +17,12 @@
     font-size: 0.9rem;
   }
   .ghost-banner strong { letter-spacing: 0.04em; }
+  .caveat-banner {
+    border: 1px solid rgba(200,120,90,0.55);
+    background: rgba(200,120,90,0.12);
+    padding: 14px 18px; margin: 0 0 22px; border-radius: 4px;
+    font-size: 0.95rem;
+  }
   table.l9 { border-collapse: collapse; width: 100%; margin: 18px 0; font-size: 0.92rem; }
   table.l9 th, table.l9 td { border: 1px solid rgba(120,110,90,0.25); padding: 7px 10px; text-align: left; vertical-align: top; }
   table.l9 th { background: rgba(203,184,154,0.12); font-weight: 600; }
@@ -66,6 +72,7 @@
       <a href="#flow" class="nav-link sub">Envelope flow</a>
       <a href="#commands" class="nav-link sub">Command → payload</a>
       <a href="#mycelium-adds" class="nav-link sub">What mycelium adds</a>
+      <a href="#self-reported" class="nav-link sub">Where the numbers come from</a>
       <a href="#versions" class="nav-link sub">Deployed versions</a>
       <a href="#drift" class="nav-link sub">Spec drift &amp; in-flight</a>
       <a href="#transitional" class="nav-link sub">Transitional direction</a>
@@ -327,6 +334,42 @@ sequenceDiagram
         <li><strong>team_prior loop</strong> — a converged episode writes its rule to the room&#x27;s own memory at <code>l9/rule_update/topic</code>; the next episode reads it back as the tick <code>team_prior</code>. Fully local (markdown + frontmatter); the CFN knowledge store is only a fallback behind <code>L9_CFN_ENABLED</code>.</li>
       </ul>
       <p>These are mycelium-side telemetry: none of them are forwarded to the CFN, which only ever receives <code>participant_id/action/offer</code>.</p>
+    </section>
+
+    <section class="doc-section" id="self-reported">
+      <h1>Where the numbers come from</h1>
+
+      <div class="caveat-banner">
+        <strong>These are self-reported epistemics, not measurements.</strong> The metrics are exact,
+        deterministic arithmetic — over inputs the agents make up. mycelium enforces the
+        <em>shape</em> of those inputs, never their truth or calibration.
+      </div>
+
+      <p>The chain bottoms out at a language model typing a number:</p>
+      <ul>
+        <li><strong>The inputs are agent-generated.</strong> <code>--confidence 0.8</code> is whatever float the LLM chose. There is no calibration, no logprob extraction, no ground truth behind it. Same for which strings it cites as <code>supporting_evidence</code>/<code>addresses</code> and whether it sets <code>revision_cause</code> or <code>--defer-to</code>.</li>
+        <li><strong>Validation is structural only.</strong> mycelium checks the <code>0–1</code> range, non-empty evidence strings, and that <code>revision_cause</code> is one of the five enum values. A high confidence with garbage reasoning passes every check.</li>
+        <li><strong>No fallback source.</strong> Omit <code>--confidence</code> and that agent simply doesn&#x27;t count toward MPC/GAR. Nothing derives it from the CFN&#x27;s alignment score, token probabilities, or anything else.</li>
+        <li><strong>The one cross-agent check is shallow.</strong> Grounding (<code>contingency_score</code>) compares the strings one agent put in <code>addresses</code> against the strings another put in <code>supporting_evidence</code> — set overlap of tokens both agents chose. It is semantically blind and gameable: echo an evidence key verbatim without engaging the point and you &quot;ground&quot; for free.</li>
+      </ul>
+
+      <p>
+        So the metrics are only as meaningful as the agents are honest and calibrated. The SKILL.md
+        <em>instructs</em> agents to state confidence honestly and defer honestly, but that is a
+        prompt-level nudge, not an enforced guarantee. Well-prompted frontier models are decently
+        calibrated, so in practice this is signal rather than noise — but read <code>provenance_weight</code>
+        as <em>&quot;how the team described its own reasoning,&quot;</em> not a verified trust score.
+      </p>
+
+      <p>
+        The thing that would make this <em>observed</em> rather than <em>reported</em> is exactly the
+        piece mycelium deliberately doesn&#x27;t build: <strong>Theory-of-Mind / drift detection</strong> —
+        inferring that an agent complied from its behavior across the trace (its belief moved while its
+        evidence stayed thin), instead of trusting the <code>revision_cause</code> it declared. That lives
+        upstream in the Drift Detection CE (<code>ioc-cfn-cognition-engines#33</code>), which mycelium
+        would <em>consume</em> once released. Until then, the epistemic layer measures what agents
+        <em>say</em> about their reasoning, not the reasoning itself.
+      </p>
     </section>
 
     <section class="doc-section" id="versions">
