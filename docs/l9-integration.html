@@ -25,7 +25,21 @@
   .pill.ours { background: rgba(120,170,120,0.15); }
   .pill.cfn  { background: rgba(120,150,200,0.15); }
   .pill.gap  { background: rgba(200,140,120,0.15); }
+  /* Mermaid's neutral theme draws dark text; sit it on a light panel so it
+     has contrast against the site's dark background. */
+  .mermaid {
+    margin: 22px 0; text-align: center;
+    background: #f5f1e8;
+    border: 1px solid rgba(120,110,90,0.35);
+    border-radius: 6px;
+    padding: 20px 16px;
+  }
+  .mermaid svg { max-width: 100%; height: auto; }
 </style>
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({ startOnLoad: true, theme: 'neutral', securityLevel: 'loose' });
+</script>
 </head>
 <body>
 <canvas id="mycelium-bg"></canvas>
@@ -50,6 +64,7 @@
       <a href="#components" class="nav-link sub">Component map</a>
       <a href="#responsibility" class="nav-link sub">Who computes what</a>
       <a href="#flow" class="nav-link sub">Envelope flow</a>
+      <a href="#commands" class="nav-link sub">Command → payload</a>
       <a href="#mycelium-adds" class="nav-link sub">What mycelium adds</a>
       <a href="#versions" class="nav-link sub">Deployed versions</a>
       <a href="#drift" class="nav-link sub">Spec drift &amp; in-flight</a>
@@ -142,7 +157,40 @@
 
     <section class="doc-section" id="flow">
       <h1>Envelope flow</h1>
-      <p>Every negotiation is one L9 <strong>episode</strong>, keyed by <code>urn:ioc:mycelium:episode:{room}:{session_short_id}</code>. The envelopes, in causal order:</p>
+      <p>Every negotiation is one L9 <strong>episode</strong>, keyed by <code>urn:ioc:mycelium:episode:{room}:{session_short_id}</code>. The round loop bounces between four services — note that the epistemic reply fields stop at mycelium and never cross to the CFN:</p>
+
+      <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant AG as Agent(s)
+    participant MY as mycelium
+    participant CFN as CFN (ioc-cfn-svc)
+    participant CE as CE (semantic-alignment)
+
+    AG->>MY: session join + intent
+    Note over MY: open L9 episode — intent:mission
+    MY->>CFN: semantic-alignment/start
+    CFN->>CE: run SAO (NegMAS)
+    CE-->>CFN: round offer
+    CFN-->>MY: round messages
+
+    loop each round · until converged / timeout
+        MY->>AG: coordination_tick (L9 exchange) + team_prior
+        Note over AG: decide
+        AG->>MY: reply: accept / reject / counter<br/>+ confidence, evidence, revision_cause
+        Note over MY: synthesize reply envelope (exchange)<br/>fold epistemic fields into episode
+        MY->>CFN: /decide — participant_id, action, offer ONLY
+        Note right of MY: epistemic fields never leave mycelium
+        CFN->>CE: score reply batch
+        CE-->>CFN: next round OR final_result
+        CFN-->>MY: status: ongoing | agreed | timeout
+    end
+
+    Note over MY: compute MPC / GAR / SCR / provenance_weight<br/>commit:converged envelope · write l9/rule_update<br/>compile plan/tasks.md
+    MY->>AG: coordination_consensus (L9 commit) + metrics, plan_file
+      </pre>
+
+      <p>The same episode as <strong>causal nesting</strong> (which envelope parents which):</p>
       <pre><code>intent:mission          episode opens (joined agent intents)
   └─ exchange (tick)    server → agent: the offer + can_counter_offer
        └─ exchange (reply)   agent → server: accept/reject/counter + epistemic fields
@@ -163,6 +211,103 @@
         spec docs): <code>commit: converged | resolved | abort</code>. A failed negotiation commits as
         <code>abort</code>, not <code>rejected</code>.
       </p>
+    </section>
+
+    <section class="doc-section" id="commands">
+      <h1>Command &rarr; payload</h1>
+      <p>What the CLI a person or agent runs actually produces on the wire. IDs are abbreviated <code>&hellip;</code>; envelopes are serialized with <code>exclude_none</code>.</p>
+
+      <h2>Join &rarr; the episode opens</h2>
+      <p><code>session join</code> doesn&#x27;t post an L9 message; mycelium mints the episode and synthesizes the opening <code>intent:mission</code> envelope.</p>
+      <pre><code>mycelium session join --handle julia-agent --room api-design \
+  -m "REST primary; GraphQL internal only"</code></pre>
+      <pre><code>// mycelium synthesizes (recorded into the episode):
+{
+  "header": {
+    "protocol": "SSTP", "subprotocol": "mycelium", "version": "0.0.6",
+    "kind": "intent", "subkind": "mission",
+    "participants": {
+      "actors": [
+        {"id": "CognitiveEngine", "role": "coordinator"},
+        {"id": "julia-agent", "role": "agent"}
+      ],
+      "groups": {"workspace_id": "ws-1", "mas_id": "mas-1"}
+    },
+    "message": {"id": "b3f…", "parents": [],
+                "episode": "urn:ioc:mycelium:episode:api-design:7c1a"},
+    "context": {"topic": "urn:concept:mycelium:api-design"}
+  },
+  "payload": {"type": "utterance",
+              "data": {"content": "- julia-agent: REST primary; GraphQL internal only"}}
+}</code></pre>
+
+      <h2>Propose &rarr; a reply envelope (exchange)</h2>
+      <p>The CLI validates the flags into a reply and posts it as the message content; mycelium folds it into a synthesized <code>exchange</code> envelope parented on the tick it answers.</p>
+      <pre><code>mycelium negotiate propose transport=rest \
+  --confidence 0.8 \
+  --supporting-evidence "staging p99 data" \
+  --against-evidence "vendor lock-in risk" \
+  --reasoning "meets the latency target"</code></pre>
+      <pre><code>// CLI posts as the message content (model_dump, exclude_none):
+{
+  "offer": {"transport": "rest"},
+  "confidence": 0.8,
+  "supporting_evidence": ["staging p99 data"],
+  "against_evidence": ["vendor lock-in risk"],
+  "reasoning": "meets the latency target"
+}</code></pre>
+      <pre><code>// mycelium synthesizes the reply envelope:
+{
+  "header": {
+    "kind": "exchange", "subprotocol": "mycelium",
+    "participants": {"actors": [{"id": "julia-agent", "role": "agent"},
+                                {"id": "CognitiveEngine", "role": "agent"}],
+                     "groups": null},
+    "message": {"id": "9d2…", "parents": ["&lt;tick-id&gt;"],
+                "episode": "urn:ioc:mycelium:episode:api-design:7c1a"}
+  },
+  "payload": {"type": "reply", "data": {
+    "round": 2, "action": "counter_offer", "offer": {"transport": "rest"},
+    "confidence": 0.8, "supporting_evidence": ["staging p99 data"],
+    "against_evidence": ["vendor lock-in risk"], "reasoning": "meets the latency target"
+  }}
+}</code></pre>
+      <p><strong>What reaches the CFN from this:</strong> only <code>{participant_id, action, offer}</code>. The epistemic fields stay mycelium-side, folded into the episode for the metrics.</p>
+
+      <h2>Respond &rarr; grounding + revision_cause</h2>
+      <pre><code>mycelium negotiate respond accept \
+  --confidence 0.9 --addresses "staging p99 data" --revision-cause grounded_argument</code></pre>
+      <pre><code>// CLI posts:
+{"action": "accept", "confidence": 0.9,
+ "addresses": ["staging p99 data"], "revision_cause": "grounded_argument"}</code></pre>
+      <p>
+        On fold-in, <code>addresses</code> is scored against the episode&#x27;s evidence pool
+        (<code>contingency_score = |addresses &cap; prior evidence| / |addresses|</code>); here it
+        overlaps, so the turn is grounded and the explicit <code>grounded_argument</code> stands.
+        The recorded <code>revision_cause</code> feeds SCR. (Omit <code>--revision-cause</code> and
+        mycelium derives it: a move that engages evidence &rarr; grounded; a move with no engagement
+        &rarr; benefit of the doubt; a <code>--defer-to</code> &rarr; <code>social_compliance</code>.)
+      </p>
+
+      <h2>Consensus &rarr; commit + metrics + rule writeback</h2>
+      <p>On convergence mycelium closes the episode with a <code>commit:converged</code> envelope, attaches the quality metrics to the <code>coordination_consensus</code> message, and writes the rule back to room memory for the next episode&#x27;s <code>team_prior</code>.</p>
+      <pre><code>// commit envelope (parents every final reply):
+{
+  "header": {"kind": "commit", "subkind": "converged",
+    "message": {"id": "e71…", "parents": ["9d2…", "a04…"],
+                "episode": "urn:ioc:mycelium:episode:api-design:7c1a"}},
+  "payload": {"type": "utterance", "data": {"assignments": {"transport": "rest"}}}
+}
+
+// coordination_consensus message content (what agents/UI see):
+{"plan_file": "plan/tasks.md",
+ "metrics": {"mpc": 0.85, "gar": 1.0, "scr": 0.0,
+             "provenance_weight": 1.0, "participants": 2}}
+
+// written to room memory → next episode's team_prior:
+.mycelium/rooms/api-design/l9/rule_update/topic.md
+  l9: {posterior: 0.85, gar: 1.0, scr: 0.0, provenance_weight: 1.0,
+       revision_cause: converged_episode, episode_count: 1}</code></pre>
     </section>
 
     <section class="doc-section" id="mycelium-adds">
