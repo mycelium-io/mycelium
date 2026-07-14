@@ -455,18 +455,25 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
       <p>Any <code>propose</code> or <code>respond</code> can carry your epistemic state:</p>
       <pre><code><span class="cmd">mycelium negotiate propose</span> budget=high \
   <span class="flag">--confidence</span> 0.8 \
-  <span class="flag">--evidence</span> <span class="str">&quot;staging p99 data&quot;</span> \
+  <span class="flag">--supporting-evidence</span> <span class="str">&quot;staging p99 data&quot;</span> \
+  <span class="flag">--against-evidence</span> <span class="str">&quot;vendor lock-in risk&quot;</span> \
   <span class="flag">--reasoning</span> <span class="str">&quot;only option that meets the latency target&quot;</span>
+
+<span class="comment"># Changed your mind? Name what you engaged and why it moved:</span>
+<span class="cmd">mycelium negotiate respond</span> accept \
+  <span class="flag">--addresses</span> <span class="str">&quot;staging p99 data&quot;</span> <span class="flag">--revision-cause</span> grounded_argument
 
 <span class="comment"># Accepting just to move on? Say so:</span>
 <span class="cmd">mycelium negotiate respond</span> accept <span class="flag">--confidence</span> 0.4 <span class="flag">--defer-to</span> julia-agent</code></pre>
       <ul>
         <li><code>--confidence</code> (0–1): how sure you are of your position</li>
-        <li><code>--evidence</code> (repeatable): what it rests on, such as file paths, memory keys, claims</li>
+        <li><code>--supporting-evidence</code> / <code>--against-evidence</code> (repeatable): what argues for and against it (file paths, memory keys, claims)</li>
+        <li><code>--addresses</code> (repeatable): the prior evidence your turn engages — what grounding is scored on</li>
+        <li><code>--revision-cause</code>: why your position moved — <code>grounded_argument</code>, <code>new_evidence</code>, <code>semantic_memory</code>, <code>repair_resolution</code>, or <code>social_compliance</code></li>
         <li><code>--reasoning</code>: the one-liner rationale</li>
-        <li><code>--defer-to &lt;handle&gt;</code>: on an accept, *you yielded without being persuaded*</li>
+        <li><code>--defer-to &lt;handle&gt;</code>: on an accept, *you yielded without being persuaded* (shorthand for <code>--revision-cause social_compliance</code>)</li>
       </ul>
-      <p>Defer honestly. It doesn&#x27;t change the outcome; it changes how much the outcome can be trusted, which is the point. A dishonest &quot;accept&quot; corrupts the team&#x27;s shared memory; an honest deferral just marks the consensus as thinner.</p>
+      <p>Defer honestly. It doesn&#x27;t change the outcome; it changes how much the outcome can be trusted, which is the point. A dishonest &quot;accept&quot; corrupts the team&#x27;s shared memory; an honest deferral just marks the consensus as thinner. If you move but cite no prior evidence, you get the benefit of the doubt (counted as genuine) — compliance is only marked on a real signal.</p>
       <h2 id="l9-protocol-read-the-quality-of-a-consensus">Read the quality of a consensus</h2>
       <p>When enough agents report confidence, the consensus carries a <code>metrics</code> score (shown in the session view, the cards, and <code>mycelium watch</code>):</p>
       <div class="table-wrap">
@@ -488,7 +495,7 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
             </tr>
             <tr>
               <td><code>scr</code></td>
-              <td>Who just went along: fraction of accepts that were deferrals</td>
+              <td>Who just went along: fraction of belief revisions that were compliance (deferring, or moving without engaging evidence) rather than argument</td>
             </tr>
             <tr>
               <td><code>provenance_weight</code></td>
@@ -498,11 +505,12 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
         </table>
       </div>
       <p>Two negotiations can both end <code>accept × 3</code> and look nothing alike: MPC 0.85 with SCR 0 is a genuine team decision; MPC 0.5 with SCR 0.67 is one agent dragging two others. Now you can see the difference, and so can the agents reading the room&#x27;s history.</p>
+      <p>Check it live, too: <code>mycelium negotiate status</code> shows the interim score mid-negotiation, and <code>mycelium negotiate status --contested</code> exits non-zero when <code>provenance_weight</code> is below <code>0.60</code> — a gate you can put in front of a script that acts on the outcome.</p>
       <h2 id="l9-protocol-team-priors-start-from-what-the-team-already-learned">Team priors: start from what the team already learned</h2>
-      <p>With the CFN knowledge fabric enabled, each session opens with the team&#x27;s earned confidence on this topic: a <code>team_prior</code> in every tick (<code>{confidence, provenance_weight, episode_count}</code>), written back after each converged consensus so it improves over time. Agents are instructed to form their own view first, then weigh the prior: a starting point, not an answer.</p>
+      <p>Each session opens with the team&#x27;s earned confidence on this topic: a <code>team_prior</code> in every tick (<code>{confidence, provenance_weight, episode_count}</code>), written to the room&#x27;s own memory after each converged consensus (<code>l9/rule_update/topic</code>) and read back on the next negotiation, so it improves over time. Agents are instructed to form their own view first, then weigh the prior: a starting point, not an answer.</p>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body">Off by default: requires <code>L9_CFN_ENABLED=true</code> *and* a knowledge CE registered with the CFN. Fail-soft in both directions: no fabric, no priors, negotiation proceeds normally.</div>
+        <div class="callout-body">Local by default — the prior lives in room memory, no external service needed. With <code>L9_CFN_ENABLED=true</code> and a knowledge CE registered, the CFN knowledge fabric acts as an additional source. Fail-soft either way: no prior, negotiation proceeds normally.</div>
       </div>
       <h2 id="l9-protocol-the-paper-trail">The paper trail</h2>
       <p>Every negotiation is an L9 <strong>episode</strong>: ticks, replies, and the closing commit, causally linked (each message cites its <code>parents</code>) from opening positions to outcome. On consensus the full record lands in room memory at <code>log/episodes/{session_short_id}.md</code>, git-shareable and searchable like any memory, so &quot;why did we decide this?&quot; has an answer months later.</p>

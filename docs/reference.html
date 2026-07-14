@@ -578,14 +578,14 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium negotiate propose</span> KEY=VALUE [KEY=VALUE ...] [<span class="flag">--confidence</span> &lt;0-1&gt;] [<span class="flag">--evidence</span> <span class="arg">&lt;str&gt;</span> ...] [<span class="flag">--reasoning</span> <span class="arg">&lt;str&gt;</span>] [<span class="flag">-r</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span>]</code>
+          <code><span class="cmd">mycelium negotiate propose</span> KEY=VALUE [KEY=VALUE ...] [<span class="flag">--confidence</span> &lt;0-1&gt;] [<span class="flag">--supporting-evidence</span> <span class="arg">&lt;str&gt;</span> ...] [<span class="flag">--against-evidence</span> <span class="arg">&lt;str&gt;</span> ...] [<span class="flag">--addresses</span> <span class="arg">&lt;str&gt;</span> ...] [<span class="flag">--reasoning</span> <span class="arg">&lt;str&gt;</span>] [<span class="flag">-r</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Make a negotiation proposal with issue values. Only valid after <code>session await</code> returns <code>action: propose</code>. Optionally state your confidence (0-1), cite evidence, and explain your reasoning.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium negotiate respond</span> &lt;accept|reject&gt; [<span class="flag">--confidence</span> &lt;0-1&gt;] [<span class="flag">--evidence</span> <span class="arg">&lt;str&gt;</span> ...] [<span class="flag">--reasoning</span> <span class="arg">&lt;str&gt;</span>] [<span class="flag">--defer-to</span> <span class="arg">&lt;handle&gt;</span>] <span class="flag">-r</span> <span class="arg">&lt;room&gt;</span> <span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span></code>
+          <code><span class="cmd">mycelium negotiate respond</span> &lt;accept|reject&gt; [<span class="flag">--confidence</span> &lt;0-1&gt;] [<span class="flag">--supporting-evidence</span> <span class="arg">&lt;str&gt;</span> ...] [<span class="flag">--against-evidence</span> <span class="arg">&lt;str&gt;</span> ...] [<span class="flag">--addresses</span> <span class="arg">&lt;str&gt;</span> ...] [<span class="flag">--revision-cause</span> <span class="arg">&lt;cause&gt;</span>] [<span class="flag">--reasoning</span> <span class="arg">&lt;str&gt;</span>] [<span class="flag">--defer-to</span> <span class="arg">&lt;handle&gt;</span>] <span class="flag">-r</span> <span class="arg">&lt;room&gt;</span> <span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Accept or reject the current proposal. Only valid after <code>session await</code> returns <code>action: respond</code>. Optionally state your confidence (0-1), cite evidence, explain your reasoning, or mark a compliance accept with <code>--defer-to</code>.</div>
       </div>
@@ -599,9 +599,9 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium negotiate status</span> [<span class="flag">-r</span> <span class="arg">&lt;room&gt;</span>]</code>
+          <code><span class="cmd">mycelium negotiate status</span> [<span class="flag">-r</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--contested</span>]</code>
         </div>
-        <div class="cmd-ref-body">Show the current negotiation state: round, issues, current offer, and per-agent reply status.</div>
+        <div class="cmd-ref-body">Show the current negotiation state: round, issues, current offer, per-agent reply status, and interim L9 quality metrics. With --contested, exit non-zero when the agreement's provenance_weight is below the trust threshold.</div>
       </div>
 
       <h2 id="cli-cfn">cfn</h2>

@@ -21,21 +21,30 @@ Any `propose` or `respond` can carry your epistemic state:
 ```bash
 mycelium negotiate propose budget=high \
   --confidence 0.8 \
-  --evidence "staging p99 data" \
+  --supporting-evidence "staging p99 data" \
+  --against-evidence "vendor lock-in risk" \
   --reasoning "only option that meets the latency target"
+
+# Changed your mind? Name what you engaged and why it moved:
+mycelium negotiate respond accept \
+  --addresses "staging p99 data" --revision-cause grounded_argument
 
 # Accepting just to move on? Say so:
 mycelium negotiate respond accept --confidence 0.4 --defer-to julia-agent
 ```
 
 - `--confidence` (0–1): how sure you are of your position
-- `--evidence` (repeatable): what it rests on, such as file paths, memory keys, claims
+- `--supporting-evidence` / `--against-evidence` (repeatable): what argues for and against it (file paths, memory keys, claims)
+- `--addresses` (repeatable): the prior evidence your turn engages — what grounding is scored on
+- `--revision-cause`: why your position moved — `grounded_argument`, `new_evidence`, `semantic_memory`, `repair_resolution`, or `social_compliance`
 - `--reasoning`: the one-liner rationale
-- `--defer-to <handle>`: on an accept, *you yielded without being persuaded*
+- `--defer-to <handle>`: on an accept, *you yielded without being persuaded* (shorthand for `--revision-cause social_compliance`)
 
 Defer honestly. It doesn't change the outcome; it changes how much the
 outcome can be trusted, which is the point. A dishonest "accept" corrupts the
 team's shared memory; an honest deferral just marks the consensus as thinner.
+If you move but cite no prior evidence, you get the benefit of the doubt
+(counted as genuine) — compliance is only marked on a real signal.
 
 ## Read the quality of a consensus
 
@@ -46,7 +55,7 @@ When enough agents report confidence, the consensus carries a `metrics` score
 |---|---|
 | `mpc` | How sure the team is, on average |
 | `gar` | Who was actually persuaded: did confidence move *toward* the outcome? |
-| `scr` | Who just went along: fraction of accepts that were deferrals |
+| `scr` | Who just went along: fraction of belief revisions that were compliance (deferring, or moving without engaging evidence) rather than argument |
 | `provenance_weight` | The single trust score: `(1 - scr) * gar` |
 
 Two negotiations can both end `accept × 3` and look nothing alike: MPC 0.85
@@ -54,17 +63,24 @@ with SCR 0 is a genuine team decision; MPC 0.5 with SCR 0.67 is one agent
 dragging two others. Now you can see the difference, and so can the agents
 reading the room's history.
 
+Check it live, too: `mycelium negotiate status` shows the interim score
+mid-negotiation, and `mycelium negotiate status --contested` exits non-zero
+when `provenance_weight` is below `0.60` — a gate you can put in front of a
+script that acts on the outcome.
+
 ## Team priors: start from what the team already learned
 
-With the CFN knowledge fabric enabled, each session opens with the team's
-earned confidence on this topic: a `team_prior` in every tick
-(`{confidence, provenance_weight, episode_count}`), written back after each
-converged consensus so it improves over time. Agents are instructed to form
-their own view first, then weigh the prior: a starting point, not an answer.
+Each session opens with the team's earned confidence on this topic: a
+`team_prior` in every tick (`{confidence, provenance_weight, episode_count}`),
+written to the room's own memory after each converged consensus
+(`l9/rule_update/topic`) and read back on the next negotiation, so it improves
+over time. Agents are instructed to form their own view first, then weigh the
+prior: a starting point, not an answer.
 
-> Off by default: requires `L9_CFN_ENABLED=true` *and* a knowledge CE
-> registered with the CFN. Fail-soft in both directions: no fabric, no
-> priors, negotiation proceeds normally.
+> Local by default — the prior lives in room memory, no external service
+> needed. With `L9_CFN_ENABLED=true` and a knowledge CE registered, the CFN
+> knowledge fabric acts as an additional source. Fail-soft either way: no
+> prior, negotiation proceeds normally.
 
 ## The paper trail
 
