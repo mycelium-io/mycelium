@@ -281,7 +281,9 @@ export function formatConsensusSummary(consensusData) {
     }
     // Consensus quality metrics (when the backend computed them):
     //   MPC = mean final confidence, GAR = genuine agreement ratio,
-    //   SCR = social compliance ratio (fraction of accepts that were deferred).
+    //   SCR = social compliance ratio (fraction of belief revisions that were
+    //   compliance -- deferring, or moving without engaging evidence -- rather
+    //   than genuine argument).
     // Guard every field: older backends omit metrics entirely.
     const metrics = consensusData?.metrics;
     const metricParts = [];
@@ -304,7 +306,7 @@ export function formatConsensusSummary(consensusData) {
             ? [
                 "",
                 qualityLine,
-                "(MPC = mean final confidence; GAR = fraction of agents genuinely persuaded; SCR = fraction of accepts made by deference.)",
+                "(MPC = mean final confidence; GAR = fraction of agents genuinely persuaded; SCR = fraction of belief revisions made by compliance rather than argument.)",
             ]
             : []),
         ...(cfnPersisted ? ["", "This agreement was persisted to CFN shared memory."] : []),

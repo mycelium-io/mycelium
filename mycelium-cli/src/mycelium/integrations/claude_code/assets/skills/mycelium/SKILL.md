@@ -54,18 +54,25 @@ mycelium session await --handle claude-agent
 #                         provenance weight and episode count
 
 # 3a. Counter-propose (only when can_counter_offer is true). State your
-#     confidence and what your position rests on:
+#     confidence and what your position rests on. Evidence is split into what
+#     argues FOR your position and what argues against it:
 mycelium negotiate propose ISSUE=VALUE ISSUE=VALUE ... \
   --room <room-name> --handle claude-agent \
-  --confidence 0.8 --evidence "failed/memcached" --evidence "staging p99 data" \
+  --confidence 0.8 \
+  --supporting-evidence "failed/memcached" --supporting-evidence "staging p99 data" \
+  --against-evidence "decisions/graphql-spike" \
   --reasoning "REST held up in staging; GraphQL adds resolver complexity we can't staff"
 
-# 3b. Accept or reject the current offer (same epistemic flags apply):
+# 3b. Accept or reject the current offer (same epistemic flags apply). When your
+#     position changed, --addresses names the prior evidence you engaged and
+#     --revision-cause says WHY it moved (grounded_argument | new_evidence |
+#     semantic_memory | repair_resolution | social_compliance):
 mycelium negotiate respond accept --room <room-name> --handle claude-agent \
-  --confidence 0.9 --evidence "decisions/api-style"
+  --confidence 0.9 --addresses "staging p99 data" --revision-cause grounded_argument
 mycelium negotiate respond reject --room <room-name> --handle claude-agent
 
-# Accepting only to move things along, without being persuaded? Say so:
+# Accepting only to move things along, without being persuaded? Say so
+# (--defer-to implies revision-cause social_compliance):
 mycelium negotiate respond accept --room <room-name> --handle claude-agent \
   --confidence 0.4 --defer-to julia-agent
 
@@ -104,8 +111,9 @@ It tells you what just happened so you don't have to infer:
 - **Narrate before each command.** Say *why* you're rejecting or what you're trying to push on. "Rejecting because the timeline is too tight — countering with 6 months." This makes the negotiation legible to the user watching your terminal.
 - **Walking away is legitimate.** Each session has a fixed `n_steps_total`. If you and another agent are flip-flopping the same issue, you're not converging — keep rejecting until timeout. That's a clean "couldn't agree" signal, not a failure.
 - **Strong opening positions matter.** Be specific in `-m "..."`: stake, top concession, hard limit. "I want GraphQL" is weak. "GraphQL primary for authenticated APIs; REST is fine for uploads/webhooks; hard limit: no public-facing GraphQL without persisted queries" is strong.
-- **State your confidence and cite your sources.** Every propose/respond takes `--confidence <0-1>`, repeatable `--evidence` (file paths, memory keys, or short claims), and `--reasoning`. Use them: they're how the team distinguishes an informed position from a guess.
-- **Defer honestly.** If you accept an offer you weren't actually persuaded by (yielding to move things along), say so with `--defer-to <handle-you-are-yielding-to>`. Deference is measured as social compliance in the consensus quality metrics, not punished. Dishonest agreement corrupts the team's shared memory.
+- **State your confidence and cite your sources.** Every propose/respond takes `--confidence <0-1>`, `--reasoning`, and evidence split into repeatable `--supporting-evidence` (what argues for your position) and `--against-evidence` (counter-evidence you're aware of). Use them: they're how the team distinguishes an informed position from a guess. All optional — a reply with none is exactly the plain reply.
+- **When you move, say why.** If your position shifts, `--addresses` names the prior evidence you engaged and `--revision-cause` records the reason (`grounded_argument`, `new_evidence`, `semantic_memory`, `repair_resolution`, or `social_compliance`). If you move but engage no prior evidence, you get the benefit of the doubt (counted as genuine) — the metric only flags compliance on a real signal.
+- **Defer honestly.** If you accept an offer you weren't actually persuaded by (yielding to move things along), say so with `--defer-to <handle-you-are-yielding-to>` (shorthand for `--revision-cause social_compliance`). Deference is measured as social compliance in the consensus quality metrics, not punished. Dishonest agreement corrupts the team's shared memory.
 - **Weigh the team prior; don't adopt it.** When a tick carries a `team_prior`, that's the team's earned confidence on this topic from previous negotiations, weighted by provenance. Form your own view first, then factor the prior in. Don't simply echo it.
 
 ### Checking status
@@ -113,8 +121,13 @@ It tells you what just happened so you don't have to infer:
 If the user asks "what's happening with the negotiation?" or "did it finish?", don't try to infer from the room's broadcast log — that's free-form narration, not the structured outcome.
 
 ```bash
-# Current round, valid issue keys, per-agent reply status, active or concluded:
+# Current round, valid issue keys, per-agent reply status, active or concluded.
+# Also shows interim L9 quality metrics once enough agents report confidence:
 mycelium negotiate status --room <room-name>
+
+# In a script/CI gate: exit 2 when the agreement is weakly-supported
+# (provenance_weight < 0.60) so you can avoid acting on a contested outcome:
+mycelium negotiate status --room <room-name> --contested
 ```
 
 When `await` returns `{"type": "consensus", ...}`:
@@ -122,7 +135,7 @@ When `await` returns `{"type": "consensus", ...}`:
 - **Agreement** → consensus payload includes per-agent `assignments` and a `plan_file`.
 - **No agreement** → `broken: true` with `plan: "Negotiation ended: timeout"`. Report it as "no agreement" — it's not a system failure.
 
-Consensus payloads may also carry quality `metrics`: **MPC** (mean final confidence across agents), **GAR** (genuine agreement ratio: fraction of agents whose confidence moved toward the outcome), and **SCR** (social compliance ratio: fraction of accepts that were deferred). High MPC + high GAR is a strong consensus; high SCR means agents yielded rather than agreed; report that nuance to the user.
+Consensus payloads may also carry quality `metrics`: **MPC** (mean final confidence across agents), **GAR** (genuine agreement ratio: fraction of agents whose confidence moved toward the outcome), and **SCR** (social compliance ratio: fraction of belief revisions that were compliance — deferring, or moving without engaging the evidence — rather than genuine argument). High MPC + high GAR is a strong consensus; high SCR means agents yielded rather than agreed; report that nuance to the user. `provenance_weight = (1 − SCR) × GAR` is the single trust number: below ~0.60 the agreement is contested.
 
 The structured outcome lives in a session sub-room (`<room-name>:session:<id>`). `mycelium negotiate status` reads it automatically; don't go grepping the parent room.
 
