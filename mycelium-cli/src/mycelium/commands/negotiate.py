@@ -439,9 +439,17 @@ def query(
 # ── status ────────────────────────────────────────────────────────────────────
 
 
+# provenance_weight at or above this is treated as trustworthy; below it the
+# agreement is "contested" (mirrors CFN_VALIDATION_SCORE_INTERVENTION default).
+CONTESTED_THRESHOLD = 0.60
+# Exit code for --contested when the agreement is below threshold, distinct from
+# the generic error exit (1) so orchestration can tell "contested" from "failed".
+CONTESTED_EXIT_CODE = 2
+
+
 @doc_ref(
-    usage="mycelium negotiate status [-r <room>]",
-    desc="Show the current negotiation state: round, issues, current offer, and per-agent reply status.",
+    usage="mycelium negotiate status [-r <room>] [--contested]",
+    desc="Show the current negotiation state: round, issues, current offer, per-agent reply status, and interim L9 quality metrics. With --contested, exit non-zero when the agreement's provenance_weight is below the trust threshold.",
     group="negotiate",
 )
 @app.command("status")
@@ -450,16 +458,27 @@ def status(
     room: str | None = typer.Option(
         None, "--room", "-r", help="Room to check (overrides MYCELIUM_ROOM_ID)"
     ),
+    contested: bool = typer.Option(
+        False,
+        "--contested",
+        help=f"Exit {CONTESTED_EXIT_CODE} when provenance_weight < {CONTESTED_THRESHOLD} "
+        "(CI/orchestration gate on agreement trust)",
+    ),
 ) -> None:
     """
     Show live negotiation state for the active session in a room.
 
-    Displays the current round, canonical issue list, standing offer, and which
-    agents have submitted replies this round.
+    Displays the current round, canonical issue list, standing offer, which
+    agents have submitted replies this round, and the interim L9 quality metrics
+    (MPC/GAR/SCR/provenance_weight) once enough agents report confidence.
+
+    With --contested, exit 2 when the interim provenance_weight is below 0.60 --
+    a gate you can put in front of acting on a weakly-supported agreement.
 
     Examples:
         mycelium negotiate status
         mycelium negotiate status --room sprint-plan
+        mycelium negotiate status --contested || echo "agreement is contested"
     """
     from mycelium.commands.room import _resolve_room
 
@@ -480,8 +499,14 @@ def status(
         resp.raise_for_status()
         data = resp.json()
 
+        metrics = data.get("metrics") or {}
+        pw = metrics.get("provenance_weight")
+        is_contested = pw is not None and pw < CONTESTED_THRESHOLD
+
         if json_output:
             typer.echo(json_module.dumps(data, indent=2))
+            if contested and is_contested:
+                raise typer.Exit(CONTESTED_EXIT_CODE)
             return
 
         if not data.get("active"):
@@ -504,6 +529,19 @@ def status(
         for agent_handle, reply_status in (data.get("pending_replies") or {}).items():
             icon = "+" if reply_status == "received" else "."
             typer.echo(f"  [{icon}] {agent_handle}")
+
+        if metrics:
+            typer.echo("")
+            typer.echo("  L9 metrics (interim, episode-scoped):")
+            typer.echo(
+                f"    MPC {metrics['mpc']:.2f}   GAR {metrics['gar']:.2f}   "
+                f"SCR {metrics['scr']:.2f}"
+            )
+            flag = f"   [CONTESTED — below {CONTESTED_THRESHOLD:.2f}]" if is_contested else ""
+            typer.echo(f"    provenance_weight: {pw:.2f}{flag}")
+
+        if contested and is_contested:
+            raise typer.Exit(CONTESTED_EXIT_CODE)
 
     except (typer.Exit, typer.Abort):
         raise

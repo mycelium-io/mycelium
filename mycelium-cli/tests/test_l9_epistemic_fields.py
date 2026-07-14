@@ -338,6 +338,139 @@ def test_respond_rejects_out_of_range_confidence(monkeypatch: pytest.MonkeyPatch
     assert posts == []
 
 
+def test_propose_evidence_split_and_addresses_wire_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    posts: list[str] = []
+    _patch_propose_plumbing(monkeypatch, posts)
+
+    result = CliRunner().invoke(
+        negotiate_cmd.app,
+        [
+            "propose",
+            "budget=high",
+            "--supporting-evidence",
+            "vendor_quote",
+            "--against-evidence",
+            "q3_precedent",
+            "--addresses",
+            "prior_offer_1",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(posts[0]) == {
+        "offer": {"budget": "high"},
+        "supporting_evidence": ["vendor_quote"],
+        "against_evidence": ["q3_precedent"],
+        "addresses": ["prior_offer_1"],
+    }
+
+
+def test_respond_revision_cause_wire_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    posts: list[str] = []
+    _patch_respond_plumbing(monkeypatch, posts)
+
+    result = CliRunner().invoke(
+        negotiate_cmd.app,
+        [
+            "respond",
+            "accept",
+            "--revision-cause",
+            "grounded_argument",
+            "--addresses",
+            "vendor_quote",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(posts[0]) == {
+        "action": "accept",
+        "addresses": ["vendor_quote"],
+        "revision_cause": "grounded_argument",
+    }
+
+
+def test_respond_rejects_invalid_revision_cause(monkeypatch: pytest.MonkeyPatch) -> None:
+    posts: list[str] = []
+    _patch_respond_plumbing(monkeypatch, posts)
+
+    result = CliRunner().invoke(
+        negotiate_cmd.app, ["respond", "accept", "--revision-cause", "bogus"]
+    )
+
+    assert result.exit_code == 1
+    assert posts == []
+
+
+def _patch_status_plumbing(monkeypatch: pytest.MonkeyPatch, payload: dict) -> None:
+    fake_config = SimpleNamespace(server=SimpleNamespace(api_url="http://localhost:8000"))
+    monkeypatch.setattr(negotiate_cmd.MyceliumConfig, "load", classmethod(lambda _cls: fake_config))
+    monkeypatch.setattr("mycelium.commands.room._resolve_room", lambda _c, _r: "test-room")
+    monkeypatch.setattr(negotiate_cmd, "_resolve_active_session_room", lambda _c, r: r)
+    monkeypatch.setattr(
+        negotiate_cmd.httpx,
+        "get",
+        lambda *_a, **_kw: SimpleNamespace(
+            status_code=200, raise_for_status=lambda: None, json=lambda: payload
+        ),
+    )
+
+
+def _active_status(pw: float) -> dict:
+    return {
+        "active": True,
+        "round": 3,
+        "issues": [],
+        "issue_options": {},
+        "current_offer": {},
+        "pending_replies": {},
+        "metrics": {
+            "mpc": 0.68,
+            "gar": 0.72,
+            "scr": 0.22,
+            "provenance_weight": pw,
+            "participants": 3,
+        },
+    }
+
+
+def test_status_renders_interim_metrics(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_status_plumbing(monkeypatch, _active_status(0.72))
+
+    result = CliRunner().invoke(negotiate_cmd.app, ["status"])
+
+    assert result.exit_code == 0, result.output
+    assert "L9 metrics (interim, episode-scoped)" in result.output
+    assert "provenance_weight: 0.72" in result.output
+    assert "CONTESTED" not in result.output
+
+
+def test_status_contested_exits_nonzero(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_status_plumbing(monkeypatch, _active_status(0.40))
+
+    result = CliRunner().invoke(negotiate_cmd.app, ["status", "--contested"])
+
+    assert result.exit_code == negotiate_cmd.CONTESTED_EXIT_CODE
+    assert "CONTESTED" in result.output
+
+
+def test_status_contested_passes_when_trustworthy(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_status_plumbing(monkeypatch, _active_status(0.80))
+
+    result = CliRunner().invoke(negotiate_cmd.app, ["status", "--contested"])
+
+    assert result.exit_code == 0, result.output
+
+
+def test_status_without_metrics_is_uncontested(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = _active_status(0.10)
+    del payload["metrics"]  # thin participation → no metrics block
+    _patch_status_plumbing(monkeypatch, payload)
+
+    result = CliRunner().invoke(negotiate_cmd.app, ["status", "--contested"])
+
+    assert result.exit_code == 0, result.output
+
+
 # ── session await output helpers ─────────────────────────────────────────────
 
 

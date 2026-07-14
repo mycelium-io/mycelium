@@ -377,7 +377,7 @@ async def get_negotiation_status(
     if not state:
         return {"active": False}
 
-    return {
+    result = {
         "active": True,
         "session_id": state.session_id,
         "round": state.current_round,
@@ -388,3 +388,13 @@ async def get_negotiation_status(
             h: "received" if v is not None else "waiting" for h, v in state.pending_replies.items()
         },
     }
+    # Surface the interim L9 quality metrics the episode already computes, once
+    # enough agents have reported confidence. Episode-scoped and provisional --
+    # they firm up at consensus. None (thin participation) just omits the block.
+    if state.episode is not None:
+        from app.services import l9_episode
+
+        metrics = l9_episode.compute_metrics(state.episode)
+        if metrics is not None:
+            result["metrics"] = metrics
+    return result
