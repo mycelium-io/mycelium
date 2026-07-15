@@ -479,6 +479,43 @@ _ISSUE_OPTIONS: dict[str, list[str]] = {
 }
 
 
+def _fmt_metric(value: object) -> str:
+    """Format a metric value: 2 decimals for numbers, str() otherwise."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return f"{value:.2f}"
+    return str(value)
+
+
+def _team_prior_line(data: dict, indent: str) -> str | None:
+    """Render the optional ``team_prior`` tick field as a human-readable line.
+
+    Example: ``team prior: 0.72 (weight 0.85, 3 episodes)``
+    """
+    prior = data.get("team_prior")
+    if not isinstance(prior, dict):
+        return None
+    return (
+        f"{indent}team prior: {_fmt_metric(prior.get('confidence'))} "
+        f"(weight {_fmt_metric(prior.get('provenance_weight'))}, "
+        f"{prior.get('episode_count')} episodes)"
+    )
+
+
+def _consensus_quality_line(data: dict, indent: str) -> str | None:
+    """Render the optional consensus ``metrics`` block as a human-readable line.
+
+    Example: ``quality: MPC 0.82 · GAR 0.75 · SCR 0.25``
+    """
+    metrics = data.get("metrics")
+    if not isinstance(metrics, dict):
+        return None
+    return (
+        f"{indent}quality: MPC {_fmt_metric(metrics.get('mpc'))} "
+        f"· GAR {_fmt_metric(metrics.get('gar'))} "
+        f"· SCR {_fmt_metric(metrics.get('scr'))}"
+    )
+
+
 def _render_coordination_event(msg: dict, current_identity: str) -> tuple[str | None, bool]:
     """
     Render a coordination SSE event for display.
@@ -535,6 +572,9 @@ def _render_coordination_event(msg: dict, current_identity: str) -> tuple[str | 
                 if not issues:
                     issues = list(_ISSUE_OPTIONS.keys())
                 lines = [f"  ⟫  CognitiveEngine [round {round_num}] — propose your offer:"]
+                prior_line = _team_prior_line(data, "        ")
+                if prior_line:
+                    lines.append(prior_line)
                 for issue in issues:
                     opts = _ISSUE_OPTIONS.get(issue, ["?"])
                     lines.append(f"        {issue}: {' | '.join(opts)}")
@@ -557,6 +597,9 @@ def _render_coordination_event(msg: dict, current_identity: str) -> tuple[str | 
                 lines = [
                     f"  ⟫  CognitiveEngine [round {round_num}] — respond to offer from {proposer}:"
                 ]
+                prior_line = _team_prior_line(data, "        ")
+                if prior_line:
+                    lines.append(prior_line)
                 for k, v in current_offer.items():
                     lines.append(f"        {k}: {v}")
                 lines.append("")
@@ -591,6 +634,9 @@ def _render_coordination_event(msg: dict, current_identity: str) -> tuple[str | 
             plan = data.get("plan", "")
             if plan and not assignments:
                 lines.append(f"        Plan: {plan}")
+        quality_line = _consensus_quality_line(data, "        ")
+        if quality_line:
+            lines.append(quality_line)
         return "\n".join(lines), True  # exit after printing
 
     # Regular message
@@ -655,6 +701,9 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
                     if round_num == 1:
                         header = f"\n  {ts()}  [bold magenta]CognitiveEngine[/] analyzed agent intents and generated negotiation issues and options.\n{header}"
                     lines = [header]
+                    prior_line = _team_prior_line(data, "              ")
+                    if prior_line:
+                        lines.append(f"[dim]{prior_line}[/]")
                     for k, v in issue_options.items():
                         lines.append(f"              [bold white]{k}[/]")
                         opts = v if isinstance(v, list) else [str(v)]
@@ -667,6 +716,9 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
                     lines = [
                         f"\n  {ts()}  [bold magenta]CognitiveEngine[/] [dim]→[/] [cyan]{participant}[/]  [bold cyan]round {round_num}[/] — respond to offer from {proposer}:"
                     ]
+                    prior_line = _team_prior_line(data, "              ")
+                    if prior_line:
+                        lines.append(f"[dim]{prior_line}[/]")
                     for k, v in offer.items():
                         lines.append(f"              [dim]{k}:[/] {v}")
                     return "\n".join(lines)
@@ -681,6 +733,9 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
                 lines.append(f"              [dim]plan:[/] {plan}")
             for handle, task in assignments.items():
                 lines.append(f"              [cyan]{handle}[/]: {task}")
+            quality_line = _consensus_quality_line(data, "              ")
+            if quality_line:
+                lines.append(f"[dim]{quality_line}[/]")
             return "\n".join(lines)
 
         if mtype == "memory_changed":

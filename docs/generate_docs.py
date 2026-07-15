@@ -57,6 +57,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("memory.md",                   "memory",             "concepts",    "Concepts",     "Memory"),
     ("plan.md",                     "plan",               "concepts",    "Concepts",     "Plan"),
     ("cognitive-engine.md",         "cognitive-engine",   "concepts",    "Concepts",     "CognitiveEngine"),
+    ("l9-protocol.md",              "l9-protocol",        "concepts",    "Concepts",     "L9 Protocol"),
     ("knowledge-graph.md",          "knowledge-graph",    "concepts",    "Concepts",     "Knowledge Graph"),
     # ── adapters (adapters.html) — all hand-coded ──
     (None,                          "adapters",           "adapters",  "Adapters",     "Overview"),

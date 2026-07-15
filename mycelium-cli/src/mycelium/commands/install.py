@@ -310,7 +310,7 @@ def _refresh_compose_templates(*, backup: bool = True) -> list[Path]:
     """Overwrite ``~/.mycelium/docker/`` with the templates bundled in the
     currently-installed wheel.
 
-    Refreshes ``compose.yml`` and ``initdb/*``. When *backup* is True (the
+    Refreshes ``compose.yml``, ``cfn-db-prep.sh``, and ``initdb/*``. When *backup* is True (the
     default), the previous ``compose.yml`` is renamed to ``compose.yml.prev``
     before overwrite — a single rolling backup that covers anyone who has
     hand-edited the file.
@@ -336,6 +336,16 @@ def _refresh_compose_templates(*, backup: bool = True) -> list[Path]:
     compose_ref = importlib.resources.files("mycelium.docker") / "compose.yml"
     compose_dest.write_bytes(compose_ref.read_bytes())
     refreshed.append(compose_dest)
+
+    # cfn-db-prep.sh: the cfn-db-init one-shot bind-mounts this file
+    # (./cfn-db-prep.sh). If it isn't materialized here, Docker creates the
+    # mount source as an empty directory and cfn-db-init dies with
+    # "Is a directory" (exit 126), taking the whole cfn profile down with it.
+    prep_dest = dest_dir / "cfn-db-prep.sh"
+    prep_ref = importlib.resources.files("mycelium.docker") / "cfn-db-prep.sh"
+    prep_dest.write_bytes(prep_ref.read_bytes())
+    prep_dest.chmod(0o755)
+    refreshed.append(prep_dest)
 
     # initdb/ scripts so Postgres entrypoint creates CFN databases on first
     # volume init (compose mounts ./initdb as /docker-entrypoint-initdb.d).
@@ -767,66 +777,6 @@ def _get_cfn_workspace_id(cfn_mgmt_url: str) -> str | None:
         return None
 
 
-def _provision_backend(api_url: str, workspace_name: str = "default") -> tuple[str, str]:
-    """
-    Create a default workspace and MAS in the backend.
-    Returns (workspace_id, mas_id).
-    Idempotent — fetches existing workspace/MAS on 409/400 conflict.
-    Raises RuntimeError if the backend is unreachable or returns an error.
-    """
-    import json
-    import urllib.error
-    import urllib.request
-
-    def _get(path: str) -> list:
-        req = urllib.request.Request(
-            f"{api_url}{path}", headers={"Content-Type": "application/json"}
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read())
-
-    def _post(path: str, body: dict) -> dict:
-        data = json.dumps(body).encode()
-        req = urllib.request.Request(
-            f"{api_url}{path}",
-            data=data,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read())
-
-    try:
-        ws = _post("/api/workspaces", {"name": workspace_name})
-    except urllib.error.HTTPError as e:
-        if e.code in (400, 409):
-            workspaces = _get("/api/workspaces")
-            ws = next(
-                (w for w in workspaces if w.get("name") == workspace_name),
-                workspaces[0] if workspaces else None,
-            )
-            if ws is None:
-                raise RuntimeError(
-                    f"Workspace '{workspace_name}' creation returned {e.code} "
-                    "but no workspaces exist on the backend"
-                )
-        else:
-            raise
-    workspace_id: str = ws["id"]
-
-    try:
-        mas = _post(f"/api/workspaces/{workspace_id}/mas", {"name": "default"})
-    except urllib.error.HTTPError as e:
-        if e.code in (400, 409):
-            mas_list = _get(f"/api/workspaces/{workspace_id}/mas")
-            mas = mas_list[0]
-        else:
-            raise
-    mas_id: str = mas["id"]
-
-    return workspace_id, mas_id
-
-
 # ── Config write ─────────────────────────────────────────────────────────────
 
 
@@ -869,7 +819,7 @@ def _write_mycelium_config(
         runtime.collector_port = custom_ports.get("collector", 4318)
     if ioc_enabled:
         runtime.cfn_mgmt_url = "http://ioc-cfn-mgmt-plane-svc:9000"
-        runtime.cognition_fabric_node_url = "http://ioc-cognition-fabric-node-svc:9002"
+        runtime.cfn_svc_url = "http://ioc-cfn-svc:9002"
     if workspace_id:
         runtime.workspace_id = workspace_id
     config.runtime = runtime
@@ -923,6 +873,13 @@ def install(
     ),
     force: bool = typer.Option(
         False, "--force", help="Force full reinstall even if already installed"
+    ),
+    tag: str = typer.Option(
+        "",
+        "--tag",
+        help="Pin MYCELIUM_IMAGE_TAG (mycelium-io image version, e.g. 2.0.0) instead of "
+        "the :latest default. Required for the cfn profile — mycelium-db:latest has no "
+        "TimescaleDB, so leaving it on :latest fails db startup.",
     ),
 ) -> None:
     """
@@ -996,9 +953,7 @@ def install(
             compose_profiles: list[str] = []
             if ioc:
                 llm_config["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
-                llm_config["COGNITION_FABRIC_NODE_URL"] = (
-                    "http://ioc-cognition-fabric-node-svc:9002"
-                )
+                llm_config["CFN_SVC_URL"] = "http://ioc-cfn-svc:9002"
                 compose_profiles.append("cfn")
 
             # Non-interactive: trust the --ui/--no-ui flag, never prompt.
@@ -1040,6 +995,8 @@ def install(
             env_dir = Path.home() / ".mycelium"
             env_dir.mkdir(parents=True, exist_ok=True)
             env_path = env_dir / ".env"
+            if tag:
+                llm_config["MYCELIUM_IMAGE_TAG"] = tag
             _write_env_file(env_path, llm_config)
             typer.echo(f"  ✓ Wrote {env_path}")
 
@@ -1078,13 +1035,10 @@ def install(
                         "  ⚠  Could not fetch workspace from CFN mgmt plane", fg=typer.colors.YELLOW
                     )
             else:
-                try:
-                    workspace_id, mas_id = _provision_backend(api_url)
-                    typer.echo(f"  ✓ Workspace  {workspace_id}")
-                    typer.echo(f"  ✓ MAS        {mas_id}")
-                except Exception as exc:
-                    typer.secho(f"  ⚠  Could not provision backend: {exc}", fg=typer.colors.YELLOW)
-                    workspace_id, mas_id = "", ""
+                # Non-CFN installs have no CFN workspace/MAS to provision: the
+                # mgmt-plane's workspace/multi-agentic-systems endpoints only
+                # exist under the cfn profile. Skip silently.
+                workspace_id, mas_id = "", ""
 
             # Persist WORKSPACE_ID and MAS_ID into .env and restart backend so it picks them up
             if workspace_id:
@@ -1093,9 +1047,7 @@ def install(
                     ws_patch["MAS_ID"] = mas_id
                 if ioc:
                     ws_patch["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
-                    ws_patch["COGNITION_FABRIC_NODE_URL"] = (
-                        "http://ioc-cognition-fabric-node-svc:9002"
-                    )
+                    ws_patch["CFN_SVC_URL"] = "http://ioc-cfn-svc:9002"
                 _patch_env_vars(env_path, ws_patch)
                 _restart_backend(compose_path, env_path, compose_profiles, api_url)
 
@@ -1277,7 +1229,7 @@ def install(
         compose_profiles: list[str] = []
         if ioc_enabled:
             llm_config["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
-            llm_config["COGNITION_FABRIC_NODE_URL"] = "http://ioc-cognition-fabric-node-svc:9002"
+            llm_config["CFN_SVC_URL"] = "http://ioc-cfn-svc:9002"
             compose_profiles.append("cfn")
 
         # Frontend prompt — default to the --ui flag value (True unless --no-ui).
@@ -1329,6 +1281,8 @@ def install(
             typer.echo(f"  ✓ Creating {env_path}")
         else:
             typer.echo(f"  ~ Updating existing {env_path}")
+        if tag:
+            llm_config["MYCELIUM_IMAGE_TAG"] = tag
         _write_env_file(env_path, llm_config)
         typer.echo(f"  ✓ Wrote {env_path}")
 
@@ -1373,14 +1327,10 @@ def install(
                     "  ⚠  Could not fetch workspace from CFN mgmt plane", fg=typer.colors.YELLOW
                 )
         else:
-            try:
-                workspace_id, mas_id = _provision_backend(api_url)
-                typer.echo(f"  ✓ Workspace created  {workspace_id}")
-                typer.echo(f"  ✓ MAS created        {mas_id}")
-            except Exception as exc:
-                typer.secho(f"  ⚠  Could not provision backend: {exc}", fg=typer.colors.YELLOW)
-                typer.echo("     Re-run install or check the backend logs.")
-                workspace_id, mas_id = "", ""
+            # Non-CFN installs have no CFN workspace/MAS to provision: the
+            # mgmt-plane's workspace/multi-agentic-systems endpoints only exist
+            # under the cfn profile. Skip silently.
+            workspace_id, mas_id = "", ""
 
         # ── Phase 6: Migrate DB + write config ────────────────────────────
         # Persist WORKSPACE_ID and MAS_ID into .env and restart backend so it picks them up
@@ -1390,7 +1340,7 @@ def install(
                 ws_patch["MAS_ID"] = mas_id
             if ioc_enabled:
                 ws_patch["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
-                ws_patch["COGNITION_FABRIC_NODE_URL"] = "http://ioc-cognition-fabric-node-svc:9002"
+                ws_patch["CFN_SVC_URL"] = "http://ioc-cfn-svc:9002"
             _patch_env_vars(env_path, ws_patch)
             _restart_backend(compose_path, env_path, compose_profiles, api_url)
 

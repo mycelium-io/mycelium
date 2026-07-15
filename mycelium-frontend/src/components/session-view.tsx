@@ -20,7 +20,7 @@ interface RawMessage {
   created_at: string;
 }
 
-type Action = "propose" | "counter" | "accept" | "reject" | "tick" | "consensus" | "broken" | "start" | "join";
+type Action = "propose" | "counter" | "accept" | "reject" | "tick" | "consensus" | "broken" | "timeout" | "abort" | "start" | "join" | "retry";
 
 interface Event {
   id: string;
@@ -32,7 +32,19 @@ interface Event {
   offer?: Record<string, string>;
   issueOptions?: Record<string, string[]>;
   note?: string;
+  confidence?: number;
+  deferredTo?: string;
+  evidence?: string[];
+  reasoning?: string;
   raw: RawMessage;
+}
+
+interface ConsensusMetrics {
+  mpc?: number;
+  gar?: number;
+  scr?: number;
+  provenanceWeight?: number;
+  participants?: number;
 }
 
 interface DerivedState {
@@ -51,6 +63,8 @@ interface DerivedState {
     assignments: Record<string, string>;
     broken: boolean;
     planFile: string | null;
+    metrics: ConsensusMetrics | null;
+    cfnPersisted: boolean;
   } | null;
 }
 
@@ -61,6 +75,15 @@ function parseContent(c: string | Record<string, unknown>): Record<string, unkno
     try { return JSON.parse(c); } catch { return { _text: c }; }
   }
   return c ?? {};
+}
+
+/** Guarded numeric read: non-finite / non-number values count as absent. */
+function asNum(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+}
+
+function asStr(v: unknown): string | undefined {
+  return typeof v === "string" && v.length > 0 ? v : undefined;
 }
 
 function parseEvents(messages: RawMessage[]): Event[] {
@@ -114,14 +137,39 @@ function parseEvents(messages: RawMessage[]): Event[] {
       continue;
     }
 
-    if (m.message_type === "coordination_consensus") {
-      const broken = Boolean(content.broken);
+    if (m.message_type === "coordination_retry") {
+      const attempt = asNum(content.attempt) ?? 2;
+      const priorRounds = asNum(content.prior_rounds) ?? "?";
       out.push({
         id: m.id, time, iso, agent: "CognitiveEngine",
         round: 0,
-        action: broken ? "broken" : "consensus",
+        action: "retry",
+        note: `attempt ${attempt}: alignment validation rejected ${priorRounds}-round agreement`,
+        raw: m,
+      });
+      continue;
+    }
+
+    if (m.message_type === "coordination_consensus") {
+      const broken = Boolean(content.broken);
+      const reason = asStr(content.reason);
+      let action: Action = "consensus";
+      if (broken) {
+        if (reason === "timeout") action = "timeout";
+        else if (reason === "abort") action = "abort";
+        else action = "broken"; // backwards compat for messages without reason
+      }
+      const abortText = asStr(content.abort_reason) ?? (action === "abort" ? reason : undefined);
+      const planNote = asStr(content.plan);
+      const note = action === "abort" && abortText
+        ? (planNote ? `${planNote}: ${abortText}` : abortText)
+        : planNote;
+      out.push({
+        id: m.id, time, iso, agent: "CognitiveEngine",
+        round: 0,
+        action,
         offer: (content.assignments as Record<string, string>) ?? undefined,
-        note: typeof content.plan === "string" ? content.plan : undefined,
+        note,
         raw: m,
       });
       continue;
@@ -137,11 +185,18 @@ function parseEvents(messages: RawMessage[]): Event[] {
       else if (action === "counter_offer" || action === "counter") mapped = "counter";
       else mapped = "propose";
 
+      const evidence = Array.isArray(content.evidence)
+        ? content.evidence.filter((x): x is string => typeof x === "string")
+        : undefined;
       out.push({
         id: m.id, time, iso, agent: m.sender_handle,
         round,
         action: mapped,
         offer: content.offer as Record<string, string> | undefined,
+        confidence: asNum(content.confidence),
+        deferredTo: asStr(content.deferred_to),
+        evidence: evidence && evidence.length > 0 ? evidence : undefined,
+        reasoning: asStr(content.reasoning),
         raw: m,
       });
     }
@@ -177,19 +232,35 @@ function deriveState(messages: RawMessage[]): DerivedState {
   const nextProposerId = (tickPayload.next_proposer_id as string) ?? null;
 
   // State
-  const consensusEvent = events.find(e => e.action === "consensus" || e.action === "broken");
+  const consensusEvent = events.find(e => e.action === "consensus" || e.action === "broken" || e.action === "timeout" || e.action === "abort");
   let state: DerivedState["state"] = "starting";
-  if (consensusEvent) state = consensusEvent.action === "broken" ? "broken" : "complete";
+  if (consensusEvent) state = (consensusEvent.action === "broken" || consensusEvent.action === "timeout" || consensusEvent.action === "abort") ? "broken" : "complete";
   else if (lastTick) state = "negotiating";
 
   let consensus: DerivedState["consensus"] = null;
   if (consensusEvent) {
     const c = parseContent(consensusEvent.raw.content);
+    let metrics: ConsensusMetrics | null = null;
+    if (c.metrics && typeof c.metrics === "object") {
+      const m = c.metrics as Record<string, unknown>;
+      const parsed: ConsensusMetrics = {
+        mpc: asNum(m.mpc),
+        gar: asNum(m.gar),
+        scr: asNum(m.scr),
+        provenanceWeight: asNum(m.provenance_weight),
+        participants: asNum(m.participants),
+      };
+      if (parsed.mpc !== undefined || parsed.gar !== undefined || parsed.scr !== undefined) {
+        metrics = parsed;
+      }
+    }
     consensus = {
       plan: String(c.plan ?? ""),
       assignments: (c.assignments as Record<string, string>) ?? {},
       broken: Boolean(c.broken),
       planFile: typeof c.plan_file === "string" ? c.plan_file : null,
+      metrics,
+      cfnPersisted: c.cfn_persisted === true,
     };
   }
 
@@ -251,7 +322,10 @@ const ACTION_META: Record<Action, { label: string; tone: "accent" | "ok" | "warn
   accept:    { label: "ACCEPT",    tone: "ok" },
   reject:    { label: "REJECT",    tone: "warn" },
   consensus: { label: "CONSENSUS", tone: "ok" },
-  broken:    { label: "TIMEOUT",   tone: "warn" },
+  timeout:   { label: "TIMEOUT",   tone: "warn" },
+  abort:     { label: "ABORT",     tone: "warn" },
+  broken:    { label: "TIMEOUT",   tone: "warn" }, // backwards compat
+  retry:     { label: "RETRY",     tone: "warn" },
 };
 
 function toneVar(t: "accent" | "ok" | "warn" | "muted" | "ink"): string {
@@ -262,10 +336,12 @@ function toneVar(t: "accent" | "ok" | "warn" | "muted" | "ink"): string {
                         : "var(--muted)";
 }
 
-function ActionGlyph({ action }: { action: Action }) {
+function ActionGlyph({ action, deferred = false }: { action: Action; deferred?: boolean }) {
   const meta = ACTION_META[action];
-  const color = toneVar(meta.tone);
-  if (action === "reject" || action === "broken") {
+  // A deferred accept is compliance, not persuasion: mute it so it reads
+  // differently from a genuine accept in the lanes and legend.
+  const color = deferred && action === "accept" ? "var(--muted)" : toneVar(meta.tone);
+  if (action === "reject" || action === "broken" || action === "timeout" || action === "abort") {
     return (
       <svg
         width="12" height="12" viewBox="0 0 12 12"
@@ -274,6 +350,17 @@ function ActionGlyph({ action }: { action: Action }) {
         <line x1="2" y1="2" x2="10" y2="10" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
         <line x1="10" y1="2" x2="2" y2="10" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
       </svg>
+    );
+  }
+  if (action === "retry") {
+    return (
+      <span
+        aria-hidden
+        title="alignment validation retry"
+        style={{ display: "inline-block", color: "var(--yellow)", fontSize: 13, lineHeight: 1, flexShrink: 0 }}
+      >
+        ↺
+      </span>
     );
   }
   if (action === "tick") {
@@ -313,6 +400,7 @@ function ActionGlyph({ action }: { action: Action }) {
         display: "inline-block", width: 11, height: 11,
         background: filled ? color : "transparent",
         border: `1.5px solid ${color}`,
+        opacity: deferred && action === "accept" ? 0.6 : undefined,
       }}
     />
   );
@@ -442,7 +530,7 @@ function SwimLanes({ derived }: { derived: DerivedState }) {
 
   // Build per-agent, per-round latest action (preferring agent response over tick)
   const lanes = useMemo(() => {
-    const m = new Map<string, Map<number, Action>>();
+    const m = new Map<string, Map<number, { action: Action; confidence?: number; deferredTo?: string }>>();
     for (const a of agents) m.set(a, new Map());
     for (const e of events) {
       if (e.agent === "CognitiveEngine") continue;
@@ -450,8 +538,8 @@ function SwimLanes({ derived }: { derived: DerivedState }) {
       if (!lane) continue;
       const existing = lane.get(e.round);
       // Don't overwrite a real response with a later tick
-      if (existing && existing !== "tick" && e.action === "tick") continue;
-      lane.set(e.round, e.action);
+      if (existing && existing.action !== "tick" && e.action === "tick") continue;
+      lane.set(e.round, { action: e.action, confidence: e.confidence, deferredTo: e.deferredTo });
     }
     return m;
   }, [agents, events]);
@@ -499,11 +587,20 @@ function SwimLanes({ derived }: { derived: DerivedState }) {
             </div>
             {Array.from({ length: rounds }).map((_, i) => {
               const r = i + 1;
-              const action = lanes.get(agent)?.get(r);
+              const cell = lanes.get(agent)?.get(r);
+              const tipParts: string[] = [];
+              if (cell?.confidence !== undefined) tipParts.push(`confidence ${cell.confidence.toFixed(2)}`);
+              if (cell?.deferredTo) tipParts.push(`deferred → ${cell.deferredTo}`);
               return (
-                <div key={i} className="flex items-center justify-center border-l border-border"
+                <div key={i} className="flex items-center justify-center gap-1 border-l border-border"
+                     title={tipParts.length > 0 ? tipParts.join(" · ") : undefined}
                      style={{ height: 38, background: r === currentRound ? "rgba(93,212,224,0.06)" : undefined }}>
-                  {action && <ActionGlyph action={action} />}
+                  {cell && <ActionGlyph action={cell.action} deferred={Boolean(cell.deferredTo)} />}
+                  {cell?.confidence !== undefined && (
+                    <sup className="tabular font-mono" style={{ fontSize: 8, color: "var(--dim)", lineHeight: 1 }}>
+                      {cell.confidence.toFixed(2)}
+                    </sup>
+                  )}
                 </div>
               );
             })}
@@ -512,7 +609,7 @@ function SwimLanes({ derived }: { derived: DerivedState }) {
        </ScrollArea>
         {/* Legend */}
         <div className="flex gap-5 px-4 py-2 border-t border-border2 bg-bg/60">
-          {(["propose", "counter", "accept", "reject"] as Action[]).map(a => (
+          {(["propose", "counter", "accept", "reject", "retry", "timeout", "abort"] as Action[]).map(a => (
             <div key={a} className="flex items-center gap-2">
               <ActionGlyph action={a} />
               <span className="caps-mono-sm" style={{ color: toneVar(ACTION_META[a].tone) }}>
@@ -520,6 +617,10 @@ function SwimLanes({ derived }: { derived: DerivedState }) {
               </span>
             </div>
           ))}
+          <div className="flex items-center gap-2" title="accept by deference: yielded without being persuaded">
+            <ActionGlyph action="accept" deferred />
+            <span className="caps-mono-sm" style={{ color: "var(--muted)" }}>DEFERRED</span>
+          </div>
         </div>
       </div>
     </div>
@@ -556,6 +657,29 @@ function ConsensusBanner({ derived }: { derived: DerivedState }) {
               <span className="text-text">{String(v)}</span>
             </Fragment>
           ))}
+        </div>
+      )}
+      {c.metrics && (
+        <div className="caps-mono-sm mt-3 pt-2 border-t flex items-baseline gap-2" style={{ borderColor: color }}>
+          {([
+            ["MPC", c.metrics.mpc, "mean confidence of the team in the outcome"],
+            ["GAR", c.metrics.gar, "genuine agreement ratio: how many agents actually moved toward the outcome"],
+            ["SCR", c.metrics.scr, "social compliance ratio: how many accepts were deference, not persuasion"],
+          ] as const)
+            .filter(([, v]) => v !== undefined)
+            .map(([label, v, tip], i) => (
+              <Fragment key={label}>
+                {i > 0 && <span className="text-dim">·</span>}
+                <span title={tip} style={{ color }}>
+                  {label} <span className="tabular font-mono text-text2">{(v as number).toFixed(2)}</span>
+                </span>
+              </Fragment>
+            ))}
+          {c.cfnPersisted && (
+            <span className="text-muted ml-auto" title="agreement persisted to CFN shared memory">
+              CFN PERSISTED
+            </span>
+          )}
         </div>
       )}
       {!c.broken && c.planFile && (
@@ -604,11 +728,24 @@ function EventRow({ event }: { event: Event }) {
         <span className="text-micro text-dim tabular font-mono flex-shrink-0">R{String(event.round).padStart(2, "0")}</span>
         <span className="font-mono text-label text-text2 truncate min-w-0 flex-1">{event.agent}</span>
         <span className="flex items-center gap-1.5 flex-shrink-0">
-          <ActionGlyph action={event.action} />
+          <ActionGlyph action={event.action} deferred={Boolean(event.deferredTo)} />
           <span className="caps-mono-sm" style={{ color }}>{meta.label}</span>
+          {event.confidence !== undefined && (
+            <span
+              className="text-micro text-dim tabular font-mono"
+              title="agent's stated confidence (0–1)"
+            >
+              {event.confidence.toFixed(2)}
+            </span>
+          )}
         </span>
       </div>
       {/* Detail */}
+      {event.deferredTo && (
+        <div className="text-micro text-muted font-mono italic mt-1 pl-[58px]">
+          deferred → {event.deferredTo}
+        </div>
+      )}
       {event.note && (
         <div className="text-label text-text2 italic mt-1 pl-[58px]">{event.note}</div>
       )}

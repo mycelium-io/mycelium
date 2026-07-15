@@ -265,7 +265,7 @@ def test_histogram_quantile_rejects_out_of_range_q() -> None:
 def _make_config(
     *,
     cfn_mgmt_url: str | None = None,
-    cognition_fabric_node_url: str | None = None,
+    cfn_svc_url: str | None = None,
     explicit_scrape: list[dict] | None = None,
 ):
     """Build a MyceliumConfig for resolution tests without touching disk."""
@@ -274,7 +274,7 @@ def _make_config(
     return MyceliumConfig(
         runtime=RuntimeConfig(
             cfn_mgmt_url=cfn_mgmt_url,
-            cognition_fabric_node_url=cognition_fabric_node_url,
+            cfn_svc_url=cfn_svc_url,
         ),
         metrics=MetricsConfig(scrape=[ScrapeTarget(**s) for s in (explicit_scrape or [])]),
     )
@@ -334,5 +334,5 @@ def test_resolve_scrape_targets_skips_cfn_node_until_it_exposes_metrics() -> Non
     would always show as degraded. See the _NODE_HAS_METRICS flag in
     config.MyceliumConfig.resolve_scrape_targets; flip when the CFN change
     lands."""
-    cfg = _make_config(cognition_fabric_node_url="http://localhost:9002")
+    cfg = _make_config(cfn_svc_url="http://localhost:9002")
     assert cfg.resolve_scrape_targets() == []

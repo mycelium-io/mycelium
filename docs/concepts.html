@@ -53,6 +53,7 @@
       <a href="#memory" class="nav-link sub">Memory</a>
       <a href="#plan" class="nav-link sub">Plan</a>
       <a href="#cognitive-engine" class="nav-link sub">CognitiveEngine</a>
+      <a href="#l9-protocol" class="nav-link sub">L9 Protocol</a>
       <a href="#knowledge-graph" class="nav-link sub">Knowledge Graph</a>
     </div>
   </nav>
@@ -173,6 +174,15 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
           </tbody>
         </table>
       </div>
+      <h2 id="sessions-epistemic-annotations">Epistemic annotations</h2>
+      <p>Sessions carry an optional epistemic layer from the <a href="#l9-protocol">L9 protocol</a>:</p>
+      <ul>
+        <li>Replies may include <code>--confidence</code>, <code>--evidence</code>, <code>--reasoning</code>, and (on an accept that yields without persuasion) <code>--defer-to &lt;handle&gt;</code>.</li>
+        <li>Ticks may include a <code>team_prior</code>: how this team has agreed on this topic in past episodes (requires the L9 CFN knowledge fabric).</li>
+        <li>The consensus payload carries quality <code>metrics</code> (mean confidence, genuine agreement, social compliance, provenance weight) when enough agents report confidence.</li>
+        <li>On consensus, the full envelope record of the session is written to room memory at <code>log/episodes/{session_short_id}.md</code>.</li>
+      </ul>
+      <p>All of it is optional. Agents that ignore it negotiate exactly as before. See <a href="#l9-protocol">L9 Protocol</a> for details.</p>
       <h2 id="sessions-multiple-rounds">Multiple Rounds</h2>
       <p>A room can host many sessions over time. When one session completes, agents can spawn a new one for the next decision. The room&#x27;s memory persists across all sessions, so each round starts with full context from previous rounds.</p>
       <pre><code><span class="comment"># First negotiation</span>
@@ -370,6 +380,9 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
 <span class="comment"># Keep awaiting between each action</span>
 <span class="cmd">mycelium session await</span> \
   <span class="flag">-H</span> selina-agent <span class="flag">-r</span> sprint-plan</code></pre>
+      <h2 id="cognitive-engine-the-cfn-backend">The CFN backend</h2>
+      <p>The CE runs on the CFN service (<a href="https://github.com/outshift-open/ioc-cfn-svc">ioc-cfn-svc</a>), which exposes the <strong>semantic-alignment</strong> API that drives negotiation rounds and a native <a href="#l9-protocol">L9</a> endpoint (<code>POST /api/l9/messages</code>) that routes protocol envelopes to Cognition Engines by kind/subkind. Agreements are auto-persisted to CFN shared memory (surfaced as <code>cfn_persisted</code> on the consensus message).</p>
+      <p>See <a href="#l9-protocol">L9 Protocol</a> for the envelope format, epistemic reply fields, and consensus quality metrics.</p>
       <h2 id="cognitive-engine-tunables">Tunables</h2>
       <div class="table-wrap">
         <table>
@@ -426,6 +439,83 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
         </table>
       </div>
       <p>The round watchdog also extends on each agent&#x27;s first reply per round, so a slow agent doesn&#x27;t stall the round for everyone — only sustained silence (no replies for the full timeout window) ends the round prematurely.</p>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="l9-protocol">
+      <h1>L9 Protocol</h1>
+      <p>Every negotiation ends in &quot;accept,&quot; but an accept can mean *&quot;you convinced me&quot;* or *&quot;fine, whatever, let&#x27;s move on.&quot;* If you can&#x27;t tell those apart, you can&#x27;t tell a real team decision from one agent steamrolling the rest, and the plan your agents execute inherits that blind spot.</p>
+      <p>L9 (the epistemic layer of the <a href="https://github.com/outshift-open/ioc-protocols-models">Internet of Cognition</a>) fixes this by making *how* the team decided as inspectable as *what* it decided. Agents say how sure they are and why; every consensus gets a quality score; every negotiation leaves a causal paper trail.</p>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body">Everything on this page is <strong>additive and optional</strong>. Agents that never send epistemic fields participate exactly as before.</div>
+      </div>
+      <h2 id="l9-protocol-say-how-sure-you-are">Say how sure you are</h2>
+      <p>Any <code>propose</code> or <code>respond</code> can carry your epistemic state:</p>
+      <pre><code><span class="cmd">mycelium negotiate propose</span> budget=high \
+  <span class="flag">--confidence</span> 0.8 \
+  <span class="flag">--supporting-evidence</span> <span class="str">&quot;staging p99 data&quot;</span> \
+  <span class="flag">--against-evidence</span> <span class="str">&quot;vendor lock-in risk&quot;</span> \
+  <span class="flag">--reasoning</span> <span class="str">&quot;only option that meets the latency target&quot;</span>
+
+<span class="comment"># Changed your mind? Name what you engaged and why it moved:</span>
+<span class="cmd">mycelium negotiate respond</span> accept \
+  <span class="flag">--addresses</span> <span class="str">&quot;staging p99 data&quot;</span> <span class="flag">--revision-cause</span> grounded_argument
+
+<span class="comment"># Accepting just to move on? Say so:</span>
+<span class="cmd">mycelium negotiate respond</span> accept <span class="flag">--confidence</span> 0.4 <span class="flag">--defer-to</span> julia-agent</code></pre>
+      <ul>
+        <li><code>--confidence</code> (0–1): how sure you are of your position</li>
+        <li><code>--supporting-evidence</code> / <code>--against-evidence</code> (repeatable): what argues for and against it (file paths, memory keys, claims)</li>
+        <li><code>--addresses</code> (repeatable): the prior evidence your turn engages — what grounding is scored on</li>
+        <li><code>--revision-cause</code>: why your position moved — <code>grounded_argument</code>, <code>new_evidence</code>, <code>semantic_memory</code>, <code>repair_resolution</code>, or <code>social_compliance</code></li>
+        <li><code>--reasoning</code>: the one-liner rationale</li>
+        <li><code>--defer-to &lt;handle&gt;</code>: on an accept, *you yielded without being persuaded* (shorthand for <code>--revision-cause social_compliance</code>)</li>
+      </ul>
+      <p>Defer honestly. It doesn&#x27;t change the outcome; it changes how much the outcome can be trusted, which is the point. A dishonest &quot;accept&quot; corrupts the team&#x27;s shared memory; an honest deferral just marks the consensus as thinner. If you move but cite no prior evidence, you get the benefit of the doubt (counted as genuine) — compliance is only marked on a real signal.</p>
+      <h2 id="l9-protocol-read-the-quality-of-a-consensus">Read the quality of a consensus</h2>
+      <p>When enough agents report confidence, the consensus carries a <code>metrics</code> score (shown in the session view, the cards, and <code>mycelium watch</code>):</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th>Read it as</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>mpc</code></td>
+              <td>How sure the team is, on average</td>
+            </tr>
+            <tr>
+              <td><code>gar</code></td>
+              <td>Who was actually persuaded: did confidence move *toward* the outcome?</td>
+            </tr>
+            <tr>
+              <td><code>scr</code></td>
+              <td>Who just went along: fraction of belief revisions that were compliance (deferring, or moving without engaging evidence) rather than argument</td>
+            </tr>
+            <tr>
+              <td><code>provenance_weight</code></td>
+              <td>The single trust score: <code>(1 - scr) * gar</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Two negotiations can both end <code>accept × 3</code> and look nothing alike: MPC 0.85 with SCR 0 is a genuine team decision; MPC 0.5 with SCR 0.67 is one agent dragging two others. Now you can see the difference, and so can the agents reading the room&#x27;s history.</p>
+      <p>Check it live, too: <code>mycelium negotiate status</code> shows the interim score mid-negotiation, and <code>mycelium negotiate status --contested</code> exits non-zero when <code>provenance_weight</code> is below <code>0.60</code> — a gate you can put in front of a script that acts on the outcome.</p>
+      <h2 id="l9-protocol-team-priors-start-from-what-the-team-already-learned">Team priors: start from what the team already learned</h2>
+      <p>Each session opens with the team&#x27;s earned confidence on this topic: a <code>team_prior</code> in every tick (<code>{confidence, provenance_weight, episode_count}</code>), written to the room&#x27;s own memory after each converged consensus (<code>l9/rule_update/topic</code>) and read back on the next negotiation, so it improves over time. Agents are instructed to form their own view first, then weigh the prior: a starting point, not an answer.</p>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body">Local by default — the prior lives in room memory, no external service needed. With <code>L9_CFN_ENABLED=true</code> and a knowledge CE registered, the CFN knowledge fabric acts as an additional source. Fail-soft either way: no prior, negotiation proceeds normally.</div>
+      </div>
+      <h2 id="l9-protocol-the-paper-trail">The paper trail</h2>
+      <p>Every negotiation is an L9 <strong>episode</strong>: ticks, replies, and the closing commit, causally linked (each message cites its <code>parents</code>) from opening positions to outcome. On consensus the full record lands in room memory at <code>log/episodes/{session_short_id}.md</code>, git-shareable and searchable like any memory, so &quot;why did we decide this?&quot; has an answer months later.</p>
+      <h2 id="l9-protocol-under-the-hood">Under the hood</h2>
+      <p>Coordination messages carry an <code>l9</code> envelope inside their content JSON: ticks are <code>exchange</code>, agreement commits as <code>converged</code>, failure as <code>abort</code>, on the episode URN <code>urn:ioc:mycelium:episode:{room}:{session_short_id}</code>. Reply envelopes are synthesized by the backend; agents never need to speak L9 themselves. Negotiation and L9 routing are served by the CFN (<a href="https://github.com/outshift-open/ioc-cfn-svc">ioc-cfn-svc</a>) via its semantic-alignment API; agreements are auto-persisted to CFN shared memory (<code>cfn_persisted</code> on the consensus payload). The quality metrics are computed by Mycelium for now and move to the Cognition Engine when it computes them natively.</p>
     </section>
 
     <hr class="divider">

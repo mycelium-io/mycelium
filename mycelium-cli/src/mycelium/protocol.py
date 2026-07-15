@@ -16,6 +16,20 @@ Agent reply shapes (agent → server, plain JSON in room message content):
     # Reply to a "respond" tick
     { "action": "accept" }   # or "reject" or "end"
 
+    Both reply shapes accept optional epistemic fields (L9/SIEP):
+    ``confidence`` (float 0-1), ``reasoning`` (string), and the 3-way evidence
+    split from the spec's ``proposal_payload`` -- ``supporting_evidence`` /
+    ``against_evidence`` (lists of non-empty strings) plus ``addresses`` (the
+    prior evidence keys this turn engages, the input to the grounding check).
+    ``respond`` additionally accepts ``revision_cause`` (why the belief moved:
+    ``grounded_argument`` / ``social_compliance`` / ``new_evidence`` /
+    ``semantic_memory`` / ``repair_resolution``) and ``deferred_to`` (the handle
+    you yielded to on a compliance accept). The legacy flat ``evidence`` list
+    still parses. Every epistemic field is optional -- an agent that sends none
+    negotiates exactly as before. Omitted fields MUST be absent from the
+    serialized JSON, not null, so legacy replies stay byte-identical (so always
+    serialize with ``model_dump(exclude_none=True)``).
+
 Inbound tick shape (server → agent, coordination_tick message content):
 The content field is a JSON-serialised SSTPNegotiateMessage envelope whose
 ``payload`` carries the negotiation action details (see NegotiatePayload).
@@ -37,7 +51,27 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+# Why an agent's stated belief moved this turn (SIEP `belief.revision_cause`).
+# ``social_compliance`` is the one that drives SCR down; the rest are genuine.
+RevisionCause = Literal[
+    "grounded_argument",
+    "social_compliance",
+    "new_evidence",
+    "semantic_memory",
+    "repair_resolution",
+]
+
+
+def _validate_evidence(evidence: list[str] | None) -> list[str] | None:
+    """Reject empty/whitespace-only evidence strings (shared by both replies)."""
+    if evidence is not None:
+        for item in evidence:
+            if not item.strip():
+                msg = "evidence items must be non-empty strings"
+                raise ValueError(msg)
+    return evidence
 
 
 class ProposeReply(BaseModel):
@@ -45,9 +79,44 @@ class ProposeReply(BaseModel):
 
     The CLI builds this from KEY=VALUE pairs and sends it as the room message
     content.  Pydantic validation ensures the shape is correct before posting.
+
+    Epistemic fields (confidence/evidence/reasoning) are optional; when unset
+    they must be absent from the wire JSON: serialize with
+    ``model_dump(exclude_none=True)``.
     """
 
     offer: dict[str, str] = Field(..., min_length=1)
+    confidence: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Self-reported confidence in this offer, 0-1.",
+    )
+    evidence: list[str] | None = Field(
+        default=None,
+        description="Legacy flat evidence list; prefer supporting/against_evidence.",
+    )
+    supporting_evidence: list[str] | None = Field(
+        default=None,
+        description="Evidence keys arguing FOR this offer (non-empty strings).",
+    )
+    against_evidence: list[str] | None = Field(
+        default=None,
+        description="Known counter-evidence keys arguing against this offer.",
+    )
+    addresses: list[str] | None = Field(
+        default=None,
+        description="Prior evidence keys this offer engages (feeds grounding).",
+    )
+    reasoning: str | None = Field(
+        default=None,
+        description="Free-text rationale for the offer.",
+    )
+
+    @field_validator("evidence", "supporting_evidence", "against_evidence", "addresses")
+    @classmethod
+    def check_evidence(cls, v: list[str] | None) -> list[str] | None:
+        return _validate_evidence(v)
 
 
 class RespondReply(BaseModel):
@@ -55,9 +124,107 @@ class RespondReply(BaseModel):
 
     CFN mode: action is "accept" or "reject".
     Inline NegMAS mode: "end" is also accepted (mapped to "reject" by backend).
+
+    Epistemic fields (confidence, supporting/against_evidence, addresses,
+    revision_cause, deferred_to, reasoning) are optional; ``offer`` is only
+    meaningful for ``counter_offer``. Unset fields must be absent from the wire
+    JSON: serialize with ``model_dump(exclude_none=True)``.
     """
 
     action: Literal["accept", "reject", "end", "counter_offer"]
+    offer: dict[str, str] | None = Field(
+        default=None,
+        description="Counter-offer issue assignments (only valid for action=counter_offer).",
+    )
+    confidence: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Self-reported confidence in this response, 0-1.",
+    )
+    evidence: list[str] | None = Field(
+        default=None,
+        description="Legacy flat evidence list; prefer supporting/against_evidence.",
+    )
+    supporting_evidence: list[str] | None = Field(
+        default=None,
+        description="Evidence keys arguing FOR this response (non-empty strings).",
+    )
+    against_evidence: list[str] | None = Field(
+        default=None,
+        description="Known counter-evidence keys arguing against this response.",
+    )
+    addresses: list[str] | None = Field(
+        default=None,
+        description="Prior evidence keys this response engages (feeds grounding).",
+    )
+    revision_cause: RevisionCause | None = Field(
+        default=None,
+        description="Why the stated belief moved this turn (SIEP belief.revision_cause).",
+    )
+    deferred_to: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Handle of the agent yielded to on a compliance accept (feeds SCR).",
+    )
+    reasoning: str | None = Field(
+        default=None,
+        description="Free-text rationale for the response.",
+    )
+
+    @field_validator("evidence", "supporting_evidence", "against_evidence", "addresses")
+    @classmethod
+    def check_evidence(cls, v: list[str] | None) -> list[str] | None:
+        return _validate_evidence(v)
+
+    @model_validator(mode="after")
+    def check_offer_only_for_counter(self) -> RespondReply:
+        if self.offer is not None and self.action != "counter_offer":
+            msg = "offer is only valid with action=counter_offer"
+            raise ValueError(msg)
+        return self
+
+
+class TeamPrior(BaseModel):
+    """Optional ``team_prior`` block on an inbound tick payload.
+
+    Injected by the backend when a knowledge query returns prior agreements
+    on the room's topic (L9 knowledge path).
+    """
+
+    confidence: float
+    provenance_weight: float
+    episode_count: int
+    source: str | None = None
+
+
+class ConsensusMetrics(BaseModel):
+    """Optional ``metrics`` block on a ``coordination_consensus`` message.
+
+    Interim agreement-quality metrics (SIEP): mpc = mean final confidence,
+    gar = grounded-agreement ratio, scr = social-compliance ratio.
+    """
+
+    mpc: float
+    gar: float
+    scr: float
+    provenance_weight: float
+    participants: int
+
+
+class ConsensusContent(BaseModel):
+    """Minimal shape of a ``coordination_consensus`` message content.
+
+    The CLI passes most consensus keys through untyped; this model exists so
+    consumers that want validation of the new L9 fields have one.
+    """
+
+    plan: str | None = None
+    plan_file: str | None = None
+    assignments: dict[str, Any] | None = None
+    broken: bool = False
+    metrics: ConsensusMetrics | None = None
+    cfn_persisted: bool | None = None
 
 
 class NegotiatePayload(BaseModel):
@@ -76,6 +243,8 @@ class NegotiatePayload(BaseModel):
     proposer_id: str | None = None
     history: list[dict[str, Any]] = Field(default_factory=list)
     n_steps: int | None = None
+    team_prior: TeamPrior | None = None
+    l9: dict[str, Any] | None = None
 
 
 class InboundTick(BaseModel):

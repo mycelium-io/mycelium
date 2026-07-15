@@ -12,15 +12,14 @@ Two concerns live here:
    (``/api/workspaces/{w}/multi-agentic-systems/{m}/agents/{a}/memory-operations``)
    is a stable public surface and is NOT touched by this PR.
 
-2. **CFN shared-memories read surface**. Four routes under
-   ``/api/cfn/knowledge/*`` that proxy through to CFN's query endpoints.
-   These back the ``mycelium cfn query/concepts/neighbors/paths`` CLI
-   commands so users can inspect what's in CFN's knowledge graph without
-   tailing container logs. The corresponding CFN client functions live
+2. **CFN shared-memories query surface**. The ``/api/cfn/knowledge/query``
+   route proxies a semantic-graph query to CFN's evidence agent, backing the
+   ``mycelium cfn query`` CLI command. (The structured graph-read routes,
+   concepts/neighbors/paths/list, were removed in 2.0.0: the Go cfn-svc no
+   longer exposes those ``graph/*`` endpoints.) The CFN client function lives
    in ``app/services/cfn_knowledge.py``.
 """
 
-import asyncio
 import json
 import logging
 import uuid as uuid_mod
@@ -30,18 +29,14 @@ from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_async_session
 from app.models import Agent, AuditEvent
-from app.services.cfn_graph_read import CfnGraphUnavailable, list_concepts
 from app.services.cfn_knowledge import (
     CfnKnowledgeError,
-    get_concept_neighbors,
-    get_concepts_by_ids,
-    get_graph_paths,
     query_shared_memories,
 )
 from app.services.cfn_resolve import resolve_mas_id, resolve_workspace_id
@@ -204,105 +199,3 @@ async def cfn_query(
     except CfnKnowledgeError as exc:
         _raise_from_cfn_error(exc)
         raise  # unreachable, but keeps type checkers happy
-
-
-class ConceptsByIdsRequest(BaseModel):
-    ids: list[str] = Field(..., min_length=1)
-    mas_id: str | None = None
-    workspace_id: str | None = None
-
-
-@cfn_read_router.post("/concepts")
-async def cfn_concepts_by_ids(
-    data: ConceptsByIdsRequest,
-    db: Annotated[AsyncSession, Depends(get_async_session)],
-) -> dict[str, Any]:
-    """Fetch CFN concept records by explicit IDs."""
-    workspace_id = resolve_workspace_id(data.workspace_id)
-    mas_id = await resolve_mas_id(data.mas_id, None, db)
-    try:
-        return await get_concepts_by_ids(
-            workspace_id=workspace_id,
-            mas_id=mas_id,
-            ids=data.ids,
-        )
-    except CfnKnowledgeError as exc:
-        _raise_from_cfn_error(exc)
-        raise
-
-
-@cfn_read_router.get("/concepts/{concept_id}/neighbors")
-async def cfn_concept_neighbors(
-    concept_id: str,
-    db: Annotated[AsyncSession, Depends(get_async_session)],
-    mas_id: str | None = None,
-    workspace_id: str | None = None,
-) -> dict[str, Any]:
-    """Fetch a concept's graph neighbors from CFN."""
-    resolved_workspace = resolve_workspace_id(workspace_id)
-    resolved_mas = await resolve_mas_id(mas_id, None, db)
-    try:
-        return await get_concept_neighbors(
-            workspace_id=resolved_workspace,
-            mas_id=resolved_mas,
-            concept_id=concept_id,
-        )
-    except CfnKnowledgeError as exc:
-        _raise_from_cfn_error(exc)
-        raise
-
-
-class GraphPathsRequest(BaseModel):
-    source_id: str
-    target_id: str
-    mas_id: str | None = None
-    workspace_id: str | None = None
-    max_depth: int | None = None
-    relations: list[str] | None = None
-    limit: int | None = None
-
-
-@cfn_read_router.post("/paths")
-async def cfn_graph_paths(
-    data: GraphPathsRequest,
-    db: Annotated[AsyncSession, Depends(get_async_session)],
-) -> dict[str, Any]:
-    """Fetch paths between two CFN concepts by ID."""
-    workspace_id = resolve_workspace_id(data.workspace_id)
-    mas_id = await resolve_mas_id(data.mas_id, None, db)
-    try:
-        return await get_graph_paths(
-            workspace_id=workspace_id,
-            mas_id=mas_id,
-            source_id=data.source_id,
-            target_id=data.target_id,
-            max_depth=data.max_depth,
-            relations=data.relations,
-            limit=data.limit,
-        )
-    except CfnKnowledgeError as exc:
-        _raise_from_cfn_error(exc)
-        raise
-
-
-@cfn_read_router.get("/list")
-async def cfn_list(
-    db: Annotated[AsyncSession, Depends(get_async_session)],
-    mas_id: str | None = None,
-    limit: int = 50,
-) -> dict[str, Any]:
-    """Enumerate nodes in CFN's AgensGraph for a given MAS.
-
-    **Not a CFN API**. Goes around CFN's HTTP surface and queries the
-    underlying AgensGraph directly, because CFN doesn't expose a list
-    endpoint. Coupled to CFN's graph-naming convention
-    (``graph_<mas_id_with_hyphens_underscored>``).
-    """
-    resolved_mas = await resolve_mas_id(mas_id, None, db)
-    if limit < 1 or limit > 500:
-        raise HTTPException(status_code=422, detail="limit must be 1..500")
-    try:
-        nodes = await asyncio.to_thread(list_concepts, mas_id=resolved_mas, limit=limit)
-    except CfnGraphUnavailable as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return {"mas_id": resolved_mas, "limit": limit, "count": len(nodes), "nodes": nodes}

@@ -33,7 +33,7 @@ curl -sf http://localhost:9000/health
 # Expect: {"status":"healthy"}
 
 # 4. CFN node (if IoC enabled)
-docker inspect ioc-cognition-fabric-node-svc --format '{{.State.Health.Status}}'
+docker inspect ioc-cfn-svc --format '{{.State.Health.Status}}'
 # Expect: healthy
 ```
 

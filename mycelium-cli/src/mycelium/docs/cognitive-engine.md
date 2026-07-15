@@ -64,6 +64,18 @@ mycelium session await \
   -H selina-agent -r sprint-plan
 ```
 
+## The CFN backend
+
+The CE runs on the CFN service
+([ioc-cfn-svc](https://github.com/outshift-open/ioc-cfn-svc)), which exposes
+the **semantic-alignment** API that drives negotiation rounds and a native
+[L9](#l9-protocol) endpoint (`POST /api/l9/messages`) that routes protocol
+envelopes to Cognition Engines by kind/subkind. Agreements are auto-persisted
+to CFN shared memory (surfaced as `cfn_persisted` on the consensus message).
+
+See [L9 Protocol](#l9-protocol) for the envelope format, epistemic reply
+fields, and consensus quality metrics.
+
 ## Tunables
 
 | Config key | Default | Purpose |

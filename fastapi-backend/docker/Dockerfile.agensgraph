@@ -1,4 +1,10 @@
-FROM --platform=linux/amd64 skaiworldwide/agensgraph:v2.16.0-alpine3.22
+# Base platform defaults to amd64 (the released image target). Override to
+# linux/arm64 for a native build on Apple Silicon: the skaiworldwide/agensgraph
+# base is multi-arch, and building native avoids the Rosetta/QEMU deadlock that
+# hangs the TimescaleDB `make` under emulation. The arm64 db still interoperates
+# with the amd64 CFN services over the network.
+ARG DB_BASE_PLATFORM=linux/amd64
+FROM --platform=${DB_BASE_PLATFORM} skaiworldwide/agensgraph:v2.16.0-alpine3.22
 
 # Install pgvector extension for semantic vector search
 RUN apk add --no-cache build-base git clang15 llvm15 \
@@ -8,6 +14,17 @@ RUN apk add --no-cache build-base git clang15 llvm15 \
     && make install \
     && rm -rf /tmp/pgvector \
     && apk del build-base git clang15 llvm15
+
+# Install TimescaleDB extension for time-series metrics (used by ioc-cfn-svc's
+# cfn_cp database). Requires shared_preload_libraries=timescaledb at postgres
+# startup (set in the compose `command:`).
+RUN apk add --no-cache build-base git cmake openssl-dev lz4-dev icu-dev \
+    && git clone --branch 2.28.0 https://github.com/timescale/timescaledb.git /tmp/timescaledb \
+    && cd /tmp/timescaledb \
+    && ./bootstrap -DREGRESS_CHECKS=OFF -DTAP_CHECKS=OFF -DWARNINGS_AS_ERRORS=OFF \
+    && cd build && make && make install \
+    && rm -rf /tmp/timescaledb \
+    && apk del build-base git cmake openssl-dev lz4-dev
 
 # Init script: enable pgvector on startup
 COPY docker/initdb-vector.sh /docker-entrypoint-initdb.d/01-vector.sh

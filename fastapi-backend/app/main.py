@@ -82,14 +82,14 @@ def _register_memory_provider() -> None:
 
     api_url = settings.API_BASE_URL
     payload = {
-        "memory_provider_name": "mycelium",
+        "name": "mycelium",
         "description": (
             "Mycelium persistent memory — namespaced KVP, semantic vector search, "
             f"and knowledge graph. API: {api_url}/docs"
         ),
         "config": {
             "url": api_url,
-            "shared": "True",
+            "shared": True,
         },
     }
     t0 = time.monotonic()
@@ -156,8 +156,10 @@ async def lifespan(app: FastAPI):
     stop_watcher()
     stop_event_sweep()
     from app.routes.messages import close_notify_connection
+    from app.services.cfn_http import aclose_all
 
     await close_notify_connection()
+    await aclose_all()
     logger.info("Mycelium backend shutting down")
 
 

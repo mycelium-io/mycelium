@@ -103,9 +103,23 @@ def _post(ctx: typer.Context, room: str | None, handle: str | None, content: str
 # ── propose ───────────────────────────────────────────────────────────────────
 
 
+def _check_confidence(confidence: float | None) -> None:
+    """Range-check --confidence with a clear error before model validation."""
+    if confidence is not None and not (0.0 <= confidence <= 1.0):
+        typer.echo(
+            f"  Error: --confidence must be between 0.0 and 1.0, got {confidence}",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+
 @doc_ref(
-    usage="mycelium negotiate propose KEY=VALUE [KEY=VALUE ...] [-r <room>] [-H <handle>]",
-    desc="Make a negotiation proposal with issue values. Only valid after <code>session await</code> returns <code>action: propose</code>.",
+    usage=(
+        "mycelium negotiate propose KEY=VALUE [KEY=VALUE ...] "
+        "[--confidence <0-1>] [--supporting-evidence <str> ...] [--against-evidence <str> ...] "
+        "[--addresses <str> ...] [--reasoning <str>] [-r <room>] [-H <handle>]"
+    ),
+    desc="Make a negotiation proposal with issue values. Only valid after <code>session await</code> returns <code>action: propose</code>. Optionally state your confidence (0-1), cite evidence, and explain your reasoning.",
     group="negotiate",
 )
 @app.command("propose")
@@ -121,6 +135,24 @@ def propose(
     handle: str | None = typer.Option(
         None, "--handle", "-H", help="Your agent handle (overrides identity config)"
     ),
+    confidence: float | None = typer.Option(
+        None, "--confidence", help="Your confidence in this offer, 0.0-1.0"
+    ),
+    evidence: list[str] | None = typer.Option(
+        None, "--evidence", help="Legacy flat evidence citation (repeatable)"
+    ),
+    supporting_evidence: list[str] | None = typer.Option(
+        None, "--supporting-evidence", help="Evidence FOR this offer (repeatable)"
+    ),
+    against_evidence: list[str] | None = typer.Option(
+        None, "--against-evidence", help="Known counter-evidence (repeatable)"
+    ),
+    addresses: list[str] | None = typer.Option(
+        None, "--addresses", help="Prior evidence keys this offer engages (repeatable)"
+    ),
+    reasoning: str | None = typer.Option(
+        None, "--reasoning", help="Free-text rationale for the offer"
+    ),
 ) -> None:
     """
     Submit an offer for the current negotiate/propose tick.
@@ -128,9 +160,14 @@ def propose(
     Pass issue assignments as KEY=VALUE pairs.  The CLI wraps them in the
     correct wire format so you never have to write JSON by hand.
 
+    Optionally attach epistemic context: --confidence (0-1), --evidence
+    (repeatable), --reasoning.  Omitted flags leave the wire payload
+    byte-identical to a plain propose.
+
     Examples:
         mycelium negotiate propose budget=medium timeline=standard scope=standard quality=standard
         mycelium negotiate propose budget=high scope=full --room my-room --handle julia-agent
+        mycelium negotiate propose budget=high --confidence 0.8 --evidence "Q3 revenue up 12%"
     """
     from mycelium.commands.room import _resolve_room
 
@@ -222,13 +259,23 @@ def propose(
                             typer.echo(f'  interpreted "{raw_pair}" as "{canon_pair}"')
                 offer = snapped
 
+        _check_confidence(confidence)
+
         try:
-            reply = ProposeReply(offer=offer)
+            reply = ProposeReply(
+                offer=offer,
+                confidence=confidence,
+                evidence=evidence or None,
+                supporting_evidence=supporting_evidence or None,
+                against_evidence=against_evidence or None,
+                addresses=addresses or None,
+                reasoning=reasoning,
+            )
         except ValidationError as exc:
             typer.echo(f"  Error: invalid propose payload — {exc}", err=True)
             raise typer.Exit(1) from exc
 
-        content = json_module.dumps(reply.model_dump())
+        content = json_module.dumps(reply.model_dump(exclude_none=True))
         _post(ctx, room, handle, content)
 
     except (typer.Exit, typer.Abort):
@@ -245,8 +292,12 @@ VALID_ACTIONS = {"accept", "reject", "end", "counter_offer"}
 
 
 @doc_ref(
-    usage="mycelium negotiate respond <accept|reject> -r <room> -H <handle>",
-    desc="Accept or reject the current proposal. Only valid after <code>session await</code> returns <code>action: respond</code>.",
+    usage=(
+        "mycelium negotiate respond <accept|reject> [--confidence <0-1>] "
+        "[--supporting-evidence <str> ...] [--against-evidence <str> ...] [--addresses <str> ...] "
+        "[--revision-cause <cause>] [--reasoning <str>] [--defer-to <handle>] -r <room> -H <handle>"
+    ),
+    desc="Accept or reject the current proposal. Only valid after <code>session await</code> returns <code>action: respond</code>. Optionally state your confidence (0-1), cite evidence, explain your reasoning, or mark a compliance accept with <code>--defer-to</code>.",
     group="negotiate",
 )
 @app.command("respond")
@@ -262,28 +313,87 @@ def respond(
     handle: str | None = typer.Option(
         None, "--handle", "-H", help="Your agent handle (overrides identity config)"
     ),
+    confidence: float | None = typer.Option(
+        None, "--confidence", help="Your confidence in this response, 0.0-1.0"
+    ),
+    evidence: list[str] | None = typer.Option(
+        None, "--evidence", help="Legacy flat evidence citation (repeatable)"
+    ),
+    supporting_evidence: list[str] | None = typer.Option(
+        None, "--supporting-evidence", help="Evidence FOR this response (repeatable)"
+    ),
+    against_evidence: list[str] | None = typer.Option(
+        None, "--against-evidence", help="Known counter-evidence (repeatable)"
+    ),
+    addresses: list[str] | None = typer.Option(
+        None, "--addresses", help="Prior evidence keys this response engages (repeatable)"
+    ),
+    revision_cause: str | None = typer.Option(
+        None,
+        "--revision-cause",
+        help="Why your belief moved: grounded_argument|social_compliance|"
+        "new_evidence|semantic_memory|repair_resolution",
+    ),
+    reasoning: str | None = typer.Option(
+        None, "--reasoning", help="Free-text rationale for the response"
+    ),
+    defer_to: str | None = typer.Option(
+        None,
+        "--defer-to",
+        help="Handle you are yielding to: marks a compliance accept (only valid with accept)",
+    ),
 ) -> None:
     """
     Accept, reject, or end the negotiation for the current respond tick.
+
+    Optionally attach epistemic context: --confidence (0-1), --evidence
+    (repeatable), --reasoning.  If you accept only to defer to another agent
+    (yielding without being persuaded), say so with --defer-to <handle>;
+    it's measured, not punished.  Omitted flags leave the wire payload
+    byte-identical to a plain respond.
 
     Examples:
         mycelium negotiate respond accept
         mycelium negotiate respond reject --room my-room
         mycelium negotiate respond end    --handle julia-agent
+        mycelium negotiate respond accept --confidence 0.7 --defer-to julia-agent
     """
     try:
         action = action.strip().lower()
 
-        try:
-            reply = RespondReply(action=action)  # ty: ignore[invalid-argument-type]
-        except ValidationError:
+        if defer_to is not None and action != "accept":
+            typer.echo(
+                f"  Error: --defer-to is only valid with 'accept' (got action '{action}')",
+                err=True,
+            )
+            raise typer.Exit(1)
+
+        _check_confidence(confidence)
+
+        if action not in VALID_ACTIONS:
             typer.echo(
                 f"  Error: action must be one of {', '.join(sorted(VALID_ACTIONS))}, got '{action}'",
                 err=True,
             )
-            raise typer.Exit(1) from None
+            raise typer.Exit(1)
 
-        content = json_module.dumps(reply.model_dump())
+        try:
+            reply = RespondReply(
+                action=action,  # ty: ignore[invalid-argument-type]
+                confidence=confidence,
+                evidence=evidence or None,
+                supporting_evidence=supporting_evidence or None,
+                against_evidence=against_evidence or None,
+                addresses=addresses or None,
+                revision_cause=revision_cause,  # ty: ignore[invalid-argument-type]
+                deferred_to=defer_to,
+                reasoning=reasoning,
+            )
+        except ValidationError as exc:
+            typer.echo(f"  Error: invalid respond payload: {exc}", err=True)
+            raise typer.Exit(1) from exc
+
+        content = json_module.dumps(reply.model_dump(exclude_none=True))
         _post(ctx, room, handle, content)
 
     except (typer.Exit, typer.Abort):
@@ -329,9 +439,17 @@ def query(
 # ── status ────────────────────────────────────────────────────────────────────
 
 
+# provenance_weight at or above this is treated as trustworthy; below it the
+# agreement is "contested" (mirrors CFN_VALIDATION_SCORE_INTERVENTION default).
+CONTESTED_THRESHOLD = 0.60
+# Exit code for --contested when the agreement is below threshold, distinct from
+# the generic error exit (1) so orchestration can tell "contested" from "failed".
+CONTESTED_EXIT_CODE = 2
+
+
 @doc_ref(
-    usage="mycelium negotiate status [-r <room>]",
-    desc="Show the current negotiation state: round, issues, current offer, and per-agent reply status.",
+    usage="mycelium negotiate status [-r <room>] [--contested]",
+    desc="Show the current negotiation state: round, issues, current offer, per-agent reply status, and interim L9 quality metrics. With --contested, exit non-zero when the agreement's provenance_weight is below the trust threshold.",
     group="negotiate",
 )
 @app.command("status")
@@ -340,16 +458,27 @@ def status(
     room: str | None = typer.Option(
         None, "--room", "-r", help="Room to check (overrides MYCELIUM_ROOM_ID)"
     ),
+    contested: bool = typer.Option(
+        False,
+        "--contested",
+        help=f"Exit {CONTESTED_EXIT_CODE} when provenance_weight < {CONTESTED_THRESHOLD} "
+        "(CI/orchestration gate on agreement trust)",
+    ),
 ) -> None:
     """
     Show live negotiation state for the active session in a room.
 
-    Displays the current round, canonical issue list, standing offer, and which
-    agents have submitted replies this round.
+    Displays the current round, canonical issue list, standing offer, which
+    agents have submitted replies this round, and the interim L9 quality metrics
+    (MPC/GAR/SCR/provenance_weight) once enough agents report confidence.
+
+    With --contested, exit 2 when the interim provenance_weight is below 0.60 --
+    a gate you can put in front of acting on a weakly-supported agreement.
 
     Examples:
         mycelium negotiate status
         mycelium negotiate status --room sprint-plan
+        mycelium negotiate status --contested || echo "agreement is contested"
     """
     from mycelium.commands.room import _resolve_room
 
@@ -370,8 +499,14 @@ def status(
         resp.raise_for_status()
         data = resp.json()
 
+        metrics = data.get("metrics") or {}
+        pw = metrics.get("provenance_weight")
+        is_contested = pw is not None and pw < CONTESTED_THRESHOLD
+
         if json_output:
             typer.echo(json_module.dumps(data, indent=2))
+            if contested and is_contested:
+                raise typer.Exit(CONTESTED_EXIT_CODE)
             return
 
         if not data.get("active"):
@@ -394,6 +529,19 @@ def status(
         for agent_handle, reply_status in (data.get("pending_replies") or {}).items():
             icon = "+" if reply_status == "received" else "."
             typer.echo(f"  [{icon}] {agent_handle}")
+
+        if metrics:
+            typer.echo("")
+            typer.echo("  L9 metrics (interim, episode-scoped):")
+            typer.echo(
+                f"    MPC {metrics['mpc']:.2f}   GAR {metrics['gar']:.2f}   "
+                f"SCR {metrics['scr']:.2f}"
+            )
+            flag = f"   [CONTESTED — below {CONTESTED_THRESHOLD:.2f}]" if is_contested else ""
+            typer.echo(f"    provenance_weight: {pw:.2f}{flag}")
+
+        if contested and is_contested:
+            raise typer.Exit(CONTESTED_EXIT_CODE)
 
     except (typer.Exit, typer.Abort):
         raise

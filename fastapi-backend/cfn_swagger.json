@@ -1,0 +1,3239 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "IoC Cognition Fabric Node service — shared memory routing, memory operations proxy, and L9 message routing.",
+        "title": "CFN Service API",
+        "contact": {},
+        "version": "1.2"
+    },
+    "basePath": "/",
+    "paths": {
+        "/api/cognition-engines": {
+            "get": {
+                "description": "List cognition engines, optionally filtered by cfn_id and/or status.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "cognition-engine"
+                ],
+                "summary": "List Cognition Engines",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by CFN ID",
+                        "name": "cfn_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by status (online/offline)",
+                        "name": "status",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of cognition engines",
+                        "schema": {
+                            "$ref": "#/definitions/cognitionengine.CognitionEngineList"
+                        }
+                    },
+                    "502": {
+                        "description": "Failed to forward request to management plane",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "CFN not registered with management plane",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Receives a registration request from a Cognition Engine, adds CFN context (cfn_id),\nand forwards it to the management plane's /api/cognition-engines endpoint.\n\n**Request example**:\n```json\n{\n\"name\": \"Knowledge Management CE\",\n\"type\": \"knowledge_management\",\n\"url\": \"http://ce-host:9004\",\n\"capabilities\": [\"ingestion\", \"retrieval\"],\n\"metrics\": [\"kb.documents.indexed\", \"kb.search.latency_ms\"]\n}\n```\n\nThe CFN service validates the request, injects the CFN ID association,\nand forwards the enriched payload to the management plane.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "cognition-engine"
+                ],
+                "summary": "Register a Cognition Engine with the management plane",
+                "parameters": [
+                    {
+                        "description": "CE registration request",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/cognitionengine.RegisterRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "CE registered successfully",
+                        "schema": {
+                            "$ref": "#/definitions/cognitionengine.RegisterResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request body",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Failed to forward request to management plane",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "CFN not registered with management plane",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/cognition-engines/{ceId}": {
+            "get": {
+                "description": "Get details of a specific cognition engine by ID.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "cognition-engine"
+                ],
+                "summary": "Get Cognition Engine",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cognition Engine ID",
+                        "name": "ceId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "CE details",
+                        "schema": {
+                            "$ref": "#/definitions/cognitionengine.CognitionEngineDetail"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid CE ID format",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "CE not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Failed to forward request to management plane",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "CFN not registered with management plane",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Soft-delete (deregister) a cognition engine by ID.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "cognition-engine"
+                ],
+                "summary": "Delete Cognition Engine",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cognition Engine ID",
+                        "name": "ceId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "CE deleted successfully"
+                    },
+                    "400": {
+                        "description": "Invalid CE ID format",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "CE not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Failed to forward request to management plane",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "CFN not registered with management plane",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "description": "Update mutable fields of a CE: url, enabled, capabilities, metrics, config, mas_config, auth, kind, subkind.\nImmutable fields (cfn_id, version, name, auto_attach) cannot be updated and will return 400.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "cognition-engine"
+                ],
+                "summary": "Partially update a Cognition Engine",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cognition Engine ID",
+                        "name": "ceId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "CE patch request",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/cognitionengine.PatchRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "CE updated successfully",
+                        "schema": {
+                            "$ref": "#/definitions/cognitionengine.CognitionEngineDetail"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request or attempted to update immutable field",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "CE not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Failed to forward request to management plane",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "CFN not registered with management plane",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/cognition-engines/{ceId}/heartbeat": {
+            "put": {
+                "description": "Receives heartbeat requests from a Cognition Engine and forwards them to the management plane.\nThe management plane updates the CE's last_seen timestamp and status (offline → online if applicable).\n\nCEs should call this endpoint every 30 seconds to maintain their online status.\n\n**Response example**:\n```json\n{\n\"status\": \"online\",\n\"last_seen\": \"2026-05-21T10:30:00Z\"\n}\n```",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "cognition-engine"
+                ],
+                "summary": "Proxy CE heartbeat to management plane",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cognition Engine ID",
+                        "name": "ceId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Heartbeat acknowledged",
+                        "schema": {
+                            "$ref": "#/definitions/cognitionengine.HeartbeatResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "CE not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Failed to forward heartbeat to management plane",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "CFN not registered with management plane",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/cognition-engines/{ceId}/metrics": {
+            "get": {
+                "description": "Returns grouped time-series data filtered by time and entity dimensions.\nReturns both CE infrastructure metrics (queue, memory, CPU) and MAS operation metrics (tokens, latency, cost) processed by this CE.\nResponse format groups datapoints by metric name to reduce verbosity (60-70% size reduction).\nNo pagination - queries return all matching datapoints up to safety limit (100K max).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "cognition-engine"
+                ],
+                "summary": "Query metrics within time range (CE and/or MAS)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cognition Engine UUID",
+                        "name": "ceId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Start time (Unix timestamp, RFC3339, or date)",
+                        "name": "start_time",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "End time (Unix timestamp, RFC3339, or date)",
+                        "name": "end_time",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter MAS metrics by workspace UUID",
+                        "name": "workspace_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter MAS metrics by MAS UUID",
+                        "name": "mas_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter MAS metrics by agent ID",
+                        "name": "agent_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by metric name (supports * wildcard)",
+                        "name": "metric_name",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/app.MetricsQueryResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "413": {
+                        "description": "Too many datapoints (exceeds 100K limit)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Accepts batch of CE infrastructure metrics (queue depth, memory, CPU, active requests) and stores in TimescaleDB asynchronously.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "cognition-engine"
+                ],
+                "summary": "Ingest CE infrastructure metrics",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cognition Engine ID",
+                        "name": "ceId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Metrics batch",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/app.IngestCEMetricsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Metrics accepted",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/cognition-engines/{ceId}/workspaces/{workspaceId}/multi-agentic-systems/{masId}/config": {
+            "get": {
+                "description": "Returns the per-MAS mas_config override for this CE associated with a specific MAS.\nThis is the resolved config from mas_cognition_engines.mas_config, not the CE-wide\nfactory defaults from cognition_engines.mas_config.\n\nThe endpoint is CE-centric: a CE presents its identifier and requests its config\nfor a specific workspace/MAS combination.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "cognition-engine"
+                ],
+                "summary": "Get per-MAS config for a Cognition Engine",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cognition Engine ID",
+                        "name": "ceId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "workspaceId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Multi-Agentic System ID",
+                        "name": "masId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Per-MAS CE config",
+                        "schema": {
+                            "$ref": "#/definitions/cognitionengine.MASCEConfigResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid ID format",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "MAS or CE not found, or CE not associated with MAS",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Failed to forward request to management plane",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "CFN not registered with management plane",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/l9/messages": {
+            "post": {
+                "description": "Content-based routing: extracts workspace/MAS from L9 message participants.groups, selects CE by kind/subkind, forwards to CE's /api/l9/messages endpoint",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "l9"
+                ],
+                "summary": "Process and route L9 message to Cognition Engine",
+                "parameters": [
+                    {
+                        "description": "L9 protocol message with header (kind, subkind, participants) and payload",
+                        "name": "message",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/l9.L9"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "L9 response from Cognition Engine",
+                        "schema": {
+                            "$ref": "#/definitions/l9.L9"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid L9 message format or missing required fields",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Workspace/MAS not found or no CE handles this kind/subkind",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal error or CE forwarding failed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "CE unreachable or returned error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Target CE is disabled",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/workspaces/{workspaceId}/multi-agentic-systems/{masId}/agents/{agentId}/memory-operations": {
+            "post": {
+                "description": "Forwards REST API requests to a remote memory provider (Mem0, Graphiti, etc.) for agent-specific memory operations.\nThe memory provider base URL and auth credentials are auto-resolved from management plane config based on workspace/MAS/agent IDs.\nThe `http-url` field should contain the relative path and query parameters to append to the provider base URL.\n\n**GET example** — retrieve memories:\n```json\n{\n\"header\": {},\n\"payload\": {\n\"http-request-type\": \"GET\",\n\"http-url\": \"v1/memories/?user_id=curl-test-user\",\n\"http-request-body\": {},\n\"http-headers\": {}\n}\n}\n```\n\n**POST example** — add memories:\n```json\n{\n\"header\": {},\n\"payload\": {\n\"http-request-type\": \"POST\",\n\"http-url\": \"/v1/memories/\",\n\"http-request-body\": {\n\"messages\": [{\"role\": \"user\", \"content\": \"I prefer dark mode in all my apps\"}],\n\"user_id\": \"curl-test-user\"\n},\n\"http-headers\": {}\n}\n}\n```",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "memory-operations"
+                ],
+                "summary": "Proxy API requests to a remote memory provider",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "workspaceId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Multi-Agentic System ID",
+                        "name": "masId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Agent ID",
+                        "name": "agentId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Memory operation request",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/memoryoperations.MemoryOperationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Proxied response (actual provider status is in http-status field)",
+                        "schema": {
+                            "$ref": "#/definitions/memoryoperations.MemoryOperationResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request body or missing http-request-type",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Memory provider config not found for agent",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Failed to forward request to memory provider",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Memory proxy client not configured",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/workspaces/{workspaceId}/multi-agentic-systems/{masId}/agents/{agentId}/rag/similarity-search": {
+            "post": {
+                "description": "Performs vector similarity search over embeddings owned by a specific agent within a MAS store.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Vector Store"
+                ],
+                "summary": "Similarity search scoped to an agent",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "workspaceId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Multi-Agentic System ID",
+                        "name": "masId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Agent ID",
+                        "name": "agentId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Include raw embedding vectors in results (debug only)",
+                        "name": "include_embeddings",
+                        "in": "query"
+                    },
+                    {
+                        "description": "Similarity search request",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/sharedmemory.VectorSimilaritySearchRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Search results",
+                        "schema": {
+                            "$ref": "#/definitions/sharedmemory.VectorSimilaritySearchResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Vector store not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/workspaces/{workspaceId}/multi-agentic-systems/{masId}/agents/{agentId}/rag/vectors": {
+            "post": {
+                "description": "Upserts one or more vector records into the MAS store, tagged to a specific agent.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Vector Store"
+                ],
+                "summary": "Upsert vectors for an agent",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "workspaceId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Multi-Agentic System ID",
+                        "name": "masId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Agent ID",
+                        "name": "agentId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Upsert request",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/sharedmemory.AgentVectorUpsertRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Upserted successfully",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Vector store not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Deletes vector(s) owned by a specific agent. Supports two modes: delete by ID (single) or delete by filters (bulk).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Vector Store"
+                ],
+                "summary": "Delete vector(s) for an agent",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "workspaceId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Multi-Agentic System ID",
+                        "name": "masId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Agent ID",
+                        "name": "agentId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Delete request (provide either 'id' or 'filters')",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/sharedmemory.AgentVectorDeleteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Deleted successfully with deleted_count",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Vector store or record not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/workspaces/{workspaceId}/multi-agentic-systems/{masId}/semantic-alignment/decide": {
+            "post": {
+                "description": "Advances an existing semantic alignment session with agent replies.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "semantic-alignment"
+                ],
+                "summary": "Advance semantic alignment session",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "workspaceId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Multi-Agentic System ID",
+                        "name": "masId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Semantic negotiation decide request",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/semanticalignment.DecideRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Negotiation step executed successfully",
+                        "schema": {
+                            "$ref": "#/definitions/semanticalignment.DecideResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Session not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/workspaces/{workspaceId}/multi-agentic-systems/{masId}/semantic-alignment/start": {
+            "post": {
+                "description": "Initiates a new semantic alignment session with multiple agents.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "semantic-alignment"
+                ],
+                "summary": "Start semantic alignment session",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "workspaceId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Multi-Agentic System ID",
+                        "name": "masId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Semantic negotiation start request",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/semanticalignment.StartRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Negotiation session started successfully",
+                        "schema": {
+                            "$ref": "#/definitions/semanticalignment.StartResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/workspaces/{workspaceId}/multi-agentic-systems/{masId}/shared-memories": {
+            "post": {
+                "description": "Accepts a request to create or update shared memories and processes it asynchronously. Returns 202 Accepted immediately. The extraction and storage operations run in the background.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "shared-memories"
+                ],
+                "summary": "Create or update shared memories (async).",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "workspaceId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Multi-Agentic System ID",
+                        "name": "masId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Create or update shared memories request",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/sharedmemory.CreateOrUpdateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Request accepted for async processing",
+                        "schema": {
+                            "$ref": "#/definitions/sharedmemory.CreateOrUpdateAcceptedResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/workspaces/{workspaceId}/multi-agentic-systems/{masId}/shared-memories/query": {
+            "post": {
+                "description": "Queries shared memories for a given workspace and multi-agentic system using a graph path query.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "shared-memories"
+                ],
+                "summary": "Fetch shared memories",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "workspaceId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Multi-Agentic System ID",
+                        "name": "masId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Query request",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/sharedmemory.QueryRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Query executed successfully",
+                        "schema": {
+                            "$ref": "#/definitions/sharedmemory.QueryResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "app.CEMetricGroup": {
+            "type": "object",
+            "properties": {
+                "ce_id": {
+                    "type": "string"
+                },
+                "series": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/app.MASMetricSeries"
+                    }
+                }
+            }
+        },
+        "app.IngestCEMetricsRequest": {
+            "type": "object",
+            "properties": {
+                "attributes": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "metrics": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/app.MetricDataPoint"
+                    }
+                }
+            }
+        },
+        "app.IngestMetricsRequest": {
+            "type": "object",
+            "properties": {
+                "agent_id": {
+                    "type": "string"
+                },
+                "attributes": {
+                    "description": "Common fields",
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "ce_id": {
+                    "description": "CE metrics fields (mutually exclusive with MAS fields)",
+                    "type": "string"
+                },
+                "mas_id": {
+                    "type": "string"
+                },
+                "metrics": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/app.MetricDataPoint"
+                    }
+                },
+                "workspace_id": {
+                    "description": "MAS metrics fields (mutually exclusive with CE fields)",
+                    "type": "string"
+                }
+            }
+        },
+        "app.MASMetricSeries": {
+            "type": "object",
+            "properties": {
+                "agent_id": {
+                    "type": "string"
+                },
+                "attributes": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "datapoints": {
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": {}
+                    }
+                },
+                "metric_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "app.MASMetricsQueryResponse": {
+            "type": "object",
+            "properties": {
+                "ces": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/app.CEMetricGroup"
+                    }
+                },
+                "end_time": {
+                    "type": "string"
+                },
+                "mas_id": {
+                    "type": "string"
+                },
+                "start_time": {
+                    "type": "string"
+                },
+                "workspace_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "app.MetricDataPoint": {
+            "type": "object",
+            "properties": {
+                "attributes": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "name": {
+                    "type": "string"
+                },
+                "timestamp": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "number"
+                }
+            }
+        },
+        "app.MetricResultSet": {
+            "type": "object",
+            "properties": {
+                "series": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/app.MetricSeries"
+                    }
+                }
+            }
+        },
+        "app.MetricSeries": {
+            "type": "object",
+            "properties": {
+                "agent_id": {
+                    "type": "string"
+                },
+                "attributes": {
+                    "description": "Attributes (shared across all datapoints in this series)",
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "ce_id": {
+                    "type": "string"
+                },
+                "datapoints": {
+                    "description": "Datapoints: array of [timestamp, value] pairs\nFormat: [[\"2026-05-27T10:00:00Z\", 123.45], [\"2026-05-27T10:01:00Z\", 456.78]]",
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": {}
+                    }
+                },
+                "mas_id": {
+                    "type": "string"
+                },
+                "metric_name": {
+                    "type": "string"
+                },
+                "workspace_id": {
+                    "description": "MAS fields (populated for MAS metrics)",
+                    "type": "string"
+                }
+            }
+        },
+        "app.MetricsQueryResponse": {
+            "type": "object",
+            "properties": {
+                "ce_id": {
+                    "type": "string"
+                },
+                "ce_metrics": {
+                    "$ref": "#/definitions/app.MetricResultSet"
+                },
+                "mas_metrics": {
+                    "$ref": "#/definitions/app.MetricResultSet"
+                }
+            }
+        },
+        "app.conceptSimilaritySearchHeader": {
+            "type": "object",
+            "properties": {
+                "agent_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "app.conceptSimilaritySearchPayload": {
+            "type": "object",
+            "properties": {
+                "embedded_text": {
+                    "type": "string"
+                },
+                "embedding_vector": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    }
+                },
+                "search_metrics": {
+                    "type": "string"
+                },
+                "top_k": {
+                    "type": "integer"
+                }
+            }
+        },
+        "app.conceptSimilaritySearchRequest": {
+            "type": "object",
+            "properties": {
+                "header": {
+                    "$ref": "#/definitions/app.conceptSimilaritySearchHeader"
+                },
+                "payload": {
+                    "$ref": "#/definitions/app.conceptSimilaritySearchPayload"
+                },
+                "request_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "app.conceptSimilaritySearchResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "header": {
+                    "$ref": "#/definitions/app.conceptSimilaritySearchResponseHeader"
+                },
+                "response_id": {
+                    "type": "string"
+                },
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/app.conceptSimilaritySearchResult"
+                    }
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "app.conceptSimilaritySearchResponseHeader": {
+            "type": "object",
+            "properties": {
+                "agent_id": {
+                    "type": "string"
+                },
+                "mas_id": {
+                    "type": "string"
+                },
+                "workspace_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "app.conceptSimilaritySearchResult": {
+            "type": "object",
+            "properties": {
+                "concept_id": {
+                    "type": "string"
+                },
+                "concept_name": {
+                    "type": "string"
+                },
+                "embedding_vector": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    }
+                },
+                "score": {
+                    "type": "number"
+                }
+            }
+        },
+        "app.updateGraphConcept": {
+            "type": "object",
+            "properties": {
+                "attributes": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "internal_attributes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/iocmemoryprovider.InternalAttributes"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "app.updateGraphHeader": {
+            "type": "object",
+            "properties": {
+                "agent_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "app.updateGraphRelation": {
+            "type": "object",
+            "properties": {
+                "attributes": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "id": {
+                    "type": "string"
+                },
+                "internal_attributes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/iocmemoryprovider.InternalAttributes"
+                    }
+                },
+                "node_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "relationship": {
+                    "type": "string"
+                }
+            }
+        },
+        "app.updateGraphRequest": {
+            "type": "object",
+            "properties": {
+                "concepts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/app.updateGraphConcept"
+                    }
+                },
+                "descriptor": {
+                    "type": "string"
+                },
+                "header": {
+                    "$ref": "#/definitions/app.updateGraphHeader"
+                },
+                "metadata": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "relations": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/app.updateGraphRelation"
+                    }
+                },
+                "request_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "app.updateGraphResponse": {
+            "type": "object",
+            "properties": {
+                "concepts_updated": {
+                    "type": "integer"
+                },
+                "descriptor": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "header": {
+                    "$ref": "#/definitions/app.updateGraphHeader"
+                },
+                "metadata": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "relations_updated": {
+                    "type": "integer"
+                },
+                "response_id": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "integer"
+                }
+            }
+        },
+        "cognitionagentclient.ExtractionPayload": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "description": "Data contains the extraction payload and its structure depends on Metadata.Format.\n\nSupported formats: \"observe-sdk-otel\", \"openclaw\" and \"otel-trace\".\n\n1. format = \"observe-sdk-otel\"\n   - Data MUST be a JSON array of ExtractionDataRecord objects.\n   - Example:\n[\n  { TraceId, SpanId, ParentSpanId, SpanName, ServiceName, SpanAttributes, Duration }\n]\n\n2. format = \"openclaw\"\n   - Data is an opaque JSON payload.\n   - The structure is not interpreted or validated by this service and is processed as-is.\n\nClients MUST ensure the Data field matches the structure required by the specified Metadata.Format.",
+                    "type": "object"
+                },
+                "metadata": {
+                    "description": "Metadata describes the format and interpretation of the payload.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cognitionagentclient.ExtractionPayloadMetadata"
+                        }
+                    ]
+                }
+            }
+        },
+        "cognitionagentclient.ExtractionPayloadMetadata": {
+            "type": "object",
+            "properties": {
+                "format": {
+                    "description": "Format specifies how the Data field should be interpreted.\n\nSupported values:\n- \"observe-sdk-otel\": Data is a JSON array of ExtractionDataRecord\n- \"otel-trace\": Data is a grouped OTel trace payload pushed by cfn-svc\n- \"openclaw\": Data is an opaque JSON payload",
+                    "type": "string"
+                }
+            }
+        },
+        "cognitionagents.RequestType": {
+            "type": "string",
+            "enum": [
+                "KNOWLEDGE_VECTORS_UPSERT",
+                "KNOWLEDGE_VECTORS_QUERY"
+            ],
+            "x-enum-varnames": [
+                "ReqTypeKnowledgeVectorsUpsert",
+                "ReqTypeKnowledgeVectorsQuery"
+            ]
+        },
+        "cognitionagents.SharedMemoryVectorsRequest": {
+            "type": "object",
+            "properties": {
+                "header": {
+                    "$ref": "#/definitions/common.Header"
+                },
+                "request_body": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "request_type": {
+                    "$ref": "#/definitions/cognitionagents.RequestType"
+                }
+            }
+        },
+        "cognitionagents.SharedMemoryVectorsResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "$ref": "#/definitions/common.ErrorDetail"
+                },
+                "header": {
+                    "$ref": "#/definitions/common.Header"
+                },
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "cognitionengine.CognitionEngineDetail": {
+            "type": "object",
+            "properties": {
+                "capabilities": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "cfn_id": {
+                    "type": "string"
+                },
+                "config": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "last_seen": {
+                    "type": "string"
+                },
+                "mas_auto_associate": {
+                    "type": "boolean"
+                },
+                "mas_config": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "metrics": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "subkind": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "cognitionengine.CognitionEngineList": {
+            "type": "object",
+            "properties": {
+                "cognition_engines": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cognitionengine.CognitionEngineListItem"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "cognitionengine.CognitionEngineListItem": {
+            "type": "object",
+            "properties": {
+                "cfn_id": {
+                    "type": "string"
+                },
+                "config": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "last_seen": {
+                    "type": "string"
+                },
+                "mas_auto_associate": {
+                    "type": "boolean"
+                },
+                "mas_config": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "name": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "subkind": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "cognitionengine.HeartbeatResponse": {
+            "type": "object",
+            "properties": {
+                "last_seen": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "cognitionengine.MASCEConfigResponse": {
+            "type": "object",
+            "properties": {
+                "ce_id": {
+                    "type": "string"
+                },
+                "mas_config": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "mas_id": {
+                    "type": "string"
+                },
+                "workspace_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "cognitionengine.PatchRequest": {
+            "type": "object",
+            "properties": {
+                "auth": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "capabilities": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "cfn_id": {
+                    "description": "Immutable fields - included to trigger validation error if provided",
+                    "type": "string"
+                },
+                "config": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "mas_auto_associate": {
+                    "type": "boolean"
+                },
+                "mas_config": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "metrics": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "subkind": {
+                    "type": "string"
+                },
+                "url": {
+                    "description": "Mutable fields",
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "cognitionengine.RegisterRequest": {
+            "type": "object",
+            "properties": {
+                "auth": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "capabilities": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "config": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "kind": {
+                    "description": "CE kind (e.g., \"knowledge\", \"contingency\")",
+                    "type": "string"
+                },
+                "mas_auto_associate": {
+                    "description": "No omitempty - always send (defaults to false)",
+                    "type": "boolean"
+                },
+                "mas_config": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "metrics": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "subkind": {
+                    "description": "CE subkind (e.g., \"distillation\", \"query\", \"negotiation\")",
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "cognitionengine.RegisterResponse": {
+            "type": "object",
+            "properties": {
+                "ce_id": {
+                    "type": "string"
+                },
+                "cfn_id": {
+                    "type": "string"
+                },
+                "created": {
+                    "type": "boolean"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "mas_auto_associate": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "subkind": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "common.ErrorDetail": {
+            "type": "object",
+            "properties": {
+                "detail": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "common.Header": {
+            "type": "object",
+            "properties": {
+                "agent_id": {
+                    "description": "Optional",
+                    "type": "string"
+                },
+                "mas_id": {
+                    "description": "Mandatory",
+                    "type": "string"
+                },
+                "workspace_id": {
+                    "description": "Mandatory",
+                    "type": "string"
+                }
+            }
+        },
+        "common.TokenUsage": {
+            "type": "object",
+            "properties": {
+                "completion": {
+                    "type": "integer"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "prompt": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "common.TokenUsageMeta": {
+            "type": "object",
+            "properties": {
+                "ce_id": {
+                    "description": "CE that performed the operation (for metrics attribution)",
+                    "type": "string"
+                },
+                "cost_usd": {
+                    "type": "number"
+                },
+                "latency_ms": {
+                    "type": "number"
+                },
+                "timestamp": {
+                    "type": "string"
+                },
+                "tokens": {
+                    "$ref": "#/definitions/common.TokenUsage"
+                }
+            }
+        },
+        "iocmemoryprovider.InternalAttributes": {
+            "type": "object",
+            "properties": {
+                "attributes": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "owner": {
+                    "type": "string"
+                }
+            }
+        },
+        "iocmemoryprovider.KnowledgeVectorMetadataFilter": {
+            "type": "object",
+            "properties": {
+                "chunk_index": {
+                    "type": "integer"
+                },
+                "data_source": {
+                    "type": "string"
+                },
+                "doc_index": {
+                    "type": "integer"
+                },
+                "recorded_at_from": {
+                    "type": "string"
+                },
+                "recorded_at_to": {
+                    "type": "string"
+                }
+            }
+        },
+        "l9.Actor": {
+            "type": "object",
+            "properties": {
+                "attestation": {
+                    "description": "Attestation corresponds to the JSON schema field \"attestation\"."
+                },
+                "id": {
+                    "description": "ID corresponds to the JSON schema field \"id\".",
+                    "type": "string"
+                },
+                "role": {
+                    "description": "Role corresponds to the JSON schema field \"role\".",
+                    "type": "string"
+                }
+            }
+        },
+        "l9.Kind": {
+            "type": "string",
+            "enum": [
+                "commit",
+                "contingency",
+                "exchange",
+                "intent",
+                "knowledge"
+            ],
+            "x-enum-varnames": [
+                "KindCommit",
+                "KindContingency",
+                "KindExchange",
+                "KindIntent",
+                "KindKnowledge"
+            ]
+        },
+        "l9.L9": {
+            "type": "object",
+            "properties": {
+                "header": {
+                    "description": "Header corresponds to the JSON schema field \"header\".",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/l9.L9Header"
+                        }
+                    ]
+                },
+                "payload": {
+                    "description": "Payload corresponds to the JSON schema field \"payload\".",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/l9.L9Payload"
+                        }
+                    ]
+                }
+            }
+        },
+        "l9.L9Header": {
+            "type": "object",
+            "properties": {
+                "attributes": {
+                    "description": "Attributes corresponds to the JSON schema field \"attributes\".",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/l9.L9HeaderAttributes"
+                        }
+                    ]
+                },
+                "context": {
+                    "description": "Context corresponds to the JSON schema field \"context\".",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/l9.L9HeaderContext"
+                        }
+                    ]
+                },
+                "kind": {
+                    "description": "Kind corresponds to the JSON schema field \"kind\".",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/l9.Kind"
+                        }
+                    ]
+                },
+                "message": {
+                    "description": "Message corresponds to the JSON schema field \"message\".",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/l9.L9HeaderMessage"
+                        }
+                    ]
+                },
+                "participants": {
+                    "description": "Participants corresponds to the JSON schema field \"participants\".",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/l9.ParticipantSet"
+                        }
+                    ]
+                },
+                "policy": {
+                    "description": "Policy corresponds to the JSON schema field \"policy\".",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/l9.L9HeaderPolicy"
+                        }
+                    ]
+                },
+                "protocol": {
+                    "description": "Protocol corresponds to the JSON schema field \"protocol\".",
+                    "type": "string"
+                },
+                "subkind": {
+                    "description": "Subkind corresponds to the JSON schema field \"subkind\"."
+                },
+                "subprotocol": {
+                    "description": "Subprotocol corresponds to the JSON schema field \"subprotocol\".",
+                    "type": "string"
+                },
+                "version": {
+                    "description": "Version corresponds to the JSON schema field \"version\".",
+                    "type": "string"
+                }
+            }
+        },
+        "l9.L9HeaderAttributes": {
+            "type": "object",
+            "additionalProperties": true
+        },
+        "l9.L9HeaderContext": {
+            "type": "object",
+            "properties": {
+                "epistemic": {
+                    "description": "Epistemic corresponds to the JSON schema field \"epistemic\".",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/l9.L9HeaderContextEpistemic"
+                        }
+                    ]
+                },
+                "semantic": {
+                    "description": "Semantic corresponds to the JSON schema field \"semantic\".",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/l9.L9HeaderContextSemantic"
+                        }
+                    ]
+                },
+                "topic": {
+                    "description": "Topic corresponds to the JSON schema field \"topic\".",
+                    "type": "string"
+                }
+            }
+        },
+        "l9.L9HeaderContextEpistemic": {
+            "type": "object",
+            "additionalProperties": true
+        },
+        "l9.L9HeaderContextSemantic": {
+            "type": "object",
+            "properties": {
+                "ontology_ref": {
+                    "description": "OntologyRef corresponds to the JSON schema field \"ontology_ref\".",
+                    "type": "string"
+                },
+                "provenance": {
+                    "description": "Provenance corresponds to the JSON schema field \"provenance\".",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/l9.L9HeaderContextSemanticProvenance"
+                        }
+                    ]
+                },
+                "schema_id": {
+                    "description": "SchemaID corresponds to the JSON schema field \"schema_id\".",
+                    "type": "string"
+                }
+            }
+        },
+        "l9.L9HeaderContextSemanticProvenance": {
+            "type": "object",
+            "additionalProperties": true
+        },
+        "l9.L9HeaderMessage": {
+            "type": "object",
+            "properties": {
+                "episode": {
+                    "description": "Episode corresponds to the JSON schema field \"episode\".",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "ID corresponds to the JSON schema field \"id\".",
+                    "type": "string"
+                },
+                "parents": {
+                    "description": "Ordered list of parent message IDs. Empty list for root messages.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "l9.L9HeaderPolicy": {
+            "type": "object",
+            "properties": {
+                "propagation": {
+                    "description": "Propagation corresponds to the JSON schema field \"propagation\".",
+                    "type": "string"
+                },
+                "retention_policy": {
+                    "description": "RetentionPolicy corresponds to the JSON schema field \"retention_policy\".",
+                    "type": "string"
+                },
+                "sensitivity": {
+                    "description": "Sensitivity corresponds to the JSON schema field \"sensitivity\".",
+                    "type": "string"
+                }
+            }
+        },
+        "l9.L9Payload": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "description": "Data corresponds to the JSON schema field \"data\".",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/l9.L9PayloadData"
+                        }
+                    ]
+                },
+                "type": {
+                    "description": "Type corresponds to the JSON schema field \"type\".",
+                    "type": "string"
+                }
+            }
+        },
+        "l9.L9PayloadData": {
+            "type": "object",
+            "additionalProperties": true
+        },
+        "l9.ParticipantSet": {
+            "type": "object",
+            "properties": {
+                "actors": {
+                    "description": "Actors corresponds to the JSON schema field \"actors\".",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/l9.Actor"
+                    }
+                },
+                "groups": {
+                    "description": "Groups corresponds to the JSON schema field \"groups\".",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/l9.ParticipantSetGroups"
+                        }
+                    ]
+                }
+            }
+        },
+        "l9.ParticipantSetGroups": {
+            "type": "object",
+            "additionalProperties": true
+        },
+        "memoryoperations.MemoryOperationHeader": {
+            "type": "object"
+        },
+        "memoryoperations.MemoryOperationPayload": {
+            "type": "object",
+            "properties": {
+                "http-headers": {
+                    "description": "Custom headers",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "http-request-body": {
+                    "description": "JSON payload",
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "http-request-type": {
+                    "description": "POST, PUT, GET, DELETE, etc.",
+                    "type": "string"
+                },
+                "http-url": {
+                    "description": "URL with query parameters (URL encoded)",
+                    "type": "string"
+                }
+            }
+        },
+        "memoryoperations.MemoryOperationRequest": {
+            "type": "object",
+            "properties": {
+                "header": {
+                    "$ref": "#/definitions/memoryoperations.MemoryOperationHeader"
+                },
+                "payload": {
+                    "$ref": "#/definitions/memoryoperations.MemoryOperationPayload"
+                }
+            }
+        },
+        "memoryoperations.MemoryOperationResponse": {
+            "type": "object",
+            "properties": {
+                "http-headers": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "http-response-body": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "http-status": {
+                    "type": "integer"
+                }
+            }
+        },
+        "semanticalignment.Agent": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "description": "ID is the unique agent identifier.",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Name is the human-readable agent name.",
+                    "type": "string"
+                }
+            }
+        },
+        "semanticalignment.AgentDecision": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "description": "Action is one of \"accept\", \"reject\", or \"counter_offer\".",
+                    "type": "string"
+                },
+                "offer": {
+                    "description": "Offer is the proposed option per issue when Action is \"counter_offer\".\nShape: {issue_id: option_label}",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "participant_id": {
+                    "description": "ParticipantID is the ID of the participant who made this decision.",
+                    "type": "string"
+                }
+            }
+        },
+        "semanticalignment.AgentReply": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "description": "Action is one of \"accept\", \"reject\", or \"counter_offer\".",
+                    "type": "string"
+                },
+                "offer": {
+                    "description": "Offer is the proposed option per issue when Action is \"counter_offer\".\nShape: {issue_id: option_label}",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "participant_id": {
+                    "description": "ParticipantID is the ID of the agent replying.",
+                    "type": "string"
+                }
+            }
+        },
+        "semanticalignment.DecideRequest": {
+            "type": "object",
+            "properties": {
+                "agent_replies": {
+                    "description": "AgentReplies contains each agent's reply to the current round.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/semanticalignment.AgentReply"
+                    }
+                },
+                "session_id": {
+                    "description": "SessionID is the session identifier from the /start response.",
+                    "type": "string"
+                }
+            }
+        },
+        "semanticalignment.DecideResponse": {
+            "type": "object",
+            "properties": {
+                "final_result": {
+                    "description": "FinalResult holds the terminal negotiation envelope when Status is\n\"agreed\", \"broken\", or \"timeout\".",
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "messages": {
+                    "description": "Messages contains the next round's messages to dispatch to agents.\nPresent only when Status is \"ongoing\". Forward these to each agent's\ncallback endpoint, collect their replies, and submit via /decide again.",
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "meta": {
+                    "description": "Meta contains LLM token usage metadata",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/common.TokenUsageMeta"
+                        }
+                    ]
+                },
+                "round": {
+                    "description": "Round is the round number that was just evaluated.",
+                    "type": "integer"
+                },
+                "session_id": {
+                    "description": "SessionID echoes the session identifier.",
+                    "type": "string"
+                },
+                "shared_memory": {
+                    "description": "SharedMemory reports the outcome of persisting the agreement to shared\nmemory. Only present when Status is \"agreed\".",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/semanticalignment.SharedMemoryResult"
+                        }
+                    ]
+                },
+                "status": {
+                    "description": "Status is \"ongoing\", \"agreed\", \"broken\", or \"timeout\".",
+                    "type": "string"
+                }
+            }
+        },
+        "semanticalignment.NegotiationOutcome": {
+            "type": "object",
+            "properties": {
+                "chosen_option": {
+                    "type": "string"
+                },
+                "issue_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "semanticalignment.NegotiationTrace": {
+            "type": "object",
+            "properties": {
+                "broken": {
+                    "description": "Broken indicates whether a participant explicitly broke off.",
+                    "type": "boolean"
+                },
+                "final_agreement": {
+                    "description": "FinalAgreement is the agreed option per issue, if any.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/semanticalignment.NegotiationOutcome"
+                    }
+                },
+                "rounds": {
+                    "description": "Rounds contains all SAO rounds in order (1-based).",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/semanticalignment.RoundOffer"
+                    }
+                },
+                "timedout": {
+                    "description": "Timedout indicates whether the SAO exhausted its step budget.",
+                    "type": "boolean"
+                }
+            }
+        },
+        "semanticalignment.RoundOffer": {
+            "type": "object",
+            "properties": {
+                "decisions": {
+                    "description": "Decisions contains each participant's response to this round's offer.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/semanticalignment.AgentDecision"
+                    }
+                },
+                "next_proposer_id": {
+                    "description": "NextProposerID is the ID of the participant who will propose in the next round.\nOmitted on the final round.",
+                    "type": "string"
+                },
+                "offer": {
+                    "description": "Offer is the proposed option per issue. Shape: {issue_id: option_label}",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "proposer_id": {
+                    "description": "ProposerID is the ID of the participant who made this proposal.",
+                    "type": "string"
+                },
+                "round": {
+                    "description": "Round is the 1-based round number.",
+                    "type": "integer"
+                }
+            }
+        },
+        "semanticalignment.SharedMemoryResult": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "description": "Error contains a human-readable reason when Persisted is false.",
+                    "type": "string"
+                },
+                "persisted": {
+                    "description": "Persisted is true when the agreement was successfully written to shared memory.",
+                    "type": "boolean"
+                }
+            }
+        },
+        "semanticalignment.StartRequest": {
+            "type": "object",
+            "properties": {
+                "agents": {
+                    "description": "Agents is the list of participating agents (minimum 2).",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/semanticalignment.Agent"
+                    }
+                },
+                "content_text": {
+                    "description": "ContentText is the negotiation prompt/context used to initialize the session.",
+                    "type": "string"
+                },
+                "n_steps": {
+                    "description": "NSteps is the maximum number of SAO rounds.\nIf omitted, the service computes a budget from negotiation complexity.",
+                    "type": "integer"
+                },
+                "session_id": {
+                    "description": "SessionID is the client-provided session identifier.",
+                    "type": "string"
+                }
+            }
+        },
+        "semanticalignment.StartResponse": {
+            "type": "object",
+            "properties": {
+                "current_round": {
+                    "description": "CurrentRound is the first offer in the trace (SSTP envelope path only).",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/semanticalignment.RoundOffer"
+                        }
+                    ]
+                },
+                "issues": {
+                    "description": "Issues is the list of negotiable issues discovered from content_text.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "messages": {
+                    "description": "Messages contains the first round's messages to dispatch to agents.\nForward each message to the corresponding agent's callback endpoint,\ncollect their replies, and submit via /decide.",
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "meta": {
+                    "description": "Meta contains LLM token usage metadata",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/common.TokenUsageMeta"
+                        }
+                    ]
+                },
+                "n_steps": {
+                    "description": "NSteps is the SAO round budget for this session.",
+                    "type": "integer"
+                },
+                "options_per_issue": {
+                    "description": "OptionsPerIssue lists the candidate options for each issue.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "round": {
+                    "description": "Round is the current round number (1-based).",
+                    "type": "integer"
+                },
+                "session_id": {
+                    "description": "SessionID echoes the session identifier.",
+                    "type": "string"
+                },
+                "status": {
+                    "description": "Status is \"initiated\", \"ongoing\", \"agreed\", \"broken\", or \"timeout\".",
+                    "type": "string"
+                },
+                "total_rounds": {
+                    "description": "TotalRounds is the total SAO rounds in the pre-computed trace (SSTP envelope path only).",
+                    "type": "integer"
+                },
+                "trace": {
+                    "description": "Trace is the complete pre-computed SAO trace (SSTP envelope path only).",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/semanticalignment.NegotiationTrace"
+                        }
+                    ]
+                }
+            }
+        },
+        "sharedmemory.AgentVectorDeleteRequest": {
+            "type": "object",
+            "properties": {
+                "filters": {
+                    "$ref": "#/definitions/sharedmemory.VectorDeleteMetadataFilter"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "request_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "sharedmemory.AgentVectorUpsertRecord": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "embedding": {
+                    "$ref": "#/definitions/sharedmemory.VectorEmbeddingPayload"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "metadata": {
+                    "type": "object",
+                    "additionalProperties": true
+                }
+            }
+        },
+        "sharedmemory.AgentVectorUpsertRequest": {
+            "type": "object",
+            "properties": {
+                "records": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sharedmemory.AgentVectorUpsertRecord"
+                    }
+                },
+                "request_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "sharedmemory.ConceptsByIdsRequest": {
+            "type": "object",
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "sharedmemory.ConceptsByIdsResponse": {
+            "type": "object",
+            "properties": {
+                "concepts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sharedmemory.GraphConcept"
+                    }
+                }
+            }
+        },
+        "sharedmemory.CreateOrUpdateAcceptedResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "description": "Message provides additional information",
+                    "type": "string"
+                },
+                "response_id": {
+                    "description": "ID of the request, can be used for correlation in logs",
+                    "type": "string"
+                },
+                "status": {
+                    "description": "Status indicates the request was accepted for processing",
+                    "type": "string"
+                }
+            }
+        },
+        "sharedmemory.CreateOrUpdateRequest": {
+            "type": "object",
+            "properties": {
+                "header": {
+                    "description": "Header(s) of the request, optional",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/sharedmemory.Header"
+                        }
+                    ]
+                },
+                "payload": {
+                    "description": "Payload contains the extraction metadata and the raw data to be processed. The structure of the payload data is defined by Payload.Metadata.Format",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cognitionagentclient.ExtractionPayload"
+                        }
+                    ]
+                },
+                "request_id": {
+                    "description": "ID of the request, optional. If not provided, a random UUID is used to represent the request",
+                    "type": "string"
+                }
+            }
+        },
+        "sharedmemory.GraphConcept": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "sharedmemory.GraphPathsRequest": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer"
+                },
+                "max_depth": {
+                    "type": "integer"
+                },
+                "relations": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "source_id": {
+                    "type": "string"
+                },
+                "target_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "sharedmemory.GraphPathsResponse": {
+            "type": "object",
+            "properties": {
+                "paths": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sharedmemory.Path"
+                    }
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "sharedmemory.Header": {
+            "type": "object",
+            "properties": {
+                "agent_id": {
+                    "description": "ID that represents the agent, optional for query operations",
+                    "type": "string"
+                }
+            }
+        },
+        "sharedmemory.NeighborsResponse": {
+            "type": "object",
+            "properties": {
+                "records": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sharedmemory.QueryResponseRecord"
+                    }
+                }
+            }
+        },
+        "sharedmemory.Path": {
+            "type": "object",
+            "properties": {
+                "edges": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sharedmemory.PathEdge"
+                    }
+                },
+                "node_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "path_length": {
+                    "type": "integer"
+                },
+                "symbolic": {
+                    "type": "string"
+                }
+            }
+        },
+        "sharedmemory.PathEdge": {
+            "type": "object",
+            "properties": {
+                "from_id": {
+                    "type": "string"
+                },
+                "from_name": {
+                    "type": "string"
+                },
+                "relation": {
+                    "type": "string"
+                },
+                "to_id": {
+                    "type": "string"
+                },
+                "to_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "sharedmemory.QueryConcept": {
+            "type": "object",
+            "properties": {
+                "attributes": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "sharedmemory.QueryRelation": {
+            "type": "object",
+            "properties": {
+                "attributes": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "id": {
+                    "type": "string"
+                },
+                "node_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "relation": {
+                    "type": "string"
+                }
+            }
+        },
+        "sharedmemory.QueryRequest": {
+            "type": "object",
+            "properties": {
+                "additional_context": {
+                    "description": "AdditionalContext provides optional contextual information to refine query execution. This may include prior conversation state, structured hints, or domain-specific metadata. The contents are treated as opaque by the API and interpreted by downstream components. Each element must be a structured object",
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                    }
+                },
+                "header": {
+                    "description": "Header(s) of the request, required (must include agent_id)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/sharedmemory.Header"
+                        }
+                    ]
+                },
+                "intent": {
+                    "description": "User intent or natural-language query describing what information is being requested. This field is required and is the primary signal used to construct and execute the query",
+                    "type": "string"
+                },
+                "request_id": {
+                    "description": "ID of the request, optional. If not provided, a random UUID is used to represent the request",
+                    "type": "string"
+                },
+                "search_strategy": {
+                    "description": "Search strategy to be used when executing the query. Currently supported values: \"semantic_graph_traversal\". If not specified, defaults to \"semantic_graph_traversal\"",
+                    "type": "string"
+                }
+            }
+        },
+        "sharedmemory.QueryResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "description": "Message provides detailed information from the query result",
+                    "type": "string"
+                },
+                "meta": {
+                    "description": "Meta provides LLM token usage and performance metrics (optional, present when LLM calls are made)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/common.TokenUsageMeta"
+                        }
+                    ]
+                },
+                "response_id": {
+                    "description": "ID of the response, this gets populated from request_id",
+                    "type": "string"
+                }
+            }
+        },
+        "sharedmemory.QueryResponseRecord": {
+            "type": "object",
+            "properties": {
+                "concepts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sharedmemory.QueryConcept"
+                    }
+                },
+                "relationships": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sharedmemory.QueryRelation"
+                    }
+                }
+            }
+        },
+        "sharedmemory.VectorDeleteMetadataFilter": {
+            "type": "object",
+            "properties": {
+                "chunk_index": {
+                    "type": "integer"
+                },
+                "data_source": {
+                    "type": "string"
+                },
+                "doc_index": {
+                    "type": "integer"
+                },
+                "extra_filters": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "recorded_at_from": {
+                    "type": "string"
+                },
+                "recorded_at_to": {
+                    "type": "string"
+                }
+            }
+        },
+        "sharedmemory.VectorEmbeddingPayload": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    }
+                }
+            }
+        },
+        "sharedmemory.VectorSimilaritySearchPayload": {
+            "type": "object",
+            "properties": {
+                "embedded_text": {
+                    "type": "string"
+                },
+                "embedding_vector": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    }
+                },
+                "filters": {
+                    "$ref": "#/definitions/iocmemoryprovider.KnowledgeVectorMetadataFilter"
+                },
+                "search_metrics": {
+                    "type": "string"
+                },
+                "top_k": {
+                    "type": "integer"
+                }
+            }
+        },
+        "sharedmemory.VectorSimilaritySearchRequest": {
+            "type": "object",
+            "properties": {
+                "header": {
+                    "$ref": "#/definitions/sharedmemory.Header"
+                },
+                "payload": {
+                    "$ref": "#/definitions/sharedmemory.VectorSimilaritySearchPayload"
+                },
+                "request_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "sharedmemory.VectorSimilaritySearchResponse": {
+            "type": "object",
+            "properties": {
+                "header": {
+                    "$ref": "#/definitions/sharedmemory.Header"
+                },
+                "request_id": {
+                    "type": "string"
+                },
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sharedmemory.VectorSimilaritySearchResult"
+                    }
+                }
+            }
+        },
+        "sharedmemory.VectorSimilaritySearchResult": {
+            "type": "object",
+            "properties": {
+                "chunk_index": {
+                    "type": "integer"
+                },
+                "doc_index": {
+                    "type": "integer"
+                },
+                "domain": {
+                    "type": "string"
+                },
+                "embedded_text": {
+                    "type": "string"
+                },
+                "embedding_vector": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    }
+                },
+                "score": {
+                    "type": "number"
+                },
+                "timestamp": {
+                    "type": "string"
+                }
+            }
+        }
+    }
+}

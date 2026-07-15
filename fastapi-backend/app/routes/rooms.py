@@ -51,7 +51,18 @@ async def _sync_create_mas(db_room: Room, session: AsyncSession) -> None:
             f"{settings.CFN_MGMT_URL}/api/workspaces/{settings.WORKSPACE_ID}/multi-agentic-systems"
         )
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(url, json={"name": db_room.name})
+            resp = await client.post(
+                url,
+                json={
+                    "name": db_room.name,
+                    # Live mgmt-plane field is `config` (not `mas_config`); apply
+                    # mycelium's retry policy so this create path matches _ensure_mas.
+                    "config": {
+                        "retry_max_attempts": settings.CFN_RETRY_MAX_ATTEMPTS,
+                        "validation_score_intervention": settings.CFN_VALIDATION_SCORE_INTERVENTION,
+                    },
+                },
+            )
             resp.raise_for_status()
             data = resp.json()
         record_cfn_call(
@@ -94,9 +105,23 @@ async def _ensure_mas(db_room: Room, session: AsyncSession) -> str | None:
     )
     mas_id: str | None = None
 
+    # Set the MAS config at creation so negotiations use mycelium's retry /
+    # validation-threshold policy instead of the CFN defaults (retry_max=3,
+    # which silently runs a session several times over on a low alignment
+    # score: see CFN_RETRY_MAX_ATTEMPTS / CFN_VALIDATION_SCORE_INTERVENTION).
+    # The live mgmt-plane field is `config` (MultiAgenticSystemRequest.config);
+    # it applies at create and persists (verified via GET on a real MAS). An
+    # earlier `mas_config` key was silently dropped; the policy never took.
+    create_body = {
+        "name": db_room.name,
+        "config": {
+            "retry_max_attempts": settings.CFN_RETRY_MAX_ATTEMPTS,
+            "validation_score_intervention": settings.CFN_VALIDATION_SCORE_INTERVENTION,
+        },
+    }
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(base_url, json={"name": db_room.name})
+            resp = await client.post(base_url, json=create_body)
             if resp.status_code == 409:
                 mas_id = await _fetch_mas_id_by_name(db_room.name)
             else:
@@ -352,7 +377,7 @@ async def get_negotiation_status(
     if not state:
         return {"active": False}
 
-    return {
+    result = {
         "active": True,
         "session_id": state.session_id,
         "round": state.current_round,
@@ -363,3 +388,13 @@ async def get_negotiation_status(
             h: "received" if v is not None else "waiting" for h, v in state.pending_replies.items()
         },
     }
+    # Surface the interim L9 quality metrics the episode already computes, once
+    # enough agents have reported confidence. Episode-scoped and provisional --
+    # they firm up at consensus. None (thin participation) just omits the block.
+    if state.episode is not None:
+        from app.services import l9_episode
+
+        metrics = l9_episode.compute_metrics(state.episode)
+        if metrics is not None:
+            result["metrics"] = metrics
+    return result

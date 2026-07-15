@@ -69,7 +69,7 @@ async def test_ingest_ok_forwards_to_cfn(client: AsyncClient, mock_cfn):
     events = get_buffer().snapshot()
     assert len(events) == 1
     assert events[0].state == "ok"
-    assert events[0].cfn_status == 201
+    assert events[0].cfn_status == 202  # CFN acks shared-memories async (202)
 
 
 # ── Gate 1: disabled master switch ─────────────────────────────────────────────

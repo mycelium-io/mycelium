@@ -55,6 +55,9 @@ class KnowledgeIngestRequest(BaseModel):
     # is reserved for any caller still using the old per-turn hook flow during
     # the deprecation window.
     source: Literal["channel_message", "memory_set", "context_file", "legacy"] = "legacy"
+    # Extraction format forwarded to CFN. Defaults to otel-trace (ioa_observe schema).
+    # Use "openclaw" for legacy callers that still send openclaw-conversation-v1 turns.
+    data_format: str = "otel-trace"
 
 
 class KnowledgeIngestResponse(BaseModel):
@@ -65,6 +68,26 @@ class KnowledgeIngestResponse(BaseModel):
 
 
 # ── Ingest ─────────────────────────────────────────────────────────────────────
+
+
+def _record_text(r: dict) -> int:
+    """Count text characters across both record schemas for the min-chars gate.
+
+    Flat legacy/openclaw keys (``content``/``response``/``text``/``value``) live
+    at the top level; otel-trace records nest their prompt/completion text under
+    ``attributes`` (``ioa_observe.entity.input``/``output``, ``openclaw.agent.input``).
+    """
+    flat = sum(len(str(r.get(k, "") or "")) for k in ("content", "response", "text", "value"))
+    attrs = r.get("attributes") or {}
+    otel = sum(
+        len(str(attrs.get(k, "") or ""))
+        for k in (
+            "ioa_observe.entity.input",
+            "ioa_observe.entity.output",
+            "openclaw.agent.input",
+        )
+    )
+    return flat + otel
 
 
 def _log_ingest_event(
@@ -194,11 +217,7 @@ async def knowledge_ingest(
     # all records' text fields concatenated.
     min_chars = settings.MYCELIUM_INGEST_MIN_CONTENT_CHARS
     if min_chars > 0:
-        total_text = sum(
-            len(str(r.get(k, "") or ""))
-            for r in data.records
-            for k in ("content", "response", "text", "value")
-        )
+        total_text = sum(_record_text(r) for r in data.records)
         if total_text < min_chars:
             _log_ingest_event(
                 workspace_id=workspace_id,
@@ -283,6 +302,7 @@ async def knowledge_ingest(
             records=data.records,
             agent_id=data.agent_id,
             request_id=request_id,
+            data_format=data.data_format,
         )
     except CfnKnowledgeError as exc:
         cfn_latency = (time.perf_counter() - started) * 1000
@@ -328,7 +348,7 @@ async def knowledge_ingest(
         payload_bytes=payload_bytes,
         latency_ms=latency_ms,
         state="ok",
-        cfn_status=status.HTTP_201_CREATED,
+        cfn_status=status.HTTP_202_ACCEPTED,  # CFN acks shared-memories async (202), not 201
         cfn_message=cfn_message,
     )
 

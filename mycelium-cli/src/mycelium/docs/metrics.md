@@ -354,7 +354,7 @@ OpenClaw → Mycelium backend → CFN → opt-in.
     (requests, errors, latency) of any CFN service that exposes a Prometheus
     metrics endpoint via `prometheus-fastapi-instrumentator`. Today that's
     `ioc-cfn-mgmt-backend-svc` (port 9000), `ioc-knowledge-memory`, and
-    `ioc-cognition-fabric-node-svc` (port 9002, at `/api/internal/metrics`).
+    `ioc-cfn-svc` (port 9002, at `/api/internal/metrics`).
 
     Configured under `[[metrics.scrape]]` in `~/.mycelium/config.toml`:
 

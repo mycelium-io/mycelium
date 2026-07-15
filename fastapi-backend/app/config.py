@@ -59,6 +59,34 @@ class Settings(BaseSettings):
     # burning rounds indefinitely. 0 = fall through to CFN auto-compute.
     NEGOTIATION_N_STEPS: int = 20
 
+    # CFN MAS config (set on the MAS at creation via the mgmt plane). These
+    # tame the retry/timeout behaviour that otherwise makes a single session
+    # run several times the rounds you'd expect:
+    #   retry_max_attempts: how many times the cognition engine may reject an
+    #     agreement (alignment score below the intervention threshold) and
+    #     restart negotiation from round 1. CFN default is 3; we default to 1
+    #     (take the first agreement; mycelium's own round loop + plan compiler
+    #     handle quality) for predictable timing.
+    #   validation_score_intervention: the alignment score below which the
+    #     engine intervenes/retries. Lower it if LLM-callback agents can't
+    #     reach the CFN default (0.6).
+    CFN_RETRY_MAX_ATTEMPTS: int = 1
+    CFN_VALIDATION_SCORE_INTERVENTION: float = 0.6
+
+    # Per-call HTTP timeout (seconds) for CFN start/decide: a DEAD-CONNECTION
+    # BACKSTOP, not a negotiation control. The boundary:
+    #   * Agent responsiveness is mycelium's round watchdog
+    #     (_CFN_ROUND_TIMEOUT_SECS), which restarts per agent reply so
+    #     single-threaded/serialized agent runtimes get a fresh budget each
+    #     time. That timer runs *before* /decide; by the time we call the CFN,
+    #     all replies are collected, so agent slowness never reaches this one.
+    #   * The CFN owns the negotiation-compute timeout and returns a structured
+    #     ``status: "timeout"`` we handle cleanly. This HTTP timeout must sit
+    #     comfortably ABOVE the CFN's internal timeout so that status wins over
+    #     an opaque transport error; it should essentially never fire.
+    # (Confirm the CFN's internal negotiation timeout is < this at smoke-test.)
+    CFN_DECIDE_TIMEOUT_SECONDS: int = 600
+
     @field_validator("LLM_BASE_URL", mode="before")
     @classmethod
     def _coerce_base_url(cls, v: object) -> object:
@@ -90,8 +118,14 @@ class Settings(BaseSettings):
     # IoC CFN management plane (optional — registration skipped if unset)
     CFN_MGMT_URL: str | None = None
 
-    # IoC CFN cognition fabric node svc (required for session negotiation)
-    COGNITION_FABRIC_NODE_URL: str = ""
+    # IoC CFN service (ioc-cfn-svc, required for session negotiation):
+    # the semantic-alignment API and native L9 routing.
+    CFN_SVC_URL: str = ""
+
+    # Post L9 knowledge envelopes to the CFN's /api/l9/messages endpoint
+    # (knowledge query at session start, knowledge write after consensus).
+    # Requires a knowledge CE registered with the CFN; off until then.
+    L9_CFN_ENABLED: bool = False
 
     # Workspace ID in the CFN mgmt plane (set by mycelium install)
     WORKSPACE_ID: str = ""

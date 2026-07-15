@@ -15,7 +15,11 @@ services:
     platform: linux/amd64
     container_name: mycelium-db
     restart: unless-stopped
-    command: postgres -c max_locks_per_transaction=256
+    # shared_preload_libraries=timescaledb: required by ioc-cfn-svc's cfn_cp
+    # metrics tables. TimescaleDB is baked into the mycelium-db image
+    # (Dockerfile.agensgraph); the published image must be rebuilt+republished
+    # with it for the released cfn profile to start.
+    command: postgres -c max_locks_per_transaction=256 -c shared_preload_libraries=timescaledb
     env_file:
       - path: ../.env
         required: false
@@ -62,6 +66,9 @@ services:
       GRAPH_DB_URL: ${GRAPH_DB_URL:-postgresql://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium}
       API_BASE_URL: http://mycelium-backend:8000
       COORDINATION_TICK_TIMEOUT_SECONDS: ${COORDINATION_TICK_TIMEOUT_SECONDS:-30}
+      # Post L9 knowledge envelopes to the CFN's /api/l9/messages endpoint.
+      # Requires a knowledge CE registered with the CFN; leave off otherwise.
+      L9_CFN_ENABLED: ${L9_CFN_ENABLED:-false}
       # IN-CONTAINER path the backend writes rooms/memory/plans to. MUST match
       # the bind-mount target below — otherwise writes land in the container's
       # overlay FS and are lost on recreate. (The host-side MYCELIUM_DATA_DIR
@@ -162,9 +169,41 @@ services:
 
   # ── CFN Stack (profile: cfn) ──────────────────────────────────────────────────
 
+  # The full CFN stack: four services, pinned to a coherent validated set
+  # (the 2026-06-26-* builds, the closest reproducible set to the 2026-06-23
+  # builds sfph ran end-to-end; ioc-cfn-svc's 06-23 tag was pruned upstream).
+  # Override any tag via the *_IMAGE_TAG env vars for the smoke test; bump the
+  # defaults here as a set once a newer set is validated together.
+  #
+  # Default platform is linux/amd64 (the images are built amd64-first; they run
+  # under emulation on arm64 Macs). Override with DOCKER_DEFAULT_PLATFORM.
+
+  # One-shot DB prep: ensures the CFN databases exist and resets an
+  # incompatible python-era cfn_mgmt so the Go mgmt-plane migrates cleanly on
+  # upgrade (initdb only runs on a fresh volume). Runs to completion, then the
+  # CFN services start. See cfn-db-prep.sh for the why.
+  cfn-db-init:
+    image: postgres:16-alpine
+    container_name: cfn-db-init
+    profiles: [cfn]
+    restart: "no"
+    depends_on:
+      mycelium-db:
+        condition: service_healthy
+    # Same ../.env the other CFN services read, so MYCELIUM_DB_PASSWORD /
+    # CFN_DB_USER match mycelium-db. The script falls back to sensible defaults.
+    env_file:
+      - path: ../.env
+        required: false
+    volumes:
+      - ./cfn-db-prep.sh:/cfn-db-prep.sh:ro
+    entrypoint: ["/bin/bash", "/cfn-db-prep.sh"]
+
+  # Mgmt plane: workspaces, users, CFN-node registration, MAS config.
   ioc-cfn-mgmt-plane-svc:
-    image: ghcr.io/outshift-open/ioc-cfn-mgmt-plane-svc:0.1.1
+    image: ghcr.io/outshift-open/ioc-cfn-mgmt-plane-svc:${CFN_MGMT_IMAGE_TAG:-2026-06-26-d2e97e4}
     container_name: ioc-cfn-mgmt-plane-svc
+    platform: ${DOCKER_DEFAULT_PLATFORM:-linux/amd64}
     restart: unless-stopped
     profiles: [cfn]
     env_file:
@@ -173,12 +212,14 @@ services:
     depends_on:
       mycelium-db:
         condition: service_healthy
+      cfn-db-init:
+        condition: service_completed_successfully
     ports:
       - "9000:9000"
     environment:
       SERVICE_NAME: ioc-cfn-mgmt-plane-svc
-      APPLICATION_VERSION: latest
-      LOG_LEVEL: INFO
+      APPLICATION_VERSION: dev
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       ADMIN_USER_PASSWORD: ${ADMIN_USER_PASSWORD:-admin}
       POSTGRES_HOST: mycelium-db
       POSTGRES_PORT: 5432
@@ -187,26 +228,21 @@ services:
       POSTGRES_PASSWORD: ${MYCELIUM_DB_PASSWORD:-password}
       PORT: 9000
       CFN_DEV_MODE: ${CFN_DEV_MODE:-false}
-      # Must match the node-svc's CFN_NAME below — the mgmt plane's
-      # Default-Workspace ↔ CFN auto-association branch (see #308) only
-      # fires when the registering node's cfn_name equals this env var.
-      # If unset, the mgmt plane silently falls back to "My Cognition
-      # Fabric Node", the strings don't match, and workspace.cfn_id stays
-      # NULL forever — breaking every CFN data-plane round trip.
-      CFN_NAME: ${CFN_NAME:-mycelium-cfn}
+      # Newer mgmt plane locates the node via CFN_SVC_URL (the older
+      # CFN_NAME-matching #308 mechanism is superseded).
+      CFN_SVC_URL: ${CFN_SVC_URL:-http://ioc-cfn-svc:9002}
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9000/health || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/api/internal/diagnostics/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 6
-      start_period: 30s
+      start_period: 40s
 
-
-  ioc-cognition-fabric-node-svc:
-    image: ghcr.io/outshift-open/ioc-cognition-fabric-node-svc:0.1.7
-    pull_policy: always
-    platform: linux/amd64
-    container_name: ioc-cognition-fabric-node-svc
+  # Knowledge memory: graph (AgensGraph) + pgvector store the CFN writes to.
+  ioc-knowledge-memory-svc:
+    image: ghcr.io/outshift-open/ioc-knowledge-memory-svc:${CFN_KNOWLEDGE_IMAGE_TAG:-2026-06-26-ee8f699}
+    container_name: ioc-knowledge-memory-svc
+    platform: ${DOCKER_DEFAULT_PLATFORM:-linux/amd64}
     restart: unless-stopped
     profiles: [cfn]
     env_file:
@@ -218,24 +254,99 @@ services:
       ioc-cfn-mgmt-plane-svc:
         condition: service_healthy
     ports:
-      - "9002:9002"
+      - "9003:9003"
     environment:
-      MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
-      CFN_NAME: ${CFN_NAME:-mycelium-cfn}
-      DB_HOST: mycelium-db
-      DB_PORT: 5432
-      DB_NAME: cfn_cp
-      DB_USER: ${CFN_DB_USER:-postgres}
-      DB_PASSWORD: ${MYCELIUM_DB_PASSWORD:-password}
-      DB_SSL_MODE: disable
-      PORT: 9002
-      HEARTBEAT_INTERVAL_SECONDS: ${HEARTBEAT_INTERVAL_SECONDS:-29}
+      SERVICE_NAME: ioc-knowledge-memory-svc
+      APPLICATION_VERSION: dev
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      MEMORY_PROVIDER_REGISTRATION_URL: http://ioc-cfn-mgmt-plane-svc:9000
+      MEMORY_PROVIDER_ID: ${MEMORY_PROVIDER_ID:-de54dacb-60ab-476a-9e83-64e09f867358}
+      # Uses the dedicated ioc-graph-db database (created by initdb).
+      IOC_KNOWLEDGE_DB_HOST: mycelium-db
+      IOC_KNOWLEDGE_DB: ${IOC_KNOWLEDGE_DB:-ioc-graph-db}
+      IOC_KNOWLEDGE_DB_USER: ${CFN_DB_USER:-postgres}
+      IOC_KNOWLEDGE_DB_PASSWORD: ${MYCELIUM_DB_PASSWORD:-password}
+      IOC_KNOWLEDGE_DB_PORT: 5432
+      EMBEDDING_VECTOR_SIZE: ${EMBEDDING_VECTOR_SIZE:-384}
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:9002/api/internal/diagnostics/health')\" || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:9003/api/internal/diagnostics/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 6
-      start_period: 30s
+      start_period: 40s
+
+  # CFN node, the Go ioc-cfn-svc: semantic-alignment API + native L9 routing
+  # (POST /api/l9/messages). HTTP on 9002, MCP on 9001 (mapped to host 9009).
+  ioc-cfn-svc:
+    image: ghcr.io/outshift-open/ioc-cfn-svc:${CFN_SVC_IMAGE_TAG:-2026-06-26-dd16901}
+    container_name: ioc-cfn-svc
+    platform: ${DOCKER_DEFAULT_PLATFORM:-linux/amd64}
+    restart: unless-stopped
+    profiles: [cfn]
+    env_file:
+      - path: ../.env
+        required: false
+    depends_on:
+      mycelium-db:
+        condition: service_healthy
+      ioc-cfn-mgmt-plane-svc:
+        condition: service_healthy
+      ioc-knowledge-memory-svc:
+        condition: service_healthy
+    ports:
+      - "9002:9002"
+      - "9009:9001"
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SERVICE_NAME: ioc-cfn-svc
+      MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
+      CFN_NAME: ${CFN_NAME:-mycelium-cfn}
+      HEARTBEAT_INTERVAL_SECONDS: ${HEARTBEAT_INTERVAL_SECONDS:-10}
+      DB_HOST: mycelium-db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-cfn_cp}
+      DB_USER: ${CFN_DB_USER:-postgres}
+      DB_PASSWORD: ${MYCELIUM_DB_PASSWORD:-password}
+      KNOWLEDGE_MEMORY_SVC_URL: http://ioc-knowledge-memory-svc:9003
+      COGNITION_ENGINE_SVC_URL: http://ioc-cfn-cognition-engine:9004
+      MCP_PORT: 9001
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9002/api/internal/diagnostics/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 40s
+
+  # Cognition engine: LLM + alignment scoring; auto-registers with the CFN
+  # node on startup (CFN_URL) and heartbeats. Takes LLM config from the shared
+  # ~/.mycelium/.env (LLM_MODEL/LLM_API_KEY/LLM_BASE_URL).
+  ioc-cfn-cognition-engine:
+    image: ghcr.io/outshift-open/ioc-cfn-cognition-engines:${CFN_CE_IMAGE_TAG:-2026-06-26-c01c60a}
+    container_name: ioc-cfn-cognition-engine
+    platform: ${DOCKER_DEFAULT_PLATFORM:-linux/amd64}
+    restart: unless-stopped
+    profiles: [cfn]
+    env_file:
+      - path: ../.env
+        required: false
+    ports:
+      - "9004:9004"
+    environment:
+      ENABLE_DEDUP: "true"
+      CFN_URL: http://ioc-cfn-svc:9002
+      COGNITION_ENGINE_HOST: ioc-cfn-cognition-engine
+      COGNITION_ENGINE_PORT: 9004
+    depends_on:
+      ioc-cfn-mgmt-plane-svc:
+        condition: service_healthy
+      ioc-cfn-svc:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9004/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 40s
 
 
 volumes:

@@ -95,6 +95,11 @@ function parseEvent(msg: Record<string, unknown>): Event {
       if (assignments) content += " " + Object.entries(assignments).map(([k, v]) => `${k}=${v}`).join(", ");
       // Consensus isn't the end — it compiles into the room's shared plan.
       if (!broken && planFile) content += ` · compiled → ${planFile}`;
+      {
+        const metrics = raw.metrics as Record<string, unknown> | undefined;
+        const gar = metrics && typeof metrics === "object" ? metrics.gar : undefined;
+        if (typeof gar === "number" && Number.isFinite(gar)) content += ` · GAR ${gar.toFixed(2)}`;
+      }
       break;
     }
     case "memory_changed": {
@@ -383,6 +388,11 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
                 const planFile = ev.raw.plan_file as string | undefined;
                 const assignments = ev.raw.assignments as Record<string, string> | undefined;
                 const issueCount = assignments ? Object.keys(assignments).length : 0;
+                const metrics = ev.raw.metrics && typeof ev.raw.metrics === "object"
+                  ? (ev.raw.metrics as Record<string, unknown>)
+                  : undefined;
+                const garRaw = metrics ? metrics.gar : undefined;
+                const gar = typeof garRaw === "number" && Number.isFinite(garRaw) ? garRaw : undefined;
                 const label = broken ? "TIMEOUT" : "CONSENSUS";
                 const tone = broken ? "var(--yellow)" : "var(--green)";
                 return (
@@ -412,6 +422,17 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
                         <span className="text-text2">
                           {issueCount} issue{issueCount === 1 ? "" : "s"} agreed
                         </span>
+                        {gar !== undefined ? (
+                          <>
+                            <span className="text-muted">·</span>
+                            <span
+                              className="font-mono text-text2"
+                              title="genuine agreement ratio: how many agents actually moved toward the outcome"
+                            >
+                              GAR {gar.toFixed(2)}
+                            </span>
+                          </>
+                        ) : null}
                         {planFile ? (
                           <>
                             <span className="text-muted">→</span>

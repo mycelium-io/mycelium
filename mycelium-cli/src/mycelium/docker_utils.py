@@ -133,7 +133,7 @@ def generate_env_file(
         "",
         "# ── IoC CFN ──────────────────────────────────────────────────────────────",
         f"CFN_MGMT_URL={config.runtime.cfn_mgmt_url or ''}",
-        f"COGNITION_FABRIC_NODE_URL={config.runtime.cognition_fabric_node_url or ''}",
+        f"CFN_SVC_URL={config.runtime.cfn_svc_url or ''}",
         f"WORKSPACE_ID={config.server.workspace_id or config.runtime.workspace_id or ''}",
         f"MAS_ID={config.server.mas_id or ''}",
         f"CFN_DB={config.runtime.cfn_db}",
