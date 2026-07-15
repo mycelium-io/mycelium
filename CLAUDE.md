@@ -139,6 +139,30 @@ docker compose -f mycelium-cli/src/mycelium/docker/compose.yml \
 
 **Important:** `mycelium config apply` regenerates `.env` from `config.toml`. If you edit `.env` directly, those changes will be overwritten. Always use `mycelium config set` to persist values.
 
+### After restarting the CFN stack (or wiping volumes)
+
+The CFN management plane assigns a workspace UUID and a MAS UUID per room. These
+IDs are stored in `config.toml` and the mycelium backend DB, but they rotate any
+time the mgmt plane DB is wiped. Run this after restarting the dev stack to
+re-associate the workspace with the running CFN node and refresh all room MAS IDs:
+
+```bash
+mycelium config sync-cfn
+```
+
+This is idempotent — safe to run at any time. If the workspace UUID changed (e.g.
+full volume wipe), the command updates `config.toml` and `.env` automatically and
+prompts you to restart the backend to pick up the new `WORKSPACE_ID`.
+
+If `sync-cfn` reports a workspace ID change, run:
+
+```bash
+docker compose -p mycelium \
+  -f mycelium-cli/src/mycelium/docker/compose.yml \
+  -f mycelium-cli/src/mycelium/docker/compose-dev.yml \
+  restart mycelium-backend
+```
+
 ### MAS ID
 
 `mas_id` in `config.toml` is a CFN Multi-Agent System UUID required for `session join`/`await`/`negotiate`. Each room gets its own MAS ID on creation — use the one for the room you're testing:
@@ -148,7 +172,7 @@ mycelium room create my-room        # prints MAS ID on creation
 mycelium config set server.mas_id <uuid-from-above>
 ```
 
-After a volume wipe, existing MAS IDs are gone. Create a new room and use its ID.
+After a volume wipe, run `mycelium config sync-cfn` to re-provision all room MAS IDs at once.
 
 ### Running the backend outside Docker (hot-reload)
 
