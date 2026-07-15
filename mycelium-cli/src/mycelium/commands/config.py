@@ -253,6 +253,209 @@ def apply_config(
         raise typer.Exit(1) from None
 
 
+@doc_ref(
+    usage="mycelium config sync-cfn",
+    desc="Re-provision workspace and MAS IDs against the running CFN stack.",
+    group="config",
+)
+@app.command("sync-cfn")
+def sync_cfn(
+    ctx: typer.Context,
+    api_url: str = typer.Option(
+        "",
+        "--api-url",
+        help="Mycelium backend URL (defaults to config server.api_url)",
+    ),
+    rooms: bool = typer.Option(
+        True,
+        "--rooms/--no-rooms",
+        help="Re-sync MAS IDs for all rooms after workspace association",
+    ),
+) -> None:
+    """Re-provision workspace → CFN node association and room MAS IDs.
+
+    Run this after restarting the dev stack (compose-dev.yml) when the CFN
+    management plane database has been wiped and IDs have rotated.  The
+    command is idempotent — safe to run at any time.
+
+    Steps:
+
+    1. Fetch the workspace from the mgmt plane and associate it with the
+       running CFN node (sets workspace.cfn_id so config version bumps reach
+       the node on the next heartbeat).
+
+    2. For every room that is missing a mas_id (or on --rooms), call the
+       backend sync-mas endpoint to (re-)register it with the mgmt plane.
+
+    Examples:
+        mycelium config sync-cfn            # full sync
+        mycelium config sync-cfn --no-rooms # workspace association only
+    """
+    import urllib.error
+    import urllib.request
+
+    verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+
+    try:
+        config = MyceliumConfig.load()
+    except Exception as exc:
+        print_error(exc, verbose=verbose)
+        raise typer.Exit(1) from None
+
+    _api_url = (api_url or config.server.api_url or "http://localhost:8000").rstrip("/")
+    cfn_mgmt_url = (config.runtime.cfn_mgmt_url or "http://localhost:9000").rstrip("/")
+
+    typer.secho("  Syncing CFN workspace and room MAS IDs…", bold=True)
+
+    # ── 1. Workspace → CFN node association ──────────────────────────────
+    typer.echo("  Step 1: workspace → CFN node association")
+
+    # Get workspace_id from config or discover from mgmt plane
+    workspace_id = config.runtime.workspace_id or config.server.workspace_id or ""
+    if not workspace_id:
+        try:
+            req = urllib.request.Request(
+                f"{cfn_mgmt_url}/api/workspaces",
+                headers={"Accept": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
+                data = json_module.loads(resp.read())
+            workspaces = data.get("workspaces", [])
+            if workspaces:
+                workspace_id = workspaces[0]["id"]
+        except Exception as exc:
+            typer.secho(
+                f"  ✗ Could not fetch workspaces from {cfn_mgmt_url}: {exc}", fg=typer.colors.RED
+            )
+            raise typer.Exit(1) from None
+
+    if not workspace_id:
+        typer.secho("  ✗ No workspace found — is the CFN mgmt plane running?", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    typer.echo(f"    workspace: {workspace_id}")
+
+    # Get CFN node ID from mgmt plane
+    cfn_id = ""
+    try:
+        req = urllib.request.Request(
+            f"{cfn_mgmt_url}/api/cognition-fabric-nodes",
+            headers={"Accept": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
+            data = json_module.loads(resp.read())
+        nodes = data.get("nodes", [])
+        # Pick the first online node, falling back to first node
+        online = [n for n in nodes if n.get("status") == "online"]
+        node = online[0] if online else (nodes[0] if nodes else None)
+        if node:
+            cfn_id = node["id"]
+            typer.echo(
+                f"    cfn node:  {cfn_id} ({node.get('name', '?')}, {node.get('status', '?')})"
+            )
+    except Exception as exc:
+        typer.secho(
+            f"  ✗ Could not fetch CFN nodes from {cfn_mgmt_url}: {exc}", fg=typer.colors.RED
+        )
+        raise typer.Exit(1) from None
+
+    if not cfn_id:
+        typer.secho(
+            "  ✗ No CFN node found — is ioc-cfn-svc running and registered?", fg=typer.colors.RED
+        )
+        raise typer.Exit(1)
+
+    # Associate workspace with CFN node (idempotent)
+    try:
+        body = json_module.dumps({"cfn_id": cfn_id}).encode()
+        req = urllib.request.Request(
+            f"{cfn_mgmt_url}/api/workspaces/{workspace_id}",
+            data=body,
+            method="PUT",
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+            result = json_module.loads(resp.read())
+        if result.get("cfn_id") == cfn_id:
+            typer.secho(
+                f"  ✓ Workspace associated with CFN node {cfn_id[:8]}…", fg=typer.colors.GREEN
+            )
+        else:
+            typer.secho("  ✗ Association response unexpected", fg=typer.colors.RED)
+            raise typer.Exit(1)
+    except urllib.error.HTTPError as exc:
+        typer.secho(f"  ✗ Workspace association failed: HTTP {exc.code}", fg=typer.colors.RED)
+        raise typer.Exit(1) from None
+    except Exception as exc:
+        typer.secho(f"  ✗ Workspace association failed: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1) from None
+
+    # ── 2. Room MAS sync ─────────────────────────────────────────────────
+    if not rooms:
+        typer.echo("  Step 2: skipped (--no-rooms)")
+        return
+
+    typer.echo("  Step 2: sync MAS IDs for all rooms")
+
+    # Fetch room list from backend
+    try:
+        req = urllib.request.Request(
+            f"{_api_url}/api/rooms",
+            headers={"Accept": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+            rooms_data = json_module.loads(resp.read())
+        room_list = rooms_data if isinstance(rooms_data, list) else rooms_data.get("rooms", [])
+    except Exception as exc:
+        typer.secho(f"  ✗ Could not fetch rooms from {_api_url}: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1) from None
+
+    ok = skipped = failed = 0
+    for room in room_list:
+        name = room.get("name", "")
+        if not name:
+            continue
+        try:
+            req = urllib.request.Request(
+                f"{_api_url}/api/rooms/{name}/sync-mas",
+                data=b"",
+                method="POST",
+                headers={"Accept": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+                updated = json_module.loads(resp.read())
+            mas_id = updated.get("mas_id", "")
+            if mas_id:
+                typer.echo(f"    ✓ {name}: mas_id={mas_id[:8]}…")
+                ok += 1
+            else:
+                typer.echo(f"    ~ {name}: no mas_id returned")
+                skipped += 1
+        except urllib.error.HTTPError as exc:
+            if exc.code == 409:
+                typer.echo(f"    ~ {name}: CFN not configured (409)")
+                skipped += 1
+            else:
+                typer.secho(f"    ✗ {name}: HTTP {exc.code}", fg=typer.colors.RED)
+                failed += 1
+        except Exception as exc:
+            typer.secho(f"    ✗ {name}: {exc}", fg=typer.colors.RED)
+            failed += 1
+
+    summary = f"  {ok} synced, {skipped} skipped, {failed} failed"
+    color = typer.colors.GREEN if failed == 0 else typer.colors.RED
+    typer.secho(summary, fg=color, bold=True)
+
+    if failed:
+        raise typer.Exit(1)
+
+    typer.echo()
+    typer.secho(
+        "  CFN sync complete. The CFN node will pick up the new workspace config on its next heartbeat (≤10s).",
+        fg=typer.colors.GREEN,
+    )
+
+
 def _find_compose_path() -> Path | None:
     """Find the compose file — same logic as install.py but simplified."""
     import importlib.resources
