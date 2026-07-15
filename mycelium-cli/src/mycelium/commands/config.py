@@ -303,35 +303,64 @@ def sync_cfn(
         raise typer.Exit(1) from None
 
     _api_url = (api_url or config.server.api_url or "http://localhost:8000").rstrip("/")
-    cfn_mgmt_url = (config.runtime.cfn_mgmt_url or "http://localhost:9000").rstrip("/")
+    # Use localhost URL — the mgmt plane is always host-accessible on port 9000.
+    # config.runtime.cfn_mgmt_url may be set but could be a Docker-internal hostname
+    # if the user configured it from inside a container; localhost is always correct
+    # when running on the host.
+    cfn_mgmt_url = "http://localhost:9000"
 
     typer.secho("  Syncing CFN workspace and room MAS IDs…", bold=True)
 
     # ── 1. Workspace → CFN node association ──────────────────────────────
     typer.echo("  Step 1: workspace → CFN node association")
 
-    # Get workspace_id from config or discover from mgmt plane
-    workspace_id = config.runtime.workspace_id or config.server.workspace_id or ""
-    if not workspace_id:
-        try:
-            req = urllib.request.Request(
-                f"{cfn_mgmt_url}/api/workspaces",
-                headers={"Accept": "application/json"},
-            )
-            with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
-                data = json_module.loads(resp.read())
-            workspaces = data.get("workspaces", [])
-            if workspaces:
-                workspace_id = workspaces[0]["id"]
-        except Exception as exc:
-            typer.secho(
-                f"  ✗ Could not fetch workspaces from {cfn_mgmt_url}: {exc}", fg=typer.colors.RED
-            )
-            raise typer.Exit(1) from None
+    # Always discover the workspace from the mgmt plane — never trust the cached
+    # workspace_id from config because after a CFN DB wipe the mgmt plane creates
+    # a new workspace with a new UUID and the cached value is stale.
+    workspace_id = ""
+    try:
+        req = urllib.request.Request(
+            f"{cfn_mgmt_url}/api/workspaces",
+            headers={"Accept": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
+            data = json_module.loads(resp.read())
+        workspaces = data.get("workspaces", [])
+        if workspaces:
+            workspace_id = workspaces[0]["id"]
+    except Exception as exc:
+        typer.secho(
+            f"  ✗ Could not fetch workspaces from {cfn_mgmt_url}: {exc}", fg=typer.colors.RED
+        )
+        raise typer.Exit(1) from None
 
     if not workspace_id:
         typer.secho("  ✗ No workspace found — is the CFN mgmt plane running?", fg=typer.colors.RED)
         raise typer.Exit(1)
+
+    # Detect workspace_id rotation (post-DB-wipe) and persist the new value.
+    cached_ws = config.runtime.workspace_id or config.server.workspace_id or ""
+    workspace_id_changed = cached_ws and cached_ws != workspace_id
+    if workspace_id_changed:
+        typer.secho(
+            f"  ! Workspace ID changed: {cached_ws} → {workspace_id}", fg=typer.colors.YELLOW
+        )
+        typer.echo("    Updating config.toml with new workspace_id…")
+        try:
+            config.runtime.workspace_id = workspace_id
+            config.save()
+            from mycelium.docker_utils import write_env_file
+
+            write_env_file(config)
+            typer.secho(
+                "  ✓ config.toml and .env updated — restart the backend to pick up the new "
+                "WORKSPACE_ID:\n"
+                "      docker compose -p mycelium restart mycelium-backend",
+                fg=typer.colors.YELLOW,
+            )
+        except Exception as exc:
+            typer.secho(f"  ✗ Could not update config: {exc}", fg=typer.colors.RED)
+            raise typer.Exit(1) from None
 
     typer.echo(f"    workspace: {workspace_id}")
 
