@@ -330,12 +330,19 @@ def sync_cfn(
             workspace_id = workspaces[0]["id"]
     except Exception as exc:
         typer.secho(
-            f"  ✗ Could not fetch workspaces from {cfn_mgmt_url}: {exc}", fg=typer.colors.RED
+            f"  ✗ CFN mgmt plane unreachable at {cfn_mgmt_url}: {exc}",
+            fg=typer.colors.RED,
+        )
+        typer.echo(
+            "  CFN is not running or not enabled. Start it with:\n"
+            "    docker compose -f mycelium-cli/src/mycelium/docker/compose.yml \\\n"
+            "      -f mycelium-cli/src/mycelium/docker/compose-dev.yml \\\n"
+            "      --profile cfn up -d"
         )
         raise typer.Exit(1) from None
 
     if not workspace_id:
-        typer.secho("  ✗ No workspace found — is the CFN mgmt plane running?", fg=typer.colors.RED)
+        typer.secho("  ✗ No workspace found in CFN mgmt plane.", fg=typer.colors.RED)
         raise typer.Exit(1)
 
     # Detect workspace_id rotation (post-DB-wipe) and persist the new value.
