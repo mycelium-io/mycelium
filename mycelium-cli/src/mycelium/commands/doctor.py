@@ -811,6 +811,17 @@ def _check_cfn_workspace_association(*, local_backend: bool = True) -> CheckResu
             message="Skipped (spoke — CFN runs on hub)",
         )
 
+    env_path = Path.home() / ".mycelium" / ".env"
+    if env_path.exists():
+        from dotenv import dotenv_values
+
+        if not dotenv_values(env_path).get("CFN_MGMT_URL"):
+            return CheckResult(
+                name="CFN workspace assoc",
+                status="ok",
+                message="Skipped (CFN not enabled)",
+            )
+
     cfn_mgmt_url = "http://localhost:9000"
     try:
         import json as _json
