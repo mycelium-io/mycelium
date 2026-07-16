@@ -142,26 +142,13 @@ docker compose -f mycelium-cli/src/mycelium/docker/compose.yml \
 ### After restarting the CFN stack (or wiping volumes)
 
 The CFN management plane assigns a workspace UUID and a MAS UUID per room. These
-IDs are stored in `config.toml` and the mycelium backend DB, but they rotate any
-time the mgmt plane DB is wiped. Run this after restarting the dev stack to
-re-associate the workspace with the running CFN node and refresh all room MAS IDs:
+IDs rotate any time the mgmt plane DB is wiped. Run `mycelium doctor --fix` after
+restarting the dev stack — it detects and repairs all drift in the right order:
+workspace→CFN node association, workspace ID rotation (patches config + restarts
+backend), and room MAS IDs.
 
 ```bash
-mycelium config sync-cfn
-```
-
-This is idempotent — safe to run at any time. If the workspace UUID changed (e.g.
-full volume wipe), the command updates `config.toml` and `.env` automatically and
-prompts you to restart the backend to pick up the new `WORKSPACE_ID`.
-
-If `sync-cfn` reports a workspace ID change (full volume wipe scenario), it updates
-`config.toml` and `.env` then exits — run `mycelium doctor` next to restart the
-backend with the new `WORKSPACE_ID` and sync room MAS IDs:
-
-```bash
-mycelium config sync-cfn   # updates config, exits early if workspace rotated
-mycelium doctor            # restarts backend, patches any remaining drift
-mycelium config sync-cfn   # re-run to sync room MAS IDs now backend is current
+mycelium doctor --fix
 ```
 
 ### MAS ID
@@ -173,7 +160,7 @@ mycelium room create my-room        # prints MAS ID on creation
 mycelium config set server.mas_id <uuid-from-above>
 ```
 
-After a volume wipe, run `mycelium config sync-cfn` to re-provision all room MAS IDs at once.
+After a volume wipe, run `mycelium doctor --fix` to re-provision all room MAS IDs at once.
 
 ### Running the backend outside Docker (hot-reload)
 
