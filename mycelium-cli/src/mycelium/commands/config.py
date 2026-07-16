@@ -355,7 +355,7 @@ def sync_cfn(
         typer.secho(
             f"  ! Workspace ID changed: {cached_ws} → {workspace_id}", fg=typer.colors.YELLOW
         )
-        typer.echo("    Updating config.toml with new workspace_id…")
+        typer.echo("    Updating config.toml and .env with new workspace_id…")
         try:
             config.runtime.workspace_id = workspace_id
             config.save()
@@ -363,14 +363,17 @@ def sync_cfn(
 
             write_env_file(config)
             typer.secho(
-                "  ✓ config.toml and .env updated — restart the backend to pick up the new "
-                "WORKSPACE_ID:\n"
-                "      docker compose -p mycelium restart mycelium-backend",
+                "  ✓ config.toml and .env updated.\n"
+                "  Run 'mycelium doctor' to restart the backend and sync room MAS IDs.",
                 fg=typer.colors.YELLOW,
             )
         except Exception as exc:
             typer.secho(f"  ✗ Could not update config: {exc}", fg=typer.colors.RED)
             raise typer.Exit(1) from None
+        # Skip room sync — the backend still has the old WORKSPACE_ID in its env
+        # and sync-mas would register rooms under the wrong workspace. Doctor
+        # restarts the backend first, after which room MAS IDs can be synced.
+        return
 
     typer.echo(f"    workspace: {workspace_id}")
 

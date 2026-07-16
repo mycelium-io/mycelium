@@ -154,13 +154,14 @@ This is idempotent — safe to run at any time. If the workspace UUID changed (e
 full volume wipe), the command updates `config.toml` and `.env` automatically and
 prompts you to restart the backend to pick up the new `WORKSPACE_ID`.
 
-If `sync-cfn` reports a workspace ID change, run:
+If `sync-cfn` reports a workspace ID change (full volume wipe scenario), it updates
+`config.toml` and `.env` then exits — run `mycelium doctor` next to restart the
+backend with the new `WORKSPACE_ID` and sync room MAS IDs:
 
 ```bash
-docker compose -p mycelium \
-  -f mycelium-cli/src/mycelium/docker/compose.yml \
-  -f mycelium-cli/src/mycelium/docker/compose-dev.yml \
-  restart mycelium-backend
+mycelium config sync-cfn   # updates config, exits early if workspace rotated
+mycelium doctor            # restarts backend, patches any remaining drift
+mycelium config sync-cfn   # re-run to sync room MAS IDs now backend is current
 ```
 
 ### MAS ID
