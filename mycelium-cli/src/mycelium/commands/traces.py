@@ -279,13 +279,27 @@ def _attr_first(attrs: dict, *keys: str, default: str = "") -> str:
     return default
 
 
+def _display_name(span_name: str, attrs: dict) -> str:
+    """Human-friendly span name for tabular display.
+
+    Strips the ``tool.`` prefix added by InsightClaw (``tool.exec``,
+    ``tool.sessions_yield``, etc.) since the tool name is already implied
+    by the ioa_observe.span.kind attribute.  All other names are returned
+    as-is.
+    """
+    if span_name.startswith("tool."):
+        # Prefer the explicit tool name attribute when present
+        tool = _attr_first(attrs, "gen_ai.tool.name", "openclaw.tool.name", "openclaw.toolName")
+        return tool if tool != "-" else span_name[5:]
+    return span_name
+
+
 def _agent_of(attrs: dict) -> str:
     return _attr_first(
         attrs,
         "openclaw.agent",
         "gen_ai.agent.id",
         "gen_ai.agent.name",
-        "ioa_observe.entity.name",
         default="-",
     )
 
@@ -834,7 +848,7 @@ def list_spans(
             _fmt_time(r["start_time"]),
             _alias_host(r["host"]) or "-",
             _truncate(_agent_of(a), 18),
-            _truncate(r["name"], 30),
+            _truncate(_display_name(r["name"], a), 30),
             f"{(r['duration_ms'] or 0):.0f}",
             st,
             toks,
