@@ -574,8 +574,9 @@ def _print_groupby(
         avg = sum(ds) / len(ds) if ds else 0
         p95 = ds[int(len(ds) * 0.95)] if len(ds) > 1 else (ds[0] if ds else 0)
         err = err_counts.get(k, 0)
+        display_k = "N/A" if k == "-" else str(k)
         table.add_row(
-            _truncate(str(k), 70),
+            _truncate(display_k, 70),
             str(n),
             (f"[red]{err}[/red]" if err else "0"),
             f"{avg:.1f}",
