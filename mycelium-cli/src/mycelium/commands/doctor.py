@@ -796,6 +796,128 @@ def _check_cfn_intent(*, local_backend: bool = True) -> CheckResult:
     return CheckResult(name="CFN config", status="ok", message="CFN URLs configured")
 
 
+def _check_cfn_workspace_association(*, local_backend: bool = True) -> CheckResult:
+    """Check that the Default Workspace is associated with the running CFN node.
+
+    After a dev-stack restart the CFN node re-registers and may get a new ID,
+    leaving workspace.cfn_id pointing at a stale or missing node. Without the
+    association config_version never bumps and the node's ParsedConfig.Workspaces
+    stays empty, causing every OTLP span to fail ingress validation.
+    """
+    if not local_backend:
+        return CheckResult(
+            name="CFN workspace assoc",
+            status="ok",
+            message="Skipped (spoke — CFN runs on hub)",
+        )
+
+    cfn_mgmt_url = "http://localhost:9000"
+    try:
+        import json as _json
+        import urllib.request as _urllib_request
+
+        with _urllib_request.urlopen(  # noqa: S310
+            _urllib_request.Request(
+                f"{cfn_mgmt_url}/api/workspaces",
+                headers={"Accept": "application/json"},
+            ),
+            timeout=5,
+        ) as r:
+            workspaces = _json.loads(r.read()).get("workspaces", [])
+    except Exception:
+        return CheckResult(
+            name="CFN workspace assoc",
+            status="ok",
+            message="Skipped (CFN mgmt plane unreachable)",
+        )
+
+    if not workspaces:
+        return CheckResult(
+            name="CFN workspace assoc",
+            status="warning",
+            message="No workspace found in CFN mgmt plane",
+        )
+
+    ws = workspaces[0]
+    ws_id = ws["id"]
+    cfn_id = ws.get("cfn_id")
+
+    # Get online CFN nodes
+    try:
+        with _urllib_request.urlopen(  # noqa: S310
+            _urllib_request.Request(
+                f"{cfn_mgmt_url}/api/cognition-fabric-nodes",
+                headers={"Accept": "application/json"},
+            ),
+            timeout=5,
+        ) as r:
+            nodes = _json.loads(r.read()).get("nodes", [])
+    except Exception:
+        return CheckResult(
+            name="CFN workspace assoc",
+            status="ok",
+            message="Skipped (could not fetch CFN nodes)",
+        )
+
+    online = [n for n in nodes if n.get("status") == "online"]
+    if not online:
+        return CheckResult(
+            name="CFN workspace assoc",
+            status="warning",
+            message="No online CFN node found — is ioc-cfn-svc running?",
+        )
+
+    target_node = online[0]
+    target_id = target_node["id"]
+
+    if cfn_id == target_id:
+        return CheckResult(
+            name="CFN workspace assoc",
+            status="ok",
+            message=f"{target_node.get('name', target_id[:8])} ({target_id[:8]}…)",
+        )
+
+    def _fix_association() -> None:
+        body = _json.dumps({"cfn_id": target_id}).encode()
+        try:
+            with _urllib_request.urlopen(  # noqa: S310
+                _urllib_request.Request(
+                    f"{cfn_mgmt_url}/api/workspaces/{ws_id}",
+                    data=body,
+                    method="PUT",
+                    headers={
+                        "Content-Type": "application/json",
+                        "Accept": "application/json",
+                    },
+                ),
+                timeout=10,
+            ) as r:
+                _json.loads(r.read())
+            typer.secho(
+                f"  ✓ Workspace associated with CFN node {target_id[:8]}…",
+                fg=typer.colors.GREEN,
+            )
+            typer.echo(
+                "    The CFN node will pick up the new workspace config on its next heartbeat (≤10s)."
+            )
+        except Exception as exc:
+            typer.secho(f"  ✗ Association failed: {exc}", fg=typer.colors.RED)
+
+    stale = f"stale ({cfn_id[:8]}…)" if cfn_id else "not set"
+    return CheckResult(
+        name="CFN workspace assoc",
+        status="warning",
+        message=f"workspace.cfn_id {stale} — node is {target_id[:8]}…",
+        details=[
+            f"  workspace:    {ws_id}",
+            f"  expected CFN: {target_id} ({target_node.get('name', '?')})",
+            f"  current cfn_id: {cfn_id or '(none)'}",
+        ],
+        fix_label=f"Associate workspace with {target_node.get('name', target_id[:8])}",
+        fix_fn=_fix_association,
+    )
+
+
 def _check_room_mas_ids(*, local_backend: bool = True) -> CheckResult:
     """Check that all rooms have a MAS ID (CFN-enabled installs only).
 
@@ -2088,6 +2210,7 @@ def doctor(
                 [
                     _check_cfn_intent(local_backend=local),
                     _check_workspace_id(local_backend=local),
+                    _check_cfn_workspace_association(local_backend=local),
                     _check_room_mas_ids(local_backend=local),
                     _check_cfn_pgvector(),
                 ],

@@ -311,113 +311,87 @@ def sync_cfn(
         raise typer.Exit(0)
 
     _api_url = (api_url or config.server.api_url or "http://localhost:8000").rstrip("/")
-    # Use localhost URL — the mgmt plane is always host-accessible on port 9000.
-    # config.runtime.cfn_mgmt_url may be set but could be a Docker-internal hostname
-    # if the user configured it from inside a container; localhost is always correct
-    # when running on the host.
+    # Always use localhost — the mgmt plane is host-accessible on port 9000.
     cfn_mgmt_url = "http://localhost:9000"
 
     typer.secho("  Syncing CFN workspace and room MAS IDs…", bold=True)
 
     # ── 1. Workspace → CFN node association ──────────────────────────────
     typer.echo("  Step 1: workspace → CFN node association")
-
-    # Always discover the workspace from the mgmt plane — never trust the cached
-    # workspace_id from config because after a CFN DB wipe the mgmt plane creates
-    # a new workspace with a new UUID and the cached value is stale.
-    workspace_id = ""
     try:
-        req = urllib.request.Request(
-            f"{cfn_mgmt_url}/api/workspaces",
-            headers={"Accept": "application/json"},
+        ws_resp = json_module.loads(
+            urllib.request.urlopen(  # noqa: S310
+                urllib.request.Request(
+                    f"{cfn_mgmt_url}/api/workspaces",
+                    headers={"Accept": "application/json"},
+                ),
+                timeout=5,
+            ).read()
         )
-        with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
-            data = json_module.loads(resp.read())
-        workspaces = data.get("workspaces", [])
-        if workspaces:
-            workspace_id = workspaces[0]["id"]
+        workspaces = ws_resp.get("workspaces", [])
     except Exception as exc:
         typer.secho(
-            f"  ✗ CFN mgmt plane unreachable at {cfn_mgmt_url}: {exc}",
-            fg=typer.colors.RED,
+            f"  ✗ CFN mgmt plane unreachable at {cfn_mgmt_url}: {exc}", fg=typer.colors.RED
         )
         typer.echo("  Is the CFN stack running? Try: mycelium install --ioc --force")
         raise typer.Exit(1) from None
 
-    if not workspace_id:
+    if not workspaces:
         typer.secho("  ✗ No workspace found in CFN mgmt plane.", fg=typer.colors.RED)
         raise typer.Exit(1)
 
-    # Detect workspace_id rotation (post-DB-wipe) and persist the new value.
-    cached_ws = config.runtime.workspace_id or config.server.workspace_id or ""
-    workspace_id_changed = cached_ws and cached_ws != workspace_id
-    if workspace_id_changed:
-        typer.secho(
-            f"  ! Workspace ID changed: {cached_ws} → {workspace_id}", fg=typer.colors.YELLOW
-        )
-        typer.echo("    Updating config.toml and .env with new workspace_id…")
-        try:
-            config.runtime.workspace_id = workspace_id
-            config.save()
-            from mycelium.docker_utils import write_env_file
+    workspace_id = workspaces[0]["id"]
 
-            write_env_file(config)
-            typer.secho(
-                "  ✓ config.toml and .env updated.\n"
-                "  Run 'mycelium doctor' to restart the backend and sync room MAS IDs.",
-                fg=typer.colors.YELLOW,
-            )
-        except Exception as exc:
-            typer.secho(f"  ✗ Could not update config: {exc}", fg=typer.colors.RED)
-            raise typer.Exit(1) from None
-        # Skip room sync — the backend still has the old WORKSPACE_ID in its env
-        # and sync-mas would register rooms under the wrong workspace. Doctor
-        # restarts the backend first, after which room MAS IDs can be synced.
-        return
+    # Detect workspace_id rotation (post-DB-wipe). Doctor handles the full
+    # repair (config patch + backend restart); we just surface the issue here.
+    cached_ws = config.runtime.workspace_id or config.server.workspace_id or ""
+    if cached_ws and cached_ws != workspace_id:
+        typer.secho(
+            f"  ! Workspace ID changed: {cached_ws} → {workspace_id}\n"
+            "  Run 'mycelium doctor' to patch config, restart the backend, and sync rooms.",
+            fg=typer.colors.YELLOW,
+        )
+        raise typer.Exit(0)
 
     typer.echo(f"    workspace: {workspace_id}")
 
-    # Get CFN node ID from mgmt plane
-    cfn_id = ""
     try:
-        req = urllib.request.Request(
-            f"{cfn_mgmt_url}/api/cognition-fabric-nodes",
-            headers={"Accept": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
-            data = json_module.loads(resp.read())
-        nodes = data.get("nodes", [])
-        # Pick the first online node, falling back to first node
+        nodes = json_module.loads(
+            urllib.request.urlopen(  # noqa: S310
+                urllib.request.Request(
+                    f"{cfn_mgmt_url}/api/cognition-fabric-nodes",
+                    headers={"Accept": "application/json"},
+                ),
+                timeout=5,
+            ).read()
+        ).get("nodes", [])
         online = [n for n in nodes if n.get("status") == "online"]
         node = online[0] if online else (nodes[0] if nodes else None)
-        if node:
-            cfn_id = node["id"]
-            typer.echo(
-                f"    cfn node:  {cfn_id} ({node.get('name', '?')}, {node.get('status', '?')})"
-            )
     except Exception as exc:
-        typer.secho(
-            f"  ✗ Could not fetch CFN nodes from {cfn_mgmt_url}: {exc}", fg=typer.colors.RED
-        )
+        typer.secho(f"  ✗ Could not fetch CFN nodes: {exc}", fg=typer.colors.RED)
         raise typer.Exit(1) from None
 
-    if not cfn_id:
+    if not node:
         typer.secho(
-            "  ✗ No CFN node found — is ioc-cfn-svc running and registered?", fg=typer.colors.RED
+            "  ✗ No CFN node found — is ioc-cfn-svc running?", fg=typer.colors.RED
         )
         raise typer.Exit(1)
 
-    # Associate workspace with CFN node (idempotent)
+    cfn_id = node["id"]
+    typer.echo(f"    cfn node:  {cfn_id} ({node.get('name', '?')}, {node.get('status', '?')})")
+
     try:
-        body = json_module.dumps({"cfn_id": cfn_id}).encode()
-        req = urllib.request.Request(
-            f"{cfn_mgmt_url}/api/workspaces/{workspace_id}",
-            data=body,
-            method="PUT",
-            headers={"Content-Type": "application/json", "Accept": "application/json"},
+        result = json_module.loads(
+            urllib.request.urlopen(  # noqa: S310
+                urllib.request.Request(
+                    f"{cfn_mgmt_url}/api/workspaces/{workspace_id}",
+                    data=json_module.dumps({"cfn_id": cfn_id}).encode(),
+                    method="PUT",
+                    headers={"Content-Type": "application/json", "Accept": "application/json"},
+                ),
+                timeout=10,
+            ).read()
         )
-        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
-            result = json_module.loads(resp.read())
         if result.get("cfn_id") == cfn_id:
             typer.secho(
                 f"  ✓ Workspace associated with CFN node {cfn_id[:8]}…", fg=typer.colors.GREEN
@@ -428,6 +402,8 @@ def sync_cfn(
     except urllib.error.HTTPError as exc:
         typer.secho(f"  ✗ Workspace association failed: HTTP {exc.code}", fg=typer.colors.RED)
         raise typer.Exit(1) from None
+    except typer.Exit:
+        raise
     except Exception as exc:
         typer.secho(f"  ✗ Workspace association failed: {exc}", fg=typer.colors.RED)
         raise typer.Exit(1) from None
