@@ -302,7 +302,7 @@ def sync_cfn(
         print_error(exc, verbose=verbose)
         raise typer.Exit(1) from None
 
-    if not config.runtime.ioc_enabled:
+    if not config.runtime.cfn_mgmt_url:
         typer.secho(
             "  IoC CFN is not enabled on this install.",
             fg=typer.colors.YELLOW,
