@@ -137,7 +137,7 @@ scenarios:
         position: >
           On-call rotation with 15-minute SLA; automated runbooks handle
           80% of pages. Humans escalate only on novel failure modes.
-      - role: beta-he
+      - role: alpha-he
         adapter: hermes
         host: hub
         position: >
