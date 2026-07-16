@@ -312,20 +312,23 @@ def await_tick(
         if resolved_room:
             with httpx.Client(timeout=10) as http:
                 try:
-                    # Scope the missed-tick scan to the session THIS handle is
-                    # in: the most recent session in the room (the endpoint
-                    # returns newest-first, and there is at most one non-terminal
-                    # session per room, so ``join`` placed the handle in the
-                    # newest). Ticks and consensus are session-scoped; consensus
-                    # is *also* mirrored to the parent room for the chat log, so
-                    # scanning the parent room — or any older session — would
-                    # replay a stale consensus over the current session's live
-                    # ticks (issue #405). No session yet → nothing has been
-                    # ticked, so skip straight to the SSE stream below.
+                    # Scope the missed-tick scan to the session THIS handle
+                    # actually joined — filter by ``participant`` (the backend
+                    # knows from the participants table) and take the newest.
+                    # Ticks and consensus are session-scoped; consensus is *also*
+                    # mirrored to the parent room for the chat log, so scanning
+                    # the parent room, an older session, or another agent's
+                    # session would replay a stale consensus over this handle's
+                    # live ticks (issue #405). No joined session yet → nothing
+                    # has been ticked, so skip straight to the SSE stream below.
                     rooms_to_scan: list[str] = []
                     coord_resp = http.get(
                         f"{config.server.api_url}/api/coordination-sessions",
-                        params={"parent_room": resolved_room, "limit": 1},
+                        params={
+                            "parent_room": resolved_room,
+                            "participant": handle,
+                            "limit": 1,
+                        },
                     )
                     if coord_resp.status_code == 200:
                         sessions = coord_resp.json()

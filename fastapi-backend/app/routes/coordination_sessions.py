@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bus import room_channel
 from app.config import settings
 from app.database import async_session_maker, get_async_session
-from app.models import CoordinationSession, Message
+from app.models import CoordinationSession, Message, Participant
 from app.routes.stream import _close_listen_conn, _open_listen_conn, _stream_with_disconnect_watcher
 from app.schemas import (
     CoordinationSessionRead,
@@ -50,13 +50,20 @@ async def list_coordination_sessions(
         None,
         description="Comma-separated state filter (e.g. 'waiting,negotiating')",
     ),
+    participant: str | None = Query(
+        None,
+        description="Only sessions this agent handle actually joined (via the "
+        "participants table). Used by `session await` to scope to the caller's "
+        "own session rather than guessing the newest one in the room.",
+    ),
     limit: int = Query(200, le=1000),
 ):
     """List coordination sessions, newest first.
 
-    Supports two filters used by the OpenClaw channel plugin's polling loop
-    (``state=waiting,negotiating``) and the frontend sessions rail
-    (``parent_room=<name>``).
+    Supports the OpenClaw channel plugin's polling loop
+    (``state=waiting,negotiating``), the frontend sessions rail
+    (``parent_room=<name>``), and the CLI's missed-tick scope
+    (``participant=<handle>``).
     """
     query = select(CoordinationSession).order_by(CoordinationSession.created_at.desc())
 
@@ -66,6 +73,14 @@ async def list_coordination_sessions(
         wanted = [s.strip() for s in state.split(",") if s.strip()]
         if wanted:
             query = query.where(CoordinationSession.state.in_(wanted))
+    if participant:
+        query = query.where(
+            CoordinationSession.id.in_(
+                select(Participant.coordination_session_id).where(
+                    Participant.agent_handle == participant
+                )
+            )
+        )
 
     result = await db.execute(query.limit(limit))
     return [CoordinationSessionRead.model_validate(s) for s in result.scalars().all()]

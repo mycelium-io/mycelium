@@ -113,3 +113,29 @@ async def test_sessions_are_a_subset_of_a_room(client):
     # display_name preserves the parent → session relationship for legacy URLs.
     assert alpha_only[0]["display_name"].startswith("alpha:session:")
     assert beta_only[0]["display_name"].startswith("beta:session:")
+
+
+@pytest.mark.asyncio
+async def test_participant_filter_scopes_to_joined_sessions(client):
+    """?participant=<handle> returns only sessions that handle actually joined
+    (via the participants table) — the scope `session await` uses so an older
+    or other-agent session can't shadow the caller's own (issue #405)."""
+    await client.post("/api/rooms", json={"name": "ra"})
+    await client.post("/api/rooms", json={"name": "rb"})
+    # alice joins ra; bob joins rb. alice is never a participant of rb's session.
+    joined = await client.post("/api/rooms/ra/sessions", json={"agent_handle": "alice"})
+    assert joined.status_code == 201
+    await client.post("/api/rooms/rb/sessions", json={"agent_handle": "bob"})
+
+    alice_rooms = {
+        s["parent_room_name"]
+        for s in (await client.get("/api/coordination-sessions?participant=alice")).json()
+    }
+    assert "ra" in alice_rooms
+    assert "rb" not in alice_rooms
+
+    # Scoped like the CLI does: rb + alice → empty (alice didn't join rb).
+    scoped = (
+        await client.get("/api/coordination-sessions?parent_room=rb&participant=alice")
+    ).json()
+    assert scoped == []

@@ -46,10 +46,13 @@ class _EmptyStream:
 class _FakeClient:
     """Fake httpx.Client that records requested URLs and serves canned data."""
 
-    def __init__(self, requested: list[str], sessions: list[dict], messages: dict) -> None:
+    def __init__(
+        self, requested: list[str], sessions: list[dict], messages: dict, captured: dict
+    ) -> None:
         self._requested = requested
         self._sessions = sessions
         self._messages = messages
+        self._captured = captured
 
     def __enter__(self) -> _FakeClient:
         return self
@@ -60,6 +63,7 @@ class _FakeClient:
     def get(self, url: str, params=None):
         self._requested.append(url)
         if url.endswith("/coordination-sessions"):
+            self._captured["sessions_params"] = params or {}
             # Honor the newest-first + limit contract the endpoint provides.
             limit = (params or {}).get("limit", 200)
             return _Resp(200, self._sessions[:limit])
@@ -71,13 +75,16 @@ class _FakeClient:
         return _EmptyStream()
 
 
-def _patch(monkeypatch, requested, sessions, messages):
+def _patch(monkeypatch, requested, sessions, messages) -> dict:
+    """Patch config/room/httpx. Returns a dict that captures request params."""
+    captured: dict = {}
     cfg = SimpleNamespace(server=SimpleNamespace(api_url="http://localhost:8000"))
     monkeypatch.setattr(session_cmd.MyceliumConfig, "load", classmethod(lambda _c: cfg))
     monkeypatch.setattr(session_cmd, "_resolve_room", lambda _c, _r: "R")
     monkeypatch.setattr(
-        httpx, "Client", lambda *_a, **_k: _FakeClient(requested, sessions, messages)
+        httpx, "Client", lambda *_a, **_k: _FakeClient(requested, sessions, messages, captured)
     )
+    return captured
 
 
 def _tick_msg(room: str, participant: str) -> dict:
@@ -111,7 +118,7 @@ def test_await_ignores_stale_consensus_from_older_session(monkeypatch):
         "R:session:new": [_tick_msg("R:session:new", "other-agent")],  # not our handle
         "R:session:old": [_consensus_msg()],
     }
-    _patch(monkeypatch, requested, sessions, messages)
+    captured = _patch(monkeypatch, requested, sessions, messages)
 
     result = CliRunner().invoke(
         session_cmd.app, ["await", "-H", "julia-agent", "-r", "R", "-t", "1"]
@@ -121,6 +128,8 @@ def test_await_ignores_stale_consensus_from_older_session(monkeypatch):
     assert "stale plan" not in result.output
     # The old, completed session must never have been scanned.
     assert not any("R:session:old" in u for u in requested)
+    # The scope was the handle's own sessions, not "newest in the room".
+    assert captured["sessions_params"].get("participant") == "julia-agent"
 
 
 def test_await_returns_live_tick_for_this_handle(monkeypatch):
