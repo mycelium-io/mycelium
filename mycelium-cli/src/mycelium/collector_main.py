@@ -58,6 +58,11 @@ def main() -> None:
     except Exception as exc:  # noqa: BLE001
         logging.warning("Could not resolve scrape targets: %s", exc)
 
+    cfn_svc_url = os.environ.get("CFN_SVC_URL", "").strip()
+    cfn_forward_enabled = os.environ.get("MYCELIUM_CFN_FORWARD_ENABLED", "").lower() in (
+        "1", "true", "yes", "on"
+    )
+
     run(
         args.port,
         Path(args.output),
@@ -65,6 +70,8 @@ def main() -> None:
         scrape_targets=scrape_targets,
         no_backend=args.no_backend,
         hub_url=args.hub_url,
+        cfn_svc_url=cfn_svc_url or None,
+        cfn_forward_enabled=cfn_forward_enabled,
     )
 
 

@@ -288,6 +288,24 @@ class MetricsConfig(BaseModel):
     )
 
 
+class OpenClawIntegrationsConfig(BaseModel):
+    """Integration-specific tunables for the OpenClaw adapter."""
+
+    insightclaw_capture_content: bool = Field(
+        default=False,
+        description=(
+            "Opt-in: capture LLM message content in InsightClaw spans. "
+            "Disabled by default — content may contain sensitive information."
+        ),
+    )
+
+
+class IntegrationsConfig(BaseModel):
+    """Per-adapter integration configuration."""
+
+    openclaw: OpenClawIntegrationsConfig = Field(default_factory=OpenClawIntegrationsConfig)
+
+
 class MyceliumConfig(BaseModel):
     """Complete Mycelium CLI configuration."""
 
@@ -299,6 +317,7 @@ class MyceliumConfig(BaseModel):
     knowledge_ingest: KnowledgeIngestConfig = Field(default_factory=KnowledgeIngestConfig)
     metrics: MetricsConfig = Field(default_factory=MetricsConfig)
     negotiation: NegotiationConfig = Field(default_factory=NegotiationConfig)
+    integrations: IntegrationsConfig = Field(default_factory=IntegrationsConfig)
     adapters: dict[str, Any] = Field(
         default_factory=dict,
         description="Registered agent framework adapters (openclaw, cursor, claude-code, …)",

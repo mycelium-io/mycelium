@@ -120,6 +120,28 @@ CREATE INDEX IF NOT EXISTS idx_spans_host ON spans(host);
 
 _DEFAULT_RETENTION_DAYS = 7
 
+# InsightClaw deep-observability histogram metric name → internal key mapping.
+# Defined at module level so it is not rebuilt on every _process_metric call.
+_IC_HISTOGRAM_MAP: dict[str, str] = {
+    "openclaw.llm.duration": "llm_duration",
+    "openclaw.tool.duration": "tool_duration",
+    "openclaw.agent.turn_duration": "agent_turn_duration",
+    "openclaw.memory.failure_rate": "memory_failure_rate",
+    "openclaw.memory.search_fragmentation": "memory_search_fragmentation",
+    "openclaw.memory.read_duration": "memory_read_duration",
+    "openclaw.memory.write_duration": "memory_write_duration",
+    "openclaw.memory.edit_duration": "memory_edit_duration",
+    "openclaw.context.system_size": "context_system_size",
+    "openclaw.context.history_memory_size": "context_history_memory_size",
+    "openclaw.context.history_tool_size": "context_history_tool_size",
+    "openclaw.context.history_user_size": "context_history_user_size",
+    "openclaw.context.history_other_size": "context_history_other_size",
+    "openclaw.context.prompt_size": "context_prompt_size",
+    "openclaw.context.preparation_duration": "context_preparation_duration",
+    "openclaw.session.parallelisation_score": "session_parallelisation_score",
+    "openclaw.session.repetition_score": "session_repetition_score",
+}
+
 
 class TraceStore:
     """SQLite-backed trace span storage with automatic retention cleanup."""
@@ -515,6 +537,16 @@ class MetricsStore:
             "sessions_state": {},
             "sessions_stuck": 0,
             "run_attempts": 0,
+            # InsightClaw deep-observability metrics
+            "insightclaw": {
+                "llm": {"by_agent": {}},  # llm.requests, llm.errors, llm.tokens.*
+                "tool": {"by_agent": {}},  # tool.calls, tool.errors
+                "memory": {"by_agent": {}},  # memory.read/write/edit/search events, hit/miss
+                "sessions_active": 0,  # sessions.active gauge
+                "session": {
+                    "by_agent": {}
+                },  # session.resets, session.parallelisation/repetition_score
+            },
         }
 
     @staticmethod
@@ -529,6 +561,27 @@ class MetricsStore:
             "webhook_duration_ms": _zero_histogram(),
             "session_stuck_age_ms": _zero_histogram(),
             "by_agent": {},
+            # InsightClaw deep-observability histograms
+            "insightclaw": {
+                "llm_duration": _zero_histogram(),  # openclaw.llm.duration
+                "tool_duration": _zero_histogram(),  # openclaw.tool.duration
+                "agent_turn_duration": _zero_histogram(),  # openclaw.agent.turn_duration
+                "memory_failure_rate": _zero_histogram(),  # openclaw.memory.failure_rate
+                "memory_search_fragmentation": _zero_histogram(),
+                "memory_read_duration": _zero_histogram(),
+                "memory_write_duration": _zero_histogram(),
+                "memory_edit_duration": _zero_histogram(),
+                "context_system_size": _zero_histogram(),
+                "context_history_memory_size": _zero_histogram(),
+                "context_history_tool_size": _zero_histogram(),
+                "context_history_user_size": _zero_histogram(),
+                "context_history_other_size": _zero_histogram(),
+                "context_prompt_size": _zero_histogram(),
+                "context_preparation_duration": _zero_histogram(),
+                "session_parallelisation_score": _zero_histogram(),
+                "session_repetition_score": _zero_histogram(),
+                "by_agent": {},
+            },
         }
 
     def _ensure_counter_bucket(self, host: str) -> dict:
@@ -602,6 +655,22 @@ class MetricsStore:
             agg["sessions_stuck"] += bucket.get("sessions_stuck", 0)
             agg["run_attempts"] += bucket.get("run_attempts", 0)
 
+            # InsightClaw counter sub-buckets: sum numeric values, merge by_agent dicts.
+            ic_src = bucket.get("insightclaw", {})
+            ic_dst = agg["insightclaw"]
+            for ns in ("llm", "tool", "memory", "session"):
+                src_ns = ic_src.get(ns, {})
+                dst_ns = ic_dst[ns]
+                for k, v in src_ns.items():
+                    if k == "by_agent":
+                        for agent, agent_vals in v.items():
+                            agent_dst = dst_ns["by_agent"].setdefault(agent, {})
+                            for metric_k, metric_v in agent_vals.items():
+                                agent_dst[metric_k] = agent_dst.get(metric_k, 0) + metric_v
+                    else:
+                        dst_ns[k] = dst_ns.get(k, 0) + v
+            ic_dst["sessions_active"] += ic_src.get("sessions_active", 0)
+
         return agg
 
     def _aggregate_histograms_locked(self) -> dict:
@@ -631,6 +700,21 @@ class MetricsStore:
                 for key, val in agent_h.items():
                     target.setdefault(key, _zero_histogram())
                     _merge_histogram(target[key], val)
+
+            # InsightClaw histograms
+            ic_src = bucket.get("insightclaw", {})
+            ic_dst = agg["insightclaw"]
+            for key, val in ic_src.items():
+                if key == "by_agent":
+                    for agent, agent_h in val.items():
+                        target = ic_dst["by_agent"].setdefault(agent, {})
+                        for hk, hv in agent_h.items():
+                            target.setdefault(hk, _zero_histogram())
+                            _merge_histogram(target[hk], hv)
+                elif isinstance(val, dict):
+                    if key in ic_dst:
+                        _merge_histogram(ic_dst[key], val)
+
         return agg
 
     def set_backend_metrics(self, data: dict | None) -> None:
@@ -820,6 +904,68 @@ class MetricsStore:
                 elif name == "openclaw.run.attempt":
                     counters["run_attempts"] = value
 
+                # ── InsightClaw counters ───────────────────────────────────
+                elif name in (
+                    "openclaw.llm.requests",
+                    "openclaw.llm.errors",
+                    "openclaw.llm.tokens.total",
+                    "openclaw.llm.tokens.prompt",
+                    "openclaw.llm.tokens.completion",
+                ):
+                    agent = str(
+                        attrs.get("gen_ai.agent.id", "") or attrs.get("openclaw.channel", "")
+                    )
+                    short = name.split("openclaw.llm.")[1]  # requests / errors / tokens.*
+                    ic_llm = counters["insightclaw"]["llm"]
+                    ic_llm[short] = ic_llm.get(short, 0) + value
+                    if agent:
+                        ab = ic_llm["by_agent"].setdefault(agent, {})
+                        ab[short] = ab.get(short, 0) + value
+
+                elif name in ("openclaw.tool.calls", "openclaw.tool.errors"):
+                    agent = str(
+                        attrs.get("gen_ai.agent.id", "") or attrs.get("openclaw.channel", "")
+                    )
+                    short = name.split("openclaw.tool.")[1]
+                    ic_tool = counters["insightclaw"]["tool"]
+                    ic_tool[short] = ic_tool.get(short, 0) + value
+                    if agent:
+                        ab = ic_tool["by_agent"].setdefault(agent, {})
+                        ab[short] = ab.get(short, 0) + value
+
+                elif name in (
+                    "openclaw.memory.read_events",
+                    "openclaw.memory.write_events",
+                    "openclaw.memory.edit_events",
+                    "openclaw.memory.search_miss",
+                    "openclaw.memory.search_hit",
+                ):
+                    agent = str(
+                        attrs.get("gen_ai.agent.id", "") or attrs.get("openclaw.channel", "")
+                    )
+                    short = name.split("openclaw.memory.")[1]
+                    ic_mem = counters["insightclaw"]["memory"]
+                    ic_mem[short] = ic_mem.get(short, 0) + value
+                    if agent:
+                        ab = ic_mem["by_agent"].setdefault(agent, {})
+                        ab[short] = ab.get(short, 0) + value
+
+                elif name == "openclaw.session.resets":
+                    agent = str(
+                        attrs.get("gen_ai.agent.id", "") or attrs.get("openclaw.channel", "")
+                    )
+                    ic_sess = counters["insightclaw"]["session"]
+                    ic_sess["resets"] = ic_sess.get("resets", 0) + value
+                    if agent:
+                        ab = ic_sess["by_agent"].setdefault(agent, {})
+                        ab["resets"] = ab.get("resets", 0) + value
+
+        elif metric.HasField("gauge"):
+            for dp in metric.gauge.data_points:
+                value = dp.as_double if dp.HasField("as_double") else float(dp.as_int)
+                if name == "openclaw.sessions.active":
+                    counters["insightclaw"]["sessions_active"] = value
+
         elif metric.HasField("histogram"):
             for dp in metric.histogram.data_points:
                 attrs = _attrs_dict(dp.attributes)
@@ -851,6 +997,17 @@ class MetricsStore:
                     if agent:
                         agent_h = histograms["by_agent"].setdefault(agent, {})
                         agent_h[key] = update
+
+                # ── InsightClaw histograms ─────────────────────────────────
+                ic_key = _IC_HISTOGRAM_MAP.get(name)
+                if ic_key:
+                    histograms["insightclaw"][ic_key] = update
+                    agent = str(
+                        attrs.get("gen_ai.agent.id", "") or attrs.get("openclaw.channel", "")
+                    )
+                    if agent:
+                        agent_h = histograms["insightclaw"]["by_agent"].setdefault(agent, {})
+                        agent_h[ic_key] = update
 
     def _process_span(self, span) -> None:
         if span.name != "openclaw.model.usage":
@@ -1117,6 +1274,219 @@ def _fetch_scrape_targets(
             log.debug("Failed to persist scrape data: %s", write_exc)
 
 
+def _room_from_session_key(key: str) -> str:
+    """Parse the room name from an OpenClaw session key.
+
+    Format: ``agent:{agentId}:mycelium-room:group:{room}``
+    The room is the 5th colon-delimited segment (index 4, split on the first 4
+    colons only so room names containing colons are preserved).
+    Returns an empty string if the key doesn't match the expected format.
+    """
+    if not key or not key.startswith("agent:"):
+        return ""
+    parts = key.split(":", 4)
+    if len(parts) < 5:
+        return ""
+    room = parts[4]
+    return room.strip()
+
+
+class _CfnForwarder:
+    """Fire-and-forget OTLP trace forwarder from the collector to cfn-svc.
+
+    On each /v1/traces push the forwarder:
+      1. Parses raw OTLP bytes (protobuf or JSON).
+      2. For each span reads ``openclaw.session.key`` and extracts the room name.
+      3. Resolves (workspace_id, mas_id) per room via the mycelium backend API
+         (5-min in-process cache — the value is stable after room creation).
+      4. Partitions spans into one ResourceSpans block per distinct mas_id and
+         injects ``workspace.id`` / ``mas.id`` as resource attributes.
+      5. Re-serialises and POSTs raw OTLP protobuf to cfn-svc /v1/traces.
+
+    Spans without a usable session key fall back to the static fallback_mas_id
+    (the global MAS for this install, if any).  Failures are logged and counted
+    but never surface to the caller.
+
+    Gate: only instantiated when MYCELIUM_CFN_FORWARD_ENABLED=true AND cfn_svc_url
+    is non-empty (the latter is only set when the cfn profile is active).
+    """
+
+    _CACHE_TTL = 300  # seconds
+
+    def __init__(
+        self,
+        backend_api_url: str,
+        cfn_svc_url: str,
+        *,
+        fallback_workspace_id: str = "",
+        fallback_mas_id: str = "",
+    ) -> None:
+        from concurrent.futures import ThreadPoolExecutor
+
+        self._backend = backend_api_url.rstrip("/")
+        self._cfn = cfn_svc_url.rstrip("/")
+        self._pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="cfn-fwd")
+        # room_name (lowercase) → (workspace_id, mas_id, fetched_at)
+        self._cache: dict[str, tuple[str, str, float]] = {}
+        self._cache_lock = threading.Lock()
+        # per-mas_id counters: spans_forwarded, bytes_forwarded, failures
+        self._counters: dict[str, dict[str, int]] = {}
+        self._counters_lock = threading.Lock()
+        # Fallback ids for spans without a usable session key
+        self._fallback_ws = fallback_workspace_id
+        self._fallback_mas = fallback_mas_id
+        log.info("CFN forwarding enabled → %s", self._cfn)
+
+    def forward(self, body: bytes, content_type: str) -> None:
+        """Submit *body* to the thread pool and return immediately."""
+        self._pool.submit(self._send, body, content_type)
+
+    def get_counters(self) -> dict[str, dict[str, int]]:
+        """Return a snapshot of per-mas_id forward counters."""
+        with self._counters_lock:
+            return {k: dict(v) for k, v in self._counters.items()}
+
+    def _resolve_room(self, room: str) -> tuple[str, str]:
+        """Return (workspace_id, mas_id) for *room*, using the cache."""
+        import time
+
+        room_lower = room.lower()
+        now = time.monotonic()
+        with self._cache_lock:
+            cached = self._cache.get(room_lower)
+            if cached and now - cached[2] < self._CACHE_TTL:
+                return cached[0], cached[1]
+
+        workspace_id, mas_id = self._fetch_room(room_lower)
+        with self._cache_lock:
+            self._cache[room_lower] = (workspace_id, mas_id, now)
+        return workspace_id, mas_id
+
+    def _fetch_room(self, room: str) -> tuple[str, str]:
+        """GET /api/rooms/{room} from the mycelium backend."""
+        import json as _json
+
+        url = f"{self._backend}/api/rooms/{room}"
+        req = urllib.request.Request(url, method="GET", headers={"Accept": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
+                data = _json.loads(resp.read())
+            workspace_id = str(data.get("workspace_id") or "")
+            mas_id = str(data.get("mas_id") or "")
+            return workspace_id, mas_id
+        except Exception as exc:
+            log.debug("CFN forwarder: room lookup failed for %r: %s", room, exc)
+            return "", ""
+
+    def _bump_counter(
+        self, mas_id: str, *, spans: int = 0, bytes_: int = 0, failures: int = 0
+    ) -> None:
+        key = mas_id or "unknown"
+        with self._counters_lock:
+            bucket = self._counters.setdefault(key, {"spans": 0, "bytes": 0, "failures": 0})
+            bucket["spans"] += spans
+            bucket["bytes"] += bytes_
+            bucket["failures"] += failures
+
+    def _send(self, body: bytes, content_type: str) -> None:  # noqa: C901
+        """Worker: parse, partition by mas_id, inject attrs, POST to cfn-svc."""
+        try:
+            from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
+                ExportTraceServiceRequest,
+            )
+            from opentelemetry.proto.common.v1.common_pb2 import AnyValue, KeyValue  # noqa: F401
+
+            is_json = "json" in (content_type or "").lower()
+            msg = ExportTraceServiceRequest()
+            if is_json:
+                from google.protobuf.json_format import Parse
+
+                Parse(body, msg)
+            else:
+                msg.ParseFromString(body)
+        except Exception as exc:
+            log.debug("CFN forwarder: failed to parse OTLP body: %s", exc)
+            return
+
+        # Group (ScopeSpans, span) pairs by mas_id.
+        # We carry the ScopeSpans reference so we can copy scope metadata.
+        from collections import defaultdict
+
+        groups: dict[str, list[tuple]] = defaultdict(list)  # mas_id → [(scope_spans, span)]
+        ws_for_mas: dict[str, str] = {}
+
+        for rs in msg.resource_spans:
+            for ss in rs.scope_spans:
+                for span in ss.spans:
+                    attrs = _attrs_dict(span.attributes)
+                    session_key = str(attrs.get("openclaw.session.key", ""))
+                    room = _room_from_session_key(session_key)
+                    if room:
+                        workspace_id, mas_id = self._resolve_room(room)
+                    else:
+                        # No usable session key — fall back to static install-level mas_id.
+                        workspace_id, mas_id = self._fallback_ws, self._fallback_mas
+                    groups[mas_id].append((ss, span))
+                    if workspace_id:
+                        ws_for_mas[mas_id] = workspace_id
+
+        if not groups:
+            return
+
+        # Build one ResourceSpans block per distinct mas_id.
+        out = ExportTraceServiceRequest()
+        for mas_id, span_pairs in groups.items():
+            workspace_id = ws_for_mas.get(mas_id, "")
+            rs_out = out.resource_spans.add()
+
+            # Inject workspace.id and mas.id as resource attributes.
+            def _kv(k: str, v: str) -> KeyValue:
+                kv = KeyValue()
+                kv.key = k
+                kv.value.CopyFrom(AnyValue(string_value=v))
+                return kv
+
+            if workspace_id:
+                rs_out.resource.attributes.append(_kv("workspace.id", workspace_id))
+            if mas_id:
+                rs_out.resource.attributes.append(_kv("mas.id", mas_id))
+
+            # Group spans by their original scope (instrumentation library).
+            scope_groups: dict[str, list] = defaultdict(list)
+            scope_meta: dict[str, object] = {}
+            for ss, span in span_pairs:
+                scope_key = f"{ss.scope.name}|{ss.scope.version}"
+                scope_groups[scope_key].append(span)
+                if scope_key not in scope_meta:
+                    scope_meta[scope_key] = ss.scope
+
+            for scope_key, spans in scope_groups.items():
+                ss_out = rs_out.scope_spans.add()
+                ss_out.scope.CopyFrom(scope_meta[scope_key])
+                for span in spans:
+                    ss_out.spans.append(span)
+
+        serialised = out.SerializeToString()
+        url = f"{self._cfn}/v1/traces"
+        req = urllib.request.Request(
+            url,
+            data=serialised,
+            method="POST",
+            headers={"Content-Type": "application/x-protobuf"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310
+                resp.read()
+            span_count = sum(len(pairs) for pairs in groups.values())
+            for mas_id in groups:
+                self._bump_counter(mas_id, spans=len(groups[mas_id]), bytes_=len(serialised))
+            log.debug("CFN forward: %d spans → %s (%d bytes)", span_count, url, len(serialised))
+        except Exception as exc:
+            for mas_id in groups:
+                self._bump_counter(mas_id, failures=1)
+            log.debug("CFN forward failed: %s", exc)
+
+
 class _HubForwarder:
     """Fire-and-forget OTLP forwarder from spoke collector to hub.
 
@@ -1164,6 +1534,7 @@ class OTLPHandler(BaseHTTPRequestHandler):
     output_path: Path
     backend_api_url: str
     hub_forwarder: _HubForwarder | None
+    cfn_forwarder: _CfnForwarder | None
 
     def do_GET(self) -> None:
         if self.path == "/health":
@@ -1297,6 +1668,8 @@ class OTLPHandler(BaseHTTPRequestHandler):
 
             if self.hub_forwarder and self.path in ("/v1/metrics", "/v1/traces"):
                 self.hub_forwarder.forward(self.path, body, ct or "application/x-protobuf")
+            if self.cfn_forwarder and self.path == "/v1/traces":
+                self.cfn_forwarder.forward(body, ct or "application/x-protobuf")
         except Exception:
             log.exception("Failed to process %s", self.path)
             self.send_response(500)
@@ -1341,6 +1714,8 @@ def run(
     scrape_targets: list[dict] | None = None,
     no_backend: bool = False,
     hub_url: str | None = None,
+    cfn_svc_url: str | None = None,
+    cfn_forward_enabled: bool = False,
 ) -> None:
     """Start the OTLP HTTP receiver. Blocks until interrupted.
 
@@ -1422,6 +1797,16 @@ def run(
             log.warning("Could not load existing %s, starting fresh", output_path)
 
     forwarder = _HubForwarder(hub_url) if hub_url else None
+    cfn_forwarder: _CfnForwarder | None = None
+    if cfn_forward_enabled and cfn_svc_url:
+        import os as _os
+
+        cfn_forwarder = _CfnForwarder(
+            backend_api_url,
+            cfn_svc_url,
+            fallback_workspace_id=_os.environ.get("WORKSPACE_ID", ""),
+            fallback_mas_id=_os.environ.get("MAS_ID", ""),
+        )
 
     handler = type(
         "Handler",
@@ -1432,6 +1817,7 @@ def run(
             "output_path": output_path,
             "backend_api_url": backend_api_url,
             "hub_forwarder": forwarder,
+            "cfn_forwarder": cfn_forwarder,
         },
     )
 

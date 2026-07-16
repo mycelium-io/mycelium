@@ -20,6 +20,18 @@ from app.services.filesystem import ensure_room_structure, get_room_dir, remove_
 
 logger = logging.getLogger(__name__)
 
+
+def _norm(room_name: str) -> str:
+    """Lowercase a room name path parameter before DB lookup.
+
+    Room names are normalized to lowercase at creation (``RoomCreate.normalize_name``
+    validator), so all stored names are already lowercase. Normalizing the path
+    parameter here means ``GET /rooms/MyRoom`` resolves to the ``myroom`` row
+    without a case-insensitive full-table scan.
+    """
+    return room_name.strip().lower()
+
+
 router = APIRouter(prefix="/rooms", tags=["rooms"])
 
 # Reserved room names — used by system internals, cannot be created/deleted by users.
@@ -245,8 +257,12 @@ async def get_room(
     room_name: str,
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Get a room by name."""
-    result = await session.execute(select(Room).where(Room.name == room_name))
+    """Get a room by name.
+
+    Path parameter is lowercased before lookup — room names are normalized to
+    lowercase at creation, so this is always an exact match.
+    """
+    result = await session.execute(select(Room).where(Room.name == _norm(room_name)))
     room = result.scalar_one_or_none()
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
@@ -263,6 +279,7 @@ async def reindex_room(
     Scans .mycelium/rooms/{room_name}/ and upserts all markdown files
     into the memories table with fresh embeddings.
     """
+    room_name = _norm(room_name)
     result = await session.execute(select(Room).where(Room.name == room_name))
     room = result.scalar_one_or_none()
     if not room:
@@ -285,6 +302,7 @@ async def sync_room_mas(
     endpoint rather than erroring. Updates the room's mas_id and workspace_id.
     Returns 409 if CFN is not configured.
     """
+    room_name = _norm(room_name)
     result = await session.execute(select(Room).where(Room.name == room_name))
     room = result.scalar_one_or_none()
     if not room:
@@ -321,6 +339,7 @@ async def delete_room(
       4. Remove the filesystem directory.
       5. Delete the MAS in the CFN mgmt plane (non-fatal, last).
     """
+    room_name = _norm(room_name)
     if room_name in RESERVED_ROOMS:
         raise HTTPException(status_code=400, detail=f"'{room_name}' is a reserved system room")
 

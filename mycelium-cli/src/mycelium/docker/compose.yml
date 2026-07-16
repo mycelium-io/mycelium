@@ -128,6 +128,10 @@ services:
     env_file:
       - path: ../.env
         required: false
+    environment:
+      CFN_SVC_URL: ${CFN_SVC_URL:-}
+      # Enable CFN forwarding only when CFN_SVC_URL is also non-empty (set by cfn profile).
+      MYCELIUM_CFN_FORWARD_ENABLED: "true"
     depends_on:
       mycelium-backend:
         condition: service_healthy
@@ -228,8 +232,16 @@ services:
       POSTGRES_PASSWORD: ${MYCELIUM_DB_PASSWORD:-password}
       PORT: 9000
       CFN_DEV_MODE: ${CFN_DEV_MODE:-false}
-      # Newer mgmt plane locates the node via CFN_SVC_URL (the older
-      # CFN_NAME-matching #308 mechanism is superseded).
+      # CFN_NAME must match ioc-cfn-svc's CFN_NAME so the mgmt plane's
+      # auto-association (workspace.cfn_id = cfn_id on first registration)
+      # fires correctly. Without this the workspace stays unlinked, config
+      # version never bumps, and OTLP ingress validation drops every span.
+      # The IOC reference compose omits this, relying on CFN_NAME being set
+      # in the host environment — we make it explicit here.
+      CFN_NAME: ${CFN_NAME:-mycelium-cfn}
+      # CFN_SVC_URL is used by the mgmt plane to call the CFN node for
+      # metrics, knowledge graph, and audit operations (distinct from the
+      # CFN_NAME-based workspace auto-association above).
       CFN_SVC_URL: ${CFN_SVC_URL:-http://ioc-cfn-svc:9002}
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9000/api/internal/diagnostics/health || exit 1"]

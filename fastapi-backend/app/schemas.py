@@ -5,13 +5,16 @@
 Minimal schemas for Mycelium's core models.
 """
 
+import re
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # ── Room ──────────────────────────────────────────────────────────────────────
+
+_ROOM_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 
 class RoomCreate(BaseModel):
@@ -20,6 +23,27 @@ class RoomCreate(BaseModel):
     is_public: bool = True
     mas_id: str | None = None
     workspace_id: str | None = None
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def normalize_name(cls, v: str) -> str:
+        """Lowercase and validate room names.
+
+        Room names are normalized to lowercase at the input boundary (same
+        convention as npm, Docker, Homebrew) so that DB keys, filesystem paths,
+        and OpenClaw session keys all agree — ``buildSessionKey`` lowercases the
+        room, and the filesystem is case-sensitive on Linux.
+
+        Allowed characters after lowercasing: ``[a-z0-9_-]``, must start with
+        ``[a-z0-9]``.
+        """
+        v = v.strip().lower()
+        if not _ROOM_NAME_RE.match(v):
+            raise ValueError(
+                "Room name must start with a letter or digit and contain only "
+                "lowercase letters, digits, hyphens, and underscores."
+            )
+        return v
 
 
 class RoomRead(BaseModel):

@@ -37,7 +37,9 @@ from mycelium.integrations.openclaw.install import (
     _OPENCLAW_SKILL_NAME,
     _OPENCLAW_STALE_HOOKS,
     _OPENCLAW_STEPS,
+    _configure_insightclaw,
     _configure_otel,
+    _install_insightclaw,
     _install_openclaw,
     _openclaw_cmd,
     _openclaw_state_dir,
@@ -673,6 +675,15 @@ class OpenClawIntegration(Integration):
             _step_docker_env(config)
         elif step == "otel":
             if _configure_otel(profile=profile, container=container):
+                if _install_insightclaw(profile=profile, container=container):
+                    _configure_insightclaw(
+                        workspace_id=config.server.workspace_id,
+                        mas_id=config.server.mas_id,
+                        port=config.runtime.collector_port,
+                        capture_content=config.integrations.openclaw.insightclaw_capture_content,
+                        profile=profile,
+                        container=container,
+                    )
                 _restart_gateway_if_needed(profile, container)
 
     def status_check(self, *, name: str, info: dict) -> dict:

@@ -1032,6 +1032,145 @@ def _configure_otel(
     return True
 
 
+_INSIGHTCLAW_PLUGIN_ID = "insightclaw"
+_INSIGHTCLAW_NPM_PACKAGE = "@outshift-open/insightclaw"
+
+
+def _install_insightclaw(
+    profile: str | None = None,
+    container: str | None = None,
+) -> bool:
+    """Install the InsightClaw OpenClaw plugin from npm.
+
+    Runs ``openclaw plugins install @outshift-open/insightclaw`` and adds the
+    plugin id to ``plugins.allow``.  Returns True on success, False on failure
+    (non-fatal — otel config is written regardless).
+    """
+    cmd = _openclaw_cmd(
+        ["openclaw", "plugins", "install", _INSIGHTCLAW_NPM_PACKAGE],
+        profile,
+        container,
+    )
+    result = subprocess.run(cmd, text=True, capture_output=True)
+    combined = ((result.stderr or "") + (result.stdout or "")).lower()
+    if result.returncode != 0 and "already" not in combined:
+        if container and result.returncode == 137:
+            pass  # gateway restart after config change — install completed
+        else:
+            typer.secho(
+                f"  ⚠ InsightClaw install returned {result.returncode}"
+                + (f": {(result.stderr or '').strip()[:120]}" if result.stderr else ""),
+                fg=typer.colors.YELLOW,
+            )
+            return False
+
+    _allow_plugin(_INSIGHTCLAW_PLUGIN_ID, profile=profile, container=container)
+    typer.secho(f"  ✓ {_INSIGHTCLAW_NPM_PACKAGE} installed", fg=typer.colors.GREEN)
+    return True
+
+
+def _configure_insightclaw(
+    workspace_id: str | None = None,
+    mas_id: str | None = None,
+    port: int = 4318,
+    capture_content: bool = False,
+    profile: str | None = None,
+    container: str | None = None,
+) -> bool:
+    """Write InsightClaw plugin config into openclaw.json.
+
+    Enables traces + metrics, sets the OTLP endpoint to the mycelium-collector,
+    and injects static workspace/mas resource attributes as a fallback (the
+    _CfnForwarder injects the per-room correct values at forward time).
+    Returns True on success.
+    """
+    if container:
+        config_path_str = _container_config_path(container, profile)
+        result = subprocess.run(
+            ["docker", "exec", container, "cat", config_path_str],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            typer.secho(
+                f"  ✗ {config_path_str} not found in container.", fg=typer.colors.RED
+            )
+            return False
+        try:
+            cfg = json_module.loads(result.stdout)
+        except json_module.JSONDecodeError as exc:
+            typer.secho(f"  ✗ Could not parse openclaw.json: {exc}", fg=typer.colors.RED)
+            return False
+    else:
+        state_dir = _openclaw_state_dir(profile)
+        config_path = state_dir / "openclaw.json"
+        if not config_path.exists():
+            typer.secho(f"  ✗ {config_path} not found.", fg=typer.colors.RED)
+            return False
+        try:
+            cfg = json_module.loads(config_path.read_text())
+        except (json_module.JSONDecodeError, OSError) as exc:
+            typer.secho(f"  ✗ Could not read openclaw.json: {exc}", fg=typer.colors.RED)
+            return False
+
+    host = "host.docker.internal" if container else "localhost"
+    endpoint = f"http://{host}:{port}"
+
+    plugins = cfg.setdefault("plugins", {})
+    allow_list: list = plugins.setdefault("allow", [])
+    if _INSIGHTCLAW_PLUGIN_ID not in allow_list:
+        allow_list.append(_INSIGHTCLAW_PLUGIN_ID)
+
+    entries = _normalize_plugin_entries(plugins)
+    entries[_INSIGHTCLAW_PLUGIN_ID] = {
+        "enabled": True,
+        "config": {
+            "endpoint": endpoint,
+            "protocol": "http",
+            "serviceName": "openclaw-gateway",
+            "traces": True,
+            "metrics": True,
+            "captureContent": capture_content,
+            "emitIoaObserveAttributes": True,
+            # Static fallback resource attributes (dot notation — cfn-svc mapper preferred).
+            # _CfnForwarder injects the per-room correct workspace.id/mas.id at forward time.
+            "resourceAttributes": {
+                "workspace.id": workspace_id or "",
+                "mas.id": mas_id or "",
+            },
+            # Belt-and-suspenders span attribute fallback (hyphen notation).
+            "customAttributes": {
+                "workspace-id": workspace_id or "",
+                "mas-id": mas_id or "",
+            },
+        },
+    }
+
+    cfg_json = json_module.dumps(cfg, indent=2) + "\n"
+    try:
+        if container:
+            result = subprocess.run(
+                ["docker", "exec", "-i", container, "sh", "-c", f"cat > {config_path_str}"],
+                input=cfg_json,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                typer.secho(
+                    f"  ✗ Could not write openclaw.json: {result.stderr}", fg=typer.colors.RED
+                )
+                return False
+        else:
+            config_path.write_text(cfg_json)
+    except OSError as exc:
+        typer.secho(f"  ✗ Could not write openclaw.json: {exc}", fg=typer.colors.RED)
+        return False
+
+    typer.secho("  ✓ InsightClaw configured in openclaw.json", fg=typer.colors.GREEN)
+    typer.echo(f"    endpoint: {endpoint}  captureContent: {capture_content}")
+    return True
+
+
 def _restart_gateway_if_needed(profile: str | None, container: str | None) -> None:
     """Restart the OpenClaw gateway service to pick up config changes."""
     typer.echo("")

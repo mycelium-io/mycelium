@@ -124,7 +124,10 @@ class CoordinationSession(Base):
 
     id: Mapped[UUID_Type] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     parent_room_name: Mapped[str] = mapped_column(
-        String, ForeignKey("rooms.name", ondelete="CASCADE"), nullable=False, index=True
+        String,
+        ForeignKey("rooms.name", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=False,
+        index=True,
     )
     short_id: Mapped[str] = mapped_column(String(16), nullable=False)
     # State machine: idle | waiting | negotiating | agreed | failed | complete
@@ -159,7 +162,10 @@ class Message(Base):
     # room_name → namespace-room messages (chat in a real room).
     # coordination_session_id → negotiation session messages.
     room_name: Mapped[str | None] = mapped_column(
-        String, ForeignKey("rooms.name", ondelete="CASCADE"), nullable=True, index=True
+        String,
+        ForeignKey("rooms.name", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=True,
+        index=True,
     )
     coordination_session_id: Mapped[UUID_Type | None] = mapped_column(
         UUID(as_uuid=True),
@@ -288,7 +294,10 @@ class Memory(Base):
 
     id: Mapped[UUID_Type] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     room_name: Mapped[str] = mapped_column(
-        String, ForeignKey("rooms.name", ondelete="CASCADE"), nullable=False, index=True
+        String,
+        ForeignKey("rooms.name", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=False,
+        index=True,
     )
     key: Mapped[str] = mapped_column(String(512), nullable=False, index=True)
     value: Mapped[dict] = mapped_column(JSONB().with_variant(JSON(), "sqlite"), nullable=False)
@@ -320,7 +329,10 @@ class MemorySubscription(Base):
 
     id: Mapped[UUID_Type] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     room_name: Mapped[str] = mapped_column(
-        String, ForeignKey("rooms.name", ondelete="CASCADE"), nullable=False, index=True
+        String,
+        ForeignKey("rooms.name", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=False,
+        index=True,
     )
     subscriber: Mapped[str] = mapped_column(String, nullable=False, index=True)
     key_pattern: Mapped[str] = mapped_column(String, nullable=False)

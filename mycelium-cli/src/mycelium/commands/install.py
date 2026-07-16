@@ -838,6 +838,39 @@ def _write_mycelium_config(
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 
+def _configure_insightclaw_step(
+    workspace_id: str,
+    mas_id: str,
+    collector_port: int = 4318,
+    capture_content: bool = False,
+) -> None:
+    """Best-effort InsightClaw install + config after a fresh mycelium install.
+
+    Only runs if an openclaw gateway config file is already present (i.e. the
+    user has openclaw installed). Non-fatal — a missing openclaw install is
+    expected and silently skipped.
+    """
+    from mycelium.integrations.openclaw.install import (
+        _configure_insightclaw,
+        _install_insightclaw,
+        _openclaw_state_dir,
+    )
+
+    state_dir = _openclaw_state_dir(None)
+    if not (state_dir / "openclaw.json").exists():
+        return  # openclaw not installed — skip silently
+
+    typer.echo("")
+    typer.secho("  ── InsightClaw observability ─────────────────────────────", bold=True)
+    if _install_insightclaw():
+        _configure_insightclaw(
+            workspace_id=workspace_id or None,
+            mas_id=mas_id or None,
+            port=collector_port,
+            capture_content=capture_content,
+        )
+
+
 @doc_ref(
     usage="mycelium install [--yes] [--non-interactive] [--force]",
     desc="Interactive installer — Docker check, LLM config, <code>docker compose up</code>, provision workspace.",
@@ -870,6 +903,11 @@ def install(
         True,
         "--ui/--no-ui",
         help="Bring up the frontend (default: on; interactive mode prompts to confirm)",
+    ),
+    metrics: bool = typer.Option(
+        False,
+        "--metrics/--no-metrics",
+        help="Install InsightClaw + configure OTLP metrics collector (default: off; pass --metrics to enable)",
     ),
     force: bool = typer.Option(
         False, "--force", help="Force full reinstall even if already installed"
@@ -960,6 +998,11 @@ def install(
             enable_ui = ui
             if enable_ui:
                 compose_profiles.append("ui")
+
+            # Non-interactive: trust the --metrics/--no-metrics flag.
+            enable_metrics = metrics
+            if enable_metrics:
+                compose_profiles.append("metrics")
 
             # Resolve ports — use explicit flags, or auto-detect conflicts
             default_ports: dict[str, int] = {
@@ -1067,6 +1110,17 @@ def install(
                 typer.echo("  Probing LLM...")
                 status, model, msg, remediation = _probe_llm_via_backend(api_url)
                 _report_llm_probe_result(status, model, msg, remediation, interactive=False)
+
+            if enable_metrics:
+                from mycelium.config import MyceliumConfig as _Cfg
+
+                _cfg = _Cfg.load() if _Cfg.get_global_config_path().exists() else _Cfg()
+                _configure_insightclaw_step(
+                    workspace_id=workspace_id,
+                    mas_id=mas_id,
+                    collector_port=_cfg.runtime.collector_port,
+                    capture_content=_cfg.integrations.openclaw.insightclaw_capture_content,
+                )
 
             typer.secho("  ✓ Done.", fg=typer.colors.GREEN, bold=True)
             typer.echo(f"  mycelium-backend  → {api_url}")
@@ -1240,6 +1294,11 @@ def install(
         if enable_ui:
             compose_profiles.append("ui")
 
+        # Metrics are opt-in — enabled only when --metrics is explicitly passed.
+        enable_metrics = metrics
+        if enable_metrics:
+            compose_profiles.append("metrics")
+
         # Port check — allow user to pick alternatives
         default_ports: dict[str, int] = {"db": 5432, "backend": 8000}
         if enable_ui:
@@ -1374,6 +1433,17 @@ def install(
                     fg=typer.colors.YELLOW,
                 )
                 raise typer.Exit(1) from None
+
+        if enable_metrics:
+            from mycelium.config import MyceliumConfig as _Cfg
+
+            _cfg = _Cfg.load() if _Cfg.get_global_config_path().exists() else _Cfg()
+            _configure_insightclaw_step(
+                workspace_id=workspace_id,
+                mas_id=mas_id,
+                collector_port=_cfg.runtime.collector_port,
+                capture_content=_cfg.integrations.openclaw.insightclaw_capture_content,
+            )
 
         # ── Done ───────────────────────────────────────────────────────────
         print()
