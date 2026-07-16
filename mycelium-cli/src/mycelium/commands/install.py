@@ -817,6 +817,7 @@ def _write_mycelium_config(
         runtime.db_port = custom_ports.get("db", 5432)
         runtime.backend_port = custom_ports.get("backend", 8000)
         runtime.collector_port = custom_ports.get("collector", 4318)
+    runtime.ioc_enabled = ioc_enabled
     if ioc_enabled:
         runtime.cfn_mgmt_url = "http://ioc-cfn-mgmt-plane-svc:9000"
         runtime.cfn_svc_url = "http://ioc-cfn-svc:9002"

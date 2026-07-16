@@ -130,6 +130,10 @@ class RuntimeConfig(BaseModel):
         default=30,
         description="Per-round timeout for CognitiveEngine negotiation",
     )
+    ioc_enabled: bool = Field(
+        default=False,
+        description="Whether the IoC CFN stack was installed (set by mycelium install --ioc)",
+    )
     cfn_mgmt_url: str | None = Field(
         default=None,
         description="IoC CFN management plane URL",

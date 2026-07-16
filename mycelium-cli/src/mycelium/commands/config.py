@@ -302,6 +302,14 @@ def sync_cfn(
         print_error(exc, verbose=verbose)
         raise typer.Exit(1) from None
 
+    if not config.runtime.ioc_enabled:
+        typer.secho(
+            "  IoC CFN is not enabled on this install.",
+            fg=typer.colors.YELLOW,
+        )
+        typer.echo("  Re-install with CFN support: mycelium install --ioc")
+        raise typer.Exit(0)
+
     _api_url = (api_url or config.server.api_url or "http://localhost:8000").rstrip("/")
     # Use localhost URL — the mgmt plane is always host-accessible on port 9000.
     # config.runtime.cfn_mgmt_url may be set but could be a Docker-internal hostname
@@ -333,12 +341,7 @@ def sync_cfn(
             f"  ✗ CFN mgmt plane unreachable at {cfn_mgmt_url}: {exc}",
             fg=typer.colors.RED,
         )
-        typer.echo(
-            "  CFN is not running or not enabled. Start it with:\n"
-            "    docker compose -f mycelium-cli/src/mycelium/docker/compose.yml \\\n"
-            "      -f mycelium-cli/src/mycelium/docker/compose-dev.yml \\\n"
-            "      --profile cfn up -d"
-        )
+        typer.echo("  Is the CFN stack running? Try: mycelium install --ioc --force")
         raise typer.Exit(1) from None
 
     if not workspace_id:
