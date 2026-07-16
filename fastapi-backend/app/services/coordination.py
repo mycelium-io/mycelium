@@ -284,8 +284,8 @@ class _CfnRoundState:
     cfn_persisted: bool | None = None
     # How many times CFN's validation pipeline has rejected an agreement and
     # restarted negotiation from round 1. Starts at 1 (first attempt). With
-    # CFN_RETRY_MAX_ATTEMPTS=1 (the mas_config default) this stays 1, but the
-    # detection below still surfaces a retry if someone raises the cap.
+    # CFN_RETRY_MAX_ATTEMPTS=0 (the mas_config default, no retries) this stays
+    # 1, but the detection below still surfaces a retry if someone raises the cap.
     negotiation_attempt: int = 1
 
 
@@ -1194,7 +1194,7 @@ async def _cfn_decide_round(
             # only observable signal is the round number regressing from N>1
             # back to ≤1. Surface it as coordination_retry so a long session
             # doesn't look like a stall; the direct cause of the timeout
-            # headaches before CFN_RETRY_MAX_ATTEMPTS was pinned to 1.
+            # headaches before CFN_RETRY_MAX_ATTEMPTS was pinned to 0.
             if messages and state.current_round > 1:
                 first_payload = messages[0].get("payload") or messages[0]
                 incoming_round = first_payload.get("round") or 0
