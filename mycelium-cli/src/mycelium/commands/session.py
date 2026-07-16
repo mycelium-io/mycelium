@@ -313,14 +313,15 @@ def await_tick(
             with httpx.Client(timeout=10) as http:
                 try:
                     # Scope the missed-tick scan to the session THIS handle is
-                    # in — the most recent session in the room. The endpoint
-                    # returns sessions newest-first and there is at most one
-                    # non-terminal session per room, so the session ``join``
-                    # placed the handle in is the newest. Scanning older,
-                    # already-concluded sessions would replay their stale
-                    # ``coordination_consensus`` over the current session's live
-                    # ticks — the consensus branch below returns on the first
-                    # consensus it sees, unscoped (issue #405).
+                    # in: the most recent session in the room (the endpoint
+                    # returns newest-first, and there is at most one non-terminal
+                    # session per room, so ``join`` placed the handle in the
+                    # newest). Ticks and consensus are session-scoped; consensus
+                    # is *also* mirrored to the parent room for the chat log, so
+                    # scanning the parent room — or any older session — would
+                    # replay a stale consensus over the current session's live
+                    # ticks (issue #405). No session yet → nothing has been
+                    # ticked, so skip straight to the SSE stream below.
                     rooms_to_scan: list[str] = []
                     coord_resp = http.get(
                         f"{config.server.api_url}/api/coordination-sessions",
@@ -330,10 +331,6 @@ def await_tick(
                         sessions = coord_resp.json()
                         if sessions:
                             rooms_to_scan.append(sessions[0]["display_name"])
-                    # Inline / non-CFN mode has no coordination-session row and
-                    # posts ticks to the room itself — fall back to the room.
-                    if not rooms_to_scan:
-                        rooms_to_scan = [resolved_room]
 
                     for scan_room in rooms_to_scan:
                         resp = http.get(

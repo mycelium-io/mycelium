@@ -122,8 +122,8 @@ class ProposeReply(BaseModel):
 class RespondReply(BaseModel):
     """Agent → Server reply to a 'respond' coordination tick.
 
-    CFN mode: action is "accept" or "reject".
-    Inline NegMAS mode: "end" is also accepted (mapped to "reject" by backend).
+    Valid actions: "accept", "reject", "counter_offer". "end" is accepted as an
+    alias for "reject" (mapped by the backend).
 
     Epistemic fields (confidence, supporting/against_evidence, addresses,
     revision_cause, deferred_to, reasoning) are optional; ``offer`` is only

@@ -140,15 +140,18 @@ def test_await_returns_live_tick_for_this_handle(monkeypatch):
     assert out.get("action") == "respond"
 
 
-def test_await_falls_back_to_room_when_no_sessions(monkeypatch):
-    """Inline / non-CFN mode (no session rows) still scans the room itself."""
+def test_await_no_sessions_skips_prescan_and_streams(monkeypatch):
+    """No coordination session yet → nothing has been ticked, so the pre-check
+    scans no room's message history and goes straight to the SSE stream. (It
+    must NOT scan the parent room, where a prior session's consensus is
+    mirrored — that would re-introduce #405.)"""
     requested: list[str] = []
-    messages = {"R": [_tick_msg("R", "julia-agent")]}
-    _patch(monkeypatch, requested, [], messages)
+    _patch(monkeypatch, requested, [], {})
 
     result = CliRunner().invoke(
         session_cmd.app, ["await", "-H", "julia-agent", "-r", "R", "-t", "1"]
     )
 
     assert result.exit_code == 0, result.output
-    assert any(u.endswith("/api/rooms/R/messages") for u in requested)
+    assert not any("/messages" in u for u in requested)  # no message-history scan
+    assert any("/api/agents/julia-agent/stream" in u for u in requested)  # went to SSE
