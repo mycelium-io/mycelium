@@ -211,7 +211,7 @@ app.include_router(cfn_read_router)
 # Knowledge graph — forwards openclaw turns to CFN shared-memories + observability
 app.include_router(knowledge_router)
 
-# Coordination observability (round-trace ring buffer; see issue #162)
+# Coordination observability (round-trace ring buffer)
 app.include_router(coordination_router)
 
 # Coordination sessions as a top-level resource — used by OpenClaw plugin,

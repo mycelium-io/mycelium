@@ -209,7 +209,7 @@ _completed_round_traces: deque[dict] = deque(maxlen=ROUND_TRACE_BUFFER_SIZE)
 
 
 def get_round_traces(limit: int | None = None) -> list[dict]:
-    """Return completed round traces, oldest-first.  Used by the trace API."""
+    """Return completed round traces, oldest-first."""
     items = list(_completed_round_traces)
     if limit is not None and limit >= 0:
         # Note: items[-0:] == items[:] (returns everything), so handle 0 explicitly.
@@ -218,7 +218,7 @@ def get_round_traces(limit: int | None = None) -> list[dict]:
 
 
 def clear_round_traces() -> None:
-    """Empty the round trace buffer.  Used by the trace API and tests."""
+    """Empty the round trace buffer."""
     _completed_round_traces.clear()
 
 
@@ -244,11 +244,10 @@ class _CfnRoundState:
     round_num: int = field(default=0)
     round_start_time: float = field(default=0.0)
     session_start_time: float = field(default=0.0)
-    round_n: int = 0  # round index from #162 trace machinery (0-based, ours)
+    round_n: int = 0  # trace round index (0-based, ours)
     current_trace: _RoundTrace | None = None
-    # CFN-reported round + negotiation context used by the counter-offer
-    # validation path from #174 (separate from round_n, which is internal to
-    # the trace).
+    # CFN-reported round + negotiation context for counter-offer validation
+    # (separate from round_n, which is internal to the trace).
     current_round: int = 0
     current_offer: dict | None = None
     issues: list[str] | None = None
@@ -920,9 +919,8 @@ async def _cfn_decide_round(
 ) -> None:
     """Called when all expected agents have replied (or the watchdog fired).
 
-    ``decision_path`` records *why* this round is closing — used by the trace
-    instrumentation to distinguish watchdog-fired rounds (where we synthesise
-    rejects, the failure mode from #162) from the happy "all_replied" path.
+    ``decision_path`` records why the round closed: watchdog-fired rounds
+    synthesise rejects, vs. the happy "all_replied" path.
     """
     from app.services.cfn_negotiation import (
         CfnNegotiationError,

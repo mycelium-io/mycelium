@@ -729,18 +729,9 @@ def _check_runtime_config_drift() -> CheckResult:
 
 
 def _check_cfn_intent(*, local_backend: bool = True) -> CheckResult:
-    """Catch the CFN intent/config mismatch that silently breaks negotiation.
-
-    Symptom: user has `server.mas_id` in config.toml (set at some point — usually
-    by an earlier `mycelium room create` against a CFN-enabled install) but
-    `.env` has no `CFN_MGMT_URL` / `CFN_SVC_URL`. `mycelium up`
-    then skips `--profile cfn`, the backend starts with empty CFN env vars, new
-    rooms get no `mas_id` / `workspace_id`, and the first negotiate tick fails
-    with `"CFN coordination required but not configured for this room"`. The
-    old CFN check (`_check_room_mas_ids`) silently skips when CFN is disabled,
-    so doctor reports all-green while negotiation is broken.
-
-    Spoke nodes talk to a remote hub — CFN URLs belong on the hub, not here.
+    """Flag a `mas_id` configured without matching CFN env vars, which
+    `_check_room_mas_ids` alone would miss (it skips silently when CFN is
+    disabled). Spoke nodes talk to a remote hub, so CFN URLs live there instead.
     """
     if not local_backend:
         return CheckResult(

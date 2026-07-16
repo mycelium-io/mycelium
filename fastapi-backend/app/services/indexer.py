@@ -157,10 +157,7 @@ async def index_all_rooms(db: AsyncSession, *, force: bool = False) -> dict:
 
 
 async def index_single_file(room_name: str, key: str, db: AsyncSession) -> bool:
-    """Index a single memory file. Used by the file watcher.
-
-    Returns True if indexed, False if skipped/error.
-    """
+    """Index a single memory file. Returns True if indexed, False if skipped/error."""
     import time
 
     from app.services.metrics import record_index_run

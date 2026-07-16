@@ -135,7 +135,7 @@ class CoordinationSession(Base):
     join_window_ends_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    # Inherited from parent at create time — see issue #237 for context.
+    # Inherited from parent room at create time.
     mas_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     workspace_id: Mapped[str | None] = mapped_column(String, nullable=True)
 

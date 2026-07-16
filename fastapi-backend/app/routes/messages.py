@@ -223,10 +223,9 @@ async def list_messages(
 ):
     """List messages in a room (or coordination session), newest first.
 
-    ``kind``/``status``/``since`` make the source-activity feed and the
-    action/concern ledger server-side filters over the room (#392). Expired
-    events (past their ``ttl_seconds``) are excluded even if the sweep
-    hasn't collected them yet.
+    ``kind``/``status``/``since`` filter the source-activity feed and the
+    action/concern ledger server-side. Expired events (past their
+    ``ttl_seconds``) are excluded even if the sweep hasn't collected them yet.
     """
     room, coord = await _resolve_target(room_name, session)
 

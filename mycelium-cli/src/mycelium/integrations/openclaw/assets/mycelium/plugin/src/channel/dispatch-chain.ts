@@ -2,37 +2,10 @@
 // Copyright 2026 Mycelium Contributors
 
 /**
- * Per-agent dispatch chain — guarantees that only one `dispatchToAgent` call
- * is in flight per agentId at a time.
- *
- * Why this exists. The channel plugin invokes `dispatchToAgent` (which calls
- * `runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher`) as
- * fire-and-forget on every routed inbound message. In production traffic
- * the same agent can legitimately receive multiple messages while its
- * previous LLM turn is still in flight — a coordination_tick for the next
- * round, the coordination_consensus that closes the session, an
- * @-mention from another agent, etc. Without serialization at our layer,
- * openclaw's lane queue sees q>1 for the same session-key.
- *
- * The lane is *supposed* to serialize, but we have observed wedges
- * (openclaw/openclaw#48488) where a queued task never advances. Whether
- * those are caused by openclaw bugs or by something we trigger, serializing
- * at our layer:
- *
- *   - keeps openclaw's lane depth at ≤ 1 for our channel, narrowing the
- *     surface where the upstream bug can fire;
- *   - has zero observable effect when openclaw's lane is healthy (each
- *     dispatch already had to wait for the previous LLM turn for the agent
- *     to be useful — running them concurrently never produced sensible
- *     behaviour);
- *   - is purely local to this file.
- *
- * The chain has a per-dispatch timeout so a hung promise can never wedge
- * an agent permanently — that would be the same failure shape this guard
- * is trying to escape. On timeout we release the chain with a warn log;
- * the in-flight task is *not* cancelled (we can't cancel an LLM turn
- * mid-flight) but subsequent dispatches for that agent are no longer
- * blocked behind it.
+ * Per-agent dispatch chain — serializes `dispatchToAgent` calls per agentId,
+ * narrowing the surface of an observed openclaw lane wedge (openclaw/openclaw#48488).
+ * A per-dispatch timeout releases the chain (with a warn log) if a promise hangs,
+ * so one stuck dispatch can't permanently block an agent's later ones.
  */
 
 export type Logger = {

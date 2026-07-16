@@ -1,14 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""``mycelium upgrade`` must refresh ``~/.mycelium/docker/compose.yml``.
-
-The bug it fixes: previously the CLI binary was replaced but the on-disk
-compose template was never touched, so users running ``mycelium up`` after
-upgrade silently kept executing an old compose against a new CLI. The fix
-ships a hidden ``_refresh-templates`` subcommand that overwrites the on-disk
-template with the bundled one, with a ``compose.yml.prev`` backup.
-"""
+"""``mycelium upgrade`` must refresh ``~/.mycelium/docker/compose.yml``, not just the CLI binary."""
 
 from __future__ import annotations
 

@@ -1,16 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-// All fetches use relative `/api/*` paths. The Next.js server proxies them
-// to the backend (see next.config.ts `rewrites()`), so the browser only ever
-// talks to its own origin — no CORS, no second public port, no build-time
-// URL baking. The internal backend URL is a server-side concern.
+// All fetches use relative `/api/*` paths, proxied to the backend by
+// src/app/api/[...path]/route.ts. The browser only ever talks to its own origin.
 
-/**
- * Attach to a fetch `.catch` to surface network failures in the browser
- * console. Replaces the previous `.catch(() => {})` pattern that swallowed
- * every error and made cloud-install debugging impossible.
- */
+/** Attach to a fetch `.catch` to surface network failures in the browser console. */
 export const logFetchError =
   (label: string) =>
   (err: unknown): undefined => {
@@ -219,11 +213,8 @@ export async function fetchRoomAgents(roomName: string): Promise<AgentSummary[]>
     const key: string = item.key || "";
     const rest = key.replace(/^agents\//, "");
     if (!rest || rest.includes("/")) continue;
-    // The manifest is YAML. The memory API may hand it back as a raw string,
-    // a structured dict, OR — what the backend actually does — wrapped as
-    // `{text: "<yaml>"}`. Normalize to one YAML string and parse that; the
-    // old code missed the {text} shape and defaulted every agent to
-    // claude_code.
+    // Manifest is YAML; API returns it as a raw string, a dict, or (in
+    // practice) `{text: "<yaml>"}` — normalize to one string before parsing.
     const value = item.value;
     let raw = "";
     let structured: Record<string, unknown> | null = null;

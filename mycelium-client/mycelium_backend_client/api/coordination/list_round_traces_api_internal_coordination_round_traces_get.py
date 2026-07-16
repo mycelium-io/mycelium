@@ -92,7 +92,7 @@ def sync_detailed(
     any replies were synthesised because the watchdog fired, and how the
     round closed.  ``round_n`` is per-negotiation (resets to 0 when a new
     negotiation starts in the same room), not per-room-lifetime.  Intended
-    for diagnosing coordination latency and synthesis behaviour (issue #162).
+    for diagnosing coordination latency and synthesis behaviour.
 
     Args:
         limit (int | None | Unset): Return at most the most-recent N traces.  Omit to return all
@@ -135,7 +135,7 @@ def sync(
     any replies were synthesised because the watchdog fired, and how the
     round closed.  ``round_n`` is per-negotiation (resets to 0 when a new
     negotiation starts in the same room), not per-room-lifetime.  Intended
-    for diagnosing coordination latency and synthesis behaviour (issue #162).
+    for diagnosing coordination latency and synthesis behaviour.
 
     Args:
         limit (int | None | Unset): Return at most the most-recent N traces.  Omit to return all
@@ -172,7 +172,7 @@ async def asyncio_detailed(
     any replies were synthesised because the watchdog fired, and how the
     round closed.  ``round_n`` is per-negotiation (resets to 0 when a new
     negotiation starts in the same room), not per-room-lifetime.  Intended
-    for diagnosing coordination latency and synthesis behaviour (issue #162).
+    for diagnosing coordination latency and synthesis behaviour.
 
     Args:
         limit (int | None | Unset): Return at most the most-recent N traces.  Omit to return all
@@ -213,7 +213,7 @@ async def asyncio(
     any replies were synthesised because the watchdog fired, and how the
     round closed.  ``round_n`` is per-negotiation (resets to 0 when a new
     negotiation starts in the same room), not per-room-lifetime.  Intended
-    for diagnosing coordination latency and synthesis behaviour (issue #162).
+    for diagnosing coordination latency and synthesis behaviour.
 
     Args:
         limit (int | None | Unset): Return at most the most-recent N traces.  Omit to return all

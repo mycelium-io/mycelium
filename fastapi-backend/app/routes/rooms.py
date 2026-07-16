@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/rooms", tags=["rooms"])
 
-# Reserved room names — used by system internals, cannot be created/deleted by users.
+# Currently empty; guard exists for future system-reserved names.
 RESERVED_ROOMS: frozenset[str] = frozenset()
 
 

@@ -434,12 +434,7 @@ async def probe_completion() -> LLMHealthResult:
     # nothing from llm_health, but keep this lazy for symmetry with litellm).
     from app.services.metrics import record_llm_call
 
-    # Record exactly one health_probe sample per call regardless of which
-    # exception path (or success path) the probe takes, using a single
-    # ``finally`` block. Previously each except branch duplicated the
-    # ``elapsed_ms = ...`` + ``record_llm_call(..., error=True)`` pair,
-    # which made it easy to drift: a new except clause that forgot to
-    # call ``record_llm_call`` would silently undercount errors.
+    # Single `finally` records exactly one sample per call across all paths.
     t0 = time.monotonic()
     probe_error = False
     try:

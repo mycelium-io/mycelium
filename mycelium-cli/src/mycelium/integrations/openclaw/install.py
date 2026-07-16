@@ -800,16 +800,12 @@ def _allow_plugin_remove(
 def _probe_hub_reachable(api_url: str, timeout: float = 3.0) -> tuple[bool, str]:
     """Best-effort probe of the configured Mycelium backend.
 
-    Issue #139: spoke-only nodes silently archived hundreds of MB of
-    conversation data because the out-of-process knowledge-extract hook
-    couldn't reach the configured api_url and there was no install-time
-    signal that anything was wrong. A 3-second probe at adapter add
-    catches the obvious typo / wrong-port / firewall cases without
-    blocking air-gapped installs (we only warn).
+    Catches typo/wrong-port/firewall misconfigurations at adapter-add time
+    instead of silently failing later when the knowledge-extract hook can't
+    reach ``api_url``; air-gapped installs just get a warning, not a block.
 
-    Returns (ok, message). ``ok`` is False on any non-2xx response,
-    timeout, DNS error, or connection refusal. ``message`` is a short
-    human-readable reason suitable for stderr.
+    Returns (ok, message): ``ok`` is False on non-2xx, timeout, DNS error, or
+    connection refusal; ``message`` is a short reason suitable for stderr.
     """
     if not api_url:
         return False, "no api_url configured"

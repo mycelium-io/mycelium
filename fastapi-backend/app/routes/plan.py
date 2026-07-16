@@ -113,10 +113,8 @@ async def get_plan(room_name: str) -> PlanOut:
 async def _emit_plan_updated(db: AsyncSession, room_name: str, payload: dict) -> None:
     """Persist a ``plan_updated`` Message and fire NOTIFY on the parent room.
 
-    Used by the API-driven plan mutators (title set, task add, task toggle)
-    so the chat-channel narrates plan edits the same way it narrates joins
-    and consensus. Compiler-side writes don't fire this — they're already
-    surfaced via ``coordination_consensus`` from ``_finish_cfn``.
+    Compiler-side writes don't fire this — they're already surfaced via
+    ``coordination_consensus`` from ``_finish_cfn``.
 
     Two-step on purpose (mirrors ``_notify_join``):
 

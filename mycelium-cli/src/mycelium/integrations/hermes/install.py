@@ -505,9 +505,7 @@ def _restart_gateway() -> None:
 def _probe_hub_reachable(api_url: str, timeout: float = 3.0) -> tuple[bool, str]:
     """Best-effort probe of the configured Mycelium backend ``/health``.
 
-    Mirrored from the openclaw installer — same intent (issue #139): catch
-    the obvious misconfigurations at install time rather than silently
-    failing once the gateway is running.
+    Mirrors ``openclaw.install._probe_hub_reachable``; see its docstring.
     """
     if not api_url:
         return False, "no api_url configured"

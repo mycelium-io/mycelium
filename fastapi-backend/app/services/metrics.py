@@ -158,17 +158,14 @@ def record_llm_call(
 ) -> None:
     """Record a backend LLM call (litellm completion).
 
-    Per-operation token totals are tracked alongside the grand totals so that
-    callers (e.g. ``mycelium metrics show mycelium``) can show per-operation
-    figures without having to assume that other operations (health probes,
-    future heartbeats) contribute negligibly. See issue #296.
+    Per-operation totals are tracked alongside grand totals so callers
+    (e.g. ``mycelium metrics show mycelium``) can break figures down by
+    operation without assuming others are negligible.
 
-    Per-room counters are recorded when ``room`` is provided so the
-    ``mycelium metrics show cost`` view can break down spend by the parent
-    mycelium room (see issue #297). Sessions belonging to the same parent
-    room (``mycelium_room:session:<uuid>``) are bucketed by the CLI
-    renderer via the shared ``_parent_room`` helper, matching the rule
-    used for ``cfn_llm.by_room.*``.
+    Per-room counters are recorded when ``room`` is provided so
+    ``mycelium metrics show cost`` can break down spend by parent room;
+    sessions are bucketed via the shared ``_parent_room`` helper, matching
+    ``cfn_llm.by_room.*``.
     """
     _inc("llm", "calls")
     _inc("llm", f"by_operation.{operation}")

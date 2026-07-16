@@ -115,7 +115,7 @@ def _build_prompt(
 
 
 def fallback_body(assignments: dict[str, str]) -> str:
-    """Deterministic non-LLM plan body. Used by _finish_cfn when the compiler fails.
+    """Deterministic non-LLM fallback plan body for when the compiler fails.
 
     Pure — no I/O. Ugly (one line per raw ``issue=value``) but lossless, so a
     compiler outage never costs the negotiation outcome.

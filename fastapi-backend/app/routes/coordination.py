@@ -5,7 +5,7 @@
 Coordination observability endpoints.
 
 Read-only endpoints that expose in-memory coordination state for diagnostics
-of CFN negotiation behaviour (see issue #162).
+of CFN negotiation behaviour.
 
 GET    /api/internal/coordination/round-traces
 DELETE /api/internal/coordination/round-traces
@@ -41,11 +41,9 @@ async def list_round_traces(
 ) -> dict:
     """Return completed CFN round traces, oldest first.
 
-    Each trace is one round of a CFN negotiation: who replied, when, whether
-    any replies were synthesised because the watchdog fired, and how the
-    round closed.  ``round_n`` is per-negotiation (resets to 0 when a new
-    negotiation starts in the same room), not per-room-lifetime.  Intended
-    for diagnosing coordination latency and synthesis behaviour (issue #162).
+    Each trace is one round: who replied, whether the watchdog synthesised
+    any replies, and how the round closed. ``round_n`` resets to 0 per
+    negotiation, not per-room-lifetime.
     """
     traces = coordination_service.get_round_traces(limit=limit)
     return {
