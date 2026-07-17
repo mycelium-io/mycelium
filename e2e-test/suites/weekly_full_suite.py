@@ -57,7 +57,7 @@ from testcases.cursor_tests import (
     CursorMultiHostDispatch,
     CursorWorkspaceDrift,
 )
-from testcases.distributed_tests import (
+from testcases.hub_and_spoke_tests import (
     DistributedArchitecture,
     DistributedAsymmetricStakes,
     DistributedBackendResolvedCfnIds,
