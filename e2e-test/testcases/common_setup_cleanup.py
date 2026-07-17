@@ -108,22 +108,31 @@ class MyceliumCommonSetup(aetest.CommonSetup):
         self._ensure_dotenv()
 
         def _url_equiv(a: str | None, b: str) -> bool:
-            """True if URLs are equivalent, treating localhost/127.0.0.1 as the same host."""
+            """True if URLs are equivalent, treating any local IP as localhost."""
             if a is None:
                 return False
             if a == b:
                 return True
-            # On the aio (single-host) testbed the hub IP and localhost refer to
-            # the same machine — accept either as a match for the other.
-            _local = {"localhost", "127.0.0.1"}
+            import socket
             import urllib.parse
+
             pa, pb = urllib.parse.urlparse(a), urllib.parse.urlparse(b)
-            if pa.port == pb.port and pa.scheme == pb.scheme:
-                if pa.hostname in _local and pb.hostname in _local:
+            if pa.port != pb.port or pa.scheme != pb.scheme:
+                return False
+
+            def _is_local(hostname: str) -> bool:
+                if hostname in ("localhost", "127.0.0.1"):
                     return True
-                if pa.hostname in _local or pb.hostname in _local:
-                    return True  # one is local, treat as same host
-            return False
+                try:
+                    local_ips = {
+                        info[4][0]
+                        for info in socket.getaddrinfo(socket.gethostname(), None)
+                    } | {"127.0.0.1"}
+                    return socket.gethostbyname(hostname) in local_ips
+                except Exception:
+                    return False
+
+            return _is_local(pa.hostname) and _is_local(pb.hostname)
 
         errors = []
         for key, value in expected.items():
