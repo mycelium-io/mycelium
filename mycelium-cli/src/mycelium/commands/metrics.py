@@ -955,9 +955,13 @@ def update_pricing(
 
         api_data = _fetch_model_pricing_from_api(litellm_key)
         if api_data is None:
-            warnings.append(
-                f"  [yellow]WARNING[/yellow]: no API data for discovered model '{model_string}' (tried key '{litellm_key}')"
-            )
+            # Suppress warning for local/Ollama models (name contains `:` like
+            # a Docker image tag, e.g. `qwen3:1.7b`) — they have no cloud
+            # pricing and cost $0 to run.
+            if ":" not in litellm_key:
+                warnings.append(
+                    f"  [yellow]WARNING[/yellow]: no API data for discovered model '{model_string}' (tried key '{litellm_key}')"
+                )
             continue
 
         spec = {"pattern": litellm_key, "provider": "", "litellm_key": litellm_key}
