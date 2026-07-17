@@ -80,7 +80,7 @@ class IocCfn(aetest.Testcase):
             self.skipped("CFN management plane not reachable")
 
     @aetest.test
-    def knowledge_ingest_and_query(self, steps, api, room_name, mas_id=None):
+    def knowledge_ingest_and_query(self, steps, api, room_name, cfn_node_svc, env, mas_id=None):
         marker = f"e2e-test-{uuid.uuid4().hex[:8]}"
         resolved_mas_id = None
 
@@ -141,12 +141,11 @@ class IocCfn(aetest.Testcase):
         with steps.start("Fetch knowledge graph") as step:
             # The old /cfn/knowledge/list endpoint was removed in 2.0.0.
             # Use the Go CFN's knowledge-graph endpoint instead.
-            cfn_node = testscript.parameters.get("cfn_node_svc")
-            ws_id = testscript.parameters.get("workspace_id")
+            ws_id = env.cfn_primary_workspace_id
             graph_mas = resolved_mas_id or mas_id
-            if cfn_node is None or not ws_id:
+            if cfn_node_svc is None or not ws_id:
                 step.skipped("cfn_node_svc or workspace_id not available")
-            st, resp = cfn_node.get_knowledge_graph(ws_id, graph_mas)
+            st, resp = cfn_node_svc.get_knowledge_graph(ws_id, graph_mas)
             if st == 404:
                 # Graph not yet built (no distillation run) — acceptable.
                 log.info("Knowledge graph not yet built for MAS %s (404) — ingest+query verified", graph_mas)
