@@ -547,7 +547,8 @@ class MyceliumConfig(BaseModel):
         global_path = self._global_config_path or self.get_global_config_path()
         global_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Global sections: identity, server, llm, runtime, knowledge_ingest, metrics, adapters
+        # Global sections: identity, server, llm, runtime, knowledge_ingest, metrics, adapters,
+        # integrations, negotiation
         _global_sections = (
             "identity",
             "server",
@@ -555,6 +556,8 @@ class MyceliumConfig(BaseModel):
             "runtime",
             "knowledge_ingest",
             "metrics",
+            "negotiation",
+            "integrations",
             "adapters",
         )
 
