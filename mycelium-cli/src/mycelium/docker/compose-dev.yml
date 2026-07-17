@@ -18,12 +18,12 @@ services:
     build:
       context: ../../../../fastapi-backend
       dockerfile: docker/Dockerfile.agensgraph
-      # Build native to the host arch (Apple Silicon → arm64). The amd64 base
-      # under Rosetta/QEMU deadlocks the TimescaleDB compile; native avoids it.
-      # Override with DB_BASE_PLATFORM if building for amd64 hosts.
+      # Build native to the host arch. Apple Silicon → linux/arm64; Linux/CI → linux/amd64.
+      # The amd64 base under Rosetta/QEMU deadlocks the TimescaleDB compile; native avoids it.
+      # Set DB_BASE_PLATFORM explicitly to override (e.g. DB_BASE_PLATFORM=linux/amd64).
       args:
-        DB_BASE_PLATFORM: ${DB_BASE_PLATFORM:-linux/arm64}
-    platform: ${DB_PLATFORM:-linux/arm64}
+        DB_BASE_PLATFORM: ${DB_BASE_PLATFORM:-linux/amd64}
+    platform: ${DB_PLATFORM:-linux/amd64}
     pull_policy: never
 
   # Override env_file for all services to point at ~/.mycelium/.env so that
