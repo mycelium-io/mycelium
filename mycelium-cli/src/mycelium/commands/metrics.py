@@ -3550,8 +3550,11 @@ def _render_cost_estimates(
     be_counters = (backend or {}).get("counters", {})
     cfn_llm = be_counters.get("cfn_llm", {})
     cfn_calls = cfn_llm.get("calls", 0)
+    # Go CFN (ioc-cfn-svc) no longer increments `calls`; use input_tokens as
+    # the presence gate so the CFN row appears when the CE has made LLM calls.
+    cfn_has_activity = cfn_calls > 0 or cfn_llm.get("input_tokens", 0) > 0
 
-    if cfn_calls > 0:
+    if cfn_has_activity:
         cfn_prompt = cfn_llm.get("input_tokens", 0)
         cfn_compl = cfn_llm.get("output_tokens", 0)
         cfn_cached = cfn_llm.get("cached_tokens", 0)
