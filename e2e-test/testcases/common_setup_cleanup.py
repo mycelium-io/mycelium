@@ -107,11 +107,29 @@ class MyceliumCommonSetup(aetest.CommonSetup):
 
         self._ensure_dotenv()
 
+        def _url_equiv(a: str | None, b: str) -> bool:
+            """True if URLs are equivalent, treating localhost/127.0.0.1 as the same host."""
+            if a is None:
+                return False
+            if a == b:
+                return True
+            # On the aio (single-host) testbed the hub IP and localhost refer to
+            # the same machine — accept either as a match for the other.
+            _local = {"localhost", "127.0.0.1"}
+            import urllib.parse
+            pa, pb = urllib.parse.urlparse(a), urllib.parse.urlparse(b)
+            if pa.port == pb.port and pa.scheme == pb.scheme:
+                if pa.hostname in _local and pb.hostname in _local:
+                    return True
+                if pa.hostname in _local or pb.hostname in _local:
+                    return True  # one is local, treat as same host
+            return False
+
         errors = []
         for key, value in expected.items():
             r = cli.config_get(key)
             actual = r.stdout.strip() if r.ok else None
-            if actual != value:
+            if not _url_equiv(actual, value) and actual != value:
                 errors.append(f"{key}: expected={value!r} got={actual!r}")
         if errors:
             log.warning("CLI config verification failed: %s", "; ".join(errors))
