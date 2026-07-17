@@ -111,25 +111,9 @@ def _run_host_alembic(backend_dir: Path, alembic_cmd: list[str]) -> AlembicRunRe
 
 
 def _run_container_alembic(alembic_cmd: list[str]) -> AlembicRunResult:
-    from mycelium.commands.instance import _compose_base_cmd, _get_compose_path, _get_env_path
-
-    compose_path = _get_compose_path()
-    if not compose_path.exists():
-        return AlembicRunResult(
-            1,
-            "",
-            f"Compose file not found at {compose_path}",
-            "unavailable",
-        )
-
-    env_path = _get_env_path()
-    cmd = _compose_base_cmd(
-        compose_path,
-        env_path,
-        include_cfn_profile=False,
-        include_metrics_profile=False,
-        include_ui_profile=False,
-    ) + ["exec", "-T", BACKEND_SERVICE, "python", "-m", "alembic", *alembic_cmd]
+    # Use `docker exec` directly by container name — avoids compose project
+    # context issues when the CLI is invoked from outside the repo.
+    cmd = ["docker", "exec", "-i", BACKEND_CONTAINER, "python", "-m", "alembic", *alembic_cmd]
     result = subprocess.run(cmd, check=False, capture_output=True, text=True)
     return AlembicRunResult(result.returncode, result.stdout, result.stderr, "container")
 
