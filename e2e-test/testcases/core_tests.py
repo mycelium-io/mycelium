@@ -253,12 +253,13 @@ class DoctorClean(aetest.Testcase):
 class CfnLlmCounters(aetest.Testcase):
     """Test 06d: CFN LLM token counters via /observability.
 
-    Aligned with bundle.py ``test_cfn_llm_counters``: counters live under
-    ``counters.cfn_llm.by_pipeline.<name>.<key>`` (node-svc >= 0.1.5).
+    Counters live under ``counters.cfn_llm.*`` and ``counters.cfn_llm.by_room.*``.
+    The top-level ``calls`` key stays 0 in current node-svc versions; use
+    ``input_tokens`` which advances whenever the CE makes an LLM call.
 
     Two-phase wait:
       Phase 1 — ``coordination_start`` posted to session room (60s).
-      Phase 2 — ``cfn_llm.calls`` counter advances (240s).
+      Phase 2 — ``cfn_llm.input_tokens`` counter advances (240s).
     """
 
     groups = ["core", "cfn", "llm"]
@@ -286,10 +287,10 @@ class CfnLlmCounters(aetest.Testcase):
             if st_before != 200:
                 step.failed(f"Observability endpoint returned status={st_before}")
             before = observability_counters(obs_before)
-            calls_before = cfn_llm_counter(before, "calls")
+            calls_before = cfn_llm_counter(before, "input_tokens")
             tokens_before = cfn_llm_token_total(before)
             log.info(
-                "cfn_llm before: calls=%s tokens=%s",
+                "cfn_llm before: input_tokens=%s total_tokens=%s",
                 calls_before,
                 tokens_before,
             )
@@ -330,7 +331,7 @@ class CfnLlmCounters(aetest.Testcase):
             ):
                 step.failed("No coordination_start within 60s")
 
-        with steps.start("Wait for cfn_llm.calls to advance (Phase 2, 240s)") as step:
+        with steps.start("Wait for cfn_llm.input_tokens to advance (Phase 2, 240s)") as step:
             phase2_deadline = time.time() + 240
             after = before
             while time.time() < phase2_deadline:
@@ -339,21 +340,21 @@ class CfnLlmCounters(aetest.Testcase):
                 if st_after != 200:
                     continue
                 after = observability_counters(obs_after)
-                if cfn_llm_counter(after, "calls") > calls_before:
+                if cfn_llm_counter(after, "input_tokens") > calls_before:
                     break
 
-            calls_after = cfn_llm_counter(after, "calls")
+            calls_after = cfn_llm_counter(after, "input_tokens")
             tokens_after = cfn_llm_token_total(after)
             calls_delta = calls_after - calls_before
             log.info(
-                "cfn_llm counters: calls=%d→%d (Δ%d), tokens=%s",
+                "cfn_llm counters: input_tokens=%d→%d (Δ%d), total_tokens=%s",
                 calls_before,
                 calls_after,
                 calls_delta,
                 tokens_after,
             )
             if calls_delta <= 0:
-                step.failed(f"cfn_llm.calls did not advance: before={calls_before}, after={calls_after}")
+                step.failed(f"cfn_llm.input_tokens did not advance: before={calls_before}, after={calls_after}")
 
     @aetest.cleanup
     def cleanup(self, api, room_name):

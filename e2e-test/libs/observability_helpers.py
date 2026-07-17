@@ -14,14 +14,25 @@ def observability_counters(obs: Any) -> dict:
 
 
 def cfn_llm_counter(counters: dict, key: str) -> int:
-    """Sum ``cfn_llm.by_pipeline.<pipeline>.<key>`` across all pipelines."""
+    """Return ``cfn_llm.<key>`` top-level counter, falling back to summing
+    ``by_room.*.<key>`` entries if the top-level key is absent or zero."""
     grp = counters.get("cfn_llm") or {}
     if not isinstance(grp, dict):
         return 0
+
+    # Prefer the top-level key (e.g. cfn_llm.input_tokens)
+    top = grp.get(key)
+    if top is not None:
+        try:
+            return int(top)
+        except (TypeError, ValueError):
+            pass
+
+    # Fall back to summing by_room.* entries
     suffix = f".{key}"
     total = 0
     for k, v in grp.items():
-        if k.startswith("by_pipeline.") and k.endswith(suffix):
+        if k.startswith("by_room.") and k.endswith(suffix):
             try:
                 total += int(v)
             except (TypeError, ValueError):
