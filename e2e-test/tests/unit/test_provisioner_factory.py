@@ -134,6 +134,6 @@ def test_wake_agent_default_is_no_op():
 def test_bootstrap_room_is_canonical_string():
     """Sanity check: openclaw and hermes each have a holding-pen room."""
     assert isinstance(BOOTSTRAP_ROOM, str)
-    assert BOOTSTRAP_ROOM == "matrix-agents"
+    assert BOOTSTRAP_ROOM == "mycelium_room"
     assert isinstance(HERMES_BOOTSTRAP_ROOM, str)
-    assert HERMES_BOOTSTRAP_ROOM == "hermes-agents"
+    assert HERMES_BOOTSTRAP_ROOM == "mycelium_room"

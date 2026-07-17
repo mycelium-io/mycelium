@@ -52,26 +52,17 @@ class AgentRef:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
-BOOTSTRAP_ROOM = "matrix-agents"
-"""OpenClaw holding pen — agents registered here before per-scenario adoption.
+BOOTSTRAP_ROOM = "mycelium_room"
+"""Shared holding pen for OpenClaw and Hermes agents before per-scenario adoption.
 
-Openclaw agents must be registered into *some* room when they're
-created (the manifest needs a home). We use a stable ``matrix-agents``
-room as the bootstrap location so the same agent runtime can be
-adopted into per-scenario rooms via ``mycelium agent add`` without
-ever being torn down and recreated. The bootstrap room is created
-lazily by :meth:`ABCProvisioner.ensure_bootstrap_room` and never
-deleted by the scenarios suite — it's the "home" the agents return to.
+Agents must be registered into *some* room when created. Using the
+standard ``mycelium_room`` means no extra rooms need to be provisioned
+and the system room always exists. Agents are adopted into per-scenario
+rooms via ``mycelium agent add`` without being torn down and recreated.
 """
 
-HERMES_BOOTSTRAP_ROOM = "hermes-agents"
-"""Hermes holding pen — Mycelium rooms only (no Matrix bridge).
-
-Hermes agents subscribe to Mycelium rooms via the ``mycelium-room``
-platform plugin. Suite ``ensure_runtime`` registers each agent in this
-stable bootstrap room first; per-scenario rooms are added in
-``register_in_room``. Created lazily by :meth:`ensure_bootstrap_room`.
-"""
+HERMES_BOOTSTRAP_ROOM = "mycelium_room"
+"""Hermes holding pen — reuses mycelium_room (always exists, no extra provisioning)."""
 
 
 @runtime_checkable

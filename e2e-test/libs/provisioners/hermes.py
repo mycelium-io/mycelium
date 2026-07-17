@@ -222,7 +222,7 @@ class HermesProvisioner(ABCProvisioner):
             if not line or line.lower().startswith("no agents"):
                 continue
             # `mycelium agent ls` renders a Rich table:
-            #   hermes-agents — agents       ← title (room name, NOT a handle)
+            #   mycelium_room — agents       ← title (room name, NOT a handle)
             #   ┏━━━━━┳━━━━━━━┓
             #   ┃ Handle … ┃   ← column header
             #   ┡━━━━━╇━━━━━━━┩
