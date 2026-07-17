@@ -110,6 +110,11 @@ async def index_room(room_name: str, db: AsyncSession, *, force: bool = False) -
             stats["indexed"] += 1
         except Exception:
             logger.warning("Failed to index %s/%s", room_name, key, exc_info=True)
+            # Rollback to prevent a failed execute from poisoning the connection pool.
+            try:
+                await db.rollback()
+            except Exception:
+                pass
             stats["errors"] += 1
 
     # Prune DB records whose files no longer exist
@@ -211,6 +216,12 @@ async def index_single_file(room_name: str, key: str, db: AsyncSession) -> bool:
         return True
     except Exception:
         logger.warning("Failed to index single file %s/%s", room_name, key, exc_info=True)
+        # Rollback to clean the session state — a failed execute leaves the
+        # connection in an error state that poisons the pool for other requests.
+        try:
+            await db.rollback()
+        except Exception:
+            pass
         record_index_run(target="watcher", errors=1, duration_ms=(time.monotonic() - t0) * 1000)
         return False
 
