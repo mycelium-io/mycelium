@@ -1190,15 +1190,19 @@ async def _cfn_decide_round(
             messages = result.get("messages", [])
             # Detect a CFN validation-pipeline retry: the cognition engine
             # internally rejected the agreement (alignment score below
-            # validation_score_intervention) and restarted from round 1. The
-            # only observable signal is the round number regressing from N>1
-            # back to ≤1. Surface it as coordination_retry so a long session
-            # doesn't look like a stall; the direct cause of the timeout
-            # headaches before CFN_RETRY_MAX_ATTEMPTS was pinned to 0.
-            if messages and state.current_round > 1:
+            # validation_score_intervention) and restarted negotiation. The
+            # observable signal is the incoming tick's round number being ≤1
+            # while the CE made an LLM call (meta present). The old guard
+            # `state.current_round > 1` missed retries in round 0 (both agents
+            # accept immediately in the first round).
+            if messages:
                 first_payload = messages[0].get("payload") or messages[0]
                 incoming_round = first_payload.get("round") or 0
-                if incoming_round <= 1:
+                # CE LLM meta presence means the CE ran a real validation pass
+                # (not a fast pass-through), which is the prerequisite for a retry.
+                result_meta = result.get("meta")
+                ce_ran = isinstance(result_meta, dict) and "latency_ms" in result_meta
+                if incoming_round <= 1 and ce_ran:
                     state.negotiation_attempt += 1
                     await _post_message(
                         room_name,
