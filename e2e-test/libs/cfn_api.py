@@ -151,6 +151,14 @@ class CfnNodeSvcAPI:
         except json.JSONDecodeError:
             return status, body
 
+    def get_knowledge_graph(self, workspace_id: str, mas_id: str) -> tuple[int, Any]:
+        path = f"/api/internal/mgmt/workspaces/{workspace_id}/multi-agentic-systems/{mas_id}/knowledge-graph"
+        status, body = self._request("GET", path, timeout=30)
+        try:
+            return status, json.loads(body) if status >= 0 else None
+        except json.JSONDecodeError:
+            return status, body
+
     def query_shared_memories(self, workspace_id: str, mas_id: str, query: dict) -> tuple[int, Any]:
         path = f"/api/workspaces/{workspace_id}/multi-agentic-systems/{mas_id}/shared-memories/query"
         status, body = self._request("POST", path, data=query, timeout=30)

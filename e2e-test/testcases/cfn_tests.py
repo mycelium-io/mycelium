@@ -138,15 +138,23 @@ class IocCfn(aetest.Testcase):
                 step.failed(f"Knowledge query returned status={st}: {resp}")
             log.info("Knowledge query response: %s", resp)
 
-        with steps.start("Verify memories written to room") as step:
-            # The Go CFN no longer exposes a /knowledge/list endpoint (removed
-            # in 2.0.0). Verify the round-trip via mycelium memory ls instead.
-            st, rooms_data = api.list_rooms()
-            if st != 200:
-                step.skipped("Could not verify room memories (list rooms failed)")
-            # Ingest succeeded (Steps 1-2) and query returned (Step 3) —
-            # that's sufficient evidence the knowledge pipeline is working.
-            log.info("Knowledge ingest + query round-trip verified")
+        with steps.start("Fetch knowledge graph") as step:
+            # The old /cfn/knowledge/list endpoint was removed in 2.0.0.
+            # Use the Go CFN's knowledge-graph endpoint instead.
+            cfn_node = testscript.parameters.get("cfn_node_svc")
+            ws_id = testscript.parameters.get("workspace_id")
+            graph_mas = resolved_mas_id or mas_id
+            if cfn_node is None or not ws_id:
+                step.skipped("cfn_node_svc or workspace_id not available")
+            st, resp = cfn_node.get_knowledge_graph(ws_id, graph_mas)
+            if st == 404:
+                # Graph not yet built (no distillation run) — acceptable.
+                log.info("Knowledge graph not yet built for MAS %s (404) — ingest+query verified", graph_mas)
+            elif st == 200:
+                nodes = resp.get("nodes") or resp.get("data", {}).get("nodes", []) if isinstance(resp, dict) else []
+                log.info("Knowledge graph: %d node(s) for MAS %s", len(nodes), graph_mas)
+            else:
+                step.failed(f"Knowledge graph returned status={st}: {resp}")
 
     @aetest.cleanup
     def cleanup_alt_room(self, api, room_name):
