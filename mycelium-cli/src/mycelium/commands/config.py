@@ -119,7 +119,11 @@ def set_config(
         except (json_module.JSONDecodeError, ValueError):
             pass
 
-        if len(parts) == 2:
+        if len(parts) == 3:
+            section = getattr(config, parts[0])
+            subsection = getattr(section, parts[1])
+            setattr(subsection, parts[2], parsed_value)
+        elif len(parts) == 2:
             section = getattr(config, parts[0])
             setattr(section, parts[1], parsed_value)
         elif len(parts) == 1:
