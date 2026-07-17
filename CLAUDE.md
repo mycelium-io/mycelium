@@ -150,6 +150,34 @@ mycelium config set server.mas_id <uuid-from-above>
 
 After a volume wipe, existing MAS IDs are gone. Create a new room and use its ID.
 
+### InsightClaw OTLP observability
+
+InsightClaw is the OpenClaw observability plugin. Install it with the metrics
+collector when you want OTLP traces from openclaw agent sessions:
+
+```bash
+mycelium install --metrics          # install with collector + InsightClaw
+mycelium adapter add openclaw --step=otel  # or configure after install
+```
+
+By default InsightClaw captures span metadata only (durations, token counts,
+tool names, exit codes). To also capture message content (LLM prompts,
+completions, tool inputs/outputs) for richer CFN knowledge extraction:
+
+```bash
+mycelium config set integrations.openclaw.insightclaw_capture_content true
+mycelium adapter add openclaw --step=otel  # re-configures InsightClaw
+```
+
+**Privacy note:** `captureContent: true` includes full LLM prompts (system
+prompt, conversation history), tool inputs (exact CLI commands), and tool
+outputs. This is useful for CFN knowledge extraction but should not be
+enabled on shared/production gateways where agent reasoning may be sensitive.
+
+Without `captureContent: true`, forwarding traces to CFN is mostly for local
+observability (`mycelium metrics traces`). CFN's Knowledge Distillation CE
+cannot extract semantic knowledge from metadata-only spans.
+
 ### Running the backend outside Docker (hot-reload)
 
 ```bash
