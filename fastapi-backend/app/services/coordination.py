@@ -1572,6 +1572,16 @@ async def on_agent_response(room_name: str, handle: str, content: str) -> None:
     out_of_turn: bool = False
     extend_timeout: bool = False
     async with cfn.lock:
+        if cfn.deciding:
+            # /decide is already in flight — a CFN validation retry or the
+            # consensus post is pending. Silently drop the reply; the retry
+            # tick (if any) will solicit fresh replies once the decide settles.
+            logger.debug(
+                "CFN room %s: dropping reply from %s — decide already in flight",
+                room_name,
+                handle,
+            )
+            return
         if handle in cfn.pending_replies:
             reply_data = _parse_agent_reply(handle, content, cfn.current_offer, cfn.issue_options)
             is_first_for_round = cfn.pending_replies[handle] is None
