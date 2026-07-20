@@ -153,11 +153,14 @@ FROM spoke-base AS spoke-release
 ARG MYCELIUM_VERSION
 ENV UV_PYTHON_INSTALL_DIR=/usr/local/share/uv/python \
     UV_TOOL_DIR=/usr/local/share/uv/tools
-RUN [ -n "$MYCELIUM_VERSION" ] \
-    && curl -fsSL https://astral.sh/uv/install.sh -o /tmp/uv-install.sh \
+RUN curl -fsSL https://astral.sh/uv/install.sh -o /tmp/uv-install.sh \
     && UV_INSTALL_DIR=/usr/local sh /tmp/uv-install.sh \
     && rm /tmp/uv-install.sh \
-    && MC_VER="${MYCELIUM_VERSION#v}" \
+    && if [ -n "$MYCELIUM_VERSION" ]; then \
+         MC_VER="${MYCELIUM_VERSION#v}"; \
+       else \
+         MC_VER=$(curl -fsSL https://api.github.com/repos/mycelium-io/mycelium/releases/latest | grep '"tag_name"' | head -1 | sed 's/.*"v\([^"]*\)".*/\1/'); \
+       fi \
     && curl -fsSL \
         "https://github.com/mycelium-io/mycelium/releases/download/v${MC_VER}/mycelium_cli-${MC_VER}-py3-none-any.whl" \
         -o "/tmp/mycelium_cli-${MC_VER}-py3-none-any.whl" \

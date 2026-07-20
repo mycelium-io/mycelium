@@ -42,6 +42,15 @@ jobs:
             ${{ env.HUB_IMAGE }}:latest
             ${{ env.HUB_IMAGE }}:${{ github.sha }}
 
+      - name: Resolve mycelium CLI version
+        id: mycelium-version
+        run: |
+          VERSION=$(gh api repos/mycelium-io/mycelium/releases/latest --jq .tag_name)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Baking mycelium $VERSION into spoke image"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build and push spoke image
         uses: docker/build-push-action@v6
         with:
@@ -49,6 +58,8 @@ jobs:
           file: infra/Dockerfile.spoke
           target: spoke-release
           push: true
+          build-args: |
+            MYCELIUM_VERSION=${{ steps.mycelium-version.outputs.version }}
           tags: |
             ${{ env.SPOKE_IMAGE }}:latest
             ${{ env.SPOKE_IMAGE }}:${{ github.sha }}
