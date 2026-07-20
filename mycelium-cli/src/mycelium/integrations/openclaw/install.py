@@ -1119,31 +1119,22 @@ def _configure_insightclaw(
     plugins = cfg.setdefault("plugins", {})
     allow_list: list = plugins.setdefault("allow", [])
 
-    # Replace any existing entry (plain string or old object) with the rich
-    # object that includes hooks.allowConversationAccess — required for
-    # conversation-scoped hooks (before_model_resolve) that populate
-    # openclaw.session.key on spans.
-    allow_entry = {
-        "name": _INSIGHTCLAW_PLUGIN_ID,
-        "hooks": {"allowConversationAccess": True},
-    }
+    # plugins.allow only accepts plain strings (the zod schema is array(string())).
+    # Normalise any stale object entries back to the plain ID string.
     allow_list[:] = [
-        allow_entry if (
-            e == _INSIGHTCLAW_PLUGIN_ID
-            or (isinstance(e, dict) and e.get("name") == _INSIGHTCLAW_PLUGIN_ID)
-        ) else e
+        (e.get("name") or _INSIGHTCLAW_PLUGIN_ID) if isinstance(e, dict) else e
         for e in allow_list
     ]
-    if not any(
-        e == _INSIGHTCLAW_PLUGIN_ID
-        or (isinstance(e, dict) and e.get("name") == _INSIGHTCLAW_PLUGIN_ID)
-        for e in allow_list
-    ):
-        allow_list.append(allow_entry)
+    if _INSIGHTCLAW_PLUGIN_ID not in allow_list:
+        allow_list.append(_INSIGHTCLAW_PLUGIN_ID)
 
     entries = _normalize_plugin_entries(plugins)
     entries[_INSIGHTCLAW_PLUGIN_ID] = {
         "enabled": True,
+        # allowConversationAccess enables conversation-scoped hooks (before_model_resolve)
+        # so InsightClaw can populate openclaw.session.key on spans for CFN routing.
+        # Must live in plugins.entries (not plugins.allow — that only accepts strings).
+        "hooks": {"allowConversationAccess": True},
         "config": {
             "endpoint": endpoint,
             "protocol": "http",
