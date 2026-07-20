@@ -33,7 +33,7 @@ async def _expand_slim(payload: dict) -> dict:
     """Fetch the full message from DB if the NOTIFY payload was truncated."""
     from uuid import UUID
 
-    from app.models import Message
+    from app.models import CoordinationSession, Message
 
     msg_id = payload.get("id")
     if not msg_id:
@@ -43,9 +43,24 @@ async def _expand_slim(payload: dict) -> dict:
             result = await session.execute(select(Message).where(Message.id == UUID(str(msg_id))))
             msg = result.scalar_one_or_none()
             if msg:
+                # Coordination session messages have room_name=None in the DB
+                # (they use coordination_session_id instead). Resolve the session's
+                # display_name so SSE consumers get the correct room to reply to —
+                # the non-slim notify payload always carries the display_name in
+                # room_name, so the slim expansion must match that behaviour.
+                room_name = msg.room_name
+                if room_name is None and msg.coordination_session_id is not None:
+                    cs_result = await session.execute(
+                        select(CoordinationSession).where(
+                            CoordinationSession.id == msg.coordination_session_id
+                        )
+                    )
+                    cs = cs_result.scalar_one_or_none()
+                    if cs is not None:
+                        room_name = cs.display_name
                 return {
                     "id": str(msg.id),
-                    "room_name": msg.room_name,
+                    "room_name": room_name,
                     "sender_handle": msg.sender_handle,
                     "recipient_handle": msg.recipient_handle,
                     "message_type": msg.message_type,

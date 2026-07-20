@@ -130,6 +130,21 @@ class RuntimeConfig(BaseModel):
         default=30,
         description="Per-round timeout for CognitiveEngine negotiation",
     )
+    cfn_retry_max_attempts: int = Field(
+        default=0,
+        description="Max times CFN validation CE may reject an agreement and restart (0 = no retries)",
+    )
+    cfn_validation_score_intervention: float = Field(
+        default=0.6,
+        description="Alignment score below which CFN validation CE rejects an agreement",
+    )
+    cfn_cognition_engines_timeout_seconds: int = Field(
+        default=120,
+        description=(
+            "How long cfn-svc waits for its cognition engine to respond (seconds). "
+            "SERVER_TIMEOUT_SECONDS is set to this + 10 automatically."
+        ),
+    )
     cfn_mgmt_url: str | None = Field(
         default=None,
         description="IoC CFN management plane URL",

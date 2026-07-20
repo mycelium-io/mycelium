@@ -130,6 +130,12 @@ def generate_env_file(
         "",
         "# ── Coordination ─────────────────────────────────────────────────────────",
         f"COORDINATION_TICK_TIMEOUT_SECONDS={config.runtime.coordination_tick_timeout_seconds}",
+        f"CFN_RETRY_MAX_ATTEMPTS={config.runtime.cfn_retry_max_attempts}",
+        f"CFN_VALIDATION_SCORE_INTERVENTION={config.runtime.cfn_validation_score_intervention}",
+        f"COGNITION_ENGINES_TIMEOUT_SECONDS={config.runtime.cfn_cognition_engines_timeout_seconds}",
+        # SERVER_TIMEOUT_SECONDS must exceed COGNITION_ENGINES_TIMEOUT_SECONDS so cfn-svc's
+        # inbound HTTP socket stays alive long enough to forward the CE response.
+        f"SERVER_TIMEOUT_SECONDS={config.runtime.cfn_cognition_engines_timeout_seconds + 10}",
         "",
         "# ── IoC CFN ──────────────────────────────────────────────────────────────",
         f"CFN_MGMT_URL={config.runtime.cfn_mgmt_url or ''}",

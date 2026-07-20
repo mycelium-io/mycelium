@@ -111,7 +111,7 @@ services:
       mycelium-backend:
         condition: service_healthy
     ports:
-      - "${MYCELIUM_UI_PORT:-3000}:3000"
+      - "${MYCELIUM_UI_PORT:-8080}:3000"
 
   # ── OTLP Collector (profile: metrics) ──────────────────────────────────────
   #
@@ -348,6 +348,11 @@ services:
       CFN_URL: http://ioc-cfn-svc:9002
       COGNITION_ENGINE_HOST: ioc-cfn-cognition-engine
       COGNITION_ENGINE_PORT: 9004
+      # Disable CFN validation-pipeline retries. The CE's per-MAS mas_config
+      # override (retry_max_attempts from cfn-svc) is always null for
+      # auto-associated MAS entries, so the CE falls through to this env var.
+      # Setting it here is the only reliable way to enforce no retries.
+      RETRY_MAX_ATTEMPTS: ${CFN_RETRY_MAX_ATTEMPTS:-0}
     depends_on:
       ioc-cfn-mgmt-plane-svc:
         condition: service_healthy

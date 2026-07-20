@@ -44,6 +44,13 @@ services:
       L9_CFN_ENABLED: ${L9_CFN_ENABLED:-false}
       MYCELIUM_STUB_EMBEDDINGS: "1"
 
+  mycelium-frontend:
+    build:
+      context: ../../../../mycelium-frontend
+      dockerfile: Dockerfile
+    pull_policy: never
+    image: mycelium-frontend:dev
+
   mycelium-collector:
     build:
       context: ../../../
@@ -53,6 +60,8 @@ services:
     env_file:
       - path: ~/.mycelium/.env
         required: false
+    environment:
+      CFN_SVC_URL: http://ioc-cfn-svc:9002
 
   ioc-cfn-mgmt-plane-svc:
     env_file:
