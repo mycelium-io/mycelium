@@ -94,9 +94,13 @@ CFN-side tunables (set via `~/.mycelium/.env` directly):
 | `COORDINATION_JOIN_WINDOW_SECONDS` | `30` | Initial join window starting from the first agent's join |
 | `COORDINATION_JOIN_WINDOW_EXTENSION_SECONDS` | `30` | How much each subsequent join pushes the deadline forward |
 | `COORDINATION_JOIN_WINDOW_MAX_SECONDS` | `180` | Hard cap on total join window from first join |
-| `COORDINATION_TICK_TIMEOUT_SECONDS` | `30` | Fallback per-tick timeout |
+| `COORDINATION_TICK_TIMEOUT_SECONDS` | `30` | Per-tick budget: how long the CognitiveEngine waits for a single agent reply before falling back to a safe default |
+| `CFN_ROUND_TIMEOUT_SECONDS` | `300` | Round-silence watchdog: abort the session if agents go completely silent (disconnected / crashed) for this many seconds; resets on each agent's first reply per round |
 
-The round watchdog also extends on each agent's first reply per round, so a slow
-agent doesn't stall the round for everyone — only sustained silence (no replies
-for the full timeout window) ends the round prematurely.
+The two timeouts guard different failure modes. `COORDINATION_TICK_TIMEOUT_SECONDS`
+is a short per-tick budget so the CE can move on quickly when one agent is
+unresponsive. `CFN_ROUND_TIMEOUT_SECONDS` is the round-silence watchdog — it only
+fires when *all* agents go silent and resets on each first reply, so serialized
+agent runtimes (e.g. Claude Code processing rounds sequentially) get a fresh 300 s
+window per reply rather than a single shared deadline.
 
