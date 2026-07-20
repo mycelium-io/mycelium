@@ -372,7 +372,10 @@ class OpenClawProvisioner(ABCProvisioner):
                 f"{result.stderr.strip() or result.stdout.strip()}"
             )
 
-        self._install_openclaw_skills(device, handle)
+        # Do NOT call _install_openclaw_skills here — it triggers a gateway
+        # restart which kills any in-flight agent sessions. Skills are seeded
+        # once during ensure_runtime; register_in_room is called on every
+        # scenario and must be non-disruptive.
         return AgentRef(
             handle=handle,
             adapter=self.name,
