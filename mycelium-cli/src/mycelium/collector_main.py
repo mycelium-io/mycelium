@@ -60,7 +60,10 @@ def main() -> None:
 
     cfn_svc_url = os.environ.get("CFN_SVC_URL", "").strip()
     cfn_forward_enabled = os.environ.get("MYCELIUM_CFN_FORWARD_ENABLED", "").lower() in (
-        "1", "true", "yes", "on"
+        "1",
+        "true",
+        "yes",
+        "on",
     )
 
     run(

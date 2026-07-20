@@ -689,7 +689,8 @@ def _check_runtime_config_drift() -> CheckResult:
         )
 
     try:
-        llm = resp.json().get("llm") or {}
+        body = resp.json()
+        llm = body.get("llm") or {}
     except Exception:
         return CheckResult(
             name="Runtime config drift",
@@ -697,9 +698,21 @@ def _check_runtime_config_drift() -> CheckResult:
             message="Skipped (backend returned non-JSON)",
         )
 
+    env_ws = (vals.get("WORKSPACE_ID", "") or "").strip()
     runtime_model = (llm.get("model", "") or "").strip()
     runtime_key_hint = (llm.get("key_hint", "") or "").strip()
     runtime_key_tail = runtime_key_hint[-4:] if len(runtime_key_hint) >= 4 else ""
+
+    # Fetch backend's runtime WORKSPACE_ID via /api/config or /health extended
+    runtime_ws = ""
+    try:
+        import httpx as _httpx
+
+        cfg_resp = _httpx.get(f"{api_url}/api/config", timeout=3)
+        if cfg_resp.status_code == 200:
+            runtime_ws = (cfg_resp.json().get("workspace_id", "") or "").strip()
+    except Exception:
+        pass
 
     mismatches: list[str] = []
     if env_model and runtime_model and env_model != runtime_model:
@@ -711,6 +724,11 @@ def _check_runtime_config_drift() -> CheckResult:
         mismatches.append("LLM_API_KEY")
         mismatches.append(f"  .env ends …{env_key_tail}")
         mismatches.append(f"  backend ends …{runtime_key_tail}")
+
+    if env_ws and runtime_ws and env_ws != runtime_ws:
+        mismatches.append("WORKSPACE_ID")
+        mismatches.append(f"  .env:      {env_ws}")
+        mismatches.append(f"  backend:   {runtime_ws}")
 
     if mismatches:
         return CheckResult(

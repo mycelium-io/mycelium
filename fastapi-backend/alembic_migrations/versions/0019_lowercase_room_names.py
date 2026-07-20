@@ -91,6 +91,17 @@ def upgrade() -> None:
                     old_name,
                 )
                 fs_rename_failed.add(old_name)
+        elif old_dir.exists() and new_dir.exists():
+            # Orphaned lowercase directory already on disk (e.g. from a prior
+            # volume wipe) — renaming would silently overwrite it. Skip the DB
+            # update too so the DB and FS stay consistent.
+            logger.warning(
+                "0019: cannot rename %s → %s: target already exists — skipping DB update for '%s'",
+                old_dir,
+                new_dir,
+                old_name,
+            )
+            fs_rename_failed.add(old_name)
 
     # ── Cascade the DB rename ──────────────────────────────────────────────
     # rooms.name is referenced by FKs on coordination_sessions.parent_room_name,

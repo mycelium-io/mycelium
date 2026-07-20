@@ -188,6 +188,7 @@ async def stream_room_messages(room_name: str, request: Request):
     Yields SSE events as messages arrive via Postgres NOTIFY.
     Connect with: curl -N http://localhost:8000/rooms/{room}/messages/stream
     """
+    room_name = room_name.strip().lower()
     async with async_session_maker() as db:
         room_result = await db.execute(select(Room).where(Room.name == room_name))
         if not room_result.scalar_one_or_none():

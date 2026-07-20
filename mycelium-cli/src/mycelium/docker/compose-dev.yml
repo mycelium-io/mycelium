@@ -60,8 +60,6 @@ services:
     env_file:
       - path: ~/.mycelium/.env
         required: false
-    environment:
-      CFN_SVC_URL: http://ioc-cfn-svc:9002
 
   ioc-cfn-mgmt-plane-svc:
     env_file:

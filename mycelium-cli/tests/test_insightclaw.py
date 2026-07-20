@@ -61,8 +61,6 @@ class TestConfigureInsightclaw:
     def _run(
         self,
         tmp_path: Path,
-        workspace_id: str = "ws-123",
-        mas_id: str = "mas-456",
         port: int = 4318,
         capture_content: bool = False,
     ) -> dict:
@@ -76,8 +74,6 @@ class TestConfigureInsightclaw:
             return_value=tmp_path,
         ):
             result = _configure_insightclaw(
-                workspace_id=workspace_id,
-                mas_id=mas_id,
                 port=port,
                 capture_content=capture_content,
             )
@@ -107,17 +103,14 @@ class TestConfigureInsightclaw:
         c = cfg["plugins"]["entries"]["insightclaw"]["config"]
         assert c["captureContent"] is True
 
-    def test_resource_attributes_dot_notation(self, tmp_path):
-        cfg = self._run(tmp_path, workspace_id="ws-1", mas_id="mas-2")
+    def test_no_resource_or_custom_attributes(self, tmp_path):
+        # workspace.id / mas.id are deliberately omitted from the plugin config
+        # (they differ per room and go stale after volume wipes; the collector
+        # injects correct per-room values at forward time instead).
+        cfg = self._run(tmp_path)
         c = cfg["plugins"]["entries"]["insightclaw"]["config"]
-        assert c["resourceAttributes"]["workspace.id"] == "ws-1"
-        assert c["resourceAttributes"]["mas.id"] == "mas-2"
-
-    def test_custom_attributes_hyphen_notation(self, tmp_path):
-        cfg = self._run(tmp_path, workspace_id="ws-1", mas_id="mas-2")
-        c = cfg["plugins"]["entries"]["insightclaw"]["config"]
-        assert c["customAttributes"]["workspace-id"] == "ws-1"
-        assert c["customAttributes"]["mas-id"] == "mas-2"
+        assert "resourceAttributes" not in c
+        assert "customAttributes" not in c
 
     def test_endpoint_uses_port(self, tmp_path):
         cfg = self._run(tmp_path, port=9999)
@@ -133,10 +126,23 @@ class TestConfigureInsightclaw:
         c = cfg["plugins"]["entries"]["insightclaw"]["config"]
         assert c["emitIoaObserveAttributes"] is True
 
-    def test_allow_conversation_access_set(self, tmp_path):
-        cfg = self._run(tmp_path)
-        entry = cfg["plugins"]["entries"]["insightclaw"]
-        assert entry.get("hooks", {}).get("allowConversationAccess") is True
+    def test_allow_conversation_access_gated_on_capture_content(self, tmp_path):
+        # allowConversationAccess is only granted when captureContent is True
+        # (conversation access implies the runtime can observe prompt/completion payloads).
+        cfg_off = self._run(tmp_path, capture_content=False)
+        assert (
+            cfg_off["plugins"]["entries"]["insightclaw"]
+            .get("hooks", {})
+            .get("allowConversationAccess")
+            is False
+        )
+        cfg_on = self._run(tmp_path, capture_content=True)
+        assert (
+            cfg_on["plugins"]["entries"]["insightclaw"]
+            .get("hooks", {})
+            .get("allowConversationAccess")
+            is True
+        )
 
 
 # ── _CfnForwarder: kill-switch gate ──────────────────────────────────────

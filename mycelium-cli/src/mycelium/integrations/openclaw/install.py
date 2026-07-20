@@ -1090,9 +1090,7 @@ def _configure_insightclaw(
             text=True,
         )
         if result.returncode != 0:
-            typer.secho(
-                f"  ✗ {config_path_str} not found in container.", fg=typer.colors.RED
-            )
+            typer.secho(f"  ✗ {config_path_str} not found in container.", fg=typer.colors.RED)
             return False
         try:
             cfg = json_module.loads(result.stdout)
@@ -1120,8 +1118,7 @@ def _configure_insightclaw(
     # plugins.allow only accepts plain strings (the zod schema is array(string())).
     # Normalise any stale object entries back to the plain ID string.
     allow_list[:] = [
-        (e.get("name") or _INSIGHTCLAW_PLUGIN_ID) if isinstance(e, dict) else e
-        for e in allow_list
+        (e.get("name") or _INSIGHTCLAW_PLUGIN_ID) if isinstance(e, dict) else e for e in allow_list
     ]
     if _INSIGHTCLAW_PLUGIN_ID not in allow_list:
         allow_list.append(_INSIGHTCLAW_PLUGIN_ID)

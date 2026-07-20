@@ -852,6 +852,7 @@ def _configure_insightclaw_step(
         _configure_insightclaw,
         _install_insightclaw,
         _openclaw_state_dir,
+        _restart_gateway_if_needed,
     )
 
     state_dir = _openclaw_state_dir(None)
@@ -861,10 +862,11 @@ def _configure_insightclaw_step(
     typer.echo("")
     typer.secho("  ── InsightClaw observability ─────────────────────────────", bold=True)
     if _install_insightclaw():
-        _configure_insightclaw(
+        if _configure_insightclaw(
             port=collector_port,
             capture_content=capture_content,
-        )
+        ):
+            _restart_gateway_if_needed(None, None)
 
 
 @doc_ref(
