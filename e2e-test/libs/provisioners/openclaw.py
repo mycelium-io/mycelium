@@ -580,6 +580,8 @@ class OpenClawProvisioner(ABCProvisioner):
         device: Any,
         agent: AgentRef,
         session_room: str,
+        *,
+        opening: str | None = None,  # noqa: ARG002 - openclaw receives position via session join
     ) -> None:
         """Post a Matrix DM trigger when ``device`` is a spoke.
 

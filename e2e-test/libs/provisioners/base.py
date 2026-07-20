@@ -331,7 +331,7 @@ class ABCProvisioner:
         # override this directly.
         return self.create_agent(device, handle, room, opening=opening)
 
-    def wake_agent(self, device: Any, agent: AgentRef, session_room: str) -> None:
+    def wake_agent(self, device: Any, agent: AgentRef, session_room: str, *, opening: str | None = None) -> None:  # noqa: ARG002
         # Default is a no-op (hermes/cursor pattern). Openclaw
         # overrides to send Matrix DMs to spoke agents.
         return None

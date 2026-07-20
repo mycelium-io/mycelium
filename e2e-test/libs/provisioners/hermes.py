@@ -352,6 +352,8 @@ class HermesProvisioner(ABCProvisioner):
         device: Any,  # noqa: ARG002 - intentionally unused
         agent: AgentRef,
         session_room: str,
+        *,
+        opening: str | None = None,  # noqa: ARG002 - hermes auto-attends; opening unused
     ) -> None:
         """No-op: the hermes plugin polls coordination sessions and joins
         automatically. We log the call for parity with the openclaw /
