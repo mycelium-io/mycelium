@@ -127,8 +127,8 @@ class RuntimeConfig(BaseModel):
         description="Root directory for .mycelium/ data (defaults to ~/.mycelium)",
     )
     coordination_tick_timeout_seconds: int = Field(
-        default=30,
-        description="Per-round timeout for CognitiveEngine negotiation",
+        default=120,
+        description="Seconds agents can be silent before the round is aborted (default 120)",
     )
     cfn_retry_max_attempts: int = Field(
         default=0,

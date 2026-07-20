@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     COORDINATION_JOIN_WINDOW_MAX_SECONDS: int = 180
     # Per-round timeout: how long CognitiveEngine waits for an agent to reply
     # during a negotiation round before falling back to the safe default.
-    COORDINATION_TICK_TIMEOUT_SECONDS: int = 30
+    COORDINATION_TICK_TIMEOUT_SECONDS: int = 120
 
     # Maximum SAO rounds per session. Passed to CFN /start as n_steps.
     # CFN's auto-compute formula assumes Boulware concession that LLM callback

@@ -59,7 +59,8 @@ logger = logging.getLogger(__name__)
 # We wait indefinitely for replies within a round; this only fires when agents
 # go completely silent (disconnected / crashed).  Using /decide with partial
 # rejects caused a double-decide race that silently dropped valid counter-offers.
-_CFN_ROUND_TIMEOUT_SECS = 300
+# Reads from COORDINATION_TICK_TIMEOUT_SECONDS env (default 300s).
+_CFN_ROUND_TIMEOUT_SECS: int = settings.COORDINATION_TICK_TIMEOUT_SECONDS
 
 
 # ── Round trace instrumentation (#162) ────────────────────────────────────────
