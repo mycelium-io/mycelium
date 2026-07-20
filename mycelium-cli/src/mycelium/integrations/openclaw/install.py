@@ -1118,8 +1118,28 @@ def _configure_insightclaw(
 
     plugins = cfg.setdefault("plugins", {})
     allow_list: list = plugins.setdefault("allow", [])
-    if _INSIGHTCLAW_PLUGIN_ID not in allow_list:
-        allow_list.append(_INSIGHTCLAW_PLUGIN_ID)
+
+    # Replace any existing entry (plain string or old object) with the rich
+    # object that includes hooks.allowConversationAccess — required for
+    # conversation-scoped hooks (before_model_resolve) that populate
+    # openclaw.session.key on spans.
+    allow_entry = {
+        "name": _INSIGHTCLAW_PLUGIN_ID,
+        "hooks": {"allowConversationAccess": True},
+    }
+    allow_list[:] = [
+        allow_entry if (
+            e == _INSIGHTCLAW_PLUGIN_ID
+            or (isinstance(e, dict) and e.get("name") == _INSIGHTCLAW_PLUGIN_ID)
+        ) else e
+        for e in allow_list
+    ]
+    if not any(
+        e == _INSIGHTCLAW_PLUGIN_ID
+        or (isinstance(e, dict) and e.get("name") == _INSIGHTCLAW_PLUGIN_ID)
+        for e in allow_list
+    ):
+        allow_list.append(allow_entry)
 
     entries = _normalize_plugin_entries(plugins)
     entries[_INSIGHTCLAW_PLUGIN_ID] = {
