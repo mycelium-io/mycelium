@@ -677,8 +677,6 @@ class OpenClawIntegration(Integration):
             if _configure_otel(profile=profile, container=container):
                 if _install_insightclaw(profile=profile, container=container):
                     _configure_insightclaw(
-                        workspace_id=config.server.workspace_id,
-                        mas_id=config.server.mas_id,
                         port=config.runtime.collector_port,
                         capture_content=config.integrations.openclaw.insightclaw_capture_content,
                         profile=profile,

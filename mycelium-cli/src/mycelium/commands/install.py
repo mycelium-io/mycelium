@@ -264,7 +264,7 @@ def _restart_backend(
     ]
     for p in profiles or []:
         args += ["--profile", p]
-    args += ["up", "--no-build", "--force-recreate", "-d", "mycelium-backend"]
+    args += ["up", "--no-build", "--force-recreate", "--no-deps", "-d", "mycelium-backend"]
     subprocess.run(args, capture_output=True)
     _wait_for_health([f"{api_url}/health"], timeout=60)
 
@@ -839,8 +839,6 @@ def _write_mycelium_config(
 
 
 def _configure_insightclaw_step(
-    workspace_id: str,
-    mas_id: str,
     collector_port: int = 4318,
     capture_content: bool = False,
 ) -> None:
@@ -864,8 +862,6 @@ def _configure_insightclaw_step(
     typer.secho("  ── InsightClaw observability ─────────────────────────────", bold=True)
     if _install_insightclaw():
         _configure_insightclaw(
-            workspace_id=workspace_id or None,
-            mas_id=mas_id or None,
             port=collector_port,
             capture_content=capture_content,
         )
@@ -1116,8 +1112,6 @@ def install(
 
                 _cfg = _Cfg.load() if _Cfg.get_global_config_path().exists() else _Cfg()
                 _configure_insightclaw_step(
-                    workspace_id=workspace_id,
-                    mas_id=mas_id,
                     collector_port=_cfg.runtime.collector_port,
                     capture_content=_cfg.integrations.openclaw.insightclaw_capture_content,
                 )
@@ -1439,8 +1433,6 @@ def install(
 
             _cfg = _Cfg.load() if _Cfg.get_global_config_path().exists() else _Cfg()
             _configure_insightclaw_step(
-                workspace_id=workspace_id,
-                mas_id=mas_id,
                 collector_port=_cfg.runtime.collector_port,
                 capture_content=_cfg.integrations.openclaw.insightclaw_capture_content,
             )

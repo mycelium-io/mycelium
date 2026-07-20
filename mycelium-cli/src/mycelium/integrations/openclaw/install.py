@@ -1070,8 +1070,6 @@ def _install_insightclaw(
 
 
 def _configure_insightclaw(
-    workspace_id: str | None = None,
-    mas_id: str | None = None,
     port: int = 4318,
     capture_content: bool = False,
     profile: str | None = None,
@@ -1079,9 +1077,9 @@ def _configure_insightclaw(
 ) -> bool:
     """Write InsightClaw plugin config into openclaw.json.
 
-    Enables traces + metrics, sets the OTLP endpoint to the mycelium-collector,
-    and injects static workspace/mas resource attributes as a fallback (the
-    _CfnForwarder injects the per-room correct values at forward time).
+    Enables traces + metrics, sets the OTLP endpoint to the mycelium-collector.
+    workspace.id / mas.id are NOT baked in — they change per room and after
+    volume wipes; the collector's _CfnForwarder resolves them at forward time.
     Returns True on success.
     """
     if container:
@@ -1145,17 +1143,10 @@ def _configure_insightclaw(
             "metrics": True,
             "captureContent": capture_content,
             "emitIoaObserveAttributes": True,
-            # Static fallback resource attributes (dot notation — cfn-svc mapper preferred).
-            # _CfnForwarder injects the per-room correct workspace.id/mas.id at forward time.
-            "resourceAttributes": {
-                "workspace.id": workspace_id or "",
-                "mas.id": mas_id or "",
-            },
-            # Belt-and-suspenders span attribute fallback (hyphen notation).
-            "customAttributes": {
-                "workspace-id": workspace_id or "",
-                "mas-id": mas_id or "",
-            },
+            # workspace.id / mas.id are intentionally omitted: they differ per room
+            # and go stale after volume wipes. The collector's _CfnForwarder injects
+            # the correct per-room values at forward time using the backend API, and
+            # falls back to WORKSPACE_ID/MAS_ID from .env for unkeyed spans.
         },
     }
 
