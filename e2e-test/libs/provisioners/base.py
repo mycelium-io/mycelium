@@ -152,6 +152,8 @@ class Provisioner(Protocol):
         device: Any,
         agent: AgentRef,
         session_room: str,
+        *,
+        opening: str | None = None,
     ) -> None:
         """Nudge ``agent`` to attend ``session_room``.
 
@@ -159,6 +161,10 @@ class Provisioner(Protocol):
         coordination sessions; cursor daemon subscribes to all rooms it
         owns). The openclaw provisioner posts a Matrix DM when the
         device's role is ``"spoke"``.
+
+        ``opening`` is the agent's scenario position/stance; adapters
+        that cold-start on each tick (e.g. cursor) should include it in
+        the wake message so the agent knows its negotiating stance.
         """
 
     def unregister_from_room(

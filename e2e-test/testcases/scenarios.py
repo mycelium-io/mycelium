@@ -622,6 +622,7 @@ class _ScenarioCore(aetest.Testcase):
                     binding.device,
                     binding.ref,
                     self.room,
+                    opening=binding.spec.get("position"),
                 )
             except Exception as exc:  # noqa: BLE001 - wake is best-effort
                 log.warning(

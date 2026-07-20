@@ -163,6 +163,8 @@ class CursorProvisioner(ABCProvisioner):
         device: Any,
         agent: AgentRef,
         session_room: str,
+        *,
+        opening: str | None = None,
     ) -> None:
         """Invoke the agent to kick off its first negotiation turn.
 
@@ -170,7 +172,13 @@ class CursorProvisioner(ABCProvisioner):
         :meth:`create_agent`, so subsequent ticks come in automatically.
         This wake is the cursor-equivalent of openclaw's Matrix DM.
         """
-        message = f"Please join the negotiation in room {session_room} and post your opening position."
+        if opening:
+            message = (
+                f"Please join the negotiation in room {session_room} and post your opening position. "
+                f"Your negotiating stance: {opening.strip()}"
+            )
+        else:
+            message = f"Please join the negotiation in room {session_room} and post your opening position."
         try:
             result = host_exec.execute(
                 device,
