@@ -28,6 +28,11 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from libs import host_exec  # noqa: E402
+from libs.agent_pools import (  # noqa: E402
+    ensure_pool_slots,
+    load_agent_pools,
+    provision_roles_for_wants,
+)
 from libs.host_exec import HostExecError  # noqa: E402
 from libs.provisioners import AgentRef, PrereqMissing, get_provisioner  # noqa: E402
 from libs.scenario_row import agent_role  # noqa: E402
@@ -116,6 +121,9 @@ class CommonSetup(aetest.CommonSetup):
             for ag in row.get("agents", []):
                 wants.add((ag["adapter"], agent_role(ag), ag["host"]))
 
+        pools = load_agent_pools(testscript.parameters.get("agent_pools"))
+        testscript.parameters["agent_pools"] = pools
+
         for host in sorted({h for (_, _, h) in wants}):
             device = testbed.devices.get(host)
             if device is None:
@@ -132,20 +140,9 @@ class CommonSetup(aetest.CommonSetup):
             except HostExecError as exc:
                 log.warning("chown failed on %s (continuing): %s", host, exc)
 
-        provisioned: dict[tuple[str, str, str], AgentRef] = {}
-        failures: list[str] = []
-        for adapter, role, host in sorted(wants):
-            device = testbed.devices.get(host)
-            if device is None:
-                failures.append(f"{role}@{host}: no such device in testbed")
-                continue
-            try:
-                provisioner = get_provisioner(adapter)
-                provisioner.check_prereqs(device)
-                ref = provisioner.ensure_runtime(device, role)
-                provisioned[(adapter, role, host)] = ref
-            except (PrereqMissing, HostExecError) as exc:
-                failures.append(f"{role}@{host} ({adapter}): {exc}")
+        slot_failures = ensure_pool_slots(testbed, wants, pools)
+        provisioned, role_failures = provision_roles_for_wants(testbed, wants, pools)
+        failures = slot_failures + role_failures
 
         testscript.parameters["provisioned_agents"] = provisioned
         if failures:

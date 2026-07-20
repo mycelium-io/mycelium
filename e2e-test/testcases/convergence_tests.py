@@ -9,6 +9,7 @@ Flow follows the OpenClaw SKILL.md lifecycle:
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 import uuid
@@ -79,7 +80,7 @@ class _ConvergenceBase(aetest.Testcase):
 
         with steps.start(f"Wait for autonomous consensus ({consensus_timeout}s)") as step:
             tick_seen = False
-            consensus_seen = False
+            consensus_msg: dict | None = None
             for _ in range(consensus_timeout // 5):
                 _, msgs = api.get_room_messages(session_room)
                 for m in msgs:
@@ -87,19 +88,28 @@ class _ConvergenceBase(aetest.Testcase):
                         tick_seen = True
                         log.info("coordination_tick delivered to agents")
                     if m.get("message_type") == "coordination_consensus":
-                        consensus_seen = True
+                        consensus_msg = m
                         break
-                if consensus_seen:
+                if consensus_msg is not None:
                     break
                 time.sleep(5)
             if not tick_seen:
                 step.failed(
                     f"No coordination_tick within {consensus_timeout}s — gateway may not be delivering ticks to agents"
                 )
-            if not consensus_seen:
+            if consensus_msg is None:
                 step.failed(
                     f"No coordination_consensus within {consensus_timeout}s — "
                     "agents may not be responding to ticks autonomously"
+                )
+            try:
+                payload = json.loads(consensus_msg.get("content") or "{}")
+            except (json.JSONDecodeError, TypeError):
+                payload = {}
+            if payload.get("broken"):
+                reason = payload.get("reason", "unknown")
+                step.failed(
+                    f"Negotiation ended without agreement (broken=True, reason={reason!r}) in {session_room}"
                 )
             log.info(
                 "Convergence %s: consensus reached in %s",
