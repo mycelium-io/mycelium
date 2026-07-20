@@ -488,9 +488,10 @@ def _format_tick_instruction(
     )
     lines.append("")
     lines.append(
-        "REMINDER: Run EXACTLY ONE of the shell commands above. Do not post messages, "
-        "send JSON, or use any other mechanism. Your ONLY output that matters is the "
-        "`mycelium negotiate ...` command execution."
+        "CRITICAL: Use the Shell tool RIGHT NOW to execute EXACTLY ONE of the commands above. "
+        "Do NOT write the command as text. Do NOT describe what you would do. "
+        "EXECUTE the shell command — that is the ONLY action that registers your response. "
+        "Prose output is discarded by the coordination engine."
     )
     return "\n".join(lines)
 
