@@ -133,6 +133,7 @@ const typeStyles: Record<string, { tone: "accent" | "ok" | "warn" | "muted" | "i
   coordination_join:      { tone: "accent", label: "JOIN" },
   coordination_start:     { tone: "accent", label: "START" },
   coordination_tick:      { tone: "muted",  label: "TICK" },
+  coordination_retry:     { tone: "warn",   label: "RETRY" },
   coordination_consensus: { tone: "ok",     label: "CONSENSUS" },
   memory_changed:         { tone: "warn",   label: "MEMORY" },
 };
