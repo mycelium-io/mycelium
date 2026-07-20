@@ -433,12 +433,17 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
             <tr>
               <td><code>COORDINATION_TICK_TIMEOUT_SECONDS</code></td>
               <td><code>30</code></td>
-              <td>Fallback per-tick timeout</td>
+              <td>Per-tick budget: how long the CognitiveEngine waits for a single agent reply before falling back to a safe default</td>
+            </tr>
+            <tr>
+              <td><code>CFN_ROUND_TIMEOUT_SECONDS</code></td>
+              <td><code>300</code></td>
+              <td>Round-silence watchdog: abort the session if agents go completely silent (disconnected / crashed) for this many seconds; resets on each agent's first reply per round</td>
             </tr>
           </tbody>
         </table>
       </div>
-      <p>The round watchdog also extends on each agent&#x27;s first reply per round, so a slow agent doesn&#x27;t stall the round for everyone — only sustained silence (no replies for the full timeout window) ends the round prematurely.</p>
+      <p>The two timeouts guard different failure modes. <code>COORDINATION_TICK_TIMEOUT_SECONDS</code> is a short per-tick budget so the CE can move on quickly when one agent is unresponsive. <code>CFN_ROUND_TIMEOUT_SECONDS</code> is the round-silence watchdog — it only fires when <em>all</em> agents go silent and resets on each first reply, so serialized agent runtimes (e.g. Claude Code processing rounds sequentially) get a fresh 300 s window per reply rather than a single shared deadline.</p>
     </section>
 
     <hr class="divider">
