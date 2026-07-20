@@ -1133,8 +1133,10 @@ def _configure_insightclaw(
         "enabled": True,
         # allowConversationAccess enables conversation-scoped hooks (before_model_resolve)
         # so InsightClaw can populate openclaw.session.key on spans for CFN routing.
+        # Only granted when captureContent is true — conversation access implies the
+        # runtime can observe prompt/completion payloads, which the user must opt into.
         # Must live in plugins.entries (not plugins.allow — that only accepts strings).
-        "hooks": {"allowConversationAccess": True},
+        "hooks": {"allowConversationAccess": capture_content},
         "config": {
             "endpoint": endpoint,
             "protocol": "http",
