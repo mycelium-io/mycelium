@@ -168,6 +168,23 @@ class NegotiationConfig(BaseModel):
             "Set to 0 to fall through to CFN's auto-computed budget."
         ),
     )
+    retry_max_attempts: int = Field(
+        default=0,
+        description=(
+            "How many times the CFN's Semantic Alignment Validator may reject an "
+            "agreement and restart negotiation from round 1. 0 disables SAV retries "
+            "(recommended default). Raise to 1+ only for deployments that want "
+            "multi-attempt negotiation hardening."
+        ),
+    )
+    validation_score_intervention: float = Field(
+        default=0.6,
+        description=(
+            "Alignment score below which the CFN intervenes and retries. Only "
+            "relevant when retry_max_attempts > 0. Lower this if agents cannot "
+            "consistently reach the default threshold."
+        ),
+    )
 
 
 class RoomConfig(BaseModel):

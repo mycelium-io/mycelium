@@ -142,6 +142,8 @@ def generate_env_file(
         "",
         "# ── Negotiation ──────────────────────────────────────────────────────────",
         f"NEGOTIATION_N_STEPS={config.negotiation.n_steps}",
+        f"CFN_RETRY_MAX_ATTEMPTS={config.negotiation.retry_max_attempts}",
+        f"CFN_VALIDATION_SCORE_INTERVENTION={config.negotiation.validation_score_intervention}",
         "",
         "# ── Knowledge ingest control (CFN shared-memories hook) ─────────────────",
         f"MYCELIUM_INGEST_ENABLED={'true' if config.knowledge_ingest.enabled else 'false'}",

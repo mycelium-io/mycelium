@@ -427,6 +427,27 @@ def await_tick(
                         typer.echo(json_module.dumps(_tick_output(msg.get("room_name"), data)))
                         return
 
+                if mtype == "coordination_retry":
+                    try:
+                        data = json_module.loads(msg.get("content", "{}"))
+                    except json_module.JSONDecodeError:
+                        data = {}
+                    typer.echo(
+                        json_module.dumps(
+                            {
+                                "type": "retry",
+                                "attempt": data.get("attempt"),
+                                "prior_rounds": data.get("prior_rounds"),
+                                "message": (
+                                    f"SAV restarted negotiation (attempt {data.get('attempt')}, "
+                                    f"prior rounds: {data.get('prior_rounds')}). "
+                                    "Wait for the next round-1 tick."
+                                ),
+                            }
+                        )
+                    )
+                    # Don't return — keep streaming; the next tick will arrive shortly.
+
                 if mtype == "coordination_consensus":
                     try:
                         data = json_module.loads(msg.get("content", "{}"))

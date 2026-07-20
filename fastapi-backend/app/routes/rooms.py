@@ -381,6 +381,7 @@ async def get_negotiation_status(
         "active": True,
         "session_id": state.session_id,
         "round": state.current_round,
+        "attempt": state.negotiation_attempt,
         "issues": state.issues,
         "issue_options": state.issue_options,
         "current_offer": state.current_offer,

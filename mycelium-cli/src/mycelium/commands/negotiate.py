@@ -513,7 +513,9 @@ def status(
             typer.echo("  No active negotiation.")
             return
 
-        typer.echo(f"  Round {data['round']}  —  {room_name}")
+        attempt = data.get("attempt", 1)
+        attempt_tag = f"  [SAV retry — attempt {attempt}]\n" if attempt > 1 else ""
+        typer.echo(f"{attempt_tag}  Round {data['round']}  —  {room_name}")
         typer.echo("")
         issues = data.get("issues") or []
         issue_options = data.get("issue_options") or {}

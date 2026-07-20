@@ -64,13 +64,15 @@ class Settings(BaseSettings):
     # run several times the rounds you'd expect:
     #   retry_max_attempts: how many times the cognition engine may reject an
     #     agreement (alignment score below the intervention threshold) and
-    #     restart negotiation from round 1. CFN default is 3; we default to 1
-    #     (take the first agreement; mycelium's own round loop + plan compiler
-    #     handle quality) for predictable timing.
+    #     restart negotiation from round 1. CFN default is 3; we default to 0
+    #     (disabled) — SAV retries are opt-in. Set >0 to enable multi-attempt
+    #     hardening for deployments that need it. Note: whether 0 is a valid
+    #     CFN disable signal needs confirmation from the CFN team; if not, use
+    #     1 as the effective minimum.
     #   validation_score_intervention: the alignment score below which the
     #     engine intervenes/retries. Lower it if LLM-callback agents can't
     #     reach the CFN default (0.6).
-    CFN_RETRY_MAX_ATTEMPTS: int = 1
+    CFN_RETRY_MAX_ATTEMPTS: int = 0
     CFN_VALIDATION_SCORE_INTERVENTION: float = 0.6
 
     # Per-call HTTP timeout (seconds) for CFN start/decide: a DEAD-CONNECTION

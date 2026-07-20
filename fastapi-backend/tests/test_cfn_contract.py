@@ -49,13 +49,13 @@ async def test_ensure_mas_sends_mas_config(monkeypatch):
     """_ensure_mas sends mycelium's retry/validation policy under `config` (the
     live MultiAgenticSystemRequest field; an earlier `mas_config` key was
     silently dropped) so a room's MAS doesn't inherit the CFN default
-    retry_max_attempts=3."""
+    retry_max_attempts=3. Mycelium defaults to 0 (SAV disabled)."""
     from app.models import Room
     from app.routes import rooms
 
     monkeypatch.setattr(settings, "CFN_MGMT_URL", "http://mgmt:9000")
     monkeypatch.setattr(settings, "WORKSPACE_ID", "ws-1")
-    monkeypatch.setattr(settings, "CFN_RETRY_MAX_ATTEMPTS", 1)
+    monkeypatch.setattr(settings, "CFN_RETRY_MAX_ATTEMPTS", 0)
     monkeypatch.setattr(settings, "CFN_VALIDATION_SCORE_INTERVENTION", 0.6)
 
     captured = {}
@@ -85,7 +85,7 @@ async def test_ensure_mas_sends_mas_config(monkeypatch):
     assert captured["json"]["name"] == "platform-eng"
     assert "mas_config" not in captured["json"]  # the dropped field, must not regress
     assert captured["json"]["config"] == {
-        "retry_max_attempts": 1,
+        "retry_max_attempts": 0,
         "validation_score_intervention": 0.6,
     }
 
