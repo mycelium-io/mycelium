@@ -434,9 +434,12 @@ class CursorCrossFamilyOpenClaw(aetest.Testcase):
                 step.failed(f"Cursor agent create failed: {r.error_message}")
 
         with steps.start("Verify openclaw agent is reachable") as step:
-            r = run_mycelium_cli(None, "agent", "ls", timeout=15.0)
+            r = ssh_run(self.spoke, "openclaw agents list", timeout=15.0)
             if self.openclaw_handle not in r.stdout:
-                step.failed(f"OpenClaw agent {self.openclaw_handle} not found in agent ls")
+                step.failed(
+                    f"OpenClaw agent {self.openclaw_handle} not found on {self.spoke} "
+                    f"(openclaw agents list)"
+                )
 
     @aetest.test
     def cross_family_negotiation(self, steps):
