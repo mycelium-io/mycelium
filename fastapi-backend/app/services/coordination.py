@@ -59,8 +59,8 @@ logger = logging.getLogger(__name__)
 # We wait indefinitely for replies within a round; this only fires when agents
 # go completely silent (disconnected / crashed).  Using /decide with partial
 # rejects caused a double-decide race that silently dropped valid counter-offers.
-# Reads from COORDINATION_TICK_TIMEOUT_SECONDS env (default 300s).
-_CFN_ROUND_TIMEOUT_SECS: int = settings.COORDINATION_TICK_TIMEOUT_SECONDS
+# Reads from CFN_ROUND_TIMEOUT_SECONDS env (default 300s).
+_CFN_ROUND_TIMEOUT_SECS: int = settings.CFN_ROUND_TIMEOUT_SECONDS
 
 
 # ── Round trace instrumentation (#162) ────────────────────────────────────────
@@ -1201,9 +1201,13 @@ async def _cfn_decide_round(
                 incoming_round = first_payload.get("round") or 0
                 # CE LLM meta presence means the CE ran a real validation pass
                 # (not a fast pass-through), which is the prerequisite for a retry.
+                # A retry is signalled by a round regression: the incoming round is
+                # ≤ the round that just completed (state.current_round is updated by
+                # _fan_out_cfn_messages *after* this check, so it reflects the
+                # just-finished round at this point).
                 result_meta = result.get("meta")
                 ce_ran = isinstance(result_meta, dict) and "latency_ms" in result_meta
-                if incoming_round <= 1 and ce_ran:
+                if incoming_round <= state.current_round and ce_ran:
                     state.negotiation_attempt += 1
                     await _post_message(
                         room_name,

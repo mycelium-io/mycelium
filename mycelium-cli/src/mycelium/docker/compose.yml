@@ -66,6 +66,7 @@ services:
       GRAPH_DB_URL: ${GRAPH_DB_URL:-postgresql://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium}
       API_BASE_URL: http://mycelium-backend:8000
       COORDINATION_TICK_TIMEOUT_SECONDS: ${COORDINATION_TICK_TIMEOUT_SECONDS:-30}
+      CFN_ROUND_TIMEOUT_SECONDS: ${CFN_ROUND_TIMEOUT_SECONDS:-300}
       # Post L9 knowledge envelopes to the CFN's /api/l9/messages endpoint.
       # Requires a knowledge CE registered with the CFN; leave off otherwise.
       L9_CFN_ENABLED: ${L9_CFN_ENABLED:-false}

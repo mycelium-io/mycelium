@@ -51,7 +51,12 @@ class Settings(BaseSettings):
     COORDINATION_JOIN_WINDOW_MAX_SECONDS: int = 180
     # Per-round timeout: how long CognitiveEngine waits for an agent to reply
     # during a negotiation round before falling back to the safe default.
-    COORDINATION_TICK_TIMEOUT_SECONDS: int = 120
+    COORDINATION_TICK_TIMEOUT_SECONDS: int = 30
+    # Round-silence watchdog: abort the session if agents go completely silent
+    # (disconnected / crashed) for this many seconds. Restarts per agent reply
+    # so single-threaded agent runtimes get a fresh budget each round.
+    # Distinct from COORDINATION_TICK_TIMEOUT_SECONDS (CE per-tick budget).
+    CFN_ROUND_TIMEOUT_SECONDS: int = 300
 
     # Maximum SAO rounds per session. Passed to CFN /start as n_steps.
     # CFN's auto-compute formula assumes Boulware concession that LLM callback
