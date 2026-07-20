@@ -308,23 +308,6 @@ function ChatCard({ event }: { event: Event }) {
   );
 }
 
-function RetryCard({ event }: { event: Event }) {
-  const attempt = asNum(event.raw.attempt) ?? "?";
-  const priorRounds = asNum(event.raw.prior_rounds) ?? "?";
-  return (
-    <div className="bg-amber-500/5 border border-amber-500/30 rounded-lg p-3">
-      <div className="flex items-center gap-2">
-        <span className="text-amber-400 text-sm leading-none">↺</span>
-        <span className="text-amber-300 font-bold uppercase tracking-wider text-xs">SAV retry — attempt {attempt}</span>
-        <span className="ml-auto text-micro text-muted font-mono">{event.time}</span>
-      </div>
-      <p className="text-xs text-white/60 mt-1">
-        Alignment validator rejected the {priorRounds}-round agreement. Restarting from round 1.
-      </p>
-    </div>
-  );
-}
-
 function GenericCard({ event }: { event: Event }) {
   const preview = JSON.stringify(event.raw).slice(0, 120);
   return (
@@ -360,7 +343,6 @@ function renderEvent(event: Event) {
     case "coordination_tick":      return <TickCard event={event} />;
     case "negotiate_response":     return <ResponseCard event={event} />;
     case "coordination_consensus": return <ConsensusCard event={event} />;
-    case "coordination_retry":     return <RetryCard event={event} />;
     case "broadcast":
     case "direct":
     case "announce":
