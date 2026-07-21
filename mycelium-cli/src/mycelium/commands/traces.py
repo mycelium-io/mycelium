@@ -288,9 +288,11 @@ def _display_name(span_name: str, attrs: dict) -> str:
     as-is.
     """
     if span_name.startswith("tool."):
-        # Prefer the explicit tool name attribute when present
+        # Prefer the explicit tool name attribute when present; otherwise strip
+        # the ``tool.`` prefix. _attr_first returns "" (not "-") when no key is
+        # present, so fall back with `or` rather than a "-" sentinel compare.
         tool = _attr_first(attrs, "gen_ai.tool.name", "openclaw.tool.name", "openclaw.toolName")
-        return tool if tool != "-" else span_name[5:]
+        return tool or span_name[5:]
     return span_name
 
 

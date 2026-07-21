@@ -42,6 +42,49 @@ def _data_dir() -> Path:
 def upgrade() -> None:
     conn = op.get_bind()
 
+    # ── Add ON UPDATE CASCADE to every FK pointing at rooms(name) FIRST ────
+    # This MUST happen before the room-name UPDATE below. The child-table FKs
+    # (messages.room_name, memories.room_name, coordination_sessions.
+    # parent_room_name, memory_subscriptions.room_name) were all created in
+    # earlier migrations with only ondelete="CASCADE" — their on-update action
+    # defaults to NO ACTION. Lowercasing rooms.name while a child row still
+    # references the old mixed-case name would raise a foreign-key violation at
+    # statement end and abort the whole migration. Recreating the FKs with
+    # onupdate="CASCADE" first makes the rename propagate to child rows.
+    #
+    # Always runs, regardless of whether any rooms need lowercasing. Fresh
+    # installs have no mixed-case rows but still need the correct FK semantics
+    # that models.py declares (onupdate="CASCADE").
+    fk_rows = conn.execute(
+        sa.text(
+            """
+            SELECT tc.constraint_name, tc.table_name, kcu.column_name
+            FROM information_schema.table_constraints AS tc
+            JOIN information_schema.key_column_usage AS kcu
+              ON tc.constraint_name = kcu.constraint_name
+             AND tc.table_schema = kcu.table_schema
+            JOIN information_schema.constraint_column_usage AS ccu
+              ON tc.constraint_name = ccu.constraint_name
+             AND tc.table_schema = ccu.table_schema
+            WHERE tc.constraint_type = 'FOREIGN KEY'
+              AND ccu.table_name = 'rooms'
+              AND ccu.column_name = 'name'
+            """
+        )
+    ).fetchall()
+
+    for constraint_name, table_name, column_name in fk_rows:
+        op.drop_constraint(constraint_name, table_name, type_="foreignkey")
+        op.create_foreign_key(
+            constraint_name,
+            table_name,
+            "rooms",
+            [column_name],
+            ["name"],
+            ondelete="CASCADE",
+            onupdate="CASCADE",
+        )
+
     # Fetch all room names that contain uppercase letters.
     rows = conn.execute(sa.text("SELECT id, name FROM rooms WHERE name != lower(name)")).fetchall()
 
@@ -126,43 +169,7 @@ def upgrade() -> None:
 
         logger.info("0019: lowercased %d room name(s)", len(rows) - len(fs_rename_failed))
     else:
-        logger.info("0019: no mixed-case room names found; applying FK schema changes only")
-
-    # ── Add ON UPDATE CASCADE to every FK pointing at rooms(name) ─────────
-    # Always runs, regardless of whether any rooms needed lowercasing. Fresh
-    # installs have no mixed-case rows but still need the correct FK semantics
-    # that models.py declares (onupdate="CASCADE"). Without this, any future
-    # room-name update (e.g. a rename migration) hits a FK violation on
-    # instances that were never through the data-migration path.
-    fk_rows = conn.execute(
-        sa.text(
-            """
-            SELECT tc.constraint_name, tc.table_name, kcu.column_name
-            FROM information_schema.table_constraints AS tc
-            JOIN information_schema.key_column_usage AS kcu
-              ON tc.constraint_name = kcu.constraint_name
-             AND tc.table_schema = kcu.table_schema
-            JOIN information_schema.constraint_column_usage AS ccu
-              ON tc.constraint_name = ccu.constraint_name
-             AND tc.table_schema = ccu.table_schema
-            WHERE tc.constraint_type = 'FOREIGN KEY'
-              AND ccu.table_name = 'rooms'
-              AND ccu.column_name = 'name'
-            """
-        )
-    ).fetchall()
-
-    for constraint_name, table_name, column_name in fk_rows:
-        op.drop_constraint(constraint_name, table_name, type_="foreignkey")
-        op.create_foreign_key(
-            constraint_name,
-            table_name,
-            "rooms",
-            [column_name],
-            ["name"],
-            ondelete="CASCADE",
-            onupdate="CASCADE",
-        )
+        logger.info("0019: no mixed-case room names found; FK schema changes already applied")
 
 
 def downgrade() -> None:
