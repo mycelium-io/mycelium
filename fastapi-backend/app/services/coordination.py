@@ -289,8 +289,9 @@ class _CfnRoundState:
     cfn_persisted: bool | None = None
     # How many times CFN's validation pipeline has rejected an agreement and
     # restarted negotiation from round 1. Starts at 1 (first attempt). With
-    # CFN_RETRY_MAX_ATTEMPTS=0 (the mas_config default, no retries) this stays
-    # 1, but the detection below still surfaces a retry if someone raises the cap.
+    # RETRY_MAX_ATTEMPTS=0 (the CE-container env var default, no retries) this
+    # stays 1, but the detection below still surfaces a retry if someone raises
+    # the cap (mycelium-cli's config.toml -> CFN_RETRY_MAX_ATTEMPTS -> compose.yml).
     negotiation_attempt: int = 1
 
 

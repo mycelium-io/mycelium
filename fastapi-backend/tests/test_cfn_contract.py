@@ -45,18 +45,20 @@ def test_register_memory_provider_payload_shape(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_ensure_mas_sends_mas_config(monkeypatch):
-    """_ensure_mas sends mycelium's retry/validation policy under `config` (the
-    live MultiAgenticSystemRequest field; an earlier `mas_config` key was
-    silently dropped) so a room's MAS doesn't inherit the CFN default
-    retry_max_attempts=3."""
+async def test_ensure_mas_sends_bare_name(monkeypatch):
+    """_ensure_mas posts only `name` — no `config` or `mas_config` payload.
+
+    Retry/validation-threshold policy is set via a blanket env var on the CE
+    container (RETRY_MAX_ATTEMPTS / VALIDATION_SCORE_INTERVENTION in
+    compose.yml), not per-MAS API config: the CE never consults the per-MAS
+    override for auto-associated MAS entries (the resolved-config lookup
+    404s), so sending it here was dead weight. Confirmed via live testing
+    against a real mgmt-plane + cognition-engine stack, 2026-07-21."""
     from app.models import Room
     from app.routes import rooms
 
     monkeypatch.setattr(settings, "CFN_MGMT_URL", "http://mgmt:9000")
     monkeypatch.setattr(settings, "WORKSPACE_ID", "ws-1")
-    monkeypatch.setattr(settings, "CFN_RETRY_MAX_ATTEMPTS", 1)
-    monkeypatch.setattr(settings, "CFN_VALIDATION_SCORE_INTERVENTION", 0.6)
 
     captured = {}
 
@@ -82,12 +84,7 @@ async def test_ensure_mas_sends_mas_config(monkeypatch):
     mas_id = await rooms._ensure_mas(room, db)
 
     assert mas_id == "mas-123"
-    assert captured["json"]["name"] == "platform-eng"
-    assert "mas_config" not in captured["json"]  # the dropped field, must not regress
-    assert captured["json"]["config"] == {
-        "retry_max_attempts": 1,
-        "validation_score_intervention": 0.6,
-    }
+    assert captured["json"] == {"name": "platform-eng"}
 
 
 # ── consensus `reason` threading ──────────────────────────────────────────────
