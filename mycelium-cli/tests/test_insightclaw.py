@@ -604,3 +604,61 @@ class TestInsightclawMetricParsing:
         # Should complete without error; the key won't exist in the ic bucket
         ic = store.to_dict()["counters"]["insightclaw"]
         assert "unknown_future_metric" not in ic["llm"]
+
+    def test_ic_counter_aggregates_across_hosts(self):
+        """IC sub-bucket counters must sum across multiple source hosts, not overwrite."""
+        store = MetricsStore()
+        host1 = _make_metrics_request(
+            [
+                {
+                    "name": "openclaw.llm.requests",
+                    "type": "sum",
+                    "value": 100,
+                    "attrs": {"gen_ai.agent.id": "agent-a"},
+                }
+            ]
+        )
+        host2 = _make_metrics_request(
+            [
+                {
+                    "name": "openclaw.llm.requests",
+                    "type": "sum",
+                    "value": 50,
+                    "attrs": {"gen_ai.agent.id": "agent-a"},
+                }
+            ]
+        )
+        store.ingest_metrics(host1, source_ip="10.0.0.1")
+        store.ingest_metrics(host2, source_ip="10.0.0.2")
+        ic = store.to_dict()["counters"]["insightclaw"]
+        assert ic["llm"]["requests"] == 150
+        assert ic["llm"]["by_agent"]["agent-a"]["requests"] == 150
+
+    def test_ic_histogram_aggregates_across_hosts(self):
+        """IC histogram metrics must merge (not overwrite) when pushed from multiple hosts."""
+        store = MetricsStore()
+        host1 = _make_metrics_request(
+            [
+                {
+                    "name": "openclaw.llm.duration",
+                    "type": "histogram",
+                    "value": 1.0,
+                    "attrs": {"gen_ai.agent.id": "agent-b"},
+                }
+            ]
+        )
+        host2 = _make_metrics_request(
+            [
+                {
+                    "name": "openclaw.llm.duration",
+                    "type": "histogram",
+                    "value": 3.0,
+                    "attrs": {"gen_ai.agent.id": "agent-b"},
+                }
+            ]
+        )
+        store.ingest_metrics(host1, source_ip="10.0.0.1")
+        store.ingest_metrics(host2, source_ip="10.0.0.2")
+        ic = store.to_dict()["histograms"]["insightclaw"]
+        assert ic["llm_duration"]["count"] == 2
+        assert ic["llm_duration"]["sum"] == pytest.approx(4.0)

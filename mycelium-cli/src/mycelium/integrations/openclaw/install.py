@@ -1079,7 +1079,9 @@ def _install_insightclaw(
     combined = ((result.stderr or "") + (result.stdout or "")).lower()
     if result.returncode != 0 and "already" not in combined:
         if container and result.returncode == 137:
-            pass  # gateway restart after config change — install completed
+            _wait_container_healthy(
+                container
+            )  # gateway restarted mid-exec — wait before next docker exec
         else:
             typer.secho(
                 f"  ⚠ InsightClaw install returned {result.returncode}"

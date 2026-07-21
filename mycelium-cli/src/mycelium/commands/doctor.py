@@ -722,18 +722,25 @@ def _check_runtime_config_drift() -> CheckResult:
         mismatches.append(f"  .env ends …{env_key_tail}")
         mismatches.append(f"  backend ends …{runtime_key_tail}")
 
+    ws_mismatch: list[str] = []
     if env_ws and toml_ws and env_ws != toml_ws:
-        mismatches.append("WORKSPACE_ID")
-        mismatches.append(f"  .env:      {env_ws}")
-        mismatches.append(f"  config.toml: {toml_ws}")
+        ws_mismatch.append("WORKSPACE_ID")
+        ws_mismatch.append(f"  .env:      {env_ws}")
+        ws_mismatch.append(f"  config.toml: {toml_ws}")
 
-    if mismatches:
+    if mismatches or ws_mismatch:
+        details = mismatches + ws_mismatch
+        if mismatches:
+            details.append("fix: mycelium up  (recreate the backend container with current .env)")
+        if ws_mismatch:
+            details.append(
+                "fix: mycelium config apply  (regenerate .env from config.toml), then mycelium up"
+            )
         return CheckResult(
             name="Runtime config drift",
             status="warning",
             message="Backend running with stale env",
-            details=mismatches
-            + ["fix: mycelium up  (recreate the backend container with current .env)"],
+            details=details,
         )
 
     return CheckResult(

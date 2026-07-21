@@ -1270,7 +1270,18 @@ async def _cfn_decide_round(
             # (out-of-turn, all-replied trigger, etc.). Handles not in the new
             # pending_replies are silently ignored by on_agent_response.
             for _h, _c in early.items():
-                asyncio.ensure_future(on_agent_response(room_name, _h, _c))
+
+                async def _replay(_h: str = _h, _c: str = _c) -> None:
+                    try:
+                        await on_agent_response(room_name, _h, _c)
+                    except Exception:
+                        logger.exception(
+                            "on_agent_response failed replaying early reply for %s in %s",
+                            _h,
+                            room_name,
+                        )
+
+                asyncio.ensure_future(_replay())
 
         else:
             # Unknown / failed status: may carry semantic-alignment rejection
