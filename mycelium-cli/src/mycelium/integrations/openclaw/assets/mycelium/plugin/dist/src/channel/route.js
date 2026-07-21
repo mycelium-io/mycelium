@@ -27,6 +27,9 @@ export function routeMessage(cfg, msg, ownMessageIds) {
     if (msg.message_type === "coordination_consensus") {
         return routeConsensus(cfg, msg);
     }
+    if (msg.message_type === "coordination_retry") {
+        return routeRetry(cfg, msg);
+    }
     if (msg.message_type === "coordination_join" ||
         msg.message_type === "coordination_start") {
         return routeJoin(msg);
@@ -321,6 +324,32 @@ export function formatConsensusSummary(consensusData) {
             ]
             : []),
     ].join("\n");
+}
+// ── SAV retry ─────────────────────────────────────────────────────────────
+export function routeRetry(cfg, msg) {
+    let data;
+    try {
+        data = typeof msg.content === "string" ? JSON.parse(msg.content) : msg.content;
+    }
+    catch {
+        data = {};
+    }
+    const attempt = data?.attempt ?? "?";
+    const priorRounds = data?.prior_rounds ?? "?";
+    const notice = formatRetryNotice(attempt, priorRounds);
+    return cfg.agents.map((agentId) => ({
+        kind: "dispatch",
+        agentId,
+        sender: "CognitiveEngine",
+        content: notice,
+        messageId: msg.id,
+    }));
+}
+export function formatRetryNotice(attempt, priorRounds) {
+    return (`[CognitiveEngine — SAV retry]\n` +
+        `The semantic alignment validator rejected the prior agreement after ${priorRounds} round(s).\n` +
+        `Restarting negotiation — this is attempt ${attempt}.\n` +
+        `Wait for a new Round 1 tick before responding.`);
 }
 // ── Join / session sub-room discovery ─────────────────────────────────────
 export function routeJoin(msg) {
