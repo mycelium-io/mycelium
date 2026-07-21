@@ -1285,7 +1285,8 @@ def _room_from_session_key(key: str) -> str:
     if not key or not key.startswith("agent:"):
         return ""
     parts = key.split(":", 4)
-    if len(parts) < 5:
+    # Expected format: agent:{agentId}:mycelium-room:group:{room}
+    if len(parts) < 5 or parts[2] != "mycelium-room" or parts[3] != "group":
         return ""
     room = parts[4]
     return room.strip()

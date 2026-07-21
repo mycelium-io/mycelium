@@ -73,6 +73,7 @@
       <a href="#config-rooms" class="nav-link sub">rooms</a>
       <a href="#config-knowledge-ingest" class="nav-link sub">knowledge_ingest</a>
       <a href="#config-metrics" class="nav-link sub">metrics</a>
+      <a href="#config-integrations" class="nav-link sub">integrations</a>
     </div>
     <div class="nav-section">
       <div class="nav-section-label">Guides</div>
@@ -225,13 +226,6 @@ openclaw approvals allowlist add <span class="flag">--agent</span> <span class="
 
 <span class="comment"># Restart the gateway to pick up the plugin</span>
 openclaw gateway restart</code></pre>
-      <h4 id="architecture-openclaw-insightclaw">InsightClaw OTLP observability</h4>
-      <p>The <code>--step=otel</code> adapter step installs <a href="https://github.com/outshift-open/insightClaw" target="_blank">InsightClaw</a>, an OTLP observability plugin for OpenClaw, alongside the standard <code>diagnostics-otel</code> plugin. It forwards agent spans (LLM calls, tool executions, session lifecycle) to the Mycelium collector and on to CFN.</p>
-      <pre><code><span class="cmd">mycelium adapter add</span> openclaw <span class="flag">--step</span>=otel</code></pre>
-      <p>By default InsightClaw captures span <strong>metadata only</strong> (durations, token counts, tool names, exit codes) — no message content. To also capture LLM prompts, completions, and tool inputs/outputs for richer CFN knowledge extraction:</p>
-      <pre><code><span class="cmd">mycelium config set</span> integrations.openclaw.insightclaw_capture_content true
-<span class="cmd">mycelium adapter add</span> openclaw <span class="flag">--step</span>=otel  <span class="comment"># re-applies with captureContent: true</span></code></pre>
-      <p><strong>Privacy note:</strong> content capture includes full system prompts (SOUL.md), conversation history, and exact tool call inputs/outputs. Do not enable on shared or production gateways without considering what agent reasoning may contain. Without content capture, forwarding traces to CFN is useful for local observability (<code>mycelium metrics traces</code>) but CFN's Knowledge Distillation CE cannot extract semantic knowledge from metadata-only spans.</p>
       <h3 id="architecture-containerized-gateway">Containerized gateway</h3>
       <p>If OpenClaw runs inside Docker (VPS, self-hosted, Docker Compose), pass the container name so Mycelium stages assets and runs install commands inside the container via <code>docker exec</code>:</p>
       <pre><code><span class="cmd">mycelium adapter add</span> openclaw <span class="flag">--openclaw-container</span> openclaw-gateway-1
@@ -779,6 +773,18 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
 <span class="comment"># Per-round timeout for CognitiveEngine negotiation</span>
 <span class="arg">coordination_tick_timeout_seconds</span> = 30
 
+<span class="comment"># Round-silence watchdog: seconds before aborting when agents go completely silent</span>
+<span class="arg">cfn_round_timeout_seconds</span> = 300
+
+<span class="comment"># Max times CFN validation CE may reject an agreement and restart (0 = no retries)</span>
+<span class="arg">cfn_retry_max_attempts</span> = 0
+
+<span class="comment"># Alignment score below which CFN validation CE rejects an agreement</span>
+<span class="arg">cfn_validation_score_intervention</span> = 0.6
+
+<span class="comment"># How long cfn-svc waits for its cognition engine to respond (seconds). SERVER_TIMEOUT_SECONDS is set to this + 10 automatically.</span>
+<span class="arg">cfn_cognition_engines_timeout_seconds</span> = 120
+
 <span class="comment"># IoC CFN management plane URL</span>
 <span class="arg">cfn_mgmt_url</span> = <span class="str">&quot;&quot;</span>
 
@@ -833,14 +839,10 @@ export OPENCLAW_CONTAINER=openclaw-gateway-1
 <span class="comment"># Explicit Prometheus /metrics endpoints to scrape. Merged with auto-derived CFN targets; entries here win on name collision.</span>
 <span class="arg">scrape</span> = PydanticUndefined
 
-<span class="comment"># Per-adapter integration settings.</span>
-<span class="cmd" id="config-integrations">[integrations.openclaw]</span>
+<span class="comment"># Per-adapter integration configuration.</span>
+<span class="cmd" id="config-integrations">[integrations]</span>
 
-<span class="comment"># Opt-in: capture LLM message content (prompts, completions, tool inputs/outputs) in InsightClaw spans.</span>
-<span class="comment"># Disabled by default — content may include sensitive agent reasoning, system prompts, and tool outputs.</span>
-<span class="comment"># Required for CFN Knowledge Distillation CE to extract semantic knowledge from OTLP spans.</span>
-<span class="comment"># After changing, re-run: mycelium adapter add openclaw --step=otel</span>
-<span class="arg">insightclaw_capture_content</span> = <span class="str">false</span></code></pre>
+<span class="arg">openclaw</span> = PydanticUndefined</code></pre>
     </section>
 
     <hr class="divider">

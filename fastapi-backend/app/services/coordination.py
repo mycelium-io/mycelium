@@ -241,6 +241,10 @@ class _CfnRoundState:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     round_timeout_task: asyncio.Task | None = field(default=None)
     deciding: bool = field(default=False)  # guard against double-decide
+    # Replies that arrived while deciding=True (between _fan_out_cfn_messages
+    # and the lock that clears deciding). Replayed via on_agent_response after
+    # the new pending_replies is initialised so nothing is silently dropped.
+    early_replies: dict = field(default_factory=dict)  # handle → raw content
     # Metrics tracking
     round_num: int = field(default=0)
     round_start_time: float = field(default=0.0)
@@ -1198,17 +1202,26 @@ async def _cfn_decide_round(
             # accept immediately in the first round).
             if messages:
                 first_payload = messages[0].get("payload") or messages[0]
-                incoming_round = first_payload.get("round") or 0
+                # Use None (not 0) when the field is absent — `or 0` would
+                # collapse a missing round field and an explicit round=0 to the
+                # same value, making an absent field indistinguishable from a
+                # real round-0 regression and causing a spurious retry at
+                # state.current_round == 1.
+                incoming_round = first_payload.get("round")
                 # A retry is signalled by a round regression: the incoming round
                 # is ≤ the round that just completed. Guard on current_round >= 1
                 # so the check never fires on the very first /decide call (where
-                # both state.current_round and incoming_round start at 0). The
-                # Go CFN may omit or null the meta field on intermediate pipeline
-                # steps, so we do NOT gate on ce_ran — that would cause real
-                # retries to go undetected when meta is absent.
+                # both state.current_round and incoming_round start at 0). Skip
+                # entirely when round is absent — the CFN may omit it on
+                # intermediate pipeline steps and we cannot distinguish that from
+                # a real retry without the field.
                 # (state.current_round is updated by _fan_out_cfn_messages *after*
                 # this check, so it reflects the just-finished round here.)
-                if state.current_round >= 1 and incoming_round <= state.current_round:
+                if (
+                    incoming_round is not None
+                    and state.current_round >= 1
+                    and incoming_round <= state.current_round
+                ):
                     state.negotiation_attempt += 1
                     await _post_message(
                         room_name,
@@ -1243,7 +1256,15 @@ async def _cfn_decide_round(
                 state.round_num += 1
                 state.round_start_time = time.monotonic()
                 _open_round_trace(state, room_name, addressed)
+                early = dict(state.early_replies)
+                state.early_replies.clear()
             _reset_round_timeout(room_name, state)
+            # Replay any replies that arrived while deciding=True. on_agent_response
+            # runs outside the lock and handles all the normal validity checks
+            # (out-of-turn, all-replied trigger, etc.). Handles not in the new
+            # pending_replies are silently ignored by on_agent_response.
+            for _h, _c in early.items():
+                asyncio.ensure_future(on_agent_response(room_name, _h, _c))
 
         else:
             # Unknown / failed status: may carry semantic-alignment rejection
@@ -1583,11 +1604,14 @@ async def on_agent_response(room_name: str, handle: str, content: str) -> None:
     extend_timeout: bool = False
     async with cfn.lock:
         if cfn.deciding:
-            # /decide is already in flight — a CFN validation retry or the
-            # consensus post is pending. Silently drop the reply; the retry
-            # tick (if any) will solicit fresh replies once the decide settles.
+            # /decide is already in flight but this reply may be for the next
+            # round (fast agent replied to a new-round tick before the state lock
+            # cleared deciding=False). Buffer it; it is replayed via
+            # on_agent_response after pending_replies is initialised for the new
+            # round so no reply is silently dropped.
+            cfn.early_replies[handle] = content
             logger.debug(
-                "CFN room %s: dropping reply from %s — decide already in flight",
+                "CFN room %s: buffering early reply from %s — decide in flight",
                 room_name,
                 handle,
             )

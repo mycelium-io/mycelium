@@ -165,7 +165,6 @@ def upgrade() -> None:
         )
 
 
-
 def downgrade() -> None:
     # Intentionally a no-op: there is no safe way to reverse case normalization
     # once the filesystem directories have been renamed and clients have stored

@@ -1007,51 +1007,46 @@ def _configure_otel(
         return False
     cfg, config_path_str = read
 
-    try:
-        resolved_port = port if port is not None else 4318
-        env_port = os.environ.get("MYCELIUM_METRICS_PORT")
-        if port is None and env_port:
-            try:
-                p = int(env_port)
-                if 1 <= p <= 65535:
-                    resolved_port = p
-            except ValueError:
-                pass
-        host = "host.docker.internal" if container else "localhost"
-        endpoint = f"http://{host}:{resolved_port}"
+    resolved_port = port if port is not None else 4318
+    env_port = os.environ.get("MYCELIUM_METRICS_PORT")
+    if port is None and env_port:
+        try:
+            p = int(env_port)
+            if 1 <= p <= 65535:
+                resolved_port = p
+        except ValueError:
+            pass
+    host = "host.docker.internal" if container else "localhost"
+    endpoint = f"http://{host}:{resolved_port}"
 
-        diagnostics = cfg.setdefault("diagnostics", {})
-        diagnostics["enabled"] = True
-        otel = diagnostics.setdefault("otel", {})
-        otel["enabled"] = True
-        otel.setdefault("serviceName", "openclaw-gateway")
-        otel.update(
-            {
-                "endpoint": endpoint,
-                "protocol": "http/protobuf",
-                "traces": True,
-                "metrics": True,
-                "logs": False,
-                "flushIntervalMs": 5000,
-            }
-        )
+    diagnostics = cfg.setdefault("diagnostics", {})
+    diagnostics["enabled"] = True
+    otel = diagnostics.setdefault("otel", {})
+    otel["enabled"] = True
+    otel.setdefault("serviceName", "openclaw-gateway")
+    otel.update(
+        {
+            "endpoint": endpoint,
+            "protocol": "http/protobuf",
+            "traces": True,
+            "metrics": True,
+            "logs": False,
+            "flushIntervalMs": 5000,
+        }
+    )
 
-        plugins = cfg.setdefault("plugins", {})
-        allow_list = plugins.setdefault("allow", [])
-        if "diagnostics-otel" not in allow_list:
-            allow_list.append("diagnostics-otel")
+    plugins = cfg.setdefault("plugins", {})
+    allow_list = plugins.setdefault("allow", [])
+    if "diagnostics-otel" not in allow_list:
+        allow_list.append("diagnostics-otel")
 
-        entries = _normalize_plugin_entries(plugins)
-        if "diagnostics-otel" not in entries:
-            entries["diagnostics-otel"] = {"enabled": True}
+    entries = _normalize_plugin_entries(plugins)
+    if "diagnostics-otel" not in entries:
+        entries["diagnostics-otel"] = {"enabled": True}
 
-        model_changes = _patch_model_cost_and_compat(cfg)
-        for desc in model_changes:
-            typer.secho(f"  ✓ patched {desc}", fg=typer.colors.GREEN)
-
-    except OSError as exc:
-        typer.secho(f"  ✗ Could not write openclaw.json: {exc}", fg=typer.colors.RED)
-        return False
+    model_changes = _patch_model_cost_and_compat(cfg)
+    for desc in model_changes:
+        typer.secho(f"  ✓ patched {desc}", fg=typer.colors.GREEN)
 
     if not _write_openclaw_cfg(cfg, config_path_str, container):
         return False
@@ -1123,9 +1118,13 @@ def _configure_insightclaw(
     allow_list: list = plugins.setdefault("allow", [])
 
     # plugins.allow only accepts plain strings (the zod schema is array(string())).
-    # Normalise any stale object entries back to the plain ID string.
+    # Normalise any stale object entries back to the plain ID string, using the
+    # entry's own name or id — never substitute our plugin ID for a different
+    # plugin's entry (that would permanently delete the other plugin).
     allow_list[:] = [
-        (e.get("name") or _INSIGHTCLAW_PLUGIN_ID) if isinstance(e, dict) else e for e in allow_list
+        id_str
+        for e in allow_list
+        if (id_str := (e.get("name") or e.get("id")) if isinstance(e, dict) else e)
     ]
     if _INSIGHTCLAW_PLUGIN_ID not in allow_list:
         allow_list.append(_INSIGHTCLAW_PLUGIN_ID)

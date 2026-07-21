@@ -707,7 +707,9 @@ def _check_runtime_config_drift() -> CheckResult:
     # There is no backend endpoint that exposes runtime WORKSPACE_ID, so we
     # compare disk-to-disk rather than disk-to-runtime here. A mismatch means
     # the user edited one file without running `mycelium config apply`.
-    toml_ws = (cfg.server.workspace_id or "").strip() if cfg.server.workspace_id else ""
+    # Mirror docker_utils.py which writes WORKSPACE_ID as
+    # server.workspace_id or runtime.workspace_id — check both.
+    toml_ws = (cfg.server.workspace_id or cfg.runtime.workspace_id or "").strip()
 
     mismatches: list[str] = []
     if env_model and runtime_model and env_model != runtime_model:

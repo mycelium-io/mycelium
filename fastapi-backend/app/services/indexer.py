@@ -99,22 +99,21 @@ async def index_room(room_name: str, db: AsyncSession, *, force: bool = False) -
                     stats["skipped"] += 1
                     continue
 
-            await _index_single_memory(
-                db=db,
-                room_name=room_name,
-                key=key,
-                content=content,
-                meta=meta,
-                file_path=f"rooms/{room_name}/{key}.md",
-            )
+            # Savepoint per file so a failure rolls back only this file's
+            # writes — not the entire session transaction (which would discard
+            # all previously indexed files in the same run).
+            async with db.begin_nested():
+                await _index_single_memory(
+                    db=db,
+                    room_name=room_name,
+                    key=key,
+                    content=content,
+                    meta=meta,
+                    file_path=f"rooms/{room_name}/{key}.md",
+                )
             stats["indexed"] += 1
         except Exception:
             logger.warning("Failed to index %s/%s", room_name, key, exc_info=True)
-            # Rollback to prevent a failed execute from poisoning the connection pool.
-            try:
-                await db.rollback()
-            except Exception:
-                pass
             stats["errors"] += 1
 
     # Prune DB records whose files no longer exist

@@ -863,24 +863,30 @@ def _configure_insightclaw_step(
     """
     from mycelium.integrations.openclaw.install import (
         _configure_insightclaw,
+        _configure_otel,
         _install_insightclaw,
         _openclaw_state_dir,
         _restart_gateway_if_needed,
     )
 
-    state_dir = _openclaw_state_dir(container)
+    # _openclaw_state_dir takes the CLI profile name, not the container name.
+    state_dir = _openclaw_state_dir(profile)
     if not (state_dir / "openclaw.json").exists():
         return  # openclaw not installed — skip silently
 
     typer.echo("")
     typer.secho("  ── InsightClaw observability ─────────────────────────────", bold=True)
-    if _install_insightclaw(profile=profile, container=container):
-        _configure_insightclaw(
-            port=collector_port,
-            capture_content=capture_content,
-            profile=profile,
-            container=container,
-        )
+    # _configure_otel must run first — it writes diagnostics.otel.enabled=True
+    # and the OTLP endpoint that the openclaw gateway reads to activate its
+    # exporter. Without it, no OTEL data flows even if InsightClaw is installed.
+    if _configure_otel(port=collector_port, profile=profile, container=container):
+        if _install_insightclaw(profile=profile, container=container):
+            _configure_insightclaw(
+                port=collector_port,
+                capture_content=capture_content,
+                profile=profile,
+                container=container,
+            )
     _restart_gateway_if_needed(profile, container)
 
 
