@@ -1199,15 +1199,16 @@ async def _cfn_decide_round(
             if messages:
                 first_payload = messages[0].get("payload") or messages[0]
                 incoming_round = first_payload.get("round") or 0
-                # CE LLM meta presence means the CE ran a real validation pass
-                # (not a fast pass-through), which is the prerequisite for a retry.
-                # A retry is signalled by a round regression: the incoming round is
-                # ≤ the round that just completed (state.current_round is updated by
-                # _fan_out_cfn_messages *after* this check, so it reflects the
-                # just-finished round at this point).
-                result_meta = result.get("meta")
-                ce_ran = isinstance(result_meta, dict) and "latency_ms" in result_meta
-                if incoming_round <= state.current_round and ce_ran:
+                # A retry is signalled by a round regression: the incoming round
+                # is ≤ the round that just completed. Guard on current_round >= 1
+                # so the check never fires on the very first /decide call (where
+                # both state.current_round and incoming_round start at 0). The
+                # Go CFN may omit or null the meta field on intermediate pipeline
+                # steps, so we do NOT gate on ce_ran — that would cause real
+                # retries to go undetected when meta is absent.
+                # (state.current_round is updated by _fan_out_cfn_messages *after*
+                # this check, so it reflects the just-finished round here.)
+                if state.current_round >= 1 and incoming_round <= state.current_round:
                     state.negotiation_attempt += 1
                     await _post_message(
                         room_name,

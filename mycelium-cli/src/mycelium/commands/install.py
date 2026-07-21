@@ -838,9 +838,22 @@ def _write_mycelium_config(
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 
+def _run_insightclaw_step() -> None:
+    """Load config and call _configure_insightclaw_step; shared by both install branches."""
+    from mycelium.config import MyceliumConfig as _Cfg
+
+    _cfg = _Cfg.load() if _Cfg.get_global_config_path().exists() else _Cfg()
+    _configure_insightclaw_step(
+        collector_port=_cfg.runtime.collector_port,
+        capture_content=_cfg.integrations.openclaw.insightclaw_capture_content,
+    )
+
+
 def _configure_insightclaw_step(
     collector_port: int = 4318,
     capture_content: bool = False,
+    profile: str | None = None,
+    container: str | None = None,
 ) -> None:
     """Best-effort InsightClaw install + config after a fresh mycelium install.
 
@@ -855,18 +868,20 @@ def _configure_insightclaw_step(
         _restart_gateway_if_needed,
     )
 
-    state_dir = _openclaw_state_dir(None)
+    state_dir = _openclaw_state_dir(container)
     if not (state_dir / "openclaw.json").exists():
         return  # openclaw not installed — skip silently
 
     typer.echo("")
     typer.secho("  ── InsightClaw observability ─────────────────────────────", bold=True)
-    if _install_insightclaw():
-        if _configure_insightclaw(
+    if _install_insightclaw(profile=profile, container=container):
+        _configure_insightclaw(
             port=collector_port,
             capture_content=capture_content,
-        ):
-            _restart_gateway_if_needed(None, None)
+            profile=profile,
+            container=container,
+        )
+    _restart_gateway_if_needed(profile, container)
 
 
 @doc_ref(
@@ -1110,13 +1125,7 @@ def install(
                 _report_llm_probe_result(status, model, msg, remediation, interactive=False)
 
             if enable_metrics:
-                from mycelium.config import MyceliumConfig as _Cfg
-
-                _cfg = _Cfg.load() if _Cfg.get_global_config_path().exists() else _Cfg()
-                _configure_insightclaw_step(
-                    collector_port=_cfg.runtime.collector_port,
-                    capture_content=_cfg.integrations.openclaw.insightclaw_capture_content,
-                )
+                _run_insightclaw_step()
 
             typer.secho("  ✓ Done.", fg=typer.colors.GREEN, bold=True)
             typer.echo(f"  mycelium-backend  → {api_url}")
@@ -1431,13 +1440,7 @@ def install(
                 raise typer.Exit(1) from None
 
         if enable_metrics:
-            from mycelium.config import MyceliumConfig as _Cfg
-
-            _cfg = _Cfg.load() if _Cfg.get_global_config_path().exists() else _Cfg()
-            _configure_insightclaw_step(
-                collector_port=_cfg.runtime.collector_port,
-                capture_content=_cfg.integrations.openclaw.insightclaw_capture_content,
-            )
+            _run_insightclaw_step()
 
         # ── Done ───────────────────────────────────────────────────────────
         print()

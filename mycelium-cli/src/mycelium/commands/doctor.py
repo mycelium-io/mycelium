@@ -703,16 +703,11 @@ def _check_runtime_config_drift() -> CheckResult:
     runtime_key_hint = (llm.get("key_hint", "") or "").strip()
     runtime_key_tail = runtime_key_hint[-4:] if len(runtime_key_hint) >= 4 else ""
 
-    # Fetch backend's runtime WORKSPACE_ID via /api/config or /health extended
-    runtime_ws = ""
-    try:
-        import httpx as _httpx
-
-        cfg_resp = _httpx.get(f"{api_url}/api/config", timeout=3)
-        if cfg_resp.status_code == 200:
-            runtime_ws = (cfg_resp.json().get("workspace_id", "") or "").strip()
-    except Exception:
-        pass
+    # Compare WORKSPACE_ID between .env and config.toml (the canonical source).
+    # There is no backend endpoint that exposes runtime WORKSPACE_ID, so we
+    # compare disk-to-disk rather than disk-to-runtime here. A mismatch means
+    # the user edited one file without running `mycelium config apply`.
+    toml_ws = (cfg.server.workspace_id or "").strip() if cfg.server.workspace_id else ""
 
     mismatches: list[str] = []
     if env_model and runtime_model and env_model != runtime_model:
@@ -725,10 +720,10 @@ def _check_runtime_config_drift() -> CheckResult:
         mismatches.append(f"  .env ends …{env_key_tail}")
         mismatches.append(f"  backend ends …{runtime_key_tail}")
 
-    if env_ws and runtime_ws and env_ws != runtime_ws:
+    if env_ws and toml_ws and env_ws != toml_ws:
         mismatches.append("WORKSPACE_ID")
         mismatches.append(f"  .env:      {env_ws}")
-        mismatches.append(f"  backend:   {runtime_ws}")
+        mismatches.append(f"  config.toml: {toml_ws}")
 
     if mismatches:
         return CheckResult(

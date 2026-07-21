@@ -676,13 +676,13 @@ class OpenClawIntegration(Integration):
         elif step == "otel":
             if _configure_otel(profile=profile, container=container):
                 if _install_insightclaw(profile=profile, container=container):
-                    if _configure_insightclaw(
+                    _configure_insightclaw(
                         port=config.runtime.collector_port,
                         capture_content=config.integrations.openclaw.insightclaw_capture_content,
                         profile=profile,
                         container=container,
-                    ):
-                        _restart_gateway_if_needed(profile, container)
+                    )
+                _restart_gateway_if_needed(profile, container)
 
     def status_check(self, *, name: str, info: dict) -> dict:
         details: list[str] = []

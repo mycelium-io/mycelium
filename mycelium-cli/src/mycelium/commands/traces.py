@@ -300,6 +300,7 @@ def _agent_of(attrs: dict) -> str:
         "openclaw.agent",
         "gen_ai.agent.id",
         "gen_ai.agent.name",
+        "ioa_observe.entity.name",
         default="-",
     )
 

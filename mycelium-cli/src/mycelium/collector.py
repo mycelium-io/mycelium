@@ -1478,8 +1478,13 @@ class _CfnForwarder:
             with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310
                 resp.read()
             span_count = sum(len(pairs) for pairs in groups.values())
+            total_bytes = len(serialised)
             for mas_id in groups:
-                self._bump_counter(mas_id, spans=len(groups[mas_id]), bytes_=len(serialised))
+                mas_spans = len(groups[mas_id])
+                # Charge each mas_id a proportional share of the combined payload
+                # rather than the full blob size to avoid factor-of-N inflation.
+                mas_bytes = total_bytes * mas_spans // span_count if span_count else 0
+                self._bump_counter(mas_id, spans=mas_spans, bytes_=mas_bytes)
             log.debug("CFN forward: %d spans → %s (%d bytes)", span_count, url, len(serialised))
         except Exception as exc:
             for mas_id in groups:

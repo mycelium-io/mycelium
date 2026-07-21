@@ -929,40 +929,83 @@ def _patch_model_cost_and_compat(cfg: dict) -> list[str]:
     return changes
 
 
+def _read_openclaw_cfg(
+    profile: str | None,
+    container: str | None,
+    *,
+    not_found_hint: str = "Run 'openclaw gateway start' first to create the config file.",
+) -> tuple[dict, str] | None:
+    """Read and parse openclaw.json from host or container.
+
+    Returns (cfg_dict, path_str) on success, None on any failure (errors are
+    printed to stderr via typer.secho before returning None).
+    """
+    if container:
+        path_str = _container_config_path(container, profile)
+        result = subprocess.run(
+            ["docker", "exec", container, "cat", path_str],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            typer.secho(f"  ✗ {path_str} not found in container.", fg=typer.colors.RED)
+            if not_found_hint:
+                typer.echo(f"    {not_found_hint}")
+            return None
+        try:
+            return json_module.loads(result.stdout), path_str
+        except json_module.JSONDecodeError as exc:
+            typer.secho(f"  ✗ Could not parse openclaw.json: {exc}", fg=typer.colors.RED)
+            return None
+    else:
+        config_path = _openclaw_state_dir(profile) / "openclaw.json"
+        path_str = str(config_path)
+        if not config_path.exists():
+            typer.secho(f"  ✗ {path_str} not found.", fg=typer.colors.RED)
+            if not_found_hint:
+                typer.echo(f"    {not_found_hint}")
+            return None
+        try:
+            return json_module.loads(config_path.read_text()), path_str
+        except (json_module.JSONDecodeError, OSError) as exc:
+            typer.secho(f"  ✗ Could not read openclaw.json: {exc}", fg=typer.colors.RED)
+            return None
+
+
+def _write_openclaw_cfg(cfg: dict, path_str: str, container: str | None) -> bool:
+    """Serialize and write cfg to openclaw.json on host or inside a container."""
+    cfg_json = json_module.dumps(cfg, indent=2) + "\n"
+    try:
+        if container:
+            result = subprocess.run(
+                ["docker", "exec", "-i", container, "sh", "-c", f"cat > {path_str}"],
+                input=cfg_json,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                typer.secho(
+                    f"  ✗ Could not write openclaw.json: {result.stderr}", fg=typer.colors.RED
+                )
+                return False
+        else:
+            Path(path_str).write_text(cfg_json)
+    except OSError as exc:
+        typer.secho(f"  ✗ Could not write openclaw.json: {exc}", fg=typer.colors.RED)
+        return False
+    return True
+
+
 def _configure_otel(
     port: int | None = None,
     profile: str | None = None,
     container: str | None = None,
 ) -> bool:
     """Configure OpenClaw's diagnostics-otel plugin in openclaw.json."""
-    if container:
-        config_path_str = _container_config_path(container, profile)
-        result = subprocess.run(
-            ["docker", "exec", container, "cat", config_path_str],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            typer.secho(f"  ✗ {config_path_str} not found in container.", fg=typer.colors.RED)
-            typer.echo("    Run 'openclaw gateway start' first to create the config file.")
-            return False
-        try:
-            cfg = json_module.loads(result.stdout)
-        except json_module.JSONDecodeError as exc:
-            typer.secho(f"  ✗ Could not parse openclaw.json: {exc}", fg=typer.colors.RED)
-            return False
-    else:
-        state_dir = _openclaw_state_dir(profile)
-        config_path = state_dir / "openclaw.json"
-        if not config_path.exists():
-            typer.secho(f"  ✗ {config_path} not found.", fg=typer.colors.RED)
-            typer.echo("    Run 'openclaw gateway start' first to create the config file.")
-            return False
-        try:
-            cfg = json_module.loads(config_path.read_text())
-        except (json_module.JSONDecodeError, OSError) as exc:
-            typer.secho(f"  ✗ Could not read openclaw.json: {exc}", fg=typer.colors.RED)
-            return False
+    read = _read_openclaw_cfg(profile, container)
+    if read is None:
+        return False
+    cfg, config_path_str = read
 
     try:
         resolved_port = port if port is not None else 4318
@@ -1006,25 +1049,11 @@ def _configure_otel(
         for desc in model_changes:
             typer.secho(f"  ✓ patched {desc}", fg=typer.colors.GREEN)
 
-        cfg_json = json_module.dumps(cfg, indent=2) + "\n"
-
-        if container:
-            result = subprocess.run(
-                ["docker", "exec", "-i", container, "sh", "-c", f"cat > {config_path_str}"],
-                input=cfg_json,
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode != 0:
-                typer.secho(
-                    f"  ✗ Could not write openclaw.json: {result.stderr}", fg=typer.colors.RED
-                )
-                return False
-        else:
-            config_path.write_text(cfg_json)
-
     except OSError as exc:
         typer.secho(f"  ✗ Could not write openclaw.json: {exc}", fg=typer.colors.RED)
+        return False
+
+    if not _write_openclaw_cfg(cfg, config_path_str, container):
         return False
 
     typer.secho("  ✓ diagnostics-otel enabled in openclaw.json", fg=typer.colors.GREEN)
@@ -1082,32 +1111,10 @@ def _configure_insightclaw(
     volume wipes; the collector's _CfnForwarder resolves them at forward time.
     Returns True on success.
     """
-    if container:
-        config_path_str = _container_config_path(container, profile)
-        result = subprocess.run(
-            ["docker", "exec", container, "cat", config_path_str],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            typer.secho(f"  ✗ {config_path_str} not found in container.", fg=typer.colors.RED)
-            return False
-        try:
-            cfg = json_module.loads(result.stdout)
-        except json_module.JSONDecodeError as exc:
-            typer.secho(f"  ✗ Could not parse openclaw.json: {exc}", fg=typer.colors.RED)
-            return False
-    else:
-        state_dir = _openclaw_state_dir(profile)
-        config_path = state_dir / "openclaw.json"
-        if not config_path.exists():
-            typer.secho(f"  ✗ {config_path} not found.", fg=typer.colors.RED)
-            return False
-        try:
-            cfg = json_module.loads(config_path.read_text())
-        except (json_module.JSONDecodeError, OSError) as exc:
-            typer.secho(f"  ✗ Could not read openclaw.json: {exc}", fg=typer.colors.RED)
-            return False
+    read = _read_openclaw_cfg(profile, container, not_found_hint="")
+    if read is None:
+        return False
+    cfg, config_path_str = read
 
     host = "host.docker.internal" if container else "localhost"
     endpoint = f"http://{host}:{port}"
@@ -1147,24 +1154,7 @@ def _configure_insightclaw(
         },
     }
 
-    cfg_json = json_module.dumps(cfg, indent=2) + "\n"
-    try:
-        if container:
-            result = subprocess.run(
-                ["docker", "exec", "-i", container, "sh", "-c", f"cat > {config_path_str}"],
-                input=cfg_json,
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode != 0:
-                typer.secho(
-                    f"  ✗ Could not write openclaw.json: {result.stderr}", fg=typer.colors.RED
-                )
-                return False
-        else:
-            config_path.write_text(cfg_json)
-    except OSError as exc:
-        typer.secho(f"  ✗ Could not write openclaw.json: {exc}", fg=typer.colors.RED)
+    if not _write_openclaw_cfg(cfg, config_path_str, container):
         return False
 
     typer.secho("  ✓ InsightClaw configured in openclaw.json", fg=typer.colors.GREEN)
