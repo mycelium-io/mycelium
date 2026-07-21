@@ -2092,7 +2092,8 @@ def doctor(
         if local:
             service_checks.append(_check_docker_containers())
         service_checks.append(_check_backend_reachable(local_backend=local))
-        service_checks.append(_check_pending_migrations())
+        if local:
+            service_checks.append(_check_pending_migrations())
         service_checks.append(_check_llm_connectivity())
 
         sections: list[tuple[str, list[CheckResult]]] = [
@@ -2104,7 +2105,7 @@ def doctor(
                     _check_cfn_intent(local_backend=local),
                     _check_workspace_id(local_backend=local),
                     _check_room_mas_ids(local_backend=local),
-                    _check_cfn_pgvector(),
+                    *([_check_cfn_pgvector()] if local else []),
                 ],
             ),
             (
