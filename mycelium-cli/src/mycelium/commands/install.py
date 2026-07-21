@@ -987,6 +987,17 @@ def install(
             typer.echo("    mycelium pull       — pull latest containers and restart")
             typer.echo("    mycelium doctor     — diagnose and fix issues")
             typer.echo("")
+            if metrics:
+                # --metrics only runs during a fresh install; the early exit
+                # below would silently drop it. Point the user at the
+                # post-install path instead of ignoring the flag.
+                typer.secho(
+                    "  Note: --metrics is ignored on an existing install. To add"
+                    " observability now, run:",
+                    fg=typer.colors.YELLOW,
+                )
+                typer.echo("    mycelium adapter add openclaw --step=otel")
+                typer.echo("")
             typer.echo("  Pass --force to reinstall from scratch.")
             raise typer.Exit(0)
 

@@ -96,7 +96,14 @@ async def _resolve_target(
     Names with the legacy ``{parent}:session:{short}`` shape resolve to a
     coordination session — there is no Room row for them. Real room names
     resolve to the Room. 404 if neither matches.
+
+    Room names are normalized to lowercase to match ``rooms.py`` (``_norm``)
+    and ``stream.py``; without this, a room readable/streamable under
+    non-canonical casing would 404 on message send/history. Safe for the
+    ``:session:`` path too — ``short_id`` is lowercase hex (``uuid4().hex``)
+    and parent room names are stored lowercase.
     """
+    name = name.strip().lower()
     if ":session:" in name:
         parent, _, short_id = name.partition(":session:")
         result = await session.execute(

@@ -628,6 +628,54 @@ def _check_config_file_drift(*, local_backend: bool = True) -> CheckResult:
     )
 
 
+def _check_workspace_id_drift() -> CheckResult:
+    """Compare WORKSPACE_ID between ``.env`` and ``config.toml`` (disk-to-disk).
+
+    This is a pure on-disk comparison — it needs no backend and is meaningful
+    on both hub and spoke nodes — so it lives in its own check rather than
+    inside ``_check_runtime_config_drift`` (which early-returns whenever the
+    backend is unreachable, and would silently skip this comparison in exactly
+    the "stack down, just edited config" case it is meant to catch).
+
+    A mismatch means the user edited one file without running
+    ``mycelium config apply``. ``config.toml`` is the canonical source; mirror
+    ``docker_utils.py``, which writes WORKSPACE_ID from ``server.workspace_id``
+    or ``runtime.workspace_id``, and check both.
+    """
+    env_path = Path.home() / ".mycelium" / ".env"
+    if not env_path.exists():
+        return CheckResult(name="Workspace ID drift", status="ok", message="Skipped (no .env)")
+
+    from dotenv import dotenv_values
+
+    env_ws = (dotenv_values(env_path).get("WORKSPACE_ID", "") or "").strip()
+
+    from mycelium.config import MyceliumConfig
+
+    try:
+        cfg = MyceliumConfig.load()
+    except Exception:
+        return CheckResult(
+            name="Workspace ID drift", status="ok", message="Skipped (cannot load config)"
+        )
+
+    toml_ws = (cfg.server.workspace_id or cfg.runtime.workspace_id or "").strip()
+
+    if env_ws and toml_ws and env_ws != toml_ws:
+        return CheckResult(
+            name="Workspace ID drift",
+            status="warning",
+            message="config.toml and .env WORKSPACE_ID differ",
+            details=[
+                f"  .env:        {env_ws}",
+                f"  config.toml: {toml_ws}",
+                "fix: mycelium config apply  (regenerate .env from config.toml), then mycelium up",
+            ],
+        )
+
+    return CheckResult(name="Workspace ID drift", status="ok", message=".env matches config.toml")
+
+
 def _check_runtime_config_drift() -> CheckResult:
     """Compare backend runtime values against the on-disk ``.env``.
 
@@ -698,18 +746,14 @@ def _check_runtime_config_drift() -> CheckResult:
             message="Skipped (backend returned non-JSON)",
         )
 
-    env_ws = (vals.get("WORKSPACE_ID", "") or "").strip()
     runtime_model = (llm.get("model", "") or "").strip()
     runtime_key_hint = (llm.get("key_hint", "") or "").strip()
     runtime_key_tail = runtime_key_hint[-4:] if len(runtime_key_hint) >= 4 else ""
 
-    # Compare WORKSPACE_ID between .env and config.toml (the canonical source).
-    # There is no backend endpoint that exposes runtime WORKSPACE_ID, so we
-    # compare disk-to-disk rather than disk-to-runtime here. A mismatch means
-    # the user edited one file without running `mycelium config apply`.
-    # Mirror docker_utils.py which writes WORKSPACE_ID as
-    # server.workspace_id or runtime.workspace_id — check both.
-    toml_ws = (cfg.server.workspace_id or cfg.runtime.workspace_id or "").strip()
+    # WORKSPACE_ID drift (a disk-to-disk .env-vs-config.toml comparison) is
+    # handled by the separate _check_workspace_id_drift, which always runs —
+    # this check early-returns when the backend is unreachable and would
+    # otherwise skip it in exactly the case it matters most.
 
     mismatches: list[str] = []
     if env_model and runtime_model and env_model != runtime_model:
@@ -722,25 +766,15 @@ def _check_runtime_config_drift() -> CheckResult:
         mismatches.append(f"  .env ends …{env_key_tail}")
         mismatches.append(f"  backend ends …{runtime_key_tail}")
 
-    ws_mismatch: list[str] = []
-    if env_ws and toml_ws and env_ws != toml_ws:
-        ws_mismatch.append("WORKSPACE_ID")
-        ws_mismatch.append(f"  .env:      {env_ws}")
-        ws_mismatch.append(f"  config.toml: {toml_ws}")
-
-    if mismatches or ws_mismatch:
-        details = mismatches + ws_mismatch
-        if mismatches:
-            details.append("fix: mycelium up  (recreate the backend container with current .env)")
-        if ws_mismatch:
-            details.append(
-                "fix: mycelium config apply  (regenerate .env from config.toml), then mycelium up"
-            )
+    if mismatches:
         return CheckResult(
             name="Runtime config drift",
             status="warning",
             message="Backend running with stale env",
-            details=details,
+            details=[
+                *mismatches,
+                "fix: mycelium up  (recreate the backend container with current .env)",
+            ],
         )
 
     return CheckResult(
@@ -2091,6 +2125,9 @@ def doctor(
             _check_config_files(),
             _check_mycelium_dir_ownership(),
             _check_config_file_drift(local_backend=local),
+            # Disk-to-disk (.env vs config.toml) — no backend needed, so it
+            # runs on both hub and spoke and independently of backend health.
+            _check_workspace_id_drift(),
         ]
         if local:
             config_checks.append(_check_runtime_config_drift())
