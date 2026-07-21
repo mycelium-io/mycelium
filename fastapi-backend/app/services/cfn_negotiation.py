@@ -153,9 +153,15 @@ def _record_meta_usage(meta: Any, operation: str, *, room: str, mas_id: str) -> 
         completion_tokens=int(completion),
         cached_tokens=0,
         total_tokens=int(total),
-        llm_calls=0,
+        llm_calls=1,
         latency_ms=_num(getattr(meta, "latency_ms", 0.0)),
-        by_operation=None,
+        by_operation={
+            operation: {
+                "calls": 1,
+                "prompt_tokens": int(prompt),
+                "completion_tokens": int(completion),
+            }
+        },
     )
 
 

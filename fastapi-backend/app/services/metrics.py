@@ -408,11 +408,16 @@ def record_cfn_llm_usage(
     latency_ms: float = 0.0,
     by_operation: dict[str, dict] | None = None,
 ) -> None:
-    """Record LLM token usage returned by CFN in ``_usage`` response fields.
+    """Record LLM token usage returned by CFN in ``meta.tokens`` response fields.
 
-    Captures token counts from the cognition engines (via the litellm callback)
-    for ``start_negotiation`` responses.  The ``decide`` path makes no LLM calls
-    directly (background ingestion is tracked via Prometheus on the CFN node).
+    Captures token counts from the cognition engines for both
+    ``start_negotiation`` (round-1 options generation) and
+    ``decide_negotiation`` responses. The decide path DOES make LLM calls on
+    its terminal step — the semantic-alignment validation evaluator (retry
+    decision) runs its own LLM call via ``get_llm_provider``, whose usage the
+    CE folds into the same ``meta.tokens`` it returns; ordinary continuing
+    rounds make no new LLM call (NegMAS advances deterministically over
+    options already generated at round 1) and correctly report nothing.
 
     Parameter names (``prompt_tokens`` / ``completion_tokens``) match the CFN
     ``_usage`` snapshot produced by litellm, but metric keys are normalised to

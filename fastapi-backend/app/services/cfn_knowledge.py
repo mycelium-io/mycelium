@@ -46,7 +46,7 @@ import httpx
 import tiktoken
 
 from app.config import settings
-from app.services.metrics import record_cfn_call, record_knowledge_query
+from app.services.metrics import record_cfn_call, record_cfn_llm_usage, record_knowledge_query
 
 logger = logging.getLogger(__name__)
 
@@ -135,8 +135,15 @@ async def query_shared_memories(
     """POST to CFN's ``shared-memories/query`` endpoint.
 
     Returns CFN's query response dict: ``{"response_id": str, "message": str,
-    ...}``. Note that ``message`` is a natural-language answer synthesized by
-    CFN's evidence agent, NOT a structured list of records.
+    "meta": {...}, ...}``. Note that ``message`` is a natural-language answer
+    synthesized by CFN's evidence agent, NOT a structured list of records.
+
+    Unlike ``create_or_update_shared_memories`` (fire-and-forget, no usage data
+    ever returned), this call is synchronous and its response schema declares
+    an optional ``meta`` field ("LLM token usage and performance metrics...
+    present when LLM calls are made") — the evidence agent's own LLM call.
+    Recorded under operation ``knowledge_query`` alongside negotiation's
+    ``cfn_llm`` counters so the CLI's cost report stops missing it.
     """
     body: dict[str, Any] = {
         "header": {"agent_id": agent_id} if agent_id else {},
@@ -162,7 +169,40 @@ async def query_shared_memories(
         results_returned=1 if resp.get("message") else 0,
         duration_ms=(time.monotonic() - t0) * 1000,
     )
+    _record_query_meta_usage(resp.get("meta"))
     return resp
+
+
+def _record_query_meta_usage(meta: dict[str, Any] | None) -> None:
+    """Record token usage from a knowledge-query response's ``meta`` dict.
+
+    Untyped (plain dict, not the generated client's model) — this module
+    stays on raw httpx by design (see module docstring), so extraction mirrors
+    ``cfn_negotiation.py:_record_meta_usage`` but reads dict keys directly.
+    """
+    if not isinstance(meta, dict):
+        return
+    tokens = meta.get("tokens") or {}
+    prompt = int(tokens.get("prompt") or 0)
+    completion = int(tokens.get("completion") or 0)
+    total = int(tokens.get("total") or 0)
+    if not (prompt or completion or total):
+        return
+    record_cfn_llm_usage(
+        operation="knowledge_query",
+        prompt_tokens=prompt,
+        completion_tokens=completion,
+        total_tokens=total,
+        llm_calls=1,
+        latency_ms=float(meta.get("latency_ms") or 0.0),
+        by_operation={
+            "knowledge_query": {
+                "calls": 1,
+                "prompt_tokens": prompt,
+                "completion_tokens": completion,
+            }
+        },
+    )
 
 
 # ── Raw HTTP helpers ─────────────────────────────────────────────────────────
