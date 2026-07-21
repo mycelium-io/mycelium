@@ -14,12 +14,13 @@ from __future__ import annotations
 import pytest
 
 from app.services.cfn_knowledge import _record_query_meta_usage
-from app.services.metrics import _counters, _lock, snapshot
+from app.services.metrics import _counters, _lock, _room_identities, record_room_identity, snapshot
 
 
 def _reset_metrics() -> None:
     with _lock:
         _counters.clear()
+        _room_identities.clear()
 
 
 def test_query_meta_usage_recorded() -> None:
@@ -47,6 +48,33 @@ def test_query_meta_usage_absent_is_a_noop() -> None:
     _record_query_meta_usage({})
     _record_query_meta_usage({"tokens": {"prompt": 0, "completion": 0, "total": 0}})
     assert "cfn_llm" not in snapshot()["counters"]
+
+
+def test_query_meta_usage_resolves_room_via_mas_id() -> None:
+    """When the mas_id -> room mapping was already learned (e.g. via an
+    earlier negotiation call), the knowledge-query breakdown should reuse it
+    rather than requiring every caller to thread a room name through."""
+    _reset_metrics()
+    record_room_identity(mas_id="mas-42", room_name="my-room")
+    _record_query_meta_usage(
+        {"tokens": {"prompt": 100, "completion": 20, "total": 120}},
+        mas_id="mas-42",
+    )
+    cfn_llm = snapshot()["counters"]["cfn_llm"]
+    assert cfn_llm["by_room.my-room.input_tokens"] == 100
+    assert cfn_llm["by_room.my-room.output_tokens"] == 20
+
+
+def test_query_meta_usage_unknown_mas_id_skips_room_breakdown() -> None:
+    """No mapping learned yet — must not raise, and must not fabricate a room."""
+    _reset_metrics()
+    _record_query_meta_usage(
+        {"tokens": {"prompt": 100, "completion": 20, "total": 120}},
+        mas_id="never-seen",
+    )
+    cfn_llm = snapshot()["counters"]["cfn_llm"]
+    assert cfn_llm["input_tokens"] == 100
+    assert not any(k.startswith("by_room.") for k in cfn_llm)
 
 
 @pytest.mark.asyncio

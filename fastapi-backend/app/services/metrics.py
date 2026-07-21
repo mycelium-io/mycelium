@@ -476,6 +476,21 @@ def record_room_identity(*, mas_id: str, room_name: str) -> None:
         _room_identities.setdefault(str(mas_id), str(room_name))
 
 
+@_safe
+def resolve_room_for_mas(mas_id: str) -> str:
+    """Look up the room name previously recorded for *mas_id*, or "" if unknown.
+
+    Read-side counterpart to ``record_room_identity``, for call sites that
+    have a mas_id but not the room name in scope (e.g. ``cfn_knowledge.py``'s
+    query path, which is keyed by mas_id, not room). Returns "" rather than
+    raising so callers can pass it straight through to a ``room=`` kwarg.
+    """
+    if not mas_id:
+        return ""
+    with _lock:
+        return _room_identities.get(str(mas_id), "")
+
+
 def snapshot() -> dict:
     """Return a JSON-serializable snapshot of all metrics."""
     with _lock:

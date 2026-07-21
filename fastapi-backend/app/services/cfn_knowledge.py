@@ -46,7 +46,12 @@ import httpx
 import tiktoken
 
 from app.config import settings
-from app.services.metrics import record_cfn_call, record_cfn_llm_usage, record_knowledge_query
+from app.services.metrics import (
+    record_cfn_call,
+    record_cfn_llm_usage,
+    record_knowledge_query,
+    resolve_room_for_mas,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -169,16 +174,22 @@ async def query_shared_memories(
         results_returned=1 if resp.get("message") else 0,
         duration_ms=(time.monotonic() - t0) * 1000,
     )
-    _record_query_meta_usage(resp.get("meta"))
+    _record_query_meta_usage(resp.get("meta"), mas_id=mas_id)
     return resp
 
 
-def _record_query_meta_usage(meta: dict[str, Any] | None) -> None:
+def _record_query_meta_usage(meta: dict[str, Any] | None, *, mas_id: str = "") -> None:
     """Record token usage from a knowledge-query response's ``meta`` dict.
 
     Untyped (plain dict, not the generated client's model) — this module
     stays on raw httpx by design (see module docstring), so extraction mirrors
     ``cfn_negotiation.py:_record_meta_usage`` but reads dict keys directly.
+
+    ``query_shared_memories`` is keyed by mas_id, not room name, so the
+    by-room breakdown reuses ``resolve_room_for_mas`` — the same mas_id ->
+    room registry negotiation calls already populate via
+    ``record_room_identity`` — rather than requiring every caller to thread a
+    room name through just for metrics attribution.
     """
     if not isinstance(meta, dict):
         return
@@ -190,6 +201,7 @@ def _record_query_meta_usage(meta: dict[str, Any] | None) -> None:
         return
     record_cfn_llm_usage(
         operation="knowledge_query",
+        room=resolve_room_for_mas(mas_id) or "",
         prompt_tokens=prompt,
         completion_tokens=completion,
         total_tokens=total,
