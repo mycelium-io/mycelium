@@ -132,7 +132,7 @@ services:
     environment:
       CFN_SVC_URL: ${CFN_SVC_URL:-}
       # Enable CFN forwarding only when CFN_SVC_URL is also non-empty (set by cfn profile).
-      MYCELIUM_CFN_FORWARD_ENABLED: "true"
+      MYCELIUM_CFN_FORWARD_ENABLED: ${CFN_SVC_URL:+true}
     depends_on:
       mycelium-backend:
         condition: service_healthy

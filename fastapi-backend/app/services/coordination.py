@@ -1240,6 +1240,12 @@ async def _cfn_decide_round(
                         state.negotiation_attempt,
                         state.current_round,
                     )
+            # Discard any early_replies that accumulated during the /decide
+            # HTTP call (up to 600s) — those are stale round-N replies, not
+            # new-round replies. Only what arrives after _fan_out_cfn_messages
+            # sends the new ticks belongs in the replay buffer.
+            async with state.lock:
+                state.early_replies.clear()
             addressed = await _fan_out_cfn_messages(
                 room_name,
                 messages,

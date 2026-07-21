@@ -392,7 +392,7 @@ async def get_negotiation_status(
     # check broke the CLI's pre-flight snap path. `_cfn_state` is keyed by
     # the same display name the CLI passes in, so a missing entry just
     # means "no active negotiation" — same as for a non-existent room.
-    state = _cfn_state.get(room_name)
+    state = _cfn_state.get(_norm(room_name))
     if not state:
         return {"active": False}
 

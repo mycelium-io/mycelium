@@ -674,7 +674,11 @@ class OpenClawIntegration(Integration):
         if step == "docker-env":
             _step_docker_env(config)
         elif step == "otel":
-            if _configure_otel(profile=profile, container=container):
+            if _configure_otel(
+                port=config.runtime.collector_port,
+                profile=profile,
+                container=container,
+            ):
                 if _install_insightclaw(profile=profile, container=container):
                     _configure_insightclaw(
                         port=config.runtime.collector_port,

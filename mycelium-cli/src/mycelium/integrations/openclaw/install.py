@@ -1121,11 +1121,20 @@ def _configure_insightclaw(
     # Normalise any stale object entries back to the plain ID string, using the
     # entry's own name or id — never substitute our plugin ID for a different
     # plugin's entry (that would permanently delete the other plugin).
-    allow_list[:] = [
-        id_str
-        for e in allow_list
-        if (id_str := (e.get("name") or e.get("id")) if isinstance(e, dict) else e)
-    ]
+    cleaned: list[str] = []
+    for e in allow_list:
+        if isinstance(e, dict):
+            id_str = e.get("name") or e.get("id")
+            if id_str:
+                cleaned.append(str(id_str))
+            else:
+                typer.secho(
+                    f"  ⚠  Dropping malformed plugins.allow entry with no name/id: {e}",
+                    fg=typer.colors.YELLOW,
+                )
+        elif e:
+            cleaned.append(str(e))
+    allow_list[:] = cleaned
     if _INSIGHTCLAW_PLUGIN_ID not in allow_list:
         allow_list.append(_INSIGHTCLAW_PLUGIN_ID)
 

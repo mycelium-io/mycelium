@@ -264,7 +264,7 @@ def _restart_backend(
     ]
     for p in profiles or []:
         args += ["--profile", p]
-    args += ["up", "--no-build", "--force-recreate", "--no-deps", "-d", "mycelium-backend"]
+    args += ["up", "--no-build", "--force-recreate", "-d", "mycelium-backend"]
     subprocess.run(args, capture_output=True)
     _wait_for_health([f"{api_url}/health"], timeout=60)
 
@@ -879,6 +879,8 @@ def _configure_insightclaw_step(
     # _configure_otel must run first — it writes diagnostics.otel.enabled=True
     # and the OTLP endpoint that the openclaw gateway reads to activate its
     # exporter. Without it, no OTEL data flows even if InsightClaw is installed.
+    # The gateway restart is also gated: no config was written on failure, so
+    # restarting it would only disconnect active agent SSE connections for nothing.
     if _configure_otel(port=collector_port, profile=profile, container=container):
         if _install_insightclaw(profile=profile, container=container):
             _configure_insightclaw(
@@ -887,7 +889,7 @@ def _configure_insightclaw_step(
                 profile=profile,
                 container=container,
             )
-    _restart_gateway_if_needed(profile, container)
+        _restart_gateway_if_needed(profile, container)
 
 
 @doc_ref(

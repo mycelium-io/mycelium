@@ -120,8 +120,28 @@ CREATE INDEX IF NOT EXISTS idx_spans_host ON spans(host);
 
 _DEFAULT_RETENTION_DAYS = 7
 
+
 # InsightClaw deep-observability histogram metric name → internal key mapping.
 # Defined at module level so it is not rebuilt on every _process_metric call.
+def _merge_histograms(hs: list[dict]) -> dict:
+    """Merge cumulative histogram snapshots from multiple agents.
+
+    Each entry carries the agent's running total (count, sum, min, max) since
+    process start. Merging means summing counts/sums and taking the extreme
+    min/max across all agents.
+    """
+    count = sum(h["count"] for h in hs)
+    total = sum(h["sum"] for h in hs)
+    mins = [h["min"] for h in hs if h.get("min") is not None]
+    maxes = [h["max"] for h in hs if h.get("max") is not None]
+    return {
+        "count": count,
+        "sum": total,
+        "min": min(mins) if mins else None,
+        "max": max(maxes) if maxes else None,
+    }
+
+
 _IC_HISTOGRAM_MAP: dict[str, str] = {
     "openclaw.llm.duration": "llm_duration",
     "openclaw.tool.duration": "tool_duration",
@@ -917,10 +937,13 @@ class MetricsStore:
                     )
                     short = name.split("openclaw.llm.")[1]  # requests / errors / tokens.*
                     ic_llm = counters["insightclaw"]["llm"]
-                    ic_llm[short] = ic_llm.get(short, 0) + value
                     if agent:
-                        ab = ic_llm["by_agent"].setdefault(agent, {})
-                        ab[short] = ab.get(short, 0) + value
+                        # Replace per-agent value (CUMULATIVE: each push is the running total).
+                        ic_llm["by_agent"].setdefault(agent, {})[short] = value
+                        # Top-level = sum of current per-agent totals.
+                        ic_llm[short] = sum(d.get(short, 0) for d in ic_llm["by_agent"].values())
+                    else:
+                        ic_llm[short] = value
 
                 elif name in ("openclaw.tool.calls", "openclaw.tool.errors"):
                     agent = str(
@@ -928,10 +951,11 @@ class MetricsStore:
                     )
                     short = name.split("openclaw.tool.")[1]
                     ic_tool = counters["insightclaw"]["tool"]
-                    ic_tool[short] = ic_tool.get(short, 0) + value
                     if agent:
-                        ab = ic_tool["by_agent"].setdefault(agent, {})
-                        ab[short] = ab.get(short, 0) + value
+                        ic_tool["by_agent"].setdefault(agent, {})[short] = value
+                        ic_tool[short] = sum(d.get(short, 0) for d in ic_tool["by_agent"].values())
+                    else:
+                        ic_tool[short] = value
 
                 elif name in (
                     "openclaw.memory.read_events",
@@ -945,20 +969,24 @@ class MetricsStore:
                     )
                     short = name.split("openclaw.memory.")[1]
                     ic_mem = counters["insightclaw"]["memory"]
-                    ic_mem[short] = ic_mem.get(short, 0) + value
                     if agent:
-                        ab = ic_mem["by_agent"].setdefault(agent, {})
-                        ab[short] = ab.get(short, 0) + value
+                        ic_mem["by_agent"].setdefault(agent, {})[short] = value
+                        ic_mem[short] = sum(d.get(short, 0) for d in ic_mem["by_agent"].values())
+                    else:
+                        ic_mem[short] = value
 
                 elif name == "openclaw.session.resets":
                     agent = str(
                         attrs.get("gen_ai.agent.id", "") or attrs.get("openclaw.channel", "")
                     )
                     ic_sess = counters["insightclaw"]["session"]
-                    ic_sess["resets"] = ic_sess.get("resets", 0) + value
                     if agent:
-                        ab = ic_sess["by_agent"].setdefault(agent, {})
-                        ab["resets"] = ab.get("resets", 0) + value
+                        ic_sess["by_agent"].setdefault(agent, {})["resets"] = value
+                        ic_sess["resets"] = sum(
+                            d.get("resets", 0) for d in ic_sess["by_agent"].values()
+                        )
+                    else:
+                        ic_sess["resets"] = value
 
         elif metric.HasField("gauge"):
             for dp in metric.gauge.data_points:
@@ -1001,13 +1029,22 @@ class MetricsStore:
                 # ── InsightClaw histograms ─────────────────────────────────
                 ic_key = _IC_HISTOGRAM_MAP.get(name)
                 if ic_key:
-                    histograms["insightclaw"][ic_key] = update
                     agent = str(
                         attrs.get("gen_ai.agent.id", "") or attrs.get("openclaw.channel", "")
                     )
                     if agent:
+                        # Replace per-agent snapshot (CUMULATIVE temporality).
                         agent_h = histograms["insightclaw"]["by_agent"].setdefault(agent, {})
                         agent_h[ic_key] = update
+                        # Merge all per-agent snapshots for the top-level aggregate.
+                        all_snapshots = [
+                            d[ic_key]
+                            for d in histograms["insightclaw"]["by_agent"].values()
+                            if ic_key in d
+                        ]
+                        histograms["insightclaw"][ic_key] = _merge_histograms(all_snapshots)
+                    else:
+                        histograms["insightclaw"][ic_key] = update
 
     def _process_span(self, span) -> None:
         if span.name != "openclaw.model.usage":
