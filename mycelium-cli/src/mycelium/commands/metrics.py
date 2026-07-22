@@ -3606,7 +3606,7 @@ def _render_cost_estimates(
                         f"    [dim]{label}[/dim]",
                         f"[dim]{_fmt_num(p_total)}[/dim]",
                         f"[dim]{_fmt_cost(p_cost)}[/dim]",
-                        "",
+                        "[dim]est. (engine pricing)[/dim]",
                     )
 
         # Per-room breakdown under CFN (#297). Sessions of the same parent
