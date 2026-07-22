@@ -440,12 +440,16 @@ class TraceStore:
                 "FROM spans WHERE host != '' GROUP BY host ORDER BY last_seen DESC"
             ).fetchall()
 
+            # openclaw.agent is the real per-agent id; openclaw.channel (the
+            # earlier key here) is the channel *kind* (mycelium-room, matrix,
+            # ...), not an agent identity — diagnostics-otel sets both on
+            # every model-usage span, see recordModelUsage.
             agents_rows = conn.execute(
-                "SELECT host, json_extract(attributes, '$.\"openclaw.channel\"') AS agent "
+                "SELECT host, json_extract(attributes, '$.\"openclaw.agent\"') AS agent "
                 "FROM spans "
                 "WHERE host != '' "
-                "AND json_extract(attributes, '$.\"openclaw.channel\"') IS NOT NULL "
-                "AND json_extract(attributes, '$.\"openclaw.channel\"') != '' "
+                "AND json_extract(attributes, '$.\"openclaw.agent\"') IS NOT NULL "
+                "AND json_extract(attributes, '$.\"openclaw.agent\"') != '' "
                 "GROUP BY host, agent"
             ).fetchall()
 
@@ -871,7 +875,11 @@ class MetricsStore:
 
                 if name == "openclaw.tokens":
                     token_type = attrs.get("openclaw.token", "total")
-                    agent = attrs.get("openclaw.channel", "")
+                    # openclaw.agent is the real per-agent id (diagnostics-otel's
+                    # recordModelUsage sets both this and openclaw.channel on every
+                    # data point) — openclaw.channel is the channel *kind*
+                    # (mycelium-room, matrix, ...), not an agent identity.
+                    agent = attrs.get("openclaw.agent", "")
                     model = attrs.get("openclaw.model", "")
 
                     if token_type in counters["tokens"]["total"]:
@@ -888,7 +896,7 @@ class MetricsStore:
                             bucket[token_type] = value
 
                 elif name == "openclaw.cost.usd":
-                    agent = attrs.get("openclaw.channel", "")
+                    agent = attrs.get("openclaw.agent", "")
                     model = attrs.get("openclaw.model", "")
                     counters["cost_usd"]["total"] = value
                     if agent:

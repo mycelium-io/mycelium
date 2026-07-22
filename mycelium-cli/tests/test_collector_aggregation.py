@@ -123,25 +123,45 @@ def _push_tokens(
     store: MetricsStore,
     *,
     host: str,
-    channel: str,
+    agent: str,
     input_tokens: int = 0,
     output_tokens: int = 0,
 ) -> None:
-    """Push a pair of OTLP ``openclaw.tokens`` samples for one host."""
+    """Push a pair of OTLP ``openclaw.tokens`` samples for one host.
+
+    Sets both ``openclaw.agent`` (what ``by_agent`` buckets on) and
+    ``openclaw.channel`` (the channel kind — mycelium-room, matrix, ... —
+    a different attribute diagnostics-otel sets on the same data point, not
+    an agent identity) so tests exercise the real dual-attribute shape.
+    """
     metric = _SumMetric(
         "openclaw.tokens",
         [
-            _DataPoint(input_tokens, {"openclaw.token": "input", "openclaw.channel": channel}),
-            _DataPoint(output_tokens, {"openclaw.token": "output", "openclaw.channel": channel}),
+            _DataPoint(
+                input_tokens,
+                {
+                    "openclaw.token": "input",
+                    "openclaw.agent": agent,
+                    "openclaw.channel": "mycelium-room",
+                },
+            ),
+            _DataPoint(
+                output_tokens,
+                {
+                    "openclaw.token": "output",
+                    "openclaw.agent": agent,
+                    "openclaw.channel": "mycelium-room",
+                },
+            ),
         ],
     )
     store._process_metric(metric, host)
 
 
-def _push_cost(store: MetricsStore, *, host: str, channel: str, value: float) -> None:
+def _push_cost(store: MetricsStore, *, host: str, agent: str, value: float) -> None:
     metric = _SumMetric(
         "openclaw.cost.usd",
-        [_DataPoint(value, {"openclaw.channel": channel})],
+        [_DataPoint(value, {"openclaw.agent": agent, "openclaw.channel": "mycelium-room"})],
     )
     store._process_metric(metric, host)
 
@@ -170,24 +190,39 @@ def _push_run_duration_histogram(
 # ── tokens: cross-host aggregation ──────────────────────────────────
 
 
-def test_tokens_by_channel_sums_across_hosts() -> None:
-    """``mycelium-room`` tokens pushed by three hosts must sum, not overwrite.
+def test_tokens_by_agent_sums_across_hosts() -> None:
+    """``agent-x`` tokens pushed by three hosts must sum, not overwrite.
 
     This is the bug that motivated the per-host bucketing: before the
-    fix the hub's ``counters.tokens.by_agent.mycelium-room.input`` was
+    fix the hub's ``counters.tokens.by_agent.agent-x.input`` was
     set to whichever spoke pushed last, masking the cluster total.
     """
     store = MetricsStore()
 
     # Each host's OTel SDK reports its own running cumulative total.
-    _push_tokens(store, host="oclw-3", channel="mycelium-room", input_tokens=8_342_843)
-    _push_tokens(store, host="oclw-4", channel="mycelium-room", input_tokens=17_898)
-    _push_tokens(store, host="oclw-5", channel="mycelium-room", input_tokens=5_904_558)
+    _push_tokens(store, host="oclw-3", agent="agent-x", input_tokens=8_342_843)
+    _push_tokens(store, host="oclw-4", agent="agent-x", input_tokens=17_898)
+    _push_tokens(store, host="oclw-5", agent="agent-x", input_tokens=5_904_558)
 
     snap = store.to_dict()
     by_agent = snap["counters"]["tokens"]["by_agent"]
 
-    assert by_agent["mycelium-room"]["input"] == 8_342_843 + 17_898 + 5_904_558
+    assert by_agent["agent-x"]["input"] == 8_342_843 + 17_898 + 5_904_558
+
+
+def test_tokens_channel_only_does_not_populate_by_agent() -> None:
+    """Regression guard: openclaw.channel is the channel *kind*
+    (mycelium-room, matrix, ...), not an agent identity. A data point
+    carrying only openclaw.channel (no openclaw.agent) must not be bucketed
+    under the channel name in by_agent — that was the original bug."""
+    store = MetricsStore()
+    metric = _SumMetric(
+        "openclaw.tokens",
+        [_DataPoint(100, {"openclaw.token": "input", "openclaw.channel": "mycelium-room"})],
+    )
+    store._process_metric(metric, "oclw-3")
+
+    assert store.to_dict()["counters"]["tokens"]["by_agent"] == {}
 
 
 def test_tokens_total_sums_across_hosts() -> None:
@@ -209,13 +244,13 @@ def test_tokens_total_sums_across_hosts() -> None:
     assert snap["counters"]["tokens"]["total"]["total"] == 3500
 
 
-def test_tokens_by_channel_disjoint_channels_per_host() -> None:
-    """Hosts can report different channels; aggregation preserves all of them."""
+def test_tokens_by_agent_disjoint_agents_per_host() -> None:
+    """Hosts can report different agents; aggregation preserves all of them."""
     store = MetricsStore()
 
-    _push_tokens(store, host="oclw-3", channel="external", input_tokens=100, output_tokens=10)
-    _push_tokens(store, host="oclw-4", channel="cfn", input_tokens=200, output_tokens=20)
-    _push_tokens(store, host="oclw-5", channel="external", input_tokens=300, output_tokens=30)
+    _push_tokens(store, host="oclw-3", agent="external", input_tokens=100, output_tokens=10)
+    _push_tokens(store, host="oclw-4", agent="cfn", input_tokens=200, output_tokens=20)
+    _push_tokens(store, host="oclw-5", agent="external", input_tokens=300, output_tokens=30)
 
     by_agent = store.to_dict()["counters"]["tokens"]["by_agent"]
     assert by_agent["external"]["input"] == 100 + 300
@@ -230,10 +265,10 @@ def test_tokens_repushed_from_same_host_overwrites_within_host() -> None:
     """
     store = MetricsStore()
 
-    _push_tokens(store, host="oclw-3", channel="external", input_tokens=100)
-    _push_tokens(store, host="oclw-4", channel="external", input_tokens=200)
+    _push_tokens(store, host="oclw-3", agent="external", input_tokens=100)
+    _push_tokens(store, host="oclw-4", agent="external", input_tokens=200)
     # oclw-3 pushes again with a larger cumulative value.
-    _push_tokens(store, host="oclw-3", channel="external", input_tokens=150)
+    _push_tokens(store, host="oclw-3", agent="external", input_tokens=150)
 
     by_agent = store.to_dict()["counters"]["tokens"]["by_agent"]
     assert by_agent["external"]["input"] == 150 + 200
@@ -245,8 +280,8 @@ def test_tokens_repushed_from_same_host_overwrites_within_host() -> None:
 def test_cost_usd_sums_across_hosts() -> None:
     store = MetricsStore()
 
-    _push_cost(store, host="oclw-3", channel="external", value=1.25)
-    _push_cost(store, host="oclw-5", channel="external", value=0.75)
+    _push_cost(store, host="oclw-3", agent="external", value=1.25)
+    _push_cost(store, host="oclw-5", agent="external", value=0.75)
 
     snap = store.to_dict()
     assert snap["counters"]["cost_usd"]["by_agent"]["external"] == pytest.approx(2.00)
@@ -302,8 +337,8 @@ def test_snapshot_exposes_counters_by_host_for_persistence() -> None:
     can persist them and reload without re-aggregating (which would
     double-count once any host pushes again)."""
     store = MetricsStore()
-    _push_tokens(store, host="oclw-3", channel="external", input_tokens=10)
-    _push_tokens(store, host="oclw-5", channel="external", input_tokens=20)
+    _push_tokens(store, host="oclw-3", agent="external", input_tokens=10)
+    _push_tokens(store, host="oclw-5", agent="external", input_tokens=20)
 
     snap = store.to_dict()
     assert "counters_by_host" in snap
@@ -317,8 +352,8 @@ def test_unknown_host_does_not_clobber_known_hosts() -> None:
     bucket rather than overwriting other hosts' buckets."""
     store = MetricsStore()
 
-    _push_tokens(store, host="oclw-3", channel="external", input_tokens=500)
-    _push_tokens(store, host="", channel="external", input_tokens=42)
+    _push_tokens(store, host="oclw-3", agent="external", input_tokens=500)
+    _push_tokens(store, host="", agent="external", input_tokens=42)
 
     snap = store.to_dict()
     assert snap["counters_by_host"]["oclw-3"]["tokens"]["by_agent"]["external"]["input"] == 500
