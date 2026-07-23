@@ -183,9 +183,16 @@ async def send_message(
         raise HTTPException(status_code=500, detail="resolver returned (None, None)")
     await _notify_room(notify_channel, notify_payload)
 
-    # Events are machine feed, not negotiation replies — never let one be
-    # parsed as an agent's round response.
-    if coord and coord.state == "negotiating" and msg.message_type != MessageType.EVENT:
+    # Only "direct" carries the structured CFN AgentReply schema (see
+    # _parse_agent_reply's docstring). Everything else — broadcast narration
+    # in particular, which SKILL.md explicitly instructs agents to send
+    # alongside every direct reply ("Narrate before each command") — fails
+    # JSON parsing and falls through to _parse_agent_reply's blanket
+    # {"action": "reject"} fallback, silently overwriting a just-recorded
+    # accept/counter_offer the moment the narration message lands (bug
+    # confirmed 2026-07-23: correct accepts turned into fabricated
+    # "rejected_by_<handle>" outcomes fed back into the next tick).
+    if coord and coord.state == "negotiating" and msg.message_type == MessageType.DIRECT:
         from app.services import coordination
 
         asyncio.ensure_future(

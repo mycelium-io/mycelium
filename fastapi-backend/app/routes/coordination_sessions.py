@@ -32,6 +32,7 @@ from app.schemas import (
     MessageCreate,
     MessageListResponse,
     MessageRead,
+    MessageType,
 )
 
 logger = logging.getLogger(__name__)
@@ -156,7 +157,11 @@ async def post_session_message(
     except Exception as e:
         logger.warning("NOTIFY failed for session %s: %s", coord.id, e)
 
-    if coord.state == "negotiating":
+    # Only "direct" carries the structured CFN AgentReply schema — see
+    # messages.py's companion fix and _parse_agent_reply's docstring. Without
+    # this, narration text posted to a session room could clobber an
+    # already-recorded reply the same way (bug confirmed 2026-07-23).
+    if coord.state == "negotiating" and msg.message_type == MessageType.DIRECT:
         from app.services import coordination
 
         # coordination.on_agent_response still keys on display name during the

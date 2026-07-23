@@ -344,6 +344,47 @@ async def test_on_agent_response_ignores_unknown_handle():
     _cfn_state.clear()
 
 
+@pytest.mark.asyncio
+async def test_on_agent_response_narration_does_not_clobber_recorded_accept():
+    """Regression test for the 2026-07-23 bug: an agent's own narration text,
+    posted moments after its structured reply (SKILL.md instructs agents to
+    narrate every command), must not overwrite the reply already recorded
+    for this round. Content-structure check (this test) is the second half
+    of the fix alongside messages.py's message_type filter — defense in
+    depth so the bug can't recur via either gap alone."""
+    _cfn_state.clear()
+
+    state = _CfnRoundState(
+        session_id="room-narrate",
+        workspace_id="ws",
+        mas_id="mas",
+        agents=["alice", "bob"],
+        pending_replies={"alice": None, "bob": None},
+    )
+    _cfn_state["room-narrate"] = state
+
+    with patch.object(coord, "_cfn_decide_round", AsyncMock()) as mock_decide:
+        # Structured reply arrives first, as it does in production.
+        await on_agent_response("room-narrate", "alice", json.dumps({"action": "accept", "confidence": 0.9}))
+        assert _cfn_state["room-narrate"].pending_replies["alice"]["action"] == "accept"
+
+        # Narration for the same round arrives shortly after.
+        await on_agent_response(
+            "room-narrate",
+            "alice",
+            "Accepted with strong confidence. Waiting for CognitiveEngine's next round.",
+        )
+
+        # Must still be "accept" — the narration must not have clobbered it.
+        assert _cfn_state["room-narrate"].pending_replies["alice"]["action"] == "accept"
+        # Round isn't complete (bob hasn't replied) — narration must not have
+        # been counted as bob's reply either, nor triggered a decide.
+        assert _cfn_state["room-narrate"].pending_replies["bob"] is None
+        assert mock_decide.call_count == 0
+
+    _cfn_state.clear()
+
+
 # ── Tests: agreement parsing ──────────────────────────────────────────────────
 
 
@@ -883,6 +924,25 @@ def test_parse_agent_reply_offer_only_format_validates():
     content = json.dumps({"offer": {"wrong": "x"}})
     out = _parse_agent_reply("bob", content, current_offer={"price": "mid"})
     assert out["action"] == "invalid_keys"
+
+
+def test_parse_agent_reply_plain_text_marked_unparseable():
+    """Plain-text content (narration, not a reply attempt) must be flagged
+    distinctly from a genuine reject — on_agent_response relies on this flag
+    to avoid treating narration as a round contribution. Regression test for
+    the 2026-07-23 bug: an agent's broadcast narration ("Accepted with strong
+    confidence...") was silently overwriting its own just-recorded accept."""
+    out = _parse_agent_reply("alice", "Accepted with strong confidence. Waiting for next round.")
+    assert out["action"] == "reject"
+    assert out["unparseable"] is True
+
+
+def test_parse_agent_reply_invalid_action_value_not_marked_unparseable():
+    """Valid JSON with a bad action value is a genuine (if malformed) reply
+    attempt, not narration — must NOT get the unparseable flag."""
+    out = _parse_agent_reply("alice", json.dumps({"action": "maybe"}))
+    assert out["action"] == "reject"
+    assert "unparseable" not in out
 
 
 # ── Tests: on_agent_response — invalid keys ───────────────────────────────────

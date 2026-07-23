@@ -1637,7 +1637,17 @@ async def on_agent_response(room_name: str, handle: str, content: str) -> None:
         if handle in cfn.pending_replies:
             reply_data = _parse_agent_reply(handle, content, cfn.current_offer, cfn.issue_options)
             is_first_for_round = cfn.pending_replies[handle] is None
-            if (
+            if reply_data.get("unparseable"):
+                # Not a reply attempt at all — content that never parsed as
+                # JSON (e.g. narration text). Distinct from a genuine reject:
+                # a deliberate {"action": "reject"} is a real round
+                # contribution; unparseable content is not, and must never
+                # be allowed to overwrite an already-recorded accept/
+                # counter_offer for this round (bug confirmed 2026-07-23 —
+                # see messages.py:188 for the companion fix). No state
+                # change, no corrective tick; silently ignored.
+                pass
+            elif (
                 reply_data.get("action") == "counter_offer"
                 and cfn.next_proposer_id
                 and handle != cfn.next_proposer_id
@@ -1894,7 +1904,12 @@ def _parse_agent_reply(
     except (json.JSONDecodeError, TypeError):
         pass
 
-    return {"agent_id": handle, "participant_id": handle, "action": "reject"}
+    # Content never parsed as JSON at all — not a reply attempt (almost
+    # always narration text posted alongside a structured reply). The
+    # "action": "reject" here is a legacy shape for any caller that only
+    # checks .get("action"); on_agent_response checks the "unparseable" flag
+    # first and must not treat this as a genuine round contribution.
+    return {"agent_id": handle, "participant_id": handle, "action": "reject", "unparseable": True}
 
 
 async def _post_message(room_name: str, message_type: str, content: str) -> None:
