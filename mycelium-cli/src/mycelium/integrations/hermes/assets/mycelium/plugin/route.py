@@ -30,11 +30,23 @@ from .mentions import resolve_mentions
 
 @dataclass(frozen=True)
 class Dispatch:
-    """Hand a rendered prompt off to hermes's agent loop."""
+    """Hand a rendered prompt off to hermes's agent loop.
+
+    ``room_name`` is the room the *reply* must be posted back to — the
+    session sub-room for tick/consensus traffic, not the static configured
+    parent room. Without this, replies from a session sub-room tick land
+    back in the parent room instead (confirmed live 2026-07-23: a
+    negotiation reply posted to the parent room never reaches
+    on_agent_response, since messages.py's _resolve_target only treats
+    ``:session:``-suffixed names as coordination sessions — the agent's
+    reply is silently invisible to the negotiation, and the round times
+    out even though the agent replied correctly and promptly).
+    """
 
     agent_id: str
     sender: str
     content: str
+    room_name: str
     message_id: str | None = None
 
 
@@ -132,6 +144,7 @@ def _route_tick(cfg: RoomConfig, msg: dict[str, Any]) -> list[RouteAction]:
             agent_id=target,
             sender="CognitiveEngine",
             content=instruction,
+            room_name=room_name,
             message_id=msg.get("id"),
         )
     ]
@@ -344,6 +357,7 @@ def _route_consensus(cfg: RoomConfig, msg: dict[str, Any]) -> list[RouteAction]:
             agent_id=aid,
             sender="CognitiveEngine",
             content=f"{_identity_preamble(aid, session_room_name)}\n\n{summary}",
+            room_name=session_room_name,
             message_id=msg.get("id"),
         )
         for aid in cfg.agents
@@ -436,11 +450,17 @@ def _route_broadcast(cfg: RoomConfig, msg: dict[str, Any]) -> list[RouteAction]:
         if not recipients:
             return [Ignore("no non-sender agents in broadcast mode")]
 
+    # Broadcasts can arrive via a session sub-room's SSE too (narration
+    # posted mid-negotiation), so use the actual room the message came from
+    # rather than always the static configured parent — same reasoning as
+    # _route_tick/_route_consensus.
+    room_name = msg.get("room_name") or cfg.room
     return [
         Dispatch(
             agent_id=aid,
             sender=sender,
-            content=f"{_identity_preamble(aid, cfg.room)}\n\n{content}",
+            content=f"{_identity_preamble(aid, room_name)}\n\n{content}",
+            room_name=room_name,
             message_id=msg.get("id"),
         )
         for aid in recipients

@@ -292,7 +292,32 @@ def test_route_message_tick_dispatches_to_target(route_module) -> None:
     assert len(dispatches) == 1
     assert dispatches[0].agent_id == "alice"
     assert dispatches[0].sender == "CognitiveEngine"
+    assert dispatches[0].room_name == "demo"
     assert "structured negotiation in room demo" in dispatches[0].content
+
+
+def test_route_message_tick_dispatches_to_session_sub_room(route_module) -> None:
+    # Regression test: a tick delivered via a session sub-room's own SSE
+    # subscription (msg.room_name = "demo:session:42", not the parent
+    # "demo") must produce a Dispatch keyed by that session sub-room, so
+    # the reply posts back to the coordination session instead of the
+    # parent room. Confirmed live 2026-07-23: a genuine, promptly-sent
+    # reply posted to the parent room (because Dispatch had no room field
+    # and adapter.py fell back to the static configured room) never
+    # reaches on_agent_response — the round times out despite the agent
+    # replying correctly.
+    cfg = route_module.RoomConfig(room="demo", agents=("alice",), require_mention=True)
+    msg = {
+        "id": "m1",
+        "room_name": "demo:session:42",
+        "message_type": "coordination_tick",
+        "content": '{"payload": {"participant_id": "alice", "round": 1, "action": "respond", '
+        '"can_counter_offer": false, "current_offer": {}}}',
+    }
+    actions = route_module.route_message(cfg, msg, set())
+    dispatches = [a for a in actions if isinstance(a, route_module.Dispatch)]
+    assert len(dispatches) == 1
+    assert dispatches[0].room_name == "demo:session:42"
 
 
 def test_route_message_tick_for_non_member_is_ignored(route_module) -> None:
@@ -319,6 +344,9 @@ def test_route_message_consensus_fans_out(route_module) -> None:
     actions = route_module.route_message(cfg, msg, set())
     dispatches = [a for a in actions if isinstance(a, route_module.Dispatch)]
     assert {d.agent_id for d in dispatches} == {"alice", "bob"}
+    # Every dispatch must target the session sub-room, not the parent
+    # "demo" — otherwise the consensus reply is invisible to the CE.
+    assert {d.room_name for d in dispatches} == {"demo:session:42"}
     # Each recipient's content gets a personalized identity preamble.
     by_agent = {d.agent_id: d.content for d in dispatches}
     assert by_agent["alice"].startswith(
@@ -396,6 +424,7 @@ def test_route_message_broadcast_require_mention_gates(route_module) -> None:
     actions = route_module.route_message(cfg, msg, set())
     dispatches = [a for a in actions if isinstance(a, route_module.Dispatch)]
     assert [d.agent_id for d in dispatches] == ["alice"]
+    assert dispatches[0].room_name == "demo"
     # Identity preamble is prepended so the agent knows what handle to use
     # in any CLI command it issues in response.
     assert dispatches[0].content.startswith("[mycelium-room] You are @alice in room demo.\n\n")
@@ -416,8 +445,30 @@ def test_route_message_broadcast_open_mode_excludes_sender(route_module) -> None
     actions = route_module.route_message(cfg, msg, set())
     dispatches = [a for a in actions if isinstance(a, route_module.Dispatch)]
     assert [d.agent_id for d in dispatches] == ["bob"]
+    assert dispatches[0].room_name == "demo"
     # Open mode still personalizes the dispatch per recipient.
     assert dispatches[0].content.startswith("[mycelium-room] You are @bob in room demo.\n\n")
+
+
+def test_route_message_broadcast_in_session_sub_room_targets_session(route_module) -> None:
+    """Narration broadcast during a negotiation arrives via the session
+    sub-room's own SSE (msg.room_name = "demo:session:42"); the dispatch
+    must target that session room, not the static parent, for the same
+    reason ticks and consensus do."""
+    cfg = route_module.RoomConfig(room="demo", agents=("alice", "bob"), require_mention=False)
+    msg = {
+        "id": "b1",
+        "room_name": "demo:session:42",
+        "message_type": "broadcast",
+        "sender_handle": "alice",
+        "content": "narrating my next move",
+    }
+    actions = route_module.route_message(cfg, msg, set())
+    dispatches = [a for a in actions if isinstance(a, route_module.Dispatch)]
+    assert dispatches[0].room_name == "demo:session:42"
+    assert dispatches[0].content.startswith(
+        "[mycelium-room] You are @bob in room demo:session:42.\n\n"
+    )
 
 
 # ── mentions ────────────────────────────────────────────────────────────────

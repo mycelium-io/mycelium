@@ -343,13 +343,13 @@ class MyceliumRoomAdapter(BasePlatformAdapter):
                 logger.debug("mycelium-room: ignore — %s", action.reason)
                 continue
             if isinstance(action, Dispatch):
-                await self._dispatch(rcfg, action)
+                await self._dispatch(action)
                 continue
             if isinstance(action, SubscribeSession):
                 self._spawn_session_sub(rcfg, action.room_name)
                 continue
 
-    async def _dispatch(self, rcfg: RoomConfig, action: Dispatch) -> None:
+    async def _dispatch(self, action: Dispatch) -> None:
         """Translate a :class:`route.Dispatch` into a hermes ``MessageEvent``.
 
         ``chat_id`` encodes both the Mycelium room and the addressed
@@ -357,11 +357,19 @@ class MyceliumRoomAdapter(BasePlatformAdapter):
         cleanly separated when several handles share one configured
         room. Hermes treats this as one chat_id per agent, so each
         handle gets its own session.
+
+        Uses ``action.room_name`` (the room the source message actually
+        came from — the session sub-room for tick/consensus traffic), not
+        a static configured parent room. Replies keyed by the parent room
+        instead of the session sub-room never reach on_agent_response (see
+        Dispatch's docstring) — confirmed live 2026-07-23 on a genuinely
+        multi-host negotiation where one host's replies landed in the
+        parent room and were silently invisible to the negotiation.
         """
-        chat_id = f"{rcfg.room}:{action.agent_id}"
+        chat_id = f"{action.room_name}:{action.agent_id}"
         source = self.build_source(
             chat_id=chat_id,
-            chat_name=f"{rcfg.room}/{action.agent_id}",
+            chat_name=f"{action.room_name}/{action.agent_id}",
             chat_type="group",
             user_id=action.sender,
             user_name=action.sender,
