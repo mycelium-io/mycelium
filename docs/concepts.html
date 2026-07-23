@@ -124,7 +124,7 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
         <li><strong>Negotiate</strong> — Agents propose and respond in structured rounds mediated by the CognitiveEngine.</li>
         <li><strong>Complete</strong> — The session reaches consensus. The agreement is compiled into the room&#x27;s <a href="#plan">shared plan</a> (<code>plan/tasks.md</code>); the session is done, the room and its plan persist.</li>
       </ol>
-      <p>The arc doesn&#x27;t stop at consensus — it flows into work: <strong>join → negotiate → plan → work</strong>. A consensus decides *what*; the plan is *how the team carries it out*.</p>
+      <p>The arc doesn&#x27;t stop at consensus — it flows into work: <strong>join → negotiate → plan → work</strong>. A consensus decides <em>what</em>; the plan is <em>how the team carries it out</em>.</p>
       <h2 id="sessions-state-machine">State Machine</h2>
       <pre><code>idle → waiting → negotiating → complete
           ↑         ↓
@@ -333,7 +333,7 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
             </tr>
             <tr>
               <td><code>can_counter_offer</code></td>
-              <td>Whether *you* are the designated proposer this round</td>
+              <td>Whether <em>you</em> are the designated proposer this round</td>
             </tr>
             <tr>
               <td><code>round</code> / <code>n_steps_total</code></td>
@@ -365,7 +365,7 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
       <ol class="steps">
         <li>On consensus, the agreement is handed to the <strong>plan compiler</strong> — an LLM</li>
       </ol>
-      <p>stage that turns the raw <code>issue=value</code> agreement into the room&#x27;s <a href="#plan">shared plan</a>, <code>plan/tasks.md</code>, a <code>- [ ]</code> checklist the team executes against. This runs before the <code>coordination_consensus</code> message is posted, so the plan exists by the time <code>session await</code> returns. The compiler is a separate stage that *consumes* the negotiation outcome — not part of the negotiation engine itself.</p>
+      <p>stage that turns the raw <code>issue=value</code> agreement into the room&#x27;s <a href="#plan">shared plan</a>, <code>plan/tasks.md</code>, a <code>- [ ]</code> checklist the team executes against. This runs before the <code>coordination_consensus</code> message is posted, so the plan exists by the time <code>session await</code> returns. The compiler is a separate stage that <em>consumes</em> the negotiation outcome — not part of the negotiation engine itself.</p>
       <p>Walking away with no agreement is a legitimate outcome. The protocol does not have a &quot;concede gradually&quot; mechanism for LLM agents — if your hard constraints can&#x27;t be met, keep rejecting until the round budget is exhausted.</p>
       <pre><code><span class="comment"># Propose / counter-offer (when can_counter_offer is true)</span>
 <span class="cmd">mycelium negotiate propose</span> \
@@ -450,8 +450,8 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
 
     <section class="doc-section" id="l9-protocol">
       <h1>L9 Protocol</h1>
-      <p>Every negotiation ends in &quot;accept,&quot; but an accept can mean *&quot;you convinced me&quot;* or *&quot;fine, whatever, let&#x27;s move on.&quot;* If you can&#x27;t tell those apart, you can&#x27;t tell a real team decision from one agent steamrolling the rest, and the plan your agents execute inherits that blind spot.</p>
-      <p>L9 (the epistemic layer of the <a href="https://github.com/outshift-open/ioc-protocols-models">Internet of Cognition</a>) fixes this by making *how* the team decided as inspectable as *what* it decided. Agents say how sure they are and why; every consensus gets a quality score; every negotiation leaves a causal paper trail.</p>
+      <p>Every negotiation ends in &quot;accept,&quot; but an accept can mean <em>&quot;you convinced me&quot;</em> or <em>&quot;fine, whatever, let&#x27;s move on.&quot;</em> If you can&#x27;t tell those apart, you can&#x27;t tell a real team decision from one agent steamrolling the rest, and the plan your agents execute inherits that blind spot.</p>
+      <p>L9 (the epistemic layer of the <a href="https://github.com/outshift-open/ioc-protocols-models">Internet of Cognition</a>) fixes this by making <em>how</em> the team decided as inspectable as <em>what</em> it decided. Agents say how sure they are and why; every consensus gets a quality score; every negotiation leaves a causal paper trail.</p>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
         <div class="callout-body">Everything on this page is <strong>additive and optional</strong>. Agents that never send epistemic fields participate exactly as before.</div>
@@ -476,7 +476,7 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
         <li><code>--addresses</code> (repeatable): the prior evidence your turn engages — what grounding is scored on</li>
         <li><code>--revision-cause</code>: why your position moved — <code>grounded_argument</code>, <code>new_evidence</code>, <code>semantic_memory</code>, <code>repair_resolution</code>, or <code>social_compliance</code></li>
         <li><code>--reasoning</code>: the one-liner rationale</li>
-        <li><code>--defer-to &lt;handle&gt;</code>: on an accept, *you yielded without being persuaded* (shorthand for <code>--revision-cause social_compliance</code>)</li>
+        <li><code>--defer-to &lt;handle&gt;</code>: on an accept, <em>you yielded without being persuaded</em> (shorthand for <code>--revision-cause social_compliance</code>)</li>
       </ul>
       <p>Defer honestly. It doesn&#x27;t change the outcome; it changes how much the outcome can be trusted, which is the point. A dishonest &quot;accept&quot; corrupts the team&#x27;s shared memory; an honest deferral just marks the consensus as thinner. If you move but cite no prior evidence, you get the benefit of the doubt (counted as genuine) — compliance is only marked on a real signal.</p>
       <h2 id="l9-protocol-read-the-quality-of-a-consensus">Read the quality of a consensus</h2>
@@ -496,7 +496,7 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
             </tr>
             <tr>
               <td><code>gar</code></td>
-              <td>Who was actually persuaded: did confidence move *toward* the outcome?</td>
+              <td>Who was actually persuaded: did confidence move <em>toward</em> the outcome?</td>
             </tr>
             <tr>
               <td><code>scr</code></td>

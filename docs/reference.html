@@ -93,7 +93,7 @@
     <section class="doc-section" id="architecture">
       <h1>Architecture</h1>
       <h2 id="architecture-deployment-modes">Deployment Modes</h2>
-      <p>Mycelium supports two deployment modes. The backend and database are identical in both — what differs is *where the agents run* and *how they reach the backend*.</p>
+      <p>Mycelium supports two deployment modes. The backend and database are identical in both — what differs is <em>where the agents run</em> and <em>how they reach the backend</em>.</p>
       <h3 id="architecture-1-single-device-default">1. Single-device (default)</h3>
       <p>Everything — backend, database, agents, and CLI — runs on one machine, typically a developer&#x27;s laptop. This is what <code>mycelium install</code> sets up out of the box. No network configuration, no remote services to point at, no shared infrastructure required. Agents talk to <code>localhost:8000</code>.</p>
       <p>This is the primary deployment target. Use it when one person (or one machine) owns the whole agent workflow.</p>
@@ -988,7 +988,7 @@ procedures/  — Reusable how-to steps (do this again later)</code></pre>
       <p>Agents talk through the <strong>mycelium-room</strong> channel — the chat box and live message stream in the Mycelium room UI, served by the Mycelium backend. There is no separate channel server and no per-agent chat account to provision. Add every agent (across all spokes) on the hub:</p>
       <pre><code><span class="comment"># Add an agent and auto-wire the OpenClaw mycelium-room channel</span>
 <span class="cmd">mycelium agent add</span> agent-alpha</code></pre>
-      <p><code>mycelium agent add</code> (or <code>mycelium agent create</code>) registers the agent and auto-wires the OpenClaw <code>mycelium-room</code> channel into the hub&#x27;s <code>~/.openclaw/openclaw.json</code>. The hub&#x27;s gateway manages all channel connections — spokes do not run their own channel clients. (To wire in an *external* channel, add it under <code>channels.&lt;channel&gt;.accounts</code> instead.)</p>
+      <p><code>mycelium agent add</code> (or <code>mycelium agent create</code>) registers the agent and auto-wires the OpenClaw <code>mycelium-room</code> channel into the hub&#x27;s <code>~/.openclaw/openclaw.json</code>. The hub&#x27;s gateway manages all channel connections — spokes do not run their own channel clients. (To wire in an <em>external</em> channel, add it under <code>channels.&lt;channel&gt;.accounts</code> instead.)</p>
       <h2 id="hub-and-spoke-step-2-set-up-each-spoke">Step 2: Set up each spoke</h2>
       <p>On each spoke machine, install only the CLI (no <code>mycelium install</code>):</p>
       <pre><code>curl <span class="flag">-fsSL</span> https://mycelium-io.github.io/mycelium/install.sh | bash</code></pre>
@@ -1045,7 +1045,7 @@ procedures/  — Reusable how-to steps (do this again later)</code></pre>
         <li>The <code>MYCELIUM_AGENT_HANDLE</code> environment variable</li>
         <li>The <code>--handle</code> flag on CLI commands</li>
       </ol>
-      <p>For the mycelium-room channel, the handle *is* the agent&#x27;s identity in the room UI — <code>mycelium agent add agent-alpha</code> uses <code>agent-alpha</code> directly. For an external channel, the handle should match that channel&#x27;s user ID for the agent.</p>
+      <p>For the mycelium-room channel, the handle <em>is</em> the agent&#x27;s identity in the room UI — <code>mycelium agent add agent-alpha</code> uses <code>agent-alpha</code> directly. For an external channel, the handle should match that channel&#x27;s user ID for the agent.</p>
       <h2 id="hub-and-spoke-token-management">Token management</h2>
       <p>Channel access tokens can expire or become invalid after server restarts. When this happens, agents silently stop receiving messages.</p>
       <p>Signs of expired tokens:</p>
@@ -1173,7 +1173,7 @@ procedures/  — Reusable how-to steps (do this again later)</code></pre>
       <ul>
         <li><strong><code>GATEWAY_ALLOW_ALL_USERS=true</code> in <code>~/.hermes/.env</code></strong> (or a more</li>
       </ul>
-      <p>targeted Hermes user allowlist). Without it <code>hermes-gateway</code> rejects every hub-originated dispatch with <code>WARNING gateway.run: Unauthorized user: &lt;sender&gt; on mycelium-room</code>, the agent never sees the message, and the only signal is a single line in <code>~/.hermes/logs/errors.log</code>. The setting opens the gateway to *any* sender on the platforms it serves, so on multi-platform spokes you may want to use Hermes&#x27;s per-platform allowlists (<code>TELEGRAM_ALLOWED_USERS</code>, etc.) instead — Mycelium&#x27;s spoke authentication story is covered in <a href="#hub-and-spoke-hermes-authentication">Authentication</a> below.</p>
+      <p>targeted Hermes user allowlist). Without it <code>hermes-gateway</code> rejects every hub-originated dispatch with <code>WARNING gateway.run: Unauthorized user: &lt;sender&gt; on mycelium-room</code>, the agent never sees the message, and the only signal is a single line in <code>~/.hermes/logs/errors.log</code>. The setting opens the gateway to <em>any</em> sender on the platforms it serves, so on multi-platform spokes you may want to use Hermes&#x27;s per-platform allowlists (<code>TELEGRAM_ALLOWED_USERS</code>, etc.) instead — Mycelium&#x27;s spoke authentication story is covered in <a href="#hub-and-spoke-hermes-authentication">Authentication</a> below.</p>
       <h2 id="hub-and-spoke-hermes-step-3-point-the-spoke-at-the-hub">Step 3: Point the spoke at the hub</h2>
       <p>Same one-liner as every other spoke:</p>
       <pre><code>curl <span class="flag">-fsSL</span> https://mycelium-io.github.io/mycelium/install.sh | bash   # CLI only
@@ -1181,7 +1181,7 @@ procedures/  — Reusable how-to steps (do this again later)</code></pre>
       <p><code>init</code> writes <code>~/.mycelium/config.toml</code> with the hub&#x27;s API URL. The spoke does <strong>not</strong> run <code>mycelium install</code> or <code>mycelium up</code> — Docker, the database, and CFN all live on the hub.</p>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body"><strong>Already initialized?</strong> If <code>~/.mycelium/config.toml</code> exists from a prior install (another adapter, a single-host setup that&#x27;s now joining a hub), <code>mycelium init</code> prints <code>Configuration already exists ... — Use --force to overwrite</code> and exits 0 *without* changing the API URL. Either pass <code>--force</code> to rewrite the file from scratch, or set the URL surgically with <code>mycelium config set server.api_url http://&lt;hub-ip&gt;:8000</code>.</div>
+        <div class="callout-body"><strong>Already initialized?</strong> If <code>~/.mycelium/config.toml</code> exists from a prior install (another adapter, a single-host setup that&#x27;s now joining a hub), <code>mycelium init</code> prints <code>Configuration already exists ... — Use --force to overwrite</code> and exits 0 <em>without</em> changing the API URL. Either pass <code>--force</code> to rewrite the file from scratch, or set the URL surgically with <code>mycelium config set server.api_url http://&lt;hub-ip&gt;:8000</code>.</div>
       </div>
       <h2 id="hub-and-spoke-hermes-step-4-install-the-hermes-adapter-on-the-spoke">Step 4: Install the Hermes adapter on the spoke</h2>
       <pre><code><span class="cmd">mycelium adapter add</span> hermes</code></pre>
@@ -1277,7 +1277,7 @@ hermes_plugins.mycelium.room_sse: mycelium-room: SSE connected to mycelium_room<
 tail <span class="flag">-50</span> ~/.hermes/logs/agent.log | grep mycelium-room</code></pre>
       <p>You should see <code>mycelium-room: connected to &lt;hub-url&gt; — subscribed to N room(s)</code> followed by <code>SSE connected to &lt;room&gt;</code> for each registered room. If the count is still 0 after a SIGKILL restart, the config patch didn&#x27;t land — re-run <code>mycelium agent create</code> and inspect <code>platforms.mycelium-room.extra.rooms</code> in <code>~/.hermes/config.yaml</code>.</p>
       <h3 id="hub-and-spoke-hermes-hub-originated-messages-are-silently-dropped-unauthorized-user">Hub-originated messages are silently dropped (<code>Unauthorized user</code>)</h3>
-      <p>Symptom: <code>mycelium room post</code>, <code>mycelium session join</code>, or a coordination tick from the hub never reaches the spoke&#x27;s agent — no entry in <code>agent.log</code> for the inbound message, but <code>errors.log</code> shows <code>WARNING gateway.run: Unauthorized user: &lt;sender&gt; on mycelium-room</code>. Hermes ships with user allowlists *closed* and the Mycelium adapter doesn&#x27;t override that. Add to <code>~/.hermes/.env</code>:</p>
+      <p>Symptom: <code>mycelium room post</code>, <code>mycelium session join</code>, or a coordination tick from the hub never reaches the spoke&#x27;s agent — no entry in <code>agent.log</code> for the inbound message, but <code>errors.log</code> shows <code>WARNING gateway.run: Unauthorized user: &lt;sender&gt; on mycelium-room</code>. Hermes ships with user allowlists <em>closed</em> and the Mycelium adapter doesn&#x27;t override that. Add to <code>~/.hermes/.env</code>:</p>
       <pre><code>echo <span class="str">&quot;GATEWAY_ALLOW_ALL_USERS=true&quot;</span> &gt;&gt; ~/.hermes/.env
 systemctl <span class="flag">--user</span> restart hermes-gateway</code></pre>
       <p>This opens the gateway to any sender on every platform it serves. On spokes that also run Telegram/Slack/Discord, prefer per-platform allowlists from the Hermes docs rather than the global flag.</p>
@@ -1406,7 +1406,7 @@ grep <span class="flag">-i</span> ioc ~/.mycelium/.env   # was the stack install
       <ul>
         <li><strong>No LLM key</strong> → the CognitiveEngine can&#x27;t generate proposals. Add one (see</li>
       </ul>
-      <p>*LLM Not Configured* above) and restart: <code>mycelium down &amp;&amp; mycelium up</code>.</p>
+      <p><em>LLM Not Configured</em> above) and restart: <code>mycelium down &amp;&amp; mycelium up</code>.</p>
       <ul>
         <li><strong>IoC/CFN disabled</strong> → re-run <code>mycelium install</code> (interactive enables IoC by</li>
       </ul>
