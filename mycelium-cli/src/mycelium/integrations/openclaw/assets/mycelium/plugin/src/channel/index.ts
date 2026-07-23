@@ -239,6 +239,7 @@ function executeAction(
             action.sender,
             action.content,
             action.messageId,
+            action.sessionRoom,
             log,
           ),
         { log },

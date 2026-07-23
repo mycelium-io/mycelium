@@ -25,8 +25,9 @@ export async function postToRoom(
   cfg: ChannelConfig,
   senderHandle: string,
   content: string,
+  targetRoom: string = cfg.room,
 ): Promise<boolean> {
-  const url = `${cfg.backendUrl}/api/rooms/${encodeURIComponent(cfg.room)}/messages`;
+  const url = `${cfg.backendUrl}/api/rooms/${encodeURIComponent(targetRoom)}/messages`;
   try {
     const res = await fetch(url, {
       method: "POST",

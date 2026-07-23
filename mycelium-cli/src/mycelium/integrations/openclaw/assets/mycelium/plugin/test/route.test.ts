@@ -123,7 +123,43 @@ describe("routeMessage — broadcast, requireMention=true", () => {
       sender: "human",
       content: "@julia-agent ping",
       messageId: "abc",
+      sessionRoom: "test-room",
     });
+  });
+
+  it("falls back to cfg.room for sessionRoom when the message has no room_name", () => {
+    // Plain chat in the channel's own room has no room_name on the raw
+    // message; sessionRoom must still resolve to something postToRoom/the
+    // OTel marker can use.
+    const actions = routeMessage(
+      baseCfg,
+      {
+        id: "abc2",
+        message_type: "broadcast",
+        sender_handle: "human",
+        content: "@julia-agent ping",
+      },
+      freshOwnIds(),
+    );
+    expect((actions[0] as any).sessionRoom).toBe("test-room");
+  });
+
+  it("uses the message's own room_name for sessionRoom when present", () => {
+    // A broadcast posted into a session sub-room (e.g. an agent chatting
+    // within an active negotiation) should attribute to that sub-room, not
+    // the channel's static home room.
+    const actions = routeMessage(
+      baseCfg,
+      {
+        id: "abc3",
+        message_type: "broadcast",
+        sender_handle: "human",
+        room_name: "test-room:session:xyz789",
+        content: "@julia-agent ping",
+      },
+      freshOwnIds(),
+    );
+    expect((actions[0] as any).sessionRoom).toBe("test-room:session:xyz789");
   });
 
   it("dispatches to multiple addressed agents in one broadcast", () => {
@@ -292,6 +328,27 @@ describe("routeMessage — coordination_tick", () => {
     expect(dispatch.messageId).toBe("tick-1");
   });
 
+  it("sets sessionRoom to the tick's session sub-room, not cfg.room", () => {
+    // This is the fix for extraction/mas_id misattribution: sessionKey stays
+    // pinned to cfg.room (agent's persistent conversation), but sessionRoom
+    // must carry the real coordination room so dispatch.ts's OTel marker and
+    // postToRoom target the actual session, not the channel's home room.
+    const actions = routeMessage(baseCfg, tickMsg("julia-agent"), freshOwnIds());
+    const dispatch = actions.find((a) => a.kind === "dispatch") as any;
+    expect(dispatch.sessionRoom).toBe("test-room:session:abc123");
+  });
+
+  it("falls back to cfg.room for sessionRoom when the tick has no room_name", () => {
+    const msg = {
+      id: "rootless-tick-2",
+      message_type: "coordination_tick",
+      content: JSON.stringify({ payload: { participant_id: "julia-agent", round: 1, action: "respond", current_offer: {} } }),
+    };
+    const actions = routeMessage(baseCfg, msg, freshOwnIds());
+    const dispatch = actions.find((a) => a.kind === "dispatch") as any;
+    expect(dispatch.sessionRoom).toBe("test-room");
+  });
+
   it("emits stash-return-address alongside dispatch when room_name names a session sub-room", () => {
     const actions = routeMessage(baseCfg, tickMsg("julia-agent"), freshOwnIds());
     const stash = actions.find((a) => a.kind === "stash-return-address") as any;
@@ -382,6 +439,15 @@ describe("routeMessage — coordination_consensus", () => {
     for (const action of actions) {
       if (action.kind === "dispatch") {
         expect(action.sender).toBe("CognitiveEngine");
+      }
+    }
+  });
+
+  it("sets sessionRoom on dispatch actions to the consensus's session sub-room", () => {
+    const actions = routeMessage(baseCfg, consensusMsg(), freshOwnIds());
+    for (const action of actions) {
+      if (action.kind === "dispatch") {
+        expect(action.sessionRoom).toBe("test-room:session:abc123");
       }
     }
   });

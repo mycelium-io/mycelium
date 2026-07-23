@@ -27,9 +27,14 @@ export async function dispatchToAgent(
   sender: string,
   content: string,
   messageId: string | undefined,
+  sessionRoom: string,
   log: Logger,
 ): Promise<void> {
   const openclawConfig = runtime.config.loadConfig();
+  // sessionKey stays pinned to cfg.room (the agent's one persistent OpenClaw
+  // conversation) deliberately — see channel/index.ts's participant-gating
+  // comment. Room-specific routing/attribution below uses sessionRoom
+  // instead, which is the actual mycelium room this dispatch is about.
   const sessionKey = buildSessionKey(agentId, cfg.room);
   const envelopeBody = `[${sender} in ${cfg.room}]: ${content}`;
 
@@ -38,7 +43,16 @@ export async function dispatchToAgent(
   // a coordination-session agent gets the plan via the tick payload.
   const plan = await fetchAgentContext(cfg.backendUrl, cfg.room, agentId);
   const planBlock = renderPlanBlock(plan.context, plan.generatedAt);
-  const bodyForAgent = planBlock ? `${planBlock}${content}` : content;
+  // Room marker: InsightClaw captures this body verbatim as span content
+  // (openclaw.session.key can't carry it — see session-key.ts — because it's
+  // pinned to the agent's persistent conversation, not the coordination room
+  // the tick is actually about). The mycelium-collector's CFN forwarder reads
+  // this marker back out of the captured content to resolve the correct
+  // mas_id before forwarding, instead of misattributing extraction to
+  // cfg.room. Placed first so it survives content truncation (which slices
+  // from the end — see openclaw-deep-observability's truncateCapturedContent).
+  const roomMarker = sessionRoom ? `[[mycelium-room:${sessionRoom}]]\n` : "";
+  const bodyForAgent = `${roomMarker}${planBlock ? planBlock : ""}${content}`;
 
   const ctx = runtime.channel.reply.finalizeInboundContext({
     Body: envelopeBody,
@@ -73,7 +87,7 @@ export async function dispatchToAgent(
         deliver: async (payload: ReplyPayload) => {
           const text = payload.text?.trim();
           if (!text) return;
-          const ok = await postToRoom(cfg, agentId, text);
+          const ok = await postToRoom(cfg, agentId, text, sessionRoom || cfg.room);
           if (ok) {
             log.info(
               `[${CHANNEL_ID}] ← ${agentId}: ${text.slice(0, 80)}${text.length > 80 ? "…" : ""}`,

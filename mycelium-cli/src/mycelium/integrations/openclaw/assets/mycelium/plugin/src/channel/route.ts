@@ -25,6 +25,12 @@ export type RouteAction =
       sender: string;
       content: string;
       messageId: string | undefined;
+      // The mycelium room this dispatch is actually about (a session
+      // sub-room for ticks/consensus, or cfg.room itself for plain chat).
+      // Threaded through to dispatchToAgent so outbound replies and the
+      // OTel content marker point at the real room instead of always
+      // falling back to the channel's static home room.
+      sessionRoom: string;
     }
   | { kind: "subscribe-session"; roomName: string }
   | { kind: "stash-return-address"; sessionRoom: string; agentId: string }
@@ -97,7 +103,8 @@ export function routeTick(cfg: ChannelConfig, msg: any): RouteAction[] {
     return [{ kind: "ignore", reason: `tick participant_id ${targetAgent} not in channel agents` }];
   }
 
-  const instruction = formatTickInstruction(tickData, msg.room_name ?? cfg.room, targetAgent);
+  const dispatchRoom = msg.room_name ?? cfg.room;
+  const instruction = formatTickInstruction(tickData, dispatchRoom, targetAgent);
 
   const actions: RouteAction[] = [];
 
@@ -120,6 +127,7 @@ export function routeTick(cfg: ChannelConfig, msg: any): RouteAction[] {
     sender: "CognitiveEngine",
     content: instruction,
     messageId: msg.id,
+    sessionRoom: dispatchRoom,
   });
 
   return actions;
@@ -334,6 +342,7 @@ export function routeConsensus(cfg: ChannelConfig, msg: any): RouteAction[] {
   }
 
   const summary = formatConsensusSummary(consensusData);
+  const dispatchRoom = msg.room_name ?? cfg.room;
 
   const actions: RouteAction[] = cfg.agents.map((agentId) => ({
     kind: "dispatch" as const,
@@ -341,6 +350,7 @@ export function routeConsensus(cfg: ChannelConfig, msg: any): RouteAction[] {
     sender: "CognitiveEngine",
     content: summary,
     messageId: msg.id,
+    sessionRoom: dispatchRoom,
   }));
 
   // Also notify each agent's home channel session (the Mycelium room, or an external channel)
@@ -466,11 +476,13 @@ export function routeBroadcast(cfg: ChannelConfig, msg: any): RouteAction[] {
     }
   }
 
+  const dispatchRoom = msg.room_name ?? cfg.room;
   return recipients.map((agentId) => ({
     kind: "dispatch" as const,
     agentId,
     sender,
     content,
     messageId: msg.id,
+    sessionRoom: dispatchRoom,
   }));
 }

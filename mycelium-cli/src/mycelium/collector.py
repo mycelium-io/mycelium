@@ -20,6 +20,7 @@ import copy
 import gzip
 import json
 import logging
+import re
 import socket
 import sqlite3
 import threading
@@ -1326,6 +1327,13 @@ def _room_from_session_key(key: str) -> str:
     The room is the 5th colon-delimited segment (index 4, split on the first 4
     colons only so room names containing colons are preserved).
     Returns an empty string if the key doesn't match the expected format.
+
+    Caveat: ``sessionKey`` is pinned to the channel's static home room
+    (``mycelium_room``) for every dispatch, regardless of which coordination
+    room a tick is actually about — see mycelium-cli's
+    ``integrations/openclaw/.../channel/session-key.ts``. This always
+    resolves to that static room; use ``_room_from_captured_content`` first
+    when available.
     """
     if not key or not key.startswith("agent:"):
         return ""
@@ -1335,6 +1343,43 @@ def _room_from_session_key(key: str) -> str:
         return ""
     room = parts[4]
     return room.strip()
+
+
+_ROOM_MARKER_RE = re.compile(r"\[\[mycelium-room:([^\]]+)\]\]")
+
+# Attributes InsightClaw captures the LLM-facing message text under, checked
+# in priority order. Only populated when the OpenClaw gateway has
+# captureContent enabled (see CLAUDE.md's InsightClaw section).
+_CAPTURED_CONTENT_ATTRS = (
+    "openclaw.entity.input",
+    "gen_ai.input.messages",
+    "ioa_observe.entity.input",
+)
+
+
+def _room_from_captured_content(attrs: dict) -> str:
+    """Extract the real coordination room from a room marker embedded in
+    captured span content, if present.
+
+    mycelium-cli's channel/dispatch.ts prepends ``[[mycelium-room:<room>]]``
+    to every tick/consensus/broadcast dispatch it sends an agent, specifically
+    because ``openclaw.session.key`` (see ``_room_from_session_key``) can't
+    carry this — it's pinned to the agent's persistent conversation, not the
+    coordination room a given tick is about. This is what makes correct
+    per-room mas_id resolution possible without touching sessionKey.
+
+    Returns an empty string if no marker is found (real mycelium_room chat
+    or captureContent disabled) — callers should fall back to
+    ``_room_from_session_key`` in that case.
+    """
+    for attr_name in _CAPTURED_CONTENT_ATTRS:
+        value = attrs.get(attr_name)
+        if not value:
+            continue
+        match = _ROOM_MARKER_RE.search(str(value))
+        if match:
+            return match.group(1).strip()
+    return ""
 
 
 class _CfnForwarder:
@@ -1393,10 +1438,18 @@ class _CfnForwarder:
             return {k: dict(v) for k, v in self._counters.items()}
 
     def _resolve_room(self, room: str) -> tuple[str, str]:
-        """Return (workspace_id, mas_id) for *room*, using the cache."""
+        """Return (workspace_id, mas_id) for *room*, using the cache.
+
+        *room* may be a session sub-room (``parent:session:short_id``) — a
+        coordination session's mas_id is always copied from its parent room's
+        at spawn time (see routes/sessions.py), and sessions have no row of
+        their own in the rooms table, so /api/rooms/{room} only understands
+        the parent name. Strip the suffix before lookup/caching so every
+        session under one parent room shares a single cache entry.
+        """
         import time
 
-        room_lower = room.lower()
+        room_lower = room.split(":session:", 1)[0].lower()
         now = time.monotonic()
         with self._cache_lock:
             cached = self._cache.get(room_lower)
@@ -1465,8 +1518,16 @@ class _CfnForwarder:
             for ss in rs.scope_spans:
                 for span in ss.spans:
                     attrs = _attrs_dict(span.attributes)
-                    session_key = str(attrs.get("openclaw.session.key", ""))
-                    room = _room_from_session_key(session_key)
+                    # Prefer the room marker embedded in captured content —
+                    # session.key is pinned to the channel's static home room
+                    # and can't tell one coordination room from another (see
+                    # _room_from_session_key). Falls back to session.key for
+                    # spans with no marker (real home-room chat, or
+                    # captureContent disabled).
+                    room = _room_from_captured_content(attrs)
+                    if not room:
+                        session_key = str(attrs.get("openclaw.session.key", ""))
+                        room = _room_from_session_key(session_key)
                     if room:
                         workspace_id, mas_id = self._resolve_room(room)
                     else:
