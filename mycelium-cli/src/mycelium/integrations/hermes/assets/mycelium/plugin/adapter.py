@@ -110,7 +110,19 @@ class MyceliumRoomAdapter(BasePlatformAdapter):
 
     # ── lifecycle ───────────────────────────────────────────────────────────
 
-    async def connect(self) -> bool:
+    async def connect(self, *, is_reconnect: bool = False) -> bool:  # noqa: ARG002
+        # is_reconnect distinguishes cold boot from the gateway's reconnect
+        # watcher re-establishing a dropped platform. Only relevant to
+        # adapters that buffer a server-side update queue across the outage
+        # (e.g. Telegram's Bot API) — mycelium-room has no such queue (SSE
+        # subscriptions are re-opened fresh either way), so per
+        # BasePlatformAdapter.connect's own docstring we're safe to ignore
+        # the flag. Confirmed live 2026-07-23: the base class added this
+        # keyword-only parameter upstream at some point; our override didn't
+        # accept it, so every reconnect attempt (any transient outage, not
+        # just a restart) raised TypeError and retried forever with
+        # exponential backoff, never succeeding — the platform could not
+        # recover from any disconnect once it happened.
         if not self._backend_url:
             logger.error(
                 "mycelium-room: backend_url is empty — set platforms.mycelium-room.extra.backend_url"
