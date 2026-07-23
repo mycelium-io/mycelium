@@ -19,7 +19,14 @@ services:
     # metrics tables. TimescaleDB is baked into the mycelium-db image
     # (Dockerfile.agensgraph); the published image must be rebuilt+republished
     # with it for the released cfn profile to start.
-    command: postgres -c max_locks_per_transaction=256 -c shared_preload_libraries=timescaledb
+    # max_connections=100 (Postgres default) is too tight for the number of
+    # long-lived pools sharing this instance (mycelium-backend's SSE LISTEN
+    # connections scale with active rooms/sessions, plus ioc-knowledge-memory-svc,
+    # ioc-cfn-svc, and the mgmt plane each hold their own pool). Bursts against
+    # the cap surfaced as `FATAL: sorry, too many clients already`, which
+    # silently drops any coordination_tick NOTIFY whose SSE listener hadn't
+    # reconnected yet (2026-07-22 incident).
+    command: postgres -c max_locks_per_transaction=256 -c shared_preload_libraries=timescaledb -c max_connections=300
     env_file:
       - path: ../.env
         required: false
@@ -323,6 +330,14 @@ services:
       KNOWLEDGE_MEMORY_SVC_URL: http://ioc-knowledge-memory-svc:9003
       COGNITION_ENGINE_SVC_URL: http://ioc-cfn-cognition-engine:9004
       MCP_PORT: 9001
+      # Per-attempt timeout for ioc-cfn-svc's client to ioc-knowledge-memory-svc
+      # (3 retries hardcoded client-side, so worst case is ~4x this). Default 30s
+      # is too tight under concurrent graph-write contention (the AgensGraph
+      # TM_Deleted race — see ioc-knowledge-memory's save() retry fix — can make
+      # a single knowledge-graph upsert take longer than 30s to finally succeed).
+      # Raised so ioc-cfn-svc waits long enough to see that eventual success
+      # instead of abandoning the request mid-flight.
+      MEMORY_CLIENT_TIMEOUT_SECONDS: ${MEMORY_CLIENT_TIMEOUT_SECONDS:-90}
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9002/api/internal/diagnostics/health || exit 1"]
       interval: 10s

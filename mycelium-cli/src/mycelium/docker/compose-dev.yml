@@ -67,6 +67,16 @@ services:
         required: false
 
   ioc-knowledge-memory-svc:
+    # Build from the local outshift-open/ioc-knowledge-memory checkout instead of
+    # pulling ghcr.io/outshift-open/ioc-knowledge-memory-svc, to test the save()
+    # retry fix for the AgensGraph TM_Deleted race (unrecognized heap_update
+    # status: 4) before it's merged upstream. Remove this override once that
+    # lands and a new image tag is pinned in compose.yml.
+    build:
+      context: /home/ubuntu/ioc-knowledge-memory
+      dockerfile: Dockerfile
+    pull_policy: never
+    image: ioc-knowledge-memory-svc:dev
     env_file:
       - path: ~/.mycelium/.env
         required: false
