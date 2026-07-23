@@ -50,7 +50,8 @@ export function routeTick(cfg, msg) {
     if (!cfg.agents.includes(targetAgent)) {
         return [{ kind: "ignore", reason: `tick participant_id ${targetAgent} not in channel agents` }];
     }
-    const instruction = formatTickInstruction(tickData, msg.room_name ?? cfg.room, targetAgent);
+    const dispatchRoom = msg.room_name ?? cfg.room;
+    const instruction = formatTickInstruction(tickData, dispatchRoom, targetAgent);
     const actions = [];
     // Stash the agent's return address the first time we see a tick for them
     // in this session sub-room. The stash is idempotent on the executor side,
@@ -70,6 +71,7 @@ export function routeTick(cfg, msg) {
         sender: "CognitiveEngine",
         content: instruction,
         messageId: msg.id,
+        sessionRoom: dispatchRoom,
     });
     return actions;
 }
@@ -245,12 +247,14 @@ export function routeConsensus(cfg, msg) {
         return [{ kind: "ignore", reason: "consensus parse error" }];
     }
     const summary = formatConsensusSummary(consensusData);
+    const dispatchRoom = msg.room_name ?? cfg.room;
     const actions = cfg.agents.map((agentId) => ({
         kind: "dispatch",
         agentId,
         sender: "CognitiveEngine",
         content: summary,
         messageId: msg.id,
+        sessionRoom: dispatchRoom,
     }));
     // Also notify each agent's home channel session (the Mycelium room, or an external channel)
     // with the consensus summary. The notify-home executor checks whether a
@@ -365,11 +369,13 @@ export function routeBroadcast(cfg, msg) {
             return [{ kind: "ignore", reason: "no non-sender agents in broadcast mode" }];
         }
     }
+    const dispatchRoom = msg.room_name ?? cfg.room;
     return recipients.map((agentId) => ({
         kind: "dispatch",
         agentId,
         sender,
         content,
         messageId: msg.id,
+        sessionRoom: dispatchRoom,
     }));
 }

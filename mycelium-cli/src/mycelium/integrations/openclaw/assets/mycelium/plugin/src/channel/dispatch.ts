@@ -31,11 +31,19 @@ export async function dispatchToAgent(
   log: Logger,
 ): Promise<void> {
   const openclawConfig = runtime.config.loadConfig();
-  // sessionKey stays pinned to cfg.room (the agent's one persistent OpenClaw
-  // conversation) deliberately — see channel/index.ts's participant-gating
-  // comment. Room-specific routing/attribution below uses sessionRoom
-  // instead, which is the actual mycelium room this dispatch is about.
-  const sessionKey = buildSessionKey(agentId, cfg.room);
+  // sessionKey is keyed by the actual coordination room (sessionRoom), not
+  // cfg.room — each negotiation gets its own isolated OpenClaw conversation,
+  // per SKILL.md's documented guarantee ("none of your home-channel
+  // short-term memory carries over" once a negotiation session starts).
+  // Previously pinned to cfg.room for every dispatch, which caused two
+  // separate bugs: cross-negotiation context bleeding into unrelated
+  // sessions (confirmed on af364e85 — an agent's reply referenced an
+  // unrelated prior session instead of answering its actual tick), and
+  // knowledge-extraction misattribution (every room's CFN extraction landed
+  // in cfg.room's mas_id — see the [[mycelium-room:...]] marker below, added
+  // as a narrower fix for that before this one; still covers tool-call/LLM
+  // sub-spans, which don't carry the marker — see collector.py).
+  const sessionKey = buildSessionKey(agentId, sessionRoom || cfg.room);
   const envelopeBody = `[${sender} in ${cfg.room}]: ${content}`;
 
   // Room plan briefing — best-effort, cached per-room. Prepended to the

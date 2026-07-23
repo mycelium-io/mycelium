@@ -159,7 +159,7 @@ function executeAction(runtime, cfg, action, msg, log) {
             // wedged under bursts (openclaw/openclaw#48488). Holding the queue depth
             // at ≤ 1 per agent at our layer keeps that bug out of reach. See
             // dispatch-chain.ts for the full rationale.
-            void enqueueDispatch(action.agentId, () => dispatchToAgent(runtime, cfg, action.agentId, action.sender, action.content, action.messageId, log), { log });
+            void enqueueDispatch(action.agentId, () => dispatchToAgent(runtime, cfg, action.agentId, action.sender, action.content, action.messageId, action.sessionRoom, log), { log });
             return;
         }
         case "subscribe-session": {

@@ -9,8 +9,8 @@
  * fresh Set.
  */
 export const _ownMessageIds = new Set();
-export async function postToRoom(cfg, senderHandle, content) {
-    const url = `${cfg.backendUrl}/api/rooms/${encodeURIComponent(cfg.room)}/messages`;
+export async function postToRoom(cfg, senderHandle, content, targetRoom = cfg.room) {
+    const url = `${cfg.backendUrl}/api/rooms/${encodeURIComponent(targetRoom)}/messages`;
     try {
         const res = await fetch(url, {
             method: "POST",
