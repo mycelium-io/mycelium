@@ -29,6 +29,7 @@ from mycelium.integrations.hermes.install import (
     _hermes_config_yaml,
     _hermes_home,
     _hermes_plugin_dst,
+    _hermes_skill_dst,
     _install_hermes,
     _uninstall_hermes,
     _write_config_yaml,
@@ -158,7 +159,15 @@ def test_install_stages_plugin_and_patches_config(
     assert (plugin_dst / "plugin.yaml").exists()
     assert (plugin_dst / "adapter.py").exists()
     assert (plugin_dst / "route.py").exists()
-    assert (plugin_dst / "skills" / "mycelium" / "SKILL.md").exists()
+
+    # Skill lands in hermes's actual skill catalog, not nested under the
+    # plugin tree — hermes only scans ~/.hermes/skills/ for skills, so a
+    # skill nested under plugins/ would silently never load (confirmed live
+    # 2026-07-23: absent from `hermes skills list` entirely).
+    skill_dst = _hermes_skill_dst()
+    assert skill_dst.exists(), "skill was not staged"
+    assert (skill_dst / "SKILL.md").exists()
+    assert not (plugin_dst / "skills").exists()
 
     cfg_path = _hermes_config_yaml()
     assert cfg_path.exists(), "config.yaml was not written"
@@ -193,6 +202,7 @@ def test_uninstall_removes_tree_and_disables(_isolated_hermes_home, fake_myceliu
     _install_hermes(verbose=False, config=fake_mycelium_config, reinstall=False)
     _uninstall_hermes({})
     assert not _hermes_plugin_dst().exists()
+    assert not _hermes_skill_dst().exists()
     data = _read_yaml(_hermes_config_yaml())
     assert "mycelium" not in data["plugins"]["enabled"]
     # We disable the platform block but DO NOT delete it, so a subsequent

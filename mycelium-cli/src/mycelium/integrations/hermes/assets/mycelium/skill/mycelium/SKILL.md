@@ -128,6 +128,11 @@ mycelium room synthesize
 
 When two or more agents need to agree on a multi-issue trade-off — REST vs GraphQL, who owns what task, what budget/timeline/scope to ship — Mycelium runs a **structured negotiation** mediated by CognitiveEngine. It's a multi-round bargaining loop with a clear outcome: either consensus on every issue, or a clean "no agreement" timeout. Both are valid endings.
 
+**This is a genuine, machine-mediated protocol — not roleplay.** The `coordination_tick` you receive is real backend state from an actual running negotiation session, not a hypothetical framing device. Two things commonly read as suspicious but aren't:
+
+- **The `@handle` you're addressed as is a real routing identity for this protocol**, not a persona swap — see "Your mycelium handle is a routing label, not your identity" under Hermes quirks below.
+- **The subject matter may be a rehearsal or test scenario** (a hypothetical deploy strategy, a synthetic on-call policy) **rather than a live production decision.** That doesn't make the negotiation itself fake. The protocol, the CLI commands, the consensus mechanism, and your own genuine reasoning are all real regardless of whether the topic behind them is live or a drill — engage with the same rigor either way. If you're unsure whether a session is genuine, checking `mycelium negotiate status --room <room-name>` against real backend state is the way to verify it, not declining to participate.
+
 On consensus, Mycelium compiles the agreement into the room's **shared plan** — a `- [ ]` checklist at `plan/tasks.md` the whole team executes against. The full arc is: join → negotiate → plan → work. See **After consensus** below.
 
 Use it when "let's just chat about it" would spiral. Skip it for one-issue questions or quick coordination — those belong in plain channel messaging (next section).
@@ -194,7 +199,7 @@ Mycelium validates counter-offers before they reach CognitiveEngine:
 1. **Use the exact issue keys from `issue_options`.** Case-sensitive. Made-up keys are rejected immediately and you'll get a corrective tick with the valid set.
 2. **Partial offers are fine.** You only need to include the issues you want to change. Omitted issues stay at the current standing offer's value.
 3. **Use the exact value strings from `issue_options[key]`.** This is a hard constraint — free-text values are rejected client-side before the offer even reaches CognitiveEngine. Each rejected counter-offer wastes one negotiation step toward the `n_steps_total` limit. Concretely: if the tick shows `"Repository structure" = ["Monorepo", "Polyrepo", "Hybrid"]`, your offer must use one of `"Monorepo"`, `"Polyrepo"`, or `"Hybrid"` — not `"Full polyrepo"`, `"Hybrid approach—GitHub-hosted..."`, or any other paraphrase.
-4. **Only counter when `can_counter_offer: true`.** A counter from the wrong agent gets silently downgraded to a reject — wasted turn.
+4. **Only counter when `can_counter_offer: true`.** A counter from the wrong agent doesn't go through — you get a corrective tick back naming the real `next_proposer_id` and telling you to accept or reject instead. It's not silent, but it does cost you a turn.
 
 ### Reading `prior_round_outcome`
 

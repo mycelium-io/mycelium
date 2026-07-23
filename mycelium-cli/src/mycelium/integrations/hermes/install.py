@@ -10,15 +10,27 @@ The work this module does for a ``mycelium adapter add hermes`` is:
    ``~/.hermes/plugins/mycelium/``.  Hermes auto-discovers user-installed
    plugins from that directory (``hermes_cli/plugins.py:_scan_directory``
    second pass).
-2. Patch ``~/.hermes/config.yaml`` in three places:
+2. ``shutil.copytree`` the bundled skill from
+   ``integrations/hermes/assets/mycelium/skill/mycelium/`` into
+   ``~/.hermes/skills/devops/mycelium/`` — hermes only scans
+   ``~/.hermes/skills/`` for skills, never a plugin's own directory, so this
+   has to be a separate destination from the plugin tree above (confirmed
+   live 2026-07-23: an earlier version nested the skill under the plugin
+   tree and it was silently never loaded — absent from ``hermes skills
+   list`` entirely). Staged directly rather than via the agent's own
+   ``skill_manage`` tool, so it never picks up a ``"created_by": "agent"``
+   marker in ``.usage.json`` and is automatically outside the curator's
+   jurisdiction (agent-created skills only) — no ``hermes curator pin``
+   needed.
+3. Patch ``~/.hermes/config.yaml`` in three places:
    - ``plugins.enabled`` allow-list — add ``mycelium`` (user plugins are
      opt-in by default).
    - ``platforms.mycelium-room.enabled: true``
    - ``platforms.mycelium-room.extra.backend_url`` = configured Mycelium
      api_url; ``rooms: []`` empty fan-out, populated by ``register()``.
-3. ``hermes gateway restart`` so the gateway re-reads the plugin manifest.
+4. ``hermes gateway restart`` so the gateway re-reads the plugin manifest.
 
-Uninstall reverses all three.  ``register()`` (in ``dispatch.py``) appends
+Uninstall reverses all four.  ``register()`` (in ``dispatch.py``) appends
 per-room ``{room, agents}`` entries to ``platforms.mycelium-room.extra.rooms``
 the same way OpenClaw's ``_register_channel`` writes to
 ``channels.mycelium-room.rooms[]`` in ``openclaw.json``.
@@ -56,6 +68,16 @@ _HERMES_PLATFORM_ID = "mycelium-room"
 _MYCELIUM_ASSET_ROOT = "mycelium"
 _MYCELIUM_PLUGIN_SRC = f"{_MYCELIUM_ASSET_ROOT}/plugin"
 
+# Subpath under integrations/hermes/assets/ that holds the bundled skill.
+# Deliberately a sibling of plugin/, not nested inside it — hermes only scans
+# ~/.hermes/skills/ for skills, never a plugin's own directory, so nesting it
+# under plugin/ (as it was before) meant the skill was silently never loaded
+# despite shipping in every install (confirmed live 2026-07-23: absent from
+# `hermes skills list` entirely, and no code path ever read the file).
+_MYCELIUM_SKILL_SRC = f"{_MYCELIUM_ASSET_ROOT}/skill/mycelium"
+_MYCELIUM_SKILL_NAME = "mycelium"
+_MYCELIUM_SKILL_CATEGORY = "devops"
+
 # v1 ships no follow-up steps; OTEL/profile/container come in later releases.
 _HERMES_STEPS: dict[str, str] = {}
 
@@ -84,6 +106,10 @@ def _hermes_home() -> Path:
 
 def _hermes_plugin_dst() -> Path:
     return _hermes_home() / "plugins" / _HERMES_PLUGIN_NAME
+
+
+def _hermes_skill_dst() -> Path:
+    return _hermes_home() / "skills" / _MYCELIUM_SKILL_CATEGORY / _MYCELIUM_SKILL_NAME
 
 
 def _hermes_config_yaml() -> Path:
@@ -550,6 +576,23 @@ def _install_hermes(
     if verbose:
         typer.echo(f"  staged plugin: {plugin_src} → {plugin_dst}")
 
+    # Stage the bundled skill into hermes's actual skill catalog. Placed
+    # directly (never touched by the agent's own skill_manage tool), so it
+    # never picks up a "created_by": "agent" marker in .usage.json — the
+    # curator's jurisdiction is scoped to agent-created skills only, so a
+    # skill staged this way is automatically exempt from stale/archive
+    # auto-transitions without needing `hermes curator pin`.
+    skill_src = _resolve_asset(_MYCELIUM_SKILL_SRC, family="hermes")
+    skill_dst = _hermes_skill_dst()
+
+    if reinstall and skill_dst.exists():
+        shutil.rmtree(skill_dst)
+
+    skill_dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(skill_src, skill_dst, dirs_exist_ok=True)
+    if verbose:
+        typer.echo(f"  staged skill: {skill_src} → {skill_dst}")
+
     # Patch config.yaml
     data = _read_config_yaml()
     plugin_changed = _enable_plugin(data)
@@ -579,6 +622,10 @@ def _uninstall_hermes(
     plugin_dst = _hermes_plugin_dst()
     if plugin_dst.exists():
         shutil.rmtree(plugin_dst, ignore_errors=True)
+
+    skill_dst = _hermes_skill_dst()
+    if skill_dst.exists():
+        shutil.rmtree(skill_dst, ignore_errors=True)
 
     try:
         data = _read_config_yaml()

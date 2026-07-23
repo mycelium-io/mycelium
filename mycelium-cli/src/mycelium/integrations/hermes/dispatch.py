@@ -37,10 +37,12 @@ from mycelium.integrations.hermes.install import (
     _HERMES_PLUGIN_NAME,
     _HERMES_STEPS,
     _MYCELIUM_PLUGIN_SRC,
+    _MYCELIUM_SKILL_SRC,
     HermesConfigError,
     _hermes_config_yaml,
     _hermes_home,
     _hermes_plugin_dst,
+    _hermes_skill_dst,
     _install_hermes,
     _read_config_yaml,
     _read_gateway_pid,
@@ -272,6 +274,7 @@ class HermesIntegration(Integration):
     ) -> list[str]:
         return [
             f"  • {_hermes_plugin_dst()}",
+            f"  • {_hermes_skill_dst()}",
             f"  • {_hermes_config_yaml()} (plugins.enabled, platforms.{_HERMES_PLATFORM_ID}.*)",
         ]
 
@@ -283,8 +286,10 @@ class HermesIntegration(Integration):
         container: str | None,  # noqa: ARG002
     ) -> list[str]:
         plugin_src = _resolve_asset(_MYCELIUM_PLUGIN_SRC, family="hermes")
+        skill_src = _resolve_asset(_MYCELIUM_SKILL_SRC, family="hermes")
         return [
             f"  stage plugin: {plugin_src} → {_hermes_plugin_dst()}",
+            f"  stage skill:  {skill_src} → {_hermes_skill_dst()}",
             f"  patch:        {_hermes_config_yaml()}",
             f"                  plugins.enabled += {_HERMES_PLUGIN_NAME}",
             f"                  platforms.{_HERMES_PLATFORM_ID}.enabled = true",
