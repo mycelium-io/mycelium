@@ -27,6 +27,8 @@ import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from sqlalchemy import func, select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bus import agent_channel, notify, room_channel
@@ -188,89 +190,74 @@ async def create_memories(
             embedding = await asyncio.to_thread(embed_text, content_text)
         _write_metrics.append(("namespace", item.embed))
 
-        # Check for existing memory (upsert) — scoped by (room, key)
-        upsert_query = select(Memory).where(
-            Memory.room_name == room_name,
-            Memory.key == item.key,
-        )
-
-        existing_result = await db.execute(upsert_query)
-        existing = existing_result.scalar_one_or_none()
-
         now = datetime.now(UTC)
 
-        if existing:
-            new_version = existing.version + 1
+        # Atomic upsert — INSERT ... ON CONFLICT (room_name, key) DO UPDATE closes
+        # the race a SELECT-then-branch would leave open: two concurrent writers
+        # to the same key could both see "doesn't exist" and both try to INSERT,
+        # and the loser crashed with an unhandled UniqueViolation on
+        # uq_memory_room_key (confirmed live 2026-07-23 under the multi-host
+        # bridging path, e.g. (e2e-test-4829017-chan-b, bridged/token)) —
+        # contradicting "memory set always upserts". version = memories.version + 1
+        # is computed server-side, so concurrent updates to an existing key can't
+        # race on a stale version read either. created_by/created_at are omitted
+        # from the ON CONFLICT SET clause, so Postgres/SQLite leave them
+        # untouched on update — they only take their INSERT values on first
+        # creation.
+        insert_ = pg_insert if db.bind and db.bind.dialect.name == "postgresql" else sqlite_insert
+        stmt = insert_(Memory).values(
+            room_name=room_name,
+            key=item.key,
+            value=value,
+            content_text=content_text,
+            embedding=embedding,
+            created_by=item.created_by,
+            updated_by=item.created_by,
+            version=1,
+            tags=item.tags,
+            created_at=now,
+            updated_at=now,
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[Memory.room_name, Memory.key],
+            set_={
+                "value": stmt.excluded.value,
+                "content_text": stmt.excluded.content_text,
+                "embedding": stmt.excluded.embedding,
+                "updated_by": stmt.excluded.updated_by,
+                "version": Memory.version + 1,
+                "tags": stmt.excluded.tags,
+                "updated_at": now,
+            },
+        ).returning(Memory)
 
-            # Write markdown file
-            file_content = value_to_content(value)
-            rel_path = write_memory_file(
-                room_dir,
-                item.key,
-                file_content,
-                created_by=existing.created_by,
-                updated_by=item.created_by,
-                version=new_version,
-                tags=item.tags,
-                created_at=existing.created_at,
-                updated_at=now,
-            )
+        mem = (await db.execute(stmt)).scalar_one()
 
-            # Update search index
-            existing.value = value
-            existing.content_text = content_text
-            existing.embedding = embedding
-            existing.updated_by = item.created_by
-            existing.version = new_version
-            existing.tags = item.tags
-            existing.updated_at = now
-            existing.file_path = str(rel_path.relative_to(room_dir.parent.parent))
-            await db.flush()
-            await db.refresh(existing)
-            results.append(existing)
+        # Write markdown file using the authoritative post-upsert row — version,
+        # created_by/created_at (preserved across updates, set on first insert)
+        # all reflect what actually persisted rather than a pre-upsert guess.
+        file_content = value_to_content(value)
+        rel_path = write_memory_file(
+            room_dir,
+            item.key,
+            file_content,
+            created_by=mem.created_by,
+            updated_by=mem.updated_by,
+            version=mem.version,
+            tags=item.tags,
+            created_at=mem.created_at,
+            updated_at=mem.updated_at,
+        )
+        mem.file_path = str(rel_path.relative_to(room_dir.parent.parent))
+        await db.flush()
+        results.append(mem)
 
-            asyncio.ensure_future(
-                _notify_room_memory_change(room_name, item.key, item.created_by, existing.version)
-            )
-            asyncio.ensure_future(
-                _notify_subscribers(room_name, item.key, item.created_by, existing.version)
-            )
-        else:
-            # Write markdown file
-            file_content = value_to_content(value)
-            rel_path = write_memory_file(
-                room_dir,
-                item.key,
-                file_content,
-                created_by=item.created_by,
-                updated_by=item.created_by,
-                version=1,
-                tags=item.tags,
-                created_at=now,
-                updated_at=now,
-            )
-
-            # Create search index entry
-            mem = Memory(
-                room_name=room_name,
-                key=item.key,
-                value=value,
-                content_text=content_text,
-                embedding=embedding,
-                created_by=item.created_by,
-                updated_by=item.created_by,
-                tags=item.tags,
-                file_path=str(rel_path.relative_to(room_dir.parent.parent)),
-            )
-            db.add(mem)
-            await db.flush()
-            await db.refresh(mem)
-            results.append(mem)
-
-            asyncio.ensure_future(
-                _notify_room_memory_change(room_name, item.key, item.created_by, 1)
-            )
-            asyncio.ensure_future(_notify_subscribers(room_name, item.key, item.created_by, 1))
+        asyncio.ensure_future(
+            _notify_room_memory_change(room_name, item.key, item.created_by, mem.version)
+        )
+        asyncio.ensure_future(
+            _notify_subscribers(room_name, item.key, item.created_by, mem.version)
+        )
 
     await db.commit()
 
