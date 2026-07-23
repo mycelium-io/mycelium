@@ -443,7 +443,7 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
           </tbody>
         </table>
       </div>
-      <p>The two timeouts guard different failure modes. <code>COORDINATION_TICK_TIMEOUT_SECONDS</code> is a short per-tick budget so the CE can move on quickly when one agent is unresponsive. <code>CFN_ROUND_TIMEOUT_SECONDS</code> is the round-silence watchdog — it only fires when *all* agents go silent and resets on each first reply, so serialized agent runtimes (e.g. Claude Code processing rounds sequentially) get a fresh 300 s window per reply rather than a single shared deadline.</p>
+      <p>The two timeouts guard different failure modes. <code>COORDINATION_TICK_TIMEOUT_SECONDS</code> is a short per-tick budget so the CE can move on quickly when one agent is unresponsive. <code>CFN_ROUND_TIMEOUT_SECONDS</code> is the round-silence watchdog — it only fires when <em>all</em> agents go silent and resets on each first reply, so serialized agent runtimes (e.g. Claude Code processing rounds sequentially) get a fresh 300 s window per reply rather than a single shared deadline.</p>
     </section>
 
     <hr class="divider">

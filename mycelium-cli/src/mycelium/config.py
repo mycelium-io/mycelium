@@ -135,7 +135,7 @@ class RuntimeConfig(BaseModel):
         description="Round-silence watchdog: seconds before aborting when agents go completely silent",
     )
     cfn_retry_max_attempts: int = Field(
-        default=0,
+        default=1,
         description="Max times CFN validation CE may reject an agreement and restart (0 = no retries)",
     )
     cfn_validation_score_intervention: float = Field(
