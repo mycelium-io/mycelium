@@ -408,11 +408,16 @@ def record_cfn_llm_usage(
     latency_ms: float = 0.0,
     by_operation: dict[str, dict] | None = None,
 ) -> None:
-    """Record LLM token usage returned by CFN in ``_usage`` response fields.
+    """Record LLM token usage returned by CFN in ``meta.tokens`` response fields.
 
-    Captures token counts from the cognition engines (via the litellm callback)
-    for ``start_negotiation`` responses.  The ``decide`` path makes no LLM calls
-    directly (background ingestion is tracked via Prometheus on the CFN node).
+    Captures token counts from the cognition engines for both
+    ``start_negotiation`` (round-1 options generation) and
+    ``decide_negotiation`` responses. The decide path DOES make LLM calls on
+    its terminal step — the semantic-alignment validation evaluator (retry
+    decision) runs its own LLM call via ``get_llm_provider``, whose usage the
+    CE folds into the same ``meta.tokens`` it returns; ordinary continuing
+    rounds make no new LLM call (NegMAS advances deterministically over
+    options already generated at round 1) and correctly report nothing.
 
     Parameter names (``prompt_tokens`` / ``completion_tokens``) match the CFN
     ``_usage`` snapshot produced by litellm, but metric keys are normalised to
@@ -469,6 +474,21 @@ def record_room_identity(*, mas_id: str, room_name: str) -> None:
         # the first observed name wins. Rooms are not renamable today, so
         # this is a defensive choice for forward-compat only.
         _room_identities.setdefault(str(mas_id), str(room_name))
+
+
+@_safe
+def resolve_room_for_mas(mas_id: str) -> str:
+    """Look up the room name previously recorded for *mas_id*, or "" if unknown.
+
+    Read-side counterpart to ``record_room_identity``, for call sites that
+    have a mas_id but not the room name in scope (e.g. ``cfn_knowledge.py``'s
+    query path, which is keyed by mas_id, not room). Returns "" rather than
+    raising so callers can pass it straight through to a ``room=`` kwarg.
+    """
+    if not mas_id:
+        return ""
+    with _lock:
+        return _room_identities.get(str(mas_id), "")
 
 
 def snapshot() -> dict:

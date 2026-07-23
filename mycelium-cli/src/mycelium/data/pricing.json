@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-05-04T13:36:04.223482+00:00",
-  "litellm_version": "unknown",
+  "generated_at": "2026-07-22T14:22:27.637575+00:00",
+  "source": "litellm_catalog_api",
   "models": [
     {
       "pattern": "claude-sonnet-4",
