@@ -50,11 +50,11 @@ on:
       - '!fix/e2e-workflow'
   pull_request:
     branches: [main]
-  schedule:
-    # Nightly @ 05:00 UTC — runs the `pr,nightly` tier set.
-    - cron: '0 5 * * *'
-    # Weekly Monday @ 06:00 UTC — runs the legacy full suite.
-    - cron: '0 6 * * 1'
+  # schedule:
+  #   # Nightly @ 05:00 UTC — runs the `pr,nightly` tier set.
+  #   - cron: '0 5 * * *'
+  #   # Weekly Monday @ 06:00 UTC — runs the legacy full suite.
+  #   - cron: '0 6 * * 1'
   repository_dispatch:
     types:
       - mycelium-pr-test
