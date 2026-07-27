@@ -21,7 +21,7 @@ services:
     image: ghcr.io/mycelium-io/mycelium-db:${MYCELIUM_IMAGE_TAG:-latest}
     platform: linux/amd64
     container_name: e2e-mycelium-db
-    command: postgres -c max_locks_per_transaction=256
+    command: postgres -c max_locks_per_transaction=256 -c shared_preload_libraries=timescaledb -c max_connections=300
     environment:
       <<: *common-env
       POSTGRES_USER: postgres
@@ -43,7 +43,7 @@ services:
 
   # ── CFN Management Plane ──────────────────────────────────────────────
   ioc-cfn-mgmt-plane-svc:
-    image: ${CFN_MGMT_IMAGE:-ghcr.io/outshift-open/ioc-cfn-mgmt-plane-svc:0.1.1}
+    image: ${CFN_MGMT_IMAGE:-ghcr.io/outshift-open/ioc-cfn-mgmt-plane-svc:2026-06-26-d2e97e4}
     container_name: e2e-cfn-mgmt
     depends_on:
       mycelium-db:
@@ -52,7 +52,7 @@ services:
       <<: *common-env
       SERVICE_NAME: ioc-cfn-mgmt-plane-svc
       APPLICATION_VERSION: latest
-      LOG_LEVEL: INFO
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       ADMIN_USER_PASSWORD: ${ADMIN_USER_PASSWORD:-admin}
       POSTGRES_HOST: mycelium-db
       POSTGRES_PORT: 5432
@@ -60,22 +60,56 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${MYCELIUM_DB_PASSWORD:-password}
       PORT: 9000
-      CFN_DEV_MODE: "true"
+      CFN_DEV_MODE: ${CFN_DEV_MODE:-true}
       CFN_NAME: ${CFN_NAME:-mycelium-cfn}
+      CFN_SVC_URL: ${CFN_SVC_URL:-http://ioc-cfn-svc:9002}
     ports:
       - "${E2E_CFN_MGMT_PORT:-9000}:9000"
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9000/health || exit 1"]
-      interval: 5s
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/api/internal/diagnostics/health || exit 1"]
+      interval: 10s
       timeout: 5s
-      retries: 12
-      start_period: 10s
+      retries: 6
+      start_period: 40s
+    networks:
+      - mycelium-e2e
+
+  # ── CFN Knowledge Memory ──────────────────────────────────────────────
+  ioc-knowledge-memory-svc:
+    image: ${CFN_KNOWLEDGE_IMAGE:-ghcr.io/outshift-open/ioc-knowledge-memory-svc:2026-06-26-ee8f699}
+    platform: linux/amd64
+    container_name: e2e-knowledge-memory
+    depends_on:
+      mycelium-db:
+        condition: service_healthy
+      ioc-cfn-mgmt-plane-svc:
+        condition: service_healthy
+    environment:
+      SERVICE_NAME: ioc-knowledge-memory-svc
+      APPLICATION_VERSION: latest
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      MEMORY_PROVIDER_REGISTRATION_URL: http://ioc-cfn-mgmt-plane-svc:9000
+      MEMORY_PROVIDER_ID: ${MEMORY_PROVIDER_ID:-de54dacb-60ab-476a-9e83-64e09f867358}
+      IOC_KNOWLEDGE_DB_HOST: mycelium-db
+      IOC_KNOWLEDGE_DB: ${IOC_KNOWLEDGE_DB:-ioc-graph-db}
+      IOC_KNOWLEDGE_DB_USER: postgres
+      IOC_KNOWLEDGE_DB_PASSWORD: ${MYCELIUM_DB_PASSWORD:-password}
+      IOC_KNOWLEDGE_DB_PORT: 5432
+      EMBEDDING_VECTOR_SIZE: ${EMBEDDING_VECTOR_SIZE:-384}
+    ports:
+      - "${E2E_KNOWLEDGE_PORT:-9003}:9003"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9003/api/internal/diagnostics/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 40s
     networks:
       - mycelium-e2e
 
   # ── CFN Fabric Node ───────────────────────────────────────────────────
   ioc-cfn-svc:
-    image: ${CFN_NODE_IMAGE:-ghcr.io/outshift-open/ioc-cognition-fabric-node-svc:0.1.7}
+    image: ${CFN_NODE_IMAGE:-ghcr.io/outshift-open/ioc-cfn-svc:2026-06-26-dd16901}
     platform: linux/amd64
     container_name: e2e-cfn-node
     depends_on:
@@ -83,28 +117,66 @@ services:
         condition: service_healthy
       ioc-cfn-mgmt-plane-svc:
         condition: service_healthy
+      ioc-knowledge-memory-svc:
+        condition: service_healthy
     environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SERVICE_NAME: ioc-cfn-svc
       MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
       CFN_NAME: ${CFN_NAME:-mycelium-cfn}
       DB_HOST: mycelium-db
       DB_PORT: 5432
-      DB_NAME: cfn_cp
+      DB_NAME: ${DB_NAME:-cfn_cp}
       DB_USER: postgres
       DB_PASSWORD: ${MYCELIUM_DB_PASSWORD:-password}
       DB_SSL_MODE: disable
       PORT: 9002
-      HEARTBEAT_INTERVAL_SECONDS: 10
+      HEARTBEAT_INTERVAL_SECONDS: ${HEARTBEAT_INTERVAL_SECONDS:-10}
+      KNOWLEDGE_MEMORY_SVC_URL: http://ioc-knowledge-memory-svc:9003
+      COGNITION_ENGINE_SVC_URL: http://ioc-cfn-cognition-engine:9004
+      MEMORY_CLIENT_TIMEOUT_SECONDS: ${MEMORY_CLIENT_TIMEOUT_SECONDS:-90}
       LLM_MODEL: "${LLM_MODEL:-}"
       LLM_API_KEY: "${LLM_API_KEY:-}"
       LLM_BASE_URL: "${LLM_BASE_URL:-}"
     ports:
       - "${E2E_CFN_NODE_PORT:-9002}:9002"
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:9002/api/internal/diagnostics/health')\" || exit 1"]
-      interval: 5s
+      test: ["CMD-SHELL", "curl -sf http://localhost:9002/api/internal/diagnostics/health || exit 1"]
+      interval: 10s
       timeout: 5s
-      retries: 12
-      start_period: 15s
+      retries: 6
+      start_period: 40s
+    networks:
+      - mycelium-e2e
+
+  # ── CFN Cognition Engine ──────────────────────────────────────────────
+  ioc-cfn-cognition-engine:
+    image: ${CFN_CE_IMAGE:-ghcr.io/outshift-open/ioc-cfn-cognition-engines:2026-06-26-c01c60a}
+    platform: linux/amd64
+    container_name: e2e-cfn-cognition-engine
+    depends_on:
+      ioc-cfn-mgmt-plane-svc:
+        condition: service_healthy
+      ioc-cfn-svc:
+        condition: service_healthy
+    environment:
+      ENABLE_DEDUP: "true"
+      CFN_URL: http://ioc-cfn-svc:9002
+      COGNITION_ENGINE_HOST: ioc-cfn-cognition-engine
+      COGNITION_ENGINE_PORT: 9004
+      RETRY_MAX_ATTEMPTS: ${CFN_RETRY_MAX_ATTEMPTS:-1}
+      VALIDATION_SCORE_INTERVENTION: ${CFN_VALIDATION_SCORE_INTERVENTION:-0.6}
+      LLM_MODEL: "${LLM_MODEL:-}"
+      LLM_API_KEY: "${LLM_API_KEY:-}"
+      LLM_BASE_URL: "${LLM_BASE_URL:-}"
+    ports:
+      - "${E2E_CFN_CE_PORT:-9004}:9004"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9004/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 40s
     networks:
       - mycelium-e2e
 
@@ -131,13 +203,15 @@ services:
         condition: service_healthy
       ioc-cfn-svc:
         condition: service_healthy
+      ioc-cfn-cognition-engine:
+        condition: service_healthy
     environment:
       <<: *common-env
       DATABASE_URL: "postgresql+asyncpg://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium"
       GRAPH_DB_URL: "postgresql://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium"
       API_BASE_URL: http://mycelium-backend:8000
       CFN_MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
-      COGNITION_FABRIC_NODE_URL: http://ioc-cfn-svc:9002
+      CFN_SVC_URL: http://ioc-cfn-svc:9002
       COORDINATION_TICK_TIMEOUT_SECONDS: ${COORDINATION_TICK_TIMEOUT_SECONDS:-30}
       MYCELIUM_DATA_DIR: /home/mycelium/.mycelium
       MYCELIUM_STUB_EMBEDDINGS: "${MYCELIUM_STUB_EMBEDDINGS:-0}"

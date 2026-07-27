@@ -392,7 +392,7 @@ jobs:
       - name: Verify backend container environment
         run: |
           echo "=== Backend container env check ==="
-          for var in LLM_API_KEY LLM_BASE_URL LLM_MODEL WORKSPACE_ID MAS_ID COGNITION_FABRIC_NODE_URL; do
+          for var in LLM_API_KEY LLM_BASE_URL LLM_MODEL WORKSPACE_ID MAS_ID CFN_SVC_URL CFN_MGMT_URL; do
             val=$(docker exec e2e-mycelium-backend printenv "$var" 2>/dev/null || echo "")
             if [ -n "$val" ]; then
               if [ "$var" = "LLM_API_KEY" ]; then
@@ -405,9 +405,9 @@ jobs:
             fi
           done
 
-          cfn_url=$(docker exec e2e-mycelium-backend printenv COGNITION_FABRIC_NODE_URL 2>/dev/null || echo "")
+          cfn_url=$(docker exec e2e-mycelium-backend printenv CFN_SVC_URL 2>/dev/null || echo "")
           if [ -z "$cfn_url" ]; then
-            echo "ERROR: COGNITION_FABRIC_NODE_URL must be set on the backend for CFN coordination"
+            echo "ERROR: CFN_SVC_URL must be set on the backend for CFN coordination"
             exit 1
           fi
 
@@ -457,11 +457,16 @@ jobs:
           mycelium config set server.api_url http://localhost:8000 2>/dev/null || true
           mycelium config set rooms.active mycelium_room 2>/dev/null || true
 
-          # Write .env with LLM credentials so CLI commands can use them
+          # Write .env with LLM + CFN credentials so CLI commands can use them.
+          # In containerized CI the backend gets CFN URLs from compose inline env;
+          # in lab mode these come from the shell env and must land in .env so
+          # backend containers started via env_file pick them up.
           {
-            [ -n "$LLM_API_KEY" ]  && echo "LLM_API_KEY=$LLM_API_KEY"
-            [ -n "$LLM_BASE_URL" ] && echo "LLM_BASE_URL=$LLM_BASE_URL"
-            [ -n "$LLM_MODEL" ]    && echo "LLM_MODEL=$LLM_MODEL"
+            [ -n "$LLM_API_KEY" ]    && echo "LLM_API_KEY=$LLM_API_KEY"
+            [ -n "$LLM_BASE_URL" ]   && echo "LLM_BASE_URL=$LLM_BASE_URL"
+            [ -n "$LLM_MODEL" ]      && echo "LLM_MODEL=$LLM_MODEL"
+            [ -n "$CFN_SVC_URL" ]    && echo "CFN_SVC_URL=$CFN_SVC_URL"
+            [ -n "$CFN_MGMT_URL" ]   && echo "CFN_MGMT_URL=$CFN_MGMT_URL"
           } > ~/.mycelium/.env
           echo "Wrote ~/.mycelium/.env ($(wc -l < ~/.mycelium/.env) lines)"
 
