@@ -89,7 +89,7 @@ def provision_agents(
         for ag in row.get("agents", []):
             wants.add((ag["adapter"], agent_role(ag), ag["host"]))
 
-    pools = load_agent_pools(testscript.parameters.get("agent_pools") or testscript.parameters)
+    pools = load_agent_pools(testscript.parameters)
     testscript.parameters["agent_pools"] = pools
 
     chown_mycelium_on_hosts(testbed, {h for (_, _, h) in wants})

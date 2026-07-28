@@ -33,7 +33,7 @@ class HermesPrereqCommonSetup(aetest.CommonSetup):
             self.skipped(f"SSH key not found at {key} — set SSH_KEY_PATH")
 
     @aetest.subsection
-    def check_hermes_prereqs(self, testscript):
+    def check_hermes_prereqs(self):
         from libs.hermes_lab import check_prereqs
         from testcases.hermes_tests import HUB_HOST, SSH_KEY, SSH_USER
 

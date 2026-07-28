@@ -46,6 +46,9 @@ _REGISTRY: dict[str, Callable[[], Provisioner]] = {
 }
 
 # One instance per adapter for the lifetime of the process.
+# Safe only because all current provisioners are stateless (no mutable
+# per-device instance attributes).  If a future provisioner caches
+# per-device state, remove the cache or scope it per-device.
 _INSTANCES: dict[str, Provisioner] = {}
 
 

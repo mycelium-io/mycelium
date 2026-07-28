@@ -506,7 +506,7 @@ jobs:
               export MYCELIUM_E2E_TIERS=pr
               ;;
             nightly)
-              JOB_FILE="jobs/nightly_e2e_job.py"
+              JOB_FILE="jobs/pr_job.py"
               export MYCELIUM_E2E_TIERS=pr,nightly
               ;;
             weekly_full)
