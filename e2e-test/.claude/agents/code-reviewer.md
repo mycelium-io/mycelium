@@ -49,27 +49,39 @@ the key initialized. Downstream callers (`teardown_provisioned_agents`,
 `setup_shared_suite_room`) may use `.get()` but unit tests and future callers
 may not.
 
-### `testbed` can be None — guard every `run()` call
+### `testbed` can be None — know the two correct patterns
 
 `prepare_job_testbed()` returns `None` for testbed when the YAML file doesn't
-exist or `--testbed-file` is omitted and no default applies. Passing
+exist on disk. In practice `testbeds/compose.yaml` and `testbeds/lab.yaml` are
+committed to the repo, so `None` only happens on a broken checkout. Passing
 `testbed=None` explicitly to pyATS `run()` is different from omitting the kwarg:
-the former can raise `TypeError` in pyATS internals or silently produce a
-testbed-less run. Pattern:
+it can raise `TypeError` or silently produce a testbed-less run.
+
+**Suites that provision agents** (hermes, cursor, openclaw scenario suites):
+testbed is required. Fail loud if it's absent — proceeding without it silently
+skips provisioning and lets all tests fail with opaque "no agent" errors.
 
 ```python
-# WRONG:
-run(testscript=suite, datafile=df, testbed=testbed)   # testbed may be None
+# RIGHT — fail fast with a clear message:
+if testbed is None:
+    raise common.JobRuntimeMismatchError(
+        "these suites require a testbed; check MYCELIUM_E2E_RUNTIME"
+    )
+run(testscript=suite, datafile=df, testbed=testbed)
+```
 
-# RIGHT:
+**Suites that don't provision agents** (aio, standalone sanity runs):
+use the optional guard so the suite can self-configure.
+
+```python
 kwargs = {"testscript": suite, "datafile": df}
 if testbed is not None:
     kwargs["testbed"] = testbed
 run(**kwargs)
 ```
 
-If multiple `run()` calls exist in the same job function, ALL must use the
-guard — not just the first one. Inconsistency here is a real bug.
+Flag any job that silently passes `testbed=None` to a provisioning suite without
+either the loud assert or the optional guard — inconsistency is the real bug.
 
 ### `load_agent_pools` takes the full parameters dict
 

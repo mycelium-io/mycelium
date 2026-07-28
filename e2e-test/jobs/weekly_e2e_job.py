@@ -88,22 +88,20 @@ def main(runtime):
     # are gated behind MYCELIUM_E2E_SKIP_HERMES to allow a fast skip
     # when the spoke containers aren't started with SPOKE_ADAPTERS=…,hermes.
     if os.environ.get("MYCELIUM_E2E_SKIP_HERMES", "").lower() not in {"1", "true", "yes"}:
+        if testbed is None:
+            raise common.JobRuntimeMismatchError(
+                "hermes suites require a testbed but none was resolved — "
+                "check that testbeds/compose.yaml or testbeds/lab.yaml exists "
+                "and MYCELIUM_E2E_RUNTIME is set correctly"
+            )
         hermes_datafile = common.get_datafile(default="hermes_datafile.yaml")
         scenarios_datafile = common.get_datafile(default="scenarios_datafile.yaml")
 
         log.info("Running hermes_suite (adapter plumbing)...")
-        hermes_plumbing = common.get_suite_path("hermes_suite.py")
-        hermes_kwargs: dict[str, object] = {"testscript": hermes_plumbing, "datafile": hermes_datafile}
-        if testbed is not None:
-            hermes_kwargs["testbed"] = testbed
-        run(**hermes_kwargs)
+        run(testscript=common.get_suite_path("hermes_suite.py"), datafile=hermes_datafile, testbed=testbed)
 
         for suite_name in ("hermes_he_suite.py", "hermes_cross_suite.py"):
             log.info("Running %s...", suite_name)
-            suite_path = common.get_suite_path(suite_name)
-            scen_kwargs: dict[str, object] = {"testscript": suite_path, "datafile": scenarios_datafile}
-            if testbed is not None:
-                scen_kwargs["testbed"] = testbed
-            run(**scen_kwargs)
+            run(testscript=common.get_suite_path(suite_name), datafile=scenarios_datafile, testbed=testbed)
     else:
         log.info("Hermes adapter suites skipped via MYCELIUM_E2E_SKIP_HERMES")
