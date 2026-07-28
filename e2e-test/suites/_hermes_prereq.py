@@ -63,6 +63,12 @@ class HermesPrereqCommonSetup(aetest.CommonSetup):
         try:
             with urllib.request.urlopen(health, timeout=5) as resp:
                 if resp.status not in (200, 204):
-                    self.skipped(f"CFN node svc not healthy at {health} (status {resp.status})")
+                    self.failed(
+                        f"CFN node svc not healthy at {health} (status {resp.status})",
+                        goto=["common_cleanup"],
+                    )
         except Exception as exc:
-            self.skipped(f"CFN node svc unreachable at {health}: {exc}")
+            self.failed(
+                f"CFN node svc unreachable at {health}: {exc}",
+                goto=["common_cleanup"],
+            )

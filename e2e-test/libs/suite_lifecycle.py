@@ -78,6 +78,7 @@ def provision_agents(
         raise _SkipProvision("MYCELIUM_E2E_SKIP_AGENT_PROVISIONING set")
 
     if testbed is None:
+        testscript.parameters["provisioned_agents"] = {}
         raise _SkipProvision("no testbed; agent provisioning needs device handles")
 
     if not rows:

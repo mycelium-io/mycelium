@@ -93,11 +93,17 @@ def main(runtime):
 
         log.info("Running hermes_suite (adapter plumbing)...")
         hermes_plumbing = common.get_suite_path("hermes_suite.py")
-        run(testscript=hermes_plumbing, datafile=hermes_datafile, testbed=testbed)
+        hermes_kwargs: dict[str, object] = {"testscript": hermes_plumbing, "datafile": hermes_datafile}
+        if testbed is not None:
+            hermes_kwargs["testbed"] = testbed
+        run(**hermes_kwargs)
 
         for suite_name in ("hermes_he_suite.py", "hermes_cross_suite.py"):
             log.info("Running %s...", suite_name)
-            suite = common.get_suite_path(suite_name)
-            run(testscript=suite, datafile=scenarios_datafile, testbed=testbed)
+            suite_path = common.get_suite_path(suite_name)
+            scen_kwargs: dict[str, object] = {"testscript": suite_path, "datafile": scenarios_datafile}
+            if testbed is not None:
+                scen_kwargs["testbed"] = testbed
+            run(**scen_kwargs)
     else:
         log.info("Hermes adapter suites skipped via MYCELIUM_E2E_SKIP_HERMES")
