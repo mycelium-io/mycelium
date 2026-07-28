@@ -37,10 +37,8 @@ Usage:
 import logging
 import os
 
-from pyats.datastructures.logic import Or
 from pyats.easypy import run
 
-# Ensure project root on path
 import jobs._common as common
 
 log = logging.getLogger(__name__)
@@ -48,15 +46,9 @@ log = logging.getLogger(__name__)
 _DEFAULT_RUNTIME = common.RUNTIME_LAB
 _ALLOWED_RUNTIMES = common.RUNTIMES_ALL
 
-testcases_filter = os.getenv("TESTCASES")
-if testcases_filter:
-    tcs = [t.strip() for t in testcases_filter.split(",")]
-    uids = Or("common_setup", *tcs, "common_cleanup")
-else:
-    uids = None
-
 
 def main(runtime):
+    uids = common.uids_filter_from_env()
     testbed, active_runtime, _source = common.prepare_job_testbed(
         runtime,
         log,
@@ -83,7 +75,7 @@ def main(runtime):
     kwargs = {"testscript": suite, "datafile": datafile}
     if uids:
         kwargs["uids"] = uids
-        log.info("Filtering to testcases: %s", testcases_filter)
+        log.info("Filtering to testcases: %s", os.environ.get("TESTCASES", ""))
     if max_failures:
         kwargs["max_failures"] = max_failures
     if testbed is not None:

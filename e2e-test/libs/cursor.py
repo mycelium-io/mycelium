@@ -1,6 +1,22 @@
-"""Cursor adapter helpers — SSH dispatch, health checks, workspace management, polling."""
+"""Cursor adapter helpers — SSH dispatch, health checks, workspace management, polling.
+
+.. deprecated::
+    Use :class:`libs.provisioners.cursor.CursorProvisioner` for agent
+    lifecycle (create/wake/cleanup) and :mod:`libs.host_exec` for raw SSH
+    dispatch. This module will be removed once ``testcases/cursor_tests.py``
+    is migrated.
+"""
 
 from __future__ import annotations
+
+import warnings
+
+warnings.warn(
+    "libs.cursor is deprecated; use libs.provisioners.cursor.CursorProvisioner "
+    "and libs.host_exec instead",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 import json
 import logging

@@ -12,6 +12,7 @@ the room subscriptions and deletes the room.
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from typing import Any
 
@@ -23,7 +24,8 @@ from libs.sessions import SessionError
 log = logging.getLogger(__name__)
 
 
-def _chown_mycelium_on_hosts(testbed: Any, hosts: set[str]) -> None:
+def chown_mycelium_on_hosts(testbed: Any, hosts: set[str]) -> None:
+    """Reclaim ~/.mycelium ownership on each host so per-agent writes succeed."""
     for host in sorted(hosts):
         device = testbed.devices.get(host)
         if device is None:
@@ -39,6 +41,128 @@ def _chown_mycelium_on_hosts(testbed: Any, hosts: set[str]) -> None:
             )
         except HostExecError as exc:
             log.warning("chown failed on %s (continuing): %s", host, exc)
+
+
+# Back-compat alias (was private; callers in provisioning helpers used the public spelling).
+_chown_mycelium_on_hosts = chown_mycelium_on_hosts
+
+
+def provision_agents(
+    rows: list[dict[str, Any]],
+    testscript: Any,
+    testbed: Any | None,
+    *,
+    room_prefix: str,
+) -> None:
+    """Provision every agent the active ``rows`` need and create the suite room.
+
+    Handles the full CommonSetup provisioning flow:
+
+    1. Honour ``MYCELIUM_E2E_SKIP_AGENT_PROVISIONING``.
+    2. Build the ``wants`` set from the row list.
+    3. Load/store agent pools on ``testscript.parameters``.
+    4. Reclaim ``~/.mycelium`` ownership on each host.
+    5. Ensure pool slots and provision roles.
+    6. Store ``provisioned_agents`` and create the shared suite room.
+
+    Raises :class:`libs.sessions.SessionError` on room-creation failures.
+    Raises :class:`RuntimeError` when agent provisioning fails (caller should
+    call ``self.failed()`` with the message).
+    """
+    from libs.agent_pools import ensure_pool_slots, load_agent_pools, provision_roles_for_wants
+    from libs.scenario_row import agent_role
+
+    skip_env = os.environ.get("MYCELIUM_E2E_SKIP_AGENT_PROVISIONING", "").lower()
+    if skip_env in {"1", "true", "yes"}:
+        testscript.parameters["provisioned_agents"] = {}
+        raise _SkipProvision("MYCELIUM_E2E_SKIP_AGENT_PROVISIONING set")
+
+    if testbed is None:
+        raise _SkipProvision("no testbed; agent provisioning needs device handles")
+
+    if not rows:
+        testscript.parameters["provisioned_agents"] = {}
+        return
+
+    wants: set[tuple[str, str, str]] = set()
+    for row in rows:
+        for ag in row.get("agents", []):
+            wants.add((ag["adapter"], agent_role(ag), ag["host"]))
+
+    pools = load_agent_pools(testscript.parameters.get("agent_pools") or testscript.parameters)
+    testscript.parameters["agent_pools"] = pools
+
+    chown_mycelium_on_hosts(testbed, {h for (_, _, h) in wants})
+
+    slot_failures = ensure_pool_slots(testbed, wants, pools)
+    provisioned, role_failures = provision_roles_for_wants(testbed, wants, pools)
+    failures = slot_failures + role_failures
+
+    testscript.parameters["provisioned_agents"] = provisioned
+    if failures:
+        raise RuntimeError(
+            f"provision_agents: {len(failures)} agent(s) failed:\n  " + "\n  ".join(failures)
+        )
+
+    setup_shared_suite_room(testscript, testbed, wants, room_prefix=room_prefix)
+
+
+def teardown_provisioned_agents(
+    testscript: Any,
+    testbed: Any | None,
+    *,
+    adapter_filter: str | None = None,
+) -> None:
+    """Tear down agents that were created (not pre-existing) this run.
+
+    Args:
+        adapter_filter: When set, only tear down agents of this adapter
+            (e.g. ``"hermes"``). When ``None``, all adapters are torn down.
+    """
+    if os.environ.get("MYCELIUM_E2E_KEEP_AGENTS", "").lower() in {"1", "true", "yes"}:
+        log.info("teardown_provisioned_agents: skipped via MYCELIUM_E2E_KEEP_AGENTS")
+        return
+
+    provisioned: dict[tuple[str, str, str], AgentRef] = (
+        testscript.parameters.get("provisioned_agents") or {}
+    )
+    if not provisioned:
+        return
+
+    if testbed is None:
+        log.warning("teardown_provisioned_agents: no testbed; skipping teardown")
+        return
+
+    for (adapter, role, host), ref in provisioned.items():
+        if adapter_filter is not None and adapter != adapter_filter:
+            continue
+        device = testbed.devices.get(host)
+        if device is None:
+            log.warning(
+                "teardown_provisioned_agents: device %r not in testbed; skipping %s",
+                host,
+                role,
+            )
+            continue
+        try:
+            provisioner = get_provisioner(adapter)
+            provisioner.teardown_runtime(device, ref)
+        except Exception as exc:  # noqa: BLE001 - cleanup is best-effort
+            log.warning(
+                "teardown_provisioned_agents: teardown failed for %s@%s (%s): %s",
+                role,
+                host,
+                adapter,
+                exc,
+            )
+
+
+class ProvisionSkipped(Exception):
+    """Raised by :func:`provision_agents` when the subsection should be skipped."""
+
+
+# Private alias kept for internal use only.
+_SkipProvision = ProvisionSkipped
 
 
 def setup_shared_suite_room(

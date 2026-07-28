@@ -335,6 +335,26 @@ def groups_filter_from_env() -> Or | None:
     return Or(*names)
 
 
+def uids_filter_from_env(env_var: str = "TESTCASES") -> "Or | None":
+    """Build a pyATS UIDs filter that wraps named testcases with setup/cleanup.
+
+    Reads a comma-separated list of testcase UIDs from the env var and
+    returns ``Or('common_setup', <tcs...>, 'common_cleanup')`` so pyATS
+    runs setup + cleanup even when filtering to a subset.  Returns ``None``
+    when the env var is not set (run all testcases).
+
+        TESTCASES="test_01_room_lifecycle, test_02_multi_agent_memory" \\
+            pyats run job …
+    """
+    raw = os.environ.get(env_var, "").strip()
+    if not raw:
+        return None
+    tcs = [t.strip() for t in raw.split(",") if t.strip()]
+    if not tcs:
+        return None
+    return Or("common_setup", *tcs, "common_cleanup")
+
+
 # Back-compat alias for callers/tests written during the string-return bug.
 groups_logic_from_env = groups_filter_from_env
 
@@ -425,6 +445,53 @@ def install_job_sigint_cleanup(
     logging.getLogger(__name__).info(
         "Installed SIGINT cleanup handler (backend=%s prefixes=%s)", backend_url, prefixes
     )
+
+
+def simple_job_main(
+    runtime: Any,
+    logger: logging.Logger,
+    *,
+    title: str,
+    suite_name: str,
+    datafile_name: str,
+    default_runtime: str = RUNTIME_COMPOSE,
+    allowed_runtimes: frozenset[str] | None = None,
+) -> None:
+    """Standard main() for simple jobs: testbed, SIGINT handler, single run().
+
+    Covers the pattern used by most jobs: resolve testbed, log context,
+    load datafile, install SIGINT cleanup, and call run(). Jobs that need
+    unusual control flow (tiers filter, multi-suite, uids) should expand
+    main() manually.
+    """
+    from pyats.easypy import run
+
+    _allowed = allowed_runtimes if allowed_runtimes is not None else RUNTIMES_ALL
+    testbed, active_runtime, _ = prepare_job_testbed(
+        runtime,
+        logger,
+        job_default_runtime=default_runtime,
+        allowed_runtimes=_allowed,
+    )
+    datafile = get_datafile(default=datafile_name)
+    log_job_context(
+        logger,
+        title=title,
+        runtime=active_runtime,
+        default_testbed=testbed_path_for_runtime(active_runtime),
+        active_testbed=testbed,
+        datafile=datafile,
+    )
+    install_job_sigint_cleanup(resolve_backend_url(datafile))
+    max_failures = get_max_failures(datafile)
+    suite = get_suite_path(suite_name)
+    logger.info("Max failures: %s", max_failures or "unlimited")
+    kwargs: dict[str, Any] = {"testscript": suite, "datafile": datafile}
+    if max_failures:
+        kwargs["max_failures"] = max_failures
+    if testbed is not None:
+        kwargs["testbed"] = testbed
+    run(**kwargs)
 
 
 def get_agent_idle_wait(datafile_path: str | None = None) -> int:

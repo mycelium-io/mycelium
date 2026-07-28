@@ -1,8 +1,12 @@
-"""Fixed agent pools per device + adapter for the scenario matrix.
+"""Agent pool helpers for the scenario matrix.
 
 Scenario rows declare logical **roles**; pools map each role to a
 runtime **handle** (``agent-alpha``, ``claire-agent``, …) and list
 every slot that must exist on a host before scenarios run.
+
+Pool configuration lives in ``data/base_datafile.yaml`` under
+``parameters.agent_pools`` and is loaded into ``testscript.parameters``
+by pyATS before CommonSetup runs.
 """
 
 from __future__ import annotations
@@ -16,92 +20,28 @@ from libs.provisioners import AgentRef, PrereqMissing, get_provisioner
 
 log = logging.getLogger(__name__)
 
-# Mirrors infra/scripts/spoke-entrypoint.sh + scenarios.yaml role usage.
-DEFAULT_AGENT_POOLS: dict[str, dict[str, dict[str, Any]]] = {
-    "hub": {
-        "openclaw": {
-            "slots": ["agent-alpha", "agent-beta", "agent-gamma", "agent-delta"],
-            "roles": {
-                "alpha": "agent-alpha",
-                "beta": "agent-beta",
-                "gamma": "agent-gamma",
-                "delta": "agent-delta",
-                "planner": "agent-gamma",
-                "lawyer-a": "agent-alpha",
-                "lawyer-b": "agent-beta",
-            },
-        },
-        "hermes": {
-            "slots": ["alpha-he", "beta-he", "gamma-he"],
-            "roles": {
-                "alpha-he": "alpha-he",
-                "beta-he": "beta-he",
-                "gamma-he": "gamma-he",
-            },
-        },
-        "cursor": {
-            "slots": [],
-            "roles": {
-                "alpha-cu": "alpha-cu",
-                "beta-cu": "beta-cu",
-                "front-cu": "front-cu",
-            },
-        },
-    },
-    "spoke1": {
-        "openclaw": {
-            "slots": ["claire-agent"],
-            "roles": {
-                "beta": "claire-agent",
-                "lawyer-b": "claire-agent",
-            },
-        },
-        "hermes": {
-            "slots": ["beta-he"],
-            "roles": {
-                "beta-he": "beta-he",
-                "back-he": "beta-he",
-            },
-        },
-        "cursor": {
-            "slots": [],
-            "roles": {
-                "designer": "designer",
-                "beta-cu": "beta-cu",
-            },
-        },
-    },
-    "spoke2": {
-        "openclaw": {
-            "slots": ["oclw5-agent"],
-            "roles": {
-                "gamma": "oclw5-agent",
-            },
-        },
-        "hermes": {
-            "slots": ["gamma-he"],
-            "roles": {
-                "gamma-he": "gamma-he",
-                "ops": "gamma-he",
-            },
-        },
-        "cursor": {
-            "slots": [],
-            "roles": {
-                "ops": "ops",
-            },
-        },
-    },
-}
-
 
 def load_agent_pools(parameters: dict[str, Any] | None) -> dict[str, dict[str, dict[str, Any]]]:
-    """Return agent pools from datafile parameters, else built-in defaults."""
+    """Return agent pools from datafile parameters.
+
+    Pools are defined under ``parameters.agent_pools`` in the datafile
+    chain (see ``data/base_datafile.yaml``). Returns an empty dict and
+    logs a warning when the key is absent — role resolution will fail for
+    adapters that require explicit pool mappings (openclaw).
+    """
     if not parameters:
-        return DEFAULT_AGENT_POOLS
+        log.warning(
+            "load_agent_pools: called with no parameters — "
+            "is base_datafile.yaml loaded? Agent pool resolution will fail for openclaw roles."
+        )
+        return {}
     custom = parameters.get("agent_pools")
     if not custom:
-        return DEFAULT_AGENT_POOLS
+        log.warning(
+            "load_agent_pools: agent_pools key absent from parameters — "
+            "verify that base_datafile.yaml is in the datafile extends chain."
+        )
+        return {}
     return _normalize_pools(custom)
 
 

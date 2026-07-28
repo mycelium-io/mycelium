@@ -19,27 +19,18 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 
 from pyats import aetest
 
-_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if _ROOT not in sys.path:
-    sys.path.insert(0, _ROOT)
-
-from libs import host_exec  # noqa: E402
-from libs.agent_pools import (  # noqa: E402
-    ensure_pool_slots,
-    load_agent_pools,
-    provision_roles_for_wants,
+from libs.suite_lifecycle import (
+    ProvisionSkipped,
+    SessionError,
+    provision_agents,
+    teardown_provisioned_agents,
+    teardown_shared_suite_room,
 )
-from libs.host_exec import HostExecError  # noqa: E402
-from libs.provisioners import AgentRef, PrereqMissing, get_provisioner  # noqa: E402
-from libs.scenario_row import agent_role  # noqa: E402
-from libs.suite_lifecycle import setup_shared_suite_room, teardown_shared_suite_room  # noqa: E402
-from libs.sessions import SessionError  # noqa: E402
-from testcases.hermes_tests import HUB_HOST, SSH_KEY, SSH_USER  # noqa: E402
-from testcases.scenarios import (  # noqa: E402
+from suites._hermes_prereq import HermesPrereqCommonSetup
+from testcases.scenarios import (
     active_tiers,
     filter_by_tier,
     load_rows,
@@ -47,6 +38,8 @@ from testcases.scenarios import (  # noqa: E402
 )
 
 log = logging.getLogger(__name__)
+
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 _SCENARIOS_FILE = os.environ.get(
     "MYCELIUM_E2E_SCENARIOS_FILE",
@@ -73,90 +66,18 @@ log.info(
 _CLASSES = make_scenarios(_CROSS_ROWS)
 
 
-class CommonSetup(aetest.CommonSetup):
-    @aetest.subsection
-    def check_cli(self):
-        import shutil
-
-        if not shutil.which("mycelium"):
-            self.failed("mycelium CLI not found on PATH")
-
-    @aetest.subsection
-    def check_ssh_key(self):
-        key = os.path.expanduser(os.environ.get("SSH_KEY_PATH", "~/.ssh/ioc.pem"))
-        if not os.path.exists(key):
-            self.skipped(f"SSH key not found at {key} — set SSH_KEY_PATH")
-
-    @aetest.subsection
-    def check_hermes_prereqs(self):
-        from libs.hermes_lab import check_prereqs
-
-        issues = check_prereqs(HUB_HOST, SSH_USER, SSH_KEY)
-        if issues:
-            self.skipped(
-                "Hermes lab prerequisites not met — run scripts/provision_hermes_lab.py:\n"
-                + "\n".join(f"  • {i}" for i in issues)
-            )
-
+class CommonSetup(HermesPrereqCommonSetup):
     @aetest.subsection
     def provision_agents(self, testscript, testbed=None):
         """Ensure every agent the active cross-family rows need is created."""
-        if os.environ.get("MYCELIUM_E2E_SKIP_AGENT_PROVISIONING", "").lower() in {
-            "1",
-            "true",
-            "yes",
-        }:
-            testscript.parameters["provisioned_agents"] = {}
-            self.skipped("MYCELIUM_E2E_SKIP_AGENT_PROVISIONING set")
-
-        if testbed is None:
-            self.skipped("no testbed; agent provisioning needs device handles")
-
-        if not _CROSS_ROWS:
-            testscript.parameters["provisioned_agents"] = {}
-            return
-
-        wants: set[tuple[str, str, str]] = set()
-        for row in _CROSS_ROWS:
-            for ag in row.get("agents", []):
-                wants.add((ag["adapter"], agent_role(ag), ag["host"]))
-
-        pools = load_agent_pools(testscript.parameters.get("agent_pools"))
-        testscript.parameters["agent_pools"] = pools
-
-        for host in sorted({h for (_, _, h) in wants}):
-            device = testbed.devices.get(host)
-            if device is None:
-                continue
-            try:
-                host_exec.execute(
-                    device,
-                    'if [ -d "$HOME/.mycelium" ]; then '
-                    'sudo chown -R "$USER:$USER" "$HOME/.mycelium" '
-                    "2>/dev/null || true; fi",
-                    shell=True,
-                    timeout=20.0,
-                )
-            except HostExecError as exc:
-                log.warning("chown failed on %s (continuing): %s", host, exc)
-
-        slot_failures = ensure_pool_slots(testbed, wants, pools)
-        provisioned, role_failures = provision_roles_for_wants(testbed, wants, pools)
-        failures = slot_failures + role_failures
-
-        testscript.parameters["provisioned_agents"] = provisioned
-        if failures:
-            self.failed(f"provision_agents: {len(failures)} agent(s) failed:\n  " + "\n  ".join(failures))
-
         try:
-            setup_shared_suite_room(
-                testscript,
-                testbed,
-                wants,
-                room_prefix="scn-he-cross",
-            )
+            provision_agents(_CROSS_ROWS, testscript, testbed, room_prefix="scn-he-cross")
+        except ProvisionSkipped as exc:
+            self.skipped(str(exc))
         except SessionError as exc:
             self.failed(f"setup_shared_suite_room: {exc}")
+        except RuntimeError as exc:
+            self.failed(str(exc))
 
 
 class CommonCleanup(aetest.CommonCleanup):
@@ -170,30 +91,7 @@ class CommonCleanup(aetest.CommonCleanup):
     @aetest.subsection
     def teardown_hermes_agents(self, testscript, testbed=None):
         """Remove hermes agents that were created (not pre-existing) this run."""
-        if os.environ.get("MYCELIUM_E2E_KEEP_AGENTS", "").lower() in {"1", "true", "yes"}:
-            log.info("teardown_hermes_agents: skipped via MYCELIUM_E2E_KEEP_AGENTS")
-            return
-
-        provisioned: dict[tuple[str, str, str], AgentRef] = testscript.parameters.get("provisioned_agents") or {}
-        if not provisioned:
-            return
-
-        if testbed is None:
-            log.warning("teardown_hermes_agents: no testbed; skipping teardown")
-            return
-
-        for (adapter, role, host), ref in provisioned.items():
-            if adapter != "hermes":
-                continue
-            device = testbed.devices.get(host)
-            if device is None:
-                log.warning("teardown_hermes_agents: device %r not in testbed; skipping %s", host, role)
-                continue
-            try:
-                provisioner = get_provisioner(adapter)
-                provisioner.teardown_runtime(device, ref)
-            except Exception as exc:  # noqa: BLE001 - cleanup is best-effort
-                log.warning("teardown_hermes_agents: teardown failed for %s@%s: %s", role, host, exc)
+        teardown_provisioned_agents(testscript, testbed, adapter_filter="hermes")
 
 
 globals().update(_CLASSES)

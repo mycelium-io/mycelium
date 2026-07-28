@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from typing import ClassVar
 
 from pyats import aetest
 
@@ -45,20 +46,28 @@ from libs.mycelium_cli import MyceliumCLI
 log = logging.getLogger(__name__)
 
 
-class CursorBasicDispatch(aetest.Testcase):
-    """Test 75: Single-host basic dispatch via cc-daemon (Phase 1)."""
+class CursorTestBase(aetest.Testcase):
+    """Shared setup for cursor adapter tests: daemon health + ephemeral handle/room."""
 
-    groups = ["cursor", "integration"]
+    handle_prefix: ClassVar[str] = "cursor"
+    room_prefix: ClassVar[str] = "e2e-cursor"
 
     @aetest.setup
     def setup(self, cli=None):
         self.cli = cli or MyceliumCLI()
-        self.handle = f"cursor-e2e-{uuid.uuid4().hex[:8]}"
-        self.room = f"e2e-cursor-{uuid.uuid4().hex[:8]}"
-        self.workspace = None
-
+        self.handle = f"{self.handle_prefix}-{uuid.uuid4().hex[:8]}"
+        self.room = f"{self.room_prefix}-{uuid.uuid4().hex[:8]}"
+        self.workspace: str | None = None
         if not check_daemon_health(None):
             self.skipped("mycelium-cc-daemon not healthy on hub")
+
+
+class CursorBasicDispatch(CursorTestBase):
+    """Test 75: Single-host basic dispatch via cc-daemon (Phase 1)."""
+
+    groups = ["cursor", "integration"]
+    handle_prefix = "cursor-e2e"
+    room_prefix = "e2e-cursor"
 
     @aetest.test
     def create_room_and_agent(self, steps):
@@ -114,20 +123,12 @@ class CursorBasicDispatch(aetest.Testcase):
         delete_room(None, self.room)
 
 
-class CursorWorkspaceDrift(aetest.Testcase):
+class CursorWorkspaceDrift(CursorTestBase):
     """Test 76: Workspace asset drift — AGENTS.md and rules file (Phase 2)."""
 
     groups = ["cursor", "integration"]
-
-    @aetest.setup
-    def setup(self, cli=None):
-        self.cli = cli or MyceliumCLI()
-        self.handle = f"cursor-drift-{uuid.uuid4().hex[:8]}"
-        self.room = f"e2e-drift-{uuid.uuid4().hex[:8]}"
-        self.workspace = None
-
-        if not check_daemon_health(None):
-            self.skipped("mycelium-cc-daemon not healthy on hub")
+    handle_prefix = "cursor-drift"
+    room_prefix = "e2e-drift"
 
     @aetest.test
     def create_agent_with_workspace(self, steps):
@@ -179,20 +180,12 @@ class CursorWorkspaceDrift(aetest.Testcase):
         delete_room(None, self.room)
 
 
-class CursorAuthFailure(aetest.Testcase):
+class CursorAuthFailure(CursorTestBase):
     """Test 77: Auth failure friendly path (Phase 3)."""
 
     groups = ["cursor", "integration"]
-
-    @aetest.setup
-    def setup(self, cli=None):
-        self.cli = cli or MyceliumCLI()
-        self.handle = f"cursor-noauth-{uuid.uuid4().hex[:8]}"
-        self.room = f"e2e-noauth-{uuid.uuid4().hex[:8]}"
-        self.workspace = None
-
-        if not check_daemon_health(None):
-            self.skipped("mycelium-cc-daemon not healthy on hub")
+    handle_prefix = "cursor-noauth"
+    room_prefix = "e2e-noauth"
 
     @aetest.test
     def simulate_missing_auth(self, steps):
