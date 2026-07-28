@@ -45,18 +45,26 @@ class CommonSetup(aetest.CommonSetup):
 
     @aetest.subsection
     def check_ssh_key(self):
+        from jobs._common import is_lab_runtime
+
+        if not is_lab_runtime():
+            self.skipped("compose runtime: hermes gateway runs in-container, no SSH key needed")
         key = os.path.expanduser(os.environ.get("SSH_KEY_PATH", "~/.ssh/ioc.pem"))
         if not os.path.exists(key):
             self.skipped(f"SSH key not found at {key} — set SSH_KEY_PATH")
 
     @aetest.subsection
-    def check_hermes_prereqs(self, testscript):
+    def check_hermes_prereqs(self):
         """Verify the hermes adapter is installed on the hub.
 
         Does not install anything — that is handled by
-        ``scripts/provision_hermes_lab.py``.  Skips the suite with a clear
-        message if prereqs are missing so CI catches the gap early.
+        ``scripts/provision_hermes_lab.py``. Skips if running in compose
+        (hermes gateway is bootstrapped in-container by the entrypoint).
         """
+        from jobs._common import is_lab_runtime
+
+        if not is_lab_runtime():
+            self.skipped("compose runtime: hermes bootstrapped in-container")
         from libs.hermes_lab import check_prereqs
 
         issues = check_prereqs(HUB_HOST, SSH_USER, SSH_KEY)

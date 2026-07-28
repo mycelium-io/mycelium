@@ -28,12 +28,20 @@ class HermesPrereqCommonSetup(aetest.CommonSetup):
 
     @aetest.subsection
     def check_ssh_key(self):
+        from jobs._common import is_lab_runtime
+
+        if not is_lab_runtime():
+            self.skipped("compose runtime: hermes gateway runs in-container, no SSH key needed")
         key = os.path.expanduser(os.environ.get("SSH_KEY_PATH", "~/.ssh/ioc.pem"))
         if not os.path.exists(key):
             self.skipped(f"SSH key not found at {key} — set SSH_KEY_PATH")
 
     @aetest.subsection
     def check_hermes_prereqs(self):
+        from jobs._common import is_lab_runtime
+
+        if not is_lab_runtime():
+            self.skipped("compose runtime: HermesProvisioner.check_prereqs handles this via host_exec")
         from libs.hermes_lab import check_prereqs
         from testcases.hermes_tests import HUB_HOST, SSH_KEY, SSH_USER
 

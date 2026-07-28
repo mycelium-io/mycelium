@@ -9,7 +9,7 @@ Hermes adapter E2E job — three suites in sequence:
 3. hermes_cross_suite  — cross-family negotiation: hermes + openclaw and
                          hermes + cursor rows (nightly / weekly).
 
-**Runtime:** lab only (``MYCELIUM_E2E_RUNTIME=lab`` or job default).
+**Runtime:** compose (default in CI) or lab (``MYCELIUM_E2E_RUNTIME=lab``).
 
 Usage:
     pyats run job jobs/hermes_job.py
@@ -28,7 +28,7 @@ import jobs._common as common
 log = logging.getLogger(__name__)
 
 _DEFAULT_RUNTIME = common.RUNTIME_LAB
-_ALLOWED_RUNTIMES = common.RUNTIME_LAB_ONLY
+_ALLOWED_RUNTIMES = common.RUNTIMES_ALL
 
 
 def main(runtime):

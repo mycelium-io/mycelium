@@ -82,3 +82,22 @@ def main(runtime):
         kwargs["testbed"] = testbed
 
     run(**kwargs)
+
+    # ── Hermes adapter suites ─────────────────────────────────────────
+    # hermes_he_suite (hermes↔hermes) and hermes_cross_suite (hermes↔openclaw/cursor)
+    # are gated behind MYCELIUM_E2E_SKIP_HERMES to allow a fast skip
+    # when the spoke containers aren't started with SPOKE_ADAPTERS=…,hermes.
+    if os.environ.get("MYCELIUM_E2E_SKIP_HERMES", "").lower() not in {"1", "true", "yes"}:
+        hermes_datafile = common.get_datafile(default="hermes_datafile.yaml")
+        scenarios_datafile = common.get_datafile(default="scenarios_datafile.yaml")
+
+        log.info("Running hermes_suite (adapter plumbing)...")
+        hermes_plumbing = common.get_suite_path("hermes_suite.py")
+        run(testscript=hermes_plumbing, datafile=hermes_datafile, testbed=testbed)
+
+        for suite_name in ("hermes_he_suite.py", "hermes_cross_suite.py"):
+            log.info("Running %s...", suite_name)
+            suite = common.get_suite_path(suite_name)
+            run(testscript=suite, datafile=scenarios_datafile, testbed=testbed)
+    else:
+        log.info("Hermes adapter suites skipped via MYCELIUM_E2E_SKIP_HERMES")

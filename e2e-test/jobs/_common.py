@@ -85,6 +85,22 @@ def active_e2e_runtime(job_default: str) -> str:
     return job_default
 
 
+def is_lab_runtime() -> bool:
+    """Return True when the active runtime uses SSH to physical lab hardware.
+
+    Suites use this to skip SSH-only prereq checks (SSH keys, remote hermes
+    provisioning) that don't apply in compose where adapters run in-container.
+
+    Resolution: explicit ``MYCELIUM_E2E_RUNTIME`` env var beats everything;
+    ``GITHUB_ACTIONS`` auto-selects compose; otherwise assumes lab (conservative
+    default — compose always sets the env var or runs in CI).
+    """
+    explicit = os.environ.get(RUNTIME_ENV_VAR, "").strip().lower()
+    if explicit:
+        return explicit == RUNTIME_LAB
+    return os.environ.get("GITHUB_ACTIONS", "").lower() not in ("1", "true", "yes")
+
+
 def runtime_resolution_source(job_default: str) -> str:
     """Describe how :func:`active_e2e_runtime` chose the runtime (for logs)."""
     if os.environ.get(RUNTIME_ENV_VAR, "").strip():
