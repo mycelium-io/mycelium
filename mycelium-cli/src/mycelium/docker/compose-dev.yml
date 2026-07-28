@@ -41,7 +41,7 @@ services:
     environment:
       CFN_MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
       CFN_SVC_URL: http://ioc-cfn-svc:9002
-      L9_CFN_ENABLED: ${L9_CFN_ENABLED:-false}
+      L9_CFN_ENABLED: ${L9_CFN_ENABLED:-true}
       MYCELIUM_STUB_EMBEDDINGS: "1"
 
   mycelium-collector:
