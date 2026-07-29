@@ -169,26 +169,40 @@ class Synthesis(aetest.Testcase):
 
 
 class ConsensusNegotiation(aetest.Testcase):
-    """Test 06: Two-agent session negotiation via CLI."""
+    """Test 06: Two-agent session negotiation via CLI.
+
+    Uses a dedicated sub-room and placeholder handles that don't match any
+    real adapter agent, so no live gateway agent picks up the CFN ticks.
+    """
 
     groups = ["core", "slow"]
 
+    @aetest.setup
+    def setup(self, api, room_name):
+        self.test_room = f"{room_name}-consensus"
+        api.create_room(self.test_room, description="consensus negotiation CLI test")
+
     @aetest.test
-    def negotiate_session(self, steps, cli, room_name):
+    def negotiate_session(self, steps, cli):
         with steps.start("Agent Alpha joins session") as step:
-            r = cli.session_join(room_name, "agent-alpha", position="I prefer PostgreSQL")
+            r = cli.session_join(self.test_room, "cli-alpha", position="I prefer PostgreSQL")
             if not r.ok:
                 step.failed(r.error_message)
 
         with steps.start("Agent Beta joins session") as step:
-            r = cli.session_join(room_name, "agent-beta", position="I prefer MongoDB")
+            r = cli.session_join(self.test_room, "cli-beta", position="I prefer MongoDB")
             if not r.ok:
                 step.failed(r.error_message)
 
         with steps.start("List sessions") as step:
-            r = cli.session_ls(room_name)
+            r = cli.session_ls(self.test_room)
             if not r.ok:
                 step.failed(r.error_message)
+
+    @aetest.cleanup
+    def cleanup(self, api):
+        if not no_cleanup():
+            api.delete_room(self.test_room)
 
 
 class SessionJoinIdempotency(aetest.Testcase):
