@@ -19,7 +19,7 @@ from typing import ClassVar
 
 from pyats import aetest
 
-from jobs._common import no_cleanup
+from jobs._common import keep_rooms, no_cleanup
 from libs.cursor import (
     CURSOR_SPOKE_HOSTS,
     HUB_HOST,
@@ -124,7 +124,8 @@ class CursorBasicDispatch(CursorTestBase):
         if self.workspace:
             cleanup_cursor_workspace(HUB_HOST, self.workspace)
         daemon_unsubscribe(None, self.room)
-        delete_room(None, self.room)
+        if not keep_rooms():
+            delete_room(None, self.room)
 
 
 class CursorWorkspaceDrift(CursorTestBase):
@@ -184,7 +185,8 @@ class CursorWorkspaceDrift(CursorTestBase):
         remove_cursor_agent(None, self.handle, room=self.room)
         if self.workspace:
             cleanup_cursor_workspace(HUB_HOST, self.workspace)
-        delete_room(None, self.room)
+        if not keep_rooms():
+            delete_room(None, self.room)
 
 
 class CursorAuthFailure(CursorTestBase):
@@ -231,7 +233,8 @@ class CursorAuthFailure(CursorTestBase):
         remove_cursor_agent(None, self.handle, room=self.room)
         if self.workspace:
             cleanup_cursor_workspace(HUB_HOST, self.workspace)
-        run_mycelium_cli(None, "room", "delete", self.room, "--force", timeout=15.0)
+        if not keep_rooms():
+            run_mycelium_cli(None, "room", "delete", self.room, "--force", timeout=15.0)
 
 
 class CursorMultiHostDispatch(aetest.Testcase):
@@ -307,7 +310,8 @@ class CursorMultiHostDispatch(aetest.Testcase):
             cleanup_cursor_workspace(self.spoke, self.workspace)
         daemon_unsubscribe(None, self.room)
         daemon_unsubscribe(self.spoke, self.room)
-        delete_room(None, self.room)
+        if not keep_rooms():
+            delete_room(None, self.room)
 
 
 class CursorCrossFamilyCursor(aetest.Testcase):
@@ -398,7 +402,8 @@ class CursorCrossFamilyCursor(aetest.Testcase):
             cleanup_cursor_workspace(self.spoke, self.spoke_workspace)
         daemon_unsubscribe(None, self.room)
         daemon_unsubscribe(self.spoke, self.room)
-        delete_room(None, self.room)
+        if not keep_rooms():
+            delete_room(None, self.room)
 
 
 class CursorCrossFamilyOpenClaw(aetest.Testcase):
@@ -485,4 +490,5 @@ class CursorCrossFamilyOpenClaw(aetest.Testcase):
         if self.cursor_workspace:
             cleanup_cursor_workspace(HUB_HOST, self.cursor_workspace)
         daemon_unsubscribe(None, self.room)
-        delete_room(None, self.room)
+        if not keep_rooms():
+            delete_room(None, self.room)
