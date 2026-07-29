@@ -10,6 +10,7 @@ import time
 
 from pyats import aetest
 
+from jobs._common import no_cleanup
 from libs.mycelium_cli import CLIResult
 
 log = logging.getLogger(__name__)
@@ -63,6 +64,9 @@ class RoomLifecycle(aetest.Testcase):
 
     @aetest.cleanup
     def cleanup(self):
+        if no_cleanup():
+            self.skipped("MYCELIUM_E2E_NO_CLEANUP is set — teardown skipped")
+            return
         self.api.delete_room(self.test_room)
         log.info("Deleted lifecycle test room: %s", self.test_room)
 
@@ -227,7 +231,8 @@ class SessionJoinIdempotency(aetest.Testcase):
                 if len(sessions) != 1:
                     step.failed(f"Expected exactly 1 session after duplicate join, got {len(sessions)}")
         finally:
-            api.delete_room(test_room)
+            if not no_cleanup():
+                api.delete_room(test_room)
 
 
 class DoctorClean(aetest.Testcase):
@@ -358,6 +363,9 @@ class CfnLlmCounters(aetest.Testcase):
 
     @aetest.cleanup
     def cleanup(self, api, room_name):
+        if no_cleanup():
+            self.skipped("MYCELIUM_E2E_NO_CLEANUP is set — teardown skipped")
+            return
         api.delete_room(f"{room_name}-cfn-llm")
 
 
@@ -514,6 +522,9 @@ class SyncNegotiationCliE2E(aetest.Testcase):
 
     @aetest.cleanup
     def cleanup(self, api, room_name):
+        if no_cleanup():
+            self.skipped("MYCELIUM_E2E_NO_CLEANUP is set — teardown skipped")
+            return
         api.delete_room(f"{room_name}-sync-neg")
 
 

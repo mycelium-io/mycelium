@@ -1,12 +1,11 @@
 """
 <PYATS_JOBFILE>
 
-Hermes adapter E2E job — three suites in sequence:
+Hermes adapter E2E job — two suites in sequence:
 
-1. hermes_suite        — adapter plumbing: deque-based loop suppression (089).
-2. hermes_he_suite     — hermes-hermes negotiation: two-agent shakedown (pr)
+1. hermes_he_suite     — hermes-hermes negotiation: two-agent shakedown (pr)
                          and three-agent proposer-rotation (nightly).
-3. hermes_cross_suite  — cross-family negotiation: hermes + openclaw and
+2. hermes_cross_suite  — cross-family negotiation: hermes + openclaw and
                          hermes + cursor rows (nightly / weekly).
 
 **Runtime:** compose (default in CI) or lab (``MYCELIUM_E2E_RUNTIME=lab``).
@@ -47,34 +46,21 @@ def main(runtime):
         active_testbed=testbed,
     )
 
-    # hermes_suite uses hermes_datafile.yaml (HermesLoopSuppression entry).
-    # Scenario suites use scenarios_datafile.yaml — it has no testcases: block
-    # so pyATS won't error when it can't find plumbing class names in those scripts.
-    hermes_datafile = common.get_datafile(default="hermes_datafile.yaml")
+    scenarios_datafile = common.get_datafile(default="scenarios_datafile.yaml")
+    max_failures = common.get_max_failures(scenarios_datafile)
 
     # Install Ctrl-C handler so a job-level interrupt sweeps e2e rooms even
     # when the interrupt fires between run() calls (pyATS only guarantees
     # CommonCleanup runs for the *currently executing* suite, not for suites
     # that haven't started yet).
-    common.install_job_sigint_cleanup(common.resolve_backend_url(hermes_datafile))
-    scenarios_datafile = common.get_datafile(default="scenarios_datafile.yaml")
-    max_failures = common.get_max_failures(hermes_datafile)
+    common.install_job_sigint_cleanup(common.resolve_backend_url(scenarios_datafile))
 
-    plumbing_suite = common.get_suite_path("hermes_suite.py")
-    log.info("suite = %s (exists=%s)", plumbing_suite, os.path.isfile(plumbing_suite))
+    suite_name = "hermes_he_suite.py"
+    suite = common.get_suite_path(suite_name)
+    log.info("suite = %s (exists=%s)", suite, os.path.isfile(suite))
     run(
-        testscript=plumbing_suite,
-        datafile=hermes_datafile,
+        testscript=suite,
+        datafile=scenarios_datafile,
         max_failures=max_failures,
         testbed=testbed,
     )
-
-    for suite_name in ("hermes_he_suite.py", "hermes_cross_suite.py"):
-        suite = common.get_suite_path(suite_name)
-        log.info("suite = %s (exists=%s)", suite, os.path.isfile(suite))
-        run(
-            testscript=suite,
-            datafile=scenarios_datafile,
-            max_failures=max_failures,
-            testbed=testbed,
-        )

@@ -38,6 +38,33 @@ RUNTIME_ENV_VAR = "MYCELIUM_E2E_RUNTIME"
 RUNTIME_COMPOSE = "compose"
 RUNTIME_LAB = "lab"
 
+
+def no_cleanup() -> bool:
+    """Return True when MYCELIUM_E2E_NO_CLEANUP=1 is set.
+
+    When True, every testcase ``@aetest.cleanup`` section and every
+    ``CommonCleanup`` subsection should call ``self.skipped()`` and return
+    without performing any teardown.  Room deletion defined in CommonCleanup
+    is left in place — it simply won't run.  Use this during development to
+    preserve the full room/session/DB state for post-test inspection.
+
+    The presuite hygiene stale-room sweep in ``CommonSetup`` is also skipped
+    when this flag is set, so rooms from a previous no-cleanup run are not
+    silently deleted at the start of the next one.
+    """
+    return os.environ.get("MYCELIUM_E2E_NO_CLEANUP", "").lower() in {"1", "true", "yes"}
+
+
+def keep_rooms() -> bool:
+    """Return True when MYCELIUM_E2E_KEEP_ROOMS=1 is set.
+
+    When True, room deletion in both testcase ``@aetest.cleanup`` sections
+    and suite ``CommonCleanup`` subsections is skipped.  Agents and other
+    non-room teardown still run.  Use this to preserve room/session state
+    for post-test inspection without suppressing the full cleanup cycle.
+    """
+    return os.environ.get("MYCELIUM_E2E_KEEP_ROOMS", "").lower() in {"1", "true", "yes"}
+
 RUNTIMES_ALL = frozenset({RUNTIME_COMPOSE, RUNTIME_LAB})
 RUNTIME_LAB_ONLY = frozenset({RUNTIME_LAB})
 

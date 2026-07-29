@@ -97,9 +97,6 @@ def main(runtime):
         hermes_datafile = common.get_datafile(default="hermes_datafile.yaml")
         scenarios_datafile = common.get_datafile(default="scenarios_datafile.yaml")
 
-        log.info("Running hermes_suite (adapter plumbing)...")
-        run(testscript=common.get_suite_path("hermes_suite.py"), datafile=hermes_datafile, testbed=testbed)
-
         for suite_name in ("hermes_he_suite.py", "hermes_cross_suite.py"):
             log.info("Running %s...", suite_name)
             run(testscript=common.get_suite_path(suite_name), datafile=scenarios_datafile, testbed=testbed)

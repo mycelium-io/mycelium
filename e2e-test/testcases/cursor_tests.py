@@ -19,6 +19,7 @@ from typing import ClassVar
 
 from pyats import aetest
 
+from jobs._common import no_cleanup
 from libs.cursor import (
     CURSOR_SPOKE_HOSTS,
     HUB_HOST,
@@ -116,6 +117,9 @@ class CursorBasicDispatch(CursorTestBase):
 
     @aetest.cleanup
     def cleanup(self):
+        if no_cleanup():
+            self.skipped("MYCELIUM_E2E_NO_CLEANUP is set — teardown skipped")
+            return
         remove_cursor_agent(None, self.handle, room=self.room)
         if self.workspace:
             cleanup_cursor_workspace(HUB_HOST, self.workspace)
@@ -174,6 +178,9 @@ class CursorWorkspaceDrift(CursorTestBase):
 
     @aetest.cleanup
     def cleanup(self):
+        if no_cleanup():
+            self.skipped("MYCELIUM_E2E_NO_CLEANUP is set — teardown skipped")
+            return
         remove_cursor_agent(None, self.handle, room=self.room)
         if self.workspace:
             cleanup_cursor_workspace(HUB_HOST, self.workspace)
@@ -216,6 +223,9 @@ class CursorAuthFailure(CursorTestBase):
 
     @aetest.cleanup
     def cleanup(self):
+        if no_cleanup():
+            self.skipped("MYCELIUM_E2E_NO_CLEANUP is set — teardown skipped")
+            return
         auth_path = "~/.config/cursor/auth.json"
         ssh_run(HUB_HOST, f"mv {auth_path}.bak {auth_path} 2>/dev/null", timeout=10.0)
         remove_cursor_agent(None, self.handle, room=self.room)
@@ -289,6 +299,9 @@ class CursorMultiHostDispatch(aetest.Testcase):
 
     @aetest.cleanup
     def cleanup(self):
+        if no_cleanup():
+            self.skipped("MYCELIUM_E2E_NO_CLEANUP is set — teardown skipped")
+            return
         remove_cursor_agent(self.spoke, self.handle, room=self.room)
         if self.workspace:
             cleanup_cursor_workspace(self.spoke, self.workspace)
@@ -374,6 +387,9 @@ class CursorCrossFamilyCursor(aetest.Testcase):
 
     @aetest.cleanup
     def cleanup(self):
+        if no_cleanup():
+            self.skipped("MYCELIUM_E2E_NO_CLEANUP is set — teardown skipped")
+            return
         remove_cursor_agent(None, self.hub_handle, room=self.room)
         remove_cursor_agent(self.spoke, self.spoke_handle, room=self.room)
         if self.hub_workspace:
@@ -462,6 +478,9 @@ class CursorCrossFamilyOpenClaw(aetest.Testcase):
 
     @aetest.cleanup
     def cleanup(self):
+        if no_cleanup():
+            self.skipped("MYCELIUM_E2E_NO_CLEANUP is set — teardown skipped")
+            return
         remove_cursor_agent(None, self.cursor_handle, room=self.room)
         if self.cursor_workspace:
             cleanup_cursor_workspace(HUB_HOST, self.cursor_workspace)

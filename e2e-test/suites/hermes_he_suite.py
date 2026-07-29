@@ -22,6 +22,7 @@ import os
 
 from pyats import aetest
 
+from jobs._common import keep_rooms, no_cleanup
 from libs.suite_lifecycle import (
     ProvisionSkipped,
     SessionError,
@@ -80,6 +81,12 @@ class CommonCleanup(aetest.CommonCleanup):
     @aetest.subsection
     def teardown_suite_room(self, testscript, testbed=None):
         """Drop the shared negotiation room before agent teardown."""
+        if no_cleanup():
+            self.skipped("MYCELIUM_E2E_NO_CLEANUP is set — teardown skipped")
+            return
+        if keep_rooms():
+            self.skipped("MYCELIUM_E2E_KEEP_ROOMS is set — suite room preserved")
+            return
         if testbed is None:
             return
         backend_url = os.environ.get("MYCELIUM_BACKEND_URL")
@@ -88,6 +95,9 @@ class CommonCleanup(aetest.CommonCleanup):
     @aetest.subsection
     def teardown_hermes_agents(self, testscript, testbed=None):
         """Remove hermes agents that were created (not pre-existing) this run."""
+        if no_cleanup():
+            self.skipped("MYCELIUM_E2E_NO_CLEANUP is set — teardown skipped")
+            return
         teardown_provisioned_agents(testscript, testbed, adapter_filter="hermes")
 
 
