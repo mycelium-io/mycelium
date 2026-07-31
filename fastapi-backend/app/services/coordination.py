@@ -46,6 +46,9 @@ from app.services.metrics import (
     record_coordination_start,
     record_room_identity,
 )
+from app.services.dissent_compiler import compile_dissent
+from app.services.dissent_compiler import fallback_body as dissent_fallback_body
+from app.services.filesystem import get_room_dir, write_memory_file
 from app.services.plan import read_plan_file, set_title_from_body_if_absent, write_plan_file
 from app.services.plan_compiler import compile_plan, fallback_body
 
@@ -1427,6 +1430,41 @@ async def _finish_cfn(
             except Exception:
                 logger.exception("_finish_cfn: fallback plan write failed for %s", room_name)
 
+    # Dissent compiler: on broken consensus, compile an impasse artifact into
+    # decisions/unresolved-tensions.md BEFORE the consensus message posts
+    # (plan-first ordering — session await returns with a pointer to the file).
+    # Fail-soft: a write failure leaves dissent_file=None; consensus still posts.
+    dissent_file: str | None = None
+    if broken and state:
+        _dissent_parent = (
+            room_name.split(":session:", 1)[0] if ":session:" in room_name else room_name
+        )
+        try:
+            body = await compile_dissent(
+                session=room_name,
+                reason=reason,
+                issues=state.issues,
+                issue_options=state.issue_options,
+                current_offer=state.current_offer,
+                last_actions=state.last_actions,
+                last_round_outcome=state.last_round_outcome,
+                joined_intents=state.joined_intents,
+                session_handles=state.session_handles,
+                round_num=state.round_num,
+            )
+            write_memory_file(
+                get_room_dir(_dissent_parent),
+                "decisions/unresolved-tensions",
+                body,
+                created_by="CognitiveEngine",
+                extra_meta={"session": room_name, "reason": reason},
+            )
+            dissent_file = "decisions/unresolved-tensions.md"
+        except Exception as exc:
+            logger.warning(
+                "_finish_cfn: dissent compiler failed for %s: %s", room_name, exc
+            )
+
     # L9 close-out: consensus quality metrics (only meaningful on a genuine
     # agreement with enough confidence reports), the commit envelope, and the
     # keys they add to the consensus payload. All optional: absent keys keep
@@ -1453,6 +1491,7 @@ async def _finish_cfn(
     consensus_fields: dict = {
         "plan": plan,
         "plan_file": plan_file,
+        "dissent_file": dissent_file,
         "assignments": assignments,
         "broken": broken,
         "reason": reason,
