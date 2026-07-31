@@ -364,9 +364,24 @@ def format_consensus_summary(data: dict[str, Any]) -> str:
     broken = data.get("broken") is True
     plan_file_raw = data.get("plan_file")
     plan_file = plan_file_raw if isinstance(plan_file_raw, str) else ""
+    dissent_file_raw = data.get("dissent_file")
+    dissent_file = dissent_file_raw if isinstance(dissent_file_raw, str) else ""
 
     if broken:
-        return f"[CognitiveEngine — Negotiation FAILED]\n{plan}"
+        lines: list[str] = ["[CognitiveEngine — IMPASSE]", "", plan]
+        if dissent_file:
+            lines.extend(
+                [
+                    "",
+                    f"A structured dissent artifact has been written to `{dissent_file}`.",
+                    "Run `mycelium memory get decisions/unresolved-tensions` to read the",
+                    "per-agent positions, blocking pattern, and recommended human questions.",
+                    "",
+                    "Do NOT restart negotiation in plain chat. Wait for a human ruling at",
+                    "`decisions/human-ruling` before joining a follow-up session.",
+                ]
+            )
+        return "\n".join(lines)
 
     plan_text = plan if isinstance(plan, str) else json.dumps(plan, indent=2, default=str)
     lines: list[str] = [

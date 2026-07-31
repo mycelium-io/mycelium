@@ -221,6 +221,7 @@ class ConsensusContent(BaseModel):
 
     plan: str | None = None
     plan_file: str | None = None
+    dissent_file: str | None = None
     assignments: dict[str, Any] | None = None
     broken: bool = False
     metrics: ConsensusMetrics | None = None

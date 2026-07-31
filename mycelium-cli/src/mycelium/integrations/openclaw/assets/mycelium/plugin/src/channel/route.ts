@@ -370,9 +370,27 @@ export function formatConsensusSummary(consensusData: any): string {
   const broken = consensusData?.broken === true;
   const planFile =
     typeof consensusData?.plan_file === "string" ? consensusData.plan_file : "";
+  const dissentFile =
+    typeof consensusData?.dissent_file === "string" ? consensusData.dissent_file : "";
 
   if (broken) {
-    return `[CognitiveEngine — Negotiation FAILED]\n${plan}`;
+    const lines = [
+      "[CognitiveEngine — IMPASSE]",
+      "",
+      plan,
+    ];
+    if (dissentFile) {
+      lines.push(
+        "",
+        `A structured dissent artifact has been written to \`${dissentFile}\`.`,
+        "Run `mycelium memory get decisions/unresolved-tensions` to read the",
+        "per-agent positions, blocking pattern, and recommended human questions.",
+        "",
+        "Do NOT restart negotiation in plain chat. Wait for a human ruling at",
+        "`decisions/human-ruling` before joining a follow-up session.",
+      );
+    }
+    return lines.join("\n");
   }
 
   // Consensus quality metrics (when the backend computed them):

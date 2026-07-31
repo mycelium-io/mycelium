@@ -247,10 +247,27 @@ def test_format_consensus_summary_broken(route_module) -> None:
     summary = route_module.format_consensus_summary(
         {"broken": True, "plan": "Negotiation ended: timeout"}
     )
-    assert "[CognitiveEngine — Negotiation FAILED]" in summary
+    assert "[CognitiveEngine — IMPASSE]" in summary
     assert "Negotiation ended: timeout" in summary
-    # Broken summaries don't include assignments or plan-file pointer.
+    # Broken without dissent_file: no dissent or plan stanzas.
     assert "Assignments:" not in summary
+    assert "shared plan" not in summary
+    assert "unresolved-tensions" not in summary
+
+
+def test_format_consensus_summary_broken_with_dissent_file(route_module) -> None:
+    summary = route_module.format_consensus_summary(
+        {
+            "broken": True,
+            "plan": "Negotiation ended: timeout",
+            "dissent_file": "decisions/unresolved-tensions.md",
+        }
+    )
+    assert "[CognitiveEngine — IMPASSE]" in summary
+    assert "decisions/unresolved-tensions.md" in summary
+    assert "mycelium memory get decisions/unresolved-tensions" in summary
+    assert "human-ruling" in summary
+    # Still no assignments or plan pointer.
     assert "shared plan" not in summary
 
 
