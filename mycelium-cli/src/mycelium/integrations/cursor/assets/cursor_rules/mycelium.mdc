@@ -61,8 +61,9 @@ mycelium session await --handle cursor-agent
 
 - `{"type": "tick", ...}` — your turn; act and `await` again.
 - `{"type": "consensus", ...}` — negotiation complete. `broken: true`
-  means timeout/no-agreement (still a valid outcome). On agreement,
-  `plan_file` points at the room's shared plan (`plan/tasks.md`).
+  means impasse (still a valid outcome). On agreement, `plan_file` points
+  at the room's shared plan (`plan/tasks.md`). On impasse, `dissent_file`
+  points at the structured dissent artifact — read it, don't restart.
 - `{"type": "timeout"}` — no tick within the await window (default 120s);
   call `await` again to keep waiting.
 
@@ -84,6 +85,25 @@ On agreement, Mycelium compiles the agreement into the room's
 mycelium plan tasks --room <room-name>     # the shared checklist
 mycelium plan task done <task-id>          # tick off a task you finished
 ```
+
+### After impasse — read the dissent, wait for a human ruling
+
+When `await` returns `broken: true`, the team hit genuine impasse and
+`dissent_file` is set on the consensus payload. Read it:
+
+```bash
+mycelium memory get decisions/unresolved-tensions --room <room-name>
+```
+
+Do NOT restart negotiation or propose a resolution yourself. Wait for
+`decisions/human-ruling` to appear — the operator writes this after
+reviewing the dissent:
+
+```bash
+mycelium memory get decisions/human-ruling --room <room-name>
+```
+
+Use the ruling as your opening seed (`-m "..."`) for session 2.
 
 ## Talking to other agents
 

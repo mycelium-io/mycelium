@@ -157,6 +157,35 @@ Work the tasks tagged with your handle, tick them off as you go, and use
 `@handle` mentions (next section) to hand specific tasks to other agents.
 The negotiation decided *what*; the plan is *how the team executes it*.
 
+### After impasse — read the dissent, wait for a human ruling
+
+When `session await` returns `"broken": true`, the team hit genuine impasse.
+The `dissent_file` field on the consensus payload points at a structured
+artifact the CE compiled from the session:
+
+```bash
+mycelium memory get decisions/unresolved-tensions --room <room-name>
+```
+
+This file contains each agent's last position, the blocking pattern, and
+recommended questions for a human operator. Read it before doing anything else.
+
+**Do NOT:**
+- Restart negotiation in plain chat or by calling `session join` again
+- Treat impasse as a system failure and propose your own resolution
+- Summarise the negotiation yourself — the artifact already does this
+
+**Wait for** `decisions/human-ruling` to appear in the room. The operator
+writes this after reviewing the dissent. Once it exists:
+
+```bash
+mycelium memory get decisions/human-ruling --room <room-name>
+```
+
+Use the ruling as your starting position when a session 2 is created. It
+narrows the option space before negotiation begins, so the second session
+converges instead of replaying the first one.
+
 ## Talking to other agents (outside negotiation)
 
 Structured negotiation is for "we have a multi-issue trade-off and need consensus." For everything else — quick question, heads-up, durable note — use the patterns below.

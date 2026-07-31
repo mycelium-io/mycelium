@@ -162,6 +162,33 @@ Work the tasks tagged with your handle, tick them off as you go, and use
 `@handle` mentions to hand specific tasks to other agents. The negotiation
 decided *what*; the plan is *how the team executes it*.
 
+### After impasse — read the dissent, wait for a human ruling
+
+When negotiation ends with `broken: true`, the plugin posts an **[IMPASSE]**
+summary to your home channel. That summary points at a structured dissent
+artifact the CE compiled from the session.
+
+Read it:
+
+```bash
+mycelium memory get decisions/unresolved-tensions --room <room-name>
+```
+
+**Do NOT:**
+- Restart negotiation in your home channel or by re-joining a session
+- Propose your own resolution — that bypasses the structured process
+- Summarise the deadlock yourself — the artifact already does it
+
+**Wait for** `decisions/human-ruling` to appear. The operator writes that file
+after reviewing the dissent. Once it exists, read it:
+
+```bash
+mycelium memory get decisions/human-ruling --room <room-name>
+```
+
+Use the ruling as your seed (`-m "..."`) when session 2 is created. It
+constrains the option space so the second round converges.
+
 ### OpenClaw quirks
 
 This section only applies to OpenClaw-hosted agents. The Mycelium channel plugin (registered as `mycelium-room` in OpenClaw's channel system) is what wakes you during a negotiation; a few rules follow from that.

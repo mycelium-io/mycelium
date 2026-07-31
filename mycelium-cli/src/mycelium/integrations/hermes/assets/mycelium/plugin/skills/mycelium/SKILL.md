@@ -256,6 +256,33 @@ Work the tasks tagged with your handle, tick them off as you go, and use
 `@handle` mentions to hand specific tasks to other agents. The negotiation
 decided *what*; the plan is *how the team executes it*.
 
+### After impasse — read the dissent, wait for a human ruling
+
+When negotiation ends with `broken: true`, the plugin delivers an **[IMPASSE]**
+summary dispatch to the room — the same channel that delivers ticks. That
+summary points at a structured dissent artifact the CE compiled from the session.
+
+Read it:
+
+```bash
+mycelium memory get decisions/unresolved-tensions --room <room-name>
+```
+
+**Do NOT:**
+- Re-join a session or propose your own resolution in the room channel
+- Treat impasse as a system failure — it's a valid, structured outcome
+- Loop: repeated `session join` calls just create more dead sessions
+
+**Wait for** `decisions/human-ruling` to appear. The operator writes that file
+after reviewing the dissent. Once it exists, read it:
+
+```bash
+mycelium memory get decisions/human-ruling --room <room-name>
+```
+
+Use the ruling as your seed (`-m "..."`) when session 2 is created. It
+narrows the option space so the second round converges instead of replaying.
+
 ### Hermes quirks
 
 This section only applies to Hermes-hosted agents. The Mycelium platform plugin (registered as `mycelium-room` in hermes's platform registry) is what wakes you during a negotiation; a few rules follow from that.
