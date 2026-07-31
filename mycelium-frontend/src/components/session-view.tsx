@@ -63,6 +63,7 @@ interface DerivedState {
     assignments: Record<string, string>;
     broken: boolean;
     planFile: string | null;
+    dissentFile: string | null;
     metrics: ConsensusMetrics | null;
     cfnPersisted: boolean;
   } | null;
@@ -259,6 +260,7 @@ function deriveState(messages: RawMessage[]): DerivedState {
       assignments: (c.assignments as Record<string, string>) ?? {},
       broken: Boolean(c.broken),
       planFile: typeof c.plan_file === "string" ? c.plan_file : null,
+      dissentFile: typeof c.dissent_file === "string" ? c.dissent_file : null,
       metrics,
       cfnPersisted: c.cfn_persisted === true,
     };
@@ -322,9 +324,9 @@ const ACTION_META: Record<Action, { label: string; tone: "accent" | "ok" | "warn
   accept:    { label: "ACCEPT",    tone: "ok" },
   reject:    { label: "REJECT",    tone: "warn" },
   consensus: { label: "CONSENSUS", tone: "ok" },
-  timeout:   { label: "TIMEOUT",   tone: "warn" },
+  timeout:   { label: "IMPASSE",   tone: "warn" },
   abort:     { label: "ABORT",     tone: "warn" },
-  broken:    { label: "TIMEOUT",   tone: "warn" }, // backwards compat
+  broken:    { label: "IMPASSE",   tone: "warn" }, // backwards compat
   retry:     { label: "RETRY",     tone: "warn" },
 };
 
@@ -417,7 +419,7 @@ function HeaderRow({ sessionRoom, derived }: { sessionRoom: string; derived: Der
                                       "var(--muted)";
   const stateLabel =
     derived.state === "complete" ? "CONSENSUS" :
-    derived.state === "broken"   ? "TIMEOUT" :
+    derived.state === "broken"   ? "IMPASSE" :
     derived.state === "negotiating" ? "NEGOTIATING" :
                                       "STARTING";
   const awaiting = derived.state === "negotiating" && derived.nextProposerId
@@ -641,11 +643,11 @@ function ConsensusBanner({ derived }: { derived: DerivedState }) {
       <div className="flex items-center gap-2 mb-2">
         <ActionGlyph action={c.broken ? "broken" : "consensus"} />
         <span className="caps-mono" style={{ color }}>
-          {c.broken ? "NEGOTIATION TIMEOUT" : "CONSENSUS REACHED"}
+          {c.broken ? "IMPASSE" : "CONSENSUS REACHED"}
         </span>
       </div>
       {c.plan && <div className="text-body text-text2 mb-2">{c.plan}</div>}
-      {Object.keys(c.assignments).length > 0 && (
+      {!c.broken && Object.keys(c.assignments).length > 0 && (
         <div
           className="font-mono text-label mt-2 grid items-baseline gap-x-3 gap-y-1"
           style={{ gridTemplateColumns: "max-content max-content 1fr" }}
@@ -685,6 +687,22 @@ function ConsensusBanner({ derived }: { derived: DerivedState }) {
       {!c.broken && c.planFile && (
         <div className="caps-mono-sm mt-3 pt-2 border-t" style={{ borderColor: color, color }}>
           compiled into the room plan → {c.planFile}
+        </div>
+      )}
+      {c.broken && c.dissentFile && (
+        <div className="mt-3 pt-2 border-t" style={{ borderColor: color }}>
+          <div className="caps-mono-sm mb-1" style={{ color }}>
+            DISSENT ARTIFACT
+          </div>
+          <div className="text-label text-text2 font-mono mb-2">{c.dissentFile}</div>
+          <div className="text-micro text-muted leading-relaxed">
+            Per-agent positions, blocking pattern, and recommended human questions.
+            Read it with{" "}
+            <code className="font-mono text-text2">mycelium memory get decisions/unresolved-tensions</code>
+            , then write your ruling to{" "}
+            <code className="font-mono text-text2">decisions/human-ruling</code>{" "}
+            before starting session 2.
+          </div>
         </div>
       )}
     </div>

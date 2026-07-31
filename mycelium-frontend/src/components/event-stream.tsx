@@ -89,16 +89,17 @@ function parseEvent(msg: Record<string, unknown>): Event {
     case "coordination_consensus": {
       const plan = raw.plan as string;
       const planFile = raw.plan_file as string | undefined;
+      const dissentFileSummary = raw.dissent_file as string | undefined;
       const broken = raw.broken === true;
       const assignments = raw.assignments as Record<string, string>;
       content = plan || "";
-      if (assignments) content += " " + Object.entries(assignments).map(([k, v]) => `${k}=${v}`).join(", ");
-      // Consensus isn't the end — it compiles into the room's shared plan.
+      if (!broken && assignments) content += " " + Object.entries(assignments).map(([k, v]) => `${k}=${v}`).join(", ");
       if (!broken && planFile) content += ` · compiled → ${planFile}`;
+      if (broken && dissentFileSummary) content += ` · dissent → ${dissentFileSummary}`;
       {
         const metrics = raw.metrics as Record<string, unknown> | undefined;
         const gar = metrics && typeof metrics === "object" ? metrics.gar : undefined;
-        if (typeof gar === "number" && Number.isFinite(gar)) content += ` · GAR ${gar.toFixed(2)}`;
+        if (!broken && typeof gar === "number" && Number.isFinite(gar)) content += ` · GAR ${gar.toFixed(2)}`;
       }
       break;
     }
@@ -386,6 +387,7 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
                   ? `/room/${encodeURIComponent(roomName)}/session/${encodeURIComponent(shortId)}`
                   : null;
                 const planFile = ev.raw.plan_file as string | undefined;
+                const dissentFile = ev.raw.dissent_file as string | undefined;
                 const assignments = ev.raw.assignments as Record<string, string> | undefined;
                 const issueCount = assignments ? Object.keys(assignments).length : 0;
                 const metrics = ev.raw.metrics && typeof ev.raw.metrics === "object"
@@ -393,7 +395,7 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
                   : undefined;
                 const garRaw = metrics ? metrics.gar : undefined;
                 const gar = typeof garRaw === "number" && Number.isFinite(garRaw) ? garRaw : undefined;
-                const label = broken ? "TIMEOUT" : "CONSENSUS";
+                const label = broken ? "IMPASSE" : "CONSENSUS";
                 const tone = broken ? "var(--yellow)" : "var(--green)";
                 return (
                   <div
@@ -415,7 +417,15 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
                       <span className="font-mono text-text2">session</span>
                     )}
                     {broken ? (
-                      <span className="text-text2">— no agreement</span>
+                      <>
+                        <span className="text-text2">— no agreement</span>
+                        {dissentFile ? (
+                          <>
+                            <span className="text-muted">→</span>
+                            <span className="font-mono text-yellow-400" title="structured dissent artifact">{dissentFile}</span>
+                          </>
+                        ) : null}
+                      </>
                     ) : (
                       <>
                         <span className="text-muted">·</span>
