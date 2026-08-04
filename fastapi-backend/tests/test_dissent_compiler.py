@@ -103,7 +103,7 @@ def test_fallback_body_reason_abort():
 
 def test_fallback_body_reason_timeout():
     body = fallback_body(**_full_kwargs(reason="timeout"))
-    assert "round budget" in body.lower() or "timeout" in body.lower()
+    assert "round budget" in body.lower() or "did not respond" in body.lower()
 
 
 def test_fallback_body_no_issues():

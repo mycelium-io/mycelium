@@ -40,15 +40,14 @@ from app.config import settings
 from app.database import async_session_maker
 from app.models import CoordinationSession, Message, Participant, Room
 from app.services import l9_cfn, l9_episode
+from app.services.dissent_compiler import compile_dissent
+from app.services.filesystem import get_room_dir, write_memory_file
 from app.services.metrics import (
     record_consensus,
     record_coordination_round,
     record_coordination_start,
     record_room_identity,
 )
-from app.services.dissent_compiler import compile_dissent
-from app.services.dissent_compiler import fallback_body as dissent_fallback_body
-from app.services.filesystem import get_room_dir, write_memory_file
 from app.services.plan import read_plan_file, set_title_from_body_if_absent, write_plan_file
 from app.services.plan_compiler import compile_plan, fallback_body
 

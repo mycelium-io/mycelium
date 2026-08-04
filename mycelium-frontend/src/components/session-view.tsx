@@ -3,7 +3,7 @@
 
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from "react-resizable-panels";
 import { fetchMessages, getSSEUrl, logFetchError } from "@/lib/api";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -635,13 +635,15 @@ function ConsensusBanner({ derived, parentRoom }: { derived: DerivedState; paren
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const submittingRef = useRef(false);
 
   if (!c) return null;
   const tone = c.broken ? "warn" : "ok";
   const color = toneVar(tone);
 
   async function submitRuling() {
-    if (!rulingText.trim() || submitting) return;
+    if (!rulingText.trim() || submittingRef.current) return;
+    submittingRef.current = true;
     setSubmitting(true);
     setSubmitError(null);
     try {
@@ -662,6 +664,7 @@ function ConsensusBanner({ derived, parentRoom }: { derived: DerivedState; paren
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : "Failed to save ruling");
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }

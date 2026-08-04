@@ -71,7 +71,10 @@ def fallback_body(
 
     # Summary
     reason_text = {
-        "timeout": "Negotiation exhausted its round budget without reaching agreement.",
+        "timeout": (
+            "Negotiation ended without agreement — either the round budget was "
+            "exhausted or agents did not respond in time."
+        ),
         "abort": "Negotiation was aborted before agreement was reached.",
     }.get(reason, f"Negotiation ended: {reason}.")
     lines += ["## Summary", "", reason_text, ""]
@@ -194,9 +197,9 @@ def _build_prompt(
         "## Output",
         "Return ONLY the markdown body — no preamble, no code fences.",
         "Start with `# Unresolved Tensions`.",
-        "Sections required: Summary (1–2 sentences), Issues (per issue: last offer, "
+        "Sections required: Summary (1-2 sentences), Issues (per issue: last offer, "
         "positions, why it's stuck), Blocking pattern (who blocked and why), "
-        "Recommended human questions (3–5 bulleted questions the operator should ask "
+        "Recommended human questions (3-5 bulleted questions the operator should ask "
         "to unlock the impasse).",
         "Be concrete: name the agents, name the values, name the constraint.",
         "Do NOT invent positions not in the data above.",
