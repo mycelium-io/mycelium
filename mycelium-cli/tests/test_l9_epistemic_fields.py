@@ -498,6 +498,23 @@ def test_consensus_output_includes_metrics_only_when_present() -> None:
     assert enriched["cfn_persisted"] is True
 
 
+def test_consensus_output_includes_dissent_file() -> None:
+    from mycelium.commands.session import _consensus_output
+
+    # Broken consensus with dissent artifact — dissent_file must pass through.
+    broken = _consensus_output(
+        "room-b",
+        {"broken": True, "dissent_file": "decisions/unresolved-tensions.md"},
+    )
+    assert broken["broken"] is True
+    assert broken["dissent_file"] == "decisions/unresolved-tensions.md"
+
+    # Agreed consensus — dissent_file is None, key still present.
+    agreed = _consensus_output("room-b", {"broken": False, "plan_file": "plan/tasks.md"})
+    assert agreed["broken"] is False
+    assert agreed["dissent_file"] is None
+
+
 # ── .env emission ────────────────────────────────────────────────────────────
 
 

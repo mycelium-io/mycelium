@@ -260,6 +260,7 @@ def _consensus_output(room_name: str | None, data: dict, *, replayed: bool = Fal
         "room": room_name,
         "plan": data.get("plan"),
         "plan_file": data.get("plan_file"),
+        "dissent_file": data.get("dissent_file"),
         "assignments": data.get("assignments"),
         "broken": data.get("broken", False),
     }
