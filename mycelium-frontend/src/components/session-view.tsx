@@ -629,11 +629,42 @@ function SwimLanes({ derived }: { derived: DerivedState }) {
   );
 }
 
-function ConsensusBanner({ derived }: { derived: DerivedState }) {
+function ConsensusBanner({ derived, parentRoom }: { derived: DerivedState; parentRoom: string }) {
   const c = derived.consensus;
+  const [rulingText, setRulingText] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
   if (!c) return null;
   const tone = c.broken ? "warn" : "ok";
   const color = toneVar(tone);
+
+  async function submitRuling() {
+    if (!rulingText.trim() || submitting) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const res = await fetch(`/api/rooms/${encodeURIComponent(parentRoom)}/memory`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: [{
+            key: "decisions/human-ruling",
+            value: rulingText.trim(),
+            created_by: "operator",
+            embed: true,
+          }],
+        }),
+      });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      setSubmitted(true);
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : "Failed to save ruling");
+    } finally {
+      setSubmitting(false);
+    }
+  }
   return (
     <div className="mx-6 my-4 border" style={{
       borderColor: color,
@@ -699,10 +730,43 @@ function ConsensusBanner({ derived }: { derived: DerivedState }) {
             Per-agent positions, blocking pattern, and recommended human questions.
             Read it with{" "}
             <code className="font-mono text-text2">mycelium memory get decisions/unresolved-tensions</code>
-            , then write your ruling to{" "}
-            <code className="font-mono text-text2">decisions/human-ruling</code>{" "}
-            before starting session 2.
+            , then record your ruling below before starting session 2.
           </div>
+        </div>
+      )}
+      {c.broken && c.dissentFile && (
+        <div className="mt-3 pt-2 border-t" style={{ borderColor: color }}>
+          <div className="caps-mono-sm mb-2" style={{ color }}>
+            {submitted ? "RULING RECORDED" : "RECORD HUMAN RULING"}
+          </div>
+          {submitted ? (
+            <div className="text-label text-ok">
+              ✓ Saved to <code className="font-mono">decisions/human-ruling</code>.
+              Agents will read this when session 2 is created.
+            </div>
+          ) : (
+            <>
+              <textarea
+                className="w-full font-mono text-label text-text bg-surface border border-border rounded p-2 resize-y"
+                style={{ minHeight: 72, borderColor: color }}
+                placeholder="e.g. Ship security patch in 24h; feature defers to next sprint; forensics snapshot required before deploy."
+                value={rulingText}
+                onChange={e => setRulingText(e.target.value)}
+                disabled={submitting}
+              />
+              {submitError && (
+                <div className="text-micro text-warn mt-1">{submitError}</div>
+              )}
+              <button
+                className="mt-2 caps-mono-sm px-3 py-1 border rounded"
+                style={{ borderColor: color, color, opacity: (!rulingText.trim() || submitting) ? 0.4 : 1 }}
+                onClick={submitRuling}
+                disabled={!rulingText.trim() || submitting}
+              >
+                {submitting ? "SAVING…" : "RECORD RULING"}
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -806,7 +870,12 @@ export function SessionView({ sessionRoom }: SessionViewProps) {
           <HeaderRow sessionRoom={sessionRoom} derived={derived} />
           <SwimLanes derived={derived} />
           <NegotiationSpace derived={derived} />
-          {derived.consensus && <ConsensusBanner derived={derived} />}
+          {derived.consensus && (
+            <ConsensusBanner
+              derived={derived}
+              parentRoom={sessionRoom.includes(":session:") ? sessionRoom.split(":session:")[0] : sessionRoom}
+            />
+          )}
         </ScrollArea>
       </Panel>
       <PanelResizeHandle

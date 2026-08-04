@@ -244,6 +244,7 @@ function ConsensusCard({ event }: { event: Event }) {
   const plan = event.raw.plan as string | undefined;
   const assignments = event.raw.assignments as Record<string, unknown> | undefined;
   const broken = event.raw.broken as boolean | undefined;
+  const dissentFile = typeof event.raw.dissent_file === "string" ? event.raw.dissent_file : undefined;
   const hasAssignments = assignments && Object.keys(assignments).length > 0;
   const metrics = event.raw.metrics && typeof event.raw.metrics === "object"
     ? (event.raw.metrics as Record<string, unknown>)
@@ -257,13 +258,18 @@ function ConsensusCard({ event }: { event: Event }) {
 
   if (broken) {
     return (
-      <div className="bg-red-500/5 border border-red-500/40 rounded-lg p-4">
+      <div className="bg-yellow-500/5 border border-yellow-500/40 rounded-lg p-4">
         <div className="flex items-center gap-2 mb-2">
-          <span className="text-red-400 text-lg leading-none">✗</span>
-          <span className="text-red-300 font-bold uppercase tracking-wider text-xs">Negotiation failed</span>
+          <span className="text-yellow-400 text-lg leading-none">⊘</span>
+          <span className="text-yellow-300 font-bold uppercase tracking-wider text-xs">Impasse</span>
           <span className="ml-auto text-micro text-muted font-mono">{event.time}</span>
         </div>
         {plan && <p className="text-sm text-white/90 leading-relaxed whitespace-pre-wrap">{plan}</p>}
+        {dissentFile && (
+          <p className="text-micro text-muted font-mono mt-2">
+            dissent → {dissentFile}
+          </p>
+        )}
       </div>
     );
   }
