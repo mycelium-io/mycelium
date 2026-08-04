@@ -1,17 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Tests for L9 episode tracking, epistemic reply fields, consensus metrics,
-and the dual-stack (alignment) CFN client mapping."""
+"""Tests for L9 episode tracking, epistemic reply fields, and consensus metrics."""
 
-import json
-from types import SimpleNamespace
-from typing import Any, ClassVar
+from typing import Any
 
 import pytest
 
 from app.services import l9_episode
-from app.services.coordination import _normalize_cfn_decide_response, _parse_agent_reply
 
 
 def _open() -> l9_episode.EpisodeState:
@@ -274,81 +270,7 @@ def test_gar_guard_at_mpc_half():
     assert m["gar"] == 0.0
 
 
-# ── reply parsing (coordination.py integration) ───────────────────────────────
-
-
-def test_parse_agent_reply_carries_new_epistemic_fields():
-    content = json.dumps(
-        {
-            "action": "accept",
-            "supporting_evidence": ["e1", "  ", 5],
-            "against_evidence": ["c1"],
-            "addresses": ["e0"],
-            "revision_cause": "grounded_argument",
-        }
-    )
-    reply = _parse_agent_reply("a1", content)
-    assert reply["supporting_evidence"] == ["e1"]  # trimmed / non-strings dropped
-    assert reply["against_evidence"] == ["c1"]
-    assert reply["addresses"] == ["e0"]
-    assert reply["revision_cause"] == "grounded_argument"
-    assert "offer" not in reply  # epistemic fields never synthesize an offer
-
-
-def test_parse_agent_reply_drops_invalid_revision_cause():
-    reply = _parse_agent_reply("a1", json.dumps({"action": "accept", "revision_cause": "bogus"}))
-    assert "revision_cause" not in reply
-
-
-def test_epistemic_fields_stay_out_of_offer():
-    content = json.dumps(
-        {"offer": {"budget": "high"}, "supporting_evidence": ["e1"], "addresses": ["e0"]}
-    )
-    reply = _parse_agent_reply("a1", content)
-    assert reply["offer"] == {"budget": "high"}  # only issue keys, nothing leaked
-    assert reply["supporting_evidence"] == ["e1"]  # carried as a sibling
-
-
-# ── reply parsing (coordination.py integration) ───────────────────────────────
-
-
-def test_parse_agent_reply_carries_epistemic_fields():
-    content = json.dumps(
-        {
-            "action": "accept",
-            "confidence": 0.75,
-            "evidence": ["decisions/api-style", "  ", 42],
-            "deferred_to": "lead-agent",
-            "reasoning": "prior art in the decisions namespace",
-        }
-    )
-    reply = _parse_agent_reply("a1", content)
-    assert reply["action"] == "accept"
-    assert reply["confidence"] == 0.75
-    assert reply["evidence"] == ["decisions/api-style"]
-    assert reply["deferred_to"] == "lead-agent"
-    assert reply["reasoning"] == "prior art in the decisions namespace"
-
-
-def test_parse_agent_reply_drops_invalid_epistemic_fields():
-    content = json.dumps(
-        {
-            "action": "reject",
-            "confidence": 1.7,  # out of range
-            "evidence": "not-a-list",
-            "deferred_to": "someone",  # invalid on non-accept
-        }
-    )
-    reply = _parse_agent_reply("a1", content)
-    assert reply["action"] == "reject"
-    assert "confidence" not in reply
-    assert "evidence" not in reply
-    assert "deferred_to" not in reply
-
-
-def test_parse_agent_reply_legacy_unchanged():
-    reply = _parse_agent_reply("a1", json.dumps({"action": "accept"}))
-    assert reply == {"agent_id": "a1", "participant_id": "a1", "action": "accept"}
+# ── epistemic field sanitisation ──────────────────────────────────────────────
 
 
 def test_sanitize_rejects_bool_confidence():
@@ -428,130 +350,3 @@ def test_read_team_prior_local_absent_returns_none(tmp_path, monkeypatch):
 
     monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
     assert l9_episode.read_team_prior_local("never-negotiated") is None
-
-
-# ── alignment-flavor CFN client ───────────────────────────────────────────────
-
-
-class _CapturingEndpoint:
-    """Stands in for a generated endpoint module: captures the typed request
-    body and returns a canned typed response, so we assert on request mapping
-    without a live CFN."""
-
-    captured: ClassVar[dict[str, Any]] = {}
-    parsed: ClassVar[Any] = None
-
-    @staticmethod
-    async def asyncio_detailed(*, workspace_id: str, mas_id: str, client: Any, body: Any) -> Any:
-        _CapturingEndpoint.captured = {"workspace_id": workspace_id, "mas_id": mas_id, "body": body}
-        return SimpleNamespace(
-            content=b"{}", headers={}, status_code=200, parsed=_CapturingEndpoint.parsed
-        )
-
-
-@pytest.mark.asyncio
-async def test_alignment_decide_maps_participant_id(monkeypatch):
-    from app.config import settings
-    from app.services import cfn_negotiation
-    from ioc_cfn_svc_api_client.models import SemanticalignmentDecideResponse
-
-    monkeypatch.setattr(settings, "CFN_SVC_URL", "http://cfn:9002")
-    monkeypatch.setattr(cfn_negotiation, "decide_api", _CapturingEndpoint)
-    _CapturingEndpoint.parsed = SemanticalignmentDecideResponse(status="agreed")
-
-    await cfn_negotiation.decide_negotiation(
-        session_id="s1",
-        agent_replies=[
-            {"agent_id": "a1", "participant_id": "a1", "action": "accept", "confidence": 0.9},
-            {
-                "agent_id": "a2",
-                "participant_id": "a2",
-                "action": "counter_offer",
-                "offer": {"k": "v"},
-            },
-        ],
-        workspace_id="ws",
-        mas_id="mas",
-    )
-    cap = _CapturingEndpoint.captured
-    assert cap["workspace_id"] == "ws" and cap["mas_id"] == "mas"
-    # Typed request body: agent_id → participant_id; epistemic extras (confidence)
-    # are NOT forwarded to CFN.
-    assert cap["body"].to_dict()["agent_replies"] == [
-        {"participant_id": "a1", "action": "accept"},
-        {"participant_id": "a2", "action": "counter_offer", "offer": {"k": "v"}},
-    ]
-
-
-@pytest.mark.asyncio
-async def test_alignment_start_request_shape(monkeypatch):
-    from app.config import settings
-    from app.services import cfn_negotiation
-    from ioc_cfn_svc_api_client.models import SemanticalignmentStartResponse
-
-    monkeypatch.setattr(settings, "CFN_SVC_URL", "http://cfn:9002")
-    monkeypatch.setattr(cfn_negotiation, "start_api", _CapturingEndpoint)
-    _CapturingEndpoint.parsed = SemanticalignmentStartResponse(status="initiated")
-
-    await cfn_negotiation.start_negotiation(
-        session_id="s1",
-        content_text="- a1: ship",
-        agents=[{"id": "a1", "name": "a1"}],
-        workspace_id="ws",
-        mas_id="mas",
-        n_steps=10,
-    )
-    body = _CapturingEndpoint.captured["body"].to_dict()
-    assert body == {
-        "session_id": "s1",
-        "content_text": "- a1: ship",
-        "agents": [{"id": "a1", "name": "a1"}],
-        "n_steps": 10,
-    }
-
-
-@pytest.mark.asyncio
-async def test_decide_raises_on_missing_status(monkeypatch):
-    """Presence-assertion: a response missing the depended-on ``status`` field
-    (swaggo marks everything optional, so a rename becomes UNSET) is a loud
-    CfnNegotiationError, not a silent empty agreement."""
-    from app.config import settings
-    from app.services import cfn_negotiation
-    from ioc_cfn_svc_api_client.models import SemanticalignmentDecideResponse
-
-    monkeypatch.setattr(settings, "CFN_SVC_URL", "http://cfn:9002")
-    monkeypatch.setattr(cfn_negotiation, "decide_api", _CapturingEndpoint)
-    _CapturingEndpoint.parsed = SemanticalignmentDecideResponse()  # no status
-
-    with pytest.raises(
-        cfn_negotiation.CfnNegotiationError, match="missing required field 'status'"
-    ):
-        await cfn_negotiation.decide_negotiation(
-            session_id="s1",
-            agent_replies=[{"agent_id": "a1", "action": "accept"}],
-            workspace_id="ws",
-            mas_id="mas",
-        )
-
-
-def test_normalize_decide_handles_alignment_final_result():
-    """The Go CFN's terminal decide response: top-level status + final_result
-    SSTP envelope. The normalizer must surface the agreement."""
-    result = {
-        "status": "agreed",
-        "session_id": "s1",
-        "round": 3,
-        "final_result": {
-            "kind": "commit",
-            "semantic_context": {
-                "final_agreement": [
-                    {"issue_id": "budget", "chosen_option": "high"},
-                ]
-            },
-        },
-        "shared_memory": {"persisted": True},
-    }
-    normalized = _normalize_cfn_decide_response(result)
-    assert normalized["semantic_context"]["final_agreement"][0]["issue_id"] == "budget"
-    # Top-level extras survive the merge.
-    assert normalized["shared_memory"] == {"persisted": True}

@@ -47,10 +47,6 @@ def show(ctx: typer.Context) -> None:
         else:
             typer.secho("Current configuration:", bold=True)
             typer.echo(f"  API URL:      {config.server.api_url}")
-            if config.server.workspace_id:
-                typer.echo(f"  Workspace ID: {config.server.workspace_id}")
-            if config.server.mas_id:
-                typer.echo(f"  MAS ID:       {config.server.mas_id}")
             if config.identity.name:
                 typer.echo(f"  Identity:     {config.identity.name}")
             if config.rooms.active:
@@ -361,17 +357,6 @@ def _migrate_env_to_config(config: "MyceliumConfig") -> None:
     # Runtime — data dir
     if not config.runtime.data_dir and env.get("MYCELIUM_DATA_DIR"):
         config.runtime.data_dir = env["MYCELIUM_DATA_DIR"]
-        changed = True
-
-    # Runtime — CFN
-    if not config.runtime.cfn_mgmt_url and env.get("CFN_MGMT_URL"):
-        config.runtime.cfn_mgmt_url = env["CFN_MGMT_URL"]
-        changed = True
-    if not config.runtime.cfn_svc_url and env.get("CFN_SVC_URL"):
-        config.runtime.cfn_svc_url = env["CFN_SVC_URL"]
-        changed = True
-    if not config.runtime.workspace_id and env.get("WORKSPACE_ID"):
-        config.runtime.workspace_id = env["WORKSPACE_ID"]
         changed = True
 
     if changed:

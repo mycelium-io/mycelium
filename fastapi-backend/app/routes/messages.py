@@ -176,36 +176,6 @@ async def send_message(
         raise HTTPException(status_code=500, detail="resolver returned (None, None)")
     await _notify_room(notify_channel, notify_payload)
 
-    # Events are machine feed, not negotiation replies — never let one be
-    # parsed as an agent's round response.
-    if coord and coord.state == "negotiating" and msg.message_type != MessageType.EVENT:
-        from app.services import coordination
-
-        asyncio.ensure_future(
-            coordination.on_agent_response(coord.display_name, msg.sender_handle, msg.content)
-        )
-
-    # Fan in to KXP. Skip system-emitted coordination chatter (those are
-    # CognitiveEngine-authored; ingesting them would loop the KG on its own
-    # mediator output). Only deliberate agent speech reaches CFN.
-    if (
-        not msg.message_type.startswith("coordination_")
-        and msg.message_type != MessageType.EVENT
-        and msg.sender_handle != "CognitiveEngine"
-    ):
-        from app.services.knowledge_fanin import fan_in
-
-        target_room = room.name if room is not None else (coord.display_name if coord else None)
-        if target_room:
-            asyncio.ensure_future(
-                fan_in(
-                    room_name=target_room,
-                    sender_handle=msg.sender_handle,
-                    content=msg.content,
-                    source="channel_message",
-                )
-            )
-
     return msg
 
 

@@ -60,14 +60,3 @@ def test_refresh_no_backup_when_disabled(home: Path) -> None:
 
     assert "STALE" not in compose.read_text(encoding="utf-8")
     assert not (home / ".mycelium" / "docker" / "compose.yml.prev").exists()
-
-
-def test_refresh_copies_initdb_scripts(home: Path) -> None:
-    _refresh_compose_templates()
-
-    initdb = home / ".mycelium" / "docker" / "initdb"
-    assert initdb.is_dir()
-    scripts = list(initdb.glob("*.sh"))
-    assert scripts, "expected at least one initdb script to be copied"
-    # CFN bootstrap script must land — Postgres needs it on first volume init.
-    assert any(s.name == "create-cfn-cp-db.sh" for s in scripts)

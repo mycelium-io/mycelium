@@ -128,26 +128,6 @@ def generate_env_file(
         if config.llm.base_url
         else "# LLM_BASE_URL not set — using provider default",
         "",
-        "# ── Coordination ─────────────────────────────────────────────────────────",
-        f"COORDINATION_TICK_TIMEOUT_SECONDS={config.runtime.coordination_tick_timeout_seconds}",
-        "",
-        "# ── IoC CFN ──────────────────────────────────────────────────────────────",
-        f"CFN_MGMT_URL={config.runtime.cfn_mgmt_url or ''}",
-        f"CFN_SVC_URL={config.runtime.cfn_svc_url or ''}",
-        f"WORKSPACE_ID={config.server.workspace_id or config.runtime.workspace_id or ''}",
-        f"MAS_ID={config.server.mas_id or ''}",
-        f"CFN_DB={config.runtime.cfn_db}",
-        f"ADMIN_USER_PASSWORD={config.runtime.admin_user_password}",
-        f"CFN_DEV_MODE={'true' if config.runtime.cfn_dev_mode else 'false'}",
-        "",
-        "# ── Negotiation ──────────────────────────────────────────────────────────",
-        f"NEGOTIATION_N_STEPS={config.negotiation.n_steps}",
-        "",
-        "# ── Knowledge ingest control (CFN shared-memories hook) ─────────────────",
-        f"MYCELIUM_INGEST_ENABLED={'true' if config.knowledge_ingest.enabled else 'false'}",
-        f"MYCELIUM_INGEST_MAX_INPUT_TOKENS={config.knowledge_ingest.max_input_tokens}",
-        f"MYCELIUM_INGEST_DEDUPE_TTL_SECONDS={config.knowledge_ingest.dedupe_ttl_seconds}",
-        "",
     ]
 
     # ── Operator-managed pins (preserved across `mycelium config apply`) ─────

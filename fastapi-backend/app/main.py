@@ -8,8 +8,6 @@ Mycelium FastAPI backend.
   - Messages (POST + Postgres NOTIFY)
   - Sessions (presence)
   - SSE stream (LISTEN)
-  - Audit events
-  - CFN proxy (shared-memories, memory-operations)
 
 No auth, no heartbeat, no Neo4j, no Yjs, no scheduler.
 """
@@ -32,12 +30,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_async_session
-from app.routes.audit import router as audit_router
-from app.routes.cfn_proxy import cfn_read_router
-from app.routes.cfn_proxy import router as cfn_proxy_router
-from app.routes.coordination import router as coordination_router
-from app.routes.coordination_sessions import router as coordination_sessions_router
-from app.routes.knowledge import router as knowledge_router
 from app.routes.memory import router as memory_router
 from app.routes.messages import router as messages_router
 from app.routes.plan import agent_router as agent_context_router
@@ -64,66 +56,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def _register_memory_provider() -> None:
-    """Register Mycelium as a memory provider with ioc-cfn-mgmt-plane-svc.
-
-    Non-fatal — if CFN_MGMT_URL is unset or the call fails, startup continues.
-    Mirrors the registration contract used by ioc-knowledge-memory-svc.
-    """
-    import time
-
-    import requests
-
-    from app.services.metrics import record_cfn_call
-
-    url = settings.CFN_MGMT_URL
-    if not url:
-        return
-
-    api_url = settings.API_BASE_URL
-    payload = {
-        "name": "mycelium",
-        "description": (
-            "Mycelium persistent memory — namespaced KVP, semantic vector search, "
-            f"and knowledge graph. API: {api_url}/docs"
-        ),
-        "config": {
-            "url": api_url,
-            "shared": True,
-        },
-    }
-    t0 = time.monotonic()
-    try:
-        resp = requests.post(
-            f"{url.rstrip('/')}/api/memory-providers",
-            json=payload,
-            timeout=10,
-        )
-        record_cfn_call(
-            service="mgmt",
-            operation="register_memory_provider",
-            duration_ms=(time.monotonic() - t0) * 1000,
-            status_code=resp.status_code,
-            error=resp.status_code not in (201, 409),
-        )
-        if resp.status_code == 201:
-            logger.info("Registered as memory provider with CFN mgmt plane")
-        elif resp.status_code == 409:
-            logger.info("Already registered as memory provider with CFN mgmt plane")
-        else:
-            logger.warning(
-                "CFN memory provider registration returned %s: %s", resp.status_code, resp.text
-            )
-    except Exception as exc:
-        record_cfn_call(
-            service="mgmt",
-            operation="register_memory_provider",
-            duration_ms=(time.monotonic() - t0) * 1000,
-            error=True,
-        )
-        logger.warning("CFN memory provider registration failed (non-fatal): %s", exc)
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Mycelium backend starting up")
@@ -131,8 +63,6 @@ async def lifespan(app: FastAPI):
 
     await create_db_and_tables()
     logger.info("Database tables ensured")
-    # Register with IoC CFN mgmt plane if configured
-    _register_memory_provider()
     # Incremental scan of filesystem → search index
     from app.services.reindex import start_watcher, startup_scan, stop_watcher
 
@@ -156,10 +86,8 @@ async def lifespan(app: FastAPI):
     stop_watcher()
     stop_event_sweep()
     from app.routes.messages import close_notify_connection
-    from app.services.cfn_http import aclose_all
 
     await close_notify_connection()
-    await aclose_all()
     logger.info("Mycelium backend shutting down")
 
 
@@ -202,22 +130,6 @@ app.include_router(stream_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
 app.include_router(plan_router, prefix="/api")
 app.include_router(agent_context_router, prefix="/api")
-
-# CFN routes
-app.include_router(audit_router)
-app.include_router(cfn_proxy_router)
-app.include_router(cfn_read_router)
-
-# Knowledge graph — forwards openclaw turns to CFN shared-memories + observability
-app.include_router(knowledge_router)
-
-# Coordination observability (round-trace ring buffer; see issue #162)
-app.include_router(coordination_router)
-
-# Coordination sessions as a top-level resource — used by OpenClaw plugin,
-# frontend, and CLI in place of addressing sessions by their parent room's
-# display name.
-app.include_router(coordination_sessions_router)
 
 
 @app.get("/", tags=["health"])

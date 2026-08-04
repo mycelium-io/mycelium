@@ -27,22 +27,6 @@ def _set_data_dir(tmp_path, monkeypatch):
     monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))
 
 
-@pytest.fixture(autouse=True)
-def _stub_plan_compiler(monkeypatch):
-    """Neutralize the consensus→plan LLM compiler by default.
-
-    ``_finish_cfn`` calls ``compile_plan()`` on every non-broken consensus;
-    without this every coordination test reaching agreement would make a live
-    LLM call. Tests that exercise the compiler patch over this stub.
-    """
-    from unittest.mock import AsyncMock
-
-    monkeypatch.setattr(
-        "app.services.coordination.compile_plan",
-        AsyncMock(return_value="# Plan\n\n- [ ] stub task\n"),
-    )
-
-
 @pytest_asyncio.fixture()
 async def db_session():
     """Ephemeral in-memory SQLite session, schema created fresh per test."""

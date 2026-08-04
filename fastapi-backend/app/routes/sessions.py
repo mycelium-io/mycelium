@@ -27,7 +27,6 @@ from app.bus import notify, room_channel
 from app.config import settings
 from app.database import get_async_session
 from app.models import AuditEvent, CoordinationSession, Message, Participant, Room
-from app.routes.rooms import _sync_create_mas
 from app.schemas import (
     ContextFile,
     CoordinationSessionRead,
@@ -63,9 +62,6 @@ async def _upsert_room(room_name: str, session: AsyncSession) -> Room:
                 raise HTTPException(status_code=500, detail="Failed to create room")
         else:
             await session.refresh(room)
-            # Register MAS with CFN mgmt plane so coordination can use CFN mode
-            if not room.mas_id:
-                await _sync_create_mas(room, session)
     return room
 
 
@@ -175,16 +171,10 @@ async def spawn_session(
     coord = await _spawn_coordination_session(room_name, db)
     await db.commit()
 
-    cfn_enabled = bool(settings.CFN_SVC_URL and room.mas_id and room.workspace_id)
     return {
         "session_room": coord.display_name,
         "coordination_session_id": str(coord.id),
         "parent": room_name,
-        "cfn": {
-            "enabled": cfn_enabled,
-            "mas_id": str(room.mas_id) if room.mas_id else None,
-            "workspace_id": str(room.workspace_id) if room.workspace_id else None,
-        },
     }
 
 
@@ -278,22 +268,10 @@ async def join_room(
     if duplicate_join:
         return sess
 
-    # Audit + KXP fan-in for opt-in shared context files. The agent
-    # deliberately selected these via --context-files; treat them as room
-    # writes, mirroring channel_message / memory_set in Part 1.
+    # Audit record for opt-in shared context files. The agent deliberately
+    # selected these via --context-files; capture consent (who shared what).
     if payload.context_files:
         await _record_context_files_audit(db, room, payload.agent_handle, payload.context_files)
-        from app.services.knowledge_fanin import fan_in
-
-        for cf in payload.context_files:
-            asyncio.ensure_future(
-                fan_in(
-                    room_name=room_name,
-                    sender_handle=payload.agent_handle,
-                    content=cf.content,
-                    source="context_file",
-                )
-            )
 
     # Persist the join as Message rows so the agent's opening position
     # (``intent``) is auditable post-hoc — catchup readers (``GET
@@ -362,19 +340,14 @@ async def join_room(
         await db.commit()
 
         if claimed is not None:
-            from app.services import coordination
-
-            coordination.schedule_join_timer(coord_session.display_name, deadline)
             logger.info(
-                "Coordination join timer started for session %s (deadline=%s)",
+                "Coordination join window opened for session %s (deadline=%s)",
                 coord_session.display_name,
                 deadline,
             )
     elif (
         coord_session.state == "waiting" and settings.COORDINATION_JOIN_WINDOW_EXTENSION_SECONDS > 0
     ):
-        from app.services import coordination
-
         now = datetime.now(UTC)
         current_deadline = coord_session.join_window_ends_at
         if current_deadline is not None and current_deadline.tzinfo is None:
@@ -399,7 +372,6 @@ async def join_room(
                 .values(join_window_ends_at=new_deadline)
             )
             await db.commit()
-            coordination.schedule_join_timer(coord_session.display_name, new_deadline)
             logger.info(
                 "Coordination join window extended for %s on join by %s (deadline=%s, capped=%s)",
                 coord_session.display_name,
