@@ -288,6 +288,14 @@ class MemoryCreate(BaseModel):
     )
     embed: bool = Field(True, description="Generate vector embedding for semantic search")
     created_by: str = Field(..., description="Agent handle creating this memory")
+    base_version: int | None = Field(
+        None,
+        description=(
+            "Optimistic-concurrency guard: the version this write is based on. "
+            "When set and it doesn't match the current on-disk version, the write "
+            "is rejected (409) with the current content. Omit for last-write-wins."
+        ),
+    )
 
 
 class MemoryBatchCreate(BaseModel):

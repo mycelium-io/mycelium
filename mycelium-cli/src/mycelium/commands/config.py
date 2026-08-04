@@ -58,7 +58,6 @@ def show(ctx: typer.Context) -> None:
             if config.llm.api_key:
                 masked = config.llm.api_key[:8] + "..." if len(config.llm.api_key) > 8 else "***"
                 typer.echo(f"  LLM API Key:  {masked}")
-            typer.echo(f"  DB Port:      {config.runtime.db_port}")
             typer.echo(f"  Backend Port: {config.runtime.backend_port}")
 
     except Exception as e:
@@ -326,13 +325,6 @@ def _migrate_env_to_config(config: "MyceliumConfig") -> None:
         changed = True
 
     # Runtime — ports
-    env_db_port = env.get("MYCELIUM_DB_PORT")
-    if env_db_port and config.runtime.db_port == 5432:  # still default
-        try:
-            config.runtime.db_port = int(env_db_port)
-            changed = True
-        except ValueError:
-            pass
     env_backend_port = env.get("MYCELIUM_BACKEND_PORT")
     if env_backend_port and config.runtime.backend_port == 8000:  # still default
         try:
@@ -347,12 +339,6 @@ def _migrate_env_to_config(config: "MyceliumConfig") -> None:
             changed = True
         except ValueError:
             pass
-
-    # Runtime — passwords
-    env_db_pw = env.get("MYCELIUM_DB_PASSWORD")
-    if env_db_pw and config.runtime.db_password == "password":  # still default
-        config.runtime.db_password = env_db_pw
-        changed = True
 
     # Runtime — data dir
     if not config.runtime.data_dir and env.get("MYCELIUM_DATA_DIR"):

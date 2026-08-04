@@ -5,7 +5,7 @@
 Memory commands — persistent namespaced memory operations.
 
 CRUD operations read/write markdown files in .mycelium/rooms/{room}/.
-Search and subscribe use the backend API (pgvector/NOTIFY).
+Search and subscribe use the backend API (local JSONL index).
 """
 
 import json
@@ -27,7 +27,7 @@ from mycelium.filesystem import (
 from mycelium.protocol import MEMORY_CATEGORIES, MemoryLogEntry
 
 app = typer.Typer(
-    help="Read and write persistent memories scoped to rooms. Memories are markdown files in .mycelium/rooms/. Supports semantic vector search via pgvector.",
+    help="Read and write persistent memories scoped to rooms. Memories are markdown files in .mycelium/rooms/. Supports semantic vector search via a local JSONL index.",
     no_args_is_help=True,
 )
 console = Console()
@@ -292,7 +292,7 @@ def memory_search(
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
     limit: int = typer.Option(5, "--limit", "-n", help="Max results"),
 ) -> None:
-    """Semantic search over memories (uses pgvector via backend API)."""
+    """Semantic search over memories (via the backend API)."""
     from mycelium_backend_client.api.memory import (
         search_memories_api_rooms_room_name_memory_search_post as search_api,
     )
@@ -352,14 +352,14 @@ def memory_rm(
 
 @doc_ref(
     usage="mycelium memory reindex",
-    desc="Re-index the room into the pgvector search index. Run after editing memory files outside the CLI.",
+    desc="Re-index the room into the local JSONL search index. Run after editing memory files outside the CLI.",
     group="memory",
 )
 @app.command(name="reindex")
 def memory_reindex(
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
 ) -> None:
-    """Re-index the room into the pgvector search index.
+    """Re-index the room into the local JSONL search index.
 
     Run after editing memory files outside the CLI to update search.
     """

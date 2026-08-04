@@ -25,11 +25,9 @@ from pathlib import Path
 os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_async_session
 from app.routes.memory import router as memory_router
 from app.routes.messages import router as messages_router
 from app.routes.plan import agent_router as agent_context_router
@@ -59,11 +57,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Mycelium backend starting up")
-    from app.database import create_db_and_tables
-
-    await create_db_and_tables()
-    logger.info("Database tables ensured")
-    # Incremental scan of filesystem → search index
+    # Incremental scan of filesystem → JSONL search index
     from app.services.reindex import start_watcher, startup_scan, stop_watcher
 
     await startup_scan()
@@ -85,9 +79,6 @@ async def lifespan(app: FastAPI):
     yield
     stop_watcher()
     stop_event_sweep()
-    from app.routes.messages import close_notify_connection
-
-    await close_notify_connection()
     logger.info("Mycelium backend shutting down")
 
 
@@ -137,7 +128,6 @@ app.include_router(agent_context_router, prefix="/api")
 async def root(
     check_llm: bool = False,
     llm_probe: str = "provider",
-    session: AsyncSession = Depends(get_async_session),
 ):
     """Health check.
 
@@ -157,8 +147,8 @@ async def root(
 
     result: dict = {"status": "ok", "service": "mycelium-backend", "version": app.version}
 
-    # Database
-    result["database"] = await _check_database(session)
+    # Storage — markdown + local JSONL, no database (SLIM-native rebuild).
+    result["storage"] = _check_storage()
 
     # Embedding model
     result["embedding"] = _check_embedding()
@@ -174,8 +164,8 @@ async def root(
     result["llm"] = llm.to_dict()
 
     overall_issues = []
-    if result["database"]["status"] != "ok":
-        overall_issues.append("database")
+    if result["storage"]["status"] != "ok":
+        overall_issues.append("storage")
     if result["llm"]["status"] not in ("ok", "unchecked"):
         overall_issues.append("llm")
     if overall_issues:
@@ -300,16 +290,16 @@ async def _proxy_collector(path: str):
         )
 
 
-async def _check_database(session: AsyncSession) -> dict:
-    """Probe database connectivity with SELECT 1."""
-    from sqlalchemy import text
+def _check_storage() -> dict:
+    """Probe the local markdown/JSONL data directory is writable."""
+    from app.services.filesystem import get_data_dir
 
     try:
-        await session.execute(text("SELECT 1"))
-        return {"status": "ok", "message": "Connected"}
+        data_dir = get_data_dir()
+        return {"status": "ok", "message": "Local store", "path": str(data_dir)}
     except Exception as exc:
-        logger.warning("Database health check failed: %s", exc)
-        return {"status": "unreachable", "message": f"Cannot connect: {type(exc).__name__}"}
+        logger.warning("Storage health check failed: %s", exc)
+        return {"status": "unreachable", "message": f"Cannot access data dir: {type(exc).__name__}"}
 
 
 def _check_embedding() -> dict:

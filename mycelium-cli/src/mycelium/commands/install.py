@@ -30,11 +30,7 @@ LOG_WINDOW = 4
 
 # Public images that are always pulled regardless of profile.
 # Pulling these during the animation means compose-up is faster.
-_PUBLIC_IMAGES = [
-    ("postgres:17-alpine", "postgres"),
-    ("skaiworldwide/agensgraph:v2.16.0-alpine3.22", "graph DB (AgensGraph)"),
-    ("skaiworldwide/agviewer:latest", "graph DB viewer"),
-]
+_PUBLIC_IMAGES: list[tuple[str, str]] = []
 
 
 def _check_docker() -> tuple[bool, str]:
@@ -388,7 +384,6 @@ def _image_exists(image: str) -> bool:
 
 
 _KNOWN_CONTAINERS = [
-    "mycelium-db",
     "mycelium-backend",
 ]
 
@@ -450,56 +445,6 @@ def _compose_up(
 
     result = subprocess.run(args, text=True)
     return result.returncode == 0, needs_build
-
-
-def _run_migrations() -> None:
-    """Run alembic migrations via host checkout or mycelium-backend container."""
-    from mycelium.migrations import echo_alembic_output, run_alembic_upgrade
-
-    result = run_alembic_upgrade("head")
-    if result.returncode == 0:
-        echo_alembic_output(result)
-        typer.secho("  ✓ Database migrations applied", fg=typer.colors.GREEN)
-        return
-
-    if result.mode == "unavailable":
-        typer.echo("  ⚠  Could not run migrations (backend container not running)")
-        return
-
-    echo_alembic_output(result)
-    typer.secho("  ⚠  Migration failed (non-fatal)", fg=typer.colors.YELLOW)
-
-
-def _wait_for_db_container(
-    compose_path: Path,
-    env_path: Path,
-    db_service: str = "mycelium-db",
-    timeout: int = 60,
-) -> bool:
-    """Wait until the DB container reports healthy via docker compose ps."""
-    import time
-
-    deadline = time.time() + timeout
-    args = [
-        "docker",
-        "compose",
-        "-p",
-        "mycelium",
-        "-f",
-        str(compose_path),
-        "--env-file",
-        str(env_path),
-        "ps",
-        "--format",
-        "json",
-        db_service,
-    ]
-    while time.time() < deadline:
-        result = subprocess.run(args, capture_output=True, text=True)
-        if result.returncode == 0 and "healthy" in result.stdout:
-            return True
-        time.sleep(2)
-    return False
 
 
 def _compose_up_services(
@@ -708,7 +653,6 @@ def _write_mycelium_config(
     # Persist runtime settings into [runtime] section
     runtime = RuntimeConfig(data_dir=str(Path.home() / ".mycelium"))
     if custom_ports:
-        runtime.db_port = custom_ports.get("db", 5432)
         runtime.backend_port = custom_ports.get("backend", 8000)
         runtime.collector_port = custom_ports.get("collector", 4318)
     config.runtime = runtime
@@ -748,9 +692,6 @@ def install(
     ),
     llm_base_url: str = typer.Option("", "--llm-base-url", help="LLM base URL (non-interactive)"),
     llm_api_key: str = typer.Option("", "--llm-api-key", help="LLM API key (non-interactive)"),
-    db_port: int = typer.Option(
-        0, "--db-port", help="Host port for Postgres (0 = auto-detect, default 5432)"
-    ),
     backend_port: int = typer.Option(
         0, "--backend-port", help="Host port for backend API (0 = auto-detect, default 8000)"
     ),
@@ -795,7 +736,6 @@ def install(
                       or openai/gpt-4o or ollama/llama3
       --llm-base-url  Custom base URL (required for ollama / local models)
       --llm-api-key   API key for the chosen LLM provider
-      --db-port       Host port for Postgres (default: 5432, auto-increments on conflict)
       --backend-port  Host port for backend API (default: 8000, auto-increments on conflict)
       --force         Force full reinstall (ignore existing configuration)
     """
@@ -844,12 +784,11 @@ def install(
 
             # Resolve ports — use explicit flags, or auto-detect conflicts
             default_ports: dict[str, int] = {
-                "db": db_port or 5432,
                 "backend": backend_port or 8000,
             }
             if enable_ui:
                 default_ports["ui"] = 3000
-            if not db_port or not backend_port or enable_ui:
+            if not backend_port or enable_ui:
                 busy = _check_ports(list(default_ports.values()))
                 for label, port in list(default_ports.items()):
                     if port in busy:
@@ -862,7 +801,6 @@ def install(
                         )
                         default_ports[label] = new_port
             custom_ports = default_ports
-            llm_config["MYCELIUM_DB_PORT"] = str(custom_ports["db"])
             llm_config["MYCELIUM_BACKEND_PORT"] = str(custom_ports["backend"])
             if enable_ui:
                 llm_config["MYCELIUM_UI_PORT"] = str(custom_ports["ui"])
@@ -893,7 +831,6 @@ def install(
             health_timeout = 300 if needs_build else 120
             _wait_for_health([f"{api_url}/health"], timeout=health_timeout)
 
-            _run_migrations()
             _write_mycelium_config(
                 api_url,
                 llm_config=llm_config,
@@ -1075,7 +1012,7 @@ def install(
             compose_profiles.append("ui")
 
         # Port check — allow user to pick alternatives
-        default_ports: dict[str, int] = {"db": 5432, "backend": 8000}
+        default_ports: dict[str, int] = {"backend": 8000}
         if enable_ui:
             default_ports["ui"] = 3000
         ports_to_check = list(default_ports.values())
@@ -1094,7 +1031,6 @@ def install(
                         typer.echo(f"    Using default {default} anyway")
 
             # Update llm_config with custom ports for env file
-            llm_config["MYCELIUM_DB_PORT"] = str(custom_ports["db"])
             llm_config["MYCELIUM_BACKEND_PORT"] = str(custom_ports["backend"])
             if enable_ui:
                 llm_config["MYCELIUM_UI_PORT"] = str(custom_ports["ui"])
@@ -1135,10 +1071,9 @@ def install(
         print()
         _wait_for_health([f"{api_url}/health"], timeout=health_timeout)
 
-        # ── Phase 5: Migrate DB + write config ────────────────────────────
+        # ── Phase 5: Write config ─────────────────────────────────────────
         print()
         typer.echo("  ── Provisioning backend ────────────────────────────────")
-        _run_migrations()
         _write_mycelium_config(
             api_url,
             llm_config=llm_config,
@@ -1172,7 +1107,6 @@ def install(
         print()
         typer.echo("  Services:")
         typer.echo(f"    mycelium-backend  → {api_url}")
-        typer.echo(f"    mycelium-db       → localhost:{custom_ports['db']}")
         if enable_ui:
             ui_url = f"http://localhost:{custom_ports['ui']}"
             typer.echo(f"    mycelium-frontend → {ui_url}")

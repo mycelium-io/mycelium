@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services import plan as plan_service
 from app.services.filesystem import get_room_dir
@@ -249,18 +248,14 @@ class TestPlanRoutes:
         resp = await client.get(f"/api/rooms/{room}/plan")
         assert resp.json()["title"] is None
 
-    async def test_plan_mutations_emit_plan_updated_events(
-        self, client: AsyncClient, db_session: AsyncSession
-    ):
-        """add_task / toggle / set_title emit ``plan_updated`` Message rows.
+    async def test_plan_mutations_emit_plan_updated_events(self, client: AsyncClient):
+        """add_task / toggle / set_title emit ``plan_updated`` messages.
 
         The chat-channel narrates plan edits the same way it narrates joins
-        and consensus. If the API mutation doesn't fire a Message + NOTIFY,
-        the room's event stream goes dark on every plan edit.
+        and consensus. If the API mutation doesn't record a plan_updated
+        message, the room's event stream goes dark on every plan edit.
         """
-        from sqlalchemy import select
-
-        from app.models import Message
+        from app.services import local_state
 
         room = "plan-events"
         await client.post("/api/rooms", json={"name": room})
@@ -277,18 +272,8 @@ class TestPlanRoutes:
             f"/api/rooms/{room}/plan/title", json={"text": "Q3 Sprint", "updated_by": "julia"}
         )
 
-        rows = (
-            (
-                await db_session.execute(
-                    select(Message)
-                    .where(Message.message_type == "plan_updated")
-                    .where(Message.room_name == room)
-                    .order_by(Message.created_at)
-                )
-            )
-            .scalars()
-            .all()
-        )
+        rows = [m for m in local_state.list_messages(room) if m.message_type == "plan_updated"]
+        rows.sort(key=lambda m: m.created_at)
         kinds = [json.loads(r.content)["kind"] for r in rows]
         assert kinds == ["task_added", "task_toggled", "title_set"]
 

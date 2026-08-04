@@ -4,10 +4,10 @@
 """TTL sweep for transient event messages (#392).
 
 Events carrying ``metadata.ttl_seconds`` get an ``event_expires_at`` stamp at
-write time; this background loop deletes rows past that stamp. Durable kinds
-(no TTL) have ``event_expires_at = NULL`` and are never touched. The GET
-endpoint independently filters expired rows, so sweep latency is invisible to
-readers — this loop just reclaims storage.
+write time; this background loop drops messages past that stamp. Durable kinds
+(no TTL) have ``event_expires_at = None`` and are never touched. The GET
+endpoint independently filters expired messages, so sweep latency is invisible
+to readers — this loop just reclaims memory.
 """
 
 from __future__ import annotations
@@ -16,10 +16,7 @@ import asyncio
 import logging
 from datetime import UTC, datetime
 
-from sqlalchemy import delete
-
-from app.database import async_session_maker
-from app.models import Message
+from app.services import local_state
 
 logger = logging.getLogger(__name__)
 
@@ -29,16 +26,8 @@ _sweep_task: asyncio.Task | None = None
 
 
 async def sweep_expired_events() -> int:
-    """Delete expired event rows. Returns the number of rows removed."""
-    async with async_session_maker() as session:
-        result = await session.execute(
-            delete(Message).where(
-                Message.event_expires_at.is_not(None),
-                Message.event_expires_at < datetime.now(UTC),
-            )
-        )
-        await session.commit()
-        removed = getattr(result, "rowcount", 0) or 0
+    """Delete expired event messages. Returns the number removed."""
+    removed = local_state.sweep_expired_messages(datetime.now(UTC))
     if removed:
         logger.info("event sweep removed %d expired event(s)", removed)
     return removed

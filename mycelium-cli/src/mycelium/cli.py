@@ -125,7 +125,6 @@ app.command(name="up")(instance.start)
 app.command(name="down")(instance.stop)
 app.command(name="status")(instance.status)
 app.command(name="logs")(instance.logs)
-app.command(name="migrate")(instance.migrate)
 
 # Top-level shortcuts
 app.command(name="watch")(room.watch)
