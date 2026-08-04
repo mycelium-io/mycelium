@@ -13,7 +13,6 @@ import pytest
 
 from app.services.dissent_compiler import compile_dissent, fallback_body
 
-
 # ── fallback_body ────────────────────────────────────────────────────────────
 
 

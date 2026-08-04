@@ -660,9 +660,7 @@ async def test_broken_consensus_writes_dissent_file():
     with (
         patch(
             "app.services.cfn_negotiation.decide_negotiation",
-            AsyncMock(
-                return_value={"status": "timeout", "session_id": "room-dw", "round": 3}
-            ),
+            AsyncMock(return_value={"status": "timeout", "session_id": "room-dw", "round": 3}),
         ),
         patch.object(coord, "compile_dissent", new=fake_compile_dissent),
         patch.object(coord, "write_memory_file", side_effect=fake_write),
@@ -693,8 +691,8 @@ async def test_broken_consensus_writes_dissent_file():
 
 
 @pytest.mark.asyncio
-async def test_broken_consensus_dissent_fail_soft():
-    """If the dissent compiler raises, consensus is still posted with dissent_file=None."""
+async def test_broken_consensus_dissent_llm_fails_uses_fallback():
+    """LLM dissent compile failure falls back to deterministic body — file is still written."""
     _cfn_state.clear()
     state = _CfnRoundState(
         session_id="room-df",
@@ -711,21 +709,82 @@ async def test_broken_consensus_dissent_fail_soft():
         posted.append((message_type, json.loads(content)))
 
     async def exploding_compile(**_kwargs):
-        raise RuntimeError("dissent compiler boom")
+        raise RuntimeError("LLM boom")
+
+    fallback_calls: list = []
+
+    def fake_fallback(**kwargs):
+        fallback_calls.append(kwargs)
+        return "# Unresolved Tensions\n\nDeterministic fallback."
+
+    write_calls: list = []
+
+    def fake_write(room_dir, key, body, **kwargs):
+        write_calls.append({"key": key, "body": body})
 
     with (
         patch(
             "app.services.cfn_negotiation.decide_negotiation",
-            AsyncMock(
-                return_value={"status": "timeout", "session_id": "room-df", "round": 1}
-            ),
+            AsyncMock(return_value={"status": "timeout", "session_id": "room-df", "round": 1}),
         ),
         patch.object(coord, "compile_dissent", new=exploding_compile),
+        patch.object(coord, "dissent_fallback_body", side_effect=fake_fallback),
+        patch.object(coord, "write_memory_file", side_effect=fake_write),
+        patch.object(coord, "get_room_dir", return_value=MagicMock()),
         patch.object(coord, "compile_plan", new=AsyncMock()),
         patch.object(coord, "_post_message", side_effect=fake_post),
         patch.object(coord, "async_session_maker"),
     ):
         await _cfn_decide_round("room-df")
+
+    # Fallback ran and file was written
+    assert len(fallback_calls) == 1
+    assert fallback_calls[0]["session"] == "room-df"
+    assert len(write_calls) == 1
+    assert write_calls[0]["key"] == "decisions/unresolved-tensions"
+
+    # consensus still posts with dissent_file set — fallback guarantees the artifact
+    consensus = next(p[1] for p in posted if p[0] == "coordination_consensus")
+    assert consensus["broken"] is True
+    assert consensus["dissent_file"] == "decisions/unresolved-tensions.md"
+
+    _cfn_state.clear()
+
+
+@pytest.mark.asyncio
+async def test_broken_consensus_dissent_write_fails_soft():
+    """If write_memory_file raises, consensus still posts with dissent_file=None."""
+    _cfn_state.clear()
+    state = _CfnRoundState(
+        session_id="room-dw2",
+        workspace_id="ws",
+        mas_id="mas",
+        agents=["alice"],
+        pending_replies={"alice": None},
+    )
+    _cfn_state["room-dw2"] = state
+
+    posted: list = []
+
+    async def fake_post(room_name, message_type, content):
+        posted.append((message_type, json.loads(content)))
+
+    async def fake_compile(**_kwargs):
+        return "# Unresolved Tensions\n\nBody."
+
+    with (
+        patch(
+            "app.services.cfn_negotiation.decide_negotiation",
+            AsyncMock(return_value={"status": "timeout", "session_id": "room-dw2", "round": 1}),
+        ),
+        patch.object(coord, "compile_dissent", new=fake_compile),
+        patch.object(coord, "write_memory_file", side_effect=OSError("disk full")),
+        patch.object(coord, "get_room_dir", return_value=MagicMock()),
+        patch.object(coord, "compile_plan", new=AsyncMock()),
+        patch.object(coord, "_post_message", side_effect=fake_post),
+        patch.object(coord, "async_session_maker"),
+    ):
+        await _cfn_decide_round("room-dw2")
 
     consensus = next(p[1] for p in posted if p[0] == "coordination_consensus")
     assert consensus["broken"] is True

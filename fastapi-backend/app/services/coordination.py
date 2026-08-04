@@ -41,6 +41,7 @@ from app.database import async_session_maker
 from app.models import CoordinationSession, Message, Participant, Room
 from app.services import l9_cfn, l9_episode
 from app.services.dissent_compiler import compile_dissent
+from app.services.dissent_compiler import fallback_body as dissent_fallback_body
 from app.services.filesystem import get_room_dir, write_memory_file
 from app.services.metrics import (
     record_consensus,
@@ -1439,18 +1440,27 @@ async def _finish_cfn(
             room_name.split(":session:", 1)[0] if ":session:" in room_name else room_name
         )
         try:
-            body = await compile_dissent(
-                session=room_name,
-                reason=reason,
-                issues=state.issues,
-                issue_options=state.issue_options,
-                current_offer=state.current_offer,
-                last_actions=state.last_actions,
-                last_round_outcome=state.last_round_outcome,
-                joined_intents=state.joined_intents,
-                session_handles=state.session_handles,
-                round_num=state.round_num,
-            )
+            _fb_kwargs: dict = {
+                "session": room_name,
+                "reason": reason,
+                "issues": state.issues,
+                "issue_options": state.issue_options,
+                "current_offer": state.current_offer,
+                "last_actions": state.last_actions,
+                "last_round_outcome": state.last_round_outcome,
+                "joined_intents": state.joined_intents,
+                "session_handles": state.session_handles,
+                "round_num": state.round_num,
+            }
+            try:
+                body = await compile_dissent(**_fb_kwargs, use_llm=True)
+            except Exception as llm_exc:
+                logger.warning(
+                    "_finish_cfn: LLM dissent compile failed for %s, using fallback: %s",
+                    room_name,
+                    llm_exc,
+                )
+                body = dissent_fallback_body(**_fb_kwargs)
             write_memory_file(
                 get_room_dir(_dissent_parent),
                 "decisions/unresolved-tensions",
@@ -1460,9 +1470,7 @@ async def _finish_cfn(
             )
             dissent_file = "decisions/unresolved-tensions.md"
         except Exception as exc:
-            logger.warning(
-                "_finish_cfn: dissent compiler failed for %s: %s", room_name, exc
-            )
+            logger.warning("_finish_cfn: dissent write failed for %s: %s", room_name, exc)
 
     # L9 close-out: consensus quality metrics (only meaningful on a genuine
     # agreement with enough confidence reports), the commit envelope, and the
