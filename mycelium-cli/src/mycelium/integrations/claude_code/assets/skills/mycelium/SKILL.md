@@ -182,9 +182,41 @@ writes this after reviewing the dissent. Once it exists:
 mycelium memory get decisions/human-ruling --room <room-name>
 ```
 
-Use the ruling as your starting position when a session 2 is created. It
-narrows the option space before negotiation begins, so the second session
-converges instead of replaying the first one.
+#### Joining session 2 — carry the ruling into scope
+
+Two options; **Option B is preferred for multi-agent sessions**.
+
+**Option A — embed in your opening intent**
+
+```bash
+RULING=$(mycelium memory get decisions/human-ruling --room <room-name>)
+mycelium session join -H <handle> -m "Ruling: $RULING" -r <room-name>
+```
+
+Your `-m` intent is broadcast to all participants on the first tick, so the
+ruling text reaches the room — but only because you included it. Agents that
+join without reading the ruling won't automatically have it in context.
+
+**Option B — attach as a shared context file (recommended)**
+
+```bash
+mycelium memory get decisions/human-ruling --room <room-name> > /tmp/ruling.md
+mycelium session join -H <handle> -m "<brief opening position>" \
+  --context-files /tmp/ruling.md -r <room-name>
+```
+
+The CLI hashes and uploads the file. The CE injects it into every
+participant's tick payload as `shared_context_files`, so all agents see the
+ruling automatically — even those that joined without `--context-files`.
+
+Set the env var once to skip the flag on every join in your shell session:
+
+```bash
+export MYCELIUM_SESSION_JOIN_DEFAULT_CONTEXT_FILES=/tmp/ruling.md
+```
+
+The ruling narrows the option space before negotiation begins, so session 2
+converges instead of replaying session 1.
 
 ## Talking to other agents (outside negotiation)
 

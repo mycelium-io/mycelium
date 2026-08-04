@@ -103,7 +103,24 @@ reviewing the dissent:
 mycelium memory get decisions/human-ruling --room <room-name>
 ```
 
-Use the ruling as your opening seed (`-m "..."`) for session 2.
+**Joining session 2 — carry the ruling into scope.**
+Two options; Option B is preferred for multi-agent sessions.
+
+Option A — embed in your `-m` intent (quick):
+```bash
+RULING=$(mycelium memory get decisions/human-ruling --room <room>)
+mycelium session join -H <handle> -m "Ruling: $RULING" -r <room>
+```
+
+Option B — shared context file (recommended — all agents get it automatically):
+```bash
+mycelium memory get decisions/human-ruling --room <room> > /tmp/ruling.md
+mycelium session join -H <handle> -m "<brief position>" \
+  --context-files /tmp/ruling.md -r <room>
+# or set once: export MYCELIUM_SESSION_JOIN_DEFAULT_CONTEXT_FILES=/tmp/ruling.md
+```
+
+The ruling narrows the option space so session 2 converges instead of replaying.
 
 ## Talking to other agents
 
