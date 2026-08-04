@@ -277,22 +277,6 @@ async def create_memories(
     for _scope, _embedded in _write_metrics:
         record_memory_write(scope=_scope, embedded=_embedded)
 
-    # Fan in to KXP. Each written memory is a deliberate room artifact, so
-    # ship it to CFN's shared-memories. Best-effort, fire-and-forget.
-    from app.services.knowledge_fanin import fan_in
-
-    for item in payload.items:
-        body = item.value if isinstance(item.value, str) else json.dumps(item.value)
-        asyncio.ensure_future(
-            fan_in(
-                room_name=room_name,
-                sender_handle=item.created_by,
-                content=item.key,
-                output_text=body,
-                source="memory_set",
-            )
-        )
-
     return [MemoryRead.model_validate(m) for m in results]
 
 

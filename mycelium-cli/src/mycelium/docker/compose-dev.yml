@@ -3,18 +3,16 @@
 # Run from the repo root:
 #   docker compose -f mycelium-cli/src/mycelium/docker/compose.yml \
 #                  -f mycelium-cli/src/mycelium/docker/compose-dev.yml \
-#                  --profile cfn up -d --build
+#                  up -d --build
 #
 # Build context paths are relative to this file's location (docker/).
 # env_file paths are also relative to this file's location.
 services:
   mycelium-db:
-    # Build locally so the image carries TimescaleDB + pgvector (the released
-    # ghcr image must be rebuilt+republished with TimescaleDB for the cfn
-    # profile, see Dockerfile.agensgraph). The base compose.yml's build
+    # Build locally so the image carries pgvector. The base compose.yml's build
     # context (../fastapi-backend) only resolves inside the packaged install
     # layout; from the repo root it must climb to the real fastapi-backend,
-    # same as mycelium-backend below. `--build` compiles the extension.
+    # same as mycelium-backend below.
     build:
       context: ../../../../fastapi-backend
       dockerfile: docker/Dockerfile.agensgraph
@@ -27,8 +25,8 @@ services:
     pull_policy: never
 
   # Override env_file for all services to point at ~/.mycelium/.env so that
-  # LLM_MODEL, WORKSPACE_ID etc. are available when running compose manually
-  # from the repo root (compose.yml's ../.env path resolves incorrectly then).
+  # LLM_MODEL etc. are available when running compose manually from the repo
+  # root (compose.yml's ../.env path resolves incorrectly then).
   mycelium-backend:
     build:
       context: ../../../../fastapi-backend
@@ -39,9 +37,6 @@ services:
       - path: ~/.mycelium/.env
         required: false
     environment:
-      CFN_MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
-      CFN_SVC_URL: http://ioc-cfn-svc:9002
-      L9_CFN_ENABLED: ${L9_CFN_ENABLED:-false}
       MYCELIUM_STUB_EMBEDDINGS: "1"
 
   mycelium-collector:
@@ -50,26 +45,6 @@ services:
       dockerfile: Dockerfile.collector
     pull_policy: never
     image: mycelium-collector:dev
-    env_file:
-      - path: ~/.mycelium/.env
-        required: false
-
-  ioc-cfn-mgmt-plane-svc:
-    env_file:
-      - path: ~/.mycelium/.env
-        required: false
-
-  ioc-knowledge-memory-svc:
-    env_file:
-      - path: ~/.mycelium/.env
-        required: false
-
-  ioc-cfn-svc:
-    env_file:
-      - path: ~/.mycelium/.env
-        required: false
-
-  ioc-cfn-cognition-engine:
     env_file:
       - path: ~/.mycelium/.env
         required: false

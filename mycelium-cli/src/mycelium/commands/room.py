@@ -15,7 +15,6 @@ Commands:
 - post: Post a message to a room
 - delegate: Delegate a task to an agent in a room
 - clone: Clone a room from a remote backend instance
-- sync-mas: Register (or re-register) a room with the CFN mgmt plane
 """
 
 import json as json_module
@@ -210,8 +209,6 @@ def create(
             typer.echo(f"  ID:      {room_data.get('id')}")
             typer.echo(f"  Created: {str(room_data.get('created_at', ''))[:10]}")
             typer.echo(f"  Path:    {room_dir}")
-            if room_data.get("mas_id"):
-                typer.echo(f"  MAS ID:  {room_data.get('mas_id')}")
             typer.echo("")
             typer.echo(f"  Run 'mycelium room use {name}' to make it your active room")
 
@@ -1109,7 +1106,7 @@ def delegate(
     Posts a 'delegate' type message to the room.
 
     Examples:
-        mycelium room delegate my-room --to cfn-agent --task "Scan CVE-2024-1234"
+        mycelium room delegate my-room --to security-agent --task "Scan CVE-2024-1234"
     """
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
@@ -1136,62 +1133,6 @@ def delegate(
             typer.secho("Task delegated", fg=typer.colors.GREEN)
             typer.echo(f"  {sender} -> {to}: {task[:80]}")
 
-    except Exception as e:
-        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
-        print_error(e, verbose=verbose)
-
-
-@doc_ref(
-    usage="mycelium room sync-mas <name>",
-    desc="Register (or re-register) a room with the CFN mgmt plane.",
-    group="room",
-)
-@app.command("sync-mas")
-def sync_mas(
-    ctx: typer.Context,
-    name: str = typer.Argument(..., help="Room name to register with CFN"),
-) -> None:
-    """Register a room with the CFN mgmt plane and store its MAS ID.
-
-    Idempotent: if the room is already registered in CFN, the existing MAS ID
-    is fetched and linked. Use this to fix rooms created before CFN was configured
-    or when 'mycelium doctor' reports missing MAS IDs.
-
-    Examples:
-        mycelium room sync-mas mycelium_room
-        mycelium room sync-mas matrix-agents
-    """
-    try:
-        verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
-        json_output = ctx.obj.get("json", False) if ctx.obj else False
-
-        config = MyceliumConfig.load()
-
-        import httpx
-
-        api_url = (config.server.api_url or "http://localhost:8000").rstrip("/")
-        with httpx.Client(base_url=api_url, timeout=15) as client:
-            resp = client.post(f"/api/rooms/{name}/sync-mas")
-            if resp.status_code == 404:
-                raise MyceliumError(
-                    f"Room '{name}' not found — create it first with: mycelium room create {name}"
-                )
-            if resp.status_code == 409:
-                raise MyceliumError(
-                    "CFN not configured — set CFN_MGMT_URL and WORKSPACE_ID in ~/.mycelium/.env"
-                )
-            resp.raise_for_status()
-            room_data = resp.json()
-
-        if json_output:
-            typer.echo(json_module.dumps(room_data, indent=2, default=str))
-        else:
-            typer.secho(f"Registered room with CFN: {name}", fg=typer.colors.GREEN)
-            typer.echo(f"  MAS ID:  {room_data.get('mas_id')}")
-            typer.echo(f"  Workspace: {room_data.get('workspace_id')}")
-
-    except MyceliumError:
-        raise
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)

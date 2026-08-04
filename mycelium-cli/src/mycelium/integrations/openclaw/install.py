@@ -1075,10 +1075,6 @@ def _step_docker_env(config: MyceliumConfig) -> None:
     typer.echo("")
     typer.secho("  # .env", dim=True)
     typer.echo(f"  MYCELIUM_API_URL={docker_url}")
-    if config.server.workspace_id:
-        typer.echo(f"  MYCELIUM_WORKSPACE_ID={config.server.workspace_id}")
-    if config.server.mas_id:
-        typer.echo(f"  MYCELIUM_MAS_ID={config.server.mas_id}")
     typer.echo("  MYCELIUM_ROOM_ID=<experiment-name>      # unique per run")
     typer.echo("  MYCELIUM_AGENT_HANDLE=<agent-name>      # unique per agent")
     typer.echo("")

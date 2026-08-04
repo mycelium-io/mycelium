@@ -252,87 +252,33 @@ def test_histogram_quantile_rejects_out_of_range_q() -> None:
 
 
 # ---------------------------------------------------------------------------
-# MyceliumConfig.resolve_scrape_targets — the "no config needed" path
+# MyceliumConfig.resolve_scrape_targets — explicit [[metrics.scrape]] entries
 # ---------------------------------------------------------------------------
-#
-# The collector mirrors the OTLP-rx convention-over-configuration pattern
-# by auto-deriving CFN scrape targets from the runtime URLs that install
-# already sets. These tests pin that behaviour so a future refactor can't
-# silently resurrect the "user must paste a [[metrics.scrape]] block into
-# config.toml" requirement.
 
 
-def _make_config(
-    *,
-    cfn_mgmt_url: str | None = None,
-    cfn_svc_url: str | None = None,
-    explicit_scrape: list[dict] | None = None,
-):
+def _make_config(*, explicit_scrape: list[dict] | None = None):
     """Build a MyceliumConfig for resolution tests without touching disk."""
-    from mycelium.config import MetricsConfig, MyceliumConfig, RuntimeConfig, ScrapeTarget
+    from mycelium.config import MetricsConfig, MyceliumConfig, ScrapeTarget
 
     return MyceliumConfig(
-        runtime=RuntimeConfig(
-            cfn_mgmt_url=cfn_mgmt_url,
-            cfn_svc_url=cfn_svc_url,
-        ),
         metrics=MetricsConfig(scrape=[ScrapeTarget(**s) for s in (explicit_scrape or [])]),
     )
 
 
-def test_resolve_scrape_targets_auto_derives_cfn_mgmt() -> None:
-    """The common case: install sets cfn_mgmt_url, user touches nothing, we scrape."""
-    cfg = _make_config(cfn_mgmt_url="http://localhost:9000")
-    targets = cfg.resolve_scrape_targets()
-    assert len(targets) == 1
-    assert targets[0]["name"] == "cfn-mgmt"
-    assert targets[0]["url"] == "http://localhost:9000/metrics"
-    assert targets[0]["kind"] == "http_red"
-
-
-def test_resolve_scrape_targets_strips_trailing_slash() -> None:
-    """Don't emit double slashes — some users paste URLs with trailing /."""
-    cfg = _make_config(cfn_mgmt_url="http://localhost:9000/")
-    assert cfg.resolve_scrape_targets()[0]["url"] == "http://localhost:9000/metrics"
-
-
-def test_resolve_scrape_targets_empty_when_no_urls_configured() -> None:
-    """No runtime URLs + no explicit entries = no targets (not an error)."""
+def test_resolve_scrape_targets_empty_when_none_configured() -> None:
+    """No explicit entries = no targets (not an error)."""
     cfg = _make_config()
     assert cfg.resolve_scrape_targets() == []
 
 
-def test_resolve_scrape_targets_explicit_entry_appended() -> None:
-    """A user-defined scrape target (non-CFN) is merged alongside auto-derived ones."""
+def test_resolve_scrape_targets_returns_explicit_entries() -> None:
+    """User-defined [[metrics.scrape]] targets are returned for the collector."""
     cfg = _make_config(
-        cfn_mgmt_url="http://localhost:9000",
         explicit_scrape=[
             {"name": "my-service", "url": "http://localhost:7777/metrics", "kind": "http_red"}
         ],
     )
     targets = cfg.resolve_scrape_targets()
-    names = {t["name"] for t in targets}
-    assert names == {"cfn-mgmt", "my-service"}
-
-
-def test_resolve_scrape_targets_explicit_overrides_auto_by_name() -> None:
-    """Explicit entry with the auto-derived name wins (escape hatch for custom URL)."""
-    cfg = _make_config(
-        cfn_mgmt_url="http://localhost:9000",
-        explicit_scrape=[
-            # Site runs mgmt plane behind an nginx path prefix.
-            {"name": "cfn-mgmt", "url": "http://internal.example/mgmt/metrics", "kind": "http_red"}
-        ],
-    )
-    targets = cfg.resolve_scrape_targets()
     assert len(targets) == 1
-    assert targets[0]["url"] == "http://internal.example/mgmt/metrics"
-
-
-def test_resolve_scrape_targets_skips_cfn_node_until_it_exposes_metrics() -> None:
-    """cognition-fabric-node-svc has no /metrics yet — don't emit a target that
-    would always show as degraded. See the _NODE_HAS_METRICS flag in
-    config.MyceliumConfig.resolve_scrape_targets; flip when the CFN change
-    lands."""
-    cfg = _make_config(cfn_svc_url="http://localhost:9002")
-    assert cfg.resolve_scrape_targets() == []
+    assert targets[0]["name"] == "my-service"
+    assert targets[0]["url"] == "http://localhost:7777/metrics"

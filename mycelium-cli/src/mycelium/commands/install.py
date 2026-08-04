@@ -310,10 +310,10 @@ def _refresh_compose_templates(*, backup: bool = True) -> list[Path]:
     """Overwrite ``~/.mycelium/docker/`` with the templates bundled in the
     currently-installed wheel.
 
-    Refreshes ``compose.yml``, ``cfn-db-prep.sh``, and ``initdb/*``. When *backup* is True (the
-    default), the previous ``compose.yml`` is renamed to ``compose.yml.prev``
-    before overwrite — a single rolling backup that covers anyone who has
-    hand-edited the file.
+    Refreshes ``compose.yml``. When *backup* is True (the default), the
+    previous ``compose.yml`` is renamed to ``compose.yml.prev`` before
+    overwrite — a single rolling backup that covers anyone who has hand-edited
+    the file.
 
     The currently-running Python process loads ``importlib.resources`` from
     its own ``site-packages``, so this should only be called from a process
@@ -337,29 +337,6 @@ def _refresh_compose_templates(*, backup: bool = True) -> list[Path]:
     compose_dest.write_bytes(compose_ref.read_bytes())
     refreshed.append(compose_dest)
 
-    # cfn-db-prep.sh: the cfn-db-init one-shot bind-mounts this file
-    # (./cfn-db-prep.sh). If it isn't materialized here, Docker creates the
-    # mount source as an empty directory and cfn-db-init dies with
-    # "Is a directory" (exit 126), taking the whole cfn profile down with it.
-    prep_dest = dest_dir / "cfn-db-prep.sh"
-    prep_ref = importlib.resources.files("mycelium.docker") / "cfn-db-prep.sh"
-    prep_dest.write_bytes(prep_ref.read_bytes())
-    prep_dest.chmod(0o755)
-    refreshed.append(prep_dest)
-
-    # initdb/ scripts so Postgres entrypoint creates CFN databases on first
-    # volume init (compose mounts ./initdb as /docker-entrypoint-initdb.d).
-    initdb_dest = dest_dir / "initdb"
-    initdb_dest.mkdir(exist_ok=True)
-    initdb_pkg = importlib.resources.files("mycelium.docker") / "initdb"
-    for item in initdb_pkg.iterdir():
-        if item.name.startswith("_"):
-            continue
-        script_path = initdb_dest / item.name
-        script_path.write_bytes(item.read_bytes())
-        script_path.chmod(0o755)
-        refreshed.append(script_path)
-
     return refreshed
 
 
@@ -369,7 +346,7 @@ def _get_compose_path() -> Path:
 
     For editable installs (dev), walk up from the package source to find the
     repo's services/docker-compose.yml — this keeps build context relative
-    paths (../cfn/..., ../fastapi-backend) correct.
+    paths (../fastapi-backend) correct.
 
     For non-editable installs, extract the bundled compose to ~/.mycelium/docker/.
     Build contexts won't work in that case, but pull-only services will.
@@ -413,8 +390,6 @@ def _image_exists(image: str) -> bool:
 _KNOWN_CONTAINERS = [
     "mycelium-db",
     "mycelium-backend",
-    "ioc-cfn-db",
-    "ioc-cfn-mgmt-plane-svc",
 ]
 
 
@@ -493,60 +468,6 @@ def _run_migrations() -> None:
 
     echo_alembic_output(result)
     typer.secho("  ⚠  Migration failed (non-fatal)", fg=typer.colors.YELLOW)
-
-
-def _ensure_cfn_databases(db_container: str = "mycelium-db") -> None:
-    """Create cfn_mgmt and cfn_cp databases if they don't exist.
-
-    initdb scripts only run on first postgres init, so on upgrades with an
-    existing volume the CFN databases won't be present. This is idempotent.
-    """
-    for db in ("cfn_mgmt", "cfn_cp"):
-        # Check if DB exists, create if not. Can't use \gexec with psql -c.
-        check = subprocess.run(
-            [
-                "docker",
-                "exec",
-                db_container,
-                "psql",
-                "-U",
-                "postgres",
-                "-tAc",
-                f"SELECT 1 FROM pg_database WHERE datname = '{db}'",
-            ],
-            capture_output=True,
-            text=True,
-        )
-        if check.returncode != 0:
-            typer.secho(
-                f"  ✗ Could not check for database '{db}': {check.stderr.strip()}",
-                fg=typer.colors.RED,
-            )
-            continue
-        if check.stdout.strip() == "1":
-            typer.echo(f"  ~ Database '{db}' already exists")
-            continue
-        create = subprocess.run(
-            [
-                "docker",
-                "exec",
-                db_container,
-                "psql",
-                "-U",
-                "postgres",
-                "-c",
-                f"CREATE DATABASE {db}",
-            ],
-            capture_output=True,
-            text=True,
-        )
-        if create.returncode != 0:
-            typer.secho(
-                f"  ✗ Failed to create database '{db}': {create.stderr.strip()}",
-                fg=typer.colors.RED,
-            )
-        else:
-            typer.echo(f"  ✓ Created database '{db}'")
 
 
 def _wait_for_db_container(
@@ -757,36 +678,13 @@ def _report_llm_probe_result(
     return answer.lower() in ("y", "yes", "")
 
 
-# ── Backend provisioning ──────────────────────────────────────────────────────
-
-
-def _get_cfn_workspace_id(cfn_mgmt_url: str) -> str | None:
-    """Fetch the first workspace ID from the CFN mgmt plane."""
-    import json
-    import urllib.request
-
-    try:
-        req = urllib.request.Request(
-            f"{cfn_mgmt_url}/api/workspaces", headers={"Content-Type": "application/json"}
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
-        workspaces = data.get("workspaces", [])
-        return workspaces[0]["id"] if workspaces else None
-    except Exception:
-        return None
-
-
 # ── Config write ─────────────────────────────────────────────────────────────
 
 
 def _write_mycelium_config(
     api_url: str,
-    workspace_id: str,
-    mas_id: str,
     llm_config: dict[str, str] | None = None,
     custom_ports: dict[str, int] | None = None,
-    ioc_enabled: bool = False,
 ) -> None:
     from mycelium.config import LLMConfig, MyceliumConfig, RuntimeConfig, ServerConfig
     from mycelium.docker_utils import write_env_file
@@ -797,11 +695,7 @@ def _write_mycelium_config(
     except Exception:
         config = MyceliumConfig()
 
-    config.server = ServerConfig(
-        api_url=api_url,
-        workspace_id=workspace_id,
-        mas_id=mas_id,
-    )
+    config.server = ServerConfig(api_url=api_url)
 
     # Persist LLM settings into [llm] section
     if llm_config:
@@ -817,11 +711,6 @@ def _write_mycelium_config(
         runtime.db_port = custom_ports.get("db", 5432)
         runtime.backend_port = custom_ports.get("backend", 8000)
         runtime.collector_port = custom_ports.get("collector", 4318)
-    if ioc_enabled:
-        runtime.cfn_mgmt_url = "http://ioc-cfn-mgmt-plane-svc:9000"
-        runtime.cfn_svc_url = "http://ioc-cfn-svc:9002"
-    if workspace_id:
-        runtime.workspace_id = workspace_id
     config.runtime = runtime
 
     config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -865,7 +754,6 @@ def install(
     backend_port: int = typer.Option(
         0, "--backend-port", help="Host port for backend API (0 = auto-detect, default 8000)"
     ),
-    ioc: bool = typer.Option(True, "--ioc/--no-ioc", help="Enable IoC CFN stack (default: on)"),
     ui: bool = typer.Option(
         True,
         "--ui/--no-ui",
@@ -878,8 +766,7 @@ def install(
         "",
         "--tag",
         help="Pin MYCELIUM_IMAGE_TAG (mycelium-io image version, e.g. 2.0.0) instead of "
-        "the :latest default. Required for the cfn profile — mycelium-db:latest has no "
-        "TimescaleDB, so leaving it on :latest fails db startup.",
+        "the :latest default.",
     ),
 ) -> None:
     """
@@ -900,8 +787,7 @@ def install(
 
       mycelium install -n \\
         --llm-model anthropic/claude-sonnet-4-6 \\
-        --llm-api-key sk-ant-... \\
-        [--no-ioc]
+        --llm-api-key sk-ant-...
 
     \b
     FLAGS (non-interactive)
@@ -911,7 +797,6 @@ def install(
       --llm-api-key   API key for the chosen LLM provider
       --db-port       Host port for Postgres (default: 5432, auto-increments on conflict)
       --backend-port  Host port for backend API (default: 8000, auto-increments on conflict)
-      --no-ioc        Skip the IoC CFN management-plane stack (default: included)
       --force         Force full reinstall (ignore existing configuration)
     """
     import sys
@@ -951,10 +836,6 @@ def install(
                 llm_config["LLM_API_KEY"] = llm_api_key
 
             compose_profiles: list[str] = []
-            if ioc:
-                llm_config["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
-                llm_config["CFN_SVC_URL"] = "http://ioc-cfn-svc:9002"
-                compose_profiles.append("cfn")
 
             # Non-interactive: trust the --ui/--no-ui flag, never prompt.
             enable_ui = ui
@@ -1003,18 +884,6 @@ def install(
             compose_path = _get_compose_path()
             typer.echo(f"  ✓ Compose file → {compose_path}")
 
-            if ioc:
-                # Phase 1: bring up DB alone so we can provision CFN databases
-                # before the CFN services start and try to connect.
-                if not _compose_up_services(compose_path, env_path, services=["mycelium-db"]):
-                    typer.secho("\n  ✗ docker compose up failed (db)", fg=typer.colors.RED)
-                    raise typer.Exit(1) from None
-                if not _wait_for_db_container(compose_path, env_path):
-                    typer.secho("\n  ✗ mycelium-db failed to become healthy", fg=typer.colors.RED)
-                    raise typer.Exit(1) from None
-                _ensure_cfn_databases()
-
-            # Phase 2 (or only phase for non-ioc): bring up everything
             ok, needs_build = _compose_up(compose_path, env_path, profiles=compose_profiles)
             if not ok:
                 typer.secho("\n  ✗ docker compose up failed", fg=typer.colors.RED)
@@ -1024,41 +893,11 @@ def install(
             health_timeout = 300 if needs_build else 120
             _wait_for_health([f"{api_url}/health"], timeout=health_timeout)
 
-            if ioc:
-                # Source WORKSPACE_ID from the CFN mgmt plane (the source of truth)
-                workspace_id = _get_cfn_workspace_id("http://localhost:9000") or ""
-                mas_id = ""
-                if workspace_id:
-                    typer.echo(f"  ✓ Workspace  {workspace_id}")
-                else:
-                    typer.secho(
-                        "  ⚠  Could not fetch workspace from CFN mgmt plane", fg=typer.colors.YELLOW
-                    )
-            else:
-                # Non-CFN installs have no CFN workspace/MAS to provision: the
-                # mgmt-plane's workspace/multi-agentic-systems endpoints only
-                # exist under the cfn profile. Skip silently.
-                workspace_id, mas_id = "", ""
-
-            # Persist WORKSPACE_ID and MAS_ID into .env and restart backend so it picks them up
-            if workspace_id:
-                ws_patch: dict[str, str] = {"WORKSPACE_ID": workspace_id}
-                if mas_id:
-                    ws_patch["MAS_ID"] = mas_id
-                if ioc:
-                    ws_patch["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
-                    ws_patch["CFN_SVC_URL"] = "http://ioc-cfn-svc:9002"
-                _patch_env_vars(env_path, ws_patch)
-                _restart_backend(compose_path, env_path, compose_profiles, api_url)
-
             _run_migrations()
             _write_mycelium_config(
                 api_url,
-                workspace_id,
-                mas_id,
                 llm_config=llm_config,
                 custom_ports=custom_ports,
-                ioc_enabled=ioc,
             )
 
             # LLM probe — real completion call inside the backend container.
@@ -1144,7 +983,7 @@ def install(
                         break
             except Exception:
                 pass
-        # Services that need amd64 (AgensGraph, CFN node) pin platform in compose.
+        # Services that need amd64 (AgensGraph) pin platform in compose.
         # For pre-pulling public images that are amd64-only, force the platform.
         if not _pull_platform:
             try:
@@ -1225,12 +1064,7 @@ def install(
         # ── Phase 2: Interactive prompts ──────────────────────────────────
         llm_config = _prompt_llm()
 
-        ioc_enabled = True  # IoC is always enabled; use --no-ioc in non-interactive mode to skip
         compose_profiles: list[str] = []
-        if ioc_enabled:
-            llm_config["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
-            llm_config["CFN_SVC_URL"] = "http://ioc-cfn-svc:9002"
-            compose_profiles.append("cfn")
 
         # Frontend prompt — default to the --ui flag value (True unless --no-ui).
         enable_ui = ui and typer.confirm(
@@ -1276,7 +1110,7 @@ def install(
         env_dir.mkdir(parents=True, exist_ok=True)
         env_path = env_dir / ".env"
 
-        # Merge LLM + CFN keys into .env (create or patch — never skip merge when .env exists).
+        # Merge LLM keys into .env (create or patch — never skip merge when .env exists).
         if not env_path.exists():
             typer.echo(f"  ✓ Creating {env_path}")
         else:
@@ -1289,18 +1123,6 @@ def install(
         compose_path = _get_compose_path()
         typer.echo(f"  ✓ Compose file → {compose_path}")
 
-        if ioc_enabled:
-            # Phase 1: bring up DB alone so we can provision CFN databases
-            # before the CFN services start and try to connect.
-            if not _compose_up_services(compose_path, env_path, services=["mycelium-db"]):
-                typer.secho("\n  ✗ docker compose up failed (db)", fg=typer.colors.RED)
-                raise typer.Exit(1) from None
-            if not _wait_for_db_container(compose_path, env_path):
-                typer.secho("\n  ✗ mycelium-db failed to become healthy", fg=typer.colors.RED)
-                raise typer.Exit(1) from None
-            _ensure_cfn_databases()
-
-        # Phase 2 (or only phase for non-ioc): bring up everything
         ok, needs_build = _compose_up(compose_path, env_path, profiles=compose_profiles)
         if not ok:
             typer.secho("\n  ✗ docker compose up failed", fg=typer.colors.RED)
@@ -1313,45 +1135,14 @@ def install(
         print()
         _wait_for_health([f"{api_url}/health"], timeout=health_timeout)
 
-        # ── Phase 5: Provision workspace + MAS ────────────────────────────
+        # ── Phase 5: Migrate DB + write config ────────────────────────────
         print()
         typer.echo("  ── Provisioning backend ────────────────────────────────")
-        if ioc_enabled:
-            # Source WORKSPACE_ID from the CFN mgmt plane (the source of truth)
-            workspace_id = _get_cfn_workspace_id("http://localhost:9000") or ""
-            mas_id = ""
-            if workspace_id:
-                typer.echo(f"  ✓ Workspace  {workspace_id}")
-            else:
-                typer.secho(
-                    "  ⚠  Could not fetch workspace from CFN mgmt plane", fg=typer.colors.YELLOW
-                )
-        else:
-            # Non-CFN installs have no CFN workspace/MAS to provision: the
-            # mgmt-plane's workspace/multi-agentic-systems endpoints only exist
-            # under the cfn profile. Skip silently.
-            workspace_id, mas_id = "", ""
-
-        # ── Phase 6: Migrate DB + write config ────────────────────────────
-        # Persist WORKSPACE_ID and MAS_ID into .env and restart backend so it picks them up
-        if workspace_id:
-            ws_patch: dict[str, str] = {"WORKSPACE_ID": workspace_id}
-            if mas_id:
-                ws_patch["MAS_ID"] = mas_id
-            if ioc_enabled:
-                ws_patch["CFN_MGMT_URL"] = "http://ioc-cfn-mgmt-plane-svc:9000"
-                ws_patch["CFN_SVC_URL"] = "http://ioc-cfn-svc:9002"
-            _patch_env_vars(env_path, ws_patch)
-            _restart_backend(compose_path, env_path, compose_profiles, api_url)
-
         _run_migrations()
         _write_mycelium_config(
             api_url,
-            workspace_id,
-            mas_id,
             llm_config=llm_config,
             custom_ports=custom_ports,
-            ioc_enabled=ioc_enabled,
         )
         typer.secho("  ✓ Config written to ~/.mycelium/config.toml", fg=typer.colors.GREEN)
 
@@ -1385,7 +1176,6 @@ def install(
         if enable_ui:
             ui_url = f"http://localhost:{custom_ports['ui']}"
             typer.echo(f"    mycelium-frontend → {ui_url}")
-        typer.echo("    graph-db-viewer   → http://localhost:5457  (dev profile only)")
         print()
         typer.echo("  Next steps:")
         typer.echo("    mycelium adapter add openclaw   # wire openclaw agents")

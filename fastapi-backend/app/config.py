@@ -49,43 +49,6 @@ class Settings(BaseSettings):
     # disable extension (fall back to fixed window).
     COORDINATION_JOIN_WINDOW_EXTENSION_SECONDS: int = 30
     COORDINATION_JOIN_WINDOW_MAX_SECONDS: int = 180
-    # Per-round timeout: how long CognitiveEngine waits for an agent to reply
-    # during a negotiation round before falling back to the safe default.
-    COORDINATION_TICK_TIMEOUT_SECONDS: int = 30
-
-    # Maximum SAO rounds per session. Passed to CFN /start as n_steps.
-    # CFN's auto-compute formula assumes Boulware concession that LLM callback
-    # agents don't exhibit; a low fixed cap keeps unconverged sessions from
-    # burning rounds indefinitely. 0 = fall through to CFN auto-compute.
-    NEGOTIATION_N_STEPS: int = 20
-
-    # CFN MAS config (set on the MAS at creation via the mgmt plane). These
-    # tame the retry/timeout behaviour that otherwise makes a single session
-    # run several times the rounds you'd expect:
-    #   retry_max_attempts: how many times the cognition engine may reject an
-    #     agreement (alignment score below the intervention threshold) and
-    #     restart negotiation from round 1. CFN default is 3; we default to 1
-    #     (take the first agreement; mycelium's own round loop + plan compiler
-    #     handle quality) for predictable timing.
-    #   validation_score_intervention: the alignment score below which the
-    #     engine intervenes/retries. Lower it if LLM-callback agents can't
-    #     reach the CFN default (0.6).
-    CFN_RETRY_MAX_ATTEMPTS: int = 1
-    CFN_VALIDATION_SCORE_INTERVENTION: float = 0.6
-
-    # Per-call HTTP timeout (seconds) for CFN start/decide: a DEAD-CONNECTION
-    # BACKSTOP, not a negotiation control. The boundary:
-    #   * Agent responsiveness is mycelium's round watchdog
-    #     (_CFN_ROUND_TIMEOUT_SECS), which restarts per agent reply so
-    #     single-threaded/serialized agent runtimes get a fresh budget each
-    #     time. That timer runs *before* /decide; by the time we call the CFN,
-    #     all replies are collected, so agent slowness never reaches this one.
-    #   * The CFN owns the negotiation-compute timeout and returns a structured
-    #     ``status: "timeout"`` we handle cleanly. This HTTP timeout must sit
-    #     comfortably ABOVE the CFN's internal timeout so that status wins over
-    #     an opaque transport error; it should essentially never fire.
-    # (Confirm the CFN's internal negotiation timeout is < this at smoke-test.)
-    CFN_DECIDE_TIMEOUT_SECONDS: int = 600
 
     @field_validator("LLM_BASE_URL", mode="before")
     @classmethod
@@ -94,13 +57,6 @@ class Settings(BaseSettings):
         "" through to httpx which rejects it as UnsupportedProtocol."""
         if isinstance(v, str) and v.strip() == "":
             return None
-        return v
-
-    @field_validator("COORDINATION_TICK_TIMEOUT_SECONDS", mode="before")
-    @classmethod
-    def _coerce_tick_timeout(cls, v: object) -> object:
-        if v == "" or v is None:
-            return 30
         return v
 
     # Filesystem-native memory storage
@@ -114,32 +70,6 @@ class Settings(BaseSettings):
     # Embedding (for persistent memory semantic search)
     EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"
     EMBEDDING_DIMENSIONS: int = 384
-
-    # IoC CFN management plane (optional — registration skipped if unset)
-    CFN_MGMT_URL: str | None = None
-
-    # IoC CFN service (ioc-cfn-svc, required for session negotiation):
-    # the semantic-alignment API and native L9 routing.
-    CFN_SVC_URL: str = ""
-
-    # Post L9 knowledge envelopes to the CFN's /api/l9/messages endpoint
-    # (knowledge query at session start, knowledge write after consensus).
-    # Requires a knowledge CE registered with the CFN; off until then.
-    L9_CFN_ENABLED: bool = False
-
-    # Workspace ID in the CFN mgmt plane (set by mycelium install)
-    WORKSPACE_ID: str = ""
-
-    # Default MAS ID — fallback when ingest requests omit mas_id and room_name
-    MAS_ID: str = ""
-
-    # Knowledge ingest control surface. Master switch + per-payload caps.
-    MYCELIUM_INGEST_ENABLED: bool = True
-    MYCELIUM_INGEST_MAX_INPUT_TOKENS: int = 50_000
-    MYCELIUM_INGEST_DEDUPE_TTL_SECONDS: int = 300
-    # Skip ingest for trivially short content. Channel posts like "ack" or
-    # a single emoji produce KG noise without value. Set 0 to ingest all.
-    MYCELIUM_INGEST_MIN_CONTENT_CHARS: int = 32
 
     model_config = SettingsConfigDict(
         env_file=tuple(_env_files),

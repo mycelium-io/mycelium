@@ -12,10 +12,8 @@ Checks:
   5. Backend API reachable
   6. Pending migrations — DB revision vs latest alembic file
   7. LLM connectivity (real completion probe via backend)
-  8. Workspace ID in sync (CFN mgmt plane vs .env vs config.toml)
-  9. Room MAS IDs present (CFN-enabled installs)
-  10. OpenClaw adapter health (plugin, channel config, agent sandbox)
-  11. Hermes adapter health (plugin tree, config.yaml, gateway pid)
+  8. OpenClaw adapter health (plugin, channel config, agent sandbox)
+  9. Hermes adapter health (plugin tree, config.yaml, gateway pid)
 
 Single-device installs (the default) run the backend locally and exercise
 all checks. In the optional hub-and-spoke deployment mode, spoke nodes
@@ -23,8 +21,7 @@ connect to a remote backend and don't run local Docker containers. When
 ``server.api_url`` points at a non-local host the doctor auto-detects
 **spoke mode** and skips checks that only apply when the backend is
 local (Docker containers, runtime config drift, .env port vs Docker
-port, localhost CFN mgmt plane).  An explicit ``--mode hub|spoke`` flag
-overrides the auto-detection.
+port).  An explicit ``--mode hub|spoke`` flag overrides the auto-detection.
 """
 
 import subprocess
@@ -286,15 +283,6 @@ def _check_docker_containers() -> CheckResult:
     """Check that expected containers are running and healthy."""
     expected = ["mycelium-db", "mycelium-backend"]
 
-    # Check if CFN is enabled
-    env_path = Path.home() / ".mycelium" / ".env"
-    if env_path.exists():
-        from dotenv import dotenv_values
-
-        vals = dotenv_values(env_path)
-        if vals.get("CFN_MGMT_URL", ""):
-            expected += ["ioc-cfn-mgmt-plane-svc", "ioc-cfn-svc"]
-
     try:
         r = subprocess.run(
             ["docker", "ps", "--format", "{{.Names}}\t{{.Status}}"],
@@ -393,158 +381,12 @@ def _check_backend_reachable(*, local_backend: bool = True) -> CheckResult:
         )
 
 
-def _check_workspace_id(*, local_backend: bool = True) -> CheckResult:
-    """Check workspace_id consistency between .env, config.toml, and CFN mgmt plane.
-
-    When *local_backend* is False (spoke mode) the localhost CFN management
-    plane check is skipped — the mgmt plane runs on the hub, not here.
-    """
-    env_path = Path.home() / ".mycelium" / ".env"
-    config_path = Path.home() / ".mycelium" / "config.toml"
-
-    # Read from .env
-    env_ws = ""
-    cfn_enabled = False
-    if env_path.exists():
-        from dotenv import dotenv_values
-
-        vals = dotenv_values(env_path)
-        env_ws = vals.get("WORKSPACE_ID", "")
-        cfn_enabled = bool(vals.get("CFN_MGMT_URL", ""))
-
-    # Read from config.toml
-    config_ws = ""
-    if config_path.exists():
-        from mycelium.config import MyceliumConfig
-
-        try:
-            cfg = MyceliumConfig.load(config_path)
-            config_ws = cfg.server.workspace_id or ""
-        except Exception:
-            pass
-
-    if not env_ws and not config_ws:
-        if not local_backend:
-            return CheckResult(
-                name="Workspace ID",
-                status="ok",
-                message="Not set (optional for spoke nodes)",
-            )
-        return CheckResult(
-            name="Workspace ID",
-            status="warning",
-            message="Not configured",
-            details=["Run: mycelium install --force"],
-        )
-
-    # If CFN is enabled *and* we're on the hub, check against the local
-    # mgmt plane.  Spoke nodes don't run the mgmt plane locally.
-    cfn_ws = None
-    if cfn_enabled and local_backend:
-        from mycelium.commands.install import _get_cfn_workspace_id
-
-        cfn_ws = _get_cfn_workspace_id("http://localhost:9000")
-
-    details: list[str] = []
-    mismatches: list[str] = []
-
-    if env_ws:
-        details.append(f".env: {env_ws}")
-    if config_ws and config_ws != env_ws:
-        details.append(f"config.toml: {config_ws}")
-        mismatches.append("config.toml")
-
-    if cfn_ws is not None:
-        details.append(f"CFN mgmt plane: {cfn_ws}")
-        if cfn_ws != env_ws:
-            mismatches.append("CFN mgmt plane")
-    elif cfn_enabled and local_backend:
-        details.append("CFN mgmt plane: unreachable")
-
-    if mismatches:
-        # Build a fix function that re-syncs from CFN (or from .env if no CFN)
-        source_ws = cfn_ws if cfn_ws else env_ws
-        fix_fn = (
-            _make_workspace_fix(source_ws, env_path, config_path, cfn_enabled)
-            if source_ws
-            else None
-        )
-
-        return CheckResult(
-            name="Workspace ID",
-            status="error",
-            message=f"Mismatch — {', '.join(mismatches)} differ from .env",
-            details=details,
-            fix_label=f"Sync all to {source_ws}",
-            fix_fn=fix_fn,
-        )
-
-    # All agree (or only one source exists)
-    display_ws = env_ws or config_ws
-    return CheckResult(
-        name="Workspace ID",
-        status="ok",
-        message=display_ws,
-        details=details if len(details) > 1 else [],
-    )
-
-
-def _make_workspace_fix(
-    target_ws: str,
-    env_path: Path,
-    config_path: Path,
-    cfn_enabled: bool,
-) -> Callable[[], None]:
-    """Return a closure that patches workspace_id in .env and config.toml."""
-
-    def _fix() -> None:
-        from mycelium.commands.install import (
-            _get_compose_path,
-            _patch_env_vars,
-            _restart_backend,
-            _write_mycelium_config,
-        )
-
-        # Patch .env
-        typer.echo(f"    Patching ~/.mycelium/.env WORKSPACE_ID={target_ws}")
-        _patch_env_vars(env_path, {"WORKSPACE_ID": target_ws})
-
-        # Patch config.toml
-        from mycelium.config import MyceliumConfig
-
-        try:
-            cfg = MyceliumConfig.load(config_path) if config_path.exists() else MyceliumConfig()
-        except Exception:
-            cfg = MyceliumConfig()
-
-        api_url = cfg.server.api_url or "http://localhost:8000"
-        mas_id = cfg.server.mas_id or ""
-
-        typer.echo(f"    Patching ~/.mycelium/config.toml server.workspace_id={target_ws}")
-        _write_mycelium_config(api_url, target_ws, mas_id)
-
-        # Restart backend so it picks up the new WORKSPACE_ID
-        typer.echo("    Restarting backend...")
-        try:
-            compose_path = _get_compose_path()
-            profiles = ["cfn"] if cfn_enabled else []
-            _restart_backend(compose_path, env_path, profiles, api_url)
-            typer.secho("  ✓ Workspace ID synced", fg=typer.colors.GREEN)
-        except Exception as exc:
-            typer.secho(f"  ⚠  Backend restart failed: {exc}", fg=typer.colors.YELLOW)
-            typer.echo("    Run: mycelium up")
-
-    return _fix
-
-
 # Keys that should match between ~/.mycelium/.env and config.toml. Each entry
 # is (env_key, config_accessor) — config_accessor pulls the equivalent value
 # out of a loaded MyceliumConfig. `mycelium config apply` regenerates .env
 # from config.toml, so config.toml is the source of truth on drift.
 _SHARED_CONFIG_KEYS: list[tuple[str, Callable[..., str]]] = [
     ("LLM_MODEL", lambda cfg: (cfg.llm.model or "") if getattr(cfg, "llm", None) else ""),
-    ("WORKSPACE_ID", lambda cfg: cfg.server.workspace_id or ""),
-    ("MAS_ID", lambda cfg: cfg.server.mas_id or ""),
 ]
 
 
@@ -725,182 +567,6 @@ def _check_runtime_config_drift() -> CheckResult:
         name="Runtime config drift",
         status="ok",
         message="Backend env matches .env",
-    )
-
-
-def _check_cfn_intent(*, local_backend: bool = True) -> CheckResult:
-    """Catch the CFN intent/config mismatch that silently breaks negotiation.
-
-    Symptom: user has `server.mas_id` in config.toml (set at some point — usually
-    by an earlier `mycelium room create` against a CFN-enabled install) but
-    `.env` has no `CFN_MGMT_URL` / `CFN_SVC_URL`. `mycelium up`
-    then skips `--profile cfn`, the backend starts with empty CFN env vars, new
-    rooms get no `mas_id` / `workspace_id`, and the first negotiate tick fails
-    with `"CFN coordination required but not configured for this room"`. The
-    old CFN check (`_check_room_mas_ids`) silently skips when CFN is disabled,
-    so doctor reports all-green while negotiation is broken.
-
-    Spoke nodes talk to a remote hub — CFN URLs belong on the hub, not here.
-    """
-    if not local_backend:
-        return CheckResult(
-            name="CFN config",
-            status="ok",
-            message="Skipped (spoke — CFN runs on hub)",
-        )
-
-    env_path = Path.home() / ".mycelium" / ".env"
-    if not env_path.exists():
-        return CheckResult(name="CFN config", status="ok", message="Skipped (no .env)")
-
-    from dotenv import dotenv_values
-
-    vals = dotenv_values(env_path)
-    mgmt = (vals.get("CFN_MGMT_URL") or "").strip()
-    node = (vals.get("CFN_SVC_URL") or "").strip()
-
-    from mycelium.config import MyceliumConfig
-
-    try:
-        cfg = MyceliumConfig.load()
-        configured_mas_id = (cfg.server.mas_id or "").strip()
-    except Exception:
-        configured_mas_id = ""
-
-    if not mgmt and not node:
-        if configured_mas_id:
-            return CheckResult(
-                name="CFN config",
-                status="warning",
-                message="server.mas_id set but CFN URLs empty — negotiation will fail",
-                details=[
-                    f"  config.toml server.mas_id = {configured_mas_id}",
-                    "  .env CFN_MGMT_URL = (empty)",
-                    "  .env CFN_SVC_URL = (empty)",
-                    "Fix: set both URLs and run `mycelium up` to start the cfn profile:",
-                    "  CFN_MGMT_URL=http://ioc-cfn-mgmt-plane-svc:9000",
-                    "  CFN_SVC_URL=http://ioc-cfn-svc:9002",
-                ],
-            )
-        return CheckResult(name="CFN config", status="ok", message="CFN not enabled")
-
-    missing = [k for k, v in (("CFN_MGMT_URL", mgmt), ("CFN_SVC_URL", node)) if not v]
-    if missing:
-        return CheckResult(
-            name="CFN config",
-            status="warning",
-            message=f"partial CFN config — {', '.join(missing)} empty",
-            details=["Both URLs are required for the backend to forward ticks to CFN."],
-        )
-
-    return CheckResult(name="CFN config", status="ok", message="CFN URLs configured")
-
-
-def _check_room_mas_ids(*, local_backend: bool = True) -> CheckResult:
-    """Check that all rooms have a MAS ID (CFN-enabled installs only).
-
-    On hub nodes, skips when local ``CFN_MGMT_URL`` is unset (CFN profile
-    not active). On spoke nodes, queries the remote hub backend — CFN may be
-    enabled there even when this node's ``.env`` has no CFN URLs.
-    """
-    if local_backend:
-        env_path = Path.home() / ".mycelium" / ".env"
-        if not env_path.exists():
-            return CheckResult(name="Room MAS IDs", status="ok", message="Skipped (no .env)")
-
-        from dotenv import dotenv_values
-
-        vals = dotenv_values(env_path)
-        if not vals.get("CFN_MGMT_URL"):
-            return CheckResult(
-                name="Room MAS IDs", status="ok", message="Skipped (CFN not enabled)"
-            )
-
-    from mycelium.config import MyceliumConfig
-
-    try:
-        cfg = MyceliumConfig.load()
-        api_url = cfg.server.api_url or "http://localhost:8000"
-    except Exception:
-        api_url = "http://localhost:8000"
-
-    try:
-        import httpx
-
-        with httpx.Client(base_url=api_url, timeout=5) as client:
-            resp = client.get("/api/rooms")
-            resp.raise_for_status()
-            rooms = resp.json()
-    except httpx.HTTPStatusError as exc:
-        body = (exc.response.text or "").strip().replace("\n", " ")[:200]
-        details = [f"  {api_url.rstrip('/')}/api/rooms"]
-        if body:
-            details.append(f"  {body}")
-        details.append(
-            "  /health can still pass while /api/rooms fails — check hub logs and migrations."
-        )
-        return CheckResult(
-            name="Room MAS IDs",
-            status="warning",
-            message=f"GET /api/rooms returned HTTP {exc.response.status_code}",
-            details=details,
-        )
-    except httpx.RequestError as exc:
-        return CheckResult(
-            name="Room MAS IDs",
-            status="ok",
-            message="Skipped (backend unreachable)",
-            details=[str(exc)],
-        )
-    except (TypeError, KeyError, ValueError) as exc:
-        return CheckResult(
-            name="Room MAS IDs",
-            status="warning",
-            message="Skipped (unexpected /api/rooms response)",
-            details=[str(exc)],
-        )
-
-    # Session sub-rooms (name contains ":session:") don't need MAS IDs
-    top_level = [r for r in rooms if ":session:" not in r["name"]]
-    missing = [r["name"] for r in top_level if not r.get("mas_id")]
-    if not missing:
-        return CheckResult(
-            name="Room MAS IDs",
-            status="ok",
-            message=f"All {len(top_level)} room(s) have MAS IDs",
-        )
-
-    def _fix_missing_mas() -> None:
-        import httpx
-
-        fixed, failed = [], []
-        for room_name in missing:
-            try:
-                with httpx.Client(base_url=api_url, timeout=15) as client:
-                    resp = client.post(f"/api/rooms/{room_name}/sync-mas")
-                    resp.raise_for_status()
-                    data = resp.json()
-                mas = data.get("mas_id") or "(unknown)"
-                typer.echo(f"    Registered {room_name}: MAS ID = {mas}")
-                fixed.append(room_name)
-            except Exception as exc:
-                typer.echo(f"    Failed {room_name}: {exc}")
-                failed.append(room_name)
-        if fixed:
-            typer.secho(f"  Registered {len(fixed)} room(s) with CFN.", fg=typer.colors.GREEN)
-        if failed:
-            typer.secho(
-                f"  {len(failed)} room(s) could not be registered — check that CFN is running.",
-                fg=typer.colors.YELLOW,
-            )
-
-    return CheckResult(
-        name="Room MAS IDs",
-        status="warning",
-        message=f"{len(missing)} room(s) missing MAS ID",
-        details=[f"  {name}" for name in missing]
-        + ["Fix: run 'mycelium doctor --fix' to register with CFN"],
-        fix_fn=_fix_missing_mas,
     )
 
 
@@ -1939,68 +1605,6 @@ def _check_daemon_running() -> CheckResult:
     )
 
 
-def _check_cfn_pgvector() -> CheckResult:
-    """Check the pgvector extension is installed in the ioc-graph-db database.
-
-    The CFN knowledge graph (ioc-knowledge-memory-svc) needs pgvector in
-    ioc-graph-db. Without it, concept similarity-search 500s and the cognition
-    engine can hang the whole /decide call, surfacing as a
-    coordination_consensus with broken:true. cfn-db-init installs it on
-    `mycelium up`, but a hand-created ioc-graph-db can miss it.
-    """
-    name = "CFN pgvector (ioc-graph-db)"
-    env_path = Path.home() / ".mycelium" / ".env"
-    if not env_path.exists():
-        return CheckResult(name=name, status="ok", message="CFN not configured (skipped)")
-    from dotenv import dotenv_values
-
-    if not dotenv_values(env_path).get("CFN_MGMT_URL", ""):
-        return CheckResult(name=name, status="ok", message="CFN not enabled (skipped)")
-    try:
-        r = subprocess.run(
-            [
-                "docker",
-                "exec",
-                "mycelium-db",
-                "psql",
-                "-U",
-                "postgres",
-                "-d",
-                "ioc-graph-db",
-                "-tAc",
-                "SELECT extname FROM pg_extension WHERE extname='vector'",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return CheckResult(
-            name=name, status="warning", message="Could not query mycelium-db (is it running?)"
-        )
-    if r.returncode != 0:
-        # DB / database unreachable — the container + backend checks already
-        # cover a down stack; don't double-report as an error here.
-        return CheckResult(
-            name=name,
-            status="warning",
-            message="Could not check (mycelium-db or ioc-graph-db unavailable)",
-        )
-    if "vector" in r.stdout:
-        return CheckResult(name=name, status="ok", message="pgvector installed in ioc-graph-db")
-    return CheckResult(
-        name=name,
-        status="error",
-        message="pgvector NOT installed in ioc-graph-db",
-        details=[
-            "CFN concept search will 500 and negotiations can hang (broken:true).",
-            "Fix: docker exec mycelium-db psql -U postgres -d ioc-graph-db \\",
-            "       -c 'CREATE EXTENSION IF NOT EXISTS vector;'",
-            "cfn-db-init installs this automatically on 'mycelium up'.",
-        ],
-    )
-
-
 @doc_ref(
     usage="mycelium doctor [--fix] [--json] [--mode auto|hub|spoke]",
     desc="Diagnose and fix common configuration issues (workspace sync, LLM, containers).",
@@ -2083,15 +1687,6 @@ def doctor(
         sections: list[tuple[str, list[CheckResult]]] = [
             ("Configuration", config_checks),
             ("Services", service_checks),
-            (
-                "CFN",
-                [
-                    _check_cfn_intent(local_backend=local),
-                    _check_workspace_id(local_backend=local),
-                    _check_room_mas_ids(local_backend=local),
-                    _check_cfn_pgvector(),
-                ],
-            ),
             (
                 "Adapters",
                 [
