@@ -8,6 +8,12 @@
 # Build context paths are relative to this file's location (docker/).
 # env_file paths are also relative to this file's location.
 services:
+  # The `slim` node service is defined in compose.yml with a pulled upstream
+  # image (ghcr.io/agntcy/slim) and inline node config. compose-dev.yml is an
+  # override layer always applied on top of compose.yml, so the node runs in the
+  # dev stack automatically — there is nothing dev-specific to build or override
+  # for it, so no `slim:` block is needed here.
+
   # Override env_file for all services to point at ~/.mycelium/.env so that
   # LLM_MODEL etc. are available when running compose manually from the repo
   # root (compose.yml's ../.env path resolves incorrectly then).
