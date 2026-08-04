@@ -1,4 +1,49 @@
+# Inline SLIM node config (Compose `configs.content`, no external file to ship).
+# Minimal single standalone hub: one dataplane server on :46357, TLS disabled
+# for local dev (SPIRE/mTLS is a prod concern, out of scope for the MVP).
+configs:
+  slim-node-config:
+    content: |
+      tracing:
+        log_level: info
+      runtime:
+        n_cores: 0
+        thread_name: "slim-data-plane"
+        drain_timeout: 10s
+      services:
+        slim/0:
+          node_id: mycelium-slim
+          dataplane:
+            servers:
+              - endpoint: "0.0.0.0:46357"
+                tls:
+                  insecure: true
+            clients: []
+
 services:
+
+  # ── SLIM node (always started) ───────────────────────────────────────────────
+  #
+  # The secure messaging fabric — one stateless Rust binary that routes/fans out
+  # messages by name. This is the only heavy thing in the target stack (no DB).
+  # Rooms become SLIM group channels in Step 3; for now the node just runs and
+  # nothing is wired to it. `mycelium hub host` brings up this service alone.
+
+  slim:
+    # Pinned to 1.4.x: the node's link-negotiation handshake must match the
+    # `slim-bindings` wheel the backend/daemon use (pinned to 1.4 in the backend
+    # pyproject). `:latest` tracks the 2.0 line, whose handshake rejects a 1.4
+    # client with "public key length is invalid". Bump both together.
+    image: ghcr.io/agntcy/slim:${SLIM_IMAGE_TAG:-1.4.0}
+    pull_policy: always
+    container_name: mycelium-slim
+    restart: unless-stopped
+    command: ["/slim", "--config", "/slim-config.yaml"]
+    configs:
+      - source: slim-node-config
+        target: /slim-config.yaml
+    ports:
+      - "${MYCELIUM_SLIM_PORT:-46357}:46357"
 
   # ── Mycelium Core (always started) ───────────────────────────────────────────
   #

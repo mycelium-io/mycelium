@@ -70,6 +70,31 @@ class ServerConfig(BaseModel):
         return v.rstrip("/")
 
 
+class SlimConfig(BaseModel):
+    """SLIM messaging-fabric connection configuration.
+
+    ``node_endpoint`` is the address of the ``slim`` node this agent connects
+    to. It's the same value whether the node is self-hosted (``mycelium hub
+    host``) or a shared mycelium-hosted rendezvous — set it with ``mycelium
+    connect <address>``. MLS makes the node a blind ciphertext forwarder, so the
+    host is untrusted either way.
+    """
+
+    node_endpoint: str = Field(
+        default="http://127.0.0.1:46357",
+        description="SLIM node endpoint (host:port), e.g. http://127.0.0.1:46357",
+    )
+
+    @field_validator("node_endpoint")
+    @classmethod
+    def normalize_endpoint(cls, v: str) -> str:
+        """Ensure the endpoint carries a scheme and no trailing slash."""
+        v = v.strip().rstrip("/")
+        if v and "://" not in v:
+            v = f"http://{v}"
+        return v
+
+
 class LLMConfig(BaseModel):
     """LLM configuration (litellm format)."""
 
@@ -182,6 +207,7 @@ class MyceliumConfig(BaseModel):
 
     identity: IdentityConfig = Field(default_factory=IdentityConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
+    slim: SlimConfig = Field(default_factory=SlimConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     rooms: RoomConfig = Field(default_factory=RoomConfig)
@@ -289,6 +315,7 @@ class MyceliumConfig(BaseModel):
         """Load configuration overrides from environment variables."""
         env_config: dict[str, Any] = {
             "server": {},
+            "slim": {},
             "rooms": {},
             "llm": {},
             "runtime": {},
@@ -297,6 +324,8 @@ class MyceliumConfig(BaseModel):
 
         if api_url := os.getenv("MYCELIUM_API_URL"):
             env_config["server"]["api_url"] = api_url
+        if slim_endpoint := os.getenv("MYCELIUM_SLIM_ENDPOINT"):
+            env_config["slim"]["node_endpoint"] = slim_endpoint
         if active_room := os.getenv("MYCELIUM_ACTIVE_ROOM"):
             env_config["rooms"]["active"] = active_room
 
@@ -355,6 +384,7 @@ class MyceliumConfig(BaseModel):
         _global_sections = (
             "identity",
             "server",
+            "slim",
             "llm",
             "runtime",
             "metrics",

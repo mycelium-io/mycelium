@@ -19,6 +19,7 @@ from mycelium.commands import (
     demo,
     docs,
     doctor,
+    hub,
     install,
     instance,
     memory,
@@ -129,6 +130,7 @@ app.command(name="logs")(instance.logs)
 # Top-level shortcuts
 app.command(name="watch")(room.watch)
 app.command(name="sync")(memory.memory_sync)
+app.command(name="connect")(hub.connect)
 
 # Command groups
 app.add_typer(room.app, name="room")
@@ -142,6 +144,7 @@ app.add_typer(ui.app, name="ui")
 app.add_typer(agent.app, name="agent")
 app.add_typer(daemon.app, name="daemon")
 app.add_typer(demo.app, name="demo")
+app.add_typer(hub.app, name="hub")
 
 
 if __name__ == "__main__":
