@@ -1,4 +1,4 @@
-# Dev override: build mycelium-backend + db from local source instead of pulling.
+# Dev override: build mycelium-backend from local source instead of pulling.
 #
 # Run from the repo root:
 #   docker compose -f mycelium-cli/src/mycelium/docker/compose.yml \
@@ -8,22 +8,6 @@
 # Build context paths are relative to this file's location (docker/).
 # env_file paths are also relative to this file's location.
 services:
-  mycelium-db:
-    # Build locally so the image carries pgvector. The base compose.yml's build
-    # context (../fastapi-backend) only resolves inside the packaged install
-    # layout; from the repo root it must climb to the real fastapi-backend,
-    # same as mycelium-backend below.
-    build:
-      context: ../../../../fastapi-backend
-      dockerfile: docker/Dockerfile.agensgraph
-      # Build native to the host arch (Apple Silicon → arm64). The amd64 base
-      # under Rosetta/QEMU deadlocks the TimescaleDB compile; native avoids it.
-      # Override with DB_BASE_PLATFORM if building for amd64 hosts.
-      args:
-        DB_BASE_PLATFORM: ${DB_BASE_PLATFORM:-linux/arm64}
-    platform: ${DB_PLATFORM:-linux/arm64}
-    pull_policy: never
-
   # Override env_file for all services to point at ~/.mycelium/.env so that
   # LLM_MODEL etc. are available when running compose manually from the repo
   # root (compose.yml's ../.env path resolves incorrectly then).

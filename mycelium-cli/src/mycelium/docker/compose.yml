@@ -2,35 +2,9 @@ services:
 
   # ── Mycelium Core (always started) ───────────────────────────────────────────
   #
-  # Single AgensGraph instance: relational tables (SQL) + knowledge graph
-  # (openCypher) + vector search (pgvector) — all in one database.
-
-  mycelium-db:
-    build:
-      context: ../fastapi-backend
-      dockerfile: docker/Dockerfile.agensgraph
-    image: ghcr.io/mycelium-io/mycelium-db:${MYCELIUM_IMAGE_TAG:-latest}
-    pull_policy: always
-    platform: linux/amd64
-    container_name: mycelium-db
-    restart: unless-stopped
-    command: postgres -c max_locks_per_transaction=256
-    env_file:
-      - path: ../.env
-        required: false
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${MYCELIUM_DB_PASSWORD:-password}
-      POSTGRES_DB: mycelium
-    ports:
-      - "${MYCELIUM_DB_PORT:-5432}:5432"
-    volumes:
-      - mycelium-db-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d mycelium"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+  # The backend is a thin local process over markdown files + a local JSONL
+  # search index — no database (SLIM-native rebuild). Room/memory state lives on
+  # the host under MYCELIUM_DATA_DIR, bind-mounted below.
 
   mycelium-backend:
     image: ghcr.io/mycelium-io/mycelium-backend:${MYCELIUM_IMAGE_TAG:-latest}
@@ -40,20 +14,7 @@ services:
     env_file:
       - path: ../.env
         required: false
-    depends_on:
-      mycelium-db:
-        condition: service_healthy
     environment:
-      # DATABASE_URL / GRAPH_DB_URL are materialised into ../.env by
-      # `mycelium config apply` from a single recipe in
-      # MyceliumConfig.database_url() — see the SSOT note in
-      # mycelium-cli/src/mycelium/docker_utils.py. The nested fallbacks below
-      # use ${MYCELIUM_DB_PASSWORD} so upgraded installs whose .env carries a
-      # custom password (but no materialised DATABASE_URL yet) still
-      # authenticate correctly; running `mycelium config apply` once
-      # regenerates .env with the canonical URLs and the fallbacks become inert.
-      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium}
-      GRAPH_DB_URL: ${GRAPH_DB_URL:-postgresql://postgres:${MYCELIUM_DB_PASSWORD:-password}@mycelium-db:5432/mycelium}
       API_BASE_URL: http://mycelium-backend:8000
       # IN-CONTAINER path the backend writes rooms/memory/plans to. MUST match
       # the bind-mount target below — otherwise writes land in the container's
@@ -131,7 +92,3 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
-
-
-volumes:
-  mycelium-db-data:

@@ -10,10 +10,9 @@ Checks:
   3. Runtime config drift — backend container env matches .env on disk
   4. Docker containers running and healthy
   5. Backend API reachable
-  6. Pending migrations — DB revision vs latest alembic file
-  7. LLM connectivity (real completion probe via backend)
-  8. OpenClaw adapter health (plugin, channel config, agent sandbox)
-  9. Hermes adapter health (plugin tree, config.yaml, gateway pid)
+  6. LLM connectivity (real completion probe via backend)
+  7. OpenClaw adapter health (plugin, channel config, agent sandbox)
+  8. Hermes adapter health (plugin tree, config.yaml, gateway pid)
 
 Single-device installs (the default) run the backend locally and exercise
 all checks. In the optional hub-and-spoke deployment mode, spoke nodes
@@ -281,7 +280,7 @@ def _check_llm_connectivity() -> CheckResult:
 
 def _check_docker_containers() -> CheckResult:
     """Check that expected containers are running and healthy."""
-    expected = ["mycelium-db", "mycelium-backend"]
+    expected = ["mycelium-backend"]
 
     try:
         r = subprocess.run(
@@ -567,131 +566,6 @@ def _check_runtime_config_drift() -> CheckResult:
         name="Runtime config drift",
         status="ok",
         message="Backend env matches .env",
-    )
-
-
-def _parse_alembic_current(stdout: str) -> str | None:
-    """Extract the current DB revision from ``alembic current`` stdout.
-
-    Returns ``None`` if no revision token can be found.  This is split out so
-    the parse logic can be unit-tested without spinning up a real database;
-    pre-Option-B, the parser lived inline and inherited a class of bugs
-    where substrings of Python tracebacks (e.g., ``aceback`` from
-    ``Traceback``) were mis-identified as revision IDs.
-
-    The contract:
-      * Look only at stdout (alembic emits INFO logs and tracebacks on
-        stderr); the caller must not pass stderr through this function.
-      * Anchor matches to start-of-line in multiline mode so log prefixes
-        like ``INFO  [alembic.runtime.migration]`` can never contribute.
-      * Accept 4–40 hex chars to cover mycelium's 4-digit numeric prefixes
-        (e.g. ``0016``) and stock alembic 12-char hashes (e.g. ``f3a1b2c4d5e6``).
-    """
-    import re
-
-    if not stdout:
-        return None
-    match = re.search(r"^\s*([0-9a-f]{4,40})\b", stdout, re.MULTILINE)
-    return match.group(1) if match else None
-
-
-def _check_pending_migrations() -> CheckResult:
-    """Check whether the DB is behind the latest alembic revision."""
-    from mycelium.migrations import (
-        find_local_backend_dir,
-        run_alembic_current,
-        run_alembic_heads,
-    )
-
-    backend_dir = find_local_backend_dir()
-    latest_file: str | None = None
-
-    if backend_dir is not None:
-        versions_dir = backend_dir / "alembic_migrations" / "versions"
-        if not versions_dir.exists():
-            return CheckResult(
-                name="Migrations", status="ok", message="Skipped (versions dir not found)"
-            )
-        revision_files = sorted(versions_dir.glob("*.py"))
-        if not revision_files:
-            return CheckResult(name="Migrations", status="ok", message="No migration files found")
-        latest_file = revision_files[-1].stem.split("_")[0]
-    else:
-        heads = run_alembic_heads()
-        if heads.mode == "unavailable":
-            return CheckResult(
-                name="Migrations",
-                status="warning",
-                message="Cannot check migrations (backend container not running)",
-                details=["fix: mycelium up", "fix: mycelium migrate"],
-            )
-        if heads.returncode != 0:
-            err_tail = (
-                heads.stderr.strip().splitlines()[-1]
-                if heads.stderr.strip()
-                else "(no error output)"
-            )
-            return CheckResult(
-                name="Migrations",
-                status="warning",
-                message=f"alembic heads failed (exit {heads.returncode})",
-                details=[f"stderr: {err_tail[:160]}", "fix: mycelium migrate"],
-            )
-        latest_file = _parse_alembic_current(heads.stdout) or "head"
-
-    try:
-        current = run_alembic_current()
-        stdout = current.stdout or ""
-        stderr = current.stderr or ""
-    except Exception as exc:
-        return CheckResult(
-            name="Migrations",
-            status="warning",
-            message=f"Could not run alembic current: {exc}",
-            details=["fix: mycelium migrate"],
-        )
-
-    if current.mode == "unavailable":
-        return CheckResult(
-            name="Migrations",
-            status="warning",
-            message="Cannot check migrations (backend container not running)",
-            details=["fix: mycelium up", "fix: mycelium migrate"],
-        )
-
-    if current.returncode != 0:
-        err_tail = stderr.strip().splitlines()[-1] if stderr.strip() else "(no error output)"
-        return CheckResult(
-            name="Migrations",
-            status="warning",
-            message=f"alembic current failed (exit {current.returncode})",
-            details=[f"stderr: {err_tail[:160]}", "fix: mycelium migrate"],
-        )
-
-    via = f" ({current.mode})" if current.mode == "container" else ""
-
-    if "head" in stdout.lower():
-        return CheckResult(
-            name="Migrations",
-            status="ok",
-            message=f"DB at head ({latest_file}){via}",
-        )
-
-    current_rev = _parse_alembic_current(stdout) or "unknown"
-
-    if not stdout.strip() or current_rev == "unknown":
-        return CheckResult(
-            name="Migrations",
-            status="warning",
-            message="Could not determine current DB revision",
-            details=[f"alembic stdout: {stdout.strip()[:120]}", "fix: mycelium migrate"],
-        )
-
-    return CheckResult(
-        name="Migrations",
-        status="warning",
-        message=f"DB at {current_rev}, latest is {latest_file} — pending migrations",
-        details=["fix: mycelium migrate"],
     )
 
 
@@ -1681,7 +1555,6 @@ def doctor(
         if local:
             service_checks.append(_check_docker_containers())
         service_checks.append(_check_backend_reachable(local_backend=local))
-        service_checks.append(_check_pending_migrations())
         service_checks.append(_check_llm_connectivity())
 
         sections: list[tuple[str, list[CheckResult]]] = [

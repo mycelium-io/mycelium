@@ -2,28 +2,22 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Messages API — POST only.
+Messages API — POST + list + event-status PATCH.
 
-After inserting a message, fires a Postgres NOTIFY on room:{room_name}
-so SSE listeners receive it in real time.
+Backed by an in-memory store (SLIM-native rebuild, Step 1); publishes to the
+in-process bus so the SSE stream sees writes live. Messages move onto the SLIM
+channel + durable persister in Steps 3-4.
 
-Also hooks into the coordination service when the room is in 'negotiating' state.
+# TODO(step3): messages ride the SLIM channel; the persister owns the transcript.
 """
 
-import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, HTTPException, Query
 
-from app.bus import notify, room_channel
-from app.config import settings
-from app.database import get_async_session
-from app.models import CoordinationSession, Message, Room
+from app.bus import bus, room_channel
 from app.schemas import (
     STATEFUL_EVENT_KINDS,
     EventStatusUpdate,
@@ -32,107 +26,37 @@ from app.schemas import (
     MessageRead,
     MessageType,
 )
+from app.services import local_state
+from app.services.filesystem import room_exists
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/rooms/{room_name}/messages", tags=["messages"])
 
-# Long-lived NOTIFY connection, lazily opened and reused across requests.
-# Human chat was low-volume enough to tolerate a connect-per-message, but
-# source_event pollers emit bursts — connection churn on every message is a
-# hot path. One retry with a fresh connection covers server-side drops.
-_notify_conn: asyncpg.Connection | None = None
-_notify_lock = asyncio.Lock()
 
+def _resolve_channel(name: str) -> tuple[str, local_state.CoordSessionShim | None]:
+    """Resolve a path name to its message channel key and optional session shim.
 
-async def _notify_room(channel: str, payload: dict) -> None:
-    """Fire a Postgres NOTIFY on ``channel``. Never raises — SSE delivery is
-    best-effort and must not fail the write that triggered it."""
-    global _notify_conn
-    from urllib.parse import urlparse
-
-    async with _notify_lock:
-        for attempt in (1, 2):
-            try:
-                if _notify_conn is None or _notify_conn.is_closed():
-                    parsed = urlparse(settings.DATABASE_URL)
-                    _notify_conn = await asyncpg.connect(
-                        host=parsed.hostname,
-                        port=parsed.port or 5432,
-                        user=parsed.username,
-                        password=parsed.password,
-                        database=parsed.path.lstrip("/"),
-                    )
-                await notify(_notify_conn, channel, payload)
-                return
-            except Exception as e:
-                if _notify_conn is not None:
-                    try:
-                        await _notify_conn.close()
-                    except Exception:
-                        pass
-                    _notify_conn = None
-                if attempt == 2:
-                    logger.warning("NOTIFY failed for %s: %s", channel, e)
-
-
-async def close_notify_connection() -> None:
-    """Close the shared NOTIFY connection. Called from app lifespan shutdown."""
-    global _notify_conn
-    async with _notify_lock:
-        if _notify_conn is not None:
-            try:
-                await _notify_conn.close()
-            except Exception:
-                pass
-            _notify_conn = None
-
-
-async def _resolve_target(
-    name: str, session: AsyncSession
-) -> tuple[Room | None, CoordinationSession | None]:
-    """Resolve a path name to either a real Room or a CoordinationSession.
-
-    Names with the legacy ``{parent}:session:{short}`` shape resolve to a
-    coordination session — there is no Room row for them. Real room names
-    resolve to the Room. 404 if neither matches.
+    Real room → (room_name, None). A ``{parent}:session:{short}`` display name →
+    (display_name, shim). 404 if neither resolves.
     """
     if ":session:" in name:
-        parent, _, short_id = name.partition(":session:")
-        result = await session.execute(
-            select(CoordinationSession).where(
-                CoordinationSession.parent_room_name == parent,
-                CoordinationSession.short_id == short_id,
-            )
-        )
-        coord = result.scalar_one_or_none()
-        if coord:
-            return None, coord
-
-    result = await session.execute(select(Room).where(Room.name == name))
-    room = result.scalar_one_or_none()
-    if room:
-        return room, None
-
+        parent, _, _short = name.partition(":session:")
+        coord = local_state.get_session(parent)
+        if coord is not None and coord.display_name == name:
+            return name, coord
+    if room_exists(name):
+        return name, None
     raise HTTPException(status_code=404, detail="Room or session not found")
 
 
 @router.post("", response_model=MessageRead, status_code=201)
-async def send_message(
-    room_name: str,
-    payload: MessageCreate,
-    session: AsyncSession = Depends(get_async_session),
-):
-    """
-    Send a message to a room.
+async def send_message(room_name: str, payload: MessageCreate):
+    """Send a message to a room; publish it to the room's live stream."""
+    channel, coord = _resolve_channel(room_name)
 
-    After persisting, fires NOTIFY on `room:{room_name}` so SSE subscribers
-    receive it without polling.
-    """
-    room, coord = await _resolve_target(room_name, session)
-
-    msg = Message(
-        room_name=room.name if room else None,
+    msg = local_state.StoredMessage(
+        room_name=None if coord else channel,
         coordination_session_id=coord.id if coord else None,
         sender_handle=payload.sender_handle,
         recipient_handle=payload.recipient_handle,
@@ -140,8 +64,6 @@ async def send_message(
         content=payload.content,
     )
     if payload.metadata is not None:
-        # Promote kind/status to indexed columns and precompute expiry so the
-        # feed/ledger filters and the TTL sweep never touch JSON paths.
         meta = payload.metadata.model_dump(exclude_none=True)
         msg.event_metadata = meta
         msg.event_kind = payload.metadata.kind
@@ -150,11 +72,8 @@ async def send_message(
             msg.event_expires_at = datetime.now(UTC) + timedelta(
                 seconds=payload.metadata.ttl_seconds
             )
-    session.add(msg)
-    await session.commit()
-    await session.refresh(msg)
+    local_state.add_message(channel, msg)
 
-    # _resolve_target raises 404 if neither, so exactly one is non-None.
     notify_payload: dict = {
         "id": str(msg.id),
         "sender_handle": msg.sender_handle,
@@ -165,24 +84,17 @@ async def send_message(
     }
     if msg.event_metadata is not None:
         notify_payload["metadata"] = msg.event_metadata
-    if room is not None:
-        notify_channel = room_channel(room.name)
-        notify_payload["room_name"] = room.name
-    elif coord is not None:
-        notify_channel = room_channel(coord.display_name)
+    if coord is not None:
         notify_payload["coordination_session_id"] = str(coord.id)
-        notify_payload["room_name"] = coord.display_name  # legacy compat
-    else:
-        raise HTTPException(status_code=500, detail="resolver returned (None, None)")
-    await _notify_room(notify_channel, notify_payload)
+    notify_payload["room_name"] = channel
+    bus.publish(room_channel(channel), notify_payload)
 
-    return msg
+    return MessageRead.model_validate(msg)
 
 
 @router.get("", response_model=MessageListResponse)
 async def list_messages(
     room_name: str,
-    session: AsyncSession = Depends(get_async_session),
     limit: int = Query(50, le=500),
     offset: int = 0,
     sender: str | None = None,
@@ -191,51 +103,33 @@ async def list_messages(
     status: str | None = Query(None, description="Filter events by ledger status"),
     since: datetime | None = Query(None, description="Only messages created at/after this time"),
 ):
-    """List messages in a room (or coordination session), newest first.
+    """List messages in a room (or coordination session), newest first."""
+    channel, _coord = _resolve_channel(room_name)
+    now = datetime.now(UTC)
 
-    ``kind``/``status``/``since`` make the source-activity feed and the
-    action/concern ledger server-side filters over the room (#392). Expired
-    events (past their ``ttl_seconds``) are excluded even if the sweep
-    hasn't collected them yet.
-    """
-    room, coord = await _resolve_target(room_name, session)
+    messages = local_state.list_messages(channel)
+    filtered = []
+    for m in messages:
+        if m.event_expires_at is not None and m.event_expires_at <= now:
+            continue
+        if sender and m.sender_handle != sender:
+            continue
+        if message_type and m.message_type != message_type:
+            continue
+        if kind and m.event_kind != kind:
+            continue
+        if status and m.event_status != status:
+            continue
+        if since and m.created_at < since:
+            continue
+        filtered.append(m)
 
-    if room is not None:
-        query = select(Message).where(Message.room_name == room.name)
-    else:
-        assert coord is not None
-        # Surface both new (coord_session_id) and legacy (display-name room_name) rows.
-        query = select(Message).where(
-            (Message.coordination_session_id == coord.id)
-            | (Message.room_name == coord.display_name)
-        )
-
-    if sender:
-        query = query.where(Message.sender_handle == sender)
-    if message_type:
-        query = query.where(Message.message_type == message_type)
-    if kind:
-        query = query.where(Message.event_kind == kind)
-    if status:
-        query = query.where(Message.event_status == status)
-    if since:
-        query = query.where(Message.created_at >= since)
-    # Hide expired-but-unswept events.
-    query = query.where(
-        (Message.event_expires_at.is_(None)) | (Message.event_expires_at > datetime.now(UTC))
-    )
-
-    # Real total across the same filters (page length is not a total —
-    # reverse infinite-scroll clients paginate against this).
-    count_query = select(func.count()).select_from(query.subquery())
-    total = (await session.execute(count_query)).scalar_one()
-
-    query = query.order_by(Message.created_at.desc()).offset(offset).limit(limit)
-    result = await session.execute(query)
-    messages: list[Message] = list(result.scalars().all())
+    filtered.sort(key=lambda m: m.created_at, reverse=True)
+    total = len(filtered)
+    page = filtered[offset : offset + limit]
 
     return MessageListResponse(
-        messages=[MessageRead.model_validate(m) for m in messages],
+        messages=[MessageRead.model_validate(m) for m in page],
         total=total,
     )
 
@@ -245,22 +139,13 @@ async def update_event_status(
     room_name: str,
     message_id: UUID,
     payload: EventStatusUpdate,
-    session: AsyncSession = Depends(get_async_session),
 ):
-    """Transition a stateful event's status (open -> in_progress -> resolved).
+    """Transition a stateful event's status (open -> in_progress -> resolved)."""
+    channel, coord = _resolve_channel(room_name)
 
-    Design choice (#392 left it open): the status lives on the original event
-    row and is updated in place, rather than appending follow-up events —
-    the current status must be cheaply queryable, and a follow-up-event model
-    forces a latest-per-correlation aggregation on every ledger query. The
-    transition is broadcast over SSE so subscribers see the change live.
-    """
-    room, coord = await _resolve_target(room_name, session)
-
-    result = await session.execute(select(Message).where(Message.id == message_id))
-    msg = result.scalar_one_or_none()
+    msg = local_state.find_message(message_id)
     in_target = msg is not None and (
-        (room is not None and msg.room_name == room.name)
+        (coord is None and msg.room_name == channel)
         or (coord is not None and msg.coordination_session_id == coord.id)
     )
     if msg is None or not in_target:
@@ -274,13 +159,10 @@ async def update_event_status(
         )
 
     msg.event_status = payload.status
-    # Keep the returned metadata consistent with the promoted column.
     meta = dict(msg.event_metadata or {})
     meta["status"] = payload.status
     meta["status_updated_at"] = datetime.now(UTC).isoformat()
     msg.event_metadata = meta
-    await session.commit()
-    await session.refresh(msg)
 
     notify_payload = {
         "id": str(msg.id),
@@ -291,9 +173,8 @@ async def update_event_status(
         "metadata": msg.event_metadata,
         "created_at": msg.created_at.isoformat(),
         "status_transition": payload.status,
+        "room_name": channel,
     }
-    channel_name = room.name if room is not None else coord.display_name  # type: ignore[union-attr]
-    notify_payload["room_name"] = channel_name
-    await _notify_room(room_channel(channel_name), notify_payload)
+    bus.publish(room_channel(channel), notify_payload)
 
-    return msg
+    return MessageRead.model_validate(msg)

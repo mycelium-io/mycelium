@@ -76,7 +76,7 @@ def embed_text(text: str) -> list[float]:
         result = _stub_vector(text)
     else:
         # fastembed.embed() returns a generator of numpy arrays;
-        # .tolist() converts np.float32 → Python float for pgvector compatibility.
+        # .tolist() converts np.float32 → Python float for JSON serialization.
         result = next(iter(_get_model().embed([text]))).tolist()
     elapsed_ms = (_time.monotonic() - t0) * 1000
     record_embedding(source="local", text_length=len(text))

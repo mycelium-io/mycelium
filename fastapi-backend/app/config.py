@@ -17,13 +17,6 @@ class Settings(BaseSettings):
     # OpenAPI docs
     OPENAPI_URL: str = "/openapi.json"
 
-    # Database — single AgensGraph instance for SQL + graph + vector
-    DATABASE_URL: str = "postgresql+asyncpg://postgres@localhost:5432/mycelium"
-    EXPIRE_ON_COMMIT: bool = False
-
-    # Graph DB — sync connection for openCypher queries (same DB, sync driver)
-    GRAPH_DB_URL: str = "postgresql://postgres@localhost:5432/mycelium"
-
     # Frontend
     FRONTEND_URL: str = "http://localhost:3000"
 
@@ -37,18 +30,6 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "anthropic/claude-sonnet-4-6"
     LLM_API_KEY: str | None = None
     LLM_BASE_URL: str | None = None  # optional, for custom endpoints (ollama, vllm, etc.)
-
-    # Coordination
-    # How long to wait for additional agents to join after the first agent joins
-    # a session before CognitiveEngine fires tick-0 (starts negotiation).
-    COORDINATION_JOIN_WINDOW_SECONDS: int = 30
-    # Each subsequent agent join pushes the deadline forward by this many
-    # seconds (up to COORDINATION_JOIN_WINDOW_MAX_SECONDS total). Mirrors the
-    # round-watchdog extension pattern: as long as new joins keep arriving the
-    # window stays open, but a hard cap bounds total wait time. Set to 0 to
-    # disable extension (fall back to fixed window).
-    COORDINATION_JOIN_WINDOW_EXTENSION_SECONDS: int = 30
-    COORDINATION_JOIN_WINDOW_MAX_SECONDS: int = 180
 
     @field_validator("LLM_BASE_URL", mode="before")
     @classmethod

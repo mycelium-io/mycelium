@@ -204,7 +204,7 @@ def record_index_run(
     errors: int = 0,
     duration_ms: float = 0.0,
 ) -> None:
-    """Record a filesystem → pgvector indexing run."""
+    """Record a filesystem → JSONL indexing run."""
     _inc("indexer", "runs")
     _inc("indexer", "files_indexed", indexed)
     _inc("indexer", "files_skipped", skipped)

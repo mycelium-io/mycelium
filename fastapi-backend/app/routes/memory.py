@@ -2,7 +2,10 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Memory API — persistent namespaced key-value store with semantic vector search.
+Memory API — persistent namespaced key-value store with semantic search.
+
+Backed by markdown files (canonical) plus a local JSONL embedding index — no
+database (SLIM-native rebuild, Step 1).
 
 POST   /rooms/{room}/memory              — create/upsert memories (batch support)
 GET    /rooms/{room}/memory              — list memories (prefix filter, pagination)
@@ -19,20 +22,15 @@ import fnmatch
 import hashlib
 import json
 import logging
+import time
 from datetime import UTC, datetime
-from urllib.parse import urlparse
+from typing import Any
 from uuid import UUID
 
-import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import Response
-from sqlalchemy import func, select, text
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bus import agent_channel, notify, room_channel
-from app.config import settings
-from app.database import get_async_session
-from app.models import Memory, MemorySubscription, Room
+from app.bus import agent_channel, bus, room_channel
 from app.schemas import (
     MemoryBatchCreate,
     MemoryRead,
@@ -42,114 +40,27 @@ from app.schemas import (
     SubscriptionCreate,
     SubscriptionRead,
 )
+from app.services import local_state, search_index
 from app.services.embedding import embed_text
 from app.services.filesystem import (
     delete_memory_file,
     get_room_dir,
     list_memory_files,
     read_memory_file,
+    room_exists,
     value_to_content,
     write_memory_file,
 )
+from app.services.search_index import stable_memory_id
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/rooms/{room_name}/memory", tags=["memory"])
 
 
-def _etag_response(memories: list[MemoryRead], etag: str) -> Response:
-    """Return a JSON response with an ETag header."""
-    from fastapi.encoders import jsonable_encoder
-
-    return Response(
-        content=json.dumps(jsonable_encoder(memories)),
-        media_type="application/json",
-        headers={"ETag": etag},
-    )
-
-
-async def _get_room(room_name: str, db: AsyncSession) -> Room:
-    result = await db.execute(select(Room).where(Room.name == room_name))
-    room = result.scalar_one_or_none()
-    if not room:
+def _require_room(room_name: str) -> None:
+    if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
-    return room
-
-
-async def _notify_room_memory_change(
-    room_name: str,
-    key: str,
-    updated_by: str,
-    version: int,
-) -> None:
-    """Broadcast memory change to the room's SSE stream so watchers see it."""
-    try:
-        parsed = urlparse(settings.DATABASE_URL)
-        conn: asyncpg.Connection = await asyncpg.connect(
-            host=parsed.hostname,
-            port=parsed.port or 5432,
-            user=parsed.username,
-            password=parsed.password,
-            database=parsed.path.lstrip("/"),
-        )
-        try:
-            await notify(
-                conn,
-                room_channel(room_name),
-                {
-                    "type": "memory_changed",
-                    "room_name": room_name,
-                    "key": key,
-                    "version": version,
-                    "updated_by": updated_by,
-                    "created_at": datetime.now(UTC).isoformat(),
-                },
-            )
-        finally:
-            await conn.close()
-    except Exception as e:
-        logger.warning("Room NOTIFY for memory change failed: %s", e)
-
-
-async def _notify_subscribers(
-    room_name: str,
-    key: str,
-    updated_by: str,
-    version: int,
-) -> None:
-    """Check subscriptions and notify matching subscribers via NOTIFY."""
-    try:
-        parsed = urlparse(settings.DATABASE_URL)
-        conn: asyncpg.Connection = await asyncpg.connect(
-            host=parsed.hostname,
-            port=parsed.port or 5432,
-            user=parsed.username,
-            password=parsed.password,
-            database=parsed.path.lstrip("/"),
-        )
-        try:
-            rows = await conn.fetch(
-                "SELECT subscriber, key_pattern FROM memory_subscriptions WHERE room_name = $1",
-                room_name,
-            )
-            for row in rows:
-                if fnmatch.fnmatch(key, row["key_pattern"]):
-                    await notify(
-                        conn,
-                        agent_channel(row["subscriber"]),
-                        {
-                            "type": "memory_changed",
-                            "room_name": room_name,
-                            "key": key,
-                            "version": version,
-                            "updated_by": updated_by,
-                            "created_at": datetime.now(UTC).isoformat(),
-                        },
-                    )
-        finally:
-            await conn.close()
-    except Exception as e:
-        logger.warning("Memory subscription notify failed: %s", e)
 
 
 def _flatten_value(value: dict | str) -> str:
@@ -159,125 +70,173 @@ def _flatten_value(value: dict | str) -> str:
     return json.dumps(value, indent=2, default=str)
 
 
+def _reconstruct_value(meta: dict, content: str) -> dict | str:
+    """Rebuild the API ``value`` from a memory file.
+
+    Structured values (dicts with keys beyond ``text``) are round-tripped via
+    the ``value`` frontmatter key written at ``create`` time; pure-text values
+    are reconstructed from the markdown body.
+    """
+    if "value" in meta and meta["value"] is not None:
+        return meta["value"]
+    return {"text": content} if content else {}
+
+
+def _memory_read_from_file(room_name: str, key: str, meta: dict, content: str) -> MemoryRead:
+    """Build a MemoryRead from a memory file's frontmatter + body."""
+    now = datetime.now(UTC)
+    return MemoryRead(
+        id=stable_memory_id(room_name, key),
+        room_name=room_name,
+        key=key,
+        value=_reconstruct_value(meta, content),
+        content_text=content or None,
+        created_by=meta.get("created_by", "unknown"),
+        updated_by=meta.get("updated_by"),
+        version=meta.get("version", 1),
+        tags=meta.get("tags"),
+        created_at=meta.get("created_at", now),
+        updated_at=meta.get("updated_at", now),
+        file_path=f"rooms/{room_name}/{key}.md",
+    )
+
+
+def _notify_change(room_name: str, key: str, updated_by: str, version: int) -> None:
+    """Publish a memory-change event to the room channel and matching subscribers."""
+    payload = {
+        "type": "memory_changed",
+        "room_name": room_name,
+        "key": key,
+        "version": version,
+        "updated_by": updated_by,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    bus.publish(room_channel(room_name), payload)
+    for sub in local_state.list_subscriptions(room_name):
+        if fnmatch.fnmatch(key, sub.key_pattern):
+            bus.publish(agent_channel(sub.subscriber), payload)
+
+
 @router.post("", response_model=list[MemoryRead], status_code=201)
-async def create_memories(
-    room_name: str,
-    payload: MemoryBatchCreate,
-    db: AsyncSession = Depends(get_async_session),
-):
+async def create_memories(room_name: str, payload: MemoryBatchCreate):
     """Create or upsert one or more memories (batch: 1-100 items).
 
-    Writes markdown files to .mycelium/rooms/{room_name}/ and updates
-    the pgvector search index.
+    Writes markdown files to ``.mycelium/rooms/{room_name}/`` and updates the
+    JSONL search index. Conflict policy: last-write-wins ordered by the memory's
+    incrementing ``version``; a write against a stale ``base_version`` is
+    rejected with the current content + who/when last wrote it (§11).
     """
-    await _get_room(room_name, db)
+    _require_room(room_name)
     room_dir = get_room_dir(room_name)
 
     from app.services.metrics import record_memory_write
 
-    results = []
-    _write_metrics: list[tuple[str, bool]] = []
+    results: list[MemoryRead] = []
+    write_metrics: list[bool] = []
     for item in payload.items:
-        # Normalize value to dict
         value = item.value if isinstance(item.value, dict) else {"text": item.value}
         content_text = item.content_text or _flatten_value(item.value)
+        body = value_to_content(value)
 
-        # Generate embedding for search index
+        existing = read_memory_file(room_dir, item.key)
+        existing_meta = existing[0] if existing else {}
+        current_version = existing_meta.get("version", 0) if existing else 0
+
+        # Conflict check: a supplied base_version must match what's on disk.
+        if item.base_version is not None and item.base_version != current_version:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "stale_base",
+                    "message": (
+                        f"Write for '{item.key}' expected version {item.base_version} "
+                        f"but current version is {current_version}"
+                    ),
+                    "key": item.key,
+                    "current_version": current_version,
+                    "current_content": existing[1] if existing else None,
+                    "updated_by": existing_meta.get("updated_by")
+                    or existing_meta.get("created_by"),
+                    "updated_at": existing_meta.get("updated_at"),
+                },
+            )
+
+        now = datetime.now(UTC)
+        if existing:
+            new_version = current_version + 1
+            created_by = existing_meta.get("created_by", item.created_by)
+            created_at = existing_meta.get("created_at", now)
+        else:
+            new_version = 1
+            created_by = item.created_by
+            created_at = now
+
+        # Persist structured values into frontmatter so non-text keys survive
+        # the round-trip (the markdown body only carries the ``text``/rendering).
+        extra_meta: dict[str, Any] = {}
+        if set(value.keys()) != {"text"}:
+            extra_meta["value"] = value
+
+        write_memory_file(
+            room_dir,
+            item.key,
+            body,
+            created_by=created_by,
+            updated_by=item.created_by,
+            version=new_version,
+            tags=item.tags,
+            created_at=created_at if isinstance(created_at, datetime) else now,
+            updated_at=now,
+            extra_meta=extra_meta or None,
+        )
+
         embedding = None
         if item.embed:
             embedding = await asyncio.to_thread(embed_text, content_text)
-        _write_metrics.append(("namespace", item.embed))
+        write_metrics.append(item.embed)
 
-        # Check for existing memory (upsert) — scoped by (room, key)
-        upsert_query = select(Memory).where(
-            Memory.room_name == room_name,
-            Memory.key == item.key,
+        search_index.upsert(
+            room_name,
+            {
+                "key": item.key,
+                "room_name": room_name,
+                "content_text": content_text,
+                "embedding": embedding,
+                "value": value if extra_meta else None,
+                "created_by": created_by,
+                "updated_by": item.created_by,
+                "version": new_version,
+                "tags": item.tags,
+                "created_at": created_at.isoformat()
+                if isinstance(created_at, datetime)
+                else str(created_at),
+                "updated_at": now.isoformat(),
+                "file_path": f"rooms/{room_name}/{item.key}.md",
+            },
         )
 
-        existing_result = await db.execute(upsert_query)
-        existing = existing_result.scalar_one_or_none()
-
-        now = datetime.now(UTC)
-
-        if existing:
-            new_version = existing.version + 1
-
-            # Write markdown file
-            file_content = value_to_content(value)
-            rel_path = write_memory_file(
-                room_dir,
-                item.key,
-                file_content,
-                created_by=existing.created_by,
-                updated_by=item.created_by,
-                version=new_version,
-                tags=item.tags,
-                created_at=existing.created_at,
-                updated_at=now,
-            )
-
-            # Update search index
-            existing.value = value
-            existing.content_text = content_text
-            existing.embedding = embedding
-            existing.updated_by = item.created_by
-            existing.version = new_version
-            existing.tags = item.tags
-            existing.updated_at = now
-            existing.file_path = str(rel_path.relative_to(room_dir.parent.parent))
-            await db.flush()
-            await db.refresh(existing)
-            results.append(existing)
-
-            asyncio.ensure_future(
-                _notify_room_memory_change(room_name, item.key, item.created_by, existing.version)
-            )
-            asyncio.ensure_future(
-                _notify_subscribers(room_name, item.key, item.created_by, existing.version)
-            )
-        else:
-            # Write markdown file
-            file_content = value_to_content(value)
-            rel_path = write_memory_file(
-                room_dir,
-                item.key,
-                file_content,
-                created_by=item.created_by,
-                updated_by=item.created_by,
-                version=1,
-                tags=item.tags,
-                created_at=now,
-                updated_at=now,
-            )
-
-            # Create search index entry
-            mem = Memory(
+        results.append(
+            MemoryRead(
+                id=stable_memory_id(room_name, item.key),
                 room_name=room_name,
                 key=item.key,
                 value=value,
                 content_text=content_text,
-                embedding=embedding,
-                created_by=item.created_by,
+                created_by=created_by,
                 updated_by=item.created_by,
+                version=new_version,
                 tags=item.tags,
-                file_path=str(rel_path.relative_to(room_dir.parent.parent)),
+                created_at=created_at if isinstance(created_at, datetime) else now,
+                updated_at=now,
+                file_path=f"rooms/{room_name}/{item.key}.md",
             )
-            db.add(mem)
-            await db.flush()
-            await db.refresh(mem)
-            results.append(mem)
+        )
+        _notify_change(room_name, item.key, item.created_by, new_version)
 
-            asyncio.ensure_future(
-                _notify_room_memory_change(room_name, item.key, item.created_by, 1)
-            )
-            asyncio.ensure_future(_notify_subscribers(room_name, item.key, item.created_by, 1))
+    for embedded in write_metrics:
+        record_memory_write(scope="namespace", embedded=embedded)
 
-    await db.commit()
-
-    for _scope, _embedded in _write_metrics:
-        record_memory_write(scope=_scope, embedded=_embedded)
-
-    return [MemoryRead.model_validate(m) for m in results]
+    return results
 
 
 @router.get("")
@@ -287,282 +246,132 @@ async def list_memories(
     prefix: str | None = Query(None, description="Key prefix filter"),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
-    db: AsyncSession = Depends(get_async_session),
 ):
-    """List memories in a room.
+    """List memories in a room (from the filesystem).
 
-    Reads from the filesystem, falls back to DB index.
-    Supports ETag / If-None-Match for efficient sync — returns 304 if nothing changed.
+    Supports ETag / If-None-Match for efficient sync — returns 304 if nothing
+    changed.
     """
-    await _get_room(room_name, db)
-
-    # Compute ETag from latest updated_at in the room
-    ts_result = await db.execute(
-        select(func.max(Memory.updated_at)).where(Memory.room_name == room_name)
-    )
-    latest_ts = ts_result.scalar_one_or_none()
-    etag = '"' + hashlib.md5(str(latest_ts).encode()).hexdigest() + '"' if latest_ts else '"empty"'
-
-    if request.headers.get("if-none-match") == etag:
-        return Response(status_code=304, headers={"ETag": etag})
-
-    # Read from filesystem
+    _require_room(room_name)
     room_dir = get_room_dir(room_name)
     file_entries = list_memory_files(room_dir, prefix=prefix, limit=limit + offset)
 
-    # Skip offset entries
-    file_entries = file_entries[offset : offset + limit]
+    latest_ts = max((meta.get("updated_at", "") for _, meta, _ in file_entries), default="")
+    etag = '"' + hashlib.md5(str(latest_ts).encode()).hexdigest() + '"' if latest_ts else '"empty"'
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={"ETag": etag})
 
-    if file_entries:
-        # Build MemoryRead objects from filesystem data, enriched by DB index
-        result_list = []
-        for key, meta, content in file_entries:
-            # Try to get DB record for ID and embedding info
-            db_result = await db.execute(
-                select(Memory).where(
-                    Memory.room_name == room_name,
-                    Memory.key == key,
-                )
-            )
-            db_mem = db_result.scalar_one_or_none()
+    page = file_entries[offset : offset + limit]
+    memories = [
+        _memory_read_from_file(room_name, key, meta, content) for key, meta, content in page
+    ]
 
-            if db_mem:
-                result_list.append(MemoryRead.model_validate(db_mem))
-            else:
-                # File exists but no DB index — build from filesystem metadata
-                from uuid import uuid4
+    from fastapi.encoders import jsonable_encoder
 
-                result_list.append(
-                    MemoryRead(
-                        id=uuid4(),
-                        room_name=room_name,
-                        key=key,
-                        value={"text": content} if content else {},
-                        content_text=content,
-                        created_by=meta.get("created_by", "unknown"),
-                        updated_by=meta.get("updated_by"),
-                        version=meta.get("version", 1),
-                        tags=meta.get("tags"),
-                        created_at=meta.get("created_at", datetime.now(UTC)),
-                        updated_at=meta.get("updated_at", datetime.now(UTC)),
-                        file_path=f"rooms/{room_name}/{key}.md",
-                    )
-                )
-        return _etag_response(result_list, etag)
-
-    # Fallback to DB for rooms that haven't been migrated yet
-    query = select(Memory).where(Memory.room_name == room_name)
-    if prefix:
-        query = query.where(Memory.key.startswith(prefix))
-    query = query.order_by(Memory.updated_at.desc()).limit(limit).offset(offset)
-
-    result = await db.execute(query)
-    memories = list(result.scalars().all())
-    return _etag_response([MemoryRead.model_validate(m) for m in memories], etag)
+    return Response(
+        content=json.dumps(jsonable_encoder(memories)),
+        media_type="application/json",
+        headers={"ETag": etag},
+    )
 
 
 # ── Search & Subscriptions (must be BEFORE {key:path} catch-all) ──────────
 
 
 @router.post("/search", response_model=MemorySearchResponse)
-async def search_memories(
-    room_name: str,
-    payload: MemorySearchRequest,
-    db: AsyncSession = Depends(get_async_session),
-):
+async def search_memories(room_name: str, payload: MemorySearchRequest):
     """Semantic vector search over memories in a room.
 
-    Search uses the pgvector index.
+    Brute-force cosine over the room's local JSONL index (§11).
     """
-    import time as _time
-
     from app.services.metrics import record_memory_search
 
-    _search_t0 = _time.monotonic()
-    await _get_room(room_name, db)
+    t0 = time.monotonic()
+    _require_room(room_name)
 
     query_embedding = await asyncio.to_thread(embed_text, payload.query)
-
-    # Use pgvector cosine distance operator
-    stmt = text("""
-        SELECT id, room_name, key, value, content_text, created_by, updated_by,
-               version, tags, created_at, updated_at, expires_at, file_path,
-               1 - (embedding <=> CAST(:embedding AS vector)) AS similarity
-        FROM memories
-        WHERE room_name = :room_name
-          AND embedding IS NOT NULL
-        ORDER BY embedding <=> CAST(:embedding AS vector)
-        LIMIT :limit
-    """)
-
-    result = await db.execute(
-        stmt,
-        {
-            "embedding": str(query_embedding),
-            "room_name": room_name,
-            "limit": payload.limit,
-        },
+    hits = search_index.search(
+        room_name,
+        query_embedding,
+        limit=payload.limit,
+        min_similarity=payload.min_similarity,
     )
-    rows = result.fetchall()
 
+    now = datetime.now(UTC)
     results = []
-    for row in rows:
-        similarity = float(row.similarity)
-        if similarity < payload.min_similarity:
-            continue
+    for rec, similarity in hits:
+        value = rec.get("value")
+        if value is None:
+            value = {"text": rec.get("content_text")} if rec.get("content_text") else {}
         memory_read = MemoryRead(
-            id=row.id,
-            room_name=row.room_name,
-            key=row.key,
-            value=row.value,
-            content_text=row.content_text,
-            created_by=row.created_by,
-            updated_by=row.updated_by,
-            version=row.version,
-            tags=row.tags,
-            created_at=row.created_at,
-            updated_at=row.updated_at,
-            file_path=getattr(row, "file_path", None),
+            id=stable_memory_id(room_name, rec["key"]),
+            room_name=room_name,
+            key=rec["key"],
+            value=value,
+            content_text=rec.get("content_text"),
+            created_by=rec.get("created_by", "unknown"),
+            updated_by=rec.get("updated_by"),
+            version=rec.get("version", 1),
+            tags=rec.get("tags"),
+            created_at=rec.get("created_at", now),
+            updated_at=rec.get("updated_at", now),
+            file_path=rec.get("file_path"),
         )
         results.append(MemorySearchResult(memory=memory_read, similarity=similarity))
 
     record_memory_search(
-        duration_ms=(_time.monotonic() - _search_t0) * 1000,
+        duration_ms=(time.monotonic() - t0) * 1000,
         results_returned=len(results),
     )
     return MemorySearchResponse(results=results, total=len(results))
 
 
 @router.post("/subscribe", response_model=SubscriptionRead, status_code=201)
-async def subscribe(
-    room_name: str,
-    payload: SubscriptionCreate,
-    db: AsyncSession = Depends(get_async_session),
-):
+async def subscribe(room_name: str, payload: SubscriptionCreate):
     """Subscribe to memory change notifications for a key pattern."""
-    await _get_room(room_name, db)
-
-    sub = MemorySubscription(
+    _require_room(room_name)
+    sub = local_state.StoredSubscription(
         room_name=room_name,
         subscriber=payload.subscriber,
         key_pattern=payload.key_pattern,
     )
-    db.add(sub)
-    await db.commit()
-    await db.refresh(sub)
+    local_state.add_subscription(sub)
     return SubscriptionRead.model_validate(sub)
 
 
 @router.delete("/subscribe/{subscription_id}", status_code=204)
-async def unsubscribe(
-    room_name: str,
-    subscription_id: UUID,
-    db: AsyncSession = Depends(get_async_session),
-):
+async def unsubscribe(room_name: str, subscription_id: UUID):
     """Remove a memory subscription."""
-    result = await db.execute(
-        select(MemorySubscription).where(
-            MemorySubscription.id == subscription_id,
-            MemorySubscription.room_name == room_name,
-        )
-    )
-    sub = result.scalar_one_or_none()
-    if not sub:
+    if not local_state.remove_subscription(room_name, subscription_id):
         raise HTTPException(status_code=404, detail="Subscription not found")
-    await db.delete(sub)
-    await db.commit()
 
 
 @router.get("/subscriptions", response_model=list[SubscriptionRead])
-async def list_subscriptions(
-    room_name: str,
-    db: AsyncSession = Depends(get_async_session),
-):
+async def list_subscriptions(room_name: str):
     """List active memory subscriptions for a room."""
-    result = await db.execute(
-        select(MemorySubscription).where(MemorySubscription.room_name == room_name)
-    )
-    subs = list(result.scalars().all())
-    return [SubscriptionRead.model_validate(s) for s in subs]
+    return [SubscriptionRead.model_validate(s) for s in local_state.list_subscriptions(room_name)]
 
 
 # ── Key-path routes (catch-all, must be LAST) ─────────────────────────────
 
 
 @router.get("/{key:path}", response_model=MemoryRead)
-async def get_memory(
-    room_name: str,
-    key: str,
-    db: AsyncSession = Depends(get_async_session),
-):
-    """Get a specific memory by key.
-
-    Reads from the filesystem first, falls back to DB index.
-    """
-    # Try filesystem first
+async def get_memory(room_name: str, key: str):
+    """Get a specific memory by key (from the filesystem)."""
+    _require_room(room_name)
     room_dir = get_room_dir(room_name)
     file_data = read_memory_file(room_dir, key)
-    if file_data:
-        meta, content = file_data
-        # Get the DB record for the full MemoryRead (ID, embedding status, etc.)
-        db_result = await db.execute(
-            select(Memory).where(Memory.room_name == room_name, Memory.key == key)
-        )
-        db_mem = db_result.scalar_one_or_none()
-        if db_mem:
-            return MemoryRead.model_validate(db_mem)
-        # File exists but no DB record — return from filesystem metadata
-        from uuid import uuid4
-
-        return MemoryRead(
-            id=uuid4(),
-            room_name=room_name,
-            key=key,
-            value={"text": content} if content else {},
-            content_text=content,
-            created_by=meta.get("created_by", "unknown"),
-            updated_by=meta.get("updated_by"),
-            version=meta.get("version", 1),
-            tags=meta.get("tags"),
-            created_at=meta.get("created_at", datetime.now(UTC)),
-            updated_at=meta.get("updated_at", datetime.now(UTC)),
-            file_path=f"rooms/{room_name}/{key}.md",
-        )
-
-    # Fallback to DB
-    result = await db.execute(
-        select(Memory).where(Memory.room_name == room_name, Memory.key == key)
-    )
-    memory = result.scalar_one_or_none()
-    if not memory:
+    if not file_data:
         raise HTTPException(status_code=404, detail="Memory not found")
-    return MemoryRead.model_validate(memory)
+    meta, content = file_data
+    return _memory_read_from_file(room_name, key, meta, content)
 
 
 @router.delete("/{key:path}", status_code=204)
-async def delete_memory(
-    room_name: str,
-    key: str,
-    db: AsyncSession = Depends(get_async_session),
-):
-    """Delete a memory by key. Removes the file and the DB search index entry.
-
-    Either the file or the DB entry (or both) must exist — 404 only if neither is found.
-    """
-    # Delete from filesystem
+async def delete_memory(room_name: str, key: str):
+    """Delete a memory by key. Removes the file and its search-index entry."""
     room_dir = get_room_dir(room_name)
     file_deleted = delete_memory_file(room_dir, key)
-
-    # Delete from DB search index
-    result = await db.execute(
-        select(Memory).where(Memory.room_name == room_name, Memory.key == key)
-    )
-    memory = result.scalar_one_or_none()
-    db_deleted = False
-    if memory:
-        await db.delete(memory)
-        await db.commit()
-        db_deleted = True
-
-    if not file_deleted and not db_deleted:
+    index_deleted = search_index.remove(room_name, key)
+    if not file_deleted and not index_deleted:
         raise HTTPException(status_code=404, detail="Memory not found")

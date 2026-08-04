@@ -4,21 +4,17 @@
 """
 Shared test fixtures.
 
-Uses an in-memory SQLite DB so no Postgres is required.
-Sets MYCELIUM_DATA_DIR to a temp directory for filesystem tests.
+No database (SLIM-native rebuild, Step 1): the store is markdown files + a local
+JSONL index under a temp ``MYCELIUM_DATA_DIR``, and messages/presence live in the
+in-process ``local_state`` shim which we reset per test.
 """
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import event
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.database import get_async_session
 from app.main import app
-from app.models import Base
-
-TEST_DATABASE_URL = "sqlite+aiosqlite://"
+from app.services import local_state
 
 
 @pytest.fixture(autouse=True)
@@ -27,40 +23,16 @@ def _set_data_dir(tmp_path, monkeypatch):
     monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))
 
 
-@pytest_asyncio.fixture()
-async def db_session():
-    """Ephemeral in-memory SQLite session, schema created fresh per test."""
-    engine = create_async_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
-
-    # SQLite enforces FK constraints only when PRAGMA foreign_keys=ON. Without
-    # this the cascade-on-delete chain (room → coord_sessions → participants &
-    # messages) wouldn't fire in tests, hiding regressions.
-    @event.listens_for(engine.sync_engine, "connect")
-    def _enable_sqlite_fk(dbapi_conn, _conn_record):
-        cursor = dbapi_conn.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    session_maker = async_sessionmaker(engine, expire_on_commit=False)
-    async with session_maker() as session:
-        yield session
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-    await engine.dispose()
+@pytest.fixture(autouse=True)
+def _reset_local_state():
+    """Isolate the in-memory message/presence/subscription shim per test."""
+    local_state.clear_all()
+    yield
+    local_state.clear_all()
 
 
 @pytest_asyncio.fixture()
-async def client(db_session: AsyncSession):
-    """AsyncClient wired to the FastAPI app, DB overridden to in-memory SQLite."""
-
-    async def _override_db():
-        yield db_session
-
-    app.dependency_overrides[get_async_session] = _override_db
+async def client():
+    """AsyncClient wired to the FastAPI app (no database)."""
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
-    app.dependency_overrides.clear()

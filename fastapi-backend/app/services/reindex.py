@@ -23,18 +23,16 @@ _loop: asyncio.AbstractEventLoop | None = None
 
 async def startup_scan() -> None:
     """Incremental scan of all rooms on startup."""
-    from app.database import async_session_maker
     from app.services.indexer import index_all_rooms
 
     try:
-        async with async_session_maker() as db:
-            stats = await index_all_rooms(db)
-            logger.info(
-                "Startup scan: %d rooms, %d indexed, %d unchanged",
-                stats["rooms"],
-                stats["total_indexed"],
-                stats["total_skipped"],
-            )
+        stats = await index_all_rooms()
+        logger.info(
+            "Startup scan: %d rooms, %d indexed, %d unchanged",
+            stats["rooms"],
+            stats["total_indexed"],
+            stats["total_skipped"],
+        )
     except Exception:
         logger.warning("Startup scan failed (non-fatal)", exc_info=True)
 
@@ -126,13 +124,11 @@ def stop_watcher() -> None:
 
 async def _reindex_file(room_name: str, key: str) -> None:
     """Reindex a single file triggered by the watcher."""
-    from app.database import async_session_maker
     from app.services.indexer import index_single_file
 
     try:
-        async with async_session_maker() as db:
-            indexed = await index_single_file(room_name, key, db)
-            if indexed:
-                logger.debug("Auto-indexed %s/%s", room_name, key)
+        indexed = await index_single_file(room_name, key)
+        if indexed:
+            logger.debug("Auto-indexed %s/%s", room_name, key)
     except Exception:
         logger.warning("Auto-reindex failed for %s/%s", room_name, key, exc_info=True)

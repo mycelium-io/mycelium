@@ -9,18 +9,16 @@ RUN useradd -r -u 1000 -g 0 -s /sbin/nologin -d /home/mycelium mycelium \
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc libpq-dev python3-dev curl \
+    gcc python3-dev curl \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install uv
 
 # Copy project metadata first for layer caching
 COPY pyproject.toml uv.lock ./
-# Install all runtime deps from pyproject.toml (excluding agensgraph which needs --no-build-isolation)
-RUN python3 -c 'import tomllib; deps=tomllib.load(open("pyproject.toml","rb"))["project"]["dependencies"]; print("\n".join(d for d in deps if "agensgraph" not in d))' > /tmp/requirements.txt && \
-    uv pip install --system --no-cache -r /tmp/requirements.txt && \
-    uv pip install --system --no-cache "setuptools" && \
-    uv pip install --system --no-cache --no-build-isolation "agensgraph-python==1.0.2"
+# Install all runtime deps from pyproject.toml.
+RUN python3 -c 'import tomllib; deps=tomllib.load(open("pyproject.toml","rb"))["project"]["dependencies"]; print("\n".join(deps))' > /tmp/requirements.txt && \
+    uv pip install --system --no-cache -r /tmp/requirements.txt
 
 COPY . .
 
