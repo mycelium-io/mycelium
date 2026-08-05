@@ -28,6 +28,7 @@ os.environ.setdefault("HF_HUB_OFFLINE", "1")
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.routes.episodes import router as episodes_router
 from app.routes.invites import router as invites_router
 from app.routes.memory import router as memory_router
 from app.routes.messages import router as messages_router
@@ -148,6 +149,7 @@ app.add_middleware(
 app.include_router(rooms_router, prefix="/api")
 app.include_router(messages_router, prefix="/api")
 app.include_router(invites_router, prefix="/api")
+app.include_router(episodes_router, prefix="/api")
 app.include_router(sessions_router, prefix="/api")
 app.include_router(stream_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")

@@ -17,6 +17,7 @@ import {
 import { MarkdownContent } from "@/components/markdown-content";
 import { RoomPlanHeader } from "@/components/room-plan-header";
 import { ConsentDialog } from "@/components/consent-dialog";
+import { L9Inspector } from "@/components/l9-inspector";
 
 interface Event {
   id: string;
@@ -180,7 +181,7 @@ function renderWithMentions(text: string): React.ReactNode {
   );
 }
 
-type View = "channel" | "plan";
+type View = "channel" | "plan" | "l9";
 
 interface Props {
   roomName: string;
@@ -317,6 +318,7 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
         <div className="ml-auto flex items-stretch">
           {([
             { id: "channel" as const, label: "CHANNEL", count: channelCount as number | null },
+            { id: "l9" as const,      label: "L9",      count: null },
             { id: "plan" as const,    label: "PLAN",    count: null },
           ]).map(t => {
             const active = view === t.id;
@@ -340,6 +342,11 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
           })}
         </div>
       </div>
+      {view === "l9" ? (
+        <div className="flex-1 min-h-0">
+          <L9Inspector roomName={roomName} />
+        </div>
+      ) : (
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         {view === "plan" ? (
           <RoomPlanHeader roomName={roomName} refreshTrigger={planRefreshTrigger} />
@@ -571,6 +578,7 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
           </>
         )}
       </div>
+      )}
     </div>
   );
 }
