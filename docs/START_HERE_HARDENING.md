@@ -27,9 +27,11 @@ auto-joins it (no consent), wakes it on the first mention, and its reply lands i
 end to end, reliably.
 
 **Remaining: H5 only** — prove Rung 4 (`aligner → commit:converged → plan/tasks.md compiles →
-memory syncs`) with real agents. Unstarted. Recommended first step: scout
-`app/services/aligner.py`, `plan_compiler.py`, `plan_sync.py` and lay out the multi-agent test
-before running (it uses real LLM tokens). The single-shot flow above is the foundation to drive it.
+memory syncs`) with real agents. **See `docs/START_HERE_H5_DEMO.md`** — a dedicated plan: the
+aligner/plan/memory pipeline is scouted there, `mycelium demo` is confirmed stale (needs `--cwd`
+per agent + daemon-subscribe plumbing, then the real negotiation→consensus flow debugged live),
+and it lays out a cheap deterministic first rung before the token-heavy live run. The single-shot
+`invoke → wake → reply` proven in H4 is the foundation.
 
 ## Read first, in order
 1. **`docs/SLIM_SMOKE_TEST_FINDINGS.md`** — what broke, what was fixed, what's still open, with
