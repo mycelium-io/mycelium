@@ -960,12 +960,28 @@ and add a **health/status surface** (channels provisioned/failed, persister aliv
 re-serve/drop counts). "Nothing happens, logs green" is the default failure mode today; fix that
 and the rest of this list gets ~10× faster.
 
-**H2 — Unify the message store (§A) — DECIDED: option (b).** The **persister is the single
-writer** of a room's message record. For channel-backed rooms, `POST /messages` only publishes
-to SLIM; the persister records everything (human loopback via `ingest_local`, agents via
-receive) into the store the UI list reads *and* the live bus. No dual-write mirror. Finishes the
-migration `local_state` was left half-in and makes **agent replies visible in the UI** (today
-they reach `log/transcript.md` but never the UI's list surface).
+**H2 — Unify the message store (§A) — DONE.** Goal was never "single writer" — it was **no
+divergence in what the UI shows**. Achieved: `local_state` is the one room message list store,
+and it now has one write per message from **source-partitioned producers** — `POST /messages`
+writes the human's message (keeping event/PATCH/TTL semantics, which are keyed on
+`StoredMessage.id`), and the **persister** writes messages that only arrive over SLIM (agent
+replies), skipping locally-ingested ids so nothing double-writes. Agent replies are now visible
+in the UI list (before, they reached `log/transcript.md` but never the list surface). Multiple
+producers appending to one store is a healthy pattern — *not* the mirror anti-pattern (which is
+the same message duplicated across two stores). Invariant covered by
+`tests/test_persister.py::test_list_store_human_and_agent_each_appear_once_in_order`.
+
+**The full "persister is the literal single writer" migration is explicitly NOT pursued — do
+not re-open it as debt.** It would mean routing *all* room-narration (EVENT messages with
+status/TTL/PATCH-by-id, `plan_updated`, `coordination_join`) through SLIM+L9+persister and
+re-keying PATCH/TTL onto message ids — a day of cross-cutting risk across ~6 files that buys
+architectural purity and nothing else. Those message types are **local room/UI concerns, not
+cross-agent coordination**. The *only* thing that would justify promoting specific types to real
+SLIM messages is **cross-host UI parity for narration** (two humans on two machines needing to
+see the same join/plan-updated narration live — distinct from the plan+memory sync that already
+works cross-host). That is not an established requirement; if it ever becomes one, promote the
+specific event types **selectively**, motivated by that requirement — never a big-bang
+eliminate-`local_state` refactor.
 
 **H3 — Channel + persister lifecycle hardening (§B/§C/§D/§F as ONE pass).** The channel/persister
 is fragile and never recovers:

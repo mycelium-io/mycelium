@@ -222,3 +222,76 @@ async def test_reserve_without_context_is_a_noop():
     p.log.record(persister.record_from(env, serialize_content(env)), delivered_to=set())
     # agent-a missed m1 but we have no context for it → 0 re-served, no raise.
     assert await p.reserve("agent-a") == 0
+
+
+# ── H2 list-store invariant: one store, source-partitioned producers ──────────
+
+
+def _msg_content(message_id: str, *, sender: str, text: str, payload_type: str):
+    """An envelope + serialized content with a top-level human-facing ``content``."""
+    from app.services.l9_slim import serialize_content
+
+    env = l9.build_envelope(
+        kind=Kind.exchange,
+        episode="urn:ioc:mycelium:episode:r:s",
+        sender=sender,
+        recipients=[l9.SYSTEM_ACTOR_ID],
+        topic="urn:concept:mycelium:r",
+        message_id=message_id,
+        payload_type=payload_type,
+    )
+    return env, serialize_content(env, extra={"content": text})
+
+
+def test_list_store_human_and_agent_each_appear_once_in_order():
+    """The H2 invariant: a human message and an agent reply each land in the list
+    store exactly once, in order — the source partition (POST writes the human's,
+    the persister writes SLIM arrivals) + id-dedup hold, so nothing double-writes.
+    """
+    from app.services import local_state
+
+    room = "h2-invariant-room"
+    p = _persister_for(room, summoned=[], converged=[])
+
+    # 1) The human's message: written by the POST route (its own producer), and
+    #    ingested locally by the persister (local=True → must NOT also list-write).
+    human_env, human_content = _msg_content(
+        "h-1", sender="julia", text="@smoke-agent hello", payload_type="message"
+    )
+    local_state.add_message(
+        room,
+        local_state.StoredMessage(
+            room_name=room, sender_handle="julia", message_type="broadcast", content="hello"
+        ),
+    )
+    p._ingest(human_env, human_content, local=True)
+    # Its SLIM loopback arrives on the receive path — de-duped by id, no re-write.
+    p._ingest(human_env, human_content, local=False)
+
+    # 2) The agent's reply: arrives only over SLIM (receive path) → the persister
+    #    is its sole producer.
+    agent_env, agent_content = _msg_content(
+        "a-1", sender="smoke-agent", text="hi back", payload_type="reply"
+    )
+    p._ingest(agent_env, agent_content, local=False)
+
+    stored = local_state.list_messages(room)
+    assert [(m.sender_handle, m.content) for m in stored] == [
+        ("julia", "hello"),
+        ("smoke-agent", "hi back"),
+    ]
+
+
+def test_list_store_skips_presence_and_non_conversational():
+    """Presence/control payloads stay out of the chat list (transcript/bus only)."""
+    from app.services import local_state
+
+    room = "h2-presence-room"
+    p = _persister_for(room, summoned=[], converged=[])
+
+    pres_env, pres_content = _msg_content(
+        "p-1", sender="smoke-agent", text="joined the room", payload_type="presence"
+    )
+    p._ingest(pres_env, pres_content, local=False)
+
+    assert local_state.list_messages(room) == []
