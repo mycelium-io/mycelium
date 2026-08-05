@@ -285,6 +285,25 @@ def test_provision_cold_spawn_aborts_if_daemon_subscribe_fails(tmp_path) -> None
         demo._provision(spec, "claude_code", model=None, room="r")
 
 
+def test_drive_consensus_summons_aligner_after_positions() -> None:
+    """Once every agent has posted, the demo posts @aligner to trigger convergence."""
+    cfg = type("C", (), {"server": type("S", (), {"api_url": "http://x"})()})()
+    calls: list[list[str]] = []
+
+    with (
+        # all three agents have already spoken → no waiting
+        patch.object(demo, "_room_senders", return_value={"growth", "risk", "execution"}),
+        patch.object(demo, "_run", side_effect=lambda args, **_: calls.append(args) or _ok()),
+        patch.object(demo.time, "sleep"),  # skip the settle window
+    ):
+        demo._drive_consensus(cfg, "demo-room", ["growth", "risk", "execution"])
+
+    sends = [c for c in calls if c[:2] == ["room", "send"]]
+    assert len(sends) == 1
+    assert f"@{demo.ALIGNER_HANDLE}" in sends[0][2]
+    assert "--room" in sends[0] and "demo-room" in sends[0]
+
+
 def test_check_prereqs_flags_missing_daemon_for_cold_spawn() -> None:
     """claude_code with no daemon running surfaces a blocking problem with the fix."""
 

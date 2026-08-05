@@ -47,6 +47,11 @@ _TREE_URL = f"https://api.github.com/repos/{_REPO}/git/trees/{_REF}?recursive=1"
 # Sensible default; any scenario discovered in the dataset is selectable.
 DEFAULT_SCENARIO = "ex07_investment_portfolio"
 
+# The reserved handle that summons the SIEP aligner (backend ALIGNER_HANDLE
+# default). Summoning it scores the room's positions into a converged/rejected
+# verdict and, on converge, compiles plan/tasks.md + syncs a knowledge memory.
+ALIGNER_HANDLE = "aligner"
+
 # Adapters that can host a demo agent. Mirrors AGENT_ADAPTERS (underscore form).
 _KNOWN_ADAPTERS = ("openclaw", "claude_code", "cursor", "hermes")
 
@@ -425,6 +430,82 @@ def _provision(
     console.print("[green]✓[/green] Seeded the room — agents are negotiating")
 
 
+def _room_senders(api: str, room: str) -> set[str]:
+    """The set of handles that have posted a message to ``room`` (lowercased)."""
+    import httpx
+
+    try:
+        resp = httpx.get(f"{api}/api/rooms/{room}/messages", timeout=5.0)
+        resp.raise_for_status()
+    except httpx.HTTPError:
+        return set()
+    return {
+        str(m["sender_handle"]).lower()
+        for m in resp.json().get("messages", [])
+        if m.get("sender_handle")
+    }
+
+
+def _drive_consensus(
+    config: Any,
+    room: str,
+    handles: list[str],
+    *,
+    timeout: float = 180.0,
+    settle: float = 15.0,
+) -> None:
+    """Wait for the agents to state positions, then summon the aligner.
+
+    Cold-spawn turns land asynchronously (each is a live ``claude -p``), so poll
+    the room until every agent has spoken — then let a short settle window catch
+    their final positions — and post ``@aligner``. That summon is what the backend
+    scores into a ``commit:converged``/``rejected`` verdict and, on convergence,
+    compiles into ``plan/tasks.md`` + syncs as a ``knowledge`` memory. Driving it
+    here makes the payoff deterministic instead of hoping an agent remembers to.
+    """
+    api = config.server.api_url.rstrip("/")
+    want = {h.lower() for h in handles}
+    console.print("[dim]Waiting for agents to state their positions…[/dim]")
+    deadline = time.monotonic() + timeout
+    seen: set[str] = set()
+    while time.monotonic() < deadline:
+        seen = _room_senders(api, room)
+        if want <= seen:
+            time.sleep(settle)  # let final-round positions land before scoring
+            seen = _room_senders(api, room)
+            break
+        time.sleep(3.0)
+
+    posted = sorted(want & seen)
+    if posted:
+        console.print(f"[green]✓[/green] Positions in from {', '.join('@' + h for h in posted)}")
+    else:
+        console.print(
+            "[yellow]⚠ No agent positions yet[/yellow] — summoning the aligner anyway; "
+            "it will report no convergence."
+        )
+
+    console.print(f"[dim]Summoning [cyan]@{ALIGNER_HANDLE}[/cyan] to assess convergence…[/dim]")
+    r = _run(
+        [
+            "room",
+            "send",
+            f"@{ALIGNER_HANDLE} assess whether the team has converged and compile the plan.",
+            "--room",
+            room,
+            "--handle",
+            "demo",
+        ]  # fmt: skip
+    )
+    if r.returncode != 0:
+        console.print(f"[yellow]⚠ could not summon the aligner:[/yellow]\n{r.stderr or r.stdout}")
+        return
+    console.print(
+        f"[green]✓[/green] Summoned [bold]@{ALIGNER_HANDLE}[/bold] — on convergence the backend "
+        "compiles [cyan]plan/tasks.md[/cyan] and syncs it as a knowledge memory."
+    )
+
+
 def _print_intro(scenario: dict[str, Any], adapter: str, room: str) -> None:
     body = (
         f"[dim]Adapter:[/dim] [bold]{adapter}[/bold]    "
@@ -573,6 +654,12 @@ def demo(
             raise typer.Exit(0)
 
     _provision(chosen, adapter, model, room_name, auth_from)
+
+    # The payoff: once positions are in, summon the aligner so the negotiation
+    # actually converges → compiles plan/tasks.md → syncs a knowledge memory.
+    handles = [a["handle"] for a in chosen["agents"]]
+    _drive_consensus(_config, room_name, handles)
+
     _print_outro(chosen, adapter, room_name)
 
     if not no_watch:
