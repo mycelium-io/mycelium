@@ -270,6 +270,18 @@ async def _shared_connection(service: slim_bindings.Service, sb: ModuleType, end
     conn_id = _connections.get(endpoint)
     if conn_id is None:
         client_config = sb.new_insecure_client_config(endpoint)
+        # Enable idle keepalive. ``new_insecure_client_config`` leaves
+        # ``keepalive=None`` → the binding's ``keep_alive_while_idle`` defaults to
+        # False, so the node drops a connection after ~30s of silence (its
+        # RecoveryTable TTL). For the always-on moderator that means a quiet
+        # room's group session silently dies and every member's route with it.
+        # Keep idle connections alive so long-lived channels survive gaps.
+        client_config.keepalive = sb.KeepaliveConfig(
+            tcp_keepalive=datetime.timedelta(seconds=90),
+            http2_keepalive=datetime.timedelta(seconds=45),
+            timeout=datetime.timedelta(seconds=20),
+            keep_alive_while_idle=True,
+        )
         conn_id = await service.connect_async(client_config)
         _connections[endpoint] = conn_id
     return conn_id

@@ -49,7 +49,7 @@ from mycelium.filesystem import KnowledgeApplyResult, apply_knowledge, get_room_
 from mycelium.integrations import get_integration
 from mycelium.integrations._spawn_common import SpawnRequest
 from mycelium.slim import l9
-from mycelium.slim.client import SlimClient, SlimUnavailableError
+from mycelium.slim.client import SlimClient, SlimReceiveTimeout, SlimUnavailableError
 from mycelium.slim.naming import DEFAULT_WORKSPACE, SlimIdentity
 
 if TYPE_CHECKING:
@@ -520,7 +520,14 @@ async def run_connector(
             )
 
             while not state.stopping.is_set():
-                message = await SlimClient.receive_message(session)
+                try:
+                    message = await SlimClient.receive_message(session)
+                except SlimReceiveTimeout:
+                    # Idle window elapsed with no message — the session is alive,
+                    # just quiet. Keep waiting on it; do NOT fall through to the
+                    # reconnect path, which would drop and rejoin the group every
+                    # timeout window and churn membership (participant flapping).
+                    continue
                 content = l9.parse(message.payload)
                 if content is None:
                     continue

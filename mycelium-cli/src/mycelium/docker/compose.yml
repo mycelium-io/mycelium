@@ -61,6 +61,11 @@ services:
         required: false
     environment:
       API_BASE_URL: http://mycelium-backend:8000
+      # The SLIM node's in-network address. The backend is the room-channel
+      # moderator (room_channels.py), so it must reach the node by its compose
+      # service name — the default 127.0.0.1:46357 resolves to the backend
+      # container itself, which silently no-ops every channel provision.
+      SLIM_NODE_ENDPOINT: http://mycelium-slim:46357
       # IN-CONTAINER path the backend writes rooms/memory/plans to. MUST match
       # the bind-mount target below — otherwise writes land in the container's
       # overlay FS and are lost on recreate. (The host-side MYCELIUM_DATA_DIR

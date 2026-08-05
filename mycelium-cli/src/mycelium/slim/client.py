@@ -43,6 +43,23 @@ class SlimUnavailableError(SlimError):
     """Raised when ``slim_bindings`` cannot be imported (no native wheel)."""
 
 
+class SlimReceiveTimeout(SlimError):
+    """A receive timed out with no message — a benign idle tick, not a fault.
+
+    The binding raises a generic ``SessionError`` for both a real transport
+    fault and a plain "no message within the window" timeout. On an idle channel
+    the latter is normal, so the connector must keep waiting on the same session
+    rather than treating it as a dropped session and reconnecting (which churns
+    the group membership every timeout window). Callers catch this and loop.
+    """
+
+
+# Substring the binding puts in a timeout ``SessionError`` message. Matched
+# because the binding exposes no distinct timeout type; a real transport fault
+# carries different text.
+_RECEIVE_TIMEOUT_MARKER = "receive timeout"
+
+
 def require_bindings() -> ModuleType:
     """Import ``slim_bindings`` lazily, or raise a clear error."""
     try:
@@ -73,6 +90,18 @@ async def _shared_connection(service: slim_bindings.Service, sb: ModuleType, end
     conn_id = _connections.get(endpoint)
     if conn_id is None:
         client_config = sb.new_insecure_client_config(endpoint)
+        # Enable idle keepalive. ``new_insecure_client_config`` leaves
+        # ``keepalive=None`` → the binding's ``keep_alive_while_idle`` defaults to
+        # False, so the node drops a connection after ~30s of silence (its
+        # RecoveryTable TTL) — which silently kills a waiting connector's route
+        # and the moderator's session on any quiet room. Keep idle connections
+        # alive so long-lived members survive gaps between messages.
+        client_config.keepalive = sb.KeepaliveConfig(
+            tcp_keepalive=datetime.timedelta(seconds=90),
+            http2_keepalive=datetime.timedelta(seconds=45),
+            timeout=datetime.timedelta(seconds=20),
+            keep_alive_while_idle=True,
+        )
         conn_id = await service.connect_async(client_config)
         _connections[endpoint] = conn_id
     return conn_id
@@ -201,4 +230,9 @@ class SlimClient:
         Preserves ``.payload`` (bytes) and ``.context`` (a ``MessageContext``
         carrying the sender's routable source).
         """
-        return await session.get_message_async(timeout=datetime.timedelta(seconds=timeout_s))
+        try:
+            return await session.get_message_async(timeout=datetime.timedelta(seconds=timeout_s))
+        except Exception as exc:
+            if _RECEIVE_TIMEOUT_MARKER in str(exc).lower():
+                raise SlimReceiveTimeout(str(exc)) from exc
+            raise

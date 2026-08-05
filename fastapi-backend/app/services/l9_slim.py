@@ -53,6 +53,23 @@ class L9SlimError(RuntimeError):
     """A message on the room channel could not be bound to/from L9."""
 
 
+class ChannelReceiveTimeout(L9SlimError):
+    """A receive timed out with no message — a benign idle tick, not a failure.
+
+    The SLIM binding raises a generic ``SessionError`` both for a real transport
+    fault and for a plain "no message arrived within the window" timeout. On an
+    idle room the latter is the norm, so the persister must treat it as "keep
+    waiting" rather than counting it toward the give-up budget (a room that goes
+    quiet for a few windows must not have its channel silently die).
+    """
+
+
+# Substring the SLIM binding puts in a timeout ``SessionError`` message. Matched
+# because the binding exposes no distinct timeout exception type (all session
+# faults are ``SessionError``); a real transport fault carries a different text.
+_RECEIVE_TIMEOUT_MARKER = "receive timeout"
+
+
 def serialize_envelope(envelope: L9, *, extra: dict[str, Any] | None = None) -> bytes:
     """Serialize ``envelope`` (plus any ``extra`` content) to publishable bytes.
 
@@ -132,6 +149,16 @@ class CausalOrderBuffer:
                     released.append(pending)
                     progressed = True
         return released
+
+    def mark_delivered(self, message_id: str) -> None:
+        """Record ``message_id`` as already delivered, out of band.
+
+        Used for messages the moderator ingests locally (the human proxy — see
+        :meth:`RoomPersister.ingest_local`) that never pass through :meth:`add`.
+        Without this, a reply causally parented on such a message can never
+        satisfy :meth:`_ready` and would be held in ``_pending`` forever.
+        """
+        self._delivered.add(message_id)
 
     @property
     def pending_count(self) -> int:
@@ -223,6 +250,17 @@ class L9SlimChannel:
     def session(self) -> slim_bindings.Session:
         return self._session
 
+    def note_delivered(self, envelope: L9) -> None:
+        """Mark ``envelope`` delivered in the causal buffer without receiving it.
+
+        For messages the moderator ingests locally (never arriving via
+        :meth:`receive_with_context`), so a later reply parented on them can be
+        released rather than held forever.
+        """
+        message = envelope.header.message
+        if message is not None and message.id is not None:
+            self._buffer.mark_delivered(message.id)
+
     async def send(self, envelope: L9, *, extra: dict[str, Any] | None = None) -> None:
         """Serialize ``envelope`` and broadcast it to the group."""
         from app.services.slim_client import SlimClient
@@ -263,7 +301,12 @@ class L9SlimChannel:
         """
         from app.services.slim_client import SlimClient
 
-        message = await SlimClient.receive_message(self._session, timeout_s=timeout_s)
+        try:
+            message = await SlimClient.receive_message(self._session, timeout_s=timeout_s)
+        except Exception as exc:
+            if _RECEIVE_TIMEOUT_MARKER in str(exc).lower():
+                raise ChannelReceiveTimeout(str(exc)) from exc
+            raise
         arrived, content = deserialize_envelope(message.payload)
         mid = arrived.header.message.id if arrived.header.message is not None else None
         if mid is not None:

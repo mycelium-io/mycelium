@@ -44,6 +44,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from app.services import l9
+from app.services.l9_slim import ChannelReceiveTimeout
 
 if TYPE_CHECKING:
     import slim_bindings
@@ -411,6 +412,12 @@ class RoomPersister:
         while True:
             try:
                 released, arrived, context = await self._channel.receive_with_context()
+            except ChannelReceiveTimeout:
+                # A benign idle tick — the receive machinery is alive, no message
+                # arrived within the window. Not a fault: reset the failure run so
+                # a quiet room's channel is never torn down (bible §9 durability).
+                failures = 0
+                continue
             except Exception as exc:
                 from asyncio import CancelledError
 
@@ -440,7 +447,13 @@ class RoomPersister:
         the transcript and UI bus see it regardless of whether SLIM delivers a
         broadcast back to its own sender. :meth:`_ingest` de-dupes by message id,
         so a loopback of the same broadcast is a no-op.
+
+        Also marks the message delivered in the channel's causal buffer: a locally
+        ingested message never passes through ``receive_with_context``, so without
+        this an agent reply parented on it (``build_reply`` threads
+        ``parents=[woke_id]``) is held in the buffer forever and never recorded.
         """
+        self._channel.note_delivered(envelope)
         self._ingest(envelope, content)
 
     def _ingest(self, envelope: L9, content: dict[str, Any]) -> None:
