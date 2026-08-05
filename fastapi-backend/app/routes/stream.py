@@ -15,7 +15,7 @@ import logging
 from urllib.parse import urlparse
 
 import asyncpg
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 
@@ -252,13 +252,22 @@ async def stream_room_messages(room_name: str, request: Request):
 
 
 @router.get("/agents/{handle}/stream")
-async def stream_agent_events(handle: str, request: Request):
+async def stream_agent_events(
+    handle: str,
+    request: Request,
+    room: list[str] = Query(default=[]),
+):
     """
     Server-Sent Events stream for a specific agent handle.
 
     Delivers coordination_tick and coordination_consensus events addressed to
-    this agent across all rooms — no room configuration required on the client.
+    this agent. Pass one or more ``?room=<name>`` query parameters to scope
+    delivery to a specific session namespace — only events whose ``room_name``
+    starts with one of the supplied prefixes are forwarded. Without any
+    ``room`` parameter all events for the handle are delivered (legacy behaviour).
+
     Connect with: curl -N http://localhost:8000/agents/{handle}/stream
+    Connect scoped: curl -N "http://localhost:8000/agents/{handle}/stream?room=my-room"
     """
     try:
         conn: asyncpg.Connection = await _open_listen_conn()
@@ -285,13 +294,17 @@ async def stream_agent_events(handle: str, request: Request):
         await _close_listen_conn(conn, channel, _on_notify if listener_added else None)
         raise HTTPException(status_code=503, detail=f"LISTEN setup failed: {e}") from e
 
-    logger.debug(f"SSE agent stream opened for: {handle}")
+    logger.debug(f"SSE agent stream opened for: {handle} (room filter: {room or 'none'})")
 
     async def _transform(payload: str) -> str | None:
         try:
-            json.loads(payload)
+            data = json.loads(payload)
         except json.JSONDecodeError:
             return None
+        if room:
+            room_name = data.get("room_name") or ""
+            if not any(room_name.startswith(r) for r in room):
+                return None
         return f"data: {payload}\n\n"
 
     async def event_generator():

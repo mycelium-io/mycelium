@@ -315,14 +315,25 @@ def await_tick(
                     # Ticks are posted to coordination sessions (legacy display
                     # name: ``{room}:session:{short}``). Pull the active sessions
                     # from the first-class endpoint instead of scanning rooms.
-                    rooms_to_scan = [resolved_room]
                     coord_resp = http.get(
                         f"{config.server.api_url}/api/coordination-sessions",
                         params={"parent_room": resolved_room, "limit": 200},
                     )
+                    active_session_rooms: list[str] = []
                     if coord_resp.status_code == 200:
                         for c in coord_resp.json():
-                            rooms_to_scan.append(c["display_name"])
+                            if c.get("state") in ("idle", "waiting", "negotiating"):
+                                active_session_rooms.append(c["display_name"])
+
+                    # If an active session exists, scan only its room for missed ticks.
+                    # Scanning the parent room (or broken sessions) is skipped so that
+                    # a prior session's consensus is never replayed into a new session.
+                    # When NO active session exists, scan the parent room: the agent
+                    # likely missed the consensus from the session that just finished.
+                    if active_session_rooms:
+                        rooms_to_scan = active_session_rooms
+                    else:
+                        rooms_to_scan = [resolved_room]
 
                     for scan_room in rooms_to_scan:
                         resp = http.get(
@@ -376,10 +387,14 @@ def await_tick(
                 except Exception:
                     pass  # fall through to SSE
 
+        # Scope the SSE subscription to the current session's rooms so events
+        # from prior sessions (same handle, different room) are filtered server-side.
+        sse_room_scope = active_session_rooms if active_session_rooms else [resolved_room]
         url = f"{config.server.api_url}/api/agents/{handle}/stream"
+        sse_params = [("room", r) for r in sse_room_scope]
         start = time.time()
 
-        with httpx.Client(timeout=None) as http, http.stream("GET", url) as response:
+        with httpx.Client(timeout=None) as http, http.stream("GET", url, params=sse_params) as response:
             for line in response.iter_lines():
                 if timeout > 0 and (time.time() - start) >= timeout:
                     typer.echo(json_module.dumps({"type": "timeout", "seconds": timeout}))
