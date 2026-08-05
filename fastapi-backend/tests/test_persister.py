@@ -282,6 +282,25 @@ def test_list_store_human_and_agent_each_appear_once_in_order():
     ]
 
 
+def test_addressed_absent_recipient_holds_the_triggering_message():
+    """§E: a message @-addressed to an absent, untracked agent is held in its
+    undelivered tail, so its first wake replays the mention that invited it —
+    instead of tracking at the transcript end and skipping it.
+    """
+    log = persister.DeliveryLog()
+    # An @-mention broadcast while agent-x is absent (not present, not tracked).
+    log.record(_record("m1", sender="julia"), delivered_to=set(), recipients=["agent-x"])
+    assert [r.message_id for r in log.undelivered("agent-x")] == ["m1"]
+
+    # A later unrelated message it also misses stays in the tail, in order.
+    log.record(_record("m2", sender="julia"), delivered_to=set(), recipients=[])
+    assert [r.message_id for r in log.undelivered("agent-x")] == ["m1", "m2"]
+
+    # A genuinely fresh join (not addressed) starts caught-up: nothing to replay.
+    log.track("bystander", caught_up=True)
+    assert log.undelivered("bystander") == []
+
+
 def test_handle_from_disconnect_parses_the_leaving_handle():
     m = "message='participant disconnected: mycelium/smoke3/smoke-agent/ffffffffffffffff'"
     assert persister._handle_from_disconnect(m) == "smoke-agent"

@@ -82,6 +82,17 @@ BACKEND_AGENT = "backend"
 _PERSISTER_RESTART_BACKOFF_S = 5.0
 
 
+def _is_own_registered_agent(room: str, handle: str) -> bool:
+    """True if ``handle`` is an agent registered in ``room`` (manifest on disk).
+
+    Its manifest lives at ``agents/{handle}.md`` in the room dir. Used by §G to
+    decide auto-invite (own agent) vs a consent prompt (foreign/cross-host).
+    """
+    from app.services.filesystem import get_room_dir
+
+    return (get_room_dir(room) / "agents" / f"{handle}.md").exists()
+
+
 @dataclass
 class ManagedRoomChannel:
     """One backend-moderated room channel and its live membership/episode state."""
@@ -432,10 +443,18 @@ class RoomChannelManager:
         if managed.persister is not None:
             managed.persister.ingest_local(envelope, content)
 
-        # Consent gate: an @-mention of an agent not on the channel is an invite.
+        # Consent gate (§G): an @-mention of an agent not on the channel invites
+        # it — but the user's OWN registered agents in this room are pre-authorized
+        # and joined directly (no prompt). Consent-to-be-woken is for FOREIGN /
+        # cross-host agents (not registered here), so a CLI-only user can still
+        # wake their own agent, and the consent surface is reserved for the
+        # genuinely external case it's meant for.
         invites: list[PendingInvite] = []
         for handle in mentioned:
             if handle in managed.members or handle == BACKEND_AGENT:
+                continue
+            if _is_own_registered_agent(room, handle):
+                self.invite_in_background(room, handle)
                 continue
             invite = self.request_invite(room, handle, requested_by=sender, trigger_text=text)
             if invite is not None:

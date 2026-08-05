@@ -75,6 +75,12 @@ def envelope_sender(envelope: L9) -> str | None:
     return actors[0].id if actors else None
 
 
+def envelope_recipients(envelope: L9) -> list[str]:
+    """The addressed recipients of an envelope (every actor after the sender)."""
+    actors = envelope.header.participants.actors
+    return [a.id for a in actors[1:]] if len(actors) > 1 else []
+
+
 def envelope_message_id(envelope: L9) -> str | None:
     message = envelope.header.message
     return message.id if message is not None else None
@@ -194,16 +200,33 @@ class DeliveryLog:
             return
         self._cursors[handle] = len(self._records) if caught_up else 0
 
-    def record(self, record: TranscriptRecord, *, delivered_to: Iterable[str]) -> None:
+    def record(
+        self,
+        record: TranscriptRecord,
+        *,
+        delivered_to: Iterable[str],
+        recipients: Iterable[str] = (),
+    ) -> None:
         """Append ``record``; advance the cursor of every present member.
 
         A present member received the broadcast live, so its cursor moves to the
         new end. Absent members (not in ``delivered_to``) are left behind.
+
+        An addressed ``recipient`` that is absent AND not yet tracked (e.g. an
+        ``@``-mentioned agent this very message is inviting) has its cursor started
+        *at* this message, so its first wake replays the mention that summoned it
+        (§E). Without this a first-join tracks at the transcript end and the
+        triggering mention is silently skipped.
         """
+        start = len(self._records)
         self._records.append(record)
         end = len(self._records)
-        for handle in delivered_to:
+        delivered = set(delivered_to)
+        for handle in delivered:
             self._cursors[handle] = end
+        for handle in recipients:
+            if handle not in delivered and handle not in self._cursors:
+                self._cursors[handle] = start
 
     def undelivered(self, handle: str) -> list[TranscriptRecord]:
         """Records recorded but not yet delivered to ``handle`` (its missed tail)."""
@@ -491,7 +514,17 @@ class RoomPersister:
             # Cache the arrived sender's reply context for future re-serve.
             sender = envelope_sender(arrived)
             if sender is not None:
+                first_context = sender not in self._contexts
                 self._contexts[sender] = context
+                # §E first-wake race: the @-mention that triggered a member's
+                # invite is recorded undelivered for it, but reserve() at invite
+                # time was a no-op — the member hadn't spoken yet, so there was no
+                # point-to-point route. Its first message (the join hello) gives us
+                # that route; re-serve the missed tail now so the first wake isn't
+                # silently dropped. reserve() marks caught-up, so this can't
+                # double-deliver against the invite-time/reconnect re-serve.
+                if first_context and self.log.undelivered(sender):
+                    await self.reserve(sender)
             for envelope, content in released:
                 self._ingest(envelope, content)
 
@@ -520,7 +553,7 @@ class RoomPersister:
             self._ingested_ids.add(mid)
         record = record_from(envelope, content)
         present = set(self._members_provider())
-        self.log.record(record, delivered_to=present)
+        self.log.record(record, delivered_to=present, recipients=envelope_recipients(envelope))
         write_transcript(self.room, self.log.records)
         # A locally-ingested message (the human proxy) is already in the list store
         # via POST /messages with its own id (for event/PATCH semantics); only
