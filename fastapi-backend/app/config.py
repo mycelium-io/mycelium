@@ -52,6 +52,16 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"
     EMBEDDING_DIMENSIONS: int = 384
 
+    # SLIM fabric — the coordination bus (Step 3). Room provisioning is
+    # best-effort: when no node is reachable at this endpoint the backend simply
+    # skips channel provisioning, so memory/CRUD keep working without a fabric.
+    SLIM_NODE_ENDPOINT: str = "http://127.0.0.1:46357"
+    # Default SLIM org/workspace segment for a room whose meta carries no
+    # workspace_id (org=workspace, namespace=room, app=agent).
+    SLIM_WORKSPACE: str = "mycelium"
+    # Master toggle: set false to disable SLIM room provisioning outright.
+    SLIM_ENABLED: bool = True
+
     model_config = SettingsConfigDict(
         env_file=tuple(_env_files),
         env_file_encoding="utf-8",

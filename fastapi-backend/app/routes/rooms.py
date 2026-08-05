@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, HTTPException
 
 from app.schemas import RoomCreate, RoomRead
+from app.services import room_channels
 from app.services.filesystem import (
     ensure_room_structure,
     get_room_dir,
@@ -57,6 +58,12 @@ async def create_room(room: RoomCreate):
         },
     )
     logger.info("Created room directory: %s", room_dir)
+
+    # Room = SLIM channel (Step 3): provision the group channel with the backend
+    # as moderator. Best-effort — a missing/unreachable node leaves the room a
+    # pure memory namespace rather than failing creation.
+    await room_channels.manager.provision(room.name, workspace=room.workspace_id)
+
     result = _room_read(room.name)
     assert result is not None  # just created
     return result
@@ -108,5 +115,6 @@ async def delete_room(room_name: str):
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
 
+    await room_channels.manager.close(room_name)
     remove_room_dir(room_name)
     logger.info("Removed room %s", room_name)

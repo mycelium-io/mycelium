@@ -9,7 +9,7 @@ One :class:`EpisodeState` accompanies each ``_CfnRoundState`` in
 
 1. Builds the L9 envelopes that ride inside coordination message content
    (ticks are ``exchange``, the consensus is ``commit:converged`` /
-   ``commit:abort``) and threads causality: a tick's envelope parents the
+   ``commit:rejected``) and threads causality: a tick's envelope parents the
    agent's prior reply, a reply parents the tick it answers, the consensus
    parents the final round's replies. Agents don't speak L9 themselves:
    the backend synthesizes reply envelopes from the parsed reply dicts, so
@@ -315,14 +315,14 @@ def build_consensus_envelope(
     assignments: dict[str, Any],
     metrics: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    """The ``commit`` envelope closing the episode (converged or abort)."""
+    """The ``commit`` envelope closing the episode (converged or rejected)."""
     parents = sorted(ep.last_reply_ids.values()) or ([ep.intent_id] if ep.intent_id else [])
     payload: dict[str, Any] = {"assignments": assignments}
     if metrics:
         payload["metrics"] = metrics
     env = l9.build_envelope(
         kind=Kind.commit,
-        subkind="abort" if broken else "converged",
+        subkind="rejected" if broken else "converged",
         episode=ep.episode,
         parents=parents,
         recipients=ep.agents,

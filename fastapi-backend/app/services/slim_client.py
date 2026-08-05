@@ -3,18 +3,19 @@
 
 """Thin async wrapper around ``slim-bindings`` for mycelium's SLIM fabric.
 
-**Step 2 scope only.** This module provides two things:
+This module provides two things:
 
 1. **Naming / identity** — map a mycelium ``workspace/room/agent`` triple to a
    SLIM :class:`Name` (``org/namespace/app``, with org = workspace/tenant,
    namespace = room, app = agent id) and back, plus a dev shared-secret minter.
 2. **A small client** (:class:`SlimClient`) that stands up a SLIM app, connects
-   to a node, and creates/joins a **group** channel to exchange broadcasts.
+   to a node, creates/joins a **group** channel, and exchanges broadcasts. It
+   carries membership (invite/remove) and a close/teardown path for the
+   long-lived room connections Step 3 opens.
 
-It is deliberately **isolated** from the room/coordination flow — nothing here
-is wired into routes or the bus yet. Room-becomes-a-channel and L9-over-SLIM are
-Step 3; the durable inbox/persister is Step 4. Keeping this standalone is what
-lets Step 1's green stay green.
+The L9↔SLIM binding that rides envelopes over these group sessions lives in
+``l9_slim.py``; the backend-as-moderator room provisioning that drives it lives
+in ``room_channels.py``. The durable inbox/persister is Step 4.
 
 The ``slim_bindings`` import is **lazy** (native Rust wheel, availability is
 per-platform): modules that never touch SLIM import cleanly even where no wheel
@@ -28,18 +29,24 @@ Ground truth for the binding API is the cloned examples under
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import hashlib
 import hmac
+import socket
 from dataclasses import dataclass
 from types import ModuleType
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     import slim_bindings
 
 # The node's default listen address (matches ghcr.io/agntcy/slim's default port).
 DEFAULT_NODE_ENDPOINT = "http://127.0.0.1:46357"
+
+# Default port used when a node endpoint URL omits one (reachability probe).
+DEFAULT_NODE_PORT = 46357
 
 # Minimum shared-secret length required by SLIM's dev auth (also seeds MLS).
 MIN_SECRET_LEN = 32
@@ -88,6 +95,23 @@ class SlimIdentity:
 
     def as_path(self) -> str:
         return f"{self.workspace}/{self.room}/{self.agent}"
+
+
+def node_reachable(endpoint: str, *, timeout: float = 1.0) -> bool:
+    """True if a TCP connection to the node ``endpoint`` succeeds quickly.
+
+    A cheap pre-flight so best-effort callers (room provisioning) skip the full
+    connect handshake when no node is up — keeping the unit suite fast and green
+    without a live fabric. Mirrors the guard in ``tests/test_slim_roundtrip.py``.
+    """
+    parsed = urlparse(endpoint)
+    host = parsed.hostname or "127.0.0.1"
+    port = parsed.port or DEFAULT_NODE_PORT
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
 
 
 def _require_bindings() -> ModuleType:
@@ -197,6 +221,25 @@ async def _shared_connection(service: slim_bindings.Service, sb: ModuleType, end
     return conn_id
 
 
+async def close_connection(endpoint: str) -> None:
+    """Drop and disconnect the cached dataplane connection for ``endpoint``.
+
+    Step 3 opens long-lived room connections, so the process needs a teardown
+    path: without one the ``_connections`` cache would hand back a stale conn_id
+    after a node bounce. Best-effort — a missing binding or already-closed conn
+    is not an error. ``Service.disconnect`` is blocking, so it runs off-loop.
+    """
+    conn_id = _connections.pop(endpoint, None)
+    if conn_id is None:
+        return
+    try:
+        sb = _require_bindings()
+    except SlimUnavailableError:  # pragma: no cover - platform dependent
+        return
+    service = sb.get_global_service()
+    await asyncio.to_thread(service.disconnect, conn_id)
+
+
 class SlimClient:
     """A single SLIM app bound to one node connection.
 
@@ -223,6 +266,9 @@ class SlimClient:
         self._app: slim_bindings.App | None = None
         self._conn_id: int | None = None
         self._local_name: slim_bindings.Name | None = None
+        # Sessions this app created (moderator) or joined (member), so close()
+        # can leave them — Step 3 rooms are long-lived, not one-shot.
+        self._sessions: list[slim_bindings.Session] = []
 
     async def connect(self, endpoint: str = DEFAULT_NODE_ENDPOINT) -> SlimClient:
         """Connect to the node and register this app under its local Name."""
@@ -246,12 +292,13 @@ class SlimClient:
     def _group_session_config(self) -> slim_bindings.SessionConfig:
         sb = self._sb
         assert sb is not None
-        # MLS stays off for the Step 2 hello-world (optional in SLIM); the
-        # shared secret already gates node admission. MLS group encryption is a
-        # later hardening step.
+        # MLS ON for real room channels (Step 3): intermediate nodes see only
+        # ciphertext, which is what the hosted-rendezvous story (bible §16)
+        # rests on. The shared secret (create_app_with_secret) seeds the group
+        # key; every member derives the same value, so MLS needs no key server.
         return sb.SessionConfig(
             session_type=sb.SessionType.GROUP,
-            enable_mls=False,
+            enable_mls=True,
             max_retries=5,
             interval=datetime.timedelta(seconds=5),
             metadata={},
@@ -259,7 +306,11 @@ class SlimClient:
 
     async def create_group(self, channel: slim_bindings.Name) -> slim_bindings.Session:
         """Create (and become moderator of) the group session for ``channel``."""
-        return await self.app.create_session_and_wait_async(self._group_session_config(), channel)
+        session = await self.app.create_session_and_wait_async(
+            self._group_session_config(), channel
+        )
+        self._sessions.append(session)
+        return session
 
     async def invite(self, session: slim_bindings.Session, member: slim_bindings.Name) -> None:
         """Route to and invite ``member`` into the moderated group ``session``."""
@@ -270,7 +321,29 @@ class SlimClient:
 
     async def listen_for_session(self) -> slim_bindings.Session:
         """Block until this app is invited into a group, then return the session."""
-        return await self.app.listen_for_session_async(None)
+        session = await self.app.listen_for_session_async(None)
+        self._sessions.append(session)
+        return session
+
+    async def remove_member(
+        self, session: slim_bindings.Session, member: slim_bindings.Name
+    ) -> None:
+        """Remove ``member`` from the moderated group ``session`` (a leave)."""
+        handle = await session.remove_async(member)
+        await handle.wait_async()
+
+    async def close(self) -> None:
+        """Leave every session this app holds. Best-effort; never raises.
+
+        Does **not** drop the shared dataplane connection — sibling apps in the
+        process may still use it. Use :func:`close_connection` for that.
+        """
+        for session in self._sessions:
+            try:
+                await self.app.delete_session_and_wait_async(session)
+            except Exception:  # pragma: no cover - best-effort teardown
+                pass
+        self._sessions.clear()
 
     @staticmethod
     async def publish(session: slim_bindings.Session, data: bytes) -> None:

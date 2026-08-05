@@ -470,8 +470,21 @@ Base: `/Users/juliavalenti/Documents/GitHub/mycelium`. Classifications: **[keep]
 - **Hermes/Cursor/OpenClaw** — post-MVP; not on the critical path. Inspect Hermes before
   attempting it.
 
-**Testing:** delete the CFN-coupled tests up front (Step 0). Write **new unit tests at the end
-of each step** (see each step's Tests). The project must be runnable and green at every step.
+**Testing — two tiers, both required.**
+- **Fast unit tests (the merge gate).** Delete the CFN-coupled tests up front (Step 0). Write
+  new unit tests at the end of each step (see each step's *Tests*). They are fast, need no
+  running node, and **gate every PR** — the project must be runnable and green at every step.
+- **Cumulative live-node integration suite (from Step 3 on).** Starting at Step 3 (the first
+  real wiring), each step also adds an **integration slice** to a *growing* end-to-end suite
+  that runs against a real `slim` node (seeded by Step 2's `test_slim_roundtrip.py`). Each
+  step's slice **plus all prior slices** must pass with a node up. By Step 8 the suite *is* the
+  full same-machine hero flow; Step 9 makes it cross-machine. Keep it a **separate, guarded,
+  slower job** (skip-if-no-node, its own CI lane) — it must **never** block or slow the fast
+  unit gate. **Shipping the step's integration slice is part of its Definition of Done
+  (Steps 3–9).** Why grow it from Step 3 rather than build it all at Step 8: this is a
+  distributed async system whose real bugs live in the *seams* (ordering, wake timing, the
+  durable inbox, episode/membership lifecycle) — unit tests can't reach them, and a seam bug
+  caught at Step 3 costs an afternoon vs. a week of bisecting at Step 8.
 
 ---
 
@@ -482,8 +495,9 @@ one cohesive effort; the order exists so each step has a working foundation to s
 **Do not start a step until the previous step's Definition of Done (DoD) is met.** Each step
 ends with a runnable, unit-tested project.
 
-Legend for each step: **Goal · Scope (tasks) · Key files · DoD · Tests · Depends on · Resolve
-first** (open decisions that gate the step).
+Legend for each step: **Goal · Scope (tasks) · Key files · DoD · Tests (fast, unit) ·
+Integration slice (Steps 3–9: the cumulative live-node suite; part of DoD) · Depends on ·
+Resolve first** (open decisions that gate the step).
 
 ---
 
@@ -591,6 +605,8 @@ first** (open decisions that gate the step).
   parsed) by another over a room channel; parents-ordering holds.
 - **Tests:** L9-over-SLIM round trip; envelope integrity (kind/subkind/parents/episode);
   out-of-order arrival is reordered by `parents`; mid-episode membership change triggers abort.
+- **Integration slice (seeds the suite):** on a live `slim` node, two clients exchange L9 over
+  a room channel; assert `parents`-ordering and episode-abort-on-membership-change end-to-end.
 - **Depends on:** Step 2. **Resolve first:** group lifecycle (default: durable channel per
   room, episode = a negotiation within it); enforcement location (default: the binding/backend).
 
@@ -612,6 +628,8 @@ first** (open decisions that gate the step).
   reconnect**; the transcript is persisted to markdown.
 - **Tests:** durable-inbox test (broadcast while offline → reconnect → missed messages
   delivered, in order); transcript persistence test; trigger-watcher recognizes an `@`-summon.
+- **Integration slice:** on a live node, an agent offline during a broadcast reconnects and is
+  re-served the missed messages in order (durable inbox). All prior slices still pass.
 - **Depends on:** Step 3. **Resolve first:** nothing new.
 
 ## Step 5 · Claude Code connector + wake bridge (the dogfood milestone)
@@ -635,6 +653,8 @@ first** (open decisions that gate the step).
   a turn, and its reply appears in the room for others.
 - **Tests:** connector wake path (inbound L9 → spawn invoked, mock the `claude` binary);
   reply is published as valid L9; budget/depth/ownership gates still hold; `abort`/`status`.
+- **Integration slice:** on a live node, a connector (mock `claude` binary) wakes on an inbound
+  L9 message and its reply appears in the room. All prior slices still pass.
 - **Depends on:** Step 4. **Resolve first:** native-vs-CLI (default: cold-spawn daemon).
 
 ## Step 6 · Human-in-the-room + `@`-mention + consent
@@ -657,6 +677,8 @@ first** (open decisions that gate the step).
   a not-present agent shows a consent prompt and only joins on accept.
 - **Tests:** `@`-parse → participants; in-room mention wakes; not-in-room invite triggers
   consent; declined invite does not join; mid-episode invite is queued.
+- **Integration slice:** on a live node, an `@`-mention wakes the connector; a not-in-room
+  `@`-invite raises consent and only joins on accept. All prior slices still pass.
 - **Depends on:** Step 5. **Resolve first:** human identity (default: spoken-for by backend).
 
 ## Step 7 · Cognition engine — base layer (observer + driver)
@@ -681,6 +703,8 @@ first** (open decisions that gate the step).
   `commit:converged`; driver mode runs the configured number of rounds and emits a verdict.
 - **Tests:** observer emits verdict with correct MPC/GAR/SCR; driver runs the round loop and
   terminates; a below-threshold exchange yields `commit:rejected`.
+- **Integration slice:** on a live node, `@`-summoning the aligner in a room makes it observe
+  the exchange and emit `commit:converged`. All prior slices still pass.
 - **Depends on:** Steps 4–6. **Resolve first:** aligner runtime (default: cold-spawned turn).
 
 ## Step 8 · Plan + memory sync (the full loop, same-machine)
@@ -699,6 +723,9 @@ first** (open decisions that gate the step).
   all participants' local stores. **← same-machine mini-demo of the hero flow works here.**
 - **Tests:** converged → plan file exists with expected tasks; `knowledge` message writes
   markdown + updates JSONL on a second local store; conflict rejects a stale write with details.
+- **Integration slice (same-machine acceptance):** the full flow end-to-end on one machine —
+  join → exchange → summon/converge → plan compiles → memory syncs to a second local store.
+  This is the same-machine hero-flow test; all prior slices roll up into it.
 - **Depends on:** Step 7. **Resolve first:** nothing new.
 
 ## Step 9 · Cross-machine
@@ -716,6 +743,8 @@ first** (open decisions that gate the step).
   converge → plan → synced memory → work.
 - **Tests:** cross-machine integration (two nodes/one shared node on a LAN or two containers on
   a bridge network); memory sync arrives on the remote store.
+- **Integration slice (cross-machine acceptance):** the full hero flow across two nodes / a
+  bridge network. This is the final acceptance test — the whole suite green, end to end.
 - **Depends on:** Step 8. **Resolve first:** hub location for cross-machine (default:
   self-hosted shared node; hosted rendezvous optional).
 
