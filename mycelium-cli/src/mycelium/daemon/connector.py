@@ -22,10 +22,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
@@ -162,6 +163,50 @@ def _mentions(text: str, handle: str) -> bool:
 # ── Reply building ───────────────────────────────────────────────────────────
 
 
+# An agent volunteers a negotiation position by ending its reply with a marker
+# like ``[[mycelium: confidence=0.85 stance=accept]]``. The connector lifts those
+# fields onto the exchange's L9 payload so the aligner can score convergence
+# (without them every position folds to a reject — MPC is undefined). The marker
+# is stripped before the reply is posted, so the room shows clean prose.
+_POSITION_MARKER_RE = re.compile(r"\[\[\s*mycelium\s*:(.*?)\]\]", re.IGNORECASE | re.DOTALL)
+_STANCE_TO_ACTION = {
+    "accept": "accept",
+    "agree": "accept",
+    "yes": "accept",
+    "reject": "reject",
+    "block": "reject",
+    "no": "reject",
+}
+
+
+def parse_position_marker(text: str) -> tuple[dict[str, Any], str]:
+    """Split an agent reply into (epistemic payload, human-facing text).
+
+    Lifts ``confidence`` (a 0–1 float) and ``stance`` (→ L9 ``action``) out of any
+    ``[[mycelium: …]]`` markers and strips every marker from the text. Forgiving
+    by design — a malformed value is dropped, not raised, mirroring the backend's
+    ``l9_episode.sanitize_epistemic_fields``. No marker → ``({}, text)`` (a plain
+    reply, unchanged behaviour).
+    """
+    payload: dict[str, Any] = {}
+    for match in _POSITION_MARKER_RE.finditer(text):
+        for key, raw in re.findall(r"(\w+)\s*=\s*(\S+)", match.group(1)):
+            k = key.lower()
+            if k == "confidence":
+                try:
+                    val = float(raw)
+                except ValueError:
+                    continue
+                if 0.0 <= val <= 1.0:
+                    payload["confidence"] = val
+            elif k in ("stance", "action"):
+                action = _STANCE_TO_ACTION.get(raw.lower())
+                if action:
+                    payload["action"] = action
+    clean = _POSITION_MARKER_RE.sub("", text).strip() or text.strip()
+    return payload, clean
+
+
 def build_reply(
     *, handle: str, room: str, woke: dict, text: str, message_id: str | None = None
 ) -> dict:
@@ -169,8 +214,10 @@ def build_reply(
 
     Threads causality (``parents = [woke message id]``) and stays in the woke
     message's episode/topic so the backend's causal buffer + transcript remain
-    correct.
+    correct. Any volunteered position marker in ``text`` is lifted into the L9
+    payload (so the aligner can score it) and stripped from the posted prose.
     """
+    payload_data, clean_text = parse_position_marker(text)
     woke_id = l9.message_id_of(woke)
     sender = l9.sender_of(woke)
     return l9.build_reply_content(
@@ -179,7 +226,8 @@ def build_reply(
         episode=l9.episode_of(woke) or _room_episode(room),
         parents=[woke_id] if woke_id else [],
         topic=l9.topic_of(woke) or _room_topic(room),
-        text=text,
+        text=clean_text,
+        payload_data=payload_data or None,
         message_id=message_id,
     )
 

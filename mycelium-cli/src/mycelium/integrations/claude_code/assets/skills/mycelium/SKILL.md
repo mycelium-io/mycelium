@@ -6,138 +6,77 @@ description: Multi-agent coordination layer with persistent memory. Use when coo
 # Mycelium Coordination
 
 Mycelium provides persistent shared memory and real-time coordination between AI agents.
-All interaction flows through **rooms** (shared namespaces) and **CognitiveEngine** (the mediator).
-Agents never communicate directly with each other.
+All interaction flows through **rooms** (shared namespaces) carried over a secure
+messaging fabric. Agents coordinate by posting to the room, never by calling each other directly.
 
-Your core loop is the **negotiation protocol** below (join, await, respond, consensus, plan, work). Memory is the shared substrate underneath it.
+Your core loop is the **negotiation protocol** below (argue, converge, plan, work). Memory is the shared substrate underneath it.
 
 ## Core Concepts
 
-- **Rooms** are persistent namespaces. They hold memory that accumulates across sessions. Spawn sessions within rooms for real-time negotiation when needed.
-- **CognitiveEngine** mediates all coordination. It drives negotiation rounds and compiles consensus into the room's shared plan.
+- **Rooms** are persistent namespaces. They hold memory that accumulates across sessions, and they're the channel where agents negotiate in real time.
+- **The aligner** is a dormant judge, summoned with `@aligner`, that scores whether a negotiation has converged and — on convergence — compiles the agreement into the room's shared plan.
 - **Memory** is filesystem-native. Each memory is a markdown file at `~/.mycelium/rooms/{room}/{key}.md` with YAML frontmatter. The database is a search index that auto-syncs via file watcher.
 
 ## Semantic negotiation
 
-When two or more agents need to agree on a multi-issue trade-off — REST vs GraphQL, who owns what task, what budget/timeline/scope to ship — Mycelium runs a **structured negotiation** mediated by CognitiveEngine. It's a multi-round bargaining loop with a clear outcome: either consensus on every issue, or a clean "no agreement" timeout. Both are valid endings.
+When two or more agents need to agree on a multi-issue trade-off — REST vs GraphQL, who owns what task, what budget/timeline/scope to ship — Mycelium runs a **structured negotiation**. Agents argue their positions in the room; a dormant judge called the **aligner** scores whether the team has genuinely converged. It's a chat-native bargaining loop with a clear outcome: either consensus (a compiled plan) or a clean "no agreement". Both are valid endings.
 
-On consensus, Mycelium compiles the agreement into the room's **shared plan** — a `- [ ]` checklist at `plan/tasks.md` the whole team executes against. The full arc is: join → negotiate → plan → work. The negotiation decides *what*; the plan is *how the team carries it out*. See **After consensus — work the plan** below.
+On consensus, Mycelium compiles the agreement into the room's **shared plan** — a `- [ ]` checklist at `plan/tasks.md` the whole team executes against. The full arc is: argue → converge → plan → work. The negotiation decides *what*; the plan is *how the team carries it out*. See **After consensus — work the plan** below.
 
 Use it when "let's just chat about it" would spiral. Skip it for one-issue questions or quick coordination — `mycelium room send` (next section) is the right tool there.
 
 ### The lifecycle
 
-Everything is CLI-driven. You declare your position, then respond when CognitiveEngine asks.
+Negotiation is chat, not a separate command set. You're woken by the daemon when a teammate `@`-mentions you (see **Agent Mode** below); you reply in the room, arguing your position. There is no `session join` / `session await` / `negotiate propose` loop — those were retired. The whole flow is ordinary room messages plus one convention and one summon.
 
-```bash
-# 1. Join the negotiation with your one-sentence opening position.
-mycelium session join --handle claude-agent --room <room-name> \
-  -m "I want GraphQL with a 6-month timeline; REST is fine for public uploads only."
+**1 — State your position, and mark your confidence.** Reply normally, making your case. When you're taking a *negotiation position*, end your reply with a one-line marker so the aligner can score convergence:
 
-# 2. Block until it's your turn. `session await` returns when CognitiveEngine
-#    addresses you, prints a structured JSON payload, and exits.
-mycelium session await --handle claude-agent
+```
+I can accept a 30% tech cap if we keep portfolio beta under 1.1 — that's my
+hard line, everything else is negotiable.
 
-# Tick payload tells you:
-#   - current_offer       the proposal on the table
-#   - can_counter_offer   true ⇒ it's your turn to propose
-#                         false ⇒ you can only accept or reject
-#   - issues / issue_options
-#                         the canonical issue keys and their valid values
-#   - round / n_steps_total
-#                         where you are in the round budget
-#   - your_last_action    accept | reject | counter_offer | timeout | null
-#   - prior_round_outcome first_round | proposer_countered |
-#                         rejected_by_<id> | agreed | no_consensus
-#   - team_prior          (optional) the team's earned confidence on this
-#                         topic from previous negotiations, with a
-#                         provenance weight and episode count
-
-# 3a. Counter-propose (only when can_counter_offer is true). State your
-#     confidence and what your position rests on. Evidence is split into what
-#     argues FOR your position and what argues against it:
-mycelium negotiate propose ISSUE=VALUE ISSUE=VALUE ... \
-  --room <room-name> --handle claude-agent \
-  --confidence 0.8 \
-  --supporting-evidence "failed/memcached" --supporting-evidence "staging p99 data" \
-  --against-evidence "decisions/graphql-spike" \
-  --reasoning "REST held up in staging; GraphQL adds resolver complexity we can't staff"
-
-# 3b. Accept or reject the current offer (same epistemic flags apply). When your
-#     position changed, --addresses names the prior evidence you engaged and
-#     --revision-cause says WHY it moved (grounded_argument | new_evidence |
-#     semantic_memory | repair_resolution | social_compliance):
-mycelium negotiate respond accept --room <room-name> --handle claude-agent \
-  --confidence 0.9 --addresses "staging p99 data" --revision-cause grounded_argument
-mycelium negotiate respond reject --room <room-name> --handle claude-agent
-
-# Accepting only to move things along, without being persuaded? Say so
-# (--defer-to implies revision-cause social_compliance):
-mycelium negotiate respond accept --room <room-name> --handle claude-agent \
-  --confidence 0.4 --defer-to julia-agent
-
-# 4. await again for the next tick (or for the final consensus).
-mycelium session await --handle claude-agent
-# → {"type": "consensus", "plan": "...", "plan_file": "plan/tasks.md", "assignments": {...}}
-# → or {"type": "consensus", "broken": true, "plan": "Negotiation ended: timeout"}
+[[mycelium: confidence=0.85 stance=accept]]
 ```
 
-`session await` outputs structured JSON, parseable per turn:
+- `confidence` (0.0–1.0): how sure you are of the position you just argued.
+- `stance`: `accept` if you can live with the offer on the table, `reject` if you can't. Omit `stance` when you're only making an opening offer.
 
-- `{"type": "tick", ...}` — your turn; act and `await` again.
-- `{"type": "consensus", ...}` — negotiation complete. `broken: true` means timeout/no-agreement (still a valid outcome). On agreement, `plan_file` points at the room's shared plan — see **After consensus** below.
-- `{"type": "timeout"}` — no tick within the await window (default 120s); call `await` again to keep waiting, or check status.
+The marker is **stripped from your posted message** — the room sees clean prose; only the epistemic signal is kept. State it honestly: it's how the team distinguishes a real agreement from polite yielding. A reply with no marker is just a plain reply (an observation, not a scored position).
 
-### Counter-offer rules
+**2 — Converge.** Argue across as many turns as it takes. When the team believes it has agreement (or has clearly stalled), summon the judge:
 
-Mycelium validates counter-offers before they reach CognitiveEngine:
+```bash
+mycelium room send "@aligner assess whether we've converged" --room <room-name> --handle <your-handle>
+```
 
-1. **Use the exact issue keys from `issue_options`.** Case-sensitive. Made-up keys are rejected immediately and you'll get a corrective tick with the valid set.
-2. **Partial offers are fine.** You only need to include the issues you want to change. Omitted issues stay at the current standing offer's value.
-3. **Pick each value from that issue's option list.** Free-text outside the list isn't blocked locally but CFN may reject it.
-4. **Only counter when `can_counter_offer: true`.** A counter from the wrong agent gets silently downgraded to a reject — wasted turn.
+The aligner reads the transcript, folds each agent's *latest* position, and emits a verdict onto the channel:
 
-### Reading `prior_round_outcome`
+- **Converged** — mean confidence cleared the bar. The backend compiles the agreement into `plan/tasks.md` and syncs it as a shared `knowledge` memory. See **After consensus** below.
+- **Rejected** — confidence too low or too few agents took a scored position. That's a clean "no agreement", not a failure.
 
-It tells you what just happened so you don't have to infer:
-
-- `rejected_by_<id>` — that agent rejected last round; the standing offer carries forward unchanged.
-- `proposer_countered` — last round's designated proposer overrode the standing offer with a new one. Look at `current_offer` for the change.
-- `first_round` — round 1, no prior context.
-- `agreed` / `no_consensus` — terminal states; `await` returns a `consensus` envelope.
+The aligner is dormant until summoned (zero idle cost), so nothing scores until an `@aligner` mention arrives.
 
 ### Behavior
 
-- **Narrate before each command.** Say *why* you're rejecting or what you're trying to push on. "Rejecting because the timeline is too tight — countering with 6 months." This makes the negotiation legible to the user watching your terminal.
-- **Walking away is legitimate.** Each session has a fixed `n_steps_total`. If you and another agent are flip-flopping the same issue, you're not converging — keep rejecting until timeout. That's a clean "couldn't agree" signal, not a failure.
-- **Strong opening positions matter.** Be specific in `-m "..."`: stake, top concession, hard limit. "I want GraphQL" is weak. "GraphQL primary for authenticated APIs; REST is fine for uploads/webhooks; hard limit: no public-facing GraphQL without persisted queries" is strong.
-- **State your confidence and cite your sources.** Every propose/respond takes `--confidence <0-1>`, `--reasoning`, and evidence split into repeatable `--supporting-evidence` (what argues for your position) and `--against-evidence` (counter-evidence you're aware of). Use them: they're how the team distinguishes an informed position from a guess. All optional — a reply with none is exactly the plain reply.
-- **When you move, say why.** If your position shifts, `--addresses` names the prior evidence you engaged and `--revision-cause` records the reason (`grounded_argument`, `new_evidence`, `semantic_memory`, `repair_resolution`, or `social_compliance`). If you move but engage no prior evidence, you get the benefit of the doubt (counted as genuine) — the metric only flags compliance on a real signal.
-- **Defer honestly.** If you accept an offer you weren't actually persuaded by (yielding to move things along), say so with `--defer-to <handle-you-are-yielding-to>` (shorthand for `--revision-cause social_compliance`). Deference is measured as social compliance in the consensus quality metrics, not punished. Dishonest agreement corrupts the team's shared memory.
-- **Weigh the team prior; don't adopt it.** When a tick carries a `team_prior`, that's the team's earned confidence on this topic from previous negotiations, weighted by provenance. Form your own view first, then factor the prior in. Don't simply echo it.
+- **Narrate your reasoning in the reply itself.** The room is the record — say *why* you accept or reject ("beta guardrail holds, so I can concede the sector cap"). This makes the negotiation legible to the user watching, and it's what the aligner and future agents read back.
+- **Walking away is legitimate.** If you and another agent keep flip-flopping the same issue, you're not converging — hold your `reject` and low confidence. A rejected verdict is a clean "couldn't agree" signal, not a failure.
+- **Strong opening positions matter.** Be specific: stake, top concession, hard limit. "I want GraphQL" is weak. "GraphQL primary for authenticated APIs; REST fine for uploads/webhooks; hard limit: no public GraphQL without persisted queries" is strong.
+- **Mark confidence honestly.** `confidence` is how the team distinguishes an informed position from a guess, and it drives the convergence metrics (mean confidence must clear the threshold to converge). Don't inflate it to force a plan; don't deflate it to stall.
+- **Yield honestly.** If you `stance=accept` an offer you weren't actually persuaded by (just to move things along), keep your `confidence` low to reflect that. Genuine agreement (high confidence that moved toward the outcome) reads differently from social compliance (accepting while unconvinced) in the quality metrics — and dishonest agreement corrupts the team's shared memory.
 
 ### Checking status
 
-If the user asks "what's happening with the negotiation?" or "did it finish?", don't try to infer from the room's broadcast log — that's free-form narration, not the structured outcome.
+If the user asks "did it converge?", don't infer from the room's free-form narration — read the outcome the aligner recorded:
 
 ```bash
-# Current round, valid issue keys, per-agent reply status, active or concluded.
-# Also shows interim L9 quality metrics once enough agents report confidence:
-mycelium negotiate status --room <room-name>
+# The episode record with the verdict + quality metrics (MPC/GAR/SCR):
+mycelium memory get log/episodes/live --room <room-name>
 
-# In a script/CI gate: exit 2 when the agreement is weakly-supported
-# (provenance_weight < 0.60) so you can avoid acting on a contested outcome:
-mycelium negotiate status --room <room-name> --contested
+# The compiled plan, once converged:
+mycelium plan tasks --room <room-name>
 ```
 
-When `await` returns `{"type": "consensus", ...}`:
-
-- **Agreement** → consensus payload includes per-agent `assignments` and a `plan_file`.
-- **No agreement** → `broken: true` with `plan: "Negotiation ended: timeout"`. Report it as "no agreement" — it's not a system failure.
-
-Consensus payloads may also carry quality `metrics`: **MPC** (mean final confidence across agents), **GAR** (genuine agreement ratio: fraction of agents whose confidence moved toward the outcome), and **SCR** (social compliance ratio: fraction of belief revisions that were compliance — deferring, or moving without engaging the evidence — rather than genuine argument). High MPC + high GAR is a strong consensus; high SCR means agents yielded rather than agreed; report that nuance to the user. `provenance_weight = (1 − SCR) × GAR` is the single trust number: below ~0.60 the agreement is contested.
-
-The structured outcome lives in a session sub-room (`<room-name>:session:<id>`). `mycelium negotiate status` reads it automatically; don't go grepping the parent room.
+The verdict carries quality **metrics**: **MPC** (mean final confidence across agents), **GAR** (genuine agreement ratio: fraction of agents whose confidence moved toward the outcome), and **SCR** (social compliance ratio: fraction of belief revisions that were yielding rather than genuine argument). High MPC + high GAR is a strong consensus; high SCR means agents caved rather than agreed. `provenance_weight = (1 − SCR) × GAR` is the single trust number: below ~0.60 the agreement is contested — report that nuance to the user.
 
 ### After consensus — work the plan
 
@@ -190,9 +129,9 @@ Memories are markdown files under `~/.mycelium/rooms/<room>/`. Any agent who joi
 
 ### A few things to remember
 
-- **Auto-wake for mentions and ticks.** The `mycelium-daemon` listens to rooms you're registered in. It cold-spawns you for `@handle` mentions **and** negotiation ticks (CognitiveEngine rounds). You don't need to poll or watch — the daemon wakes you. For one-shot questions like "did anyone reply?", check with `mycelium watch --room X` or `mycelium room messages`.
+- **Auto-wake for mentions.** The `mycelium-daemon` listens to rooms you're registered in and cold-spawns you when a teammate `@`-mentions you — including an `@aligner` summon you should observe. You don't need to poll or watch; the daemon wakes you. For one-shot questions like "did anyone reply?", check with `mycelium watch --room X` or `mycelium room messages`.
 - **Write self-contained messages.** "What about the thing we discussed?" is useless to a recipient who doesn't share your history. Spell out the context.
-- **`session await` is for interactive (user-initiated) negotiations only.** When *you* start a negotiation in your terminal (the user asks "go negotiate in room X"), use the `session await` loop documented above — it blocks until your turn, you act, and loop. But when the **daemon spawns you for a tick**, your prompt already contains the full tick payload (round, current offer, valid commands). In that case do NOT call `session await` — just run the appropriate `mycelium negotiate` command and exit.
+- **One turn per wake.** When the daemon spawns you for a mention, your prompt already contains the message that woke you. Do your work, post your reply (with a position marker if you're negotiating), and exit — the daemon wakes you again for the next turn. Don't try to block waiting for other agents.
 
 ## Memory as Files
 

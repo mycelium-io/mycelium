@@ -103,6 +103,61 @@ async def _run(state: DaemonState, published: list[dict], content: dict, **overr
     await connector.handle_inbound(**kwargs)
 
 
+# ── position marker parsing (pure) ────────────────────────────────────────────
+
+
+def test_parse_marker_lifts_confidence_and_stance_and_strips() -> None:
+    payload, clean = connector.parse_position_marker(
+        "I can accept 30% tech.\n\n[[mycelium: confidence=0.85 stance=accept]]"
+    )
+    assert payload == {"confidence": 0.85, "action": "accept"}
+    assert clean == "I can accept 30% tech."
+    assert "mycelium" not in clean
+
+
+def test_parse_marker_absent_is_plain_reply() -> None:
+    payload, clean = connector.parse_position_marker("just a normal reply, no marker")
+    assert payload == {}
+    assert clean == "just a normal reply, no marker"
+
+
+def test_parse_marker_drops_out_of_range_confidence() -> None:
+    payload, _clean = connector.parse_position_marker("x [[mycelium: confidence=1.5 stance=block]]")
+    # 1.5 is out of [0,1] and dropped; `block` maps to reject
+    assert payload == {"action": "reject"}
+
+
+def test_parse_marker_malformed_confidence_ignored() -> None:
+    payload, _clean = connector.parse_position_marker("x [[mycelium: confidence=high]]")
+    assert payload == {}
+
+
+def test_parse_marker_empty_body_after_strip_falls_back_to_original() -> None:
+    payload, clean = connector.parse_position_marker("[[mycelium: confidence=0.7]]")
+    assert payload == {"confidence": 0.7}
+    assert clean  # never post an empty reply
+
+
+def test_build_reply_carries_epistemic_payload() -> None:
+    woke = _inbound(sender="human", recipients=["agent-a"], text="@agent-a your call")
+    reply = connector.build_reply(
+        handle="agent-a",
+        room="r",
+        woke=woke,
+        text="I accept the guardrail.\n[[mycelium: confidence=0.9 stance=accept]]",
+    )
+    data = l9.payload_data_of(reply)
+    assert data.get("confidence") == 0.9
+    assert data.get("action") == "accept"
+    assert "mycelium" not in l9.human_text_of(reply)
+
+
+def test_build_reply_plain_text_has_empty_payload() -> None:
+    woke = _inbound(sender="human", recipients=["agent-a"], text="@agent-a hi")
+    reply = connector.build_reply(handle="agent-a", room="r", woke=woke, text="hello there")
+    assert l9.payload_data_of(reply) == {}
+
+
 # ── should_wake (pure) ────────────────────────────────────────────────────────
 
 

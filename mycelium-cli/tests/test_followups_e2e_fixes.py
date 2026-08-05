@@ -556,6 +556,42 @@ def test_daemon_restart_cli_calls_full_restart_not_reload() -> None:
     assert not mock_reload.called
 
 
+# ── daemon reload finds a foreground daemon via the lock file ────────────────
+
+
+def test_pid_from_lock_returns_live_pid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A foreground daemon isn't registered with launchd/systemd, so the service
+    lookups miss it — ``_pid_from_lock`` reads the PID from the singleton lock so
+    ``daemon subscribe`` / the demo can still SIGHUP-reload it."""
+    import os
+
+    from mycelium.daemon import install as daemon_install
+
+    lock = tmp_path / "daemon.lock"
+    lock.write_text(f"{os.getpid()}\n")  # our own PID is guaranteed alive
+    monkeypatch.setattr("mycelium.daemon.config.daemon_lock_path", lambda: lock)
+
+    assert daemon_install._pid_from_lock() == os.getpid()
+
+
+def test_pid_from_lock_none_for_dead_pid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A stale lock (crashed daemon) must not resolve to a dead/recycled PID."""
+    from mycelium.daemon import install as daemon_install
+
+    lock = tmp_path / "daemon.lock"
+    lock.write_text("2147483646\n")  # a PID that isn't running
+    monkeypatch.setattr("mycelium.daemon.config.daemon_lock_path", lambda: lock)
+
+    assert daemon_install._pid_from_lock() is None
+
+
+def test_pid_from_lock_none_when_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from mycelium.daemon import install as daemon_install
+
+    monkeypatch.setattr("mycelium.daemon.config.daemon_lock_path", lambda: tmp_path / "absent.lock")
+    assert daemon_install._pid_from_lock() is None
+
+
 # ── 7. agent invoke falls through to backend for cross-host invocations ──────
 
 
