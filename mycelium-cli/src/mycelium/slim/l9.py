@@ -1,0 +1,191 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Mycelium Contributors
+
+"""Lean L9 envelope helpers for the daemon connector (stdlib only).
+
+The connector only needs to do two L9 things, so this is a small, dependency-free
+counterpart to ``fastapi-backend/app/services/l9.py`` rather than a copy of its
+pydantic model tree:
+
+1. **Read** an inbound message — pull the sender, recipients, message id, kind,
+   and the human-facing text a spawned turn should see.
+2. **Build a reply** — an ``exchange`` envelope parented on the message that woke
+   the agent, wrapped in a content dict under the additive ``l9`` key.
+
+The reply is emitted in the **exact shape** the backend's
+``l9.envelope_to_dict(l9.build_envelope(kind=exchange, ...))`` produces, so the
+backend persister's ``l9.parse_envelope`` (pydantic-validating) accepts it
+unchanged. Keep this shape in sync with the backend if the L9 binding version
+moves — the source of truth for the shape is ``app.services.l9`` /
+``app.services.l9_models``.
+"""
+
+from __future__ import annotations
+
+import json
+import uuid
+from typing import Any
+
+# Mirror the backend envelope constants (``app.services.l9``). The version
+# tracks the vendored ioc-protocols-models binding.
+PROTOCOL = "SSTP"
+SUBPROTOCOL = "mycelium"
+VERSION = "0.0.6"
+
+# The additive key an L9 envelope rides under inside a message's content JSON.
+CONTENT_L9_KEY = "l9"
+
+# The content field carrying the human-facing message body (matches the HTTP
+# ``MessageCreate.content`` semantics). A connector reads it to prompt the turn
+# and writes it on the reply.
+CONTENT_TEXT_KEY = "content"
+
+# ``exchange`` is the kind for room turns (ticks/replies/human messages). The
+# connector only wakes on and only emits this kind; system envelopes
+# (``commit``/``knowledge``) are observed but never trigger a spawn.
+EXCHANGE_KIND = "exchange"
+
+
+def build_reply_content(
+    *,
+    sender: str,
+    recipients: list[str],
+    episode: str,
+    parents: list[str],
+    topic: str | None = None,
+    text: str = "",
+    message_id: str | None = None,
+    payload_type: str = "reply",
+    payload_data: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build a full content dict for an agent reply: ``{content, l9: <envelope>}``.
+
+    The envelope is an ``exchange`` (no subkind — always valid), with ``sender``
+    as the first actor and ``recipients`` after it, parented on ``parents`` (the
+    message that woke the agent) so the backend's causal ordering + transcript
+    stay correct.
+    """
+    actors: list[dict[str, str]] = [{"id": sender, "role": "agent"}]
+    actors += [{"id": r, "role": "agent"} for r in recipients]
+
+    header: dict[str, Any] = {
+        "protocol": PROTOCOL,
+        "subprotocol": SUBPROTOCOL,
+        "version": VERSION,
+        "kind": EXCHANGE_KIND,
+        # ``participants.groups`` is required-but-nullable in the schema; the
+        # backend restores an explicit null after ``exclude_none``, so we mirror
+        # that here for a clean re-validation.
+        "participants": {"actors": actors, "groups": None},
+        "message": {
+            "id": message_id or str(uuid.uuid4()),
+            "parents": list(parents),
+            "episode": episode,
+        },
+    }
+    if topic:
+        header["context"] = {"topic": topic}
+
+    envelope: dict[str, Any] = {
+        "header": header,
+        "payload": {"type": payload_type, "data": payload_data or {}},
+    }
+    return {CONTENT_TEXT_KEY: text, CONTENT_L9_KEY: envelope}
+
+
+def serialize(content: dict[str, Any]) -> bytes:
+    """Encode a content dict to publishable bytes."""
+    return json.dumps(content).encode("utf-8")
+
+
+def parse(data: bytes) -> dict[str, Any] | None:
+    """Decode inbound bytes to a content dict, or ``None`` if not a JSON object."""
+    try:
+        decoded = json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return decoded if isinstance(decoded, dict) else None
+
+
+def envelope_of(content: dict[str, Any]) -> dict[str, Any] | None:
+    """The ``l9`` envelope embedded in a content dict, if any."""
+    env = content.get(CONTENT_L9_KEY)
+    return env if isinstance(env, dict) else None
+
+
+def _actors(content: dict[str, Any]) -> list[dict[str, Any]]:
+    env = envelope_of(content) or {}
+    participants = env.get("header", {}).get("participants", {})
+    actors = participants.get("actors")
+    return [a for a in actors if isinstance(a, dict)] if isinstance(actors, list) else []
+
+
+def sender_of(content: dict[str, Any]) -> str | None:
+    """The sending handle (first actor), by convention."""
+    actors = _actors(content)
+    if not actors:
+        return None
+    sender = actors[0].get("id")
+    return sender if isinstance(sender, str) else None
+
+
+def recipients_of(content: dict[str, Any]) -> list[str]:
+    """The recipient handles (every actor after the sender)."""
+    return [a["id"] for a in _actors(content)[1:] if isinstance(a.get("id"), str)]
+
+
+def message_id_of(content: dict[str, Any]) -> str | None:
+    """The L9 message id (used to parent a reply)."""
+    env = envelope_of(content) or {}
+    mid = env.get("header", {}).get("message", {}).get("id")
+    return mid if isinstance(mid, str) else None
+
+
+def episode_of(content: dict[str, Any]) -> str | None:
+    env = envelope_of(content) or {}
+    ep = env.get("header", {}).get("message", {}).get("episode")
+    return ep if isinstance(ep, str) else None
+
+
+def topic_of(content: dict[str, Any]) -> str | None:
+    env = envelope_of(content) or {}
+    topic = env.get("header", {}).get("context", {}).get("topic")
+    return topic if isinstance(topic, str) else None
+
+
+def kind_of(content: dict[str, Any]) -> str | None:
+    env = envelope_of(content) or {}
+    kind = env.get("header", {}).get("kind")
+    return kind if isinstance(kind, str) else None
+
+
+def _iter_text(value: Any) -> list[str]:
+    """Every string leaf in a nested value (mirrors the persister's scan)."""
+    out: list[str] = []
+    if isinstance(value, str):
+        out.append(value)
+    elif isinstance(value, dict):
+        for v in value.values():
+            out.extend(_iter_text(v))
+    elif isinstance(value, list):
+        for v in value:
+            out.extend(_iter_text(v))
+    return out
+
+
+def human_text_of(content: dict[str, Any]) -> str:
+    """The human-facing body a spawned turn should read.
+
+    Prefers the canonical ``content`` field; otherwise joins every string leaf
+    outside the ``l9`` envelope (so a message that carried its text elsewhere
+    still reaches the agent).
+    """
+    text = content.get(CONTENT_TEXT_KEY)
+    if isinstance(text, str) and text.strip():
+        return text
+    parts: list[str] = []
+    for key, value in content.items():
+        if key == CONTENT_L9_KEY:
+            continue
+        parts.extend(t for t in _iter_text(value) if t.strip())
+    return "\n".join(parts)

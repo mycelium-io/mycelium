@@ -39,6 +39,7 @@ dependencies = [
     "protobuf>=4.21.0",
     "rapidfuzz>=3.10.0",
     "questionary>=2.1.1",
+    "slim-bindings>=1.4,<2",
 ]
 
 [project.optional-dependencies]
