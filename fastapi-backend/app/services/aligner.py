@@ -71,6 +71,7 @@ logger = logging.getLogger(__name__)
 
 MODE_OBSERVER = "observer"
 MODE_DRIVER = "driver"
+MODE_MEDIATOR = "mediator"
 
 # Handles that are never a participant position: the engine itself, the backend
 # moderator, and the system actor the backend signs its own envelopes with.
@@ -161,6 +162,7 @@ class AlignerEngine:
         max_rounds: int | None = None,
         round_timeout_s: float | None = None,
         poll_interval_s: float | None = None,
+        max_steps: int | None = None,
     ) -> None:
         self._manager = manager
         self._handle = handle if handle is not None else settings.ALIGNER_HANDLE
@@ -172,6 +174,9 @@ class AlignerEngine:
         )
         self._poll_interval_s = (
             poll_interval_s if poll_interval_s is not None else settings.ALIGNER_POLL_INTERVAL_S
+        )
+        self._max_steps = (
+            max_steps if max_steps is not None else settings.ALIGNER_MEDIATOR_MAX_STEPS
         )
         # Rooms with a run in flight — a re-summon while active is ignored.
         self._active: set[str] = set()
@@ -209,7 +214,9 @@ class AlignerEngine:
 
     async def _run_and_release(self, room: str) -> None:
         try:
-            if self._mode == MODE_DRIVER:
+            if self._mode == MODE_MEDIATOR:
+                await self.mediate(room)
+            elif self._mode == MODE_DRIVER:
                 await self.drive(room)
             else:
                 await self.observe(room)
@@ -340,6 +347,194 @@ class AlignerEngine:
             await asyncio.sleep(self._poll_interval_s)
         return latest
 
+    # -- mediator mode (Rung 1: drive a real NEGMAS SAO over SLIM) --
+
+    async def mediate(self, room: str) -> dict[str, Any] | None:
+        """Run a NEGMAS SAO negotiation live over SLIM, terminating at agreement.
+
+        The Rung-1 replacement for the passive observer: on summon, discover the
+        issues from the agents' opening prose, then let NEGMAS drive the rounds —
+        ``@``-addressing one agent at a time over the channel, interpreting the
+        real reply, and stopping the *instant* the mechanism reaches unanimity
+        (the anti-theatre property). Hands the agreed ``issue = value`` map to the
+        same ``commit:converged`` seam ``plan_sync`` already consumes.
+
+        NEGMAS is synchronous, so ``mech.run()`` executes on a worker thread; each
+        negotiator bridges back to this loop for its SLIM turn (see
+        :mod:`app.services.mediator`). Always closes the episode in ``finally`` so
+        Step 6's queued invites drain even on a mid-run failure.
+        """
+        from app.services import mediator
+
+        managed = self._manager.get(room)
+        if managed is None or managed.persister is None:
+            logger.info("aligner (mediator) summoned for %s but no live channel/persister", room)
+            return None
+        persister = managed.persister
+        participants = [m for m in self._manager.members(room) if _norm(m) != _norm(self._handle)]
+        episode = l9.episode_urn(room, "align")
+        topic = l9.topic_urn(room)
+
+        self._manager.open_episode(room, episode)
+        ep = l9_episode.open_episode(
+            parent_room=room,
+            short_id="align",
+            workspace_id=managed.workspace,
+            mas_id="",
+            agents=participants,
+            joined_intents="aligner mediate: converge on the open question via SAO",
+        )
+        try:
+            positions = self._opening_positions(persister, participants)
+            issues = await asyncio.to_thread(
+                mediator.discover_issues,
+                "Converge on the room's open question — agree one value per issue.",
+                positions,
+            )
+            if not issues:
+                logger.info("aligner (mediator) room %s: no issues discovered; rejecting", room)
+                return await self._emit_verdict(
+                    managed,
+                    ep,
+                    {},
+                    converged=False,
+                    metrics=None,
+                    text="✗ not converged — could not structure the discussion into issues.",
+                )
+
+            loop = asyncio.get_running_loop()
+            negotiation = mediator.MediatedNegotiation(
+                issues=issues,
+                cap=self._max_steps,
+                loop=loop,
+                fetch_prose=lambda handle, prompt, round_n: self._slim_turn(
+                    managed, persister, handle, episode, topic, prompt, round_n
+                ),
+                turn_timeout_s=self._round_timeout_s,
+                on_reading=lambda handle, reading, proposing: self._fold_reading(
+                    ep, handle, reading, proposing
+                ),
+            )
+            mech = mediator.build_mechanism(issues, participants, negotiation, cap=self._max_steps)
+            await asyncio.to_thread(mech.run)
+
+            assignments = mediator.agreement_assignments(mech, negotiation.names)
+            converged = assignments is not None
+            _, metrics = self._verdict(ep)
+            logger.info(
+                "aligner (mediator) room %s → %s in %d steps (%s)",
+                room,
+                "agreement" if converged else "no agreement",
+                mech.current_step,
+                assignments,
+            )
+            return await self._emit_verdict(
+                managed,
+                ep,
+                assignments or {},
+                converged=converged,
+                metrics=metrics,
+                text=self._mediator_text(converged, assignments, mech.current_step),
+            )
+        finally:
+            await self._manager.close_episode(room)
+
+    def _opening_positions(
+        self, persister: RoomPersister, participants: list[str]
+    ) -> dict[str, str]:
+        """Each participant's most recent opening prose from the transcript.
+
+        The issue-discovery seed. Falls back to a bare handle stub for any agent
+        that has not yet spoken, so discovery still sees the full roster.
+        """
+        wanted = {_norm(p): p for p in participants}
+        latest: dict[str, str] = {}
+        for record in persister.log.records:
+            if not self._is_position(record):
+                continue
+            key = _norm(record.sender)
+            if key in wanted:
+                text = record.content.get("content")
+                if isinstance(text, str) and text.strip():
+                    latest[wanted[key]] = text.strip()
+        for handle in participants:
+            latest.setdefault(handle, f"(no opening position stated by @{handle})")
+        return latest
+
+    async def _slim_turn(
+        self,
+        managed: ManagedRoomChannel,
+        persister: RoomPersister,
+        handle: str,
+        episode: str,
+        topic: str,
+        prompt: str,
+        round_n: int,
+    ) -> str:
+        """Publish one ``@handle`` prompt, wait for the reply, return its prose.
+
+        Bounded by ``round_timeout_s`` (a silent agent yields ``""``, read as a
+        reject) so the mechanism can never hang on one participant. Reuses the
+        publish shape of ``_prompt_round`` and the poll of ``_collect_round`` for
+        a single addressee.
+        """
+        before = len(persister.log.records)
+        env = l9.build_envelope(
+            kind=l9.Kind.exchange,
+            episode=episode,
+            recipients=[handle],
+            topic=topic,
+            payload_type="tick",
+            payload_data={"round": round_n, "action": "position"},
+        )
+        try:
+            await managed.channel.send(env, extra={"content": prompt})
+        except Exception:
+            logger.warning("mediator failed to prompt @%s (step %d)", handle, round_n)
+            return ""
+
+        pending = _norm(handle)
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + self._round_timeout_s
+        while True:
+            for record in persister.log.records[before:]:
+                if self._is_position(record) and _norm(record.sender) == pending:
+                    return record.content.get("content") or ""
+            if loop.time() >= deadline:
+                return ""
+            await asyncio.sleep(self._poll_interval_s)
+
+    def _fold_reading(
+        self, ep: EpisodeState, handle: str, reading: dict[str, Any], proposing: bool
+    ) -> None:
+        """Fold one interpreted SAO move into the episode so metrics stay live.
+
+        The mediated path's replies are prose, not epistemic payloads, so we
+        synthesize a ``record_reply`` shape from the mediator's own reading — the
+        L9 episode record and the consensus envelope's MPC/GAR/SCR are then
+        computed over what the mediator actually understood.
+        """
+        if not isinstance(reading, dict):
+            return
+        reply: dict[str, Any] = {}
+        action = reading.get("action")
+        if isinstance(action, str) and action:
+            reply["action"] = "accept" if action == "accept" else "reject"
+        offer = reading.get("offer")
+        if isinstance(offer, dict):
+            reply["offer"] = offer
+            reply.setdefault("action", "accept" if proposing else "reject")
+        l9_episode.record_reply(ep, handle=handle, reply=reply, round_n=None)
+
+    def _mediator_text(
+        self, converged: bool, assignments: dict[str, str] | None, steps: int
+    ) -> str:
+        """The human-facing summary the agents read on a mediated verdict."""
+        if converged and assignments:
+            terms = " · ".join(f"{issue} = {value}" for issue, value in assignments.items())
+            return f"✓ agreement in {steps} steps — {terms}."
+        return f"✗ no agreement — the negotiation ran {steps} steps without unanimity."
+
     # -- scoring (delegates the math to l9_episode) --
 
     def _is_position(self, record: TranscriptRecord) -> bool:
@@ -411,6 +606,7 @@ class AlignerEngine:
         assignments: dict[str, Any],
         converged: bool,
         metrics: dict[str, Any] | None,
+        text: str | None = None,
     ) -> dict[str, Any]:
         """Broadcast the ``commit`` envelope and record it once locally.
 
@@ -431,7 +627,8 @@ class AlignerEngine:
         wire_dict = copy.deepcopy(env_dict)
         wire_dict["header"]["message"]["parents"] = []
         envelope = l9.parse_envelope(wire_dict)
-        text = self._verdict_text(converged, metrics)
+        if text is None:
+            text = self._verdict_text(converged, metrics)
         content = serialize_content(envelope, extra={"content": text})
         try:
             await managed.channel.send(envelope, extra={"content": text})
