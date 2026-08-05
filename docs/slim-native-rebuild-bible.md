@@ -508,6 +508,7 @@ list** (also mirrored on tracking PR #418). Scan the table; the two load-bearing
 | **D9** | **Single-process backend** — all moderators/persisters/cursors in memory; no horizontal scaling | Low (known ceiling) | beyond single-host | out of MVP scope; documented ceiling |
 | **D10** | **Comment audit** — stale comments/docstrings left by the rewrite (removed CFN/CE/AgensGraph refs, orphaned `TODO(stepN)`, overclaiming docstrings e.g. D5) | Low | reading/maintaining the code | sweep + fix before declaring the rewrite done; pair with the CLAUDE.md/docs cleanup |
 | **D11** | **Stale agent harnesses** — openclaw/hermes plugins built on the removed CFN-tick-over-SSE model (broken SLIM-native); cursor untested over SLIM | Medium | post-MVP, when a non-claude adapter is used | per-adapter: migrate to SLIM vs. explicitly deprecate (see below) |
+| **D12** | **CI gaps** — the live-node integration suite (the safety net) runs manually only; no frontend test infra; fastembed `/opt` sandbox failure; `test_slim_config` not env-isolated | Medium | a live-only-path regression merges green; CI/sandbox runs flake | run a `slim:1.4.0` service container in CI so the guarded slices execute per-PR; minimal frontend component tests; cache/mock the embedder; env-isolate `test_slim_config` (see below) |
 
 **D1 — the security model is currently theater (the one to *not* forget).** MLS protects
 against a *node* reading traffic, but the group key is derived from a public literal, so the
@@ -566,6 +567,19 @@ Decision per adapter: **migrate vs. deprecate.** Given openclaw isn't dogfoodabl
 and the vertical is coding/work agents, the honest option for openclaw/hermes may be
 **explicit deprecation until there's demand** rather than leaving them half-broken and
 looking supported. Don't ship them silently broken.
+
+**D12 — CI can't yet run the safety net.** The cumulative live-node integration suite (9
+slices, through cross-machine sync) is the real regression guard, but it is **skip-if-no-node**
+and has only ever been run manually / by-file — so CI currently proves nothing about the live
+path. A regression in a live-only path can merge green. Fix:
+- Run a `ghcr.io/agntcy/slim:1.4.0` **service container** in the CI job (node on `:46357`) with
+  `MYCELIUM_SLIM_ENDPOINT` set, so the guarded slices actually execute on every PR. This is the
+  main item — the suite is worthless as a gate if it never runs.
+- Add minimal **frontend** component test infra — the inspector/consent components are only
+  `tsc`-checked today (Step 10).
+- Cache or mock the **fastembed** model so `test_writes_markdown_and_reindexes_second_store`
+  doesn't `PermissionError` on `/opt` in constrained/sandbox envs.
+- Env-isolate `test_slim_config` (it trips when `MYCELIUM_SLIM_ENDPOINT` is exported).
 
 ---
 
