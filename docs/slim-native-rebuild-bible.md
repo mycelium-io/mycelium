@@ -994,17 +994,26 @@ is fragile and never recovers:
 - **Re-provision existing rooms at startup** + make `room create` idempotent — today every
   backend restart leaves all rooms channel-less zombies (§F).
 
-**H4 — The remaining footguns.**
-- **§E first-wake race (investigate):** after consent-accept the connector joins but the
-  triggering `@`-mention isn't delivered (`reserve()` runs before the member's receive loop is
-  ready). Last thing blocking a clean single-shot invite→wake.
-- **§G consent model (design fix, not a CLI):** don't require consent for a user's **own
-  registered agents** — consent-to-be-woken is for **foreign/cross-host** invites only
-  (hero-demo intent). Removes "CLI user can't wake their own agent" without adding a command.
-- **§H daemon singleton:** pidfile/flock, refuse/warn on a second daemon, detect duplicate
-  handle subscriptions; set `PYTHONUNBUFFERED=1` so connector logs are visible.
-- **§I node-side cleanup:** `room delete` should clear the node's subscription/route/recovery
-  state for the name (stale state across delete/recreate broke invites).
+**H4 — The remaining footguns — DONE.**
+- **§E first-wake race — FIXED.** Two causes: (1) `DeliveryLog.record` now holds a message for
+  an addressed-but-absent, untracked recipient (cursor starts *at* that message) so a first
+  join doesn't track at the transcript end and skip the mention that summoned it; (2) the
+  persister re-serves a handle's missed tail when its reply context first appears (its join
+  hello), since invite-time `reserve()` has no route yet. Validated: one `agent invoke` →
+  auto-join → wake on the first mention → reply.
+- **§G consent model — FIXED.** A user's own registered agents (manifest on disk in the room)
+  are auto-invited; consent-to-be-woken is only for foreign/cross-host agents. A CLI-only user
+  can wake their own agent, no command added. Validated: single invoke raises 0 consent prompts.
+- **§H daemon singleton — FIXED.** `daemon run` takes an exclusive `flock` on
+  `~/.mycelium/daemon.lock`; a second daemon refuses (was the duplicate-daemon-collision root
+  cause). Foreground stdout is line-buffered so connector logs are visible. Validated: second
+  `daemon run` refuses.
+- **§I node-side cleanup — RESOLVED BY COMPOSITION (no dedicated code).** The stale-node-state
+  symptom was mostly the duplicate daemon (§H) plus pre-keepalive churn. `close(room)` already
+  deletes the moderator's group session on room delete (node tears down that routing), and a
+  connector detects `session closed` and reconnects. Validated: 3× delete/recreate of the same
+  room name — invites route cleanly every cycle. Re-open only if stale-state breakage recurs
+  with a single daemon + keepalive.
 
 **H5 — Prove Rung 4.** Re-run the smoke test past a stable single agent through
 **aligner → `commit:converged` → plan compiles → memory syncs**, with real agents. This is the
