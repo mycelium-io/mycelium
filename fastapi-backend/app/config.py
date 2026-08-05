@@ -67,8 +67,10 @@ class Settings(BaseSettings):
     # A reserved handle is how a summon of the engine is told apart from an
     # @-mention of a normal teammate (bible §10 / Step 7 trap).
     ALIGNER_HANDLE: str = "aligner"
-    # "observer" (one-shot: read transcript, emit verdict) or "driver" (run
-    # rounds, prompting participants, then emit).
+    # "observer" (one-shot: read transcript, emit verdict), "driver" (run
+    # rounds, prompting participants, then emit), or "mediator" (Rung 1: run a
+    # NEGMAS SAO negotiation — @-address agents in turn, interpret their prose,
+    # and terminate the instant the mechanism reaches agreement).
     ALIGNER_MODE: str = "observer"
     # MPC at/above this converges; below rejects (mirrors the old CFN
     # validation-intervention default of 0.6).
@@ -79,6 +81,11 @@ class Settings(BaseSettings):
     ALIGNER_ROUND_TIMEOUT_S: float = 30.0
     # How often the driver polls the transcript for round replies.
     ALIGNER_POLL_INTERVAL_S: float = 0.2
+    # Mediator (Rung 1) — hard cap on NEGMAS SAO steps (one agent turn each) so
+    # the negotiation always terminates even if agreement is never reached. Set
+    # well above the participant count so several proposer rotations can happen
+    # (spike used 20).
+    ALIGNER_MEDIATOR_MAX_STEPS: int = 20
 
     model_config = SettingsConfigDict(
         env_file=tuple(_env_files),

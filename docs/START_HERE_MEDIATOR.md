@@ -5,9 +5,13 @@
 > Nothing here is committed to a release. The build plan front-loads the one cheap experiment
 > that can *falsify* the whole idea before we invest in the harness swap.
 >
-> **⇒ CURRENT ENTRY POINT: Rung 1.** Rung 0 (the behavioral de-risk — the whole bet) **PASSED**
-> — see the ledger and the build plan below, and `experiments/sao-mediator-spike/`. Start at
-> Rung 1: wire the proven mediator loop as the live `@aligner` over SLIM against real agents.
+> **⇒ Rung 0 PASSED, Rung 1 BUILT.** Rung 0 (the behavioral de-risk — the whole bet) passed
+> (`experiments/sao-mediator-spike/`). **Rung 1's code is now merged**: the `@aligner` gained a
+> `mediator` mode that drives a real NEGMAS SAO over SLIM (`app/services/mediator.py` +
+> `aligner.py:mediate`, `tests/test_mediator.py`). It is proven node-free but **not yet run
+> against live cold-spawned agents.** ⇒ **CURRENT ENTRY POINT:
+> [`START_HERE_MEDIATOR_RUNG2.md`](./START_HERE_MEDIATOR_RUNG2.md)** — validate Rung 1 live,
+> then Rung 2 (Pi + OpenShell). The rung descriptions below remain the design reference.
 
 You are picking up the **coordination redesign** that the H5 demo surfaced. H5 got a full
 `converge → plan → memory` run working with live agents (see
@@ -141,7 +145,8 @@ proved the NEGMAS drive + NL→SAO interpretation both work; `mediator_spike_v2.
 brokering + BATNA and **converged in 2 steps, terminating at agreement**. Finding baked into the
 dir's README and `project_mediator_pi_negmas` memory. **Don't repeat this — start at Rung 1.**
 
-**Rung 1 — the mediator drives live over SLIM, still on today's worker agents. ⇐ START HERE.**
+**Rung 1 — the mediator drives live over SLIM, still on today's worker agents. ✅ CODE BUILT
+(node-free); live validation pending → see `START_HERE_MEDIATOR_RUNG2.md`.**
 Port the *proven v2 loop* (`experiments/sao-mediator-spike/mediator_spike_v2.py`: discover →
 NEGMAS rounds → interpret prose → terminate on agreement) into the `@aligner` driver: on summon,
 open the episode, run rounds by `@`-addressing agents over SLIM and reading their real replies
