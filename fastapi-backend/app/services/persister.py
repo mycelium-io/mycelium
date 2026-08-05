@@ -304,10 +304,27 @@ def write_transcript(room: str, records: list[TranscriptRecord]) -> None:
 
 SummonHook = Callable[[str, "L9"], None]
 ConvergedHook = Callable[["L9"], None]
+# Called with the handle of a member that dropped off the channel, so the
+# moderator can update its membership (H3/§B) — presence, not a fatal error.
+MemberLeftHook = Callable[[str], None]
 
 # Consecutive immediate transport failures before the loop gives up — keeps a
 # torn-down channel from spinning a hot loop while tolerating transient hiccups.
 _MAX_CONSECUTIVE_FAILURES = 3
+
+# Substring SLIM puts in the SessionError when a group member drops. This is a
+# membership change, not a transport fault: the session is still alive and the
+# loop must keep serving the remaining members (H3/§C).
+_PARTICIPANT_LEFT_MARKER = "participant disconnected"
+
+
+def _handle_from_disconnect(message: str) -> str | None:
+    """Parse the leaving handle out of a 'participant disconnected: ws/room/handle/inst' error."""
+    _, _, tail = message.partition(_PARTICIPANT_LEFT_MARKER)
+    name = tail.split(":", 1)[-1].strip() if ":" in tail else tail.strip()
+    parts = [p for p in name.split("/") if p]
+    # ws/room/handle[/instance] — the handle is the third segment.
+    return parts[2] if len(parts) >= 3 else None
 
 
 def _default_summon_hook(handle: str, envelope: L9) -> None:
@@ -342,6 +359,7 @@ class RoomPersister:
         members_provider: Callable[[], Iterable[str]],
         on_summon: SummonHook | None = None,
         on_converged: ConvergedHook | None = None,
+        on_member_left: MemberLeftHook | None = None,
         feed_bus: bool = True,
     ) -> None:
         self.room = room
@@ -349,6 +367,7 @@ class RoomPersister:
         self._members_provider = members_provider
         self.on_summon = on_summon or _default_summon_hook
         self.on_converged = on_converged or _default_converged_hook
+        self.on_member_left = on_member_left
         self._feed_bus = feed_bus
         # Resume from the persisted transcript so cursors/re-serve survive a
         # backend restart (records already on disk count as history).
@@ -438,6 +457,18 @@ class RoomPersister:
 
                 if isinstance(exc, CancelledError):
                     raise
+                # A member dropping off is a membership change, not a fault: the
+                # session is alive and still serving everyone else (H3/§C+§B).
+                # Update presence and keep going without spending the failure
+                # budget — a member leaving must never zombie the room.
+                if _PARTICIPANT_LEFT_MARKER in str(exc).lower():
+                    left = _handle_from_disconnect(str(exc))
+                    logger.info("participant left room %s: %s", self.room, left or "?")
+                    if left and self.on_member_left is not None:
+                        with contextlib.suppress(Exception):
+                            self.on_member_left(left)
+                    failures = 0
+                    continue
                 failures += 1
                 self.receive_errors += 1
                 logger.warning(

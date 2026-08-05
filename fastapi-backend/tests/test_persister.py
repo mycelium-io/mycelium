@@ -282,6 +282,44 @@ def test_list_store_human_and_agent_each_appear_once_in_order():
     ]
 
 
+def test_handle_from_disconnect_parses_the_leaving_handle():
+    m = "message='participant disconnected: mycelium/smoke3/smoke-agent/ffffffffffffffff'"
+    assert persister._handle_from_disconnect(m) == "smoke-agent"
+    assert persister._handle_from_disconnect("participant disconnected: ws/room/bob") == "bob"
+    assert persister._handle_from_disconnect("some other error") is None
+
+
+@pytest.mark.asyncio
+async def test_participant_disconnect_is_membership_not_fatal():
+    """A member dropping is presence: on_member_left fires and the loop keeps
+    serving (it must NOT spend the failure budget and zombie the room) — H3/§B+§C.
+    """
+
+    class _FlappyChannel:
+        def __init__(self):
+            self.calls = 0
+
+        async def receive_with_context(self):
+            self.calls += 1
+            if self.calls > 5:  # let several disconnects go by, then stop the loop
+                raise __import__("asyncio").CancelledError
+            raise RuntimeError("participant disconnected: mycelium/r/agent-x/abcd")
+
+    left: list[str] = []
+    p = persister.RoomPersister(
+        "flappy-room",
+        _FlappyChannel(),  # ty: ignore[invalid-argument-type]
+        members_provider=lambda: set(),
+        on_member_left=left.append,
+        feed_bus=False,
+    )
+    with pytest.raises(__import__("asyncio").CancelledError):
+        await p.run()
+    # Five disconnects, all treated as membership events (not the 3-strike give-up).
+    assert left == ["agent-x"] * 5
+    assert p.receive_errors == 0
+
+
 def test_list_store_skips_presence_and_non_conversational():
     """Presence/control payloads stay out of the chat list (transcript/bus only)."""
     from app.services import local_state

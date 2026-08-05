@@ -27,6 +27,7 @@ module owns that task's start/stop lifecycle and surfaces the reconnect signal
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 from collections.abc import Callable
@@ -74,6 +75,11 @@ logger = logging.getLogger(__name__)
 # from any real agent handle so it never collides with a participant, and
 # filtered out of presence.
 BACKEND_AGENT = "backend"
+
+# Delay before a supervised persister/channel is re-provisioned after an
+# unexpected exit (H3/§D) — long enough to avoid a hot restart loop against a
+# flapping node, short enough that a room recovers quickly.
+_PERSISTER_RESTART_BACKOFF_S = 5.0
 
 
 @dataclass
@@ -137,6 +143,11 @@ class RoomChannelManager:
         self.on_summon: RoomSummonHook | None = None
         self.on_converged: RoomConvergedHook | None = None
         self._metrics = ChannelMetrics()
+        # Set during teardown so a persister task ending is recognized as
+        # intentional (no restart) rather than a crash to recover from (§D).
+        self._closing = False
+        # Strong refs to in-flight channel-restart tasks (§D) so they aren't GC'd.
+        self._restart_tasks: set[asyncio.Task[None]] = set()
 
     def get(self, room: str) -> ManagedRoomChannel | None:
         return self._channels.get(room)
@@ -237,8 +248,71 @@ class RoomChannelManager:
             members_provider=lambda: self.members(room),
             on_summon=self._summon_adapter(room),
             on_converged=self._converged_adapter(room),
+            on_member_left=lambda handle, _room=room: self._drop_member(_room, handle),
         )
         managed.persister_task = asyncio.create_task(managed.persister.run())
+        managed.persister_task.add_done_callback(
+            lambda t, _room=room: self._on_persister_done(_room, t)
+        )
+
+    def _drop_member(self, room: str, handle: str) -> None:
+        """A member dropped off the channel — update presence (H3/§B).
+
+        Removing on disconnect keeps ``members`` in sync with real SLIM presence,
+        so a later ``@``-mention re-raises a consent invite (instead of assuming
+        the stale member is still present) and a re-join doesn't hit 'already in
+        group'. Local bookkeeping only — the member is already gone from SLIM.
+        """
+        managed = self._channels.get(room)
+        if managed is None or handle not in managed.members:
+            return
+        managed.members.discard(handle)
+        logger.info("dropped absent member %s from room %s membership", handle, room)
+
+    def _on_persister_done(self, room: str, task: asyncio.Task) -> None:
+        """Supervise the persister: restart it if it died unexpectedly (H3/§D).
+
+        A bare ``create_task(run())`` that ended left the channel a silent zombie
+        (nothing served/recorded) until re-provisioned. Now an unexpected exit
+        schedules a channel restart; an intentional teardown (cancel / ``close``)
+        does not.
+        """
+        if task.cancelled() or self._closing:
+            return
+        if self._channels.get(room) is None:
+            return
+        exc = task.exception()
+        logger.error(
+            "persister for room %s exited unexpectedly (%s) — restarting channel in %.0fs",
+            room,
+            exc,
+            _PERSISTER_RESTART_BACKOFF_S,
+        )
+        restart = asyncio.create_task(self._restart_channel(room))
+        self._restart_tasks.add(restart)
+        restart.add_done_callback(self._restart_tasks.discard)
+
+    async def _restart_channel(self, room: str) -> None:
+        """Tear down a dead channel and re-provision it fresh (H3/§D).
+
+        Retries with backoff until it succeeds: if the persister died because the
+        node went away, re-provision keeps failing until the node returns — a
+        one-shot attempt would leave the room a zombie for the rest of the outage.
+        """
+        managed = self._channels.pop(room, None)
+        workspace = managed.workspace if managed else None
+        if managed is not None:
+            with contextlib.suppress(Exception):
+                await managed.client.close()
+        while not self._closing:
+            await asyncio.sleep(_PERSISTER_RESTART_BACKOFF_S)
+            if self._closing or room in self._channels:
+                return
+            # provision() re-connects, re-creates the group session, and starts a
+            # fresh supervised persister; None means the node is still unreachable.
+            if await self.provision(room, workspace=workspace) is not None:
+                logger.info("recovered room %s channel after persister exit", room)
+                return
 
     def _summon_adapter(self, room: str) -> SummonHook | None:
         """Bind ``room`` onto the room-aware ``on_summon`` hook.
@@ -525,9 +599,11 @@ class RoomChannelManager:
 
     async def close_all(self) -> None:
         """Tear down every channel and drop the shared connection (shutdown)."""
-        for task in list(self._tasks):
+        self._closing = True  # a persister ending now is intentional, not a crash
+        for task in (*self._tasks, *self._restart_tasks):
             task.cancel()
         self._tasks.clear()
+        self._restart_tasks.clear()
         for room in list(self._channels):
             await self.close(room)
         from app.services.slim_client import close_connection
