@@ -220,9 +220,7 @@ async def test_driver_converges_and_closes_episode():
     managed = _FakeManaged(_ROOM, "mycelium", channel, persister)
     manager = _FakeManager(managed, ["agent-a", "agent-b", "aligner"])
 
-    engine = _engine(
-        manager, max_rounds=3, round_timeout_s=0.2, poll_interval_s=0.01
-    )
+    engine = _engine(manager, max_rounds=3, round_timeout_s=0.2, poll_interval_s=0.01)
     verdict = await engine.drive(_ROOM)
 
     assert verdict is not None
@@ -244,9 +242,7 @@ async def test_driver_terminates_at_round_cap_without_replies():
     managed = _FakeManaged(_ROOM, "mycelium", channel, persister)
     manager = _FakeManager(managed, ["agent-a", "agent-b"])
 
-    engine = _engine(
-        manager, max_rounds=2, round_timeout_s=0.05, poll_interval_s=0.01
-    )
+    engine = _engine(manager, max_rounds=2, round_timeout_s=0.05, poll_interval_s=0.01)
     verdict = await asyncio.wait_for(engine.drive(_ROOM), timeout=5.0)
 
     assert verdict is not None
@@ -295,3 +291,15 @@ async def test_summon_fires_only_for_the_reserved_handle():
     engine.handle_summon("other-room", "aligner", _env("aligner"))
     await asyncio.sleep(0.02)
     assert called == [_ROOM]
+
+
+def test_at_mention_neutralized_in_mediator_prompt() -> None:
+    """The mediator strips ``@`` before a word so its broker summary (which names
+    the other agents) can't spuriously wake them — only the L9 recipient wakes."""
+    from app.services.aligner import _AT_MENTION
+
+    text = "@growth holds tech at 40%; @risk wants a hard cap. Email @ home is fine."
+    out = _AT_MENTION.sub("", text)
+    assert "@growth" not in out and "@risk" not in out
+    assert "growth holds tech" in out and "risk wants" in out
+    assert "@ home" in out  # a lone @ (not before a word char) is untouched

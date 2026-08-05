@@ -54,6 +54,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import logging
+import re
 from typing import TYPE_CHECKING, Any
 
 from app.config import settings
@@ -75,6 +76,16 @@ logger = logging.getLogger(__name__)
 # Handles that are never a participant position: the engine itself, the backend
 # moderator, and the system actor the backend signs its own envelopes with.
 _NON_PARTICIPANTS = frozenset({BACKEND_AGENT, l9.SYSTEM_ACTOR_ID})
+
+# The mediator addresses exactly ONE agent per turn via the L9 ``recipients``
+# field. Its prompt *text*, though, embeds the broker's summary which names the
+# other participants — and the connector's ``should_wake`` also wakes on a raw
+# ``@handle`` token in the human-facing text (bible §12 human path). Left as-is,
+# every turn would spuriously wake *every* named agent, doubling cold-spawns and
+# serialising the connectors until the addressed agent's real reply misses the
+# round window (the Rung-1-live timeout/degenerate-fallback bug). Neutralising
+# the ``@`` means only the L9-addressed agent wakes; the names stay readable.
+_AT_MENTION = re.compile(r"@(?=\w)")
 
 # Epistemic fields the aligner reads off an exchange's L9 payload and hands to
 # ``l9_episode.record_reply`` verbatim (it validates/clamps each one).
@@ -459,7 +470,6 @@ class AlignerEngine:
         if self._brain != "pi":
             return mediator.llm_sync
 
-        import re
         import tempfile
         from pathlib import Path
 
@@ -526,11 +536,22 @@ class AlignerEngine:
             payload_type="tick",
             payload_data={"round": round_n, "action": "position"},
         )
+        # Neutralise ``@`` tokens so the broker's summary (which names the other
+        # agents) doesn't spuriously wake them — only the L9 ``recipients=[handle]``
+        # above should wake, one agent per turn.
+        safe_prompt = _AT_MENTION.sub("", prompt)
+        content = serialize_content(env, extra={"content": safe_prompt})
         try:
-            await managed.channel.send(env, extra={"content": prompt})
+            await managed.channel.send(env, extra={"content": safe_prompt})
         except Exception:
             logger.warning("mediator failed to prompt @%s (step %d)", handle, round_n)
             return ""
+        # Record the mediator's turn-prompt into the room transcript + UI bus, the
+        # same way ``publish_human`` records a human's message. Without this the
+        # negotiation is invisible in the room (the prompt only rides SLIM), so
+        # humans can't follow along and debugging falls back to backend logs. The
+        # persister de-dupes by id, so a SLIM loop-back to the sender is harmless.
+        persister.ingest_local(env, content)
 
         pending = _norm(handle)
         loop = asyncio.get_running_loop()

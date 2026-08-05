@@ -196,7 +196,26 @@ class MediatedNegotiation:
             return ""
 
     def interpret(self, handle: str, prose: str, *, proposing: bool) -> dict[str, Any]:
-        """Map an agent's natural-language move into a structured SAO action."""
+        """Map an agent's natural-language move into a structured SAO action.
+
+        **Fail closed on silence.** An empty ``prose`` means the agent never
+        replied within the round window (``_slim_turn`` timeout). Feeding ``""``
+        to the interpreter LLM makes it *hallucinate* a full offer — so a
+        negotiation could "converge" with no real agent input (a Rung-1-live
+        finding). Instead, empty prose is a deterministic no-op: an empty reading
+        that ``respond`` reads as a reject and ``propose`` folds into the standing
+        offer. Never invent a position for a silent agent.
+        """
+        if not prose.strip():
+            logger.info(
+                "mediator: @%s gave no reply within the round window — "
+                "treating as reject/hold (not interpreting)",
+                handle,
+            )
+            empty: dict[str, Any] = {}
+            if self._on_reading is not None:
+                self._on_reading(handle, empty, proposing)
+            return empty
         order = ", ".join(self._names)
         schema = (
             '{"action":"counter","offer":{"<issue>":"<option>", ...}}'
