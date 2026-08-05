@@ -262,12 +262,12 @@ async def stream_agent_events(
 
     Delivers coordination_tick and coordination_consensus events addressed to
     this agent. Pass one or more ``?room=<name>`` query parameters to scope
-    delivery to a specific session namespace — only events whose ``room_name``
-    starts with one of the supplied prefixes are forwarded. Without any
-    ``room`` parameter all events for the handle are delivered (legacy behaviour).
+    delivery to a specific session — only events whose ``room_name`` exactly
+    matches one of the supplied values are forwarded. Without any ``room``
+    parameter all events for the handle are delivered (legacy behaviour).
 
     Connect with: curl -N http://localhost:8000/agents/{handle}/stream
-    Connect scoped: curl -N "http://localhost:8000/agents/{handle}/stream?room=my-room"
+    Connect scoped: curl -N "http://localhost:8000/agents/{handle}/stream?room=my-room:session:abc123"
     """
     try:
         conn: asyncpg.Connection = await _open_listen_conn()
@@ -296,15 +296,15 @@ async def stream_agent_events(
 
     logger.debug(f"SSE agent stream opened for: {handle} (room filter: {room or 'none'})")
 
+    room_set: frozenset[str] = frozenset(room)
+
     async def _transform(payload: str) -> str | None:
         try:
             data = json.loads(payload)
         except json.JSONDecodeError:
             return None
-        if room:
-            room_name = data.get("room_name") or ""
-            if not any(room_name.startswith(r) for r in room):
-                return None
+        if room_set and (data.get("room_name") or "") not in room_set:
+            return None
         return f"data: {payload}\n\n"
 
     async def event_generator():
