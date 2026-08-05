@@ -15,6 +15,15 @@ from app.services.filesystem import get_room_dir, read_memory_file
 from app.services.l9_models import Kind
 
 
+@pytest.fixture(autouse=True)
+def _stub_embeddings(monkeypatch):
+    """Reindex here goes through the embedder; stub it so the apply→reindex tests
+    never load the fastembed ONNX model (debt D12: it PermissionErrors writing to
+    the ``/opt/fastembed`` cache in constrained/sandbox envs). CI already exports
+    ``MYCELIUM_STUB_EMBEDDINGS``; this makes the file green without it too."""
+    monkeypatch.setattr("app.services.embedding._STUB", True)
+
+
 def _write(
     key: str = "plan/tasks",
     *,
