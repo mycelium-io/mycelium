@@ -101,8 +101,12 @@ the "distributed personal-agent memory" pitch.
   delivered to every current member (a chat-room-like broadcast bus).
 - **Moderator** — in a SLIM group, the creator and the only party that can invite/remove
   members. Must be always-on. In mycelium this is the **backend**.
-- **MLS** — Message Layer Security; SLIM's optional end-to-end group encryption. Intermediate
-  nodes see only ciphertext. Decentralized (no key server).
+- **MLS** — **Messaging** Layer Security (IETF RFC 9420); SLIM's optional end-to-end group
+  encryption via asymmetric key trees + `Welcome`/`Commit`/epoch key agreement. Intermediate
+  nodes see only ciphertext; decentralized (no central key server). **Note:** our shared secret
+  (`mint_shared_secret`) is the members' **authentication PSK** (identity signing), *not* the
+  MLS group key — MLS derives and rotates that itself. Deriving a different secret fails identity
+  verification (can't join), it does not "seed a different group key."
 - **Name** — a SLIM address: a 3-tuple `organization/namespace/application`. Routing is by
   name, not IP.
 - **L9 / SSTP** — the epistemic protocol layer ("Layer 9", above A2A/MCP). A JSON **envelope**
@@ -183,7 +187,8 @@ docker run -p 46357:46357 ghcr.io/agntcy/slim:latest /slim --config /slim-config
 **(b) Naming.** Addresses are `org/namespace/app`. Proposed mycelium mapping: **org =
 workspace/tenant, namespace = room, app = agent id**; a room's channel is a Name whose third
 segment is the channel/topic. Mycelium must **mint per-agent identities** (dev = a shared
-secret ≥32 chars, which also seeds MLS; prod = JWT or SPIRE).
+secret ≥32 chars used as the authentication PSK MLS binds each member's signing identity to;
+prod = JWT or SPIRE).
 
 **(c) Group model (the room).** A group is a **multicast channel**. The **moderator** creates
 the session for a channel Name and **invites** each member; other agents `subscribe` their
@@ -497,7 +502,7 @@ list** (also mirrored on tracking PR #418). Scan the table; the two load-bearing
 
 | # | Debt | Severity | Bites | Fix |
 |---|---|---|---|---|
-| **D1** | **No real auth** — a public dev shared-secret (`_DEV_MASTER_SECRET`) seeds every room's MLS key, so anyone with the repo can derive/join any channel | **High** | before anything hosted / multi-user / multi-tenant | JWT or SPIRE identity (§7). **Prerequisite for the §16 hosted-rendezvous security story.** *(Partial: master secret now env-configurable + fail-closed; JWT/SPIRE still to do — see below.)* |
+| **D1** | **No real auth** — a public dev shared-secret (`_DEV_MASTER_SECRET`) is every room's authentication PSK (the identity MLS signs each member with), so anyone with the repo can derive it and authenticate onto any channel | **High** | before anything hosted / multi-user / multi-tenant | JWT or SPIRE identity (§7). **Prerequisite for the §16 hosted-rendezvous security story.** *(Partial: master secret now env-configurable + fail-closed; JWT/SPIRE still to do — see below.)* |
 | **D2** | **CLI/backend SLIM+L9 duplication** — `mycelium/slim/` copies the backend primitives; silent drift → MLS-join / parse failures | Medium | when a copy drifts (can merge green) | (A) fast-gate golden test now; (B) shared package **before Step 7** |
 | **D3** | **Silent degradation is unobservable** — best-effort "no channel" / log-and-continue, no metrics or health surface | Medium | during the demo / ops | small counters + health surface (channels provisioned/failed, re-serves, drops) |
 | **D4** | **Unbounded growth** — transcript (full rewrite per message, no rotation), `CausalOrderBuffer._delivered`/`_pending`, JSONL search index | Low–Med | long-lived rooms / high volume | append+rotate transcript; prune buffer at episode close; ANN index past ~10k |

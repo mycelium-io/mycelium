@@ -50,7 +50,7 @@ DEFAULT_NODE_ENDPOINT = "http://127.0.0.1:46357"
 # Default port used when a node endpoint URL omits one (reachability probe).
 DEFAULT_NODE_PORT = 46357
 
-# Minimum shared-secret length required by SLIM's dev auth (also seeds MLS).
+# Minimum length of the shared-secret identity PSK required by SLIM's dev auth.
 MIN_SECRET_LEN = 32
 
 # Default third segment for a room's group-channel Name when no explicit topic
@@ -218,10 +218,14 @@ def to_channel_name(
 def mint_shared_secret(identity: SlimIdentity, *, master_secret: str | None = None) -> str:
     """Mint the shared secret for a channel (``workspace/room``), ≥32 chars.
 
-    The secret is **shared by every member of a room**: it seeds the group's MLS
-    key, so all agents on the same channel must derive the *same* value or they
-    can't join each other's group. It is therefore keyed on the channel scope
-    (workspace/room), **not** the agent id — the ``agent`` field of *identity* is
+    The secret is **shared by every member of a room**: it is the channel's
+    **authentication credential** (a pre-shared key SLIM HMACs each member's
+    identity token with — ``create_app_with_secret``). Every member must derive
+    the *same* value or its identity fails to verify and it can't join the group.
+    It does **not** seed the group's encryption key — MLS runs its own group key
+    agreement on top (Welcome/Commit/epoch, RFC 9420). It is therefore keyed on
+    the channel scope (workspace/room), **not** the agent id — the ``agent`` field
+    of *identity* is
     intentionally ignored. Derived via HMAC-SHA256 so any member can reconstruct
     it offline; the 64-char hex digest comfortably exceeds :data:`MIN_SECRET_LEN`.
 
@@ -359,9 +363,10 @@ class SlimClient:
         sb = self._sb
         assert sb is not None
         # MLS ON for real room channels (Step 3): intermediate nodes see only
-        # ciphertext, which is what the hosted-rendezvous story (bible §16)
-        # rests on. The shared secret (create_app_with_secret) seeds the group
-        # key; every member derives the same value, so MLS needs no key server.
+        # ciphertext, which is what the hosted-rendezvous story (bible §16) rests
+        # on. The shared secret (create_app_with_secret) is the identity PSK that
+        # authenticates each member; MLS itself performs the group key agreement
+        # (Welcome/Commit/epoch, RFC 9420) — the node never holds the group key.
         return sb.SessionConfig(
             session_type=sb.SessionType.GROUP,
             enable_mls=True,

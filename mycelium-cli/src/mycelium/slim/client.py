@@ -166,9 +166,10 @@ class SlimClient:
     def _group_session_config(self) -> slim_bindings.SessionConfig:
         sb = self._sb
         assert sb is not None
-        # MLS ON — the member joins the moderator's encrypted group via the
-        # shared secret it derives (create_app_with_secret). Matched pair with
-        # the backend; do not diverge.
+        # MLS ON — the member authenticates into the moderator's encrypted group
+        # with the shared-secret identity PSK it derives (create_app_with_secret);
+        # MLS itself does the group key agreement. Matched pair with the backend;
+        # do not diverge.
         return sb.SessionConfig(
             session_type=sb.SessionType.GROUP,
             enable_mls=True,

@@ -13,9 +13,9 @@ connection.
 Two invariants keep the two halves interoperable and MUST match the backend:
 
 - **Naming + shared secret** (:mod:`mycelium.slim.naming`) — the
-  ``workspace/room/agent`` → SLIM ``Name`` mapping and the MLS shared-secret
-  derivation are byte-for-byte the backend's, or a member can't join the
-  moderator's MLS group.
+  ``workspace/room/agent`` → SLIM ``Name`` mapping and the shared-secret
+  (authentication PSK) derivation are byte-for-byte the backend's, or a member
+  fails identity verification and can't join the moderator's group.
 - **L9 wire shape** (:mod:`mycelium.slim.l9`) — an envelope rides under the
   additive ``l9`` key of a message's content JSON, in the exact shape the
   backend's ``l9.envelope_to_dict`` emits, so ``l9.parse_envelope`` accepts a

@@ -5,9 +5,10 @@
 
 A byte-for-byte mirror of the naming half of
 ``fastapi-backend/app/services/slim_client.py``. **Keep the constants and the
-derivation in sync with the backend** — the shared secret seeds the MLS group
-key, so a connector that derives a different value cannot join the moderator's
-group. The values below are the same ones the backend defaults to
+derivation in sync with the backend** — the shared secret is the channel's
+authentication PSK, so a connector that derives a different value fails identity
+verification and cannot join the moderator's group. The values below are the same
+ones the backend defaults to
 (``SLIM_WORKSPACE = "mycelium"``, the dev master secret, the ``room`` channel
 topic).
 """
@@ -37,7 +38,7 @@ DEFAULT_NODE_PORT = 46357
 # moderator to resolve the same channel Name.
 DEFAULT_WORKSPACE = "mycelium"
 
-# Minimum shared-secret length required by SLIM's dev auth (also seeds MLS).
+# Minimum length of the shared-secret identity PSK required by SLIM's dev auth.
 MIN_SECRET_LEN = 32
 
 # Default third segment for a room's group-channel Name when no explicit topic
@@ -173,8 +174,10 @@ def mint_shared_secret(identity: SlimIdentity, *, master_secret: str | None = No
 
     Keyed on the channel scope (``workspace/room``) — the ``agent`` field is
     intentionally ignored — so every member of a room derives the *same* value
-    (which seeds the MLS group key). HMAC-SHA256 hex digest, matching the
-    backend so moderator and members agree offline. ``master_secret`` defaults to
+    (the channel's authentication PSK; a different value fails identity
+    verification, so MLS handles the group key agreement separately). HMAC-SHA256
+    hex digest, matching the backend so moderator and members agree offline.
+    ``master_secret`` defaults to
     :func:`resolve_master_secret` (env or dev literal).
     """
     if master_secret is None:
