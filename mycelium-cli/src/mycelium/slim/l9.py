@@ -45,6 +45,11 @@ CONTENT_TEXT_KEY = "content"
 # (``commit``/``knowledge``) are observed but never trigger a spawn.
 EXCHANGE_KIND = "exchange"
 
+# ``knowledge`` is the memory-sync kind (bible §11): a ``knowledge`` message
+# carries markdown content the connector writes into its local store + reindexes
+# (push-with-content). It never wakes a turn — it updates the working set.
+KNOWLEDGE_KIND = "knowledge"
+
 
 def build_reply_content(
     *,
@@ -157,6 +162,17 @@ def kind_of(content: dict[str, Any]) -> str | None:
     env = envelope_of(content) or {}
     kind = env.get("header", {}).get("kind")
     return kind if isinstance(kind, str) else None
+
+
+def payload_data_of(content: dict[str, Any]) -> dict[str, Any]:
+    """The L9 payload ``data`` dict of a message (empty when absent).
+
+    Used to read a ``knowledge`` message's carried memory write (key + markdown
+    content + version) so the connector can apply it locally.
+    """
+    env = envelope_of(content) or {}
+    data = env.get("payload", {}).get("data")
+    return data if isinstance(data, dict) else {}
 
 
 def _iter_text(value: Any) -> list[str]:

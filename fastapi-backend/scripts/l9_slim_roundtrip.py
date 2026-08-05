@@ -318,6 +318,69 @@ async def run_aligner_observe(endpoint: str = DEFAULT_NODE_ENDPOINT) -> L9:
         await manager.close_all()
 
 
+async def run_aligner_converge_and_sync(
+    endpoint: str = DEFAULT_NODE_ENDPOINT,
+) -> tuple[L9, L9]:
+    """Prove the Step 8 same-machine DoD over a live node.
+
+    Extends :func:`run_aligner_observe`: after the aligner emits
+    ``commit:converged``, the backend's plan-sync consumer (wired on
+    ``on_converged``) compiles ``plan/tasks.md`` and broadcasts the compiled plan
+    as an L9 ``knowledge`` message that **carries the content**. A participant
+    receives both the ``commit`` and the ``knowledge`` push. Returns
+    ``(commit_envelope, knowledge_envelope)`` — the caller asserts the plan file
+    exists and applies the knowledge write to a *second* local store.
+    """
+    from app.services.aligner import AlignerEngine
+    from app.services.plan_sync import PlanSyncEngine
+
+    manager = RoomChannelManager(endpoint=endpoint, default_workspace=_WORKSPACE)
+    aligner = AlignerEngine(manager, handle="aligner", mode="observer", threshold=0.6)
+    plan_sync = PlanSyncEngine(manager)
+    # Wire BOTH seams before provision so the persister picks them up.
+    manager.on_summon = aligner.handle_summon
+    manager.on_converged = plan_sync.handle_converged
+    managed = await manager.provision(_ALIGN_ROOM)
+    assert managed is not None and managed.persister is not None
+    persister = managed.persister
+
+    agent_a = await SlimClient(SlimIdentity(_WORKSPACE, _ALIGN_ROOM, "agent-a")).connect(endpoint)
+    agent_b = await SlimClient(SlimIdentity(_WORKSPACE, _ALIGN_ROOM, "agent-b")).connect(endpoint)
+
+    try:
+        a_listen = asyncio.create_task(agent_a.listen_for_session())
+        b_listen = asyncio.create_task(agent_b.listen_for_session())
+        await manager.invite(_ALIGN_ROOM, "agent-a")
+        await manager.invite(_ALIGN_ROOM, "agent-b")
+        a_channel = L9SlimChannel(agent_a, await a_listen)
+        b_channel = L9SlimChannel(agent_b, await b_listen)
+
+        await a_channel.send(_align_position("agent-a", 0.8, "align-a"))
+        await b_channel.send(_align_position("agent-b", 0.9, "align-b"))
+        positions = {"align-a", "align-b"}
+        await _wait_for(
+            lambda: positions <= {r.message_id for r in persister.log.records}, timeout=15.0
+        )
+
+        await a_channel.send(_align_summon(), extra={"content": "@aligner please converge"})
+
+        # Collect until BOTH the commit verdict and the knowledge plan-push land.
+        commit: L9 | None = None
+        knowledge: L9 | None = None
+        while commit is None or knowledge is None:
+            for env in await b_channel.receive(timeout_s=15.0):
+                kind = env.header.kind.value
+                if kind == "commit" and commit is None:
+                    commit = env
+                elif kind == "knowledge" and knowledge is None:
+                    knowledge = env
+        return commit, knowledge
+    finally:
+        await agent_a.close()
+        await agent_b.close()
+        await manager.close_all()
+
+
 async def _main(endpoint: str) -> int:
     received = await run_roundtrip(endpoint)
     ids = [e.header.message.id for e in received if e.header.message is not None]

@@ -23,8 +23,9 @@ consumer, and it does four things as each message flows past:
    and calls a summon hook; the real cognition-engine wiring is Step 7. Here the
    hook defaults to a log.
 
-4. **plan-compile hook (skeleton).** On a ``commit:converged`` envelope it fires
-   a seam Step 8 will use to run ``plan_compiler``; it does **not** compile here.
+4. **plan-compile hook.** On a ``commit:converged`` envelope it fires the
+   ``on_converged`` seam the plan-sync consumer runs ``plan_compiler`` off of
+   (Step 8); the persister itself does **not** compile — it just fires the seam.
 
 The pure pieces (:class:`DeliveryLog`, the transcript read/write, the trigger
 detection) carry no SLIM dependency and are unit-tested without a node;
@@ -312,9 +313,11 @@ def _default_summon_hook(handle: str, envelope: L9) -> None:
 
 
 def _default_converged_hook(envelope: L9) -> None:
+    # Log-only default for a persister with no plan-sync consumer wired (unit
+    # tests / a bare backend). In the running backend ``main.py`` binds this to
+    # the plan-sync consumer via the manager's ``_converged_adapter`` (Step 8).
     logger.info(
-        "plan-compile hook (skeleton): commit:converged on episode %s; "
-        "plan_compiler wiring is Step 8",
+        "converged hook (unwired): commit:converged on episode %s; no plan-sync consumer",
         envelope.header.message.episode if envelope.header.message else "?",
     )
 
