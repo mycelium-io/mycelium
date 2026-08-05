@@ -27,6 +27,8 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+import httpx
+
 from mycelium.daemon.dispatch import (
     _CONTROL_ABORT,
     _CONTROL_STATUS,
@@ -43,7 +45,7 @@ from mycelium.daemon.dispatch import (
     load_manifest,
     load_notes,
 )
-from mycelium.filesystem import apply_knowledge, get_room_dir
+from mycelium.filesystem import KnowledgeApplyResult, apply_knowledge, get_room_dir
 from mycelium.integrations import get_integration
 from mycelium.integrations._spawn_common import SpawnRequest
 from mycelium.slim import l9
@@ -185,13 +187,20 @@ def build_reply(
 # ── Memory sync (bible §11) ──────────────────────────────────────────────────
 
 
-def apply_knowledge_message(room: str, content: dict) -> None:
+def apply_knowledge_message(room: str, content: dict) -> KnowledgeApplyResult | None:
     """Write a ``knowledge`` message's carried memory into the local store.
 
     Push-with-content (bible §11): the message *carries* the markdown, so this is
-    a pure local file write + reindex — never a fetch back over HTTP. Reindex is
-    implicit: the file lands under ``~/.mycelium/rooms/{room}/`` which the local
-    always-on backend's watcher picks up and re-embeds into the JSONL index.
+    a pure local file write — never a fetch back over HTTP. Returns the
+    :class:`~mycelium.filesystem.KnowledgeApplyResult` (or ``None`` when the
+    message carried no write) so the caller can trigger a reindex on a real apply.
+
+    Reindexing the JSONL is **not** done here: on the moderator host the always-on
+    backend's file watcher re-embeds a write, but a member host that runs a
+    daemon-only knows no watcher — so the connector reindexes explicitly after a
+    successful apply (see :func:`reindex_after_knowledge`). This closes the
+    "markdown lands but search never sees it" gap (Step 9, bible §11).
+
     Conflict policy is enforced in :func:`mycelium.filesystem.apply_knowledge`
     (last-write-wins; a stale-base write is kept out, logged, and dropped).
     """
@@ -200,7 +209,7 @@ def apply_knowledge_message(room: str, content: dict) -> None:
     body = data.get("content")
     if not isinstance(key, str) or not key or not isinstance(body, str):
         log.debug("knowledge message in %s carried no memory write — ignoring", room)
-        return
+        return None
     try:
         version = int(data.get("version", 1))
     except (TypeError, ValueError):
@@ -228,6 +237,33 @@ def apply_knowledge_message(room: str, content: dict) -> None:
         )
     elif result.applied:
         log.info("knowledge write applied: %s/%s (v%d)", room, key, version)
+    return result
+
+
+async def reindex_after_knowledge(config: MyceliumConfig, room: str) -> None:
+    """Re-embed a room's markdown into its JSONL index after a knowledge apply.
+
+    The receiver half of memory sync writes canonical markdown; the JSONL search
+    index is derived and must be refreshed or the member host's ``memory search``
+    never sees the new content (bible §11, Step 9). On the moderator host a file
+    watcher would do this; a member host that runs no watcher relies on the
+    connector calling its backend's reindex endpoint here.
+
+    The CLI has no local embedder (embeddings live in the backend), so — like
+    ``mycelium memory reindex`` — this is an HTTP call to the co-located backend,
+    scoped to the one room. **Best-effort:** a reindex failure must never sink the
+    write (the markdown is already durable and rebuildable), so it is logged and
+    swallowed. Reindex is idempotent, so a retry-on-reconnect re-serve is safe.
+    """
+    api_url = config.server.api_url
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(f"{api_url}/api/rooms/{room}/reindex")
+            resp.raise_for_status()
+    except Exception as exc:  # noqa: BLE001 - reindex is best-effort; markdown is canonical
+        log.warning("reindex after knowledge write failed for room %s: %s", room, exc)
+        return
+    log.debug("reindexed room %s after knowledge write", room)
 
 
 # ── Per-message dispatch (transport-agnostic) ────────────────────────────────
@@ -254,8 +290,12 @@ async def handle_inbound(
     # write it into the local store so the agent's working set updates mid-task.
     # It never wakes a turn. Co-located connectors each apply it, but the apply is
     # idempotent by version, so only the first actually writes; the rest skip.
+    # On a real write, reindex so a member host with no file watcher still surfaces
+    # the new content in search (Step 9 — close the daemon-only reindex gap).
     if l9.kind_of(content) == l9.KNOWLEDGE_KIND:
-        apply_knowledge_message(room, content)
+        result = apply_knowledge_message(room, content)
+        if result is not None and result.applied and config is not None:
+            await reindex_after_knowledge(config, room)
         return
 
     if not should_wake(content, handle):
