@@ -74,6 +74,11 @@ def test_register_adopted_batch_restarts_gateway_once(
         lambda *, room, agent_id, **_: chan_calls.append((room, agent_id)),
     )
     monkeypatch.setattr(impl, "restart_gateway", lambda: restarts.append(1))
+    # These two shell out to the `openclaw` binary (absent in CI). The test is
+    # about the batch->single-restart shape, not their side effects — stub them so
+    # it runs without the binary (openclaw is a deferred adapter, bible D11/H6).
+    monkeypatch.setattr(impl, "_allowlist_mycelium", lambda *a, **k: None)
+    monkeypatch.setattr(impl, "_configure_exec_host_gateway", lambda *a, **k: None)
 
     impl.register_adopted_batch(["a", "b", "c"], room="demo", backend_url="http://hub:8000")
 
@@ -238,8 +243,12 @@ def test_agent_create_has_no_openclaw_agent_flag() -> None:
     live on `add`, not `create`."""
     from mycelium.cli import app
 
-    create_help = runner.invoke(app, ["agent", "create", "--help"]).output
-    add_help = runner.invoke(app, ["agent", "add", "--help"]).output
+    # Force a wide terminal: Typer/Rich renders --help against the detected width,
+    # and CI's non-TTY (no COLUMNS) collapses the options table so option flags
+    # never appear in the output. Pin COLUMNS so the assertions are width-robust.
+    wide = {"COLUMNS": "200"}
+    create_help = runner.invoke(app, ["agent", "create", "--help"], env=wide).output
+    add_help = runner.invoke(app, ["agent", "add", "--help"], env=wide).output
     assert "--openclaw-agent" not in create_help
     assert "--cwd" in create_help
     assert "[HANDLE]" in add_help  # handle is optional on add (picker)
