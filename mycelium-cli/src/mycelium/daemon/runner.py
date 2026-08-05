@@ -6,8 +6,11 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
+import os
 import signal
+import sys
 
 from mycelium.config import MyceliumConfig
 from mycelium.daemon.config import DaemonConfig, daemon_log_path
@@ -26,6 +29,14 @@ ConnectorKey = tuple[str, str]
 
 def _setup_logging(foreground: bool) -> None:
     if foreground:
+        # Line-buffer stdout so connector/wake logs are visible immediately when
+        # stdout is a pipe (not a TTY) — otherwise block-buffering hides them and
+        # "nothing happening" looks like a hang (§H). ``reconfigure`` exists on the
+        # real TextIOWrapper but not the ``TextIO`` type, so reach it dynamically.
+        reconfigure = getattr(sys.stdout, "reconfigure", None)
+        if reconfigure is not None:
+            with contextlib.suppress(Exception):
+                reconfigure(line_buffering=True)
         handlers: list[logging.Handler] = [logging.StreamHandler()]
     else:
         # Under systemd/launchd the unit file already routes stdout+stderr to
@@ -256,7 +267,45 @@ async def _terminate_in_flight_spawns(state: DaemonState, *, grace_s: float = 3.
             log.warning("wait(%s) failed: %s", rp.process.pid, exc)
 
 
+def _acquire_singleton_lock():
+    """Take an exclusive advisory lock so only one daemon runs per host (§H).
+
+    Returns the held file object (keep it open for the process lifetime) or
+    ``None`` if another daemon already holds it. No-ops (returns a sentinel) where
+    ``fcntl`` is unavailable.
+    """
+    try:
+        import fcntl
+    except ImportError:  # pragma: no cover - non-unix
+        return True
+    from mycelium.daemon.config import daemon_lock_path
+
+    path = daemon_lock_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = path.open("w")
+    try:
+        fcntl.flock(fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        fd.close()
+        return None
+    fd.write(f"{os.getpid()}\n")
+    fd.flush()
+    return fd
+
+
 def main(foreground: bool = False) -> int:
+    lock = _acquire_singleton_lock()
+    if lock is None:
+        from mycelium.daemon.config import daemon_lock_path
+
+        print(  # noqa: T201 - runs before logging is configured
+            f"error: another mycelium-daemon is already running (lock held at "
+            f"{daemon_lock_path()}). Refusing to start a second — two daemons owning the "
+            f"same agent handle collide on the fabric. Stop the other first "
+            f"(`pkill -f mycelium.daemon`) or use it.",
+            file=sys.stderr,
+        )
+        return 1
     try:
         return asyncio.run(_amain(foreground))
     except KeyboardInterrupt:

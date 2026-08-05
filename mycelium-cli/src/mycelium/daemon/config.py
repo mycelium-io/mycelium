@@ -22,6 +22,17 @@ def daemon_socket_path() -> Path:
     return Path.home() / ".mycelium" / "daemon.sock"
 
 
+def daemon_lock_path() -> Path:
+    """Advisory lock file guaranteeing a single daemon per host (§H).
+
+    Two daemons both owning the same agent handle subscribe the same SLIM name and
+    collide — invites route to one, the other never joins (the smoke test's worst
+    multi-hour hunt). An exclusive ``flock`` on this file makes a second
+    ``daemon run`` refuse instead of silently colliding.
+    """
+    return Path.home() / ".mycelium" / "daemon.lock"
+
+
 def daemon_log_path() -> Path:
     """Daemon stdout/stderr log path (the service unit redirects here)."""
     log_dir = Path.home() / ".mycelium" / "logs"
