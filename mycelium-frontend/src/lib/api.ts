@@ -369,3 +369,76 @@ export async function fetchIngestLog(limit = 50) {
   if (!res.ok) return null;
   return res.json();
 }
+
+// ── L9 protocol / episodes ─────────────────────────────────────────────────────
+// Episodes are the persisted, causally-linked L9 record of a coordination
+// session (one markdown file per session under `log/episodes/`). The protocol
+// inspector reads them for the rich causal chain + consensus metrics; the wire
+// envelopes deliberately carry empty `message.parents`, so the chain lives here.
+
+export interface L9Actor {
+  id: string;
+  role: string;
+}
+
+export interface L9Envelope {
+  header: {
+    protocol?: string;
+    subprotocol?: string;
+    version?: string;
+    kind: string;
+    subkind?: string | null;
+    participants?: { actors?: L9Actor[]; groups?: Record<string, unknown> | null };
+    message?: { id: string; parents?: string[]; episode?: string };
+    context?: { topic?: string } | null;
+  };
+  payload?: { type?: string; data?: Record<string, unknown> };
+}
+
+export interface EpisodeMetrics {
+  mpc: number;
+  gar: number;
+  scr: number;
+  provenance_weight: number;
+  participants?: number;
+}
+
+export interface EpisodeSummary {
+  short_id: string;
+  episode: string;
+  topic: string;
+  outcome: string;
+  subkind: string | null;
+  participants: string[];
+  metrics: EpisodeMetrics | null;
+  assignments: Record<string, string> | null;
+  plan_file: string | null;
+  message_count: number;
+  updated_at: string;
+  updated_by: string;
+}
+
+export interface EpisodeDetail extends EpisodeSummary {
+  messages: L9Envelope[];
+}
+
+/** Episode summaries for a room, newest first. */
+export async function fetchEpisodes(roomName: string): Promise<EpisodeSummary[]> {
+  const res = await fetch(`/api/rooms/${roomName}/episodes`, { cache: "no-store" });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return (data.episodes || []) as EpisodeSummary[];
+}
+
+/** One episode plus its full L9 envelope chain, or null if unknown. */
+export async function fetchEpisode(
+  roomName: string,
+  shortId: string,
+): Promise<EpisodeDetail | null> {
+  const res = await fetch(
+    `/api/rooms/${roomName}/episodes/${encodeURIComponent(shortId)}`,
+    { cache: "no-store" },
+  );
+  if (!res.ok) return null;
+  return res.json();
+}

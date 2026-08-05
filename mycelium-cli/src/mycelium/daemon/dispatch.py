@@ -1,7 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""SSE subscription + @handle dispatch — the heart of the daemon."""
+"""@handle dispatch logic — the heart of the daemon.
+
+No transport of its own: this module is the @-mention dispatch logic (tick /
+consensus / mention handling and their pure helpers) reused by the SLIM
+connector (``connector.py``), which owns the wire. The legacy httpx SSE
+subscription and coordination-session poller that once drove this module were
+retired once agents moved to SLIM.
+"""
 
 from __future__ import annotations
 
@@ -29,34 +36,6 @@ from mycelium.protocol import AgentManifest
 log = logging.getLogger("mycelium.daemon")
 
 _DEPTH_WINDOW_S = 60.0
-
-# CognitiveEngine posts coordination_tick / coordination_consensus into
-# session sub-rooms (``r:session:abc``), not parent rooms — and the live
-# Postgres NOTIFY for those events fires only on the sub-room channel. A
-# daemon subscribed to the parent room therefore never sees them via SSE.
-# Mirroring the openclaw plugin (``index.ts``), we periodically poll the
-# coordination-sessions endpoint and fan out an SSE listener for each active
-# session. The poll cadence is intentionally aggressive so a fresh session
-# starts dispatching ticks within a single round trip; the shape is small
-# (id + display_name + state) so it's cheap.
-_SESSION_POLL_INTERVAL_S = 5.0
-_SESSION_POLL_LIMIT = 200
-# Sessions in these states are alive; we keep an SSE subscription up. Any
-# other state is terminal-or-not-yet-started — drop the subscription if we
-# had one so we don't pin connections on completed negotiations.
-_SESSION_LIVE_STATES = frozenset({"waiting", "negotiating"})
-
-# The backend SSE endpoint emits a `: keep-alive` comment every ~15s when a
-# room is idle (see fastapi-backend/app/routes/stream.py). So a healthy
-# stream is never silent longer than that. Bounding the read timeout at ~3×
-# that interval means a half-open / stalled connection (peer or NAT/LB
-# dropped it without a FIN — `aiter_text()` would otherwise block forever
-# while the daemon still reports the room "connected") raises
-# httpx.ReadTimeout within ~45s and we reconnect, instead of going silently
-# deaf. Connect is bounded too so an unreachable hub fails fast.
-_SSE_KEEPALIVE_S = 15.0
-_SSE_READ_TIMEOUT_S = 45.0
-_SSE_CONNECT_TIMEOUT_S = 10.0
 
 
 # Reserved verbs at the start of an addressed message body. Anything not in
@@ -620,16 +599,6 @@ async def on_message(
             msg=msg,
         )
         return
-    if message_type in {"coordination_join", "coordination_start"}:
-        # Discover session sub-rooms — ticks live there, not in the parent
-        # room. Mirrors the openclaw plugin's ``subscribe-session`` action.
-        await _handle_join(
-            config=config,
-            daemon_cfg=daemon_cfg,
-            state=state,
-            msg=msg,
-        )
-        return
 
     content = str(msg.get("content") or "")
     sender_handle = str(msg.get("sender_handle") or "")
@@ -924,64 +893,6 @@ async def _handle_consensus(
         )
 
 
-async def _handle_join(
-    *,
-    config: MyceliumConfig,
-    daemon_cfg: DaemonConfig,
-    state: DaemonState,
-    msg: dict[str, Any],
-) -> None:
-    """Dynamically subscribe to a session sub-room when an agent joins it.
-
-    CognitiveEngine posts ticks/consensus into ``r:session:abc`` sub-rooms,
-    not the parent room. The daemon's static SSE subscriptions (from
-    ``daemon.toml``) only cover parent rooms, so without this branch the
-    daemon would observe the join + nothing else and fall back to the
-    operator-driven accept loop. We mirror the openclaw plugin's
-    ``subscribe-session`` action: discover the sub-room, fire a ``subscribe_room``
-    task, and rely on the idempotent task map so duplicate joins (or
-    coordination_start events) don't create competing listeners.
-
-    Discovery sources, in priority order:
-      - ``msg.room_name`` — already a session sub-room (e.g. when this is a
-        join echo from inside the sub-room itself)
-      - ``content.session`` — the session pointer the engine attaches to
-        every coordination_join broadcast in the parent room
-    """
-    room_name = msg.get("room_name") if isinstance(msg.get("room_name"), str) else ""
-    target: str | None = None
-    if isinstance(room_name, str) and ":session:" in room_name:
-        target = room_name
-    else:
-        raw = str(msg.get("content") or "")
-        if raw:
-            try:
-                data = json.loads(raw)
-            except json.JSONDecodeError:
-                data = None
-            if isinstance(data, dict):
-                session = data.get("session")
-                if isinstance(session, str) and ":session:" in session:
-                    target = session
-
-    if not target:
-        return
-    if target in state.session_room_tasks:
-        return
-
-    log.info("dynamic subscribe → %s (session sub-room)", target)
-    task = asyncio.create_task(
-        subscribe_room(
-            config=config,
-            daemon_cfg=daemon_cfg,
-            state=state,
-            room_name=target,
-        ),
-        name=f"sse[{target}]",
-    )
-    state.session_room_tasks[target] = task
-
-
 async def _handle_abort(
     *,
     config: MyceliumConfig,
@@ -1143,186 +1054,3 @@ async def _dispatch_one(
         except Exception as exc:
             state.record_error("post_reply", exc)
             log.warning("could not post reply for @%s: %s", manifest.handle, exc)
-
-
-# ── Coordination-session discovery (poller) ─────────────────────────────────
-
-
-async def poll_coordination_sessions(
-    *,
-    config: MyceliumConfig,
-    daemon_cfg: DaemonConfig,
-    state: DaemonState,
-) -> None:
-    """Maintain dynamic SSE subscriptions for every active coordination session.
-
-    The CognitiveEngine emits ticks / consensus into the session sub-room's
-    NOTIFY channel, never the parent room's. A daemon subscribed only to
-    parent rooms (``daemon.toml`` lists those) would observe a join in
-    the database but no live updates afterwards. We solve this the same way
-    the openclaw plugin does (``integrations/openclaw/.../channel/index.ts``):
-    poll ``/api/coordination-sessions`` every few seconds, subscribe to any
-    session in a live state, and tear down subscriptions for sessions that
-    have completed (or were deleted). Idempotent on
-    ``state.session_room_tasks`` so duplicate poll ticks don't create
-    competing listeners.
-    """
-    url = f"{config.server.api_url}/api/coordination-sessions"
-    while not state.stopping.is_set():
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(url, params={"limit": _SESSION_POLL_LIMIT})
-                resp.raise_for_status()
-                payload = resp.json()
-        except Exception as exc:
-            # Polling failure is non-fatal — log once and try again next tick.
-            # Without this guard a transient backend hiccup would blow up the
-            # whole daemon's coordination discovery.
-            log.debug("coordination-sessions poll failed: %s", exc)
-            payload = []
-
-        active: set[str] = set()
-        if isinstance(payload, list):
-            for item in payload:
-                if not isinstance(item, dict):
-                    continue
-                display_name = item.get("display_name")
-                session_state = item.get("state")
-                if not isinstance(display_name, str) or ":session:" not in display_name:
-                    continue
-                if session_state not in _SESSION_LIVE_STATES:
-                    continue
-                active.add(display_name)
-                if display_name in state.session_room_tasks:
-                    existing = state.session_room_tasks[display_name]
-                    if not getattr(existing, "done", lambda: False)():
-                        continue
-                    # The previous task finished (peer disconnect, server
-                    # restart, etc.) but the session is still live —
-                    # restart it.
-                log.info("dynamic subscribe → %s (coordination session)", display_name)
-                state.session_room_tasks[display_name] = asyncio.create_task(
-                    subscribe_room(
-                        config=config,
-                        daemon_cfg=daemon_cfg,
-                        state=state,
-                        room_name=display_name,
-                    ),
-                    name=f"sse[{display_name}]",
-                )
-
-        # Drop subscriptions for sessions that left the active set so we
-        # don't pin SSE connections on completed negotiations forever.
-        for tracked in list(state.session_room_tasks.keys()):
-            if tracked in active:
-                continue
-            task = state.session_room_tasks.pop(tracked)
-            log.info("dynamic unsubscribe → %s (session no longer active)", tracked)
-            task.cancel()
-
-        try:
-            await asyncio.wait_for(
-                state.stopping.wait(),
-                timeout=_SESSION_POLL_INTERVAL_S,
-            )
-        except TimeoutError:
-            continue
-        # state.stopping is set — fall through and exit the loop.
-        return
-
-
-# ── SSE subscription per room ────────────────────────────────────────────────
-
-
-async def subscribe_room(
-    *,
-    config: MyceliumConfig,
-    daemon_cfg: DaemonConfig,
-    state: DaemonState,
-    room_name: str,
-) -> None:
-    """Stay connected to *room_name*'s SSE stream until the daemon stops."""
-    url = f"{config.server.api_url}/api/rooms/{room_name}/messages/stream"
-
-    # No total timeout (the stream is long-lived) but a bounded read timeout
-    # so a stalled connection is detected via httpx.ReadTimeout rather than
-    # hanging aiter_text() forever. write/pool bounded too; defensive.
-    timeout = httpx.Timeout(
-        None,
-        connect=_SSE_CONNECT_TIMEOUT_S,
-        read=_SSE_READ_TIMEOUT_S,
-        write=_SSE_CONNECT_TIMEOUT_S,
-        pool=_SSE_CONNECT_TIMEOUT_S,
-    )
-
-    while not state.stopping.is_set():
-        try:
-            async with (
-                httpx.AsyncClient(timeout=timeout) as client,
-                client.stream("GET", url, headers={"Accept": "text/event-stream"}) as resp,
-            ):
-                if resp.status_code == 404:
-                    log.warning(
-                        "SSE 404 for %s — room may not exist; retry in 15s",
-                        room_name,
-                    )
-                    await asyncio.sleep(15)
-                    continue
-                if resp.status_code >= 400:
-                    log.warning("SSE %s for %s — retry in 5s", resp.status_code, room_name)
-                    await asyncio.sleep(5)
-                    continue
-
-                log.info("SSE connected: %s", room_name)
-                state.rooms_connected.add(room_name)
-
-                buffer = ""
-                async for chunk in resp.aiter_text():
-                    if state.stopping.is_set():
-                        break
-                    buffer += chunk
-                    blocks = buffer.split("\n\n")
-                    buffer = blocks.pop()
-                    for block in blocks:
-                        for line in block.split("\n"):
-                            if not line.startswith("data: "):
-                                continue
-                            raw = line[6:].strip()
-                            if not raw or raw == "{}":
-                                continue
-                            try:
-                                msg = json.loads(raw)
-                            except json.JSONDecodeError:
-                                continue
-                            try:
-                                await on_message(
-                                    config=config,
-                                    daemon_cfg=daemon_cfg,
-                                    state=state,
-                                    room_name=room_name,
-                                    msg=msg,
-                                )
-                            except Exception as exc:
-                                state.record_error(f"on_message[{room_name}]", exc)
-                                log.exception("dispatch error in %s: %s", room_name, exc)
-        except asyncio.CancelledError:
-            raise
-        except (httpx.ReadTimeout, httpx.ConnectTimeout) as exc:
-            # A stalled/half-open stream: no keep-alive for _SSE_READ_TIMEOUT_S
-            # (or the hub didn't accept the connection in time). Distinct log
-            # so operators can tell a deaf socket from a network error.
-            state.record_error(f"sse_stalled[{room_name}]", exc)
-            log.warning(
-                "SSE stalled for %s (no data within %.0fs) — reconnecting in 5s",
-                room_name,
-                _SSE_READ_TIMEOUT_S,
-            )
-        except Exception as exc:
-            state.record_error(f"sse[{room_name}]", exc)
-            log.warning("SSE error for %s: %s — retry in 5s", room_name, exc)
-        finally:
-            state.rooms_connected.discard(room_name)
-
-        if state.stopping.is_set():
-            return
-        await asyncio.sleep(5)

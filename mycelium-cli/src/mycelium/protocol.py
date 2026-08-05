@@ -328,10 +328,10 @@ class MemoryLogEntry(BaseModel):
 
 # Adapter identifiers the agent primitive knows how to host. Each maps to a
 # dispatcher:
-#   claude_code → mycelium-daemon (subscribes room SSE, spawns claude -p)
-#   cursor      → mycelium-daemon (subscribes room SSE, spawns
-#                 cursor-agent -p). Same lifecycle as claude_code; the daemon's
-#                 dispatch loop routes via Integration.lifecycle, not family id.
+#   claude_code → mycelium-daemon (SLIM connector, spawns claude -p)
+#   cursor      → mycelium-daemon (SLIM connector, spawns cursor-agent -p).
+#                 Same lifecycle as claude_code; the daemon's dispatch loop
+#                 routes via Integration.lifecycle, not family id.
 #   openclaw    → OpenClaw gateway's mycelium-room channel plugin (the agent
 #                 runs inside OpenClaw; we just register it into the channel's
 #                 rooms[] fan-out — no daemon involvement, see the daemon

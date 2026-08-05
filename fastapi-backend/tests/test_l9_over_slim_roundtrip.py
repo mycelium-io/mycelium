@@ -145,3 +145,26 @@ async def test_converged_compiles_plan_and_syncs_memory_over_slim(tmp_path, monk
     plan2 = read_memory_file(get_room_dir(_ALIGN_ROOM), "plan/tasks")
     assert plan2 is not None and "ship the thing" in plan2[1]
     assert "plan/tasks" in {r["key"] for r in search_index.load_index(_ALIGN_ROOM)}
+
+
+@pytest.mark.asyncio
+async def test_consent_and_knowledge_reach_ui_bus_over_slim(tmp_path, monkeypatch):
+    """Step 10 DoD (headless proxy for the browser): during a live converge, both
+    the compiled-plan ``knowledge`` push and a ``consent_request`` reach the
+    in-process UI bus (``app/bus.py``) — the surface the room view, the L9
+    inspector, and the consent prompt all read. The full browser demo is manual
+    (scripted in ``docs/cross-machine.md``); this asserts the events land."""
+    from unittest.mock import AsyncMock, patch
+
+    from app.services import plan_compiler
+    from scripts.l9_slim_roundtrip import run_consent_and_knowledge_to_bus
+
+    monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))
+
+    fake_plan = "# Converged Plan\n\n- [ ] ship the thing @agent-a\n- [ ] document it @agent-b"
+    with patch.object(plan_compiler, "compile_plan", AsyncMock(return_value=fake_plan)):
+        seen = await run_consent_and_knowledge_to_bus(_ENDPOINT)
+
+    # The inspector's knowledge frame and the human-in-the-room consent prompt.
+    assert "l9_knowledge" in seen
+    assert "consent_request" in seen

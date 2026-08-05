@@ -4,6 +4,10 @@ How two people on two laptops run the mycelium hero flow through **one shared SL
 node**. This is the LAN MVP; the open-internet path is documented but not built
 (bible §Step 9: *LAN first, don't block on NAT*).
 
+> **Watching it in the browser (Step 10).** The flow below is headless. To watch
+> it, open the frontend (`mycelium-frontend`, `pnpm dev`) and see [Watching it in
+> the browser](#watching-it-in-the-browser-step-10) at the bottom.
+
 ## Roles
 
 - **Host A — the owner / moderator.** Runs the shared SLIM node (`mycelium hub
@@ -71,3 +75,37 @@ For hosts not on the same LAN, either:
   a `cloudflared`/`tailscale`-style overlay) and connect to the tunnel address.
 
 NAT traversal / hole-punching is **out of scope for the MVP** — do not build it.
+
+## Watching it in the browser (Step 10)
+
+The UI never speaks SLIM or L9. The backend moderator ingests every channel
+message into its persister and re-publishes it onto an **in-process bus**
+(`app/bus.py`); consent prompts, human messages, plan pushes, and every L9
+envelope land there. The frontend reads that bus over the one remaining SSE
+stream (`/api/rooms/{room}/messages/stream`) — the only browser transport that
+survived; the daemon's legacy SSE/poller is retired (agents ride SLIM). Point a
+browser on **either** host at that host's backend; a member host's UI talks to
+its own co-located backend, and the consent prompt is answered against the
+moderator's invite registry (host A owns accept/decline), so B's human can accept
+a prompt A raised without a second registry.
+
+Open a room at `/room/{name}` and watch three surfaces during the flow above:
+
+- **CHANNEL** — membership, the transcript, and lifecycle lines (JOIN, CONSENSUS
+  → `plan/tasks.md`), plus the **consent prompt**: an `@`-invite of an agent not
+  in the room raises an accept/decline dialog (`consent-dialog.tsx`); nothing
+  joins until Accept.
+- **L9** — the protocol inspector. A live **wire** of the L9 payloads crossing
+  the channel (`exchange` ticks/replies, `commit:converged`/`rejected` with
+  **MPC/GAR/SCR**, `knowledge` pushes), each tagged with kind/subkind + episode,
+  over an **episodes** list whose cards expand to the full causal chain (parents
+  come from the `log/episodes/*` records — the broadcast envelopes carry empty
+  `message.parents` by design).
+- **PLAN** — the compiled `plan/tasks.md` checklist, refreshed when a consensus
+  compiles.
+
+The full two-machine browser demo is **manual**. Its headless proxy — that a
+`knowledge` push and a `consent_request` both reach the bus during a live
+converge — is asserted by the guarded
+`tests/test_l9_over_slim_roundtrip.py::test_consent_and_knowledge_reach_ui_bus_over_slim`
+(runs only with a reachable node).

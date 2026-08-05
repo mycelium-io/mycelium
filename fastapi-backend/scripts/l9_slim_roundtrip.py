@@ -381,6 +381,86 @@ async def run_aligner_converge_and_sync(
         await manager.close_all()
 
 
+async def run_consent_and_knowledge_to_bus(
+    endpoint: str = DEFAULT_NODE_ENDPOINT,
+) -> set[str]:
+    """Prove the Step 10 DoD's headless proxy for the browser demo.
+
+    The UI never speaks SLIM: it reads the backend's in-process bus
+    (``app.bus``), which the moderator's persister feeds every ingested channel
+    message and onto which the consent path publishes ``consent_request``. This
+    mirrors :func:`run_aligner_converge_and_sync` but subscribes to the bus and,
+    once the compiled-plan ``knowledge`` push has crossed, raises a consent
+    prompt for an absent agent. Returns the set of ``message_type`` values seen
+    on the bus — the caller asserts ``l9_knowledge`` and ``consent_request`` are
+    both present (the inspector's knowledge frame and the consent prompt).
+    """
+    from app.bus import bus, room_channel
+    from app.services.aligner import AlignerEngine
+    from app.services.plan_sync import PlanSyncEngine
+
+    manager = RoomChannelManager(endpoint=endpoint, default_workspace=_WORKSPACE)
+    aligner = AlignerEngine(manager, handle="aligner", mode="observer", threshold=0.6)
+    plan_sync = PlanSyncEngine(manager)
+    manager.on_summon = aligner.handle_summon
+    manager.on_converged = plan_sync.handle_converged
+    managed = await manager.provision(_ALIGN_ROOM)
+    assert managed is not None and managed.persister is not None
+    persister = managed.persister
+
+    # Subscribe before inviting so no bus event is missed.
+    queue = bus.subscribe(room_channel(_ALIGN_ROOM))
+    seen: set[str] = set()
+
+    agent_a = await SlimClient(SlimIdentity(_WORKSPACE, _ALIGN_ROOM, "agent-a")).connect(endpoint)
+    agent_b = await SlimClient(SlimIdentity(_WORKSPACE, _ALIGN_ROOM, "agent-b")).connect(endpoint)
+    try:
+        a_listen = asyncio.create_task(agent_a.listen_for_session())
+        b_listen = asyncio.create_task(agent_b.listen_for_session())
+        await manager.invite(_ALIGN_ROOM, "agent-a")
+        await manager.invite(_ALIGN_ROOM, "agent-b")
+        a_channel = L9SlimChannel(agent_a, await a_listen)
+        b_channel = L9SlimChannel(agent_b, await b_listen)
+
+        await a_channel.send(_align_position("agent-a", 0.8, "align-a"))
+        await b_channel.send(_align_position("agent-b", 0.9, "align-b"))
+        await _wait_for(
+            lambda: {"align-a", "align-b"} <= {r.message_id for r in persister.log.records},
+            timeout=15.0,
+        )
+
+        await a_channel.send(_align_summon(), extra={"content": "@aligner please converge"})
+
+        commit: L9 | None = None
+        knowledge: L9 | None = None
+        while commit is None or knowledge is None:
+            for env in await b_channel.receive(timeout_s=15.0):
+                kind = env.header.kind.value
+                if kind == "commit" and commit is None:
+                    commit = env
+                elif kind == "knowledge" and knowledge is None:
+                    knowledge = env
+
+        # The human-in-the-room path: an @-invite of an absent agent raises the
+        # consent prompt straight onto the bus (no SLIM hop needed).
+        manager.request_invite(
+            _ALIGN_ROOM, "ghost", requested_by="human", trigger_text="@ghost join us"
+        )
+
+        # Drain the bus until both events of interest have surfaced.
+        while not {"l9_knowledge", "consent_request"} <= seen:
+            payload = await asyncio.wait_for(queue.get(), timeout=15.0)
+            mtype = str(payload.get("message_type") or "")
+            if mtype:
+                seen.add(mtype)
+        return seen
+    finally:
+        bus.unsubscribe(room_channel(_ALIGN_ROOM), queue)
+        await agent_a.close()
+        await agent_b.close()
+        await manager.close_all()
+
+
 async def _main(endpoint: str) -> int:
     received = await run_roundtrip(endpoint)
     ids = [e.header.message.id for e in received if e.header.message is not None]
