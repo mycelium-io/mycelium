@@ -116,3 +116,124 @@ async def test_handle_inbound_routes_knowledge_without_waking(monkeypatch):
     )
     assert not woke and not published
     assert filesystem.read_memory(filesystem.get_room_dir("demo"), "plan/tasks") is not None
+
+
+# ── reindex-on-arrival (Step 9: close the daemon-only reindex gap) ─────────────
+
+
+@pytest.mark.asyncio
+async def test_handle_inbound_reindexes_after_applied_write(monkeypatch):
+    """A real knowledge apply on a member host triggers an explicit reindex.
+
+    On a daemon-only host there's no file watcher, so the connector must reindex
+    itself after writing the markdown or search never sees the new plan.
+    """
+    from mycelium.config import MyceliumConfig
+
+    monkeypatch.setattr(connector, "should_wake", lambda *a, **k: False)
+    reindexed: list[str] = []
+
+    async def _fake_reindex(config, room):
+        reindexed.append(room)
+
+    monkeypatch.setattr(connector, "reindex_after_knowledge", _fake_reindex)
+
+    async def _publish(content: dict) -> None:  # pragma: no cover - not called
+        pass
+
+    await connector.handle_inbound(
+        config=MyceliumConfig(),
+        daemon_cfg=None,  # ty: ignore[invalid-argument-type]
+        state=None,  # ty: ignore[invalid-argument-type]
+        room="demo",
+        handle="agent-a",
+        content=_knowledge("plan/tasks", "# Plan\n\n- [ ] a"),
+        publish=_publish,
+    )
+    assert reindexed == ["demo"]
+
+
+@pytest.mark.asyncio
+async def test_handle_inbound_skips_reindex_on_stale_base(monkeypatch):
+    """A stale-base (rejected) write is a no-op — it must not trigger a reindex."""
+    from mycelium.config import MyceliumConfig
+
+    monkeypatch.setattr(connector, "should_wake", lambda *a, **k: False)
+    # Seed a newer local v3 so the incoming v2 loses (last-write-wins).
+    connector.apply_knowledge_message("demo", _knowledge("plan/tasks", "# v3", version=3))
+
+    reindexed: list[str] = []
+
+    async def _fake_reindex(config, room):  # pragma: no cover - asserts not called
+        reindexed.append(room)
+
+    monkeypatch.setattr(connector, "reindex_after_knowledge", _fake_reindex)
+
+    async def _publish(content: dict) -> None:  # pragma: no cover - not called
+        pass
+
+    await connector.handle_inbound(
+        config=MyceliumConfig(),
+        daemon_cfg=None,  # ty: ignore[invalid-argument-type]
+        state=None,  # ty: ignore[invalid-argument-type]
+        room="demo",
+        handle="agent-a",
+        content=_knowledge("plan/tasks", "# stale v2", version=2),
+        publish=_publish,
+    )
+    assert reindexed == []
+
+
+@pytest.mark.asyncio
+async def test_reindex_after_knowledge_posts_to_scoped_backend_endpoint(monkeypatch):
+    """The reindex helper POSTs to the room-scoped backend reindex endpoint."""
+    from mycelium.config import MyceliumConfig, ServerConfig
+
+    calls: list[str] = []
+
+    class _FakeResponse:
+        def raise_for_status(self) -> None:
+            pass
+
+    class _FakeClient:
+        def __init__(self, *a, **k) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a) -> None:
+            pass
+
+        async def post(self, url: str):
+            calls.append(url)
+            return _FakeResponse()
+
+    monkeypatch.setattr(connector.httpx, "AsyncClient", _FakeClient)
+    config = MyceliumConfig(server=ServerConfig(api_url="http://host-b:8000"))
+
+    await connector.reindex_after_knowledge(config, "demo")
+    assert calls == ["http://host-b:8000/api/rooms/demo/reindex"]
+
+
+@pytest.mark.asyncio
+async def test_reindex_after_knowledge_swallows_errors(monkeypatch):
+    """A reindex failure never propagates — the markdown is already canonical."""
+    from mycelium.config import MyceliumConfig
+
+    class _BoomClient:
+        def __init__(self, *a, **k) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a) -> None:
+            pass
+
+        async def post(self, url: str):
+            raise ConnectionError("backend down")
+
+    monkeypatch.setattr(connector.httpx, "AsyncClient", _BoomClient)
+    # Must not raise.
+    await connector.reindex_after_knowledge(MyceliumConfig(), "demo")

@@ -299,3 +299,41 @@ async def test_per_handle_lock_serializes_spawns(monkeypatch: pytest.MonkeyPatch
 
     assert max_in_flight == 1  # the per-handle lock never lets two turns overlap
     assert len(published) == 2
+
+
+# ── remote endpoint plumbing (Step 9: cross-machine) ──────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_run_connector_uses_configured_remote_node_endpoint(monkeypatch):
+    """The connector dials ``config.slim.node_endpoint`` — a remote LAN node, not
+    the localhost default — so ``mycelium connect <A-LAN-IP>`` actually points a
+    member host at host A's shared node (Step 9 remote endpoint plumbing)."""
+    from mycelium.config import SlimConfig
+    from mycelium.slim.client import SlimUnavailableError
+
+    dialed: list[str] = []
+
+    class _FakeClient:
+        def __init__(self, _identity: Any) -> None:
+            pass
+
+        async def connect(self, node: str) -> Any:
+            dialed.append(node)
+            # Break out of run_connector's reconnect loop cleanly.
+            raise SlimUnavailableError("no wheel in test")
+
+    monkeypatch.setattr(connector, "SlimClient", _FakeClient)
+
+    config = MyceliumConfig(
+        server=ServerConfig(api_url="http://localhost:8000"),
+        slim=SlimConfig(node_endpoint="http://host-a.lan:46357"),
+    )
+    await connector.run_connector(
+        config=config,
+        daemon_cfg=DaemonConfig(),
+        state=DaemonState(),
+        room="demo",
+        handle="agent-a",
+    )
+    assert dialed == ["http://host-a.lan:46357"]

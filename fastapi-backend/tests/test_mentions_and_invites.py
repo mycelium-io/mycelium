@@ -164,3 +164,42 @@ def test_request_invite_returns_none_for_present_member():
     manager, _managed = _manager_with_channel(members={"agent-x"})
     assert manager.request_invite(_ROOM, "agent-x", requested_by="julia") is None
     assert manager.request_invite(_ROOM, room_channels.BACKEND_AGENT, requested_by="julia") is None
+
+
+# ── cross-host consent: the invitee is addressed by identity, not by host ──────
+
+
+@pytest.mark.asyncio
+async def test_accept_invites_remote_agent_by_identity_only(monkeypatch):
+    """Cross-host consent (Step 9): accepting resolves the invitee purely by its
+    ``workspace/room/agent`` SLIM identity — never a host or endpoint — so the
+    moderator invites the same member whether its connector runs on this machine
+    or another one on the shared node. This is why the consent → invite → join
+    path needs no new cross-machine mechanism: membership is identity-addressed.
+    """
+    manager, managed = _manager_with_channel(members=set())
+
+    # Bindings aren't installed in the unit env; record the identity the invite
+    # would resolve and hand back an opaque token in place of a SLIM Name.
+    resolved: list[tuple[str, str, str]] = []
+
+    def _fake_name(ws: str, room: str, agent: str) -> object:
+        resolved.append((ws, room, agent))
+        return object()
+
+    monkeypatch.setattr(room_channels, "to_slim_name", _fake_name)
+    cast(MagicMock, managed.client).invite = AsyncMock()  # the real manager.invite() path runs
+    cast(MagicMock, managed.persister).note_join.return_value = False  # no re-serve
+
+    result = await manager.publish_human(_ROOM, sender="julia", text="@remote-bob join us")
+    assert result is not None
+    invite = result.invites[0]
+    assert invite.agent == "remote-bob"
+
+    accepted = await manager.accept_invite(invite.id)
+    assert accepted is not None and accepted.status == invites.ACCEPTED
+
+    # Addressed by identity only (no host/endpoint) — host-independent membership.
+    assert resolved == [("mycelium", _ROOM, "remote-bob")]
+    cast(AsyncMock, managed.client.invite).assert_awaited_once()
+    assert "remote-bob" in managed.members
