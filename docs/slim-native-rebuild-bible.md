@@ -488,6 +488,35 @@ Base: `/Users/juliavalenti/Documents/GitHub/mycelium`. Classifications: **[keep]
 
 ---
 
+## Known debt — the CLI/backend SLIM+L9 duplication (address before Step 7)
+
+Step 5 gave the daemon its own copy of the SLIM+L9 primitives at
+`mycelium-cli/src/mycelium/slim/` (`naming.py`, `client.py`, `l9.py`) plus the
+`_room_episode`/`_room_topic` URN helpers in `daemon/connector.py`, mirroring
+`fastapi-backend/app/services/` (`slim_client.py`, `l9.py`). This is **necessary** — the
+thin `uv tool` CLI can't import the FastAPI/ML backend — but it is a **copy**, and drift
+is silent and vicious: if `mint_shared_secret` / the master-secret literal / the
+`workspace/room` scope diverge, MLS keys mismatch and connectors **silently can't join**
+(no app-level error); envelope-shape or URN drift silently drops or misroutes messages.
+
+Today the copies are byte-for-byte faithful and the **live integration slice** catches
+drift end-to-end — but only in the guarded suite, so a divergence can **merge green**.
+
+Fix ladder:
+- **(A) now — fast-gate golden test.** Freeze the expected secret digest + a golden envelope
+  dict as constants; *both* packages assert their output against them, so a drift goes red
+  at the merge gate (no node needed).
+- **(B) before Step 7 — extract a shared package.** A small `mycelium-slim-l9` (or fold into
+  the `mycelium-client` pattern) that backend + CLI both depend on: one source of truth for
+  naming/secret/envelope/URNs; delete the copy. Do it **before Steps 7–8**, which add
+  cognition-engine + `knowledge` envelope surface and would otherwise grow the duplication.
+- (C) a heavier protocol lib / codegen — overkill for now.
+
+Severity: medium — real debt, not a disaster (the duplication is small and well-bounded),
+but the failure mode is silent. Related watch items live on tracking PR #418.
+
+---
+
 # PART V — THE BUILD PLAN
 
 Execute in order. This is a **build sequence**, not a phased shipping plan — it all lands as
