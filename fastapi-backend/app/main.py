@@ -98,6 +98,23 @@ async def lifespan(app: FastAPI):
     room_channel_manager.on_converged = app.state.plan_sync.handle_converged
     logger.info("plan-sync consumer wired (commit:converged → plan_compiler + knowledge)")
 
+    # Re-provision every room's SLIM channel on startup (H3/§F). Provision is
+    # idempotent and best-effort; without this, a backend restart left every
+    # existing room channel-less (a zombie) with no recovery path until it was
+    # deleted + recreated. Runs after the aligner/plan-sync hooks are wired so
+    # each restarted persister picks them up.
+    from app.services.filesystem import list_room_names
+
+    reprovisioned = 0
+    for _room in list_room_names():
+        try:
+            if await room_channel_manager.provision(_room) is not None:
+                reprovisioned += 1
+        except Exception:
+            logger.exception("startup re-provision failed for room %s", _room)
+    if reprovisioned:
+        logger.info("re-provisioned %d room channel(s) on startup", reprovisioned)
+
     yield
     stop_watcher()
     stop_event_sweep()

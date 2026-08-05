@@ -41,7 +41,14 @@ async def create_room(room: RoomCreate):
     if room.name in RESERVED_ROOMS:
         raise HTTPException(status_code=400, detail=f"'{room.name}' is a reserved system name")
     if room_exists(room.name):
-        raise HTTPException(status_code=400, detail="Room already exists")
+        # Idempotent (H3/§F): re-creating an existing room is a no-op on disk but
+        # (re)ensures its SLIM channel, so a caller can recover a channel-less
+        # room without a full backend restart. Metadata is left untouched.
+        await room_channels.manager.provision(room.name)
+        existing = _room_read(room.name)
+        if existing is None:
+            raise HTTPException(status_code=404, detail="Room not found")
+        return existing
 
     room_dir = get_room_dir(room.name)
     ensure_room_structure(room_dir)
