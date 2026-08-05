@@ -90,3 +90,19 @@ async def test_durable_inbox_reserves_missed_message_on_reconnect(tmp_path, monk
     ids = [e.header.message.id for e in received if e.header.message is not None]
     assert ids == [_MISSED_ID]
     assert received[0].header.kind.value == "exchange"
+
+
+@pytest.mark.asyncio
+async def test_aligner_observes_and_emits_converged_over_slim(tmp_path, monkeypatch):
+    """Step 7 DoD: @-summoning the aligner over a live node makes it observe a
+    seeded high-confidence exchange and broadcast commit:converged with metrics."""
+    # The engine writes an episode record to the data dir; isolate it.
+    monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))
+    from scripts.l9_slim_roundtrip import run_aligner_observe
+
+    commit = await run_aligner_observe(_ENDPOINT)
+
+    assert commit.header.kind.value == "commit"
+    assert commit.header.subkind == "converged"
+    metrics = commit.payload.data.get("metrics")
+    assert metrics is not None and metrics["mpc"] >= 0.6

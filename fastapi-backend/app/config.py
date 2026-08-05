@@ -62,6 +62,24 @@ class Settings(BaseSettings):
     # Master toggle: set false to disable SLIM room provisioning outright.
     SLIM_ENABLED: bool = True
 
+    # SIEP aligner — the first cognition engine (Step 7). Dormant by default:
+    # nothing runs until the reserved handle is @-summoned on a room channel.
+    # A reserved handle is how a summon of the engine is told apart from an
+    # @-mention of a normal teammate (bible §10 / Step 7 trap).
+    ALIGNER_HANDLE: str = "aligner"
+    # "observer" (one-shot: read transcript, emit verdict) or "driver" (run
+    # rounds, prompting participants, then emit).
+    ALIGNER_MODE: str = "observer"
+    # MPC at/above this converges; below rejects (mirrors the old CFN
+    # validation-intervention default of 0.6).
+    ALIGNER_THRESHOLD: float = 0.6
+    # Driver round cap — a hard bound so the loop always terminates.
+    ALIGNER_MAX_ROUNDS: int = 3
+    # Per-round wait for participant replies before scoring what arrived.
+    ALIGNER_ROUND_TIMEOUT_S: float = 30.0
+    # How often the driver polls the transcript for round replies.
+    ALIGNER_POLL_INTERVAL_S: float = 0.2
+
     model_config = SettingsConfigDict(
         env_file=tuple(_env_files),
         env_file_encoding="utf-8",
