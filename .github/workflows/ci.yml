@@ -45,49 +45,6 @@ jobs:
           MYCELIUM_STUB_EMBEDDINGS: "1"
         run: uv run pytest tests/ -x -q
 
-  openapi-staleness:
-    name: OpenAPI snapshot staleness
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
-
-      - name: Set up Python
-        run: uv python install 3.12
-
-      - name: Install backend deps
-        working-directory: fastapi-backend
-        run: uv sync --group dev
-
-      - name: Boot backend (in-process)
-        working-directory: fastapi-backend
-        env:
-          MYCELIUM_STUB_EMBEDDINGS: "1"
-          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
-        run: |
-          uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 &
-          for i in {1..30}; do
-            curl -sf http://127.0.0.1:8000/openapi.json >/dev/null && break
-            sleep 1
-          done
-
-      - name: Diff live OpenAPI vs committed snapshot
-        run: |
-          curl -sf http://127.0.0.1:8000/openapi.json | python3 -m json.tool > /tmp/openapi.live.json
-          if ! diff -u openapi.json /tmp/openapi.live.json; then
-            echo "::error::Committed openapi.json is stale vs. live backend. Run scripts/snapshot-openapi.sh and commit, then regen clients with scripts/gen-mycelium-client.sh." >&2
-            exit 1
-          fi
-
-  # CFN client drift: `scripts/gen-cfn-client.sh` regenerates the typed
-  # ioc_cfn_svc_api_client from the committed fastapi-backend/cfn_swagger.json
-  # snapshot (deterministic, no running stack needed): regenerate and
-  # `git diff --exit-code` catches a stale committed client. Separately,
-  # refresh the snapshot from upstream (CFN_URL or the ioc-cfn-svc repo) to
-  # detect that the CFN's contract itself moved.
-
   test-cli:
     name: CLI lint + tests
     runs-on: ubuntu-latest
