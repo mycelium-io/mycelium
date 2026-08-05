@@ -16,9 +16,12 @@ installed), the calls degrade to no-ops so room CRUD and the unit suite stay
 green without a live fabric — the sole failure mode is "no SLIM channel," never
 "room create failed." A node-reachability pre-flight keeps the no-node path fast.
 
-Out of scope (Step 4): the durable inbox/persister that records the transcript
-and re-serves missed messages. This module provisions and invites; it does **not**
-run a receive loop.
+Step 4 adds the durable inbox/persister: on provision the moderator starts a
+long-lived :class:`~app.services.persister.RoomPersister` that consumes the
+channel — recording the transcript, re-serving missed messages to reconnecting
+members, and watching for ``@``-summon / ``commit:converged`` triggers. This
+module owns that task's start/stop lifecycle and surfaces the reconnect signal
+(a membership add for a handle the persister has seen before) into a re-serve.
 """
 
 from __future__ import annotations
@@ -34,6 +37,7 @@ from app.services.l9_slim import (
     L9SlimChannel,
     build_episode_abort_envelope,
 )
+from app.services.persister import ConvergedHook, RoomPersister, SummonHook
 from app.services.slim_client import (
     SlimClient,
     SlimIdentity,
@@ -60,6 +64,8 @@ class ManagedRoomChannel:
     channel: L9SlimChannel
     members: set[str] = field(default_factory=set)
     lifecycle: EpisodeLifecycle = field(default_factory=EpisodeLifecycle)
+    persister: RoomPersister | None = None
+    persister_task: asyncio.Task[None] | None = None
 
 
 class RoomChannelManager:
@@ -72,6 +78,11 @@ class RoomChannelManager:
         self._lock = asyncio.Lock()
         # Strong refs to in-flight background invites (see invite_in_background).
         self._tasks: set[asyncio.Task[bool]] = set()
+        # Trigger hooks handed to every persister. Skeletons by default (log
+        # only); Step 7 wires ``on_summon`` to the cognition-engine spawner and
+        # Step 8 wires ``on_converged`` to ``plan_compiler``.
+        self.on_summon: SummonHook | None = None
+        self.on_converged: ConvergedHook | None = None
 
     def get(self, room: str) -> ManagedRoomChannel | None:
         return self._channels.get(room)
@@ -121,8 +132,25 @@ class RoomChannelManager:
                 room=room, workspace=ws, client=client, channel=L9SlimChannel(client, session)
             )
             self._channels[room] = managed
+            self._start_persister(managed)
             logger.info("Provisioned SLIM channel for room %s (workspace=%s)", room, ws)
             return managed
+
+    def _start_persister(self, managed: ManagedRoomChannel) -> None:
+        """Attach and start the durable-inbox persister for a channel.
+
+        The consumer loop is long-lived; the task ref is held on the managed
+        channel so it isn't GC'd, and cancelled in :meth:`close`.
+        """
+        room = managed.room
+        managed.persister = RoomPersister(
+            room,
+            managed.channel,
+            members_provider=lambda: self.members(room),
+            on_summon=self.on_summon,
+            on_converged=self.on_converged,
+        )
+        managed.persister_task = asyncio.create_task(managed.persister.run())
 
     async def invite(self, room: str, agent: str) -> bool:
         """Invite ``agent`` into the room channel. Best-effort; returns success."""
@@ -139,6 +167,13 @@ class RoomChannelManager:
             logger.debug("SLIM invite skipped (room=%s agent=%s): %s", room, agent, exc)
             return False
         managed.members.add(agent)
+        # Durable inbox: a membership add for a handle the persister has already
+        # seen is a *reconnect* — re-serve its missed tail. Kept separate from the
+        # episode-abort path below: transcript continuity and episode lifecycle
+        # are orthogonal (a reconnect re-serves regardless of episode state, and a
+        # re-serve must not resurrect an aborted episode).
+        if managed.persister is not None and managed.persister.note_join(agent):
+            await managed.persister.reserve(agent)
         await self._enforce_membership_change(managed)
         return True
 
@@ -202,10 +237,19 @@ class RoomChannelManager:
             logger.warning("Failed to publish episode abort for %s: %s", episode, exc)
 
     async def close(self, room: str) -> None:
-        """Tear down the room's channel (moderator leaves; connection dropped)."""
+        """Tear down the room's channel (persister stopped; moderator leaves)."""
         managed = self._channels.pop(room, None)
         if managed is None:
             return
+        if managed.persister_task is not None:
+            managed.persister_task.cancel()
+            try:
+                await managed.persister_task
+            except asyncio.CancelledError:
+                pass
+            except Exception as exc:  # pragma: no cover - best-effort teardown
+                logger.debug("persister task teardown error for room %s: %s", room, exc)
+            managed.persister_task = None
         await managed.client.close()
         logger.info("Closed SLIM channel for room %s", room)
 

@@ -355,6 +355,22 @@ class SlimClient:
         await session.publish_async(data, None, None)
 
     @staticmethod
+    async def publish_to(
+        session: slim_bindings.Session, context: slim_bindings.MessageContext, data: bytes
+    ) -> None:
+        """Send ``data`` to the single member that produced ``context``.
+
+        Point-to-point over the group session (``publish_to_async``): the reply
+        is routed to ``context``'s source only, not fanned out to the whole
+        group. This is the transport the durable-inbox persister uses to
+        **re-serve** missed messages to one reconnecting agent (Step 4) without
+        re-delivering to everyone. ``context`` is a ``MessageContext`` captured
+        from an earlier inbound message from that member (see
+        :meth:`receive_message`). Best-effort, like :meth:`publish`.
+        """
+        await session.publish_to_async(context, data, None, None)
+
+    @staticmethod
     async def receive(session: slim_bindings.Session, *, timeout_s: float = 30.0) -> bytes:
         """Block for the next inbound broadcast on ``session`` and return its bytes.
 
@@ -362,3 +378,16 @@ class SlimClient:
         """
         message = await session.get_message_async(timeout=datetime.timedelta(seconds=timeout_s))
         return message.payload
+
+    @staticmethod
+    async def receive_message(
+        session: slim_bindings.Session, *, timeout_s: float = 30.0
+    ) -> slim_bindings.ReceivedMessage:
+        """Block for the next inbound message and return the whole message.
+
+        Unlike :meth:`receive` (payload bytes only), this preserves the
+        ``.context`` (a ``MessageContext`` carrying the sender's routable
+        source) so the persister can later :meth:`publish_to` that sender. The
+        returned object exposes ``.payload`` (bytes) and ``.context``.
+        """
+        return await session.get_message_async(timeout=datetime.timedelta(seconds=timeout_s))

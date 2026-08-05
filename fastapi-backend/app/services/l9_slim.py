@@ -59,9 +59,18 @@ def serialize_envelope(envelope: L9, *, extra: dict[str, Any] | None = None) -> 
     The envelope goes under the ``l9`` key so the wire shape matches every other
     coordination message; ``extra`` carries the human-facing payload agents read.
     """
+    return json.dumps(serialize_content(envelope, extra=extra)).encode("utf-8")
+
+
+def serialize_content(envelope: L9, *, extra: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The content dict an envelope rides in (``{**extra, "l9": <envelope>}``).
+
+    :func:`serialize_envelope` is this plus a JSON encode; the persister keeps
+    the dict form to record and re-serve.
+    """
     content: dict[str, Any] = dict(extra or {})
     content[CONTENT_L9_KEY] = l9.envelope_to_dict(envelope)
-    return json.dumps(content).encode("utf-8")
+    return content
 
 
 def deserialize_envelope(data: bytes) -> tuple[L9, dict[str, Any]]:
@@ -205,6 +214,10 @@ class L9SlimChannel:
         self._client = client
         self._session = session
         self._buffer = CausalOrderBuffer()
+        # message id -> full inbound content dict, so a released envelope can be
+        # paired back with the human-facing payload it arrived with (the buffer
+        # itself only holds envelopes). Popped as envelopes release.
+        self._content_by_id: dict[str, dict[str, Any]] = {}
 
     @property
     def session(self) -> slim_bindings.Session:
@@ -216,10 +229,50 @@ class L9SlimChannel:
 
         await SlimClient.publish(self._session, serialize_envelope(envelope, extra=extra))
 
-    async def receive(self, *, timeout_s: float = 30.0) -> list[L9]:
-        """Pull one broadcast; return the envelopes it makes causally deliverable."""
+    async def send_content_to(
+        self, context: slim_bindings.MessageContext, content: dict[str, Any]
+    ) -> None:
+        """Point-to-point re-send of a whole ``content`` dict to one member.
+
+        Used by the durable-inbox persister to re-serve a missed message: the
+        stored ``content`` already carries its ``l9`` envelope, so it is
+        republished verbatim (the receiver's own :class:`CausalOrderBuffer`
+        re-orders and de-duplicates it). ``context`` targets the reconnecting
+        member (see :meth:`SlimClient.publish_to`).
+        """
         from app.services.slim_client import SlimClient
 
-        data = await SlimClient.receive(self._session, timeout_s=timeout_s)
-        envelope, _content = deserialize_envelope(data)
-        return self._buffer.add(envelope)
+        await SlimClient.publish_to(self._session, context, json.dumps(content).encode("utf-8"))
+
+    async def receive(self, *, timeout_s: float = 30.0) -> list[L9]:
+        """Pull one broadcast; return the envelopes it makes causally deliverable."""
+        released, _arrived, _ctx = await self.receive_with_context(timeout_s=timeout_s)
+        return [env for env, _content in released]
+
+    async def receive_with_context(
+        self, *, timeout_s: float = 30.0
+    ) -> tuple[list[tuple[L9, dict[str, Any]]], L9, slim_bindings.MessageContext]:
+        """Pull one message; return ``(released, arrived, context)``.
+
+        ``released`` is the list of ``(envelope, content)`` pairs the arrival
+        makes causally deliverable (each content is the full inbound dict,
+        including its ``l9`` key — what the persister records and re-serves).
+        ``arrived`` is the envelope that just arrived (whose sender the persister
+        keys the reply ``context`` by, so it can later re-serve to that member).
+        ``context`` is the raw ``MessageContext`` for point-to-point replies.
+        """
+        from app.services.slim_client import SlimClient
+
+        message = await SlimClient.receive_message(self._session, timeout_s=timeout_s)
+        arrived, content = deserialize_envelope(message.payload)
+        mid = arrived.header.message.id if arrived.header.message is not None else None
+        if mid is not None:
+            self._content_by_id[mid] = content
+        released: list[tuple[L9, dict[str, Any]]] = []
+        for env in self._buffer.add(arrived):
+            rid = env.header.message.id if env.header.message is not None else None
+            paired = self._content_by_id.pop(rid, None) if rid is not None else None
+            if paired is None:
+                paired = serialize_content(env)
+            released.append((env, paired))
+        return released, arrived, message.context

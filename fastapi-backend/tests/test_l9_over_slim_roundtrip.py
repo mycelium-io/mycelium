@@ -71,3 +71,22 @@ async def test_mid_episode_membership_change_aborts_over_slim():
     assert abort.header.kind.value == "commit"
     assert abort.header.subkind == "rejected"
     assert abort.payload.data.get("reason") == "membership_change"
+
+
+@pytest.mark.asyncio
+async def test_durable_inbox_reserves_missed_message_on_reconnect(tmp_path, monkeypatch):
+    """Step 4 DoD: an agent offline during a broadcast is re-served it on rejoin.
+
+    agent-a joins, goes offline, misses agent-b's broadcast (SLIM keeps nothing
+    for the absent member, §7d), reconnects, and the backend persister re-serves
+    exactly the missed message — targeted, in order.
+    """
+    # Persister writes the transcript to the data dir; isolate it to a temp path.
+    monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))
+    from scripts.l9_slim_roundtrip import _MISSED_ID, run_durable_inbox
+
+    received = await run_durable_inbox(_ENDPOINT)
+
+    ids = [e.header.message.id for e in received if e.header.message is not None]
+    assert ids == [_MISSED_ID]
+    assert received[0].header.kind.value == "exchange"
