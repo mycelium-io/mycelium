@@ -106,3 +106,42 @@ async def test_aligner_observes_and_emits_converged_over_slim(tmp_path, monkeypa
     assert commit.header.subkind == "converged"
     metrics = commit.payload.data.get("metrics")
     assert metrics is not None and metrics["mpc"] >= 0.6
+
+
+@pytest.mark.asyncio
+async def test_converged_compiles_plan_and_syncs_memory_over_slim(tmp_path, monkeypatch):
+    """Step 8 DoD (same-machine): @-summon the aligner over a seeded exchange →
+    it emits commit:converged → the backend compiles plan/tasks.md → a knowledge
+    message carries the compiled plan, and applying it to a *second* local store
+    writes the markdown and updates that store's JSONL index."""
+    from unittest.mock import AsyncMock, patch
+
+    from app.services import memory_sync, plan_compiler, search_index
+    from app.services.filesystem import get_room_dir, read_memory_file
+    from scripts.l9_slim_roundtrip import _ALIGN_ROOM, run_aligner_converge_and_sync
+
+    store1 = tmp_path / "store1"
+    monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(store1 / ".mycelium"))
+
+    fake_plan = "# Converged Plan\n\n- [ ] ship the thing @agent-a\n- [ ] document it @agent-b"
+    with patch.object(plan_compiler, "compile_plan", AsyncMock(return_value=fake_plan)):
+        commit, knowledge = await run_aligner_converge_and_sync(_ENDPOINT)
+
+    assert commit.header.subkind == "converged"
+    assert memory_sync.is_knowledge(knowledge)
+
+    # First store: the backend compiled plan/tasks.md from the verdict.
+    plan1 = read_memory_file(get_room_dir(_ALIGN_ROOM), "plan/tasks")
+    assert plan1 is not None and "ship the thing" in plan1[1]
+
+    # Second store: the knowledge push carried the content; apply it there.
+    write = memory_sync.knowledge_write_from_envelope(knowledge)
+    assert write is not None and write.key == "plan/tasks"
+    store2 = tmp_path / "store2"
+    monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(store2 / ".mycelium"))
+    result = await memory_sync.apply_knowledge(_ALIGN_ROOM, write)
+    assert result.applied
+
+    plan2 = read_memory_file(get_room_dir(_ALIGN_ROOM), "plan/tasks")
+    assert plan2 is not None and "ship the thing" in plan2[1]
+    assert "plan/tasks" in {r["key"] for r in search_index.load_index(_ALIGN_ROOM)}

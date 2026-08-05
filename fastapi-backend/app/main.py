@@ -81,6 +81,7 @@ async def lifespan(app: FastAPI):
     # channel is provisioned, so all persisters pick it up. Dormant until an
     # @-summon of its reserved handle arrives — zero idle cost (bible §10).
     from app.services.aligner import AlignerEngine
+    from app.services.plan_sync import PlanSyncEngine
     from app.services.room_channels import manager as room_channel_manager
 
     app.state.aligner = AlignerEngine(room_channel_manager)
@@ -88,6 +89,13 @@ async def lifespan(app: FastAPI):
     logger.info(
         "SIEP aligner wired (@%s, mode=%s)", app.state.aligner.handle, settings.ALIGNER_MODE
     )
+
+    # Wire the converged→plan→memory-sync consumer (Step 8) onto the same seam:
+    # a ``commit:converged`` the aligner emits fires plan_compiler → plan/tasks.md
+    # and a ``knowledge`` push that syncs the compiled plan to every store (§11/§13).
+    app.state.plan_sync = PlanSyncEngine(room_channel_manager)
+    room_channel_manager.on_converged = app.state.plan_sync.handle_converged
+    logger.info("plan-sync consumer wired (commit:converged → plan_compiler + knowledge)")
 
     yield
     stop_watcher()

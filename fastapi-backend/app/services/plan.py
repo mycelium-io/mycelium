@@ -258,11 +258,14 @@ def write_plan_file(
     *,
     slug: str = DEFAULT_TASK_FILE,
     updated_by: str = "CognitiveEngine",
+    version: int = 1,
 ) -> Path:
     """Overwrite ``plan/{slug}.md`` with a full markdown body.
 
     Frontmatter is managed by ``write_memory_file``; ``load_plan`` strips it on
     read. Used by the plan compiler to materialize a negotiation consensus.
+    ``version`` bumps on a re-compile so the memory-sync ``knowledge`` stream
+    (bible §11) can order writes and detect a stale base.
     """
     from app.services.filesystem import write_memory_file
 
@@ -274,6 +277,7 @@ def write_plan_file(
         body.rstrip("\n") + "\n",
         created_by=updated_by,
         updated_by=updated_by,
+        version=version,
     )
 
 

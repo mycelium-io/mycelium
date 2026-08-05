@@ -43,6 +43,7 @@ from mycelium.daemon.dispatch import (
     load_manifest,
     load_notes,
 )
+from mycelium.filesystem import apply_knowledge, get_room_dir
 from mycelium.integrations import get_integration
 from mycelium.integrations._spawn_common import SpawnRequest
 from mycelium.slim import l9
@@ -181,6 +182,54 @@ def build_reply(
     )
 
 
+# ── Memory sync (bible §11) ──────────────────────────────────────────────────
+
+
+def apply_knowledge_message(room: str, content: dict) -> None:
+    """Write a ``knowledge`` message's carried memory into the local store.
+
+    Push-with-content (bible §11): the message *carries* the markdown, so this is
+    a pure local file write + reindex — never a fetch back over HTTP. Reindex is
+    implicit: the file lands under ``~/.mycelium/rooms/{room}/`` which the local
+    always-on backend's watcher picks up and re-embeds into the JSONL index.
+    Conflict policy is enforced in :func:`mycelium.filesystem.apply_knowledge`
+    (last-write-wins; a stale-base write is kept out, logged, and dropped).
+    """
+    data = l9.payload_data_of(content)
+    key = data.get("key")
+    body = data.get("content")
+    if not isinstance(key, str) or not key or not isinstance(body, str):
+        log.debug("knowledge message in %s carried no memory write — ignoring", room)
+        return
+    try:
+        version = int(data.get("version", 1))
+    except (TypeError, ValueError):
+        version = 1
+    created_by = str(data.get("created_by") or "CognitiveEngine")
+    updated_by = str(data.get("updated_by") or created_by)
+    result = apply_knowledge(
+        get_room_dir(room),
+        key=key,
+        content=body,
+        version=version,
+        created_by=created_by,
+        updated_by=updated_by,
+    )
+    if result.conflict:
+        cur = result.current or {}
+        log.warning(
+            "knowledge write to %s/%s rejected (stale base): local v%s by %s at %s (incoming v%s)",
+            room,
+            key,
+            cur.get("version"),
+            cur.get("updated_by"),
+            cur.get("updated_at"),
+            version,
+        )
+    elif result.applied:
+        log.info("knowledge write applied: %s/%s (v%d)", room, key, version)
+
+
 # ── Per-message dispatch (transport-agnostic) ────────────────────────────────
 
 
@@ -201,6 +250,14 @@ async def handle_inbound(
     and gates are unchanged, and the reply is published to the channel rather
     than POSTed over HTTP.
     """
+    # Memory sync (bible §11): a ``knowledge`` message carries markdown content —
+    # write it into the local store so the agent's working set updates mid-task.
+    # It never wakes a turn. Co-located connectors each apply it, but the apply is
+    # idempotent by version, so only the first actually writes; the rest skip.
+    if l9.kind_of(content) == l9.KNOWLEDGE_KIND:
+        apply_knowledge_message(room, content)
+        return
+
     if not should_wake(content, handle):
         return
 

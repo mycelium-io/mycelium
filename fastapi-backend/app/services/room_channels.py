@@ -62,6 +62,12 @@ if TYPE_CHECKING:
 # signature by binding the room.
 RoomSummonHook = Callable[[str, str, "L9"], None]
 
+# The room-aware converged hook, same shape reasoning as ``RoomSummonHook``: the
+# persister's ``ConvergedHook`` is ``(envelope)`` only, but the consumer wired to
+# it (Step 8's plan-sync) needs the room to compile that room's plan + sync its
+# memory. ``_converged_adapter`` binds the room down to the persister signature.
+RoomConvergedHook = Callable[[str, "L9"], None]
+
 logger = logging.getLogger(__name__)
 
 # The moderator's app id (third Name segment) on every room channel. Distinct
@@ -111,12 +117,12 @@ class RoomChannelManager:
         # Consent-gated invites raised by an @-mention of a not-present agent
         # (bible §12). The moderator only invites on accept.
         self._invites = PendingInviteRegistry()
-        # Trigger hooks handed to every persister. ``on_summon`` is wired at
-        # startup (``main.py``) to the SIEP aligner's ``handle_summon`` (Step 7);
-        # ``on_converged`` stays a skeleton until Step 8 wires it to
-        # ``plan_compiler``. Unset → the persister's log-only defaults.
+        # Trigger hooks handed to every persister, both room-aware and wired at
+        # startup (``main.py``): ``on_summon`` → the SIEP aligner's
+        # ``handle_summon`` (Step 7); ``on_converged`` → the plan-sync consumer's
+        # ``handle_converged`` (Step 8). Unset → the persister's log-only defaults.
         self.on_summon: RoomSummonHook | None = None
-        self.on_converged: ConvergedHook | None = None
+        self.on_converged: RoomConvergedHook | None = None
 
     def get(self, room: str) -> ManagedRoomChannel | None:
         return self._channels.get(room)
@@ -182,7 +188,7 @@ class RoomChannelManager:
             managed.channel,
             members_provider=lambda: self.members(room),
             on_summon=self._summon_adapter(room),
-            on_converged=self.on_converged,
+            on_converged=self._converged_adapter(room),
         )
         managed.persister_task = asyncio.create_task(managed.persister.run())
 
@@ -199,6 +205,23 @@ class RoomChannelManager:
 
         def adapter(handle: str, envelope: L9, _room: str = room) -> None:
             hook(_room, handle, envelope)
+
+        return adapter
+
+    def _converged_adapter(self, room: str) -> ConvergedHook | None:
+        """Bind ``room`` onto the room-aware ``on_converged`` hook.
+
+        Mirrors :meth:`_summon_adapter`: the persister calls its ``ConvergedHook``
+        with only ``(envelope)``, but the plan-sync consumer needs the room too.
+        When no hook is wired, return ``None`` so the persister keeps its log-only
+        default.
+        """
+        hook = self.on_converged
+        if hook is None:
+            return None
+
+        def adapter(envelope: L9, _room: str = room) -> None:
+            hook(_room, envelope)
 
         return adapter
 
