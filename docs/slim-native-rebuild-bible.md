@@ -939,3 +939,57 @@ Under `~/Documents/GitHub/_slim-research/`:
   npm `@agntcy/slim-bindings` · PyPI `slim-bindings`
 - L9/IOC: github.com/outshift-open/ioc-protocols-models
 - A2A (optional/future): github.com/a2aproject/A2A · JS: github.com/a2aproject/a2a-js
+
+---
+
+# PART VII — POST-SMOKE HARDENING (first full-stack run)
+
+The first full-stack smoke test (`docs/SLIM_SMOKE_TEST_FINDINGS.md`) proved the skeleton lives
+— a real `claude` agent wakes over SLIM and replies — but only after fixing **6 silent bugs**,
+and it surfaced a clear next phase. **The rewrite works, but it is fragile, half-visible in the
+UI, and the cognition payoff (aligner→converge→plan) is still unproven.** Do these **in order**;
+the ordering is by leverage, not size. Full repro for each: the findings doc.
+
+**Must-do before any merge to `main`:** revert the diagnostic `tracing.log_level: debug` on the
+`slim` node in `compose.yml` → `info`. Keep the real fixes (`SLIM_NODE_ENDPOINT`, keepalive,
+benign receive-timeout, `mark_delivered`, `LOG_LEVEL` env).
+
+**H1 — Observability (do FIRST; it multiplies everything else).** Every smoke bug was DEBUG-level
+or swallowed (§J; debts D3/D6). Promote SLIM/channel/persister/connector failures DEBUG→WARNING
+and add a **health/status surface** (channels provisioned/failed, persister alive, live members,
+re-serve/drop counts). "Nothing happens, logs green" is the default failure mode today; fix that
+and the rest of this list gets ~10× faster.
+
+**H2 — Unify the message store (§A) — DECIDED: option (b).** The **persister is the single
+writer** of a room's message record. For channel-backed rooms, `POST /messages` only publishes
+to SLIM; the persister records everything (human loopback via `ingest_local`, agents via
+receive) into the store the UI list reads *and* the live bus. No dual-write mirror. Finishes the
+migration `local_state` was left half-in and makes **agent replies visible in the UI** (today
+they reach `log/transcript.md` but never the UI's list surface).
+
+**H3 — Channel + persister lifecycle hardening (§B/§C/§D/§F as ONE pass).** The channel/persister
+is fragile and never recovers:
+- Persister **restarts on terminal error** (supervised task / done-callback), not a bare
+  `create_task` that dies to a zombie (§D).
+- **Disconnect/close are membership events, not fatal** — only *idle* timeouts are benign today
+  (§C).
+- **Membership tracks real SLIM presence** — add on join, **remove on disconnect** (§B; fixes
+  "already in group" + can't-re-invite).
+- **Re-provision existing rooms at startup** + make `room create` idempotent — today every
+  backend restart leaves all rooms channel-less zombies (§F).
+
+**H4 — The remaining footguns.**
+- **§E first-wake race (investigate):** after consent-accept the connector joins but the
+  triggering `@`-mention isn't delivered (`reserve()` runs before the member's receive loop is
+  ready). Last thing blocking a clean single-shot invite→wake.
+- **§G consent model (design fix, not a CLI):** don't require consent for a user's **own
+  registered agents** — consent-to-be-woken is for **foreign/cross-host** invites only
+  (hero-demo intent). Removes "CLI user can't wake their own agent" without adding a command.
+- **§H daemon singleton:** pidfile/flock, refuse/warn on a second daemon, detect duplicate
+  handle subscriptions; set `PYTHONUNBUFFERED=1` so connector logs are visible.
+- **§I node-side cleanup:** `room delete` should clear the node's subscription/route/recovery
+  state for the name (stale state across delete/recreate broke invites).
+
+**H5 — Prove Rung 4.** Re-run the smoke test past a stable single agent through
+**aligner → `commit:converged` → plan compiles → memory syncs**, with real agents. This is the
+actual value beat and remains unvalidated.
