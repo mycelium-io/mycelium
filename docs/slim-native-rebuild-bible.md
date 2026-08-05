@@ -525,6 +525,32 @@ but only in the guarded suite. Fix: (A) a fast-gate golden test both packages as
 then (B) extract a shared `mycelium-slim-l9` package **before Steps 7–8** grow the shared
 surface.
 
+**Status (A delivered; B deferred).** The fast-gate golden test is **shipped**:
+`slim-l9-golden.json` at the repo root freezes the shared wire constants (the
+`mint_shared_secret` digest for a known `workspace/room`, the master-secret /
+workspace / channel-topic / node literals, the `episode`/`topic` URN forms, and a
+golden serialized `exchange` envelope dict). Both suites read that **one** file and
+assert their own copy against it — `fastapi-backend/tests/test_slim_l9_golden.py`
+and `mycelium-cli/tests/test_slim_l9_golden.py`. One frozen source, two asserters:
+neither copy can drift without turning a **unit** gate red (previously drift was
+caught only by the guarded live-node slice). This closes the "merges green" gap.
+
+**Why B (the shared installable package) was deferred:** both delivery paths make a
+new shared *distribution* a cross-cutting release/packaging change, not a local
+refactor. The backend `Dockerfile` installs deps by parsing `pyproject.toml`'s
+`project.dependencies` and `pip install`-ing them from **PyPI**, then `COPY . .`
+with a build context scoped to `fastapi-backend/` only — a sibling path/workspace
+dependency is unreachable there. The end-user CLI install (`install.sh`) is a
+**single self-contained wheel** from GitHub releases (or `mycelium-cli` on PyPI);
+a path dep on a sibling package would neither be bundled into that wheel nor exist
+on PyPI, so the installed CLI would fail to import. Making B green end-to-end
+therefore means publishing/bundling a new package into the release-wheel + Docker
++ `install.sh` flows — numbered-step infra explicitly out of scope for this debt
+paydown, and a live risk to green installs. The genuinely-shared code is already
+stdlib-only and byte-for-byte identical on both sides, so (A) removes the
+*correctness* risk now; (B) remains the ideal and should land alongside the
+Step 7–8 packaging pass that revisits the release/Docker flows anyway.
+
 **D11 — the other harnesses will be stale.** The MVP migrates **claude_code** only.
 - **cursor** (cold_spawn) shares the daemon's SLIM connector path (`connector_targets`
   includes it) and the family-agnostic spawn, so it *probably works over SLIM already* — but

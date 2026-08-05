@@ -1,0 +1,83 @@
+{
+  "_comment": [
+    "Frozen SLIM+L9 wire-compat golden constants — the single source of truth both",
+    "the FastAPI backend (fastapi-backend/app/services/{slim_client,l9,l9_slim}.py)",
+    "and the CLI daemon (mycelium-cli/src/mycelium/slim/{naming,client,l9}.py +",
+    "daemon/connector.py) MUST reproduce byte-for-byte. See D2 in",
+    "docs/slim-native-rebuild-bible.md (Part IV, Known debt register).",
+    "",
+    "Both test suites read THIS file and assert their own primitives against it, so",
+    "the two copies cannot silently drift apart (a drift -> MLS group-key mismatch ->",
+    "connectors silently can't join, or messages get dropped/misrouted). If a change",
+    "to the shared wire shape is genuinely intended, update this file deliberately in",
+    "the same PR and both suites will re-lock to the new value.",
+    "",
+    "Tests: fastapi-backend/tests/test_slim_l9_golden.py,",
+    "mycelium-cli/tests/test_slim_l9_golden.py"
+  ],
+
+  "master_secret": "mycelium-dev-shared-secret-v1-do-not-use-in-prod",
+  "workspace": "mycelium",
+  "channel_topic": "room",
+  "min_secret_len": 32,
+  "node_endpoint": "http://127.0.0.1:46357",
+  "node_port": 46357,
+
+  "shared_secret": {
+    "_comment": "mint_shared_secret is keyed on workspace/room only (agent ignored). HMAC-SHA256(master_secret, 'workspace/room').hexdigest().",
+    "workspace": "acme",
+    "room": "planning",
+    "agent": "agent-7",
+    "expected_digest": "cd344d4fddb429d04ec0a8ec0934e077d0bd23e72ea9ecf482528953b5a11a6c"
+  },
+
+  "urn": {
+    "_comment": "Room-scoped episode/topic URN forms. Backend: l9.episode_urn(room, session) / l9.topic_urn(room). CLI connector: _room_episode(room) / _room_topic(room) with the 'live' session literal.",
+    "room": "acme",
+    "session": "live",
+    "expected_episode": "urn:ioc:mycelium:episode:acme:live",
+    "expected_topic": "urn:concept:mycelium:acme"
+  },
+
+  "envelope": {
+    "_comment": "A golden serialized L9 'exchange' reply content dict. The backend produces this via l9.envelope_to_dict(l9.build_envelope(kind=exchange, ...)); the CLI produces the same dict via l9.build_reply_content(...). The two serializers must agree byte-for-byte or a connector's reply fails the backend persister's parse_envelope.",
+    "inputs": {
+      "sender": "alice",
+      "recipients": ["bob"],
+      "episode": "ep1",
+      "parents": ["p1"],
+      "topic": "t1",
+      "message_id": "m1",
+      "payload_type": "reply",
+      "text": "hi"
+    },
+    "expected_content": {
+      "content": "hi",
+      "l9": {
+        "header": {
+          "protocol": "SSTP",
+          "subprotocol": "mycelium",
+          "version": "0.0.6",
+          "kind": "exchange",
+          "participants": {
+            "actors": [
+              { "id": "alice", "role": "agent" },
+              { "id": "bob", "role": "agent" }
+            ],
+            "groups": null
+          },
+          "message": {
+            "id": "m1",
+            "parents": ["p1"],
+            "episode": "ep1"
+          },
+          "context": { "topic": "t1" }
+        },
+        "payload": {
+          "type": "reply",
+          "data": {}
+        }
+      }
+    }
+  }
+}
