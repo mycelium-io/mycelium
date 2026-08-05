@@ -67,11 +67,6 @@ class Settings(BaseSettings):
     # A reserved handle is how a summon of the engine is told apart from an
     # @-mention of a normal teammate (bible §10 / Step 7 trap).
     ALIGNER_HANDLE: str = "aligner"
-    # "observer" (one-shot: read transcript, emit verdict), "driver" (run
-    # rounds, prompting participants, then emit), or "mediator" (Rung 1: run a
-    # NEGMAS SAO negotiation — @-address agents in turn, interpret their prose,
-    # and terminate the instant the mechanism reaches agreement).
-    ALIGNER_MODE: str = "observer"
     # MPC at/above this converges; below rejects (mirrors the old CFN
     # validation-intervention default of 0.6).
     ALIGNER_THRESHOLD: float = 0.6

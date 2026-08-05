@@ -71,9 +71,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-MODE_OBSERVER = "observer"
-MODE_DRIVER = "driver"
-MODE_MEDIATOR = "mediator"
 
 # Handles that are never a participant position: the engine itself, the backend
 # moderator, and the system actor the backend signs its own envelopes with.
@@ -159,7 +156,6 @@ class AlignerEngine:
         manager: RoomChannelManager,
         *,
         handle: str | None = None,
-        mode: str | None = None,
         threshold: float | None = None,
         max_rounds: int | None = None,
         round_timeout_s: float | None = None,
@@ -169,7 +165,6 @@ class AlignerEngine:
     ) -> None:
         self._manager = manager
         self._handle = handle if handle is not None else settings.ALIGNER_HANDLE
-        self._mode = mode if mode is not None else settings.ALIGNER_MODE
         self._threshold = threshold if threshold is not None else settings.ALIGNER_THRESHOLD
         self._max_rounds = max_rounds if max_rounds is not None else settings.ALIGNER_MAX_ROUNDS
         self._round_timeout_s = (
@@ -220,13 +215,13 @@ class AlignerEngine:
         task.add_done_callback(self._tasks.discard)
 
     async def _run_and_release(self, room: str) -> None:
+        # The mediator is the aligner — there is no mode to choose. A summon
+        # always drives a live NEGMAS SAO (Rung 1/2). The observer/driver methods
+        # below survive only for the live roundtrip scripts (scripts/
+        # l9_slim_roundtrip.py) pending their Rung-3 removal; production never
+        # reaches them.
         try:
-            if self._mode == MODE_MEDIATOR:
-                await self.mediate(room)
-            elif self._mode == MODE_DRIVER:
-                await self.drive(room)
-            else:
-                await self.observe(room)
+            await self.mediate(room)
         except Exception:
             logger.exception("aligner run failed on room %s", room)
         finally:

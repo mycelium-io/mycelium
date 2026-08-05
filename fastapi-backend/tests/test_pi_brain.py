@@ -209,7 +209,7 @@ def _engine(brain: str) -> Any:
     from app.services import aligner
 
     # _make_brain never touches the manager, so a bare sentinel is enough.
-    return aligner.AlignerEngine(object(), mode="mediator", brain=brain)  # type: ignore[arg-type]
+    return aligner.AlignerEngine(object(), brain=brain)  # type: ignore[arg-type]
 
 
 def test_make_brain_default_is_llm_sync() -> None:

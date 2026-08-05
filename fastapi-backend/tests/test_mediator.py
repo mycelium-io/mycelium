@@ -49,7 +49,6 @@ def _patch_llm(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _engine(manager: _FakeManager, **kw: Any) -> aligner.AlignerEngine:
     kw.setdefault("handle", "aligner")
-    kw.setdefault("mode", "mediator")
     kw.setdefault("round_timeout_s", 0.2)
     kw.setdefault("poll_interval_s", 0.01)
     kw.setdefault("max_steps", 12)

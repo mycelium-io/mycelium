@@ -143,7 +143,7 @@ async def test_observer_emits_converged_with_correct_metrics():
     managed = _FakeManaged(_ROOM, "mycelium", channel, persister)
     manager = _FakeManager(managed, ["agent-a", "agent-b", "aligner"])
 
-    verdict = await _engine(manager, mode="observer").observe(_ROOM)
+    verdict = await _engine(manager).observe(_ROOM)
 
     assert verdict is not None
     assert verdict["header"]["kind"] == "commit"
@@ -182,7 +182,7 @@ async def test_observer_below_threshold_emits_rejected():
     managed = _FakeManaged(_ROOM, "mycelium", channel, _FakePersister(records))
     manager = _FakeManager(managed, ["agent-a", "agent-b"])
 
-    verdict = await _engine(manager, mode="observer").observe(_ROOM)
+    verdict = await _engine(manager).observe(_ROOM)
 
     assert verdict is not None
     assert verdict["header"]["subkind"] == "rejected"
@@ -202,7 +202,7 @@ async def test_observer_ignores_human_and_engine_messages_when_scoring():
     managed = _FakeManaged(_ROOM, "mycelium", channel, _FakePersister(records))
     manager = _FakeManager(managed, ["agent-a", "agent-b"])
 
-    verdict = await _engine(manager, mode="observer").observe(_ROOM)
+    verdict = await _engine(manager).observe(_ROOM)
 
     assert verdict is not None
     assert verdict["header"]["subkind"] == "converged"
@@ -221,7 +221,7 @@ async def test_driver_converges_and_closes_episode():
     manager = _FakeManager(managed, ["agent-a", "agent-b", "aligner"])
 
     engine = _engine(
-        manager, mode="driver", max_rounds=3, round_timeout_s=0.2, poll_interval_s=0.01
+        manager, max_rounds=3, round_timeout_s=0.2, poll_interval_s=0.01
     )
     verdict = await engine.drive(_ROOM)
 
@@ -245,7 +245,7 @@ async def test_driver_terminates_at_round_cap_without_replies():
     manager = _FakeManager(managed, ["agent-a", "agent-b"])
 
     engine = _engine(
-        manager, mode="driver", max_rounds=2, round_timeout_s=0.05, poll_interval_s=0.01
+        manager, max_rounds=2, round_timeout_s=0.05, poll_interval_s=0.01
     )
     verdict = await asyncio.wait_for(engine.drive(_ROOM), timeout=5.0)
 
@@ -263,14 +263,14 @@ async def test_driver_terminates_at_round_cap_without_replies():
 @pytest.mark.asyncio
 async def test_summon_fires_only_for_the_reserved_handle():
     managed = _FakeManaged(_ROOM, "mycelium", _FakeChannel(), _FakePersister())
-    engine = _engine(_FakeManager(managed, []), mode="observer")
+    engine = _engine(_FakeManager(managed, []))
 
     called: list[str] = []
 
-    async def fake_observe(room: str) -> None:
+    async def fake_mediate(room: str) -> None:
         called.append(room)
 
-    engine.observe = fake_observe  # type: ignore[method-assign]
+    engine.mediate = fake_mediate  # type: ignore[method-assign]
 
     def _env(sender: str) -> Any:
         return l9.build_envelope(

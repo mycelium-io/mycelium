@@ -277,7 +277,7 @@ async def run_aligner_observe(endpoint: str = DEFAULT_NODE_ENDPOINT) -> L9:
     from app.services.aligner import AlignerEngine
 
     manager = RoomChannelManager(endpoint=endpoint, default_workspace=_WORKSPACE)
-    engine = AlignerEngine(manager, handle="aligner", mode="observer", threshold=0.6)
+    engine = AlignerEngine(manager, handle="aligner", threshold=0.6)
     manager.on_summon = engine.handle_summon  # wire BEFORE provision so the persister picks it up
     managed = await manager.provision(_ALIGN_ROOM)
     assert managed is not None and managed.persister is not None
@@ -335,7 +335,7 @@ async def run_aligner_converge_and_sync(
     from app.services.plan_sync import PlanSyncEngine
 
     manager = RoomChannelManager(endpoint=endpoint, default_workspace=_WORKSPACE)
-    aligner = AlignerEngine(manager, handle="aligner", mode="observer", threshold=0.6)
+    aligner = AlignerEngine(manager, handle="aligner", threshold=0.6)
     plan_sync = PlanSyncEngine(manager)
     # Wire BOTH seams before provision so the persister picks them up.
     manager.on_summon = aligner.handle_summon
@@ -400,7 +400,7 @@ async def run_consent_and_knowledge_to_bus(
     from app.services.plan_sync import PlanSyncEngine
 
     manager = RoomChannelManager(endpoint=endpoint, default_workspace=_WORKSPACE)
-    aligner = AlignerEngine(manager, handle="aligner", mode="observer", threshold=0.6)
+    aligner = AlignerEngine(manager, handle="aligner", threshold=0.6)
     plan_sync = PlanSyncEngine(manager)
     manager.on_summon = aligner.handle_summon
     manager.on_converged = plan_sync.handle_converged
