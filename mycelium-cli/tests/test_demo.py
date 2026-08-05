@@ -222,7 +222,7 @@ def test_provision_warns_when_no_auth_source(capsys: pytest.CaptureFixture[str])
         assert "--copy-auth-from" not in c  # nothing to copy → flag omitted
 
 
-def test_provision_no_model_for_non_openclaw() -> None:
+def test_provision_no_model_for_non_openclaw(tmp_path) -> None:  # noqa: ANN001
     spec = _spec()
     calls: list[list[str]] = []
 
@@ -233,11 +233,78 @@ def test_provision_no_model_for_non_openclaw() -> None:
     with (
         patch.object(demo, "_fetch_persona", return_value="persona"),
         patch.object(demo, "_run", side_effect=fake_run),
+        patch.object(demo, "_demo_workdir", return_value=tmp_path),
     ):
         demo._provision(spec, "cursor", model="m/x", room="r")
 
     for c in [c for c in calls if c[:2] == ["agent", "create"]]:
         assert "--model" not in c  # model only applied to openclaw
+
+
+# ── cold-spawn (claude_code / cursor) plumbing ──────────────────────────────────
+
+
+def test_provision_cold_spawn_subscribes_daemon_and_passes_cwd(tmp_path) -> None:  # noqa: ANN001
+    """claude_code: daemon must be subscribed to the room, and every agent needs a --cwd."""
+    spec = _spec()
+    calls: list[list[str]] = []
+
+    with (
+        patch.object(demo, "_fetch_persona", return_value="persona"),
+        patch.object(demo, "_run", side_effect=lambda args, **_: calls.append(args) or _ok()),
+        patch.object(demo, "_demo_workdir", side_effect=lambda room, handle: tmp_path / handle),
+    ):
+        demo._provision(spec, "claude_code", model=None, room="r")
+
+    # the daemon is subscribed to the room *before* agents are seeded
+    subs = [c for c in calls if c[:2] == ["daemon", "subscribe"]]
+    assert subs == [["daemon", "subscribe", "r"]]
+    creates = [c for c in calls if c[:2] == ["agent", "create"]]
+    assert len(creates) == len(spec["agents"])
+    for c in creates:
+        assert "--cwd" in c
+        cwd = c[c.index("--cwd") + 1]
+        assert cwd.endswith(tuple(a["handle"] for a in spec["agents"]))
+
+
+def test_provision_cold_spawn_aborts_if_daemon_subscribe_fails(tmp_path) -> None:  # noqa: ANN001
+    """A failed daemon subscribe is fatal — agents would never wake."""
+    spec = _spec()
+
+    def fake_run(args, *, capture=True):  # noqa: ANN001, ARG001
+        if args[:2] == ["daemon", "subscribe"]:
+            return subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="no daemon")
+        return _ok()
+
+    with (
+        patch.object(demo, "_fetch_persona", return_value="persona"),
+        patch.object(demo, "_run", side_effect=fake_run),
+        patch.object(demo, "_demo_workdir", return_value=tmp_path),
+        pytest.raises(typer.Exit),
+    ):
+        demo._provision(spec, "claude_code", model=None, room="r")
+
+
+def test_check_prereqs_flags_missing_daemon_for_cold_spawn() -> None:
+    """claude_code with no daemon running surfaces a blocking problem with the fix."""
+
+    class FakeCfg:
+        adapters = {"claude-code": {}}
+        llm = type("L", (), {"model": "anthropic/x"})()
+        server = type("S", (), {"api_url": "http://localhost:8000"})()
+
+    class FakeResp:
+        def raise_for_status(self) -> None:
+            return None
+
+    with (
+        patch("mycelium.config.MyceliumConfig.load", return_value=FakeCfg()),
+        patch("httpx.get", return_value=FakeResp()),
+        patch.object(demo, "_daemon_running", return_value=False),
+    ):
+        _cfg, problems = demo._check_prereqs("claude_code")
+
+    assert any("daemon isn't running" in p for p in problems)
 
 
 def test_provision_aborts_on_persona_fetch_failure() -> None:
