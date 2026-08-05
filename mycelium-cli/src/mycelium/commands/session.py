@@ -394,7 +394,10 @@ def await_tick(
         sse_params = [("room", r) for r in sse_room_scope]
         start = time.time()
 
-        with httpx.Client(timeout=None) as http, http.stream("GET", url, params=sse_params) as response:
+        with (
+            httpx.Client(timeout=None) as http,
+            http.stream("GET", url, params=sse_params) as response,
+        ):
             for line in response.iter_lines():
                 if timeout > 0 and (time.time() - start) >= timeout:
                     typer.echo(json_module.dumps({"type": "timeout", "seconds": timeout}))

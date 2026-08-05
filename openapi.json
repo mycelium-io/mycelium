@@ -879,7 +879,7 @@
                     "stream"
                 ],
                 "summary": "Stream Agent Events",
-                "description": "Server-Sent Events stream for a specific agent handle.\n\nDelivers coordination_tick and coordination_consensus events addressed to\nthis agent across all rooms \u2014 no room configuration required on the client.\nConnect with: curl -N http://localhost:8000/agents/{handle}/stream",
+                "description": "Server-Sent Events stream for a specific agent handle.\n\nDelivers coordination_tick and coordination_consensus events addressed to\nthis agent. Pass one or more ``?room=<name>`` query parameters to scope\ndelivery to a specific session \u2014 only events whose ``room_name`` exactly\nmatches one of the supplied values are forwarded. Without any ``room``\nparameter all events for the handle are delivered (legacy behaviour).\n\nConnect with: curl -N http://localhost:8000/agents/{handle}/stream\nConnect scoped: curl -N \"http://localhost:8000/agents/{handle}/stream?room=my-room:session:abc123\"",
                 "operationId": "stream_agent_events_api_agents__handle__stream_get",
                 "parameters": [
                     {
@@ -889,6 +889,19 @@
                         "schema": {
                             "type": "string",
                             "title": "Handle"
+                        }
+                    },
+                    {
+                        "name": "room",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            },
+                            "default": [],
+                            "title": "Room"
                         }
                     }
                 ],
