@@ -148,6 +148,91 @@ async def run_episode_abort(endpoint: str = DEFAULT_NODE_ENDPOINT) -> L9:
         await manager.close_all()
 
 
+_INBOX_ROOM = "durable-inbox-room"
+_INBOX_EPISODE = l9.episode_urn(_INBOX_ROOM, "inbox-run")
+_HELLO_ID = "hello-from-a"
+_MISSED_ID = "missed-while-offline"
+
+
+def _agent_reply(sender: str, message_id: str) -> L9:
+    return l9.build_envelope(
+        kind=Kind.exchange,
+        episode=_INBOX_EPISODE,
+        sender=sender,
+        recipients=[l9.SYSTEM_ACTOR_ID],
+        topic=l9.topic_urn(_INBOX_ROOM),
+        message_id=message_id,
+        payload_type="reply",
+        payload_data={"action": "offer"},
+    )
+
+
+async def _wait_for(pred, *, timeout: float = 10.0) -> None:
+    """Poll ``pred`` until true (the persister processes on its own task)."""
+    waited = 0.0
+    while not pred():
+        if waited >= timeout:
+            raise TimeoutError("condition not met in time")
+        await asyncio.sleep(0.1)
+        waited += 0.1
+
+
+async def run_durable_inbox(endpoint: str = DEFAULT_NODE_ENDPOINT) -> list[L9]:
+    """Prove the durable inbox end-to-end (Step 4 DoD).
+
+    The backend provisions a channel (starting its persister). ``agent-a`` joins
+    and speaks once — so the persister has a reply route to it — then goes offline
+    (dropped from membership). ``agent-b`` broadcasts a message while ``agent-a``
+    is gone; SLIM does *not* retain it (bible §7d). ``agent-a`` reconnects
+    (re-invited): the persister recognizes the reconnect and **re-serves** the
+    missed message point-to-point. Returns what ``agent-a`` received on rejoin —
+    the message it missed while offline.
+    """
+    manager = RoomChannelManager(endpoint=endpoint, default_workspace=_WORKSPACE)
+    managed = await manager.provision(_INBOX_ROOM)
+    assert managed is not None and managed.persister is not None
+    persister = managed.persister
+
+    agent_a = await SlimClient(SlimIdentity(_WORKSPACE, _INBOX_ROOM, "agent-a")).connect(endpoint)
+    agent_b = await SlimClient(SlimIdentity(_WORKSPACE, _INBOX_ROOM, "agent-b")).connect(endpoint)
+
+    try:
+        # agent-a joins and speaks once so the persister caches its reply route.
+        a_listen = asyncio.create_task(agent_a.listen_for_session())
+        await manager.invite(_INBOX_ROOM, "agent-a")
+        a_session = await a_listen
+        await L9SlimChannel(agent_a, a_session).send(_agent_reply("agent-a", _HELLO_ID))
+        await _wait_for(lambda: "agent-a" in persister._contexts)
+
+        # agent-a goes offline: dropped from the channel membership.
+        await manager.remove(_INBOX_ROOM, "agent-a")
+
+        # agent-b joins and broadcasts while agent-a is gone.
+        b_listen = asyncio.create_task(agent_b.listen_for_session())
+        await manager.invite(_INBOX_ROOM, "agent-b")
+        b_session = await b_listen
+        await L9SlimChannel(agent_b, b_session).send(_agent_reply("agent-b", _MISSED_ID))
+        await _wait_for(
+            lambda: any(r.message_id == _MISSED_ID for r in persister.log.undelivered("agent-a"))
+        )
+
+        # agent-a reconnects (same app, new group session): the re-invite is a
+        # membership add for a known handle → the persister re-serves the tail.
+        a_relisten = asyncio.create_task(agent_a.listen_for_session())
+        await manager.invite(_INBOX_ROOM, "agent-a")
+        a_session2 = await a_relisten
+        a_channel2 = L9SlimChannel(agent_a, a_session2)
+
+        received: list[L9] = []
+        while not received:
+            received.extend(await a_channel2.receive(timeout_s=15.0))
+        return received
+    finally:
+        await agent_a.close()
+        await agent_b.close()
+        await manager.close_all()
+
+
 async def _main(endpoint: str) -> int:
     received = await run_roundtrip(endpoint)
     ids = [e.header.message.id for e in received if e.header.message is not None]
@@ -161,6 +246,16 @@ async def _main(endpoint: str) -> int:
         print(f"MISMATCH — episode abort subkind {abort.header.subkind!r}", file=sys.stderr)
         return 1
     print(f"OK — mid-episode membership change aborted with commit:{abort.header.subkind}")
+
+    inbox = await run_durable_inbox(endpoint)
+    inbox_ids = [e.header.message.id for e in inbox if e.header.message is not None]
+    if inbox_ids != [_MISSED_ID]:
+        print(
+            f"MISMATCH — durable inbox re-served {inbox_ids}, expected {[_MISSED_ID]}",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"OK — durable inbox re-served missed message on reconnect: {inbox_ids}")
     return 0
 
 

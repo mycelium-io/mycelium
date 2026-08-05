@@ -5,10 +5,10 @@
 Messages API — POST + list + event-status PATCH.
 
 Backed by an in-memory store (SLIM-native rebuild, Step 1); publishes to the
-in-process bus so the SSE stream sees writes live. Messages move onto the SLIM
-channel + durable persister in Steps 3-4.
-
-# TODO(step3): messages ride the SLIM channel; the persister owns the transcript.
+in-process bus so the SSE stream sees writes live. The SLIM channel's durable
+transcript is owned by the persister (``services/persister.py``, Step 4); this
+HTTP path stays the UI's post/list surface until SSE/``stream.py`` retires
+(Step 10).
 """
 
 import logging
