@@ -506,6 +506,8 @@ list** (also mirrored on tracking PR #418). Scan the table; the two load-bearing
 | **D7** | **Fire-and-forget task not ref-held** — connector `_guarded_inbound` | Low | GC mid-spawn (rare) | strong-ref set + done-callback, as `room_channels.py` does |
 | **D8** | **Invite dedup + invite/`listen_for_session` race** | Low–Med | repeated joins / Step 6+ | dedup pending invites; reconcile invite-completion with the connector's listen |
 | **D9** | **Single-process backend** — all moderators/persisters/cursors in memory; no horizontal scaling | Low (known ceiling) | beyond single-host | out of MVP scope; documented ceiling |
+| **D10** | **Comment audit** — stale comments/docstrings left by the rewrite (removed CFN/CE/AgensGraph refs, orphaned `TODO(stepN)`, overclaiming docstrings e.g. D5) | Low | reading/maintaining the code | sweep + fix before declaring the rewrite done; pair with the CLAUDE.md/docs cleanup |
+| **D11** | **Stale agent harnesses** — openclaw/hermes plugins built on the removed CFN-tick-over-SSE model (broken SLIM-native); cursor untested over SLIM | Medium | post-MVP, when a non-claude adapter is used | per-adapter: migrate to SLIM vs. explicitly deprecate (see below) |
 
 **D1 — the security model is currently theater (the one to *not* forget).** MLS protects
 against a *node* reading traffic, but the group key is derived from a public literal, so the
@@ -522,6 +524,22 @@ app-level error). Today they're byte-for-byte faithful and the live slice catche
 but only in the guarded suite. Fix: (A) a fast-gate golden test both packages assert against,
 then (B) extract a shared `mycelium-slim-l9` package **before Steps 7–8** grow the shared
 surface.
+
+**D11 — the other harnesses will be stale.** The MVP migrates **claude_code** only.
+- **cursor** (cold_spawn) shares the daemon's SLIM connector path (`connector_targets`
+  includes it) and the family-agnostic spawn, so it *probably works over SLIM already* — but
+  it's **untested** (Step 5's slice mocks the `claude` binary). Cheapest to finish: run it
+  through a live slice.
+- **openclaw** and **hermes** (long_lived_gateway) are **broken**, not just untested: their
+  plugins subscribe to the backend's **SSE coordination-tick** stream and render ticks via
+  `route.ts` / the python gateway — a flow the rewrite **removed** in Step 0. They need their
+  delivery path rewritten to speak SLIM (embed a SLIM client or shell to the daemon) — the
+  "generalize the connector" work the plan deferred.
+
+Decision per adapter: **migrate vs. deprecate.** Given openclaw isn't dogfoodable internally
+and the vertical is coding/work agents, the honest option for openclaw/hermes may be
+**explicit deprecation until there's demand** rather than leaving them half-broken and
+looking supported. Don't ship them silently broken.
 
 ---
 
