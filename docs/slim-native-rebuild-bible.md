@@ -1018,3 +1018,23 @@ is fragile and never recovers:
 **H5 — Prove Rung 4.** Re-run the smoke test past a stable single agent through
 **aligner → `commit:converged` → plan compiles → memory syncs**, with real agents. This is the
 actual value beat and remains unvalidated.
+
+**H6 — Migrate the remaining agentic connectors to SLIM (realizes D11).** Only **claude_code**
+is proven end-to-end over SLIM. The others still ride the removed CFN-tick-over-SSE model and
+are the reason the openclaw CLI tests fail in CI (they shell to a `openclaw` binary / render a
+delivery path the rewrite deleted). Now that the daemon's SLIM connector path is hardened and
+proven (H1–H4: keepalive, supervised persister, presence, single-shot invite→wake→reply), that
+path is the migration target. Per adapter:
+- **cursor** (cold_spawn) already shares the daemon's connector path (`connector_targets`
+  includes it) and the family-agnostic spawn — so it *probably works over SLIM already*.
+  Cheapest: run it through a live slice to confirm, then it's done.
+- **openclaw / hermes** (long_lived_gateway) are **broken**, not just untested: their plugins
+  subscribe to the backend's old SSE coordination-tick stream (`route.ts` / the python gateway)
+  — a flow removed in Step 0. Rewrite their delivery to speak SLIM (embed a SLIM client, or
+  shell to the daemon's connector) — the "generalize the connector" work the plan deferred.
+- **Decision per adapter — migrate vs. deprecate.** Given openclaw isn't dogfoodable internally
+  and the vertical is coding/work agents, the honest option for openclaw/hermes may be
+  **explicit deprecation until there's demand** rather than shipping them silently broken. Until
+  then, the two openclaw `test_agent_onboard.py` tests should be skipped-when-no-binary /
+  width-robust so CI isn't red on a known-deferred adapter (they are environmental, not a
+  regression). Do NOT leave them looking supported.
