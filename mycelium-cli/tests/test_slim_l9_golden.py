@@ -90,6 +90,35 @@ def test_exchange_reply_serializes_to_golden():
     assert content == g["expected_content"]
 
 
+def test_knowledge_envelope_parses_to_golden_write():
+    """The connector parses the backend's ``knowledge:distillation`` envelope.
+
+    Guards the *parse* half of the memory-sync contract (Step 8, bible §11): given
+    the exact envelope the backend produces (frozen in the golden), the CLI's
+    ``l9.kind_of`` / ``l9.payload_data_of`` — the two the connector's
+    ``apply_knowledge_message`` reads through — must recover every carried write
+    field byte-for-byte. If the backend's produced shape and this parse ever drift,
+    this gate goes red instead of silently breaking cross-machine memory sync.
+    """
+    g = _golden()["knowledge"]
+    # The content dict a connector receives on the wire: the golden envelope under
+    # the additive ``l9`` key. (``content`` is empty — a knowledge push carries its
+    # payload in ``l9.payload.data``, not the human-text field.)
+    content = {"content": "", "l9": g["expected_envelope"]}
+
+    assert l9.kind_of(content) == l9.KNOWLEDGE_KIND
+
+    data = l9.payload_data_of(content)
+    w = g["write"]
+    assert data["key"] == w["key"]
+    assert data["content"] == w["content"]
+    assert data["version"] == w["version"]
+    assert data["base_version"] == w["base_version"]
+    assert data["created_by"] == w["created_by"]
+    assert data["updated_by"] == w["updated_by"]
+    assert data["updated_at"] == w["updated_at"]
+
+
 def test_channel_name_topic_matches_golden():
     """A room channel's app segment is the frozen default topic."""
     pytest.importorskip("slim_bindings")

@@ -25,6 +25,7 @@ import pytest
 
 from app.services import l9
 from app.services.l9_models import Kind
+from app.services.memory_sync import KnowledgeWrite, build_knowledge_envelope
 from app.services.slim_client import (
     _DEV_MASTER_SECRET,
     DEFAULT_CHANNEL_TOPIC,
@@ -89,6 +90,41 @@ def test_exchange_envelope_serializes_to_golden():
     )
     content = {"content": i["text"], "l9": l9.envelope_to_dict(envelope)}
     assert content == g["expected_content"]
+
+
+def test_knowledge_envelope_serializes_to_golden():
+    """The backend's serialized ``knowledge:distillation`` envelope is the golden.
+
+    Step 8 (bible §11) added the memory-sync wire shape: ``build_knowledge_envelope``
+    wraps a :class:`KnowledgeWrite` as a ``knowledge:distillation`` envelope the CLI
+    daemon parses and applies. ``build_knowledge_envelope`` mints a fresh random
+    ``message.id`` per call (it is not part of the shared contract), so the produced
+    id is normalized to the golden's placeholder before the byte-for-byte compare;
+    every other field must match exactly.
+    """
+    g = _golden()["knowledge"]
+    w = g["write"]
+    write = KnowledgeWrite(
+        key=w["key"],
+        content=w["content"],
+        version=w["version"],
+        base_version=w["base_version"],
+        created_by=w["created_by"],
+        updated_by=w["updated_by"],
+        updated_at=w["updated_at"],
+    )
+    envelope = build_knowledge_envelope(
+        room=g["room"],
+        write=write,
+        recipients=g["recipients"],
+    )
+    produced = l9.envelope_to_dict(envelope)
+    # The message id is a fresh UUID per build — freeze everything else, and check
+    # the id is a non-empty string separately (not a shared-contract value).
+    assert isinstance(produced["header"]["message"]["id"], str)
+    assert produced["header"]["message"]["id"]
+    produced["header"]["message"]["id"] = g["message_id_placeholder"]
+    assert produced == g["expected_envelope"]
 
 
 def test_channel_name_topic_matches_golden():
