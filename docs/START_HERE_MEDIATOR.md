@@ -4,6 +4,10 @@
 > architectural pivot, written so we can track it and look at it holistically as one feature.
 > Nothing here is committed to a release. The build plan front-loads the one cheap experiment
 > that can *falsify* the whole idea before we invest in the harness swap.
+>
+> **⇒ CURRENT ENTRY POINT: Rung 1.** Rung 0 (the behavioral de-risk — the whole bet) **PASSED**
+> — see the ledger and the build plan below, and `experiments/sao-mediator-spike/`. Start at
+> Rung 1: wire the proven mediator loop as the live `@aligner` over SLIM against real agents.
 
 You are picking up the **coordination redesign** that the H5 demo surfaced. H5 got a full
 `converge → plan → memory` run working with live agents (see
@@ -73,10 +77,20 @@ negotiation, not seven rounds of "we're agreed."
 - **The converge → plan → memory tail already works** (H5): aligner verdict → `plan_sync` →
   `plan_compiler` → `memory_sync`. We are replacing the *front* of that pipe, not the back.
 
-**NOT proven (the one thing this track must de-risk):**
-- **Can an LLM mediator reliably read natural-language agent chatter, map it into NEGMAS
-  offers/responses, and terminate correctly?** This is the whole bet. Everything else is
-  plumbing around it. **Falsify this first** (Rung 0 below) before building any harness.
+**Proven (Rung 0 — the whole bet, `experiments/sao-mediator-spike/`):**
+- **An LLM mediator drives a real NEGMAS SAO from natural-language chatter and terminates at
+  agreement.** Both halves hold: NL→SAO interpretation is reliable, and NEGMAS owns the stop
+  (converged in 2 steps, no restating tail — the anti-theatre property). The v1→v2 delta pinned
+  the design spec: bare-offer relaying to *stateless* agents deadlocks; the fix is **memory + a
+  brokering mediator + BATNA** (the "camp counselor" is the literal mechanism). v1 (amnesiac)
+  never converged; v2 (per-agent running history + mediator framing + "no deal = no rebalance")
+  converged and stopped. Same model, same personas — only the mediator's role changed.
+
+**Still open (Rung 1+ will surface these against real agents):**
+- Does it hold with **live SLIM agents** (not simulated personas) — real replies, real latency,
+  the daemon's cold-spawn turn model?
+- Concession dynamics at scale (more issues/agents, longer runs) and interpretation drift on
+  messier prose than the spike's tidy accept/reject.
 
 ## Target architecture
 
@@ -120,16 +134,22 @@ New (the SAO-specific orchestration + interpretation):
 
 ## Build plan (rungs — start where it can break)
 
-**Rung 0 — falsify the behavioral core (cheap, no harness).** A standalone Python script:
-NEGMAS `SAOMechanism` + an LLM interpreter, replayed over the **captured `demo-final`
-transcript** (already saved). It must (a) discover the issues/options, (b) drive the SAO from
-the real chatter, (c) land on **30/25**, and (d) **terminate at agreement** — not loop. If this
-holds, the rest is plumbing. If not, we learned the cheap way and rethink. *Do this first.*
+**Rung 0 — falsify the behavioral core (cheap, no harness). ✅ DONE — PASSED.**
+`experiments/sao-mediator-spike/` (litellm→haiku, *not* claude -p): NEGMAS `SAOMechanism` + an
+LLM interpreter + LLM-simulated personas. `mediator_spike.py` (v1, stateless) deadlocked but
+proved the NEGMAS drive + NL→SAO interpretation both work; `mediator_spike_v2.py` added memory +
+brokering + BATNA and **converged in 2 steps, terminating at agreement**. Finding baked into the
+dir's README and `project_mediator_pi_negmas` memory. **Don't repeat this — start at Rung 1.**
 
-**Rung 1 — the mediator drives live over SLIM, still on today's worker agents.** Wrap Rung 0 as
-the `@aligner` driver: on summon, open the episode, run NEGMAS rounds by `@`-addressing agents
-and reading replies, terminate on agreement, hand the `issue=value` map to `plan_sync`. Proves
-the mediator kills the theatre *before* touching the harness.
+**Rung 1 — the mediator drives live over SLIM, still on today's worker agents. ⇐ START HERE.**
+Port the *proven v2 loop* (`experiments/sao-mediator-spike/mediator_spike_v2.py`: discover →
+NEGMAS rounds → interpret prose → terminate on agreement) into the `@aligner` driver: on summon,
+open the episode, run rounds by `@`-addressing agents over SLIM and reading their real replies
+from the transcript, terminate on agreement, hand the `issue=value` map to `plan_sync`. Carry
+over the v1→v2 lesson — the mediator must give agents context (they have persistent memory via
+the room transcript today, Pi sessions later), broker, and surface BATNA. This proves the
+theatre is dead against *real* agents, before touching the Pi/OpenShell harness swap (Rung 2).
+Extension seams (publish/collect/episode) are mapped in "How it maps to what exists" above.
 
 **Rung 2 — swap the worker runtime to Pi + OpenShell.** Replace `claude -p` cold-spawn with Pi
 agents (`pi -p --session <id> --mode json`), OpenShell-sandboxed. Independent payoff
