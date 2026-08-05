@@ -95,6 +95,20 @@ def _iter_text(value: Any) -> Iterable[str]:
             yield from _iter_text(v)
 
 
+def parse_mentions(text: str) -> list[str]:
+    """Handles ``@``-mentioned in one plain-text string.
+
+    The backend's ``@``-parse (bible §12): map ``@agent-x`` tokens in a human's
+    message to L9 recipients. De-duplicated preserving first-seen order. A bare
+    ``word@host`` is **not** a mention (the ``@`` must start the string or follow
+    whitespace / ``(`` / ``<``), so an email address never wakes an agent.
+    """
+    seen: dict[str, None] = {}
+    for match in _SUMMON_RE.findall(text):
+        seen.setdefault(match, None)
+    return list(seen)
+
+
 def find_summons(content: dict[str, Any]) -> list[str]:
     """Handles ``@``-summoned in a message's human-facing content.
 
@@ -106,7 +120,7 @@ def find_summons(content: dict[str, Any]) -> list[str]:
         if key == "l9":
             continue
         for text in _iter_text(value):
-            for match in _SUMMON_RE.findall(text):
+            for match in parse_mentions(text):
                 seen.setdefault(match, None)
     return list(seen)
 
@@ -336,6 +350,10 @@ class RoomPersister:
         self.log = DeliveryLog(load_transcript(room))
         # handle -> most recent inbound MessageContext, for targeted re-serve.
         self._contexts: dict[str, slim_bindings.MessageContext] = {}
+        # Message ids ingested this process lifetime, so a message the backend
+        # publishes itself (the human proxy, Step 6) is recorded/fed to the bus
+        # exactly once even if SLIM loops the broadcast back to the moderator.
+        self._ingested_ids: set[str] = set()
 
     # -- membership signals (driven by RoomChannelManager) --
 
@@ -411,7 +429,23 @@ class RoomPersister:
             for envelope, content in released:
                 self._ingest(envelope, content)
 
+    def ingest_local(self, envelope: L9, content: dict[str, Any]) -> None:
+        """Ingest a message the moderator published itself (the human proxy).
+
+        The backend speaks for the human on the fabric (bible §12): it publishes
+        the human's ``exchange`` on the channel *and* records it here directly, so
+        the transcript and UI bus see it regardless of whether SLIM delivers a
+        broadcast back to its own sender. :meth:`_ingest` de-dupes by message id,
+        so a loopback of the same broadcast is a no-op.
+        """
+        self._ingest(envelope, content)
+
     def _ingest(self, envelope: L9, content: dict[str, Any]) -> None:
+        mid = envelope_message_id(envelope)
+        if mid is not None:
+            if mid in self._ingested_ids:
+                return
+            self._ingested_ids.add(mid)
         record = record_from(envelope, content)
         present = set(self._members_provider())
         self.log.record(record, delivered_to=present)

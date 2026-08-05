@@ -28,6 +28,7 @@ os.environ.setdefault("HF_HUB_OFFLINE", "1")
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.routes.invites import router as invites_router
 from app.routes.memory import router as memory_router
 from app.routes.messages import router as messages_router
 from app.routes.plan import agent_router as agent_context_router
@@ -126,6 +127,7 @@ app.add_middleware(
 # Core routes. Health endpoints stay top-level for orchestrator probes.
 app.include_router(rooms_router, prefix="/api")
 app.include_router(messages_router, prefix="/api")
+app.include_router(invites_router, prefix="/api")
 app.include_router(sessions_router, prefix="/api")
 app.include_router(stream_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")

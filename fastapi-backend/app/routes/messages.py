@@ -26,7 +26,7 @@ from app.schemas import (
     MessageRead,
     MessageType,
 )
-from app.services import local_state
+from app.services import local_state, room_channels
 from app.services.filesystem import room_exists
 
 logger = logging.getLogger(__name__)
@@ -87,7 +87,25 @@ async def send_message(room_name: str, payload: MessageCreate):
     if coord is not None:
         notify_payload["coordination_session_id"] = str(coord.id)
     notify_payload["room_name"] = channel
-    bus.publish(room_channel(channel), notify_payload)
+
+    # Human-in-the-room (Step 6): for a real room with a live SLIM channel, the
+    # backend publishes the human's message onto the channel as their proxy —
+    # ``@``-parsing recipients so in-room agents wake, and raising consent for
+    # absent mentions. The persister then feeds the UI bus, so we must NOT also
+    # bus.publish here (that would show the message twice — bible §12 trap).
+    # Coordination sub-rooms and the no-channel path keep the legacy bus feed.
+    published = False
+    if (
+        coord is None
+        and msg.message_type == MessageType.BROADCAST
+        and room_channels.manager.is_live(channel)
+    ):
+        result = await room_channels.manager.publish_human(
+            channel, sender=msg.sender_handle, text=msg.content
+        )
+        published = result is not None
+    if not published:
+        bus.publish(room_channel(channel), notify_payload)
 
     return MessageRead.model_validate(msg)
 
