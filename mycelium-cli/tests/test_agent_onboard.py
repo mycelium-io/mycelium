@@ -241,6 +241,7 @@ def test_agent_add_non_interactive_without_handle_errors() -> None:
 def test_agent_create_has_no_openclaw_agent_flag() -> None:
     """`create` is greenfield only — the adopt-only --openclaw-agent flag must
     live on `add`, not `create`."""
+    import click
     import typer
 
     from mycelium.cli import app
@@ -248,8 +249,12 @@ def test_agent_create_has_no_openclaw_agent_flag() -> None:
     # Introspect the commands' params rather than the rendered --help text: Typer's
     # Rich help renders an empty options table under CI (non-TTY), so asserting on
     # the help string is width/environment-fragile. The params are the source of
-    # truth for the create/add flag split regardless of rendering.
-    agent = typer.main.get_command(app).commands["agent"]
+    # truth for the create/add flag split regardless of rendering. (isinstance
+    # guards narrow Command->Group so ty is happy and it's runtime-safe.)
+    cli = typer.main.get_command(app)
+    assert isinstance(cli, click.Group)
+    agent = cli.commands["agent"]
+    assert isinstance(agent, click.Group)
     create_opts = {o for p in agent.commands["create"].params for o in getattr(p, "opts", [])}
     add = agent.commands["add"]
 
