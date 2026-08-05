@@ -98,9 +98,14 @@ negotiation, not seven rounds of "we're agreed."
 
 ## Target architecture
 
-- **All participants are Pi coding agents**, one framework, sandboxed by OpenShell, driven by
-  the mycelium-configured LLM via `pi-ai`. Retire `claude -p` cold-spawn. Workers keep the good
-  coding-agent abstractions (skills, tools, bash); they just *speak* in the room.
+- **Pi is the runtime for mycelium's *internal* agents — not for user agents.** The SAO
+  mediator (and, as they land, the semantic-negotiation NEGMAS owner and any other
+  backend-run cognition agent) run on Pi (`pi -p --session <id> --mode json`), OpenShell-
+  sandboxed, driven by the mycelium-configured LLM. **User/participant agents keep whatever
+  framework they already use** — claude_code, cursor, hermes, openclaw. We do **not** homogenize
+  them onto Pi; the mediator just `@`-addresses whatever runtime answers on the channel. (An
+  earlier draft of this doc said "all participants are Pi coding agents" — that was wrong and
+  is the source of the Rung-2 drift; see `START_HERE_MEDIATOR_RUNG2.md`.)
 - **The mediator is a long-lived agent for the duration of one negotiation.** Recommended
   factoring for the Node/Python seam (NEGMAS is Python, Pi is Node):
   > The mediator is a **Python** process that holds the NEGMAS `SAOMechanism` natively
@@ -156,9 +161,13 @@ the room transcript today, Pi sessions later), broker, and surface BATNA. This p
 theatre is dead against *real* agents, before touching the Pi/OpenShell harness swap (Rung 2).
 Extension seams (publish/collect/episode) are mapped in "How it maps to what exists" above.
 
-**Rung 2 — swap the worker runtime to Pi + OpenShell.** Replace `claude -p` cold-spawn with Pi
-agents (`pi -p --session <id> --mode json`), OpenShell-sandboxed. Independent payoff
-(provider-agnostic, containerized, self-hostable) and independent risk from the mediator.
+**Rung 2 — give mycelium's *internal* agents a Pi + OpenShell runtime.** Move the mediator's
+cognitive brain off stateless in-process `litellm` calls onto a persistent, OpenShell-sandboxed
+Pi session (`pi -p --session <id> --mode json`), dropped into the existing `mediator.py:llm_sync`
+seam. Same for the semantic-negotiation NEGMAS owner as it lands. **User agents are untouched** —
+this is *not* a worker-runtime swap. Independent payoff (session memory across SAO rounds,
+provider-agnostic, sandboxed) and independent risk from the mediator loop. **Not** the wake-up
+problem — that stays a separate, per-framework concern (bible §10/§12); Pi does not paper over it.
 
 **Rung 3 — retire the old surface.** Remove the backend SIEP observer engine and the
 `parse_position_marker` reply-marker hack; agents go back to markerless prose (the mediator
@@ -169,7 +178,11 @@ interprets). Update the skill/preamble.
 - The mediator is an **agent that runs NEGMAS**, not re-ported SAO math in the backend.
 - **NEGMAS owns termination.** Agreement is when the mechanism says so; the mediator does not
   "decide to stop."
-- **One framework: Pi coding agents** for all participants, OpenShell-sandboxed.
+- **Pi + OpenShell is the runtime for mycelium's *internal* agents only** (the mediator, the
+  neg engines). **User/participant agents keep their own framework** — Pi is never imposed on
+  them, and homogenizing all participants onto one runtime is explicitly *not* the goal.
+- **Wake-up / automatic invocation is a separate, per-framework concern** (bible §10/§12). Pi
+  is not the wake-up mechanism; do not conflate the two.
 - Agents are **not** required to emit structured markers; the mediator interprets prose.
 
 ## Open questions (each has a recommended default — use it, note it, flag it)
@@ -189,7 +202,9 @@ interprets). Update the skill/preamble.
 - `app/services/aligner.py` — the observer/driver SIEP engine (replaced by the mediator agent).
 - `daemon/connector.py:parse_position_marker` + the preamble's "position marker" block (the
   H5 confidence-marker hack — no longer needed once the mediator interprets prose).
-- `claude -p` cold-spawn worker runtime (→ Pi + OpenShell).
+- The mediator's stateless in-process `litellm` brain (`mediator.py:llm_sync`) → a persistent,
+  OpenShell-sandboxed Pi session (Rung 2). **The user-facing `claude -p` / cursor / etc. worker
+  runtimes are NOT retired** — those stay; only mycelium's *internal* agent brain moves to Pi.
 
 ## Prereqs
 

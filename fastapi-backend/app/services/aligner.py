@@ -62,6 +62,8 @@ from app.services.l9_slim import serialize_content
 from app.services.room_channels import BACKEND_AGENT
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from app.services.l9_episode import EpisodeState
     from app.services.l9_models import L9
     from app.services.persister import RoomPersister, TranscriptRecord
@@ -163,6 +165,7 @@ class AlignerEngine:
         round_timeout_s: float | None = None,
         poll_interval_s: float | None = None,
         max_steps: int | None = None,
+        brain: str | None = None,
     ) -> None:
         self._manager = manager
         self._handle = handle if handle is not None else settings.ALIGNER_HANDLE
@@ -178,6 +181,10 @@ class AlignerEngine:
         self._max_steps = (
             max_steps if max_steps is not None else settings.ALIGNER_MEDIATOR_MAX_STEPS
         )
+        # Rung 2 — which cognitive runtime backs the mediator (an *internal*
+        # agent). "litellm" (default) or "pi". Only the engine's own brain; user
+        # participant agents are unaffected. See ``_make_brain``.
+        self._brain = brain if brain is not None else settings.ALIGNER_BRAIN
         # Rooms with a run in flight — a re-summon while active is ignored.
         self._active: set[str] = set()
         # Strong refs to scheduled runs so they aren't GC'd mid-flight.
@@ -385,11 +392,13 @@ class AlignerEngine:
             joined_intents="aligner mediate: converge on the open question via SAO",
         )
         try:
+            brain = self._make_brain(episode)
             positions = self._opening_positions(persister, participants)
             issues = await asyncio.to_thread(
                 mediator.discover_issues,
                 "Converge on the room's open question — agree one value per issue.",
                 positions,
+                llm=brain,
             )
             if not issues:
                 logger.info("aligner (mediator) room %s: no issues discovered; rejecting", room)
@@ -411,6 +420,7 @@ class AlignerEngine:
                     managed, persister, handle, episode, topic, prompt, round_n
                 ),
                 turn_timeout_s=self._round_timeout_s,
+                llm=brain,
                 on_reading=lambda handle, reading, proposing: self._fold_reading(
                     ep, handle, reading, proposing
                 ),
@@ -438,6 +448,40 @@ class AlignerEngine:
             )
         finally:
             await self._manager.close_episode(room)
+
+    def _make_brain(self, episode: str) -> Callable[..., str]:
+        """Pick the mediator's cognitive runtime for this negotiation (Rung 2).
+
+        Default ``"litellm"`` returns the stateless
+        :func:`app.services.mediator.llm_sync` — nothing changes where Pi isn't
+        configured. ``"pi"`` returns a fresh :class:`~app.services.pi_brain.PiBrain`
+        bound to a per-episode ``--session`` file so the *internal* agent keeps
+        real memory across SAO rounds. Only the engine's own brain is swapped;
+        user participant agents are untouched (they answer over SLIM as before).
+        """
+        from app.services import mediator
+
+        if self._brain != "pi":
+            return mediator.llm_sync
+
+        import re
+        import tempfile
+        from pathlib import Path
+
+        from app.services.pi_brain import PiBrain
+
+        slug = re.sub(r"[^A-Za-z0-9._-]+", "-", episode).strip("-") or "align"
+        session_dir = Path(tempfile.gettempdir()) / "mycelium-pi-sessions"
+        session_dir.mkdir(parents=True, exist_ok=True)
+        return PiBrain(
+            session_path=session_dir / f"{slug}.jsonl",
+            model=settings.LLM_MODEL,
+            api_key=settings.LLM_API_KEY,
+            base_url=settings.LLM_BASE_URL,
+            binary=settings.ALIGNER_PI_BINARY,
+            timeout_s=settings.ALIGNER_PI_TIMEOUT_S,
+            openshell=settings.ALIGNER_PI_OPENSHELL,
+        )
 
     def _opening_positions(
         self, persister: RoomPersister, participants: list[str]

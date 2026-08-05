@@ -86,6 +86,22 @@ class Settings(BaseSettings):
     # well above the participant count so several proposer rotations can happen
     # (spike used 20).
     ALIGNER_MEDIATOR_MAX_STEPS: int = 20
+    # Mediator brain runtime (Rung 2) — the cognitive engine behind the SAO
+    # mediator, an *internal* agent. "litellm" (default): a stateless
+    # litellm.completion per turn (mediator.llm_sync). "pi": a persistent,
+    # optionally OpenShell-sandboxed `pi -p --session <id> --mode json` session
+    # that gives the internal agent real memory across SAO rounds. This ONLY
+    # swaps mycelium's own cognition runtime — user/participant agent runtimes
+    # (claude_code, cursor, …) are untouched; Pi is never imposed on them.
+    ALIGNER_BRAIN: str = "litellm"
+    # Path/name of the `pi` binary when ALIGNER_BRAIN="pi".
+    ALIGNER_PI_BINARY: str = "pi"
+    # Wrap each pi session in an OpenShell sandbox when true. Off by default:
+    # `openshell` may not be installed and the sandbox path is a live-validation
+    # step — the wrap is a config flip, not a code change (pi_brain._sandbox_wrap).
+    ALIGNER_PI_OPENSHELL: bool = False
+    # Per-turn wall-clock bound (seconds) on one pi brain call before it is killed.
+    ALIGNER_PI_TIMEOUT_S: float = 120.0
 
     model_config = SettingsConfigDict(
         env_file=tuple(_env_files),
