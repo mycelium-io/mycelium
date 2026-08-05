@@ -27,17 +27,21 @@ module owns that task's start/stop lifecycle and surfaces the reconnect signal
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from dataclasses import dataclass, field
 
 from app.config import settings
 from app.services import l9
+from app.services.invites import ACCEPTED, DECLINED, QUEUED, PendingInvite, PendingInviteRegistry
+from app.services.l9_models import Kind
 from app.services.l9_slim import (
     EpisodeLifecycle,
     L9SlimChannel,
     build_episode_abort_envelope,
+    serialize_content,
 )
-from app.services.persister import ConvergedHook, RoomPersister, SummonHook
+from app.services.persister import ConvergedHook, RoomPersister, SummonHook, parse_mentions
 from app.services.slim_client import (
     SlimClient,
     SlimIdentity,
@@ -68,6 +72,20 @@ class ManagedRoomChannel:
     persister_task: asyncio.Task[None] | None = None
 
 
+@dataclass
+class HumanPublishResult:
+    """The outcome of publishing a human's message onto a room channel.
+
+    ``recipients`` are the L9 recipients the ``@``-parse resolved (present members
+    that get woken); ``invites`` are the consent-gated invites raised for mentioned
+    agents that are **not** on the channel yet.
+    """
+
+    mentioned: list[str]
+    recipients: list[str]
+    invites: list[PendingInvite]
+
+
 class RoomChannelManager:
     """Registry of backend-moderated room channels (one per room, per process)."""
 
@@ -78,6 +96,9 @@ class RoomChannelManager:
         self._lock = asyncio.Lock()
         # Strong refs to in-flight background invites (see invite_in_background).
         self._tasks: set[asyncio.Task[bool]] = set()
+        # Consent-gated invites raised by an @-mention of a not-present agent
+        # (bible §12). The moderator only invites on accept.
+        self._invites = PendingInviteRegistry()
         # Trigger hooks handed to every persister. Skeletons by default (log
         # only); Step 7 wires ``on_summon`` to the cognition-engine spawner and
         # Step 8 wires ``on_converged`` to ``plan_compiler``.
@@ -193,6 +214,138 @@ class RoomChannelManager:
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
+    # -- human-in-the-room (Step 6) --
+
+    async def publish_human(
+        self, room: str, *, sender: str, text: str
+    ) -> HumanPublishResult | None:
+        """Publish a human's message onto the room channel as their proxy.
+
+        The human runs no connector (bible §12): the backend builds an L9
+        ``exchange`` on their behalf, maps ``@agent-x`` tokens to L9 recipients,
+        and broadcasts it. In-room mentions wake through the connector's
+        recipient match (Step 5); mentions of agents **not** on the channel raise
+        a consent-gated invite instead. Returns ``None`` when no channel is live.
+
+        The published message is ingested locally via the persister so the
+        transcript and UI bus see it exactly once, independent of whether SLIM
+        loops a broadcast back to its own sender.
+        """
+        managed = self._channels.get(room)
+        if managed is None:
+            return None
+
+        mentioned = parse_mentions(text)
+        # Every mention is an L9 recipient (the semantic "to"); everyone else on
+        # the channel is an observer. Absent mentions stay recipients so the
+        # intent is recorded, but only present ones actually receive the broadcast.
+        envelope = l9.build_envelope(
+            kind=Kind.exchange,
+            episode=l9.episode_urn(room, "live"),
+            sender=sender,
+            sender_role="human",
+            recipients=mentioned,
+            topic=l9.topic_urn(room),
+            payload_type="message",
+        )
+        content = serialize_content(envelope, extra={"content": text})
+        try:
+            await managed.channel.send(envelope, extra={"content": text})
+        except Exception as exc:  # best-effort broadcast
+            logger.warning("failed to publish human message on room %s: %s", room, exc)
+        if managed.persister is not None:
+            managed.persister.ingest_local(envelope, content)
+
+        # Consent gate: an @-mention of an agent not on the channel is an invite.
+        invites: list[PendingInvite] = []
+        for handle in mentioned:
+            if handle in managed.members or handle == BACKEND_AGENT:
+                continue
+            invite = self.request_invite(room, handle, requested_by=sender, trigger_text=text)
+            if invite is not None:
+                invites.append(invite)
+
+        recipients = [h for h in mentioned if h != BACKEND_AGENT]
+        return HumanPublishResult(mentioned=mentioned, recipients=recipients, invites=invites)
+
+    # -- consent-gated invites (Step 6) --
+
+    def request_invite(
+        self, room: str, agent: str, *, requested_by: str, trigger_text: str = ""
+    ) -> PendingInvite | None:
+        """Raise a consent prompt to invite ``agent`` into ``room``.
+
+        Returns ``None`` when there's nothing to consent to — no live channel, or
+        the agent is already a member (that mention is a wake, not an invite).
+        Otherwise records a pending invite and surfaces the accept/decline prompt
+        on the room's UI bus. Does **not** invite; that waits for :meth:`accept_invite`.
+        """
+        managed = self._channels.get(room)
+        if managed is None or agent == BACKEND_AGENT or agent in managed.members:
+            return None
+        invite = self._invites.request(
+            room, agent, requested_by=requested_by, trigger_text=trigger_text
+        )
+        self._emit_consent_prompt(invite)
+        return invite
+
+    async def accept_invite(self, invite_id: str) -> PendingInvite | None:
+        """Accept a consent prompt: invite the agent — or queue it mid-episode.
+
+        Inviting a new member mid-episode violates L9's stable-membership rule
+        (it would abort the episode), so an accept while an episode is active is
+        **queued** and applied when the episode closes (bible §12 default).
+        Returns the updated invite, or ``None`` if the id is unknown.
+        """
+        invite = self._invites.get(invite_id)
+        if invite is None:
+            return None
+        managed = self._channels.get(invite.room)
+        if managed is None:
+            return self._invites.mark(invite_id, DECLINED)
+        if managed.lifecycle.active:
+            logger.info(
+                "invite for @%s in %s queued until episode %s closes",
+                invite.agent,
+                invite.room,
+                managed.lifecycle.episode,
+            )
+            return self._invites.mark(invite_id, QUEUED)
+        await self.invite(invite.room, invite.agent)
+        return self._invites.mark(invite_id, ACCEPTED)
+
+    def decline_invite(self, invite_id: str) -> PendingInvite | None:
+        """Decline a consent prompt: the agent does not join."""
+        return self._invites.mark(invite_id, DECLINED)
+
+    def pending_invites(self, room: str) -> list[PendingInvite]:
+        """Open (pending or queued) consent requests for ``room``."""
+        return self._invites.open_for_room(room)
+
+    async def flush_queued_invites(self, room: str) -> None:
+        """Apply invites deferred during an episode, now that it has closed."""
+        for invite in self._invites.queued_for_room(room):
+            await self.invite(room, invite.agent)
+            self._invites.mark(invite.id, ACCEPTED)
+
+    def _emit_consent_prompt(self, invite: PendingInvite) -> None:
+        """Surface a consent prompt on the room's UI bus (best-effort)."""
+        try:
+            from app.bus import bus, room_channel
+
+            bus.publish(
+                room_channel(invite.room),
+                {
+                    "room_name": invite.room,
+                    "sender_handle": l9.SYSTEM_ACTOR_ID,
+                    "message_type": "consent_request",
+                    "content": json.dumps(invite.to_json()),
+                    "created_at": invite.created_at,
+                },
+            )
+        except Exception:  # pragma: no cover - best-effort UI push
+            logger.debug("consent prompt bus publish failed for room %s", invite.room)
+
     async def remove(self, room: str, agent: str) -> bool:
         """Remove ``agent`` from the room channel. Best-effort; returns success."""
         managed = self._channels.get(room)
@@ -217,6 +370,21 @@ class RoomChannelManager:
         if managed is None:
             return False
         managed.lifecycle.open(episode, managed.members)
+        return True
+
+    async def close_episode(self, room: str) -> bool:
+        """Close the room's active episode normally and flush queued invites.
+
+        The membership-freeze that an episode holds is released here, so invites
+        an ``@``-mention deferred mid-episode (bible §12) are now safe to apply.
+        The converged/rejected wiring that calls this lands in Steps 7-8; the
+        method exists now so the mid-episode queue has a drain.
+        """
+        managed = self._channels.get(room)
+        if managed is None:
+            return False
+        managed.lifecycle.close()
+        await self.flush_queued_invites(room)
         return True
 
     async def _enforce_membership_change(self, managed: ManagedRoomChannel) -> None:

@@ -5,9 +5,18 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getSSEUrl, fetchMessages, fetchRoomAgents, logFetchError } from "@/lib/api";
+import {
+  getSSEUrl,
+  fetchMessages,
+  fetchRoomAgents,
+  fetchPendingInvites,
+  respondToInvite,
+  logFetchError,
+  type PendingInvite,
+} from "@/lib/api";
 import { MarkdownContent } from "@/components/markdown-content";
 import { RoomPlanHeader } from "@/components/room-plan-header";
+import { ConsentDialog } from "@/components/consent-dialog";
 
 interface Event {
   id: string;
@@ -184,6 +193,7 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
   const [connected, setConnected] = useState(false);
   const [view, setView] = useState<View>("channel");
   const [agentHandles, setAgentHandles] = useState<Set<string>>(new Set());
+  const [invites, setInvites] = useState<PendingInvite[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Know which senders are registered agents so their replies can be badged.
@@ -212,6 +222,19 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
     }).catch(logFetchError("fetchMessages"));
   }, [roomName]);
 
+  // Load any consent prompts already open (an @-invite raised before this
+  // client connected). Live ones arrive over SSE below.
+  useEffect(() => {
+    fetchPendingInvites(roomName)
+      .then((open) => setInvites(open.filter((i) => i.status === "pending")))
+      .catch(logFetchError("fetchPendingInvites"));
+  }, [roomName]);
+
+  const respond = (invite: PendingInvite, decision: "accept" | "decline") => {
+    setInvites((prev) => prev.filter((i) => i.id !== invite.id));
+    respondToInvite(roomName, invite.id, decision).catch(logFetchError("respondToInvite"));
+  };
+
   // SSE connection
   useEffect(() => {
     const url = getSSEUrl(roomName);
@@ -224,6 +247,16 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
       es.onmessage = (e) => {
         try {
           const msg = JSON.parse(e.data);
+          // Consent prompts drive the accept/decline dialog, not the feed.
+          if (msg.message_type === "consent_request") {
+            try {
+              const invite = JSON.parse(msg.content as string) as PendingInvite;
+              setInvites((prev) =>
+                prev.some((i) => i.id === invite.id) ? prev : [...prev, invite],
+              );
+            } catch {}
+            return;
+          }
           const event = parseEvent(msg);
           setEvents(prev => [...prev, event]);
           if (event.type === "memory_changed") onMemoryChanged?.();
@@ -262,6 +295,11 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
 
   return (
     <div className="flex flex-col h-full">
+      <ConsentDialog
+        invite={invites[0] ?? null}
+        onAccept={(invite) => respond(invite, "accept")}
+        onDecline={(invite) => respond(invite, "decline")}
+      />
       <div className="flex items-stretch border-b border-border shrink-0 h-[44px] bg-paper">
         <div className="flex items-center gap-2 px-4">
           <span

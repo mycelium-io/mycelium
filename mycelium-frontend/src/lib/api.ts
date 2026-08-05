@@ -194,6 +194,42 @@ export async function sendRoomMessage(
   return res.json();
 }
 
+/**
+ * A consent-gated invite (Step 6). Raised when a human `@`-mentions an agent
+ * that is not yet on the room's channel: the backend surfaces an accept/decline
+ * prompt ("someone's agent wants to reach yours") instead of joining directly.
+ */
+export interface PendingInvite {
+  id: string;
+  room: string;
+  agent: string;
+  requested_by: string;
+  trigger_text: string;
+  status: string;
+  created_at: string;
+}
+
+/** Open (pending or queued) consent requests for a room. */
+export async function fetchPendingInvites(roomName: string): Promise<PendingInvite[]> {
+  const res = await fetch(`/api/rooms/${roomName}/invites`, { cache: "no-store" });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return (data.invites || []) as PendingInvite[];
+}
+
+/** Accept or decline a consent prompt. Only `accept` invites (or queues) the agent. */
+export async function respondToInvite(
+  roomName: string,
+  inviteId: string,
+  decision: "accept" | "decline",
+): Promise<PendingInvite | null> {
+  const res = await fetch(`/api/rooms/${roomName}/invites/${inviteId}/${decision}`, {
+    method: "POST",
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
 export interface AgentSummary {
   handle: string;
   description: string;

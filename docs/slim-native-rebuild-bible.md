@@ -488,6 +488,61 @@ Base: `/Users/juliavalenti/Documents/GitHub/mycelium`. Classifications: **[keep]
 
 ---
 
+## Known debt register
+
+Consolidated from the step reviews (PRs #417–#423) and the design — **one authoritative
+list** (also mirrored on tracking PR #418). Scan the table; the two load-bearing items
+(D1 security, D2 duplication) have detail below. *Severity* = correctness/security impact;
+*Bites* = when it starts to hurt.
+
+| # | Debt | Severity | Bites | Fix |
+|---|---|---|---|---|
+| **D1** | **No real auth** — a public dev shared-secret (`_DEV_MASTER_SECRET`) seeds every room's MLS key, so anyone with the repo can derive/join any channel | **High** | before anything hosted / multi-user / multi-tenant | JWT or SPIRE identity (§7). **Prerequisite for the §16 hosted-rendezvous security story.** |
+| **D2** | **CLI/backend SLIM+L9 duplication** — `mycelium/slim/` copies the backend primitives; silent drift → MLS-join / parse failures | Medium | when a copy drifts (can merge green) | (A) fast-gate golden test now; (B) shared package **before Step 7** |
+| **D3** | **Silent degradation is unobservable** — best-effort "no channel" / log-and-continue, no metrics or health surface | Medium | during the demo / ops | small counters + health surface (channels provisioned/failed, re-serves, drops) |
+| **D4** | **Unbounded growth** — transcript (full rewrite per message, no rotation), `CausalOrderBuffer._delivered`/`_pending`, JSONL search index | Low–Med | long-lived rooms / high volume | append+rotate transcript; prune buffer at episode close; ANN index past ~10k |
+| **D5** | **Durable-inbox cursors in-memory** — re-serve doesn't survive a backend restart (docstring overclaims) | Medium | backend restart while an agent is offline | persist cursors with the transcript; fix the docstring |
+| **D6** | **Broad `except Exception`** in best-effort SLIM calls hides real bugs as "no channel" | Low | a code bug silently degrades | normalize binding errors → app `SlimError` at the `slim_client.py` boundary; narrow the catches |
+| **D7** | **Fire-and-forget task not ref-held** — connector `_guarded_inbound` | Low | GC mid-spawn (rare) | strong-ref set + done-callback, as `room_channels.py` does |
+| **D8** | **Invite dedup + invite/`listen_for_session` race** | Low–Med | repeated joins / Step 6+ | dedup pending invites; reconcile invite-completion with the connector's listen |
+| **D9** | **Single-process backend** — all moderators/persisters/cursors in memory; no horizontal scaling | Low (known ceiling) | beyond single-host | out of MVP scope; documented ceiling |
+| **D10** | **Comment audit** — stale comments/docstrings left by the rewrite (removed CFN/CE/AgensGraph refs, orphaned `TODO(stepN)`, overclaiming docstrings e.g. D5) | Low | reading/maintaining the code | sweep + fix before declaring the rewrite done; pair with the CLAUDE.md/docs cleanup |
+| **D11** | **Stale agent harnesses** — openclaw/hermes plugins built on the removed CFN-tick-over-SSE model (broken SLIM-native); cursor untested over SLIM | Medium | post-MVP, when a non-claude adapter is used | per-adapter: migrate to SLIM vs. explicitly deprecate (see below) |
+
+**D1 — the security model is currently theater (the one to *not* forget).** MLS protects
+against a *node* reading traffic, but the group key is derived from a public literal, so the
+"blind hosted forwarder" de-risk in §16 only holds once members' keys are actually secret.
+Real identity (JWT/SPIRE) is therefore a **hard prerequisite before any hosted / multi-user
+use**, not a nice-to-have.
+
+**D2 — the CLI/backend copy.** Step 5 gave the daemon its own SLIM+L9 primitives
+(`mycelium/slim/{naming,client,l9}.py` + the `_room_episode`/`_room_topic` URNs in
+`daemon/connector.py`) because the thin `uv tool` CLI can't import the FastAPI backend.
+Necessary, but a copy: if `mint_shared_secret` / the master-secret literal / the
+`workspace/room` scope / the envelope shape drift, connectors **silently can't join** (no
+app-level error). Today they're byte-for-byte faithful and the live slice catches drift —
+but only in the guarded suite. Fix: (A) a fast-gate golden test both packages assert against,
+then (B) extract a shared `mycelium-slim-l9` package **before Steps 7–8** grow the shared
+surface.
+
+**D11 — the other harnesses will be stale.** The MVP migrates **claude_code** only.
+- **cursor** (cold_spawn) shares the daemon's SLIM connector path (`connector_targets`
+  includes it) and the family-agnostic spawn, so it *probably works over SLIM already* — but
+  it's **untested** (Step 5's slice mocks the `claude` binary). Cheapest to finish: run it
+  through a live slice.
+- **openclaw** and **hermes** (long_lived_gateway) are **broken**, not just untested: their
+  plugins subscribe to the backend's **SSE coordination-tick** stream and render ticks via
+  `route.ts` / the python gateway — a flow the rewrite **removed** in Step 0. They need their
+  delivery path rewritten to speak SLIM (embed a SLIM client or shell to the daemon) — the
+  "generalize the connector" work the plan deferred.
+
+Decision per adapter: **migrate vs. deprecate.** Given openclaw isn't dogfoodable internally
+and the vertical is coding/work agents, the honest option for openclaw/hermes may be
+**explicit deprecation until there's demand** rather than leaving them half-broken and
+looking supported. Don't ship them silently broken.
+
+---
+
 # PART V — THE BUILD PLAN
 
 Execute in order. This is a **build sequence**, not a phased shipping plan — it all lands as
