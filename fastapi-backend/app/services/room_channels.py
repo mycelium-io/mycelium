@@ -104,6 +104,19 @@ class HumanPublishResult:
     invites: list[PendingInvite]
 
 
+@dataclass
+class ChannelMetrics:
+    """Process-wide coordination counters, surfaced by the health endpoint (H1).
+
+    The first smoke test spent hours on failures that were silent; these make the
+    fabric's health inspectable at a glance instead of by log spelunking.
+    """
+
+    provisions_ok: int = 0
+    provisions_failed: int = 0
+    invite_failures: int = 0
+
+
 class RoomChannelManager:
     """Registry of backend-moderated room channels (one per room, per process)."""
 
@@ -123,9 +136,42 @@ class RoomChannelManager:
         # ``handle_converged`` (Step 8). Unset → the persister's log-only defaults.
         self.on_summon: RoomSummonHook | None = None
         self.on_converged: RoomConvergedHook | None = None
+        self._metrics = ChannelMetrics()
 
     def get(self, room: str) -> ManagedRoomChannel | None:
         return self._channels.get(room)
+
+    def status(self) -> dict:
+        """A snapshot of coordination health for the ``/health`` surface (H1).
+
+        Per-room: is the channel provisioned, is its persister task alive, who is
+        present, how many consent invites are open, is an episode active. Plus
+        process counters. Read-only and cheap — safe to call on every health hit.
+        """
+        rooms = []
+        for room, managed in sorted(self._channels.items()):
+            task = managed.persister_task
+            rooms.append(
+                {
+                    "room": room,
+                    "provisioned": True,
+                    "persister_alive": task is not None and not task.done(),
+                    "members": sorted(managed.members),
+                    "pending_invites": len(self.pending_invites(room)),
+                    "episode_active": managed.lifecycle.active,
+                    "reserves": managed.persister.reserves if managed.persister else 0,
+                    "receive_errors": managed.persister.receive_errors if managed.persister else 0,
+                }
+            )
+        return {
+            "endpoint": self._endpoint,
+            "slim_enabled": settings.SLIM_ENABLED,
+            "channels_live": len(self._channels),
+            "provisions_ok": self._metrics.provisions_ok,
+            "provisions_failed": self._metrics.provisions_failed,
+            "invite_failures": self._metrics.invite_failures,
+            "rooms": rooms,
+        }
 
     def is_live(self, room: str) -> bool:
         """True when a SLIM channel is provisioned for ``room``."""
@@ -167,12 +213,14 @@ class RoomChannelManager:
                 session = await client.create_group(to_channel_name(ws, room))
             except Exception as exc:
                 logger.warning("SLIM channel provisioning failed for room %s: %s", room, exc)
+                self._metrics.provisions_failed += 1
                 return None
             managed = ManagedRoomChannel(
                 room=room, workspace=ws, client=client, channel=L9SlimChannel(client, session)
             )
             self._channels[room] = managed
             self._start_persister(managed)
+            self._metrics.provisions_ok += 1
             logger.info("Provisioned SLIM channel for room %s (workspace=%s)", room, ws)
             return managed
 
@@ -234,10 +282,12 @@ class RoomChannelManager:
             member = to_slim_name(managed.workspace, room, agent)
             await managed.client.invite(managed.channel.session, member)
         except Exception as exc:
-            # Expected in Step 3: agents don't hold a SLIM connection until the
-            # daemon is retargeted (Step 5), so the moderator can't reach them to
-            # invite. Presence then falls back to local_state. Debug, not warn.
-            logger.debug("SLIM invite skipped (room=%s agent=%s): %s", room, agent, exc)
+            # Post-Step-5 a registered agent's connector holds a live SLIM
+            # subscription, so a failed invite means it will NOT be woken — a real
+            # failure, not the old Step-3 no-op. Surface it loudly (H1): a silent
+            # invite drop was one of the smoke test's worst multi-hour hunts.
+            logger.warning("SLIM invite failed (room=%s agent=%s): %s", room, agent, exc)
+            self._metrics.invite_failures += 1
             return False
         managed.members.add(agent)
         # Durable inbox: a membership add for a handle the persister has already

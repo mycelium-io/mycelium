@@ -197,13 +197,24 @@ async def root(
         llm = get_config_status()
     result["llm"] = llm.to_dict()
 
+    # Coordination fabric — channels/persisters/members (H1). Every smoke bug was
+    # silent; this makes "is the fabric actually working" answerable in one GET.
+    from app.services.room_channels import manager as room_channel_manager
+
+    coordination = room_channel_manager.status()
+    result["coordination"] = coordination
+
     overall_issues = []
     if result["storage"]["status"] != "ok":
         overall_issues.append("storage")
     if result["llm"]["status"] not in ("ok", "unchecked"):
         overall_issues.append("llm")
+    # A live channel whose persister has died is a zombie room — surface it.
+    if any(r["provisioned"] and not r["persister_alive"] for r in coordination["rooms"]):
+        overall_issues.append("coordination")
     if overall_issues:
         result["status"] = "degraded"
+        result["issues"] = overall_issues
 
     return result
 

@@ -358,6 +358,9 @@ class RoomPersister:
         # publishes itself (the human proxy, Step 6) is recorded/fed to the bus
         # exactly once even if SLIM loops the broadcast back to the moderator.
         self._ingested_ids: set[str] = set()
+        # Health counters surfaced via RoomChannelManager.status() (H1).
+        self.reserves = 0
+        self.receive_errors = 0
 
     # -- membership signals (driven by RoomChannelManager) --
 
@@ -387,7 +390,17 @@ class RoomPersister:
             return 0
         context = self._contexts.get(handle)
         if context is None:
-            logger.debug("no reply context for %s; cannot re-serve %d missed", handle, len(missed))
+            # §E first-wake race: on a handle's FIRST join the moderator has never
+            # received a message from it, so there's no point-to-point route to
+            # re-serve the tail that triggered the invite — the first wake is
+            # silently dropped. WARN so it's visible until H4 fixes the ordering.
+            logger.warning(
+                "cannot re-serve %d missed message(s) to %s in room %s: no reply context yet "
+                "(first-wake race, §E)",
+                len(missed),
+                handle,
+                self.room,
+            )
             return 0
         served = 0
         for record in missed:
@@ -398,6 +411,7 @@ class RoomPersister:
                 logger.exception("re-serve to %s failed at message %s", handle, record.message_id)
                 break
         if served:
+            self.reserves += served
             self.log.mark_caught_up(handle)
             logger.info(
                 "re-served %d missed message(s) to %s in room %s", served, handle, self.room
@@ -424,11 +438,21 @@ class RoomPersister:
                 if isinstance(exc, CancelledError):
                     raise
                 failures += 1
-                logger.debug(
-                    "persister receive error on room %s (%d): %s", self.room, failures, exc
+                self.receive_errors += 1
+                logger.warning(
+                    "persister receive error on room %s (%d/%d): %s",
+                    self.room,
+                    failures,
+                    _MAX_CONSECUTIVE_FAILURES,
+                    exc,
                 )
                 if failures >= _MAX_CONSECUTIVE_FAILURES:
-                    logger.info("persister for room %s stopping after repeated errors", self.room)
+                    logger.error(
+                        "persister for room %s STOPPING after %d repeated errors — channel is now "
+                        "a zombie (no re-serve/record) until re-provisioned",
+                        self.room,
+                        failures,
+                    )
                     return
                 continue
             failures = 0
