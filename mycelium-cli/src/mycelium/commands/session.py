@@ -391,7 +391,9 @@ def await_tick(
         # from prior sessions (same handle, different room) are filtered server-side.
         sse_room_scope = active_session_rooms if active_session_rooms else [resolved_room]
         url = f"{config.server.api_url}/api/agents/{handle}/stream"
-        sse_params = [("room", r) for r in sse_room_scope]
+        sse_params: list[tuple[str, str | int | float | None]] = [
+            ("room", r) for r in sse_room_scope
+        ]
         start = time.time()
 
         with (
