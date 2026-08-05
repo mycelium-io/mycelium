@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Top-level daemon orchestrator: load config, fan out SSE subscribers, serve health."""
+"""Top-level daemon orchestrator: load config, fan out SLIM connectors, serve health."""
 
 from __future__ import annotations
 
@@ -11,11 +11,17 @@ import signal
 
 from mycelium.config import MyceliumConfig
 from mycelium.daemon.config import DaemonConfig, daemon_log_path
-from mycelium.daemon.dispatch import poll_coordination_sessions, subscribe_room
+from mycelium.daemon.connector import connector_targets, run_connector
 from mycelium.daemon.health import start_health_server
 from mycelium.daemon.state import DaemonState
 
 log = logging.getLogger("mycelium.daemon")
+
+# A connector task is keyed by the (room, handle) it serves — one SLIM member
+# subscription per owned handle per room (Step 5). This supersedes the per-room
+# httpx SSE stream the daemon held through Step 4; the backend SSE endpoint
+# itself is retired in Step 10.
+ConnectorKey = tuple[str, str]
 
 
 def _setup_logging(foreground: bool) -> None:
@@ -43,51 +49,73 @@ def _setup_logging(foreground: bool) -> None:
     )
 
 
-async def _reconcile_rooms(
+def _start_connector(
+    *,
+    mycelium_cfg: MyceliumConfig,
+    daemon_cfg: DaemonConfig,
+    state: DaemonState,
+    room: str,
+    handle: str,
+) -> asyncio.Task[None]:
+    return asyncio.create_task(
+        run_connector(
+            config=mycelium_cfg,
+            daemon_cfg=daemon_cfg,
+            state=state,
+            room=room,
+            handle=handle,
+        ),
+        name=f"connector[{room}/{handle}]",
+    )
+
+
+async def _reconcile_connectors(
     *,
     mycelium_cfg: MyceliumConfig,
     state: DaemonState,
-    sse_tasks: dict[str, asyncio.Task[None]],
+    connectors: dict[ConnectorKey, asyncio.Task[None]],
 ) -> None:
-    """Add/remove SSE tasks to match the current DaemonConfig on disk.
+    """Add/remove SLIM connectors to match the current DaemonConfig on disk.
 
-    Also refreshes the handles list so newly created agents are dispatched
-    without a full daemon restart.
+    Picks up newly created agents (and dropped rooms/handles) without a full
+    daemon restart — the SIGHUP path `mycelium agent create` triggers.
     """
     daemon_cfg = DaemonConfig.load()
-    desired = set(daemon_cfg.rooms)
-    current = set(sse_tasks.keys())
 
-    # Refresh handles on the live daemon_cfg so dispatch sees new agents
+    # Refresh the live daemon_cfg so in-flight connectors see new handles.
     if state.daemon_cfg is not None:
         state.daemon_cfg.handles = daemon_cfg.handles
         state.daemon_cfg.rooms = daemon_cfg.rooms
 
-    for room in desired - current:
-        log.info("hot-reload: subscribing to %s", room)
-        sse_tasks[room] = asyncio.create_task(
-            subscribe_room(
-                config=mycelium_cfg,
-                daemon_cfg=state.daemon_cfg or daemon_cfg,
-                state=state,
-                room_name=room,
-            ),
-            name=f"sse[{room}]",
+    desired = set(connector_targets(state.daemon_cfg or daemon_cfg))
+    current = set(connectors.keys())
+
+    for room, handle in desired - current:
+        log.info("hot-reload: connecting %s/%s", room, handle)
+        connectors[room, handle] = _start_connector(
+            mycelium_cfg=mycelium_cfg,
+            daemon_cfg=state.daemon_cfg or daemon_cfg,
+            state=state,
+            room=room,
+            handle=handle,
         )
 
-    for room in current - desired:
-        log.info("hot-reload: unsubscribing from %s", room)
-        task = sse_tasks.pop(room)
+    for key in current - desired:
+        room, handle = key
+        log.info("hot-reload: disconnecting %s/%s", room, handle)
+        task = connectors.pop(key)
         task.cancel()
         try:
             await task
         except (asyncio.CancelledError, Exception):
             pass
-        state.rooms_connected.discard(room)
 
     state.rooms_configured = list(daemon_cfg.rooms)
     log.info(
-        "hot-reload complete: rooms=%d, handles=%d", len(daemon_cfg.rooms), len(daemon_cfg.handles)
+        "hot-reload complete: rooms=%d, handles=%d, connectors=%d",
+        len(daemon_cfg.rooms),
+        len(daemon_cfg.handles),
+        len(connectors),
     )
 
 
@@ -95,18 +123,18 @@ async def _reload_watcher(
     *,
     mycelium_cfg: MyceliumConfig,
     state: DaemonState,
-    sse_tasks: dict[str, asyncio.Task[None]],
+    connectors: dict[ConnectorKey, asyncio.Task[None]],
 ) -> None:
-    """Wait for reload_requested events and reconcile room subscriptions."""
+    """Wait for reload_requested events and reconcile connectors."""
     while not state.stopping.is_set():
         await state.reload_requested.wait()
         state.reload_requested.clear()
         if state.stopping.is_set():
             break
-        await _reconcile_rooms(
+        await _reconcile_connectors(
             mycelium_cfg=mycelium_cfg,
             state=state,
-            sse_tasks=sse_tasks,
+            connectors=connectors,
         )
 
 
@@ -139,35 +167,28 @@ async def _amain(foreground: bool) -> int:
         pass
 
     server = await start_health_server(state)
-    log.info("mycelium-daemon started (rooms=%d)", len(daemon_cfg.rooms))
 
-    sse_tasks: dict[str, asyncio.Task[None]] = {
-        room: asyncio.create_task(
-            subscribe_room(
-                config=mycelium_cfg,
-                daemon_cfg=daemon_cfg,
-                state=state,
-                room_name=room,
-            ),
-            name=f"sse[{room}]",
-        )
-        for room in daemon_cfg.rooms
-    }
+    targets = connector_targets(daemon_cfg)
+    log.info(
+        "mycelium-daemon started (rooms=%d, connectors=%d)", len(daemon_cfg.rooms), len(targets)
+    )
 
-    session_poller = asyncio.create_task(
-        poll_coordination_sessions(
-            config=mycelium_cfg,
+    connectors: dict[ConnectorKey, asyncio.Task[None]] = {
+        (room, handle): _start_connector(
+            mycelium_cfg=mycelium_cfg,
             daemon_cfg=daemon_cfg,
             state=state,
-        ),
-        name="coordination-session-poller",
-    )
+            room=room,
+            handle=handle,
+        )
+        for room, handle in targets
+    }
 
     reload_task = asyncio.create_task(
         _reload_watcher(
             mycelium_cfg=mycelium_cfg,
             state=state,
-            sse_tasks=sse_tasks,
+            connectors=connectors,
         ),
         name="reload-watcher",
     )
@@ -181,26 +202,19 @@ async def _amain(foreground: bool) -> int:
             await reload_task
         except (asyncio.CancelledError, Exception):
             pass
-        session_poller.cancel()
-        try:
-            await session_poller
-        except (asyncio.CancelledError, Exception):
-            pass
-        for task in sse_tasks.values():
+        for task in connectors.values():
             task.cancel()
-        for task in sse_tasks.values():
-            try:
-                await task
-            except (asyncio.CancelledError, Exception):
-                pass
-        for task in list(state.session_room_tasks.values()):
-            task.cancel()
-        for task in list(state.session_room_tasks.values()):
+        for task in connectors.values():
             try:
                 await task
             except (asyncio.CancelledError, Exception):
                 pass
         await _terminate_in_flight_spawns(state)
+        # Drop the process-wide SLIM dataplane connection (all connectors shared
+        # one conn_id per endpoint).
+        from mycelium.slim.client import close_connection
+
+        await close_connection(mycelium_cfg.slim.node_endpoint)
         server.close()
         await server.wait_closed()
 
