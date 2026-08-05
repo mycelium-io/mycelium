@@ -241,17 +241,22 @@ def test_agent_add_non_interactive_without_handle_errors() -> None:
 def test_agent_create_has_no_openclaw_agent_flag() -> None:
     """`create` is greenfield only — the adopt-only --openclaw-agent flag must
     live on `add`, not `create`."""
+    import typer
+
     from mycelium.cli import app
 
-    # Force a wide terminal: Typer/Rich renders --help against the detected width,
-    # and CI's non-TTY (no COLUMNS) collapses the options table so option flags
-    # never appear in the output. Pin COLUMNS so the assertions are width-robust.
-    wide = {"COLUMNS": "200"}
-    create_help = runner.invoke(app, ["agent", "create", "--help"], env=wide).output
-    add_help = runner.invoke(app, ["agent", "add", "--help"], env=wide).output
-    assert "--openclaw-agent" not in create_help
-    assert "--cwd" in create_help
-    assert "[HANDLE]" in add_help  # handle is optional on add (picker)
+    # Introspect the commands' params rather than the rendered --help text: Typer's
+    # Rich help renders an empty options table under CI (non-TTY), so asserting on
+    # the help string is width/environment-fragile. The params are the source of
+    # truth for the create/add flag split regardless of rendering.
+    agent = typer.main.get_command(app).commands["agent"]
+    create_opts = {o for p in agent.commands["create"].params for o in getattr(p, "opts", [])}
+    add = agent.commands["add"]
+
+    assert "--openclaw-agent" not in create_opts  # adopt-only flag isn't on greenfield create
+    assert "--cwd" in create_opts
+    handle = next((p for p in add.params if p.name == "handle"), None)
+    assert handle is not None and not handle.required  # [HANDLE] optional on add (picker)
 
 
 # ── _pick_room: fetch rooms → picker, with create-new ─────────────────────────
