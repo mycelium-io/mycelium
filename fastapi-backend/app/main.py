@@ -79,6 +79,16 @@ async def lifespan(app: FastAPI):
     yield
     stop_watcher()
     stop_event_sweep()
+
+    # Tear down long-lived SLIM room channels + the shared node connection so a
+    # restart doesn't leak or reuse a stale dataplane connection (Step 3).
+    from app.services.room_channels import manager as room_channel_manager
+
+    try:
+        await room_channel_manager.close_all()
+    except Exception as exc:  # pragma: no cover - best-effort teardown
+        logger.warning("SLIM channel teardown failed (non-fatal): %s", exc)
+
     logger.info("Mycelium backend shutting down")
 
 

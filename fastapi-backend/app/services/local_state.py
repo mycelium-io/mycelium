@@ -7,11 +7,14 @@ In-process room state: messages, presence, and memory subscriptions.
 A deliberately thin, in-memory shim (SLIM-native rebuild, Step 1). These three
 concerns lived in Postgres tables (``messages``, ``participants``,
 ``memory_subscriptions``); with the database gone they move to process memory to
-keep the endpoints answering. They are NOT durable and NOT rich — the real
-replacements are the SLIM bus + persister in Steps 3-4. Do not build them out
-here.
+keep the endpoints answering. They are NOT durable and NOT rich.
 
-# TODO(step3): messages/presence move onto the SLIM channel + durable persister.
+Presence liveness now rides SLIM channel membership (Step 3): ``room_channels``
+is authoritative for *who is present*, while the participant rows here remain the
+metadata store (intent, context files) and the fallback when no fabric is up.
+Messages are still in-memory — the durable transcript/inbox persister is Step 4.
+
+# TODO(step4): messages move onto the SLIM channel + durable persister.
 """
 
 from __future__ import annotations

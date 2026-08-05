@@ -67,10 +67,10 @@ def test_causal_threading_tick_reply_consensus():
     assert sorted(consensus["header"]["message"]["parents"]) == sorted(ep.last_reply_ids.values())
 
 
-def test_broken_consensus_commits_as_abort():
+def test_broken_consensus_commits_as_rejected():
     ep = _open()
     consensus = l9_episode.build_consensus_envelope(ep, broken=True, assignments={}, metrics=None)
-    assert consensus["header"]["subkind"] == "abort"
+    assert consensus["header"]["subkind"] == "rejected"
     # No replies recorded: falls back to parenting the intent.
     assert consensus["header"]["message"]["parents"] == [ep.intent_id]
 
