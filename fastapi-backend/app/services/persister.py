@@ -35,6 +35,7 @@ detection) carry no SLIM dependency and are unit-tested without a node;
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import re
@@ -478,9 +479,9 @@ class RoomPersister:
         ``parents=[woke_id]``) is held in the buffer forever and never recorded.
         """
         self._channel.note_delivered(envelope)
-        self._ingest(envelope, content)
+        self._ingest(envelope, content, local=True)
 
-    def _ingest(self, envelope: L9, content: dict[str, Any]) -> None:
+    def _ingest(self, envelope: L9, content: dict[str, Any], *, local: bool = False) -> None:
         mid = envelope_message_id(envelope)
         if mid is not None:
             if mid in self._ingested_ids:
@@ -490,6 +491,11 @@ class RoomPersister:
         present = set(self._members_provider())
         self.log.record(record, delivered_to=present)
         write_transcript(self.room, self.log.records)
+        # A locally-ingested message (the human proxy) is already in the list store
+        # via POST /messages with its own id (for event/PATCH semantics); only
+        # messages that ARRIVE over SLIM (agent replies) have no other producer.
+        if not local:
+            self._record_to_list_store(record, content)
         if self._feed_bus:
             self._publish_to_bus(record)
         # Triggers: @-summon and commit:converged (skeleton hooks).
@@ -525,3 +531,39 @@ class RoomPersister:
             bus.publish(room_channel(self.room), payload)
         except Exception:
             logger.debug("bus publish from persister failed for room %s", self.room, exc_info=True)
+
+    def _record_to_list_store(self, record: TranscriptRecord, content: dict[str, Any]) -> None:
+        """Record the message into the store the HTTP list/UI reads (H2, §A).
+
+        The persister is the **single writer** of a channel-backed room's message
+        record: ``POST /messages`` only publishes to SLIM, and everything (the
+        human's own message via ``ingest_local``, agents' replies via receive)
+        lands here. Before this, human messages reached the list via the POST
+        route but agent replies — which only ever arrive over SLIM — never did, so
+        they were invisible in the UI. Conversational messages only (presence and
+        other non-message payloads stay in the transcript/bus).
+        """
+        # Conversational payloads only: a human ``message`` and an agent ``reply``
+        # (``build_reply`` tags replies "reply"). Presence/ping and other control
+        # payloads stay in the transcript/bus, out of the chat list.
+        payload_type = content.get("l9", {}).get("payload", {}).get("type")
+        text = content.get("content")
+        if payload_type not in ("message", "reply") or not text:
+            return
+        try:
+            from app.services import local_state
+
+            created_at = None
+            with contextlib.suppress(ValueError, TypeError):
+                created_at = datetime.fromisoformat(record.recorded_at)
+            msg = local_state.StoredMessage(
+                room_name=self.room,
+                sender_handle=record.sender,
+                message_type="broadcast",
+                content=text,
+            )
+            if created_at is not None:
+                msg.created_at = created_at
+            local_state.add_message(self.room, msg)
+        except Exception:
+            logger.debug("list-store write failed for room %s", self.room, exc_info=True)

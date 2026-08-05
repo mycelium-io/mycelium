@@ -72,6 +72,10 @@ async def send_message(room_name: str, payload: MessageCreate):
             msg.event_expires_at = datetime.now(UTC) + timedelta(
                 seconds=payload.metadata.ttl_seconds
             )
+    # The human's message is stored here with its own id so event semantics
+    # (status transitions, PATCH-by-id, ttl) work. Agent replies arrive over SLIM
+    # and are written into this same store by the persister (H2) — one list store,
+    # two producers, no duplication (the persister skips locally-ingested ids).
     local_state.add_message(channel, msg)
 
     notify_payload: dict = {
@@ -88,12 +92,14 @@ async def send_message(room_name: str, payload: MessageCreate):
         notify_payload["coordination_session_id"] = str(coord.id)
     notify_payload["room_name"] = channel
 
-    # Human-in-the-room (Step 6): for a real room with a live SLIM channel, the
-    # backend publishes the human's message onto the channel as their proxy —
+    # Human-in-the-room (Step 6 / H2): for a real room with a live SLIM channel,
+    # the backend publishes the human's message onto the channel as their proxy —
     # ``@``-parsing recipients so in-room agents wake, and raising consent for
-    # absent mentions. The persister then feeds the UI bus, so we must NOT also
-    # bus.publish here (that would show the message twice — bible §12 trap).
-    # Coordination sub-rooms and the no-channel path keep the legacy bus feed.
+    # absent mentions. The persister is then the SINGLE writer of the room's record
+    # (§A option b): it records this message (via ``ingest_local``) into both the
+    # list store and the bus, so we must NOT also write local_state / bus.publish
+    # here (that would double it). Coordination sub-rooms and the no-channel path
+    # have no persister, so they keep the direct local_state write + legacy bus.
     published = False
     if (
         coord is None
