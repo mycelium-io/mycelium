@@ -497,7 +497,7 @@ list** (also mirrored on tracking PR #418). Scan the table; the two load-bearing
 
 | # | Debt | Severity | Bites | Fix |
 |---|---|---|---|---|
-| **D1** | **No real auth** — a public dev shared-secret (`_DEV_MASTER_SECRET`) seeds every room's MLS key, so anyone with the repo can derive/join any channel | **High** | before anything hosted / multi-user / multi-tenant | JWT or SPIRE identity (§7). **Prerequisite for the §16 hosted-rendezvous security story.** |
+| **D1** | **No real auth** — a public dev shared-secret (`_DEV_MASTER_SECRET`) seeds every room's MLS key, so anyone with the repo can derive/join any channel | **High** | before anything hosted / multi-user / multi-tenant | JWT or SPIRE identity (§7). **Prerequisite for the §16 hosted-rendezvous security story.** *(Partial: master secret now env-configurable + fail-closed; JWT/SPIRE still to do — see below.)* |
 | **D2** | **CLI/backend SLIM+L9 duplication** — `mycelium/slim/` copies the backend primitives; silent drift → MLS-join / parse failures | Medium | when a copy drifts (can merge green) | (A) fast-gate golden test now; (B) shared package **before Step 7** |
 | **D3** | **Silent degradation is unobservable** — best-effort "no channel" / log-and-continue, no metrics or health surface | Medium | during the demo / ops | small counters + health surface (channels provisioned/failed, re-serves, drops) |
 | **D4** | **Unbounded growth** — transcript (full rewrite per message, no rotation), `CausalOrderBuffer._delivered`/`_pending`, JSONL search index | Low–Med | long-lived rooms / high volume | append+rotate transcript; prune buffer at episode close; ANN index past ~10k |
@@ -508,13 +508,24 @@ list** (also mirrored on tracking PR #418). Scan the table; the two load-bearing
 | **D9** | **Single-process backend** — all moderators/persisters/cursors in memory; no horizontal scaling | Low (known ceiling) | beyond single-host | out of MVP scope; documented ceiling |
 | **D10** | **Comment audit** — stale comments/docstrings left by the rewrite (removed CFN/CE/AgensGraph refs, orphaned `TODO(stepN)`, overclaiming docstrings e.g. D5) | Low | reading/maintaining the code | sweep + fix before declaring the rewrite done; pair with the CLAUDE.md/docs cleanup |
 | **D11** | **Stale agent harnesses** — openclaw/hermes plugins built on the removed CFN-tick-over-SSE model (broken SLIM-native); cursor untested over SLIM | Medium | post-MVP, when a non-claude adapter is used | per-adapter: migrate to SLIM vs. explicitly deprecate (see below) |
-| **D12** | **CI gaps** — the live-node integration suite (the safety net) runs manually only; no frontend test infra; fastembed `/opt` sandbox failure; `test_slim_config` not env-isolated | Medium | a live-only-path regression merges green; CI/sandbox runs flake | run a `slim:1.4.0` service container in CI so the guarded slices execute per-PR; minimal frontend component tests; cache/mock the embedder; env-isolate `test_slim_config` (see below) |
+| **D12** | **CI gaps** — the live-node integration suite (the safety net) runs manually only; no frontend test infra; fastembed `/opt` sandbox failure; `test_slim_config` not env-isolated | Medium | a live-only-path regression merges green; CI/sandbox runs flake | run a `slim:1.4.0` service container in CI so the guarded slices execute per-PR; minimal frontend component tests; cache/mock the embedder; env-isolate `test_slim_config` (see below) *(Addressed — see below.)* |
 
 **D1 — the security model is currently theater (the one to *not* forget).** MLS protects
 against a *node* reading traffic, but the group key is derived from a public literal, so the
 "blind hosted forwarder" de-risk in §16 only holds once members' keys are actually secret.
 Real identity (JWT/SPIRE) is therefore a **hard prerequisite before any hosted / multi-user
 use**, not a nice-to-have.
+
+**Status (minimal hardening delivered; full identity still deferred).** The master secret
+is now **env-configurable** on both sides: set `MYCELIUM_SLIM_MASTER_SECRET` to a private
+value (the *same* on every host that shares rooms) and channel keys stop being derivable
+from the repo; `MYCELIUM_SLIM_REQUIRE_SECRET=1` makes a host **fail closed** rather than
+fall back to the public dev literal, and the dev fallback now logs a one-time warning
+(`slim_client.resolve_master_secret` / `slim/naming.resolve_master_secret`, byte-for-byte
+matched so cross-host secrets agree). This removes the "anyone with the repo can join a
+*configured* deployment" gap. It is **not** the full fix: there's still no per-agent
+identity or revocation — **JWT/SPIRE remains the production path** and the prerequisite for
+the §16 hosted story.
 
 **D2 — the CLI/backend copy.** Step 5 gave the daemon its own SLIM+L9 primitives
 (`mycelium/slim/{naming,client,l9}.py` + the `_room_episode`/`_room_topic` URNs in
@@ -580,6 +591,17 @@ path. A regression in a live-only path can merge green. Fix:
 - Cache or mock the **fastembed** model so `test_writes_markdown_and_reindexes_second_store`
   doesn't `PermissionError` on `/opt` in constrained/sandbox envs.
 - Env-isolate `test_slim_config` (it trips when `MYCELIUM_SLIM_ENDPOINT` is exported).
+
+**Status (delivered).** `ci.yml` now runs a `ghcr.io/agntcy/slim:1.4.0` node (via `docker
+run` — GitHub `services:` can't mount the node config) in an `integration-slim` job that
+executes the guarded backend + CLI slices with `MYCELIUM_SLIM_ENDPOINT` set; the frontend
+job runs the vitest component tests (infra added in Step 10) and the CLI job now runs its
+unit suite (previously lint-only). The stale AgensGraph/`DATABASE_URL`/`test_integration.py`
+setup — dead since the DB came out in Step 1 — was removed from the backend job. The
+embedder test stubs embeddings so it no longer hits `/opt/fastembed`, and `test_slim_config`
+`delenv`s `MYCELIUM_SLIM_ENDPOINT`. **Note:** the workflow still triggers on `main` only, so
+the safety net gates per-PR once the rewrite is mainline; wiring it onto the rewrite branch
+(and refreshing the `openapi.json` snapshot other steps left stale) is the landing step.
 
 ---
 

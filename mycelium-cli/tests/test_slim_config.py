@@ -37,6 +37,10 @@ def test_connect_persists_endpoint(tmp_path, monkeypatch: pytest.MonkeyPatch) ->
     # Isolate HOME (global config) and cwd (project config discovery) to temp.
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.chdir(tmp_path)
+    # Env vars outrank persisted config in pydantic-settings, so an exported
+    # MYCELIUM_SLIM_ENDPOINT (set when running the guarded live-node slices)
+    # would shadow the value we just wrote. Isolate it (debt D12).
+    monkeypatch.delenv("MYCELIUM_SLIM_ENDPOINT", raising=False)
 
     result = runner.invoke(app, ["connect", "hub:46357"])
     assert result.exit_code == 0, result.output

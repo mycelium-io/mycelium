@@ -57,9 +57,14 @@ Both:    plan/tasks.md (markdown + JSONL) lands on each machine; each agent work
   a backend (for its local index/UI), it must **not** provision/moderate the same
   room, or membership and the transcript fork.
 - **Shared secret parity.** The per-channel MLS secret is derived offline from the
-  channel scope (`workspace/room`) via a shared dev master secret, so both hosts
-  reconstruct the **same** value — no key exchange. If a cross-host invite
-  "silently never lands," suspect a secret/version mismatch before the network.
+  channel scope (`workspace/room`) via a shared master secret, so both hosts
+  reconstruct the **same** value — no key exchange. The built-in master secret is a
+  **public dev default** (anyone with the repo can derive it). For anything beyond a
+  trusted LAN, set `MYCELIUM_SLIM_MASTER_SECRET` to a private value **identical on every
+  host that shares rooms** (a mismatch means invites "silently never land" — suspect the
+  secret before the network), and set `MYCELIUM_SLIM_REQUIRE_SECRET=1` to make a host
+  refuse to start with the dev default. Real per-agent identity (JWT/SPIRE) is still the
+  production path (debt D1).
 - **Version parity.** `slim:1.4.0` / `slim-bindings` 1.4.x is a matched pair on
   **both** hosts; a skew across machines is a new failure mode.
 

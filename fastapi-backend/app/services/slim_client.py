@@ -33,6 +33,8 @@ import asyncio
 import datetime
 import hashlib
 import hmac
+import logging
+import os
 import socket
 from dataclasses import dataclass
 from types import ModuleType
@@ -56,14 +58,60 @@ MIN_SECRET_LEN = 32
 # members' own apps are their agent ids.
 DEFAULT_CHANNEL_TOPIC = "room"
 
-# Dev-only master secret from which per-channel shared secrets are
-# *deterministically* derived, so every agent on a room's channel and the
-# always-on backend independently reconstruct the same credential (which seeds
-# the group key) without a key-exchange round-trip. This is the MVP identity tier
-# per the bible (Step 2 resolve-first: shared secret); JWT/SPIRE is the production
-# path and is out of scope here. Override per deployment via the ``master_secret``
-# argument to :func:`mint_shared_secret`.
+# Master secret from which per-channel shared secrets are *deterministically*
+# derived, so every agent on a room's channel and the always-on backend
+# independently reconstruct the same credential (which seeds the group key)
+# without a key-exchange round-trip. This is the MVP identity tier per the bible
+# (Step 2 resolve-first: shared secret); JWT/SPIRE is the production path (debt
+# D1) and is out of scope here.
+#
+# The built-in literal below is a **public dev default** — anyone with the repo
+# can derive it, so it protects nothing on its own (debt D1). A real deployment
+# sets ``MYCELIUM_SLIM_MASTER_SECRET`` to a private value; every host that shares
+# rooms must set the *same* value (it's a shared secret, not per-host). Set
+# ``MYCELIUM_SLIM_REQUIRE_SECRET=1`` to hard-refuse the dev default (fail closed
+# on a host that forgot to configure a real secret).
+_MASTER_SECRET_ENV = "MYCELIUM_SLIM_MASTER_SECRET"
+_REQUIRE_SECRET_ENV = "MYCELIUM_SLIM_REQUIRE_SECRET"
 _DEV_MASTER_SECRET = "mycelium-dev-shared-secret-v1-do-not-use-in-prod"
+
+logger = logging.getLogger(__name__)
+
+# Warn only once per process when falling back to the public dev secret.
+_dev_secret_warned = False
+
+
+def _truthy(value: str | None) -> bool:
+    return (value or "").strip().lower() not in ("", "0", "false", "no")
+
+
+def resolve_master_secret() -> str:
+    """The master secret to derive channel secrets from.
+
+    Prefers ``MYCELIUM_SLIM_MASTER_SECRET``; otherwise falls back to the public
+    dev literal with a one-time warning, or — when ``MYCELIUM_SLIM_REQUIRE_SECRET``
+    is set — refuses outright so a misconfigured production host fails closed
+    instead of silently joining channels anyone could join.
+    """
+    secret = os.getenv(_MASTER_SECRET_ENV, "").strip()
+    if secret:
+        return secret
+    if _truthy(os.getenv(_REQUIRE_SECRET_ENV)):
+        raise SlimError(
+            f"{_REQUIRE_SECRET_ENV} is set but {_MASTER_SECRET_ENV} is not: refusing "
+            "to derive channel keys from the public dev secret. Set "
+            f"{_MASTER_SECRET_ENV} to a private value shared across your hosts."
+        )
+    global _dev_secret_warned
+    if not _dev_secret_warned:
+        _dev_secret_warned = True
+        logger.warning(
+            "SLIM channel keys are derived from the built-in public dev secret — "
+            "anyone with the repo can join. Set %s to a private value (the same on "
+            "every host that shares rooms) before any hosted/multi-user use.",
+            _MASTER_SECRET_ENV,
+        )
+    return _DEV_MASTER_SECRET
 
 
 class SlimError(RuntimeError):
@@ -167,8 +215,8 @@ def to_channel_name(
     return sb.Name(workspace, room, topic)
 
 
-def mint_shared_secret(identity: SlimIdentity, *, master_secret: str = _DEV_MASTER_SECRET) -> str:
-    """Mint the dev shared secret for a channel (``workspace/room``), ≥32 chars.
+def mint_shared_secret(identity: SlimIdentity, *, master_secret: str | None = None) -> str:
+    """Mint the shared secret for a channel (``workspace/room``), ≥32 chars.
 
     The secret is **shared by every member of a room**: it seeds the group's MLS
     key, so all agents on the same channel must derive the *same* value or they
@@ -176,7 +224,13 @@ def mint_shared_secret(identity: SlimIdentity, *, master_secret: str = _DEV_MAST
     (workspace/room), **not** the agent id — the ``agent`` field of *identity* is
     intentionally ignored. Derived via HMAC-SHA256 so any member can reconstruct
     it offline; the 64-char hex digest comfortably exceeds :data:`MIN_SECRET_LEN`.
+
+    ``master_secret`` defaults to :func:`resolve_master_secret` (the
+    ``MYCELIUM_SLIM_MASTER_SECRET`` env or the public dev literal); pass it
+    explicitly only to derive a secret for a specific master (e.g. in tests).
     """
+    if master_secret is None:
+        master_secret = resolve_master_secret()
     scope = f"{identity.workspace}/{identity.room}"
     digest = hmac.new(
         master_secret.encode("utf-8"),
