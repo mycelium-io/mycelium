@@ -29,7 +29,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from app.config import settings
 from app.services import l9
@@ -49,6 +51,16 @@ from app.services.slim_client import (
     to_channel_name,
     to_slim_name,
 )
+
+if TYPE_CHECKING:
+    from app.services.l9_models import L9
+
+# The room-aware summon hook the manager holds: unlike the persister's
+# per-message ``SummonHook`` (which knows only the handle + envelope), this
+# carries the ``room`` so the engine wired to it (Step 7's aligner) knows which
+# channel to judge. ``_start_persister`` adapts it down to the persister's
+# signature by binding the room.
+RoomSummonHook = Callable[[str, str, "L9"], None]
 
 logger = logging.getLogger(__name__)
 
@@ -99,10 +111,11 @@ class RoomChannelManager:
         # Consent-gated invites raised by an @-mention of a not-present agent
         # (bible §12). The moderator only invites on accept.
         self._invites = PendingInviteRegistry()
-        # Trigger hooks handed to every persister. Skeletons by default (log
-        # only); Step 7 wires ``on_summon`` to the cognition-engine spawner and
-        # Step 8 wires ``on_converged`` to ``plan_compiler``.
-        self.on_summon: SummonHook | None = None
+        # Trigger hooks handed to every persister. ``on_summon`` is wired at
+        # startup (``main.py``) to the SIEP aligner's ``handle_summon`` (Step 7);
+        # ``on_converged`` stays a skeleton until Step 8 wires it to
+        # ``plan_compiler``. Unset → the persister's log-only defaults.
+        self.on_summon: RoomSummonHook | None = None
         self.on_converged: ConvergedHook | None = None
 
     def get(self, room: str) -> ManagedRoomChannel | None:
@@ -168,10 +181,26 @@ class RoomChannelManager:
             room,
             managed.channel,
             members_provider=lambda: self.members(room),
-            on_summon=self.on_summon,
+            on_summon=self._summon_adapter(room),
             on_converged=self.on_converged,
         )
         managed.persister_task = asyncio.create_task(managed.persister.run())
+
+    def _summon_adapter(self, room: str) -> SummonHook | None:
+        """Bind ``room`` onto the room-aware ``on_summon`` hook.
+
+        The persister calls its ``SummonHook`` with only ``(handle, envelope)``;
+        the engine wired to :attr:`on_summon` needs the room too. When no hook is
+        wired, return ``None`` so the persister keeps its log-only default.
+        """
+        hook = self.on_summon
+        if hook is None:
+            return None
+
+        def adapter(handle: str, envelope: L9, _room: str = room) -> None:
+            hook(_room, handle, envelope)
+
+        return adapter
 
     async def invite(self, room: str, agent: str) -> bool:
         """Invite ``agent`` into the room channel. Best-effort; returns success."""

@@ -77,6 +77,18 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Embedding warmup failed (non-fatal): %s", exc)
 
+    # Wire the SIEP aligner (Step 7) into every room's summon seam before any
+    # channel is provisioned, so all persisters pick it up. Dormant until an
+    # @-summon of its reserved handle arrives — zero idle cost (bible §10).
+    from app.services.aligner import AlignerEngine
+    from app.services.room_channels import manager as room_channel_manager
+
+    app.state.aligner = AlignerEngine(room_channel_manager)
+    room_channel_manager.on_summon = app.state.aligner.handle_summon
+    logger.info(
+        "SIEP aligner wired (@%s, mode=%s)", app.state.aligner.handle, settings.ALIGNER_MODE
+    )
+
     yield
     stop_watcher()
     stop_event_sweep()

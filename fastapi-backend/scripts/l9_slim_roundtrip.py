@@ -233,6 +233,91 @@ async def run_durable_inbox(endpoint: str = DEFAULT_NODE_ENDPOINT) -> list[L9]:
         await manager.close_all()
 
 
+_ALIGN_ROOM = "aligner-room"
+_ALIGN_EPISODE = l9.episode_urn(_ALIGN_ROOM, "live")
+
+
+def _align_position(sender: str, confidence: float, message_id: str) -> L9:
+    return l9.build_envelope(
+        kind=Kind.exchange,
+        episode=_ALIGN_EPISODE,
+        sender=sender,
+        sender_role="agent",
+        recipients=[l9.SYSTEM_ACTOR_ID],
+        topic=l9.topic_urn(_ALIGN_ROOM),
+        message_id=message_id,
+        payload_type="reply",
+        payload_data={"action": "accept", "confidence": confidence},
+    )
+
+
+def _align_summon() -> L9:
+    """A human's ``@aligner`` summon (role human → not scored as a position)."""
+    return l9.build_envelope(
+        kind=Kind.exchange,
+        episode=_ALIGN_EPISODE,
+        sender="human",
+        sender_role="human",
+        recipients=["aligner"],
+        topic=l9.topic_urn(_ALIGN_ROOM),
+        payload_type="message",
+    )
+
+
+async def run_aligner_observe(endpoint: str = DEFAULT_NODE_ENDPOINT) -> L9:
+    """Prove the Step 7 observer DoD over a live node.
+
+    The backend provisions a channel with the SIEP aligner wired to its summon
+    seam. Two agents each publish a high-confidence position; a human then
+    ``@aligner``-summons the engine. The engine (observer mode) reads the
+    transcript, scores it via ``l9_episode``, and broadcasts an L9
+    ``commit:converged`` onto the channel. Returns the commit envelope a
+    participant receives.
+    """
+    from app.services.aligner import AlignerEngine
+
+    manager = RoomChannelManager(endpoint=endpoint, default_workspace=_WORKSPACE)
+    engine = AlignerEngine(manager, handle="aligner", mode="observer", threshold=0.6)
+    manager.on_summon = engine.handle_summon  # wire BEFORE provision so the persister picks it up
+    managed = await manager.provision(_ALIGN_ROOM)
+    assert managed is not None and managed.persister is not None
+    persister = managed.persister
+
+    agent_a = await SlimClient(SlimIdentity(_WORKSPACE, _ALIGN_ROOM, "agent-a")).connect(endpoint)
+    agent_b = await SlimClient(SlimIdentity(_WORKSPACE, _ALIGN_ROOM, "agent-b")).connect(endpoint)
+
+    try:
+        a_listen = asyncio.create_task(agent_a.listen_for_session())
+        b_listen = asyncio.create_task(agent_b.listen_for_session())
+        await manager.invite(_ALIGN_ROOM, "agent-a")
+        await manager.invite(_ALIGN_ROOM, "agent-b")
+        a_channel = L9SlimChannel(agent_a, await a_listen)
+        b_channel = L9SlimChannel(agent_b, await b_listen)
+
+        # Two agents state a high-confidence position; wait until both are recorded.
+        await a_channel.send(_align_position("agent-a", 0.8, "align-a"))
+        await b_channel.send(_align_position("agent-b", 0.9, "align-b"))
+        positions = {"align-a", "align-b"}
+        await _wait_for(
+            lambda: positions <= {r.message_id for r in persister.log.records}, timeout=15.0
+        )
+
+        # The human summons the aligner → the engine observes and emits the verdict.
+        await a_channel.send(_align_summon(), extra={"content": "@aligner please converge"})
+
+        commit: L9 | None = None
+        while commit is None:
+            for env in await b_channel.receive(timeout_s=15.0):
+                if env.header.kind.value == "commit":
+                    commit = env
+                    break
+        return commit
+    finally:
+        await agent_a.close()
+        await agent_b.close()
+        await manager.close_all()
+
+
 async def _main(endpoint: str) -> int:
     received = await run_roundtrip(endpoint)
     ids = [e.header.message.id for e in received if e.header.message is not None]
@@ -256,6 +341,13 @@ async def _main(endpoint: str) -> int:
         )
         return 1
     print(f"OK — durable inbox re-served missed message on reconnect: {inbox_ids}")
+
+    commit = await run_aligner_observe(endpoint)
+    if commit.header.subkind != "converged":
+        print(f"MISMATCH — aligner verdict subkind {commit.header.subkind!r}", file=sys.stderr)
+        return 1
+    metrics = commit.payload.data.get("metrics") if commit.payload else None
+    print(f"OK — aligner observed and emitted commit:{commit.header.subkind} (metrics={metrics})")
     return 0
 
 
