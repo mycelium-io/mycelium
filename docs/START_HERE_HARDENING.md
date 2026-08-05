@@ -6,6 +6,31 @@ SLIM and replies. But the first full-stack run surfaced real fragility. **Your j
 post-smoke hardening queue so the system is reliable and *visibly* working** — not just
 unit-green.
 
+## Current status (2026-08-05) — H1–H4 DONE + pushed; only H5 left
+
+Baseline fixes + **H1, H2, H3, H4 are complete, validated live, and pushed** to
+`slim-native-rewrite` (10 commits, `1b36a79a`..`2e222d54`; backend + CLI gates green, 285
+backend tests). Bible Part VII marks each done with what shipped.
+
+- **Baseline** `1b36a79a` — the 6 smoke fixes (keepalive, benign receive-timeout, causal
+  delivery, compose `SLIM_NODE_ENDPOINT`); node `log_level` reverted to `info`.
+- **H1 obs** `f26ab6b3` — `/health.coordination` surface; silent failures → WARNING/ERROR.
+- **H2 store** `2486a223`+`beff837a` — agent replies show in the UI; one-store/source-
+  partitioned design (full single-writer migration explicitly ruled out — see bible H2).
+- **H3 lifecycle** `698a991b`+`d4972ac1` — startup re-provision + idempotent create; presence
+  tracking; supervised persister. Survives backend restart AND a 40s node outage.
+- **H4 footguns** `e8fee00a`+`9768b4ec`+`2e222d54` — **clean single-shot invoke→wake→reply**
+  (§E+§G), daemon singleton lock (§H), §I resolved-by-composition.
+
+**The headline to build on:** one `mycelium agent invoke` of a user's own agent now
+auto-joins it (no consent), wakes it on the first mention, and its reply lands in the room —
+end to end, reliably.
+
+**Remaining: H5 only** — prove Rung 4 (`aligner → commit:converged → plan/tasks.md compiles →
+memory syncs`) with real agents. Unstarted. Recommended first step: scout
+`app/services/aligner.py`, `plan_compiler.py`, `plan_sync.py` and lay out the multi-agent test
+before running (it uses real LLM tokens). The single-shot flow above is the foundation to drive it.
+
 ## Read first, in order
 1. **`docs/SLIM_SMOKE_TEST_FINDINGS.md`** — what broke, what was fixed, what's still open, with
    repro. This is the ground truth of where things actually stand.
