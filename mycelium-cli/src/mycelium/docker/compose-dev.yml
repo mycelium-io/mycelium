@@ -28,7 +28,7 @@ services:
         required: false
     environment:
       MYCELIUM_STUB_EMBEDDINGS: "1"
-      LOG_LEVEL: DEBUG
+      LOG_LEVEL: INFO
 
   mycelium-collector:
     build:

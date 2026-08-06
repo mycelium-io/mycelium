@@ -106,6 +106,24 @@ async def _never() -> str:  # pragma: no cover - placeholder coroutine
     return ""
 
 
+def test_to_outcome_snaps_near_miss_but_refuses_out_of_grid() -> None:
+    """to_outcome rescues a formatting near-miss ('30%'→'30') so a real move
+    isn't dropped, but returns None for a value with no near-match (kept a reject,
+    never fabricated into a wrong number)."""
+    import asyncio
+
+    neg = mediator.MediatedNegotiation(
+        issues=[{"name": "tech", "options": ["25", "30", "35"]}],
+        cap=8,
+        loop=asyncio.new_event_loop(),
+        fetch_prose=lambda h, p, r: _never(),
+        turn_timeout_s=1.0,
+    )
+    assert neg.to_outcome({"tech": "30%"}) == ("30",)  # snapped
+    assert neg.to_outcome({"Tech": "30"}) == ("30",)  # key snapped too
+    assert neg.to_outcome({"tech": "27"}) is None  # no near-match → real reject
+
+
 @pytest.mark.asyncio
 async def test_mediate_terminates_at_agreement() -> None:
     """Agents that accept the standing offer → NEGMAS stops, verdict is converged

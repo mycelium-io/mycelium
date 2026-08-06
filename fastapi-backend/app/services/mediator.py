@@ -48,6 +48,7 @@ from negmas import SAOMechanism, make_issue
 from negmas.sao import ResponseType, SAONegotiator
 
 from app.config import settings
+from app.services.offer_snap import snap_offer
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
@@ -121,10 +122,16 @@ def discover_issues(
     out = _extract_json(
         llm(
             "You are a negotiation mediator. From the task and each agent's opening position, "
-            "identify the negotiable ISSUES and 3-4 discrete OPTIONS each.\n\n"
+            "identify the negotiable ISSUES and their discrete OPTIONS.\n"
+            "Only include issues an agent actually raised — do NOT invent extra dimensions.\n"
+            "For a NUMERIC/quantity issue, the options MUST be an evenly-spaced grid that "
+            "spans BOTH agents' stated values AND the space between them, so any middle "
+            "compromise is representable (e.g. positions 20 and 40 → options 20,25,30,35,40). "
+            "For a categorical issue, give 3-4 concrete choices.\n\n"
             f"TASK: {task}\n\nPOSITIONS:\n{opening}\n\n"
             'Return ONLY JSON: {"issues":[{"name":"snake_case","options":["v1","v2"]}]}',
-            system="Strict JSON. Options are short concrete tokens (e.g. '30' or 'on').",
+            system="Strict JSON. Options are short concrete tokens (e.g. '30' or 'on'). "
+            "Numeric issues get a full evenly-spaced range, not just the endpoints.",
             temperature=_DISCOVER_TEMPERATURE,
         )
     )
@@ -281,14 +288,19 @@ class MediatedNegotiation:
             return ""
 
     def to_outcome(self, offer: dict[str, Any]) -> tuple[str, ...] | None:
-        """Coerce an interpreted offer dict into a valid NEGMAS outcome tuple."""
-        try:
-            values = tuple(str(offer[name]) for name in self._names)
-        except (KeyError, TypeError):
+        """Coerce an interpreted offer dict into a valid NEGMAS outcome tuple.
+
+        The interpreter LLM is asked to use canonical option tokens, but often
+        returns near-misses (``"30%"`` for ``"30"``, ``"Tech"`` for the issue
+        key). ``snap_offer`` rescues those before we'd otherwise reject the whole
+        move — a spurious reject is what cascades into timeouts and misreported
+        agreements live. A value with no near-match still yields ``None`` (snap
+        refuses to force it), so a genuinely out-of-grid offer is not fabricated.
+        """
+        snapped = snap_offer(offer, self._names, self._options)
+        if snapped is None:
             return None
-        if all(values[i] in self._options[name] for i, name in enumerate(self._names)):
-            return values
-        return None
+        return tuple(snapped[name] for name in self._names)
 
     def default_outcome(self) -> tuple[str, ...]:
         return tuple(self._options[name][0] for name in self._names)
