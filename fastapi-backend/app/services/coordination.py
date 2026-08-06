@@ -1430,47 +1430,10 @@ async def _finish_cfn(
             except Exception:
                 logger.exception("_finish_cfn: fallback plan write failed for %s", room_name)
 
-    # Dissent compiler: on broken consensus, compile an impasse artifact into
-    # decisions/unresolved-tensions.md BEFORE the consensus message posts
-    # (plan-first ordering — session await returns with a pointer to the file).
-    # Fail-soft: a write failure leaves dissent_file=None; consensus still posts.
-    dissent_file: str | None = None
-    if broken and state:
-        _dissent_parent = (
-            room_name.split(":session:", 1)[0] if ":session:" in room_name else room_name
-        )
-        try:
-            _fb_kwargs: dict = {
-                "session": room_name,
-                "reason": reason,
-                "issues": state.issues,
-                "issue_options": state.issue_options,
-                "current_offer": state.current_offer,
-                "last_actions": state.last_actions,
-                "last_round_outcome": state.last_round_outcome,
-                "joined_intents": state.joined_intents,
-                "session_handles": state.session_handles,
-                "round_num": state.round_num,
-            }
-            try:
-                body = await compile_dissent(**_fb_kwargs, use_llm=True)
-            except Exception as llm_exc:
-                logger.warning(
-                    "_finish_cfn: LLM dissent compile failed for %s, using fallback: %s",
-                    room_name,
-                    llm_exc,
-                )
-                body = dissent_fallback_body(**_fb_kwargs)
-            write_memory_file(
-                get_room_dir(_dissent_parent),
-                "decisions/unresolved-tensions",
-                body,
-                created_by="CognitiveEngine",
-                extra_meta={"session": room_name, "reason": reason},
-            )
-            dissent_file = "decisions/unresolved-tensions.md"
-        except Exception as exc:
-            logger.warning("_finish_cfn: dissent write failed for %s: %s", room_name, exc)
+    # Pre-set the dissent_file path so it appears in the consensus payload
+    # immediately. The file is compiled and written AFTER the consensus posts
+    # (see below), so agents see the impasse without waiting for the LLM round-trip.
+    dissent_file: str | None = "decisions/unresolved-tensions.md" if broken else None
 
     # L9 close-out: consensus quality metrics (only meaningful on a genuine
     # agreement with enough confidence reports), the commit envelope, and the
@@ -1547,6 +1510,48 @@ async def _finish_cfn(
                 parent_room_for_post,
                 exc,
             )
+
+    # Dissent compiler: compile the impasse artifact AFTER posting consensus so
+    # agents see the broken outcome immediately rather than waiting for the LLM.
+    # The file path was already included in the consensus payload above; it will
+    # be readable by the time agents act on it. Fail-soft: a compile failure
+    # leaves an empty/fallback file but doesn't affect the already-posted result.
+    if broken and state:
+        _dissent_parent = (
+            room_name.split(":session:", 1)[0] if ":session:" in room_name else room_name
+        )
+        try:
+            _fb_kwargs: dict = {
+                "session": room_name,
+                "reason": reason,
+                "issues": state.issues,
+                "issue_options": state.issue_options,
+                "current_offer": state.current_offer,
+                "last_actions": state.last_actions,
+                "last_round_outcome": state.last_round_outcome,
+                "joined_intents": state.joined_intents,
+                "session_handles": state.session_handles,
+                "round_num": state.round_num,
+            }
+            try:
+                body = await compile_dissent(**_fb_kwargs, use_llm=True)
+            except Exception as llm_exc:
+                logger.warning(
+                    "_finish_cfn: LLM dissent compile failed for %s, using fallback: %s",
+                    room_name,
+                    llm_exc,
+                )
+                body = dissent_fallback_body(**_fb_kwargs)
+            write_memory_file(
+                get_room_dir(_dissent_parent),
+                "decisions/unresolved-tensions",
+                body,
+                created_by="CognitiveEngine",
+                extra_meta={"session": room_name, "reason": reason},
+            )
+        except Exception as exc:
+            logger.warning("_finish_cfn: dissent write failed for %s: %s", room_name, exc)
+
     async with async_session_maker() as db:
         if ":session:" in room_name:
             parent, _, short_id = room_name.partition(":session:")

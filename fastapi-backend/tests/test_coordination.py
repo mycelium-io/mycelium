@@ -788,7 +788,10 @@ async def test_broken_consensus_dissent_write_fails_soft():
 
     consensus = next(p[1] for p in posted if p[0] == "coordination_consensus")
     assert consensus["broken"] is True
-    assert consensus["dissent_file"] is None
+    # dissent_file path is always pre-set in the consensus payload so agents see the
+    # impasse immediately; a write failure means the file may not exist, but the path
+    # is still included so the consensus round-trip isn't gated on the LLM compile.
+    assert consensus["dissent_file"] == "decisions/unresolved-tensions.md"
 
     _cfn_state.clear()
 

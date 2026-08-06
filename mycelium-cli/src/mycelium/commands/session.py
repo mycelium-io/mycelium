@@ -316,14 +316,26 @@ def await_tick(
                     # Ticks are posted to coordination sessions (legacy display
                     # name: ``{room}:session:{short}``). Pull the active sessions
                     # from the first-class endpoint instead of scanning rooms.
-                    rooms_to_scan = [resolved_room]
                     coord_resp = http.get(
                         f"{config.server.api_url}/api/coordination-sessions",
                         params={"parent_room": resolved_room, "limit": 200},
                     )
+                    active_session_rooms: list[str] = []
                     if coord_resp.status_code == 200:
                         for c in coord_resp.json():
-                            rooms_to_scan.append(c["display_name"])
+                            if c.get("state") in ("idle", "waiting", "negotiating"):
+                                active_session_rooms.append(c["display_name"])
+
+                    # If an active session exists, scan only its room for missed ticks.
+                    # The parent-room scan is skipped so that a terminal-session's
+                    # consensus (posted there on completion) is never replayed into a
+                    # new session — that would make agents immediately see impasse.
+                    # When NO active session exists, scan the parent room instead: the
+                    # agent likely missed the consensus from the session that just ended.
+                    if active_session_rooms:
+                        rooms_to_scan = active_session_rooms
+                    else:
+                        rooms_to_scan = [resolved_room]
 
                     for scan_room in rooms_to_scan:
                         resp = http.get(
@@ -377,10 +389,17 @@ def await_tick(
                 except Exception:
                     pass  # fall through to SSE
 
+        # Scope the SSE subscription to the current session's rooms so events
+        # from prior sessions (same handle, different room) are filtered server-side.
+        sse_room_scope = active_session_rooms if active_session_rooms else [resolved_room]
         url = f"{config.server.api_url}/api/agents/{handle}/stream"
+        sse_params = [("room", r) for r in sse_room_scope]
         start = time.time()
 
-        with httpx.Client(timeout=None) as http, http.stream("GET", url) as response:
+        with (
+            httpx.Client(timeout=None) as http,
+            http.stream("GET", url, params=sse_params) as response,
+        ):
             for line in response.iter_lines():
                 if timeout > 0 and (time.time() - start) >= timeout:
                     typer.echo(json_module.dumps({"type": "timeout", "seconds": timeout}))
@@ -525,6 +544,113 @@ def watch_session(
     desc="List negotiation sessions inside a room.",
     group="session",
 )
+@app.command(name="ruling")
+def record_ruling(
+    ctx: typer.Context,
+    text: str | None = typer.Argument(
+        None,
+        help="Ruling text. Omit to read from --from-file or stdin.",
+    ),
+    room: str | None = typer.Option(
+        None, "--room", "-r", help="Room name (defaults to active room)"
+    ),
+    from_file: typer.FileText | None = typer.Option(
+        None,
+        "--from-file",
+        "-f",
+        help="Read ruling from a file.",
+    ),
+    show: bool = typer.Option(False, "--show", help="Print the current ruling and exit."),
+    handle: str = typer.Option(
+        "operator",
+        "--handle",
+        "-H",
+        help="Identity recorded as the ruling's author.",
+    ),
+) -> None:
+    """Record (or display) the human ruling after a session 1 impasse.
+
+    Writes the ruling to decisions/human-ruling in the room.  Agents poll
+    this key and embed it in their session 2 join message so CognitiveEngine
+    can narrow the option space before round 1.
+
+    Examples:
+
+        mycelium session ruling "Ship Friday behind a feature flag; pull it if error rate > 1%"
+
+        mycelium session ruling --from-file ruling.md --room my-room
+
+        mycelium session ruling --show --room my-room
+
+        echo "Ship now, revert if errors exceed 1%" | mycelium session ruling -
+    """
+    import sys
+
+    import httpx
+    from rich.console import Console
+
+    console = Console()
+
+    try:
+        config = MyceliumConfig.load()
+        room_name = _resolve_room(config, room)
+
+        if show:
+            resp = httpx.get(
+                f"{config.server.api_url}/api/rooms/{room_name}/memory/decisions/human-ruling",
+                timeout=10,
+            )
+            if resp.status_code == 404:
+                console.print("[dim]No ruling recorded yet.[/dim]")
+                return
+            resp.raise_for_status()
+            data = resp.json()
+            body = data.get("content_text") or str(data.get("value", ""))
+            console.print(body)
+            return
+
+        # Resolve ruling text: argument > file > stdin piped
+        if text == "-" or (text is None and from_file is None and not sys.stdin.isatty()):
+            ruling = sys.stdin.read().strip()
+        elif from_file is not None:
+            ruling = from_file.read().strip()
+        elif text:
+            ruling = text.strip()
+        else:
+            console.print("[red]Error:[/red] Provide ruling text, --from-file, or pipe via stdin.")
+            raise typer.Exit(1)
+
+        if not ruling:
+            console.print("[red]Error:[/red] Ruling text is empty.")
+            raise typer.Exit(1)
+
+        resp = httpx.post(
+            f"{config.server.api_url}/api/rooms/{room_name}/memory",
+            json={
+                "items": [
+                    {
+                        "key": "decisions/human-ruling",
+                        "value": ruling,
+                        "created_by": handle,
+                        "embed": True,
+                    }
+                ]
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+
+        console.print(
+            f"[green]✓[/green] Ruling written to [bold]decisions/human-ruling[/bold] in [bold]{room_name}[/bold]."
+        )
+        console.print("[dim]Agents will read this when they join session 2.[/dim]")
+
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+        raise typer.Exit(1) from e
+
+
 @app.command(name="ls")
 def list_sessions(
     ctx: typer.Context,

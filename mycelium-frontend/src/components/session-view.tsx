@@ -91,6 +91,9 @@ function parseEvents(messages: RawMessage[]): Event[] {
   const out: Event[] = [];
   // Track latest tick per agent so we can attribute their next 'direct' to the right round
   const lastTickFor = new Map<string, { round: number; iso: string }>();
+  // Deduplicate synthetic CognitiveEngine PROPOSE rows: one per round where the CFN opens
+  // (CFN embeds its proposal in tick payloads rather than posting a separate message)
+  const seenServerProposalRounds = new Set<number>();
 
   for (const m of messages) {
     const content = parseContent(m.content);
@@ -126,6 +129,17 @@ function parseEvents(messages: RawMessage[]): Event[] {
       const target = String(payload.participant_id ?? "?");
       const round = Number(payload.round ?? 0);
       lastTickFor.set(target, { round, iso });
+      if (payload.proposer_id === "server" && !seenServerProposalRounds.has(round)) {
+        seenServerProposalRounds.add(round);
+        out.push({
+          id: `${m.id}:server-propose`,
+          time, iso, agent: "CognitiveEngine",
+          round,
+          action: "propose",
+          offer: payload.current_offer as Record<string, string> | undefined,
+          raw: m,
+        });
+      }
       out.push({
         id: m.id, time, iso, agent: target,
         round,
@@ -636,6 +650,33 @@ function ConsensusBanner({ derived, parentRoom }: { derived: DerivedState; paren
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const submittingRef = useRef(false);
+  const [dissentContent, setDissentContent] = useState<string | null>(null);
+
+  // On mount (and room change), check if a ruling already exists in memory.
+  // This prevents the "RECORD RULING" form from reappearing after an SSE
+  // re-render resets local `submitted` state.
+  useEffect(() => {
+    if (!c?.broken || !c?.dissentFile) return;
+    fetch(`/api/rooms/${encodeURIComponent(parentRoom)}/memory/decisions/human-ruling`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.content_text) {
+          setRulingText(data.content_text);
+          setSubmitted(true);
+        }
+      })
+      .catch(() => {/* ruling not yet written — stay in form state */});
+  }, [parentRoom, c?.broken, c?.dissentFile]);
+
+  // Fetch the dissent artifact content to display inline (avoids needing a CLI command).
+  useEffect(() => {
+    if (!c?.broken || !c?.dissentFile) return;
+    const key = c.dissentFile.replace(/\.md$/, "");
+    fetch(`/api/rooms/${encodeURIComponent(parentRoom)}/memory/${key}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.content_text) setDissentContent(data.content_text); })
+      .catch(() => {});
+  }, [parentRoom, c?.broken, c?.dissentFile]);
 
   if (!c) return null;
   const tone = c.broken ? "warn" : "ok";
@@ -729,12 +770,28 @@ function ConsensusBanner({ derived, parentRoom }: { derived: DerivedState; paren
             DISSENT ARTIFACT
           </div>
           <div className="text-label text-text2 font-mono mb-2">{c.dissentFile}</div>
-          <div className="text-micro text-muted leading-relaxed">
-            Per-agent positions, blocking pattern, and recommended human questions.
-            Read it with{" "}
-            <code className="font-mono text-text2">mycelium memory get decisions/unresolved-tensions</code>
-            , then record your ruling below before starting session 2.
-          </div>
+          {dissentContent ? (
+            <pre
+              className="font-mono text-label leading-relaxed overflow-x-auto whitespace-pre-wrap"
+              style={{
+                color: "var(--text2)",
+                background: "rgba(255,255,255,0.03)",
+                border: "1px solid var(--border)",
+                padding: "10px 12px",
+                maxHeight: 320,
+                overflowY: "auto",
+              }}
+            >
+              {dissentContent}
+            </pre>
+          ) : (
+            <div className="text-micro text-muted leading-relaxed">
+              Per-agent positions, blocking pattern, and recommended human questions.
+              Read it with{" "}
+              <code className="font-mono text-text2">mycelium memory get decisions/unresolved-tensions --room {parentRoom}</code>
+              , then record your ruling below before starting session 2.
+            </div>
+          )}
         </div>
       )}
       {c.broken && c.dissentFile && (
@@ -743,16 +800,23 @@ function ConsensusBanner({ derived, parentRoom }: { derived: DerivedState; paren
             {submitted ? "RULING RECORDED" : "RECORD HUMAN RULING"}
           </div>
           {submitted ? (
-            <div className="text-label text-ok">
-              ✓ Saved to <code className="font-mono">decisions/human-ruling</code>.
-              Agents will read this when session 2 is created.
+            <div>
+              <div className="text-label text-ok mb-2">
+                ✓ Saved to <code className="font-mono">decisions/human-ruling</code>.
+                Agents will read this when session 2 is created.
+              </div>
+              {rulingText && (
+                <div className="font-mono text-label text-text2 border border-border rounded p-2 bg-surface whitespace-pre-wrap">
+                  {rulingText}
+                </div>
+              )}
             </div>
           ) : (
             <>
               <textarea
                 className="w-full font-mono text-label text-text bg-surface border border-border rounded p-2 resize-y"
                 style={{ minHeight: 72, borderColor: color }}
-                placeholder="e.g. Ship security patch in 24h; feature defers to next sprint; forensics snapshot required before deploy."
+                placeholder="e.g. Ship Friday behind a feature flag; run exploitability review in parallel; pull the flag if error rate exceeds 1%."
                 value={rulingText}
                 onChange={e => setRulingText(e.target.value)}
                 disabled={submitting}
@@ -768,6 +832,20 @@ function ConsensusBanner({ derived, parentRoom }: { derived: DerivedState; paren
               >
                 {submitting ? "SAVING…" : "RECORD RULING"}
               </button>
+              <div className="text-micro text-muted mt-3 pt-2 border-t" style={{ borderColor: "var(--border)" }}>
+                <div>
+                  Set via CLI:{" "}
+                  <code className="font-mono text-text2">
+                    mycelium session ruling &quot;your ruling&quot; --room {parentRoom}
+                  </code>
+                </div>
+                <div className="mt-1">
+                  Read back:{" "}
+                  <code className="font-mono text-text2">
+                    mycelium session ruling --show --room {parentRoom}
+                  </code>
+                </div>
+              </div>
             </>
           )}
         </div>
@@ -776,9 +854,58 @@ function ConsensusBanner({ derived, parentRoom }: { derived: DerivedState; paren
   );
 }
 
+// Collapse consecutive events with the same (action, round) into a group.
+// Ticks, joins, starts, and consensus events are never collapsed — they carry
+// unique per-event content. Accept/reject/propose runs in the same round are
+// the common repetitive case (CFN multi-step rounds × all agents accepting).
+const COLLAPSIBLE_ACTIONS = new Set<Action>(["accept", "reject", "propose", "timeout"]);
+
+interface EventGroup {
+  representative: Event;  // first event in the group (shown as the row)
+  count: number;          // total including representative
+  agents: string[];       // unique agent handles in the group
+}
+
+function groupEvents(events: Event[]): EventGroup[] {
+  const groups: EventGroup[] = [];
+  for (const e of events) {
+    const last = groups[groups.length - 1];
+    if (
+      last &&
+      COLLAPSIBLE_ACTIONS.has(e.action) &&
+      COLLAPSIBLE_ACTIONS.has(last.representative.action) &&
+      e.action === last.representative.action &&
+      e.round === last.representative.round
+    ) {
+      last.count++;
+      if (!last.agents.includes(e.agent)) last.agents.push(e.agent);
+    } else {
+      groups.push({ representative: e, count: 1, agents: [e.agent] });
+    }
+  }
+  return groups;
+}
+
+// Show a pending row when all known agents have replied to the current round
+// but no consensus has arrived yet — this is the plan-compilation window.
+function usePendingCompile(derived: DerivedState): boolean {
+  const { state, events, agents, currentRound } = derived;
+  if (state !== "negotiating" || agents.length === 0 || currentRound === 0) return false;
+  // All agents must have at least one reply event in currentRound
+  const repliedInRound = new Set(
+    events
+      .filter(e => e.round === currentRound && COLLAPSIBLE_ACTIONS.has(e.action))
+      .map(e => e.agent)
+  );
+  return agents.every(a => repliedInRound.has(a));
+}
+
 function EventLog({ derived }: { derived: DerivedState }) {
   const [order, setOrder] = useState<"desc" | "asc">("desc");
-  const events = order === "desc" ? [...derived.events].reverse() : derived.events;
+  const sorted = order === "desc" ? [...derived.events].reverse() : derived.events;
+  const groups = groupEvents(sorted);
+  const pendingCompile = usePendingCompile(derived);
+
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-paper flex-shrink-0">
@@ -793,8 +920,22 @@ function EventLog({ derived }: { derived: DerivedState }) {
         </button>
       </div>
       <div className="flex-1 overflow-y-auto">
-        {events.map(e => <EventRow key={e.id} event={e} />)}
-        {events.length === 0 && (
+        {pendingCompile && order === "desc" && (
+          <div className="px-4 py-2 border-b border-border flex items-center gap-2 opacity-60">
+            <span className="text-micro text-muted tabular font-mono flex-shrink-0">——:——:——</span>
+            <span className="text-micro text-dim tabular font-mono flex-shrink-0">R{String(derived.currentRound).padStart(2, "0")}</span>
+            <span className="font-mono text-label text-accent flex-1 animate-pulse">CognitiveEngine compiling plan…</span>
+          </div>
+        )}
+        {groups.map(g => <EventRow key={g.representative.id} event={g.representative} count={g.count} agents={g.agents} />)}
+        {pendingCompile && order === "asc" && (
+          <div className="px-4 py-2 border-b border-border flex items-center gap-2 opacity-60">
+            <span className="text-micro text-muted tabular font-mono flex-shrink-0">——:——:——</span>
+            <span className="text-micro text-dim tabular font-mono flex-shrink-0">R{String(derived.currentRound).padStart(2, "0")}</span>
+            <span className="font-mono text-label text-accent flex-1 animate-pulse">CognitiveEngine compiling plan…</span>
+          </div>
+        )}
+        {groups.length === 0 && !pendingCompile && (
           <div className="px-6 py-8 caps-mono-sm text-muted italic text-center">no events yet</div>
         )}
       </div>
@@ -802,20 +943,32 @@ function EventLog({ derived }: { derived: DerivedState }) {
   );
 }
 
-function EventRow({ event }: { event: Event }) {
+function EventRow({ event, count = 1, agents }: { event: Event; count?: number; agents?: string[] }) {
   const meta = ACTION_META[event.action];
   const color = toneVar(meta.tone);
+  const collapsed = count > 1;
   return (
     <div className="px-4 py-2 border-b border-border hover:bg-white/[0.02]">
-      {/* Top row: time · R## · agent · action */}
+      {/* Top row: time · R## · agent · action · badge */}
       <div className="flex items-center gap-2 min-w-0">
         <span className="text-micro text-muted tabular font-mono flex-shrink-0">{event.time}</span>
         <span className="text-micro text-dim tabular font-mono flex-shrink-0">R{String(event.round).padStart(2, "0")}</span>
-        <span className="font-mono text-label text-text2 truncate min-w-0 flex-1">{event.agent}</span>
+        <span className="font-mono text-label text-text2 truncate min-w-0 flex-1">
+          {collapsed ? (agents ?? [event.agent]).join(", ") : event.agent}
+        </span>
         <span className="flex items-center gap-1.5 flex-shrink-0">
           <ActionGlyph action={event.action} deferred={Boolean(event.deferredTo)} />
           <span className="caps-mono-sm" style={{ color }}>{meta.label}</span>
-          {event.confidence !== undefined && (
+          {collapsed && (
+            <span
+              className="caps-mono-sm px-1 rounded"
+              style={{ background: `${color}22`, color }}
+              title={`${count} events collapsed`}
+            >
+              ×{count}
+            </span>
+          )}
+          {!collapsed && event.confidence !== undefined && (
             <span
               className="text-micro text-dim tabular font-mono"
               title="agent's stated confidence (0–1)"
