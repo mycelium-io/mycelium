@@ -172,7 +172,14 @@ class SlimClient:
         # do not diverge.
         return sb.SessionConfig(
             session_type=sb.SessionType.GROUP,
-            enable_mls=True,
+            # SLIM 2.0 replaced the ``enable_mls`` bool with ``mls_settings``:
+            # MLS is on iff settings are present. 100% header-integrity validation
+            # matches the old always-on posture. Matched pair with the backend
+            # moderator's config — do not diverge.
+            mls_settings=sb.MlsSettings(
+                header_integrity_validation_percent=100,
+                max_seen_control_message_ids_size=None,  # None → SLIM core default
+            ),
             max_retries=5,
             interval=datetime.timedelta(seconds=5),
             metadata={},
