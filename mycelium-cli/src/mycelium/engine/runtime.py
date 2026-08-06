@@ -55,6 +55,16 @@ def _norm(handle: str) -> str:
     return (handle or "").strip().lstrip("@").lower()
 
 
+def _episode_urn(room: str) -> str:
+    # Matches the backend aligner's ``l9.episode_urn(room, "align")`` form so the
+    # persister/plan_sync correlate the engine's turns + verdict to one episode.
+    return f"urn:ioc:mycelium:episode:{room}:align"
+
+
+def _topic_urn(room: str) -> str:
+    return f"urn:concept:mycelium:{room}"
+
+
 class EngineDrive:
     """Runs one SAO negotiation as ``engine_handle`` over an :class:`EngineChannel`."""
 
@@ -200,3 +210,83 @@ class EngineDrive:
             await self._channel.publish(content)
         except Exception:
             logger.warning("engine %s failed to emit verdict on %s", self._handle, self._room)
+
+
+# ── Live SLIM transport (validated against a running node, not in unit tests) ──
+
+
+class SlimEngineChannel:
+    """An :class:`EngineChannel` backed by a live SLIM session.
+
+    Wraps the CLI ``SlimClient`` — the same transport the daemon connector uses.
+    This is the one part of the runtime whose correctness only shows up live (the
+    wire format + real agent connectors), so it's deliberately thin: build the
+    content dicts in :class:`EngineDrive`, move bytes here.
+    """
+
+    def __init__(self, client: Any, session: Any) -> None:  # noqa: ANN401 - slim_bindings types
+        self._client = client
+        self._session = session
+
+    async def publish(self, content: dict[str, Any]) -> None:
+        from mycelium.slim import l9
+        from mycelium.slim.client import SlimClient
+
+        await SlimClient.publish(self._session, l9.serialize(content))
+
+    async def receive(self, *, timeout_s: float) -> dict[str, Any] | None:
+        from mycelium.slim import l9
+        from mycelium.slim.client import SlimClient, SlimReceiveTimeout
+
+        try:
+            message = await SlimClient.receive_message(self._session, timeout_s=timeout_s)
+        except SlimReceiveTimeout:
+            return None
+        return l9.parse(message.payload)
+
+
+async def run_engine(
+    *,
+    handle: str,
+    room: str,
+    kind: str,
+    participants: list[str],
+    openings: dict[str, str],
+    brain: Callable[..., str],
+    endpoint: str | None = None,
+    workspace: str | None = None,
+    max_steps: int = 20,
+    round_timeout_s: float = 90.0,
+) -> dict[str, str] | None:
+    """Connect a fresh SLIM session as ``@handle`` and drive one negotiation.
+
+    The caller (daemon dispatch) supplies the room roster + opening prose (which
+    it already has from the backend) and the constructed ``brain`` (litellm or
+    Pi, per the engine's config). Connects independently as the engine handle —
+    the engine has no persistent connector — drives, then closes.
+
+    ``kind`` is accepted for forward-compat (future CEs route here); only
+    ``aligner`` runs a NEGMAS SAO today.
+    """
+    from mycelium.slim.client import SlimClient
+    from mycelium.slim.naming import DEFAULT_NODE_ENDPOINT, DEFAULT_WORKSPACE, SlimIdentity
+
+    ws = workspace or DEFAULT_WORKSPACE
+    node = endpoint or DEFAULT_NODE_ENDPOINT
+    client = await SlimClient(SlimIdentity(ws, room, handle)).connect(node)
+    try:
+        session = await client.listen_for_session()
+        channel = SlimEngineChannel(client, session)
+        drive = EngineDrive(
+            engine_handle=handle,
+            room=room,
+            episode=_episode_urn(room),
+            topic=_topic_urn(room),
+            channel=channel,
+            brain=brain,
+            max_steps=max_steps,
+            round_timeout_s=round_timeout_s,
+        )
+        return await drive.run(participants, openings)
+    finally:
+        await client.close()
