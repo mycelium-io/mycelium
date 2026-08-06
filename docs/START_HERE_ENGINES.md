@@ -86,15 +86,32 @@ is clean (only `negmas` + `settings` + `offer_snap`), but the **drive loop**
   turns. `pi`-on-host (gaps re: container) still pending Stage B.
 
 ### Stage B — relocate the runtime to the host (the real Level 2)
-- Extract the mediation into a **daemon-spawnable engine runtime** (`negmas` as an optional
-  `mycelium[engine]` extra) that joins the room's SLIM channel as `@<handle>`, drives NEGMAS/SAO
-  over SLIM, posts as itself, and runs its Pi brain **on the host**.
-- Flip `EngineIntegration.lifecycle` → `cold_spawn`; implement `spawn()` to launch that runtime;
-  remove the backend `on_summon` mediation.
-- The drive loop (`_slim_turn`: publish prompt / read replies) is rebuilt against the daemon's
-  SLIM connection instead of the backend persister; the NEGMAS core (`mediator.py`) ports
-  ~as-is.
-- Dissolves the remaining `pi`/`openshell`-in-container gaps.
+
+**Built + unit-tested (`mycelium/engine/`, live-transport pending):**
+- `mediator.py` — the NEGMAS SAO core ported to the CLI package; `llm_sync` →
+  `build_litellm_brain(model, api_key, base_url)` (host LLM config, not backend settings). Verified
+  running: drives to agreement and terminates below the cap (`test_engine_mediator.py`).
+- `offer_snap.py` (copied), `brain.py` (the Pi brain), `mycelium[engine]` extra (negmas, litellm).
+- `runtime.py` — `EngineDrive` (the drive loop over an **injected `EngineChannel` seam**: discover →
+  `@`-address one agent/turn → interpret → step → emit `commit:converged`), `SlimEngineChannel` (the
+  live transport), and `run_engine(handle, room, kind, participants, openings, brain, …)` — a
+  launchable unit that connects as `@handle`, drives, closes. Drive logic unit-tested with a fake
+  channel (`test_engine_runtime.py`); the SLIM transport is validated live.
+
+**The remaining seam — daemon dispatch (a design fork + live-only work):**
+The daemon must, on an engine `@`-mention, run the drive. Two models, pick live:
+- **(A) connector reuses its session** — the engine gets a connector; on `@`-mention it runs
+  `EngineDrive` over the connector's own session, routing inbound agent replies to the drive's
+  `receive` (a "drive-active" mode on the connector loop). No second connection.
+- **(B) independent connection + watcher** — a room watcher detects the `@`-mention and launches
+  `run_engine` (its own SLIM session). Matches `run_engine` as written, but needs a detector and
+  the backend to invite a non-connector engine into the group.
+Then: retire the backend `on_summon` mediation for engines (a `ENGINE_RUNTIME=host|backend` switch
+during transition) so it doesn't double-run. This is the exact class of async-SLIM code whose bugs
+only surfaced live in Rung 1 — build it against a running stack.
+
+**Once wired, this dissolves the remaining `pi`/`openshell`-in-container gaps** (the engine runs
+where the daemon + `pi` live).
 
 ## Fixed decisions
 - Cognition engines are a **first-party `engine` runtime family**, `--kind` selecting the CE —
