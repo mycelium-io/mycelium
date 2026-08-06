@@ -41,7 +41,7 @@ import json
 import logging
 import shutil
 import subprocess
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -106,8 +106,11 @@ def parse_pi_json_output(stdout: str) -> str:
             messages = event.get("messages")
             if isinstance(messages, list):
                 for message in reversed(messages):
-                    if isinstance(message, dict) and message.get("role") == "assistant":
-                        candidate = _assistant_text(message)
+                    if not isinstance(message, dict):
+                        continue
+                    msg = cast("dict[str, Any]", message)
+                    if msg.get("role") == "assistant":
+                        candidate = _assistant_text(msg)
                         if candidate.strip():
                             text = candidate
                         break

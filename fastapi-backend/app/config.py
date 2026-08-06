@@ -97,6 +97,14 @@ class Settings(BaseSettings):
     ALIGNER_PI_OPENSHELL: bool = False
     # Per-turn wall-clock bound (seconds) on one pi brain call before it is killed.
     ALIGNER_PI_TIMEOUT_S: float = 120.0
+    # Where a registered `engine` (kind aligner) runs its NEGMAS drive — the
+    # Stage-B transition switch (docs/START_HERE_ENGINES.md). "backend" (default):
+    # this backend owns the run via its summon seam. "host": the host daemon owns
+    # it (the engine runs where `pi` lives), so `handle_summon` must NOT also fire
+    # for a registered engine or the negotiation double-runs. The reserved
+    # ALIGNER_HANDLE fallback always runs backend-side (it has no host manifest).
+    # Flip this in tandem with the CLI's `engine.runtime` — they're a pair.
+    ENGINE_RUNTIME: str = "backend"
 
     model_config = SettingsConfigDict(
         env_file=tuple(_env_files),

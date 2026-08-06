@@ -114,6 +114,7 @@ def _registered_engine_kind(room: str, handle: str) -> str | None:
         return kind if isinstance(kind, str) else None
     return None
 
+
 # Epistemic fields the aligner reads off an exchange's L9 payload and hands to
 # ``l9_episode.record_reply`` verbatim (it validates/clamps each one).
 _EPISTEMIC_KEYS = (
@@ -244,6 +245,18 @@ class AlignerEngine:
         """
         is_reserved = _norm(handle) == _norm(self._handle)
         if not is_reserved and _registered_engine_kind(room, handle) != "aligner":
+            return
+        # Stage-B transition switch: when ENGINE_RUNTIME=host the host daemon owns
+        # a *registered* engine's run (it drives NEGMAS where `pi` lives), so the
+        # backend must not also mediate or the negotiation double-runs. The
+        # reserved ALIGNER_HANDLE fallback has no host manifest, so it always runs
+        # backend-side regardless. See docs/START_HERE_ENGINES.md.
+        if not is_reserved and settings.ENGINE_RUNTIME == "host":
+            logger.info(
+                "engine @%s summoned in %s but ENGINE_RUNTIME=host — host daemon owns the run",
+                handle,
+                room,
+            )
             return
         from app.services.persister import envelope_sender
 

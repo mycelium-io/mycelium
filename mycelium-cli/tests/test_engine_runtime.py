@@ -73,20 +73,22 @@ async def test_drive_converges_and_emits_commit() -> None:
         round_timeout_s=2.0,
     )
 
-    assignments = await drive.run(
-        ["growth", "risk"], {"growth": "I want 35", "risk": "I want 25"}
-    )
+    assignments = await drive.run(["growth", "risk"], {"growth": "I want 35", "risk": "I want 25"})
 
     assert assignments == {"cap": "30"}
     # A commit:converged verdict was published onto the channel (backend tail seam).
     commits = [
-        c for c in channel.published if (l9.envelope_of(c) or {}).get("header", {}).get("kind") == "commit"
+        c
+        for c in channel.published
+        if (l9.envelope_of(c) or {}).get("header", {}).get("kind") == "commit"
     ]
     assert len(commits) == 1
     assert commits[0]["l9"]["header"]["subkind"] == "converged"
     assert l9.payload_data_of(commits[0])["assignments"] == {"cap": "30"}
     # It addressed the agents (published prompts) but stopped below the cap.
-    prompts = [c for c in channel.published if (l9.payload_data_of(c) or {}).get("action") == "position"]
+    prompts = [
+        c for c in channel.published if (l9.payload_data_of(c) or {}).get("action") == "position"
+    ]
     assert 0 < len(prompts) < 12
 
 
@@ -106,6 +108,8 @@ async def test_drive_rejects_when_no_issues() -> None:
     assignments = await drive.run(["growth", "risk"], {"growth": "?", "risk": "?"})
     assert assignments is None
     commits = [
-        c for c in channel.published if (l9.envelope_of(c) or {}).get("header", {}).get("kind") == "commit"
+        c
+        for c in channel.published
+        if (l9.envelope_of(c) or {}).get("header", {}).get("kind") == "commit"
     ]
     assert commits and commits[0]["l9"]["header"]["subkind"] == "rejected"

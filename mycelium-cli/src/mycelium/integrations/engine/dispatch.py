@@ -68,16 +68,29 @@ class EngineIntegration(Integration):
     def register(
         self, *, manifest: AgentManifest, config: MyceliumConfig, opts: AddOptions
     ) -> None:
-        # No runtime side effects in Stage A: the backend owns the engine's run
-        # via its summon seam, and there are no host assets to stage. The
-        # manifest write (by the command layer) is what makes the engine live.
-        return
+        # Claim the handle in daemon.toml (same as a cold_spawn agent). In Stage A
+        # / ``engine.runtime = backend`` this is inert — ``connector_targets``
+        # skips ``backend_engine`` manifests — but with ``engine.runtime = host``
+        # (Stage B) it's what makes the local daemon hold the engine's connector
+        # and drive NEGMAS on the host. Claiming it always keeps the flip to host
+        # a pure config change, and prevents a second machine syncing the room
+        # from also owning the engine.
+        from mycelium.daemon.config import DaemonConfig
+
+        daemon_cfg = DaemonConfig.load()
+        if daemon_cfg.own_handle(manifest.handle):
+            daemon_cfg.save()
 
     def destroy(
         self, *, manifest: AgentManifest, config: MyceliumConfig, room: str, full: bool
     ) -> None:
-        # Symmetric with register — nothing external to tear down.
-        return
+        # Release the daemon ownership claimed in register(); nothing else to
+        # tear down (no host assets).
+        from mycelium.daemon.config import DaemonConfig
+
+        daemon_cfg = DaemonConfig.load()
+        if daemon_cfg.disown_handle(manifest.handle):
+            daemon_cfg.save()
 
     def describe(self, manifest: AgentManifest, *, room: str) -> list[str]:
         lines = [

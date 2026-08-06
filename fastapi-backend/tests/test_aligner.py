@@ -293,6 +293,55 @@ async def test_summon_fires_only_for_the_reserved_handle():
     assert called == [_ROOM]
 
 
+@pytest.mark.asyncio
+async def test_engine_runtime_host_skips_registered_engine(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With ENGINE_RUNTIME=host the backend must NOT mediate a *registered* engine
+    (the host daemon owns the run) — but the reserved handle still runs backend-side."""
+    import yaml
+
+    from app.config import settings
+    from app.services.filesystem import get_room_dir, write_memory_file
+
+    room = "host-runtime-room"
+    write_memory_file(
+        get_room_dir(room),
+        "agents/mediator-1",
+        yaml.safe_dump({"adapter": "engine", "kind": "aligner"}),
+        created_by="cli-user",
+    )
+
+    managed = _FakeManaged(room, "mycelium", _FakeChannel(), _FakePersister())
+    engine = _engine(_FakeManager(managed, []))
+    called: list[str] = []
+
+    async def fake_mediate(r: str, engine_handle: str | None = None) -> None:
+        called.append(r)
+
+    engine.mediate = fake_mediate  # type: ignore[method-assign]
+    monkeypatch.setattr(settings, "ENGINE_RUNTIME", "host")
+
+    def _env(sender: str) -> Any:
+        return l9.build_envelope(
+            kind=Kind.exchange,
+            episode=_EPISODE,
+            sender=sender,
+            topic=_TOPIC,
+            payload_type="message",
+        )
+
+    # The registered engine is skipped — the host daemon drives it.
+    engine.handle_summon(room, "mediator-1", _env("human"))
+    await asyncio.sleep(0.02)
+    assert called == []
+
+    # The reserved handle has no host manifest, so it always runs backend-side.
+    engine.handle_summon(room, "aligner", _env("human"))
+    await asyncio.sleep(0.02)
+    assert called == [room]
+
+
 def test_registered_engine_kind_reads_manifest() -> None:
     """A summon fires the aligner for a registered ``engine`` (kind aligner), not
     for a normal agent or a handle with no manifest — the engine-reframe gate."""
@@ -305,9 +354,7 @@ def test_registered_engine_kind_reads_manifest() -> None:
     room_dir = get_room_dir(room)
 
     def _seed(handle: str, body: dict) -> None:
-        write_memory_file(
-            room_dir, f"agents/{handle}", yaml.safe_dump(body), created_by="cli-user"
-        )
+        write_memory_file(room_dir, f"agents/{handle}", yaml.safe_dump(body), created_by="cli-user")
 
     _seed("mediator-1", {"adapter": "engine", "kind": "aligner"})
     _seed("worker-1", {"adapter": "claude_code", "cwd": "/tmp"})

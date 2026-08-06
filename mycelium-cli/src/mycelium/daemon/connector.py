@@ -21,7 +21,9 @@ unchanged: it never speaks SLIM or L9.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
+import os
 import re
 import time
 from collections.abc import Awaitable, Callable
@@ -77,6 +79,23 @@ _RECONNECT_BACKOFF_S = 5.0
 # a never-spoke member — this closes that gap (Step 5 trap, option (a)).
 _HELLO_TEXT = "joined the room"
 
+# SLIM marks a group member offline after 3 missed heartbeats at a 10s interval
+# (~30s) — a compile-time constant in the node, not configurable, and the bindings
+# expose no heartbeat sender for a joining participant. But *any* received message
+# resets a member's liveness (SLIM's ``notify_received_activity``). So a member
+# that only ever waits on ``receive`` (the normal idle state of a cold-spawn agent)
+# gets reaped after 30s of quiet — which silently breaks any coordination with a
+# gap longer than that (e.g. a multi-round mediated negotiation). We keep the
+# member alive by publishing a tiny keepalive well inside that window. It carries
+# ``payload_type="keepalive"`` so the backend persister skips recording it (no
+# transcript spam) and ``should_wake`` ignores it (not an addressed exchange).
+#
+# The interval must sit *comfortably* under the 3×10s window: the node increments
+# a miss every 10s, so a 20s ping races the tick and can still accrue 3 misses.
+# Default 8s (miss count never exceeds 1). Env-tunable for load/latency trade-offs.
+_KEEPALIVE_INTERVAL_S = float(os.getenv("MYCELIUM_KEEPALIVE_INTERVAL_S", "8"))
+_KEEPALIVE_TYPE = "keepalive"
+
 
 # ── Episode / topic derivation ───────────────────────────────────────────────
 # Match the backend's ``l9.episode_urn`` / ``l9.topic_urn`` forms so a reply
@@ -94,14 +113,18 @@ def _room_topic(room: str) -> str:
 # ── Connector target discovery ───────────────────────────────────────────────
 
 
-def connector_targets(daemon_cfg: DaemonConfig) -> list[tuple[str, str]]:
+def connector_targets(
+    daemon_cfg: DaemonConfig, *, engine_runtime: str = "backend"
+) -> list[tuple[str, str]]:
     """The ``(room, handle)`` pairs this daemon should hold a connector for.
 
     A handle qualifies when it is (a) registered in the room's local mirror,
     (b) owned by this daemon (``daemon.toml`` handles), and (c) a **cold_spawn**
-    family (claude_code / cursor). ``long_lived_gateway`` families (openclaw,
-    hermes) own their own delivery and are skipped, exactly as the old SSE
-    dispatch skipped them.
+    family (claude_code / cursor) — or a first-party **engine** when
+    ``engine_runtime == "host"`` (Stage B: the daemon holds the engine's
+    connector and drives NEGMAS on the host instead of the backend running it).
+    ``long_lived_gateway`` families (openclaw, hermes) own their own delivery and
+    are skipped, exactly as the old SSE dispatch skipped them.
     """
     targets: list[tuple[str, str]] = []
     for room in daemon_cfg.rooms:
@@ -118,9 +141,9 @@ def connector_targets(daemon_cfg: DaemonConfig) -> list[tuple[str, str]]:
                     "unknown adapter %r on @%s in %s — skipping", manifest.adapter, handle, room
                 )
                 continue
-            if integration.lifecycle != "cold_spawn":
-                continue
-            targets.append((room, handle))
+            is_host_engine = integration.lifecycle == "backend_engine" and engine_runtime == "host"
+            if integration.lifecycle == "cold_spawn" or is_host_engine:
+                targets.append((room, handle))
     return targets
 
 
@@ -354,6 +377,24 @@ async def handle_inbound(
         log.warning("woke @%s in %s but no manifest in local mirror — skipping", handle, room)
         return
 
+    # Host-run engine (Stage B, approach A): an ``@``-summon of a first-party
+    # engine runs the NEGMAS drive over *this* connector's session rather than
+    # cold-spawning a subprocess. The drive registers a queue on the daemon state;
+    # the receive loop then routes agent replies into it. Skips the cold-spawn
+    # gates/verbs below — an engine drive is one long-lived turn, not a spawn.
+    if manifest.adapter == "engine":
+        from mycelium.integrations.engine.host import dispatch_engine
+
+        await dispatch_engine(
+            config=config,
+            state=state,
+            room=room,
+            handle=handle,
+            kind=manifest.kind,
+            publish=publish,
+        )
+        return
+
     sender_handle = l9.sender_of(content) or "(anonymous)"
     body = _extract_body(l9.human_text_of(content), handle)
     verb = _leading_verb(body)
@@ -519,6 +560,56 @@ async def _reply(publish: PublishFn, handle: str, room: str, woke: dict, text: s
     await publish(build_reply(handle=handle, room=room, woke=woke, text=text))
 
 
+# ── Presence: self-rejoin + idle keepalive ───────────────────────────────────
+
+
+async def announce_presence(config: MyceliumConfig, room: str, handle: str) -> None:
+    """Announce ``handle`` to the backend so it (re)invites the connector.
+
+    Called on every (re)connect *before* ``listen_for_session``. The backend's
+    join endpoint (re)invites the handle onto the room's SLIM group — so a member
+    that was dropped while the laptop slept (or on any session close) rejoins on
+    its own, and the durable inbox re-serves the tail it missed, without waiting
+    for a human ``@mention``. Best-effort: no backend / no-node dev just means the
+    connector falls back to waiting to be invited, exactly as before.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                f"{config.server.api_url}/api/rooms/{room}/sessions",
+                json={"agent_handle": handle},
+            )
+            resp.raise_for_status()
+    except Exception as exc:  # noqa: BLE001 - presence announce is best-effort
+        log.debug("announce presence for %s/%s failed (best-effort): %s", room, handle, exc)
+
+
+async def _keepalive_loop(publish: PublishFn, room: str, handle: str, state: DaemonState) -> None:
+    """Publish a keepalive on the session every ``_KEEPALIVE_INTERVAL_S`` while alive.
+
+    Keeps SLIM from reaping an idle-but-connected member (see ``_KEEPALIVE_TYPE``).
+    Runs until cancelled (session drop / shutdown) or a publish fails — the receive
+    loop owns reconnect, so a failed keepalive just ends this task quietly.
+    """
+    while not state.stopping.is_set():
+        await asyncio.sleep(_KEEPALIVE_INTERVAL_S)
+        try:
+            log.debug("keepalive → %s/%s", room, handle)
+            await publish(
+                l9.build_reply_content(
+                    sender=handle,
+                    recipients=[],
+                    episode=_room_episode(room),
+                    parents=[],
+                    topic=_room_topic(room),
+                    text="",
+                    payload_type=_KEEPALIVE_TYPE,
+                )
+            )
+        except Exception:  # noqa: BLE001 - session dropping; receive loop handles reconnect
+            return
+
+
 # ── The long-lived member loop ───────────────────────────────────────────────
 
 
@@ -545,14 +636,22 @@ async def run_connector(
 
     while not state.stopping.is_set():
         client: SlimClient | None = None
+        keepalive_task: asyncio.Task[None] | None = None
         try:
             client = await SlimClient(identity).connect(node)
+            # Self-rejoin: tell the backend we're (re)connecting so it invites us —
+            # a slept/dropped member rejoins without needing a fresh @mention.
+            await announce_presence(config, room, handle)
             session = await client.listen_for_session()
             log.info("connector joined: %s/%s", room, handle)
             state.rooms_connected.add(room)
 
             async def publish(content: dict, _session=session, _client=client) -> None:
                 await SlimClient.publish(_session, l9.serialize(content))
+
+            # Keep the member alive through idle gaps (SLIM reaps quiet members
+            # after ~30s — see _KEEPALIVE_TYPE). Cancelled in ``finally`` on drop.
+            keepalive_task = asyncio.create_task(_keepalive_loop(publish, room, handle, state))
 
             # Seed the re-serve route so a later reconnect is re-served its tail.
             await publish(
@@ -578,6 +677,16 @@ async def run_connector(
                     continue
                 content = l9.parse(message.payload)
                 if content is None:
+                    continue
+                if l9.payload_type_of(content) == _KEEPALIVE_TYPE:
+                    continue  # another member's liveness ping — never wakes or drives
+                # Drive-active routing (Stage B, approach A): while this handle is
+                # a host engine driving a negotiation, inbound agent replies
+                # (addressed to the engine) belong to the drive, not a re-dispatch.
+                # Hand them to the drive's queue and skip the normal wake path.
+                drive_queue = state.active_drives.get(handle)
+                if drive_queue is not None:
+                    drive_queue.put_nowait(content)
                     continue
                 asyncio.create_task(  # noqa: RUF006 - fire-and-forget; loop stays responsive
                     _guarded_inbound(
@@ -605,6 +714,10 @@ async def run_connector(
                 _RECONNECT_BACKOFF_S,
             )
         finally:
+            if keepalive_task is not None:
+                keepalive_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await keepalive_task
             state.rooms_connected.discard(room)
             if client is not None:
                 await client.close()

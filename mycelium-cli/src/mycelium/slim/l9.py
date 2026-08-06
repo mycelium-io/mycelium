@@ -175,6 +175,13 @@ def payload_data_of(content: dict[str, Any]) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def payload_type_of(content: dict[str, Any]) -> str | None:
+    """The L9 payload ``type`` of a message (e.g. ``message``/``reply``/``keepalive``)."""
+    env = envelope_of(content) or {}
+    ptype = env.get("payload", {}).get("type")
+    return ptype if isinstance(ptype, str) else None
+
+
 def _iter_text(value: Any) -> list[str]:
     """Every string leaf in a nested value (mirrors the persister's scan)."""
     out: list[str] = []

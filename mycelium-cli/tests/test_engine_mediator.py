@@ -35,7 +35,12 @@ def test_discover_issues_parses_and_filters() -> None:
         "task",
         {"a": "I want 30", "b": "I want 25"},
         llm=lambda *a, **k: json.dumps(
-            {"issues": [{"name": "cap", "options": ["25", "30"]}, {"name": "bad", "options": ["x"]}]}
+            {
+                "issues": [
+                    {"name": "cap", "options": ["25", "30"]},
+                    {"name": "bad", "options": ["x"]},
+                ]
+            }
         ),
     )
     assert issues == [{"name": "cap", "options": ["25", "30"]}]

@@ -188,6 +188,21 @@ def test_ingest_fires_summon_hook_but_not_on_plain_message():
     assert summoned == ["aligner"]  # unchanged
 
 
+def test_ingest_skips_keepalive_from_the_transcript():
+    """A connector's idle keepalive ping exists only to reset SLIM liveness — it
+    must never be recorded to the durable transcript (else the log fills with a
+    ping every ~20s per member). A real reply still records."""
+    p = _persister_for("keepalive-room", summoned=[], converged=[])
+
+    ping_env, ping_content = _msg_content("k-1", sender="growth", text="", payload_type="keepalive")
+    p._ingest(ping_env, ping_content)
+    assert p.log.records == []  # keepalive dropped, nothing recorded
+
+    reply_env, reply_content = _msg_content("r-1", sender="growth", text="hi", payload_type="reply")
+    p._ingest(reply_env, reply_content)
+    assert len(p.log.records) == 1  # a real message still records
+
+
 def test_ingest_fires_converged_hook_for_commit_converged_only():
     summoned: list[str] = []
     converged: list = []

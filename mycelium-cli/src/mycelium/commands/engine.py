@@ -205,7 +205,7 @@ def engine_invoke(
             if manifest.adapter != "engine":
                 console.print(
                     f"[red]'{handle}' is a {manifest.adapter} agent, not an engine.[/red]\n"
-                    f"  Use: mycelium agent invoke {handle} \"...\""
+                    f'  Use: mycelium agent invoke {handle} "..."'
                 )
                 raise typer.Exit(1)
 

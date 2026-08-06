@@ -89,9 +89,7 @@ class EngineDrive:
         self._max_steps = max_steps
         self._round_timeout_s = round_timeout_s
 
-    async def run(
-        self, participants: list[str], openings: dict[str, str]
-    ) -> dict[str, str] | None:
+    async def run(self, participants: list[str], openings: dict[str, str]) -> dict[str, str] | None:
         """Discover → drive NEGMAS → emit the verdict. Returns the agreed map or None.
 
         ``participants`` are the room members to negotiate (the engine handle is
@@ -161,7 +159,9 @@ class EngineDrive:
         try:
             await self._channel.publish(content)
         except Exception:
-            logger.warning("engine %s failed to prompt @%s (step %d)", self._handle, handle, round_n)
+            logger.warning(
+                "engine %s failed to prompt @%s (step %d)", self._handle, handle, round_n
+            )
             return ""
 
         loop = asyncio.get_running_loop()
@@ -171,6 +171,8 @@ class EngineDrive:
             inbound = await self._channel.receive(timeout_s=max(0.1, deadline - loop.time()))
             if inbound is None:
                 continue
+            if l9.payload_type_of(inbound) == "keepalive":
+                continue  # an idle keepalive ping — never a negotiation reply
             sender = l9.sender_of(inbound)
             if sender is None or _norm(sender) != pending:
                 continue  # not the addressed agent's reply — ignore (own prompt, others)
@@ -245,6 +247,39 @@ class SlimEngineChannel:
         return l9.parse(message.payload)
 
 
+async def drive_over_channel(
+    *,
+    handle: str,
+    room: str,
+    kind: str,
+    participants: list[str],
+    openings: dict[str, str],
+    brain: Callable[..., str],
+    channel: EngineChannel,
+    max_steps: int = 20,
+    round_timeout_s: float = 90.0,
+) -> dict[str, str] | None:
+    """Run one negotiation as ``@handle`` over an already-open :class:`EngineChannel`.
+
+    The single drive entry point, transport-agnostic: the caller owns the channel
+    (a :class:`SlimEngineChannel` on the engine's own session, or a connector-
+    backed queue channel — approach A of the daemon dispatch seam). ``kind`` is
+    accepted for forward-compat (future CEs route here); only ``aligner`` runs a
+    NEGMAS SAO today.
+    """
+    drive = EngineDrive(
+        engine_handle=handle,
+        room=room,
+        episode=_episode_urn(room),
+        topic=_topic_urn(room),
+        channel=channel,
+        brain=brain,
+        max_steps=max_steps,
+        round_timeout_s=round_timeout_s,
+    )
+    return await drive.run(participants, openings)
+
+
 async def run_engine(
     *,
     handle: str,
@@ -260,13 +295,13 @@ async def run_engine(
 ) -> dict[str, str] | None:
     """Connect a fresh SLIM session as ``@handle`` and drive one negotiation.
 
-    The caller (daemon dispatch) supplies the room roster + opening prose (which
-    it already has from the backend) and the constructed ``brain`` (litellm or
-    Pi, per the engine's config). Connects independently as the engine handle —
-    the engine has no persistent connector — drives, then closes.
+    The approach-(B) launcher: the engine has no persistent connector, so it
+    opens its *own* SLIM session, drives, then closes. The connector-reuse path
+    (approach A) skips this and calls :func:`drive_over_channel` directly over the
+    connector's session (see ``integrations/engine/host.py``).
 
-    ``kind`` is accepted for forward-compat (future CEs route here); only
-    ``aligner`` runs a NEGMAS SAO today.
+    The caller supplies the room roster + opening prose and the constructed
+    ``brain`` (litellm or Pi, per the engine's config).
     """
     from mycelium.slim.client import SlimClient
     from mycelium.slim.naming import DEFAULT_NODE_ENDPOINT, DEFAULT_WORKSPACE, SlimIdentity
@@ -277,16 +312,16 @@ async def run_engine(
     try:
         session = await client.listen_for_session()
         channel = SlimEngineChannel(client, session)
-        drive = EngineDrive(
-            engine_handle=handle,
+        return await drive_over_channel(
+            handle=handle,
             room=room,
-            episode=_episode_urn(room),
-            topic=_topic_urn(room),
-            channel=channel,
+            kind=kind,
+            participants=participants,
+            openings=openings,
             brain=brain,
+            channel=channel,
             max_steps=max_steps,
             round_timeout_s=round_timeout_s,
         )
-        return await drive.run(participants, openings)
     finally:
         await client.close()

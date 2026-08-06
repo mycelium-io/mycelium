@@ -442,7 +442,9 @@ class AgentManifest(BaseModel):
             if not (self.kind and self.kind.strip()):
                 raise ValueError("engine agents require a 'kind' (e.g. 'aligner')")
             if self.kind not in ENGINE_KINDS:
-                raise ValueError(f"unknown engine kind {self.kind!r}; known: {sorted(ENGINE_KINDS)}")
+                raise ValueError(
+                    f"unknown engine kind {self.kind!r}; known: {sorted(ENGINE_KINDS)}"
+                )
         return self
 
     @property
