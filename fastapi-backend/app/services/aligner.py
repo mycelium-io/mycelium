@@ -87,6 +87,33 @@ _NON_PARTICIPANTS = frozenset({BACKEND_AGENT, l9.SYSTEM_ACTOR_ID})
 # the ``@`` means only the L9-addressed agent wakes; the names stay readable.
 _AT_MENTION = re.compile(r"@(?=\w)")
 
+
+def _registered_engine_kind(room: str, handle: str) -> str | None:
+    """The CE kind if ``handle`` is a registered ``engine`` agent in ``room``.
+
+    The agent manifest is stored as YAML in the body of ``agents/<handle>`` (the
+    CLI's ``mycelium engine create`` writes ``adapter: engine`` + ``kind:``).
+    Returns the ``kind`` for an engine manifest, else ``None`` — so summoning a
+    normal teammate, or a handle with a missing/broken manifest, never fires the
+    aligner. Cheap: summons are rare and this is one small file read.
+    """
+    import yaml
+
+    from app.services.filesystem import get_room_dir, read_memory_file
+
+    result = read_memory_file(get_room_dir(room), f"agents/{handle}")
+    if result is None:
+        return None
+    _meta, body = result
+    try:
+        data = yaml.safe_load(body) or {}
+    except yaml.YAMLError:
+        return None
+    if isinstance(data, dict) and data.get("adapter") == "engine":
+        kind = data.get("kind")
+        return kind if isinstance(kind, str) else None
+    return None
+
 # Epistemic fields the aligner reads off an exchange's L9 payload and hands to
 # ``l9_episode.record_reply`` verbatim (it validates/clamps each one).
 _EPISTEMIC_KEYS = (
@@ -203,36 +230,42 @@ class AlignerEngine:
     # -- the summon seam (sync; called from the persister's on_summon) --
 
     def handle_summon(self, room: str, handle: str, envelope: L9) -> None:
-        """Fire the engine when *its* reserved handle is summoned; else ignore.
+        """Fire the aligner when a registered ``engine`` (kind ``aligner``) — or
+        the legacy reserved handle — is summoned; else ignore.
 
-        The persister fires this for every ``@``-mention in a message, so the
-        identity gate here is what keeps an ``@teammate`` from spawning an engine
-        (bible §10 / Step 7 trap). A self-authored envelope never re-summons, and
-        a room already being judged is left alone.
+        The persister fires this for every ``@``-mention, so the identity gate is
+        what keeps an ``@teammate`` from spawning an engine (bible §10 / Step 7).
+        The engine reframe (``docs/START_HERE_ENGINES.md``) makes the aligner a
+        first-class registered agent: a summon of a handle whose manifest is
+        ``adapter=engine, kind=aligner`` runs *as that handle*. The reserved
+        ``ALIGNER_HANDLE`` stays a back-compat fallback during the transition.
+        A self-authored envelope never re-summons; a room already active is left
+        alone.
         """
-        if _norm(handle) != _norm(self._handle):
+        is_reserved = _norm(handle) == _norm(self._handle)
+        if not is_reserved and _registered_engine_kind(room, handle) != "aligner":
             return
         from app.services.persister import envelope_sender
 
         sender = envelope_sender(envelope)
-        if sender is not None and _norm(sender) == _norm(self._handle):
+        if sender is not None and _norm(sender) in {_norm(self._handle), _norm(handle)}:
             return  # never summon off our own message
         if room in self._active:
             logger.debug("aligner already active on room %s; ignoring re-summon", room)
             return
         self._active.add(room)
-        task = asyncio.create_task(self._run_and_release(room))
+        task = asyncio.create_task(self._run_and_release(room, handle))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
-    async def _run_and_release(self, room: str) -> None:
+    async def _run_and_release(self, room: str, engine_handle: str) -> None:
         # The mediator is the aligner — there is no mode to choose. A summon
-        # always drives a live NEGMAS SAO (Rung 1/2). The observer/driver methods
-        # below survive only for the live roundtrip scripts (scripts/
-        # l9_slim_roundtrip.py) pending their Rung-3 removal; production never
-        # reaches them.
+        # always drives a live NEGMAS SAO (Rung 1/2), running *as* the summoned
+        # engine handle. The observer/driver methods below survive only for the
+        # live roundtrip scripts (scripts/l9_slim_roundtrip.py) pending their
+        # Rung-3 removal; production never reaches them.
         try:
-            await self.mediate(room)
+            await self.mediate(room, engine_handle=engine_handle)
         except Exception:
             logger.exception("aligner run failed on room %s", room)
         finally:
@@ -362,8 +395,13 @@ class AlignerEngine:
 
     # -- mediator mode (Rung 1: drive a real NEGMAS SAO over SLIM) --
 
-    async def mediate(self, room: str) -> dict[str, Any] | None:
+    async def mediate(self, room: str, engine_handle: str | None = None) -> dict[str, Any] | None:
         """Run a NEGMAS SAO negotiation live over SLIM, terminating at agreement.
+
+        Runs *as* ``engine_handle`` — the registered ``engine`` (kind ``aligner``)
+        that was summoned — so that handle is excluded from the participant roster
+        it addresses (an engine must never ``@``-address itself). Falls back to the
+        legacy reserved handle when summoned that way.
 
         The Rung-1 replacement for the passive observer: on summon, discover the
         issues from the agents' opening prose, then let NEGMAS drive the rounds —
@@ -384,7 +422,8 @@ class AlignerEngine:
             logger.info("aligner (mediator) summoned for %s but no live channel/persister", room)
             return None
         persister = managed.persister
-        participants = [m for m in self._manager.members(room) if _norm(m) != _norm(self._handle)]
+        me = engine_handle or self._handle
+        participants = [m for m in self._manager.members(room) if _norm(m) != _norm(me)]
         episode = l9.episode_urn(room, "align")
         topic = l9.topic_urn(room)
 

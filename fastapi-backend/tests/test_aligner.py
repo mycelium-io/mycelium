@@ -263,7 +263,7 @@ async def test_summon_fires_only_for_the_reserved_handle():
 
     called: list[str] = []
 
-    async def fake_mediate(room: str) -> None:
+    async def fake_mediate(room: str, engine_handle: str | None = None) -> None:
         called.append(room)
 
     engine.mediate = fake_mediate  # type: ignore[method-assign]
@@ -291,6 +291,30 @@ async def test_summon_fires_only_for_the_reserved_handle():
     engine.handle_summon("other-room", "aligner", _env("aligner"))
     await asyncio.sleep(0.02)
     assert called == [_ROOM]
+
+
+def test_registered_engine_kind_reads_manifest() -> None:
+    """A summon fires the aligner for a registered ``engine`` (kind aligner), not
+    for a normal agent or a handle with no manifest — the engine-reframe gate."""
+    import yaml
+
+    from app.services.aligner import _registered_engine_kind
+    from app.services.filesystem import get_room_dir, write_memory_file
+
+    room = "engine-room"
+    room_dir = get_room_dir(room)
+
+    def _seed(handle: str, body: dict) -> None:
+        write_memory_file(
+            room_dir, f"agents/{handle}", yaml.safe_dump(body), created_by="cli-user"
+        )
+
+    _seed("mediator-1", {"adapter": "engine", "kind": "aligner"})
+    _seed("worker-1", {"adapter": "claude_code", "cwd": "/tmp"})
+
+    assert _registered_engine_kind(room, "mediator-1") == "aligner"
+    assert _registered_engine_kind(room, "worker-1") is None  # a normal agent
+    assert _registered_engine_kind(room, "ghost") is None  # no manifest
 
 
 def test_at_mention_neutralized_in_mediator_prompt() -> None:

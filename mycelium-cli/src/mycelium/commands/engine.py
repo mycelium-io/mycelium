@@ -26,8 +26,10 @@ from rich.table import Table
 
 from mycelium.commands.agent import (
     _load_manifest,
+    _load_manifest_remote,
     _persist_and_describe,
     _resolve_room,
+    _typed_client,
 )
 from mycelium.config import MyceliumConfig
 from mycelium.error_handler import print_error
@@ -148,6 +150,80 @@ def engine_ls(
         for m in engines:
             table.add_row(f"@{m.handle}", m.kind or "?", m.description or "")
         console.print(table)
+    except typer.Exit:
+        raise
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+        raise typer.Exit(1) from None
+
+
+@app.command("invoke")
+def engine_invoke(
+    ctx: typer.Context,
+    handle: str = typer.Argument(..., help="Engine handle (without leading @)."),
+    message: str = typer.Argument(
+        "please mediate us to an agreement.",
+        help="Summon message (defaults to a generic mediate request).",
+    ),
+    room: str | None = typer.Option(
+        None, "--room", "-r", help="Room to summon in (defaults to active room)."
+    ),
+    handle_flag: str | None = typer.Option(
+        None, "--as", "-H", help="Your sender handle (defaults to identity config)."
+    ),
+) -> None:
+    """Summon a registered cognition engine by posting an ``@handle`` message.
+
+    Fills gap #4 — the built-in aligner previously had no CLI surface (you had to
+    hit the REST API directly). The backend recognises a registered ``engine``
+    and runs it as that handle.
+
+    Example:
+        mycelium engine invoke mediator-1 "converge on tech allocation and the cap"
+    """
+    try:
+        config = MyceliumConfig.load()
+        room_name = _resolve_room(config, room)
+
+        from mycelium_backend_client.api.messages import (
+            send_message_api_rooms_room_name_messages_post as send_api,
+        )
+        from mycelium_backend_client.models import MessageCreate
+
+        with _typed_client(config) as client:
+            manifest = _load_manifest(room_name, handle) or _load_manifest_remote(
+                client, room_name, handle
+            )
+            if manifest is None:
+                console.print(
+                    f"[red]Not found:[/red] no engine named '{handle}' in room '{room_name}'.\n"
+                    f"  Create one with: mycelium engine create {handle} --kind aligner "
+                    f"--room {room_name}"
+                )
+                raise typer.Exit(1)
+            if manifest.adapter != "engine":
+                console.print(
+                    f"[red]'{handle}' is a {manifest.adapter} agent, not an engine.[/red]\n"
+                    f"  Use: mycelium agent invoke {handle} \"...\""
+                )
+                raise typer.Exit(1)
+
+            sender_handle = handle_flag or config.get_current_identity()
+            body = MessageCreate(
+                sender_handle=sender_handle,
+                message_type="broadcast",
+                content=f"@{manifest.handle} {message}",
+            )
+            send_api.sync(room_name=room_name, client=client, body=body)
+
+        console.print(
+            f"[green]Summoned[/green] [dim]({sender_handle} → [/dim]"
+            f"[cyan]@{manifest.handle}[/cyan][dim] in {room_name})[/dim]"
+        )
+        console.print(
+            f"\n[dim]The backend runs the {manifest.kind} engine and replies in {room_name}.[/dim]"
+        )
     except typer.Exit:
         raise
     except Exception as e:
