@@ -49,7 +49,11 @@ if TYPE_CHECKING:
 #:   that owns its own mention delivery (currently only ``openclaw``; future
 #:   ``hermes``). The daemon ignores these manifests entirely — the gateway
 #:   is responsible for dispatch.
-LifecycleModel = Literal["cold_spawn", "long_lived_gateway"]
+#: - ``backend_engine``: a first-party cognition engine (``adapter="engine"``)
+#:   whose run the **backend** owns via its summon seam (Stage A of the engine
+#:   reframe — see ``docs/START_HERE_ENGINES.md``). The daemon skips these, same
+#:   as a gateway. Stage B flips the engine to ``cold_spawn`` (host runtime).
+LifecycleModel = Literal["cold_spawn", "long_lived_gateway", "backend_engine"]
 
 
 @dataclass

@@ -54,7 +54,9 @@ def test_family_declares_lifecycle(family: str) -> None:
     """
     cls = type(get_integration(family))
     assert hasattr(cls, "lifecycle"), f"{family} missing `lifecycle` ClassVar"
-    assert cls.lifecycle in {"cold_spawn", "long_lived_gateway"}, (
+    # backend_engine: a first-party cognition engine the backend runs (daemon
+    # skips it, same as a gateway) — Stage A of the engine reframe.
+    assert cls.lifecycle in {"cold_spawn", "long_lived_gateway", "backend_engine"}, (
         f"{family} has invalid lifecycle: {cls.lifecycle!r}"
     )
 
