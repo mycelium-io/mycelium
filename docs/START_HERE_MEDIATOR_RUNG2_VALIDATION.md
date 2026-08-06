@@ -12,7 +12,7 @@
 | Rung | What | State |
 |------|------|-------|
 | 0 | Behavioral de-risk — LLM mediator drives NEGMAS SAO, terminates at agreement | ✅ **PASSED** (`experiments/sao-mediator-spike/`) |
-| 1 | Mediator drives live over SLIM (`aligner.py:mediate` + `mediator.py`) | ✅ **run live against real cold-spawned agents** — architecture proven, 3 bugs found + fixed (see Gate A below); ⬜ pristine re-run on a fresh room still to capture |
+| 1 | Mediator drives live over SLIM (`aligner.py:mediate` + `mediator.py`) | ✅ **run live against real cold-spawned agents** — architecture proven; converged end-to-end on a fresh room (`{tech:40%, cap:25%}`, single wakes, no timeouts, terminated); 3 bugs found + fixed. Multi-round runs surfaced **4 more open bugs** (discretization misreports the agreement, phantom issues, mediator msgs not in room API, agents cave to BATNA) — see Gate A |
 | 2 | Pi + OpenShell brain for the *internal* mediator (`pi_brain.py`, `ALIGNER_BRAIN`) | ✅ code built (node-free) · ❌ **not run live** (Part B) |
 | 2.5 | `ALIGNER_MODE` retired — the mediator is unconditionally the aligner (no flag) | ✅ done (pulled forward from Rung 3) |
 | 3 | Retire the observer/driver engines + `parse_position_marker` | ⬜ later — deletion rung |
@@ -60,13 +60,51 @@ The live run surfaced three real defects; all are fixed on this branch with unit
    forcing all debugging into backend logs. Fix: `_slim_turn` records each prompt via
    `persister.ingest_local` (the same seam `publish_human` uses), so humans can follow along.
 
+### Pristine converged run ✅ (fresh room `mediator-final`, post-fix)
+With the three fixes in and a clean single-setup stack, a summon drove a real end-to-end
+convergence:
+```
+step 0: @growth PROPOSE      (40% tech, 25% cap)
+step 0: @risk   ACCEPT_OFFER (40% tech, 25% cap)
+→ aligner (mediator) room mediator-final → agreement in 1 step
+   {tech_allocation: 40%, per_sector_cap: 25%}
+```
+Wakes were **single per turn** (`@growth` 18:19:55, `@risk` 18:20:08 — 13s apart, no wake-storm),
+replies landed in ~10s (no timeouts → the fail-closed path never fired), and NEGMAS **terminated**
+on the unanimous accept. The anti-theatre property, confirmed live. (One-round because risk found
+growth's opening offer acceptable — a clean agreement, not a long bargain.)
+
+### Bugs found → NOT yet fixed (surfaced by the multi-round bargain runs)
+Forcing a *multi-round* bargain (rooms `mediator-bargain` / `bargain2`, slow-concession personas
+walking 40→30 vs 20→30, ZOPA at 30%) exposed deeper interpretation defects:
+
+1. **Discretization can misreport the agreement — the important one.** In `bargain2` the agents
+   genuinely bargained to **30%** in the room (`@risk`: *"tech must come down to 30%"* → `@growth`:
+   *"Accept — 30% is exactly my floor"*), but the mediator **recorded 25%**. Cause: `discover_issues`
+   fixes a *discrete* option set up front (here tech ∈ {…,25,35,…} with **no 30**), so NEGMAS runs
+   on a grid the real agreement point isn't on, and `interpret`/`to_outcome` snaps the agreed "30"
+   to a wrong option. **So the emitted `issue = value` map can differ from what the agents actually
+   agreed to.** Sketch of the fix: constrain the option set to values the agents actually raise,
+   use a finer/continuous scale, and **re-read the final agreement from the accepting agent's prose**
+   rather than trusting the discretized outcome.
+2. **`discover_issues` invents phantom issues.** Openings that mentioned only a tech percentage
+   still produced 3–4 issues (`rebalancing_frequency`, `growth_vs_stability_tradeoff`,
+   `performance_review_trigger`) the agents never raised — the discovery LLM pads the portfolio
+   scenario. Discovery should be constrained to dimensions actually present in the positions.
+3. **The mediator's own messages don't reach the room API.** Its turn-prompts *and* the final
+   verdict never surfaced in `GET /messages` (only agent replies did), so a human watching the
+   room sees the agents converge but not the mediator's proposals or the agreement. The
+   `ingest_local` fix (fix #3 above) records them to the persister's log but they aren't reaching
+   the list store the API/UI read — a second seam to wire.
+4. **Agents cave under the mediator's BATNA push.** Even with rigid "hold your floor" personas,
+   `@growth` repeatedly accepted below its floor. The mediator appends a strong BATNA to every
+   agent prompt (`mediator.py:_BATNA` — *"a compromise you can live with beats no deal… concede
+   everything secondary"*), which by design pushes agents to close fast. That's the anti-theatre
+   goal working, but it fights a genuine multi-round bargain and can override stated hard lines —
+   worth a knob to soften for scenarios where holding out matters.
+
 ### Still to capture ⬜
-- A **pristine end-to-end transcript** on a *fresh* room (new room + agents, single setup, no
-  mid-run backend rebuilds) showing the fixed loop: single wake per turn, replies in seconds
-  (not the timeout), a genuine two-sided convergence, and every turn visible in the room. The
-  first live run's re-confirmation was muddied by repeated backend recreates in one session
-  (which lose in-memory channel/membership state and left the mediator not firing on re-summon —
-  an orchestration artifact, separate from the three fixes above). Do this fresh.
+- Gate B (Pi brain live) and the OpenShell sandbox — see below.
 
 ### Operational notes (learned the hard way)
 - **Raise `ALIGNER_ROUND_TIMEOUT_S`** well above a cold-spawn's latency (we used 90–150s); the
